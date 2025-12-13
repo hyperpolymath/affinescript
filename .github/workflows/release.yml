@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 name: Release
 
 on:
@@ -14,7 +15,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Set up OCaml
         uses: ocaml/setup-ocaml@v3
@@ -34,7 +35,7 @@ jobs:
           tar -czvf affinescript-linux-x64.tar.gz -C dist .
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@da05d552573ad5aba039eaac05058a918a7bf631 # v2
         with:
           files: affinescript-linux-x64.tar.gz
           generate_release_notes: true
