@@ -1,27 +1,25 @@
 (** Abstract Syntax Tree for AffineScript *)
 
-open Sexplib0.Sexp_conv
-
 (** Identifiers *)
 type ident = {
   name : string;
-  span : Span.t; [@sexp.opaque]
+  span : Span.t;
 }
-[@@deriving show, eq, sexp]
+[@@deriving show, eq]
 
 (** Quantity annotations for QTT *)
 type quantity =
   | QZero    (** Erased - compile time only *)
   | QOne     (** Linear - exactly once *)
   | QOmega   (** Unrestricted *)
-[@@deriving show, eq, sexp]
+[@@deriving show, eq]
 
 (** Ownership modifiers *)
 type ownership =
   | Own  (** Owned value *)
   | Ref  (** Immutable borrow *)
   | Mut  (** Mutable borrow *)
-[@@deriving show, eq, sexp]
+[@@deriving show, eq]
 
 (** Visibility modifiers *)
 type visibility =
@@ -30,7 +28,7 @@ type visibility =
   | PubCrate
   | PubSuper
   | PubIn of ident list  (** pub(Path.To.Module) *)
-[@@deriving show, eq, sexp]
+[@@deriving show, eq]
 
 (** Kinds *)
 type kind =
@@ -39,19 +37,19 @@ type kind =
   | KRow                           (** Row *)
   | KEffect                        (** Effect *)
   | KArrow of kind * kind          (** κ → κ *)
-[@@deriving show, eq, sexp]
+[@@deriving show, eq]
 
 (** Type parameters *)
 type type_param = {
-  quantity : quantity option;
-  name : ident;
-  kind : kind option;
+  tp_quantity : quantity option;
+  tp_name : ident;
+  tp_kind : kind option;
 }
-[@@deriving show, eq, sexp]
+[@@deriving show, eq]
 
 (** Nat-level expressions (for dependent types) *)
 type nat_expr =
-  | NatLit of int * Span.t [@sexp.opaque]
+  | NatLit of int * Span.t
   | NatVar of ident
   | NatAdd of nat_expr * nat_expr
   | NatSub of nat_expr * nat_expr
@@ -67,7 +65,7 @@ and predicate =
   | PredOr of predicate * predicate
 
 and cmp_op = Lt | Le | Gt | Ge | Eq | Ne
-[@@deriving show, eq, sexp]
+[@@deriving show, eq]
 
 (** Type expressions *)
 and type_expr =
@@ -76,11 +74,11 @@ and type_expr =
   | TyApp of ident * type_arg list                   (** Vec[n, T] *)
   | TyArrow of type_expr * type_expr * effect_expr option  (** T -> U / E *)
   | TyDepArrow of {                                  (** (x: T) -> U / E *)
-      quantity : quantity option;
-      param : ident;
-      param_ty : type_expr;
-      ret_ty : type_expr;
-      effect : effect_expr option;
+      da_quantity : quantity option;
+      da_param : ident;
+      da_param_ty : type_expr;
+      da_ret_ty : type_expr;
+      da_eff : effect_expr option;
     }
   | TyTuple of type_expr list                        (** (T, U, V) *)
   | TyRecord of row_field list * ident option        (** {x: T, ..r} *)
@@ -95,8 +93,8 @@ and type_arg =
   | NatArg of nat_expr
 
 and row_field = {
-  field_name : ident;
-  field_ty : type_expr;
+  rf_name : ident;
+  rf_ty : type_expr;
 }
 
 (** Effect expressions *)
@@ -104,11 +102,11 @@ and effect_expr =
   | EffVar of ident                                  (** Effect variable *)
   | EffCon of ident * type_arg list                  (** IO, Exn[E], etc *)
   | EffUnion of effect_expr * effect_expr            (** E1 + E2 *)
-[@@deriving show, eq, sexp]
+[@@deriving show, eq]
 
 (** Patterns *)
 type pattern =
-  | PatWildcard of Span.t [@sexp.opaque]             (** _ *)
+  | PatWildcard of Span.t                            (** _ *)
   | PatVar of ident                                  (** x *)
   | PatLit of literal                                (** 42, "hello" *)
   | PatCon of ident * pattern list                   (** Some(x) *)
@@ -119,38 +117,38 @@ type pattern =
 
 (** Literals *)
 and literal =
-  | LitInt of int * Span.t [@sexp.opaque]
-  | LitFloat of float * Span.t [@sexp.opaque]
-  | LitBool of bool * Span.t [@sexp.opaque]
-  | LitChar of char * Span.t [@sexp.opaque]
-  | LitString of string * Span.t [@sexp.opaque]
-  | LitUnit of Span.t [@sexp.opaque]
-[@@deriving show, eq, sexp]
+  | LitInt of int * Span.t
+  | LitFloat of float * Span.t
+  | LitBool of bool * Span.t
+  | LitChar of char * Span.t
+  | LitString of string * Span.t
+  | LitUnit of Span.t
+[@@deriving show, eq]
 
 (** Expressions *)
 type expr =
   | ExprLit of literal
   | ExprVar of ident
   | ExprLet of {
-      mutable_ : bool;
-      pattern : pattern;
-      ty : type_expr option;
-      value : expr;
-      body : expr option;
+      el_mut : bool;
+      el_pat : pattern;
+      el_ty : type_expr option;
+      el_value : expr;
+      el_body : expr option;
     }
   | ExprIf of {
-      cond : expr;
-      then_ : expr;
-      else_ : expr option;
+      ei_cond : expr;
+      ei_then : expr;
+      ei_else : expr option;
     }
   | ExprMatch of {
-      scrutinee : expr;
-      arms : match_arm list;
+      em_scrutinee : expr;
+      em_arms : match_arm list;
     }
   | ExprLambda of {
-      params : param list;
-      ret_ty : type_expr option;
-      body : expr;
+      elam_params : param list;
+      elam_ret_ty : type_expr option;
+      elam_body : expr;
     }
   | ExprApp of expr * expr list                      (** f(x, y) *)
   | ExprField of expr * ident                        (** e.field *)
@@ -159,8 +157,8 @@ type expr =
   | ExprTuple of expr list                           (** (a, b, c) *)
   | ExprArray of expr list                           (** [a, b, c] *)
   | ExprRecord of {
-      fields : (ident * expr option) list;           (** {x: 1, y} *)
-      spread : expr option;                          (** ..base *)
+      er_fields : (ident * expr option) list;        (** {x: 1, y} *)
+      er_spread : expr option;                       (** ..base *)
     }
   | ExprRowRestrict of expr * ident                  (** e \ field *)
   | ExprBinary of expr * binary_op * expr
@@ -168,23 +166,23 @@ type expr =
   | ExprBlock of block
   | ExprReturn of expr option
   | ExprTry of {
-      body : block;
-      catch : match_arm list option;
-      finally : block option;
+      et_body : block;
+      et_catch : match_arm list option;
+      et_finally : block option;
     }
   | ExprHandle of {
-      body : expr;
-      handlers : handler_arm list;
+      eh_body : expr;
+      eh_handlers : handler_arm list;
     }
   | ExprResume of expr option
   | ExprUnsafe of unsafe_op list
   | ExprVariant of ident * ident                     (** Type::Variant *)
-  | ExprSpan of expr * Span.t [@sexp.opaque]         (** Span wrapper *)
+  | ExprSpan of expr * Span.t                        (** Span wrapper *)
 
 and match_arm = {
-  pattern : pattern;
-  guard : expr option;
-  body : expr;
+  ma_pat : pattern;
+  ma_guard : expr option;
+  ma_body : expr;
 }
 
 and handler_arm =
@@ -192,16 +190,16 @@ and handler_arm =
   | HandlerOp of ident * pattern list * expr
 
 and block = {
-  stmts : stmt list;
-  expr : expr option;
+  blk_stmts : stmt list;
+  blk_expr : expr option;
 }
 
 and stmt =
   | StmtLet of {
-      mutable_ : bool;
-      pattern : pattern;
-      ty : type_expr option;
-      value : expr;
+      sl_mut : bool;
+      sl_pat : pattern;
+      sl_ty : type_expr option;
+      sl_value : expr;
     }
   | StmtExpr of expr
   | StmtAssign of expr * assign_op * expr
@@ -227,54 +225,54 @@ and unsafe_op =
   | UnsafeTransmute of type_expr * type_expr * expr
   | UnsafeForget of expr
   | UnsafeAssume of predicate
-[@@deriving show, eq, sexp]
+[@@deriving show, eq]
 
 (** Parameters *)
 and param = {
-  quantity : quantity option;
-  ownership : ownership option;
-  name : ident;
-  ty : type_expr;
+  p_quantity : quantity option;
+  p_ownership : ownership option;
+  p_name : ident;
+  p_ty : type_expr;
 }
-[@@deriving show, eq, sexp]
+[@@deriving show, eq]
 
 (** Trait bounds *)
 type trait_bound = {
-  trait_name : ident;
-  args : type_arg list;
+  tb_name : ident;
+  tb_args : type_arg list;
 }
-[@@deriving show, eq, sexp]
+[@@deriving show, eq]
 
 (** Where clause constraints *)
 type constraint_ =
   | ConstraintPred of predicate
   | ConstraintTrait of ident * trait_bound list
-[@@deriving show, eq, sexp]
+[@@deriving show, eq]
 
 (** Function declaration *)
 type fn_decl = {
-  visibility : visibility;
-  total : bool;
-  name : ident;
-  type_params : type_param list;
-  params : param list;
-  ret_ty : type_expr option;
-  effect : effect_expr option;
-  where_clause : constraint_ list;
-  body : fn_body;
+  fd_vis : visibility;
+  fd_total : bool;
+  fd_name : ident;
+  fd_type_params : type_param list;
+  fd_params : param list;
+  fd_ret_ty : type_expr option;
+  fd_eff : effect_expr option;
+  fd_where : constraint_ list;
+  fd_body : fn_body;
 }
 
 and fn_body =
   | FnBlock of block
   | FnExpr of expr
-[@@deriving show, eq, sexp]
+[@@deriving show, eq]
 
 (** Type declaration *)
 type type_decl = {
-  visibility : visibility;
-  name : ident;
-  type_params : type_param list;
-  body : type_body;
+  td_vis : visibility;
+  td_name : ident;
+  td_type_params : type_param list;
+  td_body : type_body;
 }
 
 and type_body =
@@ -283,83 +281,83 @@ and type_body =
   | TyEnum of variant_decl list
 
 and struct_field = {
-  visibility : visibility;
-  name : ident;
-  ty : type_expr;
+  sf_vis : visibility;
+  sf_name : ident;
+  sf_ty : type_expr;
 }
 
 and variant_decl = {
-  name : ident;
-  fields : type_expr list;
-  ret_ty : type_expr option;  (** GADT return type *)
+  vd_name : ident;
+  vd_fields : type_expr list;
+  vd_ret_ty : type_expr option;  (** GADT return type *)
 }
-[@@deriving show, eq, sexp]
+[@@deriving show, eq]
 
 (** Effect declaration *)
 type effect_decl = {
-  visibility : visibility;
-  name : ident;
-  type_params : type_param list;
-  ops : effect_op_decl list;
+  ed_vis : visibility;
+  ed_name : ident;
+  ed_type_params : type_param list;
+  ed_ops : effect_op_decl list;
 }
 
 and effect_op_decl = {
-  name : ident;
-  params : param list;
-  ret_ty : type_expr option;
+  eod_name : ident;
+  eod_params : param list;
+  eod_ret_ty : type_expr option;
 }
-[@@deriving show, eq, sexp]
+[@@deriving show, eq]
 
 (** Trait declaration *)
 type trait_decl = {
-  visibility : visibility;
-  name : ident;
-  type_params : type_param list;
-  super_traits : trait_bound list;
-  items : trait_item list;
+  trd_vis : visibility;
+  trd_name : ident;
+  trd_type_params : type_param list;
+  trd_super : trait_bound list;
+  trd_items : trait_item list;
 }
 
 and trait_item =
   | TraitFn of fn_sig
   | TraitFnDefault of fn_decl
   | TraitType of {
-      name : ident;
-      kind : kind option;
-      default : type_expr option;
+      tt_name : ident;
+      tt_kind : kind option;
+      tt_default : type_expr option;
     }
 
 and fn_sig = {
-  visibility : visibility;
-  name : ident;
-  type_params : type_param list;
-  params : param list;
-  ret_ty : type_expr option;
-  effect : effect_expr option;
+  fs_vis : visibility;
+  fs_name : ident;
+  fs_type_params : type_param list;
+  fs_params : param list;
+  fs_ret_ty : type_expr option;
+  fs_eff : effect_expr option;
 }
-[@@deriving show, eq, sexp]
+[@@deriving show, eq]
 
 (** Impl block *)
 type impl_block = {
-  type_params : type_param list;
-  trait_ref : trait_ref option;
-  self_ty : type_expr;
-  where_clause : constraint_ list;
-  items : impl_item list;
+  ib_type_params : type_param list;
+  ib_trait_ref : trait_ref option;
+  ib_self_ty : type_expr;
+  ib_where : constraint_ list;
+  ib_items : impl_item list;
 }
 
 and trait_ref = {
-  trait_name : ident;
-  args : type_arg list;
+  tr_name : ident;
+  tr_args : type_arg list;
 }
 
 and impl_item =
   | ImplFn of fn_decl
   | ImplType of ident * type_expr
-[@@deriving show, eq, sexp]
+[@@deriving show, eq]
 
 (** Module path *)
 type module_path = ident list
-[@@deriving show, eq, sexp]
+[@@deriving show, eq]
 
 (** Import declaration *)
 type import_decl =
@@ -368,10 +366,10 @@ type import_decl =
   | ImportGlob of module_path                           (** use A.B::* *)
 
 and import_item = {
-  name : ident;
-  alias : ident option;
+  ii_name : ident;
+  ii_alias : ident option;
 }
-[@@deriving show, eq, sexp]
+[@@deriving show, eq]
 
 (** Top-level declarations *)
 type top_level =
@@ -381,17 +379,17 @@ type top_level =
   | TopTrait of trait_decl
   | TopImpl of impl_block
   | TopConst of {
-      visibility : visibility;
-      name : ident;
-      ty : type_expr;
-      value : expr;
+      tc_vis : visibility;
+      tc_name : ident;
+      tc_ty : type_expr;
+      tc_value : expr;
     }
-[@@deriving show, eq, sexp]
+[@@deriving show, eq]
 
 (** Complete program *)
 type program = {
-  module_path : module_path option;
-  imports : import_decl list;
-  decls : top_level list;
+  prog_module : module_path option;
+  prog_imports : import_decl list;
+  prog_decls : top_level list;
 }
-[@@deriving show, eq, sexp]
+[@@deriving show, eq]

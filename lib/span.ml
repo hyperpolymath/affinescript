@@ -5,14 +5,14 @@ type pos = {
   col : int;
   offset : int;
 }
-[@@deriving show, eq, ord, sexp]
+[@@deriving show, eq, ord]
 
 type t = {
   start_pos : pos;
   end_pos : pos;
   file : string;
 }
-[@@deriving show, eq, ord, sexp]
+[@@deriving show, eq, ord]
 
 let dummy = {
   start_pos = { line = 0; col = 0; offset = 0 };

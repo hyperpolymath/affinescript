@@ -1,14 +1,11 @@
 (library
  (name affinescript)
  (public_name affinescript)
- (libraries str sedlex menhirLib fmt sexplib0)
+ (libraries str sedlex fmt)
  (preprocess
-  (pps ppx_deriving.show ppx_deriving.eq ppx_deriving.ord ppx_sexp_conv sedlex.ppx))
- (instrumentation
-  (backend bisect_ppx)))
+  (pps ppx_deriving.show ppx_deriving.eq ppx_deriving.ord sedlex.ppx)))
 
-(ocamllex lexer_manual)
-
-(menhir
- (modules parser)
- (flags --explain --dump))
+; Parser will be added when parser.mly is implemented
+; (menhir
+;  (modules parser)
+;  (flags --explain --dump))
