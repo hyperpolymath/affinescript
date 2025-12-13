@@ -1,0 +1,44 @@
+name: Mirror to GitLab and Bitbucket
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - 'v*'
+
+jobs:
+  mirror-gitlab:
+    runs-on: ubuntu-latest
+    if: ${{ vars.GITLAB_MIRROR_ENABLED == 'true' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Push to GitLab
+        env:
+          GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+        run: |
+          git remote add gitlab https://oauth2:${GITLAB_TOKEN}@gitlab.com/hyperpolymath/affinescript.git || true
+          git push gitlab main --force
+          git push gitlab --tags --force
+
+  mirror-bitbucket:
+    runs-on: ubuntu-latest
+    if: ${{ vars.BITBUCKET_MIRROR_ENABLED == 'true' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Push to Bitbucket
+        env:
+          BITBUCKET_TOKEN: ${{ secrets.BITBUCKET_TOKEN }}
+        run: |
+          git remote add bitbucket https://x-token-auth:${BITBUCKET_TOKEN}@bitbucket.org/hyperpolymath/affinescript.git || true
+          git push bitbucket main --force
+          git push bitbucket --tags --force
