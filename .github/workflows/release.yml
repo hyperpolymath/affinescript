@@ -34,7 +34,7 @@ jobs:
           tar -czvf affinescript-linux-x64.tar.gz -C dist .
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: affinescript-linux-x64.tar.gz
           generate_release_notes: true
