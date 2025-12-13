@@ -1,0 +1,42 @@
+# OCaml / Dune
+_build/
+_opam/
+*.install
+*.merlin
+.merlin
+*.byte
+*.native
+*.cmo
+*.cmi
+*.cma
+*.cmx
+*.cmxa
+*.cmxs
+*.o
+*.a
+
+# Editor
+*~
+\#*\#
+.#*
+*.swp
+*.swo
+.vscode/
+.idea/
+*.sublime-*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local
+.env
+.envrc
+.direnv/
+
+# Test artifacts
+_coverage/
+*.coverage
+
+# Build outputs
+affinescript.opam

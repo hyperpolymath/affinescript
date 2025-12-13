@@ -1,0 +1,5 @@
+version = 0.26.2
+profile = default
+margin = 100
+parse-docstrings = true
+break-infix = fit-or-vertical

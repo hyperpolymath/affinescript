@@ -1,0 +1,40 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up OCaml
+        uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: "5.1"
+
+      - name: Install dependencies
+        run: opam install . --deps-only
+
+      - name: Build release
+        run: opam exec -- dune build --release
+
+      - name: Create release archive
+        run: |
+          mkdir -p dist
+          cp _build/default/bin/main.exe dist/affinescript-linux-x64 || true
+          tar -czvf affinescript-linux-x64.tar.gz -C dist .
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: affinescript-linux-x64.tar.gz
+          generate_release_notes: true

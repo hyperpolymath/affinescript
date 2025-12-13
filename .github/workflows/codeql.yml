@@ -1,0 +1,45 @@
+name: "CodeQL"
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 0 * * 0'  # Weekly on Sunday
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  analyze:
+    name: Analyze
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: []
+        # Note: OCaml is not directly supported by CodeQL
+        # This workflow will analyze any JavaScript/Python if added later
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # CodeQL doesn't support OCaml directly, but we include this
+      # for when/if JS tooling is added (e.g., playground, docs site)
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        if: matrix.language != ''
+        with:
+          languages: ${{ matrix.language }}
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+        if: matrix.language != ''
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        if: matrix.language != ''
