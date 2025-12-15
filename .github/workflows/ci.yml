@@ -19,7 +19,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Set up OCaml
-        uses: ocaml/setup-ocaml@v3
+        uses: ocaml/setup-ocaml@4c1df9105efb7a8b996c21e052e4fb8b64a8f2fc # v3
         with:
           ocaml-compiler: "5.1"
 
@@ -43,7 +43,7 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Set up OCaml
-        uses: ocaml/setup-ocaml@v3
+        uses: ocaml/setup-ocaml@4c1df9105efb7a8b996c21e052e4fb8b64a8f2fc # v3
         with:
           ocaml-compiler: "5.1"
 

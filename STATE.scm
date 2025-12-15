@@ -157,7 +157,14 @@
        ("Added META.scm, ECOSYSTEM.scm, STATE.scm"
         "Established RSR compliance"
         "Created initial project checkpoint"))
-      (notes . "First STATE.scm checkpoint created via automated script")))))
+      (notes . "First STATE.scm checkpoint created via automated script"))
+     ((date . "2025-12-15")
+      (session . "security-fixes")
+      (accomplishments
+       ("SHA-pinned ocaml/setup-ocaml@v3 in ci.yml and release.yml"
+        "Updated codeql.yml to scan 'actions' (OCaml not supported)"
+        "Removed conditional skips in codeql.yml"))
+      (notes . "OpenSSF Scorecard compliance fixes")))))
 
 ;;;============================================================================
 ;;; HELPER FUNCTIONS (for Guile evaluation)
