@@ -15,7 +15,7 @@
      (consequences . ("RSR Gold target" "SHA-pinned actions" "SPDX headers" "Multi-platform CI")))))
 
 (define development-practices
-  '((code-style (languages . ("Dune" "OCaml" "Standard ML")) (formatter . "auto-detect") (linter . "auto-detect"))
+  '((code-style (languages . ("Dune" "OCaml" "Scheme" "Standard ML")) (formatter . "auto-detect") (linter . "auto-detect"))
     (security (sast . "CodeQL") (credentials . "env vars only"))
     (testing (coverage-minimum . 70))
     (versioning (scheme . "SemVer 2.0.0"))))
