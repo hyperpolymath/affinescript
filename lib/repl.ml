@@ -226,7 +226,7 @@ let print_env env =
 (** Load and execute a file *)
 let load_file state filename =
   try
-    let ic = open_in filename in
+    let ic = open_in_bin filename in
     let n = in_channel_length ic in
     let source = really_input_string ic n in
     close_in ic;

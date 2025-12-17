@@ -246,7 +246,7 @@ let parse_manifest_string content =
 (** Read manifest from file *)
 let read_manifest path =
   try
-    let ic = open_in path in
+    let ic = open_in_bin path in
     let content = really_input_string ic (in_channel_length ic) in
     close_in ic;
     Some (parse_manifest_string content)
