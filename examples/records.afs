@@ -1,0 +1,35 @@
+// Records and pattern matching in AffineScript
+
+// Define a person record
+struct Person {
+  name: String,
+  age: Int,
+  email: String,
+}
+
+// Create some records using anonymous record syntax
+let alice = { name: "Alice", age: 30, email: "alice@example.com" };
+let bob = { name: "Bob", age: 25, email: "bob@example.com" };
+
+println("Person: " + alice.name + ", age " + str(alice.age));
+
+// Record update syntax
+let older_alice = { ..alice, age: alice.age + 1 };
+println("After birthday: " + older_alice.name + " is " + str(older_alice.age));
+
+// Pattern matching on records
+fn greet(person: { name: String, ..r }) -> String {
+  "Hello, " + person.name + "!"
+}
+
+println(greet(alice));
+println(greet(bob));
+
+// Row polymorphism - function works with any record that has 'name' field
+fn get_name(r: { name: String, ..rest }) -> String {
+  r.name
+}
+
+let company = { name: "Acme Corp", founded: 1990 };
+println("Company: " + get_name(company));
+println("Person: " + get_name(alice));

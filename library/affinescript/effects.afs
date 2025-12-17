@@ -1,0 +1,320 @@
+// AffineScript Specific Library - Effects
+// Utilities for working with algebraic effects
+
+module AffineScript.Effects;
+
+use Common.Prelude::*;
+
+// ============================================================================
+// Effect Row Types
+// ============================================================================
+
+/// Empty effect row (pure computation)
+pub type Pure = ();
+
+/// Single effect
+pub type Single[E] = E;
+
+/// Effect union (E1 | E2)
+pub type Union[E1, E2] = (E1, E2);
+
+// ============================================================================
+// Effect Utilities
+// ============================================================================
+
+/// Lift a pure computation into an effectful context
+pub fn lift_pure[T, E](value: T) -> T / E {
+  value
+}
+
+/// Embed a smaller effect set into a larger one
+pub fn embed[T, E1, E2](computation: fn() -> T / E1) -> T / E2
+where
+  E1: SubEffect[E2],
+{
+  computation()
+}
+
+/// Check if a computation is pure (no effects)
+pub fn is_pure[T](f: fn() -> T) -> Bool {
+  true  // Type system ensures this
+}
+
+// ============================================================================
+// Effect Handlers
+// ============================================================================
+
+/// Handler for a single effect
+pub struct Handler[E, R] {
+  /// Handle return value
+  return_handler: fn(R) -> R,
+  /// Handle effect operations
+  operations: E,
+}
+
+impl[E, R] Handler[E, R] {
+  pub fn new(return_handler: fn(R) -> R, operations: E) -> Handler[E, R] {
+    Handler { return_handler, operations }
+  }
+}
+
+/// Run computation with handler
+pub fn handle[T, E, R](
+  handler: Handler[E, R],
+  computation: fn() -> T / E
+) -> R {
+  // Would invoke the handler infrastructure
+  panic!("implemented by compiler")
+}
+
+// ============================================================================
+// Common Effect Patterns
+// ============================================================================
+
+/// Reader effect - access to read-only environment
+pub effect Reader[R] {
+  /// Get the environment
+  fn ask() -> R;
+
+  /// Run with locally modified environment
+  fn local[A](f: fn(R) -> R, computation: fn() -> A / Reader[R]) -> A;
+}
+
+/// Reader handler
+pub fn run_reader[R, T](env: R, computation: fn() -> T / Reader[R]) -> T {
+  handle(
+    Handler::new(
+      |x| x,
+      ReaderOps { env }
+    ),
+    computation
+  )
+}
+
+struct ReaderOps[R] {
+  env: R,
+}
+
+/// Writer effect - accumulate output
+pub effect Writer[W] {
+  /// Append to output
+  fn tell(w: W) -> ();
+
+  /// Get output so far and reset
+  fn listen() -> W;
+}
+
+/// Writer handler (requires W: Monoid)
+pub fn run_writer[W: Monoid, T](computation: fn() -> T / Writer[W]) -> (T, W) {
+  // Would accumulate writes
+  panic!("implemented by compiler")
+}
+
+/// State effect - mutable state
+pub effect State[S] {
+  /// Get current state
+  fn get() -> S;
+
+  /// Set new state
+  fn put(s: S) -> ();
+
+  /// Modify state
+  fn modify(f: fn(S) -> S) -> ();
+}
+
+/// State handler
+pub fn run_state[S, T](initial: S, computation: fn() -> T / State[S]) -> (T, S) {
+  // Would thread state through
+  panic!("implemented by compiler")
+}
+
+/// Execute state, returning only the result
+pub fn eval_state[S, T](initial: S, computation: fn() -> T / State[S]) -> T {
+  let (result, _) = run_state(initial, computation);
+  result
+}
+
+/// Execute state, returning only the final state
+pub fn exec_state[S, T](initial: S, computation: fn() -> T / State[S]) -> S {
+  let (_, state) = run_state(initial, computation);
+  state
+}
+
+/// Exception effect
+pub effect Except[E] {
+  /// Throw an exception
+  fn throw(e: E) -> Never;
+
+  /// Catch and handle exception
+  fn catch[A](computation: fn() -> A / Except[E], handler: fn(E) -> A) -> A;
+}
+
+/// Exception handler
+pub fn run_except[E, T](computation: fn() -> T / Except[E]) -> Result[T, E] {
+  // Would catch exceptions
+  panic!("implemented by compiler")
+}
+
+/// Non-determinism effect
+pub effect NonDet {
+  /// Choose between two branches
+  fn choose() -> Bool;
+
+  /// Fail computation (backtrack)
+  fn fail() -> Never;
+}
+
+/// Run non-deterministically, collecting all results
+pub fn run_list[T](computation: fn() -> T / NonDet) -> Array[T] {
+  // Would collect all branches
+  panic!("implemented by compiler")
+}
+
+/// Run non-deterministically, returning first success
+pub fn run_maybe[T](computation: fn() -> T / NonDet) -> Option[T] {
+  // Would return first non-failing branch
+  panic!("implemented by compiler")
+}
+
+// ============================================================================
+// Effect Composition
+// ============================================================================
+
+/// Compose two handlers
+pub fn compose_handlers[E1, E2, R](
+  h1: Handler[E1, R],
+  h2: Handler[E2, R]
+) -> Handler[Union[E1, E2], R] {
+  // Would compose effect handlers
+  panic!("implemented by compiler")
+}
+
+/// Run multiple effects with their handlers
+pub fn run_effects[T, E1, E2, R](
+  h1: Handler[E1, R],
+  h2: Handler[E2, R],
+  computation: fn() -> T / Union[E1, E2]
+) -> R {
+  handle(compose_handlers(h1, h2), computation)
+}
+
+// ============================================================================
+// Continuation Utilities
+// ============================================================================
+
+/// Delimited continuation
+pub struct Cont[R, A] {
+  run: fn(fn(A) -> R) -> R,
+}
+
+impl[R, A] Cont[R, A] {
+  pub fn new(f: fn(fn(A) -> R) -> R) -> Cont[R, A] {
+    Cont { run: f }
+  }
+
+  pub fn run(self: Self, k: fn(A) -> R) -> R {
+    (self.run)(k)
+  }
+
+  pub fn map[B](self: Self, f: fn(A) -> B) -> Cont[R, B] {
+    Cont::new(|k| self.run(|a| k(f(a))))
+  }
+
+  pub fn flat_map[B](self: Self, f: fn(A) -> Cont[R, B]) -> Cont[R, B] {
+    Cont::new(|k| self.run(|a| f(a).run(k)))
+  }
+}
+
+/// Call with current continuation
+pub fn call_cc[R, A](f: fn(fn(A) -> Cont[R, A]) -> Cont[R, A]) -> Cont[R, A] {
+  Cont::new(|k| {
+    f(|a| Cont::new(|_| k(a))).run(k)
+  })
+}
+
+/// Reset/shift delimited control
+pub fn reset[A](computation: Cont[A, A]) -> A {
+  computation.run(|x| x)
+}
+
+pub fn shift[R, A](f: fn(fn(A) -> R) -> Cont[R, R]) -> Cont[R, A] {
+  Cont::new(|k| reset(f(k)))
+}
+
+// ============================================================================
+// Effect Polymorphism
+// ============================================================================
+
+/// Marker trait for effects that can be handled
+pub trait Handleable {
+  type Handler;
+  type Result;
+
+  fn default_handler() -> Self::Handler;
+}
+
+/// Marker trait for effect subtyping
+pub trait SubEffect[Super] {}
+
+// Every effect is a subeffect of itself
+impl[E] SubEffect[E] for E {}
+
+// Pure is a subeffect of everything
+impl[E] SubEffect[E] for Pure {}
+
+/// Run a computation that may have effects, handling them with defaults
+pub fn run_with_defaults[T, E: Handleable](computation: fn() -> T / E) -> E::Result {
+  handle(E::default_handler(), computation)
+}
+
+// ============================================================================
+// Effect Inference Helpers
+// ============================================================================
+
+/// Annotate a function with its effects (for documentation)
+pub fn with_effects[T, E](f: fn() -> T / E) -> fn() -> T / E {
+  f
+}
+
+/// Mask effects (pretend they're not there - unsafe!)
+/// Only use when you know the effects are handled externally
+pub unsafe fn mask_effects[T, E](computation: fn() -> T / E) -> fn() -> T {
+  || panic!("effects must be handled")
+}
+
+/// Assert a computation is pure
+pub fn assert_pure[T](computation: fn() -> T) -> T {
+  computation()
+}
+
+// ============================================================================
+// Monoid Trait for Writer
+// ============================================================================
+
+/// Monoid - type with identity and associative operation
+pub trait Monoid {
+  fn empty() -> Self;
+  fn append(self: Self, other: Self) -> Self;
+}
+
+impl Monoid for String {
+  fn empty() -> String { "" }
+  fn append(self: String, other: String) -> String { self + other }
+}
+
+impl[T] Monoid for Array[T] {
+  fn empty() -> Array[T] { [] }
+  fn append(self: Array[T], other: Array[T]) -> Array[T] {
+    let mut result = self;
+    for item in other {
+      result.push(item);
+    }
+    result
+  }
+}
+
+impl Monoid for Int {
+  fn empty() -> Int { 0 }
+  fn append(self: Int, other: Int) -> Int { self + other }
+}
+

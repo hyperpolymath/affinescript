@@ -1,0 +1,524 @@
+// AffineScript Common Library - Sync
+// Synchronization primitives (non-async)
+
+module Common.Sync;
+
+use Common.Prelude::*;
+
+// ============================================================================
+// Atomic Types
+// ============================================================================
+
+/// Atomic boolean
+pub struct AtomicBool {
+  // Implementation hidden - native atomic
+  value: Bool,
+}
+
+impl AtomicBool {
+  pub fn new(value: Bool) -> AtomicBool {
+    AtomicBool { value }
+  }
+
+  pub fn load(self: ref Self) -> Bool {
+    // Atomic load
+    self.value
+  }
+
+  pub fn store(self: ref Self, value: Bool) {
+    // Atomic store
+    // Native implementation
+  }
+
+  pub fn swap(self: ref Self, value: Bool) -> Bool {
+    let old = self.value;
+    // Atomic swap
+    old
+  }
+
+  pub fn compare_exchange(self: ref Self, current: Bool, new: Bool) -> Result[Bool, Bool] {
+    if self.value == current {
+      // Atomic CAS
+      Ok(current)
+    } else {
+      Err(self.value)
+    }
+  }
+
+  pub fn fetch_and(self: ref Self, value: Bool) -> Bool {
+    let old = self.value;
+    // Atomic AND
+    old
+  }
+
+  pub fn fetch_or(self: ref Self, value: Bool) -> Bool {
+    let old = self.value;
+    // Atomic OR
+    old
+  }
+
+  pub fn fetch_xor(self: ref Self, value: Bool) -> Bool {
+    let old = self.value;
+    // Atomic XOR
+    old
+  }
+}
+
+/// Atomic integer
+pub struct AtomicInt {
+  value: Int,
+}
+
+impl AtomicInt {
+  pub fn new(value: Int) -> AtomicInt {
+    AtomicInt { value }
+  }
+
+  pub fn load(self: ref Self) -> Int {
+    self.value
+  }
+
+  pub fn store(self: ref Self, value: Int) {
+    // Atomic store
+  }
+
+  pub fn swap(self: ref Self, value: Int) -> Int {
+    let old = self.value;
+    old
+  }
+
+  pub fn compare_exchange(self: ref Self, current: Int, new: Int) -> Result[Int, Int] {
+    if self.value == current {
+      Ok(current)
+    } else {
+      Err(self.value)
+    }
+  }
+
+  pub fn fetch_add(self: ref Self, value: Int) -> Int {
+    let old = self.value;
+    // Atomic add
+    old
+  }
+
+  pub fn fetch_sub(self: ref Self, value: Int) -> Int {
+    let old = self.value;
+    // Atomic sub
+    old
+  }
+
+  pub fn fetch_max(self: ref Self, value: Int) -> Int {
+    let old = self.value;
+    // Atomic max
+    old
+  }
+
+  pub fn fetch_min(self: ref Self, value: Int) -> Int {
+    let old = self.value;
+    // Atomic min
+    old
+  }
+}
+
+// ============================================================================
+// Once (One-time initialization)
+// ============================================================================
+
+/// Ensures a function runs exactly once
+pub struct Once {
+  done: AtomicBool,
+}
+
+impl Once {
+  pub fn new() -> Once {
+    Once { done: AtomicBool::new(false) }
+  }
+
+  /// Run function if not already run
+  pub fn call_once(self: ref Self, f: fn() -> ()) {
+    if !self.done.swap(true) {
+      f();
+    }
+  }
+
+  /// Check if already initialized
+  pub fn is_completed(self: ref Self) -> Bool {
+    self.done.load()
+  }
+}
+
+/// Lazy initialization
+pub struct Lazy[T] {
+  once: Once,
+  value: Option[T],
+  init: fn() -> T,
+}
+
+impl[T] Lazy[T] {
+  pub fn new(init: fn() -> T) -> Lazy[T] {
+    Lazy {
+      once: Once::new(),
+      value: None,
+      init,
+    }
+  }
+
+  pub fn get(self: mut Self) -> ref T {
+    self.once.call_once(|| {
+      self.value = Some((self.init)());
+    });
+    self.value.as_ref().unwrap()
+  }
+
+  pub fn is_initialized(self: ref Self) -> Bool {
+    self.once.is_completed()
+  }
+}
+
+// ============================================================================
+// Cell (Interior Mutability)
+// ============================================================================
+
+/// Single-threaded interior mutability
+pub struct Cell[T: Copy] {
+  value: T,
+}
+
+impl[T: Copy] Cell[T] {
+  pub fn new(value: T) -> Cell[T] {
+    Cell { value }
+  }
+
+  pub fn get(self: ref Self) -> T {
+    self.value
+  }
+
+  pub fn set(self: ref Self, value: T) {
+    // Interior mutation
+  }
+
+  pub fn replace(self: ref Self, value: T) -> T {
+    let old = self.value;
+    self.set(value);
+    old
+  }
+
+  pub fn swap(self: ref Self, other: ref Cell[T]) {
+    let tmp = self.get();
+    self.set(other.get());
+    other.set(tmp);
+  }
+}
+
+/// Reference-counted interior mutability
+pub struct RefCell[T] {
+  value: T,
+  borrow_state: Int,  // 0 = not borrowed, >0 = shared borrows, -1 = mut borrowed
+}
+
+impl[T] RefCell[T] {
+  pub fn new(value: T) -> RefCell[T] {
+    RefCell { value, borrow_state: 0 }
+  }
+
+  /// Try to borrow immutably
+  pub fn try_borrow(self: ref Self) -> Option[Ref[T]] {
+    if self.borrow_state >= 0 {
+      Some(Ref { cell: self })
+    } else {
+      None
+    }
+  }
+
+  /// Borrow immutably (panics if already mutably borrowed)
+  pub fn borrow(self: ref Self) -> Ref[T] {
+    self.try_borrow().expect("already mutably borrowed")
+  }
+
+  /// Try to borrow mutably
+  pub fn try_borrow_mut(self: ref Self) -> Option[RefMut[T]] {
+    if self.borrow_state == 0 {
+      Some(RefMut { cell: self })
+    } else {
+      None
+    }
+  }
+
+  /// Borrow mutably (panics if already borrowed)
+  pub fn borrow_mut(self: ref Self) -> RefMut[T] {
+    self.try_borrow_mut().expect("already borrowed")
+  }
+}
+
+/// Immutable borrow guard
+pub struct Ref[T] {
+  cell: ref RefCell[T],
+}
+
+impl[T] Ref[T] {
+  pub fn get(self: ref Self) -> ref T {
+    &self.cell.value
+  }
+}
+
+/// Mutable borrow guard
+pub struct RefMut[T] {
+  cell: ref RefCell[T],
+}
+
+impl[T] RefMut[T] {
+  pub fn get(self: ref Self) -> ref T {
+    &self.cell.value
+  }
+
+  pub fn get_mut(self: mut Self) -> mut T {
+    &mut self.cell.value
+  }
+}
+
+// ============================================================================
+// Spinlock (Simple busy-wait lock)
+// ============================================================================
+
+/// Simple spinlock
+pub struct SpinLock[T] {
+  locked: AtomicBool,
+  value: T,
+}
+
+impl[T] SpinLock[T] {
+  pub fn new(value: T) -> SpinLock[T] {
+    SpinLock {
+      locked: AtomicBool::new(false),
+      value,
+    }
+  }
+
+  /// Lock and get guard
+  pub fn lock(self: ref Self) -> SpinLockGuard[T] {
+    while self.locked.swap(true) {
+      // Spin
+    }
+    SpinLockGuard { lock: self }
+  }
+
+  /// Try to lock without spinning
+  pub fn try_lock(self: ref Self) -> Option[SpinLockGuard[T]] {
+    if !self.locked.swap(true) {
+      Some(SpinLockGuard { lock: self })
+    } else {
+      None
+    }
+  }
+
+  /// Check if locked
+  pub fn is_locked(self: ref Self) -> Bool {
+    self.locked.load()
+  }
+}
+
+pub struct SpinLockGuard[T] {
+  lock: ref SpinLock[T],
+}
+
+impl[T] SpinLockGuard[T] {
+  pub fn get(self: ref Self) -> ref T {
+    &self.lock.value
+  }
+
+  pub fn get_mut(self: mut Self) -> mut T {
+    &mut self.lock.value
+  }
+}
+
+// Guard releases lock when dropped
+impl[T] Drop for SpinLockGuard[T] {
+  fn drop(self: mut Self) {
+    self.lock.locked.store(false);
+  }
+}
+
+// ============================================================================
+// RwLock (Reader-Writer Lock)
+// ============================================================================
+
+/// Reader-writer lock (multiple readers OR one writer)
+pub struct RwLock[T] {
+  /// Number of readers, or -1 if write-locked
+  state: AtomicInt,
+  value: T,
+}
+
+impl[T] RwLock[T] {
+  pub fn new(value: T) -> RwLock[T] {
+    RwLock {
+      state: AtomicInt::new(0),
+      value,
+    }
+  }
+
+  /// Acquire read lock
+  pub fn read(self: ref Self) -> RwLockReadGuard[T] {
+    loop {
+      let state = self.state.load();
+      if state >= 0 {
+        if self.state.compare_exchange(state, state + 1).is_ok() {
+          break;
+        }
+      }
+    }
+    RwLockReadGuard { lock: self }
+  }
+
+  /// Try to acquire read lock
+  pub fn try_read(self: ref Self) -> Option[RwLockReadGuard[T]] {
+    let state = self.state.load();
+    if state >= 0 {
+      if self.state.compare_exchange(state, state + 1).is_ok() {
+        Some(RwLockReadGuard { lock: self })
+      } else {
+        None
+      }
+    } else {
+      None
+    }
+  }
+
+  /// Acquire write lock
+  pub fn write(self: ref Self) -> RwLockWriteGuard[T] {
+    loop {
+      if self.state.compare_exchange(0, -1).is_ok() {
+        break;
+      }
+    }
+    RwLockWriteGuard { lock: self }
+  }
+
+  /// Try to acquire write lock
+  pub fn try_write(self: ref Self) -> Option[RwLockWriteGuard[T]] {
+    if self.state.compare_exchange(0, -1).is_ok() {
+      Some(RwLockWriteGuard { lock: self })
+    } else {
+      None
+    }
+  }
+}
+
+pub struct RwLockReadGuard[T] {
+  lock: ref RwLock[T],
+}
+
+impl[T] RwLockReadGuard[T] {
+  pub fn get(self: ref Self) -> ref T {
+    &self.lock.value
+  }
+}
+
+impl[T] Drop for RwLockReadGuard[T] {
+  fn drop(self: mut Self) {
+    self.lock.state.fetch_sub(1);
+  }
+}
+
+pub struct RwLockWriteGuard[T] {
+  lock: ref RwLock[T],
+}
+
+impl[T] RwLockWriteGuard[T] {
+  pub fn get(self: ref Self) -> ref T {
+    &self.lock.value
+  }
+
+  pub fn get_mut(self: mut Self) -> mut T {
+    &mut self.lock.value
+  }
+}
+
+impl[T] Drop for RwLockWriteGuard[T] {
+  fn drop(self: mut Self) {
+    self.lock.state.store(0);
+  }
+}
+
+// ============================================================================
+// Barrier
+// ============================================================================
+
+/// Thread barrier for synchronization
+pub struct Barrier {
+  count: Int,
+  waiting: AtomicInt,
+  generation: AtomicInt,
+}
+
+impl Barrier {
+  pub fn new(count: Int) -> Barrier {
+    Barrier {
+      count,
+      waiting: AtomicInt::new(0),
+      generation: AtomicInt::new(0),
+    }
+  }
+
+  /// Wait at barrier until all threads arrive
+  pub fn wait(self: ref Self) -> BarrierWaitResult {
+    let gen = self.generation.load();
+    let arrived = self.waiting.fetch_add(1) + 1;
+
+    if arrived == self.count {
+      // Last to arrive - release everyone
+      self.waiting.store(0);
+      self.generation.fetch_add(1);
+      BarrierWaitResult { is_leader: true }
+    } else {
+      // Wait for generation to change
+      while self.generation.load() == gen {
+        // Spin
+      }
+      BarrierWaitResult { is_leader: false }
+    }
+  }
+}
+
+pub struct BarrierWaitResult {
+  is_leader: Bool,
+}
+
+impl BarrierWaitResult {
+  pub fn is_leader(self: ref Self) -> Bool {
+    self.is_leader
+  }
+}
+
+// ============================================================================
+// CountDownLatch
+// ============================================================================
+
+/// Latch that counts down to zero
+pub struct CountDownLatch {
+  count: AtomicInt,
+}
+
+impl CountDownLatch {
+  pub fn new(count: Int) -> CountDownLatch {
+    CountDownLatch { count: AtomicInt::new(count) }
+  }
+
+  /// Decrement count
+  pub fn count_down(self: ref Self) {
+    self.count.fetch_sub(1);
+  }
+
+  /// Wait until count reaches zero
+  pub fn wait(self: ref Self) {
+    while self.count.load() > 0 {
+      // Spin
+    }
+  }
+
+  /// Get current count
+  pub fn count(self: ref Self) -> Int {
+    self.count.load()
+  }
+}
+

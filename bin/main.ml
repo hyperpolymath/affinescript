@@ -46,7 +46,47 @@ let parse_file path =
         Affinescript.Span.pp_short span msg;
       `Error (false, "Parse error")
 
-(** Check a file *)
+(** Run a file through the interpreter *)
+let run_file path =
+  try
+    let prog = Affinescript.Parse_driver.parse_file path in
+    let env = Affinescript.Value.empty_env () in
+    (* Load stdlib prelude *)
+    Affinescript.Stdlib.load_prelude env;
+    Affinescript.Eval.eval_program env prog;
+    `Ok ()
+  with
+  | Affinescript.Lexer.Lexer_error (msg, pos) ->
+      Format.eprintf "@[<v>%s:%d:%d: lexer error: %s@]@." path pos.Affinescript.Span.line pos.Affinescript.Span.col msg;
+      `Error (false, "Lexer error")
+  | Affinescript.Parse_driver.Parse_error (msg, span) ->
+      Format.eprintf "@[<v>%a: parse error: %s@]@."
+        Affinescript.Span.pp_short span msg;
+      `Error (false, "Parse error")
+  | Affinescript.Eval.Runtime_error (msg, span_opt) ->
+      (match span_opt with
+       | Some span -> Format.eprintf "@[<v>%a: runtime error: %s@]@." Affinescript.Span.pp_short span msg
+       | None -> Format.eprintf "@[<v>runtime error: %s@]@." msg);
+      `Error (false, "Runtime error")
+  | Failure msg ->
+      Format.eprintf "@[<v>error: %s@]@." msg;
+      `Error (false, "Error")
+
+(** Evaluate an expression from command line *)
+let eval_expr expr_str =
+  let env = Affinescript.Value.empty_env () in
+  Affinescript.Stdlib.load_prelude env;
+  match Affinescript.Repl.eval_string ~env expr_str with
+  | Ok v -> Format.printf "%s@." (Affinescript.Value.show v); `Ok ()
+  | Error msg -> Format.eprintf "Error: %s@." msg; `Error (false, msg)
+
+(** Start the REPL *)
+let repl_run file_opt =
+  match file_opt with
+  | Some file -> Affinescript.Repl.run_with_file file; `Ok ()
+  | None -> Affinescript.Repl.run (); `Ok ()
+
+(** Check a file (type check - placeholder) *)
 let check_file path =
   let source = read_file path in
   let _ = source in
@@ -68,6 +108,12 @@ open Cmdliner
 let path_arg =
   Arg.(required & pos 0 (some file) None & info [] ~docv:"FILE" ~doc:"Input file")
 
+let optional_path_arg =
+  Arg.(value & pos 0 (some file) None & info [] ~docv:"FILE" ~doc:"Input file to load")
+
+let expr_arg =
+  Arg.(required & pos 0 (some string) None & info [] ~docv:"EXPR" ~doc:"Expression to evaluate")
+
 let output_arg =
   Arg.(value & opt string "out.wasm" & info ["o"; "output"] ~docv:"FILE" ~doc:"Output file")
 
@@ -81,6 +127,21 @@ let parse_cmd =
   let info = Cmd.info "parse" ~doc in
   Cmd.v info Term.(ret (const parse_file $ path_arg))
 
+let run_cmd =
+  let doc = "Run a file through the interpreter" in
+  let info = Cmd.info "run" ~doc in
+  Cmd.v info Term.(ret (const run_file $ path_arg))
+
+let eval_cmd =
+  let doc = "Evaluate an expression" in
+  let info = Cmd.info "eval" ~doc in
+  Cmd.v info Term.(ret (const eval_expr $ expr_arg))
+
+let repl_cmd =
+  let doc = "Start the interactive REPL" in
+  let info = Cmd.info "repl" ~doc in
+  Cmd.v info Term.(ret (const repl_run $ optional_path_arg))
+
 let check_cmd =
   let doc = "Type check a file" in
   let info = Cmd.info "check" ~doc in
@@ -93,8 +154,25 @@ let compile_cmd =
 
 let default_cmd =
   let doc = "The AffineScript compiler" in
-  let info = Cmd.info "affinescript" ~version ~doc in
+  let sdocs = Manpage.s_common_options in
+  let man = [
+    `S Manpage.s_description;
+    `P "AffineScript is a systems programming language with affine types, \
+        dependent types, row polymorphism, and extensible effects.";
+    `S Manpage.s_commands;
+    `P "Use $(b,affinescript COMMAND --help) for help on a specific command.";
+    `S Manpage.s_examples;
+    `P "Start the REPL:";
+    `Pre "  $(b,affinescript repl)";
+    `P "Run a file:";
+    `Pre "  $(b,affinescript run hello.afs)";
+    `P "Evaluate an expression:";
+    `Pre "  $(b,affinescript eval \"1 + 2 * 3\")";
+  ] in
+  let info = Cmd.info "affinescript" ~version ~doc ~sdocs ~man in
   let default = Term.(ret (const (`Help (`Pager, None)))) in
-  Cmd.group info ~default [lex_cmd; parse_cmd; check_cmd; compile_cmd]
+  Cmd.group info ~default [
+    repl_cmd; run_cmd; eval_cmd; lex_cmd; parse_cmd; check_cmd; compile_cmd
+  ]
 
 let () = exit (Cmd.eval default_cmd)

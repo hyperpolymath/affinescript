@@ -1,0 +1,531 @@
+// AffineScript Common Library - Collections
+// Generic collection types and algorithms
+
+module Common.Collections;
+
+use Common.Prelude::*;
+
+// ============================================================================
+// Vec - Dynamic Array
+// ============================================================================
+
+/// Dynamic array with ownership semantics
+pub struct Vec[T] {
+  data: own Array[T],
+  len: Int,
+  cap: Int,
+}
+
+impl[T] Vec[T] {
+  /// Create empty vector
+  pub fn new() -> Vec[T] {
+    Vec { data: [], len: 0, cap: 0 }
+  }
+
+  /// Create vector with capacity
+  pub fn with_capacity(cap: Int) -> Vec[T] {
+    Vec { data: [], len: 0, cap: cap }
+  }
+
+  /// Create from array
+  pub fn from_array(arr: Array[T]) -> Vec[T] {
+    let n = len(arr);
+    Vec { data: arr, len: n, cap: n }
+  }
+
+  /// Get length
+  pub fn len(self: ref Self) -> Int {
+    self.len
+  }
+
+  /// Check if empty
+  pub fn is_empty(self: ref Self) -> Bool {
+    self.len == 0
+  }
+
+  /// Get capacity
+  pub fn capacity(self: ref Self) -> Int {
+    self.cap
+  }
+
+  /// Push element to back
+  pub fn push(self: mut Self, value: T) {
+    if self.len >= self.cap {
+      self.grow();
+    }
+    self.data[self.len] = value;
+    self.len += 1;
+  }
+
+  /// Pop element from back
+  pub fn pop(self: mut Self) -> Option[T] {
+    if self.len == 0 {
+      None
+    } else {
+      self.len -= 1;
+      Some(self.data[self.len])
+    }
+  }
+
+  /// Get element by index
+  pub fn get(self: ref Self, index: Int) -> Option[ref T] {
+    if index >= 0 && index < self.len {
+      Some(&self.data[index])
+    } else {
+      None
+    }
+  }
+
+  /// Get mutable element by index
+  pub fn get_mut(self: mut Self, index: Int) -> Option[mut T] {
+    if index >= 0 && index < self.len {
+      Some(&mut self.data[index])
+    } else {
+      None
+    }
+  }
+
+  /// Get first element
+  pub fn first(self: ref Self) -> Option[ref T] {
+    self.get(0)
+  }
+
+  /// Get last element
+  pub fn last(self: ref Self) -> Option[ref T] {
+    if self.len > 0 {
+      self.get(self.len - 1)
+    } else {
+      None
+    }
+  }
+
+  /// Clear all elements
+  pub fn clear(self: mut Self) {
+    self.len = 0;
+  }
+
+  /// Insert at index
+  pub fn insert(self: mut Self, index: Int, value: T) {
+    assert(index >= 0 && index <= self.len);
+    if self.len >= self.cap {
+      self.grow();
+    }
+    // Shift elements right
+    let mut i = self.len;
+    while i > index {
+      self.data[i] = self.data[i - 1];
+      i -= 1;
+    }
+    self.data[index] = value;
+    self.len += 1;
+  }
+
+  /// Remove at index
+  pub fn remove(self: mut Self, index: Int) -> T {
+    assert(index >= 0 && index < self.len);
+    let value = self.data[index];
+    // Shift elements left
+    let mut i = index;
+    while i < self.len - 1 {
+      self.data[i] = self.data[i + 1];
+      i += 1;
+    }
+    self.len -= 1;
+    value
+  }
+
+  /// Grow capacity
+  fn grow(self: mut Self) {
+    let new_cap = if self.cap == 0 { 4 } else { self.cap * 2 };
+    // Would reallocate data array
+    self.cap = new_cap;
+  }
+
+  /// Convert to iterator
+  pub fn iter(self: ref Self) -> VecIter[T] {
+    VecIter { vec: self, index: 0 }
+  }
+}
+
+/// Vec iterator
+pub struct VecIter[T] {
+  vec: ref Vec[T],
+  index: Int,
+}
+
+impl[T] Iterator for VecIter[T] {
+  type Item = ref T;
+
+  fn next(self: mut Self) -> Option[ref T] {
+    if self.index < self.vec.len {
+      let item = &self.vec.data[self.index];
+      self.index += 1;
+      Some(item)
+    } else {
+      None
+    }
+  }
+}
+
+// ============================================================================
+// HashMap
+// ============================================================================
+
+/// Hash map with separate chaining
+pub struct HashMap[K: Hash + Eq, V] {
+  buckets: Array[Option[HashMapEntry[K, V]]],
+  len: Int,
+  cap: Int,
+}
+
+struct HashMapEntry[K, V] {
+  key: K,
+  value: V,
+  next: Option[own HashMapEntry[K, V]],
+}
+
+impl[K: Hash + Eq, V] HashMap[K, V] {
+  /// Create empty hash map
+  pub fn new() -> HashMap[K, V] {
+    HashMap::with_capacity(16)
+  }
+
+  /// Create with capacity
+  pub fn with_capacity(cap: Int) -> HashMap[K, V] {
+    let buckets = [];  // Initialize with None
+    HashMap { buckets: buckets, len: 0, cap: cap }
+  }
+
+  /// Get length
+  pub fn len(self: ref Self) -> Int {
+    self.len
+  }
+
+  /// Check if empty
+  pub fn is_empty(self: ref Self) -> Bool {
+    self.len == 0
+  }
+
+  /// Insert key-value pair
+  pub fn insert(self: mut Self, key: K, value: V) -> Option[V] {
+    let hash = key.hash();
+    let index = hash % self.cap;
+    // Would implement bucket insertion
+    self.len += 1;
+    None
+  }
+
+  /// Get value by key
+  pub fn get(self: ref Self, key: ref K) -> Option[ref V] {
+    let hash = key.hash();
+    let index = hash % self.cap;
+    // Would search bucket chain
+    None
+  }
+
+  /// Remove key
+  pub fn remove(self: mut Self, key: ref K) -> Option[V] {
+    let hash = key.hash();
+    let index = hash % self.cap;
+    // Would remove from bucket chain
+    None
+  }
+
+  /// Check if key exists
+  pub fn contains_key(self: ref Self, key: ref K) -> Bool {
+    self.get(key).is_some()
+  }
+
+  /// Clear all entries
+  pub fn clear(self: mut Self) {
+    self.len = 0;
+  }
+}
+
+// ============================================================================
+// HashSet
+// ============================================================================
+
+/// Hash set
+pub struct HashSet[T: Hash + Eq] {
+  map: HashMap[T, ()],
+}
+
+impl[T: Hash + Eq] HashSet[T] {
+  /// Create empty set
+  pub fn new() -> HashSet[T] {
+    HashSet { map: HashMap::new() }
+  }
+
+  /// Get length
+  pub fn len(self: ref Self) -> Int {
+    self.map.len()
+  }
+
+  /// Check if empty
+  pub fn is_empty(self: ref Self) -> Bool {
+    self.map.is_empty()
+  }
+
+  /// Insert element
+  pub fn insert(self: mut Self, value: T) -> Bool {
+    self.map.insert(value, ()).is_none()
+  }
+
+  /// Remove element
+  pub fn remove(self: mut Self, value: ref T) -> Bool {
+    self.map.remove(value).is_some()
+  }
+
+  /// Check if element exists
+  pub fn contains(self: ref Self, value: ref T) -> Bool {
+    self.map.contains_key(value)
+  }
+
+  /// Clear all elements
+  pub fn clear(self: mut Self) {
+    self.map.clear();
+  }
+}
+
+// ============================================================================
+// LinkedList
+// ============================================================================
+
+/// Doubly linked list
+pub struct LinkedList[T] {
+  head: Option[own ListNode[T]],
+  tail: Option[mut ListNode[T]],
+  len: Int,
+}
+
+struct ListNode[T] {
+  value: T,
+  prev: Option[mut ListNode[T]],
+  next: Option[own ListNode[T]],
+}
+
+impl[T] LinkedList[T] {
+  /// Create empty list
+  pub fn new() -> LinkedList[T] {
+    LinkedList { head: None, tail: None, len: 0 }
+  }
+
+  /// Get length
+  pub fn len(self: ref Self) -> Int {
+    self.len
+  }
+
+  /// Check if empty
+  pub fn is_empty(self: ref Self) -> Bool {
+    self.len == 0
+  }
+
+  /// Push to front
+  pub fn push_front(self: mut Self, value: T) {
+    let node = ListNode { value: value, prev: None, next: self.head };
+    self.head = Some(node);
+    if self.len == 0 {
+      self.tail = self.head.as_ref().map(\n -> &mut n);
+    }
+    self.len += 1;
+  }
+
+  /// Push to back
+  pub fn push_back(self: mut Self, value: T) {
+    let node = ListNode { value: value, prev: self.tail, next: None };
+    match self.tail {
+      Some(ref mut tail) => tail.next = Some(node),
+      None => self.head = Some(node),
+    }
+    self.len += 1;
+  }
+
+  /// Pop from front
+  pub fn pop_front(self: mut Self) -> Option[T] {
+    match self.head {
+      Some(node) => {
+        self.head = node.next;
+        self.len -= 1;
+        if self.len == 0 {
+          self.tail = None;
+        }
+        Some(node.value)
+      },
+      None => None,
+    }
+  }
+
+  /// Pop from back
+  pub fn pop_back(self: mut Self) -> Option[T] {
+    // Would need to track tail properly
+    None
+  }
+
+  /// Get front element
+  pub fn front(self: ref Self) -> Option[ref T] {
+    self.head.as_ref().map(\n -> &n.value)
+  }
+
+  /// Get back element
+  pub fn back(self: ref Self) -> Option[ref T] {
+    self.tail.map(\n -> &n.value)
+  }
+}
+
+// ============================================================================
+// BinaryHeap (Priority Queue)
+// ============================================================================
+
+/// Binary heap (max-heap by default)
+pub struct BinaryHeap[T: Ord] {
+  data: Vec[T],
+}
+
+impl[T: Ord] BinaryHeap[T] {
+  /// Create empty heap
+  pub fn new() -> BinaryHeap[T] {
+    BinaryHeap { data: Vec::new() }
+  }
+
+  /// Get length
+  pub fn len(self: ref Self) -> Int {
+    self.data.len()
+  }
+
+  /// Check if empty
+  pub fn is_empty(self: ref Self) -> Bool {
+    self.data.is_empty()
+  }
+
+  /// Push element
+  pub fn push(self: mut Self, value: T) {
+    self.data.push(value);
+    self.sift_up(self.data.len() - 1);
+  }
+
+  /// Pop max element
+  pub fn pop(self: mut Self) -> Option[T] {
+    if self.data.is_empty() {
+      None
+    } else {
+      let last_idx = self.data.len() - 1;
+      // Swap first and last
+      self.data.data[0] = self.data.data[last_idx];
+      let max = self.data.pop();
+      if !self.data.is_empty() {
+        self.sift_down(0);
+      }
+      max
+    }
+  }
+
+  /// Peek max element
+  pub fn peek(self: ref Self) -> Option[ref T] {
+    self.data.first()
+  }
+
+  fn sift_up(self: mut Self, index: Int) {
+    let mut i = index;
+    while i > 0 {
+      let parent = (i - 1) / 2;
+      if self.data.data[i].gt(&self.data.data[parent]) {
+        // Swap
+        let temp = self.data.data[i];
+        self.data.data[i] = self.data.data[parent];
+        self.data.data[parent] = temp;
+        i = parent;
+      } else {
+        break;
+      }
+    }
+  }
+
+  fn sift_down(self: mut Self, index: Int) {
+    let mut i = index;
+    let n = self.data.len();
+    while true {
+      let left = 2 * i + 1;
+      let right = 2 * i + 2;
+      let mut largest = i;
+
+      if left < n && self.data.data[left].gt(&self.data.data[largest]) {
+        largest = left;
+      }
+      if right < n && self.data.data[right].gt(&self.data.data[largest]) {
+        largest = right;
+      }
+
+      if largest != i {
+        // Swap
+        let temp = self.data.data[i];
+        self.data.data[i] = self.data.data[largest];
+        self.data.data[largest] = temp;
+        i = largest;
+      } else {
+        break;
+      }
+    }
+  }
+}
+
+// ============================================================================
+// Deque
+// ============================================================================
+
+/// Double-ended queue
+pub struct Deque[T] {
+  data: Vec[T],
+  front: Int,
+  back: Int,
+}
+
+impl[T] Deque[T] {
+  /// Create empty deque
+  pub fn new() -> Deque[T] {
+    Deque { data: Vec::with_capacity(8), front: 0, back: 0 }
+  }
+
+  /// Get length
+  pub fn len(self: ref Self) -> Int {
+    (self.back - self.front + self.data.capacity()) % self.data.capacity()
+  }
+
+  /// Check if empty
+  pub fn is_empty(self: ref Self) -> Bool {
+    self.front == self.back
+  }
+
+  /// Push to front
+  pub fn push_front(self: mut Self, value: T) {
+    self.front = (self.front - 1 + self.data.capacity()) % self.data.capacity();
+    self.data.data[self.front] = value;
+  }
+
+  /// Push to back
+  pub fn push_back(self: mut Self, value: T) {
+    self.data.data[self.back] = value;
+    self.back = (self.back + 1) % self.data.capacity();
+  }
+
+  /// Pop from front
+  pub fn pop_front(self: mut Self) -> Option[T] {
+    if self.is_empty() {
+      None
+    } else {
+      let value = self.data.data[self.front];
+      self.front = (self.front + 1) % self.data.capacity();
+      Some(value)
+    }
+  }
+
+  /// Pop from back
+  pub fn pop_back(self: mut Self) -> Option[T] {
+    if self.is_empty() {
+      None
+    } else {
+      self.back = (self.back - 1 + self.data.capacity()) % self.data.capacity();
+      Some(self.data.data[self.back])
+    }
+  }
+}

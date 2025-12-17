@@ -1,0 +1,19 @@
+// Factorial calculation in AffineScript
+
+fn factorial(n: Int) -> Int {
+  if n <= 1 { 1 }
+  else { n * factorial(n - 1) }
+}
+
+// Using fold for a functional approach
+fn factorial_fold(n: Int) -> Int {
+  if n <= 1 { 1 }
+  else {
+    fold(\acc: Int, x: Int -> acc * x, 1, range(1, n + 1))
+  }
+}
+
+println("Factorials:");
+for i in range(1, 11) {
+  println(str(i) + "! = " + str(factorial(i)));
+}

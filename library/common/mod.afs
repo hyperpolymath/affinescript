@@ -1,0 +1,19 @@
+// AffineScript Common Library
+// Re-exports all common modules
+
+module Common;
+
+pub use Common.Prelude::*;
+pub use Common.Collections::*;
+pub use Common.IO::*;
+pub use Common.Async::*;
+pub use Common.String::*;
+pub use Common.Math::*;
+pub use Common.Time::*;
+pub use Common.Sync::*;
+
+/// Library version
+pub const VERSION: String = "0.1.0";
+
+/// Library name
+pub const NAME: String = "common";

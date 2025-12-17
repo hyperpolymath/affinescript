@@ -1,0 +1,621 @@
+// AffineScript Common Library - Math
+// Mathematical functions and constants
+
+module Common.Math;
+
+use Common.Prelude::*;
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+/// Pi (π)
+pub const PI: Float = 3.141592653589793;
+
+/// Tau (2π)
+pub const TAU: Float = 6.283185307179586;
+
+/// Euler's number (e)
+pub const E: Float = 2.718281828459045;
+
+/// Golden ratio (φ)
+pub const PHI: Float = 1.618033988749895;
+
+/// Square root of 2
+pub const SQRT2: Float = 1.4142135623730951;
+
+/// Square root of 3
+pub const SQRT3: Float = 1.7320508075688772;
+
+/// Natural log of 2
+pub const LN2: Float = 0.6931471805599453;
+
+/// Natural log of 10
+pub const LN10: Float = 2.302585092994046;
+
+/// Positive infinity
+pub const INFINITY: Float = 1.0 / 0.0;
+
+/// Negative infinity
+pub const NEG_INFINITY: Float = -1.0 / 0.0;
+
+/// Not a number
+pub const NAN: Float = 0.0 / 0.0;
+
+// ============================================================================
+// Basic Functions
+// ============================================================================
+
+/// Absolute value (integer)
+pub fn abs(x: Int) -> Int {
+  if x < 0 { -x } else { x }
+}
+
+/// Absolute value (float)
+pub fn fabs(x: Float) -> Float {
+  if x < 0.0 { -x } else { x }
+}
+
+/// Sign of integer: -1, 0, or 1
+pub fn signum(x: Int) -> Int {
+  if x < 0 { -1 }
+  else if x > 0 { 1 }
+  else { 0 }
+}
+
+/// Sign of float
+pub fn fsignum(x: Float) -> Float {
+  if x < 0.0 { -1.0 }
+  else if x > 0.0 { 1.0 }
+  else { 0.0 }
+}
+
+/// Maximum of two integers
+pub fn max(a: Int, b: Int) -> Int {
+  if a >= b { a } else { b }
+}
+
+/// Minimum of two integers
+pub fn min(a: Int, b: Int) -> Int {
+  if a <= b { a } else { b }
+}
+
+/// Maximum of two floats
+pub fn fmax(a: Float, b: Float) -> Float {
+  if a >= b { a } else { b }
+}
+
+/// Minimum of two floats
+pub fn fmin(a: Float, b: Float) -> Float {
+  if a <= b { a } else { b }
+}
+
+/// Clamp value to range
+pub fn clamp(x: Int, lo: Int, hi: Int) -> Int {
+  if x < lo { lo }
+  else if x > hi { hi }
+  else { x }
+}
+
+/// Clamp float to range
+pub fn fclamp(x: Float, lo: Float, hi: Float) -> Float {
+  if x < lo { lo }
+  else if x > hi { hi }
+  else { x }
+}
+
+// ============================================================================
+// Rounding Functions
+// ============================================================================
+
+/// Floor (round toward negative infinity)
+pub fn floor(x: Float) -> Float {
+  // Native implementation
+  x
+}
+
+/// Ceiling (round toward positive infinity)
+pub fn ceil(x: Float) -> Float {
+  // Native implementation
+  x
+}
+
+/// Round to nearest integer (ties to even)
+pub fn round(x: Float) -> Float {
+  // Native implementation
+  x
+}
+
+/// Truncate toward zero
+pub fn trunc(x: Float) -> Float {
+  // Native implementation
+  x
+}
+
+/// Fractional part
+pub fn fract(x: Float) -> Float {
+  x - trunc(x)
+}
+
+// ============================================================================
+// Power and Exponential Functions
+// ============================================================================
+
+/// Square root
+pub fn sqrt(x: Float) -> Float {
+  // Native implementation
+  x
+}
+
+/// Cube root
+pub fn cbrt(x: Float) -> Float {
+  // Native implementation
+  x
+}
+
+/// Power function
+pub fn pow(base: Float, exp: Float) -> Float {
+  // Native implementation
+  base
+}
+
+/// Integer power
+pub fn powi(base: Float, exp: Int) -> Float {
+  if exp == 0 { 1.0 }
+  else if exp < 0 { 1.0 / powi(base, -exp) }
+  else if exp % 2 == 0 {
+    let half = powi(base, exp / 2);
+    half * half
+  } else {
+    base * powi(base, exp - 1)
+  }
+}
+
+/// Integer power (integer base)
+pub fn ipow(base: Int, exp: Int) -> Int {
+  if exp == 0 { 1 }
+  else if exp < 0 { 0 }  // Integer division truncates
+  else if exp % 2 == 0 {
+    let half = ipow(base, exp / 2);
+    half * half
+  } else {
+    base * ipow(base, exp - 1)
+  }
+}
+
+/// Exponential function (e^x)
+pub fn exp(x: Float) -> Float {
+  // Native implementation
+  x
+}
+
+/// Exponential minus one (e^x - 1), accurate for small x
+pub fn expm1(x: Float) -> Float {
+  // Native implementation
+  x
+}
+
+/// 2^x
+pub fn exp2(x: Float) -> Float {
+  pow(2.0, x)
+}
+
+// ============================================================================
+// Logarithm Functions
+// ============================================================================
+
+/// Natural logarithm
+pub fn ln(x: Float) -> Float {
+  // Native implementation
+  x
+}
+
+/// Natural log of (1 + x), accurate for small x
+pub fn ln1p(x: Float) -> Float {
+  // Native implementation
+  x
+}
+
+/// Base-2 logarithm
+pub fn log2(x: Float) -> Float {
+  ln(x) / LN2
+}
+
+/// Base-10 logarithm
+pub fn log10(x: Float) -> Float {
+  ln(x) / LN10
+}
+
+/// Arbitrary base logarithm
+pub fn log(x: Float, base: Float) -> Float {
+  ln(x) / ln(base)
+}
+
+// ============================================================================
+// Trigonometric Functions
+// ============================================================================
+
+/// Sine
+pub fn sin(x: Float) -> Float {
+  // Native implementation
+  x
+}
+
+/// Cosine
+pub fn cos(x: Float) -> Float {
+  // Native implementation
+  x
+}
+
+/// Tangent
+pub fn tan(x: Float) -> Float {
+  sin(x) / cos(x)
+}
+
+/// Arcsine
+pub fn asin(x: Float) -> Float {
+  // Native implementation
+  x
+}
+
+/// Arccosine
+pub fn acos(x: Float) -> Float {
+  // Native implementation
+  x
+}
+
+/// Arctangent
+pub fn atan(x: Float) -> Float {
+  // Native implementation
+  x
+}
+
+/// Two-argument arctangent
+pub fn atan2(y: Float, x: Float) -> Float {
+  // Native implementation
+  y
+}
+
+/// Convert degrees to radians
+pub fn to_radians(degrees: Float) -> Float {
+  degrees * PI / 180.0
+}
+
+/// Convert radians to degrees
+pub fn to_degrees(radians: Float) -> Float {
+  radians * 180.0 / PI
+}
+
+// ============================================================================
+// Hyperbolic Functions
+// ============================================================================
+
+/// Hyperbolic sine
+pub fn sinh(x: Float) -> Float {
+  (exp(x) - exp(-x)) / 2.0
+}
+
+/// Hyperbolic cosine
+pub fn cosh(x: Float) -> Float {
+  (exp(x) + exp(-x)) / 2.0
+}
+
+/// Hyperbolic tangent
+pub fn tanh(x: Float) -> Float {
+  sinh(x) / cosh(x)
+}
+
+/// Inverse hyperbolic sine
+pub fn asinh(x: Float) -> Float {
+  ln(x + sqrt(x * x + 1.0))
+}
+
+/// Inverse hyperbolic cosine
+pub fn acosh(x: Float) -> Float {
+  ln(x + sqrt(x * x - 1.0))
+}
+
+/// Inverse hyperbolic tangent
+pub fn atanh(x: Float) -> Float {
+  0.5 * ln((1.0 + x) / (1.0 - x))
+}
+
+// ============================================================================
+// Integer Arithmetic
+// ============================================================================
+
+/// Greatest common divisor
+pub fn gcd(a: Int, b: Int) -> Int {
+  let a = abs(a);
+  let b = abs(b);
+  if b == 0 { a }
+  else { gcd(b, a % b) }
+}
+
+/// Least common multiple
+pub fn lcm(a: Int, b: Int) -> Int {
+  if a == 0 || b == 0 { 0 }
+  else { abs(a) / gcd(a, b) * abs(b) }
+}
+
+/// Integer division with floor rounding
+pub fn div_floor(a: Int, b: Int) -> Int {
+  let q = a / b;
+  let r = a % b;
+  if r != 0 && ((a < 0) != (b < 0)) {
+    q - 1
+  } else {
+    q
+  }
+}
+
+/// Integer division with ceiling rounding
+pub fn div_ceil(a: Int, b: Int) -> Int {
+  let q = a / b;
+  let r = a % b;
+  if r != 0 && ((a > 0) == (b > 0)) {
+    q + 1
+  } else {
+    q
+  }
+}
+
+/// Euclidean modulo (always non-negative)
+pub fn mod_euc(a: Int, b: Int) -> Int {
+  let r = a % b;
+  if r < 0 {
+    if b < 0 { r - b } else { r + b }
+  } else {
+    r
+  }
+}
+
+/// Factorial
+pub fn factorial(n: Int) -> Int {
+  if n <= 1 { 1 }
+  else { n * factorial(n - 1) }
+}
+
+/// Binomial coefficient (n choose k)
+pub fn binomial(n: Int, k: Int) -> Int {
+  if k < 0 || k > n { 0 }
+  else if k == 0 || k == n { 1 }
+  else {
+    let k = if k > n - k { n - k } else { k };
+    let mut result = 1;
+    for i in 0..k {
+      result = result * (n - i) / (i + 1);
+    }
+    result
+  }
+}
+
+/// Check if number is prime
+pub fn is_prime(n: Int) -> Bool {
+  if n < 2 { false }
+  else if n == 2 { true }
+  else if n % 2 == 0 { false }
+  else {
+    let sqrt_n = sqrt(n as Float) as Int;
+    let mut i = 3;
+    while i <= sqrt_n {
+      if n % i == 0 { return false; }
+      i += 2;
+    }
+    true
+  }
+}
+
+/// Next prime >= n
+pub fn next_prime(n: Int) -> Int {
+  let mut candidate = if n < 2 { 2 } else { n };
+  while !is_prime(candidate) {
+    candidate += 1;
+  }
+  candidate
+}
+
+// ============================================================================
+// Float Utilities
+// ============================================================================
+
+/// Check if float is NaN
+pub fn is_nan(x: Float) -> Bool {
+  x != x
+}
+
+/// Check if float is infinite
+pub fn is_infinite(x: Float) -> Bool {
+  x == INFINITY || x == NEG_INFINITY
+}
+
+/// Check if float is finite
+pub fn is_finite(x: Float) -> Bool {
+  !is_nan(x) && !is_infinite(x)
+}
+
+/// Check if float is normal (not zero, subnormal, infinite, or NaN)
+pub fn is_normal(x: Float) -> Bool {
+  is_finite(x) && x != 0.0
+}
+
+/// Fused multiply-add: a * b + c
+pub fn fma(a: Float, b: Float, c: Float) -> Float {
+  // Native implementation would be more accurate
+  a * b + c
+}
+
+/// Copy sign of y to x
+pub fn copysign(x: Float, y: Float) -> Float {
+  let mag = fabs(x);
+  if y < 0.0 { -mag } else { mag }
+}
+
+/// Hypotenuse: sqrt(x^2 + y^2)
+pub fn hypot(x: Float, y: Float) -> Float {
+  sqrt(x * x + y * y)
+}
+
+// ============================================================================
+// Interpolation
+// ============================================================================
+
+/// Linear interpolation
+pub fn lerp(a: Float, b: Float, t: Float) -> Float {
+  a + (b - a) * t
+}
+
+/// Inverse linear interpolation
+pub fn inv_lerp(a: Float, b: Float, v: Float) -> Float {
+  (v - a) / (b - a)
+}
+
+/// Remap value from one range to another
+pub fn remap(v: Float, in_min: Float, in_max: Float, out_min: Float, out_max: Float) -> Float {
+  let t = inv_lerp(in_min, in_max, v);
+  lerp(out_min, out_max, t)
+}
+
+/// Smooth step interpolation (Hermite)
+pub fn smoothstep(edge0: Float, edge1: Float, x: Float) -> Float {
+  let t = fclamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
+  t * t * (3.0 - 2.0 * t)
+}
+
+/// Smoother step (Ken Perlin's improvement)
+pub fn smootherstep(edge0: Float, edge1: Float, x: Float) -> Float {
+  let t = fclamp((x - edge0) / (edge1 - edge0), 0.0, 1.0);
+  t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
+}
+
+// ============================================================================
+// Statistics
+// ============================================================================
+
+/// Sum of array
+pub fn sum(arr: Array[Int]) -> Int {
+  let mut total = 0;
+  for x in arr {
+    total += x;
+  }
+  total
+}
+
+/// Sum of float array
+pub fn fsum(arr: Array[Float]) -> Float {
+  let mut total = 0.0;
+  for x in arr {
+    total += x;
+  }
+  total
+}
+
+/// Mean of float array
+pub fn mean(arr: Array[Float]) -> Float {
+  if len(arr) == 0 { 0.0 }
+  else { fsum(arr) / (len(arr) as Float) }
+}
+
+/// Variance of float array
+pub fn variance(arr: Array[Float]) -> Float {
+  if len(arr) == 0 { 0.0 }
+  else {
+    let m = mean(arr);
+    let mut sum_sq = 0.0;
+    for x in arr {
+      let diff = x - m;
+      sum_sq += diff * diff;
+    }
+    sum_sq / (len(arr) as Float)
+  }
+}
+
+/// Standard deviation
+pub fn std_dev(arr: Array[Float]) -> Float {
+  sqrt(variance(arr))
+}
+
+/// Maximum of array
+pub fn max_of(arr: Array[Int]) -> Option[Int] {
+  if len(arr) == 0 { None }
+  else {
+    let mut m = arr[0];
+    for x in arr {
+      if x > m { m = x; }
+    }
+    Some(m)
+  }
+}
+
+/// Minimum of array
+pub fn min_of(arr: Array[Int]) -> Option[Int] {
+  if len(arr) == 0 { None }
+  else {
+    let mut m = arr[0];
+    for x in arr {
+      if x < m { m = x; }
+    }
+    Some(m)
+  }
+}
+
+// ============================================================================
+// Random Numbers (Simple LCG)
+// ============================================================================
+
+/// Random number generator state
+pub struct Rng {
+  state: u64,
+}
+
+impl Rng {
+  /// Create new RNG with seed
+  pub fn new(seed: u64) -> Rng {
+    Rng { state: seed }
+  }
+
+  /// Generate next u64
+  pub fn next_u64(self: mut Self) -> u64 {
+    // LCG parameters from Numerical Recipes
+    self.state = self.state * 6364136223846793005 + 1442695040888963407;
+    self.state
+  }
+
+  /// Generate random int in range [0, n)
+  pub fn next_int(self: mut Self, n: Int) -> Int {
+    (self.next_u64() % (n as u64)) as Int
+  }
+
+  /// Generate random float in [0, 1)
+  pub fn next_float(self: mut Self) -> Float {
+    (self.next_u64() as Float) / (18446744073709551616.0)
+  }
+
+  /// Generate random float in [lo, hi)
+  pub fn next_float_range(self: mut Self, lo: Float, hi: Float) -> Float {
+    lo + self.next_float() * (hi - lo)
+  }
+
+  /// Generate random bool
+  pub fn next_bool(self: mut Self) -> Bool {
+    self.next_u64() % 2 == 0
+  }
+
+  /// Shuffle array in place
+  pub fn shuffle[T](self: mut Self, arr: mut Array[T]) {
+    let n = len(arr);
+    for i in (1..n).rev() {
+      let j = self.next_int(i + 1);
+      let tmp = arr[i];
+      arr[i] = arr[j];
+      arr[j] = tmp;
+    }
+  }
+
+  /// Choose random element
+  pub fn choose[T](self: mut Self, arr: ref Array[T]) -> Option[ref T] {
+    if len(arr) == 0 { None }
+    else { Some(&arr[self.next_int(len(arr))]) }
+  }
+}
+

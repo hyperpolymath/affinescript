@@ -1,0 +1,550 @@
+// AffineScript Common Library - String
+// String manipulation utilities
+
+module Common.String;
+
+use Common.Prelude::*;
+
+// ============================================================================
+// String Extensions
+// ============================================================================
+
+impl String {
+  /// Get length in bytes
+  pub fn len(self: ref Self) -> Int {
+    // Native implementation
+    0
+  }
+
+  /// Check if string is empty
+  pub fn is_empty(self: ref Self) -> Bool {
+    self.len() == 0
+  }
+
+  /// Get character at index
+  pub fn char_at(self: ref Self, index: Int) -> Option[Char] {
+    if index >= 0 && index < self.len() {
+      Some(self.chars().nth(index).unwrap())
+    } else {
+      None
+    }
+  }
+
+  /// Get substring
+  pub fn substring(self: ref Self, start: Int, end: Int) -> String {
+    // Native implementation
+    ""
+  }
+
+  /// Split by delimiter
+  pub fn split(self: ref Self, delimiter: String) -> Array[String] {
+    // Native implementation
+    []
+  }
+
+  /// Split by whitespace
+  pub fn split_whitespace(self: ref Self) -> Array[String] {
+    self.split(" ")
+  }
+
+  /// Split into lines
+  pub fn lines(self: ref Self) -> Array[String] {
+    self.split("\n")
+  }
+
+  /// Join array of strings with separator
+  pub fn join(parts: Array[String], separator: String) -> String {
+    if len(parts) == 0 {
+      ""
+    } else {
+      let mut result = parts[0];
+      for i in 1..len(parts) {
+        result = result + separator + parts[i];
+      }
+      result
+    }
+  }
+
+  /// Check if string contains substring
+  pub fn contains(self: ref Self, needle: String) -> Bool {
+    self.find(needle).is_some()
+  }
+
+  /// Find first occurrence of substring
+  pub fn find(self: ref Self, needle: String) -> Option[Int] {
+    // Native implementation
+    None
+  }
+
+  /// Find last occurrence of substring
+  pub fn rfind(self: ref Self, needle: String) -> Option[Int] {
+    // Native implementation
+    None
+  }
+
+  /// Check if string starts with prefix
+  pub fn starts_with(self: ref Self, prefix: String) -> Bool {
+    self.len() >= prefix.len() &&
+    self.substring(0, prefix.len()) == prefix
+  }
+
+  /// Check if string ends with suffix
+  pub fn ends_with(self: ref Self, suffix: String) -> Bool {
+    self.len() >= suffix.len() &&
+    self.substring(self.len() - suffix.len(), self.len()) == suffix
+  }
+
+  /// Strip prefix if present
+  pub fn strip_prefix(self: ref Self, prefix: String) -> Option[String] {
+    if self.starts_with(prefix) {
+      Some(self.substring(prefix.len(), self.len()))
+    } else {
+      None
+    }
+  }
+
+  /// Strip suffix if present
+  pub fn strip_suffix(self: ref Self, suffix: String) -> Option[String] {
+    if self.ends_with(suffix) {
+      Some(self.substring(0, self.len() - suffix.len()))
+    } else {
+      None
+    }
+  }
+
+  /// Trim whitespace from both ends
+  pub fn trim(self: ref Self) -> String {
+    self.trim_start().trim_end()
+  }
+
+  /// Trim whitespace from start
+  pub fn trim_start(self: ref Self) -> String {
+    // Native implementation
+    *self
+  }
+
+  /// Trim whitespace from end
+  pub fn trim_end(self: ref Self) -> String {
+    // Native implementation
+    *self
+  }
+
+  /// Convert to uppercase
+  pub fn to_uppercase(self: ref Self) -> String {
+    // Native implementation
+    *self
+  }
+
+  /// Convert to lowercase
+  pub fn to_lowercase(self: ref Self) -> String {
+    // Native implementation
+    *self
+  }
+
+  /// Capitalize first character
+  pub fn capitalize(self: ref Self) -> String {
+    if self.is_empty() {
+      ""
+    } else {
+      self.char_at(0).unwrap().to_uppercase().to_string() +
+      self.substring(1, self.len()).to_lowercase()
+    }
+  }
+
+  /// Replace all occurrences
+  pub fn replace(self: ref Self, from: String, to: String) -> String {
+    String::join(self.split(from), to)
+  }
+
+  /// Replace first occurrence
+  pub fn replace_first(self: ref Self, from: String, to: String) -> String {
+    match self.find(from) {
+      Some(idx) => {
+        self.substring(0, idx) + to + self.substring(idx + from.len(), self.len())
+      },
+      None => *self,
+    }
+  }
+
+  /// Repeat string n times
+  pub fn repeat(self: ref Self, n: Int) -> String {
+    let mut result = "";
+    for _ in 0..n {
+      result = result + self;
+    }
+    result
+  }
+
+  /// Pad start to reach length
+  pub fn pad_start(self: ref Self, length: Int, pad: Char) -> String {
+    if self.len() >= length {
+      *self
+    } else {
+      pad.to_string().repeat(length - self.len()) + self
+    }
+  }
+
+  /// Pad end to reach length
+  pub fn pad_end(self: ref Self, length: Int, pad: Char) -> String {
+    if self.len() >= length {
+      *self
+    } else {
+      self + pad.to_string().repeat(length - self.len())
+    }
+  }
+
+  /// Reverse the string
+  pub fn reverse(self: ref Self) -> String {
+    let chars = self.chars().collect();
+    let mut result = "";
+    for i in (0..len(chars)).rev() {
+      result = result + chars[i].to_string();
+    }
+    result
+  }
+
+  /// Get iterator over characters
+  pub fn chars(self: ref Self) -> Chars {
+    Chars { string: self, index: 0 }
+  }
+
+  /// Get iterator over bytes
+  pub fn bytes(self: ref Self) -> Bytes {
+    Bytes { string: self, index: 0 }
+  }
+
+  /// Check if string matches pattern (simplified glob)
+  pub fn matches(self: ref Self, pattern: String) -> Bool {
+    // Simplified pattern matching
+    if pattern == "*" {
+      true
+    } else if pattern.starts_with("*") && pattern.ends_with("*") {
+      let middle = pattern.substring(1, pattern.len() - 1);
+      self.contains(middle)
+    } else if pattern.starts_with("*") {
+      self.ends_with(pattern.substring(1, pattern.len()))
+    } else if pattern.ends_with("*") {
+      self.starts_with(pattern.substring(0, pattern.len() - 1))
+    } else {
+      *self == pattern
+    }
+  }
+
+  /// Parse string to integer
+  pub fn parse_int(self: ref Self) -> Option[Int] {
+    // Native implementation
+    None
+  }
+
+  /// Parse string to float
+  pub fn parse_float(self: ref Self) -> Option[Float] {
+    // Native implementation
+    None
+  }
+
+  /// Parse string to bool
+  pub fn parse_bool(self: ref Self) -> Option[Bool] {
+    match self.to_lowercase() {
+      "true" | "yes" | "1" => Some(true),
+      "false" | "no" | "0" => Some(false),
+      _ => None,
+    }
+  }
+
+  /// Check if all characters satisfy predicate
+  pub fn all(self: ref Self, pred: fn(Char) -> Bool) -> Bool {
+    for c in self.chars() {
+      if !pred(c) {
+        return false;
+      }
+    }
+    true
+  }
+
+  /// Check if any character satisfies predicate
+  pub fn any(self: ref Self, pred: fn(Char) -> Bool) -> Bool {
+    for c in self.chars() {
+      if pred(c) {
+        return true;
+      }
+    }
+    false
+  }
+
+  /// Check if string is alphanumeric
+  pub fn is_alphanumeric(self: ref Self) -> Bool {
+    !self.is_empty() && self.all(|c| c.is_alphanumeric())
+  }
+
+  /// Check if string is alphabetic
+  pub fn is_alphabetic(self: ref Self) -> Bool {
+    !self.is_empty() && self.all(|c| c.is_alphabetic())
+  }
+
+  /// Check if string is numeric
+  pub fn is_numeric(self: ref Self) -> Bool {
+    !self.is_empty() && self.all(|c| c.is_digit())
+  }
+
+  /// Check if string is whitespace
+  pub fn is_whitespace(self: ref Self) -> Bool {
+    !self.is_empty() && self.all(|c| c.is_whitespace())
+  }
+}
+
+// ============================================================================
+// Character Iterator
+// ============================================================================
+
+pub struct Chars {
+  string: ref String,
+  index: Int,
+}
+
+impl Iterator for Chars {
+  type Item = Char;
+
+  fn next(self: mut Self) -> Option[Char] {
+    if self.index < self.string.len() {
+      let c = self.string.char_at(self.index);
+      self.index += 1;
+      c
+    } else {
+      None
+    }
+  }
+}
+
+// ============================================================================
+// Byte Iterator
+// ============================================================================
+
+pub struct Bytes {
+  string: ref String,
+  index: Int,
+}
+
+impl Iterator for Bytes {
+  type Item = u8;
+
+  fn next(self: mut Self) -> Option[u8] {
+    if self.index < self.string.len() {
+      // Would get actual byte
+      self.index += 1;
+      Some(0u8)
+    } else {
+      None
+    }
+  }
+}
+
+// ============================================================================
+// Character Extensions
+// ============================================================================
+
+impl Char {
+  /// Check if character is alphabetic
+  pub fn is_alphabetic(self: Self) -> Bool {
+    (self >= 'a' && self <= 'z') || (self >= 'A' && self <= 'Z')
+  }
+
+  /// Check if character is digit
+  pub fn is_digit(self: Self) -> Bool {
+    self >= '0' && self <= '9'
+  }
+
+  /// Check if character is alphanumeric
+  pub fn is_alphanumeric(self: Self) -> Bool {
+    self.is_alphabetic() || self.is_digit()
+  }
+
+  /// Check if character is whitespace
+  pub fn is_whitespace(self: Self) -> Bool {
+    self == ' ' || self == '\t' || self == '\n' || self == '\r'
+  }
+
+  /// Check if character is uppercase
+  pub fn is_uppercase(self: Self) -> Bool {
+    self >= 'A' && self <= 'Z'
+  }
+
+  /// Check if character is lowercase
+  pub fn is_lowercase(self: Self) -> Bool {
+    self >= 'a' && self <= 'z'
+  }
+
+  /// Convert to uppercase
+  pub fn to_uppercase(self: Self) -> Char {
+    if self.is_lowercase() {
+      // ASCII conversion
+      ((self as u8) - 32) as Char
+    } else {
+      self
+    }
+  }
+
+  /// Convert to lowercase
+  pub fn to_lowercase(self: Self) -> Char {
+    if self.is_uppercase() {
+      // ASCII conversion
+      ((self as u8) + 32) as Char
+    } else {
+      self
+    }
+  }
+
+  /// Convert to string
+  pub fn to_string(self: Self) -> String {
+    // Native implementation
+    ""
+  }
+
+  /// Get digit value (0-9)
+  pub fn digit_value(self: Self) -> Option[Int] {
+    if self.is_digit() {
+      Some((self as u8 - '0' as u8) as Int)
+    } else {
+      None
+    }
+  }
+
+  /// Get hex digit value (0-15)
+  pub fn hex_digit_value(self: Self) -> Option[Int] {
+    if self.is_digit() {
+      Some((self as u8 - '0' as u8) as Int)
+    } else if self >= 'a' && self <= 'f' {
+      Some((self as u8 - 'a' as u8 + 10) as Int)
+    } else if self >= 'A' && self <= 'F' {
+      Some((self as u8 - 'A' as u8 + 10) as Int)
+    } else {
+      None
+    }
+  }
+}
+
+// ============================================================================
+// String Builder
+// ============================================================================
+
+/// Efficient string building
+pub struct StringBuilder {
+  parts: Vec[String],
+  len: Int,
+}
+
+impl StringBuilder {
+  /// Create new empty builder
+  pub fn new() -> StringBuilder {
+    StringBuilder { parts: Vec::new(), len: 0 }
+  }
+
+  /// Create with initial capacity
+  pub fn with_capacity(cap: Int) -> StringBuilder {
+    StringBuilder { parts: Vec::with_capacity(cap), len: 0 }
+  }
+
+  /// Append string
+  pub fn push(self: mut Self, s: String) -> mut Self {
+    self.len += s.len();
+    self.parts.push(s);
+    self
+  }
+
+  /// Append character
+  pub fn push_char(self: mut Self, c: Char) -> mut Self {
+    self.push(c.to_string())
+  }
+
+  /// Append line with newline
+  pub fn push_line(self: mut Self, s: String) -> mut Self {
+    self.push(s).push("\n")
+  }
+
+  /// Get current length
+  pub fn len(self: ref Self) -> Int {
+    self.len
+  }
+
+  /// Check if empty
+  pub fn is_empty(self: ref Self) -> Bool {
+    self.len == 0
+  }
+
+  /// Clear contents
+  pub fn clear(self: mut Self) {
+    self.parts.clear();
+    self.len = 0;
+  }
+
+  /// Build final string
+  pub fn build(self: Self) -> String {
+    String::join(self.parts.to_array(), "")
+  }
+
+  /// Build and clear
+  pub fn take(self: mut Self) -> String {
+    let result = self.build();
+    self.clear();
+    result
+  }
+}
+
+impl Display for StringBuilder {
+  fn fmt(self: ref Self) -> String {
+    self.build()
+  }
+}
+
+// ============================================================================
+// Formatting Utilities
+// ============================================================================
+
+/// Format integer with thousands separator
+pub fn format_number(n: Int, separator: String) -> String {
+  let s = n.to_string();
+  let negative = n < 0;
+  let digits = if negative { s.substring(1, s.len()) } else { s };
+
+  let mut result = "";
+  let len = digits.len();
+  for i in 0..len {
+    if i > 0 && (len - i) % 3 == 0 {
+      result = result + separator;
+    }
+    result = result + digits.char_at(i).unwrap().to_string();
+  }
+
+  if negative { "-" + result } else { result }
+}
+
+/// Format with placeholders: format("Hello, {}!", ["world"])
+pub fn format(template: String, args: Array[String]) -> String {
+  let mut result = template;
+  for arg in args {
+    result = result.replace_first("{}", arg);
+  }
+  result
+}
+
+/// Left-justify string in field
+pub fn ljust(s: String, width: Int) -> String {
+  s.pad_end(width, ' ')
+}
+
+/// Right-justify string in field
+pub fn rjust(s: String, width: Int) -> String {
+  s.pad_start(width, ' ')
+}
+
+/// Center string in field
+pub fn center(s: String, width: Int) -> String {
+  if s.len() >= width {
+    s
+  } else {
+    let padding = width - s.len();
+    let left = padding / 2;
+    let right = padding - left;
+    " ".repeat(left) + s + " ".repeat(right)
+  }
+}
+

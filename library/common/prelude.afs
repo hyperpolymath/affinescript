@@ -1,0 +1,378 @@
+// AffineScript Common Library - Prelude
+// This module is automatically imported into every AffineScript program
+
+module Common.Prelude;
+
+// ============================================================================
+// Core Types
+// ============================================================================
+
+/// Unit type - the type with only one value
+pub type Unit = ();
+
+/// Never type - the bottom type with no values (for diverging functions)
+pub type Never = !;
+
+/// Option type for nullable values
+pub enum Option[T] {
+  /// No value present
+  None,
+  /// A value is present
+  Some(T),
+}
+
+/// Result type for fallible operations
+pub enum Result[T, E] {
+  /// Operation succeeded with value
+  Ok(T),
+  /// Operation failed with error
+  Err(E),
+}
+
+/// Ordering result for comparisons
+pub enum Ordering {
+  Less,
+  Equal,
+  Greater,
+}
+
+/// Either type for sum types
+pub enum Either[L, R] {
+  Left(L),
+  Right(R),
+}
+
+// ============================================================================
+// Core Traits
+// ============================================================================
+
+/// Equality comparison
+pub trait Eq {
+  fn eq(self: ref Self, other: ref Self) -> Bool;
+
+  fn ne(self: ref Self, other: ref Self) -> Bool {
+    !self.eq(other)
+  }
+}
+
+/// Ordering comparison
+pub trait Ord: Eq {
+  fn cmp(self: ref Self, other: ref Self) -> Ordering;
+
+  fn lt(self: ref Self, other: ref Self) -> Bool {
+    match self.cmp(other) {
+      Ordering::Less => true,
+      _ => false,
+    }
+  }
+
+  fn le(self: ref Self, other: ref Self) -> Bool {
+    match self.cmp(other) {
+      Ordering::Greater => false,
+      _ => true,
+    }
+  }
+
+  fn gt(self: ref Self, other: ref Self) -> Bool {
+    match self.cmp(other) {
+      Ordering::Greater => true,
+      _ => false,
+    }
+  }
+
+  fn ge(self: ref Self, other: ref Self) -> Bool {
+    match self.cmp(other) {
+      Ordering::Less => false,
+      _ => true,
+    }
+  }
+
+  fn max(self: Self, other: Self) -> Self {
+    if self.ge(&other) { self } else { other }
+  }
+
+  fn min(self: Self, other: Self) -> Self {
+    if self.le(&other) { self } else { other }
+  }
+}
+
+/// Clone trait for types that can be duplicated
+pub trait Clone {
+  fn clone(self: ref Self) -> Self;
+}
+
+/// Default trait for types with a default value
+pub trait Default {
+  fn default() -> Self;
+}
+
+/// Display trait for human-readable formatting
+pub trait Display {
+  fn fmt(self: ref Self) -> String;
+}
+
+/// Debug trait for debug formatting
+pub trait Debug {
+  fn debug_fmt(self: ref Self) -> String;
+}
+
+/// Hash trait for hashable types
+pub trait Hash {
+  fn hash(self: ref Self) -> Int;
+}
+
+/// From trait for conversions
+pub trait From[T] {
+  fn from(value: T) -> Self;
+}
+
+/// Into trait (reciprocal of From)
+pub trait Into[T] {
+  fn into(self: Self) -> T;
+}
+
+/// Iterator trait
+pub trait Iterator {
+  type Item;
+
+  fn next(self: mut Self) -> Option[Self::Item];
+
+  fn map[U](self: Self, f: fn(Self::Item) -> U) -> Map[Self, fn(Self::Item) -> U] {
+    Map { iter: self, f: f }
+  }
+
+  fn filter(self: Self, pred: fn(ref Self::Item) -> Bool) -> Filter[Self, fn(ref Self::Item) -> Bool] {
+    Filter { iter: self, pred: pred }
+  }
+
+  fn fold[A](self: Self, init: A, f: fn(A, Self::Item) -> A) -> A {
+    let mut acc = init;
+    while let Some(item) = self.next() {
+      acc = f(acc, item);
+    }
+    acc
+  }
+
+  fn collect[C: FromIterator[Self::Item]](self: Self) -> C {
+    C::from_iter(self)
+  }
+}
+
+/// FromIterator trait for collecting iterators
+pub trait FromIterator[T] {
+  fn from_iter[I: Iterator[Item = T]](iter: I) -> Self;
+}
+
+// ============================================================================
+// Option Methods
+// ============================================================================
+
+impl[T] Option[T] {
+  /// Check if option contains a value
+  pub fn is_some(self: ref Self) -> Bool {
+    match self {
+      Some(_) => true,
+      None => false,
+    }
+  }
+
+  /// Check if option is empty
+  pub fn is_none(self: ref Self) -> Bool {
+    match self {
+      None => true,
+      Some(_) => false,
+    }
+  }
+
+  /// Unwrap the value or panic
+  pub fn unwrap(self: Self) -> T {
+    match self {
+      Some(x) => x,
+      None => panic("called unwrap on None"),
+    }
+  }
+
+  /// Unwrap the value or return default
+  pub fn unwrap_or(self: Self, default: T) -> T {
+    match self {
+      Some(x) => x,
+      None => default,
+    }
+  }
+
+  /// Unwrap the value or compute default
+  pub fn unwrap_or_else(self: Self, f: fn() -> T) -> T {
+    match self {
+      Some(x) => x,
+      None => f(),
+    }
+  }
+
+  /// Map over the contained value
+  pub fn map[U](self: Self, f: fn(T) -> U) -> Option[U] {
+    match self {
+      Some(x) => Some(f(x)),
+      None => None,
+    }
+  }
+
+  /// Flat map / and_then
+  pub fn and_then[U](self: Self, f: fn(T) -> Option[U]) -> Option[U] {
+    match self {
+      Some(x) => f(x),
+      None => None,
+    }
+  }
+
+  /// Filter the option
+  pub fn filter(self: Self, pred: fn(ref T) -> Bool) -> Option[T] {
+    match self {
+      Some(ref x) if pred(x) => self,
+      _ => None,
+    }
+  }
+
+  /// Get reference to contained value
+  pub fn as_ref(self: ref Self) -> Option[ref T] {
+    match self {
+      Some(ref x) => Some(x),
+      None => None,
+    }
+  }
+}
+
+// ============================================================================
+// Result Methods
+// ============================================================================
+
+impl[T, E] Result[T, E] {
+  /// Check if result is Ok
+  pub fn is_ok(self: ref Self) -> Bool {
+    match self {
+      Ok(_) => true,
+      Err(_) => false,
+    }
+  }
+
+  /// Check if result is Err
+  pub fn is_err(self: ref Self) -> Bool {
+    match self {
+      Err(_) => true,
+      Ok(_) => false,
+    }
+  }
+
+  /// Unwrap Ok value or panic
+  pub fn unwrap(self: Self) -> T {
+    match self {
+      Ok(x) => x,
+      Err(_) => panic("called unwrap on Err"),
+    }
+  }
+
+  /// Unwrap Err value or panic
+  pub fn unwrap_err(self: Self) -> E {
+    match self {
+      Err(e) => e,
+      Ok(_) => panic("called unwrap_err on Ok"),
+    }
+  }
+
+  /// Unwrap Ok or return default
+  pub fn unwrap_or(self: Self, default: T) -> T {
+    match self {
+      Ok(x) => x,
+      Err(_) => default,
+    }
+  }
+
+  /// Map over Ok value
+  pub fn map[U](self: Self, f: fn(T) -> U) -> Result[U, E] {
+    match self {
+      Ok(x) => Ok(f(x)),
+      Err(e) => Err(e),
+    }
+  }
+
+  /// Map over Err value
+  pub fn map_err[F](self: Self, f: fn(E) -> F) -> Result[T, F] {
+    match self {
+      Ok(x) => Ok(x),
+      Err(e) => Err(f(e)),
+    }
+  }
+
+  /// Flat map / and_then
+  pub fn and_then[U](self: Self, f: fn(T) -> Result[U, E]) -> Result[U, E] {
+    match self {
+      Ok(x) => f(x),
+      Err(e) => Err(e),
+    }
+  }
+
+  /// Convert to Option (discards error)
+  pub fn ok(self: Self) -> Option[T] {
+    match self {
+      Ok(x) => Some(x),
+      Err(_) => None,
+    }
+  }
+
+  /// Convert to Option (discards success)
+  pub fn err(self: Self) -> Option[E] {
+    match self {
+      Ok(_) => None,
+      Err(e) => Some(e),
+    }
+  }
+}
+
+// ============================================================================
+// Utility Functions
+// ============================================================================
+
+/// Identity function
+pub total fn identity[T](x: T) -> T {
+  x
+}
+
+/// Constant function
+pub total fn const_[T, U](x: T) -> fn(U) -> T {
+  \_ -> x
+}
+
+/// Function composition
+pub total fn compose[A, B, C](f: fn(B) -> C, g: fn(A) -> B) -> fn(A) -> C {
+  \x -> f(g(x))
+}
+
+/// Flip function arguments
+pub total fn flip[A, B, C](f: fn(A, B) -> C) -> fn(B, A) -> C {
+  \b, a -> f(a, b)
+}
+
+/// Panic with message
+pub fn panic(msg: String) -> Never {
+  // Implementation provided by runtime
+  unreachable()
+}
+
+/// Assert condition
+pub fn assert(cond: Bool) {
+  if !cond {
+    panic("assertion failed");
+  }
+}
+
+/// Assert with message
+pub fn assert_eq[T: Eq + Debug](left: T, right: T) {
+  if !left.eq(&right) {
+    panic("assertion failed: " + left.debug_fmt() + " != " + right.debug_fmt());
+  }
+}
+
+/// Debug print (for development)
+pub fn dbg[T: Debug](value: T) -> T {
+  println(value.debug_fmt());
+  value
+}

@@ -1,0 +1,36 @@
+// Fibonacci sequence in AffineScript
+
+// Recursive implementation
+fn fib_recursive(n: Int) -> Int {
+  if n <= 1 { n }
+  else { fib_recursive(n - 1) + fib_recursive(n - 2) }
+}
+
+// Iterative implementation (more efficient)
+fn fib_iterative(n: Int) -> Int {
+  if n <= 1 { n }
+  else {
+    let mut a = 0;
+    let mut b = 1;
+    let mut i = 2;
+    while i <= n {
+      let temp = a + b;
+      a = b;
+      b = temp;
+      i += 1;
+    }
+    b
+  }
+}
+
+// Print first 10 Fibonacci numbers
+println("Fibonacci sequence (recursive):");
+for i in range(10) {
+  println(str(fib_recursive(i)));
+}
+
+println("");
+println("Fibonacci sequence (iterative):");
+for i in range(10) {
+  println(str(fib_iterative(i)));
+}
