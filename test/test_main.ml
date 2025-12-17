@@ -5,4 +5,5 @@ let () =
     [
       ("Lexer", Test_lexer.tests);
       ("Parser", Test_parser.tests);
+      ("Eval", Test_eval.tests);
     ]

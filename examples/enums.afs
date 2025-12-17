@@ -1,0 +1,68 @@
+// Enums and algebraic data types in AffineScript
+
+// Simple enum
+enum Color {
+  Red,
+  Green,
+  Blue,
+}
+
+// Enum with data (sum type)
+enum Option[T] {
+  None,
+  Some(T),
+}
+
+enum Result[T, E] {
+  Ok(T),
+  Err(E),
+}
+
+// Using enums with pattern matching
+fn describe_color(c: Color) -> String {
+  match c {
+    Color::Red => "The color of fire",
+    Color::Green => "The color of nature",
+    Color::Blue => "The color of the sky",
+  }
+}
+
+// Option handling
+fn safe_divide(a: Int, b: Int) -> Option[Int] {
+  if b == 0 {
+    None
+  } else {
+    Some(a / b)
+  }
+}
+
+fn show_result(opt: Option[Int]) -> String {
+  match opt {
+    Some(x) => "Result: " + str(x),
+    None => "Division by zero!",
+  }
+}
+
+println(describe_color(Color::Blue));
+println(show_result(safe_divide(10, 2)));
+println(show_result(safe_divide(10, 0)));
+
+// Result for error handling
+enum MathError {
+  DivisionByZero,
+  NegativeRoot,
+}
+
+fn safe_sqrt(x: Int) -> Result[Int, MathError] {
+  if x < 0 {
+    Err(MathError::NegativeRoot)
+  } else {
+    // Simplified integer square root
+    let mut guess = x / 2;
+    if guess == 0 { guess = 1; }
+    while guess * guess > x {
+      guess = (guess + x / guess) / 2;
+    }
+    Ok(guess)
+  }
+}

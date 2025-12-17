@@ -1,0 +1,33 @@
+// Higher-order functions in AffineScript
+
+// Map: transform each element
+let numbers = [1, 2, 3, 4, 5];
+let doubled = map(\x: Int -> x * 2, numbers);
+println("Doubled: " + str(doubled));
+
+// Filter: keep elements matching predicate
+let evens = filter(\x: Int -> x % 2 == 0, numbers);
+println("Evens: " + str(evens));
+
+// Fold: reduce to single value
+let sum = fold(\acc: Int, x: Int -> acc + x, 0, numbers);
+println("Sum: " + str(sum));
+
+// Composition example
+fn compose(f: fn(Int) -> Int, g: fn(Int) -> Int) -> fn(Int) -> Int {
+  \x: Int -> f(g(x))
+}
+
+let add_one = \x: Int -> x + 1;
+let times_two = \x: Int -> x * 2;
+let add_then_double = compose(times_two, add_one);
+
+println("(5 + 1) * 2 = " + str(add_then_double(5)));
+
+// Pipeline pattern
+let result = numbers
+  |> map(\x: Int -> x * x)        // Square each
+  |> filter(\x: Int -> x > 5)     // Keep > 5
+  |> fold(\a: Int, x: Int -> a + x, 0);  // Sum
+
+println("Sum of squares > 5: " + str(result));

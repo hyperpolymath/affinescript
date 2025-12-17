@@ -1,0 +1,7 @@
+// Hello World in AffineScript
+
+fn main() {
+  println("Hello, AffineScript!");
+}
+
+main()
