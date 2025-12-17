@@ -163,7 +163,7 @@ let parse_string ~file content =
 
 (** Parse a program from a file *)
 let parse_file filename =
-  let chan = open_in_bin filename in
+  let chan = open_in filename in
   let content = really_input_string chan (in_channel_length chan) in
   close_in chan;
   parse_string ~file:filename content
