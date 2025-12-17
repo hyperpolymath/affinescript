@@ -33,11 +33,18 @@ let lex_file path =
 
 (** Parse a file and print AST *)
 let parse_file path =
-  let source = read_file path in
-  let _ = source in
-  (* TODO: Implement parser *)
-  Format.printf "Parsing not yet implemented@.";
-  `Ok ()
+  try
+    let prog = Affinescript.Parse_driver.parse_file path in
+    Format.printf "%s@." (Affinescript.Ast.show_program prog);
+    `Ok ()
+  with
+  | Affinescript.Lexer.Lexer_error (msg, pos) ->
+      Format.eprintf "@[<v>%s:%d:%d: lexer error: %s@]@." path pos.line pos.col msg;
+      `Error (false, "Lexer error")
+  | Affinescript.Parse_driver.Parse_error (msg, span) ->
+      Format.eprintf "@[<v>%a: parse error: %s@]@."
+        Affinescript.Span.pp_short span msg;
+      `Error (false, "Parse error")
 
 (** Check a file *)
 let check_file path =

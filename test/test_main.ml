@@ -4,4 +4,5 @@ let () =
   Alcotest.run "AffineScript"
     [
       ("Lexer", Test_lexer.tests);
+      ("Parser", Test_parser.tests);
     ]
