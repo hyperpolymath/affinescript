@@ -1,0 +1,457 @@
+// AffineScript Common Library - Async
+// Asynchronous programming primitives
+
+module Common.Async;
+
+use Common.Prelude::*;
+use Common.IO::IOError;
+
+// ============================================================================
+// Future Types
+// ============================================================================
+
+/// A future representing an asynchronous computation
+pub enum Future[T] {
+  /// Computation is still pending
+  Pending,
+  /// Computation completed successfully
+  Ready(T),
+  /// Computation failed
+  Failed(AsyncError),
+}
+
+/// Async operation errors
+pub enum AsyncError {
+  /// Task was cancelled
+  Cancelled,
+  /// Task timed out
+  Timeout,
+  /// Task panicked
+  Panicked(String),
+  /// IO error during async operation
+  IOError(IOError),
+  /// Join error when awaiting task
+  JoinError(String),
+  /// Channel was closed
+  ChannelClosed,
+  /// Send failed
+  SendError(String),
+  /// Receive failed
+  RecvError(String),
+}
+
+impl AsyncError {
+  pub fn message(self: ref Self) -> String {
+    match self {
+      Cancelled => "task cancelled",
+      Timeout => "operation timed out",
+      Panicked(msg) => "task panicked: " + msg,
+      IOError(e) => "io error: " + e.message(),
+      JoinError(msg) => "join error: " + msg,
+      ChannelClosed => "channel closed",
+      SendError(msg) => "send error: " + msg,
+      RecvError(msg) => "receive error: " + msg,
+    }
+  }
+}
+
+// ============================================================================
+// Async Effect
+// ============================================================================
+
+/// Async effect for asynchronous operations
+pub effect Async {
+  /// Await a future
+  fn await[T](future: Future[T]) -> T;
+
+  /// Spawn a new task
+  fn spawn[T](f: fn() -> T / Async) -> Future[T];
+
+  /// Yield control to the scheduler
+  fn yield_() -> ();
+
+  /// Sleep for specified milliseconds
+  fn sleep(ms: Int) -> ();
+
+  /// Get current task ID
+  fn task_id() -> Int;
+}
+
+// ============================================================================
+// Future Implementation
+// ============================================================================
+
+impl[T] Future[T] {
+  /// Check if future is ready
+  pub fn is_ready(self: ref Self) -> Bool {
+    match self {
+      Ready(_) => true,
+      _ => false,
+    }
+  }
+
+  /// Check if future is pending
+  pub fn is_pending(self: ref Self) -> Bool {
+    match self {
+      Pending => true,
+      _ => false,
+    }
+  }
+
+  /// Check if future failed
+  pub fn is_failed(self: ref Self) -> Bool {
+    match self {
+      Failed(_) => true,
+      _ => false,
+    }
+  }
+
+  /// Get value if ready
+  pub fn try_get(self: ref Self) -> Option[ref T] {
+    match self {
+      Ready(v) => Some(v),
+      _ => None,
+    }
+  }
+
+  /// Get error if failed
+  pub fn error(self: ref Self) -> Option[ref AsyncError] {
+    match self {
+      Failed(e) => Some(e),
+      _ => None,
+    }
+  }
+
+  /// Map the result value
+  pub fn map[U](self: Self, f: fn(T) -> U) -> Future[U] {
+    match self {
+      Pending => Pending,
+      Ready(v) => Ready(f(v)),
+      Failed(e) => Failed(e),
+    }
+  }
+
+  /// Chain futures
+  pub fn and_then[U](self: Self, f: fn(T) -> Future[U]) -> Future[U] {
+    match self {
+      Pending => Pending,
+      Ready(v) => f(v),
+      Failed(e) => Failed(e),
+    }
+  }
+
+  /// Provide a fallback on failure
+  pub fn or_else(self: Self, f: fn(AsyncError) -> Future[T]) -> Future[T] {
+    match self {
+      Failed(e) => f(e),
+      other => other,
+    }
+  }
+
+  /// Unwrap with default on failure
+  pub fn unwrap_or(self: Self, default: T) -> T {
+    match self {
+      Ready(v) => v,
+      _ => default,
+    }
+  }
+}
+
+// ============================================================================
+// Async Combinators
+// ============================================================================
+
+/// Join two futures, returning when both complete
+pub fn join[A, B](a: Future[A], b: Future[B]) -> Future[(A, B)] / Async {
+  let a_val = await(a);
+  let b_val = await(b);
+  Ready((a_val, b_val))
+}
+
+/// Join three futures
+pub fn join3[A, B, C](a: Future[A], b: Future[B], c: Future[C]) -> Future[(A, B, C)] / Async {
+  let a_val = await(a);
+  let b_val = await(b);
+  let c_val = await(c);
+  Ready((a_val, b_val, c_val))
+}
+
+/// Select the first future to complete
+pub fn select[T](a: Future[T], b: Future[T]) -> Future[T] / Async {
+  // Implementation would poll both and return first ready
+  await(a)  // Simplified
+}
+
+/// Race multiple futures, returning the first to complete
+pub fn race[T](futures: Array[Future[T]]) -> Future[T] / Async {
+  // Implementation would poll all and return first ready
+  if len(futures) > 0 {
+    await(futures[0])
+  } else {
+    Failed(AsyncError::JoinError("empty race"))
+  }
+}
+
+/// Wait for all futures to complete
+pub fn join_all[T](futures: Array[Future[T]]) -> Future[Array[T]] / Async {
+  let mut results = [];
+  for future in futures {
+    results.push(await(future));
+  }
+  Ready(results)
+}
+
+/// Try to join all, collecting results and errors
+pub fn try_join_all[T](futures: Array[Future[T]]) -> Future[Array[Result[T, AsyncError]]] / Async {
+  let mut results = [];
+  for future in futures {
+    match future {
+      Ready(v) => results.push(Ok(v)),
+      Failed(e) => results.push(Err(e)),
+      Pending => {
+        let v = await(future);
+        results.push(Ok(v));
+      }
+    }
+  }
+  Ready(results)
+}
+
+// ============================================================================
+// Timeout
+// ============================================================================
+
+/// Run a future with a timeout
+pub fn timeout[T](ms: Int, future: Future[T]) -> Future[Result[T, AsyncError]] / Async {
+  // Implementation would race with sleep
+  match await(future) {
+    v => Ready(Ok(v)),
+  }
+}
+
+/// Run a future with a timeout, returning None on timeout
+pub fn timeout_opt[T](ms: Int, future: Future[T]) -> Future[Option[T]] / Async {
+  match timeout(ms, future) {
+    Ready(Ok(v)) => Ready(Some(v)),
+    Ready(Err(_)) => Ready(None),
+    Failed(e) => Failed(e),
+    Pending => Pending,
+  }
+}
+
+// ============================================================================
+// Channels
+// ============================================================================
+
+/// A channel sender
+pub struct Sender[T] {
+  // Implementation details hidden
+  id: Int,
+}
+
+/// A channel receiver
+pub struct Receiver[T] {
+  // Implementation details hidden
+  id: Int,
+}
+
+/// Create a bounded channel
+pub fn channel[T](capacity: Int) -> (Sender[T], Receiver[T]) {
+  let id = 0; // Would be unique ID
+  (Sender { id }, Receiver { id })
+}
+
+/// Create an unbounded channel
+pub fn unbounded[T]() -> (Sender[T], Receiver[T]) {
+  channel(0) // 0 means unbounded
+}
+
+impl[T] Sender[T] {
+  /// Send a value
+  pub fn send(self: ref Self, value: T) -> Result[(), AsyncError] / Async {
+    // Would actually send
+    Ok(())
+  }
+
+  /// Try to send without blocking
+  pub fn try_send(self: ref Self, value: T) -> Result[(), AsyncError] {
+    // Would try to send immediately
+    Ok(())
+  }
+
+  /// Check if receiver is still alive
+  pub fn is_closed(self: ref Self) -> Bool {
+    false
+  }
+}
+
+impl[T] Receiver[T] {
+  /// Receive a value
+  pub fn recv(self: ref Self) -> Result[T, AsyncError] / Async {
+    // Would actually receive
+    Err(AsyncError::ChannelClosed)
+  }
+
+  /// Try to receive without blocking
+  pub fn try_recv(self: ref Self) -> Option[T] {
+    None
+  }
+
+  /// Create an iterator over received values
+  pub fn iter(self: Self) -> RecvIter[T] {
+    RecvIter { receiver: self }
+  }
+}
+
+/// Iterator over channel values
+pub struct RecvIter[T] {
+  receiver: Receiver[T],
+}
+
+impl[T] Iterator for RecvIter[T] {
+  type Item = T;
+
+  fn next(self: mut Self) -> Option[T] / Async {
+    match self.receiver.recv() {
+      Ok(v) => Some(v),
+      Err(_) => None,
+    }
+  }
+}
+
+// ============================================================================
+// Mutex and Synchronization
+// ============================================================================
+
+/// Async mutex for protecting shared state
+pub struct Mutex[T] {
+  // Implementation details hidden
+  value: T,
+  locked: Bool,
+}
+
+impl[T] Mutex[T] {
+  /// Create a new mutex
+  pub fn new(value: T) -> Mutex[T] {
+    Mutex { value, locked: false }
+  }
+
+  /// Lock the mutex
+  pub fn lock(self: ref Self) -> MutexGuard[T] / Async {
+    // Would wait until lock available
+    MutexGuard { mutex: self }
+  }
+
+  /// Try to lock without blocking
+  pub fn try_lock(self: ref Self) -> Option[MutexGuard[T]] {
+    if !self.locked {
+      Some(MutexGuard { mutex: self })
+    } else {
+      None
+    }
+  }
+}
+
+/// Guard that releases mutex on drop
+pub struct MutexGuard[T] {
+  mutex: ref Mutex[T],
+}
+
+impl[T] MutexGuard[T] {
+  pub fn get(self: ref Self) -> ref T {
+    &self.mutex.value
+  }
+
+  pub fn get_mut(self: mut Self) -> mut T {
+    &mut self.mutex.value
+  }
+}
+
+/// Semaphore for limiting concurrent access
+pub struct Semaphore {
+  permits: Int,
+  max_permits: Int,
+}
+
+impl Semaphore {
+  pub fn new(permits: Int) -> Semaphore {
+    Semaphore { permits, max_permits: permits }
+  }
+
+  pub fn acquire(self: mut Self) -> SemaphorePermit / Async {
+    // Would wait for permit
+    self.permits -= 1;
+    SemaphorePermit { semaphore: self }
+  }
+
+  pub fn try_acquire(self: mut Self) -> Option[SemaphorePermit] {
+    if self.permits > 0 {
+      self.permits -= 1;
+      Some(SemaphorePermit { semaphore: self })
+    } else {
+      None
+    }
+  }
+
+  pub fn available_permits(self: ref Self) -> Int {
+    self.permits
+  }
+}
+
+pub struct SemaphorePermit {
+  semaphore: mut Semaphore,
+}
+
+// ============================================================================
+// Task Spawning Helpers
+// ============================================================================
+
+/// Spawn a task and return its handle
+pub fn spawn[T](f: fn() -> T / Async) -> TaskHandle[T] / Async {
+  let future = Async::spawn(f);
+  TaskHandle { future, cancelled: false }
+}
+
+/// Handle to a spawned task
+pub struct TaskHandle[T] {
+  future: Future[T],
+  cancelled: Bool,
+}
+
+impl[T] TaskHandle[T] {
+  /// Wait for task to complete
+  pub fn join(self: Self) -> Result[T, AsyncError] / Async {
+    if self.cancelled {
+      Err(AsyncError::Cancelled)
+    } else {
+      Ok(await(self.future))
+    }
+  }
+
+  /// Cancel the task
+  pub fn cancel(self: mut Self) {
+    self.cancelled = true;
+  }
+
+  /// Check if task is finished
+  pub fn is_finished(self: ref Self) -> Bool {
+    self.future.is_ready() || self.future.is_failed()
+  }
+}
+
+/// Spawn a detached task (result is ignored)
+pub fn spawn_detached(f: fn() -> () / Async) / Async {
+  let _ = Async::spawn(f);
+}
+
+// ============================================================================
+// Async Block Helper
+// ============================================================================
+
+/// Run an async block to completion (blocking)
+pub fn block_on[T](f: fn() -> T / Async) -> T {
+  // Would run event loop until complete
+  // This is the entry point from sync to async
+  f()
+}
+

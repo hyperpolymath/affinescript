@@ -1,0 +1,571 @@
+// AffineScript Common Library - Time
+// Time and duration handling
+
+module Common.Time;
+
+use Common.Prelude::*;
+
+// ============================================================================
+// Duration
+// ============================================================================
+
+/// A duration of time (in nanoseconds internally)
+pub struct Duration {
+  nanos: i64,
+}
+
+impl Duration {
+  /// Zero duration
+  pub const ZERO: Duration = Duration { nanos: 0 };
+
+  /// Maximum duration
+  pub const MAX: Duration = Duration { nanos: 9223372036854775807 };
+
+  /// Create duration from nanoseconds
+  pub fn from_nanos(nanos: i64) -> Duration {
+    Duration { nanos }
+  }
+
+  /// Create duration from microseconds
+  pub fn from_micros(micros: i64) -> Duration {
+    Duration { nanos: micros * 1000 }
+  }
+
+  /// Create duration from milliseconds
+  pub fn from_millis(millis: i64) -> Duration {
+    Duration { nanos: millis * 1_000_000 }
+  }
+
+  /// Create duration from seconds
+  pub fn from_secs(secs: i64) -> Duration {
+    Duration { nanos: secs * 1_000_000_000 }
+  }
+
+  /// Create duration from minutes
+  pub fn from_mins(mins: i64) -> Duration {
+    Duration::from_secs(mins * 60)
+  }
+
+  /// Create duration from hours
+  pub fn from_hours(hours: i64) -> Duration {
+    Duration::from_mins(hours * 60)
+  }
+
+  /// Create duration from days
+  pub fn from_days(days: i64) -> Duration {
+    Duration::from_hours(days * 24)
+  }
+
+  /// Create duration from seconds with fractional part
+  pub fn from_secs_f64(secs: Float) -> Duration {
+    Duration { nanos: (secs * 1_000_000_000.0) as i64 }
+  }
+
+  /// Get total nanoseconds
+  pub fn as_nanos(self: ref Self) -> i64 {
+    self.nanos
+  }
+
+  /// Get total microseconds
+  pub fn as_micros(self: ref Self) -> i64 {
+    self.nanos / 1000
+  }
+
+  /// Get total milliseconds
+  pub fn as_millis(self: ref Self) -> i64 {
+    self.nanos / 1_000_000
+  }
+
+  /// Get total seconds
+  pub fn as_secs(self: ref Self) -> i64 {
+    self.nanos / 1_000_000_000
+  }
+
+  /// Get as floating-point seconds
+  pub fn as_secs_f64(self: ref Self) -> Float {
+    (self.nanos as Float) / 1_000_000_000.0
+  }
+
+  /// Get subsecond nanoseconds
+  pub fn subsec_nanos(self: ref Self) -> i32 {
+    (self.nanos % 1_000_000_000) as i32
+  }
+
+  /// Get subsecond microseconds
+  pub fn subsec_micros(self: ref Self) -> i32 {
+    (self.nanos % 1_000_000_000 / 1000) as i32
+  }
+
+  /// Get subsecond milliseconds
+  pub fn subsec_millis(self: ref Self) -> i32 {
+    (self.nanos % 1_000_000_000 / 1_000_000) as i32
+  }
+
+  /// Check if zero
+  pub fn is_zero(self: ref Self) -> Bool {
+    self.nanos == 0
+  }
+
+  /// Checked addition
+  pub fn checked_add(self: ref Self, other: Duration) -> Option[Duration] {
+    // Would check for overflow
+    Some(Duration { nanos: self.nanos + other.nanos })
+  }
+
+  /// Checked subtraction
+  pub fn checked_sub(self: ref Self, other: Duration) -> Option[Duration] {
+    if other.nanos > self.nanos {
+      None
+    } else {
+      Some(Duration { nanos: self.nanos - other.nanos })
+    }
+  }
+
+  /// Checked multiplication
+  pub fn checked_mul(self: ref Self, rhs: i32) -> Option[Duration] {
+    Some(Duration { nanos: self.nanos * (rhs as i64) })
+  }
+
+  /// Saturating addition
+  pub fn saturating_add(self: ref Self, other: Duration) -> Duration {
+    self.checked_add(other).unwrap_or(Duration::MAX)
+  }
+
+  /// Saturating subtraction
+  pub fn saturating_sub(self: ref Self, other: Duration) -> Duration {
+    self.checked_sub(other).unwrap_or(Duration::ZERO)
+  }
+
+  /// Multiply by scalar
+  pub fn mul(self: ref Self, rhs: i32) -> Duration {
+    Duration { nanos: self.nanos * (rhs as i64) }
+  }
+
+  /// Divide by scalar
+  pub fn div(self: ref Self, rhs: i32) -> Duration {
+    Duration { nanos: self.nanos / (rhs as i64) }
+  }
+}
+
+impl Eq for Duration {
+  fn eq(self: ref Self, other: ref Self) -> Bool {
+    self.nanos == other.nanos
+  }
+}
+
+impl Ord for Duration {
+  fn cmp(self: ref Self, other: ref Self) -> Ordering {
+    if self.nanos < other.nanos { Less }
+    else if self.nanos > other.nanos { Greater }
+    else { Equal }
+  }
+}
+
+impl Display for Duration {
+  fn fmt(self: ref Self) -> String {
+    let secs = self.as_secs();
+    let millis = self.subsec_millis();
+    if secs > 0 {
+      secs.to_string() + "." + millis.to_string().pad_start(3, '0') + "s"
+    } else {
+      millis.to_string() + "ms"
+    }
+  }
+}
+
+// ============================================================================
+// Instant
+// ============================================================================
+
+/// A point in time (monotonic clock)
+pub struct Instant {
+  nanos: i64,
+}
+
+impl Instant {
+  /// Get current instant
+  pub fn now() -> Instant / Time {
+    Time::now()
+  }
+
+  /// Duration since this instant
+  pub fn elapsed(self: ref Self) -> Duration / Time {
+    Instant::now().duration_since(*self)
+  }
+
+  /// Duration between two instants
+  pub fn duration_since(self: ref Self, earlier: Instant) -> Duration {
+    Duration { nanos: self.nanos - earlier.nanos }
+  }
+
+  /// Checked duration since
+  pub fn checked_duration_since(self: ref Self, earlier: Instant) -> Option[Duration] {
+    if self.nanos >= earlier.nanos {
+      Some(Duration { nanos: self.nanos - earlier.nanos })
+    } else {
+      None
+    }
+  }
+
+  /// Saturating duration since
+  pub fn saturating_duration_since(self: ref Self, earlier: Instant) -> Duration {
+    self.checked_duration_since(earlier).unwrap_or(Duration::ZERO)
+  }
+
+  /// Add duration
+  pub fn add(self: ref Self, duration: Duration) -> Instant {
+    Instant { nanos: self.nanos + duration.nanos }
+  }
+
+  /// Subtract duration
+  pub fn sub(self: ref Self, duration: Duration) -> Instant {
+    Instant { nanos: self.nanos - duration.nanos }
+  }
+}
+
+impl Eq for Instant {
+  fn eq(self: ref Self, other: ref Self) -> Bool {
+    self.nanos == other.nanos
+  }
+}
+
+impl Ord for Instant {
+  fn cmp(self: ref Self, other: ref Self) -> Ordering {
+    if self.nanos < other.nanos { Less }
+    else if self.nanos > other.nanos { Greater }
+    else { Equal }
+  }
+}
+
+// ============================================================================
+// Time Effect
+// ============================================================================
+
+/// Time effect for time-related operations
+pub effect Time {
+  /// Get current monotonic instant
+  fn now() -> Instant;
+
+  /// Get current system time
+  fn system_time() -> SystemTime;
+
+  /// Sleep for duration
+  fn sleep(duration: Duration) -> ();
+}
+
+// ============================================================================
+// System Time (Wall Clock)
+// ============================================================================
+
+/// System time (wall clock, can go backwards)
+pub struct SystemTime {
+  /// Seconds since Unix epoch
+  secs: i64,
+  /// Nanoseconds within second
+  nanos: i32,
+}
+
+impl SystemTime {
+  /// Unix epoch (1970-01-01 00:00:00 UTC)
+  pub const UNIX_EPOCH: SystemTime = SystemTime { secs: 0, nanos: 0 };
+
+  /// Get current system time
+  pub fn now() -> SystemTime / Time {
+    Time::system_time()
+  }
+
+  /// Duration since earlier time
+  pub fn duration_since(self: ref Self, earlier: SystemTime) -> Result[Duration, TimeError] {
+    let secs_diff = self.secs - earlier.secs;
+    let nanos_diff = (self.nanos - earlier.nanos) as i64;
+    let total_nanos = secs_diff * 1_000_000_000 + nanos_diff;
+    if total_nanos >= 0 {
+      Ok(Duration { nanos: total_nanos })
+    } else {
+      Err(TimeError::SystemTimeError)
+    }
+  }
+
+  /// Duration since Unix epoch
+  pub fn duration_since_epoch(self: ref Self) -> Duration {
+    self.duration_since(SystemTime::UNIX_EPOCH).unwrap()
+  }
+
+  /// Elapsed since this time
+  pub fn elapsed(self: ref Self) -> Result[Duration, TimeError] / Time {
+    SystemTime::now().duration_since(*self)
+  }
+
+  /// Add duration
+  pub fn add(self: ref Self, duration: Duration) -> SystemTime {
+    let total_nanos = self.nanos as i64 + duration.nanos;
+    let extra_secs = total_nanos / 1_000_000_000;
+    let remaining_nanos = total_nanos % 1_000_000_000;
+    SystemTime {
+      secs: self.secs + extra_secs,
+      nanos: remaining_nanos as i32,
+    }
+  }
+
+  /// Subtract duration
+  pub fn sub(self: ref Self, duration: Duration) -> SystemTime {
+    let total_nanos = self.nanos as i64 - duration.nanos;
+    if total_nanos >= 0 {
+      SystemTime {
+        secs: self.secs,
+        nanos: total_nanos as i32,
+      }
+    } else {
+      let borrow_secs = (-total_nanos - 1) / 1_000_000_000 + 1;
+      SystemTime {
+        secs: self.secs - borrow_secs,
+        nanos: (total_nanos + borrow_secs * 1_000_000_000) as i32,
+      }
+    }
+  }
+}
+
+/// Time-related errors
+pub enum TimeError {
+  /// System time went backwards
+  SystemTimeError,
+}
+
+// ============================================================================
+// DateTime (Simplified)
+// ============================================================================
+
+/// A date and time (simplified, no timezone)
+pub struct DateTime {
+  year: i32,
+  month: u8,     // 1-12
+  day: u8,       // 1-31
+  hour: u8,      // 0-23
+  minute: u8,    // 0-59
+  second: u8,    // 0-59
+  nanosecond: i32,
+}
+
+impl DateTime {
+  /// Create from components
+  pub fn new(year: i32, month: u8, day: u8, hour: u8, minute: u8, second: u8) -> DateTime {
+    DateTime { year, month, day, hour, minute, second, nanosecond: 0 }
+  }
+
+  /// Create from Unix timestamp
+  pub fn from_timestamp(secs: i64) -> DateTime {
+    // Simplified - would do proper calendar calculation
+    let days = secs / 86400;
+    let time_secs = secs % 86400;
+    DateTime {
+      year: 1970 + (days / 365) as i32,
+      month: 1,
+      day: 1,
+      hour: (time_secs / 3600) as u8,
+      minute: ((time_secs % 3600) / 60) as u8,
+      second: (time_secs % 60) as u8,
+      nanosecond: 0,
+    }
+  }
+
+  /// Get year
+  pub fn year(self: ref Self) -> i32 { self.year }
+
+  /// Get month (1-12)
+  pub fn month(self: ref Self) -> u8 { self.month }
+
+  /// Get day of month (1-31)
+  pub fn day(self: ref Self) -> u8 { self.day }
+
+  /// Get hour (0-23)
+  pub fn hour(self: ref Self) -> u8 { self.hour }
+
+  /// Get minute (0-59)
+  pub fn minute(self: ref Self) -> u8 { self.minute }
+
+  /// Get second (0-59)
+  pub fn second(self: ref Self) -> u8 { self.second }
+
+  /// Format as ISO 8601 string
+  pub fn to_iso_string(self: ref Self) -> String {
+    format(
+      "{}-{}-{}T{}:{}:{}",
+      [
+        self.year.to_string().pad_start(4, '0'),
+        self.month.to_string().pad_start(2, '0'),
+        self.day.to_string().pad_start(2, '0'),
+        self.hour.to_string().pad_start(2, '0'),
+        self.minute.to_string().pad_start(2, '0'),
+        self.second.to_string().pad_start(2, '0'),
+      ]
+    )
+  }
+
+  /// Format as date only
+  pub fn to_date_string(self: ref Self) -> String {
+    format(
+      "{}-{}-{}",
+      [
+        self.year.to_string().pad_start(4, '0'),
+        self.month.to_string().pad_start(2, '0'),
+        self.day.to_string().pad_start(2, '0'),
+      ]
+    )
+  }
+
+  /// Format as time only
+  pub fn to_time_string(self: ref Self) -> String {
+    format(
+      "{}:{}:{}",
+      [
+        self.hour.to_string().pad_start(2, '0'),
+        self.minute.to_string().pad_start(2, '0'),
+        self.second.to_string().pad_start(2, '0'),
+      ]
+    )
+  }
+}
+
+impl Display for DateTime {
+  fn fmt(self: ref Self) -> String {
+    self.to_iso_string()
+  }
+}
+
+// ============================================================================
+// Timing Utilities
+// ============================================================================
+
+/// Measure execution time of a function
+pub fn measure[T](f: fn() -> T) -> (T, Duration) / Time {
+  let start = Instant::now();
+  let result = f();
+  let elapsed = start.elapsed();
+  (result, elapsed)
+}
+
+/// Time a function and print result
+pub fn time_it[T](name: String, f: fn() -> T) -> T / Time, Console {
+  let (result, elapsed) = measure(f);
+  Console::println(format("{}: {}", [name, elapsed.to_string()]));
+  result
+}
+
+/// Simple stopwatch
+pub struct Stopwatch {
+  start: Option[Instant],
+  accumulated: Duration,
+  running: Bool,
+}
+
+impl Stopwatch {
+  /// Create new stopped stopwatch
+  pub fn new() -> Stopwatch {
+    Stopwatch {
+      start: None,
+      accumulated: Duration::ZERO,
+      running: false,
+    }
+  }
+
+  /// Create and start stopwatch
+  pub fn start_new() -> Stopwatch / Time {
+    let mut sw = Stopwatch::new();
+    sw.start();
+    sw
+  }
+
+  /// Start or resume
+  pub fn start(self: mut Self) / Time {
+    if !self.running {
+      self.start = Some(Instant::now());
+      self.running = true;
+    }
+  }
+
+  /// Stop
+  pub fn stop(self: mut Self) / Time {
+    if self.running {
+      if let Some(start) = self.start {
+        self.accumulated = self.accumulated.saturating_add(start.elapsed());
+      }
+      self.start = None;
+      self.running = false;
+    }
+  }
+
+  /// Reset to zero
+  pub fn reset(self: mut Self) {
+    self.start = None;
+    self.accumulated = Duration::ZERO;
+    self.running = false;
+  }
+
+  /// Restart from zero
+  pub fn restart(self: mut Self) / Time {
+    self.reset();
+    self.start();
+  }
+
+  /// Get elapsed time
+  pub fn elapsed(self: ref Self) -> Duration / Time {
+    if self.running {
+      if let Some(start) = self.start {
+        self.accumulated.saturating_add(start.elapsed())
+      } else {
+        self.accumulated
+      }
+    } else {
+      self.accumulated
+    }
+  }
+
+  /// Check if running
+  pub fn is_running(self: ref Self) -> Bool {
+    self.running
+  }
+}
+
+/// Lap timer for tracking splits
+pub struct LapTimer {
+  stopwatch: Stopwatch,
+  laps: Vec[Duration],
+}
+
+impl LapTimer {
+  pub fn new() -> LapTimer {
+    LapTimer {
+      stopwatch: Stopwatch::new(),
+      laps: Vec::new(),
+    }
+  }
+
+  pub fn start(self: mut Self) / Time {
+    self.stopwatch.start();
+  }
+
+  pub fn lap(self: mut Self) -> Duration / Time {
+    let elapsed = self.stopwatch.elapsed();
+    let last_total: Duration = if self.laps.is_empty() {
+      Duration::ZERO
+    } else {
+      let mut sum = Duration::ZERO;
+      for d in &self.laps {
+        sum = sum.saturating_add(*d);
+      }
+      sum
+    };
+    let lap_time = elapsed.saturating_sub(last_total);
+    self.laps.push(lap_time);
+    lap_time
+  }
+
+  pub fn total(self: ref Self) -> Duration / Time {
+    self.stopwatch.elapsed()
+  }
+
+  pub fn laps(self: ref Self) -> ref Vec[Duration] {
+    &self.laps
+  }
+}
+

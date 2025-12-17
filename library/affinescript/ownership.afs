@@ -1,0 +1,476 @@
+// AffineScript Specific Library - Ownership
+// Utilities for working with ownership and borrowing
+
+module AffineScript.Ownership;
+
+use Common.Prelude::*;
+
+// ============================================================================
+// Ownership Types
+// ============================================================================
+
+/// Owned value - full ownership with move semantics
+pub struct Own[T] {
+  value: T,
+}
+
+impl[T] Own[T] {
+  /// Create owned value
+  pub fn new(value: T) -> Own[T] {
+    Own { value }
+  }
+
+  /// Move out of Own wrapper
+  pub fn into_inner(self: Self) -> T {
+    self.value
+  }
+
+  /// Borrow immutably
+  pub fn borrow(self: ref Self) -> ref T {
+    &self.value
+  }
+
+  /// Borrow mutably
+  pub fn borrow_mut(self: mut Self) -> mut T {
+    &mut self.value
+  }
+
+  /// Map over owned value
+  pub fn map[U](self: Self, f: fn(T) -> U) -> Own[U] {
+    Own::new(f(self.value))
+  }
+}
+
+// ============================================================================
+// Reference Types
+// ============================================================================
+
+/// Immutable reference wrapper
+pub struct Ref[T] {
+  ptr: ref T,
+}
+
+impl[T] Ref[T] {
+  /// Create from reference
+  pub fn new(ptr: ref T) -> Ref[T] {
+    Ref { ptr }
+  }
+
+  /// Get the reference
+  pub fn get(self: Self) -> ref T {
+    self.ptr
+  }
+
+  /// Clone the reference (references are Copy)
+  pub fn clone(self: Self) -> Ref[T] {
+    Ref { ptr: self.ptr }
+  }
+
+  /// Map over reference
+  pub fn map[U](self: Self, f: fn(ref T) -> ref U) -> Ref[U] {
+    Ref::new(f(self.ptr))
+  }
+}
+
+/// Mutable reference wrapper
+pub struct RefMut[T] {
+  ptr: mut T,
+}
+
+impl[T] RefMut[T] {
+  /// Create from mutable reference
+  pub fn new(ptr: mut T) -> RefMut[T] {
+    RefMut { ptr }
+  }
+
+  /// Get immutable reference
+  pub fn get(self: ref Self) -> ref T {
+    self.ptr
+  }
+
+  /// Get mutable reference
+  pub fn get_mut(self: mut Self) -> mut T {
+    self.ptr
+  }
+
+  /// Reborrow as immutable
+  pub fn reborrow(self: ref Self) -> Ref[T] {
+    Ref::new(self.ptr)
+  }
+
+  /// Map over mutable reference
+  pub fn map_mut[U](self: Self, f: fn(mut T) -> mut U) -> RefMut[U] {
+    RefMut::new(f(self.ptr))
+  }
+}
+
+// ============================================================================
+// Smart Pointers
+// ============================================================================
+
+/// Box - heap-allocated value with unique ownership
+pub struct Box[T] {
+  ptr: own T,
+}
+
+impl[T] Box[T] {
+  /// Allocate value on heap
+  pub fn new(value: T) -> Box[T] {
+    Box { ptr: value }
+  }
+
+  /// Get reference to contents
+  pub fn get(self: ref Self) -> ref T {
+    &self.ptr
+  }
+
+  /// Get mutable reference
+  pub fn get_mut(self: mut Self) -> mut T {
+    &mut self.ptr
+  }
+
+  /// Move value out of box
+  pub fn into_inner(self: Self) -> T {
+    self.ptr
+  }
+
+  /// Leak the box, returning a static reference
+  pub fn leak(self: Self) -> ref T {
+    // Would leak memory intentionally
+    &self.ptr
+  }
+}
+
+impl[T: Clone] Clone for Box[T] {
+  fn clone(self: ref Self) -> Self {
+    Box::new(self.ptr.clone())
+  }
+}
+
+/// Reference-counted pointer
+pub struct Rc[T] {
+  ptr: ref T,
+  count: ref Int,
+}
+
+impl[T] Rc[T] {
+  /// Create new Rc
+  pub fn new(value: T) -> Rc[T] {
+    // Would allocate with refcount
+    Rc { ptr: &value, count: &1 }
+  }
+
+  /// Get reference to contents
+  pub fn get(self: ref Self) -> ref T {
+    self.ptr
+  }
+
+  /// Get strong count
+  pub fn strong_count(self: ref Self) -> Int {
+    *self.count
+  }
+
+  /// Check if this is the only reference
+  pub fn is_unique(self: ref Self) -> Bool {
+    *self.count == 1
+  }
+
+  /// Try to get mutable access (only if unique)
+  pub fn get_mut(self: mut Self) -> Option[mut T] {
+    if self.is_unique() {
+      // Would return mutable reference
+      None
+    } else {
+      None
+    }
+  }
+
+  /// Make a mutable copy (clone-on-write)
+  pub fn make_mut(self: mut Self) -> mut T
+  where
+    T: Clone,
+  {
+    if !self.is_unique() {
+      // Clone the data
+      *self = Rc::new(self.ptr.clone());
+    }
+    // Now we're unique, safe to return mut ref
+    self.get_mut().unwrap()
+  }
+
+  /// Try to unwrap if unique
+  pub fn try_unwrap(self: Self) -> Result[T, Rc[T]] {
+    if self.is_unique() {
+      Ok(*self.ptr)  // Would move out
+    } else {
+      Err(self)
+    }
+  }
+}
+
+impl[T] Clone for Rc[T] {
+  fn clone(self: ref Self) -> Self {
+    // Increment refcount
+    Rc { ptr: self.ptr, count: self.count }
+  }
+}
+
+/// Weak reference (doesn't prevent deallocation)
+pub struct Weak[T] {
+  ptr: Option[ref T],
+}
+
+impl[T] Weak[T] {
+  /// Create weak reference from Rc
+  pub fn new(rc: ref Rc[T]) -> Weak[T] {
+    Weak { ptr: Some(rc.ptr) }
+  }
+
+  /// Create empty weak reference
+  pub fn empty() -> Weak[T] {
+    Weak { ptr: None }
+  }
+
+  /// Try to upgrade to Rc
+  pub fn upgrade(self: ref Self) -> Option[Rc[T]] {
+    // Would check if still alive and increment count
+    None
+  }
+
+  /// Check if still alive
+  pub fn is_alive(self: ref Self) -> Bool {
+    self.ptr.is_some()
+  }
+}
+
+// ============================================================================
+// Borrowed Wrapper
+// ============================================================================
+
+/// Wrapper indicating borrowed data
+pub struct Borrowed[T] {
+  data: ref T,
+  _lifetime: (),
+}
+
+impl[T] Borrowed[T] {
+  pub fn new(data: ref T) -> Borrowed[T] {
+    Borrowed { data, _lifetime: () }
+  }
+
+  pub fn get(self: Self) -> ref T {
+    self.data
+  }
+}
+
+/// Convert owned to borrowed for function call
+pub fn borrow_for[T, R](owned: ref T, f: fn(Borrowed[T]) -> R) -> R {
+  f(Borrowed::new(owned))
+}
+
+// ============================================================================
+// Cow (Clone-on-Write)
+// ============================================================================
+
+/// Clone-on-Write: either borrowed or owned
+pub enum Cow[T] {
+  /// Borrowed data
+  Borrowed(ref T),
+  /// Owned data
+  Owned(T),
+}
+
+impl[T: Clone] Cow[T] {
+  /// Get reference to data
+  pub fn get(self: ref Self) -> ref T {
+    match self {
+      Borrowed(r) => r,
+      Owned(v) => v,
+    }
+  }
+
+  /// Get mutable reference (clones if borrowed)
+  pub fn to_mut(self: mut Self) -> mut T {
+    match self {
+      Borrowed(r) => {
+        *self = Owned(r.clone());
+        match self {
+          Owned(v) => v,
+          _ => unreachable!(),
+        }
+      },
+      Owned(v) => v,
+    }
+  }
+
+  /// Convert to owned (clones if borrowed)
+  pub fn into_owned(self: Self) -> T {
+    match self {
+      Borrowed(r) => r.clone(),
+      Owned(v) => v,
+    }
+  }
+
+  /// Check if borrowed
+  pub fn is_borrowed(self: ref Self) -> Bool {
+    match self {
+      Borrowed(_) => true,
+      Owned(_) => false,
+    }
+  }
+
+  /// Check if owned
+  pub fn is_owned(self: ref Self) -> Bool {
+    match self {
+      Borrowed(_) => false,
+      Owned(_) => true,
+    }
+  }
+}
+
+// ============================================================================
+// ManuallyDrop
+// ============================================================================
+
+/// Wrapper that prevents automatic drop
+pub struct ManuallyDrop[T] {
+  value: T,
+}
+
+impl[T] ManuallyDrop[T] {
+  /// Wrap value
+  pub fn new(value: T) -> ManuallyDrop[T] {
+    ManuallyDrop { value }
+  }
+
+  /// Get reference
+  pub fn get(self: ref Self) -> ref T {
+    &self.value
+  }
+
+  /// Get mutable reference
+  pub fn get_mut(self: mut Self) -> mut T {
+    &mut self.value
+  }
+
+  /// Take the value out
+  pub fn into_inner(self: Self) -> T {
+    self.value
+  }
+
+  /// Manually drop the value (unsafe - must only call once)
+  pub unsafe fn drop(self: mut Self) {
+    // Would call drop
+  }
+}
+
+// ============================================================================
+// MaybeUninit
+// ============================================================================
+
+/// Wrapper for possibly uninitialized memory
+pub struct MaybeUninit[T] {
+  // May contain uninitialized bytes
+  data: T,
+  initialized: Bool,
+}
+
+impl[T] MaybeUninit[T] {
+  /// Create uninitialized
+  pub fn uninit() -> MaybeUninit[T] {
+    // Would allocate without initializing
+    MaybeUninit { data: panic!("uninit"), initialized: false }
+  }
+
+  /// Create initialized
+  pub fn new(value: T) -> MaybeUninit[T] {
+    MaybeUninit { data: value, initialized: true }
+  }
+
+  /// Write value (initializing)
+  pub fn write(self: mut Self, value: T) {
+    self.data = value;
+    self.initialized = true;
+  }
+
+  /// Assume initialized and take value (unsafe)
+  pub unsafe fn assume_init(self: Self) -> T {
+    assert!(self.initialized, "value not initialized");
+    self.data
+  }
+
+  /// Check if initialized
+  pub fn is_initialized(self: ref Self) -> Bool {
+    self.initialized
+  }
+
+  /// Get reference (unsafe - must be initialized)
+  pub unsafe fn get(self: ref Self) -> ref T {
+    assert!(self.initialized, "value not initialized");
+    &self.data
+  }
+}
+
+// ============================================================================
+// Take
+// ============================================================================
+
+/// Take trait - take a value, leaving default
+pub trait Take: Default {
+  fn take(self: mut Self) -> Self {
+    let value = *self;
+    *self = Self::default();
+    value
+  }
+}
+
+impl Take for Int {
+  fn take(self: mut Self) -> Self {
+    let v = *self;
+    *self = 0;
+    v
+  }
+}
+
+impl Take for String {
+  fn take(self: mut Self) -> Self {
+    let v = *self;
+    *self = "";
+    v
+  }
+}
+
+impl[T] Take for Option[T] {
+  fn take(self: mut Self) -> Self {
+    let v = *self;
+    *self = None;
+    v
+  }
+}
+
+impl[T] Take for Vec[T] {
+  fn take(self: mut Self) -> Self {
+    let v = *self;
+    *self = Vec::new();
+    v
+  }
+}
+
+// ============================================================================
+// Replace
+// ============================================================================
+
+/// Replace a value, returning the old one
+pub fn replace[T](dest: mut T, value: T) -> T {
+  let old = *dest;
+  *dest = value;
+  old
+}
+
+/// Swap two values
+pub fn swap[T](a: mut T, b: mut T) {
+  let tmp = *a;
+  *a = *b;
+  *b = tmp;
+}
+

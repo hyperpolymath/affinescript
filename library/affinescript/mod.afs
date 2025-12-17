@@ -1,0 +1,34 @@
+// AffineScript Specific Library
+// Re-exports all AffineScript-specific modules
+
+module AffineScript;
+
+pub use AffineScript.Linear::*;
+pub use AffineScript.Effects::*;
+pub use AffineScript.Ownership::*;
+pub use AffineScript.Refinements::*;
+
+/// Library version
+pub const VERSION: String = "0.1.0";
+
+/// Library name
+pub const NAME: String = "affinescript";
+
+// ============================================================================
+// Prelude for AffineScript
+// ============================================================================
+
+/// AffineScript prelude - commonly used types and traits
+pub mod prelude {
+  // From Common library
+  pub use Common.Prelude::*;
+  pub use Common.Collections::{Vec, HashMap, HashSet};
+  pub use Common.IO::{IO, IOError, File, Read, Write};
+  pub use Common.Async::{Future, Async, spawn, block_on};
+
+  // AffineScript-specific
+  pub use AffineScript.Linear::{LinearBox, AffineBox, Unique, Token};
+  pub use AffineScript.Effects::{Reader, Writer, State, Except, NonDet};
+  pub use AffineScript.Ownership::{Own, Box, Rc, Weak, Cow};
+  pub use AffineScript.Refinements::{Positive, NonNegative, NonZero, NonEmpty};
+}

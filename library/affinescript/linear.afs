@@ -1,0 +1,425 @@
+// AffineScript Specific Library - Linear Types
+// Utilities for working with linear and affine types
+
+module AffineScript.Linear;
+
+use Common.Prelude::*;
+
+// ============================================================================
+// Quantity Annotations
+// ============================================================================
+
+/// Quantity type - represents usage annotation
+/// 0 = erased (compile-time only)
+/// 1 = linear (exactly once)
+/// ω = unrestricted (any number of times)
+pub enum Quantity {
+  /// Erased - exists only at compile time
+  Zero,
+  /// Linear - must be used exactly once
+  One,
+  /// Unrestricted - can be used any number of times
+  Many,
+}
+
+impl Quantity {
+  /// Multiply quantities (semiring multiplication)
+  /// 0 * q = 0
+  /// 1 * q = q
+  /// ω * q = ω (if q ≠ 0)
+  pub fn mul(self: Self, other: Self) -> Self {
+    match (self, other) {
+      (Zero, _) | (_, Zero) => Zero,
+      (One, q) | (q, One) => q,
+      (Many, Many) => Many,
+    }
+  }
+
+  /// Add quantities (semiring addition)
+  /// 0 + q = q
+  /// 1 + 1 = ω
+  /// ω + q = ω
+  pub fn add(self: Self, other: Self) -> Self {
+    match (self, other) {
+      (Zero, q) | (q, Zero) => q,
+      (One, One) => Many,
+      (Many, _) | (_, Many) => Many,
+    }
+  }
+
+  /// Check if q1 <= q2 in the quantity lattice
+  pub fn subquantity(self: Self, other: Self) -> Bool {
+    match (self, other) {
+      (Zero, _) => true,
+      (One, One) | (One, Many) => true,
+      (Many, Many) => true,
+      _ => false,
+    }
+  }
+}
+
+// ============================================================================
+// Linear Box - Enforce linear usage
+// ============================================================================
+
+/// A box that enforces linear usage of its contents
+/// Once opened, it cannot be used again
+#[linear]
+pub struct LinearBox[T] {
+  value: T,
+}
+
+impl[T] LinearBox[T] {
+  /// Create a new linear box
+  pub fn new(value: T) -> LinearBox[T] {
+    LinearBox { value }
+  }
+
+  /// Consume the box and get the value (can only be called once)
+  pub fn open(self: Self) -> T {
+    self.value
+  }
+
+  /// Transform the contents
+  pub fn map[U](self: Self, f: fn(T) -> U) -> LinearBox[U] {
+    LinearBox::new(f(self.value))
+  }
+
+  /// Chain operations
+  pub fn and_then[U](self: Self, f: fn(T) -> LinearBox[U]) -> LinearBox[U] {
+    f(self.value)
+  }
+}
+
+// ============================================================================
+// Affine Box - At most once
+// ============================================================================
+
+/// A box that enforces affine usage (at most once, can be dropped)
+#[affine]
+pub struct AffineBox[T] {
+  value: T,
+}
+
+impl[T] AffineBox[T] {
+  pub fn new(value: T) -> AffineBox[T] {
+    AffineBox { value }
+  }
+
+  /// Consume and get value
+  pub fn take(self: Self) -> T {
+    self.value
+  }
+
+  /// Try to take, returning None if already consumed
+  pub fn try_take(self: Self) -> Option[T] {
+    Some(self.value)
+  }
+
+  /// Transform contents
+  pub fn map[U](self: Self, f: fn(T) -> U) -> AffineBox[U] {
+    AffineBox::new(f(self.value))
+  }
+}
+
+// ============================================================================
+// Unique Reference
+// ============================================================================
+
+/// A unique (non-aliasable) reference
+/// Guarantees exclusive access to the referenced value
+#[linear]
+pub struct Unique[T] {
+  ptr: own T,
+}
+
+impl[T] Unique[T] {
+  /// Create a unique reference from owned value
+  pub fn new(value: T) -> Unique[T] {
+    Unique { ptr: value }
+  }
+
+  /// Get immutable reference
+  pub fn get(self: ref Self) -> ref T {
+    &self.ptr
+  }
+
+  /// Get mutable reference
+  pub fn get_mut(self: mut Self) -> mut T {
+    &mut self.ptr
+  }
+
+  /// Consume and return owned value
+  pub fn into_inner(self: Self) -> T {
+    self.ptr
+  }
+
+  /// Replace the value, returning old one
+  pub fn replace(self: mut Self, value: T) -> T {
+    let old = self.ptr;
+    self.ptr = value;
+    old
+  }
+
+  /// Swap with another Unique
+  pub fn swap(self: mut Self, other: mut Unique[T]) {
+    let tmp = self.ptr;
+    self.ptr = other.ptr;
+    other.ptr = tmp;
+  }
+}
+
+// ============================================================================
+// Resource Handle
+// ============================================================================
+
+/// A handle to a resource that must be explicitly closed
+/// Prevents resource leaks at compile time
+#[linear]
+pub struct ResourceHandle[T, E] {
+  resource: T,
+  close: fn(T) -> Result[(), E],
+}
+
+impl[T, E] ResourceHandle[T, E] {
+  /// Create a new resource handle
+  pub fn new(resource: T, close: fn(T) -> Result[(), E]) -> ResourceHandle[T, E] {
+    ResourceHandle { resource, close }
+  }
+
+  /// Use the resource with a callback
+  pub fn use_with[R](self: ref Self, f: fn(ref T) -> R) -> R {
+    f(&self.resource)
+  }
+
+  /// Use mutably with a callback
+  pub fn use_mut_with[R](self: mut Self, f: fn(mut T) -> R) -> R {
+    f(&mut self.resource)
+  }
+
+  /// Close the resource (must be called exactly once)
+  pub fn close(self: Self) -> Result[(), E] {
+    (self.close)(self.resource)
+  }
+}
+
+/// Use a resource and automatically close it
+pub fn with_resource[T, E, R](
+  resource: T,
+  close: fn(T) -> Result[(), E],
+  f: fn(ref T) -> R
+) -> Result[R, E] {
+  let handle = ResourceHandle::new(resource, close);
+  let result = handle.use_with(f);
+  handle.close()?;
+  Ok(result)
+}
+
+// ============================================================================
+// Linear Token
+// ============================================================================
+
+/// A token that represents permission to perform an action once
+/// Cannot be duplicated, must be consumed
+#[linear]
+pub struct Token[phantom Action] {
+  _phantom: (),
+}
+
+impl[Action] Token[Action] {
+  /// Create a new token (internal use)
+  pub fn mint() -> Token[Action] {
+    Token { _phantom: () }
+  }
+
+  /// Consume the token and get proof of consumption
+  pub fn consume(self: Self) -> Consumed[Action] {
+    Consumed { _phantom: () }
+  }
+}
+
+/// Proof that a token was consumed
+pub struct Consumed[phantom Action] {
+  _phantom: (),
+}
+
+// ============================================================================
+// Linear State Machine
+// ============================================================================
+
+/// State machine with linear state transitions
+/// Ensures proper state progression at compile time
+pub trait LinearState {
+  /// The next valid state(s)
+  type Next;
+}
+
+/// State machine wrapper
+#[linear]
+pub struct StateMachine[S: LinearState] {
+  state: S,
+}
+
+impl[S: LinearState] StateMachine[S] {
+  pub fn new(initial: S) -> StateMachine[S] {
+    StateMachine { state: initial }
+  }
+
+  /// Transition to next state (consumes current state)
+  pub fn transition[N](self: Self, next: N) -> StateMachine[N]
+  where
+    N: LinearState,
+    S::Next: Contains[N],
+  {
+    StateMachine { state: next }
+  }
+
+  /// Access current state
+  pub fn state(self: ref Self) -> ref S {
+    &self.state
+  }
+
+  /// Complete the state machine (must be in final state)
+  pub fn complete(self: Self) -> S
+  where
+    S::Next: IsEmpty,
+  {
+    self.state
+  }
+}
+
+// ============================================================================
+// Linear Channel
+// ============================================================================
+
+/// One-shot channel - can send exactly one value
+pub struct OneshotSender[T] {
+  #[linear]
+  inner: LinearBox[fn(T) -> ()],
+}
+
+pub struct OneshotReceiver[T] {
+  #[linear]
+  inner: LinearBox[fn() -> T],
+}
+
+/// Create a one-shot channel
+pub fn oneshot[T]() -> (OneshotSender[T], OneshotReceiver[T]) {
+  // Implementation would set up single-use communication
+  let sender = OneshotSender { inner: LinearBox::new(|_| ()) };
+  let receiver = OneshotReceiver { inner: LinearBox::new(|| panic!("not implemented")) };
+  (sender, receiver)
+}
+
+impl[T] OneshotSender[T] {
+  /// Send a value (consumes the sender)
+  pub fn send(self: Self, value: T) {
+    let f = self.inner.open();
+    f(value);
+  }
+}
+
+impl[T] OneshotReceiver[T] {
+  /// Receive the value (consumes the receiver)
+  pub fn recv(self: Self) -> T {
+    let f = self.inner.open();
+    f()
+  }
+}
+
+// ============================================================================
+// Session Types (Simplified)
+// ============================================================================
+
+/// A session-typed channel endpoint
+/// Ensures protocol compliance at compile time
+pub struct Session[Protocol] {
+  // Implementation hidden
+  _phantom: Protocol,
+}
+
+/// Send action in a session
+pub struct Send[T, Cont] {
+  _phantom: (T, Cont),
+}
+
+/// Receive action in a session
+pub struct Recv[T, Cont] {
+  _phantom: (T, Cont),
+}
+
+/// End of session
+pub struct End {}
+
+impl[T, Cont] Session[Send[T, Cont]] {
+  /// Send a value and continue with the rest of the protocol
+  pub fn send(self: Self, value: T) -> Session[Cont] {
+    Session { _phantom: panic!("not implemented") }
+  }
+}
+
+impl[T, Cont] Session[Recv[T, Cont]] {
+  /// Receive a value and continue with the rest of the protocol
+  pub fn recv(self: Self) -> (T, Session[Cont]) {
+    panic!("not implemented")
+  }
+}
+
+impl Session[End] {
+  /// Close the session (must be at End state)
+  pub fn close(self: Self) {
+    // Session complete
+  }
+}
+
+// ============================================================================
+// Borrowing Utilities
+// ============================================================================
+
+/// Reborrow a reference with a shorter lifetime
+pub fn reborrow[T](r: ref T) -> ref T {
+  r
+}
+
+/// Reborrow mutably
+pub fn reborrow_mut[T](r: mut T) -> mut T {
+  r
+}
+
+/// Convert owned to reference for duration of scope
+pub fn as_ref[T, R](owned: T, f: fn(ref T) -> R) -> R {
+  f(&owned)
+}
+
+/// Convert owned to mutable reference for duration of scope
+pub fn as_mut[T, R](mut owned: T, f: fn(mut T) -> R) -> R {
+  f(&mut owned)
+}
+
+// ============================================================================
+// Phantom Data
+// ============================================================================
+
+/// Zero-sized type for carrying type information without runtime cost
+pub struct PhantomData[T] {
+  // Zero-sized, exists only for type checking
+}
+
+impl[T] PhantomData[T] {
+  pub fn new() -> PhantomData[T] {
+    PhantomData {}
+  }
+}
+
+impl[T] Clone for PhantomData[T] {
+  fn clone(self: ref Self) -> Self {
+    PhantomData {}
+  }
+}
+
+impl[T] Default for PhantomData[T] {
+  fn default() -> Self {
+    PhantomData {}
+  }
+}
+

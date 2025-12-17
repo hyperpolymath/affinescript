@@ -1,0 +1,576 @@
+// AffineScript Common Library - IO
+// Input/Output operations and effects
+
+module Common.IO;
+
+use Common.Prelude::*;
+
+// ============================================================================
+// IO Effect Definition
+// ============================================================================
+
+/// IO effect for side-effectful operations
+pub effect IO {
+  /// Read a line from standard input
+  fn read_line() -> String;
+
+  /// Write string to standard output
+  fn print(s: String) -> ();
+
+  /// Write string with newline to standard output
+  fn println(s: String) -> ();
+
+  /// Read entire file contents
+  fn read_file(path: String) -> Result[String, IOError];
+
+  /// Write string to file
+  fn write_file(path: String, content: String) -> Result[(), IOError];
+
+  /// Append string to file
+  fn append_file(path: String, content: String) -> Result[(), IOError];
+
+  /// Check if file exists
+  fn file_exists(path: String) -> Bool;
+
+  /// Delete file
+  fn delete_file(path: String) -> Result[(), IOError];
+
+  /// Create directory
+  fn create_dir(path: String) -> Result[(), IOError];
+
+  /// List directory contents
+  fn list_dir(path: String) -> Result[Array[String], IOError];
+
+  /// Get current working directory
+  fn current_dir() -> Result[String, IOError];
+
+  /// Set current working directory
+  fn set_current_dir(path: String) -> Result[(), IOError];
+
+  /// Get environment variable
+  fn get_env(name: String) -> Option[String];
+
+  /// Set environment variable
+  fn set_env(name: String, value: String) -> ();
+
+  /// Get command line arguments
+  fn args() -> Array[String];
+
+  /// Exit program with status code
+  fn exit(code: Int) -> Never;
+}
+
+// ============================================================================
+// IO Error Types
+// ============================================================================
+
+/// IO error kinds
+pub enum IOError {
+  /// File or directory not found
+  NotFound(String),
+  /// Permission denied
+  PermissionDenied(String),
+  /// File already exists
+  AlreadyExists(String),
+  /// Invalid input data
+  InvalidInput(String),
+  /// Invalid data encoding
+  InvalidData(String),
+  /// Connection refused
+  ConnectionRefused(String),
+  /// Connection reset
+  ConnectionReset(String),
+  /// Connection aborted
+  ConnectionAborted(String),
+  /// Not connected
+  NotConnected(String),
+  /// Address in use
+  AddrInUse(String),
+  /// Address not available
+  AddrNotAvailable(String),
+  /// Broken pipe
+  BrokenPipe(String),
+  /// Would block (non-blocking IO)
+  WouldBlock(String),
+  /// Timed out
+  TimedOut(String),
+  /// Write zero bytes
+  WriteZero(String),
+  /// Interrupted
+  Interrupted(String),
+  /// Unexpected end of file
+  UnexpectedEof(String),
+  /// Other error
+  Other(String),
+}
+
+impl IOError {
+  /// Get error message
+  pub fn message(self: ref Self) -> String {
+    match self {
+      NotFound(msg) => "not found: " + msg,
+      PermissionDenied(msg) => "permission denied: " + msg,
+      AlreadyExists(msg) => "already exists: " + msg,
+      InvalidInput(msg) => "invalid input: " + msg,
+      InvalidData(msg) => "invalid data: " + msg,
+      ConnectionRefused(msg) => "connection refused: " + msg,
+      ConnectionReset(msg) => "connection reset: " + msg,
+      ConnectionAborted(msg) => "connection aborted: " + msg,
+      NotConnected(msg) => "not connected: " + msg,
+      AddrInUse(msg) => "address in use: " + msg,
+      AddrNotAvailable(msg) => "address not available: " + msg,
+      BrokenPipe(msg) => "broken pipe: " + msg,
+      WouldBlock(msg) => "would block: " + msg,
+      TimedOut(msg) => "timed out: " + msg,
+      WriteZero(msg) => "write zero: " + msg,
+      Interrupted(msg) => "interrupted: " + msg,
+      UnexpectedEof(msg) => "unexpected eof: " + msg,
+      Other(msg) => msg,
+    }
+  }
+}
+
+// ============================================================================
+// Reader/Writer Traits
+// ============================================================================
+
+/// Read trait for reading bytes
+pub trait Read {
+  /// Read into buffer, return bytes read
+  fn read(self: mut Self, buf: mut Array[u8]) -> Result[Int, IOError];
+
+  /// Read exact number of bytes
+  fn read_exact(self: mut Self, buf: mut Array[u8]) -> Result[(), IOError] {
+    let mut offset = 0;
+    while offset < len(buf) {
+      match self.read(&mut buf[offset..]) {
+        Ok(0) => return Err(IOError::UnexpectedEof("read_exact")),
+        Ok(n) => offset += n,
+        Err(e) => return Err(e),
+      }
+    }
+    Ok(())
+  }
+
+  /// Read all remaining bytes
+  fn read_to_end(self: mut Self, buf: mut Vec[u8]) -> Result[Int, IOError] {
+    let mut total = 0;
+    let chunk = [0u8; 1024];
+    while true {
+      match self.read(&mut chunk) {
+        Ok(0) => break,
+        Ok(n) => {
+          for i in 0..n {
+            buf.push(chunk[i]);
+          }
+          total += n;
+        },
+        Err(e) => return Err(e),
+      }
+    }
+    Ok(total)
+  }
+
+  /// Read all remaining bytes as string
+  fn read_to_string(self: mut Self, buf: mut String) -> Result[Int, IOError] {
+    let bytes = Vec::new();
+    let n = self.read_to_end(&mut bytes)?;
+    // Convert bytes to string
+    Ok(n)
+  }
+}
+
+/// Write trait for writing bytes
+pub trait Write {
+  /// Write buffer, return bytes written
+  fn write(self: mut Self, buf: ref Array[u8]) -> Result[Int, IOError];
+
+  /// Flush output buffer
+  fn flush(self: mut Self) -> Result[(), IOError];
+
+  /// Write all bytes
+  fn write_all(self: mut Self, buf: ref Array[u8]) -> Result[(), IOError] {
+    let mut offset = 0;
+    while offset < len(buf) {
+      match self.write(&buf[offset..]) {
+        Ok(0) => return Err(IOError::WriteZero("write_all")),
+        Ok(n) => offset += n,
+        Err(e) => return Err(e),
+      }
+    }
+    Ok(())
+  }
+
+  /// Write string
+  fn write_str(self: mut Self, s: ref String) -> Result[(), IOError] {
+    // Convert string to bytes and write
+    Ok(())
+  }
+}
+
+/// BufRead trait for buffered reading
+pub trait BufRead: Read {
+  /// Fill internal buffer
+  fn fill_buf(self: mut Self) -> Result[ref Array[u8], IOError];
+
+  /// Mark bytes as consumed
+  fn consume(self: mut Self, amt: Int);
+
+  /// Read until delimiter
+  fn read_until(self: mut Self, delim: u8, buf: mut Vec[u8]) -> Result[Int, IOError] {
+    let mut total = 0;
+    while true {
+      let available = self.fill_buf()?;
+      if len(available) == 0 {
+        break;
+      }
+      // Find delimiter
+      let mut found = false;
+      for i in 0..len(available) {
+        buf.push(available[i]);
+        total += 1;
+        if available[i] == delim {
+          self.consume(i + 1);
+          found = true;
+          break;
+        }
+      }
+      if found {
+        break;
+      }
+      self.consume(len(available));
+    }
+    Ok(total)
+  }
+
+  /// Read line
+  fn read_line(self: mut Self, buf: mut String) -> Result[Int, IOError] {
+    let bytes = Vec::new();
+    let n = self.read_until(b'\n', &mut bytes)?;
+    // Convert to string
+    Ok(n)
+  }
+
+  /// Create lines iterator
+  fn lines(self: Self) -> Lines[Self] {
+    Lines { reader: self }
+  }
+}
+
+/// Lines iterator
+pub struct Lines[R: BufRead] {
+  reader: R,
+}
+
+impl[R: BufRead] Iterator for Lines[R] {
+  type Item = Result[String, IOError];
+
+  fn next(self: mut Self) -> Option[Result[String, IOError]] {
+    let mut line = String::new();
+    match self.reader.read_line(&mut line) {
+      Ok(0) => None,
+      Ok(_) => {
+        // Remove trailing newline
+        if line.ends_with("\n") {
+          line = line[..len(line)-1];
+        }
+        Some(Ok(line))
+      },
+      Err(e) => Some(Err(e)),
+    }
+  }
+}
+
+// ============================================================================
+// File Types
+// ============================================================================
+
+/// File handle
+pub struct File {
+  // Implementation details hidden
+  handle: Int,
+}
+
+impl File {
+  /// Open file for reading
+  pub fn open(path: String) -> Result[File, IOError] / IO {
+    // Would use IO effect to open
+    Ok(File { handle: 0 })
+  }
+
+  /// Create new file for writing
+  pub fn create(path: String) -> Result[File, IOError] / IO {
+    Ok(File { handle: 0 })
+  }
+
+  /// Open with options
+  pub fn open_with(path: String, options: OpenOptions) -> Result[File, IOError] / IO {
+    Ok(File { handle: 0 })
+  }
+
+  /// Sync all data to disk
+  pub fn sync_all(self: ref Self) -> Result[(), IOError] / IO {
+    Ok(())
+  }
+
+  /// Sync data (not metadata) to disk
+  pub fn sync_data(self: ref Self) -> Result[(), IOError] / IO {
+    Ok(())
+  }
+
+  /// Get file metadata
+  pub fn metadata(self: ref Self) -> Result[Metadata, IOError] / IO {
+    Ok(Metadata { size: 0, is_dir: false, is_file: true })
+  }
+}
+
+impl Read for File {
+  fn read(self: mut Self, buf: mut Array[u8]) -> Result[Int, IOError] {
+    // Would perform actual read
+    Ok(0)
+  }
+}
+
+impl Write for File {
+  fn write(self: mut Self, buf: ref Array[u8]) -> Result[Int, IOError] {
+    Ok(len(buf))
+  }
+
+  fn flush(self: mut Self) -> Result[(), IOError] {
+    Ok(())
+  }
+}
+
+/// File open options
+pub struct OpenOptions {
+  read: Bool,
+  write: Bool,
+  append: Bool,
+  truncate: Bool,
+  create: Bool,
+  create_new: Bool,
+}
+
+impl OpenOptions {
+  pub fn new() -> OpenOptions {
+    OpenOptions {
+      read: false,
+      write: false,
+      append: false,
+      truncate: false,
+      create: false,
+      create_new: false,
+    }
+  }
+
+  pub fn read(self: mut Self, read: Bool) -> mut Self {
+    self.read = read;
+    self
+  }
+
+  pub fn write(self: mut Self, write: Bool) -> mut Self {
+    self.write = write;
+    self
+  }
+
+  pub fn append(self: mut Self, append: Bool) -> mut Self {
+    self.append = append;
+    self
+  }
+
+  pub fn truncate(self: mut Self, truncate: Bool) -> mut Self {
+    self.truncate = truncate;
+    self
+  }
+
+  pub fn create(self: mut Self, create: Bool) -> mut Self {
+    self.create = create;
+    self
+  }
+
+  pub fn create_new(self: mut Self, create_new: Bool) -> mut Self {
+    self.create_new = create_new;
+    self
+  }
+
+  pub fn open(self: ref Self, path: String) -> Result[File, IOError] / IO {
+    File::open_with(path, *self)
+  }
+}
+
+/// File metadata
+pub struct Metadata {
+  size: Int,
+  is_dir: Bool,
+  is_file: Bool,
+}
+
+impl Metadata {
+  pub fn len(self: ref Self) -> Int { self.size }
+  pub fn is_dir(self: ref Self) -> Bool { self.is_dir }
+  pub fn is_file(self: ref Self) -> Bool { self.is_file }
+}
+
+// ============================================================================
+// Buffered IO
+// ============================================================================
+
+/// Buffered reader
+pub struct BufReader[R: Read] {
+  inner: R,
+  buf: Array[u8],
+  pos: Int,
+  cap: Int,
+}
+
+impl[R: Read] BufReader[R] {
+  pub fn new(inner: R) -> BufReader[R] {
+    BufReader::with_capacity(8192, inner)
+  }
+
+  pub fn with_capacity(cap: Int, inner: R) -> BufReader[R] {
+    BufReader {
+      inner: inner,
+      buf: [0u8; cap],
+      pos: 0,
+      cap: 0,
+    }
+  }
+
+  pub fn into_inner(self: Self) -> R {
+    self.inner
+  }
+}
+
+impl[R: Read] Read for BufReader[R] {
+  fn read(self: mut Self, buf: mut Array[u8]) -> Result[Int, IOError] {
+    // Fill buffer if needed, then copy
+    if self.pos >= self.cap {
+      self.cap = self.inner.read(&mut self.buf)?;
+      self.pos = 0;
+    }
+    let available = self.cap - self.pos;
+    let to_copy = if len(buf) < available { len(buf) } else { available };
+    for i in 0..to_copy {
+      buf[i] = self.buf[self.pos + i];
+    }
+    self.pos += to_copy;
+    Ok(to_copy)
+  }
+}
+
+impl[R: Read] BufRead for BufReader[R] {
+  fn fill_buf(self: mut Self) -> Result[ref Array[u8], IOError] {
+    if self.pos >= self.cap {
+      self.cap = self.inner.read(&mut self.buf)?;
+      self.pos = 0;
+    }
+    Ok(&self.buf[self.pos..self.cap])
+  }
+
+  fn consume(self: mut Self, amt: Int) {
+    self.pos += amt;
+  }
+}
+
+/// Buffered writer
+pub struct BufWriter[W: Write] {
+  inner: W,
+  buf: Vec[u8],
+}
+
+impl[W: Write] BufWriter[W] {
+  pub fn new(inner: W) -> BufWriter[W] {
+    BufWriter::with_capacity(8192, inner)
+  }
+
+  pub fn with_capacity(cap: Int, inner: W) -> BufWriter[W] {
+    BufWriter {
+      inner: inner,
+      buf: Vec::with_capacity(cap),
+    }
+  }
+
+  pub fn into_inner(self: mut Self) -> Result[W, IOError] {
+    self.flush()?;
+    Ok(self.inner)
+  }
+}
+
+impl[W: Write] Write for BufWriter[W] {
+  fn write(self: mut Self, buf: ref Array[u8]) -> Result[Int, IOError] {
+    if self.buf.len() + len(buf) > self.buf.capacity() {
+      self.flush()?;
+    }
+    if len(buf) >= self.buf.capacity() {
+      self.inner.write(buf)
+    } else {
+      for b in buf {
+        self.buf.push(*b);
+      }
+      Ok(len(buf))
+    }
+  }
+
+  fn flush(self: mut Self) -> Result[(), IOError] {
+    if !self.buf.is_empty() {
+      self.inner.write_all(&self.buf.data)?;
+      self.buf.clear();
+    }
+    self.inner.flush()
+  }
+}
+
+// ============================================================================
+// Standard Streams
+// ============================================================================
+
+/// Standard input
+pub fn stdin() -> Stdin {
+  Stdin { }
+}
+
+pub struct Stdin { }
+
+impl Read for Stdin {
+  fn read(self: mut Self, buf: mut Array[u8]) -> Result[Int, IOError] {
+    // Would read from stdin
+    Ok(0)
+  }
+}
+
+/// Standard output
+pub fn stdout() -> Stdout {
+  Stdout { }
+}
+
+pub struct Stdout { }
+
+impl Write for Stdout {
+  fn write(self: mut Self, buf: ref Array[u8]) -> Result[Int, IOError] {
+    // Would write to stdout
+    Ok(len(buf))
+  }
+
+  fn flush(self: mut Self) -> Result[(), IOError] {
+    Ok(())
+  }
+}
+
+/// Standard error
+pub fn stderr() -> Stderr {
+  Stderr { }
+}
+
+pub struct Stderr { }
+
+impl Write for Stderr {
+  fn write(self: mut Self, buf: ref Array[u8]) -> Result[Int, IOError] {
+    // Would write to stderr
+    Ok(len(buf))
+  }
+
+  fn flush(self: mut Self) -> Result[(), IOError] {
+    Ok(())
+  }
+}

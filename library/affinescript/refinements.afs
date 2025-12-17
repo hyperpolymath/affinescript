@@ -1,0 +1,447 @@
+// AffineScript Specific Library - Refinements
+// Utilities for refinement types and dependent types
+
+module AffineScript.Refinements;
+
+use Common.Prelude::*;
+
+// ============================================================================
+// Refinement Type Constructors
+// ============================================================================
+
+/// Positive integer: { n: Int | n > 0 }
+pub type Positive = refined Int where self > 0;
+
+/// Non-negative integer: { n: Int | n >= 0 }
+pub type NonNegative = refined Int where self >= 0;
+
+/// Natural number (alias for NonNegative)
+pub type Nat = NonNegative;
+
+/// Negative integer: { n: Int | n < 0 }
+pub type Negative = refined Int where self < 0;
+
+/// Non-zero integer: { n: Int | n != 0 }
+pub type NonZero = refined Int where self != 0;
+
+/// Bounded integer: { n: Int | lo <= n < hi }
+pub type Bounded[const LO: Int, const HI: Int] = refined Int where self >= LO && self < HI;
+
+/// Percentage (0-100): { n: Int | 0 <= n <= 100 }
+pub type Percentage = refined Int where self >= 0 && self <= 100;
+
+/// Unit interval: { x: Float | 0.0 <= x <= 1.0 }
+pub type UnitFloat = refined Float where self >= 0.0 && self <= 1.0;
+
+/// Positive float: { x: Float | x > 0.0 }
+pub type PositiveFloat = refined Float where self > 0.0;
+
+/// Non-empty string: { s: String | len(s) > 0 }
+pub type NonEmptyString = refined String where len(self) > 0;
+
+/// Non-empty array: { arr: Array[T] | len(arr) > 0 }
+pub type NonEmpty[T] = refined Array[T] where len(self) > 0;
+
+// ============================================================================
+// Smart Constructors
+// ============================================================================
+
+/// Try to create a Positive from Int
+pub fn positive(n: Int) -> Option[Positive] {
+  if n > 0 {
+    Some(n as Positive)
+  } else {
+    None
+  }
+}
+
+/// Try to create a NonNegative from Int
+pub fn non_negative(n: Int) -> Option[NonNegative] {
+  if n >= 0 {
+    Some(n as NonNegative)
+  } else {
+    None
+  }
+}
+
+/// Try to create a NonZero from Int
+pub fn non_zero(n: Int) -> Option[NonZero] {
+  if n != 0 {
+    Some(n as NonZero)
+  } else {
+    None
+  }
+}
+
+/// Try to create a bounded integer
+pub fn bounded[const LO: Int, const HI: Int](n: Int) -> Option[Bounded[LO, HI]] {
+  if n >= LO && n < HI {
+    Some(n as Bounded[LO, HI])
+  } else {
+    None
+  }
+}
+
+/// Try to create a unit float
+pub fn unit_float(x: Float) -> Option[UnitFloat] {
+  if x >= 0.0 && x <= 1.0 {
+    Some(x as UnitFloat)
+  } else {
+    None
+  }
+}
+
+/// Try to create a non-empty string
+pub fn non_empty_string(s: String) -> Option[NonEmptyString] {
+  if s.len() > 0 {
+    Some(s as NonEmptyString)
+  } else {
+    None
+  }
+}
+
+/// Try to create a non-empty array
+pub fn non_empty[T](arr: Array[T]) -> Option[NonEmpty[T]] {
+  if len(arr) > 0 {
+    Some(arr as NonEmpty[T])
+  } else {
+    None
+  }
+}
+
+// ============================================================================
+// Refinement Operations
+// ============================================================================
+
+/// Safe division (divisor must be non-zero)
+pub fn safe_div(a: Int, b: NonZero) -> Int {
+  a / (b as Int)
+}
+
+/// Safe float division
+pub fn safe_divf(a: Float, b: NonZero) -> Float {
+  a / (b as Int as Float)
+}
+
+/// Safe modulo
+pub fn safe_mod(a: Int, b: NonZero) -> Int {
+  a % (b as Int)
+}
+
+/// Safe array head (array must be non-empty)
+pub fn head[T](arr: NonEmpty[T]) -> T {
+  arr[0]
+}
+
+/// Safe array tail (array must be non-empty)
+pub fn tail[T](arr: NonEmpty[T]) -> Array[T] {
+  arr[1..]
+}
+
+/// Safe array last (array must be non-empty)
+pub fn last[T](arr: NonEmpty[T]) -> T {
+  arr[len(arr) - 1]
+}
+
+/// Safe array init (all but last)
+pub fn init[T](arr: NonEmpty[T]) -> Array[T] {
+  arr[..len(arr) - 1]
+}
+
+/// Absolute value with proof it's non-negative
+pub fn abs_nat(n: Int) -> NonNegative {
+  if n >= 0 { n as NonNegative }
+  else { (-n) as NonNegative }
+}
+
+/// Square (always non-negative)
+pub fn square(n: Int) -> NonNegative {
+  (n * n) as NonNegative
+}
+
+// ============================================================================
+// Length-Indexed Vectors
+// ============================================================================
+
+/// Vector with statically known length
+pub struct Vec[const N: Nat, T] {
+  data: Array[T],
+}
+
+impl[const N: Nat, T] Vec[N, T] {
+  /// Create from array (checked)
+  pub fn from_array(arr: Array[T]) -> Option[Vec[N, T]] {
+    if len(arr) == N {
+      Some(Vec { data: arr })
+    } else {
+      None
+    }
+  }
+
+  /// Get element at compile-time-checked index
+  pub fn get[const I: Nat](self: ref Self) -> T
+  where
+    I < N,  // Compile-time bound check
+  {
+    self.data[I]
+  }
+
+  /// Get length (known at compile time)
+  pub fn len(self: ref Self) -> Nat {
+    N
+  }
+
+  /// Map over elements
+  pub fn map[U](self: Self, f: fn(T) -> U) -> Vec[N, U] {
+    Vec { data: self.data.map(f) }
+  }
+
+  /// Zip two vectors of same length
+  pub fn zip[U](self: Self, other: Vec[N, U]) -> Vec[N, (T, U)] {
+    let mut result = [];
+    for i in 0..N {
+      result.push((self.data[i], other.data[i]));
+    }
+    Vec { data: result }
+  }
+
+  /// Convert to regular array
+  pub fn to_array(self: Self) -> Array[T] {
+    self.data
+  }
+}
+
+/// Empty vector
+pub fn empty[T]() -> Vec[0, T] {
+  Vec { data: [] }
+}
+
+/// Singleton vector
+pub fn singleton[T](value: T) -> Vec[1, T] {
+  Vec { data: [value] }
+}
+
+/// Replicate value n times
+pub fn replicate[const N: Nat, T: Clone](value: T) -> Vec[N, T] {
+  let mut data = [];
+  for _ in 0..N {
+    data.push(value.clone());
+  }
+  Vec { data }
+}
+
+/// Append two vectors
+pub fn append[const N: Nat, const M: Nat, T](
+  a: Vec[N, T],
+  b: Vec[M, T]
+) -> Vec[N + M, T] {
+  let mut data = a.data;
+  for item in b.data {
+    data.push(item);
+  }
+  Vec { data }
+}
+
+/// Head of non-empty vector
+pub fn vec_head[const N: Nat, T](v: Vec[N + 1, T]) -> T {
+  v.data[0]
+}
+
+/// Tail of non-empty vector
+pub fn vec_tail[const N: Nat, T](v: Vec[N + 1, T]) -> Vec[N, T] {
+  Vec { data: v.data[1..] }
+}
+
+// ============================================================================
+// Matrix Types
+// ============================================================================
+
+/// Matrix with known dimensions
+pub struct Matrix[const M: Nat, const N: Nat, T] {
+  data: Array[Array[T]],  // Row-major
+}
+
+impl[const M: Nat, const N: Nat, T] Matrix[M, N, T] {
+  /// Get element at checked indices
+  pub fn get[const I: Nat, const J: Nat](self: ref Self) -> T
+  where
+    I < M,
+    J < N,
+  {
+    self.data[I][J]
+  }
+
+  /// Get row count
+  pub fn rows(self: ref Self) -> Nat { M }
+
+  /// Get column count
+  pub fn cols(self: ref Self) -> Nat { N }
+
+  /// Transpose matrix
+  pub fn transpose(self: Self) -> Matrix[N, M, T] {
+    let mut data = [];
+    for j in 0..N {
+      let mut row = [];
+      for i in 0..M {
+        row.push(self.data[i][j]);
+      }
+      data.push(row);
+    }
+    Matrix { data }
+  }
+}
+
+/// Create zero matrix
+pub fn zeros[const M: Nat, const N: Nat]() -> Matrix[M, N, Int] {
+  let mut data = [];
+  for _ in 0..M {
+    let mut row = [];
+    for _ in 0..N {
+      row.push(0);
+    }
+    data.push(row);
+  }
+  Matrix { data }
+}
+
+/// Create identity matrix
+pub fn identity[const N: Nat]() -> Matrix[N, N, Int] {
+  let mut data = [];
+  for i in 0..N {
+    let mut row = [];
+    for j in 0..N {
+      row.push(if i == j { 1 } else { 0 });
+    }
+    data.push(row);
+  }
+  Matrix { data }
+}
+
+/// Matrix multiplication
+pub fn matmul[const M: Nat, const N: Nat, const P: Nat](
+  a: Matrix[M, N, Int],
+  b: Matrix[N, P, Int]
+) -> Matrix[M, P, Int] {
+  let mut data = [];
+  for i in 0..M {
+    let mut row = [];
+    for j in 0..P {
+      let mut sum = 0;
+      for k in 0..N {
+        sum += a.data[i][k] * b.data[k][j];
+      }
+      row.push(sum);
+    }
+    data.push(row);
+  }
+  Matrix { data }
+}
+
+// ============================================================================
+// Proof Objects
+// ============================================================================
+
+/// Proof that a < b
+pub struct LessThan[const A: Int, const B: Int] {
+  _phantom: (),
+}
+
+/// Proof that a <= b
+pub struct LessEq[const A: Int, const B: Int] {
+  _phantom: (),
+}
+
+/// Proof that a == b
+pub struct Equal[const A: Int, const B: Int] {
+  _phantom: (),
+}
+
+/// Create proof of less than (checked at compile time)
+pub fn prove_lt[const A: Int, const B: Int]() -> LessThan[A, B]
+where
+  A < B,
+{
+  LessThan { _phantom: () }
+}
+
+/// Create proof of less equal
+pub fn prove_le[const A: Int, const B: Int]() -> LessEq[A, B]
+where
+  A <= B,
+{
+  LessEq { _phantom: () }
+}
+
+/// Create proof of equality
+pub fn prove_eq[const A: Int, const B: Int]() -> Equal[A, B]
+where
+  A == B,
+{
+  Equal { _phantom: () }
+}
+
+/// Transitivity of less than
+pub fn trans_lt[const A: Int, const B: Int, const C: Int](
+  _p1: LessThan[A, B],
+  _p2: LessThan[B, C]
+) -> LessThan[A, C] {
+  LessThan { _phantom: () }
+}
+
+// ============================================================================
+// Bounded Index
+// ============================================================================
+
+/// Index type that's always valid for an array
+pub struct Index[const N: Nat] {
+  value: Nat,
+}
+
+impl[const N: Nat] Index[N] {
+  /// Try to create an index
+  pub fn new(i: Int) -> Option[Index[N]] {
+    if i >= 0 && i < N {
+      Some(Index { value: i as Nat })
+    } else {
+      None
+    }
+  }
+
+  /// Get the value
+  pub fn get(self: Self) -> Nat {
+    self.value
+  }
+
+  /// Index into array (always safe)
+  pub fn index[T](self: Self, arr: ref Vec[N, T]) -> ref T {
+    &arr.data[self.value]
+  }
+}
+
+/// Iterate over all valid indices
+pub fn indices[const N: Nat]() -> Array[Index[N]] {
+  let mut result = [];
+  for i in 0..N {
+    result.push(Index { value: i });
+  }
+  result
+}
+
+// ============================================================================
+// Assertion Helpers
+// ============================================================================
+
+/// Assert a condition at runtime, returning proof type
+pub fn assert_positive(n: Int) -> Result[Positive, String] {
+  if n > 0 {
+    Ok(n as Positive)
+  } else {
+    Err(format("expected positive, got {}", [n.to_string()]))
+  }
+}
+
+/// Unreachable with proof
+pub fn absurd[T](proof: LessThan[1, 0]) -> T {
+  unreachable!("1 < 0 is impossible")
+}
+
