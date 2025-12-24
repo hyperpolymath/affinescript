@@ -1,0 +1,20 @@
+= AffineScript
+:toc: auto
+
+AffineScript is a programming language combining affine types, dependent types, row polymorphism, and effects.
+
+== Features
+
+* Affine type system
+* Dependent types
+* Row polymorphism
+* Effect system
+* Compiles to WebAssembly
+
+== Built With
+
+* OCaml compiler infrastructure
+
+== License
+
+AGPL-3.0-or-later
