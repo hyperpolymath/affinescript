@@ -1,0 +1,276 @@
+= AffineScript Development Roadmap
+:toc: macro
+:toclevels: 2
+:icons: font
+
+Development roadmap for the AffineScript compiler.
+
+toc::[]
+
+== Current State: Frontend Complete
+
+The compiler frontend is production-ready with full test coverage:
+
+[cols="1,1,1"]
+|===
+|Component |Lines |Tests
+
+|Lexer
+|323
+|~145
+
+|Parser Grammar
+|615
+|~80
+
+|AST
+|395
+|—
+
+|Error Handling
+|215
+|—
+
+|Token Definitions
+|222
+|—
+
+|**Total**
+|**~2,200**
+|**~225**
+|===
+
+== Phase 1: Solidify Frontend [Current]
+
+=== 1.1 Parser Integration Testing
+
+* [ ] End-to-end parsing of all example files
+* [ ] Round-trip testing (parse → pretty-print → parse)
+* [ ] Error recovery testing with malformed inputs
+* [ ] Performance benchmarks on large files
+
+=== 1.2 AST Utilities
+
+* [ ] Pretty-printer for AST (human-readable output)
+* [ ] S-expression serialization for tooling
+* [ ] Source location preservation through transformations
+* [ ] AST diffing for testing
+
+=== 1.3 Error Message Polish
+
+* [ ] Contextual error messages with code snippets
+* [ ] Suggestions for common mistakes
+* [ ] LSP-compatible diagnostic format
+* [ ] Machine-readable JSON error output
+
+== Phase 2: Name Resolution
+
+=== 2.1 Scope Analysis
+
+* [ ] Block-level scope tracking
+* [ ] Function parameter scoping
+* [ ] Pattern binding in match arms
+* [ ] Let binding shadowing rules
+
+=== 2.2 Module Resolution
+
+* [ ] Module dependency graph
+* [ ] Import resolution (`use` statements)
+* [ ] Visibility checking (pub, pub(crate), etc.)
+* [ ] Glob imports and renaming
+
+=== 2.3 Symbol Table
+
+* [ ] Hierarchical symbol table structure
+* [ ] Type vs value namespace separation
+* [ ] Trait method resolution preparation
+* [ ] Effect operation lookup
+
+== Phase 3: Type Checking
+
+=== 3.1 Core Type System
+
+* [ ] Kind checking for type constructors
+* [ ] Type variable introduction and scoping
+* [ ] Basic unification algorithm
+* [ ] Substitution and zonking
+
+=== 3.2 Bidirectional Inference
+
+* [ ] Synthesis mode (infer types)
+* [ ] Checking mode (verify against annotation)
+* [ ] Subsumption checking
+* [ ] Principal type inference
+
+=== 3.3 Advanced Type Features
+
+* [ ] Row variable unification with occurs check
+* [ ] Effect inference and checking
+* [ ] Quantity (linearity) tracking
+* [ ] Dependent type checking with normalization
+
+=== 3.4 Trait Resolution
+
+* [ ] Instance lookup
+* [ ] Coherence checking
+* [ ] Associated type projection
+* [ ] Superclass elaboration
+
+=== 3.5 Constraint Solving
+
+* [ ] Constraint generation from expressions
+* [ ] Constraint simplification
+* [ ] Error localization for failed constraints
+* [ ] Deferred constraint resolution
+
+== Phase 4: Borrow Checking
+
+=== 4.1 Place Analysis
+
+* [ ] Place expression identification
+* [ ] Path decomposition (projections)
+* [ ] Move vs copy semantics
+
+=== 4.2 Loan Tracking
+
+* [ ] Shared borrow tracking
+* [ ] Mutable borrow tracking
+* [ ] Two-phase borrows
+* [ ] Reborrowing
+
+=== 4.3 Non-Lexical Lifetimes
+
+* [ ] Control flow graph construction
+* [ ] Liveness analysis
+* [ ] Lifetime constraint generation
+* [ ] Polonius-style region inference
+
+=== 4.4 Linearity Enforcement
+
+* [ ] Use-once checking for linear types
+* [ ] Must-use checking (no silent drops)
+* [ ] Quantity subtyping (0 ≤ 1 ≤ ω)
+
+== Phase 5: Effect Checking
+
+=== 5.1 Effect Inference
+
+* [ ] Effect variable introduction
+* [ ] Effect set operations (union, intersection)
+* [ ] Effect polymorphism
+
+=== 5.2 Handler Checking
+
+* [ ] Handler completeness (all ops handled)
+* [ ] Resume type checking
+* [ ] Effect row restriction
+
+=== 5.3 Totality Checking
+
+* [ ] Termination analysis for `total` functions
+* [ ] Structural recursion detection
+* [ ] Coverage checking for patterns
+
+== Phase 6: IR and Optimization
+
+=== 6.1 Intermediate Representation
+
+* [ ] ANF/CPS conversion
+* [ ] Closure conversion
+* [ ] Effect translation (CPS or multi-prompt delimited)
+* [ ] Monomorphization
+
+=== 6.2 Optimizations
+
+* [ ] Dead code elimination
+* [ ] Inlining
+* [ ] Constant folding
+* [ ] Specialization
+
+== Phase 7: Code Generation
+
+=== 7.1 WASM Backend
+
+* [ ] Function compilation
+* [ ] Linear memory layout
+* [ ] Stack management
+* [ ] Table-based dispatch (for closures/effects)
+
+=== 7.2 Runtime Support
+
+* [ ] Minimal allocator (bump/arena)
+* [ ] Effect runtime (stack switching or CPS)
+* [ ] Panic handling
+* [ ] FFI bridge
+
+=== 7.3 Standard Library
+
+* [ ] Core types (Option, Result, Vec)
+* [ ] Basic IO effects
+* [ ] String operations
+* [ ] Collections
+
+== Phase 8: Tooling
+
+=== 8.1 Language Server (LSP)
+
+* [ ] Go-to-definition
+* [ ] Find references
+* [ ] Hover for types
+* [ ] Diagnostics
+* [ ] Completion
+
+=== 8.2 Formatter
+
+* [ ] Opinionated code formatter
+* [ ] Configuration options
+* [ ] Editor integration
+
+=== 8.3 Build System
+
+* [ ] Package manifest format
+* [ ] Dependency resolution
+* [ ] Incremental compilation
+* [ ] Caching
+
+== Design Documents
+
+Detailed specifications exist for each phase:
+
+[cols="1,2"]
+|===
+|Document |Location
+
+|Language Specification
+|`affinescript-spec.md` (53KB)
+
+|Compiler Architecture
+|`docs/wiki/compiler/architecture.md`
+
+|Type Checker Design
+|`docs/wiki/compiler/type-checker.md`
+
+|Borrow Checker Design
+|`docs/wiki/compiler/borrow-checker.md`
+
+|Code Generation Design
+|`docs/wiki/compiler/codegen.md`
+|===
+
+== Non-Goals (Explicit Scope Limits)
+
+* **JIT compilation** — WASM runtimes provide this
+* **Native code generation** — WASM-to-native tools exist
+* **Garbage collection** — ownership model eliminates need
+* **Implicit effects** — all effects must be declared
+* **Subtyping** — row polymorphism preferred
+
+== Contributing
+
+The project is at an early stage where architectural decisions matter most. Priority areas:
+
+. Parser integration testing
+. Name resolution implementation
+. Type checker prototype
+
+See `CONTRIBUTING.adoc` for guidelines.
