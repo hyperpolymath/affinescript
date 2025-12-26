@@ -1,20 +1,292 @@
 = AffineScript
-:toc: auto
+:toc: macro
+:toclevels: 3
+:icons: font
+:source-highlighter: rouge
 
-AffineScript is a programming language combining affine types, dependent types, row polymorphism, and effects.
+A Rust-inspired programming language combining affine types, dependent types, row polymorphism, and extensible effects—compiling to WebAssembly with no garbage collector.
 
-== Features
+[.lead]
+AffineScript brings the safety of linear types, the expressiveness of dependent types, and the modularity of algebraic effects into a cohesive, practical language.
 
-* Affine type system
-* Dependent types
-* Row polymorphism
-* Effect system
-* Compiles to WebAssembly
+toc::[]
 
-== Built With
+== Overview
 
-* OCaml compiler infrastructure
+AffineScript is designed for systems programming where correctness matters. It combines ideas from:
+
+* **Rust** — ownership, borrowing, no GC
+* **Idris/Agda** — dependent types, totality checking
+* **PureScript/Koka** — row polymorphism, algebraic effects
+* **Linear Haskell** — quantitative type theory
+
+=== Key Features
+
+[cols="1,2"]
+|===
+|Feature |Description
+
+|**Affine Types**
+|Track resource usage with quantities: `0` (erased), `1` (linear), `ω` (unrestricted)
+
+|**Dependent Types**
+|Types that depend on values—length-indexed vectors, refinement types
+
+|**Row Polymorphism**
+|Extensible records with `{x: Int, ..r}` syntax for flexible data structures
+
+|**Extensible Effects**
+|User-defined effects with `effect` declarations and `handle`/`resume`
+
+|**Ownership**
+|`own`, `ref`, `mut` modifiers for memory safety without GC
+
+|**Totality Checking**
+|Mark functions as `total` to prove termination
+
+|**WebAssembly Target**
+|Compiles to WASM for portable, high-performance execution
+|===
+
+== Language Examples
+
+=== Hello World with Effects
+
+[source,affinescript]
+----
+effect IO {
+  fn print(s: String);
+  fn println(s: String);
+}
+
+fn main() -> () / IO {
+  println("Hello, AffineScript!");
+}
+----
+
+=== Ownership and Resource Safety
+
+[source,affinescript]
+----
+type File = own { fd: Int }
+
+fn open(path: ref String) -> Result[own File, IOError] / IO + Exn[IOError] {
+  Ok(File { fd: 42 })
+}
+
+fn read(file: ref File) -> Result[String, IOError] / IO {
+  // Borrows file — doesn't consume it
+  Ok("file contents")
+}
+
+fn close(file: own File) -> Result[(), IOError] / IO {
+  // Consumes file — can't use it after this
+  Ok(())
+}
+
+// Safe resource handling with RAII pattern
+fn withFile[T](
+  path: ref String,
+  action: (ref File) -> Result[T, IOError] / IO
+) -> Result[T, IOError] / IO {
+  let file = open(path)?;
+  let result = action(ref file);
+  close(file)?;
+  result
+}
+----
+
+=== Row Polymorphism
+
+[source,affinescript]
+----
+// Works on any record that has a 'name' field
+fn greet[..r](person: {name: String, ..r}) -> String / Pure {
+  "Hello, " ++ person.name
+}
+
+// Extend records while preserving other fields
+fn fullName[..r](
+  person: {first: String, last: String, ..r}
+) -> {first: String, last: String, fullName: String, ..r} / Pure {
+  {fullName: person.first ++ " " ++ person.last, ..person}
+}
+
+fn main() -> () / Pure {
+  let alice = {name: "Alice", age: 30, role: "Engineer"};
+  let bob = {name: "Bob", department: "Sales"};
+
+  // Both work despite different record shapes
+  let greeting1 = greet(alice);  // ✓
+  let greeting2 = greet(bob);    // ✓
+}
+----
+
+=== Dependent Types: Length-Indexed Vectors
+
+[source,affinescript]
+----
+type Vec[n: Nat, T: Type] =
+  | Nil : Vec[0, T]
+  | Cons(head: T, tail: Vec[n, T]) : Vec[n + 1, T]
+
+// Can only be called on non-empty vectors — enforced by types!
+total fn head[n: Nat, T](v: Vec[n + 1, T]) -> T / Pure {
+  match v {
+    Cons(h, _) => h
+  }
+}
+
+// Concatenate: result length is sum of input lengths
+total fn append[n: Nat, m: Nat, T](
+  a: Vec[n, T],
+  b: Vec[m, T]
+) -> Vec[n + m, T] / Pure {
+  match a {
+    Nil => b,
+    Cons(h, t) => Cons(h, append(t, b))
+  }
+}
+----
+
+== Project Status
+
+=== Implementation Progress
+
+[cols="2,1,3"]
+|===
+|Component |Status |Details
+
+|**Lexer**
+|✅ Complete
+|sedlex-based, Unicode support, full test coverage
+
+|**Parser Grammar**
+|✅ Complete
+|615-line Menhir grammar covering entire syntax
+
+|**Abstract Syntax Tree**
+|✅ Complete
+|395 lines representing all language constructs
+
+|**Error Handling**
+|✅ Complete
+|Rich diagnostics with 50+ error codes, colored output
+
+|**CLI Interface**
+|✅ Complete
+|`lex`, `parse`, `check`, `compile` commands
+
+|**Name Resolution**
+|🔲 Planned
+|Scope analysis, module resolution
+
+|**Type Checker**
+|🔲 Planned
+|Bidirectional inference, constraint solving
+
+|**Borrow Checker**
+|🔲 Planned
+|Non-lexical lifetimes, linearity enforcement
+
+|**Code Generation**
+|🔲 Planned
+|WASM backend
+|===
+
+=== What Works Today
+
+The compiler frontend is complete. You can:
+
+* **Tokenize** AffineScript source files
+* **Parse** to a full abstract syntax tree
+* **Pretty-print** ASTs for debugging
+
+[source,bash]
+----
+# Tokenize a file
+dune exec affinescript -- lex examples/hello.as
+
+# Parse and display AST
+dune exec affinescript -- parse examples/ownership.as
+----
+
+== Building
+
+=== Prerequisites
+
+* OCaml 5.1+
+* Dune 3.0+
+* opam packages: `sedlex`, `menhir`, `ppx_deriving`, `cmdliner`, `alcotest`
+
+=== Commands
+
+[source,bash]
+----
+# Build
+dune build
+
+# Run tests
+dune runtest
+
+# Format code
+dune fmt
+
+# Generate documentation
+dune build @doc
+
+# Run compiler
+dune exec affinescript -- <command> <file>
+----
+
+== Repository Structure
+
+[source]
+----
+affinescript/
+├── lib/                    # Core compiler library
+│   ├── ast.ml              # Abstract syntax tree (395 lines)
+│   ├── token.ml            # Token definitions (222 lines)
+│   ├── lexer.ml            # Lexer — sedlex-based (323 lines)
+│   ├── parser.mly          # Parser — Menhir grammar (615 lines)
+│   ├── parse.ml            # Parser driver
+│   ├── span.ml             # Source location tracking
+│   └── error.ml            # Diagnostics and error handling
+├── bin/                    # CLI executable
+│   └── main.ml             # Command-line interface
+├── test/                   # Test suite
+│   ├── test_lexer.ml       # Lexer tests (~145 cases)
+│   └── test_parser.ml      # Parser tests (~80 cases)
+├── examples/               # Example programs
+│   ├── hello.as            # Basic IO effect
+│   ├── ownership.as        # Resource management
+│   ├── rows.as             # Row polymorphism
+│   └── vectors.as          # Dependent types
+├── docs/                   # Documentation
+│   └── wiki/               # Compiler & language documentation
+└── affinescript-spec.md    # Complete language specification (53KB)
+----
+
+== Documentation
+
+* `affinescript-spec.md` — Complete language specification
+* `docs/wiki/compiler/` — Compiler architecture and phase documentation
+* `docs/wiki/language-reference/` — Language feature guides
+* `docs/wiki/tutorials/` — Getting started guides
+
+== Design Philosophy
+
+. **Safety by default** — Ownership and effects make unsafe code explicit
+. **Types as documentation** — Dependent types encode invariants in the type system
+. **Composable abstractions** — Row polymorphism and effects compose cleanly
+. **No runtime cost for safety** — Linear types enable compile-time resource management
+. **Partial by default** — Functions may diverge unless marked `total`
 
 == License
 
-AGPL-3.0-or-later
+SPDX-License-Identifier: AGPL-3.0-or-later
+
+== See Also
+
+* link:ROADMAP.adoc[Development Roadmap]
+* link:affinescript-spec.md[Language Specification]
