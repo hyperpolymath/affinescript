@@ -1,0 +1,36 @@
+{ Ast.prog_module = None; prog_imports = [];
+  prog_decls =
+  [Ast.TopType
+     { Ast.td_vis = Ast.Private;
+       td_name = { Ast.name = "Alias"; span = <span> };
+       td_type_params = [];
+       td_body =
+       (Ast.TyAlias (Ast.TyCon { Ast.name = "Int"; span = <span> })) };
+   Ast.TopType
+     { Ast.td_vis = Ast.Private;
+       td_name = { Ast.name = "Point"; span = <span> };
+       td_type_params = [];
+       td_body =
+       (Ast.TyStruct
+          [{ Ast.sf_vis = Ast.Private;
+             sf_name = { Ast.name = "x"; span = <span> };
+             sf_ty = (Ast.TyCon { Ast.name = "Int"; span = <span> }) };
+           { Ast.sf_vis = Ast.Private;
+             sf_name = { Ast.name = "y"; span = <span> };
+             sf_ty = (Ast.TyCon { Ast.name = "Int"; span = <span> }) }])
+       };
+   Ast.TopType
+     { Ast.td_vis = Ast.Private;
+       td_name = { Ast.name = "Option"; span = <span> };
+       td_type_params =
+       [{ Ast.tp_quantity = None;
+          tp_name = { Ast.name = "T"; span = <span> }; tp_kind = None }];
+       td_body =
+       (Ast.TyEnum
+          [{ Ast.vd_name = { Ast.name = "None"; span = <span> };
+             vd_fields = []; vd_ret_ty = None };
+           { Ast.vd_name = { Ast.name = "Some"; span = <span> };
+             vd_fields = [(Ast.TyVar { Ast.name = "T"; span = <span> })];
+             vd_ret_ty = None }])
+       }]
+  }

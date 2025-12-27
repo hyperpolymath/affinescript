@@ -1,0 +1,88 @@
+{ Ast.prog_module = None; prog_imports = [];
+  prog_decls =
+  [Ast.TopFn
+     { Ast.fd_vis = Ast.Private; fd_total = false;
+       fd_name = { Ast.name = "test_match"; span = <span> };
+       fd_type_params = []; fd_params = [];
+       fd_ret_ty = (Some (Ast.TyCon { Ast.name = "Int"; span = <span> }));
+       fd_eff = None; fd_where = [];
+       fd_body =
+       (Ast.FnBlock
+          { Ast.blk_stmts = [];
+            blk_expr =
+            (Some (Ast.ExprMatch
+                     { Ast.em_scrutinee =
+                       (Ast.ExprVar { Ast.name = "x"; span = <span> });
+                       em_arms =
+                       [{ Ast.ma_pat =
+                          (Ast.PatLit (Ast.LitInt (0, <span>)));
+                          ma_guard = None;
+                          ma_body = (Ast.ExprLit (Ast.LitInt (1, <span>))) };
+                        { Ast.ma_pat =
+                          (Ast.PatVar { Ast.name = "n"; span = <span> });
+                          ma_guard = None;
+                          ma_body =
+                          (Ast.ExprBinary (
+                             (Ast.ExprVar { Ast.name = "n"; span = <span> }),
+                             Ast.OpAdd,
+                             (Ast.ExprLit (Ast.LitInt (1, <span>))))) }]
+                       }))
+            })
+       };
+   Ast.TopFn
+     { Ast.fd_vis = Ast.Private; fd_total = false;
+       fd_name = { Ast.name = "test_destructure"; span = <span> };
+       fd_type_params = []; fd_params = [];
+       fd_ret_ty = (Some (Ast.TyCon { Ast.name = "Int"; span = <span> }));
+       fd_eff = None; fd_where = [];
+       fd_body =
+       (Ast.FnBlock
+          { Ast.blk_stmts = [];
+            blk_expr =
+            (Some (Ast.ExprMatch
+                     { Ast.em_scrutinee =
+                       (Ast.ExprVar { Ast.name = "pair"; span = <span> });
+                       em_arms =
+                       [{ Ast.ma_pat =
+                          (Ast.PatTuple
+                             [(Ast.PatVar { Ast.name = "a"; span = <span> });
+                              (Ast.PatVar { Ast.name = "b"; span = <span> })]);
+                          ma_guard = None;
+                          ma_body =
+                          (Ast.ExprBinary (
+                             (Ast.ExprVar { Ast.name = "a"; span = <span> }),
+                             Ast.OpAdd,
+                             (Ast.ExprVar { Ast.name = "b"; span = <span> }))) }]
+                       }))
+            })
+       };
+   Ast.TopFn
+     { Ast.fd_vis = Ast.Private; fd_total = false;
+       fd_name = { Ast.name = "test_constructor"; span = <span> };
+       fd_type_params = []; fd_params = [];
+       fd_ret_ty = (Some (Ast.TyCon { Ast.name = "Int"; span = <span> }));
+       fd_eff = None; fd_where = [];
+       fd_body =
+       (Ast.FnBlock
+          { Ast.blk_stmts = [];
+            blk_expr =
+            (Some (Ast.ExprMatch
+                     { Ast.em_scrutinee =
+                       (Ast.ExprVar { Ast.name = "opt"; span = <span> });
+                       em_arms =
+                       [{ Ast.ma_pat =
+                          (Ast.PatCon (
+                             { Ast.name = "Some"; span = <span> },
+                             [(Ast.PatVar { Ast.name = "x"; span = <span> })]));
+                          ma_guard = None;
+                          ma_body =
+                          (Ast.ExprVar { Ast.name = "x"; span = <span> }) };
+                        { Ast.ma_pat =
+                          (Ast.PatCon (
+                             { Ast.name = "None"; span = <span> }, []));
+                          ma_guard = None;
+                          ma_body = (Ast.ExprLit (Ast.LitInt (0, <span>))) }]
+                       }))
+            })
+       }]
+  }

@@ -1,3 +1,6 @@
 (test
  (name test_main)
- (libraries affinescript alcotest))
+ (libraries affinescript alcotest str unix)
+ (deps
+  (source_tree golden)
+  (source_tree ../examples)))
