@@ -1,0 +1,31 @@
+{ Ast.prog_module = None;
+  prog_imports =
+  [(Ast.ImportSimple (
+      [{ Ast.name = "std"; span = <span> };
+       { Ast.name = "io"; span = <span> }],
+      None));
+   (Ast.ImportSimple (
+      [{ Ast.name = "std"; span = <span> };
+       { Ast.name = "collections"; span = <span> };
+       { Ast.name = "Vec"; span = <span> }],
+      (Some { Ast.name = "Vector"; span = <span> })));
+   (Ast.ImportList (
+      [{ Ast.name = "std"; span = <span> };
+       { Ast.name = "prelude"; span = <span> }],
+      [{ Ast.ii_name = { Ast.name = "Option"; span = <span> };
+         ii_alias = None };
+       { Ast.ii_name = { Ast.name = "Result"; span = <span> };
+         ii_alias = None }]))
+   ];
+  prog_decls =
+  [Ast.TopFn
+     { Ast.fd_vis = Ast.Private; fd_total = false;
+       fd_name = { Ast.name = "main"; span = <span> };
+       fd_type_params = []; fd_params = [];
+       fd_ret_ty = (Some (Ast.TyTuple [])); fd_eff = None; fd_where = [];
+       fd_body =
+       (Ast.FnBlock
+          { Ast.blk_stmts = [];
+            blk_expr = (Some (Ast.ExprLit (Ast.LitUnit <span>))) })
+       }]
+  }

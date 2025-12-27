@@ -1,0 +1,36 @@
+{ Ast.prog_module = None; prog_imports = [];
+  prog_decls =
+  [Ast.TopEffect
+     { Ast.ed_vis = Ast.Private;
+       ed_name = { Ast.name = "IO"; span = <span> };
+       ed_type_params = [];
+       ed_ops =
+       [{ Ast.eod_name = { Ast.name = "print"; span = <span> };
+          eod_params =
+          [{ Ast.p_quantity = None; p_ownership = None;
+             p_name = { Ast.name = "s"; span = <span> };
+             p_ty = (Ast.TyCon { Ast.name = "String"; span = <span> }) }];
+          eod_ret_ty = (Some (Ast.TyTuple [])) };
+        { Ast.eod_name = { Ast.name = "read"; span = <span> };
+          eod_params = [];
+          eod_ret_ty =
+          (Some (Ast.TyCon { Ast.name = "String"; span = <span> })) }]
+       };
+   Ast.TopEffect
+     { Ast.ed_vis = Ast.Private;
+       ed_name = { Ast.name = "State"; span = <span> };
+       ed_type_params =
+       [{ Ast.tp_quantity = None;
+          tp_name = { Ast.name = "S"; span = <span> }; tp_kind = None }];
+       ed_ops =
+       [{ Ast.eod_name = { Ast.name = "get"; span = <span> };
+          eod_params = [];
+          eod_ret_ty = (Some (Ast.TyVar { Ast.name = "S"; span = <span> })) };
+        { Ast.eod_name = { Ast.name = "put"; span = <span> };
+          eod_params =
+          [{ Ast.p_quantity = None; p_ownership = None;
+             p_name = { Ast.name = "s"; span = <span> };
+             p_ty = (Ast.TyVar { Ast.name = "S"; span = <span> }) }];
+          eod_ret_ty = (Some (Ast.TyTuple [])) }]
+       }]
+  }
