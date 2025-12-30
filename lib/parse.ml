@@ -91,7 +91,6 @@ let next_token state () =
     | Token.TRY -> Parser.TRY
     | Token.CATCH -> Parser.CATCH
     | Token.FINALLY -> Parser.FINALLY
-    | Token.WITH -> Parser.WITH
     | Token.NAT -> Parser.NAT
     | Token.INT_T -> Parser.INT_T
     | Token.BOOL -> Parser.BOOL
@@ -188,7 +187,7 @@ let parse_channel ~file chan : (Ast.program, string * Span.t) result =
 (** Parse a program from file *)
 let parse_file filename : (Ast.program, string * Span.t) result =
   try
-    let chan = open_in filename in
+    let chan = open_in_bin filename in
     let result = parse_channel ~file:filename chan in
     close_in chan;
     result

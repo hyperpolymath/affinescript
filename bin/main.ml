@@ -7,7 +7,7 @@ let version = "0.1.0"
 
 (** Read file contents *)
 let read_file path =
-  let ic = open_in path in
+  let ic = open_in_bin path in
   let n = in_channel_length ic in
   let s = really_input_string ic n in
   close_in ic;
