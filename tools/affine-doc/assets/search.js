@@ -4,6 +4,29 @@
 (function() {
   'use strict';
 
+  // HTML escape function to prevent XSS
+  function escapeHtml(text) {
+    if (typeof text !== 'string') return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  // Safe URL validation
+  function isValidUrl(url) {
+    if (typeof url !== 'string') return false;
+    // Only allow relative URLs or same-origin URLs
+    try {
+      if (url.startsWith('/') || url.startsWith('./') || url.startsWith('../')) {
+        return true;
+      }
+      const parsed = new URL(url, window.location.origin);
+      return parsed.origin === window.location.origin;
+    } catch {
+      return false;
+    }
+  }
+
   // Wait for DOM and search index to load
   document.addEventListener('DOMContentLoaded', function() {
     const searchInput = document.getElementById('search');
@@ -26,8 +49,7 @@
     // Search function
     function search(query) {
       if (!query || query.length < 2) {
-        searchResults.innerHTML = '';
-        searchResults.style.display = 'none';
+        clearResults();
         return;
       }
 
@@ -52,8 +74,8 @@
     }
 
     function computeScore(entry, query) {
-      const nameLower = entry.name.toLowerCase();
-      const pathLower = entry.path.toLowerCase();
+      const nameLower = (entry.name || '').toLowerCase();
+      const pathLower = (entry.path || '').toLowerCase();
 
       if (nameLower === query) return 100;
       if (nameLower.startsWith(query)) return 50;
@@ -63,25 +85,62 @@
       return 0;
     }
 
+    function clearResults() {
+      while (searchResults.firstChild) {
+        searchResults.removeChild(searchResults.firstChild);
+      }
+      searchResults.style.display = 'none';
+    }
+
     function renderResults(results) {
+      clearResults();
+
       if (results.length === 0) {
-        searchResults.innerHTML = '<div class="no-results">No results found</div>';
+        const noResults = document.createElement('div');
+        noResults.className = 'no-results';
+        noResults.textContent = 'No results found';
+        searchResults.appendChild(noResults);
         searchResults.style.display = 'block';
         return;
       }
 
-      const html = results.map(function(r) {
-        return `
-          <a class="search-result" href="${r.entry.url}">
-            <span class="result-kind">${r.entry.kind}</span>
-            <span class="result-name">${r.entry.name}</span>
-            <span class="result-path">${r.entry.path}</span>
-            ${r.entry.description ? `<span class="result-desc">${r.entry.description}</span>` : ''}
-          </a>
-        `;
-      }).join('');
+      for (const r of results) {
+        const link = document.createElement('a');
+        link.className = 'search-result';
 
-      searchResults.innerHTML = html;
+        // Validate URL before setting href
+        const url = r.entry.url;
+        if (isValidUrl(url)) {
+          link.href = url;
+        } else {
+          link.href = '#';
+        }
+
+        const kindSpan = document.createElement('span');
+        kindSpan.className = 'result-kind';
+        kindSpan.textContent = r.entry.kind || '';
+        link.appendChild(kindSpan);
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'result-name';
+        nameSpan.textContent = r.entry.name || '';
+        link.appendChild(nameSpan);
+
+        const pathSpan = document.createElement('span');
+        pathSpan.className = 'result-path';
+        pathSpan.textContent = r.entry.path || '';
+        link.appendChild(pathSpan);
+
+        if (r.entry.description) {
+          const descSpan = document.createElement('span');
+          descSpan.className = 'result-desc';
+          descSpan.textContent = r.entry.description;
+          link.appendChild(descSpan);
+        }
+
+        searchResults.appendChild(link);
+      }
+
       searchResults.style.display = 'block';
     }
 
