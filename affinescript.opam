@@ -23,7 +23,7 @@ doc: "https://github.com/hyperpolymath/affinescript"
 bug-reports: "https://github.com/hyperpolymath/affinescript/issues"
 depends: [
   "ocaml" {>= "5.1"}
-  "dune" {>= "3.14" & >= "3.14"}
+  "dune" {>= "3.14"}
   "menhir" {>= "20231231"}
   "sedlex" {>= "3.2"}
   "ppx_deriving" {>= "5.2"}

@@ -74,110 +74,172 @@ let check_variable (ctx : context) (sym : Symbol.symbol) (id : ident)
   match (q, u) with
   (* Erased: must not be used *)
   | (QZero, UZero) -> Ok ()
-  | (QZero, _) -> Error (ErasedVariableUsed id, id.id_span)
+  | (QZero, _) -> Error (ErasedVariableUsed id, id.span)
   (* Linear: must be used exactly once (or zero for affine) *)
   | (QOne, UZero) -> Ok ()  (* Affine: can drop *)
   | (QOne, UOne) -> Ok ()
-  | (QOne, UMany) -> Error (LinearVariableUsedMultiple id, id.id_span)
+  | (QOne, UMany) -> Error (LinearVariableUsedMultiple id, id.span)
   (* Unrestricted: any usage is fine *)
   | (QOmega, _) -> Ok ()
 
 (** Analyze usage in an expression *)
 let rec analyze_expr (ctx : context) (symbols : Symbol.t) (expr : expr) : unit =
   match expr with
-  | EVar id ->
-    begin match Symbol.lookup symbols id.id_name with
+  | ExprVar id ->
+    begin match Symbol.lookup symbols id.name with
       | Some sym -> use ctx sym
       | None -> ()
     end
 
-  | ELit _ -> ()
+  | ExprLit _ -> ()
 
-  | EApp (func, arg, _) ->
+  | ExprApp (func, args) ->
     analyze_expr ctx symbols func;
-    analyze_expr ctx symbols arg
+    List.iter (analyze_expr ctx symbols) args
 
-  | ELam lam ->
+  | ExprLambda lam ->
     (* Parameters are bound; analyze body *)
-    analyze_expr ctx symbols lam.lam_body
+    analyze_expr ctx symbols lam.elam_body
 
-  | ELet lb ->
-    analyze_expr ctx symbols lb.lb_rhs;
-    analyze_expr ctx symbols lb.lb_body
+  | ExprLet lb ->
+    analyze_expr ctx symbols lb.el_value;
+    Option.iter (analyze_expr ctx symbols) lb.el_body
 
-  | EIf (cond, then_, else_, _) ->
-    analyze_expr ctx symbols cond;
+  | ExprIf ei ->
+    analyze_expr ctx symbols ei.ei_cond;
     (* For branches, we need to join usages *)
     (* TODO: Proper branch handling *)
-    analyze_expr ctx symbols then_;
-    analyze_expr ctx symbols else_
+    analyze_expr ctx symbols ei.ei_then;
+    Option.iter (analyze_expr ctx symbols) ei.ei_else
 
-  | ECase (scrut, branches, _) ->
-    analyze_expr ctx symbols scrut;
-    List.iter (fun branch ->
-      analyze_expr ctx symbols branch.cb_body
-    ) branches
+  | ExprMatch em ->
+    analyze_expr ctx symbols em.em_scrutinee;
+    List.iter (fun arm ->
+      Option.iter (analyze_expr ctx symbols) arm.ma_guard;
+      analyze_expr ctx symbols arm.ma_body
+    ) em.em_arms
 
-  | ETuple (exprs, _) ->
+  | ExprTuple exprs ->
     List.iter (analyze_expr ctx symbols) exprs
 
-  | ERecord (fields, _) ->
-    List.iter (fun (_, e) -> analyze_expr ctx symbols e) fields
+  | ExprArray exprs ->
+    List.iter (analyze_expr ctx symbols) exprs
 
-  | ERecordAccess (e, _, _) ->
+  | ExprRecord er ->
+    List.iter (fun (_id, e_opt) ->
+      Option.iter (analyze_expr ctx symbols) e_opt
+    ) er.er_fields;
+    Option.iter (analyze_expr ctx symbols) er.er_spread
+
+  | ExprField (e, _) ->
     analyze_expr ctx symbols e
 
-  | ERecordUpdate (base, _, value, _) ->
-    analyze_expr ctx symbols base;
-    analyze_expr ctx symbols value
+  | ExprTupleIndex (e, _) ->
+    analyze_expr ctx symbols e
 
-  | EBlock (exprs, _) ->
-    List.iter (analyze_expr ctx symbols) exprs
+  | ExprIndex (arr, idx) ->
+    analyze_expr ctx symbols arr;
+    analyze_expr ctx symbols idx
 
-  | EBinOp (left, _, right, _) ->
+  | ExprRowRestrict (e, _) ->
+    analyze_expr ctx symbols e
+
+  | ExprBlock blk ->
+    analyze_block ctx symbols blk
+
+  | ExprBinary (left, _, right) ->
     analyze_expr ctx symbols left;
     analyze_expr ctx symbols right
 
-  | EUnaryOp (_, e, _) ->
+  | ExprUnary (_, e) ->
     analyze_expr ctx symbols e
 
-  | EHandle (body, handler, _) ->
-    analyze_expr ctx symbols body;
-    begin match handler.h_return with
-      | Some (_, e) -> analyze_expr ctx symbols e
-      | None -> ()
-    end;
-    List.iter (fun clause ->
-      analyze_expr ctx symbols clause.oc_body
-    ) handler.h_ops
+  | ExprHandle eh ->
+    analyze_expr ctx symbols eh.eh_body;
+    List.iter (fun arm ->
+      match arm with
+      | HandlerReturn (_pat, body) -> analyze_expr ctx symbols body
+      | HandlerOp (_op, _pats, body) -> analyze_expr ctx symbols body
+    ) eh.eh_handlers
 
-  | EPerform (_, arg, _) ->
-    analyze_expr ctx symbols arg
+  | ExprResume e_opt ->
+    Option.iter (analyze_expr ctx symbols) e_opt
 
-  | _ -> ()
+  | ExprReturn e_opt ->
+    Option.iter (analyze_expr ctx symbols) e_opt
+
+  | ExprTry et ->
+    analyze_block ctx symbols et.et_body;
+    Option.iter (fun arms ->
+      List.iter (fun arm ->
+        Option.iter (analyze_expr ctx symbols) arm.ma_guard;
+        analyze_expr ctx symbols arm.ma_body
+      ) arms
+    ) et.et_catch;
+    Option.iter (analyze_block ctx symbols) et.et_finally
+
+  | ExprUnsafe ops ->
+    List.iter (fun op ->
+      match op with
+      | UnsafeRead e -> analyze_expr ctx symbols e
+      | UnsafeWrite (e1, e2) ->
+        analyze_expr ctx symbols e1;
+        analyze_expr ctx symbols e2
+      | UnsafeOffset (e1, e2) ->
+        analyze_expr ctx symbols e1;
+        analyze_expr ctx symbols e2
+      | UnsafeTransmute (_, _, e) -> analyze_expr ctx symbols e
+      | UnsafeForget e -> analyze_expr ctx symbols e
+      | UnsafeAssume _ -> ()
+    ) ops
+
+  | ExprVariant _ -> ()
+
+  | ExprSpan (e, _) ->
+    analyze_expr ctx symbols e
+
+and analyze_block (ctx : context) (symbols : Symbol.t) (blk : block) : unit =
+  List.iter (analyze_stmt ctx symbols) blk.blk_stmts;
+  Option.iter (analyze_expr ctx symbols) blk.blk_expr
+
+and analyze_stmt (ctx : context) (symbols : Symbol.t) (stmt : stmt) : unit =
+  match stmt with
+  | StmtLet sl ->
+    analyze_expr ctx symbols sl.sl_value
+  | StmtExpr e ->
+    analyze_expr ctx symbols e
+  | StmtAssign (lhs, _, rhs) ->
+    analyze_expr ctx symbols lhs;
+    analyze_expr ctx symbols rhs
+  | StmtWhile (cond, body) ->
+    analyze_expr ctx symbols cond;
+    analyze_block ctx symbols body
+  | StmtFor (_pat, iter, body) ->
+    analyze_expr ctx symbols iter;
+    analyze_block ctx symbols body
 
 (** Check quantities for a function *)
-let check_function (symbols : Symbol.t) (fd : fun_decl) : unit result =
+let check_function (symbols : Symbol.t) (fd : fn_decl) : unit result =
   let ctx = create () in
   (* Declare parameter quantities *)
-  List.iter (fun (id, _, q_opt) ->
-    let q = Option.value q_opt ~default:QOmega in
-    match Symbol.lookup symbols id.id_name with
+  List.iter (fun param ->
+    let q = Option.value param.p_quantity ~default:QOmega in
+    match Symbol.lookup symbols param.p_name.name with
     | Some sym -> declare ctx sym q
     | None -> ()
   ) fd.fd_params;
   (* Analyze body *)
   begin match fd.fd_body with
-    | Some body -> analyze_expr ctx symbols body
-    | None -> ()
+    | FnBlock blk -> analyze_block ctx symbols blk
+    | FnExpr e -> analyze_expr ctx symbols e
   end;
   (* Check all parameters *)
-  List.fold_left (fun acc (id, _, _) ->
+  List.fold_left (fun acc param ->
     match acc with
     | Error e -> Error e
     | Ok () ->
-      match Symbol.lookup symbols id.id_name with
-      | Some sym -> check_variable ctx sym id
+      match Symbol.lookup symbols param.p_name.name with
+      | Some sym -> check_variable ctx sym param.p_name
       | None -> Ok ()
   ) (Ok ()) fd.fd_params
 
@@ -188,7 +250,7 @@ let check_program (symbols : Symbol.t) (program : program) : unit result =
     | Error e -> Error e
     | Ok () ->
       match decl with
-      | DFun fd -> check_function symbols fd
+      | TopFn fd -> check_function symbols fd
       | _ -> Ok ()
   ) (Ok ()) program.prog_decls
 

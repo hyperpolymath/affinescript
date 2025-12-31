@@ -206,8 +206,11 @@ pub extern "C" fn gc_alloc(size: usize, type_tag: u32) -> *mut GcHeader {
         }
     }
 
-    // Allocate header + data
-    let total_size = core::mem::size_of::<GcHeader>() + size;
+    // Allocate header + data (with overflow check)
+    let total_size = match size.checked_add(core::mem::size_of::<GcHeader>()) {
+        Some(s) => s,
+        None => return core::ptr::null_mut(), // Size overflow
+    };
     let ptr = crate::alloc::allocate(total_size, core::mem::align_of::<GcHeader>());
 
     if ptr.is_null() {

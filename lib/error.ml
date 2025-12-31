@@ -169,7 +169,7 @@ let format_diagnostic ~source diag =
     (match source with
     | Some src ->
       let lines = String.split_on_char '\n' src in
-      if span.start_pos.line <= List.length lines then begin
+      if span.start_pos.line > 0 && span.start_pos.line <= List.length lines then begin
         let line = List.nth lines (span.start_pos.line - 1) in
         let line_num = string_of_int span.start_pos.line in
         let padding = String.make (String.length line_num) ' ' in
@@ -177,7 +177,7 @@ let format_diagnostic ~source diag =
         Buffer.add_string buf (Printf.sprintf " %s | %s\n" line_num line);
         Buffer.add_string buf (Printf.sprintf "   %s | %s%s"
           padding
-          (String.make (span.start_pos.col - 1) ' ')
+          (String.make (max 0 (span.start_pos.col - 1)) ' ')
           (String.make (max 1 (span.end_pos.col - span.start_pos.col)) '^'));
         if label.message <> "" then
           Buffer.add_string buf (Printf.sprintf " %s" label.message);
