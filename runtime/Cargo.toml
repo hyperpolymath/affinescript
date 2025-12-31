@@ -1,0 +1,46 @@
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+# Copyright 2024 AffineScript Contributors
+
+[package]
+name = "affinescript-runtime"
+version = "0.1.0"
+edition = "2021"
+authors = ["AffineScript Contributors"]
+description = "Runtime library for AffineScript, compiled to WebAssembly"
+license = "Apache-2.0 OR MIT"
+repository = "https://github.com/hyperpolymath/affinescript"
+keywords = ["affinescript", "runtime", "wasm"]
+categories = ["wasm", "no-std"]
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["std"]
+std = []
+# Enable small garbage collector for cyclic ω-quantity data
+gc = []
+# Enable WASI support
+wasi = ["dep:wasi"]
+
+[dependencies]
+# Small allocator for WASM
+wee_alloc = { version = "0.4", optional = true }
+
+# WASI bindings (optional)
+wasi = { version = "0.11", optional = true }
+
+[dev-dependencies]
+# Testing
+wasm-bindgen-test = "0.3"
+
+[profile.release]
+# Optimize for size in WASM
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.release-speed]
+inherits = "release"
+opt-level = 3

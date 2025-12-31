@@ -1,0 +1,65 @@
+# SPDX-License-Identifier: Apache-2.0 OR MIT
+# Copyright 2024 AffineScript Contributors
+
+[package]
+name = "affine-pkg"
+version = "0.1.0"
+edition = "2021"
+description = "Package manager for AffineScript"
+license = "Apache-2.0 OR MIT"
+repository = "https://github.com/affinescript/affinescript"
+keywords = ["package-manager", "affinescript", "build"]
+categories = ["development-tools", "command-line-utilities"]
+
+[dependencies]
+# CLI
+clap = { version = "4", features = ["derive", "env"] }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# HTTP client for registry
+reqwest = { version = "0.11", features = ["json", "rustls-tls"], default-features = false }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+serde_json = "1"
+
+# Hashing (content-addressed storage)
+sha2 = "0.10"
+hex = "0.4"
+
+# Archive handling
+tar = "0.4"
+flate2 = "1"
+zip = "0.6"
+
+# Path handling
+camino = "1"
+dirs = "5"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Error handling
+thiserror = "1"
+anyhow = "1"
+
+# Semver
+semver = { version = "1", features = ["serde"] }
+
+# Lockfile
+toml_edit = "0.21"
+
+# Progress bars
+indicatif = "0.17"
+
+[dev-dependencies]
+tempfile = "3"
+tokio-test = "0.4"
+
+[[bin]]
+name = "affine"
+path = "src/main.rs"
