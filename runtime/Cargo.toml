@@ -24,8 +24,8 @@ gc = []
 wasi = ["dep:wasi"]
 
 [dependencies]
-# Small allocator for WASM
-wee_alloc = { version = "0.4", optional = true }
+# Small allocator for WASM (talc replaces unmaintained wee_alloc)
+talc = { version = "4", optional = true, default-features = false }
 
 # WASI bindings (optional)
 wasi = { version = "0.11", optional = true }
