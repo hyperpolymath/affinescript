@@ -1,5 +1,5 @@
-(* SPDX-License-Identifier: Apache-2.0 OR MIT *)
-(* Copyright 2024 AffineScript Contributors *)
+(* SPDX-License-Identifier: MIT OR AGPL-3.0-or-later *)
+(* SPDX-FileCopyrightText: 2024-2025 hyperpolymath *)
 
 (** Borrow checker for ownership verification.
 

@@ -1,0 +1,8 @@
+# Expected: parse error for using keyword as identifier
+# Exit code: 1
+# Error pattern: expected identifier, found keyword
+error[E0002]: Parse error: expected identifier
+  --> conformance/invalid/009_reserved_keyword.as:4:7
+   |
+ 4 |   let fn = 42;
+   |       ^^ expected identifier, found keyword 'fn'

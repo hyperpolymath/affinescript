@@ -1,0 +1,8 @@
+# Expected: parse error for empty match
+# Exit code: 1
+# Error pattern: expected at least one match arm
+error[E0002]: Parse error: expected pattern
+  --> conformance/invalid/010_empty_match.as:5:3
+   |
+ 5 |   }
+   | ^ match expression requires at least one arm

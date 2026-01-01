@@ -1,0 +1,4 @@
+# Expected output: let bindings parse correctly
+# Exit code: 0
+# Generate with: dune exec affinescript -- parse conformance/valid/003_let_bindings.as
+# TODO: Generate actual golden output when toolchain is available

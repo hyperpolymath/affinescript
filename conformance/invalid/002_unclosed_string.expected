@@ -1,0 +1,8 @@
+# Expected: lex error for unclosed string
+# Exit code: 1
+# Error pattern: unterminated string literal
+error[E0001]: Lexical error: unterminated string literal
+  --> conformance/invalid/002_unclosed_string.as:4:11
+   |
+ 4 |   let s = "hello world
+   |           ^ string literal not closed

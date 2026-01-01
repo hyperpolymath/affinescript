@@ -1,5 +1,6 @@
-# SPDX-License-Identifier: Apache-2.0 OR MIT
-# Copyright 2024 AffineScript Contributors
+# SPDX-License-Identifier: MIT OR AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2024-2025 hyperpolymath
+# Copyright 2024-2025 AffineScript Contributors
 
 [package]
 name = "affinescript-runtime"
@@ -7,7 +8,7 @@ version = "0.1.0"
 edition = "2021"
 authors = ["AffineScript Contributors"]
 description = "Runtime library for AffineScript, compiled to WebAssembly"
-license = "Apache-2.0 OR MIT"
+license = "MIT OR AGPL-3.0-or-later"
 repository = "https://github.com/hyperpolymath/affinescript"
 keywords = ["affinescript", "runtime", "wasm"]
 categories = ["wasm", "no-std"]

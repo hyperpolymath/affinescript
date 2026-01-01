@@ -1,0 +1,8 @@
+# Expected: parse error for mismatched parentheses
+# Exit code: 1
+# Error pattern: expected ')'
+error[E0002]: Parse error: expected ')'
+  --> conformance/invalid/008_mismatched_parens.as:4:16
+   |
+ 4 |   let x = (1 + 2;
+   |                ^ expected ')', found ';'
