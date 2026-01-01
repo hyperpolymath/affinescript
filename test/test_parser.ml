@@ -1,3 +1,6 @@
+(* SPDX-License-Identifier: MIT OR AGPL-3.0-or-later *)
+(* SPDX-FileCopyrightText: 2024-2025 hyperpolymath *)
+
 (** Parser tests *)
 
 open Affinescript
