@@ -42,8 +42,8 @@ type ty =
   | TVar of tyvar_state ref          (** Type variable (mutable for unification) *)
   | TCon of string                   (** Type constructor (Int, Bool, etc.) *)
   | TApp of ty * ty list             (** Type application *)
-  | TArrow of ty * ty * effect       (** Function type with effect *)
-  | TDepArrow of string * ty * ty * effect  (** Dependent function type *)
+  | TArrow of ty * ty * eff          (** Function type with effect *)
+  | TDepArrow of string * ty * ty * eff     (** Dependent function type *)
   | TTuple of ty list                (** Tuple type *)
   | TRecord of row                   (** Record type *)
   | TVariant of row                  (** Variant type *)
@@ -75,16 +75,16 @@ and rowvar_state =
 [@@deriving show]
 
 (** Effect type *)
-and effect =
+and eff =
   | EPure                            (** No effects *)
   | EVar of effvar_state ref         (** Effect variable *)
   | ESingleton of string             (** Single effect *)
-  | EUnion of effect list            (** Union of effects *)
+  | EUnion of eff list               (** Union of effects *)
 [@@deriving show]
 
 and effvar_state =
   | EUnbound of effvar * int
-  | ELink of effect
+  | ELink of eff
 [@@deriving show]
 
 (** Type-level natural expression *)
@@ -136,7 +136,7 @@ let fresh_rowvar (level : int) : row =
   next_rowvar := id + 1;
   RVar (ref (RUnbound (id, level)))
 
-let fresh_effvar (level : int) : effect =
+let fresh_effvar (level : int) : eff =
   let id = !next_effvar in
   next_effvar := id + 1;
   EVar (ref (EUnbound (id, level)))
@@ -191,17 +191,17 @@ let rec repr_row (row : row) : row =
   | _ -> row
 
 (** Follow links in an effect *)
-let rec repr_eff (eff : effect) : effect =
-  match eff with
+let rec repr_eff (e : eff) : eff =
+  match e with
   | EVar r ->
     begin match !r with
-      | ELink eff' ->
-        let eff'' = repr_eff eff' in
-        r := ELink eff'';
-        eff''
-      | EUnbound _ -> eff
+      | ELink e' ->
+        let e'' = repr_eff e' in
+        r := ELink e'';
+        e''
+      | EUnbound _ -> e
     end
-  | _ -> eff
+  | _ -> e
 
 (* TODO: Phase 1 implementation
    - [ ] Pretty printing for types

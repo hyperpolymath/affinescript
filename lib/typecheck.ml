@@ -41,7 +41,7 @@ type context = {
   var_types : (Symbol.symbol_id, scheme) Hashtbl.t;
 
   (** Current effect context *)
-  current_effect : effect;
+  current_effect : eff;
 }
 
 (* Result bind - define before use *)
@@ -214,8 +214,8 @@ and ast_to_ty_arg (ctx : context) (arg : type_arg) : ty =
   | TyArg ty -> ast_to_ty ctx ty
   | NatArg _ -> TNat (NLit 0)  (* TODO: Convert nat expr *)
 
-and ast_to_eff (ctx : context) (eff : effect_expr) : effect =
-  match eff with
+and ast_to_eff (ctx : context) (e : effect_expr) : eff =
+  match e with
   | EffCon (id, _) -> ESingleton id.name
   | EffVar _id -> fresh_effvar ctx.level
   | EffUnion (e1, e2) -> EUnion [ast_to_eff ctx e1; ast_to_eff ctx e2]
@@ -298,7 +298,7 @@ and pattern_span (pat : pattern) : Span.t =
   | PatAs (id, _) -> id.span
 
 (** Synthesize (infer) the type of an expression *)
-let rec synth (ctx : context) (expr : expr) : (ty * effect) result =
+let rec synth (ctx : context) (expr : expr) : (ty * eff) result =
   match expr with
   | ExprVar id ->
     let* ty = lookup_var ctx id in
@@ -502,8 +502,8 @@ let rec synth (ctx : context) (expr : expr) : (ty * effect) result =
   | ExprSpan (e, _span) ->
     synth ctx e
 
-and synth_app (ctx : context) (func_ty : ty) (func_eff : effect)
-    (args : expr list) (span : Span.t) : (ty * effect) result =
+and synth_app (ctx : context) (func_ty : ty) (func_eff : eff)
+    (args : expr list) (span : Span.t) : (ty * eff) result =
   match args with
   | [] -> Ok (func_ty, func_eff)
   | arg :: rest ->
@@ -527,7 +527,7 @@ and synth_app (ctx : context) (func_ty : ty) (func_eff : effect)
     end
 
 (** Check an expression against an expected type *)
-and check (ctx : context) (expr : expr) (expected : ty) : effect result =
+and check (ctx : context) (expr : expr) (expected : ty) : eff result =
   match (expr, repr expected) with
   (* Lambda checking *)
   | (ExprLambda lam, TArrow (param_ty, ret_ty, arr_eff)) ->
@@ -584,13 +584,13 @@ and check (ctx : context) (expr : expr) (expected : ty) : effect result =
   | _ ->
     check_subsumption ctx expr expected
 
-and check_subsumption (ctx : context) (expr : expr) (expected : ty) : effect result =
+and check_subsumption (ctx : context) (expr : expr) (expected : ty) : eff result =
   let* (actual, eff) = synth ctx expr in
   match Unify.unify actual expected with
   | Ok () -> Ok eff
   | Error e -> Error (UnificationFailed (e, expr_span expr))
 
-and synth_list (ctx : context) (exprs : expr list) : ((ty * effect) list) result =
+and synth_list (ctx : context) (exprs : expr list) : ((ty * eff) list) result =
   List.fold_right (fun expr acc ->
     match acc with
     | Error e -> Error e
@@ -600,7 +600,7 @@ and synth_list (ctx : context) (exprs : expr list) : ((ty * effect) list) result
       | Ok result -> Ok (result :: results)
   ) exprs (Ok [])
 
-and check_list (ctx : context) (exprs : expr list) (tys : ty list) : (effect list) result =
+and check_list (ctx : context) (exprs : expr list) (tys : ty list) : (eff list) result =
   List.fold_right2 (fun expr ty acc ->
     match acc with
     | Error e -> Error e
@@ -611,7 +611,7 @@ and check_list (ctx : context) (exprs : expr list) (tys : ty list) : (effect lis
   ) exprs tys (Ok [])
 
 and synth_record_fields (ctx : context) (fields : (ident * expr option) list)
-    : ((string * ty * effect) list) result =
+    : ((string * ty * eff) list) result =
   List.fold_right (fun (id, expr_opt) acc ->
     match acc with
     | Error e -> Error e
@@ -630,7 +630,7 @@ and synth_record_fields (ctx : context) (fields : (ident * expr option) list)
         end
   ) fields (Ok [])
 
-and synth_block (ctx : context) (blk : block) : (ty * effect) result =
+and synth_block (ctx : context) (blk : block) : (ty * eff) result =
   let* effs = List.fold_left (fun acc stmt ->
     let* effs = acc in
     let* eff = synth_stmt ctx stmt in
@@ -643,7 +643,7 @@ and synth_block (ctx : context) (blk : block) : (ty * effect) result =
   | None ->
     Ok (ty_unit, union_eff effs)
 
-and check_block (ctx : context) (blk : block) (expected : ty) : effect result =
+and check_block (ctx : context) (blk : block) (expected : ty) : eff result =
   let* effs = List.fold_left (fun acc stmt ->
     let* effs = acc in
     let* eff = synth_stmt ctx stmt in
@@ -659,7 +659,7 @@ and check_block (ctx : context) (blk : block) (expected : ty) : effect result =
       | Error e -> Error (UnificationFailed (e, Span.dummy))
     end
 
-and synth_stmt (ctx : context) (stmt : stmt) : effect result =
+and synth_stmt (ctx : context) (stmt : stmt) : eff result =
   match stmt with
   | StmtLet sl ->
     let ctx' = enter_level ctx in
@@ -688,7 +688,7 @@ and synth_stmt (ctx : context) (stmt : stmt) : effect result =
     Ok (union_eff [iter_eff; body_eff])
 
 and synth_binop (ctx : context) (left : expr) (op : binary_op) (right : expr)
-    (span : Span.t) : (ty * effect) result =
+    (span : Span.t) : (ty * eff) result =
   let* (left_ty, left_eff) = synth ctx left in
   let* (right_ty, right_eff) = synth ctx right in
   let eff = union_eff [left_eff; right_eff] in
@@ -714,7 +714,7 @@ and synth_binop (ctx : context) (left : expr) (op : binary_op) (right : expr)
       | Error e, _ | _, Error e -> Error (UnificationFailed (e, span))
     end
 
-and synth_unary (ctx : context) (op : unary_op) (operand : expr) : (ty * effect) result =
+and synth_unary (ctx : context) (op : unary_op) (operand : expr) : (ty * eff) result =
   let* (operand_ty, operand_eff) = synth ctx operand in
   match op with
   | OpNeg ->
@@ -822,7 +822,7 @@ and find_field (name : string) (row : row) : ty option =
     else find_field name rest
   | RVar _ -> None
 
-and union_eff (effs : effect list) : effect =
+and union_eff (effs : eff list) : eff =
   let effs = List.filter (fun e -> e <> EPure) effs in
   match effs with
   | [] -> EPure

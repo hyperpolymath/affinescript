@@ -52,7 +52,6 @@ and scope_kind =
   | ScopeBlock
   | ScopeMatch
   | ScopeHandler
-[@@deriving show]
 
 (** The symbol table *)
 type t = {

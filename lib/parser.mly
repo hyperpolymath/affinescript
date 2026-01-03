@@ -321,7 +321,7 @@ effect_term:
 trait_decl:
   | vis = visibility? TRAIT name = ident type_params = type_params?
     super = supertraits?
-    where_clause = where_clause?
+    _where_clause = where_clause?
     LBRACE items = list(trait_item) RBRACE
     { { trd_vis = Option.value vis ~default:Private;
         trd_name = name;
@@ -368,9 +368,9 @@ impl_block:
         ib_items = items } }
 
 impl_trait_ref:
-  | name = ident FOR { Some { tr_name = name; tr_args = [] } }
+  | name = ident FOR { { tr_name = name; tr_args = [] } }
   | name = ident LBRACKET args = separated_list(COMMA, type_arg) RBRACKET FOR
-    { Some { tr_name = name; tr_args = args } }
+    { { tr_name = name; tr_args = args } }
 
 impl_item:
   | f = fn_decl { ImplFn f }

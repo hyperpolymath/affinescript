@@ -262,9 +262,10 @@ let rec check_expr (state : state) (symbols : Symbol.t) (expr : expr) : unit res
 
   | ExprLet lb ->
     let* () = check_expr state symbols lb.el_value in
-    match lb.el_body with
-    | Some body -> check_expr state symbols body
-    | None -> Ok ()
+    begin match lb.el_body with
+      | Some body -> check_expr state symbols body
+      | None -> Ok ()
+    end
 
   | ExprIf ei ->
     let* () = check_expr state symbols ei.ei_cond in

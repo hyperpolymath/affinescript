@@ -48,14 +48,18 @@ let test_literal_string () =
   | _ -> Alcotest.fail "Expected string literal"
 
 let test_literal_bool () =
-  let expr = parse_expr "true" in
-  match expr with
-  | Ast.ExprLit (Ast.LitBool (true, _)) -> ()
-  | _ -> Alcotest.fail "Expected bool literal";
-  let expr = parse_expr "false" in
-  match expr with
-  | Ast.ExprLit (Ast.LitBool (false, _)) -> ()
-  | _ -> Alcotest.fail "Expected bool literal"
+  begin
+    let expr = parse_expr "true" in
+    match expr with
+    | Ast.ExprLit (Ast.LitBool (true, _)) -> ()
+    | _ -> Alcotest.fail "Expected true literal"
+  end;
+  begin
+    let expr = parse_expr "false" in
+    match expr with
+    | Ast.ExprLit (Ast.LitBool (false, _)) -> ()
+    | _ -> Alcotest.fail "Expected false literal"
+  end
 
 let test_literal_unit () =
   let expr = parse_expr "()" in
@@ -200,7 +204,7 @@ let test_match_expr () =
 let test_lambda () =
   let expr = parse_expr "|x| x + 1" in
   match expr with
-  | Ast.ExprLambda { elam_params = [_]; elam_body = _ } -> ()
+  | Ast.ExprLambda { elam_params = [_]; elam_body = _; _ } -> ()
   | _ -> Alcotest.fail "Expected lambda"
 
 let test_block () =
@@ -279,14 +283,14 @@ let test_struct_decl () =
   let prog = parse "struct Point { x: Int, y: Int }" in
   match prog.prog_decls with
   | [Ast.TopType { td_name = { name = "Point"; _ };
-                   td_body = Ast.TyStruct [_; _] }] -> ()
+                   td_body = Ast.TyStruct [_; _]; _ }] -> ()
   | _ -> Alcotest.fail "Expected struct declaration"
 
 let test_enum_decl () =
   let prog = parse "enum Option[T] { Some(T), None }" in
   match prog.prog_decls with
   | [Ast.TopType { td_name = { name = "Option"; _ };
-                   td_body = Ast.TyEnum [_; _] }] -> ()
+                   td_body = Ast.TyEnum [_; _]; _ }] -> ()
   | _ -> Alcotest.fail "Expected enum declaration"
 
 let test_type_alias () =
@@ -298,13 +302,13 @@ let test_type_alias () =
 let test_trait_decl () =
   let prog = parse "trait Eq { fn eq(self: ref Self, other: ref Self) -> Bool; }" in
   match prog.prog_decls with
-  | [Ast.TopTrait { trd_name = { name = "Eq"; _ }; trd_items = [_] }] -> ()
+  | [Ast.TopTrait { trd_name = { name = "Eq"; _ }; trd_items = [_]; _ }] -> ()
   | _ -> Alcotest.fail "Expected trait declaration"
 
 let test_impl_block () =
   let prog = parse "impl Point { fn new(x: Int, y: Int) -> Point { Point { x: x, y: y } } }" in
   match prog.prog_decls with
-  | [Ast.TopImpl { ib_self_ty = _; ib_items = [_] }] -> ()
+  | [Ast.TopImpl { ib_self_ty = _; ib_items = [_]; _ }] -> ()
   | _ -> Alcotest.fail "Expected impl block"
 
 let test_impl_trait () =
@@ -316,7 +320,7 @@ let test_impl_trait () =
 let test_effect_decl () =
   let prog = parse "effect Console { fn print(msg: String) -> (); fn read() -> String; }" in
   match prog.prog_decls with
-  | [Ast.TopEffect { ed_name = { name = "Console"; _ }; ed_ops = [_; _] }] -> ()
+  | [Ast.TopEffect { ed_name = { name = "Console"; _ }; ed_ops = [_; _]; _ }] -> ()
   | _ -> Alcotest.fail "Expected effect declaration"
 
 (* ========== Type Expression Tests ========== *)

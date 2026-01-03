@@ -401,7 +401,7 @@ let resolve_program (program : program) : (context, resolve_error * Span.t) Resu
 
 (* TODO: Phase 1 implementation
    - [ ] Module qualified lookups
-   - [ ] Import resolution (use, use as, use *)
+   - [ ] Import resolution (use, use as, use * )
    - [ ] Visibility checking
    - [ ] Forward references in mutual recursion
    - [ ] Type alias expansion during resolution

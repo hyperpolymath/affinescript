@@ -15,13 +15,16 @@ type unify_error =
   | OccursCheck of tyvar * ty
   | RowMismatch of row * row
   | RowOccursCheck of rowvar * row
-  | EffectMismatch of effect * effect
-  | EffectOccursCheck of effvar * effect
+  | EffectMismatch of eff * eff
+  | EffectOccursCheck of effvar * eff
   | KindMismatch of kind * kind
   | LabelNotFound of string * row
 [@@deriving show]
 
 type 'a result = ('a, unify_error) Result.t
+
+(* Result bind operator *)
+let ( let* ) = Result.bind
 
 (** Check if a type variable occurs in a type (occurs check) *)
 let rec occurs_in_ty (var : tyvar) (ty : ty) : bool =
@@ -57,8 +60,8 @@ and occurs_in_row (var : tyvar) (row : row) : bool =
     occurs_in_ty var ty || occurs_in_row var rest
   | RVar _ -> false
 
-and occurs_in_eff (var : tyvar) (eff : effect) : bool =
-  match repr_eff eff with
+and occurs_in_eff (var : tyvar) (e : eff) : bool =
+  match repr_eff e with
   | EPure -> false
   | EVar _ -> false
   | ESingleton _ -> false
@@ -76,8 +79,8 @@ let rec rowvar_occurs_in_row (var : rowvar) (row : row) : bool =
     end
 
 (** Check if an effect variable occurs in an effect *)
-let rec effvar_occurs_in_eff (var : effvar) (eff : effect) : bool =
-  match repr_eff eff with
+let rec effvar_occurs_in_eff (var : effvar) (e : eff) : bool =
+  match repr_eff e with
   | EPure -> false
   | ESingleton _ -> false
   | EVar r ->
@@ -158,7 +161,7 @@ let rec unify (t1 : ty) (t2 : ty) : unit result =
     unify_row r1 r2
 
   (* Forall types *)
-  | (TForall (v1, k1, body1), TForall (v2, k2, body2)) ->
+  | (TForall (_v1, k1, body1), TForall (_v2, k2, body2)) ->
     if k1 <> k2 then
       Error (KindMismatch (k1, k2))
     else
@@ -250,7 +253,7 @@ and unify_row (r1 : row) (r2 : row) : unit result =
     Error (LabelNotFound (l, r2))
 
 (** Unify two effects *)
-and unify_eff (e1 : effect) (e2 : effect) : unit result =
+and unify_eff (e1 : eff) (e2 : eff) : unit result =
   let e1 = repr_eff e1 in
   let e2 = repr_eff e2 in
   match (e1, e2) with
