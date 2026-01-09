@@ -107,10 +107,21 @@ let rec analyze_expr (ctx : context) (symbols : Symbol.t) (expr : expr) : unit =
 
   | ExprIf ei ->
     analyze_expr ctx symbols ei.ei_cond;
-    (* For branches, we need to join usages *)
-    (* TODO: Proper branch handling *)
+    (* For branches, we need to join usages from both branches *)
+    (* Save current usages before branches *)
+    let saved_usages = Hashtbl.copy ctx.usages in
+    (* Analyze then branch *)
     analyze_expr ctx symbols ei.ei_then;
-    Option.iter (analyze_expr ctx symbols) ei.ei_else
+    let then_usages = Hashtbl.copy ctx.usages in
+    (* Restore and analyze else branch *)
+    Hashtbl.clear ctx.usages;
+    Hashtbl.iter (fun k v -> Hashtbl.add ctx.usages k v) saved_usages;
+    Option.iter (analyze_expr ctx symbols) ei.ei_else;
+    (* Join usages from both branches: max of the two *)
+    Hashtbl.iter (fun id then_usage ->
+      let else_usage = Hashtbl.find_opt ctx.usages id |> Option.value ~default:UZero in
+      Hashtbl.replace ctx.usages id (join then_usage else_usage)
+    ) then_usages
 
   | ExprMatch em ->
     analyze_expr ctx symbols em.em_scrutinee;
@@ -278,10 +289,8 @@ let q_le (q1 : quantity) (q2 : quantity) : bool =
   | (QOne, QOne) -> true
   | _ -> false
 
-(* TODO: Phase 2 implementation
-   - [ ] Proper branch handling for if/case
-   - [ ] Quantity polymorphism
-   - [ ] Integration with type checker
-   - [ ] Effect interaction with quantities
-   - [ ] Better error messages
+(* Phase 2 (quantity checking) partially complete. Future enhancements:
+   - Quantity polymorphism with inference (Phase 2)
+   - Integration with type checker bidirectional flow (Phase 2)
+   - Effect interaction with quantities (Phase 3)
 *)
