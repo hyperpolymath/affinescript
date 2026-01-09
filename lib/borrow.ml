@@ -36,13 +36,20 @@ type borrow = {
 }
 [@@deriving show]
 
+(** Move record for tracking move sites *)
+type move_record = {
+  m_place : place;
+  m_span : Span.t;
+}
+[@@deriving show]
+
 (** Borrow checker state *)
 type state = {
   (** Active borrows *)
   mutable borrows : borrow list;
 
-  (** Moved places *)
-  mutable moved : place list;
+  (** Moved places with their move sites *)
+  mutable moved : move_record list;
 
   (** Next borrow ID *)
   mutable next_id : int;
@@ -90,9 +97,16 @@ let rec places_overlap (p1 : place) (p2 : place) : bool =
     places_overlap p1' p2'
   | _ -> false
 
+(** Check if a place is moved and return the move site if so *)
+let find_move (state : state) (place : place) : Span.t option =
+  List.find_map (fun mr ->
+    if places_overlap place mr.m_place then Some mr.m_span
+    else None
+  ) state.moved
+
 (** Check if a place is moved *)
 let is_moved (state : state) (place : place) : bool =
-  List.exists (fun moved_place -> places_overlap place moved_place) state.moved
+  Option.is_some (find_move state place)
 
 (** Check if a borrow conflicts with existing borrows *)
 let find_conflicting_borrow (state : state) (new_borrow : borrow) : borrow option =
@@ -102,21 +116,22 @@ let find_conflicting_borrow (state : state) (new_borrow : borrow) : borrow optio
   ) state.borrows
 
 (** Record a move *)
-let record_move (state : state) (place : place) (_span : Span.t) : unit result =
+let record_move (state : state) (place : place) (span : Span.t) : unit result =
   (* Check for active borrows *)
   match List.find_opt (fun b -> places_overlap place b.b_place) state.borrows with
   | Some borrow -> Error (MoveWhileBorrowed (place, borrow))
   | None ->
-    state.moved <- place :: state.moved;
+    state.moved <- { m_place = place; m_span = span } :: state.moved;
     Ok ()
 
 (** Record a borrow *)
 let record_borrow (state : state) (place : place) (kind : borrow_kind)
     (span : Span.t) : borrow result =
-  (* Check if moved *)
-  if is_moved state place then
-    Error (UseAfterMove (place, span, span))  (* TODO: Track move site *)
-  else
+  (* Check if moved and report the original move site *)
+  match find_move state place with
+  | Some move_site ->
+    Error (UseAfterMove (place, span, move_site))
+  | None ->
     let new_borrow = {
       b_place = place;
       b_kind = kind;
@@ -135,10 +150,9 @@ let end_borrow (state : state) (borrow : borrow) : unit =
 
 (** Check a use of a place *)
 let check_use (state : state) (place : place) (span : Span.t) : unit result =
-  if is_moved state place then
-    Error (UseAfterMove (place, span, span))
-  else
-    Ok ()
+  match find_move state place with
+  | Some move_site -> Error (UseAfterMove (place, span, move_site))
+  | None -> Ok ()
 
 (** Get span from an expression *)
 let rec expr_span (expr : expr) : Span.t =
@@ -269,12 +283,31 @@ let rec check_expr (state : state) (symbols : Symbol.t) (expr : expr) : unit res
 
   | ExprIf ei ->
     let* () = check_expr state symbols ei.ei_cond in
-    (* TODO: Proper branch handling - save/restore state *)
+    (* Save state before branches *)
+    let saved_borrows = state.borrows in
+    let saved_moved = state.moved in
+    (* Check then branch *)
     let* () = check_expr state symbols ei.ei_then in
-    begin match ei.ei_else with
+    let then_borrows = state.borrows in
+    let then_moved = state.moved in
+    (* Restore state for else branch *)
+    state.borrows <- saved_borrows;
+    state.moved <- saved_moved;
+    (* Check else branch if present *)
+    let* () = match ei.ei_else with
       | Some e -> check_expr state symbols e
       | None -> Ok ()
-    end
+    in
+    (* Merge branch states: borrows must be from both branches, moves from either *)
+    let else_borrows = state.borrows in
+    let else_moved = state.moved in
+    (* A borrow is active after if-then-else only if active in both branches *)
+    state.borrows <- List.filter (fun b ->
+      List.exists (fun b' -> b.b_id = b'.b_id) then_borrows
+    ) else_borrows;
+    (* A place is moved after if-then-else if moved in either branch *)
+    state.moved <- then_moved @ else_moved;
+    Ok ()
 
   | ExprMatch em ->
     let* () = check_expr state symbols em.em_scrutinee in
@@ -443,11 +476,8 @@ let _ = record_move
 let _ = record_borrow
 let _ = end_borrow
 
-(* TODO: Phase 3 implementation
-   - [ ] Non-lexical lifetimes
-   - [ ] Dataflow analysis for precise tracking
-   - [ ] Lifetime inference
-   - [ ] Better error messages with suggestions
-   - [ ] Integration with quantity checking
-   - [ ] Effect interaction with borrows
+(* Phase 3 (borrow checking) partially complete. Future enhancements:
+   - Non-lexical lifetimes with region inference (Phase 3)
+   - Dataflow analysis for precise tracking (Phase 3)
+   - Integration with quantity checking (Phase 3)
 *)

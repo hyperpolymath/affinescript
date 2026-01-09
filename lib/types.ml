@@ -203,10 +203,221 @@ let rec repr_eff (e : eff) : eff =
     end
   | _ -> e
 
-(* TODO: Phase 1 implementation
-   - [ ] Pretty printing for types
-   - [ ] Type substitution
-   - [ ] Free variable collection
-   - [ ] Occurs check helpers
-   - [ ] Type normalization for dependent types
-*)
+(** Pretty printing for types *)
+
+let rec pp_ty (fmt : Format.formatter) (ty : ty) : unit =
+  match repr ty with
+  | TVar r ->
+    begin match !r with
+      | Unbound (v, _) -> Format.fprintf fmt "'t%d" v
+      | Link t -> pp_ty fmt t
+    end
+  | TCon c -> Format.fprintf fmt "%s" c
+  | TApp (t, args) ->
+    Format.fprintf fmt "%a[%a]" pp_ty t pp_ty_list args
+  | TArrow (a, b, EPure) ->
+    Format.fprintf fmt "(%a -> %a)" pp_ty a pp_ty b
+  | TArrow (a, b, eff) ->
+    Format.fprintf fmt "(%a -> %a / %a)" pp_ty a pp_ty b pp_eff eff
+  | TDepArrow (x, a, b, EPure) ->
+    Format.fprintf fmt "((%s: %a) -> %a)" x pp_ty a pp_ty b
+  | TDepArrow (x, a, b, eff) ->
+    Format.fprintf fmt "((%s: %a) -> %a / %a)" x pp_ty a pp_ty b pp_eff eff
+  | TTuple tys ->
+    Format.fprintf fmt "(%a)" pp_ty_tuple tys
+  | TRecord row ->
+    Format.fprintf fmt "{%a}" pp_row row
+  | TVariant row ->
+    Format.fprintf fmt "[%a]" pp_row row
+  | TForall (v, k, body) ->
+    Format.fprintf fmt "(forall 't%d: %a. %a)" v pp_kind k pp_ty body
+  | TExists (v, k, body) ->
+    Format.fprintf fmt "(exists 't%d: %a. %a)" v pp_kind k pp_ty body
+  | TRef t -> Format.fprintf fmt "ref %a" pp_ty t
+  | TMut t -> Format.fprintf fmt "mut %a" pp_ty t
+  | TOwn t -> Format.fprintf fmt "own %a" pp_ty t
+  | TRefined (t, p) ->
+    Format.fprintf fmt "(%a where %a)" pp_ty t pp_pred p
+  | TNat n -> pp_nat fmt n
+
+and pp_ty_list (fmt : Format.formatter) (tys : ty list) : unit =
+  Format.pp_print_list ~pp_sep:(fun f () -> Format.fprintf f ", ")
+    pp_ty fmt tys
+
+and pp_ty_tuple (fmt : Format.formatter) (tys : ty list) : unit =
+  Format.pp_print_list ~pp_sep:(fun f () -> Format.fprintf f ", ")
+    pp_ty fmt tys
+
+and pp_row (fmt : Format.formatter) (row : row) : unit =
+  match repr_row row with
+  | REmpty -> ()
+  | RExtend (l, ty, REmpty) ->
+    Format.fprintf fmt "%s: %a" l pp_ty ty
+  | RExtend (l, ty, rest) ->
+    Format.fprintf fmt "%s: %a, %a" l pp_ty ty pp_row rest
+  | RVar r ->
+    begin match !r with
+      | RUnbound (v, _) -> Format.fprintf fmt "..r%d" v
+      | RLink row' -> pp_row fmt row'
+    end
+
+and pp_eff (fmt : Format.formatter) (e : eff) : unit =
+  match repr_eff e with
+  | EPure -> Format.fprintf fmt "Pure"
+  | EVar r ->
+    begin match !r with
+      | EUnbound (v, _) -> Format.fprintf fmt "e%d" v
+      | ELink e' -> pp_eff fmt e'
+    end
+  | ESingleton name -> Format.fprintf fmt "%s" name
+  | EUnion effs ->
+    Format.pp_print_list ~pp_sep:(fun f () -> Format.fprintf f " + ")
+      pp_eff fmt effs
+
+and pp_kind (fmt : Format.formatter) (k : kind) : unit =
+  match k with
+  | KType -> Format.fprintf fmt "Type"
+  | KNat -> Format.fprintf fmt "Nat"
+  | KRow -> Format.fprintf fmt "Row"
+  | KEffect -> Format.fprintf fmt "Effect"
+  | KArrow (k1, k2) -> Format.fprintf fmt "(%a -> %a)" pp_kind k1 pp_kind k2
+
+and pp_nat (fmt : Format.formatter) (n : nat_expr) : unit =
+  match n with
+  | NLit i -> Format.fprintf fmt "%d" i
+  | NVar x -> Format.fprintf fmt "%s" x
+  | NAdd (a, b) -> Format.fprintf fmt "(%a + %a)" pp_nat a pp_nat b
+  | NSub (a, b) -> Format.fprintf fmt "(%a - %a)" pp_nat a pp_nat b
+  | NMul (a, b) -> Format.fprintf fmt "(%a * %a)" pp_nat a pp_nat b
+  | NLen x -> Format.fprintf fmt "len(%s)" x
+
+and pp_pred (fmt : Format.formatter) (p : predicate) : unit =
+  match p with
+  | PTrue -> Format.fprintf fmt "true"
+  | PFalse -> Format.fprintf fmt "false"
+  | PEq (a, b) -> Format.fprintf fmt "%a == %a" pp_nat a pp_nat b
+  | PLt (a, b) -> Format.fprintf fmt "%a < %a" pp_nat a pp_nat b
+  | PLe (a, b) -> Format.fprintf fmt "%a <= %a" pp_nat a pp_nat b
+  | PGt (a, b) -> Format.fprintf fmt "%a > %a" pp_nat a pp_nat b
+  | PGe (a, b) -> Format.fprintf fmt "%a >= %a" pp_nat a pp_nat b
+  | PAnd (p1, p2) -> Format.fprintf fmt "(%a && %a)" pp_pred p1 pp_pred p2
+  | POr (p1, p2) -> Format.fprintf fmt "(%a || %a)" pp_pred p1 pp_pred p2
+  | PNot p -> Format.fprintf fmt "!%a" pp_pred p
+  | PImpl (p1, p2) -> Format.fprintf fmt "(%a => %a)" pp_pred p1 pp_pred p2
+
+let ty_to_string (ty : ty) : string =
+  Format.asprintf "%a" pp_ty ty
+
+(** Type substitution: substitute type variable v with replacement in ty *)
+let rec subst_ty (v : tyvar) (replacement : ty) (ty : ty) : ty =
+  match repr ty with
+  | TVar r ->
+    begin match !r with
+      | Unbound (v', _) when v' = v -> replacement
+      | Unbound _ -> ty
+      | Link t -> subst_ty v replacement t
+    end
+  | TCon _ -> ty
+  | TApp (t, args) ->
+    TApp (subst_ty v replacement t, List.map (subst_ty v replacement) args)
+  | TArrow (a, b, eff) ->
+    TArrow (subst_ty v replacement a, subst_ty v replacement b, eff)
+  | TDepArrow (x, a, b, eff) ->
+    TDepArrow (x, subst_ty v replacement a, subst_ty v replacement b, eff)
+  | TTuple tys ->
+    TTuple (List.map (subst_ty v replacement) tys)
+  | TRecord row ->
+    TRecord (subst_row v replacement row)
+  | TVariant row ->
+    TVariant (subst_row v replacement row)
+  | TForall (v', k, body) when v' = v ->
+    ty  (* Variable is shadowed *)
+  | TForall (v', k, body) ->
+    TForall (v', k, subst_ty v replacement body)
+  | TExists (v', k, body) when v' = v ->
+    ty  (* Variable is shadowed *)
+  | TExists (v', k, body) ->
+    TExists (v', k, subst_ty v replacement body)
+  | TRef t -> TRef (subst_ty v replacement t)
+  | TMut t -> TMut (subst_ty v replacement t)
+  | TOwn t -> TOwn (subst_ty v replacement t)
+  | TRefined (t, p) -> TRefined (subst_ty v replacement t, p)
+  | TNat _ -> ty
+
+and subst_row (v : tyvar) (replacement : ty) (row : row) : row =
+  match repr_row row with
+  | REmpty -> REmpty
+  | RExtend (l, ty, rest) ->
+    RExtend (l, subst_ty v replacement ty, subst_row v replacement rest)
+  | RVar _ -> row
+
+(** Free type variable collection *)
+module TyVarSet = Set.Make(Int)
+
+let rec free_tyvars (ty : ty) : TyVarSet.t =
+  match repr ty with
+  | TVar r ->
+    begin match !r with
+      | Unbound (v, _) -> TyVarSet.singleton v
+      | Link t -> free_tyvars t
+    end
+  | TCon _ -> TyVarSet.empty
+  | TApp (t, args) ->
+    List.fold_left TyVarSet.union (free_tyvars t)
+      (List.map free_tyvars args)
+  | TArrow (a, b, _) ->
+    TyVarSet.union (free_tyvars a) (free_tyvars b)
+  | TDepArrow (_, a, b, _) ->
+    TyVarSet.union (free_tyvars a) (free_tyvars b)
+  | TTuple tys ->
+    List.fold_left TyVarSet.union TyVarSet.empty (List.map free_tyvars tys)
+  | TRecord row | TVariant row ->
+    free_tyvars_row row
+  | TForall (v, _, body) | TExists (v, _, body) ->
+    TyVarSet.remove v (free_tyvars body)
+  | TRef t | TMut t | TOwn t ->
+    free_tyvars t
+  | TRefined (t, _) -> free_tyvars t
+  | TNat _ -> TyVarSet.empty
+
+and free_tyvars_row (row : row) : TyVarSet.t =
+  match repr_row row with
+  | REmpty -> TyVarSet.empty
+  | RExtend (_, ty, rest) ->
+    TyVarSet.union (free_tyvars ty) (free_tyvars_row rest)
+  | RVar _ -> TyVarSet.empty
+
+(** Check if a type variable occurs in a type (for occurs check) *)
+let occurs (v : tyvar) (ty : ty) : bool =
+  TyVarSet.mem v (free_tyvars ty)
+
+(** Normalize type-level natural expressions *)
+let rec normalize_nat (n : nat_expr) : nat_expr =
+  match n with
+  | NLit _ | NVar _ | NLen _ -> n
+  | NAdd (a, b) ->
+    begin match (normalize_nat a, normalize_nat b) with
+      | (NLit x, NLit y) -> NLit (x + y)
+      | (NLit 0, b') -> b'
+      | (a', NLit 0) -> a'
+      | (a', b') -> NAdd (a', b')
+    end
+  | NSub (a, b) ->
+    begin match (normalize_nat a, normalize_nat b) with
+      | (NLit x, NLit y) -> NLit (max 0 (x - y))
+      | (a', NLit 0) -> a'
+      | (a', b') when a' = b' -> NLit 0
+      | (a', b') -> NSub (a', b')
+    end
+  | NMul (a, b) ->
+    begin match (normalize_nat a, normalize_nat b) with
+      | (NLit x, NLit y) -> NLit (x * y)
+      | (NLit 0, _) | (_, NLit 0) -> NLit 0
+      | (NLit 1, b') -> b'
+      | (a', NLit 1) -> a'
+      | (a', b') -> NMul (a', b')
+    end
+
+(** Check if two normalized nat expressions are equal *)
+let nat_eq (n1 : nat_expr) (n2 : nat_expr) : bool =
+  normalize_nat n1 = normalize_nat n2

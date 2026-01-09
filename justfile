@@ -61,4 +61,16 @@ golden-path:
 # Prepare a release
 release VERSION:
     @echo "Releasing {{VERSION}}..."
-    @echo "TODO: implement release workflow"
+    @echo "=== Pre-release Checks ==="
+    just check
+    @echo "=== Updating Version ==="
+    # Update version in dune-project
+    sed -i 's/(version [^)]*/(version {{VERSION}}/' dune-project
+    @echo "=== Building Release ==="
+    dune build --release
+    @echo "=== Creating Git Tag ==="
+    git add -A
+    git commit -m "Release v{{VERSION}}"
+    git tag -a "v{{VERSION}}" -m "Release v{{VERSION}}"
+    @echo "=== Release Complete ==="
+    @echo "To push: git push && git push --tags"
