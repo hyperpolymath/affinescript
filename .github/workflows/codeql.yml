@@ -21,7 +21,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - language: javascript-typescript
+          # affinescript is OCaml-only - OCaml not supported by CodeQL
+          # Using 'actions' to scan GitHub Actions workflow files
+          - language: actions
             build-mode: none
 
     steps:
