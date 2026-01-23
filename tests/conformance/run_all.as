@@ -28,6 +28,11 @@ import tests/conformance/comparison/less_than as LessThanTest;
 import tests/conformance/comparison/greater_equal as GreaterEqualTest;
 import tests/conformance/comparison/less_equal as LessEqualTest;
 
+// Import logical conformance tests
+import tests/conformance/logical/and as AndTest;
+import tests/conformance/logical/or as OrTest;
+import tests/conformance/logical/not as NotTest;
+
 /// Conformance report entry
 type ConformanceResult = {
   category: String,
@@ -167,6 +172,17 @@ fn main() -> () {
   ];
   results = results ++ [
     run_conformance_test("comparison", "less_equal", LessEqualTest.test_alib_comparison_less_equal)
+  ];
+
+  // Logical conformance tests
+  results = results ++ [
+    run_conformance_test("logical", "and", AndTest.test_alib_logical_and)
+  ];
+  results = results ++ [
+    run_conformance_test("logical", "or", OrTest.test_alib_logical_or)
+  ];
+  results = results ++ [
+    run_conformance_test("logical", "not", NotTest.test_alib_logical_not)
   ];
 
   println("");
