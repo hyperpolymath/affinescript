@@ -124,11 +124,46 @@ let repl_cmd_fn () =
 
 (** Compile a file *)
 let compile_file path output =
-  let source = read_file path in
-  let _ = (source, output) in
-  (* TODO: Implement compiler *)
-  Format.printf "Compilation not yet implemented@.";
-  `Ok ()
+  try
+    (* Parse the file *)
+    let prog = Affinescript.Parse_driver.parse_file path in
+
+    (* Create symbol table and resolve names *)
+    let symbols = Affinescript.Symbol.create () in
+    let resolve_ctx = {
+      Affinescript.Resolve.symbols;
+      current_module = [];
+      imports = [];
+    } in
+    (match List.fold_left (fun acc decl ->
+      match acc with
+      | Error _ as e -> e
+      | Ok () -> Affinescript.Resolve.resolve_decl resolve_ctx decl
+    ) (Ok ()) prog.prog_decls with
+    | Error (e, _span) ->
+      Format.eprintf "@[<v>Resolution error: %s@]@."
+        (Affinescript.Resolve.show_resolve_error e);
+      `Error (false, "Resolution error")
+    | Ok () ->
+      (* Generate WASM *)
+      (match Affinescript.Codegen.generate_module prog with
+      | Error e ->
+        Format.eprintf "@[<v>Code generation error: %s@]@."
+          (Affinescript.Codegen.show_codegen_error e);
+        `Error (false, "Code generation error")
+      | Ok wasm_module ->
+        (* Write WASM to file *)
+        Affinescript.Wasm_encode.write_module_to_file output wasm_module;
+        Format.printf "Compiled %s -> %s@." path output;
+        `Ok ()))
+  with
+  | Affinescript.Lexer.Lexer_error (msg, pos) ->
+      Format.eprintf "@[<v>%s:%d:%d: lexer error: %s@]@." path pos.line pos.col msg;
+      `Error (false, "Lexer error")
+  | Affinescript.Parse_driver.Parse_error (msg, span) ->
+      Format.eprintf "@[<v>%a: parse error: %s@]@."
+        Affinescript.Span.pp_short span msg;
+      `Error (false, "Parse error")
 
 (** CLI commands *)
 open Cmdliner

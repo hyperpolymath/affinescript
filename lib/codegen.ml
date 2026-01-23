@@ -103,41 +103,41 @@ let gen_unop (op : unary_op) : instr result =
   | OpRef -> Error (UnsupportedFeature "References not yet supported in codegen")
   | OpDeref -> Error (UnsupportedFeature "Dereference not yet supported in codegen")
 
-(** Generate code for an expression *)
-let rec gen_expr (ctx : context) (expr : expr) : (instr list) result =
+(** Generate code for an expression, returning instructions and updated context *)
+let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
   match expr with
   | ExprLit lit ->
     let* instr = gen_literal lit in
-    Ok [instr]
+    Ok (ctx, [instr])
 
   | ExprVar id ->
     let* idx = lookup_local ctx id.name in
-    Ok [LocalGet idx]
+    Ok (ctx, [LocalGet idx])
 
   | ExprBinary (left, op, right) ->
-    let* left_code = gen_expr ctx left in
-    let* right_code = gen_expr ctx right in
+    let* (ctx', left_code) = gen_expr ctx left in
+    let* (ctx'', right_code) = gen_expr ctx' right in
     let op_instr = gen_binop op in
-    Ok (left_code @ right_code @ [op_instr])
+    Ok (ctx'', left_code @ right_code @ [op_instr])
 
   | ExprUnary (op, operand) ->
-    let* operand_code = gen_expr ctx operand in
+    let* (ctx', operand_code) = gen_expr ctx operand in
     let* op_instr = gen_unop op in
     let prefix = match op with
       | OpNeg -> [I32Const 0l]  (* 0 - operand *)
       | _ -> []
     in
-    Ok (prefix @ operand_code @ [op_instr])
+    Ok (ctx', prefix @ operand_code @ [op_instr])
 
   | ExprIf ei ->
-    let* cond_code = gen_expr ctx ei.ei_cond in
-    let* then_code = gen_expr ctx ei.ei_then in
-    let else_code = match ei.ei_else with
-      | Some e -> gen_expr ctx e
-      | None -> Ok [I32Const 0l]  (* Default to 0 if no else *)
+    let* (ctx', cond_code) = gen_expr ctx ei.ei_cond in
+    let* (ctx'', then_code) = gen_expr ctx' ei.ei_then in
+    let else_result = match ei.ei_else with
+      | Some e -> gen_expr ctx'' e
+      | None -> Ok (ctx'', [I32Const 0l])  (* Default to 0 if no else *)
     in
-    let* else_code = else_code in
-    Ok (cond_code @ [If (BtType I32, then_code, else_code)])
+    let* (ctx_final, else_code) = else_result in
+    Ok (ctx_final, cond_code @ [If (BtType I32, then_code, else_code)])
 
   | ExprBlock blk ->
     gen_block ctx blk
@@ -145,25 +145,25 @@ let rec gen_expr (ctx : context) (expr : expr) : (instr list) result =
   | ExprReturn e_opt ->
     begin match e_opt with
       | Some e ->
-        let* code = gen_expr ctx e in
-        Ok (code @ [Return])
+        let* (ctx', code) = gen_expr ctx e in
+        Ok (ctx', code @ [Return])
       | None ->
-        Ok [Return]
+        Ok (ctx, [Return])
     end
 
   | ExprLet lb ->
-    let* rhs_code = gen_expr ctx lb.el_value in
+    let* (ctx', rhs_code) = gen_expr ctx lb.el_value in
     (* For now, only handle simple variable patterns *)
     begin match lb.el_pat with
       | PatVar id ->
-        let (ctx', idx) = alloc_local ctx id.name in
+        let (ctx'', idx) = alloc_local ctx' id.name in
         let set_code = [LocalSet idx] in
         begin match lb.el_body with
           | Some body ->
-            let* body_code = gen_expr ctx' body in
-            Ok (rhs_code @ set_code @ body_code)
+            let* (ctx_final, body_code) = gen_expr ctx'' body in
+            Ok (ctx_final, rhs_code @ set_code @ body_code)
           | None ->
-            Ok (rhs_code @ set_code @ [I32Const 0l])
+            Ok (ctx'', rhs_code @ set_code @ [I32Const 0l])
         end
       | _ -> Error (UnsupportedFeature "Complex patterns not yet supported in codegen")
     end
@@ -217,80 +217,84 @@ let rec gen_expr (ctx : context) (expr : expr) : (instr list) result =
     gen_expr ctx e
 
 (** Generate code for a block *)
-and gen_block (ctx : context) (blk : block) : (instr list) result =
-  let* stmt_codes = List.fold_left (fun acc stmt ->
-    let* codes = acc in
-    let* code = gen_stmt ctx stmt in
-    Ok (codes @ code)
-  ) (Ok []) blk.blk_stmts in
+and gen_block (ctx : context) (blk : block) : (context * instr list) result =
+  let* (ctx', stmt_codes) = List.fold_left (fun acc stmt ->
+    let* (c, codes) = acc in
+    let* (c', code) = gen_stmt c stmt in
+    Ok (c', codes @ code)
+  ) (Ok (ctx, [])) blk.blk_stmts in
   match blk.blk_expr with
   | Some e ->
-    let* expr_code = gen_expr ctx e in
-    Ok (stmt_codes @ expr_code)
+    let* (ctx_final, expr_code) = gen_expr ctx' e in
+    Ok (ctx_final, stmt_codes @ expr_code)
   | None ->
-    Ok (stmt_codes @ [I32Const 0l])
+    Ok (ctx', stmt_codes @ [I32Const 0l])
 
 (** Generate code for a statement *)
-and gen_stmt (ctx : context) (stmt : stmt) : (instr list) result =
+and gen_stmt (ctx : context) (stmt : stmt) : (context * instr list) result =
   match stmt with
   | StmtLet sl ->
-    let* rhs_code = gen_expr ctx sl.sl_value in
+    let* (ctx', rhs_code) = gen_expr ctx sl.sl_value in
     (* For now, only handle simple variable patterns *)
     begin match sl.sl_pat with
       | PatVar id ->
-        let (_, idx) = alloc_local ctx id.name in
-        Ok (rhs_code @ [LocalSet idx])
+        let (ctx'', idx) = alloc_local ctx' id.name in
+        Ok (ctx'', rhs_code @ [LocalSet idx])
       | _ -> Error (UnsupportedFeature "Complex patterns not yet supported in codegen")
     end
 
   | StmtExpr e ->
-    let* code = gen_expr ctx e in
-    Ok (code @ [Drop])  (* Discard expression result *)
+    let* (ctx', code) = gen_expr ctx e in
+    Ok (ctx', code @ [Drop])  (* Discard expression result *)
 
   | StmtAssign _ ->
     Error (UnsupportedFeature "Assignment not yet supported in codegen")
 
   | StmtWhile (cond, body) ->
-    let* cond_code = gen_expr ctx cond in
-    let* body_code = gen_block ctx body in
+    let* (ctx', cond_code) = gen_expr ctx cond in
+    let* (ctx'', body_code) = gen_block ctx' body in
     (* Loop with conditional exit *)
-    Ok [Block (BtEmpty, [
+    Ok (ctx'', [Block (BtEmpty, [
       Loop (BtEmpty,
         cond_code @ [I32Eqz; BrIf 1] @  (* If condition false, exit *)
         body_code @ [Br 0]  (* Continue loop *)
       )
-    ])]
+    ])])
 
   | StmtFor _ ->
     Error (UnsupportedFeature "For loops not yet supported in codegen")
 
 (** Generate code for a function *)
 let gen_function (ctx : context) (fd : fn_decl) : func result =
-  (* Create context with parameters as locals *)
-  let (ctx', _) = List.fold_left (fun (c, _) param ->
+  (* Create fresh context for function scope *)
+  let fn_ctx = { ctx with locals = []; next_local = 0; loop_depth = 0 } in
+
+  (* Parameters become locals 0..n-1 *)
+  let (ctx_with_params, _) = List.fold_left (fun (c, _) param ->
     alloc_local c param.p_name.name
-  ) (ctx, 0) fd.fd_params in
+  ) (fn_ctx, 0) fd.fd_params in
+
+  let param_count = List.length fd.fd_params in
 
   (* Generate function body *)
   let body_expr = match fd.fd_body with
     | FnBlock blk -> ExprBlock blk
     | FnExpr e -> e
   in
-  let* body_code = gen_expr ctx' body_expr in
+  let* (ctx_final, body_code) = gen_expr ctx_with_params body_expr in
 
-  (* Create function type *)
-  let param_types = List.map (fun _ -> I32) fd.fd_params in
-  let result_type = [I32] in  (* TODO: Get from function signature *)
-  let _func_type = { ft_params = param_types; ft_results = result_type } in
+  (* Compute additional locals (beyond parameters) *)
+  let local_count = ctx_final.next_local - param_count in
+  let locals = if local_count > 0 then
+    [{ l_count = local_count; l_type = I32 }]
+  else
+    []
+  in
 
-  (* Add type to context (simplified - assumes no duplicate types) *)
-  let type_idx = List.length ctx.types in
-  (* TODO: Actually add func_type to ctx.types *)
-
-  (* Create function *)
+  (* Create function (type index will be set by gen_decl) *)
   let func = {
-    f_type = type_idx;
-    f_locals = [];  (* Locals computed from ctx'.next_local *)
+    f_type = 0;  (* Will be overridden *)
+    f_locals = locals;
     f_body = body_code;
   } in
 
@@ -300,17 +304,29 @@ let gen_function (ctx : context) (fd : fn_decl) : func result =
 let gen_decl (ctx : context) (decl : top_level) : context result =
   match decl with
   | TopFn fd ->
-    let* func = gen_function ctx fd in
-    let func_idx = List.length ctx.funcs in
+    (* Create function type *)
+    let param_types = List.map (fun _ -> I32) fd.fd_params in
+    let result_type = [I32] in
+    let func_type = { ft_params = param_types; ft_results = result_type } in
+
+    (* Add type to types list *)
+    let type_idx = List.length ctx.types in
+    let ctx_with_type = { ctx with types = ctx.types @ [func_type] } in
+
+    (* Generate function with correct type index *)
+    let* func = gen_function ctx_with_type fd in
+    let func_with_type = { func with f_type = type_idx } in
+
+    let func_idx = List.length ctx_with_type.funcs in
     (* Add export for main function *)
     let export = if fd.fd_name.name = "main" then
       [{ e_name = "main"; e_desc = ExportFunc func_idx }]
     else
       []
     in
-    Ok { ctx with
-         funcs = ctx.funcs @ [func];
-         exports = ctx.exports @ export
+    Ok { ctx_with_type with
+         funcs = ctx_with_type.funcs @ [func_with_type];
+         exports = ctx_with_type.exports @ export
        }
 
   | TopConst _ ->
