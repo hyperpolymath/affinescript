@@ -20,6 +20,14 @@ import tests/conformance/arithmetic/subtract as SubtractTest;
 import tests/conformance/arithmetic/divide as DivideTest;
 import tests/conformance/arithmetic/modulo as ModuloTest;
 
+// Import comparison conformance tests
+import tests/conformance/comparison/equal as EqualTest;
+import tests/conformance/comparison/not_equal as NotEqualTest;
+import tests/conformance/comparison/greater_than as GreaterThanTest;
+import tests/conformance/comparison/less_than as LessThanTest;
+import tests/conformance/comparison/greater_equal as GreaterEqualTest;
+import tests/conformance/comparison/less_equal as LessEqualTest;
+
 /// Conformance report entry
 type ConformanceResult = {
   category: String,
@@ -139,6 +147,26 @@ fn main() -> () {
   ];
   results = results ++ [
     run_conformance_test("arithmetic", "modulo", ModuloTest.test_alib_arithmetic_modulo)
+  ];
+
+  // Comparison conformance tests
+  results = results ++ [
+    run_conformance_test("comparison", "equal", EqualTest.test_alib_comparison_equal)
+  ];
+  results = results ++ [
+    run_conformance_test("comparison", "not_equal", NotEqualTest.test_alib_comparison_not_equal)
+  ];
+  results = results ++ [
+    run_conformance_test("comparison", "greater_than", GreaterThanTest.test_alib_comparison_greater_than)
+  ];
+  results = results ++ [
+    run_conformance_test("comparison", "less_than", LessThanTest.test_alib_comparison_less_than)
+  ];
+  results = results ++ [
+    run_conformance_test("comparison", "greater_equal", GreaterEqualTest.test_alib_comparison_greater_equal)
+  ];
+  results = results ++ [
+    run_conformance_test("comparison", "less_equal", LessEqualTest.test_alib_comparison_less_equal)
   ];
 
   println("");
