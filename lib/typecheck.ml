@@ -394,8 +394,16 @@ let rec synth (ctx : context) (expr : expr) : (ty * eff) result =
     (* Infer RHS at higher level for generalization *)
     let ctx' = enter_level ctx in
     let* (rhs_ty, rhs_eff) = synth ctx' lb.el_value in
-    (* Generalize *)
-    let scheme = generalize ctx rhs_ty in
+    (* If mutable, wrap type in TMut *)
+    let bind_ty = if lb.el_mut then TMut rhs_ty else rhs_ty in
+    (* Generalize (note: mutable bindings typically shouldn't be generalized) *)
+    let scheme = if lb.el_mut then
+      (* Mutable bindings: no generalization *)
+      { sc_tyvars = []; sc_effvars = []; sc_rowvars = []; sc_body = bind_ty }
+    else
+      (* Immutable bindings: generalize *)
+      generalize ctx bind_ty
+    in
     (* Bind pattern *)
     let* () = bind_pattern ctx lb.el_pat scheme in
     (* Infer body if present *)
@@ -455,11 +463,28 @@ let rec synth (ctx : context) (expr : expr) : (ty * eff) result =
 
   | ExprRecord er ->
     let* field_results = synth_record_fields ctx er.er_fields in
+    (* Handle spread if present *)
+    let* (base_row, spread_eff) = match er.er_spread with
+      | Some spread_expr ->
+        let* (spread_ty, spread_eff) = synth ctx spread_expr in
+        begin match repr spread_ty with
+          | TRecord row -> Ok (row, spread_eff)
+          | TVar _ as tv ->
+            let row = fresh_rowvar ctx.level in
+            begin match Unify.unify tv (TRecord row) with
+              | Ok () -> Ok (row, spread_eff)
+              | Error e -> Error (UnificationFailed (e, expr_span spread_expr))
+            end
+          | _ -> Error (ExpectedRecord (spread_ty, expr_span spread_expr))
+        end
+      | None -> Ok (REmpty, EPure)
+    in
+    (* Build row by extending base with new fields *)
     let row = List.fold_right (fun (name, ty, _eff) acc ->
       RExtend (name, ty, acc)
-    ) field_results REmpty in
-    let effs = List.map (fun (_, _, eff) -> eff) field_results in
-    Ok (TRecord row, union_eff effs)
+    ) field_results base_row in
+    let field_effs = List.map (fun (_, _, eff) -> eff) field_results in
+    Ok (TRecord row, union_eff (spread_eff :: field_effs))
 
   | ExprField (base, field) ->
     let span = expr_span expr in
@@ -608,11 +633,22 @@ let rec synth (ctx : context) (expr : expr) : (ty * eff) result =
         Error (ExpectedRecord (base_ty, span))
     end
 
-  | ExprUnsafe _ ->
-    Ok (fresh_tyvar ctx.level, EPure)
+  | ExprUnsafe ops ->
+    synth_unsafe_ops ctx ops
 
-  | ExprVariant (ty_id, _variant_id) ->
-    Ok (TCon ty_id.name, EPure)
+  | ExprVariant (ty_id, variant_id) ->
+    (* Look up the variant constructor in the symbol table *)
+    begin match Symbol.lookup ctx.symbols variant_id.name with
+      | Some sym when sym.sym_kind = Symbol.SKConstructor ->
+        (* Get the constructor's type from var_types *)
+        begin match Hashtbl.find_opt ctx.var_types sym.sym_id with
+          | Some scheme -> Ok (instantiate ctx scheme, EPure)
+          | None -> Ok (TCon ty_id.name, EPure)
+        end
+      | _ ->
+        (* Constructor not found or not a constructor - return the type *)
+        Ok (TCon ty_id.name, EPure)
+    end
 
   | ExprSpan (e, _span) ->
     synth ctx e
@@ -832,7 +868,14 @@ and synth_stmt (ctx : context) (stmt : stmt) : eff result =
   | StmtLet sl ->
     let ctx' = enter_level ctx in
     let* (rhs_ty, rhs_eff) = synth ctx' sl.sl_value in
-    let scheme = generalize ctx rhs_ty in
+    (* If mutable, wrap type in TMut *)
+    let bind_ty = if sl.sl_mut then TMut rhs_ty else rhs_ty in
+    (* Generalize only if immutable *)
+    let scheme = if sl.sl_mut then
+      { sc_tyvars = []; sc_effvars = []; sc_rowvars = []; sc_body = bind_ty }
+    else
+      generalize ctx bind_ty
+    in
     let* () = bind_pattern ctx sl.sl_pat scheme in
     Ok rhs_eff
   | StmtExpr e ->
@@ -953,13 +996,21 @@ and bind_pattern (ctx : context) (pat : pattern) (scheme : scheme) : unit result
       | _ -> Error (InvalidPattern Span.dummy)
     end
   | PatCon (con, pats) ->
-    (* Look up constructor and bind subpatterns with inferred types *)
+    (* Look up constructor and bind subpatterns with actual types *)
     let param_tys = match Symbol.lookup ctx.symbols con.name with
       | Some sym when sym.sym_kind = Symbol.SKConstructor ->
-        (* For now, infer types for each subpattern *)
-        List.map (fun _ -> fresh_tyvar ctx.level) pats
+        (* Try to get constructor type from var_types *)
+        begin match Hashtbl.find_opt ctx.var_types sym.sym_id with
+          | Some con_scheme ->
+            (* Extract parameter types from constructor type *)
+            let con_ty = instantiate ctx con_scheme in
+            extract_constructor_param_types con_ty (List.length pats)
+          | None ->
+            (* Constructor type not available, use fresh tyvars *)
+            List.map (fun _ -> fresh_tyvar ctx.level) pats
+        end
       | _ ->
-        (* Constructor not found, infer types *)
+        (* Constructor not found, use fresh tyvars *)
         List.map (fun _ -> fresh_tyvar ctx.level) pats
     in
     List.fold_left2 (fun acc pat ty ->
@@ -1007,12 +1058,85 @@ and restrict_row (name : string) (row : row) : row =
     else RExtend (l, ty, restrict_row name rest)
   | RVar _ as rv -> rv
 
+(** Extract parameter types from a constructor type *)
+and extract_constructor_param_types (ty : ty) (expected_count : int) : ty list =
+  let rec go ty acc =
+    match repr ty with
+    | TArrow (param_ty, ret_ty, _) ->
+      go ret_ty (param_ty :: acc)
+    | _ -> List.rev acc
+  in
+  let params = go ty [] in
+  (* If we got the expected number of params, use them *)
+  if List.length params = expected_count then params
+  (* Otherwise, generate fresh tyvars *)
+  else List.init expected_count (fun _ -> fresh_tyvar 0)
+
 and union_eff (effs : eff list) : eff =
   let effs = List.filter (fun e -> e <> EPure) effs in
   match effs with
   | [] -> EPure
   | [e] -> e
   | es -> EUnion es
+
+(** Type check unsafe operations *)
+and synth_unsafe_ops (ctx : context) (ops : unsafe_op list) : (ty * eff) result =
+  (* Process each unsafe operation and collect effects *)
+  let* (last_ty, effs) = List.fold_left (fun acc op ->
+    let* (_, effs) = acc in
+    match op with
+    | UnsafeRead e ->
+      let* (ty, eff) = synth ctx e in
+      (* UnsafeRead dereferences a raw pointer *)
+      begin match repr ty with
+        | TRef t | TMut t | TOwn t -> Ok (t, eff :: effs)
+        | TVar _ as tv ->
+          let inner_ty = fresh_tyvar ctx.level in
+          begin match Unify.unify tv (TRef inner_ty) with
+            | Ok () -> Ok (inner_ty, eff :: effs)
+            | Error _ -> Ok (fresh_tyvar ctx.level, eff :: effs)
+          end
+        | _ -> Ok (fresh_tyvar ctx.level, eff :: effs)
+      end
+    | UnsafeWrite (ptr, value) ->
+      let* (ptr_ty, ptr_eff) = synth ctx ptr in
+      let* (val_ty, val_eff) = synth ctx value in
+      (* UnsafeWrite writes through a mutable pointer *)
+      begin match repr ptr_ty with
+        | TMut t ->
+          begin match Unify.unify t val_ty with
+            | Ok () -> Ok (ty_unit, val_eff :: ptr_eff :: effs)
+            | Error _ -> Ok (ty_unit, val_eff :: ptr_eff :: effs)
+          end
+        | TVar _ as tv ->
+          begin match Unify.unify tv (TMut val_ty) with
+            | Ok () -> Ok (ty_unit, val_eff :: ptr_eff :: effs)
+            | Error _ -> Ok (ty_unit, val_eff :: ptr_eff :: effs)
+          end
+        | _ -> Ok (ty_unit, val_eff :: ptr_eff :: effs)
+      end
+    | UnsafeOffset (ptr, offset) ->
+      let* (ptr_ty, ptr_eff) = synth ctx ptr in
+      let* offset_eff = check ctx offset ty_int in
+      (* UnsafeOffset computes pointer arithmetic *)
+      Ok (ptr_ty, offset_eff :: ptr_eff :: effs)
+    | UnsafeTransmute (from_ty, to_ty, e) ->
+      let from_ty' = ast_to_ty ctx from_ty in
+      let to_ty' = ast_to_ty ctx to_ty in
+      let* e_eff = check ctx e from_ty' in
+      (* UnsafeTransmute reinterprets bits *)
+      Ok (to_ty', e_eff :: effs)
+    | UnsafeForget e ->
+      let* (_, eff) = synth ctx e in
+      (* UnsafeForget prevents destructor from running *)
+      Ok (ty_unit, eff :: effs)
+    | UnsafeAssume pred ->
+      (* UnsafeAssume adds a predicate to the constraint context *)
+      let pred' = ast_to_pred pred in
+      let _ = add_assumption ctx pred' in
+      Ok (ty_unit, effs)
+  ) (Ok (ty_unit, [])) ops in
+  Ok (last_ty, union_eff effs)
 
 (** Type check a declaration *)
 let rec check_decl (ctx : context) (decl : top_level) : unit result =
