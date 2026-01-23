@@ -17,15 +17,15 @@
 
   (current-position
     (phase "alpha")
-    (overall-completion 55)
+    (overall-completion 60)
     (components
       ((lexer . 90)
        (parser . 75)  ; Fixed block/record ambiguity (no implicit returns)
        (ast . 100)
        (borrow-checker . 95)  ; Working! Detects use-after-move
        (type-checker . 40)  ; Fixed parameter inference via global symbol lookup
-       (interpreter . 80)  ; Pattern matching, control flow, basic effects complete
-       (codegen-wasm . 0)
+       (interpreter . 85)  ; Pattern matching, control flow, basic effects complete
+       (codegen-wasm . 30)  ; IR and basic codegen done, need binary encoder
        (stdlib . 10)
        (tooling . 30)))
     (working-features
@@ -89,6 +89,16 @@
        "IDE tooling (LSP, syntax highlighting)")))
 
   (session-history
+    ((date "2026-01-23T23:30")
+     (accomplishments
+       ("COMPLETED: WebAssembly IR module (lib/wasm.ml) with complete instruction set"
+        "CREATED: Code generator (lib/codegen.ml) for expressions, statements, functions"
+        "Supports: literals, variables, binary/unary ops, if/blocks, let bindings, while loops"
+        "Created Task #9 for tracking WebAssembly code generation progress"
+        "Marked Task #8 (interpreter) as completed"
+        "Updated STATE.scm: codegen 0% → 30%, overall 55% → 60%"
+        "Committed: 'Add WebAssembly code generation infrastructure' (608 insertions)"
+        "Priorities accomplished: #1 (Interpreter) ✓, #2 (WASM) partially complete")))
     ((date "2026-01-23T22:00")
      (accomplishments
        ("COMPLETED: Tutorial lessons 2-10 (functions, data, patterns, types, errors, effects, generics, modules, building)"
