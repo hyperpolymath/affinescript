@@ -7,8 +7,10 @@
     with AffineScript expressions and declarations.
 *)
 
+open Ast
 open Value
 open Interp
+open Types
 
 (** REPL state *)
 type state = {
@@ -17,13 +19,106 @@ type state = {
   type_ctx : Typecheck.context; (** Type checking context *)
 }
 
+(** Extract variable names from a pattern *)
+let rec pattern_vars (pat : pattern) : string list =
+  match pat with
+  | PatWildcard _ -> []
+  | PatVar id -> [id.name]
+  | PatLit _ -> []
+  | PatTuple pats -> List.concat_map pattern_vars pats
+  | PatRecord (fields, _) ->
+    List.concat_map (fun (id, pat_opt) ->
+      match pat_opt with
+      | Some p -> pattern_vars p
+      | None -> [id.name]
+    ) fields
+  | PatCon (_, pats) -> List.concat_map pattern_vars pats
+  | PatOr (p1, p2) -> pattern_vars p1 @ pattern_vars p2
+  | PatAs (id, pat) -> id.name :: pattern_vars pat
+
+(** Register symbols for top-level let bindings *)
+let register_let_bindings (symbols : Symbol.t) (pat : pattern) : unit =
+  let vars = pattern_vars pat in
+  List.iter (fun name ->
+    let _ = Symbol.define symbols name Symbol.SKVariable Span.dummy Private in
+    ()
+  ) vars
+
+(** Bind pattern variables to types in the type context *)
+let rec bind_pattern_to_ctx (ctx : Typecheck.context) (pat : pattern) (scheme : Types.scheme) : unit =
+  match pat with
+  | PatVar id ->
+    (* Use Typecheck's bind_var_scheme to add the binding *)
+    begin match Symbol.lookup ctx.symbols id.name with
+      | Some sym ->
+        Hashtbl.replace ctx.var_types sym.sym_id scheme
+      | None -> ()
+    end
+  | PatWildcard _ | PatLit _ -> ()
+  | PatTuple pats ->
+    begin match scheme.sc_body with
+      | Types.TTuple tys when List.length pats = List.length tys ->
+        List.iter2 (fun pat ty ->
+          let sc = { scheme with sc_body = ty } in
+          bind_pattern_to_ctx ctx pat sc
+        ) pats tys
+      | _ -> ()
+    end
+  | PatRecord (fields, _) ->
+    List.iter (fun (id, pat_opt) ->
+      match pat_opt with
+      | Some p -> bind_pattern_to_ctx ctx p scheme
+      | None ->
+        begin match Symbol.lookup ctx.symbols id.name with
+          | Some sym ->
+            Hashtbl.replace ctx.var_types sym.sym_id scheme
+          | None -> ()
+        end
+    ) fields
+  | PatCon (_, pats) ->
+    List.iter (fun pat ->
+      bind_pattern_to_ctx ctx pat scheme
+    ) pats
+  | PatOr (p1, p2) ->
+    bind_pattern_to_ctx ctx p1 scheme;
+    bind_pattern_to_ctx ctx p2 scheme
+  | PatAs (id, pat) ->
+    begin match Symbol.lookup ctx.symbols id.name with
+      | Some sym ->
+        Hashtbl.replace ctx.var_types sym.sym_id scheme
+      | None -> ()
+    end;
+    bind_pattern_to_ctx ctx pat scheme
+
 (** Create initial REPL state *)
 let create_state () : state =
   let symbols = Symbol.create () in
+  let type_ctx = Typecheck.create_context symbols in
+
+  (* Register builtins in symbol table with types *)
+  let register_builtin name ty =
+    let sym = Symbol.define symbols name Symbol.SKFunction Span.dummy Public in
+    let scheme = { sc_tyvars = []; sc_effvars = []; sc_rowvars = []; sc_body = ty } in
+    Hashtbl.replace type_ctx.var_types sym.sym_id scheme
+  in
+
+  (* print : String -> () *)
+  let print_ty = TArrow (ty_string, ty_unit, EPure) in
+  register_builtin "print" print_ty;
+
+  (* println : String -> () *)
+  let println_ty = TArrow (ty_string, ty_unit, EPure) in
+  register_builtin "println" println_ty;
+
+  (* len : 'a -> Int (polymorphic, works for arrays and strings) *)
+  let alpha_var = TVar (ref (Unbound (0, 0))) in
+  let len_ty = TArrow (alpha_var, ty_int, EPure) in
+  register_builtin "len" len_ty;
+
   {
     env = create_initial_env ();
     symbols;
-    type_ctx = Typecheck.create_context symbols;
+    type_ctx;
   }
 
 (** Process a single line of input *)
@@ -42,17 +137,53 @@ let process_line (state : state) (input : string) : (state * string) =
       (* Type check *)
       begin match Typecheck.synth state.type_ctx expr with
         | Ok (ty, _eff) ->
-          (* Evaluate *)
-          begin match eval state.env expr with
-            | Ok value ->
-              let result = Printf.sprintf "%s : %s"
-                (Value.show_value value)
-                (Types.ty_to_string ty) in
-              (state, result)
-            | Error e ->
-              let msg = Printf.sprintf "Runtime error: %s"
-                (show_eval_error e) in
-              (state, msg)
+          (* Special handling for top-level let expressions *)
+          begin match expr with
+            | ExprLet lb when lb.el_body = None ->
+              (* Top-level let binding - first type-check the RHS *)
+              begin match Typecheck.synth state.type_ctx lb.el_value with
+                | Ok (rhs_ty, _rhs_eff) ->
+                  (* Evaluate the RHS *)
+                  begin match eval state.env lb.el_value with
+                    | Ok rhs_val ->
+                      begin match match_pattern lb.el_pat rhs_val with
+                        | Ok bindings ->
+                          (* Register symbols *)
+                          register_let_bindings state.symbols lb.el_pat;
+                          (* Add type bindings to context *)
+                          let scheme = Typecheck.generalize state.type_ctx rhs_ty in
+                          let _ = bind_pattern_to_ctx state.type_ctx lb.el_pat scheme in
+                          (* Update environment *)
+                          let state' = { state with env = extend_env_list bindings state.env } in
+                          (state', Printf.sprintf "() : Unit")
+                        | Error e ->
+                          let msg = Printf.sprintf "Pattern match error: %s"
+                            (show_eval_error e) in
+                          (state, msg)
+                      end
+                    | Error e ->
+                      let msg = Printf.sprintf "Runtime error: %s"
+                        (show_eval_error e) in
+                      (state, msg)
+                  end
+                | Error e ->
+                  let msg = Printf.sprintf "Type error: %s"
+                    (Typecheck.show_type_error e) in
+                  (state, msg)
+              end
+            | _ ->
+              (* Regular expression - evaluate and display result *)
+              begin match eval state.env expr with
+                | Ok value ->
+                  let result = Printf.sprintf "%s : %s"
+                    (Value.show_value value)
+                    (ty_to_string ty) in
+                  (state, result)
+                | Error e ->
+                  let msg = Printf.sprintf "Runtime error: %s"
+                    (show_eval_error e) in
+                  (state, msg)
+              end
           end
         | Error e ->
           let msg = Printf.sprintf "Type error: %s"
@@ -63,6 +194,50 @@ let process_line (state : state) (input : string) : (state * string) =
       let msg = Printf.sprintf "Resolution error: %s"
         (Resolve.show_resolve_error e) in
       (state, msg)
+  with
+  | Parse_driver.Parse_error _ | Lexer.Lexer_error _ ->
+      (* Try parsing as declaration *)
+      try
+        let prog = Parse_driver.parse_string ~file:"<repl>" input in
+        begin match prog.prog_decls with
+        | [decl] ->
+          (* Resolve names *)
+          begin match Resolve.resolve_decl resolve_ctx decl with
+          | Ok () ->
+            (* Type check *)
+            begin match Typecheck.check_decl state.type_ctx decl with
+              | Ok () ->
+                (* Evaluate *)
+                begin match eval_decl state.env decl with
+                  | Ok env' ->
+                    let state' = { state with env = env' } in
+                    let name = match decl with
+                      | TopFn fd -> fd.fd_name.name
+                      | TopConst tc -> tc.tc_name.name
+                      | TopType td -> td.td_name.name
+                      | TopEffect ed -> ed.ed_name.name
+                      | TopTrait td -> td.trd_name.name
+                      | TopImpl _ -> "<impl>"
+                    in
+                    (state', Printf.sprintf "Defined %s" name)
+                  | Error e ->
+                    let msg = Printf.sprintf "Runtime error: %s"
+                      (show_eval_error e) in
+                    (state, msg)
+                end
+              | Error e ->
+                let msg = Printf.sprintf "Type error: %s"
+                  (Typecheck.show_type_error e) in
+                (state, msg)
+            end
+          | Error (e, _span) ->
+            let msg = Printf.sprintf "Resolution error: %s"
+              (Resolve.show_resolve_error e) in
+            (state, msg)
+          end
+        | _ ->
+          (state, "Error: Expected single declaration")
+        end
   with
   | Parse_driver.Parse_error _ | Lexer.Lexer_error _ ->
       (* Try parsing as declaration *)
