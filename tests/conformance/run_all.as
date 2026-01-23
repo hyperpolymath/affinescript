@@ -15,6 +15,10 @@ import tests/conformance/collection/contains as ContainsTest;
 
 // Import arithmetic conformance tests
 import tests/conformance/arithmetic/add as AddTest;
+import tests/conformance/arithmetic/multiply as MultiplyTest;
+import tests/conformance/arithmetic/subtract as SubtractTest;
+import tests/conformance/arithmetic/divide as DivideTest;
+import tests/conformance/arithmetic/modulo as ModuloTest;
 
 /// Conformance report entry
 type ConformanceResult = {
@@ -123,6 +127,18 @@ fn main() -> () {
   // Arithmetic conformance tests
   results = results ++ [
     run_conformance_test("arithmetic", "add", AddTest.test_alib_arithmetic_add)
+  ];
+  results = results ++ [
+    run_conformance_test("arithmetic", "multiply", MultiplyTest.test_alib_arithmetic_multiply)
+  ];
+  results = results ++ [
+    run_conformance_test("arithmetic", "subtract", SubtractTest.test_alib_arithmetic_subtract)
+  ];
+  results = results ++ [
+    run_conformance_test("arithmetic", "divide", DivideTest.test_alib_arithmetic_divide)
+  ];
+  results = results ++ [
+    run_conformance_test("arithmetic", "modulo", ModuloTest.test_alib_arithmetic_modulo)
   ];
 
   println("");
