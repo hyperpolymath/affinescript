@@ -57,6 +57,64 @@ let check_file path =
   Format.printf "Type checking not yet implemented@.";
   `Ok ()
 
+(** Evaluate a file with the interpreter *)
+let eval_file path =
+  try
+    (* Parse the file *)
+    let prog = Affinescript.Parse_driver.parse_file path in
+
+    (* Create symbol table and resolve names *)
+    let symbols = Affinescript.Symbol.create () in
+    let resolve_ctx = {
+      Affinescript.Resolve.symbols;
+      current_module = [];
+      imports = [];
+    } in
+    (match List.fold_left (fun acc decl ->
+      match acc with
+      | Error _ as e -> e
+      | Ok () -> Affinescript.Resolve.resolve_decl resolve_ctx decl
+    ) (Ok ()) prog.prog_decls with
+    | Error (e, _span) ->
+      Format.eprintf "@[<v>Resolution error: %s@]@."
+        (Affinescript.Resolve.show_resolve_error e);
+      `Error (false, "Resolution error")
+    | Ok () ->
+      (* Type check *)
+      let type_ctx = Affinescript.Typecheck.create_context symbols in
+      (match List.fold_left (fun acc decl ->
+        match acc with
+        | Error _ as e -> e
+        | Ok () -> Affinescript.Typecheck.check_decl type_ctx decl
+      ) (Ok ()) prog.prog_decls with
+      | Error e ->
+        Format.eprintf "@[<v>Type error: %s@]@."
+          (Affinescript.Typecheck.show_type_error e);
+        `Error (false, "Type error")
+      | Ok () ->
+        (* Evaluate *)
+        (match Affinescript.Interp.eval_program prog with
+        | Ok _env ->
+          Format.printf "Program executed successfully@.";
+          `Ok ()
+        | Error e ->
+          Format.eprintf "@[<v>Runtime error: %s@]@."
+            (Affinescript.Value.show_eval_error e);
+          `Error (false, "Runtime error"))))
+  with
+  | Affinescript.Lexer.Lexer_error (msg, pos) ->
+      Format.eprintf "@[<v>%s:%d:%d: lexer error: %s@]@." path pos.line pos.col msg;
+      `Error (false, "Lexer error")
+  | Affinescript.Parse_driver.Parse_error (msg, span) ->
+      Format.eprintf "@[<v>%a: parse error: %s@]@."
+        Affinescript.Span.pp_short span msg;
+      `Error (false, "Parse error")
+
+(** Start the REPL *)
+let repl_cmd_fn () =
+  Affinescript.Repl.start ();
+  `Ok ()
+
 (** Compile a file *)
 let compile_file path output =
   let source = read_file path in
@@ -89,6 +147,16 @@ let check_cmd =
   let info = Cmd.info "check" ~doc in
   Cmd.v info Term.(ret (const check_file $ path_arg))
 
+let eval_cmd =
+  let doc = "Evaluate a file with the interpreter" in
+  let info = Cmd.info "eval" ~doc in
+  Cmd.v info Term.(ret (const eval_file $ path_arg))
+
+let repl_cmd =
+  let doc = "Start the interactive REPL" in
+  let info = Cmd.info "repl" ~doc in
+  Cmd.v info Term.(ret (const repl_cmd_fn $ const ()))
+
 let compile_cmd =
   let doc = "Compile a file to WebAssembly" in
   let info = Cmd.info "compile" ~doc in
@@ -98,6 +166,6 @@ let default_cmd =
   let doc = "The AffineScript compiler" in
   let info = Cmd.info "affinescript" ~version ~doc in
   let default = Term.(ret (const (`Help (`Pager, None)))) in
-  Cmd.group info ~default [lex_cmd; parse_cmd; check_cmd; compile_cmd]
+  Cmd.group info ~default [lex_cmd; parse_cmd; check_cmd; eval_cmd; repl_cmd; compile_cmd]
 
 let () = exit (Cmd.eval default_cmd)
