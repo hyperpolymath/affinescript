@@ -242,10 +242,32 @@ type_expr:
   | ty = type_expr_arrow { ty }
 
 type_expr_arrow:
+  /* Dependent arrow with parameter name */
+  | LPAREN param = ident COLON param_ty = type_expr RPAREN ARROW ret = type_expr_arrow
+    { TyDepArrow {
+        da_quantity = None;
+        da_param = param;
+        da_param_ty = param_ty;
+        da_ret_ty = ret;
+        da_eff = None } }
+  /* Dependent arrow with effect */
+  | LPAREN param = ident COLON param_ty = type_expr RPAREN MINUS LBRACE eff = effect_expr RBRACE ARROW ret = type_expr_arrow
+    { TyDepArrow {
+        da_quantity = None;
+        da_param = param;
+        da_param_ty = param_ty;
+        da_ret_ty = ret;
+        da_eff = Some eff } }
+  /* Regular arrow */
   | arg = type_expr_primary ARROW ret = type_expr_arrow
     { TyArrow (arg, ret, None) }
   | arg = type_expr_primary MINUS LBRACE eff = effect_expr RBRACE ARROW ret = type_expr_arrow
     { TyArrow (arg, ret, Some eff) }
+  | ty = type_expr_refined { ty }
+
+type_expr_refined:
+  | ty = type_expr_primary WHERE LPAREN pred = predicate RPAREN
+    { TyRefined (ty, pred) }
   | ty = type_expr_primary { ty }
 
 type_expr_primary:
@@ -261,8 +283,9 @@ type_expr_primary:
   | name = upper_ident { TyCon (mk_ident name $startpos $endpos) }
   | name = upper_ident LBRACKET args = separated_nonempty_list(COMMA, type_arg) RBRACKET
     { TyApp (mk_ident name $startpos(name) $endpos(name), args) }
-  | LBRACE fields = separated_list(COMMA, row_field) row = row_tail? RBRACE
-    { TyRecord (fields, row) }
+  /* Record types with optional row variable */
+  | LBRACE body = record_type_body RBRACE
+    { let (fields, row_var) = body in TyRecord (fields, row_var) }
   /* Built-in types */
   | NAT { TyCon (mk_ident "Nat" $startpos $endpos) }
   | INT_T { TyCon (mk_ident "Int" $startpos $endpos) }
@@ -272,12 +295,21 @@ type_expr_primary:
   | CHAR_T { TyCon (mk_ident "Char" $startpos $endpos) }
   | NEVER { TyCon (mk_ident "Never" $startpos $endpos) }
 
-row_tail:
-  | COMMA rv = ROW_VAR { mk_ident rv $startpos(rv) $endpos(rv) }
-
 row_field:
   | name = ident COLON ty = type_expr
     { { rf_name = name; rf_ty = ty } }
+
+record_type_body:
+  | /* empty */ { ([], None) }
+  | rv = ROW_VAR { ([], Some (mk_ident rv $startpos(rv) $endpos(rv))) }
+  | fields = record_fields_with_row { fields }
+
+record_fields_with_row:
+  | field = row_field { ([field], None) }
+  | field = row_field COMMA rv = ROW_VAR
+    { ([field], Some (mk_ident rv $startpos(rv) $endpos(rv))) }
+  | field = row_field COMMA more = record_fields_with_row
+    { let (fs, rv) = more in (field :: fs, rv) }
 
 type_arg:
   | ty = type_expr { TyArg ty }

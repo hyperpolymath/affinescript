@@ -25,6 +25,7 @@ type type_error =
   | QuantityError of string * Span.t
   | EffectError of string * Span.t
   | BorrowError of string * Span.t
+  | KindError of string * Span.t
 [@@deriving show]
 
 type 'a result = ('a, type_error) Result.t
@@ -35,7 +36,7 @@ type context = {
   symbols : Symbol.t;
 
   (** Current let-generalization level *)
-  level : int;
+  mutable level : int;
 
   (** Variable types *)
   var_types : (Symbol.symbol_id, scheme) Hashtbl.t;
@@ -115,20 +116,102 @@ let generalize (ctx : context) (ty : ty) : scheme =
       collect_row_tyvars rest (collect_tyvars ty acc)
     | RVar _ -> acc
   in
+  (* Collect all unbound row variables at level > ctx.level *)
+  let rec collect_rowvars (ty : ty) (acc : rowvar list) : rowvar list =
+    match repr ty with
+    | TRecord row | TVariant row ->
+      collect_row_rowvars row acc
+    | TApp (t, args) ->
+      List.fold_left (fun acc t -> collect_rowvars t acc) (collect_rowvars t acc) args
+    | TArrow (a, b, _) ->
+      collect_rowvars b (collect_rowvars a acc)
+    | TTuple ts ->
+      List.fold_left (fun acc t -> collect_rowvars t acc) acc ts
+    | TForall (_, _, body) | TExists (_, _, body) ->
+      collect_rowvars body acc
+    | TRef t | TMut t | TOwn t ->
+      collect_rowvars t acc
+    | TRefined (t, _) ->
+      collect_rowvars t acc
+    | _ -> acc
+  and collect_row_rowvars (row : row) (acc : rowvar list) : rowvar list =
+    match repr_row row with
+    | REmpty -> acc
+    | RExtend (_, ty, rest) ->
+      collect_row_rowvars rest (collect_rowvars ty acc)
+    | RVar r ->
+      begin match !r with
+        | RUnbound (v, lvl) when lvl > ctx.level ->
+          if List.mem v acc then acc
+          else v :: acc
+        | _ -> acc
+      end
+  in
+  (* Collect all unbound effect variables at level > ctx.level *)
+  let rec collect_effvars (ty : ty) (acc : effvar list) : effvar list =
+    match repr ty with
+    | TArrow (a, b, eff) ->
+      collect_effvars b (collect_effvars a (collect_eff_effvars eff acc))
+    | TDepArrow (_, a, b, eff) ->
+      collect_effvars b (collect_effvars a (collect_eff_effvars eff acc))
+    | TApp (t, args) ->
+      List.fold_left (fun acc t -> collect_effvars t acc) (collect_effvars t acc) args
+    | TTuple ts ->
+      List.fold_left (fun acc t -> collect_effvars t acc) acc ts
+    | TRecord row | TVariant row ->
+      collect_row_effvars row acc
+    | TForall (_, _, body) | TExists (_, _, body) ->
+      collect_effvars body acc
+    | TRef t | TMut t | TOwn t ->
+      collect_effvars t acc
+    | TRefined (t, _) ->
+      collect_effvars t acc
+    | _ -> acc
+  and collect_row_effvars (row : row) (acc : effvar list) : effvar list =
+    match repr_row row with
+    | REmpty -> acc
+    | RExtend (_, ty, rest) ->
+      collect_row_effvars rest (collect_effvars ty acc)
+    | RVar _ -> acc
+  and collect_eff_effvars (eff : eff) (acc : effvar list) : effvar list =
+    match repr_eff eff with
+    | EPure -> acc
+    | ESingleton _ -> acc
+    | EUnion effs ->
+      List.fold_left (fun acc e -> collect_eff_effvars e acc) acc effs
+    | EVar r ->
+      begin match !r with
+        | EUnbound (v, lvl) when lvl > ctx.level ->
+          if List.mem v acc then acc
+          else v :: acc
+        | _ -> acc
+      end
+  in
   let tyvars = collect_tyvars ty [] in
-  { sc_tyvars = tyvars; sc_effvars = []; sc_rowvars = []; sc_body = ty }
+  let rowvars = collect_rowvars ty [] in
+  let effvars = collect_effvars ty [] in
+  { sc_tyvars = tyvars; sc_effvars = effvars; sc_rowvars = rowvars; sc_body = ty }
 
 (** Instantiate a type scheme *)
 let instantiate (ctx : context) (scheme : scheme) : ty =
-  let subst = List.map (fun (v, _k) ->
+  (* Create substitution for type variables *)
+  let ty_subst = List.map (fun (v, _k) ->
     (v, fresh_tyvar ctx.level)
   ) scheme.sc_tyvars in
+  (* Create substitution for row variables *)
+  let row_subst = List.map (fun v ->
+    (v, fresh_rowvar ctx.level)
+  ) scheme.sc_rowvars in
+  (* Create substitution for effect variables *)
+  let eff_subst = List.map (fun v ->
+    (v, fresh_effvar ctx.level)
+  ) scheme.sc_effvars in
   let rec apply_subst (ty : ty) : ty =
     match repr ty with
     | TVar r ->
       begin match !r with
         | Unbound (v, _) ->
-          begin match List.assoc_opt v subst with
+          begin match List.assoc_opt v ty_subst with
             | Some ty' -> ty'
             | None -> ty
           end
@@ -137,7 +220,9 @@ let instantiate (ctx : context) (scheme : scheme) : ty =
     | TApp (t, args) ->
       TApp (apply_subst t, List.map apply_subst args)
     | TArrow (a, b, eff) ->
-      TArrow (apply_subst a, apply_subst b, eff)
+      TArrow (apply_subst a, apply_subst b, apply_subst_eff eff)
+    | TDepArrow (name, a, b, eff) ->
+      TDepArrow (name, apply_subst a, apply_subst b, apply_subst_eff eff)
     | TTuple ts ->
       TTuple (List.map apply_subst ts)
     | TRecord row ->
@@ -156,7 +241,29 @@ let instantiate (ctx : context) (scheme : scheme) : ty =
     | REmpty -> REmpty
     | RExtend (l, ty, rest) ->
       RExtend (l, apply_subst ty, apply_subst_row rest)
-    | RVar _ as rv -> rv
+    | RVar r ->
+      begin match !r with
+        | RUnbound (v, _) ->
+          begin match List.assoc_opt v row_subst with
+            | Some row' -> row'
+            | None -> RVar r
+          end
+        | RLink _ -> failwith "instantiate: unexpected RLink"
+      end
+  and apply_subst_eff (eff : eff) : eff =
+    match repr_eff eff with
+    | EPure -> EPure
+    | ESingleton s -> ESingleton s
+    | EUnion effs -> EUnion (List.map apply_subst_eff effs)
+    | EVar r ->
+      begin match !r with
+        | EUnbound (v, _) ->
+          begin match List.assoc_opt v eff_subst with
+            | Some eff' -> eff'
+            | None -> EVar r
+          end
+        | ELink _ -> failwith "instantiate: unexpected ELink"
+      end
   in
   apply_subst scheme.sc_body
 
@@ -329,6 +436,99 @@ and ast_to_eff (ctx : context) (e : effect_expr) : eff =
   | EffCon (id, _) -> ESingleton id.name
   | EffVar _id -> fresh_effvar ctx.level
   | EffUnion (e1, e2) -> EUnion [ast_to_eff ctx e1; ast_to_eff ctx e2]
+
+(** Kind checking *)
+
+(** Infer the kind of a type *)
+let rec infer_kind (ctx : context) (ty : ty) : kind result =
+  match repr ty with
+  | TVar r ->
+    begin match !r with
+      | Unbound (v, _) ->
+        (* Look up the kind from type variable binding *)
+        (* For now, assume type variables have kind Type *)
+        let _ = v in
+        Ok KType
+      | Link t -> infer_kind ctx t
+    end
+  | TCon name ->
+    (* Built-in type constructors *)
+    begin match name with
+      | "Int" | "Bool" | "String" | "Unit" -> Ok KType
+      | "Vec" -> Ok (KArrow (KNat, KArrow (KType, KType)))
+      | "Array" -> Ok (KArrow (KType, KType))
+      | "List" -> Ok (KArrow (KType, KType))
+      | "Option" -> Ok (KArrow (KType, KType))
+      | "Result" -> Ok (KArrow (KType, KArrow (KType, KType)))
+      | _ ->
+        (* User-defined type constructors - look up in symbol table *)
+        Ok KType  (* Default to Type for now *)
+    end
+  | TApp (t, args) ->
+    (* Type application: check constructor has arrow kind *)
+    let* con_kind = infer_kind ctx t in
+    check_kind_app ctx con_kind args
+  | TArrow (a, b, _) ->
+    (* Function types have kind Type *)
+    let* _ = check_kind ctx a KType in
+    let* _ = check_kind ctx b KType in
+    Ok KType
+  | TDepArrow (_, a, b, _) ->
+    let* _ = check_kind ctx a KType in
+    let* _ = check_kind ctx b KType in
+    Ok KType
+  | TTuple tys ->
+    (* Tuples have kind Type if all components do *)
+    let* _ = List.fold_left (fun acc t ->
+      let* _ = acc in
+      check_kind ctx t KType
+    ) (Ok ()) tys in
+    Ok KType
+  | TRecord _ | TVariant _ ->
+    (* Records and variants have kind Type *)
+    Ok KType
+  | TForall (_v, k, body) ->
+    (* Polymorphic types have the kind of their body *)
+    let* _ = check_kind ctx body KType in
+    let _ = k in
+    Ok KType
+  | TExists (_v, k, body) ->
+    let* _ = check_kind ctx body KType in
+    let _ = k in
+    Ok KType
+  | TRef t | TMut t | TOwn t ->
+    let* _ = check_kind ctx t KType in
+    Ok KType
+  | TRefined (t, _) ->
+    (* Refined types have same kind as base type *)
+    infer_kind ctx t
+  | TNat _ ->
+    (* Type-level naturals have kind Nat *)
+    Ok KNat
+
+(** Check a type has an expected kind *)
+and check_kind (ctx : context) (ty : ty) (expected : kind) : unit result =
+  let* inferred = infer_kind ctx ty in
+  if inferred = expected then
+    Ok ()
+  else
+    Error (KindError (
+      Printf.sprintf "Kind mismatch: expected %s, got %s"
+        (show_kind expected) (show_kind inferred),
+      Span.dummy))
+
+(** Check type application kinds *)
+and check_kind_app (ctx : context) (con_kind : kind) (args : ty list) : kind result =
+  match (con_kind, args) with
+  | (k, []) -> Ok k
+  | (KArrow (k_arg, k_ret), arg :: rest) ->
+    let* _ = check_kind ctx arg k_arg in
+    check_kind_app ctx k_ret rest
+  | (k, _ :: _) ->
+    Error (KindError (
+      Printf.sprintf "Expected arrow kind for type application, got %s"
+        (show_kind k),
+      Span.dummy))
 
 (** Get span from an expression *)
 let rec expr_span (expr : expr) : Span.t =
@@ -1199,6 +1399,9 @@ and synth_unsafe_ops (ctx : context) (ops : unsafe_op list) : (ty * eff) result 
 let rec check_decl (ctx : context) (decl : top_level) : unit result =
   match decl with
   | TopFn fd ->
+    (* Enter new level for function signature variables *)
+    let outer_level = ctx.level in
+    ctx.level <- ctx.level + 1;
     (* Create function type from signature *)
     let param_tys = List.map (fun param ->
       (param.p_name, ast_to_ty ctx param.p_ty)
@@ -1207,22 +1410,33 @@ let rec check_decl (ctx : context) (decl : top_level) : unit result =
       | Some ty -> ast_to_ty ctx ty
       | None -> fresh_tyvar ctx.level
     in
-    (* Build function type *)
+    (* Build function type with fresh effect variables *)
+    let func_eff = fresh_effvar ctx.level in
     let func_ty = List.fold_right (fun (_, param_ty) acc ->
-      TArrow (param_ty, acc, EPure)
+      TArrow (param_ty, acc, func_eff)
     ) param_tys ret_ty in
-    (* Bind function name *)
-    bind_var ctx fd.fd_name func_ty;
+    (* Exit level for generalization *)
+    ctx.level <- outer_level;
+    (* Generalize function type to make it polymorphic *)
+    let func_scheme = generalize ctx func_ty in
+    (* Bind function name with polymorphic scheme *)
+    bind_var_scheme ctx fd.fd_name func_scheme;
     (* Bind parameters (using fallback lookup that searches all_symbols) *)
     List.iter (fun (id, ty) -> bind_var ctx id ty) param_tys;
-    (* Check body *)
+    (* Check body and unify effect *)
     begin match fd.fd_body with
       | FnBlock blk ->
-        let* _ = check_block ctx blk ret_ty in
-        Ok ()
+        let* body_eff = check_block ctx blk ret_ty in
+        begin match Unify.unify_eff func_eff body_eff with
+          | Ok () -> Ok ()
+          | Error e -> Error (UnificationFailed (e, Span.dummy))
+        end
       | FnExpr e ->
-        let* _ = check ctx e ret_ty in
-        Ok ()
+        let* body_eff = check ctx e ret_ty in
+        begin match Unify.unify_eff func_eff body_eff with
+          | Ok () -> Ok ()
+          | Error e -> Error (UnificationFailed (e, Span.dummy))
+        end
     end
 
   | TopType td ->
