@@ -72,12 +72,25 @@
     (low ("Documentation could be more complete")))
 
   (critical-next-actions
-    (immediate ("Test interpreter with complex programs"))
-    (this-week ("Begin standard library development" "Implement effect handlers"))
-    (this-month ("Complete interpreter with effects" "Expand test coverage")))
+    (immediate ("Run aLib conformance tests" "Audit stdlib for aLib spec alignment"))
+    (this-week ("Implement aLib conformance test runner" "Document affine semantics notes"))
+    (this-month ("Create alib-for-affinescript repo" "Contribute to aggregate-library upstream" "Begin cross-language benchmarking")))
 
   (session-history
     ((session
+      (date "2026-01-23")
+      (accomplishments
+        ("Created aggregate-library (aLib) integration strategy"
+         "Documented complete aLib integration approach (docs/ALIB-INTEGRATION.md)"
+         "Analyzed aLib methodology: specs, semantics, conformance tests"
+         "Identified strategic value: stress-testing, novel semantics, credibility"
+         "Created conformance test generator (tools/alib_conformance_gen.jl)"
+         "Documented affine semantics for aLib operations (map, filter, fold)"
+         "Planned alib-for-affinescript ecosystem repository"
+         "Defined 4-phase roadmap: conformance, semantics, ecosystem, benchmarks"
+         "Created aLib integration documentation directory (docs/alib/)"
+         "Positioned AffineScript as extreme constraint stress-test for aLib")))
+     (session
       (date "2026-01-23")
       (accomplishments
         ("Expanded standard library from 40% to 85% (620 → 1805 LOC)"
