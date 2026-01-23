@@ -11,28 +11,21 @@ pub fn id[T](x: T) -> T {
 }
 
 // Constant function
-pub fn const[A, B](x: A, own _y: B) -> A {
+pub fn const[A, B](x: A, own y: B) -> A {
   return x;
 }
 
-// Function composition
-pub fn compose[A, B, C](f: fn(B) -> C, g: fn(A) -> B) -> fn(A) -> C {
-  return |x| { return f(g(x)); };
-}
-
-// Flip arguments
-pub fn flip[A, B, C](f: fn(A, B) -> C) -> fn(B, A) -> C {
-  return |y, x| { return f(x, y); };
-}
+// TODO: Function composition and flip require lambda syntax
+// which is not yet fully supported by the parser
 
 // Comparison operators
 
 pub fn min(a: Int, b: Int) -> Int {
-  return if a < b { a } else { b };
+  return if a < b { return a; } else { return b; };
 }
 
 pub fn max(a: Int, b: Int) -> Int {
-  return if a > b { a } else { b };
+  return if a > b { return a; } else { return b; };
 }
 
 pub fn clamp(x: Int, low: Int, high: Int) -> Int {

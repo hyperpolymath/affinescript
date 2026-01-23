@@ -5,10 +5,18 @@
 
 module Math;
 
-// Constants
-pub const PI: Float = 3.141592653589793;
-pub const E: Float = 2.718281828459045;
-pub const TAU: Float = 6.283185307179586;  // 2 * PI
+// Constants (as functions since const declarations not yet supported)
+pub fn pi() -> Float {
+  return 3.141592653589793;
+}
+
+pub fn e() -> Float {
+  return 2.718281828459045;
+}
+
+pub fn tau() -> Float {
+  return 6.283185307179586;
+}
 
 // Integer operations
 
@@ -98,23 +106,6 @@ pub fn is_odd(n: Int) -> Bool {
   return n % 2 != 0;
 }
 
-// Float operations (these would need FFI or builtins)
-
-pub fn abs_f(x: Float) -> Float {
-  return if x < 0.0 { return 0.0 - x; } else { return x; };
-}
-
-pub fn min_f(a: Float, b: Float) -> Float {
-  return if a < b { return a; } else { return b; };
-}
-
-pub fn max_f(a: Float, b: Float) -> Float {
-  return if a > b { return a; } else { return b; };
-}
-
-pub fn clamp_f(x: Float, low: Float, high: Float) -> Float {
-  return max_f(low, min_f(x, high));
-}
-
-// Note: Transcendental functions (sin, cos, sqrt, etc.)
+// Note: Float operations and transcendental functions (sin, cos, sqrt, etc.)
 // would require FFI or builtin implementation
+// Currently disabled due to type checker limitations with Float comparisons

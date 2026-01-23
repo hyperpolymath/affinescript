@@ -63,25 +63,19 @@ let eval_file path =
     (* Parse the file *)
     let prog = Affinescript.Parse_driver.parse_file path in
 
-    (* Create symbol table and resolve names *)
-    let symbols = Affinescript.Symbol.create () in
-    let resolve_ctx = {
-      Affinescript.Resolve.symbols;
-      current_module = [];
-      imports = [];
-    } in
-    (match List.fold_left (fun acc decl ->
-      match acc with
-      | Error _ as e -> e
-      | Ok () -> Affinescript.Resolve.resolve_decl resolve_ctx decl
-    ) (Ok ()) prog.prog_decls with
+    (* Create module loader *)
+    let loader_config = Affinescript.Module_loader.default_config () in
+    let loader = Affinescript.Module_loader.create loader_config in
+
+    (* Resolve names with module loading *)
+    (match Affinescript.Resolve.resolve_program_with_loader prog loader with
     | Error (e, _span) ->
       Format.eprintf "@[<v>Resolution error: %s@]@."
         (Affinescript.Resolve.show_resolve_error e);
       `Error (false, "Resolution error")
-    | Ok () ->
-      (* Type check *)
-      let type_ctx = Affinescript.Typecheck.create_context symbols in
+    | Ok (resolve_ctx, type_ctx) ->
+      (* Type check remaining declarations *)
+      let type_ctx = { type_ctx with symbols = resolve_ctx.symbols } in
       (match List.fold_left (fun acc decl ->
         match acc with
         | Error _ as e -> e
@@ -93,7 +87,7 @@ let eval_file path =
         `Error (false, "Type error")
       | Ok () ->
         (* Borrow check *)
-        (match Affinescript.Borrow.check_program symbols prog with
+        (match Affinescript.Borrow.check_program resolve_ctx.symbols prog with
         | Error e ->
           Format.eprintf "@[<v>Borrow check error: %s@]@."
             (Affinescript.Borrow.show_borrow_error e);
@@ -128,23 +122,17 @@ let compile_file path output =
     (* Parse the file *)
     let prog = Affinescript.Parse_driver.parse_file path in
 
-    (* Create symbol table and resolve names *)
-    let symbols = Affinescript.Symbol.create () in
-    let resolve_ctx = {
-      Affinescript.Resolve.symbols;
-      current_module = [];
-      imports = [];
-    } in
-    (match List.fold_left (fun acc decl ->
-      match acc with
-      | Error _ as e -> e
-      | Ok () -> Affinescript.Resolve.resolve_decl resolve_ctx decl
-    ) (Ok ()) prog.prog_decls with
+    (* Create module loader *)
+    let loader_config = Affinescript.Module_loader.default_config () in
+    let loader = Affinescript.Module_loader.create loader_config in
+
+    (* Resolve names with module loading *)
+    (match Affinescript.Resolve.resolve_program_with_loader prog loader with
     | Error (e, _span) ->
       Format.eprintf "@[<v>Resolution error: %s@]@."
         (Affinescript.Resolve.show_resolve_error e);
       `Error (false, "Resolution error")
-    | Ok () ->
+    | Ok (_resolve_ctx, _type_ctx) ->
       (* Generate WASM *)
       (match Affinescript.Codegen.generate_module prog with
       | Error e ->

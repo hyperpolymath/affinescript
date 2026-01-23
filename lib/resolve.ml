@@ -427,7 +427,169 @@ let resolve_program (program : program) : (context, resolve_error * Span.t) Resu
   | Ok () -> Ok ctx
   | Error e -> Error e
 
-(** Resolve imports in a program *)
+(** Resolve and type-check a loaded module's symbols *)
+let resolve_and_typecheck_module (loaded_mod : Module_loader.loaded_module)
+    : (Symbol.t * Typecheck.context) result =
+  let prog = Module_loader.get_program loaded_mod in
+  let symbols = Symbol.create () in
+  let mod_ctx = { symbols; current_module = []; imports = [] } in
+
+  (* Resolve all declarations in the module *)
+  let* () = List.fold_left (fun acc decl ->
+    match acc with
+    | Error e -> Error e
+    | Ok () -> resolve_decl mod_ctx decl
+  ) (Ok ()) prog.prog_decls in
+
+  (* Type-check all declarations *)
+  let type_ctx = Typecheck.create_context symbols in
+  let type_result = List.fold_left (fun acc decl ->
+    match acc with
+    | Error e -> Error e
+    | Ok () -> Typecheck.check_decl type_ctx decl
+  ) (Ok ()) prog.prog_decls in
+
+  match type_result with
+  | Ok () -> Ok (symbols, type_ctx)
+  | Error type_err ->
+    (* Convert type error to resolve error *)
+    let msg = Typecheck.show_type_error type_err in
+    Error (ImportError ("Type checking failed: " ^ msg), Span.dummy)
+
+(** Import symbols from a resolved module into the current context *)
+let import_resolved_symbols
+    (dest_symbols : Symbol.t)
+    (dest_types : (Symbol.symbol_id, Types.scheme) Hashtbl.t)
+    (source_symbols : Symbol.t)
+    (source_types : (Symbol.symbol_id, Types.scheme) Hashtbl.t)
+    (_alias : string option) : unit =
+
+  (* Get all public symbols from the source *)
+  Hashtbl.iter (fun _id sym ->
+    match sym.Symbol.sym_visibility with
+    | Public | PubCrate ->
+      (* Register symbol in destination *)
+      let _ = Symbol.register_import dest_symbols sym None in
+      (* Copy type information *)
+      begin match Hashtbl.find_opt source_types sym.Symbol.sym_id with
+        | Some scheme -> Hashtbl.replace dest_types sym.Symbol.sym_id scheme
+        | None -> ()
+      end
+    | _ -> ()  (* Private symbols not imported *)
+  ) source_symbols.all_symbols
+
+(** Import specific items from resolved symbols *)
+let import_specific_items
+    (dest_symbols : Symbol.t)
+    (dest_types : (Symbol.symbol_id, Types.scheme) Hashtbl.t)
+    (source_symbols : Symbol.t)
+    (source_types : (Symbol.symbol_id, Types.scheme) Hashtbl.t)
+    (items : import_item list) : unit result =
+
+  List.fold_left (fun acc item ->
+    let* () = acc in
+    let item_name = item.ii_name.name in
+    match Symbol.lookup source_symbols item_name with
+    | Some sym ->
+      begin match sym.Symbol.sym_visibility with
+        | Public | PubCrate ->
+          let alias = Option.map (fun id -> id.name) item.ii_alias in
+          let _ = Symbol.register_import dest_symbols sym alias in
+          (* Copy type information *)
+          begin match Hashtbl.find_opt source_types sym.Symbol.sym_id with
+            | Some scheme -> Hashtbl.replace dest_types sym.Symbol.sym_id scheme
+            | None -> ()
+          end;
+          Ok ()
+        | _ ->
+          Error (VisibilityError (item.ii_name, "Symbol is not public"), item.ii_name.span)
+      end
+    | None ->
+      Error (UndefinedVariable item.ii_name, item.ii_name.span)
+  ) (Ok ()) items
+
+(** Resolve imports in a program using module loader *)
+let resolve_imports_with_loader
+    (ctx : context)
+    (type_ctx : Typecheck.context)
+    (loader : Module_loader.t)
+    (imports : import_decl list) : unit result =
+  List.fold_left (fun acc import ->
+    let* () = acc in
+    match import with
+    | ImportSimple (path, alias) ->
+      (* use A.B or use A.B as C *)
+      let path_strs = List.map (fun id -> id.name) path in
+      begin match Module_loader.load_module loader path_strs with
+        | Ok loaded_mod ->
+          (* Resolve and type-check the module *)
+          begin match resolve_and_typecheck_module loaded_mod with
+            | Ok (mod_symbols, mod_type_ctx) ->
+              let alias_str = Option.map (fun id -> id.name) alias in
+              import_resolved_symbols ctx.symbols type_ctx.Typecheck.var_types
+                mod_symbols mod_type_ctx.Typecheck.var_types alias_str;
+              Ok ()
+            | Error e -> Error e
+          end
+        | Error (Module_loader.ModuleNotFound _) ->
+          let id = List.hd (List.rev path) in
+          Error (UndefinedModule id, id.span)
+        | Error e ->
+          let id = List.hd (List.rev path) in
+          Error (ImportError (Module_loader.show_load_error e), id.span)
+      end
+    | ImportList (path, items) ->
+      (* use A.B::{x, y} *)
+      let path_strs = List.map (fun id -> id.name) path in
+      begin match Module_loader.load_module loader path_strs with
+        | Ok loaded_mod ->
+          (* Resolve and type-check the module *)
+          begin match resolve_and_typecheck_module loaded_mod with
+            | Ok (mod_symbols, mod_type_ctx) ->
+              import_specific_items ctx.symbols type_ctx.Typecheck.var_types
+                mod_symbols mod_type_ctx.Typecheck.var_types items
+            | Error e -> Error e
+          end
+        | Error (Module_loader.ModuleNotFound _) ->
+          let id = List.hd (List.rev path) in
+          Error (UndefinedModule id, id.span)
+        | Error e ->
+          let id = List.hd (List.rev path) in
+          Error (ImportError (Module_loader.show_load_error e), id.span)
+      end
+    | ImportGlob path ->
+      (* use A.B::* *)
+      let path_strs = List.map (fun id -> id.name) path in
+      begin match Module_loader.load_module loader path_strs with
+        | Ok loaded_mod ->
+          (* Resolve and type-check the module *)
+          begin match resolve_and_typecheck_module loaded_mod with
+            | Ok (mod_symbols, mod_type_ctx) ->
+              (* Import all public symbols *)
+              Hashtbl.iter (fun _id sym ->
+                match sym.Symbol.sym_visibility with
+                | Public | PubCrate ->
+                  let _ = Symbol.register_import ctx.symbols sym None in
+                  (* Copy type information *)
+                  begin match Hashtbl.find_opt mod_type_ctx.Typecheck.var_types sym.Symbol.sym_id with
+                    | Some scheme -> Hashtbl.replace type_ctx.Typecheck.var_types sym.Symbol.sym_id scheme
+                    | None -> ()
+                  end
+                | _ -> ()
+              ) mod_symbols.all_symbols;
+              Ok ()
+            | Error e -> Error e
+          end
+        | Error (Module_loader.ModuleNotFound _) ->
+          let id = List.hd (List.rev path) in
+          Error (UndefinedModule id, id.span)
+        | Error e ->
+          let id = List.hd (List.rev path) in
+          Error (ImportError (Module_loader.show_load_error e), id.span)
+      end
+  ) (Ok ()) imports
+
+(** Resolve imports in a program (legacy, without module loader) *)
 let resolve_imports (ctx : context) (imports : import_decl list) : unit result =
   List.fold_left (fun acc import ->
     let* () = acc in
@@ -477,6 +639,22 @@ let resolve_program_with_imports (program : program) : (context, resolve_error *
   match resolve_program program with
   | Ok resolved_ctx -> Ok resolved_ctx
   | Error e -> Error e
+
+(** Resolve a complete program with module loader support *)
+let resolve_program_with_loader
+    (program : program)
+    (loader : Module_loader.t) : (context * Typecheck.context) result =
+  let ctx = create_context () in
+  let type_ctx = Typecheck.create_context ctx.symbols in
+  (* First resolve imports using module loader *)
+  let* () = resolve_imports_with_loader ctx type_ctx loader program.prog_imports in
+  (* Then resolve declarations *)
+  let* () = List.fold_left (fun acc decl ->
+    match acc with
+    | Error e -> Error e
+    | Ok () -> resolve_decl ctx decl
+  ) (Ok ()) program.prog_decls in
+  Ok (ctx, type_ctx)
 
 (* Phase 1 complete. Future enhancements (Phase 2+):
    - Full module system with nested namespaces (Phase 2)
