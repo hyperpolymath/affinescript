@@ -516,6 +516,10 @@ expr_primary:
   | TRY body = block catch = try_catch? finally = try_finally?
     { ExprTry { et_body = body; et_catch = catch; et_finally = finally } }
 
+  /* Unsafe operations */
+  | UNSAFE LBRACE ops = list(unsafe_op) RBRACE
+    { ExprUnsafe ops }
+
 record_field:
   | name = ident COLON value = expr { (name, Some value) }
   | name = ident { (name, None) }
@@ -555,6 +559,46 @@ try_catch:
 
 try_finally:
   | FINALLY blk = block { blk }
+
+predicate:
+  | n1 = nat_expr LT n2 = nat_expr { PredCmp (n1, Lt, n2) }
+  | n1 = nat_expr LE n2 = nat_expr { PredCmp (n1, Le, n2) }
+  | n1 = nat_expr GT n2 = nat_expr { PredCmp (n1, Gt, n2) }
+  | n1 = nat_expr GE n2 = nat_expr { PredCmp (n1, Ge, n2) }
+  | n1 = nat_expr EQEQ n2 = nat_expr { PredCmp (n1, Eq, n2) }
+  | n1 = nat_expr NE n2 = nat_expr { PredCmp (n1, Ne, n2) }
+  | BANG p = predicate { PredNot p }
+  | p1 = predicate AMPAMP p2 = predicate { PredAnd (p1, p2) }
+  | p1 = predicate PIPEPIPE p2 = predicate { PredOr (p1, p2) }
+  | LPAREN p = predicate RPAREN { p }
+
+unsafe_op:
+  /* UnsafeRead: read(ptr); */
+  | name = lower_ident LPAREN ptr = expr RPAREN SEMICOLON
+    { match name with
+      | "read" -> UnsafeRead ptr
+      | "write" -> failwith "write requires two arguments"
+      | "offset" -> failwith "offset requires two arguments"
+      | _ -> failwith ("unknown unsafe operation: " ^ name) }
+
+  /* UnsafeWrite: write(ptr, value); */
+  | name = lower_ident LPAREN ptr = expr COMMA value = expr RPAREN SEMICOLON
+    { match name with
+      | "write" -> UnsafeWrite (ptr, value)
+      | "offset" -> UnsafeOffset (ptr, value)
+      | _ -> failwith ("unknown unsafe operation: " ^ name) }
+
+  /* UnsafeForget: forget(expr); */
+  | FORGET LPAREN e = expr RPAREN SEMICOLON
+    { UnsafeForget e }
+
+  /* UnsafeTransmute: transmute<From, To>(expr); */
+  | TRANSMUTE LT from_ty = type_expr COMMA to_ty = type_expr GT LPAREN e = expr RPAREN SEMICOLON
+    { UnsafeTransmute (from_ty, to_ty, e) }
+
+  /* UnsafeAssume: assume(predicate); */
+  | ASSUME LPAREN pred = predicate RPAREN SEMICOLON
+    { UnsafeAssume pred }
 
 /* ========== Statements ========== */
 
