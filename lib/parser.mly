@@ -512,6 +512,10 @@ expr_primary:
   /* Resume */
   | RESUME e = expr? { ExprResume e }
 
+  /* Try/catch/finally */
+  | TRY body = block catch = try_catch? finally = try_finally?
+    { ExprTry { et_body = body; et_catch = catch; et_finally = finally } }
+
 record_field:
   | name = ident COLON value = expr { (name, Some value) }
   | name = ident { (name, None) }
@@ -545,6 +549,12 @@ handler_arm:
     { HandlerReturn (pat, body) }
   | name = ident LPAREN pats = separated_list(COMMA, pattern) RPAREN FAT_ARROW body = expr COMMA?
     { HandlerOp (name, pats, body) }
+
+try_catch:
+  | CATCH LBRACE arms = list(match_arm) RBRACE { arms }
+
+try_finally:
+  | FINALLY blk = block { blk }
 
 /* ========== Statements ========== */
 

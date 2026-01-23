@@ -209,8 +209,8 @@ let rec eval (env : env) (expr : expr) : value result =
   | ExprResume _ ->
     Error (RuntimeError "Resume not yet implemented")
 
-  | ExprTry _ ->
-    Error (RuntimeError "Try/catch not yet implemented")
+  | ExprTry { et_body; et_catch; et_finally } ->
+    eval_try env et_body et_catch et_finally
 
   | ExprUnsafe ops ->
     (* Evaluate unsafe operations - for now, just evaluate contained expressions *)
@@ -243,6 +243,61 @@ and eval_list (env : env) (exprs : expr list) : value list result =
     let* v = eval env expr in
     Ok (v :: vals)
   ) exprs (Ok [])
+
+(** Convert error to exception value for pattern matching *)
+and error_to_value (err : eval_error) : value =
+  match err with
+  | UnboundVariable name ->
+    VVariant ("UnboundVariable", Some (VString name))
+  | TypeMismatch msg ->
+    VVariant ("TypeMismatch", Some (VString msg))
+  | DivisionByZero ->
+    VVariant ("DivisionByZero", None)
+  | IndexOutOfBounds (idx, len) ->
+    VVariant ("IndexOutOfBounds", Some (VTuple [VInt idx; VInt len]))
+  | FieldNotFound field ->
+    VVariant ("FieldNotFound", Some (VString field))
+  | PatternMatchFailure ->
+    VVariant ("PatternMatchFailure", None)
+  | AffineViolation msg ->
+    VVariant ("AffineViolation", Some (VString msg))
+  | RuntimeError msg ->
+    VVariant ("RuntimeError", Some (VString msg))
+
+(** Evaluate try/catch/finally *)
+and eval_try (env : env) (body : block) (catch : match_arm list option) (finally : block option) : value result =
+  (* Evaluate the try body *)
+  let body_result = eval_block env body in
+
+  (* Handle the result *)
+  let handled_result = match body_result with
+    | Ok value ->
+      (* Success - return the value *)
+      Ok value
+    | Error err ->
+      (* Error - try to catch it *)
+      begin match catch with
+        | Some arms ->
+          (* Convert error to value and try to match against catch patterns *)
+          let exc_val = error_to_value err in
+          begin match eval_match_arms env exc_val arms with
+            | Ok result -> Ok result
+            | Error PatternMatchFailure -> Error err  (* No pattern matched - re-raise *)
+            | Error other_err -> Error other_err
+          end
+        | None ->
+          (* No catch block - propagate error *)
+          Error err
+      end
+  in
+
+  (* Always execute finally block if present *)
+  match finally with
+  | Some finally_blk ->
+    let* _ = eval_block env finally_blk in
+    handled_result
+  | None ->
+    handled_result
 
 (** Evaluate match arms *)
 and eval_match_arms (env : env) (scrut_val : value) (arms : match_arm list) : value result =
