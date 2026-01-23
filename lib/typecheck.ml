@@ -1399,17 +1399,40 @@ and synth_unsafe_ops (ctx : context) (ops : unsafe_op list) : (ty * eff) result 
 let rec check_decl (ctx : context) (decl : top_level) : unit result =
   match decl with
   | TopFn fd ->
+    (* Check that type parameters have valid kinds if annotated *)
+    let* () = List.fold_left (fun acc tp ->
+      let* () = acc in
+      match tp.tp_kind with
+      | None -> Ok ()  (* No kind annotation, default to Type *)
+      | Some _k ->
+        (* Kind annotations are syntactically valid by parsing *)
+        (* TODO: Check that kind is sensible for this position *)
+        Ok ()
+    ) (Ok ()) fd.fd_type_params in
+
     (* Enter new level for function signature variables *)
     let outer_level = ctx.level in
     ctx.level <- ctx.level + 1;
-    (* Create function type from signature *)
-    let param_tys = List.map (fun param ->
-      (param.p_name, ast_to_ty ctx param.p_ty)
-    ) fd.fd_params in
-    let ret_ty = match fd.fd_ret_ty with
-      | Some ty -> ast_to_ty ctx ty
-      | None -> fresh_tyvar ctx.level
+
+    (* Create function type from signature and check kinds *)
+    let* param_tys = List.fold_left (fun acc param ->
+      let* tys = acc in
+      let param_ty = ast_to_ty ctx param.p_ty in
+      (* Check parameter type is well-kinded (should have kind Type) *)
+      let* _ = check_kind ctx param_ty KType in
+      Ok ((param.p_name, param_ty) :: tys)
+    ) (Ok []) fd.fd_params in
+    let param_tys = List.rev param_tys in
+
+    let* ret_ty = match fd.fd_ret_ty with
+      | Some ty ->
+        let ret_ty = ast_to_ty ctx ty in
+        (* Check return type is well-kinded *)
+        let* _ = check_kind ctx ret_ty KType in
+        Ok ret_ty
+      | None -> Ok (fresh_tyvar ctx.level)
     in
+
     (* Build function type with fresh effect variables *)
     let func_eff = fresh_effvar ctx.level in
     let func_ty = List.fold_right (fun (_, param_ty) acc ->
@@ -1441,20 +1464,43 @@ let rec check_decl (ctx : context) (decl : top_level) : unit result =
 
   | TopType td ->
     (* Check type definitions - validate type body is well-formed *)
+    (* Check that type parameters have valid kinds if annotated *)
+    let* () = List.fold_left (fun acc tp ->
+      let* () = acc in
+      match tp.tp_kind with
+      | None -> Ok ()  (* No kind annotation, default to Type *)
+      | Some _k ->
+        (* Kind annotations are syntactically valid by parsing *)
+        (* TODO: Check that kind is sensible for this position *)
+        Ok ()
+    ) (Ok ()) td.td_type_params in
+
+    (* Check type body and validate kinds *)
     begin match td.td_body with
       | TyAlias ty ->
-        let _ = ast_to_ty ctx ty in
+        let ty' = ast_to_ty ctx ty in
+        (* Check the alias type is well-kinded *)
+        let* _ = infer_kind ctx ty' in
         Ok ()
       | TyStruct fields ->
-        List.iter (fun field ->
-          let _ = ast_to_ty ctx field.sf_ty in ()
-        ) fields;
-        Ok ()
+        (* Check all field types are well-kinded *)
+        List.fold_left (fun acc field ->
+          let* () = acc in
+          let ty = ast_to_ty ctx field.sf_ty in
+          let* _ = check_kind ctx ty KType in
+          Ok ()
+        ) (Ok ()) fields
       | TyEnum variants ->
-        List.iter (fun variant ->
-          List.iter (fun ty -> let _ = ast_to_ty ctx ty in ()) variant.vd_fields
-        ) variants;
-        Ok ()
+        (* Check all variant field types are well-kinded *)
+        List.fold_left (fun acc variant ->
+          let* () = acc in
+          List.fold_left (fun acc2 ty_expr ->
+            let* () = acc2 in
+            let ty = ast_to_ty ctx ty_expr in
+            let* _ = check_kind ctx ty KType in
+            Ok ()
+          ) (Ok ()) variant.vd_fields
+        ) (Ok ()) variants
     end
 
   | TopEffect ed ->
