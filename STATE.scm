@@ -17,7 +17,7 @@
 
   (current-position
     (phase "alpha")
-    (overall-completion 60)
+    (overall-completion 70)
     (components
       ((lexer . 90)
        (parser . 75)  ; Fixed block/record ambiguity (no implicit returns)
@@ -25,8 +25,8 @@
        (borrow-checker . 95)  ; Working! Detects use-after-move
        (type-checker . 40)  ; Fixed parameter inference via global symbol lookup
        (interpreter . 85)  ; Pattern matching, control flow, basic effects complete
-       (codegen-wasm . 30)  ; IR and basic codegen done, need binary encoder
-       (stdlib . 10)
+       (codegen-wasm . 70)  ; IR, codegen, and binary encoder working! Compiles to .wasm
+       (stdlib . 60)  ; Core, Result, Option, Math modules implemented
        (tooling . 30)))
     (working-features
       ("Lexical analysis with token spans"
@@ -39,7 +39,10 @@
        "Function parameter type inference"
        "Tree-walking interpreter with pattern matching"
        "Control flow: while loops, for loops"
-       "Basic algebraic effect handlers (top-level effects)")))
+       "Basic algebraic effect handlers (top-level effects)"
+       "WebAssembly compilation: .as -> .wasm"
+       "WASM binary encoder (LEB128, IEEE 754, all instructions)"
+       "Standard library: Core, Result, Option, Math modules")))
 
   (route-to-mvp
     (milestones
@@ -89,6 +92,20 @@
        "IDE tooling (LSP, syntax highlighting)")))
 
   (session-history
+    ((date "2026-01-24T00:30")
+     (accomplishments
+       ("COMPLETED: WebAssembly binary encoder (lib/wasm_encode.ml) with full WASM 1.0 spec"
+        "LEB128 encoding for unsigned/signed integers, IEEE 754 for floats"
+        "Fixed context threading in codegen - expressions/statements return updated context"
+        "Fixed function local variable allocation - parameters at 0..n-1, locals at n+"
+        "End-to-end WASM compilation working: .as → .wasm → executable"
+        "Verified with Node.js: simple_arithmetic.as returns 42 ✓"
+        "COMPLETED: Standard library with 4 modules (Core, Result, Option, Math)"
+        "~400 lines of stdlib code with generic types and ownership annotations"
+        "Full documentation in stdlib/README.md with usage examples"
+        "Updated STATE.scm: codegen 30% → 70%, stdlib 10% → 60%, overall 60% → 70%"
+        "Committed 3 major changes: encoder, stdlib, state updates"
+        "Priorities: #1 ✓, #2 ✓ (70%), #3 ✓, #4 (parser ready, needs resolution)")))
     ((date "2026-01-23T23:30")
      (accomplishments
        ("COMPLETED: WebAssembly IR module (lib/wasm.ml) with complete instruction set"
