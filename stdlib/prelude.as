@@ -106,6 +106,16 @@ fn fold<T, U>(arr: [T], init: U, f: (U, T) -> U) -> U {
   acc
 }
 
+/// Conforms to aLib collection/contains spec v1.0
+fn contains<T>(arr: [T], element: T) -> Bool {
+  for x in arr {
+    if x == element {
+      return true;
+    }
+  }
+  false
+}
+
 fn sum(arr: [Int]) -> Int {
   fold(arr, 0, |acc, x| acc + x)
 }
