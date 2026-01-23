@@ -80,6 +80,21 @@
     ((session
       (date "2026-01-23")
       (accomplishments
+        ("📚 Created teaching materials - 'AffineScript in 10 Lessons' course launched"
+         "Wrote 'What Makes AffineScript Brilliant' landing page (3000+ words)"
+         "Explains all 5 key features: affine types, dependent types, refinement types, effects, row polymorphism"
+         "Shows why AffineScript vs TypeScript/Rust/Haskell/OCaml/F#/Lean"
+         "Created Lesson 1: Hello AffineScript (complete with exercises)"
+         "Created lessons/README.md with 10-lesson roadmap and learning paths"
+         "Created examples/lessons/01_hello.as interactive playground example"
+         "Teaching materials: docs/guides/WHAT-MAKES-IT-BRILLIANT.md, docs/guides/lessons/"
+         "Status update: Teaching/Tooling 0% → 30% (1/10 lessons complete)"
+         "Identified path to 'basic starting language' status: 6-8 weeks"
+         "Critical needs: better error messages, complete stdlib basics, remaining 9 lessons"
+         "Next: Create Lessons 2-10, improve error messages, stdlib completion")))
+     (session
+      (date "2026-01-23")
+      (accomplishments
         ("✅ Completed parser to TRUE 100% - unsafe operations now parseable"
          "Found critical parser incompleteness: unsafe ops had AST+type-checker support but no grammar"
          "Added predicate parsing for refinement types (PredCmp, PredNot, PredAnd, PredOr)"
