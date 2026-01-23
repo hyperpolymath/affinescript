@@ -55,6 +55,32 @@ AffineScript is designed for systems programming where correctness matters. It c
 |Compiles to WASM for portable, high-performance execution
 |===
 
+== Try It Now! 🚀
+
+**Browser Playground**: The AffineScript interpreter runs directly in your browser via js_of_ocaml!
+
+* **Try it**: link:https://github.com/hyperpolymath/affinescript-playground[affinescript-playground]
+* **No installation needed** - open `test.html` in any browser
+* **Full interpreter** - all features work client-side
+* **Interactive** - edit code and see results instantly
+
+Example code you can try:
+[source,affinescript]
+----
+// Exception handling
+try {
+  10 / 0
+} catch {
+  DivisionByZero => 42
+}
+
+// Recursion
+fn factorial(n: Int) -> Int {
+  if n <= 1 { 1 } else { n * factorial(n - 1) }
+}
+factorial(5)  // Returns: 120
+----
+
 == Language Examples
 
 === Hello World with Effects
