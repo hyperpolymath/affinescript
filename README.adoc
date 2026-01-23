@@ -14,6 +14,8 @@ A Rust-inspired programming language combining affine types, dependent types, ro
 [.lead]
 AffineScript brings the safety of linear types, the expressiveness of dependent types, and the modularity of algebraic effects into a cohesive, practical language.
 
+**📖 New to this repository?** See link:NAVIGATION.adoc[Navigation Guide] for directory structure and quick links.
+
 toc::[]
 
 == Overview
