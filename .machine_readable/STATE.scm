@@ -18,10 +18,10 @@
 
   (current-position
     (phase "interpreter-implementation")
-    (overall-completion 55)
+    (overall-completion 60)
     (components
       ((lexer (status "complete") (completion 100) (loc 323))
-       (parser (status "complete") (completion 100) (loc 615))
+       (parser (status "complete") (completion 100) (loc 625))
        (ast (status "complete") (completion 100) (loc 395))
        (error-handling (status "complete") (completion 100) (loc 215))
        (constraint-solver (status "complete") (completion 100) (loc 280))
@@ -30,8 +30,8 @@
        (borrow-checker (status "in-progress") (completion 20) (loc 414))
        (quantity-checker (status "complete") (completion 100) (loc 271))
        (unification (status "complete") (completion 100) (loc 370))
-       (interpreter (status "in-progress") (completion 60) (loc 740))
-       (repl (status "complete") (completion 100) (loc 180))
+       (interpreter (status "in-progress") (completion 75) (loc 800))
+       (repl (status "complete") (completion 100) (loc 360))
        (codegen (status "planned") (completion 0))))
     (working-features
       ("Tokenize AffineScript source files"
@@ -44,7 +44,10 @@
        "Effect tracking"
        "Dependent type checking with nat expressions"
        "Refinement type checking"
-       "Constraint solving for type-level nats")))
+       "Constraint solving for type-level nats"
+       "Exception handling with try/catch/finally"
+       "Pattern matching against exception values"
+       "REPL with symbol persistence")))
 
   (route-to-mvp
     (milestones
@@ -64,12 +67,24 @@
     (low ("Documentation could be more complete")))
 
   (critical-next-actions
-    (immediate ("Complete bidirectional type inference"))
-    (this-week ("Finish quantity checking"))
-    (this-month ("Complete Phase 3")))
+    (immediate ("Test interpreter with complex programs"))
+    (this-week ("Begin standard library development" "Implement effect handlers"))
+    (this-month ("Complete interpreter with effects" "Expand test coverage")))
 
   (session-history
     ((session
+      (date "2026-01-23")
+      (accomplishments
+        (\"Implemented exception handling (try/catch/finally)\")
+        (\"Added error_to_value function converting eval_error to VVariant\")
+        (\"Implemented eval_try with catch pattern matching\")
+        (\"Added parser support for try/catch/finally syntax\")
+        (\"Finally blocks always execute after try/catch\")
+        (\"Catch blocks pattern match against exception values\")
+        (\"Created exception_test.as example with safe_divide and error handling\")
+        (\"Completed Step 4 in interpreter implementation sequence\")
+        (\"Parser correctly handles try/catch/finally in function bodies\")))
+     (session
       (date "2026-01-23")
       (accomplishments
         (\"Implemented tree-walking interpreter (value.ml, interp.ml - 740 lines)\")
