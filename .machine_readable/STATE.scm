@@ -17,22 +17,33 @@
     (tech-stack ("OCaml 5.1+" "Menhir" "Sedlex" "Dune 3.14")))
 
   (current-position
-    (phase "frontend-complete")
-    (overall-completion 35)
+    (phase "type-system-implementation")
+    (overall-completion 50)
     (components
       ((lexer (status "complete") (completion 100) (loc 323))
        (parser (status "complete") (completion 100) (loc 615))
        (ast (status "complete") (completion 100) (loc 395))
        (error-handling (status "complete") (completion 100) (loc 215))
-       (name-resolution (status "in-progress") (completion 60))
-       (type-checker (status "in-progress") (completion 40))
-       (borrow-checker (status "in-progress") (completion 20))
+       (constraint-solver (status "complete") (completion 100) (loc 280))
+       (name-resolution (status "complete") (completion 100) (loc 418))
+       (type-checker (status "in-progress") (completion 70) (loc 1100))
+       (borrow-checker (status "in-progress") (completion 20) (loc 414))
+       (quantity-checker (status "complete") (completion 100) (loc 271))
+       (unification (status "complete") (completion 100) (loc 370))
+       (interpreter (status "planned") (completion 0))
        (codegen (status "planned") (completion 0))))
     (working-features
       ("Tokenize AffineScript source files"
        "Parse to full abstract syntax tree"
        "Rich error diagnostics"
-       "CLI interface")))
+       "CLI interface"
+       "Bidirectional type checking"
+       "Let-generalization and polymorphism"
+       "Row polymorphism for records"
+       "Effect tracking"
+       "Dependent type checking with nat expressions"
+       "Refinement type checking"
+       "Constraint solving for type-level nats")))
 
   (route-to-mvp
     (milestones
@@ -58,6 +69,21 @@
 
   (session-history
     ((session
+      (date "2026-01-23")
+      (accomplishments
+        ("Fixed build errors: added rec keywords, fixed unused variable warnings")
+        ("Created symlinks for dune-project and affinescript.opam in root")
+        ("Implemented constraint solver module (280 lines)")
+        ("Added nat expression normalization and equality checking")
+        ("Implemented predicate evaluation and entailment checking")
+        ("Enhanced type checker with constraint store context")
+        ("Added dependent function type checking (TDepArrow)")
+        ("Implemented refinement type checking with predicate validation")
+        ("Added subsumption checking for refined types")
+        ("Created dependent_types.as example demonstrating features")
+        ("Type system now 70% complete (up from 40%)")
+        ("All builds successful, lexer 100%, parser 55%")))
+     (session
       (date "2026-01-23")
       (accomplishments
         ("Complete directory reorganization: 38+ → 14 items (63% reduction)")

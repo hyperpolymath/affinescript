@@ -42,6 +42,9 @@ type context = {
 
   (** Current effect context *)
   current_effect : eff;
+
+  (** Constraint store for dependent types *)
+  constraints : Constraint.constraint_store;
 }
 
 (* Result bind - define before use *)
@@ -54,11 +57,29 @@ let create_context (symbols : Symbol.t) : context =
     level = 0;
     var_types = Hashtbl.create 64;
     current_effect = EPure;
+    constraints = Constraint.empty_store;
   }
 
 (** Enter a new let-binding level *)
 let enter_level (ctx : context) : context =
   { ctx with level = ctx.level + 1 }
+
+(** Add a nat constraint to context *)
+let add_nat_constraint (ctx : context) (c : Constraint.nat_constraint) : context =
+  { ctx with constraints = Constraint.add_nat_constraint c ctx.constraints }
+
+(** Add an assumption to context *)
+let add_assumption (ctx : context) (p : predicate) : context =
+  { ctx with constraints = Constraint.add_assumption p ctx.constraints }
+
+(** Check if a predicate is entailed by context *)
+let check_predicate (ctx : context) (p : predicate) : bool =
+  Constraint.entails ctx.constraints p
+
+(** Add nat variable binding to context *)
+let bind_nat_var (ctx : context) (name : string) (value : nat_expr) : context =
+  let subst = (name, value) :: ctx.constraints.nat_subst in
+  { ctx with constraints = { ctx.constraints with nat_subst = subst } }
 
 (** Generalize a type at the current level *)
 let generalize (ctx : context) (ty : ty) : scheme =
@@ -605,6 +626,15 @@ and synth_app (ctx : context) (func_ty : ty) (func_eff : eff)
       | TArrow (param_ty, ret_ty, call_eff) ->
         let* arg_eff = check ctx arg param_ty in
         synth_app ctx ret_ty (union_eff [func_eff; arg_eff; call_eff]) rest span
+
+      (* Dependent arrow: substitute argument in return type *)
+      | TDepArrow (param_name, param_ty, ret_ty, call_eff) ->
+        let* arg_eff = check ctx arg param_ty in
+        (* Try to extract nat expression from argument *)
+        let arg_nat = extract_nat_from_expr arg in
+        let (ret_ty', _subst) = Constraint.instantiate_dep_arrow param_name arg_nat ret_ty in
+        synth_app ctx ret_ty' (union_eff [func_eff; arg_eff; call_eff]) rest span
+
       | TVar _ as tv ->
         let param_ty = fresh_tyvar ctx.level in
         let ret_ty = fresh_tyvar ctx.level in
@@ -619,6 +649,16 @@ and synth_app (ctx : context) (func_ty : ty) (func_eff : eff)
       | _ ->
         Error (ExpectedFunction (func_ty, span))
     end
+
+(** Extract nat expression from an expression (for dependent types) *)
+and extract_nat_from_expr (expr : expr) : nat_expr =
+  match expr with
+  | ExprLit (LitInt (n, _)) -> NLit n
+  | ExprVar id -> NVar id.name
+  | ExprBinary (e1, OpAdd, e2) -> NAdd (extract_nat_from_expr e1, extract_nat_from_expr e2)
+  | ExprBinary (e1, OpSub, e2) -> NSub (extract_nat_from_expr e1, extract_nat_from_expr e2)
+  | ExprBinary (e1, OpMul, e2) -> NMul (extract_nat_from_expr e1, extract_nat_from_expr e2)
+  | _ -> NVar "_"  (* Unknown/complex expression *)
 
 (** Check an expression against an expected type *)
 and check (ctx : context) (expr : expr) (expected : ty) : eff result =
@@ -674,15 +714,49 @@ and check (ctx : context) (expr : expr) (expected : ty) : eff result =
   | (ExprBlock blk, _) ->
     check_block ctx blk expected
 
+  (* Refined type checking *)
+  | (_, TRefined (base_ty, pred)) ->
+    (* Check against base type first *)
+    let* eff = check ctx expr base_ty in
+    (* Then verify refinement predicate *)
+    if check_predicate ctx pred then
+      Ok eff
+    else
+      Error (QuantityError ("Refinement predicate not satisfied", expr_span expr))
+
   (* Subsumption: synth and unify *)
   | _ ->
     check_subsumption ctx expr expected
 
 and check_subsumption (ctx : context) (expr : expr) (expected : ty) : eff result =
   let* (actual, eff) = synth ctx expr in
-  match Unify.unify actual expected with
-  | Ok () -> Ok eff
-  | Error e -> Error (UnificationFailed (e, expr_span expr))
+  (* Check for refined type subsumption *)
+  begin match (repr actual, repr expected) with
+    | (TRefined (base1, pred1), TRefined (base2, pred2)) ->
+      (* Must have same base type and pred1 => pred2 *)
+      begin match Unify.unify base1 base2 with
+        | Ok () ->
+          if check_predicate ctx (PImpl (pred1, pred2)) then
+            Ok eff
+          else
+            Error (QuantityError ("Refinement not strong enough", expr_span expr))
+        | Error e -> Error (UnificationFailed (e, expr_span expr))
+      end
+    | (_, TRefined (base, pred)) ->
+      (* Checking non-refined against refined *)
+      begin match Unify.unify actual base with
+        | Ok () ->
+          if check_predicate ctx pred then
+            Ok eff
+          else
+            Error (QuantityError ("Refinement predicate not satisfied", expr_span expr))
+        | Error e -> Error (UnificationFailed (e, expr_span expr))
+      end
+    | _ ->
+      match Unify.unify actual expected with
+      | Ok () -> Ok eff
+      | Error e -> Error (UnificationFailed (e, expr_span expr))
+  end
 
 and synth_list (ctx : context) (exprs : expr list) : ((ty * eff) list) result =
   List.fold_right (fun expr acc ->
