@@ -171,7 +171,24 @@ let lookup_var (ctx : context) (id : ident) : ty result =
         Error (CannotInfer id.span)
     end
   | None ->
-    Error (CannotInfer id.span)
+    (* Symbol not found in current scope chain - try searching all_symbols by name as fallback *)
+    (* This handles parameters defined in exited function scopes during resolution *)
+    (* Choose the most recent symbol (highest ID) to handle shadowing correctly *)
+    let matching_symbols = Hashtbl.fold (fun _id sym acc ->
+      if sym.Symbol.sym_name = id.name && sym.Symbol.sym_kind = Symbol.SKVariable then
+        sym :: acc
+      else
+        acc
+    ) ctx.symbols.Symbol.all_symbols [] in
+    let sorted_symbols = List.sort (fun a b -> compare b.Symbol.sym_id a.Symbol.sym_id) matching_symbols in
+    begin match sorted_symbols with
+      | sym :: _ ->
+        begin match Hashtbl.find_opt ctx.var_types sym.sym_id with
+          | Some scheme -> Ok (instantiate ctx scheme)
+          | None -> Error (CannotInfer id.span)
+        end
+      | [] -> Error (CannotInfer id.span)
+    end
 
 (** Bind a variable with a type *)
 let bind_var (ctx : context) (id : ident) (ty : ty) : unit =
@@ -179,14 +196,45 @@ let bind_var (ctx : context) (id : ident) (ty : ty) : unit =
   | Some sym ->
     let scheme = { sc_tyvars = []; sc_effvars = []; sc_rowvars = []; sc_body = ty } in
     Hashtbl.replace ctx.var_types sym.sym_id scheme
-  | None -> ()
+  | None ->
+    (* Symbol not found in current scope chain - try searching all_symbols by name as fallback *)
+    (* This handles parameters defined in exited function scopes during resolution *)
+    (* Choose the most recent symbol (highest ID) to handle shadowing correctly *)
+    let matching_symbols = Hashtbl.fold (fun _id sym acc ->
+      if sym.Symbol.sym_name = id.name && sym.Symbol.sym_kind = Symbol.SKVariable then
+        sym :: acc
+      else
+        acc
+    ) ctx.symbols.Symbol.all_symbols [] in
+    let sorted_symbols = List.sort (fun a b -> compare b.Symbol.sym_id a.Symbol.sym_id) matching_symbols in
+    begin match sorted_symbols with
+      | sym :: _ ->
+        let scheme = { sc_tyvars = []; sc_effvars = []; sc_rowvars = []; sc_body = ty } in
+        Hashtbl.replace ctx.var_types sym.sym_id scheme
+      | [] -> ()
+    end
 
 (** Bind a variable with a scheme (polymorphic) *)
 let bind_var_scheme (ctx : context) (id : ident) (scheme : scheme) : unit =
   match Symbol.lookup ctx.symbols id.name with
   | Some sym ->
     Hashtbl.replace ctx.var_types sym.sym_id scheme
-  | None -> ()
+  | None ->
+    (* Symbol not found in current scope chain - try searching all_symbols by name as fallback *)
+    (* This handles variables defined in exited scopes during resolution *)
+    (* Choose the most recent symbol (highest ID) to handle shadowing correctly *)
+    let matching_symbols = Hashtbl.fold (fun _id sym acc ->
+      if sym.Symbol.sym_name = id.name && sym.Symbol.sym_kind = Symbol.SKVariable then
+        sym :: acc
+      else
+        acc
+    ) ctx.symbols.Symbol.all_symbols [] in
+    let sorted_symbols = List.sort (fun a b -> compare b.Symbol.sym_id a.Symbol.sym_id) matching_symbols in
+    begin match sorted_symbols with
+      | sym :: _ ->
+        Hashtbl.replace ctx.var_types sym.sym_id scheme
+      | [] -> ()
+    end
 
 (** Convert AST type to internal type *)
 let rec ast_to_ty (ctx : context) (ty : type_expr) : ty =
@@ -848,6 +896,11 @@ and synth_block (ctx : context) (blk : block) : (ty * eff) result =
     Ok (ty_unit, union_eff effs)
 
 and check_block (ctx : context) (blk : block) (expected : ty) : eff result =
+  (* Check if last statement is a return statement *)
+  let last_is_return = match List.rev blk.blk_stmts with
+    | StmtExpr (ExprReturn _) :: _ -> true
+    | _ -> false
+  in
   let* effs = List.fold_left (fun acc stmt ->
     let* effs = acc in
     let* eff = synth_stmt ctx stmt in
@@ -858,10 +911,14 @@ and check_block (ctx : context) (blk : block) (expected : ty) : eff result =
     let* eff = check ctx e expected in
     Ok (union_eff (eff :: effs))
   | None ->
-    begin match Unify.unify expected ty_unit with
-      | Ok () -> Ok (union_eff effs)
-      | Error e -> Error (UnificationFailed (e, Span.dummy))
-    end
+    (* If last statement is a return, the block can return the expected type *)
+    if last_is_return then
+      Ok (union_eff effs)
+    else
+      begin match Unify.unify expected ty_unit with
+        | Ok () -> Ok (union_eff effs)
+        | Error e -> Error (UnificationFailed (e, Span.dummy))
+      end
 
 and synth_stmt (ctx : context) (stmt : stmt) : eff result =
   match stmt with
@@ -1156,7 +1213,7 @@ let rec check_decl (ctx : context) (decl : top_level) : unit result =
     ) param_tys ret_ty in
     (* Bind function name *)
     bind_var ctx fd.fd_name func_ty;
-    (* Bind parameters *)
+    (* Bind parameters (using fallback lookup that searches all_symbols) *)
     List.iter (fun (id, ty) -> bind_var ctx id ty) param_tys;
     (* Check body *)
     begin match fd.fd_body with

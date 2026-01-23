@@ -43,6 +43,17 @@ type move_record = {
 }
 [@@deriving show]
 
+(** Function signature for ownership tracking *)
+type fn_signature = {
+  fn_name : string;
+  fn_param_ownerships : ownership option list;
+}
+
+(** Borrow checker context with function signatures *)
+type context = {
+  fn_sigs : (string, fn_signature) Hashtbl.t;
+}
+
 (** Borrow checker state *)
 type state = {
   (** Active borrows *)
@@ -70,6 +81,12 @@ type 'a result = ('a, borrow_error) Result.t
 (* Result bind - define before use *)
 let ( let* ) = Result.bind
 
+(** Create a new borrow checker context *)
+let create_context () : context =
+  {
+    fn_sigs = Hashtbl.create 64;
+  }
+
 (** Create a new borrow checker state *)
 let create () : state =
   {
@@ -77,6 +94,24 @@ let create () : state =
     moved = [];
     next_id = 0;
   }
+
+(** Add a function signature to context *)
+let add_fn_signature (ctx : context) (fd : fn_decl) : unit =
+  let sig_ = {
+    fn_name = fd.fd_name.name;
+    fn_param_ownerships = List.map (fun p -> p.p_ownership) fd.fd_params;
+  } in
+  Hashtbl.replace ctx.fn_sigs fd.fd_name.name sig_
+
+(** Build context from program *)
+let build_context (program : program) : context =
+  let ctx = create_context () in
+  List.iter (fun decl ->
+    match decl with
+    | TopFn fd -> add_fn_signature ctx fd
+    | _ -> ()
+  ) program.prog_decls;
+  ctx
 
 (** Generate a fresh borrow ID *)
 let fresh_id (state : state) : int =
@@ -231,11 +266,27 @@ and pattern_span (pat : pattern) : Span.t =
   | PatOr (p1, _) -> pattern_span p1
   | PatAs (id, _) -> id.span
 
+(** Lookup a symbol by name, searching all_symbols table *)
+(** This is needed because scopes are exited after resolution *)
+let lookup_symbol_by_name (symbols : Symbol.t) (name : string) : Symbol.symbol option =
+  (* Search all_symbols table for most recent symbol with this name *)
+  let matching_symbols = Hashtbl.fold (fun _id sym acc ->
+    if sym.Symbol.sym_name = name && sym.Symbol.sym_kind = Symbol.SKVariable then
+      sym :: acc
+    else
+      acc
+  ) symbols.Symbol.all_symbols [] in
+  (* Sort by symbol ID (descending) to get most recent *)
+  let sorted_symbols = List.sort (fun a b -> compare b.Symbol.sym_id a.Symbol.sym_id) matching_symbols in
+  match sorted_symbols with
+  | sym :: _ -> Some sym
+  | [] -> None
+
 (** Convert an expression to a place (if it's an l-value) *)
 let rec expr_to_place (symbols : Symbol.t) (expr : expr) : place option =
   match expr with
   | ExprVar id ->
-    begin match Symbol.lookup symbols id.name with
+    begin match lookup_symbol_by_name symbols id.name with
       | Some sym -> Some (PlaceVar sym.sym_id)
       | None -> None
     end
@@ -254,7 +305,7 @@ let rec expr_to_place (symbols : Symbol.t) (expr : expr) : place option =
   | _ -> None
 
 (** Check borrows in an expression *)
-let rec check_expr (state : state) (symbols : Symbol.t) (expr : expr) : unit result =
+let rec check_expr (ctx : context) (state : state) (symbols : Symbol.t) (expr : expr) : unit result =
   match expr with
   | ExprVar id ->
     begin match expr_to_place symbols expr with
@@ -265,29 +316,72 @@ let rec check_expr (state : state) (symbols : Symbol.t) (expr : expr) : unit res
   | ExprLit _ -> Ok ()
 
   | ExprApp (func, args) ->
-    let* () = check_expr state symbols func in
-    List.fold_left (fun acc arg ->
+    let* () = check_expr ctx state symbols func in
+    (* Check if this is a direct function call and get ownership info *)
+    let param_ownerships =
+      match func with
+      | ExprVar fn_id ->
+        begin match Hashtbl.find_opt ctx.fn_sigs fn_id.name with
+        | Some sig_ -> sig_.fn_param_ownerships
+        | None -> List.map (fun _ -> None) args  (* Unknown function, assume no ownership *)
+        end
+      | _ -> List.map (fun _ -> None) args  (* Higher-order call, assume no ownership *)
+    in
+    (* Check each argument according to parameter ownership *)
+    List.fold_left2 (fun acc arg param_own ->
       let* () = acc in
-      check_expr state symbols arg
-    ) (Ok ()) args
+      (* First check the argument expression itself *)
+      let* () = check_expr ctx state symbols arg in
+      (* Then check ownership constraints *)
+      match param_own with
+      | Some Own ->
+        (* Owned parameter - argument must be moved *)
+        begin match expr_to_place symbols arg with
+        | Some place ->
+          let span = expr_span arg in
+          record_move state place span
+        | None -> Ok ()  (* Non-place expressions (literals, etc.) are fine *)
+        end
+      | Some Ref ->
+        (* Borrowed parameter - create a shared borrow *)
+        begin match expr_to_place symbols arg with
+        | Some place ->
+          let span = expr_span arg in
+          let* _borrow = record_borrow state place Shared span in
+          Ok ()
+        | None -> Ok ()
+        end
+      | Some Mut ->
+        (* Mutable borrow - create an exclusive borrow *)
+        begin match expr_to_place symbols arg with
+        | Some place ->
+          let span = expr_span arg in
+          let* _borrow = record_borrow state place Exclusive span in
+          Ok ()
+        | None -> Ok ()
+        end
+      | None ->
+        (* No ownership annotation - just check usage *)
+        Ok ()
+    ) (Ok ()) args param_ownerships
 
   | ExprLambda lam ->
-    check_expr state symbols lam.elam_body
+    check_expr ctx state symbols lam.elam_body
 
   | ExprLet lb ->
-    let* () = check_expr state symbols lb.el_value in
+    let* () = check_expr ctx state symbols lb.el_value in
     begin match lb.el_body with
-      | Some body -> check_expr state symbols body
+      | Some body -> check_expr ctx state symbols body
       | None -> Ok ()
     end
 
   | ExprIf ei ->
-    let* () = check_expr state symbols ei.ei_cond in
+    let* () = check_expr ctx state symbols ei.ei_cond in
     (* Save state before branches *)
     let saved_borrows = state.borrows in
     let saved_moved = state.moved in
     (* Check then branch *)
-    let* () = check_expr state symbols ei.ei_then in
+    let* () = check_expr ctx state symbols ei.ei_then in
     let then_borrows = state.borrows in
     let then_moved = state.moved in
     (* Restore state for else branch *)
@@ -295,7 +389,7 @@ let rec check_expr (state : state) (symbols : Symbol.t) (expr : expr) : unit res
     state.moved <- saved_moved;
     (* Check else branch if present *)
     let* () = match ei.ei_else with
-      | Some e -> check_expr state symbols e
+      | Some e -> check_expr ctx state symbols e
       | None -> Ok ()
     in
     (* Merge branch states: borrows must be from both branches, moves from either *)
@@ -310,100 +404,100 @@ let rec check_expr (state : state) (symbols : Symbol.t) (expr : expr) : unit res
     Ok ()
 
   | ExprMatch em ->
-    let* () = check_expr state symbols em.em_scrutinee in
+    let* () = check_expr ctx state symbols em.em_scrutinee in
     List.fold_left (fun acc arm ->
       let* () = acc in
       let* () = match arm.ma_guard with
-        | Some g -> check_expr state symbols g
+        | Some g -> check_expr ctx state symbols g
         | None -> Ok ()
       in
-      check_expr state symbols arm.ma_body
+      check_expr ctx state symbols arm.ma_body
     ) (Ok ()) em.em_arms
 
   | ExprTuple exprs ->
     List.fold_left (fun acc e ->
       let* () = acc in
-      check_expr state symbols e
+      check_expr ctx state symbols e
     ) (Ok ()) exprs
 
   | ExprArray exprs ->
     List.fold_left (fun acc e ->
       let* () = acc in
-      check_expr state symbols e
+      check_expr ctx state symbols e
     ) (Ok ()) exprs
 
   | ExprRecord er ->
     let* () = List.fold_left (fun acc (_id, e_opt) ->
       let* () = acc in
       match e_opt with
-      | Some e -> check_expr state symbols e
+      | Some e -> check_expr ctx state symbols e
       | None -> Ok ()
     ) (Ok ()) er.er_fields in
     begin match er.er_spread with
-      | Some e -> check_expr state symbols e
+      | Some e -> check_expr ctx state symbols e
       | None -> Ok ()
     end
 
   | ExprField (base, _) ->
-    check_expr state symbols base
+    check_expr ctx state symbols base
 
   | ExprTupleIndex (base, _) ->
-    check_expr state symbols base
+    check_expr ctx state symbols base
 
   | ExprIndex (arr, idx) ->
-    let* () = check_expr state symbols arr in
-    check_expr state symbols idx
+    let* () = check_expr ctx state symbols arr in
+    check_expr ctx state symbols idx
 
   | ExprRowRestrict (base, _) ->
-    check_expr state symbols base
+    check_expr ctx state symbols base
 
   | ExprBlock blk ->
-    check_block state symbols blk
+    check_block ctx state symbols blk
 
   | ExprBinary (left, _, right) ->
-    let* () = check_expr state symbols left in
-    check_expr state symbols right
+    let* () = check_expr ctx state symbols left in
+    check_expr ctx state symbols right
 
   | ExprUnary (_, e) ->
-    check_expr state symbols e
+    check_expr ctx state symbols e
 
   | ExprReturn e_opt ->
     begin match e_opt with
-      | Some e -> check_expr state symbols e
+      | Some e -> check_expr ctx state symbols e
       | None -> Ok ()
     end
 
   | ExprHandle eh ->
-    let* () = check_expr state symbols eh.eh_body in
+    let* () = check_expr ctx state symbols eh.eh_body in
     List.fold_left (fun acc arm ->
       let* () = acc in
       match arm with
-      | HandlerReturn (_pat, body) -> check_expr state symbols body
-      | HandlerOp (_op, _pats, body) -> check_expr state symbols body
+      | HandlerReturn (_pat, body) -> check_expr ctx state symbols body
+      | HandlerOp (_op, _pats, body) -> check_expr ctx state symbols body
     ) (Ok ()) eh.eh_handlers
 
   | ExprResume e_opt ->
     begin match e_opt with
-      | Some e -> check_expr state symbols e
+      | Some e -> check_expr ctx state symbols e
       | None -> Ok ()
     end
 
   | ExprTry et ->
-    let* () = check_block state symbols et.et_body in
+    let* () = check_block ctx state symbols et.et_body in
     let* () = match et.et_catch with
       | Some arms ->
         List.fold_left (fun acc arm ->
           let* () = acc in
           let* () = match arm.ma_guard with
-            | Some g -> check_expr state symbols g
+            | Some g -> check_expr ctx state symbols g
             | None -> Ok ()
           in
-          check_expr state symbols arm.ma_body
+          check_expr ctx state symbols arm.ma_body
         ) (Ok ()) arms
       | None -> Ok ()
     in
     begin match et.et_finally with
-      | Some blk -> check_block state symbols blk
+      | Some blk -> check_block ctx state symbols blk
       | None -> Ok ()
     end
 
@@ -411,63 +505,66 @@ let rec check_expr (state : state) (symbols : Symbol.t) (expr : expr) : unit res
     List.fold_left (fun acc op ->
       let* () = acc in
       match op with
-      | UnsafeRead e -> check_expr state symbols e
+      | UnsafeRead e -> check_expr ctx state symbols e
       | UnsafeWrite (e1, e2) ->
-        let* () = check_expr state symbols e1 in
-        check_expr state symbols e2
+        let* () = check_expr ctx state symbols e1 in
+        check_expr ctx state symbols e2
       | UnsafeOffset (e1, e2) ->
-        let* () = check_expr state symbols e1 in
-        check_expr state symbols e2
-      | UnsafeTransmute (_, _, e) -> check_expr state symbols e
-      | UnsafeForget e -> check_expr state symbols e
+        let* () = check_expr ctx state symbols e1 in
+        check_expr ctx state symbols e2
+      | UnsafeTransmute (_, _, e) -> check_expr ctx state symbols e
+      | UnsafeForget e -> check_expr ctx state symbols e
       | UnsafeAssume _ -> Ok ()
     ) (Ok ()) ops
 
   | ExprVariant _ -> Ok ()
 
   | ExprSpan (e, _) ->
-    check_expr state symbols e
+    check_expr ctx state symbols e
 
-and check_block (state : state) (symbols : Symbol.t) (blk : block) : unit result =
+and check_block (ctx : context) (state : state) (symbols : Symbol.t) (blk : block) : unit result =
   let* () = List.fold_left (fun acc stmt ->
     let* () = acc in
-    check_stmt state symbols stmt
+    check_stmt ctx state symbols stmt
   ) (Ok ()) blk.blk_stmts in
   match blk.blk_expr with
-  | Some e -> check_expr state symbols e
+  | Some e -> check_expr ctx state symbols e
   | None -> Ok ()
 
-and check_stmt (state : state) (symbols : Symbol.t) (stmt : stmt) : unit result =
+and check_stmt (ctx : context) (state : state) (symbols : Symbol.t) (stmt : stmt) : unit result =
   match stmt with
   | StmtLet sl ->
-    check_expr state symbols sl.sl_value
+    check_expr ctx state symbols sl.sl_value
   | StmtExpr e ->
-    check_expr state symbols e
+    check_expr ctx state symbols e
   | StmtAssign (lhs, _, rhs) ->
-    let* () = check_expr state symbols lhs in
-    check_expr state symbols rhs
+    let* () = check_expr ctx state symbols lhs in
+    check_expr ctx state symbols rhs
   | StmtWhile (cond, body) ->
-    let* () = check_expr state symbols cond in
-    check_block state symbols body
+    let* () = check_expr ctx state symbols cond in
+    check_block ctx state symbols body
   | StmtFor (_pat, iter, body) ->
-    let* () = check_expr state symbols iter in
-    check_block state symbols body
+    let* () = check_expr ctx state symbols iter in
+    check_block ctx state symbols body
 
 (** Check a function *)
-let check_function (symbols : Symbol.t) (fd : fn_decl) : unit result =
+let check_function (ctx : context) (symbols : Symbol.t) (fd : fn_decl) : unit result =
   let state = create () in
   match fd.fd_body with
-  | FnBlock blk -> check_block state symbols blk
-  | FnExpr e -> check_expr state symbols e
+  | FnBlock blk -> check_block ctx state symbols blk
+  | FnExpr e -> check_expr ctx state symbols e
 
 (** Check a program *)
 let check_program (symbols : Symbol.t) (program : program) : unit result =
+  (* Build context with all function signatures *)
+  let ctx = build_context program in
+  (* Check each function *)
   List.fold_left (fun acc decl ->
     match acc with
     | Error e -> Error e
     | Ok () ->
       match decl with
-      | TopFn fd -> check_function symbols fd
+      | TopFn fd -> check_function ctx symbols fd
       | _ -> Ok ()
   ) (Ok ()) program.prog_decls
 

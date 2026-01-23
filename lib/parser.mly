@@ -477,12 +477,12 @@ expr_primary:
   /* Arrays */
   | LBRACKET es = separated_list(COMMA, expr) RBRACKET { ExprArray es }
 
+  /* Block - must come before records to resolve ambiguity */
+  | blk = block { ExprBlock blk }
+
   /* Records */
   | LBRACE fields = separated_list(COMMA, record_field) spread = record_spread? RBRACE
     { ExprRecord { er_fields = fields; er_spread = spread } }
-
-  /* Block */
-  | blk = block { ExprBlock blk }
 
   /* Control flow */
   | IF cond = expr then_blk = block else_part = else_part?
@@ -603,8 +603,8 @@ unsafe_op:
 /* ========== Statements ========== */
 
 block:
-  | LBRACE stmts = list(stmt) final = expr? RBRACE
-    { { blk_stmts = stmts; blk_expr = final } }
+  | LBRACE stmts = list(stmt) RBRACE
+    { { blk_stmts = stmts; blk_expr = None } }
 
 stmt:
   | LET mut_ = MUT? pat = pattern ty = type_annotation? EQ value = expr SEMICOLON

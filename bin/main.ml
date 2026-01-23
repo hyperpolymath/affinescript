@@ -92,15 +92,22 @@ let eval_file path =
           (Affinescript.Typecheck.show_type_error e);
         `Error (false, "Type error")
       | Ok () ->
-        (* Evaluate *)
-        (match Affinescript.Interp.eval_program prog with
-        | Ok _env ->
-          Format.printf "Program executed successfully@.";
-          `Ok ()
+        (* Borrow check *)
+        (match Affinescript.Borrow.check_program symbols prog with
         | Error e ->
-          Format.eprintf "@[<v>Runtime error: %s@]@."
-            (Affinescript.Value.show_eval_error e);
-          `Error (false, "Runtime error"))))
+          Format.eprintf "@[<v>Borrow check error: %s@]@."
+            (Affinescript.Borrow.show_borrow_error e);
+          `Error (false, "Borrow check error")
+        | Ok () ->
+          (* Evaluate *)
+          (match Affinescript.Interp.eval_program prog with
+          | Ok _env ->
+            Format.printf "Program executed successfully@.";
+            `Ok ()
+          | Error e ->
+            Format.eprintf "@[<v>Runtime error: %s@]@."
+              (Affinescript.Value.show_eval_error e);
+            `Error (false, "Runtime error")))))
   with
   | Affinescript.Lexer.Lexer_error (msg, pos) ->
       Format.eprintf "@[<v>%s:%d:%d: lexer error: %s@]@." path pos.line pos.col msg;
