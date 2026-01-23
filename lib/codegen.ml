@@ -19,6 +19,7 @@ type context = {
   locals : (string * int) list;      (** local variable name to index map *)
   next_local : int;                  (** next available local index *)
   loop_depth : int;                  (** current loop nesting depth *)
+  func_indices : (string * int) list;  (** function name to index map *)
 }
 
 (** Code generation error *)
@@ -42,6 +43,7 @@ let create_context () : context = {
   locals = [];
   next_local = 0;
   loop_depth = 0;
+  func_indices = [];
 }
 
 (** Map AffineScript type to WASM value type *)
@@ -171,8 +173,29 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
   | ExprLambda _ ->
     Error (UnsupportedFeature "Lambda expressions not yet supported in codegen")
 
-  | ExprApp _ ->
-    Error (UnsupportedFeature "Function application not yet supported in codegen")
+  | ExprApp (func_expr, args) ->
+    (* Generate code for arguments (left to right) *)
+    let* (ctx_final, all_arg_code) = List.fold_left (fun acc arg ->
+      let* (ctx', accumulated_code) = acc in
+      let* (ctx'', arg_code) = gen_expr ctx' arg in
+      Ok (ctx'', accumulated_code @ arg_code)
+    ) (Ok (ctx, [])) args in
+
+    (* Get function name and index *)
+    begin match func_expr with
+      | ExprVar id ->
+        (* Direct function call *)
+        begin match List.assoc_opt id.name ctx_final.func_indices with
+          | Some func_idx ->
+            let call_instr = Call func_idx in
+            Ok (ctx_final, all_arg_code @ [call_instr])
+          | None ->
+            Error (UnboundVariable ("Function not found: " ^ id.name))
+        end
+      | _ ->
+        (* Indirect calls (function pointers) not yet supported *)
+        Error (UnsupportedFeature "Indirect function calls not yet supported")
+    end
 
   | ExprMatch _ ->
     Error (UnsupportedFeature "Match expressions not yet supported in codegen")
@@ -313,20 +336,27 @@ let gen_decl (ctx : context) (decl : top_level) : context result =
     let type_idx = List.length ctx.types in
     let ctx_with_type = { ctx with types = ctx.types @ [func_type] } in
 
+    (* Determine function index before generating *)
+    let func_idx = List.length ctx_with_type.funcs in
+
+    (* Register function name to index mapping *)
+    let ctx_with_func_idx = { ctx_with_type with
+      func_indices = ctx_with_type.func_indices @ [(fd.fd_name.name, func_idx)]
+    } in
+
     (* Generate function with correct type index *)
-    let* func = gen_function ctx_with_type fd in
+    let* func = gen_function ctx_with_func_idx fd in
     let func_with_type = { func with f_type = type_idx } in
 
-    let func_idx = List.length ctx_with_type.funcs in
     (* Add export for main function *)
     let export = if fd.fd_name.name = "main" then
       [{ e_name = "main"; e_desc = ExportFunc func_idx }]
     else
       []
     in
-    Ok { ctx_with_type with
-         funcs = ctx_with_type.funcs @ [func_with_type];
-         exports = ctx_with_type.exports @ export
+    Ok { ctx_with_func_idx with
+         funcs = ctx_with_func_idx.funcs @ [func_with_type];
+         exports = ctx_with_func_idx.exports @ export
        }
 
   | TopConst _ ->
