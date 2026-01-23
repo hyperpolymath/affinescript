@@ -47,6 +47,7 @@ and eval_error =
   | PatternMatchFailure
   | AffineViolation of string  (** Double use of affine value *)
   | RuntimeError of string
+  | PerformEffect of string * value list  (** Effect operation name and arguments *)
 
 and 'a result = ('a, eval_error) Result.t
 
@@ -62,6 +63,7 @@ let show_eval_error (e : eval_error) : string =
   | PatternMatchFailure -> "Pattern match failure"
   | AffineViolation msg -> "Affine violation: " ^ msg
   | RuntimeError msg -> "Runtime error: " ^ msg
+  | PerformEffect (name, _) -> "Unhandled effect: " ^ name
 
 let pp_eval_error fmt e = Format.pp_print_string fmt (show_eval_error e)
 

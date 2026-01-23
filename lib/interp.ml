@@ -203,11 +203,15 @@ let rec eval (env : env) (expr : expr) : value result =
   | ExprRowRestrict _ ->
     Error (RuntimeError "Row restriction not supported at runtime")
 
-  | ExprHandle _ ->
-    Error (RuntimeError "Effect handlers not yet implemented")
+  | ExprHandle { eh_body; eh_handlers } ->
+    eval_handle env eh_body eh_handlers
 
-  | ExprResume _ ->
-    Error (RuntimeError "Resume not yet implemented")
+  | ExprResume e_opt ->
+    (* Resume is a special operation that returns a value to be used by the handler *)
+    begin match e_opt with
+      | Some e -> eval env e
+      | None -> Ok VUnit
+    end
 
   | ExprTry { et_body; et_catch; et_finally } ->
     eval_try env et_body et_catch et_finally
@@ -263,6 +267,62 @@ and error_to_value (err : eval_error) : value =
     VVariant ("AffineViolation", Some (VString msg))
   | RuntimeError msg ->
     VVariant ("RuntimeError", Some (VString msg))
+  | PerformEffect (name, args) ->
+    VVariant ("PerformEffect", Some (VTuple (VString name :: args)))
+
+(** Evaluate effect handler *)
+and eval_handle (env : env) (body : expr) (handlers : handler_arm list) : value result =
+  (* Try to evaluate the body *)
+  match eval env body with
+  | Ok value ->
+    (* Body succeeded - check for HandlerReturn *)
+    begin match List.find_opt (function HandlerReturn _ -> true | _ -> false) handlers with
+      | Some (HandlerReturn (pat, handler_body)) ->
+        (* Match the return value against the pattern and evaluate handler *)
+        begin match match_pattern pat value with
+          | Ok bindings ->
+            let env' = extend_env_list bindings env in
+            eval env' handler_body
+          | Error _ -> Ok value  (* Pattern didn't match, return original value *)
+        end
+      | Some (HandlerOp _) | None -> Ok value  (* No return handler, return value *)
+    end
+  | Error (PerformEffect (op_name, args)) ->
+    (* Effect was performed - find matching handler *)
+    eval_effect_handler env op_name args handlers
+  | Error other_err ->
+    (* Other error - propagate *)
+    Error other_err
+
+(** Find and evaluate matching effect handler *)
+and eval_effect_handler (env : env) (op_name : string) (args : value list) (handlers : handler_arm list) : value result =
+  match handlers with
+  | [] -> Error (PerformEffect (op_name, args))  (* No handler found *)
+  | HandlerReturn _ :: rest ->
+    (* Skip return handlers when looking for effect handlers *)
+    eval_effect_handler env op_name args rest
+  | HandlerOp (handler_name, params, handler_body) :: rest ->
+    if handler_name.name = op_name then
+      (* Found matching handler - bind parameters and evaluate *)
+      if List.length params <> List.length args then
+        Error (TypeMismatch "Effect handler parameter count mismatch")
+      else
+        let bindings = List.fold_left2 (fun acc pat arg ->
+          match acc with
+          | Error _ as e -> e
+          | Ok bs ->
+            match match_pattern pat arg with
+            | Ok new_bs -> Ok (new_bs @ bs)
+            | Error _ as e -> e
+        ) (Ok []) params args in
+        match bindings with
+        | Ok bs ->
+          let env' = extend_env_list bs env in
+          eval env' handler_body
+        | Error e -> Error e
+    else
+      (* Name doesn't match - try next handler *)
+      eval_effect_handler env op_name args rest
 
 (** Evaluate try/catch/finally *)
 and eval_try (env : env) (body : block) (catch : match_arm list option) (finally : block option) : value result =
@@ -446,7 +506,19 @@ let eval_decl (env : env) (decl : top_level) : env result =
     let* v = eval env tc.tc_value in
     Ok (extend_env tc.tc_name.name v env)
 
-  | TopType _ | TopEffect _ | TopTrait _ | TopImpl _ ->
+  | TopEffect ed ->
+    (* Create builtin functions for each effect operation *)
+    let env_with_ops = List.fold_left (fun acc_env op ->
+      let op_name = op.eod_name.name in
+      let op_builtin = VBuiltin (op_name, fun args ->
+        (* When an effect operation is called, raise PerformEffect *)
+        Error (PerformEffect (op_name, args))
+      ) in
+      extend_env op_name op_builtin acc_env
+    ) env ed.ed_ops in
+    Ok env_with_ops
+
+  | TopType _ | TopTrait _ | TopImpl _ ->
     (* Type declarations don't affect runtime *)
     Ok env
 
