@@ -38,6 +38,9 @@ import tests/conformance/string/concat as ConcatTest;
 import tests/conformance/string/length as LengthTest;
 import tests/conformance/string/substring as SubstringTest;
 
+// Import conditional conformance tests
+import tests/conformance/conditional/if_then_else as IfThenElseTest;
+
 /// Conformance report entry
 type ConformanceResult = {
   category: String,
@@ -199,6 +202,11 @@ fn main() -> () {
   ];
   results = results ++ [
     run_conformance_test("string", "substring", SubstringTest.test_alib_string_substring)
+  ];
+
+  // Conditional conformance tests
+  results = results ++ [
+    run_conformance_test("conditional", "if_then_else", IfThenElseTest.test_alib_conditional_if_then_else)
   ];
 
   println("");
