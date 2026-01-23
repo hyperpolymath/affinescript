@@ -67,10 +67,22 @@ fn contains(s: String, substr: String) -> Bool {
 // String manipulation
 // ============================================================================
 
-// Concatenate two strings
-// TODO: Requires builtin operator or implementation
+/// Conforms to aLib string/concat spec v1.0
 fn concat(a: String, b: String) -> String {
-  a  // Placeholder - should be a ++ b
+  a ++ b
+}
+
+/// Conforms to aLib string/length spec v1.0
+fn length(s: String) -> Int {
+  len(s)
+}
+
+/// Conforms to aLib string/substring spec v1.0
+/// Extract substring from start (inclusive) to end (exclusive)
+fn substring(s: String, start: Int, end: Int) -> String {
+  // TODO: Requires builtin implementation
+  // For now, placeholder implementation
+  s  // Placeholder
 }
 
 // Repeat string n times

@@ -33,6 +33,11 @@ import tests/conformance/logical/and as AndTest;
 import tests/conformance/logical/or as OrTest;
 import tests/conformance/logical/not as NotTest;
 
+// Import string conformance tests
+import tests/conformance/string/concat as ConcatTest;
+import tests/conformance/string/length as LengthTest;
+import tests/conformance/string/substring as SubstringTest;
+
 /// Conformance report entry
 type ConformanceResult = {
   category: String,
@@ -183,6 +188,17 @@ fn main() -> () {
   ];
   results = results ++ [
     run_conformance_test("logical", "not", NotTest.test_alib_logical_not)
+  ];
+
+  // String conformance tests
+  results = results ++ [
+    run_conformance_test("string", "concat", ConcatTest.test_alib_string_concat)
+  ];
+  results = results ++ [
+    run_conformance_test("string", "length", LengthTest.test_alib_string_length)
+  ];
+  results = results ++ [
+    run_conformance_test("string", "substring", SubstringTest.test_alib_string_substring)
   ];
 
   println("");
