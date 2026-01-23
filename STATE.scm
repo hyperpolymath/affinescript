@@ -17,13 +17,14 @@
 
   (current-position
     (phase "alpha")
-    (overall-completion 50)
+    (overall-completion 55)
     (components
       ((lexer . 90)
        (parser . 75)  ; Fixed block/record ambiguity (no implicit returns)
        (ast . 100)
        (borrow-checker . 95)  ; Working! Detects use-after-move
        (type-checker . 40)  ; Fixed parameter inference via global symbol lookup
+       (interpreter . 80)  ; Pattern matching, control flow, basic effects complete
        (codegen-wasm . 0)
        (stdlib . 10)
        (tooling . 30)))
@@ -35,7 +36,10 @@
        "Basic type definitions"
        "Affine type checking with ownership tracking"
        "Borrow checker detects use-after-move errors"
-       "Function parameter type inference")))
+       "Function parameter type inference"
+       "Tree-walking interpreter with pattern matching"
+       "Control flow: while loops, for loops"
+       "Basic algebraic effect handlers (top-level effects)")))
 
   (route-to-mvp
     (milestones
@@ -64,18 +68,20 @@
        ("No Implicit Returns" . "Parser requires explicit 'return' statements. Rust-style implicit returns not supported due to grammar ambiguity with records.")))
     (medium
       (("Type Checker Coverage" . "Only basic type checking implemented. Missing: dependent types, row polymorphism, effect inference.")
-       ("Interpreter Incomplete" . "Only 25% complete. Missing: pattern matching, effects, most control flow.")))
+       ("Effect Handler Limitations" . "Effects only work at top level of handle expression. Need delimited continuations for full resume support.")
+       ("No WASM Codegen" . "WebAssembly code generation not yet implemented.")))
     (low
       (("Parser Conflicts" . "63 shift/reduce conflicts and 5 reduce/reduce conflicts remain in grammar."))))
 
   (critical-next-actions
     (immediate
-      ("Complete interpreter implementation (effects, pattern matching, control flow)"
-       "Add simple module/import system for code organization"))
+      ("Implement WebAssembly code generation (Priority #2)"
+       "Create standard library with basic I/O and data structures (Priority #3)"
+       "Add simple module/import system for code organization (Priority #4)"))
     (this-week
-      ("Implement WebAssembly code generation"
-       "Create standard library with basic I/O and data structures"
-       "Add more borrow checker tests (mut borrows, field access, lifetimes)"))
+      ("Implement delimited continuations for full effect handler resume support"
+       "Add more borrow checker tests (mut borrows, field access, lifetimes)"
+       "Create WASM runtime with linear memory management"))
     (this-month
       ("Dependent type checking implementation"
        "Row polymorphism for extensible records"
@@ -83,6 +89,18 @@
        "IDE tooling (LSP, syntax highlighting)")))
 
   (session-history
+    ((date "2026-01-23T22:00")
+     (accomplishments
+       ("COMPLETED: Tutorial lessons 2-10 (functions, data, patterns, types, errors, effects, generics, modules, building)"
+        "IMPLEMENTED: Basic algebraic effect handlers in interpreter"
+        "Created effect operation builtins that raise PerformEffect errors"
+        "Implemented handle expression with handler matching and dispatch"
+        "Added HandlerReturn support for intercepting return values"
+        "Documented limitations: effects only work at top level, no continuations yet"
+        "Created tests/effects/basic_effect.as test case"
+        "Created docs/EFFECTS-IMPLEMENTATION.md comprehensive documentation"
+        "Updated STATE.scm: interpreter 25% → 80% complete"
+        "Committed: 'Implement basic effect handler support' (562 insertions, 5 deletions)")))
     ((date "2026-01-23T18:00")
      (accomplishments
        ("FIXED: Parser block/record ambiguity by removing implicit returns from grammar"
