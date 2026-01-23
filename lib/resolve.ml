@@ -344,7 +344,7 @@ and resolve_stmt (ctx : context) (stmt : stmt) : unit result =
     result
 
 (** Resolve a top-level declaration *)
-let resolve_decl (ctx : context) (decl : top_level) : unit result =
+let rec resolve_decl (ctx : context) (decl : top_level) : unit result =
   match decl with
   | TopFn fd ->
     (* First, define the function itself for recursion *)

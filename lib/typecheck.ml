@@ -941,7 +941,7 @@ and union_eff (effs : eff list) : eff =
   | es -> EUnion es
 
 (** Type check a declaration *)
-let check_decl (ctx : context) (decl : top_level) : unit result =
+let rec check_decl (ctx : context) (decl : top_level) : unit result =
   match decl with
   | TopFn fd ->
     (* Create function type from signature *)

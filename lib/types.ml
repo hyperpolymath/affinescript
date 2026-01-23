@@ -330,11 +330,11 @@ let rec subst_ty (v : tyvar) (replacement : ty) (ty : ty) : ty =
     TRecord (subst_row v replacement row)
   | TVariant row ->
     TVariant (subst_row v replacement row)
-  | TForall (v', k, body) when v' = v ->
+  | TForall (v', _, _) when v' = v ->
     ty  (* Variable is shadowed *)
   | TForall (v', k, body) ->
     TForall (v', k, subst_ty v replacement body)
-  | TExists (v', k, body) when v' = v ->
+  | TExists (v', _, _) when v' = v ->
     ty  (* Variable is shadowed *)
   | TExists (v', k, body) ->
     TExists (v', k, subst_ty v replacement body)
