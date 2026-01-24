@@ -393,8 +393,37 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
     (* Complete code: eval scrutinee, store in temp, then try arms *)
     Ok (ctx_final, scrutinee_code @ [LocalSet temp_idx] @ arms_code)
 
-  | ExprTuple _ ->
-    Error (UnsupportedFeature "Tuples not yet supported in codegen")
+  | ExprTuple elements ->
+    (* Tuple layout in memory: [elem0: I32][elem1: I32][elem2: I32]... *)
+    (* No length field - tuple size is fixed at creation *)
+    let num_elements = List.length elements in
+    let size_in_bytes = num_elements * 4 in  (* 4 bytes per element *)
+
+    (* Allocate heap memory and save pointer to temp local *)
+    let (ctx_with_heap, alloc_code) = gen_heap_alloc ctx size_in_bytes in
+    let (ctx_with_temp, temp_idx) = alloc_local ctx_with_heap "__tup_ptr" in
+
+    (* Save allocated address to temp *)
+    let save_code = [LocalTee temp_idx] in
+
+    (* Generate code to store each element *)
+    let* (ctx_final, store_code) = List.fold_left (fun acc (idx, elem_expr) ->
+      let* (ctx_acc, code_acc) = acc in
+      (* Generate code for element value *)
+      let* (ctx', elem_code) = gen_expr ctx_acc elem_expr in
+
+      (* Store at offset (idx * 4) *)
+      let offset = idx * 4 in
+      let store_instrs = [
+        LocalGet temp_idx;  (* Get base address *)
+      ] @ elem_code @ [
+        I32Store (2, offset);  (* Store element at offset *)
+      ] in
+      Ok (ctx', code_acc @ store_instrs)
+    ) (Ok (ctx_with_temp, [])) (List.mapi (fun i e -> (i, e)) elements) in
+
+    (* Complete code: allocate, save to temp, store elements, return pointer *)
+    Ok (ctx_final, alloc_code @ save_code @ store_code @ [LocalGet temp_idx])
 
   | ExprArray elements ->
     (* Array layout in memory: [length: I32][elem0: I32][elem1: I32]... *)
@@ -499,8 +528,19 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
 
     Ok (ctx', record_code @ load_code)
 
-  | ExprTupleIndex _ ->
-    Error (UnsupportedFeature "Tuple indexing not yet supported in codegen")
+  | ExprTupleIndex (tuple_expr, index) ->
+    (* Generate code for tuple expression (gets pointer) *)
+    let* (ctx', tuple_code) = gen_expr ctx tuple_expr in
+
+    (* Calculate offset: index * 4 (no length field in tuples) *)
+    let offset = index * 4 in
+
+    (* Load from memory at offset *)
+    let load_code = [
+      I32Load (2, offset)  (* Load with alignment 2 (4-byte) and offset *)
+    ] in
+
+    Ok (ctx', tuple_code @ load_code)
 
   | ExprIndex (array_expr, index_expr) ->
     (* Generate code for array (gets pointer) *)
