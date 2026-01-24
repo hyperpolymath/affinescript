@@ -260,8 +260,8 @@ let gen_unop (op : unary_op) : instr result =
   | OpNeg -> Ok I32Sub  (* 0 - x *)
   | OpNot -> Ok I32Eqz  (* x == 0 *)
   | OpBitNot -> Error (UnsupportedFeature "Bitwise NOT")
-  | OpRef -> Error (UnsupportedFeature "References not yet supported in codegen")
-  | OpDeref -> Error (UnsupportedFeature "Dereference not yet supported in codegen")
+  | OpRef -> Error (UnsupportedFeature "OpRef handled in ExprUnary")
+  | OpDeref -> Error (UnsupportedFeature "OpDeref handled in ExprUnary")
 
 (** Generate code for an expression, returning instructions and updated context *)
 let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
@@ -281,13 +281,46 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
     Ok (ctx'', left_code @ right_code @ [op_instr])
 
   | ExprUnary (op, operand) ->
-    let* (ctx', operand_code) = gen_expr ctx operand in
-    let* op_instr = gen_unop op in
-    let prefix = match op with
-      | OpNeg -> [I32Const 0l]  (* 0 - operand *)
-      | _ -> []
-    in
-    Ok (ctx', prefix @ operand_code @ [op_instr])
+    begin match op with
+      | OpRef ->
+        (* Take reference: &expr *)
+        (* Allocate heap memory, store the value, return pointer *)
+        let* (ctx', operand_code) = gen_expr ctx operand in
+        let (ctx_with_heap, alloc_code) = gen_heap_alloc ctx' 4 in
+        let (ctx_with_ptr, ptr_idx) = alloc_local ctx_with_heap "__ref_ptr" in
+        let (ctx_with_val, val_idx) = alloc_local ctx_with_ptr "__ref_val" in
+
+        (* Strategy: alloc, save ptr, eval operand, save val, store val at ptr, return ptr *)
+        let ref_code = alloc_code @ [
+          LocalSet ptr_idx;     (* Save allocated pointer *)
+        ] @ operand_code @ [    (* Evaluate operand (value on stack) *)
+          LocalSet val_idx;     (* Save value *)
+          LocalGet ptr_idx;     (* Load pointer *)
+          LocalGet val_idx;     (* Load value *)
+          I32Store (2, 0);      (* Store: mem[ptr+0] = value *)
+          LocalGet ptr_idx;     (* Return pointer *)
+        ] in
+        Ok (ctx_with_val, ref_code)
+
+      | OpDeref ->
+        (* Dereference: *ptr *)
+        (* Load value from pointer *)
+        let* (ctx', ptr_code) = gen_expr ctx operand in
+        let deref_code = [
+          I32Load (2, 0);  (* Load i32 from pointer *)
+        ] in
+        Ok (ctx', ptr_code @ deref_code)
+
+      | _ ->
+        (* Other unary ops *)
+        let* (ctx', operand_code) = gen_expr ctx operand in
+        let* op_instr = gen_unop op in
+        let prefix = match op with
+          | OpNeg -> [I32Const 0l]  (* 0 - operand *)
+          | _ -> []
+        in
+        Ok (ctx', prefix @ operand_code @ [op_instr])
+    end
 
   | ExprIf ei ->
     let* (ctx', cond_code) = gen_expr ctx ei.ei_cond in
