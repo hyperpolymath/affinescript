@@ -14,6 +14,15 @@
 open Ast
 open Types
 
+(** Convert Ast.kind to Types.kind *)
+let rec ast_kind_to_types_kind (k : Ast.kind) : Types.kind =
+  match k with
+  | Ast.KType -> Types.KType
+  | Ast.KNat -> Types.KNat
+  | Ast.KRow -> Types.KRow
+  | Ast.KEffect -> Types.KEffect
+  | Ast.KArrow (k1, k2) -> Types.KArrow (ast_kind_to_types_kind k1, ast_kind_to_types_kind k2)
+
 (** Trait method signature *)
 type trait_method = {
   tm_name : string;
@@ -80,7 +89,9 @@ let register_trait (registry : trait_registry) (trait_decl : trait_decl) : unit 
 
   let assoc_types = List.filter_map (fun item ->
     match item with
-    | TraitType { tt_name; tt_kind; _ } -> Some (tt_name.name, tt_kind)
+    | TraitType { tt_name; tt_kind; _ } ->
+      let converted_kind = Option.map ast_kind_to_types_kind tt_kind in
+      Some (tt_name.name, converted_kind)
     | _ -> None
   ) trait_decl.trd_items in
 
@@ -95,7 +106,7 @@ let register_trait (registry : trait_registry) (trait_decl : trait_decl) : unit 
   Hashtbl.replace registry.traits trait_decl.trd_name.name trait_def
 
 (** Register an implementation *)
-let register_impl (registry : trait_registry) (impl_block : impl_block) : unit =
+let register_impl (registry : trait_registry) (impl_block : impl_block) (self_ty : ty) : unit =
   match impl_block.ib_trait_ref with
   | None -> ()  (* Inherent impl, not a trait impl *)
   | Some trait_ref ->
@@ -107,16 +118,18 @@ let register_impl (registry : trait_registry) (impl_block : impl_block) : unit =
 
     let assoc_types = List.filter_map (fun item ->
       match item with
-      | ImplType (name, ty_expr) ->
+      | ImplType (name, _ty_expr) ->
         (* Convert ty_expr to ty - placeholder for now *)
-        Some (name.name, TVar "placeholder")
+        (* TODO: Need context to properly convert ty_expr to ty *)
+        let placeholder_var = ref (Unbound (0, 0)) in
+        Some (name.name, TVar placeholder_var)
       | ImplFn _ -> None
     ) impl_block.ib_items in
 
     let impl = {
       ti_trait_name = trait_ref.tr_name.name;
       ti_trait_args = trait_ref.tr_args;
-      ti_self_ty = TVar "placeholder";  (* Will be filled by type checker *)
+      ti_self_ty = self_ty;  (* Use the provided self type *)
       ti_type_params = impl_block.ib_type_params;
       ti_methods = methods;
       ti_assoc_types = assoc_types;
@@ -197,13 +210,58 @@ let find_impl (registry : trait_registry) (trait_name : string) (self_ty : ty) :
   match Hashtbl.find_opt registry.impls trait_name with
   | None -> None
   | Some impls ->
-    (* TODO: Proper type unification to match self_ty *)
-    (* For now, just return first impl *)
-    List.nth_opt impls 0
+    (* Find impl where self_ty matches ti_self_ty *)
+    (* For now, simple name matching - TODO: proper unification *)
+    let rec type_name = function
+      | TVar _ -> None  (* Type variables don't have concrete names *)
+      | TCon name -> Some name
+      | TApp (TCon name, _) -> Some name
+      | TApp (ty, _) -> type_name ty
+      | _ -> None
+    in
+    let self_name = type_name self_ty in
+    List.find_opt (fun impl ->
+      match (self_name, type_name impl.ti_self_ty) with
+      | (Some n1, Some n2) -> n1 = n2
+      | _ -> false
+    ) impls
+
+(** Find all implementations for a given type (search all traits) *)
+let find_impls_for_type (registry : trait_registry) (self_ty : ty) : trait_impl list =
+  Hashtbl.fold (fun _trait_name impls acc ->
+    let matching = List.filter (fun impl ->
+      (* Simple type matching - TODO: proper unification *)
+      let rec type_name = function
+        | TVar _ -> None  (* Type variables don't have concrete names *)
+        | TCon name -> Some name
+        | TApp (TCon name, _) -> Some name
+        | TApp (ty, _) -> type_name ty
+        | _ -> None
+      in
+      match (type_name self_ty, type_name impl.ti_self_ty) with
+      | (Some n1, Some n2) -> n1 = n2
+      | _ -> false
+    ) impls in
+    matching @ acc
+  ) registry.impls []
 
 (** Find method in a trait impl *)
 let find_method (impl : trait_impl) (method_name : string) : fn_decl option =
   List.assoc_opt method_name impl.ti_methods
+
+(** Find method in any trait impl for a type *)
+let find_method_for_type (registry : trait_registry) (self_ty : ty) (method_name : string)
+    : (trait_impl * fn_decl) option =
+  let impls = find_impls_for_type registry self_ty in
+  let rec search_impls = function
+    | [] -> None
+    | impl :: rest ->
+      begin match find_method impl method_name with
+        | Some method_decl -> Some (impl, method_decl)
+        | None -> search_impls rest
+      end
+  in
+  search_impls impls
 
 (** Check for overlapping implementations *)
 let check_coherence (registry : trait_registry) (trait_name : string) : unit result =
@@ -214,7 +272,7 @@ let check_coherence (registry : trait_registry) (trait_name : string) : unit res
     (* For now, just ensure no duplicate self types *)
     let rec check_pairs = function
       | [] -> Ok ()
-      | impl :: rest ->
+      | _impl :: rest ->
         (* Check if any impl in rest has same self_ty *)
         (* TODO: Proper unification check *)
         check_pairs rest
@@ -224,6 +282,19 @@ let check_coherence (registry : trait_registry) (trait_name : string) : unit res
 (** Standard library traits - automatically registered *)
 let register_stdlib_traits (registry : trait_registry) : unit =
   (* Eq trait *)
+  let self_ty = Ast.TyCon { Ast.name = "Self"; span = Span.dummy } in
+  let eq_self_param = {
+    Ast.p_quantity = None;
+    p_ownership = Some Ast.Ref;
+    p_name = { Ast.name = "self"; span = Span.dummy };
+    p_ty = self_ty;
+  } in
+  let eq_other_param = {
+    Ast.p_quantity = None;
+    p_ownership = Some Ast.Ref;
+    p_name = { Ast.name = "other"; span = Span.dummy };
+    p_ty = self_ty;
+  } in
   let eq_trait = {
     td_name = "Eq";
     td_type_params = [];
@@ -231,7 +302,7 @@ let register_stdlib_traits (registry : trait_registry) : unit =
     td_methods = [{
       tm_name = "eq";
       tm_type_params = [];
-      tm_params = [];  (* Will be: (ref self, ref other: Self) *)
+      tm_params = [eq_self_param; eq_other_param];
       tm_ret_ty = Some ty_bool;
       tm_has_default = false;
     }];
@@ -240,6 +311,18 @@ let register_stdlib_traits (registry : trait_registry) : unit =
   Hashtbl.replace registry.traits "Eq" eq_trait;
 
   (* Ord trait (requires Eq) *)
+  let ord_self_param = {
+    Ast.p_quantity = None;
+    p_ownership = Some Ast.Ref;
+    p_name = { Ast.name = "self"; span = Span.dummy };
+    p_ty = self_ty;
+  } in
+  let ord_other_param = {
+    Ast.p_quantity = None;
+    p_ownership = Some Ast.Ref;
+    p_name = { Ast.name = "other"; span = Span.dummy };
+    p_ty = self_ty;
+  } in
   let ord_trait = {
     td_name = "Ord";
     td_type_params = [];
@@ -250,7 +333,7 @@ let register_stdlib_traits (registry : trait_registry) : unit =
     td_methods = [{
       tm_name = "cmp";
       tm_type_params = [];
-      tm_params = [];  (* Will be: (ref self, ref other: Self) *)
+      tm_params = [ord_self_param; ord_other_param];
       tm_ret_ty = None;  (* Returns Ordering enum *)
       tm_has_default = false;
     }];
@@ -259,6 +342,12 @@ let register_stdlib_traits (registry : trait_registry) : unit =
   Hashtbl.replace registry.traits "Ord" ord_trait;
 
   (* Hash trait *)
+  let hash_self_param = {
+    Ast.p_quantity = None;
+    p_ownership = Some Ast.Ref;
+    p_name = { Ast.name = "self"; span = Span.dummy };
+    p_ty = self_ty;
+  } in
   let hash_trait = {
     td_name = "Hash";
     td_type_params = [];
@@ -266,7 +355,7 @@ let register_stdlib_traits (registry : trait_registry) : unit =
     td_methods = [{
       tm_name = "hash";
       tm_type_params = [];
-      tm_params = [];  (* Will be: (ref self) *)
+      tm_params = [hash_self_param];
       tm_ret_ty = Some ty_int;
       tm_has_default = false;
     }];
@@ -275,6 +364,12 @@ let register_stdlib_traits (registry : trait_registry) : unit =
   Hashtbl.replace registry.traits "Hash" hash_trait;
 
   (* Display trait *)
+  let display_self_param = {
+    Ast.p_quantity = None;
+    p_ownership = Some Ast.Ref;
+    p_name = { Ast.name = "self"; span = Span.dummy };
+    p_ty = self_ty;
+  } in
   let display_trait = {
     td_name = "Display";
     td_type_params = [];
@@ -282,7 +377,7 @@ let register_stdlib_traits (registry : trait_registry) : unit =
     td_methods = [{
       tm_name = "to_string";
       tm_type_params = [];
-      tm_params = [];  (* Will be: (ref self) *)
+      tm_params = [display_self_param];
       tm_ret_ty = None;  (* Returns String *)
       tm_has_default = false;
     }];

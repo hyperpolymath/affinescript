@@ -129,10 +129,10 @@ let rec is_copy_type (ty_opt : type_expr option) : bool =
   | None -> false  (* Unknown type, assume not Copy *)
   | Some ty ->
     begin match ty with
-      | TyNamed id when id.name = "Int" || id.name = "Bool" || id.name = "Char" -> true
-      | TyNamed id when id.name = "Unit" -> true
+      | TyCon id when id.name = "Int" || id.name = "Bool" || id.name = "Char" -> true
+      | TyCon id when id.name = "Unit" -> true
       | TyTuple tys -> List.for_all (fun t -> is_copy_type (Some t)) tys
-      | TyApp (TyNamed id, _) when id.name = "Ref" -> true  (* Shared references are Copy *)
+      | TyApp (id, _) when id.name = "Ref" -> true  (* Shared references are Copy *)
       | _ -> false  (* Records, arrays, owned types, etc. are not Copy *)
     end
 
@@ -199,14 +199,14 @@ let record_borrow (state : state) (place : place) (kind : borrow_kind)
     Error (UseAfterMove (place, span, move_site))
   | None ->
     (* Check if trying to mutably borrow an immutable place *)
-    begin match kind with
+    let* () = begin match kind with
     | Exclusive ->
       if not (is_mutable state place) then
         Error (CannotBorrowAsMutable (place, span))
       else
-        ()
-    | Shared -> ()
-    end;
+        Ok ()
+    | Shared -> Ok ()
+    end in
     let new_borrow = {
       b_place = place;
       b_kind = kind;

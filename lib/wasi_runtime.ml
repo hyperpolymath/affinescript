@@ -117,7 +117,7 @@ let gen_print_int (heap_ptr_global : int) (fd_write_idx : int) (num_local : int)
         I32Const 48l;  (* ASCII '0' *)
         I32Add;
         LocalGet write_ptr_local;
-        I32Store8 (0, 0);
+        I32Store (0, 0);
 
         (* write_ptr-- *)
         LocalGet write_ptr_local;
@@ -143,7 +143,7 @@ let gen_print_int (heap_ptr_global : int) (fd_write_idx : int) (num_local : int)
     If (BtEmpty, [
       I32Const 45l;  (* ASCII '-' *)
       LocalGet write_ptr_local;
-      I32Store8 (0, 0);
+      I32Store (0, 0);
       LocalGet write_ptr_local;
       I32Const 1l;
       I32Sub;
@@ -214,7 +214,7 @@ let gen_println (heap_ptr_global : int) (fd_write_idx : int) (temp_local : int)
     (* Store newline character *)
     LocalGet temp_local;
     I32Const newline_byte;
-    I32Store8 (0, 0);
+    I32Store (0, 0);
 
     (* Create iovec *)
     LocalGet temp_local;

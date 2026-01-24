@@ -51,11 +51,38 @@ let parse_file path =
 
 (** Check a file *)
 let check_file path =
-  let source = read_file path in
-  let _ = source in
-  (* TODO: Implement type checker *)
-  Format.printf "Type checking not yet implemented@.";
-  `Ok ()
+  try
+    (* Parse the file *)
+    let prog = Affinescript.Parse_driver.parse_file path in
+
+    (* Create module loader *)
+    let loader_config = Affinescript.Module_loader.default_config () in
+    let loader = Affinescript.Module_loader.create loader_config in
+
+    (* Resolve names with module loading *)
+    (match Affinescript.Resolve.resolve_program_with_loader prog loader with
+    | Error (e, _span) ->
+      Format.eprintf "@[<v>Resolution error: %s@]@."
+        (Affinescript.Resolve.show_resolve_error e);
+      `Error (false, "Resolution error")
+    | Ok (resolve_ctx, _type_ctx) ->
+      (* Type check program *)
+      (match Affinescript.Typecheck.check_program resolve_ctx.symbols prog with
+      | Error e ->
+        Format.eprintf "@[<v>%s@]@."
+          (Affinescript.Typecheck.format_type_error e);
+        `Error (false, "Type error")
+      | Ok _ctx ->
+        Format.printf "Type checking passed@.";
+        `Ok ()))
+  with
+  | Affinescript.Lexer.Lexer_error (msg, pos) ->
+      Format.eprintf "@[<v>%s:%d:%d: lexer error: %s@]@." path pos.line pos.col msg;
+      `Error (false, "Lexer error")
+  | Affinescript.Parse_driver.Parse_error (msg, span) ->
+      Format.eprintf "@[<v>%a: parse error: %s@]@."
+        Affinescript.Span.pp_short span msg;
+      `Error (false, "Parse error")
 
 (** Evaluate a file with the interpreter *)
 let eval_file path =
@@ -82,8 +109,8 @@ let eval_file path =
         | Ok () -> Affinescript.Typecheck.check_decl type_ctx decl
       ) (Ok ()) prog.prog_decls with
       | Error e ->
-        Format.eprintf "@[<v>Type error: %s@]@."
-          (Affinescript.Typecheck.show_type_error e);
+        Format.eprintf "@[<v>%s@]@."
+          (Affinescript.Typecheck.format_type_error e);
         `Error (false, "Type error")
       | Ok () ->
         (* Borrow check *)
@@ -132,14 +159,14 @@ let compile_file path output =
       Format.eprintf "@[<v>Resolution error: %s@]@."
         (Affinescript.Resolve.show_resolve_error e);
       `Error (false, "Resolution error")
-    | Ok (resolve_ctx, type_ctx) ->
+    | Ok (resolve_ctx, _type_ctx) ->
       (* Type check the program *)
       (match Affinescript.Typecheck.check_program resolve_ctx.symbols prog with
       | Error e ->
-        Format.eprintf "@[<v>Type error: %s@]@."
-          (Affinescript.Typecheck.show_type_error e);
+        Format.eprintf "@[<v>%s@]@."
+          (Affinescript.Typecheck.format_type_error e);
         `Error (false, "Type error")
-      | Ok () ->
+      | Ok type_ctx ->
         (* Borrow check the program *)
         (match Affinescript.Borrow.check_program resolve_ctx.symbols prog with
         | Error e ->
@@ -150,8 +177,8 @@ let compile_file path output =
           (* Optimize AST *)
           let optimized_prog = Affinescript.Opt.fold_constants_program prog in
 
-          (* Generate WASM *)
-          (match Affinescript.Codegen.generate_module optimized_prog with
+          (* Generate WASM with trait registry and call sites from type checking *)
+          (match Affinescript.Codegen.generate_module optimized_prog type_ctx.trait_registry type_ctx.trait_method_calls with
       | Error e ->
         Format.eprintf "@[<v>Code generation error: %s@]@."
           (Affinescript.Codegen.show_codegen_error e);

@@ -2,7 +2,7 @@
  (name affinescript)
  (public_name affinescript)
  (modes byte native)
- (modules ast borrow codegen constraint error interp lexer module_loader opt parse_driver parse parser quantity repl resolve span symbol token trait typecheck types unify value wasm wasm_encode wasi_runtime)
+ (modules ast borrow codegen constraint effect error error_collector error_formatter interp lexer module_loader opt parse_driver parse parser quantity repl resolve span symbol token trait typecheck types unify value wasm wasm_encode wasi_runtime)
  (libraries str sedlex fmt menhirLib)
  (preprocess
   (pps ppx_deriving.show ppx_deriving.eq ppx_deriving.ord sedlex.ppx)))

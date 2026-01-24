@@ -11,6 +11,13 @@
 open Ast
 open Types
 
+(** Import effect operations - suppress false positive unused warnings *)
+[@@@warning "-32"]
+let union_eff = Effect.union_effs
+let is_pure = Effect.is_pure
+let eff_subsumes = Effect.eff_subsumes
+[@@@warning "+32"]
+
 (** Type checking errors *)
 type type_error =
   | UnificationFailed of Unify.unify_error * Span.t
@@ -26,9 +33,298 @@ type type_error =
   | EffectError of string * Span.t
   | BorrowError of string * Span.t
   | KindError of string * Span.t
+  | TraitNotImplemented of ty * string * Span.t  (** Type, Trait name, Location *)
+  | TraitMethodNotFound of ty * string * Span.t  (** Type, Method name, Location *)
+  | AmbiguousTraitMethod of string * string list * Span.t  (** Method name, Trait names, Location *)
 [@@deriving show]
 
+(** Pretty-print type to human-readable string *)
+let rec string_of_ty (ty : ty) : string =
+  match repr ty with
+  | TVar _ -> "'?"  (* Type variable *)
+  | TCon name -> name
+  | TApp (TCon "Array", [elem_ty]) -> string_of_ty elem_ty ^ "[]"
+  | TApp (base, args) ->
+    string_of_ty base ^ "<" ^ String.concat ", " (List.map string_of_ty args) ^ ">"
+  | TArrow (param, ret, eff) ->
+    let eff_str = match repr_eff eff with
+      | EPure -> ""
+      | _ -> " " ^ string_of_eff eff
+    in
+    "fn(" ^ string_of_ty param ^ ")" ^ eff_str ^ " -> " ^ string_of_ty ret
+  | TTuple tys ->
+    "(" ^ String.concat ", " (List.map string_of_ty tys) ^ ")"
+  | TRecord row ->
+    "{ " ^ string_of_row row ^ " }"
+  | TRef ty -> "ref " ^ string_of_ty ty
+  | TMut ty -> "mut " ^ string_of_ty ty
+  | TOwn ty -> "own " ^ string_of_ty ty
+  | _ -> Types.show_ty ty  (* Fall back for complex types *)
+
+and string_of_row (row : row) : string =
+  match repr_row row with
+  | REmpty -> ""
+  | RExtend (label, ty, rest) ->
+    let rest_str = string_of_row rest in
+    let separator = if rest_str = "" then "" else ", " in
+    label ^ ": " ^ string_of_ty ty ^ separator ^ rest_str
+  | RVar _ -> "..."
+
+and string_of_eff (eff : eff) : string =
+  match repr_eff eff with
+  | EPure -> "pure"
+  | ESingleton name -> name
+  | EUnion effs ->
+    String.concat " | " (List.map string_of_eff effs)
+  | EVar _ -> "?"
+
+(** Calculate Levenshtein distance for typo suggestions *)
+let levenshtein_distance (s1 : string) (s2 : string) : int =
+  let len1 = String.length s1 in
+  let len2 = String.length s2 in
+  let d = Array.make_matrix (len1 + 1) (len2 + 1) 0 in
+
+  for i = 0 to len1 do
+    d.(i).(0) <- i
+  done;
+  for j = 0 to len2 do
+    d.(0).(j) <- j
+  done;
+
+  for i = 1 to len1 do
+    for j = 1 to len2 do
+      let cost = if s1.[i-1] = s2.[j-1] then 0 else 1 in
+      d.(i).(j) <- min (d.(i-1).(j) + 1)
+                      (min (d.(i).(j-1) + 1)
+                           (d.(i-1).(j-1) + cost))
+    done
+  done;
+  d.(len1).(len2)
+
+(** Show type differences with highlighting *)
+let show_type_diff (expected : ty) (actual : ty) : string =
+  let exp_str = string_of_ty expected in
+  let act_str = string_of_ty actual in
+
+  (* Check for common patterns *)
+  let suggestion = match (repr expected, repr actual) with
+    | (TArrow _, _) when not (match repr actual with TArrow _ -> true | _ -> false) ->
+      Some "The expected type is a function, but the actual type is not.\n  \
+            Help: Did you forget to add function parameters?"
+
+    | (TRecord _, _) when not (match repr actual with TRecord _ -> true | _ -> false) ->
+      Some "The expected type is a record, but the actual type is not.\n  \
+            Help: Use record literal syntax: { field1: value1, field2: value2 }"
+
+    | (TTuple _, _) when not (match repr actual with TTuple _ -> true | _ -> false) ->
+      Some "The expected type is a tuple, but the actual type is not.\n  \
+            Help: Use tuple syntax: (value1, value2, ...)"
+
+    | (TCon "Int", TCon "Bool") | (TCon "Bool", TCon "Int") ->
+      Some "Cannot mix Int and Bool types.\n  \
+            Help: Use comparison operators (==, <, >) which return Bool, not arithmetic on Bool"
+
+    | (TCon "String", _) | (_, TCon "String") ->
+      Some "String type mismatch.\n  \
+            Help: Use string literals with double quotes: \"text\""
+
+    | _ -> None
+  in
+
+  let diff = Printf.sprintf "Expected: %s\n  Actual: %s" exp_str act_str in
+  match suggestion with
+  | Some msg -> diff ^ "\n  " ^ msg
+  | None -> diff
+
+(** Format unification errors with helpful suggestions *)
+let format_unify_error (uerr : Unify.unify_error) (span : Span.t) : string =
+  let span_str = Format.asprintf "%a" Span.pp_short span in
+  match uerr with
+  | Unify.TypeMismatch (expected, actual) ->
+    let diff = show_type_diff expected actual in
+    Printf.sprintf "%s: Type mismatch\n  %s" span_str diff
+
+  | Unify.OccursCheck (var, ty) ->
+    Printf.sprintf "%s: Infinite type detected\n\
+                    \  Type variable '%d would occur in: %s\n\
+                    \  Help: This usually means a function is calling itself with the wrong type.\n\
+                    \        Check recursive function definitions."
+      span_str var (string_of_ty ty)
+
+  | Unify.RowMismatch (expected, actual) ->
+    Printf.sprintf "%s: Record type mismatch\n\
+                    \  Expected row: %s\n\
+                    \  Actual row: %s\n\
+                    \  Help: Record types must have matching field names and types."
+      span_str (string_of_row expected) (string_of_row actual)
+
+  | Unify.LabelNotFound (label, row) ->
+    Printf.sprintf "%s: Field '%s' not found in record type\n\
+                    \  Record type: %s\n\
+                    \  Help: Check the field name spelling, or add the field to the record definition."
+      span_str label (string_of_row row)
+
+  | Unify.EffectMismatch (expected, actual) ->
+    Printf.sprintf "%s: Effect mismatch\n\
+                    \  Expected effect: %s\n\
+                    \  Actual effect: %s\n\
+                    \  Help: This function has a different effect than expected.\n\
+                    \        Pure functions cannot call impure functions."
+      span_str (string_of_eff expected) (string_of_eff actual)
+
+  | Unify.KindMismatch (expected, actual) ->
+    Printf.sprintf "%s: Kind mismatch\n\
+                    \  Expected kind: %s\n\
+                    \  Actual kind: %s"
+      span_str (Types.show_kind expected) (Types.show_kind actual)
+
+  | _ -> Printf.sprintf "%s: Unification error: %s" span_str (Unify.show_unify_error uerr)
+
+(** Pretty-print a type error message with helpful context *)
+let format_type_error (err : type_error) : string =
+  match err with
+  | UnificationFailed (uerr, span) ->
+    format_unify_error uerr span
+
+  | ExpectedFunction (ty, span) ->
+    let span_str = Format.asprintf "%a" Span.pp_short span in
+    Printf.sprintf "%s: Expected a function type, but got: %s\n\
+                    \  Help: This expression is being called like a function, but it's not a function.\n\
+                    \        Did you mean to use a different expression?"
+      span_str (string_of_ty ty)
+
+  | ExpectedRecord (ty, span) ->
+    let span_str = Format.asprintf "%a" Span.pp_short span in
+    Printf.sprintf "%s: Expected a record type, but got: %s\n\
+                    \  Help: Field access requires a record type.\n\
+                    \        Use record literal syntax: { field1: value1, field2: value2 }"
+      span_str (string_of_ty ty)
+
+  | ExpectedTuple (ty, span) ->
+    let span_str = Format.asprintf "%a" Span.pp_short span in
+    Printf.sprintf "%s: Expected a tuple type, but got: %s\n\
+                    \  Help: Use tuple syntax: (value1, value2, ...)"
+      span_str (string_of_ty ty)
+
+  | UndefinedField (field, span) ->
+    let span_str = Format.asprintf "%a" Span.pp_short span in
+    Printf.sprintf "%s: Undefined field: '%s'\n\
+                    \  Help: This field does not exist in the record type.\n\
+                    \        Check the field name spelling."
+      span_str field
+
+  | ArityMismatch (expected, actual, span) ->
+    let span_str = Format.asprintf "%a" Span.pp_short span in
+    let msg = if expected > actual then
+      Printf.sprintf "Too few arguments: expected %d, got %d\n\
+                      \  Help: Add %d more argument(s) to the function call."
+        expected actual (expected - actual)
+    else
+      Printf.sprintf "Too many arguments: expected %d, got %d\n\
+                      \  Help: Remove %d argument(s) from the function call."
+        expected actual (actual - expected)
+    in
+    Printf.sprintf "%s: Arity mismatch\n  %s" span_str msg
+
+  | CannotInfer span ->
+    let span_str = Format.asprintf "%a" Span.pp_short span in
+    Printf.sprintf "%s: Cannot infer type\n\
+                    \  Help: Add a type annotation to help the type checker.\n\
+                    \        Example: let x: Int = expression;"
+      span_str
+
+  | TypeAnnotationRequired span ->
+    let span_str = Format.asprintf "%a" Span.pp_short span in
+    Printf.sprintf "%s: Type annotation required\n\
+                    \  Help: This expression requires an explicit type annotation.\n\
+                    \        Example: let x: TypeName = expression;"
+      span_str
+
+  | TraitNotImplemented (ty, trait_name, span) ->
+    let span_str = Format.asprintf "%a" Span.pp_short span in
+    Printf.sprintf "%s: Trait error: type '%s' does not implement trait '%s'\n\
+                    Help: Add an impl block:\n\
+                    \  impl %s for %s {\n\
+                    \    // implement required methods\n\
+                    \  }"
+      span_str
+      (string_of_ty ty)
+      trait_name
+      trait_name
+      (string_of_ty ty)
+
+  | TraitMethodNotFound (ty, method_name, span) ->
+    let span_str = Format.asprintf "%a" Span.pp_short span in
+    Printf.sprintf "%s: Method not found: '%s' is not a method or field of type '%s'\n\
+                    Help: This type does not have a field '%s', and no trait providing method '%s' is implemented for '%s'.\n\
+                    \  - Check if you meant a different method name\n\
+                    \  - Ensure the type implements the required trait"
+      span_str
+      method_name
+      (string_of_ty ty)
+      method_name
+      method_name
+      (string_of_ty ty)
+
+  | AmbiguousTraitMethod (method_name, trait_names, span) ->
+    let span_str = Format.asprintf "%a" Span.pp_short span in
+    let traits_list = String.concat ", " trait_names in
+    Printf.sprintf "%s: Ambiguous method call: method '%s' is provided by multiple traits: %s\n\
+                    Help: Use fully qualified syntax to disambiguate:\n\
+                    \  TraitName::method(value, args...)"
+      span_str
+      method_name
+      traits_list
+
+  | QuantityError (msg, span) ->
+    let span_str = Format.asprintf "%a" Span.pp_short span in
+    Printf.sprintf "%s: Quantity error: %s" span_str msg
+
+  | EffectError (msg, span) ->
+    let span_str = Format.asprintf "%a" Span.pp_short span in
+    Printf.sprintf "%s: Effect error: %s" span_str msg
+
+  | BorrowError (msg, span) ->
+    let span_str = Format.asprintf "%a" Span.pp_short span in
+    Printf.sprintf "%s: Borrow error: %s" span_str msg
+
+  | KindError (msg, span) ->
+    let span_str = Format.asprintf "%a" Span.pp_short span in
+    Printf.sprintf "%s: Kind error: %s" span_str msg
+
+  | InvalidPattern span ->
+    let span_str = Format.asprintf "%a" Span.pp_short span in
+    Printf.sprintf "%s: Invalid pattern\n\
+                    \  Help: This pattern is not valid in this context.\n\
+                    \        Check the pattern syntax."
+      span_str
+
 type 'a result = ('a, type_error) Result.t
+
+(** Check if an expression diverges (always returns, never produces a value) *)
+let rec expr_diverges (expr : expr) : bool =
+  match expr with
+  | ExprReturn _ -> true
+  | ExprIf ei ->
+    (* If both branches diverge, the whole if diverges *)
+    begin match ei.ei_else with
+      | Some else_expr -> expr_diverges ei.ei_then && expr_diverges else_expr
+      | None -> false  (* No else branch, so it can fall through *)
+    end
+  | ExprBlock blk ->
+    (* Block diverges if it has a diverging expression at the end, or last statement diverges *)
+    begin match blk.blk_expr with
+      | Some e -> expr_diverges e
+      | None ->
+        begin match List.rev blk.blk_stmts with
+          | StmtExpr e :: _ -> expr_diverges e
+          | _ -> false
+        end
+    end
+  | ExprMatch em ->
+    (* Match diverges if all arms diverge *)
+    List.length em.em_arms > 0 && List.for_all (fun arm -> expr_diverges arm.ma_body) em.em_arms
+  | _ -> false
 
 (** Type checking context *)
 type context = {
@@ -42,13 +338,20 @@ type context = {
   var_types : (Symbol.symbol_id, scheme) Hashtbl.t;
 
   (** Current effect context *)
-  current_effect : eff;
+  mutable current_effect : eff;
 
   (** Constraint store for dependent types *)
   constraints : Constraint.constraint_store;
 
   (** Trait registry for trait resolution *)
   trait_registry : Trait.trait_registry;
+
+  (** Type definitions (for struct expansion during unification) *)
+  type_defs : (string, ty) Hashtbl.t;
+
+  (** Trait method call sites for codegen dispatch *)
+  (** Maps expression span to (type_name, trait_name, method_name) *)
+  trait_method_calls : (Span.t, string * string * string) Hashtbl.t;
 }
 
 (* Result bind - define before use *)
@@ -65,7 +368,27 @@ let create_context (symbols : Symbol.t) : context =
     current_effect = EPure;
     constraints = Constraint.empty_store;
     trait_registry = registry;
+    type_defs = Hashtbl.create 64;
+    trait_method_calls = Hashtbl.create 64;
   }
+
+(** Check if a type satisfies a trait bound *)
+let check_trait_bound (ctx : context) (ty : ty) (bound : trait_bound) : unit result =
+  (* Expand nominal types before checking *)
+  let ty_expanded = match repr ty with
+    | TCon name ->
+      begin match Hashtbl.find_opt ctx.type_defs name with
+        | Some expanded -> expanded
+        | None -> ty
+      end
+    | _ -> ty
+  in
+
+  (* Check if there's an implementation of the trait for this type *)
+  match Trait.find_impl ctx.trait_registry bound.tb_name.name ty_expanded with
+  | Some _impl -> Ok ()  (* Found an implementation *)
+  | None ->
+    Error (TraitNotImplemented (ty, bound.tb_name.name, bound.tb_name.span))
 
 (** Enter a new let-binding level *)
 let enter_level (ctx : context) : context =
@@ -466,7 +789,7 @@ and ast_to_pred (p : Ast.predicate) : predicate =
 and ast_to_eff (ctx : context) (e : effect_expr) : eff =
   match e with
   | EffCon (id, _) -> ESingleton id.name
-  | EffVar _id -> fresh_effvar ctx.level
+  | EffVar id -> ESingleton id.name  (* Effect variable refers to a named effect *)
   | EffUnion (e1, e2) -> EUnion [ast_to_eff ctx e1; ast_to_eff ctx e2]
 
 (** Kind checking *)
@@ -652,8 +975,59 @@ let rec synth (ctx : context) (expr : expr) : (ty * eff) result =
 
   | ExprApp (func, args) ->
     let span = expr_span expr in
-    let* (func_ty, func_eff) = synth ctx func in
-    synth_app ctx func_ty func_eff args span
+    (* Check if this is a trait method call: receiver.method(args) *)
+    begin match func with
+      | ExprField (receiver, method_name) ->
+        (* Try trait method resolution first *)
+        let* (receiver_ty, receiver_eff) = synth ctx receiver in
+        begin match Trait.find_method_for_type ctx.trait_registry receiver_ty method_name.name with
+          | Some (impl, method_decl) ->
+            (* Found trait method! Record for codegen dispatch *)
+            let type_name = match repr receiver_ty with
+              | TCon name -> name
+              | TApp (TCon name, _) -> name
+              | _ -> "Unknown"
+            in
+            let trait_name = impl.ti_trait_name in
+            (* Record this call site for monomorphic dispatch in codegen *)
+            (* Use method_name.span as key since it uniquely identifies this call site *)
+            Hashtbl.replace ctx.trait_method_calls method_name.span (type_name, trait_name, method_name.name);
+
+            (* Type check as method call *)
+            (* Build function type from method signature, EXCLUDING self parameter *)
+            (* Method syntax receiver.method(args) automatically binds self to receiver *)
+            let param_tys = match method_decl.fd_params with
+              | _ :: rest_params ->
+                (* Skip first param (self), type-check remaining params *)
+                List.map (fun p -> ast_to_ty ctx p.p_ty) rest_params
+              | [] ->
+                (* No params at all - shouldn't happen for methods but handle gracefully *)
+                []
+            in
+            let ret_ty = match method_decl.fd_ret_ty with
+              | Some ty_expr -> ast_to_ty ctx ty_expr
+              | None -> ty_unit
+            in
+            (* Extract effect from method declaration *)
+            let method_eff = match method_decl.fd_eff with
+              | Some eff_expr -> ast_to_eff ctx eff_expr
+              | None -> EPure
+            in
+            let func_ty = List.fold_right (fun param_ty acc ->
+              TArrow (param_ty, acc, method_eff)
+            ) param_tys ret_ty in
+            (* Check arguments against parameter types *)
+            synth_app ctx func_ty receiver_eff args span
+          | None ->
+            (* Not a trait method, fall back to regular field + app *)
+            let* (func_ty, func_eff) = synth ctx func in
+            synth_app ctx func_ty func_eff args span
+        end
+      | _ ->
+        (* Not a method call pattern, normal function application *)
+        let* (func_ty, func_eff) = synth ctx func in
+        synth_app ctx func_ty func_eff args span
+    end
 
   | ExprLambda lam ->
     (* For lambdas, we need annotations or we infer fresh variables *)
@@ -703,12 +1077,36 @@ let rec synth (ctx : context) (expr : expr) : (ty * eff) result =
 
   | ExprIf ei ->
     let* cond_eff = check ctx ei.ei_cond ty_bool in
-    let* (then_ty, then_eff) = synth ctx ei.ei_then in
     begin match ei.ei_else with
       | Some else_expr ->
-        let* else_eff = check ctx else_expr then_ty in
-        Ok (then_ty, union_eff [cond_eff; then_eff; else_eff])
+        (* Check if both branches diverge *)
+        let then_diverges = expr_diverges ei.ei_then in
+        let else_diverges = expr_diverges else_expr in
+
+        if then_diverges && else_diverges then
+          (* Both branches diverge - this if-expression never produces a value *)
+          (* We still need to type-check both branches for side effects *)
+          let* (_, then_eff) = synth ctx ei.ei_then in
+          let* (_, else_eff) = synth ctx else_expr in
+          (* Return a fresh type variable since this never returns *)
+          Ok (fresh_tyvar ctx.level, union_eff [cond_eff; then_eff; else_eff])
+        else if then_diverges then
+          (* Then diverges, use else type *)
+          let* (_, then_eff) = synth ctx ei.ei_then in
+          let* (else_ty, else_eff) = synth ctx else_expr in
+          Ok (else_ty, union_eff [cond_eff; then_eff; else_eff])
+        else if else_diverges then
+          (* Else diverges, use then type *)
+          let* (then_ty, then_eff) = synth ctx ei.ei_then in
+          let* (_, else_eff) = synth ctx else_expr in
+          Ok (then_ty, union_eff [cond_eff; then_eff; else_eff])
+        else
+          (* Neither diverges - normal case *)
+          let* (then_ty, then_eff) = synth ctx ei.ei_then in
+          let* else_eff = check ctx else_expr then_ty in
+          Ok (then_ty, union_eff [cond_eff; then_eff; else_eff])
       | None ->
+        let* (_, then_eff) = synth ctx ei.ei_then in
         Ok (ty_unit, union_eff [cond_eff; then_eff])
     end
 
@@ -775,11 +1173,41 @@ let rec synth (ctx : context) (expr : expr) : (ty * eff) result =
   | ExprField (base, field) ->
     let span = expr_span expr in
     let* (base_ty, base_eff) = synth ctx base in
-    begin match repr base_ty with
+    (* Expand nominal struct types to their record definitions *)
+    let base_ty_expanded = match repr base_ty with
+      | TCon name ->
+        begin match Hashtbl.find_opt ctx.type_defs name with
+          | Some expanded_ty -> expanded_ty
+          | None -> base_ty
+        end
+      | _ -> base_ty
+    in
+    begin match repr base_ty_expanded with
       | TRecord row ->
         begin match find_field field.name row with
           | Some ty -> Ok (ty, base_eff)
-          | None -> Error (UndefinedField (field.name, span))
+          | None ->
+            (* Check if this is a trait method before reporting UndefinedField *)
+            begin match Trait.find_method_for_type ctx.trait_registry base_ty field.name with
+              | Some (_impl, method_decl) ->
+                (* Build function type for the method, EXCLUDING self parameter *)
+                let param_tys = match method_decl.fd_params with
+                  | _ :: rest_params ->
+                    List.map (fun p -> ast_to_ty ctx p.p_ty) rest_params
+                  | [] -> []
+                in
+                let ret_ty = match method_decl.fd_ret_ty with
+                  | Some ty_expr -> ast_to_ty ctx ty_expr
+                  | None -> ty_unit
+                in
+                let func_ty = List.fold_right (fun param_ty acc ->
+                  TArrow (param_ty, acc, EPure)
+                ) param_tys ret_ty in
+                Ok (func_ty, base_eff)
+              | None ->
+                (* Not a field and not a trait method *)
+                Error (TraitMethodNotFound (base_ty, field.name, span))
+            end
         end
       | TVar _ as tv ->
         let field_ty = fresh_tyvar ctx.level in
@@ -790,7 +1218,32 @@ let rec synth (ctx : context) (expr : expr) : (ty * eff) result =
           | Error e -> Error (UnificationFailed (e, span))
         end
       | _ ->
-        Error (ExpectedRecord (base_ty, span))
+        (* For non-record types, check if it's a trait method *)
+        begin match Trait.find_method_for_type ctx.trait_registry base_ty field.name with
+          | Some (_impl, method_decl) ->
+            (* Build function type for the method, EXCLUDING self parameter *)
+            let param_tys = match method_decl.fd_params with
+              | _ :: rest_params ->
+                List.map (fun p -> ast_to_ty ctx p.p_ty) rest_params
+              | [] -> []
+            in
+            let ret_ty = match method_decl.fd_ret_ty with
+              | Some ty_expr -> ast_to_ty ctx ty_expr
+              | None -> ty_unit
+            in
+            (* Extract effect from method declaration *)
+            let method_eff = match method_decl.fd_eff with
+              | Some eff_expr -> ast_to_eff ctx eff_expr
+              | None -> EPure
+            in
+            let func_ty = List.fold_right (fun param_ty acc ->
+              TArrow (param_ty, acc, method_eff)
+            ) param_tys ret_ty in
+            Ok (func_ty, base_eff)
+          | None ->
+            (* Not a record type, not a trait method - provide helpful error *)
+            Error (TraitMethodNotFound (base_ty, field.name, span))
+        end
     end
 
   | ExprTupleIndex (base, idx) ->
@@ -942,20 +1395,52 @@ let rec synth (ctx : context) (expr : expr) : (ty * eff) result =
 and synth_app (ctx : context) (func_ty : ty) (func_eff : eff)
     (args : expr list) (span : Span.t) : (ty * eff) result =
   match args with
-  | [] -> Ok (func_ty, func_eff)
+  | [] ->
+    (* Zero-argument application: check if this is a Unit -> T function being called *)
+    begin match repr func_ty with
+      | TArrow (param_ty, ret_ty, call_eff) when repr param_ty = ty_unit ->
+        (* Unit -> T function with zero args - apply to implicit unit *)
+        if not (eff_subsumes ctx.current_effect call_eff) then
+          Error (EffectError (
+            Printf.sprintf "Cannot perform effect %s in %s context"
+              (string_of_eff call_eff)
+              (string_of_eff ctx.current_effect),
+            span))
+        else
+          Ok (ret_ty, union_eff [func_eff; call_eff])
+      | _ ->
+        (* Not a function application, just return the type *)
+        Ok (func_ty, func_eff)
+    end
   | arg :: rest ->
     begin match repr func_ty with
       | TArrow (param_ty, ret_ty, call_eff) ->
-        let* arg_eff = check ctx arg param_ty in
-        synth_app ctx ret_ty (union_eff [func_eff; arg_eff; call_eff]) rest span
+        (* Check that call_eff is allowed in current context *)
+        if not (eff_subsumes ctx.current_effect call_eff) then
+          Error (EffectError (
+            Printf.sprintf "Cannot perform effect %s in %s context"
+              (string_of_eff call_eff)
+              (string_of_eff ctx.current_effect),
+            span))
+        else
+          let* arg_eff = check ctx arg param_ty in
+          synth_app ctx ret_ty (union_eff [func_eff; arg_eff; call_eff]) rest span
 
       (* Dependent arrow: substitute argument in return type *)
       | TDepArrow (param_name, param_ty, ret_ty, call_eff) ->
-        let* arg_eff = check ctx arg param_ty in
-        (* Try to extract nat expression from argument *)
-        let arg_nat = extract_nat_from_expr arg in
-        let (ret_ty', _subst) = Constraint.instantiate_dep_arrow param_name arg_nat ret_ty in
-        synth_app ctx ret_ty' (union_eff [func_eff; arg_eff; call_eff]) rest span
+        (* Check that call_eff is allowed in current context *)
+        if not (eff_subsumes ctx.current_effect call_eff) then
+          Error (EffectError (
+            Printf.sprintf "Cannot perform effect %s in %s context"
+              (string_of_eff call_eff)
+              (string_of_eff ctx.current_effect),
+            span))
+        else
+          let* arg_eff = check ctx arg param_ty in
+          (* Try to extract nat expression from argument *)
+          let arg_nat = extract_nat_from_expr arg in
+          let (ret_ty', _subst) = Constraint.instantiate_dep_arrow param_name arg_nat ret_ty in
+          synth_app ctx ret_ty' (union_eff [func_eff; arg_eff; call_eff]) rest span
 
       | TVar _ as tv ->
         let param_ty = fresh_tyvar ctx.level in
@@ -991,15 +1476,17 @@ and check (ctx : context) (expr : expr) (expected : ty) : eff result =
       | [param] ->
         (* Save binding for this parameter name *)
         let saved = save_bindings ctx [param.p_name] in
+        (* Save and set current effect context *)
+        let saved_effect = ctx.current_effect in
+        ctx.current_effect <- arr_eff;
         bind_var ctx param.p_name param_ty;
-        let* body_eff = check ctx lam.elam_body ret_ty in
-        (* Restore original binding *)
+        let* _body_eff = check ctx lam.elam_body ret_ty in
+        (* Restore original binding and effect *)
         remove_bindings ctx [param.p_name];
         restore_bindings ctx saved;
-        begin match Unify.unify_eff body_eff arr_eff with
-          | Ok () -> Ok EPure
-          | Error e -> Error (UnificationFailed (e, Span.dummy))
-        end
+        ctx.current_effect <- saved_effect;
+        (* Subsumption is enforced by current_effect context *)
+        Ok EPure
       | _ ->
         (* Multi-param lambdas: fall through to subsumption *)
         check_subsumption ctx expr expected
@@ -1057,8 +1544,24 @@ and check (ctx : context) (expr : expr) (expected : ty) : eff result =
 
 and check_subsumption (ctx : context) (expr : expr) (expected : ty) : eff result =
   let* (actual, eff) = synth ctx expr in
+
+  (* Helper: expand nominal struct types to their record definitions *)
+  let expand_nominal ty =
+    match repr ty with
+    | TCon name ->
+      begin match Hashtbl.find_opt ctx.type_defs name with
+        | Some expanded_ty -> expanded_ty
+        | None -> ty
+      end
+    | _ -> ty
+  in
+
+  (* Expand both actual and expected before unification *)
+  let actual_expanded = expand_nominal actual in
+  let expected_expanded = expand_nominal expected in
+
   (* Check for refined type subsumption *)
-  begin match (repr actual, repr expected) with
+  begin match (repr actual_expanded, repr expected_expanded) with
     | (TRefined (base1, pred1), TRefined (base2, pred2)) ->
       (* Must have same base type and pred1 => pred2 *)
       begin match Unify.unify base1 base2 with
@@ -1071,7 +1574,7 @@ and check_subsumption (ctx : context) (expr : expr) (expected : ty) : eff result
       end
     | (_, TRefined (base, pred)) ->
       (* Checking non-refined against refined *)
-      begin match Unify.unify actual base with
+      begin match Unify.unify actual_expanded base with
         | Ok () ->
           if check_predicate ctx pred then
             Ok eff
@@ -1080,7 +1583,7 @@ and check_subsumption (ctx : context) (expr : expr) (expected : ty) : eff result
         | Error e -> Error (UnificationFailed (e, expr_span expr))
       end
     | _ ->
-      match Unify.unify actual expected with
+      match Unify.unify actual_expanded expected_expanded with
       | Ok () -> Ok eff
       | Error e -> Error (UnificationFailed (e, expr_span expr))
   end
@@ -1139,9 +1642,9 @@ and synth_block (ctx : context) (blk : block) : (ty * eff) result =
     Ok (ty_unit, union_eff effs)
 
 and check_block (ctx : context) (blk : block) (expected : ty) : eff result =
-  (* Check if last statement is a return statement *)
-  let last_is_return = match List.rev blk.blk_stmts with
-    | StmtExpr (ExprReturn _) :: _ -> true
+  (* Check if last statement is a return statement or diverges *)
+  let last_diverges = match List.rev blk.blk_stmts with
+    | StmtExpr e :: _ -> expr_diverges e
     | _ -> false
   in
   let* effs = List.fold_left (fun acc stmt ->
@@ -1151,11 +1654,17 @@ and check_block (ctx : context) (blk : block) (expected : ty) : eff result =
   ) (Ok []) blk.blk_stmts in
   match blk.blk_expr with
   | Some e ->
-    let* eff = check ctx e expected in
-    Ok (union_eff (eff :: effs))
+    (* If the block expression diverges, we don't need to check it against expected *)
+    if expr_diverges e then
+      let* eff = synth ctx e in
+      let (_, eff') = eff in
+      Ok (union_eff (eff' :: effs))
+    else
+      let* eff = check ctx e expected in
+      Ok (union_eff (eff :: effs))
   | None ->
-    (* If last statement is a return, the block can return the expected type *)
-    if last_is_return then
+    (* If last statement diverges, the block satisfies any expected type *)
+    if last_diverges then
       Ok (union_eff effs)
     else
       begin match Unify.unify expected ty_unit with
@@ -1167,7 +1676,15 @@ and synth_stmt (ctx : context) (stmt : stmt) : eff result =
   match stmt with
   | StmtLet sl ->
     let ctx' = enter_level ctx in
-    let* (rhs_ty, rhs_eff) = synth ctx' sl.sl_value in
+    (* Use type annotation if provided, otherwise synthesize *)
+    let* (rhs_ty, rhs_eff) = match sl.sl_ty with
+      | Some ty_expr ->
+        let expected_ty = ast_to_ty ctx ty_expr in
+        let* eff = check ctx' sl.sl_value expected_ty in
+        Ok (expected_ty, eff)
+      | None ->
+        synth ctx' sl.sl_value
+    in
     (* If mutable, wrap type in TMut *)
     let bind_ty = if sl.sl_mut then TMut rhs_ty else rhs_ty in
     (* Generalize only if immutable *)
@@ -1476,11 +1993,18 @@ let rec check_decl (ctx : context) (decl : top_level) : unit result =
       | None -> Ok (fresh_tyvar ctx.level)
     in
 
-    (* Build function type with fresh effect variables *)
-    let func_eff = fresh_effvar ctx.level in
-    let func_ty = List.fold_right (fun (_, param_ty) acc ->
-      TArrow (param_ty, acc, func_eff)
-    ) param_tys ret_ty in
+    (* Get declared effect (default to Pure if not specified) *)
+    let func_eff = match fd.fd_eff with
+      | Some eff_expr -> ast_to_eff ctx eff_expr
+      | None -> EPure
+    in
+    (* Build function type - for zero-parameter functions, create Unit -> ret_ty *)
+    let func_ty = match param_tys with
+      | [] -> TArrow (ty_unit, ret_ty, func_eff)
+      | _ -> List.fold_right (fun (_, param_ty) acc ->
+               TArrow (param_ty, acc, func_eff)
+             ) param_tys ret_ty
+    in
     (* Exit level for generalization *)
     ctx.level <- outer_level;
     (* Generalize function type to make it polymorphic *)
@@ -1489,21 +2013,40 @@ let rec check_decl (ctx : context) (decl : top_level) : unit result =
     bind_var_scheme ctx fd.fd_name func_scheme;
     (* Bind parameters (using fallback lookup that searches all_symbols) *)
     List.iter (fun (id, ty) -> bind_var ctx id ty) param_tys;
-    (* Check body and unify effect *)
-    begin match fd.fd_body with
+
+    (* Check where clause constraints *)
+    let* () = List.fold_left (fun acc constraint_ ->
+      let* () = acc in
+      match constraint_ with
+      | ConstraintPred _pred ->
+        (* TODO: Check predicate constraints *)
+        Ok ()
+      | ConstraintTrait (type_var, bounds) ->
+        (* Find the type this variable refers to *)
+        (* For now, just validate the bounds are satisfied for type params *)
+        (* TODO: Full generic constraint checking at call sites *)
+        let _ = type_var in
+        let _ = bounds in
+        Ok ()
+    ) (Ok ()) fd.fd_where in
+
+    (* Save and set current effect context *)
+    let saved_effect = ctx.current_effect in
+    ctx.current_effect <- func_eff;
+
+    (* Check body - subsumption is enforced by current_effect context *)
+    let result = begin match fd.fd_body with
       | FnBlock blk ->
-        let* body_eff = check_block ctx blk ret_ty in
-        begin match Unify.unify_eff func_eff body_eff with
-          | Ok () -> Ok ()
-          | Error e -> Error (UnificationFailed (e, Span.dummy))
-        end
+        let* _body_eff = check_block ctx blk ret_ty in
+        Ok ()
       | FnExpr e ->
-        let* body_eff = check ctx e ret_ty in
-        begin match Unify.unify_eff func_eff body_eff with
-          | Ok () -> Ok ()
-          | Error e -> Error (UnificationFailed (e, Span.dummy))
-        end
-    end
+        let* _body_eff = check ctx e ret_ty in
+        Ok ()
+    end in
+
+    (* Restore original effect context *)
+    ctx.current_effect <- saved_effect;
+    result
 
   | TopType td ->
     (* Check type definitions - validate type body is well-formed *)
@@ -1527,12 +2070,20 @@ let rec check_decl (ctx : context) (decl : top_level) : unit result =
         Ok ()
       | TyStruct fields ->
         (* Check all field types are well-kinded *)
-        List.fold_left (fun acc field ->
+        let* () = List.fold_left (fun acc field ->
           let* () = acc in
           let ty = ast_to_ty ctx field.sf_ty in
           let* _ = check_kind ctx ty KType in
           Ok ()
-        ) (Ok ()) fields
+        ) (Ok ()) fields in
+
+        (* Store the expanded record type for this struct *)
+        let record_ty = List.fold_right (fun field acc ->
+          let field_ty = ast_to_ty ctx field.sf_ty in
+          RExtend (field.sf_name.name, field_ty, acc)
+        ) fields REmpty in
+        Hashtbl.replace ctx.type_defs td.td_name.name (TRecord record_ty);
+        Ok ()
       | TyEnum variants ->
         (* Check all variant field types are well-kinded *)
         List.fold_left (fun acc variant ->
@@ -1579,11 +2130,11 @@ let rec check_decl (ctx : context) (decl : top_level) : unit result =
     Ok ()
 
   | TopImpl ib ->
-    (* Register implementation in registry *)
-    Trait.register_impl ctx.trait_registry ib;
-
-    (* Check implementations - validate methods against trait *)
+    (* Convert self type first *)
     let self_ty = ast_to_ty ctx ib.ib_self_ty in
+
+    (* Register implementation in registry with converted self type *)
+    Trait.register_impl ctx.trait_registry ib self_ty;
 
     (* If this is a trait impl, validate it satisfies the trait *)
     let* () = match ib.ib_trait_ref with
@@ -1626,13 +2177,14 @@ let rec check_decl (ctx : context) (decl : top_level) : unit result =
     Ok ()
 
 (** Type check a program *)
-let check_program (symbols : Symbol.t) (program : program) : unit result =
+let check_program (symbols : Symbol.t) (program : program) : context result =
   let ctx = create_context symbols in
-  List.fold_left (fun acc decl ->
+  let* () = List.fold_left (fun acc decl ->
     match acc with
     | Error e -> Error e
     | Ok () -> check_decl ctx decl
-  ) (Ok ()) program.prog_decls
+  ) (Ok ()) program.prog_decls in
+  Ok ctx
 
 (* Phase 1 complete. Future enhancements (Phase 2+):
    - Better error messages with suggestions (Phase 2)

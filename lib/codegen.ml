@@ -29,6 +29,8 @@ type context = {
   string_data : (string * int) list; (** string content -> memory offset *)
   next_string_offset : int;          (** next available offset for string data *)
   datas : data list;                 (** data segments *)
+  trait_registry : Trait.trait_registry;  (** trait registry for method resolution *)
+  trait_method_calls : (Span.t, string * string * string) Hashtbl.t;  (** trait method call sites *)
 }
 
 (** Code generation error *)
@@ -44,7 +46,8 @@ type 'a result = ('a, codegen_error) Result.t
 let ( let* ) = Result.bind
 
 (** Create initial context *)
-let create_context () : context = {
+let create_context (trait_registry : Trait.trait_registry)
+                   (trait_method_calls : (Span.t, string * string * string) Hashtbl.t) : context = {
   types = [];
   funcs = [];
   exports = [];
@@ -62,6 +65,8 @@ let create_context () : context = {
   string_data = [];
   next_string_offset = 2048;  (* Start strings after heap at offset 2048 *)
   datas = [];
+  trait_registry;
+  trait_method_calls;
 }
 
 (** Map AffineScript type to WASM value type *)
@@ -489,8 +494,31 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
     Ok (ctx_final3, closure_code)
 
   | ExprApp (func_expr, args) ->
-    (* Check for built-in WASI functions first *)
+    (* Check for trait method calls and built-in WASI functions *)
     begin match func_expr with
+      | ExprField (receiver, method_name) when Hashtbl.mem ctx.trait_method_calls method_name.span ->
+        (* This is a trait method call! Generate direct call to monomorphized function *)
+        let (type_name, trait_name, _method_name) = Hashtbl.find ctx.trait_method_calls method_name.span in
+        let mangled_name = Printf.sprintf "%s_%s_%s" type_name trait_name method_name.name in
+
+        (* Generate code for receiver first (becomes first argument) *)
+        let* (ctx_with_receiver, receiver_code) = gen_expr ctx receiver in
+
+        (* Generate code for other arguments *)
+        let* (ctx_after_args, all_arg_code) = List.fold_left (fun acc arg ->
+          let* (ctx', accumulated_code) = acc in
+          let* (ctx'', arg_code) = gen_expr ctx' arg in
+          Ok (ctx'', accumulated_code @ arg_code)
+        ) (Ok (ctx_with_receiver, receiver_code)) args in
+
+        (* Look up the monomorphized function index *)
+        begin match List.assoc_opt mangled_name ctx_after_args.func_indices with
+          | Some func_idx ->
+            Ok (ctx_after_args, all_arg_code @ [Call func_idx])
+          | None ->
+            Error (UnsupportedFeature (Printf.sprintf "Trait method not found: %s" mangled_name))
+        end
+
       | ExprVar id when id.name = "print" && List.length args = 1 ->
         (* print(x) - print integer without newline *)
         let* (ctx_with_arg, arg_code) = gen_expr ctx (List.hd args) in
@@ -498,21 +526,25 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
         (* Allocate temp local to hold the value *)
         let (ctx_with_temp, value_temp) = alloc_local ctx_with_arg "__print_value" in
 
+        (* Ensure heap pointer is initialized *)
+        let (ctx_with_heap, heap_ptr_idx) = ensure_heap_ptr ctx_with_temp in
+
         (* Get or create fd_write import - assume it's at index 0 for now *)
         let fd_write_idx = 0 in
 
         (* Generate WASI print code *)
         let print_code = arg_code @ [LocalSet value_temp] @
-          Wasi_runtime.gen_print_int ctx_with_temp.heap_ptr value_temp fd_write_idx in
+          Wasi_runtime.gen_print_int heap_ptr_idx value_temp fd_write_idx in
 
-        Ok (ctx_with_temp, print_code)
+        Ok (ctx_with_heap, print_code)
 
       | ExprVar id when id.name = "println" && List.length args = 0 ->
         (* println() - print newline *)
         let (ctx_with_temp, temp_local) = alloc_local ctx "__println_temp" in
+        let (ctx_with_heap, heap_ptr_idx) = ensure_heap_ptr ctx_with_temp in
         let fd_write_idx = 0 in
-        let println_code = Wasi_runtime.gen_println ctx_with_temp.heap_ptr fd_write_idx temp_local in
-        Ok (ctx_with_temp, println_code)
+        let println_code = Wasi_runtime.gen_println heap_ptr_idx fd_write_idx temp_local in
+        Ok (ctx_with_heap, println_code)
 
       | _ ->
         (* Not a built-in, proceed with normal function call *)
@@ -1453,13 +1485,78 @@ let gen_decl (ctx : context) (decl : top_level) : context result =
         Ok ctx
     end
 
-  | TopEffect _ | TopTrait _ | TopImpl _ ->
+  | TopEffect _ | TopTrait _ ->
     (* These declarations don't generate code *)
     Ok ctx
 
+  | TopImpl ib ->
+    (* Generate monomorphized functions for each trait method *)
+    (* Only generate code for trait impls, not inherent impls *)
+    match ib.ib_trait_ref with
+    | None ->
+      (* Inherent impl - no trait, just methods directly on the type *)
+      (* For now, skip these - they could be handled like regular functions *)
+      Ok ctx
+    | Some trait_ref ->
+      (* Mangle name as: TypeName_TraitName_methodName *)
+      let self_type_name = match ib.ib_self_ty with
+        | TyCon id -> id.name
+        | _ -> "Unknown"
+      in
+      let trait_name = trait_ref.tr_name.name in
+
+      (* Extract method implementations from impl items *)
+      let method_fns = List.filter_map (fun item ->
+        match item with
+        | ImplFn fd -> Some fd
+        | ImplType _ -> None
+      ) ib.ib_items in
+
+      (* Generate a function for each method implementation *)
+      List.fold_left (fun ctx_acc method_fn ->
+        let* ctx' = ctx_acc in
+        (* Create mangled function name *)
+        let mangled_name = Printf.sprintf "%s_%s_%s"
+          self_type_name trait_name method_fn.fd_name.name in
+
+        (* Convert method impl to a regular function with mangled name *)
+        let method_as_fn = {
+          method_fn with
+          fd_name = { name = mangled_name; span = method_fn.fd_name.span };
+        } in
+
+        (* Generate as regular function *)
+        (* Create function type *)
+        let param_types = List.map (fun _ -> I32) method_as_fn.fd_params in
+        let result_type = [I32] in
+        let func_type = { ft_params = param_types; ft_results = result_type } in
+
+        (* Add type to types list *)
+        let type_idx = List.length ctx'.types in
+        let ctx_with_type = { ctx' with types = ctx'.types @ [func_type] } in
+
+        (* Determine function index before generating *)
+        let func_idx = List.length ctx_with_type.funcs in
+
+        (* Register function name to index mapping *)
+        let ctx_with_func_idx = { ctx_with_type with
+          func_indices = ctx_with_type.func_indices @ [(mangled_name, func_idx)]
+        } in
+
+        (* Generate function with correct type index *)
+        let* (ctx_after_gen, func) = gen_function ctx_with_func_idx method_as_fn in
+        let func_with_type = { func with f_type = type_idx } in
+
+        (* Add function to context *)
+        Ok { ctx_after_gen with
+             funcs = ctx_after_gen.funcs @ [func_with_type];
+           }
+      ) (Ok ctx) method_fns
+
 (** Generate WASM module from AffineScript program *)
-let generate_module (prog : program) : wasm_module result =
-  let ctx = create_context () in
+let generate_module (prog : program) (trait_registry : Trait.trait_registry)
+                   (trait_method_calls : (Span.t, string * string * string) Hashtbl.t) : wasm_module result =
+  let ctx = create_context trait_registry trait_method_calls in
 
   (* Add WASI fd_write import at index 0 *)
   let (fd_write_import, fd_write_type) = Wasi_runtime.create_fd_write_import () in

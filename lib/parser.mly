@@ -147,6 +147,7 @@ fn_decl:
 
 return_type:
   | ARROW ty = type_expr { (Some ty, None) }
+  | ARROW ty = type_expr SLASH eff = effect_expr { (Some ty, Some eff) }
   | MINUS LBRACE eff = effect_expr RBRACE ARROW ty = type_expr { (Some ty, Some eff) }
 
 fn_body:
@@ -250,7 +251,14 @@ type_expr_arrow:
         da_param_ty = param_ty;
         da_ret_ty = ret;
         da_eff = None } }
-  /* Dependent arrow with effect */
+  /* Dependent arrow with effect (both syntaxes) */
+  | LPAREN param = ident COLON param_ty = type_expr RPAREN ARROW ret = type_expr_arrow SLASH eff = effect_expr
+    { TyDepArrow {
+        da_quantity = None;
+        da_param = param;
+        da_param_ty = param_ty;
+        da_ret_ty = ret;
+        da_eff = Some eff } }
   | LPAREN param = ident COLON param_ty = type_expr RPAREN MINUS LBRACE eff = effect_expr RBRACE ARROW ret = type_expr_arrow
     { TyDepArrow {
         da_quantity = None;
@@ -261,6 +269,8 @@ type_expr_arrow:
   /* Regular arrow */
   | arg = type_expr_primary ARROW ret = type_expr_arrow
     { TyArrow (arg, ret, None) }
+  | arg = type_expr_primary ARROW ret = type_expr_arrow SLASH eff = effect_expr
+    { TyArrow (arg, ret, Some eff) }
   | arg = type_expr_primary MINUS LBRACE eff = effect_expr RBRACE ARROW ret = type_expr_arrow
     { TyArrow (arg, ret, Some eff) }
   | ty = type_expr_refined { ty }
