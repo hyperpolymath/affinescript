@@ -1151,8 +1151,108 @@ and gen_stmt (ctx : context) (stmt : stmt) : (context * instr list) result =
     let* (ctx', code) = gen_expr ctx e in
     Ok (ctx', code @ [Drop])  (* Discard expression result *)
 
-  | StmtAssign _ ->
-    Error (UnsupportedFeature "Assignment not yet supported in codegen")
+  | StmtAssign (lhs, op, rhs) ->
+    begin match lhs with
+      | ExprVar id ->
+        (* Variable assignment: x = expr or x += expr *)
+        let* idx = lookup_local ctx id.name in
+        let* (ctx', rhs_code) = gen_expr ctx rhs in
+        begin match op with
+          | AssignEq ->
+            (* Simple assignment *)
+            Ok (ctx', rhs_code @ [LocalSet idx])
+          | AssignAdd | AssignSub | AssignMul | AssignDiv ->
+            (* Compound assignment: x op= expr  =>  x = x op expr *)
+            let binop = match op with
+              | AssignAdd -> OpAdd
+              | AssignSub -> OpSub
+              | AssignMul -> OpMul
+              | AssignDiv -> OpDiv
+              | _ -> failwith "unreachable"
+            in
+            let op_instr = gen_binop binop in
+            Ok (ctx', [
+              LocalGet idx;     (* Load current value *)
+            ] @ rhs_code @ [    (* Evaluate RHS *)
+              op_instr;         (* Perform operation *)
+              LocalSet idx      (* Store result *)
+            ])
+        end
+      | ExprUnary (OpDeref, ptr_expr) ->
+        (* Pointer dereference assignment: *ptr = expr *)
+        let* (ctx', ptr_code) = gen_expr ctx ptr_expr in
+        let* (ctx'', rhs_code) = gen_expr ctx' rhs in
+        begin match op with
+          | AssignEq ->
+            (* Simple dereference assignment *)
+            Ok (ctx'', ptr_code @ rhs_code @ [I32Store (2, 0)])
+          | AssignAdd | AssignSub | AssignMul | AssignDiv ->
+            (* Compound dereference assignment: *ptr op= expr  =>  *ptr = *ptr op expr *)
+            let binop = match op with
+              | AssignAdd -> OpAdd
+              | AssignSub -> OpSub
+              | AssignMul -> OpMul
+              | AssignDiv -> OpDiv
+              | _ -> failwith "unreachable"
+            in
+            let op_instr = gen_binop binop in
+            (* Need temp locals for pointer and result *)
+            let (ctx_with_ptr, temp_ptr) = alloc_local ctx'' "__assign_ptr" in
+            let (ctx_with_val, temp_val) = alloc_local ctx_with_ptr "__assign_val" in
+            Ok (ctx_with_val, ptr_code @ [
+              LocalTee temp_ptr;   (* Save pointer *)
+              I32Load (2, 0);      (* Load current value *)
+            ] @ rhs_code @ [        (* Evaluate RHS *)
+              op_instr;            (* Perform operation *)
+              LocalSet temp_val;   (* Save result *)
+              LocalGet temp_ptr;   (* Load pointer *)
+              LocalGet temp_val;   (* Load result *)
+              I32Store (2, 0)      (* Store: mem[ptr] = result *)
+            ])
+        end
+      | ExprIndex (arr_expr, idx_expr) ->
+        (* Array index assignment: arr[i] = expr *)
+        let* (ctx', arr_code) = gen_expr ctx arr_expr in
+        let* (ctx'', idx_code) = gen_expr ctx' idx_expr in
+        let* (ctx''', rhs_code) = gen_expr ctx'' rhs in
+        (* Array is a pointer, need to compute: arr + (idx * 4) *)
+        let (ctx_with_temp, temp_ptr) = alloc_local ctx''' "__arr_ptr" in
+        begin match op with
+          | AssignEq ->
+            Ok (ctx_with_temp, arr_code @ idx_code @ [
+              I32Const 4l;
+              I32Mul;              (* idx * 4 *)
+              I32Add;              (* arr + (idx * 4) *)
+            ] @ rhs_code @ [
+              I32Store (2, 0)      (* Store value *)
+            ])
+          | AssignAdd | AssignSub | AssignMul | AssignDiv ->
+            let binop = match op with
+              | AssignAdd -> OpAdd
+              | AssignSub -> OpSub
+              | AssignMul -> OpMul
+              | AssignDiv -> OpDiv
+              | _ -> failwith "unreachable"
+            in
+            let op_instr = gen_binop binop in
+            let (ctx_with_val, temp_val) = alloc_local ctx_with_temp "__assign_val" in
+            Ok (ctx_with_val, arr_code @ idx_code @ [
+              I32Const 4l;
+              I32Mul;              (* idx * 4 *)
+              I32Add;              (* arr + (idx * 4) *)
+              LocalTee temp_ptr;   (* Save computed address *)
+              I32Load (2, 0);      (* Load current value *)
+            ] @ rhs_code @ [
+              op_instr;            (* Perform operation *)
+              LocalSet temp_val;   (* Save result *)
+              LocalGet temp_ptr;   (* Load address *)
+              LocalGet temp_val;   (* Load result *)
+              I32Store (2, 0)      (* Store result *)
+            ])
+        end
+      | _ ->
+        Error (UnsupportedFeature "Assignment to this expression type not yet supported")
+    end
 
   | StmtWhile (cond, body) ->
     let* (ctx', cond_code) = gen_expr ctx cond in
@@ -1165,8 +1265,73 @@ and gen_stmt (ctx : context) (stmt : stmt) : (context * instr list) result =
       )
     ])])
 
-  | StmtFor _ ->
-    Error (UnsupportedFeature "For loops not yet supported in codegen")
+  | StmtFor (pat, iter_expr, body) ->
+    (* For loop: for pat in iter { body }
+       Iterates over an array or range.
+       For now, handle arrays: iterate from index 0 to length-1 *)
+    let* (ctx', iter_code) = gen_expr ctx iter_expr in
+
+    (* Create temp locals for array pointer, length, and index *)
+    let (ctx_with_arr, arr_ptr) = alloc_local ctx' "__for_arr" in
+    let (ctx_with_len, len_var) = alloc_local ctx_with_arr "__for_len" in
+    let (ctx_with_idx, idx_var) = alloc_local ctx_with_len "__for_idx" in
+
+    (* For pattern, currently only support simple variable binding *)
+    begin match pat with
+      | PatVar id ->
+        let (ctx_with_item, item_var) = alloc_local ctx_with_idx id.name in
+
+        (* Generate body code in context with item variable *)
+        let* (ctx_final, body_code) = gen_block ctx_with_item body in
+
+        (* For loop structure:
+           1. Evaluate iterator (array pointer)
+           2. Load length from array[-4] (stored before first element)
+           3. Initialize index to 0
+           4. Loop:
+              - Check if index < length, exit if not
+              - Load array[index] into item variable
+              - Execute body
+              - Increment index
+              - Continue loop *)
+        Ok (ctx_final, iter_code @ [
+          LocalSet arr_ptr;           (* Save array pointer *)
+          LocalGet arr_ptr;
+          I32Const (-4l);
+          I32Add;                     (* arr - 4 points to length *)
+          I32Load (2, 0);             (* Load length *)
+          LocalSet len_var;           (* Save length *)
+          I32Const 0l;
+          LocalSet idx_var;           (* index = 0 *)
+          Block (BtEmpty, [
+            Loop (BtEmpty, [
+              (* Check if index < length *)
+              LocalGet idx_var;
+              LocalGet len_var;
+              I32GeS;                 (* index >= length? *)
+              BrIf 1;                 (* Exit loop if true *)
+
+              (* Load array[index] into item variable *)
+              LocalGet arr_ptr;
+              LocalGet idx_var;
+              I32Const 4l;
+              I32Mul;                 (* index * 4 *)
+              I32Add;                 (* arr + index*4 *)
+              I32Load (2, 0);         (* Load array[index] *)
+              LocalSet item_var;      (* item = array[index] *)
+            ] @ body_code @ [
+              (* Increment index *)
+              LocalGet idx_var;
+              I32Const 1l;
+              I32Add;
+              LocalSet idx_var;       (* index++ *)
+              Br 0                    (* Continue loop *)
+            ])
+          ])
+        ])
+      | _ ->
+        Error (UnsupportedFeature "For loop patterns other than simple variables not yet supported")
+    end
 
 (** Generate code for a function *)
 let gen_function (ctx : context) (fd : fn_decl) : (context * func) result =
