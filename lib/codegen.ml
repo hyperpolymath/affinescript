@@ -25,6 +25,7 @@ type context = {
   next_lambda_id : int;              (** next lambda function ID *)
   heap_ptr : int option;             (** global index for heap pointer, if initialized *)
   field_layouts : (string * (string * int) list) list;  (** type name -> [(field, offset)] *)
+  variant_tags : (string * int) list;  (** constructor name -> tag (int) *)
 }
 
 (** Code generation error *)
@@ -54,6 +55,7 @@ let create_context () : context = {
   next_lambda_id = 0;
   heap_ptr = None;
   field_layouts = [];
+  variant_tags = [];
 }
 
 (** Map AffineScript type to WASM value type *)
@@ -468,8 +470,20 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
   | ExprIndex _ ->
     Error (UnsupportedFeature "Array indexing not yet supported in codegen")
 
-  | ExprVariant _ ->
-    Error (UnsupportedFeature "Variants not yet supported in codegen")
+  | ExprVariant (_type_name, variant_name) ->
+    (* Look up variant tag *)
+    (* For now, use variant name directly to find tag *)
+    begin match List.assoc_opt variant_name.name ctx.variant_tags with
+      | Some tag ->
+        (* Zero-argument variant: just return the tag as an integer *)
+        Ok (ctx, [I32Const (Int32.of_int tag)])
+      | None ->
+        (* Tag not found - assign a new sequential tag based on name *)
+        (* This is a fallback for when type declarations aren't processed *)
+        let tag = List.length ctx.variant_tags in
+        let ctx' = { ctx with variant_tags = (variant_name.name, tag) :: ctx.variant_tags } in
+        Ok (ctx', [I32Const (Int32.of_int tag)])
+    end
 
   | ExprRowRestrict _ ->
     Error (UnsupportedFeature "Row restriction not supported in codegen")
@@ -534,12 +548,29 @@ and gen_pattern (ctx : context) (scrutinee_local : int) (pat : pattern)
     ] in
     Ok (ctx, test_code, [])
 
-  | PatCon (_con, sub_patterns) ->
-    (* Constructor pattern - for now, just match wildcards in sub-patterns *)
-    (* Full implementation would need to decode the constructor tag and fields *)
+  | PatCon (con, sub_patterns) ->
+    (* Constructor pattern - match against tag *)
     if List.length sub_patterns = 0 then
-      (* Simple constructor with no arguments - just match *)
-      Ok (ctx, [I32Const 1l], [])
+      (* Zero-argument constructor: compare scrutinee to tag *)
+      begin match List.assoc_opt con.name ctx.variant_tags with
+        | Some tag ->
+          let test_code = [
+            LocalGet scrutinee_local;  (* Get scrutinee (should be tag) *)
+            I32Const (Int32.of_int tag);  (* Expected tag *)
+            I32Eq  (* Compare *)
+          ] in
+          Ok (ctx, test_code, [])
+        | None ->
+          (* Tag not found - auto-assign and match *)
+          let tag = List.length ctx.variant_tags in
+          let ctx' = { ctx with variant_tags = (con.name, tag) :: ctx.variant_tags } in
+          let test_code = [
+            LocalGet scrutinee_local;
+            I32Const (Int32.of_int tag);
+            I32Eq
+          ] in
+          Ok (ctx', test_code, [])
+      end
     else
       (* Constructor with arguments - not yet supported *)
       Error (UnsupportedFeature "Constructor patterns with arguments not yet supported in codegen")
@@ -677,8 +708,23 @@ let gen_decl (ctx : context) (decl : top_level) : context result =
   | TopConst _ ->
     Error (UnsupportedFeature "Constants not yet supported in codegen")
 
-  | TopType _ | TopEffect _ | TopTrait _ | TopImpl _ ->
-    (* Type declarations don't generate code *)
+  | TopType td ->
+    (* Register variant tags for enum types *)
+    begin match td.td_body with
+      | TyEnum variants ->
+        (* Assign sequential tags to each variant constructor *)
+        let ctx_with_tags = List.fold_left (fun c_acc (idx, vd) ->
+          (* Register: constructor_name -> tag *)
+          { c_acc with variant_tags = (vd.vd_name.name, idx) :: c_acc.variant_tags }
+        ) ctx (List.mapi (fun i v -> (i, v)) variants) in
+        Ok ctx_with_tags
+      | _ ->
+        (* Other type declarations (alias, struct) don't need codegen *)
+        Ok ctx
+    end
+
+  | TopEffect _ | TopTrait _ | TopImpl _ ->
+    (* These declarations don't generate code *)
     Ok ctx
 
 (** Generate WASM module from AffineScript program *)
