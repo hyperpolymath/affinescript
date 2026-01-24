@@ -538,6 +538,54 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
         in
 
         Ok (ctx_with_lambda, all_arg_code @ lambda_code @ [CallIndirect type_idx])
+
+      | ExprVariant (_type_name, variant_name) ->
+        (* Variant constructor with arguments: Type::Variant(arg1, arg2, ...) *)
+        (* Layout: [tag: i32][field1: i32][field2: i32]... *)
+        let num_fields = List.length args in
+        let size_in_bytes = 4 + (num_fields * 4) in  (* tag + fields *)
+
+        (* Allocate heap memory *)
+        let (ctx_with_heap, alloc_code) = gen_heap_alloc ctx_after_args size_in_bytes in
+        let (ctx_with_temp, variant_ptr) = alloc_local ctx_with_heap "__variant_ptr" in
+
+        (* Get or assign tag for this variant *)
+        let (ctx_with_tag, tag) = match List.assoc_opt variant_name.name ctx_with_temp.variant_tags with
+          | Some t -> (ctx_with_temp, t)
+          | None ->
+            let new_tag = List.length ctx_with_temp.variant_tags in
+            ({ ctx_with_temp with variant_tags = (variant_name.name, new_tag) :: ctx_with_temp.variant_tags }, new_tag)
+        in
+
+        (* Store tag at offset 0 *)
+        let store_tag = [
+          LocalTee variant_ptr;  (* Save pointer *)
+          I32Const (Int32.of_int tag);
+          I32Store (2, 0);
+        ] in
+
+        (* Generate code to evaluate each arg and store it *)
+        let rec store_args ctx offset arg_list =
+          match arg_list with
+          | [] -> Ok (ctx, [])
+          | arg :: rest ->
+            let* (ctx', arg_code) = gen_expr ctx arg in
+            let store_code = [
+              LocalGet variant_ptr;
+            ] @ arg_code @ [
+              I32Store (2, offset);
+            ] in
+            let* (ctx'', rest_code) = store_args ctx' (offset + 4) rest in
+            Ok (ctx'', store_code @ rest_code)
+        in
+
+        let* (ctx_final, args_store_code) = store_args ctx_with_tag 4 args in
+
+        (* Return the variant pointer *)
+        let return_code = [LocalGet variant_ptr] in
+
+        Ok (ctx_final, alloc_code @ store_tag @ args_store_code @ return_code)
+
       | _ ->
         (* Other expressions that evaluate to functions - treat as indirect call *)
         let* (ctx_final, func_code) = gen_expr ctx_after_args func_expr in
@@ -876,8 +924,60 @@ and gen_pattern (ctx : context) (scrutinee_local : int) (pat : pattern)
           Ok (ctx', test_code, [])
       end
     else
-      (* Constructor with arguments - not yet supported *)
-      Error (UnsupportedFeature "Constructor patterns with arguments not yet supported in codegen")
+      (* Constructor with arguments: Some(x), Ok(a, b), etc. *)
+      (* scrutinee is a pointer to [tag: i32][field1: i32][field2: i32]... *)
+
+      (* Get or assign tag for this variant *)
+      let (ctx_with_tag, tag) = match List.assoc_opt con.name ctx.variant_tags with
+        | Some t -> (ctx, t)
+        | None ->
+          let new_tag = List.length ctx.variant_tags in
+          ({ ctx with variant_tags = (con.name, new_tag) :: ctx.variant_tags }, new_tag)
+      in
+
+      (* Allocate temp for match result *)
+      let (ctx_with_temp, match_result_idx) = alloc_local ctx_with_tag "__match_result" in
+
+      (* Test: load tag from scrutinee and compare, save result *)
+      let tag_test = [
+        LocalGet scrutinee_local;  (* variant pointer *)
+        I32Load (2, 0);            (* load tag from offset 0 *)
+        I32Const (Int32.of_int tag);
+        I32Eq;
+        LocalTee match_result_idx; (* Save match result *)
+      ] in
+
+      (* Extract fields and bind variables *)
+      (* For now, only support PatVar sub-patterns *)
+      let rec bind_fields ctx_acc bindings_acc offset patterns =
+        match patterns with
+        | [] -> Ok (ctx_acc, bindings_acc)
+        | pat :: rest ->
+          begin match pat with
+            | PatVar id ->
+              (* Allocate local for this field *)
+              let (ctx', field_idx) = alloc_local ctx_acc id.name in
+              (* Code to load field: scrutinee[offset] *)
+              let load_code = [
+                LocalGet scrutinee_local;
+                I32Load (2, offset);
+                LocalSet field_idx;
+              ] in
+              bind_fields ctx' (bindings_acc @ load_code) (offset + 4) rest
+            | PatWildcard _ ->
+              (* Wildcard - skip this field *)
+              bind_fields ctx_acc bindings_acc (offset + 4) rest
+            | _ ->
+              Error (UnsupportedFeature "Only variable and wildcard patterns supported in variant constructor arguments")
+          end
+      in
+
+      let* (ctx_final, binding_code) = bind_fields ctx_with_temp [] 4 sub_patterns in
+
+      (* Combine: test tag, bind fields, return test result *)
+      let full_code = tag_test @ binding_code @ [LocalGet match_result_idx] in
+
+      Ok (ctx_final, full_code, [])
 
   | PatTuple _ ->
     Error (UnsupportedFeature "Tuple patterns not yet supported in codegen")
