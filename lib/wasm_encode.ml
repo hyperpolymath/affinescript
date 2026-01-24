@@ -352,6 +352,22 @@ let encode_section (buf : buffer) (id : int) (contents : int list) : unit =
     emit_bytes buf contents
   end
 
+(** Encode table *)
+let encode_table (buf : buffer) (tab : table) : unit =
+  emit_byte buf 0x70;  (* anyfunc *)
+  encode_limits buf tab.tab_type
+
+(** Encode element segment (for initializing function tables) *)
+let encode_element (buf : buffer) (table_idx : int) (offset : int) (func_indices : int list) : unit =
+  encode_u32 buf table_idx;  (* table index *)
+  (* Offset expression (i32.const 0) *)
+  emit_byte buf 0x41;  (* i32.const *)
+  encode_i32 buf (Int32.of_int offset);
+  emit_byte buf 0x0b;  (* end *)
+  (* Function indices *)
+  encode_u32 buf (List.length func_indices);
+  List.iter (encode_u32 buf) func_indices
+
 (** Encode WASM module *)
 let encode_module (m : wasm_module) : int list =
   let buf = create_buffer () in
@@ -378,6 +394,14 @@ let encode_module (m : wasm_module) : int list =
     encode_section buf 3 (buffer_contents func_buf)
   end;
 
+  (* Table section *)
+  if List.length m.tables > 0 then begin
+    let table_buf = create_buffer () in
+    encode_u32 table_buf (List.length m.tables);
+    List.iter (encode_table table_buf) m.tables;
+    encode_section buf 4 (buffer_contents table_buf)
+  end;
+
   (* Memory section *)
   if List.length m.mems > 0 then begin
     let mem_buf = create_buffer () in
@@ -392,6 +416,16 @@ let encode_module (m : wasm_module) : int list =
     encode_u32 export_buf (List.length m.exports);
     List.iter (encode_export export_buf) m.exports;
     encode_section buf 7 (buffer_contents export_buf)
+  end;
+
+  (* Element section (initialize function tables) *)
+  if List.length m.elems > 0 then begin
+    let elem_buf = create_buffer () in
+    encode_u32 elem_buf (List.length m.elems);
+    List.iter (fun elem ->
+      encode_element elem_buf elem.e_table elem.e_offset elem.e_funcs
+    ) m.elems;
+    encode_section buf 9 (buffer_contents elem_buf)
   end;
 
   (* Code section (function bodies) *)

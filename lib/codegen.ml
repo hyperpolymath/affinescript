@@ -20,6 +20,8 @@ type context = {
   next_local : int;                  (** next available local index *)
   loop_depth : int;                  (** current loop nesting depth *)
   func_indices : (string * int) list;  (** function name to index map *)
+  lambda_funcs : func list;          (** lifted lambda functions *)
+  next_lambda_id : int;              (** next lambda function ID *)
 }
 
 (** Code generation error *)
@@ -44,6 +46,8 @@ let create_context () : context = {
   next_local = 0;
   loop_depth = 0;
   func_indices = [];
+  lambda_funcs = [];
+  next_lambda_id = 0;
 }
 
 (** Map AffineScript type to WASM value type *)
@@ -170,31 +174,139 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
       | _ -> Error (UnsupportedFeature "Complex patterns not yet supported in codegen")
     end
 
-  | ExprLambda _ ->
-    Error (UnsupportedFeature "Lambda expressions not yet supported in codegen")
+  | ExprLambda lam ->
+    (* Lift lambda to a top-level function *)
+    let lambda_id = ctx.next_lambda_id in
+
+    (* Create fresh context for lambda function *)
+    let lambda_ctx = { ctx with locals = []; next_local = 0; loop_depth = 0 } in
+
+    (* Parameters become locals 0..n-1 *)
+    let (ctx_with_params, _) = List.fold_left (fun (c, _) param ->
+      alloc_local c param.p_name.name
+    ) (lambda_ctx, 0) lam.elam_params in
+
+    let param_count = List.length lam.elam_params in
+
+    (* Generate lambda body *)
+    let* (ctx_final, body_code) = gen_expr ctx_with_params lam.elam_body in
+
+    (* Compute additional locals (beyond parameters) *)
+    let local_count = ctx_final.next_local - param_count in
+    let locals = if local_count > 0 then
+      [{ l_count = local_count; l_type = I32 }]
+    else
+      []
+    in
+
+    (* Create function type for lambda *)
+    let param_types = List.map (fun _ -> I32) lam.elam_params in
+    let result_type = [I32] in
+    let func_type = { ft_params = param_types; ft_results = result_type } in
+
+    (* Add type to types list *)
+    let type_idx = List.length ctx.types in
+    let ctx_with_type = { ctx with types = ctx.types @ [func_type] } in
+
+    (* Create lambda function *)
+    let lambda_func = {
+      f_type = type_idx;
+      f_locals = locals;
+      f_body = body_code;
+    } in
+
+    (* Add lambda function to lifted functions *)
+    let ctx_with_lambda = {
+      ctx_with_type with
+      lambda_funcs = ctx_with_type.lambda_funcs @ [lambda_func];
+      next_lambda_id = lambda_id + 1;
+    } in
+
+    (* The lambda evaluates to its function index in the table *)
+    (* Function table index = base_func_count + lambda_id *)
+    (* For now, just return the lambda_id - will be adjusted when creating table *)
+    Ok (ctx_with_lambda, [I32Const (Int32.of_int lambda_id)])
 
   | ExprApp (func_expr, args) ->
     (* Generate code for arguments (left to right) *)
-    let* (ctx_final, all_arg_code) = List.fold_left (fun acc arg ->
+    let* (ctx_after_args, all_arg_code) = List.fold_left (fun acc arg ->
       let* (ctx', accumulated_code) = acc in
       let* (ctx'', arg_code) = gen_expr ctx' arg in
       Ok (ctx'', accumulated_code @ arg_code)
     ) (Ok (ctx, [])) args in
 
-    (* Get function name and index *)
+    (* Generate code for function expression *)
     begin match func_expr with
       | ExprVar id ->
-        (* Direct function call *)
-        begin match List.assoc_opt id.name ctx_final.func_indices with
+        (* Check if it's a named function or a variable holding a lambda *)
+        begin match List.assoc_opt id.name ctx_after_args.func_indices with
           | Some func_idx ->
+            (* Direct function call *)
             let call_instr = Call func_idx in
-            Ok (ctx_final, all_arg_code @ [call_instr])
+            Ok (ctx_after_args, all_arg_code @ [call_instr])
           | None ->
-            Error (UnboundVariable ("Function not found: " ^ id.name))
+            (* Check if it's a local variable (could be a lambda) *)
+            begin match lookup_local ctx_after_args id.name with
+              | Ok local_idx ->
+                (* Indirect call through function table *)
+                (* Create type signature for the call based on number of args *)
+                let param_types = List.map (fun _ -> I32) args in
+                let result_type = [I32] in
+                let call_type = { ft_params = param_types; ft_results = result_type } in
+
+                (* Find or add this type to the types list *)
+                let type_idx =
+                  match List.find_index (fun t -> t = call_type) ctx_after_args.types with
+                  | Some idx -> idx
+                  | None ->
+                    (* Type not found - this shouldn't happen if lambda was created properly *)
+                    (* but let's add it to be safe *)
+                    List.length ctx_after_args.types
+                in
+
+                let call_instrs = [
+                  LocalGet local_idx;  (* Get function table index from variable *)
+                  CallIndirect type_idx  (* Indirect call with matching type *)
+                ] in
+                Ok (ctx_after_args, all_arg_code @ call_instrs)
+              | Error _ ->
+                Error (UnboundVariable ("Function or variable not found: " ^ id.name))
+            end
         end
+      | ExprLambda _ ->
+        (* Lambda expression as function - generate lambda and call it *)
+        let* (ctx_with_lambda, lambda_code) = gen_expr ctx_after_args func_expr in
+
+        (* Create type signature for the call *)
+        let param_types = List.map (fun _ -> I32) args in
+        let result_type = [I32] in
+        let call_type = { ft_params = param_types; ft_results = result_type } in
+
+        (* Find matching type index *)
+        let type_idx =
+          match List.find_index (fun t -> t = call_type) ctx_with_lambda.types with
+          | Some idx -> idx
+          | None -> List.length ctx_with_lambda.types
+        in
+
+        Ok (ctx_with_lambda, all_arg_code @ lambda_code @ [CallIndirect type_idx])
       | _ ->
-        (* Indirect calls (function pointers) not yet supported *)
-        Error (UnsupportedFeature "Indirect function calls not yet supported")
+        (* Other expressions that evaluate to functions - treat as indirect call *)
+        let* (ctx_final, func_code) = gen_expr ctx_after_args func_expr in
+
+        (* Create type signature for the call *)
+        let param_types = List.map (fun _ -> I32) args in
+        let result_type = [I32] in
+        let call_type = { ft_params = param_types; ft_results = result_type } in
+
+        (* Find matching type index *)
+        let type_idx =
+          match List.find_index (fun t -> t = call_type) ctx_final.types with
+          | Some idx -> idx
+          | None -> List.length ctx_final.types
+        in
+
+        Ok (ctx_final, all_arg_code @ func_code @ [CallIndirect type_idx])
     end
 
   | ExprMatch _ ->
@@ -288,8 +400,8 @@ and gen_stmt (ctx : context) (stmt : stmt) : (context * instr list) result =
     Error (UnsupportedFeature "For loops not yet supported in codegen")
 
 (** Generate code for a function *)
-let gen_function (ctx : context) (fd : fn_decl) : func result =
-  (* Create fresh context for function scope *)
+let gen_function (ctx : context) (fd : fn_decl) : (context * func) result =
+  (* Create fresh context for function scope, but preserve lambda_funcs and next_lambda_id *)
   let fn_ctx = { ctx with locals = []; next_local = 0; loop_depth = 0 } in
 
   (* Parameters become locals 0..n-1 *)
@@ -321,7 +433,8 @@ let gen_function (ctx : context) (fd : fn_decl) : func result =
     f_body = body_code;
   } in
 
-  Ok func
+  (* Return updated context with any lambda functions that were created *)
+  Ok (ctx_final, func)
 
 (** Generate code for a top-level declaration *)
 let gen_decl (ctx : context) (decl : top_level) : context result =
@@ -345,7 +458,7 @@ let gen_decl (ctx : context) (decl : top_level) : context result =
     } in
 
     (* Generate function with correct type index *)
-    let* func = gen_function ctx_with_func_idx fd in
+    let* (ctx_after_gen, func) = gen_function ctx_with_func_idx fd in
     let func_with_type = { func with f_type = type_idx } in
 
     (* Add export for main function *)
@@ -354,9 +467,10 @@ let gen_decl (ctx : context) (decl : top_level) : context result =
     else
       []
     in
-    Ok { ctx_with_func_idx with
-         funcs = ctx_with_func_idx.funcs @ [func_with_type];
-         exports = ctx_with_func_idx.exports @ export
+    (* Use ctx_after_gen to preserve any lambda_funcs created during generation *)
+    Ok { ctx_after_gen with
+         funcs = ctx_after_gen.funcs @ [func_with_type];
+         exports = ctx_after_gen.exports @ export
        }
 
   | TopConst _ ->
@@ -374,13 +488,37 @@ let generate_module (prog : program) : wasm_module result =
     gen_decl c decl
   ) (Ok ctx) prog.prog_decls in
 
+  (* Merge regular functions and lambda functions *)
+  let num_regular_funcs = List.length ctx'.funcs in
+  let all_funcs = ctx'.funcs @ ctx'.lambda_funcs in
+
+  (* Create function table if there are lambdas *)
+  let (tables, elems) = if List.length ctx'.lambda_funcs > 0 then
+    (* Table size = number of lambda functions *)
+    let table_size = List.length ctx'.lambda_funcs in
+    let table = [{ tab_type = { lim_min = table_size; lim_max = Some table_size } }] in
+
+    (* Create element segment to initialize table with lambda function indices *)
+    (* Lambda functions start at index num_regular_funcs *)
+    let lambda_func_indices = List.mapi (fun i _ -> num_regular_funcs + i) ctx'.lambda_funcs in
+    let elem_seg = [{
+      e_table = 0;
+      e_offset = 0;
+      e_funcs = lambda_func_indices;
+    }] in
+    (table, elem_seg)
+  else
+    ([], [])
+  in
+
   Ok {
     types = ctx'.types;
-    funcs = ctx'.funcs;
-    tables = [];
+    funcs = all_funcs;
+    tables = tables;
     mems = [{ mem_type = { lim_min = 1; lim_max = None } }];  (* 1 page default *)
     globals = [];
     exports = ctx'.exports;
     imports = ctx'.imports;
+    elems = elems;
     start = None;
   }

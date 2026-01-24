@@ -215,6 +215,14 @@ type table = {
 }
 [@@deriving show, eq]
 
+(** Element segment (for initializing tables) *)
+type elem = {
+  e_table : int;         (** table index *)
+  e_offset : int;        (** offset in table *)
+  e_funcs : int list;    (** function indices *)
+}
+[@@deriving show, eq]
+
 (** WebAssembly module *)
 type wasm_module = {
   types : func_type list;
@@ -224,6 +232,7 @@ type wasm_module = {
   globals : global list;
   exports : export list;
   imports : import list;
+  elems : elem list;   (** element segments for table initialization *)
   start : int option;  (** optional start function index *)
 }
 [@@deriving show, eq]
@@ -237,5 +246,6 @@ let empty_module () : wasm_module = {
   globals = [];
   exports = [];
   imports = [];
+  elems = [];
   start = None;
 }
