@@ -357,6 +357,18 @@ let encode_table (buf : buffer) (tab : table) : unit =
   emit_byte buf 0x70;  (* anyfunc *)
   encode_limits buf tab.tab_type
 
+(** Encode global type (value type + mutability) *)
+let encode_global_type (buf : buffer) (vt : value_type) (mutable_ : bool) : unit =
+  encode_value_type buf vt;
+  emit_byte buf (if mutable_ then 1 else 0)
+
+(** Encode global definition *)
+let encode_global (buf : buffer) (g : global) : unit =
+  encode_global_type buf g.g_type g.g_mutable;
+  (* Encode init expression *)
+  List.iter (encode_instr buf) g.g_init;
+  emit_byte buf 0x0b  (* end *)
+
 (** Encode element segment (for initializing function tables) *)
 let encode_element (buf : buffer) (table_idx : int) (offset : int) (func_indices : int list) : unit =
   encode_u32 buf table_idx;  (* table index *)
@@ -408,6 +420,14 @@ let encode_module (m : wasm_module) : int list =
     encode_u32 mem_buf (List.length m.mems);
     List.iter (fun mem -> encode_limits mem_buf mem.mem_type) m.mems;
     encode_section buf 5 (buffer_contents mem_buf)
+  end;
+
+  (* Global section *)
+  if List.length m.globals > 0 then begin
+    let global_buf = create_buffer () in
+    encode_u32 global_buf (List.length m.globals);
+    List.iter (encode_global global_buf) m.globals;
+    encode_section buf 6 (buffer_contents global_buf)
   end;
 
   (* Export section *)

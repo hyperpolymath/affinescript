@@ -16,12 +16,15 @@ type context = {
   funcs : func list;                 (** function definitions *)
   exports : export list;             (** exports *)
   imports : import list;             (** imports *)
+  globals : global list;             (** global variables *)
   locals : (string * int) list;      (** local variable name to index map *)
   next_local : int;                  (** next available local index *)
   loop_depth : int;                  (** current loop nesting depth *)
   func_indices : (string * int) list;  (** function name to index map *)
   lambda_funcs : func list;          (** lifted lambda functions *)
   next_lambda_id : int;              (** next lambda function ID *)
+  heap_ptr : int option;             (** global index for heap pointer, if initialized *)
+  field_layouts : (string * (string * int) list) list;  (** type name -> [(field, offset)] *)
 }
 
 (** Code generation error *)
@@ -42,12 +45,15 @@ let create_context () : context = {
   funcs = [];
   exports = [];
   imports = [];
+  globals = [];
   locals = [];
   next_local = 0;
   loop_depth = 0;
   func_indices = [];
   lambda_funcs = [];
   next_lambda_id = 0;
+  heap_ptr = None;
+  field_layouts = [];
 }
 
 (** Map AffineScript type to WASM value type *)
@@ -67,6 +73,39 @@ let lookup_local (ctx : context) (name : string) : int result =
   match List.assoc_opt name ctx.locals with
   | Some idx -> Ok idx
   | None -> Error (UnboundVariable name)
+
+(** Ensure heap pointer global is initialized.
+    Returns (context, heap_global_idx). *)
+let ensure_heap_ptr (ctx : context) : (context * int) =
+  match ctx.heap_ptr with
+  | Some idx -> (ctx, idx)
+  | None ->
+    (* Create heap pointer global initialized to 1024 (1KB) *)
+    let idx = List.length ctx.globals in
+    let heap_global = {
+      g_type = I32;
+      g_mutable = true;
+      g_init = [I32Const 1024l];  (* Start heap at 1KB *)
+    } in
+    ({ ctx with
+       globals = ctx.globals @ [heap_global];
+       heap_ptr = Some idx }, idx)
+
+(** Generate code to allocate memory on the heap.
+    Returns instructions that leave the allocated address on the stack.
+    size_in_bytes: number of bytes to allocate *)
+let gen_heap_alloc (ctx : context) (size_in_bytes : int) : (context * instr list) =
+  let (ctx', heap_idx) = ensure_heap_ptr ctx in
+  (* Get current heap pointer, then increment it *)
+  let alloc_code = [
+    GlobalGet heap_idx;           (* Get current heap address *)
+    GlobalGet heap_idx;           (* Get it again *)
+    I32Const (Int32.of_int size_in_bytes);  (* Size to allocate *)
+    I32Add;                       (* Calculate new heap pointer *)
+    GlobalSet heap_idx;           (* Update heap pointer *)
+    (* Stack now has the allocated address *)
+  ] in
+  (ctx', alloc_code)
 
 (** Generate code for a literal *)
 let gen_literal (lit : literal) : instr result =
@@ -358,11 +397,70 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
   | ExprArray _ ->
     Error (UnsupportedFeature "Arrays not yet supported in codegen")
 
-  | ExprRecord _ ->
-    Error (UnsupportedFeature "Records not yet supported in codegen")
+  | ExprRecord rec_expr ->
+    (* Allocate memory for record fields *)
+    let num_fields = List.length rec_expr.er_fields in
+    let size_in_bytes = num_fields * 4 in  (* Each field is 4 bytes (I32) *)
 
-  | ExprField _ ->
-    Error (UnsupportedFeature "Field access not yet supported in codegen")
+    (* Allocate heap memory and save pointer to temp local *)
+    let (ctx_with_heap, alloc_code) = gen_heap_alloc ctx size_in_bytes in
+    let (ctx_with_temp, temp_idx) = alloc_local ctx_with_heap "__rec_ptr" in
+
+    (* Save allocated address to temp *)
+    let save_code = [LocalTee temp_idx] in  (* Tee: set local and keep value on stack *)
+
+    (* Generate code to store each field *)
+    let* (ctx_final, store_code) = List.fold_left (fun acc (idx, (field, expr_opt)) ->
+      let* (ctx_acc, code_acc) = acc in
+      (* Get field value expression *)
+      let field_expr = match expr_opt with
+        | Some e -> e
+        | None -> ExprVar field  (* Field punning: {x} means {x: x} *)
+      in
+      (* Generate code for field value *)
+      let* (ctx', field_code) = gen_expr ctx_acc field_expr in
+
+      (* Store at offset (field_index * 4) from base address *)
+      let offset = idx * 4 in
+      let store_instrs = [
+        LocalGet temp_idx;  (* Get base address *)
+      ] @ field_code @ [
+        I32Store (2, offset);  (* Store at offset with alignment 2 (4-byte) *)
+      ] in
+      Ok (ctx', code_acc @ store_instrs)
+    ) (Ok (ctx_with_temp, [])) (List.mapi (fun i x -> (i, x)) rec_expr.er_fields) in
+
+    (* Complete code: allocate, save to temp (leaving on stack), store fields, leave address *)
+    (* But we already consumed the address from stack when storing, so push it again *)
+    Ok (ctx_final, alloc_code @ save_code @ store_code @ [LocalGet temp_idx])
+
+  | ExprField (record_expr, field) ->
+    (* Generate code for record expression (gets pointer) *)
+    let* (ctx', record_code) = gen_expr ctx record_expr in
+
+    (* Look up field offset from field_layouts *)
+    (* For now, only supports field access on variables assigned record literals *)
+    let field_offset = match record_expr with
+      | ExprVar var_name ->
+        (* Look up variable's field layout *)
+        begin match List.assoc_opt var_name.name ctx.field_layouts with
+          | Some layout ->
+            (* Find field offset in layout *)
+            begin match List.assoc_opt field.name layout with
+              | Some offset -> offset
+              | None -> 0  (* Field not found, default to 0 *)
+            end
+          | None -> 0  (* Variable layout not tracked, default to 0 *)
+        end
+      | _ -> 0  (* Complex expression, default to 0 *)
+    in
+
+    (* Load from memory at field offset *)
+    let load_code = [
+      I32Load (2, field_offset)  (* Load with alignment 2 (4-byte) and offset *)
+    ] in
+
+    Ok (ctx', record_code @ load_code)
 
   | ExprTupleIndex _ ->
     Error (UnsupportedFeature "Tuple indexing not yet supported in codegen")
@@ -467,7 +565,17 @@ and gen_stmt (ctx : context) (stmt : stmt) : (context * instr list) result =
     begin match sl.sl_pat with
       | PatVar id ->
         let (ctx'', idx) = alloc_local ctx' id.name in
-        Ok (ctx'', rhs_code @ [LocalSet idx])
+        (* If RHS is a record, track its field layout *)
+        let ctx_with_layout = match sl.sl_value with
+          | ExprRecord rec_expr ->
+            (* Extract field names in order and assign offsets *)
+            let field_layout = List.mapi (fun i (field_name, _) ->
+              (field_name.name, i * 4)
+            ) rec_expr.er_fields in
+            { ctx'' with field_layouts = (id.name, field_layout) :: ctx''.field_layouts }
+          | _ -> ctx''
+        in
+        Ok (ctx_with_layout, rhs_code @ [LocalSet idx])
       | _ -> Error (UnsupportedFeature "Complex patterns not yet supported in codegen")
     end
 
@@ -609,7 +717,7 @@ let generate_module (prog : program) : wasm_module result =
     funcs = all_funcs;
     tables = tables;
     mems = [{ mem_type = { lim_min = 1; lim_max = None } }];  (* 1 page default *)
-    globals = [];
+    globals = ctx'.globals;
     exports = ctx'.exports;
     imports = ctx'.imports;
     elems = elems;
