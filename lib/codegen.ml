@@ -309,8 +309,48 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
         Ok (ctx_final, all_arg_code @ func_code @ [CallIndirect type_idx])
     end
 
-  | ExprMatch _ ->
-    Error (UnsupportedFeature "Match expressions not yet supported in codegen")
+  | ExprMatch match_expr ->
+    (* Evaluate scrutinee and store in a temporary local *)
+    let* (ctx_after_scrutinee, scrutinee_code) = gen_expr ctx match_expr.em_scrutinee in
+    let (ctx_with_temp, temp_idx) = alloc_local ctx_after_scrutinee "__match_tmp" in
+
+    (* Generate code for each match arm *)
+    let rec gen_arms ctx arms =
+      match arms with
+      | [] ->
+        (* No arms matched - this shouldn't happen with exhaustive patterns *)
+        (* Return 0 as a fallback *)
+        Ok (ctx, [I32Const 0l])
+      | arm :: rest ->
+        (* Generate pattern matching code *)
+        let* (ctx_after_pat, pattern_test, _bindings) = gen_pattern ctx temp_idx arm.ma_pat in
+
+        (* Generate body code with bindings *)
+        let* (ctx_after_body, body_code) = gen_expr ctx_after_pat arm.ma_body in
+
+        (* If there are more arms, generate else branch *)
+        if List.length rest > 0 then
+          let* (ctx_final, else_code) = gen_arms ctx_after_body rest in
+          (* pattern_test leaves boolean on stack, then If uses it *)
+          Ok (ctx_final,
+              pattern_test @
+              [If (BtType I32,
+                   body_code,    (* Then: pattern matched, execute body *)
+                   else_code)])  (* Else: try next arm *)
+        else
+          (* Last arm - just execute body if pattern matches *)
+          (* If pattern doesn't match, return 0 (shouldn't happen) *)
+          Ok (ctx_after_body,
+              pattern_test @
+              [If (BtType I32,
+                   body_code,        (* Then: pattern matched, execute body *)
+                   [I32Const 0l])])  (* Else: fallback (shouldn't reach) *)
+    in
+
+    let* (ctx_final, arms_code) = gen_arms ctx_with_temp match_expr.em_arms in
+
+    (* Complete code: eval scrutinee, store in temp, then try arms *)
+    Ok (ctx_final, scrutinee_code @ [LocalSet temp_idx] @ arms_code)
 
   | ExprTuple _ ->
     Error (UnsupportedFeature "Tuples not yet supported in codegen")
@@ -364,6 +404,59 @@ and gen_block (ctx : context) (blk : block) : (context * instr list) result =
     Ok (ctx_final, stmt_codes @ expr_code)
   | None ->
     Ok (ctx', stmt_codes @ [I32Const 0l])
+
+(** Generate pattern matching test code.
+    Returns (context, test_code, bindings).
+    test_code should leave a boolean (i32) on the stack indicating if pattern matches.
+    bindings is a list of (name, temp_idx) for variables bound by the pattern. *)
+and gen_pattern (ctx : context) (scrutinee_local : int) (pat : pattern)
+  : (context * instr list * (string * int) list) result =
+  match pat with
+  | PatWildcard _ ->
+    (* Wildcard always matches, no bindings *)
+    Ok (ctx, [I32Const 1l], [])
+
+  | PatVar id ->
+    (* Variable pattern always matches and binds the scrutinee to the variable *)
+    let (ctx', var_idx) = alloc_local ctx id.name in
+    let bind_code = [
+      LocalGet scrutinee_local;  (* Get scrutinee value *)
+      LocalSet var_idx;          (* Bind to pattern variable *)
+      I32Const 1l                (* Pattern matches *)
+    ] in
+    Ok (ctx', bind_code, [(id.name, var_idx)])
+
+  | PatLit lit ->
+    (* Literal pattern matches if scrutinee equals the literal *)
+    let* lit_instr = gen_literal lit in
+    let test_code = [
+      LocalGet scrutinee_local;  (* Get scrutinee value *)
+      lit_instr;                 (* Get literal value *)
+      I32Eq                      (* Compare *)
+    ] in
+    Ok (ctx, test_code, [])
+
+  | PatCon (_con, sub_patterns) ->
+    (* Constructor pattern - for now, just match wildcards in sub-patterns *)
+    (* Full implementation would need to decode the constructor tag and fields *)
+    if List.length sub_patterns = 0 then
+      (* Simple constructor with no arguments - just match *)
+      Ok (ctx, [I32Const 1l], [])
+    else
+      (* Constructor with arguments - not yet supported *)
+      Error (UnsupportedFeature "Constructor patterns with arguments not yet supported in codegen")
+
+  | PatTuple _ ->
+    Error (UnsupportedFeature "Tuple patterns not yet supported in codegen")
+
+  | PatRecord _ ->
+    Error (UnsupportedFeature "Record patterns not yet supported in codegen")
+
+  | PatOr _ ->
+    Error (UnsupportedFeature "Or patterns not yet supported in codegen")
+
+  | PatAs _ ->
+    Error (UnsupportedFeature "As patterns not yet supported in codegen")
 
 (** Generate code for a statement *)
 and gen_stmt (ctx : context) (stmt : stmt) : (context * instr list) result =
