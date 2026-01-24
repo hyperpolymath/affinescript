@@ -223,6 +223,13 @@ type elem = {
 }
 [@@deriving show, eq]
 
+(** Data segment (for initializing memory) *)
+type data = {
+  d_data : bytes;        (** data bytes *)
+  d_offset : int;        (** offset in memory *)
+}
+[@@deriving show, eq]
+
 (** WebAssembly module *)
 type wasm_module = {
   types : func_type list;
@@ -233,6 +240,7 @@ type wasm_module = {
   exports : export list;
   imports : import list;
   elems : elem list;   (** element segments for table initialization *)
+  datas : data list;   (** data segments for memory initialization *)
   start : int option;  (** optional start function index *)
 }
 [@@deriving show, eq]
@@ -247,5 +255,6 @@ let empty_module () : wasm_module = {
   exports = [];
   imports = [];
   elems = [];
+  datas = [];
   start = None;
 }

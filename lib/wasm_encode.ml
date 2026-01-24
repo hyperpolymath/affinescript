@@ -456,6 +456,24 @@ let encode_module (m : wasm_module) : int list =
     encode_section buf 10 (buffer_contents code_buf)
   end;
 
+  (* Data section (memory initialization) *)
+  if List.length m.datas > 0 then begin
+    let data_buf = create_buffer () in
+    encode_u32 data_buf (List.length m.datas);
+    List.iter (fun data ->
+      (* Data segment format: flags(0=active with offset), offset_expr, data_bytes *)
+      encode_u32 data_buf 0;  (* flags: 0 = active segment *)
+      (* Offset expression (i32.const offset; end) *)
+      emit_byte data_buf 0x41;  (* i32.const *)
+      encode_i32 data_buf (Int32.of_int data.d_offset);
+      emit_byte data_buf 0x0b;  (* end *)
+      (* Data bytes *)
+      encode_u32 data_buf (Bytes.length data.d_data);
+      Bytes.iter (fun byte -> emit_byte data_buf (Char.code byte)) data.d_data;
+    ) m.datas;
+    encode_section buf 11 (buffer_contents data_buf)
+  end;
+
   buffer_contents buf
 
 (** Write module to file *)

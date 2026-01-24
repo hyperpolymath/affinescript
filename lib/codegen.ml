@@ -26,6 +26,9 @@ type context = {
   heap_ptr : int option;             (** global index for heap pointer, if initialized *)
   field_layouts : (string * (string * int) list) list;  (** type name -> [(field, offset)] *)
   variant_tags : (string * int) list;  (** constructor name -> tag (int) *)
+  string_data : (string * int) list; (** string content -> memory offset *)
+  next_string_offset : int;          (** next available offset for string data *)
+  datas : data list;                 (** data segments *)
 }
 
 (** Code generation error *)
@@ -56,6 +59,9 @@ let create_context () : context = {
   heap_ptr = None;
   field_layouts = [];
   variant_tags = [];
+  string_data = [];
+  next_string_offset = 2048;  (* Start strings after heap at offset 2048 *)
+  datas = [];
 }
 
 (** Map AffineScript type to WASM value type *)
@@ -194,14 +200,37 @@ let dedup (lst : string list) : string list =
   ) [] lst |> List.rev
 
 (** Generate code for a literal *)
-let gen_literal (lit : literal) : instr result =
+let gen_literal (ctx : context) (lit : literal) : (context * instr) result =
   match lit with
-  | LitUnit _ -> Ok (I32Const 0l)  (* Unit represented as 0 *)
-  | LitBool (b, _) -> Ok (I32Const (if b then 1l else 0l))
-  | LitInt (n, _) -> Ok (I32Const (Int32.of_int n))
-  | LitFloat (f, _) -> Ok (F64Const f)
-  | LitChar (c, _) -> Ok (I32Const (Int32.of_int (Char.code c)))
-  | LitString _ -> Error (UnsupportedFeature "String literals not yet supported in codegen")
+  | LitUnit _ -> Ok (ctx, I32Const 0l)  (* Unit represented as 0 *)
+  | LitBool (b, _) -> Ok (ctx, I32Const (if b then 1l else 0l))
+  | LitInt (n, _) -> Ok (ctx, I32Const (Int32.of_int n))
+  | LitFloat (f, _) -> Ok (ctx, F64Const f)
+  | LitChar (c, _) -> Ok (ctx, I32Const (Int32.of_int (Char.code c)))
+  | LitString (s, _) ->
+    (* Check if string already exists *)
+    begin match List.assoc_opt s ctx.string_data with
+      | Some offset ->
+        (* String already in memory, return pointer *)
+        Ok (ctx, I32Const (Int32.of_int offset))
+      | None ->
+        (* Add new string to data section *)
+        let offset = ctx.next_string_offset in
+        let str_bytes = Bytes.of_string s in
+        let str_len = Bytes.length str_bytes in
+        (* String layout: [length: i32][...utf8 bytes...] *)
+        let len_bytes = Bytes.create 4 in
+        Bytes.set_int32_le len_bytes 0 (Int32.of_int str_len);
+        let full_data = Bytes.cat len_bytes str_bytes in
+        let data_segment = { d_data = full_data; d_offset = offset } in
+        let ctx' = {
+          ctx with
+          string_data = (s, offset) :: ctx.string_data;
+          next_string_offset = offset + 4 + str_len;
+          datas = data_segment :: ctx.datas;
+        } in
+        Ok (ctx', I32Const (Int32.of_int offset))
+    end
 
 (** Generate code for binary operation *)
 let gen_binop (op : binary_op) : instr =
@@ -238,8 +267,8 @@ let gen_unop (op : unary_op) : instr result =
 let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
   match expr with
   | ExprLit lit ->
-    let* instr = gen_literal lit in
-    Ok (ctx, [instr])
+    let* (ctx', instr) = gen_literal ctx lit in
+    Ok (ctx', [instr])
 
   | ExprVar id ->
     let* idx = lookup_local ctx id.name in
@@ -815,13 +844,13 @@ and gen_pattern (ctx : context) (scrutinee_local : int) (pat : pattern)
 
   | PatLit lit ->
     (* Literal pattern matches if scrutinee equals the literal *)
-    let* lit_instr = gen_literal lit in
+    let* (ctx', lit_instr) = gen_literal ctx lit in
     let test_code = [
       LocalGet scrutinee_local;  (* Get scrutinee value *)
       lit_instr;                 (* Get literal value *)
       I32Eq                      (* Compare *)
     ] in
-    Ok (ctx, test_code, [])
+    Ok (ctx', test_code, [])
 
   | PatCon (con, sub_patterns) ->
     (* Constructor pattern - match against tag *)
@@ -1033,14 +1062,18 @@ let generate_module (prog : program) : wasm_module result =
     ([], [])
   in
 
+  (* Add memory export *)
+  let exports_with_mem = { e_name = "memory"; e_desc = ExportMemory 0 } :: ctx'.exports in
+
   Ok {
     types = ctx'.types;
     funcs = all_funcs;
     tables = tables;
     mems = [{ mem_type = { lim_min = 1; lim_max = None } }];  (* 1 page default *)
     globals = ctx'.globals;
-    exports = ctx'.exports;
+    exports = exports_with_mem;
     imports = ctx'.imports;
     elems = elems;
+    datas = List.rev ctx'.datas;  (* Reverse to get original order *)
     start = None;
   }
