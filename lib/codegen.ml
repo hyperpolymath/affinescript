@@ -109,6 +109,90 @@ let gen_heap_alloc (ctx : context) (size_in_bytes : int) : (context * instr list
   ] in
   (ctx', alloc_code)
 
+(** Find free variables in an expression.
+    Returns list of variable names that are used but not bound within the expression.
+    bound_vars: variables already bound in enclosing scope (parameters, let bindings) *)
+let rec find_free_vars (bound_vars : string list) (expr : expr) : string list =
+  match expr with
+  | ExprLit _ -> []
+  | ExprVar id ->
+    if List.mem id.name bound_vars then [] else [id.name]
+  | ExprBinary (e1, _, e2) ->
+    find_free_vars bound_vars e1 @ find_free_vars bound_vars e2
+  | ExprUnary (_, e) ->
+    find_free_vars bound_vars e
+  | ExprIf ei ->
+    find_free_vars bound_vars ei.ei_cond @
+    find_free_vars bound_vars ei.ei_then @
+    (match ei.ei_else with
+     | Some e -> find_free_vars bound_vars e
+     | None -> [])
+  | ExprLet lb ->
+    let rhs_free = find_free_vars bound_vars lb.el_value in
+    (* Add bound variable to scope for body *)
+    let new_bound = match lb.el_pat with
+      | PatVar id -> id.name :: bound_vars
+      | _ -> bound_vars
+    in
+    let body_free = match lb.el_body with
+      | Some e -> find_free_vars new_bound e
+      | None -> []
+    in
+    rhs_free @ body_free
+  | ExprLambda lam ->
+    (* Parameters are bound within lambda *)
+    let param_names = List.map (fun p -> p.p_name.name) lam.elam_params in
+    find_free_vars (param_names @ bound_vars) lam.elam_body
+  | ExprApp (f, args) ->
+    find_free_vars bound_vars f @
+    List.concat (List.map (find_free_vars bound_vars) args)
+  | ExprBlock blk ->
+    (* Statements may introduce bindings *)
+    let (_, free) = List.fold_left (fun (bound, acc_free) stmt ->
+      match stmt with
+      | StmtLet sl ->
+        let rhs_free = find_free_vars bound sl.sl_value in
+        let new_bound = match sl.sl_pat with
+          | PatVar id -> id.name :: bound
+          | _ -> bound
+        in
+        (new_bound, acc_free @ rhs_free)
+      | StmtExpr e ->
+        (bound, acc_free @ find_free_vars bound e)
+      | _ -> (bound, acc_free)
+    ) (bound_vars, []) blk.blk_stmts in
+    let expr_free = match blk.blk_expr with
+      | Some e -> find_free_vars bound_vars e
+      | None -> []
+    in
+    free @ expr_free
+  | ExprMatch m ->
+    find_free_vars bound_vars m.em_scrutinee @
+    List.concat (List.map (fun arm -> find_free_vars bound_vars arm.ma_body) m.em_arms)
+  | ExprReturn e_opt ->
+    (match e_opt with Some e -> find_free_vars bound_vars e | None -> [])
+  | ExprTuple exprs | ExprArray exprs ->
+    List.concat (List.map (find_free_vars bound_vars) exprs)
+  | ExprRecord r ->
+    List.concat (List.map (fun (_, e_opt) ->
+      match e_opt with
+      | Some e -> find_free_vars bound_vars e
+      | None -> []
+    ) r.er_fields)
+  | ExprField (e, _) -> find_free_vars bound_vars e
+  | ExprTupleIndex (e, _) -> find_free_vars bound_vars e
+  | ExprIndex (e1, e2) ->
+    find_free_vars bound_vars e1 @ find_free_vars bound_vars e2
+  | ExprVariant _ -> []
+  | ExprSpan (e, _) -> find_free_vars bound_vars e
+  | _ -> []  (* Other expressions *)
+
+(** Remove duplicates from list *)
+let dedup (lst : string list) : string list =
+  List.fold_left (fun acc x ->
+    if List.mem x acc then acc else x :: acc
+  ) [] lst |> List.rev
+
 (** Generate code for a literal *)
 let gen_literal (lit : literal) : instr result =
   match lit with
@@ -216,23 +300,76 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
     end
 
   | ExprLambda lam ->
-    (* Lift lambda to a top-level function *)
+    (* Detect free variables (captured from enclosing scope) *)
+    let param_names = List.map (fun p -> p.p_name.name) lam.elam_params in
+    let all_free = find_free_vars param_names lam.elam_body in
+    (* Filter to only variables currently in scope *)
+    let captured_vars = List.filter (fun name ->
+      List.mem_assoc name ctx.locals
+    ) (dedup all_free) in
+
     let lambda_id = ctx.next_lambda_id in
 
-    (* Create fresh context for lambda function *)
-    let lambda_ctx = { ctx with locals = []; next_local = 0; loop_depth = 0 } in
+    (* If there are captured variables, create closure environment *)
+    let (ctx_after_env, env_code) = if List.length captured_vars > 0 then
+      (* Create environment tuple with captured values *)
+      let num_captured = List.length captured_vars in
+      let env_size = num_captured * 4 in
+      let (ctx_with_heap, alloc_code) = gen_heap_alloc ctx env_size in
+      let (ctx_with_temp, env_idx) = alloc_local ctx_with_heap "__closure_env" in
 
-    (* Parameters become locals 0..n-1 *)
+      let save_code = [LocalTee env_idx] in
+
+      (* Store each captured variable in environment *)
+      let store_code = List.mapi (fun i var_name ->
+        let var_idx = List.assoc var_name ctx.locals in
+        [
+          LocalGet env_idx;
+          LocalGet var_idx;
+          I32Store (2, i * 4);
+        ]
+      ) captured_vars |> List.concat in
+
+      (ctx_with_temp, alloc_code @ save_code @ store_code @ [LocalGet env_idx])
+    else
+      (* No captures - environment is null (0) *)
+      (ctx, [I32Const 0l])
+    in
+
+    (* Create fresh context for lambda function *)
+    let lambda_ctx = { ctx_after_env with locals = []; next_local = 0; loop_depth = 0 } in
+
+    (* Environment is always first parameter (even if unused) for uniform calling convention *)
+    let (ctx_with_env, _) = alloc_local lambda_ctx "__env" in
+    let env_param_offset = 1 in
+
+    (* Regular parameters come after environment *)
     let (ctx_with_params, _) = List.fold_left (fun (c, _) param ->
       alloc_local c param.p_name.name
-    ) (lambda_ctx, 0) lam.elam_params in
+    ) (ctx_with_env, 0) lam.elam_params in
 
-    let param_count = List.length lam.elam_params in
+    (* Add captured variables to local scope (load from environment) *)
+    let (ctx_with_captured, load_captured_code) = if List.length captured_vars > 0 then
+      let (c, code) = List.fold_left (fun (c_acc, code_acc) (i, var_name) ->
+        let (c', var_idx) = alloc_local c_acc var_name in
+        let load_code = [
+          LocalGet 0;  (* Environment pointer *)
+          I32Load (2, i * 4);
+          LocalSet var_idx;
+        ] in
+        (c', code_acc @ load_code)
+      ) (ctx_with_params, []) (List.mapi (fun i v -> (i, v)) captured_vars) in
+      (c, code)
+    else
+      (ctx_with_params, [])
+    in
+
+    let param_count = env_param_offset + List.length lam.elam_params in
 
     (* Generate lambda body *)
-    let* (ctx_final, body_code) = gen_expr ctx_with_params lam.elam_body in
+    let* (ctx_final, body_code) = gen_expr ctx_with_captured lam.elam_body in
 
-    (* Compute additional locals (beyond parameters) *)
+    (* Compute additional locals (beyond parameters and captured vars) *)
     let local_count = ctx_final.next_local - param_count in
     let locals = if local_count > 0 then
       [{ l_count = local_count; l_type = I32 }]
@@ -240,20 +377,20 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
       []
     in
 
-    (* Create function type for lambda *)
-    let param_types = List.map (fun _ -> I32) lam.elam_params in
+    (* Create function type for lambda (env param always included + regular params) *)
+    let param_types = I32 :: List.map (fun _ -> I32) lam.elam_params in
     let result_type = [I32] in
     let func_type = { ft_params = param_types; ft_results = result_type } in
 
     (* Add type to types list *)
-    let type_idx = List.length ctx.types in
-    let ctx_with_type = { ctx with types = ctx.types @ [func_type] } in
+    let type_idx = List.length ctx_after_env.types in
+    let ctx_with_type = { ctx_after_env with types = ctx_after_env.types @ [func_type] } in
 
     (* Create lambda function *)
     let lambda_func = {
       f_type = type_idx;
       f_locals = locals;
-      f_body = body_code;
+      f_body = load_captured_code @ body_code;
     } in
 
     (* Add lambda function to lifted functions *)
@@ -263,10 +400,28 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
       next_lambda_id = lambda_id + 1;
     } in
 
-    (* The lambda evaluates to its function index in the table *)
-    (* Function table index = base_func_count + lambda_id *)
-    (* For now, just return the lambda_id - will be adjusted when creating table *)
-    Ok (ctx_with_lambda, [I32Const (Int32.of_int lambda_id)])
+    (* Return a closure: (function_id, env_pointer) as a 2-element tuple *)
+    let closure_size = 8 in  (* 2 * 4 bytes *)
+    let (ctx_final2, closure_alloc) = gen_heap_alloc ctx_with_lambda closure_size in
+    let (ctx_final3, closure_idx) = alloc_local ctx_final2 "__closure" in
+
+    let closure_code = closure_alloc @ [LocalTee closure_idx] @ [
+      (* Store function ID at offset 0 *)
+      LocalGet closure_idx;
+      I32Const (Int32.of_int lambda_id);
+      I32Store (2, 0);
+    ] @ [
+      (* Store environment pointer at offset 4 *)
+      LocalGet closure_idx;
+    ] @ env_code @ [
+      (* env_code left env_ptr on stack, closure_idx is below it *)
+      (* Stack is now [closure_idx, env_ptr] with env_ptr on top *)
+      I32Store (2, 4);
+      (* Return closure pointer *)
+      LocalGet closure_idx;
+    ] in
+
+    Ok (ctx_final3, closure_code)
 
   | ExprApp (func_expr, args) ->
     (* Generate code for arguments (left to right) *)
@@ -286,30 +441,50 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
             let call_instr = Call func_idx in
             Ok (ctx_after_args, all_arg_code @ [call_instr])
           | None ->
-            (* Check if it's a local variable (could be a lambda) *)
+            (* Check if it's a local variable (could be a closure) *)
             begin match lookup_local ctx_after_args id.name with
               | Ok local_idx ->
-                (* Indirect call through function table *)
-                (* Create type signature for the call based on number of args *)
-                let param_types = List.map (fun _ -> I32) args in
+                (* Closure is a tuple: (func_id, env_ptr) *)
+                (* Load function ID and environment, then call indirect *)
+
+                (* Allocate temp locals for closure components *)
+                let (ctx_temp1, func_id_idx) = alloc_local ctx_after_args "__func_id" in
+                let (ctx_temp2, env_ptr_idx) = alloc_local ctx_temp1 "__env_ptr" in
+
+                (* Extract closure components *)
+                let extract_closure = [
+                  (* Load function ID from offset 0 *)
+                  LocalGet local_idx;
+                  I32Load (2, 0);
+                  LocalSet func_id_idx;
+
+                  (* Load environment pointer from offset 4 *)
+                  LocalGet local_idx;
+                  I32Load (2, 4);
+                  LocalSet env_ptr_idx;
+                ] in
+
+                (* Create type signature: env + user args *)
+                let param_types = I32 :: List.map (fun _ -> I32) args in
                 let result_type = [I32] in
                 let call_type = { ft_params = param_types; ft_results = result_type } in
 
-                (* Find or add this type to the types list *)
+                (* Find or add this type *)
                 let type_idx =
-                  match List.find_index (fun t -> t = call_type) ctx_after_args.types with
+                  match List.find_index (fun t -> t = call_type) ctx_temp2.types with
                   | Some idx -> idx
-                  | None ->
-                    (* Type not found - this shouldn't happen if lambda was created properly *)
-                    (* but let's add it to be safe *)
-                    List.length ctx_after_args.types
+                  | None -> List.length ctx_temp2.types
                 in
 
+                (* Call: push env, push user args, push func_id, call indirect *)
                 let call_instrs = [
-                  LocalGet local_idx;  (* Get function table index from variable *)
-                  CallIndirect type_idx  (* Indirect call with matching type *)
+                  LocalGet env_ptr_idx;    (* Environment as first arg *)
+                ] @ all_arg_code @ [       (* User arguments *)
+                  LocalGet func_id_idx;    (* Function ID for indirect call *)
+                  CallIndirect type_idx
                 ] in
-                Ok (ctx_after_args, all_arg_code @ call_instrs)
+
+                Ok (ctx_temp2, extract_closure @ call_instrs)
               | Error _ ->
                 Error (UnboundVariable ("Function or variable not found: " ^ id.name))
             end
