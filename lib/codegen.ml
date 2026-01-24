@@ -979,10 +979,42 @@ and gen_pattern (ctx : context) (scrutinee_local : int) (pat : pattern)
 
       Ok (ctx_final, full_code, [])
 
-  | PatTuple _ ->
-    Error (UnsupportedFeature "Tuple patterns not yet supported in codegen")
+  | PatTuple sub_patterns ->
+    (* Tuple pattern: (a, b, c) *)
+    (* scrutinee is a pointer to [elem0: i32][elem1: i32][elem2: i32]... *)
+
+    (* Bind each element to sub-pattern *)
+    let rec bind_elements ctx_acc offset patterns =
+      match patterns with
+      | [] -> Ok (ctx_acc, [])
+      | pat :: rest ->
+        begin match pat with
+          | PatVar id ->
+            (* Allocate local for this element *)
+            let (ctx', elem_idx) = alloc_local ctx_acc id.name in
+            (* Load element from tuple *)
+            let load_code = [
+              LocalGet scrutinee_local;
+              I32Load (2, offset);
+              LocalSet elem_idx;
+            ] in
+            let* (ctx_final, rest_code) = bind_elements ctx' (offset + 4) rest in
+            Ok (ctx_final, load_code @ rest_code)
+          | PatWildcard _ ->
+            (* Skip this element *)
+            bind_elements ctx_acc (offset + 4) rest
+          | _ ->
+            Error (UnsupportedFeature "Only variable and wildcard patterns supported in tuple patterns")
+        end
+    in
+
+    let* (ctx_final, binding_code) = bind_elements ctx 0 sub_patterns in
+    (* Tuple patterns always match (no tag to check) *)
+    let match_code = binding_code @ [I32Const 1l] in
+    Ok (ctx_final, match_code, [])
 
   | PatRecord _ ->
+    (* TODO: Requires proper field layout tracking during pattern matching *)
     Error (UnsupportedFeature "Record patterns not yet supported in codegen")
 
   | PatOr _ ->
