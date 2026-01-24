@@ -1013,15 +1013,83 @@ and gen_pattern (ctx : context) (scrutinee_local : int) (pat : pattern)
     let match_code = binding_code @ [I32Const 1l] in
     Ok (ctx_final, match_code, [])
 
-  | PatRecord _ ->
-    (* TODO: Requires proper field layout tracking during pattern matching *)
-    Error (UnsupportedFeature "Record patterns not yet supported in codegen")
+  | PatRecord (field_pats, _has_wildcard) ->
+    (* Record pattern: {x: a, y: b} *)
+    (* scrutinee is a pointer to record with sequential field layout *)
+    (* Limitation: assumes fields in pattern order match memory layout *)
 
-  | PatOr _ ->
-    Error (UnsupportedFeature "Or patterns not yet supported in codegen")
+    let rec bind_fields ctx_acc offset field_patterns =
+      match field_patterns with
+      | [] -> Ok (ctx_acc, [])
+      | (field_name, pat_opt) :: rest ->
+        (* Default pattern is PatVar with same name as field *)
+        let pat = match pat_opt with
+          | Some p -> p
+          | None -> PatVar field_name
+        in
 
-  | PatAs _ ->
-    Error (UnsupportedFeature "As patterns not yet supported in codegen")
+        begin match pat with
+          | PatVar id ->
+            (* Allocate local for this field *)
+            let (ctx', field_idx) = alloc_local ctx_acc id.name in
+            (* Load field from record at sequential offset *)
+            let load_code = [
+              LocalGet scrutinee_local;
+              I32Load (2, offset);
+              LocalSet field_idx;
+            ] in
+            let* (ctx_final, rest_code) = bind_fields ctx' (offset + 4) rest in
+            Ok (ctx_final, load_code @ rest_code)
+          | PatWildcard _ ->
+            (* Skip this field, but advance offset *)
+            bind_fields ctx_acc (offset + 4) rest
+          | _ ->
+            Error (UnsupportedFeature "Only variable and wildcard patterns supported in record field patterns")
+        end
+    in
+
+    let* (ctx_final, binding_code) = bind_fields ctx 0 field_pats in
+    (* Record patterns always match (no tag check) *)
+    let match_code = binding_code @ [I32Const 1l] in
+    Ok (ctx_final, match_code, [])
+
+  | PatOr (pat1, pat2) ->
+    (* Or pattern: p1 | p2 *)
+    (* Try pat1, if it fails try pat2 *)
+    (* Limitation: both patterns should bind the same variables *)
+
+    let* (ctx_after_p1, test1, _bindings1) = gen_pattern ctx scrutinee_local pat1 in
+    let* (ctx_after_p2, test2, _bindings2) = gen_pattern ctx_after_p1 scrutinee_local pat2 in
+
+    (* Generate: test1 or test2 *)
+    (* If test1 succeeds (1), return 1 *)
+    (* If test1 fails (0), try test2 *)
+    let or_code = test1 @ [
+      If (BtType I32,
+          [I32Const 1l],  (* Then: first pattern matched *)
+          test2)          (* Else: try second pattern *)
+    ] in
+
+    Ok (ctx_after_p2, or_code, [])
+
+  | PatAs (bind_id, sub_pat) ->
+    (* As pattern: x @ sub_pattern *)
+    (* Bind scrutinee to variable and match sub-pattern *)
+
+    (* Allocate local for the binding *)
+    let (ctx_with_bind, bind_idx) = alloc_local ctx bind_id.name in
+
+    (* Bind the scrutinee *)
+    let bind_code = [
+      LocalGet scrutinee_local;
+      LocalSet bind_idx;
+    ] in
+
+    (* Match the sub-pattern *)
+    let* (ctx_final, sub_test, _sub_bindings) = gen_pattern ctx_with_bind scrutinee_local sub_pat in
+
+    (* Combine: bind then test sub-pattern *)
+    Ok (ctx_final, bind_code @ sub_test, [])
 
 (** Generate code for a statement *)
 and gen_stmt (ctx : context) (stmt : stmt) : (context * instr list) result =
