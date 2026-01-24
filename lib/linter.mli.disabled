@@ -1,0 +1,29 @@
+(* SPDX-License-Identifier: MIT OR AGPL-3.0-or-later *)
+(* SPDX-FileCopyrightText: 2024-2025 hyperpolymath *)
+
+(** AffineScript linter - static analysis for code quality *)
+
+(** Lint severity levels *)
+type severity =
+  | Error
+  | Warning
+  | Hint
+  | Info
+
+(** Lint diagnostic *)
+type diagnostic = {
+  severity: severity;
+  code: string;
+  message: string;
+  span: Span.t;
+  help: string option;
+}
+
+(** Lint a program and return diagnostics *)
+val lint_program : Symbol.t -> Ast.program -> diagnostic list
+
+(** Format a diagnostic to a string *)
+val format_diagnostic : diagnostic -> string
+
+(** Print diagnostics to stdout *)
+val print_diagnostics : diagnostic list -> unit

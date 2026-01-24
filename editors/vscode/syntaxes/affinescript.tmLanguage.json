@@ -1,0 +1,207 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "AffineScript",
+  "scopeName": "source.affinescript",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#keywords" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#effects" },
+    { "include": "#types" },
+    { "include": "#functions" },
+    { "include": "#operators" },
+    { "include": "#constants" },
+    { "include": "#variables" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.affinescript",
+          "begin": "//",
+          "end": "$"
+        },
+        {
+          "name": "comment.block.affinescript",
+          "begin": "/\\*",
+          "end": "\\*/"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.affinescript",
+          "match": "\\b(if|else|match|while|for|in|loop|break|continue|return)\\b"
+        },
+        {
+          "name": "keyword.declaration.affinescript",
+          "match": "\\b(fn|let|mut|type|trait|impl|struct|enum|mod|use|pub|extern)\\b"
+        },
+        {
+          "name": "keyword.effect.affinescript",
+          "match": "\\b(effect|handle|resume|perform)\\b"
+        },
+        {
+          "name": "keyword.quantity.affinescript",
+          "match": "\\b(linear|affine|unrestricted|erased)\\b"
+        },
+        {
+          "name": "keyword.other.affinescript",
+          "match": "\\b(as|where|forall|exists)\\b"
+        },
+        {
+          "name": "storage.modifier.affinescript",
+          "match": "\\b(move|ref|deref)\\b"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.affinescript",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.affinescript",
+              "match": "\\\\(n|r|t|\\\\|\"|'|x[0-9a-fA-F]{2}|u\\{[0-9a-fA-F]+\\})"
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.single.affinescript",
+          "begin": "'",
+          "end": "'",
+          "patterns": [
+            {
+              "name": "constant.character.escape.affinescript",
+              "match": "\\\\(n|r|t|\\\\|\"|'|x[0-9a-fA-F]{2}|u\\{[0-9a-fA-F]+\\})"
+            }
+          ]
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.float.affinescript",
+          "match": "\\b[0-9][0-9_]*\\.[0-9][0-9_]*([eE][+-]?[0-9][0-9_]*)?\\b"
+        },
+        {
+          "name": "constant.numeric.hex.affinescript",
+          "match": "\\b0x[0-9a-fA-F][0-9a-fA-F_]*\\b"
+        },
+        {
+          "name": "constant.numeric.binary.affinescript",
+          "match": "\\b0b[01][01_]*\\b"
+        },
+        {
+          "name": "constant.numeric.octal.affinescript",
+          "match": "\\b0o[0-7][0-7_]*\\b"
+        },
+        {
+          "name": "constant.numeric.decimal.affinescript",
+          "match": "\\b[0-9][0-9_]*\\b"
+        }
+      ]
+    },
+    "effects": {
+      "patterns": [
+        {
+          "name": "entity.name.effect.affinescript",
+          "match": "\\b[A-Z][a-zA-Z0-9_]*\\b(?=\\s*(?:/|\\|))"
+        },
+        {
+          "name": "keyword.operator.effect.affinescript",
+          "match": "/(?=\\s*[A-Z])"
+        },
+        {
+          "name": "keyword.operator.effect-union.affinescript",
+          "match": "\\|(?=\\s*[A-Z])"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "entity.name.type.affinescript",
+          "match": "\\b[A-Z][a-zA-Z0-9_]*\\b"
+        },
+        {
+          "name": "support.type.primitive.affinescript",
+          "match": "\\b(Int|Float|Bool|String|Unit|Never|Char)\\b"
+        },
+        {
+          "name": "support.type.collection.affinescript",
+          "match": "\\b(List|Vec|Option|Result|Ref)\\b"
+        }
+      ]
+    },
+    "functions": {
+      "patterns": [
+        {
+          "name": "entity.name.function.affinescript",
+          "match": "\\b([a-z_][a-zA-Z0-9_]*)\\s*(?=\\()"
+        },
+        {
+          "name": "entity.name.function.definition.affinescript",
+          "match": "(?<=fn\\s+)([a-z_][a-zA-Z0-9_]*)"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.arithmetic.affinescript",
+          "match": "[+\\-*/%]"
+        },
+        {
+          "name": "keyword.operator.comparison.affinescript",
+          "match": "(==|!=|<|>|<=|>=)"
+        },
+        {
+          "name": "keyword.operator.logical.affinescript",
+          "match": "(&&|\\|\\||!)"
+        },
+        {
+          "name": "keyword.operator.assignment.affinescript",
+          "match": "="
+        },
+        {
+          "name": "keyword.operator.arrow.affinescript",
+          "match": "(->|=>|\\|)"
+        },
+        {
+          "name": "keyword.operator.access.affinescript",
+          "match": "(\\.|\\.\\.|::)"
+        }
+      ]
+    },
+    "constants": {
+      "patterns": [
+        {
+          "name": "constant.language.boolean.affinescript",
+          "match": "\\b(true|false)\\b"
+        },
+        {
+          "name": "constant.language.unit.affinescript",
+          "match": "\\(\\)"
+        }
+      ]
+    },
+    "variables": {
+      "patterns": [
+        {
+          "name": "variable.other.constant.affinescript",
+          "match": "\\b[A-Z][A-Z0-9_]*\\b"
+        },
+        {
+          "name": "variable.parameter.affinescript",
+          "match": "\\b[a-z_][a-zA-Z0-9_]*\\b"
+        }
+      ]
+    }
+  }
+}

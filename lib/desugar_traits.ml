@@ -55,15 +55,18 @@ let rec desugar_expr (ctx : context) (expr : expr) : expr =
 
   | ExprVar _ | ExprLit _ -> expr
 
-  | ExprBinOp (op, e1, e2) ->
-    ExprBinOp (op, desugar_expr ctx e1, desugar_expr ctx e2)
+  | ExprBinary (e1, op, e2) ->
+    ExprBinary (desugar_expr ctx e1, op, desugar_expr ctx e2)
 
-  | ExprUnOp (op, e) ->
-    ExprUnOp (op, desugar_expr ctx e)
+  | ExprUnary (op, e) ->
+    ExprUnary (op, desugar_expr ctx e)
 
-  | ExprIf (cond, then_expr, else_expr) ->
-    ExprIf (desugar_expr ctx cond, desugar_expr ctx then_expr,
-            Option.map (desugar_expr ctx) else_expr)
+  | ExprIf { ei_cond; ei_then; ei_else } ->
+    ExprIf {
+      ei_cond = desugar_expr ctx ei_cond;
+      ei_then = desugar_expr ctx ei_then;
+      ei_else = Option.map (desugar_expr ctx) ei_else;
+    }
 
   | ExprBlock blk ->
     ExprBlock (desugar_block ctx blk)
@@ -74,11 +77,16 @@ let rec desugar_expr (ctx : context) (expr : expr) : expr =
   | ExprIndex (e1, e2) ->
     ExprIndex (desugar_expr ctx e1, desugar_expr ctx e2)
 
-  | ExprCall (e, args) ->
-    ExprCall (desugar_expr ctx e, List.map (desugar_expr ctx) args)
+  | ExprTupleIndex (e, idx) ->
+    ExprTupleIndex (desugar_expr ctx e, idx)
 
-  | ExprStruct (name, fields) ->
-    ExprStruct (name, List.map (fun (id, e) -> (id, desugar_expr ctx e)) fields)
+  | ExprRecord { er_fields; er_spread } ->
+    ExprRecord {
+      er_fields = List.map (fun (id, e_opt) ->
+        (id, Option.map (desugar_expr ctx) e_opt)
+      ) er_fields;
+      er_spread = Option.map (desugar_expr ctx) er_spread;
+    }
 
   | ExprArray exprs ->
     ExprArray (List.map (desugar_expr ctx) exprs)
@@ -86,57 +94,110 @@ let rec desugar_expr (ctx : context) (expr : expr) : expr =
   | ExprTuple exprs ->
     ExprTuple (List.map (desugar_expr ctx) exprs)
 
-  | ExprMatch (e, arms) ->
-    ExprMatch (desugar_expr ctx e,
-               List.map (fun (pat, guard, body) ->
-                 (pat, Option.map (desugar_expr ctx) guard, desugar_expr ctx body)
-               ) arms)
+  | ExprMatch { em_scrutinee; em_arms } ->
+    ExprMatch {
+      em_scrutinee = desugar_expr ctx em_scrutinee;
+      em_arms = List.map (fun arm ->
+        { arm with
+          ma_guard = Option.map (desugar_expr ctx) arm.ma_guard;
+          ma_body = desugar_expr ctx arm.ma_body;
+        }
+      ) em_arms;
+    }
 
-  | ExprLambda (params, body) ->
-    ExprLambda (params, desugar_expr ctx body)
+  | ExprLambda { elam_params; elam_ret_ty; elam_body } ->
+    ExprLambda {
+      elam_params;
+      elam_ret_ty;
+      elam_body = desugar_expr ctx elam_body;
+    }
 
-  | ExprReturn e ->
-    ExprReturn (desugar_expr ctx e)
+  | ExprLet { el_mut; el_pat; el_ty; el_value; el_body } ->
+    ExprLet {
+      el_mut;
+      el_pat;
+      el_ty;
+      el_value = desugar_expr ctx el_value;
+      el_body = Option.map (desugar_expr ctx) el_body;
+    }
 
-  | ExprBreak e_opt ->
-    ExprBreak (Option.map (desugar_expr ctx) e_opt)
+  | ExprReturn e_opt ->
+    ExprReturn (Option.map (desugar_expr ctx) e_opt)
 
-  | ExprContinue -> expr
+  | ExprTry { et_body; et_catch; et_finally } ->
+    ExprTry {
+      et_body = desugar_block ctx et_body;
+      et_catch = Option.map (List.map (fun arm ->
+        { arm with
+          ma_guard = Option.map (desugar_expr ctx) arm.ma_guard;
+          ma_body = desugar_expr ctx arm.ma_body;
+        }
+      )) et_catch;
+      et_finally = Option.map (desugar_block ctx) et_finally;
+    }
 
-  | ExprLoop blk ->
-    ExprLoop (desugar_block ctx blk)
+  | ExprHandle { eh_body; eh_handlers } ->
+    ExprHandle {
+      eh_body = desugar_expr ctx eh_body;
+      eh_handlers = List.map (desugar_handler ctx) eh_handlers;
+    }
 
-  | ExprWhile (cond, body) ->
-    ExprWhile (desugar_expr ctx cond, desugar_block ctx body)
+  | ExprResume e_opt ->
+    ExprResume (Option.map (desugar_expr ctx) e_opt)
 
-  | ExprFor (pat, iter, body) ->
-    ExprFor (pat, desugar_expr ctx iter, desugar_block ctx body)
+  | ExprUnsafe ops ->
+    ExprUnsafe (List.map (desugar_unsafe_op ctx) ops)
 
-  | ExprAssign (lhs, rhs) ->
-    ExprAssign (desugar_expr ctx lhs, desugar_expr ctx rhs)
+  | ExprRowRestrict (e, field) ->
+    ExprRowRestrict (desugar_expr ctx e, field)
 
-  | ExprBorrow (kind, e) ->
-    ExprBorrow (kind, desugar_expr ctx e)
+  | ExprVariant _ -> expr
 
-  | ExprDeref e ->
-    ExprDeref (desugar_expr ctx e)
+  | ExprSpan (e, span) ->
+    ExprSpan (desugar_expr ctx e, span)
 
-  | ExprCast (e, ty) ->
-    ExprCast (desugar_expr ctx e, ty)
+and desugar_handler (ctx : context) (handler : handler_arm) : handler_arm =
+  match handler with
+  | HandlerReturn (pat, body) ->
+    HandlerReturn (pat, desugar_expr ctx body)
+  | HandlerOp (op, pats, body) ->
+    HandlerOp (op, pats, desugar_expr ctx body)
 
-  | ExprAscribe (e, ty) ->
-    ExprAscribe (desugar_expr ctx e, ty)
+and desugar_unsafe_op (ctx : context) (op : unsafe_op) : unsafe_op =
+  match op with
+  | UnsafeRead e -> UnsafeRead (desugar_expr ctx e)
+  | UnsafeWrite (e1, e2) -> UnsafeWrite (desugar_expr ctx e1, desugar_expr ctx e2)
+  | UnsafeOffset (e1, e2) -> UnsafeOffset (desugar_expr ctx e1, desugar_expr ctx e2)
+  | UnsafeTransmute (ty1, ty2, e) -> UnsafeTransmute (ty1, ty2, desugar_expr ctx e)
+  | UnsafeForget e -> UnsafeForget (desugar_expr ctx e)
+  | UnsafeAssume _ as op -> op
 
 and desugar_block (ctx : context) (blk : block) : block =
-  { blk with b_stmts = List.map (desugar_stmt ctx) blk.b_stmts }
+  { blk_stmts = List.map (desugar_stmt ctx) blk.blk_stmts;
+    blk_expr = Option.map (desugar_expr ctx) blk.blk_expr;
+  }
 
 and desugar_stmt (ctx : context) (stmt : stmt) : stmt =
   match stmt with
-  | StmtLet sl ->
-    StmtLet { sl with sl_value = desugar_expr ctx sl.sl_value }
+  | StmtLet { sl_mut; sl_pat; sl_ty; sl_value } ->
+    StmtLet {
+      sl_mut;
+      sl_pat;
+      sl_ty;
+      sl_value = desugar_expr ctx sl_value;
+    }
 
   | StmtExpr e ->
     StmtExpr (desugar_expr ctx e)
+
+  | StmtAssign (lhs, op, rhs) ->
+    StmtAssign (desugar_expr ctx lhs, op, desugar_expr ctx rhs)
+
+  | StmtWhile (cond, body) ->
+    StmtWhile (desugar_expr ctx cond, desugar_block ctx body)
+
+  | StmtFor (pat, iter, body) ->
+    StmtFor (pat, desugar_expr ctx iter, desugar_block ctx body)
 
 let desugar_function (ctx : context) (fd : fn_decl) : fn_decl =
   match fd.fd_body with
@@ -145,8 +206,8 @@ let desugar_function (ctx : context) (fd : fn_decl) : fn_decl =
   | FnExpr e ->
     { fd with fd_body = FnExpr (desugar_expr ctx e) }
 
-let desugar_decl (ctx : context) (decl : decl) : decl =
-  match decl with
+let desugar_top_level (ctx : context) (top : top_level) : top_level =
+  match top with
   | TopFn fd ->
     TopFn (desugar_function ctx fd)
 
@@ -159,10 +220,18 @@ let desugar_decl (ctx : context) (decl : decl) : decl =
     ) ib.ib_items in
     TopImpl { ib with ib_items = items' }
 
-  | TopConst _ | TopType _ | TopEffect _ | TopTrait _ as d -> d
+  | TopConst { tc_vis; tc_name; tc_ty; tc_value } ->
+    TopConst {
+      tc_vis;
+      tc_name;
+      tc_ty;
+      tc_value = desugar_expr ctx tc_value;
+    }
+
+  | TopType _ | TopEffect _ | TopTrait _ as d -> d
 
 let desugar_program (type_defs : (string, ty) Hashtbl.t)
                     (trait_registry : Trait.trait_registry)
                     (prog : program) : program =
   let ctx = { type_defs; trait_registry } in
-  { prog with prog_decls = List.map (desugar_decl ctx) prog.prog_decls }
+  { prog with prog_decls = List.map (desugar_top_level ctx) prog.prog_decls }

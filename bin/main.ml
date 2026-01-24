@@ -197,6 +197,54 @@ let compile_file path output =
         Affinescript.Span.pp_short span msg;
       `Error (false, "Parse error")
 
+(** Format a file *)
+let fmt_file path =
+  try
+    Affinescript.Formatter.format_file path;
+    Format.printf "Formatted %s@." path;
+    `Ok ()
+  with
+  | Affinescript.Lexer.Lexer_error (msg, pos) ->
+      Format.eprintf "@[<v>%s:%d:%d: lexer error: %s@]@." path pos.line pos.col msg;
+      `Error (false, "Lexer error")
+  | Affinescript.Parse_driver.Parse_error (msg, span) ->
+      Format.eprintf "@[<v>%a: parse error: %s@]@."
+        Affinescript.Span.pp_short span msg;
+      `Error (false, "Parse error")
+
+(** Lint a file *)
+let lint_file path =
+  try
+    (* Parse the file *)
+    let prog = Affinescript.Parse_driver.parse_file path in
+
+    (* Create module loader *)
+    let loader_config = Affinescript.Module_loader.default_config () in
+    let loader = Affinescript.Module_loader.create loader_config in
+
+    (* Resolve names with module loading *)
+    (match Affinescript.Resolve.resolve_program_with_loader prog loader with
+    | Error (e, _span) ->
+      Format.eprintf "@[<v>Resolution error: %s@]@."
+        (Affinescript.Resolve.show_resolve_error e);
+      `Error (false, "Resolution error")
+    | Ok (resolve_ctx, _type_ctx) ->
+      (* Run linter *)
+      let diagnostics = Affinescript.Linter.lint_program resolve_ctx.symbols prog in
+      if List.length diagnostics = 0 then
+        (Format.printf "No issues found@."; `Ok ())
+      else
+        (Affinescript.Linter.print_diagnostics diagnostics;
+         `Error (false, "Lint issues found")))
+  with
+  | Affinescript.Lexer.Lexer_error (msg, pos) ->
+      Format.eprintf "@[<v>%s:%d:%d: lexer error: %s@]@." path pos.line pos.col msg;
+      `Error (false, "Lexer error")
+  | Affinescript.Parse_driver.Parse_error (msg, span) ->
+      Format.eprintf "@[<v>%a: parse error: %s@]@."
+        Affinescript.Span.pp_short span msg;
+      `Error (false, "Parse error")
+
 (** CLI commands *)
 open Cmdliner
 
@@ -236,10 +284,20 @@ let compile_cmd =
   let info = Cmd.info "compile" ~doc in
   Cmd.v info Term.(ret (const compile_file $ path_arg $ output_arg))
 
+let fmt_cmd =
+  let doc = "Format a file" in
+  let info = Cmd.info "fmt" ~doc in
+  Cmd.v info Term.(ret (const fmt_file $ path_arg))
+
+let lint_cmd =
+  let doc = "Lint a file for code quality issues" in
+  let info = Cmd.info "lint" ~doc in
+  Cmd.v info Term.(ret (const lint_file $ path_arg))
+
 let default_cmd =
   let doc = "The AffineScript compiler" in
   let info = Cmd.info "affinescript" ~version ~doc in
   let default = Term.(ret (const (`Help (`Pager, None)))) in
-  Cmd.group info ~default [lex_cmd; parse_cmd; check_cmd; eval_cmd; repl_cmd; compile_cmd]
+  Cmd.group info ~default [lex_cmd; parse_cmd; check_cmd; eval_cmd; repl_cmd; compile_cmd; fmt_cmd; lint_cmd]
 
 let () = exit (Cmd.eval default_cmd)

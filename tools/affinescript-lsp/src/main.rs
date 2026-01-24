@@ -38,6 +38,112 @@ impl Backend {
             documents: document::DocumentManager::new(),
         }
     }
+
+    /// Check a document by calling the affinescript compiler
+    async fn check_document(&self, uri: &Url, text: &str) -> Vec<Diagnostic> {
+        use std::process::Stdio;
+        use tokio::io::AsyncWriteExt;
+        use tokio::process::Command;
+
+        let path = match uri.to_file_path() {
+            Ok(p) => p,
+            Err(_) => return vec![],
+        };
+
+        // Write temp file
+        let temp_path = std::env::temp_dir().join(format!("lsp_{}.as", uuid::Uuid::new_v4()));
+        if let Err(e) = tokio::fs::write(&temp_path, text).await {
+            self.client
+                .log_message(MessageType::ERROR, format!("Failed to write temp file: {}", e))
+                .await;
+            return vec![];
+        }
+
+        // Run affinescript check
+        let output = match Command::new("affinescript")
+            .arg("check")
+            .arg(&temp_path)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output()
+            .await
+        {
+            Ok(o) => o,
+            Err(e) => {
+                self.client
+                    .log_message(
+                        MessageType::ERROR,
+                        format!("Failed to run affinescript: {}", e),
+                    )
+                    .await;
+                return vec![];
+            }
+        };
+
+        // Clean up temp file
+        let _ = tokio::fs::remove_file(&temp_path).await;
+
+        // Parse diagnostics from stderr
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        self.parse_diagnostics(&stderr, uri)
+    }
+
+    /// Parse compiler output into LSP diagnostics
+    fn parse_diagnostics(&self, output: &str, uri: &Url) -> Vec<Diagnostic> {
+        let mut diagnostics = Vec::new();
+
+        for line in output.lines() {
+            // Parse format: "file:line:col: severity: message"
+            if let Some(diagnostic) = self.parse_diagnostic_line(line, uri) {
+                diagnostics.push(diagnostic);
+            }
+        }
+
+        diagnostics
+    }
+
+    /// Parse a single diagnostic line
+    fn parse_diagnostic_line(&self, line: &str, uri: &Url) -> Option<Diagnostic> {
+        use regex::Regex;
+
+        // Regex for: "path/file.as:line:col: severity: message"
+        let re = Regex::new(r"(.+):(\d+):(\d+):\s*(error|warning|hint|info|note):\s*(.+)").ok()?;
+        let caps = re.captures(line)?;
+
+        let line = caps.get(2)?.as_str().parse::<u32>().ok()?.saturating_sub(1);
+        let col = caps.get(3)?.as_str().parse::<u32>().ok()?.saturating_sub(1);
+        let severity_str = caps.get(4)?.as_str();
+        let message = caps.get(5)?.as_str();
+
+        let severity = match severity_str {
+            "error" => DiagnosticSeverity::ERROR,
+            "warning" => DiagnosticSeverity::WARNING,
+            "hint" => DiagnosticSeverity::HINT,
+            "info" | "note" => DiagnosticSeverity::INFORMATION,
+            _ => DiagnosticSeverity::WARNING,
+        };
+
+        Some(Diagnostic {
+            range: Range {
+                start: Position {
+                    line,
+                    character: col,
+                },
+                end: Position {
+                    line,
+                    character: col + 1,
+                },
+            },
+            severity: Some(severity),
+            code: None,
+            source: Some("affinescript".to_string()),
+            message: message.to_string(),
+            related_information: None,
+            tags: None,
+            code_description: None,
+            data: None,
+        })
+    }
 }
 
 #[tower_lsp::async_trait]
@@ -63,19 +169,33 @@ impl LanguageServer for Backend {
     }
 
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
-        // TODO: Phase 8 implementation
-        // - [ ] Add document to manager
-        // - [ ] Parse and type check
-        // - [ ] Publish diagnostics
-        let _ = params;
+        self.client
+            .log_message(MessageType::INFO, "Document opened")
+            .await;
+
+        let uri = params.text_document.uri;
+        let text = params.text_document.text;
+
+        // Run type checker
+        let diagnostics = self.check_document(&uri, &text).await;
+
+        // Publish diagnostics
+        self.client.publish_diagnostics(uri, diagnostics, None).await;
     }
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
-        // TODO: Phase 8 implementation
-        // - [ ] Update document in manager
-        // - [ ] Incremental re-check
-        // - [ ] Publish diagnostics
-        let _ = params;
+        let uri = params.text_document.uri;
+
+        // Get the latest text from changes
+        if let Some(change) = params.content_changes.last() {
+            let text = &change.text;
+
+            // Run type checker
+            let diagnostics = self.check_document(&uri, text).await;
+
+            // Publish diagnostics
+            self.client.publish_diagnostics(uri, diagnostics, None).await;
+        }
     }
 
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
