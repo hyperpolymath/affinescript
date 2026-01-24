@@ -396,8 +396,43 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
   | ExprTuple _ ->
     Error (UnsupportedFeature "Tuples not yet supported in codegen")
 
-  | ExprArray _ ->
-    Error (UnsupportedFeature "Arrays not yet supported in codegen")
+  | ExprArray elements ->
+    (* Array layout in memory: [length: I32][elem0: I32][elem1: I32]... *)
+    let num_elements = List.length elements in
+    let size_in_bytes = 4 + (num_elements * 4) in  (* 4 for length + 4 per element *)
+
+    (* Allocate heap memory and save pointer to temp local *)
+    let (ctx_with_heap, alloc_code) = gen_heap_alloc ctx size_in_bytes in
+    let (ctx_with_temp, temp_idx) = alloc_local ctx_with_heap "__arr_ptr" in
+
+    (* Save allocated address to temp *)
+    let save_code = [LocalTee temp_idx] in
+
+    (* Store length at offset 0 *)
+    let length_code = [
+      LocalGet temp_idx;
+      I32Const (Int32.of_int num_elements);
+      I32Store (2, 0);  (* Store length at offset 0 *)
+    ] in
+
+    (* Generate code to store each element *)
+    let* (ctx_final, store_code) = List.fold_left (fun acc (idx, elem_expr) ->
+      let* (ctx_acc, code_acc) = acc in
+      (* Generate code for element value *)
+      let* (ctx', elem_code) = gen_expr ctx_acc elem_expr in
+
+      (* Store at offset 4 + (idx * 4) *)
+      let offset = 4 + (idx * 4) in
+      let store_instrs = [
+        LocalGet temp_idx;  (* Get base address *)
+      ] @ elem_code @ [
+        I32Store (2, offset);  (* Store element at offset *)
+      ] in
+      Ok (ctx', code_acc @ store_instrs)
+    ) (Ok (ctx_with_temp, [])) (List.mapi (fun i e -> (i, e)) elements) in
+
+    (* Complete code: allocate, save to temp, store length, store elements, return pointer *)
+    Ok (ctx_final, alloc_code @ save_code @ length_code @ store_code @ [LocalGet temp_idx])
 
   | ExprRecord rec_expr ->
     (* Allocate memory for record fields *)
@@ -467,8 +502,30 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
   | ExprTupleIndex _ ->
     Error (UnsupportedFeature "Tuple indexing not yet supported in codegen")
 
-  | ExprIndex _ ->
-    Error (UnsupportedFeature "Array indexing not yet supported in codegen")
+  | ExprIndex (array_expr, index_expr) ->
+    (* Generate code for array (gets pointer) *)
+    let* (ctx_after_arr, array_code) = gen_expr ctx array_expr in
+
+    (* Generate code for index *)
+    let* (ctx_after_idx, index_code) = gen_expr ctx_after_arr index_expr in
+
+    (* Calculate offset: 4 + (index * 4) *)
+    (* Stack after array_code @ index_code: [array_ptr, index] *)
+    let offset_calc = [
+      I32Const 4l;        (* Constant 4 for element size *)
+      I32Mul;             (* index * 4 *)
+      I32Const 4l;        (* Add 4 to skip length field *)
+      I32Add;             (* offset = 4 + (index * 4) *)
+    ] in
+
+    (* Add base pointer to offset and load *)
+    let load_code = [
+      I32Add;             (* base_ptr + offset *)
+      I32Load (2, 0);     (* Load from calculated address *)
+    ] in
+
+    (* Complete code: array_ptr, index, calculate offset, add to base, load *)
+    Ok (ctx_after_idx, array_code @ index_code @ offset_calc @ load_code)
 
   | ExprVariant (_type_name, variant_name) ->
     (* Look up variant tag *)
