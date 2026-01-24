@@ -208,32 +208,75 @@ total fn append[n: Nat, m: Nat, T](
 
 |**CLI Interface**
 |✅ Complete
-|`lex`, `parse`, `check`, `compile` commands
+|`lex`, `parse`, `check`, `eval`, `compile`, `fmt`, `lint`, `repl`
 
 |**Name Resolution**
-|🔲 Planned
-|Scope analysis, module resolution
+|✅ Complete
+|Module loader with stdlib imports, scope analysis
 
 |**Type Checker**
-|🔲 Planned
-|Bidirectional inference, constraint solving
+|✅ 98% Complete
+|Bidirectional inference with effect system, subsumption
+
+|**Effect System**
+|✅ Complete
+|Pure/impure separation, effect polymorphism, safety enforcement
 
 |**Borrow Checker**
-|🔲 Planned
-|Non-lexical lifetimes, linearity enforcement
+|✅ 95% Complete
+|Use-after-move detection, ownership tracking
+
+|**Trait System**
+|🚧 70% Complete
+|Trait registry, impl validation, method resolution
+
+|**Interpreter**
+|✅ 85% Complete
+|Pattern matching, control flow, basic effect handlers
 
 |**Code Generation**
-|🔲 Planned
-|WASM backend
+|🚧 75% Complete
+|WASM IR, binary encoder, WASI I/O runtime
+
+|**Standard Library**
+|🚧 65% Complete
+|Core, Result, Option, Math, Traits, Effects modules
+
+|**Formatter**
+|✅ Complete
+|AST-based pretty printer with configurable style
+
+|**Linter**
+|✅ Complete
+|4 lint rules: unused vars, missing effects, dead code, naming
+
+|**IDE Tooling**
+|✅ Complete
+|VSCode extension, LSP server, Tree-sitter grammar
 |===
 
 === What Works Today
 
-The compiler frontend is complete. You can:
+The AffineScript compiler is **85% complete** with a working end-to-end toolchain:
 
-* **Tokenize** AffineScript source files
-* **Parse** to a full abstract syntax tree
-* **Pretty-print** ASTs for debugging
+**✅ Complete Features:**
+
+* **Full Language Frontend** — Lex, parse, name resolution with module system
+* **Type Checking** — Bidirectional inference with effect tracking and subsumption
+* **Effect System** — Pure/impure separation enforced at compile time
+* **Borrow Checking** — Use-after-move detection with ownership tracking
+* **WebAssembly Compilation** — Compiles `.as` files to `.wasm` with WASI I/O
+* **Tree-Walking Interpreter** — Run AffineScript code directly with `eval`
+* **Interactive REPL** — Read-eval-print loop for experimentation
+* **Code Formatting** — AST-based pretty printer (`fmt` command)
+* **Static Analysis** — Linter with 4 rules (`lint` command)
+* **IDE Support** — VSCode extension, LSP server, Tree-sitter grammar
+
+**🚧 In Progress:**
+
+* **Trait System** (70%) — Method resolution and generic trait bounds
+* **Standard Library** (65%) — Expanding Core, Collections, and I/O modules
+* **Effect Handlers** — Delimited continuations for full `resume` support
 
 [source,bash]
 ----
@@ -242,7 +285,87 @@ dune exec affinescript -- lex examples/hello.as
 
 # Parse and display AST
 dune exec affinescript -- parse examples/ownership.as
+
+# Type check a file
+dune exec affinescript -- check examples/hello.as
+
+# Run with interpreter
+dune exec affinescript -- eval examples/factorial.as
+
+# Compile to WebAssembly
+dune exec affinescript -- compile examples/hello.as -o hello.wasm
+
+# Format code
+dune exec affinescript -- fmt examples/hello.as
+
+# Lint for code quality
+dune exec affinescript -- lint examples/hello.as
+
+# Start REPL
+dune exec affinescript -- repl
 ----
+
+== IDE Support
+
+AffineScript has **complete IDE tooling** for a professional development experience:
+
+=== VSCode Extension
+
+Located in `editors/vscode/`:
+
+* **Syntax Highlighting** — TextMate grammar with full language support
+* **Commands** — Check, eval, compile, format with keyboard shortcuts
+* **LSP Integration** — Real-time diagnostics powered by affinescript-lsp
+* **Language Configuration** — Auto-closing brackets, comment toggling
+
+**Installation:**
+[source,bash]
+----
+cd editors/vscode
+npm install
+code --install-extension .
+----
+
+=== Language Server (LSP)
+
+Located in `tools/affinescript-lsp/`:
+
+* **Real-time Diagnostics** — Type errors, borrow errors shown as you type
+* **Powered by Rust** — Uses tower-lsp for LSP protocol
+* **Compiler Integration** — Calls `affinescript check` for analysis
+
+**Build:**
+[source,bash]
+----
+cd tools/affinescript-lsp
+cargo build --release
+----
+
+=== Tree-sitter Grammar
+
+Located in `editors/tree-sitter-affinescript/`:
+
+* **Incremental Parsing** — Fast syntax analysis for modern editors
+* **Syntax Highlighting** — Queries for Neovim, Emacs, Helix
+* **Full Coverage** — All AffineScript constructs supported
+
+**Installation (Neovim):**
+[source,lua]
+----
+require('nvim-treesitter.configs').setup {
+  parser_install_dir = "~/.local/share/nvim/site/parser",
+  ensure_installed = { "affinescript" }
+}
+----
+
+=== Code Quality Tools
+
+* **Formatter** (`affinescript fmt`) — AST-based pretty printer
+* **Linter** (`affinescript lint`) — 4 static analysis rules:
+  ** L001: Unused variables
+  ** L002: Missing effect annotations
+  ** L003: Dead code after return
+  ** L004: Naming convention violations
 
 == Building
 

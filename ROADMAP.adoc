@@ -1,0 +1,312 @@
+= AffineScript Development Roadmap
+
+:toc: macro
+:toclevels: 3
+:icons: font
+
+Development plan for AffineScript from current state (85% complete) to production-ready 1.0 release.
+
+toc::[]
+
+== Current Status (January 2026)
+
+**Overall Completion: 85%**
+
+=== ✅ Completed Components
+
+[cols="2,1,3"]
+|===
+|Component |Completion |Status
+
+|**Lexer**
+|100%
+|Full Unicode support, comprehensive test coverage
+
+|**Parser**
+|100%
+|615-line Menhir grammar, complete syntax coverage
+
+|**AST**
+|100%
+|All language constructs represented
+
+|**Error Handling**
+|100%
+|Rich diagnostics with colored output, 50+ error codes
+
+|**Name Resolution**
+|100%
+|Module loader, stdlib imports, scope analysis
+
+|**Type Checker**
+|98%
+|Bidirectional inference, effect system, subsumption
+
+|**Effect System**
+|100%
+|Pure/impure separation, effect polymorphism
+
+|**Borrow Checker**
+|95%
+|Use-after-move detection, ownership tracking
+
+|**Interpreter**
+|85%
+|Pattern matching, control flow, basic effects
+
+|**Code Generation**
+|75%
+|WASM IR, binary encoder, WASI I/O
+
+|**Formatter**
+|100%
+|AST-based pretty printer
+
+|**Linter**
+|100%
+|4 static analysis rules
+
+|**IDE Tooling**
+|100%
+|VSCode, LSP, Tree-sitter
+|===
+
+=== 🚧 In Progress
+
+* **Trait System** (70%) — Method resolution, generic bounds
+* **Standard Library** (65%) — Core modules expansion
+* **WASI Runtime** (40%) — File I/O, environment access
+
+=== 🔲 Planned
+
+* **Dependent Types** — Full implementation
+* **Row Polymorphism** — Extensible records
+* **Effect Handlers** — Delimited continuations
+* **Non-lexical Lifetimes** — Advanced borrow checking
+* **Totality Checker** — Termination analysis
+* **Optimizer** — WASM optimization passes
+
+== Roadmap to 1.0
+
+=== Phase 1: Core Language (Q1 2026) — 90% Target
+
+**Goal:** Complete all essential language features
+
+**Tasks:**
+
+1. **Trait System Completion** (Priority: High)
+   * [ ] Trait bound checking in generic functions
+   * [ ] Associated types in traits
+   * [ ] Supertraits and trait inheritance
+   * [ ] Derive macros for common traits (Eq, Ord, Hash)
+
+2. **Effect Handlers** (Priority: High)
+   * [ ] Implement delimited continuations
+   * [ ] Full `resume` support in handlers
+   * [ ] Effect polymorphism with `fn<E>(...) -> T / E` syntax
+   * [ ] Effect masking and encapsulation
+
+3. **Type System Enhancements** (Priority: Medium)
+   * [ ] Dependent type checking implementation
+   * [ ] Row polymorphism for extensible records
+   * [ ] Type-level natural numbers
+   * [ ] Refinement types with predicates
+
+4. **Standard Library Expansion** (Priority: High)
+   * [ ] Collections: Vec, HashMap, HashSet
+   * [ ] String operations and formatting
+   * [ ] File I/O with WASI integration
+   * [ ] Network effects (when WASI supports it)
+   * [ ] Error handling utilities
+
+5. **Testing & Quality** (Priority: High)
+   * [ ] Comprehensive type system tests
+   * [ ] Effect system test suite
+   * [ ] Borrow checker edge cases
+   * [ ] WebAssembly integration tests
+
+**Deliverables:**
+
+* Type system: 100% complete
+* Effect system: 100% complete with handlers
+* Trait system: 100% complete
+* Standard library: 80% complete
+* Test coverage: >85%
+
+=== Phase 2: Advanced Features (Q2 2026) — 95% Target
+
+**Goal:** Implement advanced type system features
+
+**Tasks:**
+
+1. **Non-lexical Lifetimes** (Priority: High)
+   * [ ] NLL borrow checker implementation
+   * [ ] Lifetime inference
+   * [ ] Lifetime elision rules
+   * [ ] Polonius-style algorithm
+
+2. **Totality Checking** (Priority: Medium)
+   * [ ] Termination analysis for recursive functions
+   * [ ] Structural recursion detection
+   * [ ] Well-founded recursion with metrics
+   * [ ] Coverage checker for pattern matching
+
+3. **Module System** (Priority: Medium)
+   * [ ] Multi-file projects
+   * [ ] Package manager design
+   * [ ] Visibility rules (pub(crate), pub(super))
+   * [ ] Re-exports and module aliases
+
+4. **Optimizer** (Priority: Medium)
+   * [ ] Constant folding (✅ basic done)
+   * [ ] Dead code elimination
+   * [ ] Inlining heuristics
+   * [ ] Effect optimization
+   * [ ] Monomorphization
+
+5. **Documentation** (Priority: High)
+   * [ ] Complete language reference
+   * [ ] Tutorial series (10+ lessons)
+   * [ ] API documentation for stdlib
+   * [ ] Compiler architecture guide
+
+**Deliverables:**
+
+* Advanced type features: 100% complete
+* Totality checker: working on common patterns
+* Optimizer: basic optimizations implemented
+* Documentation: comprehensive and up-to-date
+
+=== Phase 3: Production Readiness (Q3 2026) — 1.0 Target
+
+**Goal:** Polish for production use
+
+**Tasks:**
+
+1. **Performance** (Priority: High)
+   * [ ] Benchmark suite
+   * [ ] Compiler optimization (incremental compilation)
+   * [ ] Memory usage profiling
+   * [ ] WASM output size optimization
+
+2. **Error Messages** (Priority: High)
+   * [ ] Error message quality review
+   * [ ] Helpful suggestions for common mistakes
+   * [ ] IDE quick-fixes integration
+   * [ ] Error codes documentation
+
+3. **Tooling** (Priority: Medium)
+   * [ ] Build system (cargo-like tool)
+   * [ ] Package manager
+   * [ ] Documentation generator
+   * [ ] Debugging support (DWARF in WASM)
+
+4. **Testing & Stability** (Priority: Critical)
+   * [ ] Fuzzing infrastructure
+   * [ ] Regression test suite
+   * [ ] Performance regression tracking
+   * [ ] Security audit
+
+5. **Examples & Ecosystem** (Priority: Medium)
+   * [ ] 20+ example programs
+   * [ ] Web framework demo
+   * [ ] CLI tool examples
+   * [ ] Interop with JavaScript
+
+**Deliverables:**
+
+* **AffineScript 1.0 Release**
+* Comprehensive documentation
+* Production-ready toolchain
+* Example applications
+* Active community resources
+
+== Post-1.0: Future Vision
+
+=== Language Enhancements
+
+* **Liquid Types** — SMT-solver integration for refinements
+* **Session Types** — Protocol verification for concurrent code
+* **Staged Compilation** — Compile-time metaprogramming
+* **Gradual Typing** — Interop with untyped languages
+
+=== Ecosystem
+
+* **Package Registry** — Central package repository
+* **Web Framework** — Full-stack web applications
+* **Game Engine** — Leveraging WASM for games
+* **Embedded Support** — WASM on microcontrollers
+
+=== Tooling
+
+* **Debugger** — Source-level debugging with DWARF
+* **Profiler** — Performance analysis tools
+* **IDE Plugins** — IntelliJ IDEA, Emacs, Vim
+* **Language Server** — Enhanced with semantic analysis
+
+== Contributing
+
+See `CONTRIBUTING.adoc` for guidelines on:
+
+* Bug reports and feature requests
+* Pull request process
+* Code style and conventions
+* Testing requirements
+
+Priority areas for contributors:
+
+1. Standard library modules (Collections, I/O, String)
+2. Test cases for type system edge cases
+3. Documentation improvements
+4. Example programs and tutorials
+5. IDE tooling enhancements
+
+== Timeline Summary
+
+[cols="1,2,1"]
+|===
+|Phase |Goal |Target
+
+|**Current**
+|Core features working
+|85%
+
+|**Phase 1 (Q1 2026)**
+|Complete core language
+|90%
+
+|**Phase 2 (Q2 2026)**
+|Advanced features
+|95%
+
+|**Phase 3 (Q3 2026)**
+|Production ready
+|**1.0 Release**
+
+|**Post-1.0**
+|Ecosystem growth
+|Ongoing
+|===
+
+== Success Metrics
+
+**For 1.0 Release:**
+
+* [ ] All core language features implemented
+* [ ] >90% test coverage
+* [ ] Comprehensive documentation
+* [ ] 5+ non-trivial example applications
+* [ ] Active community (Discord, GitHub)
+* [ ] Performance competitive with Rust for WASM
+* [ ] Zero known soundness bugs
+* [ ] Package ecosystem (10+ packages)
+
+== License
+
+SPDX-License-Identifier: PMPL-1.0-or-later
+
+== See Also
+
+* link:README.adoc[Project Overview]
+* link:affinescript-spec.md[Language Specification]
+* link:STATE.scm[Current Project State]
