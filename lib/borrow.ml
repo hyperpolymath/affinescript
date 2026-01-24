@@ -64,6 +64,9 @@ type state = {
 
   (** Next borrow ID *)
   mutable next_id : int;
+
+  (** Mutable bindings - places that were declared with 'let mut' *)
+  mutable mutable_bindings : place list;
 }
 
 (** Borrow checker errors *)
@@ -93,6 +96,7 @@ let create () : state =
     borrows = [];
     moved = [];
     next_id = 0;
+    mutable_bindings = [];
   }
 
 (** Add a function signature to context *)
@@ -118,6 +122,29 @@ let fresh_id (state : state) : int =
   let id = state.next_id in
   state.next_id <- id + 1;
   id
+
+(** Check if a type is Copy (doesn't need to be moved) *)
+let rec is_copy_type (ty_opt : type_expr option) : bool =
+  match ty_opt with
+  | None -> false  (* Unknown type, assume not Copy *)
+  | Some ty ->
+    begin match ty with
+      | TyNamed id when id.name = "Int" || id.name = "Bool" || id.name = "Char" -> true
+      | TyNamed id when id.name = "Unit" -> true
+      | TyTuple tys -> List.for_all (fun t -> is_copy_type (Some t)) tys
+      | TyApp (TyNamed id, _) when id.name = "Ref" -> true  (* Shared references are Copy *)
+      | _ -> false  (* Records, arrays, owned types, etc. are not Copy *)
+    end
+
+(** Check if an expression has a Copy type (heuristic for literals) *)
+let is_copy_expr (expr : expr) : bool =
+  match expr with
+  | ExprLit (LitInt _) -> true
+  | ExprLit (LitBool _) -> true
+  | ExprLit (LitChar _) -> true
+  | ExprLit (LitUnit _) -> true
+  | ExprUnary (OpRef, _) -> true  (* Reference creation produces a Copy pointer *)
+  | _ -> false
 
 (** Check if two places overlap *)
 let rec places_overlap (p1 : place) (p2 : place) : bool =
@@ -159,6 +186,10 @@ let record_move (state : state) (place : place) (span : Span.t) : unit result =
     state.moved <- { m_place = place; m_span = span } :: state.moved;
     Ok ()
 
+(** Check if a place is mutable *)
+let is_mutable (state : state) (place : place) : bool =
+  List.exists (fun mut_place -> places_overlap place mut_place) state.mutable_bindings
+
 (** Record a borrow *)
 let record_borrow (state : state) (place : place) (kind : borrow_kind)
     (span : Span.t) : borrow result =
@@ -167,6 +198,15 @@ let record_borrow (state : state) (place : place) (kind : borrow_kind)
   | Some move_site ->
     Error (UseAfterMove (place, span, move_site))
   | None ->
+    (* Check if trying to mutably borrow an immutable place *)
+    begin match kind with
+    | Exclusive ->
+      if not (is_mutable state place) then
+        Error (CannotBorrowAsMutable (place, span))
+      else
+        ()
+    | Shared -> ()
+    end;
     let new_borrow = {
       b_place = place;
       b_kind = kind;
@@ -309,7 +349,9 @@ let rec check_expr (ctx : context) (state : state) (symbols : Symbol.t) (expr : 
   match expr with
   | ExprVar id ->
     begin match expr_to_place symbols expr with
-      | Some place -> check_use state place id.span
+      | Some place ->
+        (* Only check use, don't move - moves happen explicitly at call sites *)
+        check_use state place id.span
       | None -> Ok ()
     end
 
@@ -458,8 +500,25 @@ let rec check_expr (ctx : context) (state : state) (symbols : Symbol.t) (expr : 
     let* () = check_expr ctx state symbols left in
     check_expr ctx state symbols right
 
-  | ExprUnary (_, e) ->
-    check_expr ctx state symbols e
+  | ExprUnary (op, e) ->
+    begin match op with
+      | OpRef ->
+        (* Taking a reference: &expr - creates a shared borrow *)
+        begin match expr_to_place symbols e with
+        | Some place ->
+          let span = expr_span e in
+          let* _borrow = record_borrow state place Shared span in
+          Ok ()
+        | None ->
+          (* Can't borrow non-place expressions, but check the expression *)
+          check_expr ctx state symbols e
+        end
+      | OpDeref ->
+        (* Dereferencing: *ptr - just check the pointer expression *)
+        check_expr ctx state symbols e
+      | _ ->
+        check_expr ctx state symbols e
+    end
 
   | ExprReturn e_opt ->
     begin match e_opt with
@@ -534,12 +593,43 @@ and check_block (ctx : context) (state : state) (symbols : Symbol.t) (blk : bloc
 and check_stmt (ctx : context) (state : state) (symbols : Symbol.t) (stmt : stmt) : unit result =
   match stmt with
   | StmtLet sl ->
+    (* Track mutable bindings *)
+    begin match sl.sl_pat with
+    | PatVar id ->
+      if sl.sl_mut then
+        begin match expr_to_place symbols (ExprVar id) with
+        | Some place -> state.mutable_bindings <- place :: state.mutable_bindings
+        | None -> ()
+        end
+      else ()
+    | _ -> ()
+    end;
     check_expr ctx state symbols sl.sl_value
   | StmtExpr e ->
     check_expr ctx state symbols e
   | StmtAssign (lhs, _, rhs) ->
-    let* () = check_expr ctx state symbols lhs in
-    check_expr ctx state symbols rhs
+    (* For assignment, LHS must be a mutable place *)
+    begin match expr_to_place symbols lhs with
+    | Some place ->
+      if not (is_mutable state place) then
+        Error (CannotBorrowAsMutable (place, expr_span lhs))
+      else
+        (* Check that the place is not moved and not borrowed *)
+        let* () = check_use state place (expr_span lhs) in
+        (* Check for any active borrows of this place *)
+        begin match List.find_opt (fun b -> places_overlap place b.b_place) state.borrows with
+        | Some borrow ->
+          (* Can't assign while borrowed *)
+          Error (MoveWhileBorrowed (place, borrow))
+        | None ->
+          (* Assignment is ok, check the RHS *)
+          check_expr ctx state symbols rhs
+        end
+    | None ->
+      (* LHS is not a place (e.g., function call result), check both sides *)
+      let* () = check_expr ctx state symbols lhs in
+      check_expr ctx state symbols rhs
+    end
   | StmtWhile (cond, body) ->
     let* () = check_expr ctx state symbols cond in
     check_block ctx state symbols body
