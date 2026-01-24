@@ -34,32 +34,41 @@ let create_fd_write_import () : import * func_type =
 (** Generate code to print an integer to stdout
 
     This function:
-    1. Converts int to string in memory
+    1. Converts int to string in memory (digit by digit)
     2. Creates iovec structure pointing to string
     3. Calls WASI fd_write
 
-    Assumes fd_write is imported at index 0
-    Requires heap allocation support
+    Algorithm:
+    - Handle negative sign separately
+    - Extract digits using division and modulo
+    - Write digits in reverse order (most significant first)
 
-    Returns: (context, code) where code leaves 0 on stack for success
+    Memory layout:
+    - [0..15]: digit buffer (max 11 chars: "-2147483648")
+    - [16..23]: iovec struct (buf_ptr, buf_len)
+    - [24..27]: nwritten result
+
+    Returns: code that leaves 0 on stack for success
 *)
-let gen_print_int (heap_ptr_global : int) (fd_write_idx : int) (value_local : int)
+let gen_print_int (heap_ptr_global : int) (fd_write_idx : int) (num_local : int)
     : instr list =
-  (* For now, we'll use a simplified approach:
-     - Allocate 16 bytes for buffer (enough for i32 range)
-     - Convert int to ASCII digits
-     - Write using fd_write
-
-     TODO: Implement full int_to_string conversion
-     For MVP, just write the raw bytes as a hack
+  (* We need additional locals for the conversion:
+     - buf_ptr: pointer to start of allocated buffer
+     - write_ptr: current position while writing digits (counts backwards)
+     - n: the number being converted (copy of num_local)
+     - digit: current digit being extracted
+     - is_negative: 1 if negative, 0 if positive
+     - len: final string length
   *)
 
-  (* Allocate space for:
-     - 16 bytes for string buffer
-     - 8 bytes for iovec struct (ptr: i32, len: i32)
-     - 4 bytes for nwritten result
-  *)
+  (* Allocate 28 bytes total *)
   let total_size = 28 in
+  let buf_local = num_local + 1 in       (* reuse locals after num_local *)
+  let write_ptr_local = num_local + 2 in
+  let n_local = num_local + 3 in
+  let digit_local = num_local + 4 in
+  let is_neg_local = num_local + 5 in
+  let len_local = num_local + 6 in
 
   [
     (* Allocate memory *)
@@ -72,43 +81,118 @@ let gen_print_int (heap_ptr_global : int) (fd_write_idx : int) (value_local : in
     GlobalGet heap_ptr_global;
     I32Const (Int32.of_int total_size);
     I32Sub;
-    LocalTee value_local;  (* Save buf_ptr in value_local *)
+    LocalTee buf_local;
 
-    (* TODO: Convert int to string - for now just store raw value *)
-    (* This is a placeholder - we'd need proper int-to-string *)
-    LocalGet value_local;
-    I32Const 48l;  (* ASCII '0' *)
-    I32Store (2, 0);
+    (* Copy number to n_local, check if negative *)
+    LocalGet num_local;
+    LocalTee n_local;
+    I32Const 0l;
+    I32LtS;  (* n < 0 ? *)
+    LocalTee is_neg_local;
 
-    (* Create iovec structure at buf_ptr + 16 *)
-    (* iovec.buf_ptr = buf_ptr *)
-    LocalGet value_local;
-    I32Const 16l;
+    (* If negative, negate n to make it positive *)
+    If (BtEmpty, [
+      I32Const 0l;
+      LocalGet n_local;
+      I32Sub;  (* n = -n *)
+      LocalSet n_local;
+    ], []);
+
+    (* write_ptr starts at buf + 15 (end of buffer, write backwards) *)
+    LocalGet buf_local;
+    I32Const 15l;
     I32Add;
-    LocalGet value_local;
-    I32Store (2, 0);
+    LocalSet write_ptr_local;
 
-    (* iovec.buf_len = 1 (one char for now) *)
-    LocalGet value_local;
-    I32Const 16l;
+    (* Extract digits loop - write from right to left *)
+    Block (BtEmpty, [
+      Loop (BtEmpty, [
+        (* digit = n % 10 *)
+        LocalGet n_local;
+        I32Const 10l;
+        I32RemU;
+        LocalTee digit_local;
+
+        (* *write_ptr = '0' + digit *)
+        I32Const 48l;  (* ASCII '0' *)
+        I32Add;
+        LocalGet write_ptr_local;
+        I32Store8 (0, 0);
+
+        (* write_ptr-- *)
+        LocalGet write_ptr_local;
+        I32Const 1l;
+        I32Sub;
+        LocalSet write_ptr_local;
+
+        (* n = n / 10 *)
+        LocalGet n_local;
+        I32Const 10l;
+        I32DivU;
+        LocalTee n_local;
+
+        (* Continue if n > 0 *)
+        I32Const 0l;
+        I32GtU;
+        BrIf 0;
+      ])
+    ]);
+
+    (* If negative, add '-' sign *)
+    LocalGet is_neg_local;
+    If (BtEmpty, [
+      I32Const 45l;  (* ASCII '-' *)
+      LocalGet write_ptr_local;
+      I32Store8 (0, 0);
+      LocalGet write_ptr_local;
+      I32Const 1l;
+      I32Sub;
+      LocalSet write_ptr_local;
+    ], []);
+
+    (* Calculate length: (buf + 15) - write_ptr *)
+    LocalGet buf_local;
+    I32Const 15l;
     I32Add;
+    LocalGet write_ptr_local;
+    I32Sub;
+    LocalSet len_local;
+
+    (* Actual string starts at write_ptr + 1 *)
+    LocalGet write_ptr_local;
     I32Const 1l;
+    I32Add;
+    LocalSet write_ptr_local;
+
+    (* Create iovec structure at buf + 16 *)
+    (* iovec.buf_ptr = write_ptr (where string actually starts) *)
+    LocalGet buf_local;
+    I32Const 16l;
+    I32Add;
+    LocalGet write_ptr_local;
+    I32Store (2, 0);
+
+    (* iovec.buf_len = len *)
+    LocalGet buf_local;
+    I32Const 16l;
+    I32Add;
+    LocalGet len_local;
     I32Store (2, 4);
 
     (* Call fd_write(stdout, iovec_ptr, 1, nwritten_ptr) *)
-    I32Const fd_stdout;           (* fd = stdout *)
-    LocalGet value_local;
+    I32Const fd_stdout;
+    LocalGet buf_local;
     I32Const 16l;
-    I32Add;                       (* iovs = buf_ptr + 16 *)
+    I32Add;                       (* iovs = buf + 16 *)
     I32Const 1l;                  (* iovs_len = 1 *)
-    LocalGet value_local;
+    LocalGet buf_local;
     I32Const 24l;
-    I32Add;                       (* nwritten = buf_ptr + 24 *)
+    I32Add;                       (* nwritten = buf + 24 *)
     Call fd_write_idx;
 
-    (* fd_write returns error code, we'll drop it for now *)
+    (* Drop error code, return success *)
     Drop;
-    I32Const 0l;  (* Return success *)
+    I32Const 0l;
   ]
 
 (** Generate code to print a newline *)

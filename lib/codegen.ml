@@ -489,18 +489,45 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
     Ok (ctx_final3, closure_code)
 
   | ExprApp (func_expr, args) ->
-    (* Generate code for arguments (left to right) *)
-    let* (ctx_after_args, all_arg_code) = List.fold_left (fun acc arg ->
-      let* (ctx', accumulated_code) = acc in
-      let* (ctx'', arg_code) = gen_expr ctx' arg in
-      Ok (ctx'', accumulated_code @ arg_code)
-    ) (Ok (ctx, [])) args in
-
-    (* Generate code for function expression *)
+    (* Check for built-in WASI functions first *)
     begin match func_expr with
-      | ExprVar id ->
-        (* Check if it's a named function or a variable holding a lambda *)
-        begin match List.assoc_opt id.name ctx_after_args.func_indices with
+      | ExprVar id when id.name = "print" && List.length args = 1 ->
+        (* print(x) - print integer without newline *)
+        let* (ctx_with_arg, arg_code) = gen_expr ctx (List.hd args) in
+
+        (* Allocate temp local to hold the value *)
+        let (ctx_with_temp, value_temp) = alloc_local ctx_with_arg "__print_value" in
+
+        (* Get or create fd_write import - assume it's at index 0 for now *)
+        let fd_write_idx = 0 in
+
+        (* Generate WASI print code *)
+        let print_code = arg_code @ [LocalSet value_temp] @
+          Wasi_runtime.gen_print_int ctx_with_temp.heap_ptr value_temp fd_write_idx in
+
+        Ok (ctx_with_temp, print_code)
+
+      | ExprVar id when id.name = "println" && List.length args = 0 ->
+        (* println() - print newline *)
+        let (ctx_with_temp, temp_local) = alloc_local ctx "__println_temp" in
+        let fd_write_idx = 0 in
+        let println_code = Wasi_runtime.gen_println ctx_with_temp.heap_ptr fd_write_idx temp_local in
+        Ok (ctx_with_temp, println_code)
+
+      | _ ->
+        (* Not a built-in, proceed with normal function call *)
+        (* Generate code for arguments (left to right) *)
+        let* (ctx_after_args, all_arg_code) = List.fold_left (fun acc arg ->
+          let* (ctx', accumulated_code) = acc in
+          let* (ctx'', arg_code) = gen_expr ctx' arg in
+          Ok (ctx'', accumulated_code @ arg_code)
+        ) (Ok (ctx, [])) args in
+
+        (* Generate code for function expression *)
+        begin match func_expr with
+          | ExprVar id ->
+            (* Check if it's a named function or a variable holding a lambda *)
+            begin match List.assoc_opt id.name ctx_after_args.func_indices with
           | Some func_idx ->
             (* Direct function call *)
             let call_instr = Call func_idx in
@@ -636,6 +663,7 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
         in
 
         Ok (ctx_final, all_arg_code @ func_code @ [CallIndirect type_idx])
+        end
     end
 
   | ExprMatch match_expr ->
@@ -1432,10 +1460,22 @@ let gen_decl (ctx : context) (decl : top_level) : context result =
 (** Generate WASM module from AffineScript program *)
 let generate_module (prog : program) : wasm_module result =
   let ctx = create_context () in
+
+  (* Add WASI fd_write import at index 0 *)
+  let (fd_write_import, fd_write_type) = Wasi_runtime.create_fd_write_import () in
+  let fd_write_type_idx = 0 in  (* Will be first type *)
+  let fd_write_import_fixed = { fd_write_import with i_desc = ImportFunc fd_write_type_idx } in
+
+  let ctx_with_wasi = {
+    ctx with
+    types = fd_write_type :: ctx.types;
+    imports = fd_write_import_fixed :: ctx.imports;
+  } in
+
   let* ctx' = List.fold_left (fun acc decl ->
     let* c = acc in
     gen_decl c decl
-  ) (Ok ctx) prog.prog_decls in
+  ) (Ok ctx_with_wasi) prog.prog_decls in
 
   (* Merge regular functions and lambda functions *)
   let num_regular_funcs = List.length ctx'.funcs in

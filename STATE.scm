@@ -6,7 +6,7 @@
     (version "0.3.0")
     (schema-version "1.0")
     (created "2024-01-01")
-    (updated "2026-01-23")
+    (updated "2026-01-24")
     (project "affinescript")
     (repo "hyperpolymath/affinescript"))
 
@@ -25,8 +25,9 @@
        (borrow-checker . 95)  ; Working! Detects use-after-move
        (type-checker . 40)  ; Fixed parameter inference via global symbol lookup
        (interpreter . 85)  ; Pattern matching, control flow, basic effects complete
-       (codegen-wasm . 70)  ; IR, codegen, and binary encoder working! Compiles to .wasm
+       (codegen-wasm . 75)  ; IR, codegen, and binary encoder working! Compiles to .wasm + WASI I/O
        (stdlib . 60)  ; Core, Result, Option, Math modules implemented
+       (wasi-runtime . 40)  ; WASI fd_write import, print/println functions
        (tooling . 30)))
     (working-features
       ("Lexical analysis with token spans"
@@ -42,6 +43,8 @@
        "Basic algebraic effect handlers (top-level effects)"
        "WebAssembly compilation: .as -> .wasm"
        "WASM binary encoder (LEB128, IEEE 754, all instructions)"
+       "WASI I/O runtime: print() and println() functions via fd_write"
+       "Integer to ASCII string conversion for console output"
        "Standard library: Core, Result, Option, Math modules")))
 
   (route-to-mvp
@@ -92,6 +95,20 @@
        "IDE tooling (LSP, syntax highlighting)")))
 
   (session-history
+    ((date "2026-01-24T14:00")
+     (accomplishments
+       ("COMPLETED: WASI runtime support module (lib/wasi_runtime.ml)"
+        "Created create_fd_write_import() - WASI fd_write import structure"
+        "Implemented gen_print_int() - digit-by-digit integer to ASCII conversion"
+        "Implemented gen_println() - newline output via WASI fd_write"
+        "Integrated WASI imports into code generator (codegen.ml)"
+        "Added built-in print() and println() function detection in ExprApp"
+        "WASI fd_write import automatically added at index 0 in all modules"
+        "Created test file: /tmp/test_print.as to verify print functionality"
+        "Updated STATE.scm: codegen-wasm 70% → 75%, added wasi-runtime 40%"
+        "Memory layout: [buffer:16][iovec:8][nwritten:4] = 28 bytes per print"
+        "Int conversion algorithm: extract digits via mod/div, write backwards"
+        "Status: WASI foundation complete, pending build system test")))
     ((date "2026-01-24T00:30")
      (accomplishments
        ("COMPLETED: WebAssembly binary encoder (lib/wasm_encode.ml) with full WASM 1.0 spec"
