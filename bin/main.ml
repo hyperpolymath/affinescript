@@ -133,8 +133,11 @@ let compile_file path output =
         (Affinescript.Resolve.show_resolve_error e);
       `Error (false, "Resolution error")
     | Ok (_resolve_ctx, _type_ctx) ->
+      (* Optimize AST *)
+      let optimized_prog = Affinescript.Opt.fold_constants_program prog in
+
       (* Generate WASM *)
-      (match Affinescript.Codegen.generate_module prog with
+      (match Affinescript.Codegen.generate_module optimized_prog with
       | Error e ->
         Format.eprintf "@[<v>Code generation error: %s@]@."
           (Affinescript.Codegen.show_codegen_error e);
