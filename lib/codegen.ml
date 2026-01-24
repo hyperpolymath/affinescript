@@ -321,6 +321,8 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
       let save_code = [LocalTee env_idx] in
 
       (* Store each captured variable in environment *)
+      (* Note: Each store consumes env_ptr and value, but we push env_ptr before each store,
+         so after all stores, one env_ptr remains on stack *)
       let store_code = List.mapi (fun i var_name ->
         let var_idx = List.assoc var_name ctx.locals in
         [
@@ -330,7 +332,8 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
         ]
       ) captured_vars |> List.concat in
 
-      (ctx_with_temp, alloc_code @ save_code @ store_code @ [LocalGet env_idx])
+      (* Don't push env_idx again - one is already on stack after stores *)
+      (ctx_with_temp, alloc_code @ save_code @ store_code)
     else
       (* No captures - environment is null (0) *)
       (ctx, [I32Const 0l])
