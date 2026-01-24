@@ -65,6 +65,32 @@ let create_context (symbols : Symbol.t) : context =
 let enter_level (ctx : context) : context =
   { ctx with level = ctx.level + 1 }
 
+(** Save current variable bindings for a list of names *)
+let save_bindings (ctx : context) (names : ident list) : (Symbol.symbol_id * scheme) list =
+  List.filter_map (fun id ->
+    match Symbol.lookup ctx.symbols id.name with
+    | Some sym ->
+      begin match Hashtbl.find_opt ctx.var_types sym.sym_id with
+        | Some scheme -> Some (sym.sym_id, scheme)
+        | None -> None
+      end
+    | None -> None
+  ) names
+
+(** Restore variable bindings from saved list *)
+let restore_bindings (ctx : context) (saved : (Symbol.symbol_id * scheme) list) : unit =
+  List.iter (fun (sym_id, scheme) ->
+    Hashtbl.replace ctx.var_types sym_id scheme
+  ) saved
+
+(** Remove variable bindings for a list of names *)
+let remove_bindings (ctx : context) (names : ident list) : unit =
+  List.iter (fun id ->
+    match Symbol.lookup ctx.symbols id.name with
+    | Some sym -> Hashtbl.remove ctx.var_types sym.sym_id
+    | None -> ()
+  ) names
+
 (** Add a nat constraint to context *)
 let add_nat_constraint (ctx : context) (c : Constraint.nat_constraint) : context =
   { ctx with constraints = Constraint.add_nat_constraint c ctx.constraints }
@@ -628,10 +654,16 @@ let rec synth (ctx : context) (expr : expr) : (ty * eff) result =
     let param_tys = List.map (fun param ->
       (param.p_name, ast_to_ty ctx param.p_ty)
     ) lam.elam_params in
+    (* Save current bindings for parameter names to restore later *)
+    let param_names = List.map fst param_tys in
+    let saved = save_bindings ctx param_names in
     (* Bind parameters *)
     List.iter (fun (id, ty) -> bind_var ctx id ty) param_tys;
     (* Infer body *)
     let* (body_ty, body_eff) = synth ctx lam.elam_body in
+    (* Restore original bindings *)
+    remove_bindings ctx param_names;
+    restore_bindings ctx saved;
     (* Build arrow type *)
     let ty = List.fold_right (fun (_, param_ty) acc ->
       TArrow (param_ty, acc, body_eff)
@@ -951,8 +983,13 @@ and check (ctx : context) (expr : expr) (expected : ty) : eff result =
   | (ExprLambda lam, TArrow (param_ty, ret_ty, arr_eff)) ->
     begin match lam.elam_params with
       | [param] ->
+        (* Save binding for this parameter name *)
+        let saved = save_bindings ctx [param.p_name] in
         bind_var ctx param.p_name param_ty;
         let* body_eff = check ctx lam.elam_body ret_ty in
+        (* Restore original binding *)
+        remove_bindings ctx [param.p_name];
+        restore_bindings ctx saved;
         begin match Unify.unify_eff body_eff arr_eff with
           | Ok () -> Ok EPure
           | Error e -> Error (UnificationFailed (e, Span.dummy))
