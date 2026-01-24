@@ -132,12 +132,26 @@ let compile_file path output =
       Format.eprintf "@[<v>Resolution error: %s@]@."
         (Affinescript.Resolve.show_resolve_error e);
       `Error (false, "Resolution error")
-    | Ok (_resolve_ctx, _type_ctx) ->
-      (* Optimize AST *)
-      let optimized_prog = Affinescript.Opt.fold_constants_program prog in
+    | Ok (resolve_ctx, type_ctx) ->
+      (* Type check the program *)
+      (match Affinescript.Typecheck.check_program resolve_ctx.symbols prog with
+      | Error e ->
+        Format.eprintf "@[<v>Type error: %s@]@."
+          (Affinescript.Typecheck.show_type_error e);
+        `Error (false, "Type error")
+      | Ok () ->
+        (* Borrow check the program *)
+        (match Affinescript.Borrow.check_program resolve_ctx.symbols prog with
+        | Error e ->
+          Format.eprintf "@[<v>Borrow error: %s@]@."
+            (Affinescript.Borrow.show_borrow_error e);
+          `Error (false, "Borrow error")
+        | Ok () ->
+          (* Optimize AST *)
+          let optimized_prog = Affinescript.Opt.fold_constants_program prog in
 
-      (* Generate WASM *)
-      (match Affinescript.Codegen.generate_module optimized_prog with
+          (* Generate WASM *)
+          (match Affinescript.Codegen.generate_module optimized_prog with
       | Error e ->
         Format.eprintf "@[<v>Code generation error: %s@]@."
           (Affinescript.Codegen.show_codegen_error e);
@@ -146,7 +160,7 @@ let compile_file path output =
         (* Write WASM to file *)
         Affinescript.Wasm_encode.write_module_to_file output wasm_module;
         Format.printf "Compiled %s -> %s@." path output;
-        `Ok ()))
+        `Ok ()))))
   with
   | Affinescript.Lexer.Lexer_error (msg, pos) ->
       Format.eprintf "@[<v>%s:%d:%d: lexer error: %s@]@." path pos.line pos.col msg;
