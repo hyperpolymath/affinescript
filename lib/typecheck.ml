@@ -46,6 +46,9 @@ type context = {
 
   (** Constraint store for dependent types *)
   constraints : Constraint.constraint_store;
+
+  (** Trait registry for trait resolution *)
+  trait_registry : Trait.trait_registry;
 }
 
 (* Result bind - define before use *)
@@ -53,12 +56,15 @@ let ( let* ) = Result.bind
 
 (** Create a new type checking context *)
 let create_context (symbols : Symbol.t) : context =
+  let registry = Trait.create_registry () in
+  Trait.register_stdlib_traits registry;
   {
     symbols;
     level = 0;
     var_types = Hashtbl.create 64;
     current_effect = EPure;
     constraints = Constraint.empty_store;
+    trait_registry = registry;
   }
 
 (** Enter a new let-binding level *)
@@ -1557,6 +1563,9 @@ let rec check_decl (ctx : context) (decl : top_level) : unit result =
     Ok ()
 
   | TopTrait td ->
+    (* Register trait in registry *)
+    Trait.register_trait ctx.trait_registry td;
+
     (* Check trait definitions - validate method signatures *)
     List.iter (fun item ->
       match item with
@@ -1570,8 +1579,34 @@ let rec check_decl (ctx : context) (decl : top_level) : unit result =
     Ok ()
 
   | TopImpl ib ->
+    (* Register implementation in registry *)
+    Trait.register_impl ctx.trait_registry ib;
+
     (* Check implementations - validate methods against trait *)
     let self_ty = ast_to_ty ctx ib.ib_self_ty in
+
+    (* If this is a trait impl, validate it satisfies the trait *)
+    let* () = match ib.ib_trait_ref with
+      | None -> Ok ()  (* Inherent impl, no trait to check *)
+      | Some trait_ref ->
+        (* Find the registered impl *)
+        begin match Hashtbl.find_opt ctx.trait_registry.impls trait_ref.tr_name.name with
+        | None -> Ok ()  (* Impl not registered yet, skip for now *)
+        | Some impls ->
+          (* Find this specific impl and validate it *)
+          begin match List.nth_opt impls 0 with
+          | None -> Ok ()
+          | Some impl ->
+            begin match Trait.check_impl_satisfies_trait ctx.trait_registry impl with
+            | Ok () -> Ok ()
+            | Error err ->
+              Error (BorrowError (Trait.show_resolution_error err, Span.dummy))
+            end
+          end
+        end
+    in
+
+    (* Check method bodies *)
     List.iter (fun item ->
       match item with
       | ImplFn fd ->
