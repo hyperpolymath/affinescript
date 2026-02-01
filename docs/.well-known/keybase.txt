@@ -1,0 +1,12 @@
+# Keybase verification for affinescript.dev
+# https://keybase.io/hyperpolymath
+
+# This file will contain the Keybase verification proof once configured.
+# To verify this domain with Keybase:
+#   1. Run: keybase prove dns affinescript.dev
+#   2. Replace this file with the generated proof
+
+# Contact: jonathan.jewell@open.ac.uk
+# Keybase profile: https://keybase.io/hyperpolymath (coming soon)
+
+# Placeholder - awaiting Keybase setup

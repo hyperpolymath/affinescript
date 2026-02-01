@@ -1,4 +1,4 @@
-;; SPDX-License-Identifier: AGPL-3.0-or-later
+;; SPDX-License-Identifier: PMPL-1.0-or-later
 ;; AffineScript Testing Report - Machine-Readable Format
 ;; Generated: 2025-12-29
 

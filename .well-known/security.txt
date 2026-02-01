@@ -1,0 +1,53 @@
+# Security Contact Information for affinescript.dev
+# RFC 9116 Compliant: https://www.rfc-editor.org/rfc/rfc9116.html
+# Consent-Aware HTTP Compatible
+
+# === Primary Contact ===
+Contact: mailto:security@affinescript.dev
+Contact: https://github.com/hyperpolymath/affinescript/security/advisories/new
+
+# === Security Policy ===
+Policy: https://github.com/hyperpolymath/affinescript/security/policy
+Policy: https://affinescript.dev/.well-known/security-policy.html
+
+# === Encryption (PGP) ===
+Encryption: https://keys.openpgp.org/search?q=jonathan.jewell@open.ac.uk
+Encryption: https://github.com/hyperpolymath.gpg
+Encryption: https://affinescript.dev/.well-known/pgp-key.asc
+
+# === Acknowledgments ===
+Acknowledgments: https://github.com/hyperpolymath/affinescript#security-acknowledgments
+Acknowledgments: https://affinescript.dev/security/acknowledgments
+
+# === Hiring (Security Team) ===
+Hiring: https://github.com/hyperpolymath/affinescript/blob/main/CONTRIBUTING.md
+
+# === Preferred Languages ===
+Preferred-Languages: en
+
+# === Consent-Aware HTTP Endpoints ===
+# User Consent Management (GDPR/Privacy Compliance)
+# Consent-Endpoint: https://affinescript.dev/api/consent
+# Consent-Policy: https://affinescript.dev/privacy#consent-management
+# Consent-Categories: essential, functional, analytics, marketing, personalization
+
+# === Canonical URL ===
+Canonical: https://affinescript.dev/.well-known/security.txt
+
+# === CSAF (Common Security Advisory Framework) ===
+# CSAF: https://affinescript.dev/.well-known/csaf/provider-metadata.json
+
+# === Expiration (1 year from creation) ===
+Expires: 2027-01-31T16:43:19Z
+
+# === Additional Information ===
+# This site implements:
+# - Consent-Aware HTTP (cookie-based consent verification)
+# - HTTP Capability Gateway (fine-grained access control)
+# - HSTS with preload (max-age=31536000)
+# - TLS 1.3 minimum
+# - CAA records (Let's Encrypt, DigiCert)
+# - SPF, DMARC for email security
+#
+# Report security issues to: security@affinescript.dev
+# For privacy/consent issues: privacy@affinescript.dev
