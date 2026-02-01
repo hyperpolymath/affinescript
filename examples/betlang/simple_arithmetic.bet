@@ -1,0 +1,19 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-FileCopyrightText: 2025 hyperpolymath
+
+// Minimal test for Phase 1 MVP: basic arithmetic
+
+fn double(x: Float) -> Float {
+  return x * 2.0;
+}
+
+fn add(a: Float, b: Float) -> Float {
+  return a + b;
+}
+
+fn main() -> Float {
+  let x = 21.0;
+  let y = double(x);
+  let z = add(y, 10.0);
+  return z;
+}
