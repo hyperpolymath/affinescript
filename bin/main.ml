@@ -1,4 +1,4 @@
-(* SPDX-License-Identifier: PMPL-1.0-or-later *)
+(* SPDX-License-Identifier: MIT OR AGPL-3.0-or-later *)
 (* SPDX-FileCopyrightText: 2024-2025 hyperpolymath *)
 
 (** AffineScript compiler CLI *)
@@ -113,17 +113,22 @@ let eval_file path =
           (Affinescript.Typecheck.format_type_error e);
         `Error (false, "Type error")
       | Ok () ->
-        (* Borrow check - TODO: re-enable when borrow checker is restored *)
-        (* (match Affinescript.Borrow.check_program resolve_ctx.symbols prog with *)
-        (* Evaluate *)
-        (match Affinescript.Interp.eval_program prog with
-        | Ok _env ->
-          Format.printf "Program executed successfully@.";
-          `Ok ()
+        (* Borrow check *)
+        (match Affinescript.Borrow.check_program resolve_ctx.symbols prog with
         | Error e ->
-          Format.eprintf "@[<v>Runtime error: %s@]@."
-            (Affinescript.Value.show_eval_error e);
-          `Error (false, "Runtime error"))))
+          Format.eprintf "@[<v>Borrow check error: %s@]@."
+            (Affinescript.Borrow.show_borrow_error e);
+          `Error (false, "Borrow check error")
+        | Ok () ->
+          (* Evaluate *)
+          (match Affinescript.Interp.eval_program prog with
+          | Ok _env ->
+            Format.printf "Program executed successfully@.";
+            `Ok ()
+          | Error e ->
+            Format.eprintf "@[<v>Runtime error: %s@]@."
+              (Affinescript.Value.show_eval_error e);
+            `Error (false, "Runtime error")))))
   with
   | Affinescript.Lexer.Lexer_error (msg, pos) ->
       Format.eprintf "@[<v>%s:%d:%d: lexer error: %s@]@." path pos.line pos.col msg;
@@ -135,10 +140,8 @@ let eval_file path =
 
 (** Start the REPL *)
 let repl_cmd_fn () =
-  (* TODO: Re-enable when REPL module is restored *)
-  (* Affinescript.Repl.start (); *)
-  Format.eprintf "REPL not yet implemented@.";
-  `Error (false, "REPL not yet implemented")
+  Affinescript.Repl.start ();
+  `Ok ()
 
 (** Compile a file *)
 let compile_file path output =
@@ -163,41 +166,28 @@ let compile_file path output =
         Format.eprintf "@[<v>%s@]@."
           (Affinescript.Typecheck.format_type_error e);
         `Error (false, "Type error")
-      | Ok _type_ctx ->
-        (* Detect target backend from output file extension *)
-        let is_julia = Filename.check_suffix output ".jl" in
-
-        if is_julia then
-          (* Generate Julia code *)
-          (match Affinescript.Julia_codegen.codegen_julia prog resolve_ctx.symbols with
-          | Error e ->
-            Format.eprintf "@[<v>Julia codegen error: %s@]@." e;
-            `Error (false, "Julia codegen error")
-          | Ok julia_code ->
-            (* Write Julia code to file *)
-            let oc = open_out output in
-            output_string oc julia_code;
-            close_out oc;
-            Format.printf "Compiled %s -> %s (Julia)@." path output;
-            `Ok ())
-        else
-          (* Generate WASM (original path) *)
-          (* Borrow check the program - TODO: re-enable when borrow checker is restored *)
-          (* (match Affinescript.Borrow.check_program resolve_ctx.symbols prog with *)
+      | Ok type_ctx ->
+        (* Borrow check the program *)
+        (match Affinescript.Borrow.check_program resolve_ctx.symbols prog with
+        | Error e ->
+          Format.eprintf "@[<v>Borrow error: %s@]@."
+            (Affinescript.Borrow.show_borrow_error e);
+          `Error (false, "Borrow error")
+        | Ok () ->
           (* Optimize AST *)
           let optimized_prog = Affinescript.Opt.fold_constants_program prog in
 
-          (* Generate WASM *)
-          (match Affinescript.Codegen.generate_module optimized_prog with
-          | Error e ->
-            Format.eprintf "@[<v>Code generation error: %s@]@."
-              (Affinescript.Codegen.show_codegen_error e);
-            `Error (false, "Code generation error")
-          | Ok wasm_module ->
-            (* Write WASM to file *)
-            Affinescript.Wasm_encode.write_module_to_file output wasm_module;
-            Format.printf "Compiled %s -> %s (WASM)@." path output;
-            `Ok ())))
+          (* Generate WASM with trait registry and call sites from type checking *)
+          (match Affinescript.Codegen.generate_module optimized_prog type_ctx.trait_registry type_ctx.trait_method_calls with
+      | Error e ->
+        Format.eprintf "@[<v>Code generation error: %s@]@."
+          (Affinescript.Codegen.show_codegen_error e);
+        `Error (false, "Code generation error")
+      | Ok wasm_module ->
+        (* Write WASM to file *)
+        Affinescript.Wasm_encode.write_module_to_file output wasm_module;
+        Format.printf "Compiled %s -> %s@." path output;
+        `Ok ()))))
   with
   | Affinescript.Lexer.Lexer_error (msg, pos) ->
       Format.eprintf "@[<v>%s:%d:%d: lexer error: %s@]@." path pos.line pos.col msg;
