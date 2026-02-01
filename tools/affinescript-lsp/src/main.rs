@@ -199,19 +199,25 @@ impl LanguageServer for Backend {
     }
 
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
-        // TODO: Phase 8 implementation
-        // - [ ] Remove document from manager
-        // - [ ] Clear diagnostics
-        let _ = params;
+        let uri = params.text_document.uri;
+
+        // Remove document from manager
+        self.documents.close(&uri);
+
+        // Clear diagnostics
+        self.client.publish_diagnostics(uri, vec![], None).await;
     }
 
     async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
-        // TODO: Phase 8 implementation
-        // - [ ] Find symbol at position
-        // - [ ] Get type information
-        // - [ ] Format hover content
-        let _ = params;
-        Ok(None)
+        let uri = params.text_document_position_params.text_document.uri;
+        let position = params.text_document_position_params.position;
+
+        let text = match self.documents.get_text(&uri) {
+            Some(t) => t,
+            None => return Ok(None),
+        };
+
+        Ok(handlers::hover(&uri, position, &text))
     }
 
     async fn goto_definition(
@@ -236,12 +242,20 @@ impl LanguageServer for Backend {
     }
 
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
-        // TODO: Phase 8 implementation
-        // - [ ] Determine completion context
-        // - [ ] Generate candidates
-        // - [ ] Filter and rank
-        let _ = params;
-        Ok(None)
+        let uri = params.text_document_position.text_document.uri;
+        let position = params.text_document_position.position;
+
+        let text = match self.documents.get_text(&uri) {
+            Some(t) => t,
+            None => return Ok(None),
+        };
+
+        let items = handlers::completion(&uri, position, &text);
+        if items.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(CompletionResponse::Array(items)))
+        }
     }
 
     async fn rename(&self, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
@@ -254,12 +268,19 @@ impl LanguageServer for Backend {
     }
 
     async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
-        // TODO: Phase 8 implementation
-        // - [ ] Parse document
-        // - [ ] Format AST
-        // - [ ] Compute diff
-        let _ = params;
-        Ok(None)
+        let uri = params.text_document.uri;
+
+        let text = match self.documents.get_text(&uri) {
+            Some(t) => t,
+            None => return Ok(None),
+        };
+
+        let edits = handlers::format(&uri, &text, &params.options);
+        if edits.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(edits))
+        }
     }
 
     async fn code_action(&self, params: CodeActionParams) -> Result<Option<CodeActionResponse>> {

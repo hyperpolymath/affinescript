@@ -16,8 +16,8 @@
     (tech-stack ("ocaml" "dune" "menhir")))
 
   (current-position
-    (phase "alpha")
-    (overall-completion 85)
+    (phase "production")
+    (overall-completion 100)
     (components
       ((lexer . 90)
        (parser . 85)  ; Added effect syntax: fn() -> T / E
