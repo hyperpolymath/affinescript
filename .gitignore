@@ -78,3 +78,5 @@ htmlcov/
 *.tmp
 *.bak
 *.wasm
+!out.wasm
+!tests/codegen/*.wasm
