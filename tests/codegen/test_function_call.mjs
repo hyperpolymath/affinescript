@@ -4,7 +4,12 @@
 import { readFile } from 'fs/promises';
 
 const wasmBuffer = await readFile('./tests/codegen/test_function_call.wasm');
-const wasmModule = await WebAssembly.instantiate(wasmBuffer);
+const imports = {
+  wasi_snapshot_preview1: {
+    fd_write: () => 0,
+  },
+};
+const wasmModule = await WebAssembly.instantiate(wasmBuffer, imports);
 const result = wasmModule.instance.exports.main();
 
 console.log(`Result: ${result}`);

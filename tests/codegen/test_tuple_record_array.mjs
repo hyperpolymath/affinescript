@@ -3,7 +3,7 @@
 
 import { readFile } from 'fs/promises';
 
-const wasmBuffer = await readFile('./tests/codegen/test_multiple_calls.wasm');
+const wasmBuffer = await readFile('./tests/codegen/test_tuple_record_array.wasm');
 const imports = {
   wasi_snapshot_preview1: {
     fd_write: () => 0,
@@ -13,7 +13,7 @@ const wasmModule = await WebAssembly.instantiate(wasmBuffer, imports);
 const result = wasmModule.instance.exports.main();
 
 console.log(`Result: ${result}`);
-console.log(`Expected: 135`);
-console.log(`Test ${result === 135 ? 'PASSED ✓' : 'FAILED ✗'}`);
+console.log('Expected: 81');
+console.log(`Test ${result === 81 ? 'PASSED ✓' : 'FAILED ✗'}`);
 
-process.exit(result === 135 ? 0 : 1);
+process.exit(result === 81 ? 0 : 1);
