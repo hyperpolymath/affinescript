@@ -1,4 +1,4 @@
-(* SPDX-License-Identifier: MIT OR AGPL-3.0-or-later *)
+(* SPDX-License-Identifier: PMPL-1.0-or-later *)
 (* SPDX-FileCopyrightText: 2024-2025 hyperpolymath *)
 
 (** WASI runtime support - I/O bindings for WebAssembly System Interface.
@@ -209,7 +209,7 @@ let gen_println (heap_ptr_global : int) (fd_write_idx : int) (temp_local : int)
     GlobalGet heap_ptr_global;
     I32Const 13l;
     I32Sub;
-    LocalTee temp_local;
+    LocalSet temp_local;
 
     (* Store newline character *)
     LocalGet temp_local;
@@ -238,6 +238,51 @@ let gen_println (heap_ptr_global : int) (fd_write_idx : int) (temp_local : int)
     LocalGet temp_local;
     I32Const 9l;
     I32Add;
+    Call fd_write_idx;
+
+    Drop;
+    I32Const 0l;
+  ]
+
+(** Generate code to print a string (length-prefixed in memory).
+    String layout: [len: i32][bytes...]
+    Returns: code that leaves 0 on stack for success *)
+let gen_print_str (heap_ptr_global : int) (str_ptr_local : int) (fd_write_idx : int) (temp_local : int)
+    : instr list =
+  [
+    (* Allocate 12 bytes for iovec + nwritten *)
+    GlobalGet heap_ptr_global;
+    I32Const 12l;
+    I32Add;
+    GlobalSet heap_ptr_global;
+
+    GlobalGet heap_ptr_global;
+    I32Const 12l;
+    I32Sub;
+    LocalSet temp_local;
+
+    (* iovec.buf_ptr = str_ptr + 4 *)
+    LocalGet temp_local;
+    LocalGet str_ptr_local;
+    I32Const 4l;
+    I32Add;
+    I32Store (2, 0);
+
+    (* iovec.buf_len = *str_ptr (length) *)
+    LocalGet temp_local;
+    I32Const 4l;
+    I32Add;
+    LocalGet str_ptr_local;
+    I32Load (2, 0);
+    I32Store (2, 0);
+
+    (* Call fd_write(stdout, iovec_ptr, 1, nwritten_ptr) *)
+    I32Const fd_stdout;
+    LocalGet temp_local;           (* iovs *)
+    I32Const 1l;                   (* iovs_len *)
+    LocalGet temp_local;
+    I32Const 8l;
+    I32Add;                        (* nwritten *)
     Call fd_write_idx;
 
     Drop;

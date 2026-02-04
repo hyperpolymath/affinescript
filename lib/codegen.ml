@@ -43,6 +43,14 @@ type 'a result = ('a, codegen_error) Result.t
 (** Result bind operator *)
 let ( let* ) = Result.bind
 
+(** Count imported functions (for index offsets) *)
+let import_func_count (ctx : context) : int =
+  List.fold_left (fun acc imp ->
+    match imp.i_desc with
+    | ImportFunc _ -> acc + 1
+    | _ -> acc
+  ) 0 ctx.imports
+
 (** Create initial context *)
 let create_context () : context = {
   types = [];
@@ -519,6 +527,22 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
         let println_code = Wasi_runtime.gen_println heap_idx fd_write_idx temp_local in
         Ok (ctx_with_heap, println_code)
 
+      | ExprVar id when id.name = "println" && List.length args = 1 ->
+        (* println(s) - print string and newline *)
+        let* (ctx_with_arg, arg_code) = gen_expr ctx (List.hd args) in
+        let (ctx_with_ptr, str_ptr) = alloc_local ctx_with_arg "__println_str_ptr" in
+        let (ctx_with_temp, temp_local) = alloc_local ctx_with_ptr "__println_temp" in
+        let (ctx_with_heap, heap_idx) = ensure_heap_ptr ctx_with_temp in
+        let fd_write_idx = 0 in
+        let print_code =
+          arg_code @
+          [LocalSet str_ptr] @
+          Wasi_runtime.gen_print_str heap_idx str_ptr fd_write_idx temp_local @
+          [Drop] @
+          Wasi_runtime.gen_println heap_idx fd_write_idx temp_local
+        in
+        Ok (ctx_with_heap, print_code)
+
       | _ ->
         (* Not a built-in, proceed with normal function call *)
         (* Generate code for arguments (left to right) *)
@@ -725,7 +749,7 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
     let (ctx_with_temp, temp_idx) = alloc_local ctx_with_heap "__tup_ptr" in
 
     (* Save allocated address to temp *)
-    let save_code = [LocalTee temp_idx] in
+    let save_code = [LocalSet temp_idx] in
 
     (* Generate code to store each element *)
     let* (ctx_final, store_code) = List.fold_left (fun acc (idx, elem_expr) ->
@@ -756,7 +780,7 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
     let (ctx_with_temp, temp_idx) = alloc_local ctx_with_heap "__arr_ptr" in
 
     (* Save allocated address to temp *)
-    let save_code = [LocalTee temp_idx] in
+    let save_code = [LocalSet temp_idx] in
 
     (* Store length at offset 0 *)
     let length_code = [
@@ -794,7 +818,7 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
     let (ctx_with_temp, temp_idx) = alloc_local ctx_with_heap "__rec_ptr" in
 
     (* Save allocated address to temp *)
-    let save_code = [LocalTee temp_idx] in  (* Tee: set local and keep value on stack *)
+    let save_code = [LocalSet temp_idx] in
 
     (* Generate code to store each field *)
     let* (ctx_final, store_code) = List.fold_left (fun acc (idx, (field, expr_opt)) ->
@@ -1417,7 +1441,7 @@ let gen_decl (ctx : context) (decl : top_level) : context result =
     let ctx_with_type = { ctx with types = ctx.types @ [func_type] } in
 
     (* Determine function index before generating *)
-    let func_idx = List.length ctx_with_type.funcs in
+    let func_idx = import_func_count ctx_with_type + List.length ctx_with_type.funcs in
 
     (* Register function name to index mapping *)
     let ctx_with_func_idx = { ctx_with_type with
@@ -1428,9 +1452,10 @@ let gen_decl (ctx : context) (decl : top_level) : context result =
     let* (ctx_after_gen, func) = gen_function ctx_with_func_idx fd in
     let func_with_type = { func with f_type = type_idx } in
 
-    (* Add export for main function *)
-    let export = if fd.fd_name.name = "main" then
-      [{ e_name = "main"; e_desc = ExportFunc func_idx }]
+    (* Add export for main and control helpers *)
+    let export_names = ["main"; "init_state"; "step_state"; "get_state"; "mission_active"] in
+    let export = if List.mem fd.fd_name.name export_names then
+      [{ e_name = fd.fd_name.name; e_desc = ExportFunc func_idx }]
     else
       []
     in
@@ -1484,6 +1509,7 @@ let generate_module (prog : program) : wasm_module result =
 
   (* Merge regular functions and lambda functions *)
   let num_regular_funcs = List.length ctx'.funcs in
+  let import_offset = import_func_count ctx' in
   let all_funcs = ctx'.funcs @ ctx'.lambda_funcs in
 
   (* Create function table if there are lambdas *)
@@ -1494,7 +1520,7 @@ let generate_module (prog : program) : wasm_module result =
 
     (* Create element segment to initialize table with lambda function indices *)
     (* Lambda functions start at index num_regular_funcs *)
-    let lambda_func_indices = List.mapi (fun i _ -> num_regular_funcs + i) ctx'.lambda_funcs in
+    let lambda_func_indices = List.mapi (fun i _ -> import_offset + num_regular_funcs + i) ctx'.lambda_funcs in
     let elem_seg = [{
       e_table = 0;
       e_offset = 0;

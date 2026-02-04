@@ -1,4 +1,4 @@
-(* SPDX-License-Identifier: MIT OR AGPL-3.0-or-later *)
+(* SPDX-License-Identifier: PMPL-1.0-or-later *)
 (* SPDX-FileCopyrightText: 2024-2025 hyperpolymath *)
 
 (** Optimization passes for AffineScript AST.
@@ -51,14 +51,14 @@ let rec fold_constants_expr (expr : expr) : expr =
     if left == left' && right == right' then
       expr
     else
-      fold_constants_expr (ExprBinary (left', op, right'))
+      ExprBinary (left', op, right')
 
   | ExprUnary (op, operand) ->
     let operand' = fold_constants_expr operand in
     if operand == operand' then
       expr
     else
-      fold_constants_expr (ExprUnary (op, operand'))
+      ExprUnary (op, operand')
 
   | ExprIf ei ->
     let cond' = fold_constants_expr ei.ei_cond in

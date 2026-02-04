@@ -114,7 +114,7 @@ Contributions welcome! See [CONTRIBUTING.md](https://github.com/hyperpolymath/af
 
 ## License
 
-MIT OR AGPL-3.0-or-later
+PMPL-1.0-or-later
 
 ## Release Notes
 

@@ -155,4 +155,4 @@ When contributing affine-specific notes to aLib upstream:
 
 ## License
 
-MIT OR AGPL-3.0-or-later (following AffineScript project license)
+PMPL-1.0-or-later (following AffineScript project license)

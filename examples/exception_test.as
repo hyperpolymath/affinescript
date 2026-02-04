@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR AGPL-3.0-or-later
+// SPDX-License-Identifier: PMPL-1.0-or-later
 // Test exception handling with try/catch/finally
 
 fn safe_divide(a: Int, b: Int) -> Int {

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR AGPL-3.0-or-later
+// SPDX-License-Identifier: PMPL-1.0-or-later
 // SPDX-FileCopyrightText: 2025 hyperpolymath
 
 // Simple arithmetic test for WASM code generation
