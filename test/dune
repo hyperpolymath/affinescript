@@ -3,4 +3,5 @@
  (libraries affinescript alcotest str unix)
  (deps
   (source_tree golden)
+  (source_tree e2e)
   (source_tree ../examples)))
