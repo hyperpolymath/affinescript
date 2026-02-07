@@ -1,80 +1,36 @@
-# SPDX-License-Identifier: AGPL-3.0-or-later
-# RSR-compliant .gitignore
+# SPDX-License-Identifier: PMPL-1.0-or-later
 
-# OS & Editor
-.DS_Store
-Thumbs.db
+# OCaml/Dune
+/_build/
+*.install
+.merlin
+*.opam.locked
+
+# Build artifacts
+*.cmi
+*.cmo
+*.cma
+*.cmx
+*.cmxa
+*.cmxs
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+
+# IDE
+.vscode/
+.idea/
 *.swp
 *.swo
 *~
-.idea/
-.vscode/
+.DS_Store
 
-# Build
-/target/
-/_build/
-/build/
-/dist/
-/out/
+# OS
+Thumbs.db
+.Trash-*/
 
-# Dependencies
-/node_modules/
-/vendor/
-/deps/
-/.elixir_ls/
-
-# Rust
-# Cargo.lock  # Keep for binaries
-
-# Elixir
-/cover/
-/doc/
-*.ez
-erl_crash.dump
-
-# Julia
-*.jl.cov
-*.jl.mem
-/Manifest.toml
-
-# ReScript
-/lib/bs/
-/.bsb.lock
-
-# Python (SaltStack only)
-__pycache__/
-*.py[cod]
-.venv/
-
-# Ada/SPARK
-*.ali
-/obj/
-/bin/
-
-# Haskell
-/.stack-work/
-/dist-newstyle/
-
-# Chapel
-*.chpl.tmp.*
-
-# Secrets
-.env
-.env.*
-*.pem
-*.key
-secrets/
-
-# Test/Coverage
-/coverage/
-htmlcov/
-
-# Logs
-*.log
-/logs/
-
-# Temp
-/tmp/
+# Temporary
 *.tmp
-*.bak
-*.wasm
+*.log

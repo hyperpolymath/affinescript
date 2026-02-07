@@ -1,0 +1,3 @@
+# SPDX-License-Identifier: PMPL-1.0-or-later
+# asdf version manager configuration
+ocaml 5.1.1
