@@ -1,0 +1,4 @@
+  Remote 'origin' exists.
+  Changes detected. Attempting to push...
+Everything up-to-date
+  Successfully pushed to affinescript/
