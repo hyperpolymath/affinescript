@@ -37,3 +37,10 @@ Thumbs.db
 
 # Crash recovery artifacts
 ai-cli-crash-capture/
+
+# KDE directory metadata
+.directory
+
+# Sync reports
+sync_report*.txt
+sync_repos_report*.txt
