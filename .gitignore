@@ -34,3 +34,6 @@ Thumbs.db
 # Temporary
 *.tmp
 *.log
+
+# Crash recovery artifacts
+ai-cli-crash-capture/
