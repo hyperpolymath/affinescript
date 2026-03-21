@@ -1,0 +1,34 @@
+{ Ast.prog_module = None; prog_imports = [];
+  prog_decls =
+  [Ast.TopFn
+     { Ast.fd_vis = Ast.Private; fd_total = false;
+       fd_name = { Ast.name = "test_ownership"; span = <span> };
+       fd_type_params = [];
+       fd_params =
+       [{ Ast.p_quantity = None; p_ownership = (Some Ast.Own);
+          p_name = { Ast.name = "x"; span = <span> };
+          p_ty = (Ast.TyCon { Ast.name = "String"; span = <span> }) };
+        { Ast.p_quantity = None; p_ownership = (Some Ast.Ref);
+          p_name = { Ast.name = "y"; span = <span> };
+          p_ty = (Ast.TyCon { Ast.name = "Int"; span = <span> }) };
+        { Ast.p_quantity = None; p_ownership = (Some Ast.Mut);
+          p_name = { Ast.name = "z"; span = <span> };
+          p_ty = (Ast.TyCon { Ast.name = "Bool"; span = <span> }) }];
+       fd_ret_ty = (Some (Ast.TyTuple [])); fd_eff = None; fd_where = [];
+       fd_body =
+       (Ast.FnBlock
+          { Ast.blk_stmts = [];
+            blk_expr = (Some (Ast.ExprLit (Ast.LitUnit <span>))) })
+       };
+   Ast.TopType
+     { Ast.td_vis = Ast.Private;
+       td_name = { Ast.name = "File"; span = <span> };
+       td_type_params = [];
+       td_body =
+       (Ast.TyStruct
+          [{ Ast.sf_vis = Ast.Private;
+             sf_name = { Ast.name = "fd"; span = <span> };
+             sf_ty =
+             (Ast.TyOwn (Ast.TyCon { Ast.name = "Int"; span = <span> })) }])
+       }]
+  }

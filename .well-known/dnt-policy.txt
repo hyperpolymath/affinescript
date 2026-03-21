@@ -1,0 +1,18 @@
+# Do Not Track Policy for affinescript.dev
+# https://www.eff.org/dnt-policy
+
+This site respects Do Not Track (DNT) browser settings.
+
+When DNT is enabled:
+- No analytics tracking (even with consent)
+- No personalization cookies
+- No third-party tracking
+- Essential cookies only
+
+To enable DNT:
+- Chrome: Settings > Privacy > Send "Do Not Track"
+- Firefox: Preferences > Privacy > Tell sites not to track
+- Safari: Preferences > Privacy > Ask websites not to track
+
+Contact: privacy@affinescript.dev
+Last Updated: 2026-01-31

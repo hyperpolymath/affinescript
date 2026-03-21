@@ -1,0 +1,41 @@
+# SPDX-License-Identifier: PMPL-1.0-or-later
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+
+      - name: Set up OCaml
+        uses: ocaml/setup-ocaml@dec6499fef64fc5d7ed43d43a87251b7b1c306f5 # v3
+        with:
+          ocaml-compiler: "5.1"
+
+      - name: Install dependencies
+        run: opam install . --deps-only
+
+      - name: Build release
+        run: opam exec -- dune build --release
+
+      - name: Create release archive
+        run: |
+          mkdir -p dist
+          cp _build/default/bin/main.exe dist/affinescript-linux-x64 || true
+          tar -czvf affinescript-linux-x64.tar.gz -C dist .
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2
+        with:
+          files: affinescript-linux-x64.tar.gz
+          generate_release_notes: true

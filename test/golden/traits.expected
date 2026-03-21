@@ -1,0 +1,75 @@
+{ Ast.prog_module = None; prog_imports = [];
+  prog_decls =
+  [Ast.TopTrait
+     { Ast.trd_vis = Ast.Private;
+       trd_name = { Ast.name = "Eq"; span = <span> };
+       trd_type_params = []; trd_super = [];
+       trd_items =
+       [(Ast.TraitFn
+           { Ast.fs_vis = Ast.Private;
+             fs_name = { Ast.name = "eq"; span = <span> };
+             fs_type_params = [];
+             fs_params =
+             [{ Ast.p_quantity = None; p_ownership = (Some Ast.Ref);
+                p_name = { Ast.name = "self"; span = <span> };
+                p_ty = (Ast.TyCon { Ast.name = "Self"; span = <span> }) };
+              { Ast.p_quantity = None; p_ownership = (Some Ast.Ref);
+                p_name = { Ast.name = "other"; span = <span> };
+                p_ty = (Ast.TyCon { Ast.name = "Self"; span = <span> }) }];
+             fs_ret_ty =
+             (Some (Ast.TyCon { Ast.name = "Bool"; span = <span> }));
+             fs_eff = None })]
+       };
+   Ast.TopTrait
+     { Ast.trd_vis = Ast.Private;
+       trd_name = { Ast.name = "Ord"; span = <span> };
+       trd_type_params = [];
+       trd_super =
+       [{ Ast.tb_name = { Ast.name = "Eq"; span = <span> };
+          tb_args = [] }];
+       trd_items =
+       [(Ast.TraitFn
+           { Ast.fs_vis = Ast.Private;
+             fs_name = { Ast.name = "cmp"; span = <span> };
+             fs_type_params = [];
+             fs_params =
+             [{ Ast.p_quantity = None; p_ownership = (Some Ast.Ref);
+                p_name = { Ast.name = "self"; span = <span> };
+                p_ty = (Ast.TyCon { Ast.name = "Self"; span = <span> }) };
+              { Ast.p_quantity = None; p_ownership = (Some Ast.Ref);
+                p_name = { Ast.name = "other"; span = <span> };
+                p_ty = (Ast.TyCon { Ast.name = "Self"; span = <span> }) }];
+             fs_ret_ty =
+             (Some (Ast.TyCon { Ast.name = "Ordering"; span = <span> }));
+             fs_eff = None })]
+       };
+   Ast.TopImpl
+     { Ast.ib_type_params = [];
+       ib_trait_ref =
+       (Some { Ast.tr_name = { Ast.name = "Eq"; span = <span> };
+               tr_args = [] });
+       ib_self_ty = (Ast.TyCon { Ast.name = "Int"; span = <span> });
+       ib_where = [];
+       ib_items =
+       [(Ast.ImplFn
+           { Ast.fd_vis = Ast.Private; fd_total = false;
+             fd_name = { Ast.name = "eq"; span = <span> };
+             fd_type_params = [];
+             fd_params =
+             [{ Ast.p_quantity = None; p_ownership = (Some Ast.Ref);
+                p_name = { Ast.name = "self"; span = <span> };
+                p_ty = (Ast.TyCon { Ast.name = "Self"; span = <span> }) };
+              { Ast.p_quantity = None; p_ownership = (Some Ast.Ref);
+                p_name = { Ast.name = "other"; span = <span> };
+                p_ty = (Ast.TyCon { Ast.name = "Int"; span = <span> }) }];
+             fd_ret_ty =
+             (Some (Ast.TyCon { Ast.name = "Bool"; span = <span> }));
+             fd_eff = None; fd_where = [];
+             fd_body =
+             (Ast.FnBlock
+                { Ast.blk_stmts = [];
+                  blk_expr =
+                  (Some (Ast.ExprLit (Ast.LitBool (true, <span>)))) })
+             })]
+       }]
+  }

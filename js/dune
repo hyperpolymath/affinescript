@@ -1,0 +1,10 @@
+; SPDX-License-Identifier: MIT OR AGPL-3.0-or-later
+
+(executable
+ (name playground)
+ (modes js)
+ (modules playground js_api)
+ (libraries affinescript js_of_ocaml)
+ (preprocess (pps js_of_ocaml-ppx))
+ (js_of_ocaml
+  (flags (:standard --enable=effects --source-map))))

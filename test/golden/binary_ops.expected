@@ -1,0 +1,44 @@
+{ Ast.prog_module = None; prog_imports = [];
+  prog_decls =
+  [Ast.TopFn
+     { Ast.fd_vis = Ast.Private; fd_total = false;
+       fd_name = { Ast.name = "test_ops"; span = <span> };
+       fd_type_params = []; fd_params = [];
+       fd_ret_ty = (Some (Ast.TyCon { Ast.name = "Int"; span = <span> }));
+       fd_eff = None; fd_where = [];
+       fd_body =
+       (Ast.FnBlock
+          { Ast.blk_stmts = [];
+            blk_expr =
+            (Some (Ast.ExprBinary (
+                     (Ast.ExprLit (Ast.LitInt (1, <span>))), Ast.OpAdd,
+                     (Ast.ExprBinary (
+                        (Ast.ExprLit (Ast.LitInt (2, <span>))), Ast.OpMul,
+                        (Ast.ExprLit (Ast.LitInt (3, <span>)))))
+                     )))
+            })
+       };
+   Ast.TopFn
+     { Ast.fd_vis = Ast.Private; fd_total = false;
+       fd_name = { Ast.name = "test_compare"; span = <span> };
+       fd_type_params = []; fd_params = [];
+       fd_ret_ty = (Some (Ast.TyCon { Ast.name = "Bool"; span = <span> }));
+       fd_eff = None; fd_where = [];
+       fd_body =
+       (Ast.FnBlock
+          { Ast.blk_stmts = [];
+            blk_expr =
+            (Some (Ast.ExprBinary (
+                     (Ast.ExprBinary (
+                        (Ast.ExprVar { Ast.name = "x"; span = <span> }),
+                        Ast.OpEq,
+                        (Ast.ExprVar { Ast.name = "y"; span = <span> }))),
+                     Ast.OpAnd,
+                     (Ast.ExprBinary (
+                        (Ast.ExprVar { Ast.name = "a"; span = <span> }),
+                        Ast.OpLt,
+                        (Ast.ExprVar { Ast.name = "b"; span = <span> })))
+                     )))
+            })
+       }]
+  }

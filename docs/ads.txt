@@ -1,0 +1,12 @@
+# Authorized Digital Sellers for affinescript.dev
+# https://iabtechlab.com/ads-txt/
+
+# Currently, this site does NOT run ads.
+# Any ads claiming to be from this domain are UNAUTHORIZED.
+
+# To report unauthorized ad placement:
+# Email: abuse@affinescript.dev
+
+# If we add advertising in the future, authorized sellers will be listed here.
+
+# Last Updated: 2026-01-31

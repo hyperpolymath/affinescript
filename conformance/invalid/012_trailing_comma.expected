@@ -1,0 +1,5 @@
+# Expected: parse error or valid (depends on grammar rules)
+# Exit code: 0 or 1 (trailing commas may be allowed)
+# Note: This tests whether trailing commas are permitted in parameter lists
+# If allowed, this should be moved to valid/
+# TODO: Verify actual compiler behavior

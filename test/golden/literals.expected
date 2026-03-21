@@ -1,0 +1,44 @@
+{ Ast.prog_module = None; prog_imports = [];
+  prog_decls =
+  [Ast.TopFn
+     { Ast.fd_vis = Ast.Private; fd_total = false;
+       fd_name = { Ast.name = "test_literals"; span = <span> };
+       fd_type_params = []; fd_params = [];
+       fd_ret_ty = (Some (Ast.TyTuple [])); fd_eff = None; fd_where = [];
+       fd_body =
+       (Ast.FnBlock
+          { Ast.blk_stmts =
+            [Ast.StmtLet
+               { Ast.sl_mut = false;
+                 sl_pat = (Ast.PatVar { Ast.name = "i"; span = <span> });
+                 sl_ty = None;
+                 sl_value = (Ast.ExprLit (Ast.LitInt (42, <span>))) };
+             Ast.StmtLet
+               { Ast.sl_mut = false;
+                 sl_pat = (Ast.PatVar { Ast.name = "f"; span = <span> });
+                 sl_ty = None;
+                 sl_value = (Ast.ExprLit (Ast.LitFloat (3.14, <span>))) };
+             Ast.StmtLet
+               { Ast.sl_mut = false;
+                 sl_pat = (Ast.PatVar { Ast.name = "b"; span = <span> });
+                 sl_ty = None;
+                 sl_value = (Ast.ExprLit (Ast.LitBool (true, <span>))) };
+             Ast.StmtLet
+               { Ast.sl_mut = false;
+                 sl_pat = (Ast.PatVar { Ast.name = "s"; span = <span> });
+                 sl_ty = None;
+                 sl_value = (Ast.ExprLit (Ast.LitString ("hello", <span>))) };
+             Ast.StmtLet
+               { Ast.sl_mut = false;
+                 sl_pat = (Ast.PatVar { Ast.name = "c"; span = <span> });
+                 sl_ty = None;
+                 sl_value = (Ast.ExprLit (Ast.LitChar ('x', <span>))) };
+             Ast.StmtLet
+               { Ast.sl_mut = false;
+                 sl_pat = (Ast.PatVar { Ast.name = "u"; span = <span> });
+                 sl_ty = None;
+                 sl_value = (Ast.ExprLit (Ast.LitUnit <span>)) }
+             ];
+            blk_expr = None })
+       }]
+  }

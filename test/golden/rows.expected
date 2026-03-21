@@ -1,0 +1,58 @@
+{ Ast.prog_module = None; prog_imports = [];
+  prog_decls =
+  [Ast.TopFn
+     { Ast.fd_vis = Ast.Private; fd_total = false;
+       fd_name = { Ast.name = "getX"; span = <span> };
+       fd_type_params =
+       [{ Ast.tp_quantity = None;
+          tp_name = { Ast.name = "r"; span = <span> }; tp_kind = None }];
+       fd_params =
+       [{ Ast.p_quantity = None; p_ownership = None;
+          p_name = { Ast.name = "p"; span = <span> };
+          p_ty =
+          (Ast.TyRecord (
+             [{ Ast.rf_name = { Ast.name = "x"; span = <span> };
+                rf_ty = (Ast.TyCon { Ast.name = "Int"; span = <span> }) }],
+             (Some { Ast.name = "r"; span = <span> }))) }];
+       fd_ret_ty = (Some (Ast.TyCon { Ast.name = "Int"; span = <span> }));
+       fd_eff = None; fd_where = [];
+       fd_body =
+       (Ast.FnBlock
+          { Ast.blk_stmts = [];
+            blk_expr =
+            (Some (Ast.ExprField (
+                     (Ast.ExprVar { Ast.name = "p"; span = <span> }),
+                     { Ast.name = "x"; span = <span> })))
+            })
+       };
+   Ast.TopFn
+     { Ast.fd_vis = Ast.Private; fd_total = false;
+       fd_name = { Ast.name = "addY"; span = <span> };
+       fd_type_params =
+       [{ Ast.tp_quantity = None;
+          tp_name = { Ast.name = "r"; span = <span> }; tp_kind = None }];
+       fd_params =
+       [{ Ast.p_quantity = None; p_ownership = None;
+          p_name = { Ast.name = "p"; span = <span> };
+          p_ty =
+          (Ast.TyRecord ([], (Some { Ast.name = "r"; span = <span> }))) }];
+       fd_ret_ty =
+       (Some (Ast.TyRecord (
+                [{ Ast.rf_name = { Ast.name = "y"; span = <span> };
+                   rf_ty = (Ast.TyCon { Ast.name = "Int"; span = <span> }) }],
+                (Some { Ast.name = "r"; span = <span> }))));
+       fd_eff = None; fd_where = [];
+       fd_body =
+       (Ast.FnBlock
+          { Ast.blk_stmts = [];
+            blk_expr =
+            (Some (Ast.ExprRecord
+                     { Ast.er_fields =
+                       [({ Ast.name = "y"; span = <span> },
+                         (Some (Ast.ExprLit (Ast.LitInt (0, <span>)))))];
+                       er_spread =
+                       (Some (Ast.ExprVar { Ast.name = "p"; span = <span> }))
+                       }))
+            })
+       }]
+  }

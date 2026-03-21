@@ -1,0 +1,4 @@
+# Expected output: comments-only file parses to empty AST
+# Exit code: 0
+# Generate with: dune exec affinescript -- parse conformance/valid/002_comments.as > conformance/valid/002_comments.expected
+Program []

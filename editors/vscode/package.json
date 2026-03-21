@@ -1,0 +1,152 @@
+{
+  "name": "affinescript",
+  "displayName": "AffineScript",
+  "description": "Language support for AffineScript - affine types, effects, and dependent types",
+  "version": "0.1.0",
+  "publisher": "hyperpolymath",
+  "license": "MIT OR AGPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hyperpolymath/affinescript"
+  },
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters",
+    "Formatters"
+  ],
+  "keywords": [
+    "affinescript",
+    "affine-types",
+    "linear-types",
+    "effects",
+    "dependent-types",
+    "webassembly"
+  ],
+  "activationEvents": [
+    "onLanguage:affinescript"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "affinescript",
+        "aliases": [
+          "AffineScript",
+          "affinescript"
+        ],
+        "extensions": [
+          ".as"
+        ],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./images/icon-light.png",
+          "dark": "./images/icon-dark.png"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "affinescript",
+        "scopeName": "source.affinescript",
+        "path": "./syntaxes/affinescript.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "AffineScript",
+      "properties": {
+        "affinescript.lsp.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable AffineScript Language Server"
+        },
+        "affinescript.lsp.serverPath": {
+          "type": "string",
+          "default": "affinescript-lsp",
+          "description": "Path to affinescript-lsp executable"
+        },
+        "affinescript.format.indentSize": {
+          "type": "number",
+          "default": 2,
+          "description": "Number of spaces per indentation level"
+        },
+        "affinescript.format.maxLineLength": {
+          "type": "number",
+          "default": 100,
+          "description": "Maximum line length before wrapping"
+        },
+        "affinescript.lint.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable linting"
+        },
+        "affinescript.lint.unusedVariables": {
+          "type": "string",
+          "enum": ["error", "warning", "hint", "off"],
+          "default": "warning",
+          "description": "Diagnostic level for unused variables"
+        },
+        "affinescript.lint.missingEffectAnnotations": {
+          "type": "string",
+          "enum": ["error", "warning", "hint", "off"],
+          "default": "error",
+          "description": "Diagnostic level for missing effect annotations"
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "affinescript.check",
+        "title": "AffineScript: Type Check Current File"
+      },
+      {
+        "command": "affinescript.eval",
+        "title": "AffineScript: Evaluate Current File"
+      },
+      {
+        "command": "affinescript.compile",
+        "title": "AffineScript: Compile to WebAssembly"
+      },
+      {
+        "command": "affinescript.format",
+        "title": "AffineScript: Format Document"
+      },
+      {
+        "command": "affinescript.restartLsp",
+        "title": "AffineScript: Restart Language Server"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "affinescript.check",
+        "key": "ctrl+shift+c",
+        "mac": "cmd+shift+c",
+        "when": "editorLangId == affinescript"
+      },
+      {
+        "command": "affinescript.eval",
+        "key": "ctrl+shift+r",
+        "mac": "cmd+shift+r",
+        "when": "editorLangId == affinescript"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package",
+    "publish": "vsce publish"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.80.0",
+    "typescript": "^5.0.0",
+    "vsce": "^2.15.0"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.0"
+  }
+}
