@@ -71,6 +71,8 @@ module.exports = grammar({
       $.fun_decl,
       $.let_decl,
       $.type_decl,
+      $.struct_decl,
+      $.enum_decl,
       $.effect_decl,
       $.trait_decl,
       $.impl_decl,
@@ -114,12 +116,54 @@ module.exports = grammar({
     ),
 
     type_decl: $ => seq(
+      optional($.visibility),
       'type',
       field('name', $.type_identifier),
       optional($.type_params),
       '=',
       field('definition', $.type_expr),
       ';'
+    ),
+
+    struct_decl: $ => seq(
+      optional($.visibility),
+      'struct',
+      field('name', $.type_identifier),
+      optional($.type_params),
+      '{',
+      optional(sep1($.struct_field, ',')),
+      optional(','),
+      '}'
+    ),
+
+    struct_field: $ => seq(
+      optional($.visibility),
+      field('name', $.identifier),
+      ':',
+      field('type', $.type_expr)
+    ),
+
+    enum_decl: $ => seq(
+      optional($.visibility),
+      'enum',
+      field('name', $.type_identifier),
+      optional($.type_params),
+      '{',
+      optional(sep1($.variant_decl, ',')),
+      optional(','),
+      '}'
+    ),
+
+    variant_decl: $ => seq(
+      field('name', $.type_identifier),
+      optional(choice(
+        // Positional fields: Some(T), Ok(T, E)
+        seq('(', sep1($.type_expr, ','), ')'),
+        // Named fields: Circle { radius: Float64 }
+        seq('{', sep1($.struct_field, ','), optional(','), '}')
+      )),
+      // Optional GADT return type: Cons(T, List[T]): List[T]
+      optional(seq(':', field('return_type', $.type_expr)))
     ),
 
     effect_decl: $ => seq(
@@ -230,6 +274,7 @@ module.exports = grammar({
     expr: $ => choice(
       $.literal,
       $.identifier,
+      $.variant_expr,
       $.binary_expr,
       $.unary_expr,
       $.call_expr,
@@ -249,6 +294,13 @@ module.exports = grammar({
       $.annotated_expr,
       $.move_expr,
       seq('(', $.expr, ')')
+    ),
+
+    // Type::Variant qualified constructor expression
+    variant_expr: $ => seq(
+      field('type', $.type_identifier),
+      '::',
+      field('variant', $.type_identifier)
     ),
 
     binary_expr: $ => choice(

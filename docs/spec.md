@@ -1782,15 +1782,20 @@ visibility    = [ 'pub' [ '(' pub_scope ')' ] ] ;
 pub_scope     = 'crate' | 'super' | module_path ;
 
 (* === TYPES === *)
-type_decl     = visibility 'type' UPPER_IDENT [ type_params ] '=' type_body ;
+type_decl     = type_alias | struct_decl | enum_decl ;
+type_alias    = visibility 'type' UPPER_IDENT [ type_params ] '=' type_expr ';' ;
+struct_decl   = visibility 'struct' UPPER_IDENT [ type_params ]
+                '{' field_decl { ',' field_decl } [ ',' ] '}' ;
+enum_decl     = visibility 'enum' UPPER_IDENT [ type_params ]
+                '{' variant_decl { ',' variant_decl } [ ',' ] '}' ;
+field_decl    = visibility IDENT ':' type_expr ;
+variant_decl  = UPPER_IDENT                                          (* nullary   *)
+              | UPPER_IDENT '(' type_expr { ',' type_expr } ')'      (* positional *)
+              | UPPER_IDENT '(' type_expr { ',' type_expr } ')' ':' type_expr  (* GADT *)
+              ;
 type_params   = '[' type_param { ',' type_param } ']' ;
 type_param    = [ QUANTITY ] IDENT [ ':' kind ] ;
 kind          = 'Type' | 'Nat' | 'Row' | 'Effect' | kind '->' kind ;
-type_body     = type_expr | struct_body | enum_body ;
-struct_body   = '{' field_decl { ',' field_decl } '}' ;
-field_decl    = visibility IDENT ':' type_expr ;
-enum_body     = [ '|' ] variant { '|' variant } ;
-variant       = UPPER_IDENT [ '(' type_expr { ',' type_expr } ')' ] [ ':' type_expr ] ;
 
 type_expr     = type_atom [ '->' type_expr [ '/' effects ] ]
               | '(' [ QUANTITY ] IDENT ':' type_expr ')' '->' type_expr [ '/' effects ]
