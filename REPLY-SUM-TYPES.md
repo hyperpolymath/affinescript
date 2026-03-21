@@ -173,7 +173,64 @@ handles sum types end-to-end.
 
 ---
 
-## Appendix: Feature Coverage Matrix
+## Appendix B: Rebuttal — "Missing Features" Claim
+
+A separate report claimed AffineScript lacks spread operators, if-expressions in
+assignments, and concise struct updates. All three claims are **incorrect**.
+
+### "No Spread Operator Support" — FALSE
+
+The parser supports record spread syntax (`parser.mly` lines 481, 527-528):
+
+```affinescript
+// Record spread (struct update) — Rust-style `..` not JS-style `...`
+let updated = { health: 100, ..original_player }
+```
+
+The syntax is `{ field: value, ..base_expr }`. The claim used JavaScript's
+`{...obj}` syntax (triple-dot), which is not AffineScript syntax.
+
+**Evidence:** `record_spread: | COMMA DOTDOT e = expr { e }` in parser.mly:527-528.
+
+### "let x = if...else... Fails to Parse" — FALSE
+
+`if` is an expression (`parser.mly` line 488-489) and `let` accepts any expression
+as its value (`parser.mly` line 495-497):
+
+```affinescript
+// This works — if is an expression
+let x = if condition { value_a } else { value_b }
+
+// This also works with else-if chains
+let x = if a { 1 } else if b { 2 } else { 3 }
+```
+
+The `if` branches require **block syntax** `{ }` — not bare expressions. Writing
+`let x = if cond then a else b` (ML/Haskell style) will fail because AffineScript
+uses Rust-style blocks. This is by design, not a limitation.
+
+### "Verbose Struct Updates" — FALSE (same as spread)
+
+Record spread IS the struct update syntax:
+
+```affinescript
+// Update one field, keep everything else
+let new_state = { score: state.score + 10, ..state }
+
+// Update multiple fields
+let healed = { health: 100, status: Status::Alive, ..player }
+```
+
+No manual field copying required.
+
+### Root Cause
+
+These are **documentation gaps**, not language limitations. The reporter appears to
+have tried JavaScript/Haskell syntax in a Rust-influenced language.
+
+---
+
+## Appendix A: Feature Coverage Matrix
 
 | Capability | Parser | AST | Resolver | Interpreter | WASM Codegen |
 |------------|--------|-----|----------|-------------|--------------|
