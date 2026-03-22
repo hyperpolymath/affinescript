@@ -1,5 +1,5 @@
 #!/usr/bin/env julia
-# SPDX-License-Identifier: MIT OR AGPL-3.0-or-later
+# SPDX-License-Identifier: PMPL-1.0-or-later
 # SPDX-FileCopyrightText: 2025 hyperpolymath
 #
 # Generate AffineScript conformance tests from aLib specs
@@ -94,7 +94,7 @@ function generate_conformance_test(spec_path::String, output_dir::String)
 
     # Generate test file
     test_code = """
-// SPDX-License-Identifier: MIT OR AGPL-3.0-or-later
+// SPDX-License-Identifier: PMPL-1.0-or-later
 // SPDX-FileCopyrightText: 2025 hyperpolymath
 //
 // Auto-generated conformance tests for aLib spec: $(category)/$(op_name)

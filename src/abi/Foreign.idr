@@ -180,6 +180,13 @@ public export
 Callback : Type
 Callback = Bits64 -> Bits32 -> Bits32
 
+||| Cast a callback function to an opaque pointer for C FFI.
+||| This is a system-boundary cast required because the C ABI represents
+||| all callback functions as void* — the Zig FFI layer performs the
+||| reverse cast with the correct type signature.
+%foreign "C:idris2_mkPtr, libidris2_support, idris_support.h"
+prim__callbackToPtr : (Bits64 -> Bits32 -> Bits32) -> AnyPtr
+
 ||| Register a callback
 export
 %foreign "C:{{project}}_register_callback, lib{{project}}"
@@ -189,7 +196,7 @@ prim__registerCallback : Bits64 -> AnyPtr -> PrimIO Bits32
 export
 registerCallback : Handle -> Callback -> IO (Either Result ())
 registerCallback h cb = do
-  result <- primIO (prim__registerCallback (handlePtr h) (believe_me cb))
+  result <- primIO (prim__registerCallback (handlePtr h) (prim__callbackToPtr cb))
   pure $ case resultFromInt result of
     Just Ok => Right ()
     Just err => Left err
