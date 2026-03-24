@@ -357,6 +357,7 @@ and apply_function (func : value) (args : value list) : value result =
 (** Create initial environment with builtins *)
 let create_initial_env () : env =
   let builtins = [
+    (* -- Console I/O -------------------------------------------------------- *)
     ("print", VBuiltin ("print", fun args ->
       List.iter (fun v -> print_string (Value.show_value v)) args;
       Ok VUnit
@@ -365,11 +366,295 @@ let create_initial_env () : env =
       List.iter (fun v -> print_endline (Value.show_value v)) args;
       Ok VUnit
     ));
+    ("eprint", VBuiltin ("eprint", fun args ->
+      List.iter (fun v -> prerr_string (Value.show_value v)) args;
+      Ok VUnit
+    ));
+    ("eprintln", VBuiltin ("eprintln", fun args ->
+      List.iter (fun v -> prerr_endline (Value.show_value v)) args;
+      Ok VUnit
+    ));
+
+    (* -- Collection / string length ---------------------------------------- *)
     ("len", VBuiltin ("len", fun args ->
       match args with
       | [VArray arr] -> Ok (VInt (Array.length arr))
       | [VString s] -> Ok (VInt (String.length s))
       | _ -> Error (TypeMismatch "len expects array or string")
+    ));
+
+    (* -- String builtins --------------------------------------------------- *)
+    ("string_get", VBuiltin ("string_get", fun args ->
+      match args with
+      | [VString s; VInt idx] ->
+        if idx >= 0 && idx < String.length s then
+          Ok (VChar (String.get s idx))
+        else
+          Error (IndexOutOfBounds (idx, String.length s))
+      | _ -> Error (TypeMismatch "string_get expects (String, Int)")
+    ));
+    ("string_sub", VBuiltin ("string_sub", fun args ->
+      match args with
+      | [VString s; VInt start; VInt length] ->
+        let slen = String.length s in
+        let start' = max 0 (min start slen) in
+        let length' = max 0 (min length (slen - start')) in
+        Ok (VString (String.sub s start' length'))
+      | _ -> Error (TypeMismatch "string_sub expects (String, Int, Int)")
+    ));
+    ("string_find", VBuiltin ("string_find", fun args ->
+      match args with
+      | [VString haystack; VString needle] ->
+        (match String.index_opt haystack (String.get needle 0) with
+         | None -> Ok (VInt (-1))
+         | Some _ ->
+           let hlen = String.length haystack in
+           let nlen = String.length needle in
+           if nlen = 0 then Ok (VInt 0)
+           else if nlen > hlen then Ok (VInt (-1))
+           else
+             let found = ref (-1) in
+             for i = 0 to hlen - nlen do
+               if !found = -1 && String.sub haystack i nlen = needle then
+                 found := i
+             done;
+             Ok (VInt !found))
+      | _ -> Error (TypeMismatch "string_find expects (String, String)")
+    ));
+    ("char_to_int", VBuiltin ("char_to_int", fun args ->
+      match args with
+      | [VChar c] -> Ok (VInt (Char.code c))
+      | _ -> Error (TypeMismatch "char_to_int expects Char")
+    ));
+    ("int_to_char", VBuiltin ("int_to_char", fun args ->
+      match args with
+      | [VInt n] ->
+        if n >= 0 && n <= 127 then Ok (VChar (Char.chr n))
+        else Error (RuntimeError "int_to_char: code point out of ASCII range")
+      | _ -> Error (TypeMismatch "int_to_char expects Int")
+    ));
+    ("show", VBuiltin ("show", fun args ->
+      match args with
+      | [v] -> Ok (VString (Value.show_value v))
+      | _ -> Error (TypeMismatch "show expects a single argument")
+    ));
+    ("to_lowercase", VBuiltin ("to_lowercase", fun args ->
+      match args with
+      | [VString s] -> Ok (VString (String.lowercase_ascii s))
+      | _ -> Error (TypeMismatch "to_lowercase expects String")
+    ));
+    ("to_uppercase", VBuiltin ("to_uppercase", fun args ->
+      match args with
+      | [VString s] -> Ok (VString (String.uppercase_ascii s))
+      | _ -> Error (TypeMismatch "to_uppercase expects String")
+    ));
+    ("trim", VBuiltin ("trim", fun args ->
+      match args with
+      | [VString s] -> Ok (VString (String.trim s))
+      | _ -> Error (TypeMismatch "trim expects String")
+    ));
+    ("int_to_string", VBuiltin ("int_to_string", fun args ->
+      match args with
+      | [VInt n] -> Ok (VString (string_of_int n))
+      | _ -> Error (TypeMismatch "int_to_string expects Int")
+    ));
+    ("float_to_string", VBuiltin ("float_to_string", fun args ->
+      match args with
+      | [VFloat f] -> Ok (VString (string_of_float f))
+      | _ -> Error (TypeMismatch "float_to_string expects Float")
+    ));
+    ("parse_int", VBuiltin ("parse_int", fun args ->
+      match args with
+      | [VString s] ->
+        (match int_of_string_opt s with
+         | Some n -> Ok (VVariant ("Some", Some (VInt n)))
+         | None -> Ok (VVariant ("None", None)))
+      | _ -> Error (TypeMismatch "parse_int expects String")
+    ));
+    ("parse_float", VBuiltin ("parse_float", fun args ->
+      match args with
+      | [VString s] ->
+        (match float_of_string_opt s with
+         | Some f -> Ok (VVariant ("Some", Some (VFloat f)))
+         | None -> Ok (VVariant ("None", None)))
+      | _ -> Error (TypeMismatch "parse_float expects String")
+    ));
+
+    (* -- Math builtins ----------------------------------------------------- *)
+    ("sqrt", VBuiltin ("sqrt", fun args ->
+      match args with
+      | [VFloat f] -> Ok (VFloat (Float.sqrt f))
+      | _ -> Error (TypeMismatch "sqrt expects Float")
+    ));
+    ("cbrt", VBuiltin ("cbrt", fun args ->
+      match args with
+      | [VFloat f] -> Ok (VFloat (Float.cbrt f))
+      | _ -> Error (TypeMismatch "cbrt expects Float")
+    ));
+    ("pow_float", VBuiltin ("pow_float", fun args ->
+      match args with
+      | [VFloat base; VFloat exp] -> Ok (VFloat (Float.pow base exp))
+      | _ -> Error (TypeMismatch "pow_float expects (Float, Float)")
+    ));
+    ("floor", VBuiltin ("floor", fun args ->
+      match args with
+      | [VFloat f] -> Ok (VInt (Float.to_int (Float.floor f)))
+      | _ -> Error (TypeMismatch "floor expects Float")
+    ));
+    ("ceil", VBuiltin ("ceil", fun args ->
+      match args with
+      | [VFloat f] -> Ok (VInt (Float.to_int (Float.ceil f)))
+      | _ -> Error (TypeMismatch "ceil expects Float")
+    ));
+    ("round", VBuiltin ("round", fun args ->
+      match args with
+      | [VFloat f] -> Ok (VInt (Float.to_int (Float.round f)))
+      | _ -> Error (TypeMismatch "round expects Float")
+    ));
+    ("trunc", VBuiltin ("trunc", fun args ->
+      match args with
+      | [VFloat f] -> Ok (VInt (Float.to_int (Float.of_int (Float.to_int f))))
+      | _ -> Error (TypeMismatch "trunc expects Float")
+    ));
+    ("sin", VBuiltin ("sin", fun args ->
+      match args with
+      | [VFloat f] -> Ok (VFloat (Float.sin f))
+      | _ -> Error (TypeMismatch "sin expects Float")
+    ));
+    ("cos", VBuiltin ("cos", fun args ->
+      match args with
+      | [VFloat f] -> Ok (VFloat (Float.cos f))
+      | _ -> Error (TypeMismatch "cos expects Float")
+    ));
+    ("tan", VBuiltin ("tan", fun args ->
+      match args with
+      | [VFloat f] -> Ok (VFloat (Float.tan f))
+      | _ -> Error (TypeMismatch "tan expects Float")
+    ));
+    ("asin", VBuiltin ("asin", fun args ->
+      match args with
+      | [VFloat f] -> Ok (VFloat (Float.asin f))
+      | _ -> Error (TypeMismatch "asin expects Float")
+    ));
+    ("acos", VBuiltin ("acos", fun args ->
+      match args with
+      | [VFloat f] -> Ok (VFloat (Float.acos f))
+      | _ -> Error (TypeMismatch "acos expects Float")
+    ));
+    ("atan", VBuiltin ("atan", fun args ->
+      match args with
+      | [VFloat f] -> Ok (VFloat (Float.atan f))
+      | _ -> Error (TypeMismatch "atan expects Float")
+    ));
+    ("atan2", VBuiltin ("atan2", fun args ->
+      match args with
+      | [VFloat y; VFloat x] -> Ok (VFloat (Float.atan2 y x))
+      | _ -> Error (TypeMismatch "atan2 expects (Float, Float)")
+    ));
+    ("exp", VBuiltin ("exp", fun args ->
+      match args with
+      | [VFloat f] -> Ok (VFloat (Float.exp f))
+      | _ -> Error (TypeMismatch "exp expects Float")
+    ));
+    ("log", VBuiltin ("log", fun args ->
+      match args with
+      | [VFloat f] -> Ok (VFloat (Float.log f))
+      | _ -> Error (TypeMismatch "log expects Float")
+    ));
+    ("log10", VBuiltin ("log10", fun args ->
+      match args with
+      | [VFloat f] -> Ok (VFloat (Float.log10 f))
+      | _ -> Error (TypeMismatch "log10 expects Float")
+    ));
+    ("log2", VBuiltin ("log2", fun args ->
+      match args with
+      | [VFloat f] -> Ok (VFloat (Float.log2 f))
+      | _ -> Error (TypeMismatch "log2 expects Float")
+    ));
+
+    (* -- I/O builtins ------------------------------------------------------ *)
+    ("panic", VBuiltin ("panic", fun args ->
+      match args with
+      | [VString msg] -> Error (RuntimeError msg)
+      | _ -> Error (RuntimeError "panic!")
+    ));
+    ("read_file", VBuiltin ("read_file", fun args ->
+      match args with
+      | [VString path] ->
+        (try
+          let ic = open_in path in
+          let n = in_channel_length ic in
+          let s = Bytes.create n in
+          really_input ic s 0 n;
+          close_in ic;
+          Ok (VVariant ("Ok", Some (VString (Bytes.to_string s))))
+        with
+        | Sys_error msg -> Ok (VVariant ("Err", Some (VString msg))))
+      | _ -> Error (TypeMismatch "read_file expects String")
+    ));
+    ("write_file", VBuiltin ("write_file", fun args ->
+      match args with
+      | [VString path; VString content] ->
+        (try
+          let oc = open_out path in
+          output_string oc content;
+          close_out oc;
+          Ok (VVariant ("Ok", Some VUnit))
+        with
+        | Sys_error msg -> Ok (VVariant ("Err", Some (VString msg))))
+      | _ -> Error (TypeMismatch "write_file expects (String, String)")
+    ));
+    ("append_file", VBuiltin ("append_file", fun args ->
+      match args with
+      | [VString path; VString content] ->
+        (try
+          let oc = open_out_gen [Open_append; Open_creat] 0o644 path in
+          output_string oc content;
+          close_out oc;
+          Ok (VVariant ("Ok", Some VUnit))
+        with
+        | Sys_error msg -> Ok (VVariant ("Err", Some (VString msg))))
+      | _ -> Error (TypeMismatch "append_file expects (String, String)")
+    ));
+    ("file_exists", VBuiltin ("file_exists", fun args ->
+      match args with
+      | [VString path] -> Ok (VBool (Sys.file_exists path))
+      | _ -> Error (TypeMismatch "file_exists expects String")
+    ));
+    ("is_directory", VBuiltin ("is_directory", fun args ->
+      match args with
+      | [VString path] -> Ok (VBool (Sys.is_directory path))
+      | _ -> Error (TypeMismatch "is_directory expects String")
+    ));
+    ("getenv", VBuiltin ("getenv", fun args ->
+      match args with
+      | [VString name] ->
+        (match Sys.getenv_opt name with
+         | Some v -> Ok (VVariant ("Some", Some (VString v)))
+         | None -> Ok (VVariant ("None", None)))
+      | _ -> Error (TypeMismatch "getenv expects String")
+    ));
+    ("getcwd", VBuiltin ("getcwd", fun args ->
+      match args with
+      | [] -> Ok (VVariant ("Ok", Some (VString (Sys.getcwd ()))))
+      | _ -> Error (TypeMismatch "getcwd expects no arguments")
+    ));
+    ("read_line", VBuiltin ("read_line", fun args ->
+      match args with
+      | [] ->
+        (try Ok (VVariant ("Ok", Some (VString (read_line ()))))
+         with End_of_file -> Ok (VVariant ("Err", Some (VString "End of input"))))
+      | _ -> Error (TypeMismatch "read_line expects no arguments")
+    ));
+    ("exit", VBuiltin ("exit", fun args ->
+      match args with
+      | [VInt code] -> exit code
+      | _ -> Error (TypeMismatch "exit expects Int")
+    ));
+
+    (* -- Time --------------------------------------------------------------- *)
+    ("time_now", VBuiltin ("time_now", fun _args ->
+      Ok (VFloat (Sys.time ()))
     ));
   ] in
   builtins

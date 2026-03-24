@@ -1,117 +1,140 @@
 // SPDX-License-Identifier: PMPL-1.0-or-later
 // SPDX-FileCopyrightText: 2025 hyperpolymath
 //
-// I/O - Input/output operations
+// AffineScript Standard Library - Input/Output
+//
+// Builtin functions (implemented in interpreter runtime):
+//   print(args...)          -> ()                 (print to stdout)
+//   println(args...)        -> ()                 (print with newline to stdout)
+//   eprint(args...)         -> ()                 (print to stderr)
+//   eprintln(args...)       -> ()                 (print with newline to stderr)
+//   read_file(path)         -> Result<String, String>
+//   write_file(path, data)  -> Result<(), String>
+//   append_file(path, data) -> Result<(), String>
+//   file_exists(path)       -> Bool
+//   is_directory(path)      -> Bool
+//   getenv(name)            -> Option<String>
+//   getcwd()                -> Result<String, String>
+//   read_line()             -> Result<String, String>
+//   exit(code)              -> Never
+//   show(value)             -> String
+//   time_now()              -> Float              (CPU time in seconds)
 
 // ============================================================================
 // Console Output
 // ============================================================================
 
-/// Print formatted string
+// print, println, eprint, eprintln are builtins — see module header
+
+/// Print formatted string (simple placeholder substitution)
+///
+/// Format placeholders:
+///   {}  — insert next argument via show()
+///
+/// Example:
+///   printf("Hello, {}! You are {} years old.", ["Alice", 30])
 fn printf(format: String, args: [Any]) -> () {
-  // TODO: Implement format string interpolation
-  print(format);
+  let flen = len(format);
+  let arg_idx = 0;
+  let i = 0;
+
+  while i < flen {
+    if i + 1 < flen && string_sub(format, i, 2) == "{}" {
+      if arg_idx < len(args) {
+        print(show(args[arg_idx]));
+        arg_idx = arg_idx + 1;
+      } else {
+        print("{}");
+      }
+      i = i + 2;
+    } else {
+      print(string_sub(format, i, 1));
+      i = i + 1;
+    }
+  }
 }
 
-/// Print with newline
+/// Print formatted string with trailing newline
 fn println_fmt(format: String, args: [Any]) -> () {
   printf(format, args);
   println("");
 }
 
-/// Print error to stderr
-fn eprint(msg: String) -> () {
-  // TODO: Implement stderr output
-  print("[ERROR] " ++ msg);
-}
-
-/// Print error with newline to stderr
-fn eprintln(msg: String) -> () {
-  eprint(msg);
-  println("");
-}
-
-/// Print debug representation
+/// Print debug representation of any value
 fn debug<T>(value: T) -> () {
-  // TODO: Implement debug formatting
-  println("Debug: <value>");
+  eprintln("DEBUG: " ++ show(value));
+}
+
+/// Print error with newline to stderr (convenience wrapper)
+fn error(msg: String) -> () {
+  eprintln("[ERROR] " ++ msg);
+}
+
+/// Print warning with newline to stderr
+fn warn(msg: String) -> () {
+  eprintln("[WARN] " ++ msg);
 }
 
 // ============================================================================
-// File Operations
+// File Operations (builtins)
 // ============================================================================
 
-/// Read entire file as string
-fn read_file(path: String) -> Result<String, String> {
-  // TODO: Implement file reading
-  Err("File operations not yet implemented")
-}
+// read_file, write_file, append_file, file_exists are builtins — see module header
 
-/// Write string to file
-fn write_file(path: String, content: String) -> Result<(), String> {
-  // TODO: Implement file writing
-  Err("File operations not yet implemented")
-}
-
-/// Append string to file
-fn append_file(path: String, content: String) -> Result<(), String> {
-  // TODO: Implement file appending
-  Err("File operations not yet implemented")
-}
-
-/// Read file as lines
+/// Read file as a list of lines
 fn read_lines(path: String) -> Result<[String], String> {
-  // TODO: Implement line reading
-  Err("File operations not yet implemented")
+  match read_file(path) {
+    Ok(content) => Ok(split(content, "\n")),
+    Err(msg) => Err(msg)
+  }
 }
 
-/// Check if file exists
-fn file_exists(path: String) -> Bool {
-  // TODO: Implement existence check
-  false
-}
-
-/// Get file size in bytes
+/// Get file size by reading and measuring content length
+///
+/// Note: this reads the entire file; a more efficient builtin would be
+/// preferable for large files once the runtime supports stat().
 fn file_size(path: String) -> Result<Int, String> {
-  // TODO: Implement size query
-  Err("File operations not yet implemented")
+  match read_file(path) {
+    Ok(content) => Ok(len(content)),
+    Err(msg) => Err(msg)
+  }
 }
 
 // ============================================================================
 // Directory Operations
 // ============================================================================
 
+// is_directory is a builtin — see module header
+
 /// List directory contents
+///
+/// Note: Not yet implemented — requires a runtime builtin for readdir().
+/// Returns Err until the builtin is available.
 fn list_dir(path: String) -> Result<[String], String> {
-  // TODO: Implement directory listing
-  Err("Directory operations not yet implemented")
+  Err("list_dir requires a runtime builtin (not yet implemented)")
 }
 
 /// Create directory
+///
+/// Note: Not yet implemented — requires a runtime builtin for mkdir().
 fn create_dir(path: String) -> Result<(), String> {
-  // TODO: Implement directory creation
-  Err("Directory operations not yet implemented")
+  Err("create_dir requires a runtime builtin (not yet implemented)")
 }
 
 /// Remove directory
+///
+/// Note: Not yet implemented — requires a runtime builtin for rmdir().
 fn remove_dir(path: String) -> Result<(), String> {
-  // TODO: Implement directory removal
-  Err("Directory operations not yet implemented")
-}
-
-/// Check if path is directory
-fn is_directory(path: String) -> Bool {
-  // TODO: Implement directory check
-  false
+  Err("remove_dir requires a runtime builtin (not yet implemented)")
 }
 
 // ============================================================================
 // Path Operations
 // ============================================================================
 
-/// Join path components
+/// Join path components with the system separator (/)
 fn path_join(components: [String]) -> String {
-  // Simple implementation using /  let result = "";
+  let result = "";
   let mut first = true;
   for component in components {
     if first {
@@ -124,76 +147,147 @@ fn path_join(components: [String]) -> String {
   result
 }
 
-/// Get file extension
+/// Extract the file extension from a path (without the leading dot)
+///
+/// Returns None if no extension is found.
+/// Example: path_extension("file.txt") => Some("txt")
 fn path_extension(path: String) -> Option<String> {
-  // TODO: Implement extension extraction
+  let plen = len(path);
+  let i = plen - 1;
+  while i >= 0 {
+    let ch = string_get(path, i);
+    if ch == '.' {
+      if i == plen - 1 {
+        // Trailing dot, no extension
+        return None;
+      }
+      return Some(string_sub(path, i + 1, plen - i - 1));
+    }
+    if ch == '/' {
+      // Hit a directory separator before finding a dot
+      return None;
+    }
+    i = i - 1;
+  }
   None
 }
 
-/// Get filename from path
+/// Get the filename component from a path
+///
+/// Example: path_filename("/home/user/file.txt") => "file.txt"
 fn path_filename(path: String) -> String {
-  // TODO: Implement filename extraction
+  let plen = len(path);
+  if plen == 0 {
+    return "";
+  }
+  let i = plen - 1;
+  while i >= 0 {
+    if string_get(path, i) == '/' {
+      return string_sub(path, i + 1, plen - i - 1);
+    }
+    i = i - 1;
+  }
+  // No separator found; entire path is the filename
   path
 }
 
-/// Get directory from path
+/// Get the directory component from a path
+///
+/// Example: path_dirname("/home/user/file.txt") => "/home/user"
 fn path_dirname(path: String) -> String {
-  // TODO: Implement dirname extraction
+  let plen = len(path);
+  if plen == 0 {
+    return ".";
+  }
+  let i = plen - 1;
+  while i >= 0 {
+    if string_get(path, i) == '/' {
+      if i == 0 {
+        return "/";
+      }
+      return string_sub(path, 0, i);
+    }
+    i = i - 1;
+  }
+  // No separator found; directory is the current directory
   "."
+}
+
+/// Get the filename without its extension (stem)
+///
+/// Example: path_stem("archive.tar.gz") => "archive.tar"
+fn path_stem(path: String) -> String {
+  let filename = path_filename(path);
+  let flen = len(filename);
+  let i = flen - 1;
+  while i > 0 {
+    if string_get(filename, i) == '.' {
+      return string_sub(filename, 0, i);
+    }
+    i = i - 1;
+  }
+  filename
 }
 
 // ============================================================================
 // Process Operations
 // ============================================================================
 
-/// Get environment variable
-fn getenv(name: String) -> Option<String> {
-  // TODO: Implement environment variable access
-  None
-}
+// getenv, getcwd, exit are builtins — see module header
 
 /// Set environment variable
+///
+/// Note: Not yet implemented — requires a runtime builtin for setenv().
 fn setenv(name: String, value: String) -> Result<(), String> {
-  // TODO: Implement environment variable setting
-  Err("Environment operations not yet implemented")
-}
-
-/// Get current working directory
-fn getcwd() -> Result<String, String> {
-  // TODO: Implement cwd query
-  Err("Process operations not yet implemented")
+  Err("setenv requires a runtime builtin (not yet implemented)")
 }
 
 /// Change current working directory
+///
+/// Note: Not yet implemented — requires a runtime builtin for chdir().
 fn chdir(path: String) -> Result<(), String> {
-  // TODO: Implement directory change
-  Err("Process operations not yet implemented")
-}
-
-/// Exit program with code
-fn exit(code: Int) -> Never {
-  // TODO: Implement process exit
-  panic("Exit not yet implemented");
+  Err("chdir requires a runtime builtin (not yet implemented)")
 }
 
 // ============================================================================
 // Input Operations
 // ============================================================================
 
-/// Read line from stdin
-fn read_line() -> Result<String, String> {
-  // TODO: Implement stdin reading
-  Err("Input operations not yet implemented")
-}
+// read_line is a builtin — see module header
 
-/// Read all input from stdin
+/// Read all input from stdin until EOF
 fn read_stdin() -> Result<String, String> {
-  // TODO: Implement stdin reading
-  Err("Input operations not yet implemented")
+  let parts = [];
+  let done = false;
+  while !done {
+    match read_line() {
+      Ok(line) => {
+        parts = parts ++ [line];
+      },
+      Err(_) => {
+        done = true;
+      }
+    }
+  }
+  Ok(join(parts, "\n"))
 }
 
-/// Prompt user for input
+/// Prompt user for input and return their response
 fn prompt(message: String) -> Result<String, String> {
   print(message);
   read_line()
+}
+
+// ============================================================================
+// Timing
+// ============================================================================
+
+// time_now is a builtin — see module header
+
+/// Measure the wall-clock time of a function call (in seconds)
+fn timed<T>(f: () -> T) -> (T, Float) {
+  let start = time_now();
+  let result = f();
+  let elapsed = time_now() - start;
+  (result, elapsed)
 }
