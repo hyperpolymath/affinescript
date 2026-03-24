@@ -150,7 +150,11 @@ pub unsafe extern "C" fn reallocate(
 #[no_mangle]
 pub extern "C" fn alloc_stats() -> (usize, usize, usize) {
     unsafe {
-        (ALLOCATOR.allocated, ALLOCATOR.freed, ALLOCATOR.allocated - ALLOCATOR.freed)
+        (
+            ALLOCATOR.allocated,
+            ALLOCATOR.freed,
+            ALLOCATOR.allocated - ALLOCATOR.freed,
+        )
     }
 }
 

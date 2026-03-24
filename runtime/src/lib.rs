@@ -27,16 +27,16 @@ extern crate alloc as std_alloc;
 
 pub mod alloc;
 pub mod effects;
-pub mod panic;
 pub mod ffi;
+pub mod panic;
 
 #[cfg(feature = "gc")]
 pub mod gc;
 
 /// Re-exports for generated code
 pub mod prelude {
-    pub use crate::effects::{Evidence, Handler, resume};
     pub use crate::alloc::{allocate, deallocate};
+    pub use crate::effects::{resume, Evidence, Handler};
 
     #[cfg(feature = "gc")]
     pub use crate::gc::{Gc, GcCell};
