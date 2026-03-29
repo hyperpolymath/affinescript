@@ -157,8 +157,7 @@ impl Hash for Int {
 
 impl Display for Int {
   pub fn to_string(ref self) -> String {
-    // TODO: Implement actual int-to-string conversion
-    return "int";
+    return int_to_string(*self);
   }
 }
 

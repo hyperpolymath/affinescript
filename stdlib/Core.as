@@ -15,8 +15,20 @@ pub fn const[A, B](x: A, own y: B) -> A {
   return x;
 }
 
-// TODO: Function composition and flip require lambda syntax
-// which is not yet fully supported by the parser
+/// Function composition: (f >> g)(x) = g(f(x))
+pub fn compose[A, B, C](f: A -> B, g: B -> C) -> (A -> C) {
+  return fn(x: A) -> C { g(f(x)) };
+}
+
+/// Flip argument order: flip(f)(a, b) = f(b, a)
+pub fn flip[A, B, C](f: (A, B) -> C) -> ((B, A) -> C) {
+  return fn(b: B, a: A) -> C { f(a, b) };
+}
+
+/// Apply a function to a value (pipe operator)
+pub fn pipe[A, B](x: A, f: A -> B) -> B {
+  return f(x);
+}
 
 // Comparison operators
 
