@@ -150,6 +150,16 @@ let rec eval (env : env) (expr : expr) : value result =
     Ok (VArray (Array.of_list vals))
 
   | ExprRecord er ->
+    (* Start with spread base if present *)
+    let* base_fields = match er.er_spread with
+      | Some spread_expr ->
+        let* spread_val = eval env spread_expr in
+        begin match spread_val with
+          | VRecord fields -> Ok fields
+          | _ -> Error (TypeMismatch "Spread operator requires a record")
+        end
+      | None -> Ok []
+    in
     let* field_vals = List.fold_right (fun (id, expr_opt) acc ->
       let* fields = acc in
       match expr_opt with
@@ -161,7 +171,12 @@ let rec eval (env : env) (expr : expr) : value result =
         let* v = lookup_env id.name env in
         Ok ((id.name, v) :: fields)
     ) er.er_fields (Ok []) in
-    Ok (VRecord field_vals)
+    (* Merge: explicit fields override spread fields *)
+    let explicit_names = List.map fst field_vals in
+    let remaining_base = List.filter (fun (n, _) ->
+      not (List.mem n explicit_names)
+    ) base_fields in
+    Ok (VRecord (field_vals @ remaining_base))
 
   | ExprField (base, field) ->
     let* base_val = eval env base in
@@ -200,17 +215,110 @@ let rec eval (env : env) (expr : expr) : value result =
     let _ = type_id in  (* Ignore type part for now *)
     Ok (VVariant (variant_id.name, None))
 
-  | ExprRowRestrict _ ->
-    Error (RuntimeError "Row restriction not supported at runtime")
+  | ExprRowRestrict (base, field) ->
+    let* base_val = eval env base in
+    begin match base_val with
+      | VRecord fields ->
+        let filtered = List.filter (fun (n, _) -> n <> field.name) fields in
+        Ok (VRecord filtered)
+      | _ -> Error (TypeMismatch "Row restriction requires a record")
+    end
 
-  | ExprHandle _ ->
-    Error (RuntimeError "Effect handlers not yet implemented")
+  | ExprHandle eh ->
+    (* Evaluate the body expression. If it performs an effect via
+       PerformEffect, we match against the handler arms.
+       HandlerReturn arms match the normal return value.
+       HandlerOp arms match performed effects. *)
+    begin match eval env eh.eh_body with
+      | Ok v ->
+        (* Normal return — look for a HandlerReturn arm *)
+        let return_arm = List.find_opt (fun arm ->
+          match arm with HandlerReturn _ -> true | _ -> false
+        ) eh.eh_handlers in
+        begin match return_arm with
+          | Some (HandlerReturn (pat, body)) ->
+            let* bindings = match_pattern pat v in
+            let env' = extend_env_list bindings env in
+            eval env' body
+          | _ -> Ok v  (* No return handler — pass through *)
+        end
+      | Error (PerformEffect (op_name, args)) ->
+        (* Effect performed — find matching HandlerOp arm *)
+        let op_arm = List.find_opt (fun arm ->
+          match arm with
+          | HandlerOp (id, _, _) -> id.name = op_name
+          | _ -> false
+        ) eh.eh_handlers in
+        begin match op_arm with
+          | Some (HandlerOp (_, pats, body)) ->
+            (* Bind effect arguments to handler parameters.
+               The last parameter is conventionally the resume continuation,
+               but for now we bind a simple identity closure. *)
+            let arg_vals = match args with
+              | [single] -> [single]
+              | multiple -> [VTuple multiple]
+            in
+            let resume_fn = VBuiltin ("resume", fun resume_args ->
+              match resume_args with
+              | [v] -> Ok v
+              | _ -> Ok VUnit
+            ) in
+            let all_vals = arg_vals @ [resume_fn] in
+            let bindings = List.fold_left2 (fun acc pat v ->
+              match acc with
+              | Ok bs ->
+                begin match match_pattern pat v with
+                  | Ok new_bs -> Ok (new_bs @ bs)
+                  | Error e -> Error e
+                end
+              | Error e -> Error e
+            ) (Ok []) pats (List.filteri (fun i _ -> i < List.length pats) all_vals) in
+            let* bindings = bindings in
+            let env' = extend_env_list bindings env in
+            eval env' body
+          | _ -> Error (RuntimeError ("Unhandled effect: " ^ op_name))
+        end
+      | Error e -> Error e
+    end
 
-  | ExprResume _ ->
-    Error (RuntimeError "Resume not yet implemented")
+  | ExprResume arg_opt ->
+    (* Resume is only meaningful inside an effect handler. At the top
+       level it's a no-op that returns the argument or unit. *)
+    begin match arg_opt with
+      | Some e -> eval env e
+      | None -> Ok VUnit
+    end
 
-  | ExprTry _ ->
-    Error (RuntimeError "Try/catch not yet implemented")
+  | ExprTry et ->
+    (* Evaluate the body block. If it returns an error, match against
+       catch arms. Always run finally block if present. *)
+    let body_result = eval_block env et.et_body in
+    let catch_result = match body_result with
+      | Ok v -> Ok v
+      | Error (RuntimeError msg) ->
+        begin match et.et_catch with
+          | Some arms ->
+            (* Wrap the error as a variant for pattern matching *)
+            let err_val = VVariant ("RuntimeError", Some (VString msg)) in
+            eval_match_arms env err_val arms
+          | None -> Error (RuntimeError msg)
+        end
+      | Error (PatternMatchFailure) ->
+        begin match et.et_catch with
+          | Some arms ->
+            let err_val = VVariant ("PatternMatchFailure", None) in
+            eval_match_arms env err_val arms
+          | None -> Error PatternMatchFailure
+        end
+      | Error e -> Error e
+    in
+    (* Run finally block if present (result is discarded) *)
+    begin match et.et_finally with
+      | Some finally_blk ->
+        let _ = eval_block env finally_blk in
+        catch_result
+      | None -> catch_result
+    end
 
   | ExprUnsafe ops ->
     (* Evaluate unsafe operations - for now, just evaluate contained expressions *)
@@ -650,6 +758,79 @@ let create_initial_env () : env =
       match args with
       | [VInt code] -> exit code
       | _ -> Error (TypeMismatch "exit expects Int")
+    ));
+
+    (* -- Directory operations ------------------------------------------------ *)
+    ("list_dir", VBuiltin ("list_dir", fun args ->
+      match args with
+      | [VString path] ->
+        (try
+          let handle = Unix.opendir path in
+          let entries = ref [] in
+          (try while true do
+            let entry = Unix.readdir handle in
+            if entry <> "." && entry <> ".." then
+              entries := entry :: !entries
+          done with End_of_file -> ());
+          Unix.closedir handle;
+          Ok (VVariant ("Ok", Some (VArray (Array.of_list
+            (List.rev_map (fun s -> VString s) !entries)))))
+        with
+        | Unix.Unix_error (_, _, msg) ->
+          Ok (VVariant ("Err", Some (VString ("list_dir: " ^ msg))))
+        | Sys_error msg ->
+          Ok (VVariant ("Err", Some (VString msg))))
+      | _ -> Error (TypeMismatch "list_dir expects String")
+    ));
+    ("create_dir", VBuiltin ("create_dir", fun args ->
+      match args with
+      | [VString path] ->
+        (try
+          Unix.mkdir path 0o755;
+          Ok (VVariant ("Ok", Some VUnit))
+        with
+        | Unix.Unix_error (_, _, msg) ->
+          Ok (VVariant ("Err", Some (VString ("create_dir: " ^ msg))))
+        | Sys_error msg ->
+          Ok (VVariant ("Err", Some (VString msg))))
+      | _ -> Error (TypeMismatch "create_dir expects String")
+    ));
+    ("remove_dir", VBuiltin ("remove_dir", fun args ->
+      match args with
+      | [VString path] ->
+        (try
+          Unix.rmdir path;
+          Ok (VVariant ("Ok", Some VUnit))
+        with
+        | Unix.Unix_error (_, _, msg) ->
+          Ok (VVariant ("Err", Some (VString ("remove_dir: " ^ msg))))
+        | Sys_error msg ->
+          Ok (VVariant ("Err", Some (VString msg))))
+      | _ -> Error (TypeMismatch "remove_dir expects String")
+    ));
+    ("setenv", VBuiltin ("setenv", fun args ->
+      match args with
+      | [VString name; VString value] ->
+        (try
+          Unix.putenv name value;
+          Ok (VVariant ("Ok", Some VUnit))
+        with
+        | Unix.Unix_error (_, _, msg) ->
+          Ok (VVariant ("Err", Some (VString ("setenv: " ^ msg)))))
+      | _ -> Error (TypeMismatch "setenv expects (String, String)")
+    ));
+    ("chdir", VBuiltin ("chdir", fun args ->
+      match args with
+      | [VString path] ->
+        (try
+          Unix.chdir path;
+          Ok (VVariant ("Ok", Some VUnit))
+        with
+        | Unix.Unix_error (_, _, msg) ->
+          Ok (VVariant ("Err", Some (VString ("chdir: " ^ msg))))
+        | Sys_error msg ->
+          Ok (VVariant ("Err", Some (VString msg))))
+      | _ -> Error (TypeMismatch "chdir expects String")
     ));
 
     (* -- Time --------------------------------------------------------------- *)

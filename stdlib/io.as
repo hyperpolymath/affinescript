@@ -106,27 +106,14 @@ fn file_size(path: String) -> Result<Int, String> {
 
 // is_directory is a builtin — see module header
 
-/// List directory contents
-///
-/// Note: Not yet implemented — requires a runtime builtin for readdir().
-/// Returns Err until the builtin is available.
-fn list_dir(path: String) -> Result<[String], String> {
-  Err("list_dir requires a runtime builtin (not yet implemented)")
-}
+/// List directory contents (builtin — returns sorted entries, excluding . and ..)
+extern fn list_dir(path: String) -> Result<[String], String>;
 
-/// Create directory
-///
-/// Note: Not yet implemented — requires a runtime builtin for mkdir().
-fn create_dir(path: String) -> Result<(), String> {
-  Err("create_dir requires a runtime builtin (not yet implemented)")
-}
+/// Create directory with permissions 0o755
+extern fn create_dir(path: String) -> Result<(), String>;
 
-/// Remove directory
-///
-/// Note: Not yet implemented — requires a runtime builtin for rmdir().
-fn remove_dir(path: String) -> Result<(), String> {
-  Err("remove_dir requires a runtime builtin (not yet implemented)")
-}
+/// Remove an empty directory
+extern fn remove_dir(path: String) -> Result<(), String>;
 
 // ============================================================================
 // Path Operations
@@ -236,18 +223,10 @@ fn path_stem(path: String) -> String {
 // getenv, getcwd, exit are builtins — see module header
 
 /// Set environment variable
-///
-/// Note: Not yet implemented — requires a runtime builtin for setenv().
-fn setenv(name: String, value: String) -> Result<(), String> {
-  Err("setenv requires a runtime builtin (not yet implemented)")
-}
+extern fn setenv(name: String, value: String) -> Result<(), String>;
 
 /// Change current working directory
-///
-/// Note: Not yet implemented — requires a runtime builtin for chdir().
-fn chdir(path: String) -> Result<(), String> {
-  Err("chdir requires a runtime builtin (not yet implemented)")
-}
+extern fn chdir(path: String) -> Result<(), String>;
 
 // ============================================================================
 // Input Operations
