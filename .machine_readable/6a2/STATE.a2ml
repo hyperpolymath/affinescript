@@ -1,15 +1,34 @@
 # SPDX-License-Identifier: PMPL-1.0-or-later
 # STATE.a2ml — Project state checkpoint
-# Converted from STATE.scm on 2026-03-21
 
 [metadata]
 project = "affinescript"
 version = "0.1.0"
-last-updated = "2026-01-04"
+last-updated = "2026-03-29"
 status = "active"
 
 [project-context]
 name = "affinescript"
-completion-percentage = 80
-phase = "interpreter-implementation"
+completion-percentage = 85
+phase = "lsp-phase-b"
 tagline = "Rust-inspired language with affine types, dependent types, row polymorphism, and extensible effects"
+
+[components]
+lexer = "complete"
+parser = "complete"
+type-checker = "98%"
+borrow-checker = "95%"
+interpreter = "85%"
+wasm-codegen = "75%"
+julia-codegen = "exists"
+lsp-phase-a = "complete"
+lsp-phase-b = "in-progress"
+lsp-phase-c = "pending"
+lsp-phase-d = "pending"
+stdlib = "43 stubs"
+
+[stats]
+compiler-loc = 12424
+compiler-modules = 35
+lsp-files = 5
+test-files = 54
