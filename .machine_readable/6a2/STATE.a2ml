@@ -9,7 +9,7 @@ status = "active"
 
 [project-context]
 name = "affinescript"
-completion-percentage = 85
+completion-percentage = 92
 phase = "lsp-phase-b"
 tagline = "Rust-inspired language with affine types, dependent types, row polymorphism, and extensible effects"
 
@@ -18,14 +18,14 @@ lexer = "complete"
 parser = "complete"
 type-checker = "98%"
 borrow-checker = "95%"
-interpreter = "85%"
-wasm-codegen = "75%"
+interpreter = "95%"
+wasm-codegen = "90%"
 julia-codegen = "exists"
 lsp-phase-a = "complete"
 lsp-phase-b = "in-progress"
 lsp-phase-c = "pending"
 lsp-phase-d = "pending"
-stdlib = "43 stubs"
+stdlib = "95% (5 stubs remain as extern builtins)"
 
 [stats]
 compiler-loc = 12424
