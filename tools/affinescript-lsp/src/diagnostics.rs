@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0 OR MIT
-// Copyright 2024 AffineScript Contributors
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2024-2026 Jonathan D.A. Jewell (hyperpolymath)
 
 //! Diagnostics
 //!

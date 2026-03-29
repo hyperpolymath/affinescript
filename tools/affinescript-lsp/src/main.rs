@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
-// SPDX-License-Identifier: Apache-2.0 OR MIT
-// Copyright 2024 AffineScript Contributors
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2024-2026 Jonathan D.A. Jewell (hyperpolymath)
 
 //! AffineScript Language Server
 //!
@@ -107,14 +107,18 @@ impl Backend {
     fn parse_diagnostic_line(&self, line: &str, uri: &Url) -> Option<Diagnostic> {
         use regex::Regex;
 
-        // Regex for: "path/file.as:line:col: severity: message"
-        let re = Regex::new(r"(.+):(\d+):(\d+):\s*(error|warning|hint|info|note):\s*(.+)").ok()?;
+        // Regex for: "path/file.as:line:col: severity [CODE]: message"
+        // Error codes are optional — format: E0123, W0456, L0789
+        let re = Regex::new(
+            r"(.+):(\d+):(\d+):\s*(error|warning|hint|info|note)\s*(?:\[([A-Z]\d+)\])?:\s*(.+)"
+        ).ok()?;
         let caps = re.captures(line)?;
 
         let line = caps.get(2)?.as_str().parse::<u32>().ok()?.saturating_sub(1);
         let col = caps.get(3)?.as_str().parse::<u32>().ok()?.saturating_sub(1);
         let severity_str = caps.get(4)?.as_str();
-        let message = caps.get(5)?.as_str();
+        let error_code = caps.get(5).map(|m| m.as_str().to_string());
+        let message = caps.get(6)?.as_str();
 
         let severity = match severity_str {
             "error" => DiagnosticSeverity::ERROR,
@@ -136,7 +140,7 @@ impl Backend {
                 },
             },
             severity: Some(severity),
-            code: None,
+            code: error_code.map(NumberOrString::String),
             source: Some("affinescript".to_string()),
             message: message.to_string(),
             related_information: None,

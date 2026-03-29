@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0 OR MIT
-// Copyright 2024 AffineScript Contributors
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2024-2026 Jonathan D.A. Jewell (hyperpolymath)
 
 //! Request Handlers
 //!
@@ -40,7 +40,7 @@ pub fn hover(uri: &Url, position: Position, text: &str) -> Option<Hover> {
             start: position,
             end: Position {
                 line: position.line,
-                character: position.character + word.len() as u32,
+                character: position.character + utf16_len(&word),
             },
         }),
     })
@@ -82,7 +82,7 @@ pub fn completion(_uri: &Url, position: Position, text: &str) -> Vec<CompletionI
         None => return items,
     };
 
-    let col = position.character as usize;
+    let col = utf16_col_to_byte_offset(line, position.character as usize);
     let prefix = if col > 0 && col <= line.len() {
         &line[..col]
     } else {
@@ -177,13 +177,14 @@ pub fn format(uri: &Url, text: &str, options: &FormattingOptions) -> Vec<TextEdi
     // Basic indentation-based formatting
     let lines: Vec<&str> = text.lines().collect();
     let mut formatted_lines = Vec::new();
-    let mut indent_level = 0;
+    let mut indent_level: usize = 0;
     let indent_str = if options.insert_spaces {
         " ".repeat(options.tab_size as usize)
     } else {
         "\t".to_string()
     };
 
+    let line_count = lines.len();
     for line in lines {
         let trimmed = line.trim();
 
@@ -215,7 +216,7 @@ pub fn format(uri: &Url, text: &str, options: &FormattingOptions) -> Vec<TextEdi
         range: Range {
             start: Position { line: 0, character: 0 },
             end: Position {
-                line: lines.len() as u32,
+                line: line_count as u32,
                 character: 0,
             },
         },
@@ -243,24 +244,29 @@ pub fn document_symbols(_uri: &Url, text: &str) -> Vec<DocumentSymbol> {
     let lines: Vec<&str> = text.lines().collect();
 
     for (line_num, line) in lines.iter().enumerate() {
-        let trimmed = line.trim();
+        let trimmed = line.trim_start();
+        // Byte offset of where trimmed content starts within the original line
+        let leading_bytes = line.len() - trimmed.len();
+        let leading_utf16 = utf16_len(&line[..leading_bytes]);
 
         // Match function definitions
         if trimmed.starts_with("fn ") {
             if let Some(name_start) = trimmed.find("fn ").map(|i| i + 3) {
                 if let Some(name_end) = trimmed[name_start..].find(|c: char| c == '(' || c.is_whitespace()) {
                     let name = &trimmed[name_start..name_start + name_end];
+                    let name_start_utf16 = leading_utf16 + utf16_len(&trimmed[..name_start]);
+                    let name_end_utf16 = name_start_utf16 + utf16_len(name);
                     symbols.push(DocumentSymbol {
                         name: name.to_string(),
                         detail: Some(trimmed.to_string()),
                         kind: SymbolKind::FUNCTION,
                         range: Range {
                             start: Position { line: line_num as u32, character: 0 },
-                            end: Position { line: line_num as u32, character: line.len() as u32 },
+                            end: Position { line: line_num as u32, character: utf16_len(line) },
                         },
                         selection_range: Range {
-                            start: Position { line: line_num as u32, character: name_start as u32 },
-                            end: Position { line: line_num as u32, character: (name_start + name.len()) as u32 },
+                            start: Position { line: line_num as u32, character: name_start_utf16 },
+                            end: Position { line: line_num as u32, character: name_end_utf16 },
                         },
                         children: None,
                         tags: None,
@@ -272,20 +278,22 @@ pub fn document_symbols(_uri: &Url, text: &str) -> Vec<DocumentSymbol> {
 
         // Match type definitions
         if trimmed.starts_with("type ") || trimmed.starts_with("struct ") || trimmed.starts_with("enum ") {
-            let keyword_len = if trimmed.starts_with("type ") { 5 } else { if trimmed.starts_with("struct ") { 7 } else { 5 } };
+            let keyword_len = if trimmed.starts_with("type ") { 5 } else if trimmed.starts_with("struct ") { 7 } else { 5 };
             if let Some(name_end) = trimmed[keyword_len..].find(|c: char| c == '=' || c == '{' || c.is_whitespace()) {
-                let name = &trimmed[keyword_len..keyword_len + name_end].trim();
+                let name = trimmed[keyword_len..keyword_len + name_end].trim();
+                let name_start_utf16 = leading_utf16 + utf16_len(&trimmed[..keyword_len]);
+                let name_end_utf16 = name_start_utf16 + utf16_len(name);
                 symbols.push(DocumentSymbol {
                     name: name.to_string(),
                     detail: Some(trimmed.to_string()),
                     kind: SymbolKind::STRUCT,
                     range: Range {
                         start: Position { line: line_num as u32, character: 0 },
-                        end: Position { line: line_num as u32, character: line.len() as u32 },
+                        end: Position { line: line_num as u32, character: utf16_len(line) },
                     },
                     selection_range: Range {
-                        start: Position { line: line_num as u32, character: keyword_len as u32 },
-                        end: Position { line: line_num as u32, character: (keyword_len + name.len()) as u32 },
+                        start: Position { line: line_num as u32, character: name_start_utf16 },
+                        end: Position { line: line_num as u32, character: name_end_utf16 },
                     },
                     children: None,
                     tags: None,
@@ -319,6 +327,26 @@ pub fn inlay_hints(_uri: &Url, _range: Range, _text: &str) -> Vec<InlayHint> {
     vec![]
 }
 
+/// Convert a UTF-16 column offset to a byte offset within a line.
+/// LSP positions use UTF-16 code units; Rust strings are UTF-8.
+fn utf16_col_to_byte_offset(line: &str, utf16_col: usize) -> usize {
+    let mut utf16_offset = 0;
+    let mut byte_offset = 0;
+    for c in line.chars() {
+        if utf16_offset >= utf16_col {
+            break;
+        }
+        utf16_offset += c.len_utf16();
+        byte_offset += c.len_utf8();
+    }
+    byte_offset
+}
+
+/// Count UTF-16 code units in a string (for converting byte lengths to LSP positions).
+fn utf16_len(s: &str) -> u32 {
+    s.chars().map(|c| c.len_utf16()).sum::<usize>() as u32
+}
+
 /// Get word at position in text
 fn get_word_at_position(text: &str, position: Position) -> Option<String> {
     let lines: Vec<&str> = text.lines().collect();
@@ -327,13 +355,13 @@ fn get_word_at_position(text: &str, position: Position) -> Option<String> {
     }
 
     let line = lines[position.line as usize];
-    let col = position.character as usize;
+    let col = utf16_col_to_byte_offset(line, position.character as usize);
 
     if col >= line.len() {
         return None;
     }
 
-    // Find word boundaries
+    // Find word boundaries (byte offsets within line)
     let start = line[..col]
         .rfind(|c: char| !c.is_alphanumeric() && c != '_')
         .map(|i| i + 1)
