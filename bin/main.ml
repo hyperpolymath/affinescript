@@ -81,6 +81,7 @@ let check_file json path =
     let diags = ref [] in
     let add d = diags := d :: !diags in
     let symbols_table = ref None in
+    let resolve_refs = ref [] in
     begin try
       let prog = Affinescript.Parse_driver.parse_file path in
       let loader_config = Affinescript.Module_loader.default_config () in
@@ -89,8 +90,9 @@ let check_file json path =
       | Error (e, span) ->
         add (Affinescript.Json_output.of_resolve_error e span)
       | Ok (resolve_ctx, _type_ctx) ->
-        (* Phase B: capture symbol table for goto-def/references. *)
+        (* Phase B+C: capture symbol table and use-site references. *)
         symbols_table := Some resolve_ctx.symbols;
+        resolve_refs := List.rev resolve_ctx.references;
         (match Affinescript.Typecheck.check_program resolve_ctx.symbols prog with
         | Error e ->
           add (Affinescript.Json_output.of_type_error e)
@@ -108,9 +110,11 @@ let check_file json path =
       let success = List.for_all (fun (d : Affinescript.Json_output.diagnostic) ->
         match d.severity with Affinescript.Json_output.Error -> false | _ -> true
       ) final_diags in
-      (* TODO: collect references from resolve pass for find-references.
-         For now, emit symbols only — references added when resolve tracks use-sites. *)
-      Affinescript.Json_output.emit_report_v2 ~success final_diags symbols [];
+      (* Convert resolve references to json_output references. *)
+      let json_refs = List.map (fun (r : Affinescript.Resolve.reference) ->
+        Affinescript.Json_output.{ ref_symbol_id = r.ref_symbol_id; ref_span = r.ref_span }
+      ) !resolve_refs in
+      Affinescript.Json_output.emit_report_v2 ~success final_diags symbols json_refs;
       if success then `Ok () else `Error (false, "")
     | None ->
       json_finish final_diags)

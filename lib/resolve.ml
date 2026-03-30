@@ -23,11 +23,21 @@ type resolve_error =
 (** Resolution result *)
 type 'a result = ('a, resolve_error * Span.t) Result.t
 
+(** A recorded reference: a use-site for a symbol.
+    Collected during resolution for the LSP's find-references feature. *)
+type reference = {
+  ref_symbol_id : Symbol.symbol_id;
+  ref_span : Span.t;
+}
+
 (** Resolution context *)
 type context = {
   symbols : Symbol.t;
   current_module : string list;
   imports : (string * Symbol.symbol) list;
+  mutable references : reference list;
+  (** Phase C: all use-site references collected during resolution.
+      Each entry records which symbol was referenced and where. *)
 }
 
 (* Helper for Result bind *)
@@ -39,21 +49,32 @@ let create_context () : context =
     symbols = Symbol.create ();
     current_module = [];
     imports = [];
+    references = [];
   }
+
+(** Record a use-site reference for a symbol (Phase C: find-references). *)
+let record_reference (ctx : context) (sym : Symbol.symbol) (span : Span.t) : unit =
+  ctx.references <- { ref_symbol_id = sym.sym_id; ref_span = span } :: ctx.references
 
 (** Resolve an identifier *)
 let resolve_ident (ctx : context) (id : ident) : Symbol.symbol result =
   let name = id.name in
   match Symbol.lookup ctx.symbols name with
-  | Some sym -> Ok sym
+  | Some sym ->
+    record_reference ctx sym id.span;
+    Ok sym
   | None -> Error (UndefinedVariable id, id.span)
 
 (** Resolve a type identifier *)
 let resolve_type_ident (ctx : context) (id : ident) : Symbol.symbol result =
   let name = id.name in
   match Symbol.lookup ctx.symbols name with
-  | Some sym when sym.sym_kind = Symbol.SKType -> Ok sym
-  | Some sym when sym.sym_kind = Symbol.SKTypeVar -> Ok sym
+  | Some sym when sym.sym_kind = Symbol.SKType ->
+    record_reference ctx sym id.span;
+    Ok sym
+  | Some sym when sym.sym_kind = Symbol.SKTypeVar ->
+    record_reference ctx sym id.span;
+    Ok sym
   | Some _ -> Error (UndefinedType id, id.span)
   | None -> Error (UndefinedType id, id.span)
 
@@ -61,7 +82,9 @@ let resolve_type_ident (ctx : context) (id : ident) : Symbol.symbol result =
 let resolve_effect_ident (ctx : context) (id : ident) : Symbol.symbol result =
   let name = id.name in
   match Symbol.lookup ctx.symbols name with
-  | Some sym when sym.sym_kind = Symbol.SKEffect -> Ok sym
+  | Some sym when sym.sym_kind = Symbol.SKEffect ->
+    record_reference ctx sym id.span;
+    Ok sym
   | Some _ -> Error (UndefinedEffect id, id.span)
   | None -> Error (UndefinedEffect id, id.span)
 
@@ -432,7 +455,7 @@ let resolve_and_typecheck_module (loaded_mod : Module_loader.loaded_module)
     : (Symbol.t * Typecheck.context) result =
   let prog = Module_loader.get_program loaded_mod in
   let symbols = Symbol.create () in
-  let mod_ctx = { symbols; current_module = []; imports = [] } in
+  let mod_ctx = { symbols; current_module = []; imports = []; references = [] } in
 
   (* Resolve all declarations in the module *)
   let* () = List.fold_left (fun acc decl ->
