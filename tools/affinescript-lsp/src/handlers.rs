@@ -7,15 +7,37 @@
 
 use tower_lsp::lsp_types::*;
 
-/// Handle hover request
-pub fn hover(uri: &Url, position: Position, text: &str) -> Option<Hover> {
-    // Get the word at position
+/// Handle hover request — Phase B enhanced.
+///
+/// First checks the compiler's symbol table for type information.
+/// Falls back to keyword descriptions for language constructs.
+pub fn hover(
+    uri: &Url,
+    position: Position,
+    text: &str,
+    compiler_output: &crate::symbols::CompilerOutput,
+) -> Option<Hover> {
     let word = get_word_at_position(text, position)?;
 
-    // For now, provide basic hover information
-    // TODO: Integrate with type checker for accurate type information
+    // Phase B: try symbol table first for accurate type information.
+    if let Some(sym) = compiler_output.find_symbol_by_name(&word) {
+        return Some(Hover {
+            contents: HoverContents::Markup(MarkupContent {
+                kind: MarkupKind::Markdown,
+                value: sym.hover_text(),
+            }),
+            range: Some(Range {
+                start: position,
+                end: Position {
+                    line: position.line,
+                    character: position.character + utf16_len(&word),
+                },
+            }),
+        });
+    }
+
+    // Fall back to keyword hover for language constructs.
     let hover_text = match word.as_str() {
-        // Keywords
         "fn" => "Defines a function",
         "let" => "Binds a value to a variable",
         "type" => "Defines a type alias",
@@ -46,30 +68,54 @@ pub fn hover(uri: &Url, position: Position, text: &str) -> Option<Hover> {
     })
 }
 
-/// Handle goto definition
-pub fn goto_definition(_uri: &Url, _position: Position, _text: &str) -> Option<Location> {
-    // TODO: Phase 8 implementation
-    // - [ ] Parse document to AST
-    // - [ ] Find symbol at position
-    // - [ ] Look up definition in symbol table
-    // - [ ] Return location
-
-    None
+/// Handle goto definition — Phase B.
+///
+/// Looks up the word at the cursor position in the compiler's symbol table.
+/// If found, returns the definition location.
+pub fn goto_definition(
+    _uri: &Url,
+    position: Position,
+    text: &str,
+    compiler_output: &crate::symbols::CompilerOutput,
+) -> Option<Location> {
+    let word = get_word_at_position(text, position)?;
+    let sym = compiler_output.find_symbol_by_name(&word)?;
+    sym.to_location()
 }
 
-/// Handle find references
+/// Handle find references — Phase C.
+///
+/// Finds the symbol at the cursor position, then returns all reference
+/// locations from the compiler's reference index.
 pub fn find_references(
-    _uri: &Url,
-    _position: Position,
-    _text: &str,
-    _include_declaration: bool,
+    uri: &Url,
+    position: Position,
+    text: &str,
+    include_declaration: bool,
+    compiler_output: &crate::symbols::CompilerOutput,
 ) -> Vec<Location> {
-    // TODO: Phase 8 implementation
-    // - [ ] Find symbol at position
-    // - [ ] Search for all references in workspace
-    // - [ ] Optionally include declaration
+    let word = match get_word_at_position(text, position) {
+        Some(w) => w,
+        None => return vec![],
+    };
+    let sym = match compiler_output.find_symbol_by_name(&word) {
+        Some(s) => s,
+        None => return vec![],
+    };
 
-    vec![]
+    let mut locations: Vec<Location> = compiler_output
+        .find_references(sym.id)
+        .into_iter()
+        .filter_map(|r| r.to_location())
+        .collect();
+
+    if include_declaration {
+        if let Some(def_loc) = sym.to_location() {
+            locations.insert(0, def_loc);
+        }
+    }
+
+    locations
 }
 
 /// Handle completion
@@ -150,10 +196,7 @@ pub fn completion(_uri: &Url, position: Position, text: &str) -> Vec<CompletionI
 
 /// Handle rename
 pub fn prepare_rename(_uri: &Url, _position: Position, _text: &str) -> Option<PrepareRenameResponse> {
-    // TODO: Phase 8 implementation
-    // - [ ] Check if position is on renameable symbol
-    // - [ ] Return symbol range
-
+    // Phase C: requires symbol table + reference index in --json output
     None
 }
 
@@ -164,11 +207,7 @@ pub fn rename(
     _new_name: &str,
     _text: &str,
 ) -> Option<WorkspaceEdit> {
-    // TODO: Phase 8 implementation
-    // - [ ] Find all references
-    // - [ ] Generate text edits for each
-    // - [ ] Handle cross-file renames
-
+    // Phase C: requires reference index for cross-file renames
     None
 }
 
@@ -226,15 +265,7 @@ pub fn format(uri: &Url, text: &str, options: &FormattingOptions) -> Vec<TextEdi
 
 /// Handle code actions
 pub fn code_actions(_uri: &Url, _range: Range, _diagnostics: &[Diagnostic]) -> Vec<CodeAction> {
-    // TODO: Phase 8 implementation
-    // - [ ] Generate quick fixes for diagnostics
-    // - [ ] Add refactoring actions
-    //   - [ ] Extract function
-    //   - [ ] Extract variable
-    //   - [ ] Inline variable
-    //   - [ ] Add type annotation
-    //   - [ ] Convert to/from effect style
-
+    // Phase D: requires fix suggestions in --json output
     vec![]
 }
 
@@ -308,22 +339,13 @@ pub fn document_symbols(_uri: &Url, text: &str) -> Vec<DocumentSymbol> {
 
 /// Handle signature help
 pub fn signature_help(_uri: &Url, _position: Position, _text: &str) -> Option<SignatureHelp> {
-    // TODO: Phase 8 implementation
-    // - [ ] Determine if inside function call
-    // - [ ] Get function signature
-    // - [ ] Highlight active parameter
-
+    // Phase B: requires function signature data in --json output
     None
 }
 
 /// Handle inlay hints
 pub fn inlay_hints(_uri: &Url, _range: Range, _text: &str) -> Vec<InlayHint> {
-    // TODO: Phase 8 implementation
-    // - [ ] Find bindings without explicit types
-    // - [ ] Add type hints
-    // - [ ] Add parameter name hints at call sites
-    // - [ ] Add lifetime hints (if not obvious)
-
+    // Phase D: requires inferred type data in --json output
     vec![]
 }
 
@@ -384,9 +406,5 @@ fn get_line_at_position(text: &str, line_num: u32) -> Option<&str> {
     text.lines().nth(line_num as usize)
 }
 
-// TODO: Phase 8 enhancements
-// - [ ] Connect to AffineScript compiler for full semantic analysis
-// - [ ] Implement caching for performance
-// - [ ] Add semantic tokens for syntax highlighting
-// - [ ] Add call hierarchy
-// - [ ] Add type hierarchy
+// Phase B: semantic tokens, call hierarchy, type hierarchy (requires compiler integration)
+// Phase D: caching for performance (once --json output includes enough data)
