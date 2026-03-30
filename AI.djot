@@ -17,7 +17,7 @@ Additional artefact:
 
 ## Repository Roots
 
-- Local repository root: `/var/mnt/eclipse/repos`
+- Local repository root: `/var$REPOS_DIR`
 - Remote mapping: `https://github.com/hyperpolymath/<name>`
 - Repository names are lowercase; dots (`.`) are replaced with hyphens (`-`).
 - If a repository is missing locally, check the remote and synchronize before proceeding.
@@ -26,10 +26,10 @@ Additional artefact:
 
 - Include `ai-cli-crash-capture/` and `contractiles/` from this template in all new repositories.
 - Mirror all 6SCM files into `.machine_readable/6scm/`.
-- Before generating code, inspect `/var/mnt/eclipse/repos/proven` for the current Idris “unbreakable” library status.
+- Before generating code, inspect `/var$REPOS_DIR/proven` for the current Idris “unbreakable” library status.
 - If the project depends on the unbreakable Idris library, add an *Idris Inside* badge to the repository.
-- When new bindings are required, create them under `/var/mnt/eclipse/repos/proven` using the naming pattern `idris2-zig-<language>`.
-- If new code implies additional unbreakable Idris modules, add them to `/var/mnt/eclipse/repos/proven` and update binders across all supported languages.
+- When new bindings are required, create them under `/var$REPOS_DIR/proven` using the naming pattern `idris2-zig-<language>`.
+- If new code implies additional unbreakable Idris modules, add them to `/var$REPOS_DIR/proven` and update binders across all supported languages.
 
 ## Language Policy
 

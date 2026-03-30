@@ -1,161 +1,177 @@
 = AffineScript
+// SPDX-License-Identifier: PMPL-1.0-or-later
 
 image:https://img.shields.io/badge/License-PMPL--1.0-blue.svg[License: PMPL-1.0,link="https://github.com/hyperpolymath/palimpsest-license"]
-image:https://img.shields.io/badge/Philosophy-Palimpsest-indigo.svg[Palimpsest,link="https://github.com/hyperpolymath/palimpsest-license"]
-
 
 :toc: macro
 :toclevels: 3
 :icons: font
 :source-highlighter: rouge
 
-A Rust-inspired programming language combining affine types, dependent types, row polymorphism, and extensible effects—compiling to WebAssembly with no garbage collector.
+**The language where protocol correctness is free.**
 
-[.lead]
-AffineScript brings the safety of linear types, the expressiveness of dependent types, and the modularity of algebraic effects into a cohesive, practical language.
-
-**📖 New to this repository?** See link:NAVIGATION.adoc[Navigation Guide] for directory structure and quick links.
+AffineScript is the only language that combines affine types, quantitative type theory, row polymorphism, and algebraic effects in a single practical systems language. This intersection makes it possible to write code where the compiler proves your protocol states, resource lifecycles, and effect boundaries are correct -- with syntax that doesn't feel like a theorem prover.
 
 toc::[]
 
-== Overview
+== Why AffineScript?
 
-AffineScript is designed for systems programming where correctness matters. It combines ideas from:
+Every language gets some of these right. None gets all four:
 
-* **Rust** — ownership, borrowing, no GC
-* **Idris/Agda** — dependent types, totality checking
-* **PureScript/Koka** — row polymorphism, algebraic effects
-* **Linear Haskell** — quantitative type theory
-
-=== Key Features
-
-[cols="1,2"]
+[cols="1,1,1,1,1"]
 |===
-|Feature |Description
+|Feature |Rust |Idris 2 |Koka |**AffineScript**
 
-|**Affine Types**
-|Track resource usage with quantities: `0` (erased), `1` (linear), `ω` (unrestricted)
+|Affine/linear types
+|Ownership
+|QTT (0/1/w)
+|No
+|**QTT (0/1/w) + ownership**
 
-|**Dependent Types**
-|Types that depend on values—length-indexed vectors, refinement types
+|Dependent types
+|No
+|Full
+|No
+|**Refinements + type-level nats**
 
-|**Row Polymorphism**
-|Extensible records with `{x: Int, ..r}` syntax for flexible data structures
+|Row polymorphism
+|No
+|No
+|Row effects
+|**Records + effects**
 
-|**Extensible Effects**
-|User-defined effects with `effect` declarations and `handle`/`resume`
+|Algebraic effects
+|No
+|No
+|Full
+|**Full with handlers**
 
-|**Ownership**
-|`own`, `ref`, `mut` modifiers for memory safety without GC
-
-|**Totality Checking**
-|Mark functions as `total` to prove termination
-
-|**WebAssembly Target**
-|Compiles to WASM for portable, high-performance execution
+|Compiles to WASM
+|Yes
+|Scheme/C
+|C/JS
+|**Yes (native target)**
 |===
 
-== Try It Now! 🚀
+The practical consequence: AffineScript can express things no other language can type-check.
 
-**Browser Playground**: The AffineScript interpreter runs directly in your browser via js_of_ocaml!
+== The Killer Feature: Correct-by-Construction Protocols
 
-* **Try it**: link:https://github.com/hyperpolymath/affinescript-playground[affinescript-playground]
-* **No installation needed** - open `test.html` in any browser
-* **Full interpreter** - all features work client-side
-* **Interactive** - edit code and see results instantly
+AffineScript's type system proves protocol correctness at compile time. No runtime checks, no test coverage gaps, no "I forgot to close the connection" bugs.
 
-Example code you can try:
-[source,affinescript]
-----
-// Exception handling
-try {
-  10 / 0
-} catch {
-  DivisionByZero => 42
-}
-
-// Recursion
-fn factorial(n: Int) -> Int {
-  if n <= 1 { 1 } else { n * factorial(n - 1) }
-}
-factorial(5)  // Returns: 120
-----
-
-== Language Examples
-
-=== Hello World with Effects
-
-[source,affinescript]
-----
-effect IO {
-  fn print(s: String);
-  fn println(s: String);
-}
-
-fn main() -> () / IO {
-  println("Hello, AffineScript!");
-}
-----
-
-=== Ownership and Resource Safety
+=== Type-Safe Connection Lifecycle
 
 [source,affinescript]
 ----
 type File = own { fd: Int }
 
-fn open(path: ref String) -> Result[own File, IOError] / IO + Exn[IOError] {
-  Ok(File { fd: 42 })
+fn open(path: ref String) -> own File / IO + Exn[IOError] {
+  File { fd: 42 }
 }
 
-fn read(file: ref File) -> Result[String, IOError] / IO {
-  // Borrows file — doesn't consume it
-  Ok("file contents")
+fn read(file: ref File) -> String / IO {
+  "contents"
 }
 
-fn close(file: own File) -> Result[(), IOError] / IO {
-  // Consumes file — can't use it after this
-  Ok(())
+fn close(1 file: own File) -> () / IO {
+  // file is consumed -- can't use it after this
 }
 
-// Safe resource handling with RAII pattern
-fn withFile[T](
-  path: ref String,
-  action: (ref File) -> Result[T, IOError] / IO
-) -> Result[T, IOError] / IO {
-  let file = open(path)?;
-  let result = action(ref file);
-  close(file)?;
-  result
+// The compiler PROVES:
+// - file is opened before read
+// - file is not used after close
+// - file is always closed (affine: must be consumed)
+fn process(path: ref String) -> String / IO + Exn[IOError] {
+  let file = open(path);       // file: own File
+  let data = read(ref file);   // borrows file
+  close(file);                 // consumes file
+  // file is GONE here -- using it is a compile error
+  data
 }
 ----
 
-=== Row Polymorphism
+=== Protocol State Machines in the Type System
 
 [source,affinescript]
 ----
-// Works on any record that has a 'name' field
+// Row polymorphism tracks connection state as type-level fields
+type Connection[..state] = own {
+  socket: own Socket,
+  ..state
+}
+
+// State transition: Unauthenticated -> Authenticated
+fn authenticate(
+  1 conn: own Connection[{status: Unauthenticated}]
+) -> Connection[{status: Authenticated, user: String}] / Session + IO {
+  let creds = recv();
+  // conn is consumed (linear), new state returned
+  Connection { socket: conn.socket, status: Authenticated, user: creds.user }
+}
+
+// Can ONLY be called on authenticated connections -- enforced by types
+fn query(
+  conn: ref Connection[{status: Authenticated, ..r}],
+  sql: ref String
+) -> Result[Rows, DbError] / IO {
+  // ...
+}
+----
+
+**What the compiler proves:**
+
+* You cannot query before authenticating (type mismatch)
+* You cannot authenticate twice (affine: connection consumed on first auth)
+* You cannot use a connection after closing it (affine: consumed)
+* Every connection state transition is explicit and type-checked
+
+=== Effect-Tracked I/O
+
+[source,affinescript]
+----
+effect IO {
+  fn print(s: String);
+  fn read_line() -> String;
+}
+
+effect State[S] {
+  fn get() -> S;
+  fn put(s: S);
+}
+
+// The type signature tells you EXACTLY what this function can do
+fn interactive_counter() -> Int / IO + State[Int] {
+  let input = read_line();
+  let current = get();
+  let next = current + 1;
+  put(next);
+  print("Count: " ++ int_to_string(next));
+  next
+}
+
+// Pure functions are PROVEN pure -- no hidden I/O
+fn add(a: Int, b: Int) -> Int / Pure {
+  a + b
+}
+----
+
+=== Row-Polymorphic Records
+
+[source,affinescript]
+----
+// Works on ANY record with a 'name' field
 fn greet[..r](person: {name: String, ..r}) -> String / Pure {
   "Hello, " ++ person.name
 }
 
-// Extend records while preserving other fields
-fn fullName[..r](
-  person: {first: String, last: String, ..r}
-) -> {first: String, last: String, fullName: String, ..r} / Pure {
-  {fullName: person.first ++ " " ++ person.last, ..person}
-}
+let alice = {name: "Alice", age: 30, role: "Engineer"};
+let bob = {name: "Bob", department: "Sales"};
 
-fn main() -> () / Pure {
-  let alice = {name: "Alice", age: 30, role: "Engineer"};
-  let bob = {name: "Bob", department: "Sales"};
-
-  // Both work despite different record shapes
-  let greeting1 = greet(alice);  // ✓
-  let greeting2 = greet(bob);    // ✓
-}
+greet(alice);  // "Hello, Alice" -- extra fields preserved
+greet(bob);    // "Hello, Bob"   -- different shape, same function
 ----
 
-=== Dependent Types: Length-Indexed Vectors
+=== Dependent Types
 
 [source,affinescript]
 ----
@@ -163,17 +179,16 @@ type Vec[n: Nat, T: Type] =
   | Nil : Vec[0, T]
   | Cons(head: T, tail: Vec[n, T]) : Vec[n + 1, T]
 
-// Can only be called on non-empty vectors — enforced by types!
+// Can ONLY be called on non-empty vectors
 total fn head[n: Nat, T](v: Vec[n + 1, T]) -> T / Pure {
   match v {
     Cons(h, _) => h
   }
 }
 
-// Concatenate: result length is sum of input lengths
+// Result length is provably the sum of input lengths
 total fn append[n: Nat, m: Nat, T](
-  a: Vec[n, T],
-  b: Vec[m, T]
+  a: Vec[n, T], b: Vec[m, T]
 ) -> Vec[n + m, T] / Pure {
   match a {
     Nil => b,
@@ -182,109 +197,51 @@ total fn append[n: Nat, m: Nat, T](
 }
 ----
 
-== Project Status
+== Where This Matters
 
-=== Implementation Progress
-
-[cols="2,1,3"]
+[cols="1,2,2"]
 |===
-|Component |Status |Details
+|Domain |What AffineScript Proves |What Others Can't
 
-|**Lexer**
-|✅ Complete
-|sedlex-based, Unicode support, full test coverage
+|**Network protocols**
+|Protocol states enforced at compile time
+|Rust needs manual typestate via PhantomData
 
-|**Parser Grammar**
-|✅ Complete
-|615-line Menhir grammar covering entire syntax
+|**Database drivers**
+|Connection lifecycle type-checked (open/query/close ordering)
+|All other languages check at runtime
 
-|**Abstract Syntax Tree**
-|✅ Complete
-|395 lines representing all language constructs
+|**Cryptographic APIs**
+|Keys used exactly once, zeroised after use
+|Rust uses Drop trait (runtime, not compile-time)
 
-|**Error Handling**
-|✅ Complete
-|Rich diagnostics with 50+ error codes, colored output
+|**File format parsers**
+|Linear consumption proves complete parsing
+|Rust needs unsafe for zero-copy parsing
 
-|**CLI Interface**
-|✅ Complete
-|`lex`, `parse`, `check`, `eval`, `compile`, `fmt`, `lint`, `repl`
+|**Plugin systems**
+|Row polymorphism for extensible interfaces
+|Most languages need trait objects or interfaces
 
-|**Name Resolution**
-|✅ Complete
-|Module loader with stdlib imports, scope analysis
-
-|**Type Checker**
-|✅ 98% Complete
-|Bidirectional inference with effect system, subsumption
-
-|**Effect System**
-|✅ Complete
-|Pure/impure separation, effect polymorphism, safety enforcement
-
-|**Borrow Checker**
-|✅ 95% Complete
-|Use-after-move detection, ownership tracking
-
-|**Trait System**
-|🚧 70% Complete
-|Trait registry, impl validation, method resolution
-
-|**Interpreter**
-|✅ 85% Complete
-|Pattern matching, control flow, basic effect handlers
-
-|**Code Generation**
-|🚧 75% Complete
-|WASM IR, binary encoder, WASI I/O runtime
-
-|**Standard Library**
-|🚧 65% Complete
-|Core, Result, Option, Math, Traits, Effects modules
-
-|**Formatter**
-|✅ Complete
-|AST-based pretty printer with configurable style
-
-|**Linter**
-|✅ Complete
-|4 lint rules: unused vars, missing effects, dead code, naming
-
-|**IDE Tooling**
-|✅ Complete
-|VSCode extension, LSP server, Tree-sitter grammar
+|**Effect-safe libraries**
+|Effect types prevent unexpected I/O in pure code
+|Only Koka matches this, but without ownership
 |===
 
-=== What Works Today
+== Getting Started
 
-The AffineScript compiler is **85% complete** with a working end-to-end toolchain:
+=== Prerequisites
 
-**✅ Complete Features:**
+* OCaml 5.1+
+* Dune 3.14+
+* opam packages: `sedlex`, `menhir`, `ppx_deriving`, `cmdliner`, `yojson`
 
-* **Full Language Frontend** — Lex, parse, name resolution with module system
-* **Type Checking** — Bidirectional inference with effect tracking and subsumption
-* **Effect System** — Pure/impure separation enforced at compile time
-* **Borrow Checking** — Use-after-move detection with ownership tracking
-* **WebAssembly Compilation** — Compiles `.as` files to `.wasm` with WASI I/O
-* **Tree-Walking Interpreter** — Run AffineScript code directly with `eval`
-* **Interactive REPL** — Read-eval-print loop for experimentation
-* **Code Formatting** — AST-based pretty printer (`fmt` command)
-* **Static Analysis** — Linter with 4 rules (`lint` command)
-* **IDE Support** — VSCode extension, LSP server, Tree-sitter grammar
-
-**🚧 In Progress:**
-
-* **Trait System** (70%) — Method resolution and generic trait bounds
-* **Standard Library** (65%) — Expanding Core, Collections, and I/O modules
-* **Effect Handlers** — Delimited continuations for full `resume` support
+=== Build and Run
 
 [source,bash]
 ----
-# Tokenize a file
-dune exec affinescript -- lex examples/hello.as
-
-# Parse and display AST
-dune exec affinescript -- parse examples/ownership.as
+# Build the compiler
+dune build
 
 # Type check a file
 dune exec affinescript -- check examples/hello.as
@@ -301,148 +258,113 @@ dune exec affinescript -- fmt examples/hello.as
 # Lint for code quality
 dune exec affinescript -- lint examples/hello.as
 
-# Start REPL
-dune exec affinescript -- repl
+# JSON diagnostics (for editors/CI)
+dune exec affinescript -- check --json examples/hello.as
 ----
 
-== IDE Support
+== Project Status
 
-AffineScript has **complete IDE tooling** for a professional development experience:
+AffineScript is in active development. The frontend is solid; the backend and advanced type features are in progress.
 
-=== VSCode Extension
+[cols="2,1,3"]
+|===
+|Component |Status |Notes
 
-Located in `editors/vscode/`:
+|Lexer + Parser
+|Complete
+|Menhir grammar, sedlex tokenizer, full syntax coverage
 
-* **Syntax Highlighting** — TextMate grammar with full language support
-* **Commands** — Check, eval, compile, format with keyboard shortcuts
-* **LSP Integration** — Real-time diagnostics powered by affinescript-lsp
-* **Language Configuration** — Auto-closing brackets, comment toggling
+|Name Resolution
+|Complete
+|Module loader, scope analysis, import system
 
-**Installation:**
-[source,bash]
-----
-cd editors/vscode
-npm install
-code --install-extension .
-----
+|Type Checker
+|Working
+|Bidirectional inference, unification, let-polymorphism. Quantities and effects not yet integrated into inference.
 
-=== Language Server (LSP)
+|Effect System
+|Declarations only
+|Effect types parsed and tracked; handler semantics not yet in interpreter or backends
 
-Located in `tools/affinescript-lsp/`:
+|Quantity Checking
+|Separate pass
+|Usage tracking works; needs integration with type checker for full QTT
 
-* **Real-time Diagnostics** — Type errors, borrow errors shown as you type
-* **Powered by Rust** — Uses tower-lsp for LSP protocol
-* **Compiler Integration** — Calls `affinescript check` for analysis
+|Borrow Checker
+|Partial
+|Affine tracking at runtime in interpreter; compile-time checking in progress
 
-**Build:**
-[source,bash]
-----
-cd tools/affinescript-lsp
-cargo build --release
-----
+|Trait System
+|Skeletal
+|Registry and lookup work; generic trait resolution needs unification integration
 
-=== Tree-sitter Grammar
+|Interpreter
+|75%
+|Closures, pattern matching, builtins. No effect handlers or exceptions yet.
 
-Located in `editors/tree-sitter-affinescript/`:
+|WASM Codegen
+|30%
+|Basic arithmetic, functions, closures. Types collapse to i32; records missing.
 
-* **Incremental Parsing** — Fast syntax analysis for modern editors
-* **Syntax Highlighting** — Queries for Neovim, Emacs, Helix
-* **Full Coverage** — All AffineScript constructs supported
+|Julia Codegen
+|10%
+|Phase 1 MVP skeleton only
 
-**Installation (Neovim):**
-[source,lua]
-----
-require('nvim-treesitter.configs').setup {
-  parser_install_dir = "~/.local/share/nvim/site/parser",
-  ensure_installed = { "affinescript" }
-}
-----
+|LSP Server
+|Phase A done
+|JSON diagnostics via `--json`; go-to-definition and references pending
 
-=== Code Quality Tools
+|Formatter + Linter
+|Complete
+|AST-based formatter; 4 lint rules
+|===
 
-* **Formatter** (`affinescript fmt`) — AST-based pretty printer
-* **Linter** (`affinescript lint`) — 4 static analysis rules:
-  ** L001: Unused variables
-  ** L002: Missing effect annotations
-  ** L003: Dead code after return
-  ** L004: Naming convention violations
+== Design Principles
 
-== Building
-
-=== Prerequisites
-
-* OCaml 5.1+
-* Dune 3.0+
-* opam packages: `sedlex`, `menhir`, `ppx_deriving`, `cmdliner`, `alcotest`
-
-=== Commands
-
-[source,bash]
-----
-# Build
-dune build
-
-# Run tests
-dune runtest
-
-# Format code
-dune fmt
-
-# Generate documentation
-dune build @doc
-
-# Run compiler
-dune exec affinescript -- <command> <file>
-----
+. **Protocol correctness is free** -- if it compiles, the protocol is correct
+. **Types as documentation** -- the signature tells you what a function can do and what it can't
+. **No runtime cost for safety** -- affine types and effects are erased at compile time
+. **Composable** -- row polymorphism and effects compose without boilerplate
+. **Honest defaults** -- functions are partial unless marked `total`; effects are explicit
 
 == Repository Structure
 
 [source]
 ----
 affinescript/
-├── lib/                    # Core compiler library
-│   ├── ast.ml              # Abstract syntax tree (395 lines)
-│   ├── token.ml            # Token definitions (222 lines)
-│   ├── lexer.ml            # Lexer — sedlex-based (323 lines)
-│   ├── parser.mly          # Parser — Menhir grammar (615 lines)
-│   ├── parse.ml            # Parser driver
-│   ├── span.ml             # Source location tracking
-│   └── error.ml            # Diagnostics and error handling
-├── bin/                    # CLI executable
-│   └── main.ml             # Command-line interface
-├── test/                   # Test suite
-│   ├── test_lexer.ml       # Lexer tests (~145 cases)
-│   └── test_parser.ml      # Parser tests (~80 cases)
-├── examples/               # Example programs
-│   ├── hello.as            # Basic IO effect
-│   ├── ownership.as        # Resource management
-│   ├── rows.as             # Row polymorphism
-│   └── vectors.as          # Dependent types
-├── docs/                   # Documentation
-│   └── wiki/               # Compiler & language documentation
-└── affinescript-spec.md    # Complete language specification (53KB)
++-- lib/                    # Core compiler (OCaml)
+|   +-- ast.ml              # Abstract syntax tree
+|   +-- lexer.ml            # Sedlex tokenizer
+|   +-- parser.mly          # Menhir grammar
+|   +-- typecheck.ml        # Bidirectional type checker
+|   +-- unify.ml            # Type/row/effect unification
+|   +-- quantity.ml          # QTT quantity tracking
+|   +-- types.ml            # Internal type representation
+|   +-- codegen.ml          # WASM code generation
+|   +-- interp.ml           # Tree-walking interpreter
+|   +-- json_output.ml      # JSON diagnostic output (LSP)
++-- bin/main.ml             # CLI (check, eval, compile, fmt, lint)
++-- tools/affinescript-lsp/  # Language server (Rust)
++-- editors/                # VSCode extension, Tree-sitter grammar
++-- test/                   # Golden tests, e2e fixtures
++-- docs/                   # Specification, guides, academic papers
++-- stdlib/                 # Standard library modules
++-- examples/               # Example programs
 ----
 
 == Documentation
 
-* `affinescript-spec.md` — Complete language specification
-* `docs/wiki/compiler/` — Compiler architecture and phase documentation
-* `docs/wiki/language-reference/` — Language feature guides
-* `docs/wiki/tutorials/` — Getting started guides
-
-== Design Philosophy
-
-. **Safety by default** — Ownership and effects make unsafe code explicit
-. **Types as documentation** — Dependent types encode invariants in the type system
-. **Composable abstractions** — Row polymorphism and effects compose cleanly
-. **No runtime cost for safety** — Linear types enable compile-time resource management
-. **Partial by default** — Functions may diverge unless marked `total`
+* `affinescript-spec.md` -- Complete language specification
+* `docs/wiki/compiler/` -- Compiler architecture
+* `docs/wiki/language-reference/` -- Language feature guides
+* `docs/academic/` -- Mechanised proofs (Agda, Coq, Lean)
 
 == License
 
-SPDX-License-Identifier: PMPL-1.0-or-later-or-later
+SPDX-License-Identifier: PMPL-1.0-or-later
 
 == See Also
 
 * link:ROADMAP.adoc[Development Roadmap]
+* link:EXPLAINME.adoc[Why should you believe these claims?]
 * link:affinescript-spec.md[Language Specification]

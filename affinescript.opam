@@ -31,6 +31,7 @@ depends: [
   "sexplib0" {>= "0.16"}
   "fmt" {>= "0.9"}
   "cmdliner" {>= "1.2"}
+  "yojson" {>= "2.1"}
   "alcotest" {>= "1.7" & with-test}
   "odoc" {>= "2.4" & with-doc}
 ]

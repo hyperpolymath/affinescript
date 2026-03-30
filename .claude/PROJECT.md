@@ -48,7 +48,7 @@ dune exec affinescript -- <command> <args>
 
 ## Language Specification
 
-The full language specification is at `/var/home/hyper/affinescript-spec.md`.
+The full language specification is at `/var$HOME/affinescript-spec.md`.
 
 Key language features:
 - **Partial by default**: Functions are partial unless marked `total`
