@@ -41,6 +41,7 @@ mod diagnostics;
 mod document;
 mod handlers;
 pub mod symbols;
+pub mod text_index;
 
 /// The AffineScript language server backend
 #[derive(Debug)]
@@ -323,6 +324,10 @@ impl LanguageServer for Backend {
 
         let uri = params.text_document.uri;
         let text = params.text_document.text;
+        let version = params.text_document.version;
+
+        // Store the document so handlers can access its text.
+        self.documents.open(uri.clone(), text.clone(), version);
 
         // Run type checker via --json
         let diagnostics = self.check_document(&uri, &text).await;
@@ -333,17 +338,28 @@ impl LanguageServer for Backend {
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
         let uri = params.text_document.uri;
+        let version = params.text_document.version;
 
-        // Get the latest text from changes
-        if let Some(change) = params.content_changes.last() {
-            let text = &change.text;
+        // Apply incremental edits to the stored document.
+        self.documents.apply_changes(&uri, version, params.content_changes.clone());
 
-            // Run type checker via --json
-            let diagnostics = self.check_document(&uri, text).await;
+        // Get the latest text from the document manager.
+        let text = match self.documents.get_text(&uri) {
+            Some(t) => t,
+            None => {
+                // Fallback: use the last change's full text if available.
+                match params.content_changes.last() {
+                    Some(change) => change.text.clone(),
+                    None => return,
+                }
+            }
+        };
 
-            // Publish diagnostics
-            self.client.publish_diagnostics(uri, diagnostics, None).await;
-        }
+        // Run type checker via --json
+        let diagnostics = self.check_document(&uri, &text).await;
+
+        // Publish diagnostics
+        self.client.publish_diagnostics(uri, diagnostics, None).await;
     }
 
     async fn did_close(&self, params: DidCloseTextDocumentParams) {
@@ -424,10 +440,34 @@ impl LanguageServer for Backend {
         }
     }
 
+    async fn prepare_rename(
+        &self,
+        params: TextDocumentPositionParams,
+    ) -> Result<Option<PrepareRenameResponse>> {
+        let uri = params.text_document.uri;
+        let position = params.position;
+
+        let text = match self.documents.get_text(&uri) {
+            Some(t) => t,
+            None => return Ok(None),
+        };
+
+        let co = self.compiler_output.lock().unwrap();
+        Ok(handlers::prepare_rename(&uri, position, &text, &co))
+    }
+
     async fn rename(&self, params: RenameParams) -> Result<Option<WorkspaceEdit>> {
-        // TODO: Phase C — requires reference index from --json
-        let _ = params;
-        Ok(None)
+        let uri = params.text_document_position.text_document.uri;
+        let position = params.text_document_position.position;
+        let new_name = params.new_name;
+
+        let text = match self.documents.get_text(&uri) {
+            Some(t) => t,
+            None => return Ok(None),
+        };
+
+        let co = self.compiler_output.lock().unwrap();
+        Ok(handlers::rename(&uri, position, &new_name, &text, &co))
     }
 
     async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {

@@ -69,8 +69,8 @@ pub struct Document {
     pub version: i32,
     /// Line offsets (byte offset of each line start)
     line_offsets: Vec<usize>,
-    // TODO: Add parsed AST cache
-    // TODO: Add type-checked state cache
+    // Phase B: Add parsed AST cache
+    // Phase B: Add type-checked state cache
 }
 
 impl Document {
@@ -175,9 +175,6 @@ fn compute_line_offsets(text: &str) -> Vec<usize> {
     offsets
 }
 
-// TODO: Phase 8 implementation
-// - [ ] Add AST caching
-// - [ ] Add incremental parsing
-// - [ ] Add type information caching
-// - [ ] Track diagnostics per document
-// - [ ] Implement dependency tracking
+// Phase B: AST caching, incremental parsing, type information caching
+// Phase C: Dependency tracking for cross-file references
+// Phase D: Per-document diagnostic tracking for quickfix suggestions

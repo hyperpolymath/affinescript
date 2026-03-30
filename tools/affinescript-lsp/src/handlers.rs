@@ -3,9 +3,26 @@
 
 //! Request Handlers
 //!
-//! Implementation of LSP request handlers.
+//! Implementation of LSP request handlers for AffineScript.
+//!
+//! ## Phase C: go-to-definition, find-references, rename
+//!
+//! These features operate in two tiers:
+//!
+//! 1. **Compiler-backed** — When the AffineScript compiler emits v2 JSON with
+//!    `symbols` and `references` arrays, the handlers use `CompilerOutput` for
+//!    accurate, scope-aware results.
+//!
+//! 2. **Text-index fallback** — When compiler output is empty (e.g. the
+//!    compiler binary is older or unavailable), the handlers fall back to
+//!    `TextIndex`, which scans source text for definition keywords and
+//!    identifier occurrences.  This is less precise (no scope resolution)
+//!    but still returns useful results for single-file editing.
 
+use std::collections::HashMap;
 use tower_lsp::lsp_types::*;
+
+use crate::text_index::{self, TextIndex};
 
 /// Handle hover request — Phase B enhanced.
 ///
@@ -68,25 +85,41 @@ pub fn hover(
     })
 }
 
-/// Handle goto definition — Phase B.
+/// Handle goto definition — Phase B + Phase C fallback.
 ///
 /// Looks up the word at the cursor position in the compiler's symbol table.
-/// If found, returns the definition location.
+/// If the compiler hasn't provided symbols (v1 JSON or unavailable), falls
+/// back to the text-based index which scans for `fn`, `let`, `type`, etc.
 pub fn goto_definition(
-    _uri: &Url,
+    uri: &Url,
     position: Position,
     text: &str,
     compiler_output: &crate::symbols::CompilerOutput,
 ) -> Option<Location> {
     let word = get_word_at_position(text, position)?;
-    let sym = compiler_output.find_symbol_by_name(&word)?;
-    sym.to_location()
+
+    // Tier 1: compiler-backed symbol table.
+    if let Some(sym) = compiler_output.find_symbol_by_name(&word) {
+        return sym.to_location();
+    }
+
+    // Tier 2: text-index fallback for single-file go-to-definition.
+    let index = TextIndex::build(text);
+    let def = index.find_definition(&word)?;
+    Some(Location {
+        uri: uri.clone(),
+        range: Range {
+            start: Position { line: def.line, character: def.col_start },
+            end: Position { line: def.line, character: def.col_end },
+        },
+    })
 }
 
 /// Handle find references — Phase C.
 ///
 /// Finds the symbol at the cursor position, then returns all reference
-/// locations from the compiler's reference index.
+/// locations.  Uses the compiler's reference index when available, otherwise
+/// falls back to text-index scanning.
 pub fn find_references(
     uri: &Url,
     position: Position,
@@ -98,24 +131,48 @@ pub fn find_references(
         Some(w) => w,
         None => return vec![],
     };
-    let sym = match compiler_output.find_symbol_by_name(&word) {
-        Some(s) => s,
-        None => return vec![],
-    };
 
-    let mut locations: Vec<Location> = compiler_output
-        .find_references(sym.id)
-        .into_iter()
-        .filter_map(|r| r.to_location())
-        .collect();
+    // Tier 1: compiler-backed reference index.
+    if let Some(sym) = compiler_output.find_symbol_by_name(&word) {
+        let refs = compiler_output.find_references(sym.id);
+        if !refs.is_empty() || compiler_output.symbols.len() > 0 {
+            let mut locations: Vec<Location> = refs
+                .into_iter()
+                .filter_map(|r| r.to_location())
+                .collect();
 
-    if include_declaration {
-        if let Some(def_loc) = sym.to_location() {
-            locations.insert(0, def_loc);
+            if include_declaration {
+                if let Some(def_loc) = sym.to_location() {
+                    locations.insert(0, def_loc);
+                }
+            }
+
+            return locations;
         }
     }
 
-    locations
+    // Tier 2: text-index fallback.
+    let index = TextIndex::build(text);
+    if index.find_definition(&word).is_none() && index.find_occurrences(&word).is_empty() {
+        return vec![];
+    }
+
+    let occurrences = if include_declaration {
+        index.find_occurrences(&word)
+    } else {
+        index.find_usages_only(&word)
+    };
+
+    occurrences
+        .into_iter()
+        .map(|occ| Location {
+            uri: uri.clone(),
+            range: Range {
+                start: Position { line: occ.line, character: occ.col_start },
+                end: Position { line: occ.line, character: occ.col_end },
+            },
+        })
+        .collect()
 }
 
 /// Handle completion
@@ -194,21 +251,149 @@ pub fn completion(_uri: &Url, position: Position, text: &str) -> Vec<CompletionI
     items
 }
 
-/// Handle rename
-pub fn prepare_rename(_uri: &Url, _position: Position, _text: &str) -> Option<PrepareRenameResponse> {
-    // Phase C: requires symbol table + reference index in --json output
-    None
+/// Handle prepare-rename — Phase C.
+///
+/// Checks whether the symbol at the cursor position is renameable (i.e. it is
+/// a user-defined identifier, not a keyword or builtin type).  Returns the
+/// range of the symbol name so the editor can highlight it in the rename UI.
+///
+/// Uses the compiler symbol table when available, otherwise the text index.
+pub fn prepare_rename(
+    uri: &Url,
+    position: Position,
+    text: &str,
+    compiler_output: &crate::symbols::CompilerOutput,
+) -> Option<PrepareRenameResponse> {
+    let word = get_word_at_position(text, position)?;
+
+    // Keywords and builtins are not renameable.
+    if !text_index::is_renameable(&word) {
+        return None;
+    }
+
+    // Tier 1: check compiler symbol table.
+    if let Some(sym) = compiler_output.find_symbol_by_name(&word) {
+        // The symbol exists in the compiler output — it's renameable.
+        let range = Range {
+            start: Position {
+                line: sym.start_line.saturating_sub(1),
+                character: sym.start_col.saturating_sub(1),
+            },
+            end: Position {
+                line: sym.end_line.saturating_sub(1),
+                character: sym.end_col.saturating_sub(1),
+            },
+        };
+        return Some(PrepareRenameResponse::Range(range));
+    }
+
+    // Tier 2: text-index fallback — find the identifier at the cursor.
+    let index = TextIndex::build(text);
+    let occ = index.find_at_position(position.line, position.character)?;
+
+    // Only allow rename if this name has a definition in the file.
+    // (Otherwise we'd be renaming something we can't find the source of.)
+    if index.find_definition(&occ.name).is_some() || index.find_occurrences(&occ.name).len() > 1 {
+        Some(PrepareRenameResponse::Range(Range {
+            start: Position { line: occ.line, character: occ.col_start },
+            end: Position { line: occ.line, character: occ.col_end },
+        }))
+    } else {
+        None
+    }
 }
 
-/// Handle rename
+/// Handle rename — Phase C.
+///
+/// Finds all occurrences of the symbol at the cursor position and produces
+/// a `WorkspaceEdit` that replaces every occurrence with the new name.
+///
+/// When the compiler provides v2 JSON output with cross-file references,
+/// the rename can span multiple files.  In text-index fallback mode, the
+/// rename is limited to the current document.
 pub fn rename(
-    _uri: &Url,
-    _position: Position,
-    _new_name: &str,
-    _text: &str,
+    uri: &Url,
+    position: Position,
+    new_name: &str,
+    text: &str,
+    compiler_output: &crate::symbols::CompilerOutput,
 ) -> Option<WorkspaceEdit> {
-    // Phase C: requires reference index for cross-file renames
-    None
+    let word = get_word_at_position(text, position)?;
+
+    // Validate the new name is a legal identifier.
+    if !text_index::is_valid_identifier(new_name) {
+        return None;
+    }
+
+    // Cannot rename keywords or builtins.
+    if !text_index::is_renameable(&word) {
+        return None;
+    }
+
+    // Tier 1: compiler-backed rename (supports cross-file).
+    if let Some(sym) = compiler_output.find_symbol_by_name(&word) {
+        let refs = compiler_output.find_references(sym.id);
+        if !refs.is_empty() || compiler_output.symbols.len() > 0 {
+            let mut changes: HashMap<Url, Vec<TextEdit>> = HashMap::new();
+
+            // Add the definition site.
+            if let Some(def_loc) = sym.to_location() {
+                changes
+                    .entry(def_loc.uri.clone())
+                    .or_default()
+                    .push(TextEdit {
+                        range: def_loc.range,
+                        new_text: new_name.to_string(),
+                    });
+            }
+
+            // Add all reference sites.
+            for r in &refs {
+                if let Some(ref_loc) = r.to_location() {
+                    changes
+                        .entry(ref_loc.uri.clone())
+                        .or_default()
+                        .push(TextEdit {
+                            range: ref_loc.range,
+                            new_text: new_name.to_string(),
+                        });
+                }
+            }
+
+            return Some(WorkspaceEdit {
+                changes: Some(changes),
+                document_changes: None,
+                change_annotations: None,
+            });
+        }
+    }
+
+    // Tier 2: text-index fallback (single file only).
+    let index = TextIndex::build(text);
+    let occurrences = index.find_occurrences(&word);
+    if occurrences.is_empty() {
+        return None;
+    }
+
+    let edits: Vec<TextEdit> = occurrences
+        .into_iter()
+        .map(|occ| TextEdit {
+            range: Range {
+                start: Position { line: occ.line, character: occ.col_start },
+                end: Position { line: occ.line, character: occ.col_end },
+            },
+            new_text: new_name.to_string(),
+        })
+        .collect();
+
+    let mut changes = HashMap::new();
+    changes.insert(uri.clone(), edits);
+
+    Some(WorkspaceEdit {
+        changes: Some(changes),
+        document_changes: None,
+        change_annotations: None,
+    })
 }
 
 /// Handle document formatting
@@ -408,3 +593,239 @@ fn get_line_at_position(text: &str, line_num: u32) -> Option<&str> {
 
 // Phase B: semantic tokens, call hierarchy, type hierarchy (requires compiler integration)
 // Phase D: caching for performance (once --json output includes enough data)
+
+// ---------------------------------------------------------------------------
+// Tests — Phase C handler integration tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::symbols::CompilerOutput;
+
+    /// Helper: create a file URI from a dummy path.
+    fn test_uri() -> Url {
+        Url::parse("file:///tmp/test.as").unwrap()
+    }
+
+    /// Helper: empty compiler output (simulates no v2 JSON available).
+    fn empty_co() -> CompilerOutput {
+        CompilerOutput::default()
+    }
+
+    // -- goto_definition (text-index fallback) --
+
+    #[test]
+    fn goto_definition_finds_function() {
+        let src = "fn greet(name: String) -> Unit {}\nlet x = greet(\"hi\")";
+        let uri = test_uri();
+        let co = empty_co();
+        // Position on "greet" in the second line (col 8 = "g" of "greet").
+        let pos = Position { line: 1, character: 8 };
+        let result = goto_definition(&uri, pos, src, &co);
+        assert!(result.is_some(), "goto_definition should find 'greet'");
+        let loc = result.unwrap();
+        assert_eq!(loc.range.start.line, 0, "definition should be on line 0");
+        assert_eq!(loc.range.start.character, 3, "definition should start at col 3 (after 'fn ')");
+    }
+
+    #[test]
+    fn goto_definition_finds_variable() {
+        let src = "let counter = 0\nlet y = counter + 1";
+        let uri = test_uri();
+        let co = empty_co();
+        // Position on "counter" in the second line.
+        let pos = Position { line: 1, character: 8 };
+        let result = goto_definition(&uri, pos, src, &co);
+        assert!(result.is_some(), "goto_definition should find 'counter'");
+        let loc = result.unwrap();
+        assert_eq!(loc.range.start.line, 0);
+    }
+
+    #[test]
+    fn goto_definition_returns_none_for_keyword() {
+        let src = "fn greet() -> Unit {}";
+        let uri = test_uri();
+        let co = empty_co();
+        // Position on "fn" keyword.
+        let pos = Position { line: 0, character: 0 };
+        let result = goto_definition(&uri, pos, src, &co);
+        // "fn" is a keyword — no user-defined definition for it.
+        // The text index won't have a definition named "fn" in its definitions list
+        // (definitions extract the name AFTER the keyword).
+        assert!(result.is_none());
+    }
+
+    // -- find_references (text-index fallback) --
+
+    #[test]
+    fn find_references_returns_all_occurrences() {
+        let src = "let x = 1\nlet y = x + 2\nlet z = x * 3";
+        let uri = test_uri();
+        let co = empty_co();
+        // Position on "x" in the first line.
+        let pos = Position { line: 0, character: 4 };
+        let refs = find_references(&uri, pos, src, true, &co);
+        // x appears 3 times: definition + 2 usages.
+        assert_eq!(refs.len(), 3, "should find 3 references to 'x'");
+    }
+
+    #[test]
+    fn find_references_excludes_declaration() {
+        let src = "let x = 1\nlet y = x + 2\nlet z = x * 3";
+        let uri = test_uri();
+        let co = empty_co();
+        let pos = Position { line: 0, character: 4 };
+        let refs = find_references(&uri, pos, src, false, &co);
+        // x usages only (not the definition).
+        assert_eq!(refs.len(), 2, "should find 2 usage references to 'x'");
+    }
+
+    // -- prepare_rename --
+
+    #[test]
+    fn prepare_rename_accepts_user_symbol() {
+        let src = "fn greet() -> Unit {}";
+        let uri = test_uri();
+        let co = empty_co();
+        // Position on "greet".
+        let pos = Position { line: 0, character: 4 };
+        let result = prepare_rename(&uri, pos, src, &co);
+        assert!(result.is_some(), "should allow renaming 'greet'");
+    }
+
+    #[test]
+    fn prepare_rename_rejects_keyword() {
+        let src = "fn greet() -> Unit {}";
+        let uri = test_uri();
+        let co = empty_co();
+        // Position on "fn".
+        let pos = Position { line: 0, character: 0 };
+        let result = prepare_rename(&uri, pos, src, &co);
+        assert!(result.is_none(), "should not allow renaming 'fn'");
+    }
+
+    // -- rename --
+
+    #[test]
+    fn rename_replaces_all_occurrences() {
+        let src = "let x = 1\nlet y = x + 2\nlet z = x * 3";
+        let uri = test_uri();
+        let co = empty_co();
+        let pos = Position { line: 0, character: 4 };
+        let result = rename(&uri, pos, "count", src, &co);
+        assert!(result.is_some(), "rename should produce a WorkspaceEdit");
+        let edit = result.unwrap();
+        let changes = edit.changes.unwrap();
+        let edits = changes.get(&uri).expect("should have edits for the test URI");
+        assert_eq!(edits.len(), 3, "should replace all 3 occurrences of 'x'");
+        for e in edits {
+            assert_eq!(e.new_text, "count");
+        }
+    }
+
+    #[test]
+    fn rename_rejects_invalid_new_name() {
+        let src = "let x = 1";
+        let uri = test_uri();
+        let co = empty_co();
+        let pos = Position { line: 0, character: 4 };
+        // "123" is not a valid identifier.
+        let result = rename(&uri, pos, "123", src, &co);
+        assert!(result.is_none(), "should reject invalid identifier '123'");
+    }
+
+    #[test]
+    fn rename_rejects_keyword_as_new_name() {
+        let src = "let x = 1";
+        let uri = test_uri();
+        let co = empty_co();
+        let pos = Position { line: 0, character: 4 };
+        // "fn" is a keyword.
+        let result = rename(&uri, pos, "fn", src, &co);
+        assert!(result.is_none(), "should reject keyword 'fn' as new name");
+    }
+
+    // -- compiler-backed tests (v2 JSON symbols) --
+
+    #[test]
+    fn goto_definition_uses_compiler_output_when_available() {
+        let json_str = r#"{
+            "version": 2,
+            "diagnostics": [],
+            "success": true,
+            "symbols": [
+                {
+                    "id": 1,
+                    "name": "add",
+                    "kind": "function",
+                    "file": "/tmp/test.as",
+                    "start_line": 1,
+                    "start_col": 4,
+                    "end_line": 1,
+                    "end_col": 7,
+                    "type": "(Int, Int) -> Int"
+                }
+            ],
+            "references": {
+                "1": [
+                    {"file": "/tmp/test.as", "start_line": 5, "start_col": 10, "end_line": 5, "end_col": 13}
+                ]
+            }
+        }"#;
+        let json: serde_json::Value = serde_json::from_str(json_str).unwrap();
+        let co = crate::symbols::CompilerOutput::from_json(&json);
+
+        let src = "fn add(a: Int, b: Int) -> Int { a + b }\n\nlet result = add(1, 2)";
+        let uri = test_uri();
+        // Position on "add" in the usage site.
+        let pos = Position { line: 2, character: 14 };
+        let result = goto_definition(&uri, pos, src, &co);
+        assert!(result.is_some(), "should find compiler-backed definition");
+        let loc = result.unwrap();
+        // Compiler reports 1-based line/col; to_location converts to 0-based.
+        assert_eq!(loc.range.start.line, 0);
+        assert_eq!(loc.range.start.character, 3);
+    }
+
+    #[test]
+    fn find_references_uses_compiler_output_when_available() {
+        let json_str = r#"{
+            "version": 2,
+            "diagnostics": [],
+            "success": true,
+            "symbols": [
+                {
+                    "id": 1,
+                    "name": "add",
+                    "kind": "function",
+                    "file": "/tmp/test.as",
+                    "start_line": 1,
+                    "start_col": 4,
+                    "end_line": 1,
+                    "end_col": 7
+                }
+            ],
+            "references": {
+                "1": [
+                    {"file": "/tmp/test.as", "start_line": 3, "start_col": 10, "end_line": 3, "end_col": 13},
+                    {"file": "/tmp/test.as", "start_line": 5, "start_col": 1, "end_line": 5, "end_col": 4}
+                ]
+            }
+        }"#;
+        let json: serde_json::Value = serde_json::from_str(json_str).unwrap();
+        let co = crate::symbols::CompilerOutput::from_json(&json);
+
+        let src = "fn add(a: Int, b: Int) -> Int { a + b }";
+        let uri = test_uri();
+        let pos = Position { line: 0, character: 4 };
+
+        // With declaration included.
+        let refs = find_references(&uri, pos, src, true, &co);
+        assert_eq!(refs.len(), 3, "2 refs + 1 declaration = 3");
+
+        // Without declaration.
+        let refs = find_references(&uri, pos, src, false, &co);
+        assert_eq!(refs.len(), 2, "2 refs only");
+    }
+}

@@ -168,18 +168,14 @@ impl AfsDiagnostic {
     }
 }
 
-/// Convert compiler diagnostics to LSP diagnostics
-pub fn convert_diagnostics(_diagnostics: Vec<AfsDiagnostic>) -> Vec<Diagnostic> {
-    // TODO: Phase 8 implementation
-    // - [ ] Connect to compiler diagnostic output
-    // - [ ] Convert spans correctly
-    // - [ ] Handle multi-file diagnostics
-
-    vec![]
+/// Convert compiler diagnostics to LSP diagnostics.
+///
+/// Note: As of Phase A, the LSP parses JSON output from `affinescript check --json`
+/// directly in `Backend::parse_json_diagnostics` (main.rs).  This function and the
+/// types above remain available for in-process compiler integration in the future.
+pub fn convert_diagnostics(diagnostics: Vec<AfsDiagnostic>) -> Vec<Diagnostic> {
+    diagnostics.iter().map(|d| d.to_lsp()).collect()
 }
 
-// TODO: Phase 8 implementation
-// - [ ] Import actual diagnostic types from compiler
-// - [ ] Implement diagnostic code links
-// - [ ] Add diagnostic tags (deprecated, unnecessary)
-// - [ ] Support diagnostic quickfixes
+// Phase B: Add diagnostic code description links (e.g. affinescript.dev/errors/E0101)
+// Phase D: Add diagnostic tags (deprecated, unnecessary) and quickfix suggestions
