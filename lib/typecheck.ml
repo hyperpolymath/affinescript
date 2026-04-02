@@ -24,6 +24,66 @@
 open Types
 open Ast
 
+let string_of_binary_op = function
+  | OpAdd -> "+"
+  | OpSub -> "-"
+  | OpMul -> "*"
+  | OpDiv -> "/"
+  | OpMod -> "%"
+  | OpEq -> "=="
+  | OpNe -> "!="
+  | OpLt -> "<"
+  | OpLe -> "<="
+  | OpGt -> ">"
+  | OpGe -> ">="
+  | OpAnd -> "&&"
+  | OpOr -> "||"
+  | OpBitAnd -> "&"
+  | OpBitOr -> "|"
+  | OpBitXor -> "^"
+  | OpShl -> "<<"
+  | OpShr -> ">>"
+
+let rec expr_summary (expr : expr) : string =
+  match expr with
+  | ExprVar id -> id.name
+  | ExprLit (LitBool (b, _)) -> string_of_bool b
+  | ExprLit (LitInt (i, _)) -> string_of_int i
+  | ExprLit (LitFloat (f, _)) -> string_of_float f
+  | ExprLit (LitChar (c, _)) -> Printf.sprintf "%c" c
+  | ExprLit (LitString (s, _)) -> Printf.sprintf "\"%s\"" s
+  | ExprLit (LitUnit _) -> "()"
+  | ExprBinary (l, op, r) ->
+    Printf.sprintf "(%s %s %s)" (expr_summary l) (string_of_binary_op op) (expr_summary r)
+  | ExprUnary (_, inner) -> expr_summary inner
+  | ExprApp (f, args) ->
+    let fdesc = expr_summary f in
+    let argsdesc = match args with
+      | [] -> ""
+      | hd :: _ -> expr_summary hd
+    in
+    Printf.sprintf "%s(%s...)" fdesc argsdesc
+  | ExprField (e, id) ->
+    Printf.sprintf "%s.%s" (expr_summary e) id.name
+  | ExprTuple _ -> "<tuple>"
+  | ExprRecord _ -> "<record>"
+  | ExprBlock _ -> "{...}"
+  | ExprIf _ -> "if(...)"
+  | ExprLet _ -> "let(...)"
+  | ExprMatch _ -> "match(...)"
+  | ExprRowRestrict _ -> "row_restrict"
+  | ExprTupleIndex _ -> "tuple_index"
+  | ExprIndex _ -> "index"
+  | ExprArray _ -> "array"
+  | ExprReturn _ -> "return"
+  | ExprTry _ -> "try"
+  | ExprHandle _ -> "handle"
+  | ExprResume _ -> "resume"
+  | ExprUnsafe _ -> "unsafe"
+  | ExprVariant (id, _) -> id.name
+  | ExprSpan (inner, _) -> expr_summary inner
+  | _ -> "<expr>"
+
 (** {1 Errors} *)
 
 (** Type checking error *)
@@ -523,6 +583,13 @@ let rec synth (ctx : context) (expr : expr) : ty result =
         let* () = unify_or_err then_ty else_ty in
         Ok then_ty
       | None ->
+        let () =
+          if ty_to_string then_ty <> ty_to_string ty_unit then
+            Format.eprintf "If without else returns %s; then=%s cond=%s\n%!"
+              (ty_to_string then_ty) (expr_summary ei_then) (expr_summary ei_cond)
+          else
+            ()
+        in
         (* No else branch: result is Unit *)
         let* () = unify_or_err then_ty ty_unit in
         Ok ty_unit
