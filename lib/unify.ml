@@ -220,6 +220,9 @@ let rec unify (t1 : ty) (t2 : ty) : unit result =
     if nat_eq (normalize_nat n1) (normalize_nat n2) then Ok ()
     else Error (TypeMismatch (t1, t2))
 
+  (* Never (bottom type) unifies with anything — diverging paths are compatible with all types *)
+  | (TCon "Never", _) | (_, TCon "Never") -> Ok ()
+
   (* Mismatch *)
   | _ ->
     Error (TypeMismatch (t1, t2))

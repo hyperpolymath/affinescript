@@ -4,7 +4,7 @@
 [metadata]
 project = "affinescript"
 version = "0.1.0"
-last-updated = "2026-03-29"
+last-updated = "2026-04-03"
 status = "active"
 
 [project-context]
@@ -15,11 +15,11 @@ tagline = "Rust-inspired language with affine types, dependent types, row polymo
 
 [components]
 lexer = "complete"
-parser = "complete"
-type-checker = "98%"
+parser = "complete (1245 conflicts; block_terminator rule added for self-delimiting exprs)"
+type-checker = "99% (Never/bottom type handling fixed; block divergence propagation added)"
 borrow-checker = "95%"
 interpreter = "95%"
-wasm-codegen = "90%"
+wasm-codegen = "92% (real-world game compiles: airborne-submarine-squadron/src/main.as → 8KB WASM)"
 julia-codegen = "exists"
 lsp-phase-a = "complete"
 lsp-phase-b = "in-progress"

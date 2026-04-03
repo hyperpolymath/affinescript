@@ -602,9 +602,23 @@ unsafe_op:
 
 /* ========== Statements ========== */
 
+(* Self-delimiting expressions that can serve as the final expression in a
+   block without a trailing semicolon.  Because they all end with '}', the
+   LR(1) parser can distinguish "this was the last expression" (followed by
+   the outer '}') from "this was a statement" (which would need ';'). *)
+block_terminator:
+  | IF cond = expr then_blk = block else_part = else_part?
+    { ExprIf { ei_cond = cond; ei_then = ExprBlock then_blk; ei_else = else_part } }
+  | MATCH scrutinee = expr LBRACE arms = list(match_arm) RBRACE
+    { ExprMatch { em_scrutinee = scrutinee; em_arms = arms } }
+  | inner = block
+    { ExprBlock inner }
+
 block:
-  | LBRACE stmts = list(stmt) final = expr? RBRACE
-    { { blk_stmts = stmts; blk_expr = final } }
+  | LBRACE stmts = list(stmt) RBRACE
+    { { blk_stmts = stmts; blk_expr = None } }
+  | LBRACE stmts = list(stmt) final = block_terminator RBRACE
+    { { blk_stmts = stmts; blk_expr = Some final } }
 
 stmt:
   | LET mut_ = MUT? pat = pattern ty = type_annotation? EQ value = expr SEMICOLON

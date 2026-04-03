@@ -830,6 +830,27 @@ and synth_list (ctx : context) (exprs : expr list) : (ty list) result =
 
 (** {1 Block and statement typing} *)
 
+(** Returns true if an expression always diverges — i.e., it never produces
+    a value in normal control flow. Used to give blocks a Never type when
+    all paths exit via return. *)
+and always_diverges (e : expr) : bool =
+  match e with
+  | ExprReturn _ -> true
+  | ExprBlock blk -> block_always_diverges blk
+  | ExprIf { ei_cond = _; ei_then; ei_else = Some else_e } ->
+    always_diverges ei_then && always_diverges else_e
+  | _ -> false
+
+(** Returns true if a block always diverges (all paths return). *)
+and block_always_diverges (blk : block) : bool =
+  match blk.blk_expr with
+  | Some e -> always_diverges e
+  | None ->
+    begin match List.rev blk.blk_stmts with
+    | StmtExpr e :: _ -> always_diverges e
+    | _ -> false
+    end
+
 and synth_block (ctx : context) (blk : block) : ty result =
   (* Type-check each statement for side effects *)
   let* () = List.fold_left (fun acc stmt ->
@@ -839,7 +860,14 @@ and synth_block (ctx : context) (blk : block) : ty result =
   (* The block's type is the type of the final expression, or Unit *)
   match blk.blk_expr with
   | Some e -> synth ctx e
-  | None -> Ok ty_unit
+  | None ->
+    (* When all paths through the block diverge (every code path ends with
+       return/break/etc.), the block has type Never rather than Unit. This
+       allows functions declared as returning T to have bodies that exclusively
+       use `return expr;` rather than a final expression. *)
+    if block_always_diverges blk
+    then Ok ty_never
+    else Ok ty_unit
 
 and check_stmt (ctx : context) (stmt : stmt) : unit result =
   match stmt with
