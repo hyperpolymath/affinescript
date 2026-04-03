@@ -4,7 +4,7 @@
 [metadata]
 project = "affinescript"
 version = "0.1.0"
-last-updated = "2026-04-03"
+last-updated = "2026-04-04"
 status = "active"
 
 [project-context]
@@ -20,6 +20,7 @@ type-checker = "99% (Never/bottom type handling fixed; block divergence propagat
 borrow-checker = "95%"
 interpreter = "95%"
 wasm-codegen = "92% (real-world game compiles: airborne-submarine-squadron/src/main.as → 8KB WASM)"
+wasm-gc-codegen = "70% (WasmGC proposal target: struct.new/struct.get/array.new_fixed/array.get; --wasm-gc CLI flag)"
 julia-codegen = "exists"
 lsp-phase-a = "complete"
 lsp-phase-b = "in-progress"
@@ -29,6 +30,6 @@ stdlib = "95% (5 stubs remain as extern builtins)"
 
 [stats]
 compiler-loc = 12424
-compiler-modules = 35
+compiler-modules = 38
 lsp-files = 5
 test-files = 54

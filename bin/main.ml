@@ -229,8 +229,9 @@ let repl_cmd_fn () =
   `Error (false, "REPL not yet implemented")
 
 (** Compile a file.  With [--json], emits diagnostics for any
-    compilation errors. *)
-let compile_file json path output =
+    compilation errors.  With [--wasm-gc], targets the WebAssembly GC
+    proposal instead of WASM 1.0 linear memory. *)
+let compile_file json wasm_gc path output =
   if json then begin
     let diags = ref [] in
     let add d = diags := d :: !diags in
@@ -257,6 +258,15 @@ let compile_file json path output =
               let oc = open_out output in
               output_string oc julia_code;
               close_out oc
+          end else if wasm_gc then begin
+            match Affinescript.Codegen_gc.generate_gc_module prog with
+            | Error e ->
+              add { severity = Error; code = "E0802";
+                    message = Printf.sprintf "WASM GC codegen error: %s"
+                      (Affinescript.Codegen_gc.format_codegen_error e);
+                    span = Affinescript.Span.dummy; help = None; labels = [] }
+            | Ok gc_module ->
+              Affinescript.Wasm_gc_encode.write_gc_module_to_file output gc_module
           end else begin
             let optimized_prog = Affinescript.Opt.fold_constants_program prog in
             match Affinescript.Codegen.generate_module optimized_prog with
@@ -303,6 +313,16 @@ let compile_file json path output =
               output_string oc julia_code;
               close_out oc;
               Format.printf "Compiled %s -> %s (Julia)@." path output;
+              `Ok ())
+          else if wasm_gc then
+            (match Affinescript.Codegen_gc.generate_gc_module prog with
+            | Error e ->
+              Format.eprintf "@[<v>%s@]@."
+                (Affinescript.Codegen_gc.format_codegen_error e);
+              `Error (false, "WASM GC codegen error")
+            | Ok gc_module ->
+              Affinescript.Wasm_gc_encode.write_gc_module_to_file output gc_module;
+              Format.printf "Compiled %s -> %s (WASM GC)@." path output;
               `Ok ())
           else
             let optimized_prog = Affinescript.Opt.fold_constants_program prog in
@@ -407,6 +427,12 @@ let path_arg =
 let output_arg =
   Arg.(value & opt string "out.wasm" & info ["o"; "output"] ~docv:"FILE" ~doc:"Output file")
 
+let wasm_gc_arg =
+  Arg.(value & flag & info ["wasm-gc"]
+    ~doc:"Target the WebAssembly GC proposal (struct/array types, no linear memory). \
+          Requires a runtime that supports the GC proposal: V8/Chrome ≥ 119, \
+          SpiderMonkey/Firefox ≥ 120, or Wasmtime with --wasm-features gc.")
+
 let lex_cmd =
   let doc = "Lex a file and print tokens" in
   let info = Cmd.info "lex" ~doc in
@@ -433,9 +459,9 @@ let repl_cmd =
   Cmd.v info Term.(ret (const repl_cmd_fn $ const ()))
 
 let compile_cmd =
-  let doc = "Compile a file to WebAssembly or Julia" in
+  let doc = "Compile a file to WebAssembly (1.0 or GC proposal) or Julia" in
   let info = Cmd.info "compile" ~doc in
-  Cmd.v info Term.(ret (const compile_file $ json_arg $ path_arg $ output_arg))
+  Cmd.v info Term.(ret (const compile_file $ json_arg $ wasm_gc_arg $ path_arg $ output_arg))
 
 let fmt_cmd =
   let doc = "Format a file" in
