@@ -212,6 +212,13 @@ type_decl:
         td_name = name;
         td_type_params = Option.value type_params ~default:[];
         td_body = TyAlias ty } }
+  /* Inline variant syntax: type X = A | B | C(Int) | D; */
+  | vis = visibility? TYPE name = ident type_params = type_params? EQ
+    first = variant_decl PIPE rest = separated_nonempty_list(PIPE, variant_decl) SEMICOLON
+    { { td_vis = Option.value vis ~default:Private;
+        td_name = name;
+        td_type_params = Option.value type_params ~default:[];
+        td_body = TyEnum (first :: rest) } }
   | vis = visibility? STRUCT name = ident type_params = type_params?
     LBRACE fields = separated_list(COMMA, struct_field) RBRACE
     { { td_vis = Option.value vis ~default:Private;
