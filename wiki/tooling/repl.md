@@ -9,7 +9,7 @@ The AffineScript REPL (Read-Eval-Print Loop) provides an interactive environment
 affinescript repl
 
 # With a prelude file
-affinescript repl --prelude mylib.as
+affinescript repl --prelude mylib.affine
 
 # With specific options
 affinescript repl --no-color --history-file ~/.as_history
@@ -88,14 +88,14 @@ pure
 ### Loading Files
 
 ```
-> :load examples/math.as
-Loaded examples/math.as
+> :load examples/math.affine
+Loaded examples/math.affine
 
 > add(1, 2)
 3 : Int
 
 > :reload
-Reloaded examples/math.as
+Reloaded examples/math.affine
 ```
 
 ## Multi-line Input

@@ -6,62 +6,62 @@ The AffineScript standard library provides essential types, traits, and function
 
 ```
 std/
-├── prelude.as        # Auto-imported basics
+├── prelude.affine        # Auto-imported basics
 ├── primitives/       # Primitive types
-│   ├── int.as
-│   ├── float.as
-│   ├── bool.as
-│   ├── char.as
-│   └── string.as
+│   ├── int.affine
+│   ├── float.affine
+│   ├── bool.affine
+│   ├── char.affine
+│   └── string.affine
 ├── collections/      # Data structures
-│   ├── vec.as
-│   ├── array.as
-│   ├── list.as
-│   ├── map.as
-│   ├── set.as
-│   └── deque.as
+│   ├── vec.affine
+│   ├── array.affine
+│   ├── list.affine
+│   ├── map.affine
+│   ├── set.affine
+│   └── deque.affine
 ├── core/             # Core types
-│   ├── option.as
-│   ├── result.as
-│   ├── tuple.as
-│   └── unit.as
+│   ├── option.affine
+│   ├── result.affine
+│   ├── tuple.affine
+│   └── unit.affine
 ├── memory/           # Memory management
-│   ├── box.as
-│   ├── rc.as
-│   ├── arc.as
-│   └── ptr.as
+│   ├── box.affine
+│   ├── rc.affine
+│   ├── arc.affine
+│   └── ptr.affine
 ├── traits/           # Standard traits
-│   ├── eq.as
-│   ├── ord.as
-│   ├── hash.as
-│   ├── show.as
-│   ├── clone.as
-│   ├── default.as
-│   └── iter.as
+│   ├── eq.affine
+│   ├── ord.affine
+│   ├── hash.affine
+│   ├── show.affine
+│   ├── clone.affine
+│   ├── default.affine
+│   └── iter.affine
 ├── effects/          # Standard effects
-│   ├── io.as
-│   ├── exn.as
-│   ├── async.as
-│   ├── state.as
-│   └── random.as
+│   ├── io.affine
+│   ├── exn.affine
+│   ├── async.affine
+│   ├── state.affine
+│   └── random.affine
 ├── io/               # Input/Output
-│   ├── read.as
-│   ├── write.as
-│   ├── fs.as
-│   └── net.as
+│   ├── read.affine
+│   ├── write.affine
+│   ├── fs.affine
+│   └── net.affine
 ├── concurrency/      # Threading
-│   ├── thread.as
-│   ├── sync.as
-│   ├── channel.as
-│   └── atomic.as
+│   ├── thread.affine
+│   ├── sync.affine
+│   ├── channel.affine
+│   └── atomic.affine
 ├── text/             # Text processing
-│   ├── fmt.as
-│   ├── regex.as
-│   └── unicode.as
+│   ├── fmt.affine
+│   ├── regex.affine
+│   └── unicode.affine
 └── utils/            # Utilities
-    ├── time.as
-    ├── env.as
-    └── debug.as
+    ├── time.affine
+    ├── env.affine
+    └── debug.affine
 ```
 
 ## Prelude

@@ -64,7 +64,7 @@ async function startLsp(context: vscode.ExtensionContext) {
   const clientOptions: LanguageClientOptions = {
     documentSelector: [{ scheme: 'file', language: 'affinescript' }],
     synchronize: {
-      fileEvents: vscode.workspace.createFileSystemWatcher('**/*.as')
+      fileEvents: vscode.workspace.createFileSystemWatcher('**/*.affine')
     }
   };
 
@@ -125,7 +125,7 @@ async function compileCurrentFile() {
   }
 
   const filePath = editor.document.uri.fsPath;
-  const outputPath = filePath.replace(/\.as$/, '.wasm');
+  const outputPath = filePath.replace(/\.affine$/, '.wasm');
 
   const terminal = vscode.window.createTerminal('AffineScript Compile');
   terminal.show();

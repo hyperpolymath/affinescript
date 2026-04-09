@@ -22,19 +22,19 @@ The main compiler executable:
 
 ```bash
 # Lex a file (output tokens)
-affinescript lex <file.as>
+affinescript lex <file.affine>
 
 # Parse a file (output AST)
-affinescript parse <file.as>
+affinescript parse <file.affine>
 
 # Type-check a file
-affinescript check <file.as>
+affinescript check <file.affine>
 
 # Compile to WASM
-affinescript compile <file.as> -o output.wasm
+affinescript compile <file.affine> -o output.wasm
 
 # Run directly
-affinescript run <file.as>
+affinescript run <file.affine>
 ```
 
 ### Common Options
@@ -52,11 +52,11 @@ affinescript run <file.as>
 Lexical analysis - tokenize source file:
 
 ```bash
-affinescript lex src/main.as
+affinescript lex src/main.affine
 
 # Output format
-affinescript lex --format json src/main.as
-affinescript lex --format pretty src/main.as
+affinescript lex --format json src/main.affine
+affinescript lex --format pretty src/main.affine
 ```
 
 Example output:
@@ -76,12 +76,12 @@ LBRACE @ 1:19-1:20
 Parse source file to AST:
 
 ```bash
-affinescript parse src/main.as
+affinescript parse src/main.affine
 
 # Output options
-affinescript parse --format sexp src/main.as
-affinescript parse --format json src/main.as
-affinescript parse --format pretty src/main.as
+affinescript parse --format sexp src/main.affine
+affinescript parse --format json src/main.affine
+affinescript parse --format pretty src/main.affine
 ```
 
 ### check
@@ -89,13 +89,13 @@ affinescript parse --format pretty src/main.as
 Type-check without compiling:
 
 ```bash
-affinescript check src/main.as
+affinescript check src/main.affine
 
 # Check entire project
 affinescript check .
 
 # Show inferred types
-affinescript check --show-types src/main.as
+affinescript check --show-types src/main.affine
 ```
 
 ### compile
@@ -104,19 +104,19 @@ Compile to WebAssembly:
 
 ```bash
 # Basic compilation
-affinescript compile src/main.as -o output.wasm
+affinescript compile src/main.affine -o output.wasm
 
 # With optimizations
-affinescript compile --release src/main.as -o output.wasm
+affinescript compile --release src/main.affine -o output.wasm
 
 # Emit text format
-affinescript compile --emit wat src/main.as -o output.wat
+affinescript compile --emit wat src/main.affine -o output.wat
 
 # Debug info
-affinescript compile --debug src/main.as -o output.wasm
+affinescript compile --debug src/main.affine -o output.wasm
 
 # Target options
-affinescript compile --target wasm32 src/main.as
+affinescript compile --target wasm32 src/main.affine
 ```
 
 ### run
@@ -125,13 +125,13 @@ Compile and run:
 
 ```bash
 # Run with default WASM runtime
-affinescript run src/main.as
+affinescript run src/main.affine
 
 # Pass arguments
-affinescript run src/main.as -- arg1 arg2
+affinescript run src/main.affine -- arg1 arg2
 
 # With specific runtime
-affinescript run --runtime wasmtime src/main.as
+affinescript run --runtime wasmtime src/main.affine
 ```
 
 ## aspm (Package Manager)
@@ -234,19 +234,19 @@ Code formatter (planned):
 
 ```bash
 # Format file
-asfmt src/main.as
+asfmt src/main.affine
 
 # Format in place
-asfmt --write src/main.as
+asfmt --write src/main.affine
 
 # Format all files
 asfmt --write .
 
 # Check formatting
-asfmt --check src/main.as
+asfmt --check src/main.affine
 
 # Diff mode
-asfmt --diff src/main.as
+asfmt --diff src/main.affine
 ```
 
 Configuration (`.asfmt.toml`):

@@ -166,8 +166,8 @@ To add new stdlib functions:
 Test standard library functions:
 
 ```bash
-affinescript eval tests/stdlib/test_core.as
-affinescript eval tests/stdlib/test_result.as
-affinescript eval tests/stdlib/test_option.as
-affinescript eval tests/stdlib/test_math.as
+affinescript eval tests/stdlib/test_core.affine
+affinescript eval tests/stdlib/test_result.affine
+affinescript eval tests/stdlib/test_option.affine
+affinescript eval tests/stdlib/test_math.affine
 ```

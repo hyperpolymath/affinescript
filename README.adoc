@@ -299,22 +299,22 @@ total fn append[n: Nat, m: Nat, T](
 dune build
 
 # Type check a file
-dune exec affinescript -- check examples/hello.as
+dune exec affinescript -- check examples/hello.affine
 
 # Run with interpreter
-dune exec affinescript -- eval examples/factorial.as
+dune exec affinescript -- eval examples/factorial.affine
 
 # Compile to WebAssembly
-dune exec affinescript -- compile examples/hello.as -o hello.wasm
+dune exec affinescript -- compile examples/hello.affine -o hello.wasm
 
 # Format code
-dune exec affinescript -- fmt examples/hello.as
+dune exec affinescript -- fmt examples/hello.affine
 
 # Lint for code quality
-dune exec affinescript -- lint examples/hello.as
+dune exec affinescript -- lint examples/hello.affine
 
 # JSON diagnostics (for editors/CI)
-dune exec affinescript -- check --json examples/hello.as
+dune exec affinescript -- check --json examples/hello.affine
 ----
 
 == Project Status

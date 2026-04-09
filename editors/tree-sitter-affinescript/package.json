@@ -23,7 +23,7 @@
   "tree-sitter": [
     {
       "scope": "source.affinescript",
-      "file-types": ["as"],
+      "file-types": ["affine"],
       "highlights": "queries/highlights.scm"
     }
   ]

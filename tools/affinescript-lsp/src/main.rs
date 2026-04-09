@@ -73,7 +73,7 @@ impl Backend {
         use std::process::Stdio;
 
         // Write source to a temp file so the compiler can read it
-        let temp_path = std::env::temp_dir().join(format!("lsp_{}.as", uuid::Uuid::new_v4()));
+        let temp_path = std::env::temp_dir().join(format!("lsp_{}.affine", uuid::Uuid::new_v4()));
         if let Err(e) = tokio::fs::write(&temp_path, text).await {
             self.client
                 .log_message(MessageType::ERROR, format!("Failed to write temp file: {}", e))

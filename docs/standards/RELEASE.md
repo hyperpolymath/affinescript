@@ -15,13 +15,13 @@ This is the first public release of AffineScript, featuring a complete specifica
 - **Error Handling** - Structured diagnostics with source locations
 
 ### Examples
-- `examples/hello.as` - Hello World with effects
-- `examples/vectors.as` - Dependent types with length-indexed vectors
-- `examples/ownership.as` - Ownership and borrowing patterns
-- `examples/rows.as` - Row polymorphism
-- `examples/effects.as` - Effect handling and state
-- `examples/traits.as` - Traits and type classes
-- `examples/refinements.as` - Refinement types
+- `examples/hello.affine` - Hello World with effects
+- `examples/vectors.affine` - Dependent types with length-indexed vectors
+- `examples/ownership.affine` - Ownership and borrowing patterns
+- `examples/rows.affine` - Row polymorphism
+- `examples/effects.affine` - Effect handling and state
+- `examples/traits.affine` - Traits and type classes
+- `examples/refinements.affine` - Refinement types
 
 ## Building from Source
 
@@ -70,7 +70,7 @@ dune build
 ### Lex a File
 
 ```bash
-dune exec affinescript -- lex examples/hello.as
+dune exec affinescript -- lex examples/hello.affine
 ```
 
 Output:
@@ -85,7 +85,7 @@ FN @ 2:3-2:5
 ### Parse a File
 
 ```bash
-dune exec affinescript -- parse examples/hello.as
+dune exec affinescript -- parse examples/hello.affine
 ```
 
 Output:
@@ -100,7 +100,7 @@ Output:
 ### Check a File (WIP)
 
 ```bash
-dune exec affinescript -- check examples/hello.as
+dune exec affinescript -- check examples/hello.affine
 ```
 
 Note: Type checking is not yet implemented in this release.

@@ -19,9 +19,9 @@ AffineScript's module system organizes code into logical units with controlled v
 ### Declaring Modules
 
 ```affine
-// In main.as
-mod math        // Looks for math.as or math/mod.as
-mod utils       // Looks for utils.as or utils/mod.as
+// In main.affine
+mod math        // Looks for math.affine or math/mod.affine
+mod utils       // Looks for utils.affine or utils/mod.affine
 mod internal    // Inline module definition follows
 
 mod internal {
@@ -70,23 +70,23 @@ mod geometry {
 
 ```
 project/
-├── main.as
-├── math.as       # mod math
-└── utils.as      # mod utils
+├── main.affine
+├── math.affine       # mod math
+└── utils.affine      # mod utils
 ```
 
 ### Directory Modules
 
 ```
 project/
-├── main.as
+├── main.affine
 └── math/
-    ├── mod.as      # mod math entry point
-    ├── vectors.as  # mod vectors (inside math)
-    └── matrices.as # mod matrices (inside math)
+    ├── mod.affine      # mod math entry point
+    ├── vectors.affine  # mod vectors (inside math)
+    └── matrices.affine # mod matrices (inside math)
 ```
 
-`math/mod.as`:
+`math/mod.affine`:
 ```affine
 // Declare submodules
 pub mod vectors
@@ -101,17 +101,17 @@ pub use matrices::Mat4
 
 ```
 project/
-├── main.as
+├── main.affine
 └── graphics/
-    ├── mod.as
+    ├── mod.affine
     ├── renderer/
-    │   ├── mod.as
-    │   ├── opengl.as
-    │   └── vulkan.as
+    │   ├── mod.affine
+    │   ├── opengl.affine
+    │   └── vulkan.affine
     └── primitives/
-        ├── mod.as
-        ├── shapes.as
-        └── colors.as
+        ├── mod.affine
+        ├── shapes.affine
+        └── colors.affine
 ```
 
 ---
@@ -127,7 +127,7 @@ mod internal {
   fn private_helper() -> Int { 42 }  // Private to this module
 }
 
-// main.as
+// main.affine
 internal::private_helper()  // ERROR: private function
 ```
 
@@ -142,7 +142,7 @@ mod math {
   fn internal_helper() -> Int { 0 }  // Still private
 }
 
-// main.as
+// main.affine
 math::add(1, 2)  // OK
 ```
 
@@ -260,7 +260,7 @@ HashMap           // Direct
 ### Basic Re-export
 
 ```affine
-// In lib.as
+// In lib.affine
 mod internal
 
 pub use internal::PublicType
@@ -283,7 +283,7 @@ pub use prelude::*
 ### Creating a Prelude
 
 ```affine
-// prelude.as
+// prelude.affine
 pub use crate::types::{Result, Option, Error}
 pub use crate::traits::{Show, Clone, Default}
 pub use crate::macros::*
@@ -346,7 +346,7 @@ let world_pt: GeoPoint = GeoPoint { x: 1.0, y: 2.0 }
 ### Facade Pattern
 
 ```affine
-// lib.as - expose clean public API
+// lib.affine - expose clean public API
 pub mod types
 pub mod traits
 pub mod error
@@ -421,15 +421,15 @@ mod core {
 mylib/
 ├── affine.toml
 └── src/
-    ├── lib.as      # Crate root
-    ├── types.as
-    ├── traits.as
+    ├── lib.affine      # Crate root
+    ├── types.affine
+    ├── traits.affine
     └── utils/
-        ├── mod.as
-        └── helpers.as
+        ├── mod.affine
+        └── helpers.affine
 ```
 
-`lib.as`:
+`lib.affine`:
 ```affine
 pub mod types
 pub mod traits
@@ -445,8 +445,8 @@ pub use traits::MainTrait
 myapp/
 ├── affine.toml
 └── src/
-    ├── main.as     # Binary entry point
-    └── lib.as      # Optional library part
+    ├── main.affine     # Binary entry point
+    └── lib.affine      # Optional library part
 ```
 
 ### Mixed Crate
@@ -455,8 +455,8 @@ myapp/
 myproject/
 ├── affine.toml
 └── src/
-    ├── main.as     # Uses lib
-    ├── lib.as      # Library code
+    ├── main.affine     # Uses lib
+    ├── lib.affine      # Library code
     └── modules/
 ```
 

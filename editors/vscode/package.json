@@ -38,7 +38,7 @@
           "affinescript"
         ],
         "extensions": [
-          ".as"
+          ".affine"
         ],
         "configuration": "./language-configuration.json",
         "icon": {

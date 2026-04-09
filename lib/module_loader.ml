@@ -63,19 +63,19 @@ let default_config () : config =
 (** Convert module path to file path candidates
 
     For module path ["Math", "Geometry"], try:
-    1. Math/Geometry.as (nested module)
-    2. Math.as (check if it exports Geometry)
+    1. Math/Geometry.affine (nested module)
+    2. Math.affine (check if it exports Geometry)
 *)
 let path_to_candidates (mod_path : string list) : string list =
   match mod_path with
   | [] -> []
-  | [name] -> [name ^ ".as"]
+  | [name] -> [name ^ ".affine"]
   | _ ->
-    (* Try nested path: A/B/C.as *)
-    let nested = String.concat "/" mod_path ^ ".as" in
-    (* Try parent with submodule: A/B.as (if B declares module C) *)
+    (* Try nested path: A/B/C.affine *)
+    let nested = String.concat "/" mod_path ^ ".affine" in
+    (* Try parent with submodule: A/B.affine (if B declares module C) *)
     let parent_parts = List.rev mod_path |> List.tl |> List.rev in
-    let parent = String.concat "/" parent_parts ^ ".as" in
+    let parent = String.concat "/" parent_parts ^ ".affine" in
     [nested; parent]
 
 (** Search for a module file in search paths *)

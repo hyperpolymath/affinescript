@@ -32,7 +32,7 @@ Implemented save-restore pattern for variable bindings:
 - Modified ExprLambda handling in `synth` function (lib/typecheck.ml:626-646)
 - Modified ExprLambda handling in `check` function (lib/typecheck.ml:982-997)
 
-**Test:** tests/types/test_lambda_scope_simple.as ✓ Passes
+**Test:** tests/types/test_lambda_scope_simple.affine ✓ Passes
 
 ### 1. Row Polymorphism (100%)
 **Implementation:** Extensible record types with row variables
@@ -208,19 +208,19 @@ fn fmap_twice[F: Type -> Type, A, B, C](
 | Generic Programming | 2 | ✅ |
 
 **Test Files:**
-1. ✅ test_lambda_scope_simple.as (Lambda scope fix)
-2. ✅ test_row_simple.as
-3. ✅ test_parse_row_type.as
-4. ✅ test_row_polymorphism.as
-5. ✅ test_effect_inference.as
-6. ✅ test_effect_lambda.as
-7. ✅ test_effect_polymorphism.as
-8. ✅ test_dependent_parsing.as
-9. ✅ test_dependent_e2e.as
-10. ✅ test_hkt_parsing.as
-11. ✅ test_kind_checking.as
-12. ✅ test_traits.as
-13. ✅ test_generic_programming.as
+1. ✅ test_lambda_scope_simple.affine (Lambda scope fix)
+2. ✅ test_row_simple.affine
+3. ✅ test_parse_row_type.affine
+4. ✅ test_row_polymorphism.affine
+5. ✅ test_effect_inference.affine
+6. ✅ test_effect_lambda.affine
+7. ✅ test_effect_polymorphism.affine
+8. ✅ test_dependent_parsing.affine
+9. ✅ test_dependent_e2e.affine
+10. ✅ test_hkt_parsing.affine
+11. ✅ test_kind_checking.affine
+12. ✅ test_traits.affine
+13. ✅ test_generic_programming.affine
 
 ## 📈 Progress Timeline
 

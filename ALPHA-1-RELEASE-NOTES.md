@@ -95,13 +95,13 @@ dune build
 ### Try the Examples
 ```bash
 # Type check a game example
-dune exec affinescript -- check examples/hello.as
+dune exec affinescript -- check examples/hello.affine
 
 # Run with interpreter
-dune exec affinescript -- eval examples/hello.as
+dune exec affinescript -- eval examples/hello.affine
 
 # Compile to WebAssembly
-dune exec affinescript -- compile examples/hello.as -o hello.wasm
+dune exec affinescript -- compile examples/hello.affine -o hello.wasm
 ```
 
 ---
@@ -217,7 +217,7 @@ git clone --branch v0.1.0-alpha.1 https://github.com/hyperpolymath/affinescript
 
 # Build and run
 dune build
-dune exec affinescript -- eval examples/hello.as
+dune exec affinescript -- eval examples/hello.affine
 
 # Start building your bug-free game!
 ```
