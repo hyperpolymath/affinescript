@@ -40,14 +40,14 @@ Each lesson is a markdown file you can read on GitHub.
 
 ### Option 2: Interactive Playground
 1. Open the [Playground](../../../playground/test.html)
-2. Load the lesson example (e.g., `examples/lessons/01_hello.as`)
+2. Load the lesson example (e.g., `examples/lessons/01_hello.affine`)
 3. Follow along by running code as you read
 
 ### Option 3: Clone and Experiment
 ```bash
 git clone https://github.com/hyperpolymath/affinescript
 cd affinescript
-./affinescript examples/lessons/01_hello.as
+./affinescript examples/lessons/01_hello.affine
 ```
 
 ---

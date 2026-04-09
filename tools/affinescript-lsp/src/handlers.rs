@@ -605,7 +605,7 @@ mod tests {
 
     /// Helper: create a file URI from a dummy path.
     fn test_uri() -> Url {
-        Url::parse("file:///tmp/test.as").unwrap()
+        Url::parse("file:///tmp/test.affine").unwrap()
     }
 
     /// Helper: empty compiler output (simulates no v2 JSON available).
@@ -759,7 +759,7 @@ mod tests {
                     "id": 1,
                     "name": "add",
                     "kind": "function",
-                    "file": "/tmp/test.as",
+                    "file": "/tmp/test.affine",
                     "start_line": 1,
                     "start_col": 4,
                     "end_line": 1,
@@ -769,7 +769,7 @@ mod tests {
             ],
             "references": {
                 "1": [
-                    {"file": "/tmp/test.as", "start_line": 5, "start_col": 10, "end_line": 5, "end_col": 13}
+                    {"file": "/tmp/test.affine", "start_line": 5, "start_col": 10, "end_line": 5, "end_col": 13}
                 ]
             }
         }"#;
@@ -799,7 +799,7 @@ mod tests {
                     "id": 1,
                     "name": "add",
                     "kind": "function",
-                    "file": "/tmp/test.as",
+                    "file": "/tmp/test.affine",
                     "start_line": 1,
                     "start_col": 4,
                     "end_line": 1,
@@ -808,8 +808,8 @@ mod tests {
             ],
             "references": {
                 "1": [
-                    {"file": "/tmp/test.as", "start_line": 3, "start_col": 10, "end_line": 3, "end_col": 13},
-                    {"file": "/tmp/test.as", "start_line": 5, "start_col": 1, "end_line": 5, "end_col": 4}
+                    {"file": "/tmp/test.affine", "start_line": 3, "start_col": 10, "end_line": 3, "end_col": 13},
+                    {"file": "/tmp/test.affine", "start_line": 5, "start_col": 1, "end_line": 5, "end_col": 4}
                 ]
             }
         }"#;

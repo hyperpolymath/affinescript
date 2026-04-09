@@ -17,8 +17,8 @@ fi
 
 echo "Using compiler: $COMPILER"
 
-for src in "$TEST_DIR"/*.as; do
-  base="${src%.as}"
+for src in "$TEST_DIR"/*.affine; do
+  base="${src%.affine}"
   wasm="$base.wasm"
   echo "Compiling $(basename "$src") -> $(basename "$wasm")"
   "${COMPILE_CMD[@]}" "$src" -o "$wasm"

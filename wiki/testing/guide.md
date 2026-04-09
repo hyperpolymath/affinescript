@@ -41,7 +41,7 @@ fn test_string_concat() {
 aspm test
 
 # Run specific test file
-aspm test tests/math_test.as
+aspm test tests/math_test.affine
 
 # Run tests matching pattern
 aspm test --filter "test_add"
@@ -154,7 +154,7 @@ mod tests {
 ### Test Modules
 
 ```affine
-// In lib.as
+// In lib.affine
 pub fn add(x: Int, y: Int) -> Int {
   x + y
 }
@@ -189,22 +189,22 @@ mod tests {
 ```
 project/
 ├── src/
-│   ├── lib.as
+│   ├── lib.affine
 │   └── math/
-│       └── mod.as
+│       └── mod.affine
 ├── tests/
-│   ├── integration_test.as    # Integration tests
-│   ├── math_test.as           # Module tests
+│   ├── integration_test.affine    # Integration tests
+│   ├── math_test.affine           # Module tests
 │   └── fixtures/
 │       └── test_data.json
 └── benches/
-    └── performance_bench.as   # Benchmarks
+    └── performance_bench.affine   # Benchmarks
 ```
 
 ### Unit vs Integration Tests
 
 ```affine
-// tests/unit_test.as - Unit tests for internal modules
+// tests/unit_test.affine - Unit tests for internal modules
 use mylib::internal::parse_number
 
 #[test]
@@ -212,7 +212,7 @@ fn test_parse_number() {
   assert_eq(parse_number("42"), Ok(42))
 }
 
-// tests/integration_test.as - Integration tests for public API
+// tests/integration_test.affine - Integration tests for public API
 use mylib
 
 #[test]
@@ -470,7 +470,7 @@ Compare output against expected files:
 
 ```ocaml
 let test_golden name =
-  let input = read_file (sprintf "tests/golden/%s.as" name) in
+  let input = read_file (sprintf "tests/golden/%s.affine" name) in
   let expected = read_file (sprintf "tests/golden/%s.expected" name) in
   let actual = compile_and_run input in
   check string name expected actual
@@ -489,14 +489,14 @@ let golden_tests = [
 ### End-to-End Tests
 
 ```affine
-// tests/e2e_test.as
+// tests/e2e_test.affine
 use std::process::Command
 
 #[test]
 fn test_compile_and_run() {
   // Compile
   let compile_result = Command::new("aspm")
-    .args(["build", "examples/hello.as"])
+    .args(["build", "examples/hello.affine"])
     .output()
 
   assert!(compile_result.status.success())

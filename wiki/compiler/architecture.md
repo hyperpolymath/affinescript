@@ -9,7 +9,7 @@ This document describes the architecture of the AffineScript compiler.
 │                         AffineScript Compiler                           │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                         │
-│   Source Code (.as)                                                     │
+│   Source Code (.affine)                                                  │
 │        │                                                                │
 │        ▼                                                                │
 │   ┌─────────┐                                                          │

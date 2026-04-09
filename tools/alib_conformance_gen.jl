@@ -115,7 +115,7 @@ fn test_alib_$(category)_$(op_name)() -> TestResult {
 """
 
     # Write output file
-    output_file = joinpath(output_dir, "$(category)_$(op_name).as")
+    output_file = joinpath(output_dir, "$(category)_$(op_name).affine")
     mkpath(output_dir)
     write(output_file, test_code)
 

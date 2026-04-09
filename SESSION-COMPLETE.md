@@ -46,7 +46,7 @@ This extended session completed all four priorities requested by the user:
 
 **Example:**
 ```bash
-affinescript eval program.as
+affinescript eval program.affine
 ```
 
 ## Priority 2: WebAssembly Codegen ✅ WORKING
@@ -91,7 +91,7 @@ affinescript eval program.as
 
 **End-to-End Pipeline:**
 ```
-AffineScript source (.as)
+AffineScript source (.affine)
     ↓ parse
 AST
     ↓ resolve names
@@ -106,7 +106,7 @@ Result
 
 ### Verified Working
 
-**Test Program:** `simple_arithmetic.as`
+**Test Program:** `simple_arithmetic.affine`
 ```affinescript
 fn main() -> Int {
   let a = 10;
@@ -118,7 +118,7 @@ fn main() -> Int {
 
 **Compilation:**
 ```bash
-affinescript compile simple_arithmetic.as -o test.wasm
+affinescript compile simple_arithmetic.affine -o test.wasm
 ```
 
 **Execution with Node.js:**
@@ -151,7 +151,7 @@ Still TODO for complete WASM support:
 
 ### Modules Created
 
-**1. Core.as** - Basic utilities (~100 lines)
+**1. Core.affine** - Basic utilities (~100 lines)
 ```affinescript
 pub fn min(a: Int, b: Int) -> Int
 pub fn max(a: Int, b: Int) -> Int
@@ -161,7 +161,7 @@ pub fn compose[A, B, C](f, g)  // Function composition
 pub fn flip[A, B, C](f)         // Flip arguments
 ```
 
-**2. Result.as** - Error handling (~120 lines)
+**2. Result.affine** - Error handling (~120 lines)
 ```affinescript
 pub fn unwrap[T, E](own r: Result[T, E]) -> T
 pub fn unwrap_or[T, E](own r: Result[T, E], default: T) -> T
@@ -169,7 +169,7 @@ pub fn map[T, U, E](own r: Result[T, E], f: fn(T) -> U) -> Result[U, E]
 pub fn and_then[T, U, E](own r: Result[T, E], f: fn(T) -> Result[U, E]) -> Result[U, E]
 ```
 
-**3. Option.as** - Optional values (~150 lines)
+**3. Option.affine** - Optional values (~150 lines)
 ```affinescript
 pub fn unwrap[T](own opt: Option[T]) -> T
 pub fn unwrap_or[T](own opt: Option[T], default: T) -> T
@@ -178,7 +178,7 @@ pub fn and_then[T, U](own opt: Option[T], f: fn(T) -> Option[U]) -> Option[U]
 pub fn filter[T](own opt: Option[T], pred: fn(ref T) -> Bool) -> Option[T]
 ```
 
-**4. Math.as** - Mathematical functions (~150 lines)
+**4. Math.affine** - Mathematical functions (~150 lines)
 ```affinescript
 pub const PI: Float = 3.141592653589793;
 pub const E: Float = 2.718281828459045;
@@ -318,14 +318,14 @@ pub fn area(radius: Float) -> Float {
 - `lib/wasm.ml` - WASM IR definitions
 - `lib/codegen.ml` - Code generator
 - `lib/wasm_encode.ml` - Binary encoder
-- `stdlib/Core.as` - Core utilities
-- `stdlib/Result.as` - Result error handling
-- `stdlib/Option.as` - Option optional values
-- `stdlib/Math.as` - Mathematical functions
+- `stdlib/Core.affine` - Core utilities
+- `stdlib/Result.affine` - Result error handling
+- `stdlib/Option.affine` - Option optional values
+- `stdlib/Math.affine` - Mathematical functions
 
 ### Tests
-- `tests/effects/basic_effect.as` - Effect handler test
-- `tests/codegen/simple_arithmetic.as` - WASM codegen test
+- `tests/effects/basic_effect.affine` - Effect handler test
+- `tests/codegen/simple_arithmetic.affine` - WASM codegen test
 
 ## Working Examples
 
@@ -348,7 +348,7 @@ fn main() -> Int {
 
 **Run:**
 ```bash
-affinescript eval effect_test.as
+affinescript eval effect_test.affine
 # Output: Program executed successfully
 ```
 
@@ -366,8 +366,8 @@ fn main() -> Int {
 
 **Compile:**
 ```bash
-affinescript compile arithmetic.as -o output.wasm
-# Output: Compiled arithmetic.as -> output.wasm
+affinescript compile arithmetic.affine -o output.wasm
+# Output: Compiled arithmetic.affine -> output.wasm
 ```
 
 **Execute:**
@@ -424,14 +424,14 @@ let local_count = ctx_final.next_local - param_count in
 
 ### Interpreter Tests
 ```bash
-affinescript eval tests/effects/basic_effect.as
-affinescript eval tests/borrow/valid_move.as
-affinescript eval tests/borrow/use_after_move.as  # Should fail
+affinescript eval tests/effects/basic_effect.affine
+affinescript eval tests/borrow/valid_move.affine
+affinescript eval tests/borrow/use_after_move.affine  # Should fail
 ```
 
 ### Codegen Tests
 ```bash
-affinescript compile tests/codegen/simple_arithmetic.as -o test.wasm
+affinescript compile tests/codegen/simple_arithmetic.affine -o test.wasm
 file test.wasm  # Should show: WebAssembly (wasm) binary module
 node run_wasm.js  # Should output: 42
 ```

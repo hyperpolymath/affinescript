@@ -73,12 +73,12 @@ AffineScript stdlib aligns with these aLib categories:
 
 | aLib Category | AffineScript Module | Status |
 |---------------|---------------------|--------|
-| `arithmetic` | `stdlib/math.as` | ✓ Good |
-| `collection` | `stdlib/collections.as` + `prelude.as` | ⚠ Needs affine semantics docs |
-| `comparison` | `stdlib/prelude.as` | ✓ Good |
+| `arithmetic` | `stdlib/math.affine` | ✓ Good |
+| `collection` | `stdlib/collections.affine` + `prelude.affine` | ⚠ Needs affine semantics docs |
+| `comparison` | `stdlib/prelude.affine` | ✓ Good |
 | `conditional` | Built-in (if/match) | ✓ Good |
 | `logical` | Built-in (&&, \|\|, !) | ✓ Good |
-| `string` | `stdlib/string.as` | ⚠ Partial |
+| `string` | `stdlib/string.affine` | ⚠ Partial |
 
 ## Affine Semantics Examples
 

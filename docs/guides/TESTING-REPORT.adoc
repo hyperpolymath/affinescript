@@ -210,7 +210,7 @@ Menhir resolves by preferring shift (continue parsing statement), which breaks t
 
 == Example Files
 
-=== hello.as
+=== hello.affine
 
 Fixed syntax for effect annotations:
 
@@ -221,7 +221,7 @@ The parser uses `-{Eff}->` syntax, not `-> T / Eff`.
 
 === Other Examples
 
-The example files (`effects.as`, `ownership.as`, `traits.as`, etc.) use aspirational syntax that is not yet supported:
+The example files (`effects.affine`, `ownership.affine`, `traits.affine`, etc.) use aspirational syntax that is not yet supported:
 
 * `-> T / Eff` effect syntax (parser uses `-{Eff}-> T`)
 * GADT-style enum variants (`| Nil : Vec[0, T]`)
@@ -237,10 +237,10 @@ The compiler CLI works correctly:
 $ affinescript --help
 # Shows help for: check, compile, lex, parse commands
 
-$ affinescript lex examples/hello.as
+$ affinescript lex examples/hello.affine
 # Successfully tokenizes the file
 
-$ affinescript parse examples/hello.as
+$ affinescript parse examples/hello.affine
 # Successfully parses (after syntax fix)
 ----
 
@@ -274,4 +274,4 @@ $ affinescript parse examples/hello.as
 * `lib/ast.ml` - Added trd_where field
 * `lib/parse.ml` - Removed WITH token
 * `test/test_parser.ml` - Fixed pattern matching
-* `examples/hello.as` - Fixed effect syntax
+* `examples/hello.affine` - Fixed effect syntax

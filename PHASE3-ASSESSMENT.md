@@ -60,9 +60,9 @@ Phase 3 infrastructure is **surprisingly complete**! The type system (lib/types.
 
 **Test Cases Passing:**
 ```bash
-✓ tests/types/test_row_simple.as       # Basic row polymorphism
-✓ tests/types/test_parse_row_type.as   # Parser validation
-✓ tests/types/test_row_polymorphism.as # Complex multi-call test
+✓ tests/types/test_row_simple.affine       # Basic row polymorphism
+✓ tests/types/test_parse_row_type.affine   # Parser validation
+✓ tests/types/test_row_polymorphism.affine # Complex multi-call test
 ```
 
 **Example Working Code:**
@@ -246,7 +246,7 @@ fn apply[F: Type -> Type, G: Type -> Type, A](f: F[A], g: G[A]) -> F[A] {
 }
 ```
 
-**Test File:** tests/types/test_hkt_parsing.as ✅ PASSES
+**Test File:** tests/types/test_hkt_parsing.affine ✅ PASSES
 
 **What's Needed:**
 1. ❌ Integrate kind checking into type definitions
@@ -368,9 +368,9 @@ fn apply[F: Type -> Type, G: Type -> Type, A](f: F[A], g: G[A]) -> F[A] {
 
 **Test Cases Passing:**
 ```bash
-✓ tests/types/test_effect_inference.as  # Pure function composition
-✓ tests/types/test_row_polymorphism.as  # Still works with effect changes
-✓ tests/types/test_row_simple.as        # Still works
+✓ tests/types/test_effect_inference.affine  # Pure function composition
+✓ tests/types/test_row_polymorphism.affine  # Still works with effect changes
+✓ tests/types/test_row_simple.affine        # Still works
 ```
 
 **Known Limitation:**
@@ -438,31 +438,31 @@ fn take_positive(x: Int where (x > 0)) -> Int { return x; }
 fn dep_with_eff(f: (x: Int) -{IO}-> Int) -> Int { return 0; }
 ```
 
-**Test File:** tests/types/test_dependent_parsing.as ✅ PASSES
+**Test File:** tests/types/test_dependent_parsing.affine ✅ PASSES
 
 ## Testing Strategy
 
 ### ✅ Row Polymorphism Tests (COMPLETE)
-- ✅ tests/types/test_row_simple.as - Basic usage
-- ✅ tests/types/test_parse_row_type.as - Parser validation
-- ✅ tests/types/test_row_polymorphism.as - Complex scenarios
+- ✅ tests/types/test_row_simple.affine - Basic usage
+- ✅ tests/types/test_parse_row_type.affine - Parser validation
+- ✅ tests/types/test_row_polymorphism.affine - Complex scenarios
 
 ### ✅ Effect System Tests (COMPLETE)
-- ✅ tests/types/test_effect_inference.as - Pure function composition
+- ✅ tests/types/test_effect_inference.affine - Pure function composition
 
 ### ✅ Dependent Types Tests (PARSING COMPLETE)
-- ✅ tests/types/test_dependent_parsing.as - Parser validation for dependent arrows and refinements
+- ✅ tests/types/test_dependent_parsing.affine - Parser validation for dependent arrows and refinements
 
 ### ✅ Higher-Kinded Types Tests (COMPLETE)
-- ✅ tests/types/test_hkt_parsing.as - Parser validation for kind annotations and type applications
-- ✅ tests/types/test_kind_checking.as - Kind checking integration
+- ✅ tests/types/test_hkt_parsing.affine - Parser validation for kind annotations and type applications
+- ✅ tests/types/test_kind_checking.affine - Kind checking integration
 
 ### ✅ Generic Programming Tests (COMPLETE)
-- ✅ tests/types/test_traits.as - Trait definitions with higher-kinded types
-- ✅ tests/types/test_generic_programming.as - Functor, Applicative, Monad traits
+- ✅ tests/types/test_traits.affine - Trait definitions with higher-kinded types
+- ✅ tests/types/test_generic_programming.affine - Functor, Applicative, Monad traits
 
 ### ✅ End-to-End Tests (COMPLETE)
-- ✅ tests/types/test_dependent_e2e.as - Dependent types with refinements in practice
+- ✅ tests/types/test_dependent_e2e.affine - Dependent types with refinements in practice
 
 ## Conclusion
 

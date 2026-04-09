@@ -29,9 +29,9 @@
 - bin/main.ml (integrated module loader)
 
 **Tests Passing:**
-- ✅ test_simple_import.as - Single function import
-- ✅ test_import.as - Multiple imports (Core + Math)
-- ✅ test_math_functions.as - Complex math operations
+- ✅ test_simple_import.affine - Single function import
+- ✅ test_import.affine - Multiple imports (Core + Math)
+- ✅ test_math_functions.affine - Complex math operations
 
 **Commit:** `a1b2c3d` "fix: Transfer type information during module imports"
 
@@ -53,9 +53,9 @@
 - lib/codegen.ml (~30 lines added)
 
 **Tests Passing:**
-- ✅ test_function_call.as - Simple helper function (returns 42)
-- ✅ test_recursive_call.as - Factorial recursion (returns 120)
-- ✅ test_multiple_calls.as - Multiple functions + composition (returns 135)
+- ✅ test_function_call.affine - Simple helper function (returns 42)
+- ✅ test_recursive_call.affine - Factorial recursion (returns 120)
+- ✅ test_multiple_calls.affine - Multiple functions + composition (returns 135)
 - All tests verified with Node.js WASM execution
 
 **Commit:** `31a60c5` "feat: Implement function calls in WASM codegen (Phase 2 complete)"
@@ -110,7 +110,7 @@
 **File:** `lib/module_loader.ml` (272 lines)
 
 **Features:**
-- Module path to file path resolution (`Math.Geometry` → `stdlib/Math/Geometry.as`)
+- Module path to file path resolution (`Math.Geometry` → `stdlib/Math/Geometry.affine`)
 - Configurable search paths (stdlib, current dir, additional paths)
 - Module file parsing and caching
 - Circular dependency detection
@@ -139,13 +139,13 @@
 
 ### 3. Standard Library Fixed ✅
 
-**Core.as:**
+**Core.affine:**
 - Removed underscore-prefixed parameters
 - Removed lambdas (parser limitation)
 - Added explicit `return` statements
 - Status: ✅ Working
 
-**Math.as:**
+**Math.affine:**
 - Converted `const` to functions
 - Removed float operations (type checker limitation)
 - Added explicit `return` statements
@@ -194,9 +194,9 @@ type context = {
 
 | Test | Feature | Expected | Result |
 |------|---------|----------|--------|
-| test_function_call.as | Simple call | 42 | ✅ PASS |
-| test_recursive_call.as | Recursion | 120 | ✅ PASS |
-| test_multiple_calls.as | Composition | 135 | ✅ PASS |
+| test_function_call.affine | Simple call | 42 | ✅ PASS |
+| test_recursive_call.affine | Recursion | 120 | ✅ PASS |
+| test_multiple_calls.affine | Composition | 135 | ✅ PASS |
 
 ## Module System Features Status
 
@@ -308,7 +308,7 @@ type context = {
 3. Integrate effects with borrow checker
 
 ### Short-term
-1. Fix Option.as and Result.as (explicit returns)
+1. Fix Option.affine and Result.affine (explicit returns)
 2. Add more stdlib modules
 3. Improve error messages
 

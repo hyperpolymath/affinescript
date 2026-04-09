@@ -308,8 +308,8 @@ Type checker completion tested via:
 
 ### Example Programs
 Created test files demonstrating new features:
-- `examples/typecheck_complete_test.as` - Full feature demonstration
-- `examples/typecheck_features_test.as` - Parseable subset
+- `examples/typecheck_complete_test.affine` - Full feature demonstration
+- `examples/typecheck_features_test.affine` - Parseable subset
 
 **Note:** Parser may not yet support all syntax (e.g., `unsafe` blocks), but type checker is ready when parser is completed.
 

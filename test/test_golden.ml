@@ -61,14 +61,14 @@ let run_golden_test ~source_path ~expected_path () =
           Alcotest.fail "AST output does not match expected"
         end
 
-(** Create a test case from a .as file *)
+(** Create a test case from a .affine file *)
 let test_case_of_file filename =
   let base = Filename.chop_extension filename in
   let source_path = Filename.concat golden_dir filename in
   let expected_path = Filename.concat golden_dir (base ^ ".expected") in
   Alcotest.test_case base `Quick (run_golden_test ~source_path ~expected_path)
 
-(** Discover all .as files in golden directory *)
+(** Discover all .affine files in golden directory *)
 let discover_tests () =
   if not (Sys.file_exists golden_dir) then
     []
@@ -76,7 +76,7 @@ let discover_tests () =
     let files = Sys.readdir golden_dir in
     files
     |> Array.to_list
-    |> List.filter (fun f -> Filename.check_suffix f ".as")
+    |> List.filter (fun f -> Filename.check_suffix f ".affine")
     |> List.sort String.compare
     |> List.map test_case_of_file
 
@@ -100,7 +100,7 @@ let discover_example_tests () =
     let files = Sys.readdir examples_dir in
     files
     |> Array.to_list
-    |> List.filter (fun f -> Filename.check_suffix f ".as")
+    |> List.filter (fun f -> Filename.check_suffix f ".affine")
     |> List.sort String.compare
     |> List.map (fun f ->
         let base = Filename.chop_extension f in

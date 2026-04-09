@@ -452,7 +452,7 @@ Common lexer errors:
 
 ```
 error[E0001]: unexpected character
-  --> src/main.as:1:5
+  --> src/main.affine:1:5
   |
 1 | let @x = 5
   |     ^ unexpected '@'
@@ -460,7 +460,7 @@ error[E0001]: unexpected character
   = help: identifiers cannot contain '@'
 
 error[E0002]: unterminated string literal
-  --> src/main.as:1:9
+  --> src/main.affine:1:9
   |
 1 | let s = "hello
   |         ^^^^^^ string literal not closed
@@ -468,7 +468,7 @@ error[E0002]: unterminated string literal
   = help: add closing `"` at end of string
 
 error[E0003]: invalid escape sequence
-  --> src/main.as:1:13
+  --> src/main.affine:1:13
   |
 1 | let s = "hello\q"
   |               ^^ unknown escape sequence

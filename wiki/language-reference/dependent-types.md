@@ -452,4 +452,4 @@ Type checking dependent types is more expensive:
 
 - [Types](types.md) - Basic type system
 - [Refinement Types](../design/type-system.md#refinements) - Theory
-- [Vectors Example](../../examples/vectors.as) - Length-indexed vectors
+- [Vectors Example](../../examples/vectors.affine) - Length-indexed vectors

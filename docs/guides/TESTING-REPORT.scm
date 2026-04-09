@@ -205,49 +205,49 @@
 
   (cli-testing
     (command "affinescript --help" (status pass))
-    (command "affinescript lex examples/hello.as" (status pass))
-    (command "affinescript parse examples/hello.as" (status pass)
+    (command "affinescript lex examples/hello.affine" (status pass))
+    (command "affinescript parse examples/hello.affine" (status pass)
       (note "After fixing effect syntax")))
 
   (example-files
     (file
-      (name "hello.as")
+      (name "hello.affine")
       (status fixed)
       (issue "Effect syntax mismatch")
       (fix "Changed `-> () / IO` to `-{IO}-> ()`"))
 
     (file
-      (name "effects.as")
+      (name "effects.affine")
       (status needs-update)
       (issues
         "Uses aspirational syntax not yet implemented"))
 
     (file
-      (name "ownership.as")
+      (name "ownership.affine")
       (status needs-update)
       (issues
         "Uses aspirational syntax not yet implemented"))
 
     (file
-      (name "traits.as")
+      (name "traits.affine")
       (status needs-update)
       (issues
         "Uses aspirational syntax not yet implemented"))
 
     (file
-      (name "refinements.as")
+      (name "refinements.affine")
       (status needs-update)
       (issues
         "Uses aspirational syntax not yet implemented"))
 
     (file
-      (name "rows.as")
+      (name "rows.affine")
       (status needs-update)
       (issues
         "Uses aspirational syntax not yet implemented"))
 
     (file
-      (name "vectors.as")
+      (name "vectors.affine")
       (status needs-update)
       (issues
         "Uses aspirational syntax not yet implemented")))
@@ -283,5 +283,5 @@
       (changes "Removed WITH token mapping"))
     (file "test/test_parser.ml"
       (changes "Fixed pattern matching issues"))
-    (file "examples/hello.as"
+    (file "examples/hello.affine"
       (changes "Fixed effect annotation syntax"))))

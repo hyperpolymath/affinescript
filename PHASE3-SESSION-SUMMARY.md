@@ -21,9 +21,9 @@
 **Time:** 3.5 hours
 
 **Tests:**
-- ✓ tests/types/test_row_simple.as
-- ✓ tests/types/test_parse_row_type.as
-- ✓ tests/types/test_row_polymorphism.as
+- ✓ tests/types/test_row_simple.affine
+- ✓ tests/types/test_parse_row_type.affine
+- ✓ tests/types/test_row_polymorphism.affine
 
 ### 2. ✅ Effect Inference (85% Complete)
 
@@ -40,9 +40,9 @@
 **Time:** 2 hours
 
 **Tests:**
-- ✓ tests/types/test_effect_inference.as
-- ✓ tests/types/test_effect_lambda.as
-- ✓ tests/types/test_effect_polymorphism.as
+- ✓ tests/types/test_effect_inference.affine
+- ✓ tests/types/test_effect_lambda.affine
+- ✓ tests/types/test_effect_polymorphism.affine
 
 **Known Limitation:** Lambda parameter scope bug (pre-existing, separate issue)
 
@@ -81,7 +81,7 @@ Works with both pure and effectful functions!
 - Type checker integration ✓
 
 **Tests:**
-- ✓ tests/types/test_dependent_parsing.as
+- ✓ tests/types/test_dependent_parsing.affine
 
 **Example:**
 ```affinescript
@@ -114,7 +114,7 @@ fn take_positive(x: Int where (x > 0)) -> Int { return x; }
 **Time:** 0.5 hours
 
 **Tests:**
-- ✓ tests/types/test_hkt_parsing.as
+- ✓ tests/types/test_hkt_parsing.affine
 
 **Example:**
 ```affinescript
@@ -155,14 +155,14 @@ Much of Phase 3 infrastructure was **already implemented** but not integrated:
 **All 8 Phase 3 tests passing:**
 
 ```
-✓ tests/types/test_row_simple.as
-✓ tests/types/test_parse_row_type.as
-✓ tests/types/test_row_polymorphism.as
-✓ tests/types/test_effect_inference.as
-✓ tests/types/test_effect_lambda.as
-✓ tests/types/test_effect_polymorphism.as
-✓ tests/types/test_dependent_parsing.as
-✓ tests/types/test_hkt_parsing.as
+✓ tests/types/test_row_simple.affine
+✓ tests/types/test_parse_row_type.affine
+✓ tests/types/test_row_polymorphism.affine
+✓ tests/types/test_effect_inference.affine
+✓ tests/types/test_effect_lambda.affine
+✓ tests/types/test_effect_polymorphism.affine
+✓ tests/types/test_dependent_parsing.affine
+✓ tests/types/test_hkt_parsing.affine
 ```
 
 ## Phase 3 Status Breakdown
@@ -250,14 +250,14 @@ Row types created 20 shift/reduce conflicts. Solution was to write explicit recu
 - `lib/unify.ml` - Already complete (no changes needed)
 
 ### Tests Created:
-- `tests/types/test_row_simple.as`
-- `tests/types/test_parse_row_type.as`
-- `tests/types/test_row_polymorphism.as`
-- `tests/types/test_effect_inference.as`
-- `tests/types/test_effect_lambda.as`
-- `tests/types/test_effect_polymorphism.as`
-- `tests/types/test_dependent_parsing.as`
-- `tests/types/test_hkt_parsing.as`
+- `tests/types/test_row_simple.affine`
+- `tests/types/test_parse_row_type.affine`
+- `tests/types/test_row_polymorphism.affine`
+- `tests/types/test_effect_inference.affine`
+- `tests/types/test_effect_lambda.affine`
+- `tests/types/test_effect_polymorphism.affine`
+- `tests/types/test_dependent_parsing.affine`
+- `tests/types/test_hkt_parsing.affine`
 
 ### Documentation:
 - `PHASE3-ASSESSMENT.md` - Comprehensive progress tracking

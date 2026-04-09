@@ -20,13 +20,13 @@ aLib is NOT a code library - it's a way to specify minimal overlap between diver
 ```
 tests/conformance/
 ├── arithmetic/          # Arithmetic operation tests
-│   └── add.as
+│   └── add.affine
 ├── collection/          # Collection operation tests
-│   ├── map.as
-│   ├── filter.as
-│   ├── fold.as
-│   └── contains.as
-├── run_all.as          # Master test runner
+│   ├── map.affine
+│   ├── filter.affine
+│   ├── fold.affine
+│   └── contains.affine
+├── run_all.affine          # Master test runner
 └── README.md           # This file
 ```
 
@@ -34,12 +34,12 @@ tests/conformance/
 
 ### Run all conformance tests:
 ```bash
-affinescript tests/conformance/run_all.as
+affinescript tests/conformance/run_all.affine
 ```
 
 ### Run specific category:
 ```bash
-affinescript tests/conformance/collection/map.as
+affinescript tests/conformance/collection/map.affine
 ```
 
 ### Expected Output:
@@ -112,7 +112,7 @@ AffineScript's conformance tests respect affine type constraints:
 2. Extract test vectors from YAML section
 3. Create `tests/conformance/<category>/<operation>.as`
 4. Translate aLib function expressions to AffineScript syntax
-5. Add test to `run_all.as`
+5. Add test to `run_all.affine`
 
 Example:
 ```affinescript

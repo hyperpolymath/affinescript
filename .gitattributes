@@ -3,6 +3,9 @@
 
 * text=auto eol=lf
 
+# AffineScript source
+*.affine text eol=lf linguist-language=AffineScript
+
 # Source
 *.rs    text eol=lf diff=rust
 *.ex    text eol=lf diff=elixir
