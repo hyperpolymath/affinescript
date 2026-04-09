@@ -110,7 +110,7 @@ AffineScript's conformance tests respect affine type constraints:
 
 1. Read the aLib spec from `aggregate-library/specs/`
 2. Extract test vectors from YAML section
-3. Create `tests/conformance/<category>/<operation>.as`
+3. Create `tests/conformance/<category>/<operation>.affine`
 4. Translate aLib function expressions to AffineScript syntax
 5. Add test to `run_all.affine`
 

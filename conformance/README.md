@@ -8,10 +8,10 @@ The tests here are **binding** - changes to expected outputs require explicit ju
 ```
 conformance/
 ├── valid/       # Programs that must parse successfully (exit 0)
-│   ├── *.as     # Source files
+│   ├── *.affine     # Source files
 │   └── *.expected  # Expected parser output
 ├── invalid/     # Programs that must fail with diagnostics (exit non-zero)
-│   ├── *.as     # Source files
+│   ├── *.affine     # Source files
 │   └── *.expected  # Expected error diagnostics
 └── README.md    # This file
 ```
@@ -42,7 +42,7 @@ dune runtest conformance
 
 ## Adding New Tests
 
-1. Add `.as` source file to `valid/` or `invalid/`
+1. Add `.affine` source file to `valid/` or `invalid/`
 2. Run the compiler to generate expected output
 3. Review and save as `.expected` file
 4. Commit both files together
