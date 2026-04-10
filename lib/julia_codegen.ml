@@ -132,7 +132,7 @@ let rec gen_expr ctx (expr : expr) : string =
           "(if " ^ cond_str ^ "; " ^ then_str ^ "; else " ^ else_str ^ "; end)"
       | None ->
           "(if " ^ cond_str ^ "; " ^ then_str ^ "; end)")
-  | ExprLet { el_pat; el_value; el_body; el_mut = _; el_ty = _ } ->
+  | ExprLet { el_pat; el_value; el_body; el_mut = _; el_quantity = _; el_ty = _ } ->
       (* Let binding: 'local x = val; body' *)
       let pat_str = gen_pattern ctx el_pat in
       let val_str = gen_expr ctx el_value in
@@ -227,7 +227,7 @@ and gen_pattern_cond _ctx scrutinee pat =
 and gen_stmt ctx (stmt : stmt) : string =
   (* Statements (for blocks) *)
   match stmt with
-  | StmtLet { sl_pat; sl_value; sl_mut = _; sl_ty = _ } ->
+  | StmtLet { sl_pat; sl_value; sl_mut = _; sl_quantity = _; sl_ty = _ } ->
       let pat_str = gen_pattern ctx sl_pat in
       let val_str = gen_expr ctx sl_value in
       pat_str ^ " = " ^ val_str

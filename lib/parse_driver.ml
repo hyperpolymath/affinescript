@@ -165,6 +165,17 @@ let parse_string ~file content =
                    offset = pos.pos_cnum }
       in
       raise (Parse_error ("Syntax error", span))
+  | Parser_errors.Parse_action_error (msg, startpos, endpos) ->
+      let span = Span.make
+        ~file
+        ~start_pos:{ Span.line = startpos.Lexing.pos_lnum;
+                     col = startpos.pos_cnum - startpos.pos_bol + 1;
+                     offset = startpos.pos_cnum }
+        ~end_pos:{ Span.line = endpos.Lexing.pos_lnum;
+                   col = endpos.pos_cnum - endpos.pos_bol + 1;
+                   offset = endpos.pos_cnum }
+      in
+      raise (Parse_error (msg, span))
 
 (** Parse a program from a file *)
 let parse_file filename =
@@ -196,3 +207,14 @@ let parse_expr ~file content =
                    offset = pos.pos_cnum }
       in
       raise (Parse_error ("Syntax error", span))
+  | Parser_errors.Parse_action_error (msg, startpos, endpos) ->
+      let span = Span.make
+        ~file
+        ~start_pos:{ Span.line = startpos.Lexing.pos_lnum;
+                     col = startpos.pos_cnum - startpos.pos_bol + 1;
+                     offset = startpos.pos_cnum }
+        ~end_pos:{ Span.line = endpos.Lexing.pos_lnum;
+                   col = endpos.pos_cnum - endpos.pos_bol + 1;
+                   offset = endpos.pos_cnum }
+      in
+      raise (Parse_error (msg, span))

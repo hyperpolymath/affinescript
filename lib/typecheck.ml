@@ -573,7 +573,7 @@ let rec synth (ctx : context) (expr : expr) : ty result =
     lookup_var ctx name
 
   (* Let bindings: let pat = e1 in e2 *)
-  | ExprLet { el_pat; el_ty; el_value; el_body; el_mut = _ } ->
+  | ExprLet { el_pat; el_ty; el_value; el_body; el_mut = _; el_quantity = _ } ->
     (* Synthesize or check the value *)
     enter_level ctx;
     let* val_ty = begin match el_ty with
@@ -905,7 +905,7 @@ and synth_block (ctx : context) (blk : block) : ty result =
 
 and check_stmt (ctx : context) (stmt : stmt) : unit result =
   match stmt with
-  | StmtLet { sl_pat; sl_ty; sl_value; sl_mut = _ } ->
+  | StmtLet { sl_pat; sl_ty; sl_value; sl_mut = _; sl_quantity = _ } ->
     enter_level ctx;
     let* val_ty = begin match sl_ty with
       | Some te ->

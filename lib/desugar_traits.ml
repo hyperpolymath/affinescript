@@ -112,9 +112,10 @@ let rec desugar_expr (ctx : context) (expr : expr) : expr =
       elam_body = desugar_expr ctx elam_body;
     }
 
-  | ExprLet { el_mut; el_pat; el_ty; el_value; el_body } ->
+  | ExprLet { el_mut; el_quantity; el_pat; el_ty; el_value; el_body } ->
     ExprLet {
       el_mut;
+      el_quantity;
       el_pat;
       el_ty;
       el_value = desugar_expr ctx el_value;
@@ -178,9 +179,10 @@ and desugar_block (ctx : context) (blk : block) : block =
 
 and desugar_stmt (ctx : context) (stmt : stmt) : stmt =
   match stmt with
-  | StmtLet { sl_mut; sl_pat; sl_ty; sl_value } ->
+  | StmtLet { sl_mut; sl_quantity; sl_pat; sl_ty; sl_value } ->
     StmtLet {
       sl_mut;
+      sl_quantity;
       sl_pat;
       sl_ty;
       sl_value = desugar_expr ctx sl_value;

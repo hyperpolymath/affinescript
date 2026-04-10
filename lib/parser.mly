@@ -182,9 +182,44 @@ quantity:
   | ONE { QOne }
   | OMEGA { QOmega }
 
+(* ADR-007 Option C — primary attribute form for quantity annotations.
+   `@linear` ≡ QOne, `@erased` ≡ QZero, `@unrestricted` ≡ QOmega.
+   Rejects unknown attribute names with a parse error. *)
+quantity_attr:
+  | AT name = lower_ident
+    { match name with
+      | "linear" -> QOne
+      | "erased" -> QZero
+      | "unrestricted" -> QOmega
+      | other ->
+        let msg = Printf.sprintf
+          "unknown quantity attribute '@%s'; expected @linear, @erased, or @unrestricted"
+          other in
+        raise (Parser_errors.Parse_action_error (msg, $startpos, $endpos)) }
+
+(* ADR-007 Option B — sugar form for quantity annotations on let/stmt_let.
+   Reads as `:1`, `:0`, or `:ω` immediately after the pattern. The lexer
+   emits INT for `0` and `1`, so we accept INT here and validate the value
+   at parse time, rejecting any integer outside {0, 1}. OMEGA is the
+   `omega` keyword or `ω` codepoint. *)
+quantity_b_sugar:
+  | COLON n = INT
+    { match n with
+      | 0 -> QZero
+      | 1 -> QOne
+      | other ->
+        let msg = Printf.sprintf
+          "invalid quantity literal '%d'; expected 0, 1, or ω (omega)"
+          other in
+        raise (Parser_errors.Parse_action_error (msg, $startpos, $endpos)) }
+  | COLON OMEGA { QOmega }
+
 param:
   | qty = quantity? own = ownership? name = ident COLON ty = type_expr
     { { p_quantity = qty; p_ownership = own; p_name = name; p_ty = ty } }
+  (* ADR-007 Option C: @linear x: Int *)
+  | qty_attr = quantity_attr own = ownership? name = ident COLON ty = type_expr
+    { { p_quantity = Some qty_attr; p_ownership = own; p_name = name; p_ty = ty } }
 
 ownership:
   | OWN { Own }
@@ -383,7 +418,8 @@ expr:
 
 expr_assign:
   | lhs = expr_or EQ rhs = expr_assign
-    { ExprLet { el_mut = false; el_pat = PatVar (mk_ident "_" $startpos(lhs) $endpos(lhs));
+    { ExprLet { el_mut = false; el_quantity = None;
+                el_pat = PatVar (mk_ident "_" $startpos(lhs) $endpos(lhs));
                 el_ty = None; el_value = lhs; el_body = Some rhs } }
   | e = expr_or { e }
 
@@ -499,9 +535,19 @@ expr_primary:
   | MATCH scrutinee = expr LBRACE arms = list(match_arm) RBRACE
     { ExprMatch { em_scrutinee = scrutinee; em_arms = arms } }
 
-  /* Let expressions */
+  /* Let expressions — ADR-007 hybrid surface syntax for quantities.
+     Four production paths cover the cross product of {C-attr, B-sugar, neither}
+     × {with type, without type}. The C-attribute form (`@linear let x = e`)
+     and the B-sugar form (`let x :1 = e`) cannot both appear on the same let
+     binder; they are alternative spellings, not stackable annotations. */
   | LET mut_ = MUT? pat = pattern ty = type_annotation? EQ value = expr
-    { ExprLet { el_mut = Option.is_some mut_; el_pat = pat;
+    { ExprLet { el_mut = Option.is_some mut_; el_quantity = None; el_pat = pat;
+                el_ty = ty; el_value = value; el_body = None } }
+  | qty_attr = quantity_attr LET mut_ = MUT? pat = pattern ty = type_annotation? EQ value = expr
+    { ExprLet { el_mut = Option.is_some mut_; el_quantity = Some qty_attr; el_pat = pat;
+                el_ty = ty; el_value = value; el_body = None } }
+  | LET mut_ = MUT? pat = pattern qty = quantity_b_sugar ty = type_annotation? EQ value = expr
+    { ExprLet { el_mut = Option.is_some mut_; el_quantity = Some qty; el_pat = pat;
                 el_ty = ty; el_value = value; el_body = None } }
 
   /* Lambda */
@@ -548,6 +594,11 @@ lambda_param:
                      p_ty = TyHole } }
   | name = ident COLON ty = type_expr
     { { p_quantity = None; p_ownership = None; p_name = name; p_ty = ty } }
+  /* ADR-007 Option C: @linear x or @linear x: Type */
+  | qty_attr = quantity_attr name = ident
+    { { p_quantity = Some qty_attr; p_ownership = None; p_name = name; p_ty = TyHole } }
+  | qty_attr = quantity_attr name = ident COLON ty = type_expr
+    { { p_quantity = Some qty_attr; p_ownership = None; p_name = name; p_ty = ty } }
 
 match_arm:
   | pat = pattern guard = match_guard? FAT_ARROW body = expr COMMA?
@@ -622,7 +673,14 @@ stmt_list_nonempty_trailing_expr:
 
 stmt:
   | LET mut_ = MUT? pat = pattern ty = type_annotation? EQ value = expr SEMICOLON
-    { StmtLet { sl_mut = Option.is_some mut_; sl_pat = pat; sl_ty = ty; sl_value = value } }
+    { StmtLet { sl_mut = Option.is_some mut_; sl_quantity = None;
+                sl_pat = pat; sl_ty = ty; sl_value = value } }
+  | qty_attr = quantity_attr LET mut_ = MUT? pat = pattern ty = type_annotation? EQ value = expr SEMICOLON
+    { StmtLet { sl_mut = Option.is_some mut_; sl_quantity = Some qty_attr;
+                sl_pat = pat; sl_ty = ty; sl_value = value } }
+  | LET mut_ = MUT? pat = pattern qty = quantity_b_sugar ty = type_annotation? EQ value = expr SEMICOLON
+    { StmtLet { sl_mut = Option.is_some mut_; sl_quantity = Some qty;
+                sl_pat = pat; sl_ty = ty; sl_value = value } }
   | e = expr SEMICOLON { StmtExpr e }
   | IF cond = expr then_blk = block else_part = else_part?
     { StmtExpr (ExprIf { ei_cond = cond; ei_then = ExprBlock then_blk; ei_else = else_part }) }

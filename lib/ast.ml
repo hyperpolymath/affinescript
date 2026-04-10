@@ -104,6 +104,14 @@ type expr =
   | ExprVar of ident
   | ExprLet of {
       el_mut : bool;
+      el_quantity : quantity option;
+        (** QTT binder quantity, per ADR-002 / ADR-007.
+            None means: defaults to QOmega (unrestricted), the
+            unannotated case. The quantity scales the value context
+            in the typing rule q·Γ₁ + Γ₂ ⊢ let x :^q = e1 in e2.
+            Surface syntaxes that populate this:
+            - @linear / @erased / @unrestricted (Option C, primary)
+            - :1 / :0 / :ω                       (Option B, sugar) *)
       el_pat : pattern;
       el_ty : type_expr option;
       el_value : expr;
@@ -170,6 +178,10 @@ and block = {
 and stmt =
   | StmtLet of {
       sl_mut : bool;
+      sl_quantity : quantity option;
+        (** QTT binder quantity for statement-position let, per
+            ADR-002 / ADR-007. None defaults to QOmega. Same surface
+            syntaxes as ExprLet's el_quantity. *)
       sl_pat : pattern;
       sl_ty : type_expr option;
       sl_value : expr;

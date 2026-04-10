@@ -171,8 +171,14 @@ and literal_to_sexpr = function
 let rec expr_to_sexpr d = function
   | ExprLit lit       -> literal_to_sexpr lit
   | ExprVar id        -> id.name
-  | ExprLet { el_mut; el_pat; el_ty; el_value; el_body } ->
+  | ExprLet { el_mut; el_quantity; el_pat; el_ty; el_value; el_body } ->
     let tag = if el_mut then "let-mut" else "let" in
+    let q_str = match el_quantity with
+      | None -> ""
+      | Some QZero -> " #@erased"
+      | Some QOne -> " #@linear"
+      | Some QOmega -> " #@unrestricted"
+    in
     let ty_str = match el_ty with
       | None -> ""
       | Some t -> Printf.sprintf " : %s" (type_expr_to_sexpr t)
@@ -181,7 +187,7 @@ let rec expr_to_sexpr d = function
       | None -> ""
       | Some b -> Printf.sprintf "\n%s%s" (indent (d + 2)) (expr_to_sexpr (d + 2) b)
     in
-    Printf.sprintf "(%s %s%s %s%s)" tag
+    Printf.sprintf "(%s%s %s%s %s%s)" tag q_str
       (pattern_to_sexpr el_pat) ty_str (expr_to_sexpr (d + 2) el_value) body_str
   | ExprIf { ei_cond; ei_then; ei_else } ->
     let else_str = match ei_else with
@@ -298,13 +304,19 @@ and block_to_sexpr d blk =
 
 (** Convert a statement to S-expression form. *)
 and stmt_to_sexpr d = function
-  | StmtLet { sl_mut; sl_pat; sl_ty; sl_value } ->
+  | StmtLet { sl_mut; sl_quantity; sl_pat; sl_ty; sl_value } ->
     let tag = if sl_mut then "let-mut" else "let" in
+    let q_str = match sl_quantity with
+      | None -> ""
+      | Some QZero -> " #@erased"
+      | Some QOne -> " #@linear"
+      | Some QOmega -> " #@unrestricted"
+    in
     let ty_str = match sl_ty with
       | None -> ""
       | Some t -> Printf.sprintf " : %s" (type_expr_to_sexpr t)
     in
-    Printf.sprintf "(%s %s%s %s)" tag
+    Printf.sprintf "(%s%s %s%s %s)" tag q_str
       (pattern_to_sexpr sl_pat) ty_str (expr_to_sexpr (d + 2) sl_value)
   | StmtExpr e -> expr_to_sexpr d e
   | StmtAssign (lhs, op, rhs) ->
