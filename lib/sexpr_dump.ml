@@ -11,7 +11,7 @@
       {!Ast.impl_block}
     - {!Ast.expr}, {!Ast.stmt}, {!Ast.block}
     - {!Ast.pattern}, {!Ast.literal}
-    - {!Ast.type_expr}, {!Ast.nat_expr}, {!Ast.effect_expr}
+    - {!Ast.type_expr}, {!Ast.effect_expr}
     - {!Ast.quantity}, {!Ast.ownership}, {!Ast.visibility}, {!Ast.kind}
 *)
 
@@ -59,15 +59,9 @@ let visibility_to_sexpr = function
 (** Convert a kind to an S-expression string. *)
 let rec kind_to_sexpr = function
   | KType          -> "Type"
-  | KNat           -> "Nat"
   | KRow           -> "Row"
   | KEffect        -> "Effect"
   | KArrow (a, b)  -> Printf.sprintf "(-> %s %s)" (kind_to_sexpr a) (kind_to_sexpr b)
-
-(** Convert a comparison operator to a string. *)
-let cmp_op_to_string = function
-  | Lt -> "<" | Le -> "<=" | Gt -> ">" | Ge -> ">="
-  | Eq -> "=" | Ne -> "!="
 
 (** Convert a binary operator to a string. *)
 let binary_op_to_string = function
@@ -88,36 +82,12 @@ let assign_op_to_string = function
   | AssignMul -> "*=" | AssignDiv -> "/="
 
 (* ======================================================================
-   NAT EXPRESSIONS & PREDICATES
-   ====================================================================== *)
-
-(** Convert a nat-level expression to S-expression form. *)
-let rec nat_expr_to_sexpr = function
-  | NatLit (n, _)    -> string_of_int n
-  | NatVar id        -> id.name
-  | NatAdd (a, b)    -> Printf.sprintf "(+ %s %s)" (nat_expr_to_sexpr a) (nat_expr_to_sexpr b)
-  | NatSub (a, b)    -> Printf.sprintf "(- %s %s)" (nat_expr_to_sexpr a) (nat_expr_to_sexpr b)
-  | NatMul (a, b)    -> Printf.sprintf "(* %s %s)" (nat_expr_to_sexpr a) (nat_expr_to_sexpr b)
-  | NatLen id        -> Printf.sprintf "(len %s)" id.name
-  | NatSizeof ty     -> Printf.sprintf "(sizeof %s)" (type_expr_to_sexpr ty)
-
-(** Convert a predicate to S-expression form. *)
-and predicate_to_sexpr = function
-  | PredCmp (a, op, b) ->
-    Printf.sprintf "(%s %s %s)" (cmp_op_to_string op)
-      (nat_expr_to_sexpr a) (nat_expr_to_sexpr b)
-  | PredNot p       -> Printf.sprintf "(not %s)" (predicate_to_sexpr p)
-  | PredAnd (a, b)  -> Printf.sprintf "(and %s %s)" (predicate_to_sexpr a) (predicate_to_sexpr b)
-  | PredOr (a, b)   -> Printf.sprintf "(or %s %s)" (predicate_to_sexpr a) (predicate_to_sexpr b)
-
-(* ======================================================================
    TYPE EXPRESSIONS
    ====================================================================== *)
 
 (** Convert a type argument to S-expression form. *)
-and type_arg_to_sexpr = function
+let rec type_arg_to_sexpr = function
   | TyArg ty   -> type_expr_to_sexpr ty
-  | NatArg nat -> nat_expr_to_sexpr nat
 
 (** Convert a type expression to S-expression form. *)
 and type_expr_to_sexpr = function
@@ -126,23 +96,12 @@ and type_expr_to_sexpr = function
   | TyApp (id, args) ->
     Printf.sprintf "(%s %s)" id.name
       (String.concat " " (List.map type_arg_to_sexpr args))
-  | TyArrow (a, b, eff) ->
+  | TyArrow (a, _q, b, eff) ->
     let eff_str = match eff with
       | None -> ""
       | Some e -> Printf.sprintf " / %s" (effect_expr_to_sexpr e)
     in
     Printf.sprintf "(-> %s %s%s)" (type_expr_to_sexpr a) (type_expr_to_sexpr b) eff_str
-  | TyDepArrow { da_quantity; da_param; da_param_ty; da_ret_ty; da_eff } ->
-    let q_str = match da_quantity with
-      | None -> ""
-      | Some q -> Printf.sprintf "%s " (quantity_to_sexpr q)
-    in
-    let eff_str = match da_eff with
-      | None -> ""
-      | Some e -> Printf.sprintf " / %s" (effect_expr_to_sexpr e)
-    in
-    Printf.sprintf "(dep-arrow (%s%s : %s) %s%s)" q_str da_param.name
-      (type_expr_to_sexpr da_param_ty) (type_expr_to_sexpr da_ret_ty) eff_str
   | TyTuple tys ->
     Printf.sprintf "(tuple %s)" (String.concat " " (List.map type_expr_to_sexpr tys))
   | TyRecord (fields, rest) ->
@@ -157,8 +116,6 @@ and type_expr_to_sexpr = function
   | TyOwn ty   -> Printf.sprintf "(own %s)" (type_expr_to_sexpr ty)
   | TyRef ty   -> Printf.sprintf "(ref %s)" (type_expr_to_sexpr ty)
   | TyMut ty   -> Printf.sprintf "(mut %s)" (type_expr_to_sexpr ty)
-  | TyRefined (ty, pred) ->
-    Printf.sprintf "(refined %s %s)" (type_expr_to_sexpr ty) (predicate_to_sexpr pred)
   | TyHole     -> "_"
 
 (** Convert an effect expression to S-expression form. *)
@@ -373,8 +330,6 @@ and unsafe_op_to_sexpr d = function
       (type_expr_to_sexpr from_ty) (type_expr_to_sexpr to_ty) (expr_to_sexpr (d + 2) e)
   | UnsafeForget e ->
     Printf.sprintf "(unsafe-forget %s)" (expr_to_sexpr (d + 2) e)
-  | UnsafeAssume pred ->
-    Printf.sprintf "(unsafe-assume %s)" (predicate_to_sexpr pred)
 
 (** Convert a parameter to S-expression form. *)
 and param_to_sexpr p =
@@ -412,8 +367,6 @@ let trait_bound_to_sexpr tb =
 
 (** Convert a constraint to S-expression form. *)
 let constraint_to_sexpr = function
-  | ConstraintPred pred ->
-    Printf.sprintf "(where %s)" (predicate_to_sexpr pred)
   | ConstraintTrait (id, bounds) ->
     Printf.sprintf "(where %s : %s)" id.name
       (String.concat " + " (List.map trait_bound_to_sexpr bounds))

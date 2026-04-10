@@ -1,3 +1,5 @@
+> Historical snapshot from 2026-01-23. Superseded by .machine_readable/6a2/STATE.a2ml. Retained for audit trail only.
+
 # Type Checker Completion Report
 
 **Date:** 2026-01-23

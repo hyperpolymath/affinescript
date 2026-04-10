@@ -12,6 +12,11 @@ image:https://img.shields.io/badge/Powered%20By-Gossamer%20%26%20Burble-orange.s
 
 **Write games where the compiler catches your bugs before players do.**
 
+[NOTE]
+====
+*Honest status (2026-04-10):* AffineScript's affine types, QTT quantity checking, borrow checker, and dependent types are **experimental (enforcement landing soon)**. The type-checking rules for these features are implemented in `lib/typecheck.ml` and `lib/quantity.ml`, but they are not yet wired into the `check`/`compile`/`eval` CLI paths, so user programs are not gated on them today. Track A of the Manhattan plan closes this gap; ETA T+7d. See `.machine_readable/6a2/STATE.a2ml` `[features]` for the per-feature honest breakdown.
+====
+
 AffineScript is the only language that combines affine types, quantitative type theory, row polymorphism, and algebraic effects in a single practical systems language. This means you can write game code where the compiler *proves* your protocol states, resource lifecycles, and effect boundaries are correct -- with syntax that feels like a modern game scripting language, not a theorem prover.
 
 Built on the same battle-tested technologies as https://github.com/hyperpolymath/gossamer[Gossamer] (resource-safe desktop apps with zero handle leaks) and https://github.com/hyperpolymath/burble[Burble] (sub-10ms latency voice comms with Zig SIMD acceleration), AffineScript brings industrial-strength correctness to game development.
@@ -319,7 +324,7 @@ dune exec affinescript -- check --json examples/hello.affine
 
 == Project Status
 
-**Version 0.8 Complete:** The frontend and core type features (Linear Arrows `-[q]->`, Generic Variants, Refinement Types, Kind Checking) are fully operational.
+**Version 0.8 Frontend Complete:** The frontend surface syntax for core type features (Linear Arrows `-[q]->`, Generic Variants, Refinement Types, Kind Checking) parses and elaborates. Note: several of these features are *experimental (enforcement landing soon)* — the quantity checker is not yet called from the CLI, the lexer does not yet emit ZERO/ONE quantity literal tokens, and refinement predicates parse but do not reduce. See `.machine_readable/6a2/STATE.a2ml` `[features]` for per-feature status.
 
 NOTE: As of v0.8, the standard file extension for AffineScript is `.affine` (formerly `.affine`, changed to avoid clashes with ActionScript).
 

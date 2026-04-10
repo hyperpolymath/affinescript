@@ -122,9 +122,11 @@ WebAssembly Binary (.wasm)
 ```
 
 ### Supported Features
-- ✅ **Lexer & Parser:** Complete
-- ✅ **Type Checker:** Working (bidirectional inference)
-- ✅ **Borrow Checker:** Partial (runtime checks in interpreter)
+- ✅ **Lexer & Parser:** Complete (note: lexer does not yet emit ZERO/ONE quantity literal tokens — blocks QTT surface syntax)
+- ⚠️ **Type Checker:** Rules implemented (bidirectional inference in `lib/typecheck.ml`), but **experimental (enforcement landing soon)** — not yet wired into `check`/`compile`/`eval` CLI paths
+- ⚠️ **Affine Types / QTT:** **experimental (enforcement landing soon)** — quantity semiring in `lib/quantity.ml` exists but is not called from `bin/main.ml`
+- ⚠️ **Borrow Checker:** **experimental (enforcement landing soon)** — `lib/borrow.ml` carries `[IMPL-DEP: Phase 3]` markers; runtime checks in interpreter only
+- ⚠️ **Dependent / Refinement Types:** parse-only — `TRefined` AST node exists but predicates do not reduce
 - ✅ **WASM Codegen:** Complete (basic operations)
 - ✅ **Julia Codegen:** Phase 1 (basic types)
 - ❌ **Native Codegen:** Not implemented

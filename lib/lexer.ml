@@ -14,6 +14,7 @@ let () =
     [
       ("fn", FN);
       ("let", LET);
+      ("const", CONST);
       ("mut", MUT);
       ("own", OWN);
       ("ref", REF);
@@ -150,11 +151,6 @@ let rec token state buf =
   | '\'' ->
     CHAR (char_lit state buf)
 
-  (* Row variables *)
-  | "..", lower_ident ->
-    let s = Sedlexing.Utf8.lexeme buf in
-    ROW_VAR (String.sub s 2 (String.length s - 2))
-
   (* Omega symbol *)
   | 0x03C9 -> OMEGA  (* ω *)
 
@@ -162,7 +158,12 @@ let rec token state buf =
   | "->" -> ARROW
   | "=>" -> FAT_ARROW
   | "::" -> COLONCOLON
+  (* Row variable "..name" — must come before ".." so sedlex prefers the longer match *)
+  | "..", lower_ident ->
+    let s = Sedlexing.Utf8.lexeme buf in
+    ROW_VAR (String.sub s 2 (String.length s - 2))
   | ".." -> DOTDOT
+  | "++" -> PLUSPLUS
   | "==" -> EQEQ
   | "!=" -> NE
   | "<=" -> LE

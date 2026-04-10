@@ -36,7 +36,6 @@ type visibility =
 (** Kinds *)
 type kind =
   | KType                          (** Type *)
-  | KNat                           (** Nat *)
   | KRow                           (** Row *)
   | KEffect                        (** Effect *)
   | KArrow of kind * kind          (** κ → κ *)
@@ -50,50 +49,21 @@ type type_param = {
 }
 [@@deriving show, eq]
 
-(** Nat-level expressions (for dependent types) *)
-type nat_expr =
-  | NatLit of int * Span.t
-  | NatVar of ident
-  | NatAdd of nat_expr * nat_expr
-  | NatSub of nat_expr * nat_expr
-  | NatMul of nat_expr * nat_expr
-  | NatLen of ident
-  | NatSizeof of type_expr
-
-(** Predicates for refinement types *)
-and predicate =
-  | PredCmp of nat_expr * cmp_op * nat_expr
-  | PredNot of predicate
-  | PredAnd of predicate * predicate
-  | PredOr of predicate * predicate
-
-and cmp_op = Lt | Le | Gt | Ge | Eq | Ne
-[@@deriving show, eq]
-
 (** Type expressions *)
-and type_expr =
+type type_expr =
   | TyVar of ident                                   (** Type variable *)
   | TyCon of ident                                   (** Type constructor *)
   | TyApp of ident * type_arg list                   (** Vec[n, T] *)
   | TyArrow of type_expr * quantity option * type_expr * effect_expr option  (** T -{q}-> U / E *)
-  | TyDepArrow of {                                  (** (x: T) -{q}-> U / E *)
-      da_quantity : quantity option;
-      da_param : ident;
-      da_param_ty : type_expr;
-      da_ret_ty : type_expr;
-      da_eff : effect_expr option;
-    }
   | TyTuple of type_expr list                        (** (T, U, V) *)
   | TyRecord of row_field list * ident option        (** {x: T, ..r} *)
   | TyOwn of type_expr                               (** own T *)
   | TyRef of type_expr                               (** ref T *)
   | TyMut of type_expr                               (** mut T *)
-  | TyRefined of type_expr * predicate               (** T where (P) *)
   | TyHole                                           (** _ - infer *)
 
 and type_arg =
   | TyArg of type_expr
-  | NatArg of nat_expr
 
 and row_field = {
   rf_name : ident;
@@ -210,7 +180,7 @@ and stmt =
   | StmtFor of pattern * expr * block
 
 and binary_op =
-  | OpAdd | OpSub | OpMul | OpDiv | OpMod
+  | OpAdd | OpSub | OpMul | OpDiv | OpMod | OpConcat
   | OpEq | OpNe | OpLt | OpLe | OpGt | OpGe
   | OpAnd | OpOr
   | OpBitAnd | OpBitOr | OpBitXor | OpShl | OpShr
@@ -227,7 +197,6 @@ and unsafe_op =
   | UnsafeOffset of expr * expr
   | UnsafeTransmute of type_expr * type_expr * expr
   | UnsafeForget of expr
-  | UnsafeAssume of predicate
 [@@deriving show, eq]
 
 (** Parameters *)
@@ -248,7 +217,6 @@ type trait_bound = {
 
 (** Where clause constraints *)
 type constraint_ =
-  | ConstraintPred of predicate
   | ConstraintTrait of ident * trait_bound list
 [@@deriving show, eq]
 

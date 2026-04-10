@@ -573,7 +573,6 @@ let rec check_expr (ctx : context) (state : state) (symbols : Symbol.t) (expr : 
         check_expr ctx state symbols e2
       | UnsafeTransmute (_, _, e) -> check_expr ctx state symbols e
       | UnsafeForget e -> check_expr ctx state symbols e
-      | UnsafeAssume _ -> Ok ()
     ) (Ok ()) ops
 
   | ExprVariant _ -> Ok ()

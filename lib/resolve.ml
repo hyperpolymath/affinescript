@@ -45,12 +45,19 @@ let ( let* ) = Result.bind
 
 (** Create a new resolution context *)
 let create_context () : context =
-  {
+  let ctx = {
     symbols = Symbol.create ();
     current_module = [];
     imports = [];
     references = [];
-  }
+  } in
+  (* Register built-in functions *)
+  let _ = Symbol.define ctx.symbols "print" SKFunction Span.dummy Public in
+  let _ = Symbol.define ctx.symbols "println" SKFunction Span.dummy Public in
+  let _ = Symbol.define ctx.symbols "int" SKFunction Span.dummy Public in
+  let _ = Symbol.define ctx.symbols "float" SKFunction Span.dummy Public in
+  let _ = Symbol.define ctx.symbols "sqrt" SKFunction Span.dummy Public in
+  ctx
 
 (** Record a use-site reference for a symbol (Phase C: find-references). *)
 let record_reference (ctx : context) (sym : Symbol.symbol) (span : Span.t) : unit =
@@ -320,7 +327,6 @@ let rec resolve_expr (ctx : context) (expr : expr) : unit result =
         resolve_expr ctx e2
       | UnsafeTransmute (_, _, e) -> resolve_expr ctx e
       | UnsafeForget e -> resolve_expr ctx e
-      | UnsafeAssume _ -> Ok ()  (* Predicates don't need resolution *)
     ) (Ok ()) ops
 
   | ExprVariant (_ty, _variant) ->

@@ -7,3 +7,196 @@ project = "affinescript"
 author = "Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>"
 license = "PMPL-1.0-or-later"
 standard = "RSR 2026"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Architecture Decision Records
+# ──────────────────────────────────────────────────────────────────────────────
+# ADRs are numbered sequentially and never renumbered. Superseded ADRs remain
+# in place with status = "superseded" and a pointer to the replacement.
+# Added 2026-04-10 during Track F1 (Idris2 Solo-core formalisation) — the
+# formal-verification track surfaced three decisions about the QTT type system
+# that were previously implicit.
+
+[[adr]]
+id = "ADR-001"
+status = "accepted"
+date = "2026-04-10"
+title = "Split-Γ is the canonical presentation of the QTT type system"
+context = """
+The Idris2 Solo-core formalisation (docs/academic/formal-verification/solo-core/)
+revealed that docs/spec.md §3.6 presents typing rules against a shared Γ
+(writing e.g. T-App with both premises typed under the same Γ), while
+lib/quantity.ml runs a post-hoc usage walk that accumulates per-variable
+usage summed across subterms. The literature-standard QTT presentation
+(Atkey 2018, Granule, Idris2 core) uses explicit context splitting
+  Γ = Γ₁ + q·Γ₂
+at every eliminator position.
+
+Both forms are extensionally equivalent for the Solo core (same programs
+accepted/rejected). The difference is purely presentational.
+"""
+decision = """
+Split-Γ is canonical. The spec, the formalisation, and all future
+documentation present typing rules in split-Γ form. The post-hoc usage walk
+in lib/quantity.ml is an equivalent implementation strategy, documented as
+such in a comment, not the definition of the type system.
+"""
+consequences = """
+- docs/spec.md §3.6 is rewritten to show explicit context splitting (~30-60 LOC).
+- lib/quantity.ml gets a header comment explaining that its flat walk is an
+  equivalent implementation of the split-Γ rules, with a pointer to this ADR.
+- The Idris2 formalisation's Typing.idr (which uses split-Γ) becomes the
+  mechanised witness of the spec — no translation layer required.
+- Progress + preservation proofs can proceed in textbook form.
+- Dependability gain: one source of truth. The spec-vs-impl gap (the failure
+  mode flagged in Track B's audit of TYPECHECKER-COMPLETION.md) cannot
+  structurally hide in this part of the system.
+- Interop gain: the spec becomes citable and legible to anyone with QTT
+  background (Atkey, Idris2, Granule, Quill readers).
+- Reader-tax cost: split-Γ notation is heavier than shared-Γ for newcomers.
+  Mitigated by surface-language tutorials keeping informal shared-Γ intuition
+  while the spec remains the formal reference.
+"""
+
+[[adr]]
+id = "ADR-002"
+status = "accepted"
+date = "2026-04-10"
+title = "Let rule scales value context by binder quantity (QTT-orthodox)"
+context = """
+During the Decision-2 audit of docs/spec.md T-Let against lib/typecheck.ml
+and lib/quantity.ml, the current implementation was found to handle Let
+unsoundly:
+
+- lib/typecheck.ml:631-665 (ExprLet) does zero quantity handling — pure
+  HM-style inference with let-generalisation, quantities entirely absent.
+- lib/quantity.ml:251-253 (ExprLet in infer_usage_expr) does a flat walk
+  that sums e1's and e2's usages without scaling e1 by the binder's quantity.
+
+This is equivalent to the rule
+  Γ₁ ⊢ e1 : A    (Γ₂, x:A) ⊢ e2 : B
+  ─────────────────────────────────
+            Γ₁ + Γ₂ ⊢ let x = e1 in e2 : B
+rather than the QTT-orthodox
+  Γ₁ ⊢ e1 : A    (Γ₂, x:^q A) ⊢ e2 : B
+  ─────────────────────────────────────
+         q·Γ₁ + Γ₂ ⊢ let x :^q = e1 in e2 : B
+
+Two concrete soundness bugs follow:
+
+BUG-001 (high severity — linear-value smuggling):
+  let x :ω = linear_resource() in use_x_once(x)
+  Current impl accepts; QTT-correct form rejects (e1's Γ must be scaled by
+  ω, so any Γ₁ containing a linear variable becomes ill-formed).
+
+BUG-002 (medium severity — erasure failure):
+  let x :0 = expensive_proof_term() in body_not_using_x
+  Current impl evaluates e1 and consumes its resources; QTT-correct form
+  scales e1's Γ by 0, producing the zero context, which means e1 can be
+  erased at runtime.
+
+BUG-001 is a soundness hole that defeats the point of affine types in any
+program where ω-binders and linear values coexist.
+"""
+decision = """
+The Let rule in both the spec and the implementation scales the value
+context by the binder's quantity. T-Let becomes:
+
+  Γ₁ ⊢ e1 : A    (Γ₂, x:^q A) ⊢ e2 : B
+  ─────────────────────────────────────
+         q·Γ₁ + Γ₂ ⊢ let x :^q = e1 in e2 : B
+
+Unannotated Let defaults to q = ω (matching current behaviour for all
+existing unannotated code — so the fix is non-breaking for the common case).
+"""
+consequences = """
+- lib/quantity.ml ExprLet case grows a scale-by-q step before summing
+  into the outer context (~10 LOC).
+- lib/typecheck.ml ExprLet case threads quantities (folded into Track A3
+  which is already rewriting quantity flow through typecheck.ml).
+- docs/spec.md T-Let rule is rewritten to show the scaling explicitly.
+- Two regression tests added as Track A2 fixtures covering BUG-001 and
+  BUG-002.
+- The Idris2 formalisation (Typing.idr THLet) already assumes the scaled
+  form — no rework there.
+- Users who had previously (accidentally) relied on the unsound behaviour
+  to duplicate linear values through ω-lets will now get a compile error.
+  Expected blast radius: near-zero because affine enforcement was never
+  wired in the first place (see ADR-001 rationale).
+"""
+
+[[adr]]
+id = "ADR-003"
+status = "accepted"
+date = "2026-04-10"
+title = "Evaluation order is strict CBV, left-to-right, for all n-ary forms"
+context = """
+During the Decision-3 audit of lib/interp.ml for the Track F1 Step relation,
+the evaluator was found to be internally inconsistent about evaluation order
+of n-ary expression forms.
+
+- ExprBinary (lib/interp.ml:135-138) is explicitly left-to-right:
+    let* left_val = eval env left in
+    let* right_val = eval env right in
+    eval_binop op left_val right_val
+- ExprApp args (:130), ExprTuple (:144), ExprArray (:148) all delegate to
+  eval_list, which is implemented with List.fold_right:
+    and eval_list env exprs =
+      List.fold_right (fun expr acc ->
+        let* vals = acc in
+        let* v = eval env expr in
+        Ok (v :: vals)
+      ) exprs (Ok [])
+  OCaml is strict, so in f (fold_right f [a;b;c] init) the innermost
+  application runs first — eval env c is forced before eval env b before
+  eval env a. Net result: right-to-left.
+
+This was almost certainly unintentional; nothing currently depends on the
+order because affine enforcement was never wired. However:
+
+- The WASM and Julia backends will naturally generate left-to-right code,
+  producing cross-backend semantic divergence for any program with effectful
+  or resource-consuming arguments.
+- The effect system (70% complete per STATE.a2ml) would observe handler
+  ordering tied to evaluation order, making this a latent soundness hazard.
+- A Track F1 Step relation defined in textbook CBV left-to-right form would
+  disagree with the interpreter, requiring a non-standard right-to-left
+  presentation or a proof of order-independence (which is false in general
+  for effectful languages).
+"""
+decision = """
+All n-ary expression forms evaluate their subterms strict left-to-right.
+This applies to: application arguments, tuples, arrays, record fields,
+function calls in all positions.
+
+lib/interp.ml eval_list is fixed to left-to-right:
+  and eval_list env exprs =
+    let rec loop acc = function
+      | [] -> Ok (List.rev acc)
+      | e :: rest ->
+        let* v = eval env e in
+        loop (v :: acc) rest
+    in
+    loop [] exprs
+
+Track F1's Step relation uses the standard CBV left-to-right presentation
+  e1 → e1'  ⟹  e1 e2 → e1' e2       (reduce function first)
+  e2 → e2'  ⟹  v1 e2 → v1 e2'       (then argument, only once function is a value)
+with the symmetric congruences for pairs, tuples, etc.
+"""
+consequences = """
+- lib/interp.ml eval_list is replaced (~6 LOC diff).
+- docs/spec.md gains (or receives an edit to) an explicit operational
+  semantics section stating strict CBV, left-to-right.
+- A regression test lands in Track A2 exercising a program whose output
+  depends on left-to-right evaluation (e.g. a tuple of two side-effecting
+  calls that mutate a shared counter).
+- WASM, Julia, and the effect system all become consistent with the
+  interpreter by default — no backend fix required.
+- Track F1 can proceed on its current footing to mechanise Step and the
+  progress/preservation proofs without author input.
+- Existing programs are unaffected unless they rely on observable right-
+  to-left evaluation of tuple/arg components. The interpreter is the only
+  place that did this, and nobody has filed a bug, so blast radius is
+  expected to be zero.
+"""

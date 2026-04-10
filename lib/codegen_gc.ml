@@ -278,6 +278,7 @@ let gen_binop (op : binary_op) : Wasm.instr =
   | OpOr     -> Wasm.I32Or    | OpBitAnd -> Wasm.I32And
   | OpBitOr  -> Wasm.I32Or    | OpBitXor -> Wasm.I32Xor
   | OpShl    -> Wasm.I32Shl   | OpShr    -> Wasm.I32ShrS
+  | OpConcat -> Wasm.I32Add (* Placeholder *)
 
 (** {1 Expression codegen} *)
 
@@ -331,6 +332,47 @@ let rec gen_gc_expr (ctx : gc_ctx) (expr : expr) : (gc_ctx * gc_instr list) cg_r
 
   | ExprUnary (_, operand) ->
     gen_gc_expr ctx operand
+
+  (* ── Function calls ────────────────────────────────────────────── *)
+
+  | ExprApp (ExprVar id, args) ->
+    let* (ctx_after_args, arg_codes_rev) =
+      List.fold_left (fun acc arg ->
+        let* (c, rev_codes) = acc in
+        let* (c', code) = gen_gc_expr c arg in
+        Ok (c', code :: rev_codes)
+      ) (Ok (ctx, [])) args
+    in
+    let arg_codes = List.concat (List.rev arg_codes_rev) in
+
+    begin match id.name with
+      | "int" ->
+        Ok (ctx_after_args, arg_codes @ [Std (Wasm.I32TruncF64S)])
+      | "float" ->
+        Ok (ctx_after_args, arg_codes @ [Std (Wasm.F64ConvertI32S)])
+      | _ ->
+        match List.assoc_opt id.name ctx_after_args.func_indices with
+        | Some func_idx ->
+          Ok (ctx_after_args, arg_codes @ [Std (Wasm.Call func_idx)])
+        | None ->
+          (* Function index not found: emit drop for all args + null as placeholder *)
+          let drop_code = List.init (List.length args) (fun _ -> std Wasm.Drop) in
+          Ok (ctx_after_args, arg_codes @ drop_code @ [RefNull HtAny])
+    end
+
+  | ExprApp (callee, args) ->
+    (* Indirect calls or non-variable callees: evaluate and discard for now *)
+    let* (ctx1, callee_code) = gen_gc_expr ctx callee in
+    let* (ctx2, arg_codes_rev) =
+      List.fold_left (fun acc arg ->
+        let* (c, rev_codes) = acc in
+        let* (c', code) = gen_gc_expr c arg in
+        Ok (c', code :: rev_codes)
+      ) (Ok (ctx1, [])) args
+    in
+    let arg_codes = List.concat (List.rev arg_codes_rev) in
+    let drop_code = List.init (List.length args + 1) (fun _ -> std Wasm.Drop) in
+    Ok (ctx2, callee_code @ arg_codes @ drop_code @ [RefNull HtAny])
 
   (* ── Record allocation (core GC operation) ─────────────────────── *)
 

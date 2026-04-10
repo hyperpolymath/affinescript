@@ -55,9 +55,9 @@ let next_token state () =
     | Token.FALSE -> Parser.FALSE
     | Token.LOWER_IDENT s -> Parser.LOWER_IDENT s
     | Token.UPPER_IDENT s -> Parser.UPPER_IDENT s
-    | Token.ROW_VAR s -> Parser.ROW_VAR s
     | Token.FN -> Parser.FN
     | Token.LET -> Parser.LET
+    | Token.CONST -> Parser.CONST
     | Token.MUT -> Parser.MUT
     | Token.OWN -> Parser.OWN
     | Token.REF -> Parser.REF
@@ -123,6 +123,7 @@ let next_token state () =
     | Token.ONE -> Parser.ONE
     | Token.OMEGA -> Parser.OMEGA
     | Token.PLUS -> Parser.PLUS
+    | Token.PLUSPLUS -> Parser.PLUSPLUS
     | Token.MINUS -> Parser.MINUS
     | Token.STAR -> Parser.STAR
     | Token.SLASH -> Parser.SLASH
@@ -146,6 +147,7 @@ let next_token state () =
     | Token.MINUSEQ -> Parser.MINUSEQ
     | Token.STAREQ -> Parser.STAREQ
     | Token.SLASHEQ -> Parser.SLASHEQ
+    | Token.ROW_VAR s -> Parser.ROW_VAR s
     | Token.EOF -> Parser.EOF
   in
   (menhir_tok, start_lexpos, end_lexpos)

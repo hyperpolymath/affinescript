@@ -43,6 +43,7 @@ let string_of_binary_op = function
   | OpBitXor -> "^"
   | OpShl -> "<<"
   | OpShr -> ">>"
+  | OpConcat -> "++"
 
 let rec expr_summary (expr : expr) : string =
   match expr with
@@ -153,7 +154,6 @@ type context = {
   symbols : Symbol.t;
   mutable level : int;
   mutable current_eff : eff;
-  mutable store : Constraint.constraint_store;
   (** The current effect context — unified with declared effects *)
 }
 
@@ -183,7 +183,6 @@ let create_context (symbols : Symbol.t) : context =
     symbols;
     level = 0;
     current_eff = fresh_effvar 0;
-    store = Constraint.empty_store;
   }
 
 (** Enter a deeper let-level. *)
@@ -231,8 +230,6 @@ let instantiate (level : int) (sc : scheme) : ty =
       TApp (apply_subst t, List.map apply_subst args)
     | TArrow (a, q, b, e) ->
       TArrow (apply_subst a, q, apply_subst b, e)
-    | TDepArrow (x, a, q, b, e) ->
-      TDepArrow (x, apply_subst a, q, apply_subst b, e)
     | TTuple tys ->
       TTuple (List.map apply_subst tys)
     | TRecord row ->
@@ -246,8 +243,6 @@ let instantiate (level : int) (sc : scheme) : ty =
     | TRef t -> TRef (apply_subst t)
     | TMut t -> TMut (apply_subst t)
     | TOwn t -> TOwn (apply_subst t)
-    | TRefined (t, p) -> TRefined (apply_subst t, p)
-    | TNat _ -> ty
   and apply_subst_row row =
     match repr_row row with
     | REmpty -> REmpty
@@ -277,8 +272,6 @@ let generalize (ctx : context) (ty : ty) : scheme =
       collect t; List.iter collect args
     | TArrow (a, _, b, _) ->
       collect a; collect b
-    | TDepArrow (_, a, _, b, _) ->
-      collect a; collect b
     | TTuple tys ->
       List.iter collect tys
     | TRecord row | TVariant row ->
@@ -287,8 +280,6 @@ let generalize (ctx : context) (ty : ty) : scheme =
       collect body
     | TRef t | TMut t | TOwn t ->
       collect t
-    | TRefined (t, _) -> collect t
-    | TNat _ -> ()
   and collect_row row =
     match repr_row row with
     | REmpty -> ()
@@ -317,22 +308,20 @@ let rec infer_kind (ctx : context) (ty : ty) : kind result =
     end
   | TCon name ->
     begin match name with
-      | "Array" | "Option" | "List" -> Ok (KArrow (KType, KType))
-      | "Vec" -> Ok (KArrow (KNat, KArrow (KType, KType)))
+      | "Array" | "Option" | "List" | "Vec" -> Ok (KArrow (KType, KType))
       | "Result" -> Ok (KArrow (KType, KArrow (KType, KType)))
       | _ -> Ok KType
     end
   | TApp (head, args) ->
     let* k = infer_kind ctx head in
     check_kind_app ctx k args
-  | TArrow (_, _, _, _) | TDepArrow (_, _, _, _, _) | TTuple _ | TRecord _ | TVariant _ ->
+  | TArrow (_, _, _, _) | TTuple _ | TRecord _ | TVariant _ ->
     Ok KType
   | TForall (_, _, body) | TExists (_, _, body) ->
     let* _ = infer_kind ctx body in
     Ok KType
-  | TRef t | TMut t | TOwn t | TRefined (t, _) ->
+  | TRef t | TMut t | TOwn t ->
     infer_kind ctx t
-  | TNat _ -> Ok KNat
 
 and check_kind (ctx : context) (ty : ty) (expected : kind) : unit result =
   let* got = infer_kind ctx ty in
@@ -351,35 +340,6 @@ and check_kind_app (ctx : context) (k : kind) (args : ty list) : kind result =
     end
 
 (** {1 AST type_expr → internal ty conversion} *)
-
-let rec lower_nat_expr (ctx : context) (ne : Ast.nat_expr) : Types.nat_expr =
-  match ne with
-  | NatLit (i, _) -> NLit i
-  | NatVar id -> NVar id.name
-  | NatAdd (a, b) -> NAdd (lower_nat_expr ctx a, lower_nat_expr ctx b)
-  | NatSub (a, b) -> NSub (lower_nat_expr ctx a, lower_nat_expr ctx b)
-  | NatMul (a, b) -> NMul (lower_nat_expr ctx a, lower_nat_expr ctx b)
-  | NatLen id -> NLen id.name
-  | NatSizeof te ->
-    (* Approximation: sizeof(T) is a variable for now *)
-    NVar ("sizeof_" ^ (match te with TyCon id -> id.name | _ -> "ty"))
-
-let rec lower_predicate (ctx : context) (p : Ast.predicate) : Types.predicate =
-  match p with
-  | PredCmp (l, op, r) ->
-    let nl = lower_nat_expr ctx l in
-    let nr = lower_nat_expr ctx r in
-    begin match op with
-      | Lt -> PLt (nl, nr)
-      | Le -> PLe (nl, nr)
-      | Gt -> PGt (nl, nr)
-      | Ge -> PGe (nl, nr)
-      | Eq -> PEq (nl, nr)
-      | Ne -> PNot (PEq (nl, nr))
-    end
-  | PredNot p' -> PNot (lower_predicate ctx p')
-  | PredAnd (p1, p2) -> PAnd (lower_predicate ctx p1, lower_predicate ctx p2)
-  | PredOr (p1, p2) -> POr (lower_predicate ctx p1, lower_predicate ctx p2)
 
 let lower_quantity (q : Ast.quantity) : Types.quantity =
   match q with
@@ -425,7 +385,6 @@ let rec lower_type_expr (ctx : context) (te : type_expr) : ty =
     let arg_tys = List.map (fun arg ->
       match arg with
       | TyArg te -> lower_type_expr ctx te
-      | NatArg ne -> TNat (lower_nat_expr ctx ne)
     ) args in
     TApp (head, arg_tys)
   | TyArrow (a, q_opt, b, eff_opt) ->
@@ -440,18 +399,6 @@ let rec lower_type_expr (ctx : context) (te : type_expr) : ty =
       | None -> EPure
     in
     TArrow (a', q, b', eff)
-  | TyDepArrow { da_param; da_param_ty; da_quantity; da_ret_ty; da_eff; _ } ->
-    let a' = lower_type_expr ctx da_param_ty in
-    let b' = lower_type_expr ctx da_ret_ty in
-    let q = match da_quantity with
-      | Some q -> lower_quantity q
-      | None -> QOmega
-    in
-    let eff = match da_eff with
-      | Some e -> lower_effect_expr ctx e
-      | None -> EPure
-    in
-    TDepArrow (da_param.name, a', q, b', eff)
   | TyTuple [] ->
     ty_unit
   | TyTuple tes ->
@@ -464,8 +411,6 @@ let rec lower_type_expr (ctx : context) (te : type_expr) : ty =
   | TyOwn te -> TOwn (lower_type_expr ctx te)
   | TyRef te -> TRef (lower_type_expr ctx te)
   | TyMut te -> TMut (lower_type_expr ctx te)
-  | TyRefined (te, pred) ->
-    TRefined (lower_type_expr ctx te, lower_predicate ctx pred)
   | TyHole ->
     fresh_tyvar ctx.level
 
@@ -502,6 +447,8 @@ let type_of_binop (op : binary_op) : ty * ty * ty =
   (* Bitwise: Int -> Int -> Int *)
   | OpBitAnd | OpBitOr | OpBitXor | OpShl | OpShr ->
     (ty_int, ty_int, ty_int)
+  | OpConcat ->
+    (ty_string, ty_string, ty_string)
 
 let type_of_unop (op : unary_op) : ty * ty =
   match op with
@@ -664,27 +611,10 @@ let rec synth (ctx : context) (expr : expr) : ty result =
   (* If-then-else *)
   | ExprIf { ei_cond; ei_then; ei_else } ->
     let* () = check ctx ei_cond ty_bool in
-    (* Add condition as assumption in 'then' branch *)
-    let old_store = ctx.store in
-    let cond_pred = match ei_cond with
-      | ExprBinary (lhs, op, rhs) ->
-        let nl = match lhs with ExprVar id -> NVar id.name | ExprLit (LitInt (i, _)) -> NLit i | _ -> NVar (expr_summary lhs) in
-        let nr = match rhs with ExprVar id -> NVar id.name | ExprLit (LitInt (i, _)) -> NLit i | _ -> NVar (expr_summary rhs) in
-        begin match op with
-          | OpLt -> PLt (nl, nr) | OpLe -> PLe (nl, nr) | OpGt -> PGt (nl, nr) | OpGe -> PGe (nl, nr) | OpEq -> PEq (nl, nr)
-          | _ -> PTrue
-        end
-      | _ -> PTrue
-    in
-    ctx.store <- Constraint.add_assumption cond_pred ctx.store;
     let* then_ty = synth ctx ei_then in
-    ctx.store <- old_store;
     begin match ei_else with
       | Some else_expr ->
-        (* Add negation as assumption in 'else' branch *)
-        ctx.store <- Constraint.add_assumption (PNot cond_pred) ctx.store;
         let* else_ty = synth ctx else_expr in
-        ctx.store <- old_store;
         let* () = unify_or_err then_ty else_ty in
         Ok then_ty
       | None ->
@@ -914,17 +844,6 @@ and apply_args (ctx : context) (fn_ty : ty) (args : expr list) : ty result =
       | TArrow (param_ty, _q, ret_ty, _eff) ->
         let* () = check ctx arg param_ty in
         apply_args ctx ret_ty rest
-      | TDepArrow (x, param_ty, _q, ret_ty, _eff) ->
-        let* () = check ctx arg param_ty in
-        (* For dependent arrow, we need to extract a nat_expr from the arg.
-           If the arg is a literal or var, we can lower it. *)
-        let nat_val = match arg with
-          | ExprLit (LitInt (i, _)) -> NLit i
-          | ExprVar id -> NVar id.name
-          | _ -> NVar (expr_summary arg) (* Approximation *)
-        in
-        let (inst_ret, _) = Constraint.instantiate_dep_arrow x nat_val ret_ty in
-        apply_args ctx inst_ret rest
       | TVar _ ->
         (* Unknown function type: create fresh arrow *)
         let param_ty = fresh_tyvar ctx.level in
@@ -1037,14 +956,11 @@ and check (ctx : context) (expr : expr) (expected : ty) : unit result =
   match expr with
   (* Lambda against arrow type: check mode is more precise *)
   | ExprLambda { elam_params; elam_body; elam_ret_ty = _ }
-    when (match repr expected with TArrow _ | TDepArrow _ -> true | _ -> false) ->
+    when (match repr expected with TArrow _ -> true | _ -> false) ->
     let rec peel_arrows ty params =
       match params, repr ty with
       | [], _ -> Ok ()
       | p :: rest, TArrow (param_ty, _q, ret_ty, _eff) ->
-        bind_var ctx p.p_name.name param_ty;
-        peel_arrows ret_ty rest
-      | p :: rest, TDepArrow (_, param_ty, _q, ret_ty, _eff) ->
         bind_var ctx p.p_name.name param_ty;
         peel_arrows ret_ty rest
       | _ -> synth_and_unify ctx expr expected
@@ -1057,7 +973,6 @@ and check (ctx : context) (expr : expr) (expected : ty) : unit result =
     let final_ret = List.fold_left (fun ty _ ->
       match repr ty with
       | TArrow (_, _, ret, _) -> ret
-      | TDepArrow (_, _, _, ret, _) -> ret
       | _ -> ty
     ) expected elam_params in
     let* () = check ctx elam_body final_ret in
@@ -1068,28 +983,6 @@ and check (ctx : context) (expr : expr) (expected : ty) : unit result =
       | None -> Hashtbl.remove ctx.name_types n
     ) old;
     Ok ()
-
-  (* Refined type: check base type and then the predicate *)
-  | _ when (match repr expected with TRefined _ -> true | _ -> false) ->
-    let (base_ty, pred) = match repr expected with
-      | TRefined (t, p) -> (t, p)
-      | _ -> failwith "unreachable"
-    in
-    let* () = check ctx expr base_ty in
-    (* To check the predicate, we need to substitute the value of 'expr' into it.
-       Currently, our predicates use NVar "x" as the placeholder for the value. *)
-    let val_nat = match expr with
-      | ExprLit (LitInt (i, _)) -> NLit i
-      | ExprVar id -> NVar id.name
-      | _ -> NVar (expr_summary expr)
-    in
-    let inst_pred = match Constraint.instantiate_dep_arrow "x" val_nat (TRefined (base_ty, pred)) with
-      | (TRefined (_, p), _) -> p
-      | _ -> pred
-    in
-    if Constraint.entails ctx.store inst_pred then Ok ()
-    else Error (NotImplemented (Printf.sprintf "Refinement check failed: %s does not satisfy %s"
-                                  (expr_summary expr) (ty_to_string expected)))
 
   (* If without else against Unit *)
   | ExprIf { ei_cond; ei_then; ei_else = None } ->
@@ -1116,6 +1009,8 @@ let register_builtins (ctx : context) : unit =
   bind_var ctx "println" (TArrow (ty_string, QOmega, ty_unit, ESingleton "IO"));
   bind_var ctx "read_line" (TArrow (ty_unit, QOmega, ty_string, ESingleton "IO"));
   bind_var ctx "int_to_string" (TArrow (ty_int, QOmega, ty_string, EPure));
+  bind_var ctx "int" (TArrow (ty_float, QOmega, ty_int, EPure));
+  bind_var ctx "float" (TArrow (ty_int, QOmega, ty_float, EPure));
   bind_var ctx "float_to_string" (TArrow (ty_float, QOmega, ty_string, EPure));
   bind_var ctx "string_length" (TArrow (ty_string, QOmega, ty_int, EPure));
   bind_var ctx "sqrt" (TArrow (ty_float, QOmega, ty_float, EPure));

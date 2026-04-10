@@ -337,7 +337,6 @@ let rec eval (env : env) (expr : expr) : value result =
       | [UnsafeForget e] ->
         let* _ = eval env e in
         Ok VUnit
-      | [UnsafeAssume _] -> Ok VUnit
       | _ -> Error (RuntimeError "Multiple unsafe operations not yet supported")
     end
 

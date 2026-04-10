@@ -35,7 +35,7 @@ let mk_ident name startpos endpos =
 %token TRUE FALSE
 
 /* Keywords */
-%token FN LET MUT OWN REF TYPE STRUCT ENUM TRAIT IMPL
+%token FN LET CONST MUT OWN REF TYPE STRUCT ENUM TRAIT IMPL
 %token EFFECT HANDLE RESUME MATCH IF ELSE WHILE FOR
 %token RETURN BREAK CONTINUE IN WHERE TOTAL MODULE USE
 %token PUB AS UNSAFE ASSUME TRANSMUTE FORGET TRY CATCH FINALLY
@@ -52,7 +52,7 @@ let mk_ident name startpos endpos =
 %token ZERO ONE OMEGA
 
 /* Operators */
-%token PLUS MINUS STAR SLASH PERCENT
+%token PLUS PLUSPLUS MINUS STAR SLASH PERCENT
 %token EQ EQEQ NE LT LE GT GE
 %token AMPAMP PIPEPIPE BANG
 %token AMP CARET TILDE LTLT GTGT
@@ -71,7 +71,7 @@ let mk_ident name startpos endpos =
 %left EQEQ NE
 %left LT LE GT GE
 %left LTLT GTGT
-%left PLUS MINUS
+%left PLUS PLUSPLUS MINUS
 %left STAR SLASH PERCENT
 %right BANG TILDE UMINUS UREF UDEREF
 %left DOT LBRACKET LPAREN
@@ -122,7 +122,7 @@ top_level:
   | c = const_decl { c }
 
 const_decl:
-  | vis = visibility? LET name = ident COLON ty = type_expr EQ value = expr SEMICOLON
+  | vis = visibility? CONST name = ident COLON ty = type_expr EQ value = expr SEMICOLON
     { TopConst { tc_vis = Option.value vis ~default:Private;
                  tc_name = name; tc_ty = ty; tc_value = value } }
 
@@ -173,7 +173,6 @@ kind_annotation:
 
 kind:
   | TYPE_K { KType }
-  | NAT { KNat }
   | ROW { KRow }
   | k1 = kind ARROW k2 = kind { KArrow (k1, k2) }
   | LPAREN k = kind RPAREN { k }
@@ -276,7 +275,7 @@ type_expr_primary:
   | name = upper_ident { TyCon (mk_ident name $startpos $endpos) }
   | name = upper_ident LBRACKET args = separated_nonempty_list(COMMA, type_arg) RBRACKET
     { TyApp (mk_ident name $startpos(name) $endpos(name), args) }
-  | LBRACE fields = separated_list(COMMA, row_field) row = row_tail? RBRACE
+  | LBRACE fields = separated_list(COMMA, row_field) COMMA? row = row_tail? RBRACE
     { TyRecord (fields, row) }
   /* Built-in types */
   | NAT { TyCon (mk_ident "Nat" $startpos $endpos) }
@@ -288,7 +287,7 @@ type_expr_primary:
   | NEVER { TyCon (mk_ident "Never" $startpos $endpos) }
 
 row_tail:
-  | COMMA rv = ROW_VAR { mk_ident rv $startpos(rv) $endpos(rv) }
+  | DOTDOT rv = lower_ident { mk_ident rv $startpos(rv) $endpos(rv) }
 
 row_field:
   | name = ident COLON ty = type_expr
@@ -296,15 +295,6 @@ row_field:
 
 type_arg:
   | ty = type_expr { TyArg ty }
-  | n = nat_expr { NatArg n }
-
-nat_expr:
-  | n = INT { NatLit (n, mk_span $startpos $endpos) }
-  | name = lower_ident { NatVar (mk_ident name $startpos $endpos) }
-  | n1 = nat_expr PLUS n2 = nat_expr { NatAdd (n1, n2) }
-  | n1 = nat_expr MINUS n2 = nat_expr { NatSub (n1, n2) }
-  | n1 = nat_expr STAR n2 = nat_expr { NatMul (n1, n2) }
-  | LPAREN n = nat_expr RPAREN { n }
 
 /* ========== Effects ========== */
 
@@ -441,8 +431,10 @@ expr_shift:
 
 expr_add:
   | e1 = expr_add PLUS e2 = expr_mul { ExprBinary (e1, OpAdd, e2) }
+  | e1 = expr_add PLUSPLUS e2 = expr_mul { ExprBinary (e1, OpConcat, e2) }
   | e1 = expr_add MINUS e2 = expr_mul { ExprBinary (e1, OpSub, e2) }
   | e = expr_mul { e }
+
 
 expr_mul:
   | e1 = expr_mul STAR e2 = expr_unary { ExprBinary (e1, OpMul, e2) }
@@ -479,6 +471,7 @@ expr_primary:
 
   /* Identifiers */
   | name = lower_ident { ExprVar (mk_ident name $startpos $endpos) }
+  | name = upper_ident { ExprVar (mk_ident name $startpos $endpos) }
   | ty = upper_ident COLONCOLON variant = upper_ident
     { ExprVariant (mk_ident ty $startpos(ty) $endpos(ty),
                    mk_ident variant $startpos(variant) $endpos(variant)) }
@@ -493,8 +486,16 @@ expr_primary:
   | LBRACKET es = separated_list(COMMA, expr) RBRACKET { ExprArray es }
 
   /* Records */
-  | LBRACE fields = separated_list(COMMA, record_field) spread = record_spread? RBRACE
-    { ExprRecord { er_fields = fields; er_spread = spread } }
+  | LBRACE spread = record_spread COMMA fields = separated_nonempty_list(COMMA, record_field) RBRACE
+    { ExprRecord { er_fields = fields; er_spread = Some spread } }
+  | LBRACE fields = separated_nonempty_list(COMMA, record_field) COMMA spread = record_spread RBRACE
+    { ExprRecord { er_fields = fields; er_spread = Some spread } }
+  | LBRACE fields = separated_nonempty_list(COMMA, record_field) spread = record_spread RBRACE
+    { ExprRecord { er_fields = fields; er_spread = Some spread } }
+  | LBRACE spread = record_spread RBRACE
+    { ExprRecord { er_fields = []; er_spread = Some spread } }
+  | LBRACE fields = separated_list(COMMA, record_field) RBRACE
+    { ExprRecord { er_fields = fields; er_spread = None } }
 
   /* Block */
   | blk = block { ExprBlock blk }
@@ -540,7 +541,7 @@ record_field:
   | name = ident { (name, None) }
 
 record_spread:
-  | COMMA DOTDOT e = expr { e }
+  | DOTDOT e = expr { e }
 
 type_annotation:
   | COLON ty = type_expr { ty }
@@ -575,18 +576,6 @@ try_catch:
 try_finally:
   | FINALLY blk = block { blk }
 
-predicate:
-  | n1 = nat_expr LT n2 = nat_expr { PredCmp (n1, Lt, n2) }
-  | n1 = nat_expr LE n2 = nat_expr { PredCmp (n1, Le, n2) }
-  | n1 = nat_expr GT n2 = nat_expr { PredCmp (n1, Gt, n2) }
-  | n1 = nat_expr GE n2 = nat_expr { PredCmp (n1, Ge, n2) }
-  | n1 = nat_expr EQEQ n2 = nat_expr { PredCmp (n1, Eq, n2) }
-  | n1 = nat_expr NE n2 = nat_expr { PredCmp (n1, Ne, n2) }
-  | BANG p = predicate { PredNot p }
-  | p1 = predicate AMPAMP p2 = predicate { PredAnd (p1, p2) }
-  | p1 = predicate PIPEPIPE p2 = predicate { PredOr (p1, p2) }
-  | LPAREN p = predicate RPAREN { p }
-
 unsafe_op:
   /* UnsafeRead: read(ptr); */
   | name = lower_ident LPAREN ptr = expr RPAREN SEMICOLON
@@ -611,10 +600,6 @@ unsafe_op:
   | TRANSMUTE LT from_ty = type_expr COMMA to_ty = type_expr GT LPAREN e = expr RPAREN SEMICOLON
     { UnsafeTransmute (from_ty, to_ty, e) }
 
-  /* UnsafeAssume: assume(predicate); */
-  | ASSUME LPAREN pred = predicate RPAREN SEMICOLON
-    { UnsafeAssume pred }
-
 /* ========== Statements ========== */
 
 (* Self-delimiting expressions that can serve as the final expression in a
@@ -634,11 +619,21 @@ block:
     { { blk_stmts = stmts; blk_expr = None } }
   | LBRACE stmts = list(stmt) final = block_terminator RBRACE
     { { blk_stmts = stmts; blk_expr = Some final } }
+  | LBRACE stmts = stmt_list_nonempty_trailing_expr RBRACE
+    { { blk_stmts = fst stmts; blk_expr = Some (snd stmts) } }
+  | LBRACE e = expr RBRACE
+    { { blk_stmts = []; blk_expr = Some e } }
+
+stmt_list_nonempty_trailing_expr:
+  | s = stmt rest = stmt_list_nonempty_trailing_expr { (s :: fst rest, snd rest) }
+  | s = stmt e = expr { ([s], e) }
 
 stmt:
   | LET mut_ = MUT? pat = pattern ty = type_annotation? EQ value = expr SEMICOLON
     { StmtLet { sl_mut = Option.is_some mut_; sl_pat = pat; sl_ty = ty; sl_value = value } }
   | e = expr SEMICOLON { StmtExpr e }
+  | IF cond = expr then_blk = block else_part = else_part?
+    { StmtExpr (ExprIf { ei_cond = cond; ei_then = ExprBlock then_blk; ei_else = else_part }) }
   | lhs = expr_postfix EQ rhs = expr SEMICOLON { StmtAssign (lhs, AssignEq, rhs) }
   | lhs = expr_postfix PLUSEQ rhs = expr SEMICOLON { StmtAssign (lhs, AssignAdd, rhs) }
   | lhs = expr_postfix MINUSEQ rhs = expr SEMICOLON { StmtAssign (lhs, AssignSub, rhs) }

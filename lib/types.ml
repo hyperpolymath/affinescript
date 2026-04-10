@@ -31,7 +31,6 @@ type quantity =
 (** Kind *)
 type kind =
   | KType                     (** Type kind *)
-  | KNat                      (** Natural number kind *)
   | KRow                      (** Row kind *)
   | KEffect                   (** Effect kind *)
   | KArrow of kind * kind     (** Higher-order kind *)
@@ -43,7 +42,6 @@ type ty =
   | TCon of string                   (** Type constructor (Int, Bool, etc.) *)
   | TApp of ty * ty list             (** Type application *)
   | TArrow of ty * quantity * ty * eff      (** Function type with quantity and effect *)
-  | TDepArrow of string * ty * quantity * ty * eff (** Dependent function type *)
   | TTuple of ty list                (** Tuple type *)
   | TRecord of row                   (** Record type *)
   | TVariant of row                  (** Variant type *)
@@ -52,8 +50,6 @@ type ty =
   | TRef of ty                       (** Immutable reference *)
   | TMut of ty                       (** Mutable reference *)
   | TOwn of ty                       (** Owned type *)
-  | TRefined of ty * predicate       (** Refinement type *)
-  | TNat of nat_expr                 (** Type-level natural *)
 [@@deriving show]
 
 (** Type variable state (for unification) *)
@@ -85,31 +81,6 @@ and eff =
 and effvar_state =
   | EUnbound of effvar * int
   | ELink of eff
-[@@deriving show]
-
-(** Type-level natural expression *)
-and nat_expr =
-  | NLit of int
-  | NVar of string
-  | NAdd of nat_expr * nat_expr
-  | NSub of nat_expr * nat_expr
-  | NMul of nat_expr * nat_expr
-  | NLen of string
-[@@deriving show]
-
-(** Predicate for refinement types *)
-and predicate =
-  | PTrue
-  | PFalse
-  | PEq of nat_expr * nat_expr
-  | PLt of nat_expr * nat_expr
-  | PLe of nat_expr * nat_expr
-  | PGt of nat_expr * nat_expr
-  | PGe of nat_expr * nat_expr
-  | PAnd of predicate * predicate
-  | POr of predicate * predicate
-  | PNot of predicate
-  | PImpl of predicate * predicate
 [@@deriving show]
 
 (** Type scheme (polymorphic type) *)
@@ -219,10 +190,6 @@ let rec pp_ty (fmt : Format.formatter) (ty : ty) : unit =
     Format.fprintf fmt "(%a -{%a}-> %a)" pp_ty a pp_quantity q pp_ty b
   | TArrow (a, q, b, eff) ->
     Format.fprintf fmt "(%a -{%a}-> %a / %a)" pp_ty a pp_quantity q pp_ty b pp_eff eff
-  | TDepArrow (x, a, q, b, EPure) ->
-    Format.fprintf fmt "((%s: %a) -{%a}-> %a)" x pp_ty a pp_quantity q pp_ty b
-  | TDepArrow (x, a, q, b, eff) ->
-    Format.fprintf fmt "((%s: %a) -{%a}-> %a / %a)" x pp_ty a pp_quantity q pp_ty b pp_eff eff
   | TTuple tys ->
     Format.fprintf fmt "(%a)" pp_ty_tuple tys
   | TRecord row ->
@@ -236,9 +203,6 @@ let rec pp_ty (fmt : Format.formatter) (ty : ty) : unit =
   | TRef t -> Format.fprintf fmt "ref %a" pp_ty t
   | TMut t -> Format.fprintf fmt "mut %a" pp_ty t
   | TOwn t -> Format.fprintf fmt "own %a" pp_ty t
-  | TRefined (t, p) ->
-    Format.fprintf fmt "(%a where %a)" pp_ty t pp_pred p
-  | TNat n -> pp_nat fmt n
 
 and pp_ty_list (fmt : Format.formatter) (tys : ty list) : unit =
   Format.pp_print_list ~pp_sep:(fun f () -> Format.fprintf f ", ")
@@ -277,33 +241,9 @@ and pp_eff (fmt : Format.formatter) (e : eff) : unit =
 and pp_kind (fmt : Format.formatter) (k : kind) : unit =
   match k with
   | KType -> Format.fprintf fmt "Type"
-  | KNat -> Format.fprintf fmt "Nat"
   | KRow -> Format.fprintf fmt "Row"
   | KEffect -> Format.fprintf fmt "Effect"
   | KArrow (k1, k2) -> Format.fprintf fmt "(%a -> %a)" pp_kind k1 pp_kind k2
-
-and pp_nat (fmt : Format.formatter) (n : nat_expr) : unit =
-  match n with
-  | NLit i -> Format.fprintf fmt "%d" i
-  | NVar x -> Format.fprintf fmt "%s" x
-  | NAdd (a, b) -> Format.fprintf fmt "(%a + %a)" pp_nat a pp_nat b
-  | NSub (a, b) -> Format.fprintf fmt "(%a - %a)" pp_nat a pp_nat b
-  | NMul (a, b) -> Format.fprintf fmt "(%a * %a)" pp_nat a pp_nat b
-  | NLen x -> Format.fprintf fmt "len(%s)" x
-
-and pp_pred (fmt : Format.formatter) (p : predicate) : unit =
-  match p with
-  | PTrue -> Format.fprintf fmt "true"
-  | PFalse -> Format.fprintf fmt "false"
-  | PEq (a, b) -> Format.fprintf fmt "%a == %a" pp_nat a pp_nat b
-  | PLt (a, b) -> Format.fprintf fmt "%a < %a" pp_nat a pp_nat b
-  | PLe (a, b) -> Format.fprintf fmt "%a <= %a" pp_nat a pp_nat b
-  | PGt (a, b) -> Format.fprintf fmt "%a > %a" pp_nat a pp_nat b
-  | PGe (a, b) -> Format.fprintf fmt "%a >= %a" pp_nat a pp_nat b
-  | PAnd (p1, p2) -> Format.fprintf fmt "(%a && %a)" pp_pred p1 pp_pred p2
-  | POr (p1, p2) -> Format.fprintf fmt "(%a || %a)" pp_pred p1 pp_pred p2
-  | PNot p -> Format.fprintf fmt "!%a" pp_pred p
-  | PImpl (p1, p2) -> Format.fprintf fmt "(%a => %a)" pp_pred p1 pp_pred p2
 
 let ty_to_string (ty : ty) : string =
   Format.asprintf "%a" pp_ty ty
@@ -322,8 +262,6 @@ let rec subst_ty (v : tyvar) (replacement : ty) (ty : ty) : ty =
     TApp (subst_ty v replacement t, List.map (subst_ty v replacement) args)
   | TArrow (a, q, b, eff) ->
     TArrow (subst_ty v replacement a, q, subst_ty v replacement b, eff)
-  | TDepArrow (x, a, q, b, eff) ->
-    TDepArrow (x, subst_ty v replacement a, q, subst_ty v replacement b, eff)
   | TTuple tys ->
     TTuple (List.map (subst_ty v replacement) tys)
   | TRecord row ->
@@ -341,8 +279,6 @@ let rec subst_ty (v : tyvar) (replacement : ty) (ty : ty) : ty =
   | TRef t -> TRef (subst_ty v replacement t)
   | TMut t -> TMut (subst_ty v replacement t)
   | TOwn t -> TOwn (subst_ty v replacement t)
-  | TRefined (t, p) -> TRefined (subst_ty v replacement t, p)
-  | TNat _ -> ty
 
 and subst_row (v : tyvar) (replacement : ty) (row : row) : row =
   match repr_row row with
@@ -367,8 +303,6 @@ let rec free_tyvars (ty : ty) : TyVarSet.t =
       (List.map free_tyvars args)
   | TArrow (a, _, b, _) ->
     TyVarSet.union (free_tyvars a) (free_tyvars b)
-  | TDepArrow (_, a, _, b, _) ->
-    TyVarSet.union (free_tyvars a) (free_tyvars b)
   | TTuple tys ->
     List.fold_left TyVarSet.union TyVarSet.empty (List.map free_tyvars tys)
   | TRecord row | TVariant row ->
@@ -377,8 +311,6 @@ let rec free_tyvars (ty : ty) : TyVarSet.t =
     TyVarSet.remove v (free_tyvars body)
   | TRef t | TMut t | TOwn t ->
     free_tyvars t
-  | TRefined (t, _) -> free_tyvars t
-  | TNat _ -> TyVarSet.empty
 
 and free_tyvars_row (row : row) : TyVarSet.t =
   match repr_row row with
@@ -391,33 +323,3 @@ and free_tyvars_row (row : row) : TyVarSet.t =
 let occurs (v : tyvar) (ty : ty) : bool =
   TyVarSet.mem v (free_tyvars ty)
 
-(** Normalize type-level natural expressions *)
-let rec normalize_nat (n : nat_expr) : nat_expr =
-  match n with
-  | NLit _ | NVar _ | NLen _ -> n
-  | NAdd (a, b) ->
-    begin match (normalize_nat a, normalize_nat b) with
-      | (NLit x, NLit y) -> NLit (x + y)
-      | (NLit 0, b') -> b'
-      | (a', NLit 0) -> a'
-      | (a', b') -> NAdd (a', b')
-    end
-  | NSub (a, b) ->
-    begin match (normalize_nat a, normalize_nat b) with
-      | (NLit x, NLit y) -> NLit (max 0 (x - y))
-      | (a', NLit 0) -> a'
-      | (a', b') when a' = b' -> NLit 0
-      | (a', b') -> NSub (a', b')
-    end
-  | NMul (a, b) ->
-    begin match (normalize_nat a, normalize_nat b) with
-      | (NLit x, NLit y) -> NLit (x * y)
-      | (NLit 0, _) | (_, NLit 0) -> NLit 0
-      | (NLit 1, b') -> b'
-      | (a', NLit 1) -> a'
-      | (a', b') -> NMul (a', b')
-    end
-
-(** Check if two normalized nat expressions are equal *)
-let nat_eq (n1 : nat_expr) (n2 : nat_expr) : bool =
-  normalize_nat n1 = normalize_nat n2
