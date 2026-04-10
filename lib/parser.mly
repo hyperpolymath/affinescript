@@ -249,9 +249,9 @@ type_expr:
 
 type_expr_arrow:
   | arg = type_expr_primary ARROW ret = type_expr_arrow
-    { TyArrow (arg, ret, None) }
+    { TyArrow (arg, None, ret, None) }
   | arg = type_expr_primary MINUS LBRACE eff = effect_expr RBRACE ARROW ret = type_expr_arrow
-    { TyArrow (arg, ret, Some eff) }
+    { TyArrow (arg, None, ret, Some eff) }
   | ty = type_expr_primary { ty }
 
 type_expr_primary:
