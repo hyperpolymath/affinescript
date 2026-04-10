@@ -179,6 +179,7 @@ let binop_int (op : binary_op) (a : int) (b : int) : value result =
   | OpBitXor -> Ok (VInt (a lxor b))
   | OpShl -> Ok (VInt (a lsl b))
   | OpShr -> Ok (VInt (a lsr b))
+  | OpConcat -> Error (TypeMismatch "Concatenation only supported for strings/arrays")
   | OpAnd | OpOr -> Error (TypeMismatch "Logical operators require booleans")
 
 (** Binary operation on floats *)

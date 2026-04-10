@@ -18,7 +18,6 @@ open Types
 let rec ast_kind_to_types_kind (k : Ast.kind) : Types.kind =
   match k with
   | Ast.KType -> Types.KType
-  | Ast.KNat -> Types.KNat
   | Ast.KRow -> Types.KRow
   | Ast.KEffect -> Types.KEffect
   | Ast.KArrow (k1, k2) -> Types.KArrow (ast_kind_to_types_kind k1, ast_kind_to_types_kind k2)

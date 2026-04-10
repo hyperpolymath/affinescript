@@ -4,20 +4,22 @@
 [metadata]
 project = "affinescript"
 version = "0.1.0"
-last-updated = "2026-04-04"
+last-updated = "2026-04-10"
 status = "active"
 
 [project-context]
 name = "affinescript"
-completion-percentage = 92
-phase = "lsp-phase-b"
+completion-percentage = 78
+phase = "manhattan-track-a"
 tagline = "Rust-inspired language with affine types, dependent types, row polymorphism, and extensible effects"
+note = "Track A (Manhattan plan) in progress — affine enforcement landing T+7d. Headline features partially declared-but-unwired; see [features] for honest status."
 
 [components]
-lexer = "complete"
+lexer = "complete-minus-affine-tokens (ZERO/ONE tokens for quantity literals NOT emitted; blocks QTT surface syntax)"
 parser = "complete (1245 conflicts; block_terminator rule added for self-delimiting exprs)"
-type-checker = "99% (Never/bottom type handling fixed; block divergence propagation added)"
-borrow-checker = "95%"
+type-checker-rules = "99% (bidirectional inference, Never/bottom, block divergence, variant/constructor/record-spread/mutable bindings all implemented in lib/typecheck.ml)"
+type-checker-enforcement-wiring = "0% (type checker not invoked from bin/main.ml on the check/compile/eval CLI paths; rules exist but do not gate user programs)"
+borrow-checker = "phase-3-in-progress (lib/borrow.ml carries [IMPL-DEP: Phase 3] markers; not yet authoritative)"
 interpreter = "95%"
 wasm-codegen = "92% (real-world game compiles: airborne-submarine-squadron/src/main.affine → 8KB WASM)"
 wasm-gc-codegen = "70% (WasmGC proposal target: struct.new/struct.get/array.new_fixed/array.get; --wasm-gc CLI flag)"
@@ -33,3 +35,148 @@ compiler-loc = 12424
 compiler-modules = 38
 lsp-files = 5
 test-files = 54
+
+[features]
+# Honest status of the headline language features advertised in README.adoc.
+# "declared-but-unwired" = surface syntax and/or internal module exists, but
+# the feature is not enforced on user programs through the CLI pipeline.
+affine-types = "declared-but-unwired (quantity semiring exists in lib/quantity.ml but is never called from bin/main.ml; lexer does not emit ZERO/ONE tokens; enforcement landing via Track A Manhattan plan, ETA T+7d)"
+linear-arrows = "parse-only (-[q]-> syntax accepted by parser; quantity annotation not propagated into enforcement)"
+borrow-checker = "phase-3-in-progress (see lib/borrow.ml [IMPL-DEP: Phase 3])"
+row-polymorphism = "60% (records + effects rows implemented in typecheck/unify; not fully exercised end-to-end)"
+effects = "declarations-only (effect types parsed and tracked; handler semantics not yet in interpreter or backends)"
+dependent-types = "parse-only (TRefined AST node exists and refinement predicates parse, but predicates do not reduce; no SMT/decision procedure wired in)"
+traits = "70% (registry and lookup work; generic trait resolution needs unification integration)"
+
+[track-a-manhattan]
+owner = "primary"
+scope = "wire the quantity checker into CLI check/compile/eval paths; emit ZERO/ONE tokens from lexer; close the declared-but-unwired gap on affine types"
+spine-files = ["lib/lexer.ml", "lib/parser.mly", "lib/token.ml", "lib/typecheck.ml", "lib/quantity.ml", "bin/main.ml", "lib/interp.ml"]
+eta = "T+7d from 2026-04-10"
+
+[[open-bug]]
+id = "BUG-001"
+severity = "high"
+category = "soundness"
+title = "ω-let smuggles linear values"
+discovered = "2026-04-10"
+description = """
+let x :ω = linear_resource() in use_x_once(x) is currently accepted.
+QTT-correct form rejects — see ADR-002. The current implementation does not
+scale the Let value context by the binder quantity, so a linear value captured
+in e1 can be bound at ω and duplicated in e2.
+"""
+evidence = "lib/quantity.ml:251-253 (flat walk, no scaling); lib/typecheck.ml:631-665 (zero quantity handling)"
+fix-plan = "Track A3 — fold Let scaling into the quantity-wiring work. See ADR-002."
+regression-test = "Track A2 — add fixture examples/bug_001_omega_let_smuggles_linear.affine (must be rejected)."
+
+[[open-bug]]
+id = "BUG-002"
+severity = "medium"
+category = "semantics"
+title = ":0 lets do not erase their RHS"
+discovered = "2026-04-10"
+description = """
+let x :0 = expensive_proof_term() in body_not_using_x currently evaluates
+expensive_proof_term() and consumes its resources. QTT-correct form scales
+e1's context by 0, producing the zero context, which means e1 can be erased
+at runtime. Not a soundness hole but defeats the erasure story.
+"""
+evidence = "lib/quantity.ml:251-253; lib/interp.ml ExprLet always evaluates the RHS"
+fix-plan = "Track A3 semantics fix lands with BUG-001. Interpreter may additionally skip eval of :0-bound RHS (opt-in, deferrable)."
+regression-test = "Track A2 — add fixture examples/bug_002_zero_let_erasure.affine (non-terminating RHS bound at :0 must terminate)."
+
+[[open-bug]]
+id = "BUG-003"
+severity = "medium"
+category = "semantics"
+title = "eval_list evaluates right-to-left via List.fold_right"
+discovered = "2026-04-10"
+description = """
+lib/interp.ml:348 eval_list uses List.fold_right with monadic bind, which
+in strict OCaml evaluates arguments right-to-left. ExprBinary at :135-138 is
+left-to-right. This creates internal evaluator inconsistency and future
+backend/interpreter divergence once effects or affine enforcement land.
+See ADR-003.
+"""
+evidence = "lib/interp.ml:348-353 (fold_right); lib/interp.ml:135-138 (L-to-R binop by contrast)"
+fix-plan = "Track A3 — fix eval_list to strict L-to-R (~6 LOC). See ADR-003."
+regression-test = "Track A2 — add fixture examples/bug_003_eval_order.affine with observable L-to-R ordering via a shared counter."
+
+[[open-bug]]
+id = "BUG-004"
+severity = "medium"
+category = "soundness"
+title = "Lambda-body usage not tracked against outer captures"
+discovered = "2026-04-10"
+description = """
+lib/quantity.ml:245-249 explicitly documents that lambda-bound params are
+not tracked and that 'the lambda body may still reference outer tracked
+variables' — but the current code does not charge usage against those
+captures. A lambda capturing a linear variable can be called multiple times,
+duplicating the captured resource.
+"""
+evidence = "lib/quantity.ml:245-249 (comment admits the gap)"
+fix-plan = "Track D (borrow checker Phase 3) — lambda capture analysis is part of the borrow/ownership story. Not A3 scope."
+regression-test = "Track D fixture — deferred until borrow checker lands."
+
+[[open-bug]]
+id = "BUG-005"
+severity = "medium"
+category = "codegen"
+title = "WasmGC backend silently drops unknown function calls"
+discovered = "2026-04-10"
+description = """
+lib/codegen_gc.ml ExprApp handling silently emits 'drop all args + push null'
+when the callee is not in the func_indices table, and does the same for
+indirect calls. This is placeholder behaviour that produces wrong code rather
+than failing loudly. Any program that reaches codegen with an unresolved
+function call will compile to nonsense at runtime.
+"""
+evidence = "lib/codegen_gc.ml gen_gc_expr ExprApp case (the 38-line block added as part of the in-progress WasmGC work)"
+fix-plan = "Replace silent drops with explicit CodegenError. Direct-call path (via func_indices) and int/float builtin coercions stay — they're correct. Only the fallback arms need to fail loudly."
+regression-test = "Add a fixture that intentionally references an unknown function name and expects a loud compile error."
+
+# ─── Deferred upgrade: bring .machine_readable/ to current standards ──────────
+# AffineScript predates most of the current hyperpolymath .machine_readable/
+# suite. The 6a2 core is present; the surrounding machinery is not. This is
+# logged as deferred work, separate from the Manhattan recovery, to avoid
+# scope creep into that plan.
+
+[deferred-upgrade]
+session = "separate, not Phase 0"
+estimated-effort = "1-2 focused hours"
+
+present:
+# What AffineScript already has
+present = [
+  ".machine_readable/6a2/AGENTIC.a2ml",
+  ".machine_readable/6a2/ECOSYSTEM.a2ml",
+  ".machine_readable/6a2/META.a2ml",
+  ".machine_readable/6a2/NEUROSYM.a2ml",
+  ".machine_readable/6a2/PLAYBOOK.a2ml",
+  ".machine_readable/6a2/STATE.a2ml",
+  ".machine_readable/anchors/ANCHOR.a2ml",  # added 2026-04-10 as first anchor
+  "contractiles/ (root-level, old location) — dust, k9, lust, must, trust"
+]
+
+missing = [
+  ".machine_readable/CLADE.a2ml",
+  ".machine_readable/contractiles/ (should migrate from root contractiles/)",
+  ".machine_readable/contractiles/adjust/",
+  ".machine_readable/contractiles/intend/",
+  ".machine_readable/agent_instructions/",
+  ".machine_readable/integrations/",
+  ".machine_readable/ADJUST.contractile (top-level instance)",
+  ".machine_readable/INTENT.contractile (top-level instance)",
+  ".machine_readable/MUST.contractile (top-level instance)",
+  ".machine_readable/TRUST.contractile (top-level instance)"
+]
+
+notes = """
+Root-level contractiles/ directory has 5 of 7 current types. The canonical
+pattern is .machine_readable/contractiles/ with all 7 types. Migration is
+deferred to a separate session because it requires reading each contractile
+definition from the standards repo and deciding which apply to AffineScript
+specifically. Do not conflate with Manhattan Phase 0.
+"""

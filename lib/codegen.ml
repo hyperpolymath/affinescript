@@ -311,6 +311,7 @@ let gen_binop (op : binary_op) : instr =
   | OpBitXor -> I32Xor
   | OpShl -> I32Shl
   | OpShr -> I32ShrS
+  | OpConcat -> I32Add (* Placeholder *)
 
 (** Generate code for unary operation *)
 let gen_unop (op : unary_op) : instr result =
@@ -1008,7 +1009,6 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
       | [UnsafeForget e] ->
         let* (ctx', code) = gen_expr ctx e in
         Ok (ctx', code @ [Drop; I32Const 0l])
-      | [UnsafeAssume _] -> Ok (ctx, [I32Const 0l])
       | _ -> Error (UnsupportedFeature "Multiple unsafe operations in codegen")
     end
 

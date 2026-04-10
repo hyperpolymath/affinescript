@@ -49,9 +49,9 @@ let lexer_of_token_stream (next : unit -> Token.t * Span.t) : Lexing.lexbuf -> P
     | Token.FALSE -> Parser.FALSE
     | Token.LOWER_IDENT s -> Parser.LOWER_IDENT s
     | Token.UPPER_IDENT s -> Parser.UPPER_IDENT s
-    | Token.ROW_VAR s -> Parser.ROW_VAR s
     | Token.FN -> Parser.FN
     | Token.LET -> Parser.LET
+    | Token.CONST -> Parser.CONST
     | Token.MUT -> Parser.MUT
     | Token.OWN -> Parser.OWN
     | Token.REF -> Parser.REF
@@ -117,6 +117,7 @@ let lexer_of_token_stream (next : unit -> Token.t * Span.t) : Lexing.lexbuf -> P
     | Token.ONE -> Parser.ONE
     | Token.OMEGA -> Parser.OMEGA
     | Token.PLUS -> Parser.PLUS
+    | Token.PLUSPLUS -> Parser.PLUSPLUS
     | Token.MINUS -> Parser.MINUS
     | Token.STAR -> Parser.STAR
     | Token.SLASH -> Parser.SLASH
@@ -140,6 +141,7 @@ let lexer_of_token_stream (next : unit -> Token.t * Span.t) : Lexing.lexbuf -> P
     | Token.MINUSEQ -> Parser.MINUSEQ
     | Token.STAREQ -> Parser.STAREQ
     | Token.SLASHEQ -> Parser.SLASHEQ
+    | Token.ROW_VAR s -> Parser.ROW_VAR s
     | Token.EOF -> Parser.EOF
 
 (** Parse a program from a string *)

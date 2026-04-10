@@ -1,0 +1,155 @@
+# ⚓ ANCHOR: affinescript
+# Canonical authority and identity statement for the AffineScript repository.
+#
+# First written 2026-04-10 during the Manhattan Recovery session that realigned
+# the language scope from bot-drift back to user intent. This ANCHOR is
+# retroactive: the project predates the ANCHOR.a2ml convention, and a full
+# .machine_readable/ suite upgrade (anchors/, CLADE.a2ml, contractiles/,
+# agent_instructions/, integrations/, top-level .contractile files) is deferred
+# as separate work — see STATE.a2ml [deferred-upgrade].
+
+id: "org.hyperpolymath.affinescript"
+version: "0.2.0"
+clade: "language"
+status: "active-recovery"
+
+# ─── Thesis (canonical scope statement) ───────────────────────────────────────
+# This thesis is authoritative. Code must conform to it, not the reverse.
+# See [feedback_language_scope_in_thesis.md] in the estate memory store.
+
+thesis:
+  one-sentence: >
+    AffineScript is JavaScript-ergonomic correctness: the developer experience
+    of the -script family (TypeScript, ReScript, PureScript) raised to a higher
+    correctness floor through a small, deliberately chosen set of advanced
+    types, compiling to Typed WASM.
+
+  ergonomic-target: "closer to JavaScript than ReScript in experience"
+
+  design-principle: >
+    Ergonomics first. The type system defaults must be sensible so most code
+    reads like modern JavaScript while correctness is enforced at compile time.
+    A feature earns its place only if it makes correct code easier to write.
+
+  in-scope:
+    - phantom-types                # free via generics
+    - immutable-by-default         # matches ReScript/Elm/Grain/JS `const`
+    - row-polymorphism             # PureScript/Elm pattern
+    - full-type-inference          # HM-style; quantities at signatures, inferred in function bodies
+    - sound-type-system            # table stakes; three bugs currently open
+    - effect-tracking              # TRACKING only; handlers deferred — see ADR-004
+    - affine-types                 # the headline novelty; no -script has this
+    - refinement-types-decidable   # soft commitment, decidable fragment only, no SMT
+
+  out-of-scope:
+    - linear-strict-types          # subsumed by affine; bot scope-creep, being removed
+    - full-dependent-types         # deferred to sibling Typed WASM project
+    - tropical-types               # deferred to sibling Typed WASM project
+    - algebraic-effect-handlers    # documented extension point, not current feature
+    - unbounded-refinement-types   # decidability boundary; SMT not required
+    - units-of-measure             # Typed WASM project
+    - shape-indexed-vectors        # Typed WASM project
+
+  exception-model:
+    # Option A+: exceptions are the one degenerate algebraic-effect case that
+    # works cleanly with affine types because resume is never called.
+    - "try/catch/finally grammar already present in parser.mly:542-587"
+    - "wiring through interp + codegen is Phase 1.5 work"
+    - "richer effect handlers are a documented extension point, see ADR-004"
+
+# ─── Authoritative documents ──────────────────────────────────────────────────
+
+authorities:
+  scope-statement:
+    - ".machine_readable/6a2/META.a2ml (ADRs)"
+    - "~/Desktop/Frontier_Programming_Practices_AffineScript/AI.a2ml (v2.0)"
+
+  human-guide:
+    - "~/Desktop/Frontier_Programming_Practices_AffineScript/Human_Programming_Guide.adoc (v2.0)"
+
+  architecture-decisions:
+    - "ADR-001: Split-Γ canonical (META.a2ml)"
+    - "ADR-002: Scaled Let rule (META.a2ml)"
+    - "ADR-003: L-to-R evaluation order (META.a2ml)"
+    # ADR-004: algebraic effect handlers extension point — pending
+    # ADR-005: language scope statement (narrow thesis) — pending
+    # ADR-006: exceptions as degenerate effect handler — pending
+
+# ─── Relationships ────────────────────────────────────────────────────────────
+
+parents:
+  - id: "org.hyperpolymath.nextgen-languages"
+    relationship: "submodule-of-monorepo"
+
+siblings:
+  - id: "org.hyperpolymath.typed-wasm"
+    relationship: "compile-target-primary"
+    note: >
+      Typed WASM is AffineScript's primary compile target. It is designed as a
+      standalone project that can serve other languages beyond AffineScript.
+      Dependent types, tropical types, units of measure, and shape-indexed
+      vectors all live there, not here.
+
+  - id: "org.hyperpolymath.julia"
+    relationship: "compile-target-secondary"
+    note: "Julia backend for scientific computing use cases."
+
+# ─── Realignment history ──────────────────────────────────────────────────────
+
+realignment-history:
+  - date: "2026-04-10"
+    event: "manhattan-recovery"
+    session-type: "scope-recovery"
+    trigger: >
+      User acknowledged that bot scope creep had silently added linear types,
+      dependent types, and algebraic effect handler ambitions that were never
+      requested. The cascade of fixes each caused new problems, and the codebase
+      had drifted from being a conceptual mirror of the author's intent.
+
+    summary: >
+      Scope narrowed from bot-drifted 12+ features back to the original 8-item
+      thesis. Three ADRs adopted. Four soundness bugs identified and logged.
+      Two estate-wide feedback memories saved. Desktop Frontier guides rewritten
+      from defensive v1.0 drafts to positive v2.0 scope statements. Option A+
+      chosen for effects (tracking + exceptions via existing try/catch grammar +
+      documented extension point for future handlers). Inference form (a) chosen
+      (quantities at signatures, inferred in bodies). Simplest module system
+      chosen (one-file-per-module, flat namespace, no functors).
+
+    changed:
+      - "thesis (narrowed and made authoritative)"
+      - "scope (8 features, not 12+)"
+      - "soundness posture (BUG-001 through BUG-004 logged)"
+      - "effect-handler posture (Option A+, exceptions via existing grammar)"
+      - "authority structure (this ANCHOR created, thesis lives here and in META.a2ml)"
+      - "documentation (Desktop guides v2.0 replacing v1.0)"
+
+    references:
+      - "META.a2ml [adr] ADR-001 split-gamma"
+      - "META.a2ml [adr] ADR-002 scaled-let"
+      - "META.a2ml [adr] ADR-003 lr-eval"
+      - "STATE.a2ml [open-bug] BUG-001 omega-let-smuggles-linear"
+      - "STATE.a2ml [open-bug] BUG-002 zero-let-erasure"
+      - "STATE.a2ml [open-bug] BUG-003 eval-list-right-to-left"
+      - "STATE.a2ml [open-bug] BUG-004 lambda-captures-untracked"
+      - "~/.claude/projects/-var-mnt-eclipse-repos/memory/feedback_bot_scope_creep_free_variant.md"
+      - "~/.claude/projects/-var-mnt-eclipse-repos/memory/feedback_language_scope_in_thesis.md"
+      - "~/.claude/projects/-var-mnt-eclipse-repos/memory/feedback_completion_vs_behavioural_coverage.md"
+      - "~/Desktop/Frontier_Programming_Practices_AffineScript/AI.a2ml (v2.0)"
+      - "~/Desktop/Frontier_Programming_Practices_AffineScript/Human_Programming_Guide.adoc (v2.0)"
+
+# ─── Notes on retroactive status ──────────────────────────────────────────────
+
+notes: >
+  This is the first ANCHOR.a2ml written for AffineScript. The repository
+  predates the ANCHOR convention and predates significant portions of the
+  current hyperpolymath .machine_readable/ suite (CLADE.a2ml, contractiles/
+  as a .machine_readable/ subdirectory, agent_instructions/, integrations/,
+  and top-level .contractile instance files). The existing root-level
+  contractiles/ directory contains 5 of the 7 current contractile types
+  (dust, k9, lust, must, trust — missing adjust and intend).
+
+  A full upgrade to the current canonical suite is deferred as separate work.
+  See STATE.a2ml [deferred-upgrade] for the itemised list. The minimum captured
+  in this first ANCHOR is: identity, thesis, authorities, relationships, and
+  the 2026-04-10 manhattan-recovery realignment event.

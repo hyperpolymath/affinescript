@@ -43,6 +43,7 @@ let string_of_binary_op = function
   | OpBitXor -> "^"
   | OpShl -> "<<"
   | OpShr -> ">>"
+  | OpConcat -> "++"
 
 let rec expr_summary (expr : expr) : string =
   match expr with
@@ -227,10 +228,8 @@ let instantiate (level : int) (sc : scheme) : ty =
     | TCon _ -> ty
     | TApp (t, args) ->
       TApp (apply_subst t, List.map apply_subst args)
-    | TArrow (a, b, e) ->
-      TArrow (apply_subst a, apply_subst b, e)
-    | TDepArrow (x, a, b, e) ->
-      TDepArrow (x, apply_subst a, apply_subst b, e)
+    | TArrow (a, q, b, e) ->
+      TArrow (apply_subst a, q, apply_subst b, e)
     | TTuple tys ->
       TTuple (List.map apply_subst tys)
     | TRecord row ->
@@ -244,8 +243,6 @@ let instantiate (level : int) (sc : scheme) : ty =
     | TRef t -> TRef (apply_subst t)
     | TMut t -> TMut (apply_subst t)
     | TOwn t -> TOwn (apply_subst t)
-    | TRefined (t, p) -> TRefined (apply_subst t, p)
-    | TNat _ -> ty
   and apply_subst_row row =
     match repr_row row with
     | REmpty -> REmpty
@@ -273,9 +270,7 @@ let generalize (ctx : context) (ty : ty) : scheme =
     | TCon _ -> ()
     | TApp (t, args) ->
       collect t; List.iter collect args
-    | TArrow (a, b, _) ->
-      collect a; collect b
-    | TDepArrow (_, a, b, _) ->
+    | TArrow (a, _, b, _) ->
       collect a; collect b
     | TTuple tys ->
       List.iter collect tys
@@ -285,8 +280,6 @@ let generalize (ctx : context) (ty : ty) : scheme =
       collect body
     | TRef t | TMut t | TOwn t ->
       collect t
-    | TRefined (t, _) -> collect t
-    | TNat _ -> ()
   and collect_row row =
     match repr_row row with
     | REmpty -> ()
@@ -304,7 +297,55 @@ let lookup_var (ctx : context) (name : string) : ty result =
   | Some sc -> Ok (instantiate ctx.level sc)
   | None -> Error (UnboundVariable name)
 
+(** {1 Kind checking} *)
+
+let rec infer_kind (ctx : context) (ty : ty) : kind result =
+  match repr ty with
+  | TVar r ->
+    begin match !r with
+      | Unbound (_, _) -> Ok KType
+      | Link t -> infer_kind ctx t
+    end
+  | TCon name ->
+    begin match name with
+      | "Array" | "Option" | "List" | "Vec" -> Ok (KArrow (KType, KType))
+      | "Result" -> Ok (KArrow (KType, KArrow (KType, KType)))
+      | _ -> Ok KType
+    end
+  | TApp (head, args) ->
+    let* k = infer_kind ctx head in
+    check_kind_app ctx k args
+  | TArrow (_, _, _, _) | TTuple _ | TRecord _ | TVariant _ ->
+    Ok KType
+  | TForall (_, _, body) | TExists (_, _, body) ->
+    let* _ = infer_kind ctx body in
+    Ok KType
+  | TRef t | TMut t | TOwn t ->
+    infer_kind ctx t
+
+and check_kind (ctx : context) (ty : ty) (expected : kind) : unit result =
+  let* got = infer_kind ctx ty in
+  if got = expected then Ok ()
+  else Error (NotImplemented (Printf.sprintf "Kind mismatch: expected %s, got %s" (show_kind expected) (show_kind got)))
+
+and check_kind_app (ctx : context) (k : kind) (args : ty list) : kind result =
+  match args with
+  | [] -> Ok k
+  | arg :: rest ->
+    begin match k with
+      | KArrow (param_k, ret_k) ->
+        let* () = check_kind ctx arg param_k in
+        check_kind_app ctx ret_k rest
+      | _ -> Error (NotImplemented "Too many arguments for kind")
+    end
+
 (** {1 AST type_expr → internal ty conversion} *)
+
+let lower_quantity (q : Ast.quantity) : Types.quantity =
+  match q with
+  | QZero -> QZero
+  | QOne -> QOne
+  | QOmega -> QOmega
 
 (** Convert an AST [type_expr] to an internal [ty].
 
@@ -344,25 +385,20 @@ let rec lower_type_expr (ctx : context) (te : type_expr) : ty =
     let arg_tys = List.map (fun arg ->
       match arg with
       | TyArg te -> lower_type_expr ctx te
-      | NatArg _ne -> fresh_tyvar ctx.level
     ) args in
     TApp (head, arg_tys)
-  | TyArrow (a, b, eff_opt) ->
+  | TyArrow (a, q_opt, b, eff_opt) ->
     let a' = lower_type_expr ctx a in
     let b' = lower_type_expr ctx b in
+    let q = match q_opt with
+      | Some q -> lower_quantity q
+      | None -> QOmega  (* Default to unrestricted *)
+    in
     let eff = match eff_opt with
       | Some e -> lower_effect_expr ctx e
       | None -> EPure
     in
-    TArrow (a', b', eff)
-  | TyDepArrow { da_param; da_param_ty; da_ret_ty; da_eff; _ } ->
-    let a' = lower_type_expr ctx da_param_ty in
-    let b' = lower_type_expr ctx da_ret_ty in
-    let eff = match da_eff with
-      | Some e -> lower_effect_expr ctx e
-      | None -> EPure
-    in
-    TDepArrow (da_param.name, a', b', eff)
+    TArrow (a', q, b', eff)
   | TyTuple [] ->
     ty_unit
   | TyTuple tes ->
@@ -375,9 +411,6 @@ let rec lower_type_expr (ctx : context) (te : type_expr) : ty =
   | TyOwn te -> TOwn (lower_type_expr ctx te)
   | TyRef te -> TRef (lower_type_expr ctx te)
   | TyMut te -> TMut (lower_type_expr ctx te)
-  | TyRefined (te, _pred) ->
-    (* Lower the base type; predicates are not checked in Phase 1 *)
-    lower_type_expr ctx te
   | TyHole ->
     fresh_tyvar ctx.level
 
@@ -414,6 +447,8 @@ let type_of_binop (op : binary_op) : ty * ty * ty =
   (* Bitwise: Int -> Int -> Int *)
   | OpBitAnd | OpBitOr | OpBitXor | OpShl | OpShr ->
     (ty_int, ty_int, ty_int)
+  | OpConcat ->
+    (ty_string, ty_string, ty_string)
 
 let type_of_unop (op : unary_op) : ty * ty =
   match op with
@@ -463,7 +498,7 @@ let rec check_pattern (ctx : context) (pat : pattern) (expected : ty)
             Ok (List.rev acc)
           | p :: rest ->
             begin match repr ty with
-              | TArrow (param_ty, ret_ty, _) ->
+              | TArrow (param_ty, _, ret_ty, _) ->
                 let* binds = check_pattern ctx p param_ty in
                 peel_arrows ret_ty rest (binds :: acc)
               | _ ->
@@ -654,7 +689,7 @@ let rec synth (ctx : context) (expr : expr) : ty result =
     (* Build the arrow type: curried for multi-param *)
     let eff = fresh_effvar ctx.level in
     let ty = List.fold_right (fun param_ty acc ->
-      TArrow (param_ty, acc, eff)
+      TArrow (param_ty, QOmega, acc, eff)
     ) param_tys body_ty in
     Ok ty
 
@@ -805,8 +840,8 @@ and apply_args (ctx : context) (fn_ty : ty) (args : expr list) : ty result =
   | [] -> Ok fn_ty
   | arg :: rest ->
     let fn_ty' = repr fn_ty in
-    begin match fn_ty' with
-      | TArrow (param_ty, ret_ty, _eff) ->
+    match fn_ty' with
+      | TArrow (param_ty, _q, ret_ty, _eff) ->
         let* () = check ctx arg param_ty in
         apply_args ctx ret_ty rest
       | TVar _ ->
@@ -814,13 +849,12 @@ and apply_args (ctx : context) (fn_ty : ty) (args : expr list) : ty result =
         let param_ty = fresh_tyvar ctx.level in
         let ret_ty = fresh_tyvar ctx.level in
         let eff = fresh_effvar ctx.level in
-        let* () = unify_or_err fn_ty' (TArrow (param_ty, ret_ty, eff)) in
+        let q = lower_quantity QOmega in (* Default for unknown *)
+        let* () = unify_or_err fn_ty' (TArrow (param_ty, q, ret_ty, eff)) in
         let* () = check ctx arg param_ty in
         apply_args ctx ret_ty rest
       | _ ->
         Error (NotAFunction fn_ty')
-    end
-
 and synth_list (ctx : context) (exprs : expr list) : (ty list) result =
   List.fold_right (fun e acc ->
     let* tys = acc in
@@ -925,14 +959,10 @@ and check (ctx : context) (expr : expr) (expected : ty) : unit result =
     when (match repr expected with TArrow _ -> true | _ -> false) ->
     let rec peel_arrows ty params =
       match params, repr ty with
-      | [], _ -> synth_and_unify ctx (ExprLambda { elam_params = []; elam_ret_ty = None; elam_body }) ty
-      | _ :: _, TArrow (param_ty, ret_ty, _eff) ->
-        begin match params with
-          | p :: rest ->
-            bind_var ctx p.p_name.name param_ty;
-            peel_arrows ret_ty rest
-          | [] -> Ok ()
-        end
+      | [], _ -> Ok ()
+      | p :: rest, TArrow (param_ty, _q, ret_ty, _eff) ->
+        bind_var ctx p.p_name.name param_ty;
+        peel_arrows ret_ty rest
       | _ -> synth_and_unify ctx expr expected
     in
     let old = List.map (fun (p : param) ->
@@ -942,7 +972,7 @@ and check (ctx : context) (expr : expr) (expected : ty) : unit result =
     (* Now check the body against the final return type *)
     let final_ret = List.fold_left (fun ty _ ->
       match repr ty with
-      | TArrow (_, ret, _) -> ret
+      | TArrow (_, _, ret, _) -> ret
       | _ -> ty
     ) expected elam_params in
     let* () = check ctx elam_body final_ret in
@@ -973,48 +1003,57 @@ and synth_and_unify (ctx : context) (expr : expr) (expected : ty) : unit result 
 (** Register built-in types and functions. *)
 let register_builtins (ctx : context) : unit =
   (* Arithmetic builtins *)
-  let int_binop = TArrow (ty_int, TArrow (ty_int, ty_int, EPure), EPure) in
-  let float_binop = TArrow (ty_float, TArrow (ty_float, ty_float, EPure), EPure) in
-  bind_var ctx "print" (TArrow (ty_string, ty_unit, ESingleton "IO"));
-  bind_var ctx "println" (TArrow (ty_string, ty_unit, ESingleton "IO"));
-  bind_var ctx "read_line" (TArrow (ty_unit, ty_string, ESingleton "IO"));
-  bind_var ctx "int_to_string" (TArrow (ty_int, ty_string, EPure));
-  bind_var ctx "float_to_string" (TArrow (ty_float, ty_string, EPure));
-  bind_var ctx "string_length" (TArrow (ty_string, ty_int, EPure));
-  bind_var ctx "sqrt" (TArrow (ty_float, ty_float, EPure));
+  let int_binop = TArrow (ty_int, QOmega, TArrow (ty_int, QOmega, ty_int, EPure), EPure) in
+  let float_binop = TArrow (ty_float, QOmega, TArrow (ty_float, QOmega, ty_float, EPure), EPure) in
+  bind_var ctx "print" (TArrow (ty_string, QOmega, ty_unit, ESingleton "IO"));
+  bind_var ctx "println" (TArrow (ty_string, QOmega, ty_unit, ESingleton "IO"));
+  bind_var ctx "read_line" (TArrow (ty_unit, QOmega, ty_string, ESingleton "IO"));
+  bind_var ctx "int_to_string" (TArrow (ty_int, QOmega, ty_string, EPure));
+  bind_var ctx "int" (TArrow (ty_float, QOmega, ty_int, EPure));
+  bind_var ctx "float" (TArrow (ty_int, QOmega, ty_float, EPure));
+  bind_var ctx "float_to_string" (TArrow (ty_float, QOmega, ty_string, EPure));
+  bind_var ctx "string_length" (TArrow (ty_string, QOmega, ty_int, EPure));
+  bind_var ctx "sqrt" (TArrow (ty_float, QOmega, ty_float, EPure));
   bind_var ctx "abs" int_binop;
   bind_var ctx "max" int_binop;
   bind_var ctx "min" int_binop;
   bind_var ctx "pow_float" float_binop;
   bind_var ctx "len" (let tv = fresh_tyvar 0 in
-    TArrow (TApp (TCon "Array", [tv]), ty_int, EPure));
-  bind_var ctx "panic" (TArrow (ty_string, ty_never, EPure));
-  bind_var ctx "exit" (TArrow (ty_int, ty_never, ESingleton "IO"))
+    TArrow (TApp (TCon "Array", [tv]), QOmega, ty_int, EPure));
+  bind_var ctx "panic" (TArrow (ty_string, QOmega, ty_never, EPure));
+  bind_var ctx "exit" (TArrow (ty_int, QOmega, ty_never, ESingleton "IO"))
 
 (** Check a top-level function declaration. *)
 let check_fn_decl (ctx : context) (fd : fn_decl) : unit result =
   (* Lower parameter types *)
-  let param_tys = List.map (fun (p : param) ->
-    lower_type_expr ctx p.p_ty
-  ) fd.fd_params in
+  let* param_tys = List.fold_left (fun acc (p : param) ->
+    let* tys = acc in
+    let ty = lower_type_expr ctx p.p_ty in
+    let* () = check_kind ctx ty KType in
+    Ok (ty :: tys)
+  ) (Ok []) fd.fd_params in
+  let param_tys = List.rev param_tys in
   (* Lower return type *)
-  let ret_ty = match fd.fd_ret_ty with
-    | Some te -> lower_type_expr ctx te
-    | None -> fresh_tyvar ctx.level
+  let* ret_ty = match fd.fd_ret_ty with
+    | Some te ->
+      let ty = lower_type_expr ctx te in
+      let* () = check_kind ctx ty KType in
+      Ok ty
+    | None -> Ok (fresh_tyvar ctx.level)
   in
   (* Lower effect *)
-  let _eff = match fd.fd_eff with
-    | Some ee -> lower_effect_expr ctx ee
-    | None -> EPure
-  in
   (* Build the function type *)
   let fn_eff = match fd.fd_eff with
     | Some ee -> lower_effect_expr ctx ee
     | None -> fresh_effvar ctx.level
   in
-  let fn_ty = List.fold_right (fun param_ty acc ->
-    TArrow (param_ty, acc, fn_eff)
-  ) param_tys ret_ty in
+  let fn_ty = List.fold_right2 (fun param_ty (p : param) acc ->
+    let q = match p.p_quantity with
+      | Some q -> lower_quantity q
+      | None -> QOmega
+    in
+    TArrow (param_ty, q, acc, fn_eff)
+  ) param_tys fd.fd_params ret_ty in
   (* Bind the function name (allows recursion) *)
   bind_var ctx fd.fd_name.name fn_ty;
   (* Bind parameters *)
@@ -1043,34 +1082,57 @@ let check_fn_decl (ctx : context) (fd : fn_decl) : unit result =
   Ok ()
 
 (** Register a type declaration in the context. *)
-let register_type_decl (ctx : context) (td : type_decl) : unit =
-  match td.td_body with
-  | TyAlias te ->
-    let ty = lower_type_expr ctx te in
-    Hashtbl.replace ctx.type_env td.td_name.name ty
-  | TyStruct fields ->
-    (* Register struct as a record type constructor *)
-    let row = List.fold_right (fun (sf : struct_field) acc ->
-      RExtend (sf.sf_name.name, lower_type_expr ctx sf.sf_ty, acc)
-    ) fields REmpty in
-    Hashtbl.replace ctx.type_env td.td_name.name (TRecord row)
-  | TyEnum variants ->
-    (* Register each variant as a constructor *)
-    let result_ty = TCon td.td_name.name in
-    List.iter (fun (vd : variant_decl) ->
-      let ctor_ty = List.fold_right (fun field_te acc ->
-        TArrow (lower_type_expr ctx field_te, acc, EPure)
-      ) vd.vd_fields result_ty in
-      Hashtbl.replace ctx.constructor_env vd.vd_name.name ctor_ty;
-      (* Also bind as a variable for ExprVar references *)
-      if vd.vd_fields = [] then
-        bind_var ctx vd.vd_name.name result_ty
-      else
-        bind_var ctx vd.vd_name.name ctor_ty
-    ) variants
+let register_type_decl (ctx : context) (td : type_decl) : unit result =
+  let* ty = match td.td_body with
+    | TyAlias te ->
+      let ty = lower_type_expr ctx te in
+      let* () = check_kind ctx ty KType in
+      Ok ty
+    | TyStruct fields ->
+      (* Register struct as a record type constructor *)
+      let row = List.fold_right (fun (sf : struct_field) acc ->
+        RExtend (sf.sf_name.name, lower_type_expr ctx sf.sf_ty, acc)
+      ) fields REmpty in
+      let ty = TRecord row in
+      let* () = check_kind ctx ty KType in
+      Ok ty
+    | TyEnum variants ->
+      (* Register each variant as a constructor *)
+      let result_ty = match td.td_type_params with
+        | [] -> TCon td.td_name.name
+        | params ->
+          let tparams = List.map (fun tp ->
+            match tp.tp_name.name with
+            | _ ->
+              let tv = fresh_tyvar 0 in
+              (* Note: In a full impl we'd map param name to tv in a local env *)
+              tv
+          ) params in
+          TApp (TCon td.td_name.name, tparams)
+      in
+      List.iter (fun (vd : variant_decl) ->
+        let ctor_ty = List.fold_right (fun field_te acc ->
+          TArrow (lower_type_expr ctx field_te, QOmega, acc, EPure)
+        ) vd.vd_fields result_ty in
+        (* If it has type params, we should really bind a TForall scheme *)
+        let sc = match td.td_type_params with
+          | [] -> { sc_tyvars = []; sc_effvars = []; sc_rowvars = []; sc_body = ctor_ty }
+          | _ -> generalize ctx ctor_ty
+        in
+        Hashtbl.replace ctx.constructor_env vd.vd_name.name ctor_ty;
+        (* Also bind as a variable for ExprVar references *)
+        if vd.vd_fields = [] then
+          bind_scheme ctx vd.vd_name.name sc
+        else
+          bind_scheme ctx vd.vd_name.name sc
+      ) variants;
+      Ok (TCon td.td_name.name)
+  in
+  Hashtbl.replace ctx.type_env td.td_name.name ty;
+  Ok ()
 
 (** Register an effect declaration. *)
-let register_effect_decl (ctx : context) (ed : effect_decl) : unit =
+let register_effect_decl (ctx : context) (ed : effect_decl) : unit result =
   List.iter (fun (op : effect_op_decl) ->
     let param_tys = List.map (fun (p : param) ->
       lower_type_expr ctx p.p_ty
@@ -1081,10 +1143,11 @@ let register_effect_decl (ctx : context) (ed : effect_decl) : unit =
     in
     let eff = ESingleton ed.ed_name.name in
     let op_ty = List.fold_right (fun pty acc ->
-      TArrow (pty, acc, eff)
+      TArrow (pty, QOmega, acc, eff)
     ) param_tys ret_ty in
     bind_var ctx op.eod_name.name op_ty
-  ) ed.ed_ops
+  ) ed.ed_ops;
+  Ok ()
 
 (** Check a single top-level declaration. *)
 let check_decl (ctx : context) (decl : top_level) : (unit, type_error) Result.t =
@@ -1092,11 +1155,9 @@ let check_decl (ctx : context) (decl : top_level) : (unit, type_error) Result.t 
   | TopFn fd ->
     check_fn_decl ctx fd
   | TopType td ->
-    register_type_decl ctx td;
-    Ok ()
+    register_type_decl ctx td
   | TopEffect ed ->
-    register_effect_decl ctx ed;
-    Ok ()
+    register_effect_decl ctx ed
   | TopTrait _td ->
     (* Trait declarations don't produce type errors in Phase 1 *)
     Ok ()
@@ -1120,16 +1181,18 @@ let check_program (symbols : Symbol.t) (prog : Ast.program)
   let ctx = create_context symbols in
   register_builtins ctx;
   (* Forward pass: register all types, effects, and function signatures *)
-  List.iter (fun decl ->
+  let* () = List.fold_left (fun acc decl ->
+    let* () = acc in
     match decl with
     | TopType td -> register_type_decl ctx td
     | TopEffect ed -> register_effect_decl ctx ed
     | TopFn fd ->
       (* Pre-register function with a fresh type for mutual recursion *)
       let fn_ty = fresh_tyvar ctx.level in
-      bind_var ctx fd.fd_name.name fn_ty
-    | _ -> ()
-  ) prog.prog_decls;
+      bind_var ctx fd.fd_name.name fn_ty;
+      Ok ()
+    | _ -> Ok ()
+  ) (Ok ()) prog.prog_decls in
   (* Check pass: verify all declarations *)
   let result = List.fold_left (fun acc decl ->
     let* () = acc in

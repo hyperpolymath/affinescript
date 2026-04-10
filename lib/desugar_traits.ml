@@ -170,7 +170,6 @@ and desugar_unsafe_op (ctx : context) (op : unsafe_op) : unsafe_op =
   | UnsafeOffset (e1, e2) -> UnsafeOffset (desugar_expr ctx e1, desugar_expr ctx e2)
   | UnsafeTransmute (ty1, ty2, e) -> UnsafeTransmute (ty1, ty2, desugar_expr ctx e)
   | UnsafeForget e -> UnsafeForget (desugar_expr ctx e)
-  | UnsafeAssume _ as op -> op
 
 and desugar_block (ctx : context) (blk : block) : block =
   { blk_stmts = List.map (desugar_stmt ctx) blk.blk_stmts;

@@ -16,6 +16,8 @@ Thumbs.db
 /build/
 /dist/
 /out/
+# Idris2 build artifacts (nested, e.g. under formal-verification dirs)
+**/solo-core/build/
 
 # Dependencies
 /node_modules/

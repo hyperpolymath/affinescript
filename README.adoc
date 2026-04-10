@@ -12,6 +12,11 @@ image:https://img.shields.io/badge/Powered%20By-Gossamer%20%26%20Burble-orange.s
 
 **Write games where the compiler catches your bugs before players do.**
 
+[NOTE]
+====
+*Honest status (2026-04-10):* AffineScript's affine types, QTT quantity checking, borrow checker, and dependent types are **experimental (enforcement landing soon)**. The type-checking rules for these features are implemented in `lib/typecheck.ml` and `lib/quantity.ml`, but they are not yet wired into the `check`/`compile`/`eval` CLI paths, so user programs are not gated on them today. Track A of the Manhattan plan closes this gap; ETA T+7d. See `.machine_readable/6a2/STATE.a2ml` `[features]` for the per-feature honest breakdown.
+====
+
 AffineScript is the only language that combines affine types, quantitative type theory, row polymorphism, and algebraic effects in a single practical systems language. This means you can write game code where the compiler *proves* your protocol states, resource lifecycles, and effect boundaries are correct -- with syntax that feels like a modern game scripting language, not a theorem prover.
 
 Built on the same battle-tested technologies as https://github.com/hyperpolymath/gossamer[Gossamer] (resource-safe desktop apps with zero handle leaks) and https://github.com/hyperpolymath/burble[Burble] (sub-10ms latency voice comms with Zig SIMD acceleration), AffineScript brings industrial-strength correctness to game development.
@@ -319,6 +324,10 @@ dune exec affinescript -- check --json examples/hello.affine
 
 == Project Status
 
+**Version 0.8 Frontend Complete:** The frontend surface syntax for core type features (Linear Arrows `-[q]->`, Generic Variants, Refinement Types, Kind Checking) parses and elaborates. Note: several of these features are *experimental (enforcement landing soon)* — the quantity checker is not yet called from the CLI, the lexer does not yet emit ZERO/ONE quantity literal tokens, and refinement predicates parse but do not reduce. See `.machine_readable/6a2/STATE.a2ml` `[features]` for per-feature status.
+
+NOTE: As of v0.8, the standard file extension for AffineScript is `.affine` (formerly `.affine`, changed to avoid clashes with ActionScript).
+
 AffineScript is in active development. The frontend is solid; the backend and advanced type features are in progress.
 
 [cols="2,1,3"]
@@ -373,6 +382,12 @@ AffineScript is in active development. The frontend is solid; the backend and ad
 |Complete
 |AST-based formatter; 4 lint rules
 |===
+
+=== Roadmap: v0.8 to v0.9
+The immediate priority for v0.9 is to fully propagate the v0.8 language features down through the entire stack, solidifying the architecture for the **Airborne Submarine Squadron** remake:
+* Propagate v0.8 syntax (like `-[q]->`), semantics, and type system upgrades down through the AST, Interpreter, REPL, and Standard Library.
+* Update the compiler backend (WASM generation) to fully support the newly checked Generic Variants and Refinement constraints.
+* Finalize the metacompiler and metainterpreter features.
 
 == Design Principles
 

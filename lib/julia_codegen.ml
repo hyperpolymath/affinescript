@@ -57,7 +57,7 @@ let rec type_expr_to_julia_string (te : type_expr) : string =
   | TyCon name when name.name = "String" -> "String"
   | TyCon name when name.name = "Unit" -> "Nothing"
   | TyCon name -> name.name  (* Custom type names pass through *)
-  | TyArrow (_, ret, _) ->
+  | TyArrow (_, _, ret, _) ->
       (* Function types: for now, just use ret type annotation *)
       type_expr_to_julia_string ret
   | TyTuple tys ->
@@ -104,6 +104,7 @@ let rec gen_expr ctx (expr : expr) : string =
         | OpBitXor -> "⊻"
         | OpShl -> "<<"
         | OpShr -> ">>"
+        | OpConcat -> "*" (* String/Array concatenation in Julia *)
       in
       "(" ^ gen_expr ctx e1 ^ " " ^ op_str ^ " " ^ gen_expr ctx e2 ^ ")"
   | ExprUnary (op, e) ->
