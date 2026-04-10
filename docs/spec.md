@@ -1,15 +1,48 @@
 # AffineScript Complete Language Specification v2.0
 
+> **⚠ HONEST STATUS NOTE (2026-04-10 manhattan-recovery):**
+>
+> This specification predates the 2026-04-10 thesis recovery and is **out of date**
+> with the current language scope. It still contains scattered references to
+> dependent types, refinement types, the `Nat` kind, `Vec[n, T]`, and other
+> features that have been **removed from AffineScript** and, where applicable,
+> deferred to the sibling Typed WASM project.
+>
+> **The authoritative current scope lives in:**
+> - `.machine_readable/anchors/ANCHOR.a2ml` (canonical identity + thesis)
+> - `.machine_readable/6a2/META.a2ml` (architecture decision records)
+> - `~/Desktop/Frontier_Programming_Practices_AffineScript/AI.a2ml` (v2.0)
+> - `~/Desktop/Frontier_Programming_Practices_AffineScript/Human_Programming_Guide.adoc` (v2.0)
+>
+> **The eight in-scope features (as of 2026-04-10) are:**
+> phantom types, immutable by default, row polymorphism, full type inference,
+> sound type system, effect tracking (no handlers — see ADR-004 extension point),
+> affine types (headline), and decidable-fragment refinement types (soft).
+>
+> **Out of scope** (deferred or removed): linear strict types, full dependent types,
+> tropical types, algebraic effect handlers, unbounded refinement, units of measure,
+> shape-indexed vectors. The first four were bot scope creep, removed during
+> the 2026-04-10 Manhattan Recovery session.
+>
+> The large standalone sections on dependent types, refinement type rules, and
+> length-indexed vectors have been excised from this document. Inline mentions
+> may still appear scattered through other sections and will be cleaned up in a
+> future full spec rewrite. **If this document disagrees with any of the above
+> authorities, the authorities win.**
+
 ## Purpose
 
-This document fully specifies AffineScript, a programming language combining:
-- **Affine types** (Rust-style ownership)
-- **Dependent types** (types that depend on values)
-- **Row polymorphism** (extensible records)
-- **Extensible effect system** (user-defined effects with polymorphism)
-- **WASM-first** compilation (no GC required)
+This document specifies AffineScript, a programming language combining:
+- **Affine types** (Rust-style ownership, the headline novelty)
+- **Phantom types** and **row polymorphism** (extensible records, compile-time-only tagging)
+- **Immutable by default** with explicit mutation
+- **Full Hindley-Milner type inference** with quantities at function signatures
+- **Effect tracking** (function signatures declare what effects they can do; handler semantics deferred)
+- **Decidable-fragment refinement types** (soft commitment)
+- **Typed-WASM-first** compilation targeting the sibling Typed WASM project
 
-This is a self-contained specification. Everything needed to implement the language is here.
+This specification is an in-progress rewrite; sections below may still reflect the
+pre-recovery scope until the full spec rewrite lands.
 
 ---
 
@@ -606,40 +639,10 @@ All fields in ..r are owned
 Γ ⊢ mut e : mut τ / ε
 ```
 
-### Refinement Types
-```
-Γ ⊢ e : τ / ε    Γ ⊢ P[e] true
-──────────────────────────────── (T-Refine-Intro)
-Γ ⊢ e : τ where P / ε
-
-Γ ⊢ e : τ where P / ε
-─────────────────────── (T-Refine-Elim)
-Γ ⊢ e : τ / ε
-```
-
-**Refinement predicate effects:**
-
-Predicates may have effects but Pure is preferred. Effectful predicates emit a warning and are checked at runtime boundaries only.
-
-```affinescript
-// Pure - preferred, checked at compile time where possible
-type PosInt = Int where (self > 0)
-
-// Effectful - warning, checked at runtime boundaries
-type Validated = String where (validate(self))  // If validate has IO
-// warning[W0701]: refinement predicate has effects
-```
-
-### Dependent Types
-```
-Γ ⊢ n : Nat    n evaluates to a value
-─────────────────────────────────────── (T-Vec)
-Γ ⊢ Vec[n, τ] : Type
-
-Γ ⊢ e : Vec[n + 1, τ] / ε
-────────────────────────── (T-Head)
-Γ ⊢ head(e) : τ / ε
-```
+<!-- Refinement Types and Dependent Types sections removed 2026-04-10.
+     Dependent types are deferred to the sibling Typed WASM project.
+     Refinement types will return in a later phase with a clean foundation
+     not entangled with dependent-type arithmetic. See ANCHOR.a2ml for scope. -->
 
 ### Effect Typing
 ```
@@ -949,46 +952,10 @@ impl[T, E] Result[T, E] {
 }
 ```
 
-## 7.4 Length-Indexed Vector
-
-```affinescript
-type Vec[n: Nat, T: Type] =
-  | Nil : Vec[0, T]
-  | Cons(head: T, tail: Vec[n, T]) : Vec[n + 1, T]
-
-total fn head[n: Nat, T](v: Vec[n + 1, T]) -> T / Pure {
-  match v {
-    Cons(h, _) => h
-  }
-}
-
-total fn tail[n: Nat, T](v: Vec[n + 1, T]) -> Vec[n, T] / Pure {
-  match v {
-    Cons(_, t) => t
-  }
-}
-
-total fn append[n: Nat, m: Nat, T](a: Vec[n, T], b: Vec[m, T]) -> Vec[n + m, T] / Pure {
-  match a {
-    Nil => b,
-    Cons(h, t) => Cons(h, append(t, b))
-  }
-}
-
-total fn map[n: Nat, A, B](v: Vec[n, A], f: A -> B / Pure) -> Vec[n, B] / Pure {
-  match v {
-    Nil => Nil,
-    Cons(h, t) => Cons(f(h), map(t, f))
-  }
-}
-
-total fn zip[n: Nat, A, B](a: Vec[n, A], b: Vec[n, B]) -> Vec[n, (A, B)] / Pure {
-  match (a, b) {
-    (Nil, Nil) => Nil,
-    (Cons(x, xs), Cons(y, ys)) => Cons((x, y), zip(xs, ys))
-  }
-}
-```
+<!-- §7.4 Length-Indexed Vector removed 2026-04-10.
+     Length-indexed (dependent) vectors are deferred to the sibling Typed WASM
+     project. A non-dependent Vec[T] / List[T] example will be added in a future
+     spec revision. See ANCHOR.a2ml for scope. -->
 
 ## 7.5 Core Traits
 
@@ -1515,17 +1482,20 @@ Source Code
 
 ## 10.2 Key Implementation Challenges
 
-### Challenge 1: Bidirectional Type Checking with Dependent Types
+### Challenge 1: Bidirectional Type Checking
 
 ```
 infer(Γ, e) → (τ, ε)     Synthesize type from expression
 check(Γ, e, τ) → ε       Check expression against type
 ```
 
-Dependent types require:
-- Type-level evaluation during checking
-- Unification with type-level terms
-- Constraint solving for refinements
+Bidirectional checking threads through expression forms uniformly and gives
+better error messages than pure synthesis. Combined with full HM inference, it
+keeps annotation requirements low while maintaining soundness.
+
+<!-- Original Challenge 1 covered bidirectional + dependent types. Dependent
+     type machinery was removed 2026-04-10; the challenge is now plain
+     bidirectional checking over the simply-typed + affine + row subset. -->
 
 ### Challenge 2: Row Polymorphism Inference
 
@@ -1596,11 +1566,9 @@ For `total` functions:
    - Trait bounds
    - Associated types
 
-7. **Dependent Types** (4-6 weeks)
-   - Add Nat kind
-   - Implement type-level evaluation
-   - Add Vec[n, T]
-   - Add refinement types
+<!-- Phase 7 "Dependent Types" removed 2026-04-10 — deferred to the sibling
+     Typed WASM project. Refinement types return in a later phase with a
+     clean foundation. -->
 
 8. **Extensible Effects** (2-3 weeks)
    - Effect declarations
@@ -1797,25 +1765,21 @@ type_params   = '[' type_param { ',' type_param } ']' ;
 type_param    = [ QUANTITY ] IDENT [ ':' kind ] ;
 kind          = 'Type' | 'Nat' | 'Row' | 'Effect' | kind '->' kind ;
 
-type_expr     = type_atom [ '->' type_expr [ '/' effects ] ]
-              | '(' [ QUANTITY ] IDENT ':' type_expr ')' '->' type_expr [ '/' effects ]
-              | type_expr 'where' '(' predicate ')' ;
+type_expr     = type_atom [ '->' type_expr [ '/' effects ] ] ;
 type_atom     = PRIM_TYPE | UPPER_IDENT | TYPE_VAR | row_type
               | 'own' type_atom | 'ref' type_atom | 'mut' type_atom
               | '(' type_expr ')' | '(' type_expr { ',' type_expr } ')'
               | UPPER_IDENT '[' type_arg { ',' type_arg } ']' ;
-type_arg      = type_expr | nat_expr ;
+type_arg      = type_expr ;
 row_type      = '{' [ field_type { ',' field_type } [ ',' ROW_VAR ] | ROW_VAR ] '}' ;
 field_type    = IDENT ':' type_expr ;
 
 effects       = effect_term { '+' effect_term } ;
 effect_term   = UPPER_IDENT [ '[' type_arg { ',' type_arg } ']' ] | EFFECT_VAR ;
 
-nat_expr      = NAT_ATOM { ('+' | '-' | '*') NAT_ATOM } ;
-NAT_ATOM      = INT_LIT | IDENT | '(' nat_expr ')' | 'len' '(' IDENT ')' ;
-
-predicate     = pred_atom { ('&&' | '||') pred_atom } ;
-pred_atom     = nat_expr CMP_OP nat_expr | '!' pred_atom | '(' predicate ')' ;
+(* nat_expr and predicate productions removed 2026-04-10.
+   Dependent function types ((x : T) -> U), refinement types (T where P),
+   nat_expr, and predicate are out of scope. See ANCHOR.a2ml. *)
 
 (* === EFFECTS === *)
 effect_decl   = visibility 'effect' UPPER_IDENT [ type_params ] '{' { effect_op } '}' ;

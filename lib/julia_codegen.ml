@@ -104,6 +104,7 @@ let rec gen_expr ctx (expr : expr) : string =
         | OpBitXor -> "⊻"
         | OpShl -> "<<"
         | OpShr -> ">>"
+        | OpConcat -> "*" (* String/Array concatenation in Julia *)
       in
       "(" ^ gen_expr ctx e1 ^ " " ^ op_str ^ " " ^ gen_expr ctx e2 ^ ")"
   | ExprUnary (op, e) ->

@@ -15,11 +15,12 @@ type t =
   (* Identifiers *)
   | LOWER_IDENT of string    (** lowercase identifier *)
   | UPPER_IDENT of string    (** Uppercase identifier *)
-  | ROW_VAR of string        (** ..rowvar *)
+  | ROW_VAR of string        (** row variable: ..name *)
 
   (* Keywords *)
   | FN
   | LET
+  | CONST
   | MUT
   | OWN
   | REF
@@ -93,6 +94,7 @@ type t =
 
   (* Operators *)
   | PLUS
+  | PLUSPLUS
   | MINUS
   | STAR
   | SLASH
@@ -134,6 +136,7 @@ let to_string = function
   | ROW_VAR s -> Printf.sprintf "row variable '..%s'" s
   | FN -> "fn"
   | LET -> "let"
+  | CONST -> "const"
   | MUT -> "mut"
   | OWN -> "own"
   | REF -> "ref"
@@ -199,6 +202,7 @@ let to_string = function
   | ONE -> "1"
   | OMEGA -> "ω"
   | PLUS -> "+"
+  | PLUSPLUS -> "++"
   | MINUS -> "-"
   | STAR -> "*"
   | SLASH -> "/"

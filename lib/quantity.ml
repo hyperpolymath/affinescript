@@ -353,7 +353,6 @@ let rec infer_usage_expr (env : env) (expr : expr) : unit =
         infer_usage_expr env e2
       | UnsafeTransmute (_, _, e) -> infer_usage_expr env e
       | UnsafeForget e -> infer_usage_expr env e
-      | UnsafeAssume _ -> ()
     ) ops
 
   | ExprVariant _ -> ()
