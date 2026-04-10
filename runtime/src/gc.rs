@@ -40,6 +40,16 @@ use core::ptr::NonNull;
 #[cfg(feature = "std")]
 use std::ptr::NonNull;
 
+/// Panic with a clear message when GC allocation is attempted before Phase 6.
+///
+/// Centralises the panic point so it's easy to find and replace when the
+/// GC is actually implemented.
+#[cold]
+#[inline(never)]
+fn gc_not_yet_implemented() -> ! {
+    panic!("GC allocation is not yet implemented (Phase 6)")
+}
+
 /// GC object header
 ///
 /// Prepended to all GC-managed allocations.
@@ -66,14 +76,16 @@ pub struct Gc<T: ?Sized> {
 
 impl<T> Gc<T> {
     /// Allocate a new GC-managed value
-    pub fn new(value: T) -> Self {
-        // TODO: Phase 6 implementation
-        // - [ ] Allocate space for header + value
-        // - [ ] Initialize header
-        // - [ ] Register in allocation list
-        // - [ ] Store value
-
-        unimplemented!("GC allocation not yet implemented")
+    ///
+    /// # Panics
+    ///
+    /// Currently unimplemented — Phase 6 will provide:
+    /// - Allocate space for header + value
+    /// - Initialize header
+    /// - Register in allocation list
+    /// - Store value
+    pub fn new(_value: T) -> Self {
+        gc_not_yet_implemented()
     }
 }
 

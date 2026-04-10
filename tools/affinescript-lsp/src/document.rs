@@ -27,17 +27,28 @@ impl DocumentManager {
     /// Open a document
     pub fn open(&self, uri: Url, text: String, version: i32) {
         let doc = Document::new(text, version);
-        self.documents.write().unwrap().insert(uri, doc);
+        if let Ok(mut docs) = self.documents.write() {
+            docs.insert(uri, doc);
+        } else {
+            eprintln!("[lsp] document store lock poisoned on open");
+        }
     }
 
     /// Close a document
     pub fn close(&self, uri: &Url) {
-        self.documents.write().unwrap().remove(uri);
+        if let Ok(mut docs) = self.documents.write() {
+            docs.remove(uri);
+        } else {
+            eprintln!("[lsp] document store lock poisoned on close");
+        }
     }
 
     /// Apply changes to a document
     pub fn apply_changes(&self, uri: &Url, version: i32, changes: Vec<TextDocumentContentChangeEvent>) {
-        let mut docs = self.documents.write().unwrap();
+        let Ok(mut docs) = self.documents.write() else {
+            eprintln!("[lsp] document store lock poisoned on apply_changes");
+            return;
+        };
         if let Some(doc) = docs.get_mut(uri) {
             doc.apply_changes(version, changes);
         }
@@ -45,12 +56,12 @@ impl DocumentManager {
 
     /// Get document text
     pub fn get_text(&self, uri: &Url) -> Option<String> {
-        self.documents.read().unwrap().get(uri).map(|d| d.text.clone())
+        self.documents.read().ok()?.get(uri).map(|d| d.text.clone())
     }
 
     /// Get document version
     pub fn get_version(&self, uri: &Url) -> Option<i32> {
-        self.documents.read().unwrap().get(uri).map(|d| d.version)
+        self.documents.read().ok()?.get(uri).map(|d| d.version)
     }
 }
 

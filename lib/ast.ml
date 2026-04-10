@@ -75,8 +75,8 @@ and type_expr =
   | TyVar of ident                                   (** Type variable *)
   | TyCon of ident                                   (** Type constructor *)
   | TyApp of ident * type_arg list                   (** Vec[n, T] *)
-  | TyArrow of type_expr * type_expr * effect_expr option  (** T -> U / E *)
-  | TyDepArrow of {                                  (** (x: T) -> U / E *)
+  | TyArrow of type_expr * quantity option * type_expr * effect_expr option  (** T -{q}-> U / E *)
+  | TyDepArrow of {                                  (** (x: T) -{q}-> U / E *)
       da_quantity : quantity option;
       da_param : ident;
       da_param_ty : type_expr;

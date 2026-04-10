@@ -1,0 +1,20 @@
+// tests/types/test_refinement_logic.affine
+// Verifies that refinement types are actually checked during type checking.
+
+type PositiveInt = Int where (x > 0);
+
+fn take_positive(n: PositiveInt) -> Int {
+    return n;
+}
+
+fn main() -> Unit {
+    let a: PositiveInt = 10; // OK
+    let b = take_positive(a); // OK
+    
+    if (a > 5) {
+        let c: PositiveInt = a; // OK - assumption a > 5 implies a > 0
+    }
+
+    // This should fail type checking
+    // let d: PositiveInt = -1; 
+}

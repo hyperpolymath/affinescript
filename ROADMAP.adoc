@@ -79,12 +79,26 @@ toc::[]
 
 === 🔲 Planned
 
-* **Dependent Types** — Full implementation
-* **Row Polymorphism** — Extensible records
 * **Effect Handlers** — Delimited continuations
 * **Non-lexical Lifetimes** — Advanced borrow checking
 * **Totality Checker** — Termination analysis
 * **Optimizer** — WASM optimization passes
+
+== Roadmap: v0.8 to v0.9 (April 2026)
+
+**Goal:** Solidify architecture for the Airborne Submarine Squadron remake.
+
+**Tasks:**
+
+1. **Propagate v0.8 Type System** (Priority: Critical)
+   * [ ] Extend AST, Interpreter, and REPL to fully utilize Linear Arrows (`-[q]->`), Generic Variants, Refinement Types, and Kind Checking.
+   * [ ] Update the standard library (`stdlib/`) to leverage these new "Frontier" features.
+
+2. **WASM Backend Upgrade** (Priority: High)
+   * [ ] Ensure WASM generation faithfully actuates the newly checked constraints and generic variants.
+
+3. **Meta-tools Finalization** (Priority: Medium)
+   * [ ] Finalize the metacompiler and metainterpreter features.
 
 == Roadmap to 1.0
 

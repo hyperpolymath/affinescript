@@ -191,7 +191,7 @@ Known failures/limitations:
 
 **Example Output:**
 ```
-/tmp/test_type_mismatch.as:9:26: Type mismatch
+/tmp/test_type_mismatch.affine:9:26: Type mismatch
   Expected: Bool
   Actual: Int
   Cannot mix Int and Bool types.
@@ -331,7 +331,7 @@ The effect system core is **substantially complete** (95%). Effects:
 4. Mark builtin operations with appropriate effects
 
 **Testing:**
-- ✅ Basic trait method calls compile correctly (/tmp/test_effects.as)
+- ✅ Basic trait method calls compile correctly (/tmp/test_effects.affine)
 - ⚠️ Need tests for effect violations (pure calling impure)
 - ⚠️ Need tests with explicit effect annotations
 

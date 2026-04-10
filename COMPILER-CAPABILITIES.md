@@ -206,7 +206,7 @@ WebAssembly.instantiate(wasmBuffer).then(wasmModule => {
 ### Native Deployment (Future)
 ```bash
 # Future: Compile to native binary
-affinescript compile --target native --arch arm64 program.as
+affinescript compile --target native --arch arm64 program.affine
 ./program
 ```
 

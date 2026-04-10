@@ -43,7 +43,7 @@ From `aggregate-library/`:
 **Action:** Implement aLib conformance test runner for AffineScript
 
 ```affinescript
-// stdlib/alib_conformance.as
+// stdlib/alib_conformance.affine
 fn run_collection_map_tests() -> TestResult {
   // Load test vectors from aggregate-library/specs/collection/map.md
   // Execute against AffineScript stdlib implementation
@@ -137,14 +137,14 @@ benchmarks:
 ```
 alib-for-affinescript/
 ├── src/
-│   ├── arithmetic.as      # Conformant arithmetic operations
-│   ├── collection.as      # Conformant collection operations
-│   ├── comparison.as      # Conformant comparison operations
-│   ├── string.as          # Conformant string operations
+│   ├── arithmetic.affine      # Conformant arithmetic operations
+│   ├── collection.affine      # Conformant collection operations
+│   ├── comparison.affine      # Conformant comparison operations
+│   ├── string.affine          # Conformant string operations
 │   └── ...
 ├── tests/
 │   └── conformance/       # aLib test vectors
-│       ├── runner.as
+│       ├── runner.affine
 │       └── vectors/       # Imported from aggregate-library
 ├── docs/
 │   └── affine-semantics.md  # AffineScript-specific notes
@@ -187,10 +187,10 @@ alib-for-affinescript/
 
 | AffineScript Module | aLib Spec | Conformance Status |
 |---------------------|-----------|-------------------|
-| `stdlib/prelude.as` | collection/{map,filter,fold} | Partial (needs testing) |
-| `stdlib/math.as` | arithmetic/* | Good (basic ops) |
-| `stdlib/string.as` | string/* | Partial (missing ops) |
-| `stdlib/collections.as` | collection/* | Good (comprehensive) |
+| `stdlib/prelude.affine` | collection/{map,filter,fold} | Partial (needs testing) |
+| `stdlib/math.affine` | arithmetic/* | Good (basic ops) |
+| `stdlib/string.affine` | string/* | Partial (missing ops) |
+| `stdlib/collections.affine` | collection/* | Good (comprehensive) |
 
 **Actions:**
 1. Add conformance attributes to stdlib functions:
@@ -252,7 +252,7 @@ All elements consumed exactly once.
 **Add to AffineScript test suite:**
 
 ```affinescript
-// tests/alib_conformance_test.as
+// tests/alib_conformance_test.affine
 
 // Auto-generated from aggregate-library/specs/collection/map.md
 fn test_map_conformance() -> TestResult {
@@ -314,7 +314,7 @@ Preserves order, only includes elements where predicate returns true
 ### 2. Implement in AffineScript (Affine Semantics)
 
 ```affinescript
-// stdlib/collections.as
+// stdlib/collections.affine
 
 /// Conforms to aLib collection/filter v1.0
 /// Affine semantics: Predicate borrows, source moved
@@ -333,7 +333,7 @@ fn filter<T: affine>(arr: [T], pred: &T -> Bool) -> [T] {
 ### 3. Run Conformance Tests
 
 ```affinescript
-// tests/conformance/collection_filter.as
+// tests/conformance/collection_filter.affine
 
 fn test_alib_filter_conformance() -> TestResult {
   // From aLib test vectors

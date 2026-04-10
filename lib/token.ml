@@ -116,9 +116,8 @@ type t =
   | MINUSEQ
   | STAREQ
   | SLASHEQ
-
-  (* Special *)
   | EOF
+
 [@@deriving show, eq]
 
 (** Get string representation for error messages *)

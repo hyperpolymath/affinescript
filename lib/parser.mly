@@ -182,10 +182,18 @@ quantity:
   | ZERO { QZero }
   | ONE { QOne }
   | OMEGA { QOmega }
+  | i = INT {
+      if i = 0 then QZero
+      else if i = 1 then QOne
+      else QOmega
+    }
 
 param:
-  | qty = quantity? own = ownership? name = ident COLON ty = type_expr
+  | qty = quantity_prefix? own = ownership? name = ident COLON ty = type_expr
     { { p_quantity = qty; p_ownership = own; p_name = name; p_ty = ty } }
+
+quantity_prefix:
+  | LBRACKET q = quantity RBRACKET { q }
 
 ownership:
   | OWN { Own }
@@ -250,9 +258,9 @@ type_expr:
 
 type_expr_arrow:
   | arg = type_expr_primary ARROW ret = type_expr_arrow
-    { TyArrow (arg, ret, None) }
+    { TyArrow (arg, None, ret, None) }
   | arg = type_expr_primary MINUS LBRACE eff = effect_expr RBRACE ARROW ret = type_expr_arrow
-    { TyArrow (arg, ret, Some eff) }
+    { TyArrow (arg, None, ret, Some eff) }
   | ty = type_expr_primary { ty }
 
 type_expr_primary:

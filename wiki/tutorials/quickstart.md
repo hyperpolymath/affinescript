@@ -31,7 +31,7 @@ dune exec affinescript -- --version
 
 ## Your First Program
 
-Create a file `hello.as`:
+Create a file `hello.affine`:
 
 ```affine
 fn main() -{IO}-> Unit {
@@ -42,7 +42,7 @@ fn main() -{IO}-> Unit {
 Run it:
 
 ```bash
-dune exec affinescript -- run hello.as
+dune exec affinescript -- run hello.affine
 ```
 
 Output:

@@ -1644,7 +1644,7 @@ tests/
 
 ```
 error[E0501]: cannot use `file` after move
-  --> src/main.as:10:5
+  --> src/main.affine:10:5
    |
  8 |     close(file);
    |           ---- value moved here
@@ -1657,7 +1657,7 @@ error[E0501]: cannot use `file` after move
 
 ```
 error[E0502]: cannot borrow `x` as mutable because it is also borrowed as immutable
-  --> src/main.as:5:10
+  --> src/main.affine:5:10
    |
  4 |     let r = ref x;
    |             ----- immutable borrow occurs here
@@ -1671,7 +1671,7 @@ error[E0502]: cannot borrow `x` as mutable because it is also borrowed as immuta
 
 ```
 error[E0308]: mismatched types
-  --> src/main.as:5:12
+  --> src/main.affine:5:12
    |
  5 |     head(empty)
    |          ^^^^^ expected `Vec[n + 1, T]`, found `Vec[0, T]`
@@ -1682,7 +1682,7 @@ error[E0308]: mismatched types
 
 ```
 error[E0309]: refinement predicate not satisfied
-  --> src/main.as:8:15
+  --> src/main.affine:8:15
    |
  8 |     safeGet(arr, 10)
    |                  ^^ cannot prove `10 < 5`
@@ -1694,7 +1694,7 @@ error[E0309]: refinement predicate not satisfied
 
 ```
 error[E0601]: effect not handled
-  --> src/main.as:3:5
+  --> src/main.affine:3:5
    |
  3 |     println("hello")
    |     ^^^^^^^^^^^^^^^^ this has effect `IO`
@@ -1705,7 +1705,7 @@ error[E0601]: effect not handled
 
 ```
 warning[W0602]: owned resource may leak on exception
-  --> src/main.as:8:5
+  --> src/main.affine:8:5
    |
  7 |     let file = open(path)?;
    |         ---- owned resource acquired here
@@ -1722,7 +1722,7 @@ warning[W0602]: owned resource may leak on exception
 
 ```
 error[E0401]: no implementation of trait `Show` for type `MyType`
-  --> src/main.as:5:5
+  --> src/main.affine:5:5
    |
  5 |     println(x.show())
    |             ^^^^^^^^ `Show` is not implemented for `MyType`
@@ -1740,7 +1740,7 @@ error[E0401]: no implementation of trait `Show` for type `MyType`
 
 ```
 error[E0701]: cannot find `Vec` in this scope
-  --> src/main.as:3:10
+  --> src/main.affine:3:10
    |
  3 |     let v: Vec[3, Int] = Nil;
    |            ^^^ not found in this scope
@@ -1750,7 +1750,7 @@ error[E0701]: cannot find `Vec` in this scope
 
 ```
 error[E0702]: function `helper` is private
-  --> src/main.as:5:5
+  --> src/main.affine:5:5
    |
  5 |     Utils.helper()
    |     ^^^^^^^^^^^^^^ private function

@@ -381,7 +381,9 @@ impl LanguageServer for Backend {
             None => return Ok(None),
         };
 
-        let co = self.compiler_output.lock().unwrap();
+        let Ok(co) = self.compiler_output.lock() else {
+            return Ok(None);
+        };
         Ok(handlers::hover(&uri, position, &text, &co))
     }
 
@@ -397,7 +399,9 @@ impl LanguageServer for Backend {
             None => return Ok(None),
         };
 
-        let co = self.compiler_output.lock().unwrap();
+        let Ok(co) = self.compiler_output.lock() else {
+            return Ok(None);
+        };
         match handlers::goto_definition(&uri, position, &text, &co) {
             Some(loc) => Ok(Some(GotoDefinitionResponse::Scalar(loc))),
             None => Ok(None),
@@ -414,7 +418,9 @@ impl LanguageServer for Backend {
             None => return Ok(None),
         };
 
-        let co = self.compiler_output.lock().unwrap();
+        let Ok(co) = self.compiler_output.lock() else {
+            return Ok(None);
+        };
         let refs = handlers::find_references(&uri, position, &text, include_declaration, &co);
         if refs.is_empty() {
             Ok(None)
@@ -452,7 +458,9 @@ impl LanguageServer for Backend {
             None => return Ok(None),
         };
 
-        let co = self.compiler_output.lock().unwrap();
+        let Ok(co) = self.compiler_output.lock() else {
+            return Ok(None);
+        };
         Ok(handlers::prepare_rename(&uri, position, &text, &co))
     }
 
@@ -466,7 +474,9 @@ impl LanguageServer for Backend {
             None => return Ok(None),
         };
 
-        let co = self.compiler_output.lock().unwrap();
+        let Ok(co) = self.compiler_output.lock() else {
+            return Ok(None);
+        };
         Ok(handlers::rename(&uri, position, &new_name, &text, &co))
     }
 

@@ -5,11 +5,11 @@
 ```
 my-project/
 ├── src/
-│   ├── main.as
-│   ├── lib.as
-│   └── util.as
+│   ├── main.affine
+│   ├── lib.affine
+│   └── util.affine
 ├── tests/
-│   └── test_main.as
+│   └── test_main.affine
 └── affinescript.toml
 ```
 
@@ -27,13 +27,13 @@ fn test_addition() -> TestResult {
 
 ```bash
 # Check types and borrow checker
-affinescript check src/main.as
+affinescript check src/main.affine
 
 # Compile to WebAssembly
-affinescript compile src/main.as -o output.wasm
+affinescript compile src/main.affine -o output.wasm
 
 # Run with interpreter
-affinescript eval src/main.as
+affinescript eval src/main.affine
 ```
 
 ## Next Steps

@@ -155,33 +155,33 @@ let run_interp_pipeline path =
 *)
 
 let test_parse_arithmetic () =
-  match parse_fixture (fixture "arithmetic.as") with
+  match parse_fixture (fixture "arithmetic.affine") with
   | Error msg -> Alcotest.fail msg
   | Ok prog ->
     Alcotest.(check int) "declaration count" 6 (List.length prog.prog_decls)
 
 let test_parse_affine_basic () =
-  match parse_fixture (fixture "affine_basic.as") with
+  match parse_fixture (fixture "affine_basic.affine") with
   | Error msg -> Alcotest.fail msg
   | Ok prog ->
     Alcotest.(check int) "declaration count" 4 (List.length prog.prog_decls)
 
 let test_parse_dependent_types () =
-  match parse_fixture (fixture "dependent_types.as") with
+  match parse_fixture (fixture "dependent_types.affine") with
   | Error msg -> Alcotest.fail msg
   | Ok prog ->
     (* 1 type decl + 3 functions *)
     Alcotest.(check int) "declaration count" 4 (List.length prog.prog_decls)
 
 let test_parse_refinement_types () =
-  match parse_fixture (fixture "refinement_types.as") with
+  match parse_fixture (fixture "refinement_types.affine") with
   | Error msg -> Alcotest.fail msg
   | Ok prog ->
     Alcotest.(check bool) "has declarations" true
       (List.length prog.prog_decls > 0)
 
 let test_parse_traits () =
-  match parse_fixture (fixture "traits.as") with
+  match parse_fixture (fixture "traits.affine") with
   | Error msg -> Alcotest.fail msg
   | Ok prog ->
     (* Count trait decls, impls, struct, enum, and functions *)
@@ -195,7 +195,7 @@ let test_parse_traits () =
     Alcotest.(check bool) "has impls" true has_impl
 
 let test_parse_effects () =
-  match parse_fixture (fixture "effects.as") with
+  match parse_fixture (fixture "effects.affine") with
   | Error msg -> Alcotest.fail msg
   | Ok prog ->
     let has_effect = List.exists (fun d ->
@@ -204,27 +204,27 @@ let test_parse_effects () =
     Alcotest.(check bool) "has effects" true has_effect
 
 let test_parse_ownership () =
-  match parse_fixture (fixture "ownership.as") with
+  match parse_fixture (fixture "ownership.affine") with
   | Error msg -> Alcotest.fail msg
   | Ok prog ->
     Alcotest.(check bool) "has declarations" true
       (List.length prog.prog_decls > 0)
 
 let test_parse_row_polymorphism () =
-  match parse_fixture (fixture "row_polymorphism.as") with
+  match parse_fixture (fixture "row_polymorphism.affine") with
   | Error msg -> Alcotest.fail msg
   | Ok prog ->
     Alcotest.(check int) "declaration count" 3 (List.length prog.prog_decls)
 
 let test_parse_pattern_match () =
-  match parse_fixture (fixture "pattern_match.as") with
+  match parse_fixture (fixture "pattern_match.affine") with
   | Error msg -> Alcotest.fail msg
   | Ok prog ->
     Alcotest.(check bool) "has declarations" true
       (List.length prog.prog_decls > 0)
 
 let test_parse_type_decls () =
-  match parse_fixture (fixture "type_decls.as") with
+  match parse_fixture (fixture "type_decls.affine") with
   | Error msg -> Alcotest.fail msg
   | Ok prog ->
     let has_type = List.exists (fun d ->
@@ -233,14 +233,14 @@ let test_parse_type_decls () =
     Alcotest.(check bool) "has type decls" true has_type
 
 let test_parse_lambda () =
-  match parse_fixture (fixture "lambda.as") with
+  match parse_fixture (fixture "lambda.affine") with
   | Error msg -> Alcotest.fail msg
   | Ok prog ->
     Alcotest.(check bool) "has declarations" true
       (List.length prog.prog_decls > 0)
 
 let test_parse_full_pipeline () =
-  match parse_fixture (fixture "full_pipeline.as") with
+  match parse_fixture (fixture "full_pipeline.affine") with
   | Error msg -> Alcotest.fail msg
   | Ok prog ->
     (* struct Vec2, enum Shape, 4 functions + main *)
@@ -271,7 +271,7 @@ let parse_tests = [
 *)
 
 let test_resolve_arithmetic () =
-  match parse_fixture (fixture "arithmetic.as") with
+  match parse_fixture (fixture "arithmetic.affine") with
   | Error msg -> Alcotest.fail msg
   | Ok prog ->
     match resolve_program prog with
@@ -282,7 +282,7 @@ let test_resolve_arithmetic () =
         (Symbol.lookup ctx.symbols "add" <> None)
 
 let test_resolve_traits () =
-  match parse_fixture (fixture "traits.as") with
+  match parse_fixture (fixture "traits.affine") with
   | Error msg -> Alcotest.fail msg
   | Ok prog ->
     match resolve_program prog with
@@ -292,7 +292,7 @@ let test_resolve_traits () =
       ()
 
 let test_resolve_effects () =
-  match parse_fixture (fixture "effects.as") with
+  match parse_fixture (fixture "effects.affine") with
   | Error msg -> Alcotest.fail msg
   | Ok prog ->
     match resolve_program prog with
@@ -300,7 +300,7 @@ let test_resolve_effects () =
     | Ok (_ctx, _) -> ()
 
 let test_resolve_ownership () =
-  match parse_fixture (fixture "ownership.as") with
+  match parse_fixture (fixture "ownership.affine") with
   | Error msg -> Alcotest.fail msg
   | Ok prog ->
     match resolve_program prog with
@@ -308,7 +308,7 @@ let test_resolve_ownership () =
     | Ok (_ctx, _) -> ()
 
 let test_resolve_type_decls () =
-  match parse_fixture (fixture "type_decls.as") with
+  match parse_fixture (fixture "type_decls.affine") with
   | Error msg -> Alcotest.fail msg
   | Ok prog ->
     match resolve_program prog with
@@ -319,7 +319,7 @@ let test_resolve_type_decls () =
         (Symbol.lookup ctx.symbols "Point" <> None)
 
 let test_resolve_full_pipeline () =
-  match parse_fixture (fixture "full_pipeline.as") with
+  match parse_fixture (fixture "full_pipeline.affine") with
   | Error msg -> Alcotest.fail msg
   | Ok prog ->
     match resolve_program prog with
@@ -350,27 +350,27 @@ let resolve_tests = [
 *)
 
 let test_typecheck_arithmetic () =
-  match run_frontend (fixture "arithmetic.as") with
+  match run_frontend (fixture "arithmetic.affine") with
   | Error msg -> Alcotest.fail msg
   | Ok _ -> ()
 
 let test_typecheck_traits () =
-  match run_frontend (fixture "traits.as") with
+  match run_frontend (fixture "traits.affine") with
   | Error msg -> Alcotest.fail msg
   | Ok _ -> ()
 
 let test_typecheck_effects () =
-  match run_frontend (fixture "effects.as") with
+  match run_frontend (fixture "effects.affine") with
   | Error msg -> Alcotest.fail msg
   | Ok _ -> ()
 
 let test_typecheck_ownership () =
-  match run_frontend (fixture "ownership.as") with
+  match run_frontend (fixture "ownership.affine") with
   | Error msg -> Alcotest.fail msg
   | Ok _ -> ()
 
 let test_typecheck_full_pipeline () =
-  match run_frontend (fixture "full_pipeline.as") with
+  match run_frontend (fixture "full_pipeline.affine") with
   | Error msg -> Alcotest.fail msg
   | Ok _ -> ()
 
@@ -393,7 +393,7 @@ let typecheck_tests = [
 *)
 
 let test_quantity_affine_valid () =
-  match parse_fixture (fixture "affine_basic.as") with
+  match parse_fixture (fixture "affine_basic.affine") with
   | Error msg -> Alcotest.fail msg
   | Ok prog ->
     match resolve_program prog with
@@ -404,7 +404,7 @@ let test_quantity_affine_valid () =
       | Error msg -> Alcotest.fail msg
 
 let test_quantity_affine_violation () =
-  match parse_fixture (fixture "affine_violation.as") with
+  match parse_fixture (fixture "affine_violation.affine") with
   | Error msg -> Alcotest.fail msg
   | Ok prog ->
     match resolve_program prog with
@@ -420,7 +420,7 @@ let test_quantity_affine_violation () =
           true (String.length msg > 0)
 
 let test_quantity_erased_violation () =
-  match parse_fixture (fixture "erased_violation.as") with
+  match parse_fixture (fixture "erased_violation.affine") with
   | Error msg -> Alcotest.fail msg
   | Ok prog ->
     match resolve_program prog with
@@ -453,12 +453,12 @@ let quantity_tests = [
 *)
 
 let test_wasm_arithmetic () =
-  match run_wasm_pipeline (fixture "arithmetic.as") with
+  match run_wasm_pipeline (fixture "arithmetic.affine") with
   | Error msg -> Alcotest.fail msg
   | Ok _wasm_mod -> ()
 
 let test_wasm_simple () =
-  match run_wasm_pipeline (fixture "wasm_simple.as") with
+  match run_wasm_pipeline (fixture "wasm_simple.affine") with
   | Error msg -> Alcotest.fail msg
   | Ok wasm_mod ->
     (* Verify the module has functions *)
@@ -469,7 +469,7 @@ let test_wasm_simple () =
       (List.length wasm_mod.Wasm.exports > 0)
 
 let test_wasm_write_binary () =
-  match run_wasm_pipeline (fixture "wasm_simple.as") with
+  match run_wasm_pipeline (fixture "wasm_simple.affine") with
   | Error msg -> Alcotest.fail msg
   | Ok wasm_mod ->
     with_temp_file ".wasm" (fun tmp_path ->
@@ -489,7 +489,7 @@ let test_wasm_write_binary () =
     )
 
 let test_wasm_full_pipeline () =
-  match run_wasm_pipeline (fixture "full_pipeline.as") with
+  match run_wasm_pipeline (fixture "full_pipeline.affine") with
   | Error msg -> Alcotest.fail msg
   | Ok wasm_mod ->
     Alcotest.(check bool) "has functions" true
@@ -502,7 +502,7 @@ let test_wasm_full_pipeline () =
     )
 
 let test_wasm_lambda () =
-  match run_wasm_pipeline (fixture "lambda.as") with
+  match run_wasm_pipeline (fixture "lambda.affine") with
   | Error msg -> Alcotest.fail msg
   | Ok _wasm_mod -> ()
 
@@ -525,7 +525,7 @@ let wasm_tests = [
 *)
 
 let test_julia_arithmetic () =
-  match run_julia_pipeline (fixture "arithmetic.as") with
+  match run_julia_pipeline (fixture "arithmetic.affine") with
   | Error msg -> Alcotest.fail msg
   | Ok code ->
     (* Julia code should contain function definitions *)
@@ -533,7 +533,7 @@ let test_julia_arithmetic () =
       (String.length code > 0)
 
 let test_julia_simple () =
-  match run_julia_pipeline (fixture "julia_simple.as") with
+  match run_julia_pipeline (fixture "julia_simple.affine") with
   | Error msg -> Alcotest.fail msg
   | Ok code ->
     Alcotest.(check bool) "non-empty output" true
@@ -545,7 +545,7 @@ let test_julia_simple () =
     Alcotest.(check bool) "has function keyword" true has_function
 
 let test_julia_type_mapping () =
-  match run_julia_pipeline (fixture "julia_simple.as") with
+  match run_julia_pipeline (fixture "julia_simple.affine") with
   | Error msg -> Alcotest.fail msg
   | Ok code ->
     (* Check type mapping: Int -> Int64 *)
@@ -555,7 +555,7 @@ let test_julia_type_mapping () =
     Alcotest.(check bool) "maps Int to Int64" true has_int64
 
 let test_julia_write_output () =
-  match run_julia_pipeline (fixture "julia_simple.as") with
+  match run_julia_pipeline (fixture "julia_simple.affine") with
   | Error msg -> Alcotest.fail msg
   | Ok code ->
     with_temp_file ".jl" (fun tmp_path ->
@@ -568,7 +568,7 @@ let test_julia_write_output () =
     )
 
 let test_julia_full_pipeline () =
-  match run_julia_pipeline (fixture "full_pipeline.as") with
+  match run_julia_pipeline (fixture "full_pipeline.affine") with
   | Error msg -> Alcotest.fail msg
   | Ok code ->
     Alcotest.(check bool) "non-empty output" true
@@ -592,22 +592,22 @@ let julia_tests = [
 *)
 
 let test_interp_simple () =
-  match run_interp_pipeline (fixture "interp_simple.as") with
+  match run_interp_pipeline (fixture "interp_simple.affine") with
   | Error msg -> Alcotest.fail msg
   | Ok _env -> ()
 
 let test_interp_arithmetic () =
-  match run_interp_pipeline (fixture "arithmetic.as") with
+  match run_interp_pipeline (fixture "arithmetic.affine") with
   | Error msg -> Alcotest.fail msg
   | Ok _env -> ()
 
 let test_interp_lambda () =
-  match run_interp_pipeline (fixture "lambda.as") with
+  match run_interp_pipeline (fixture "lambda.affine") with
   | Error msg -> Alcotest.fail msg
   | Ok _env -> ()
 
 let test_interp_full_pipeline () =
-  match run_interp_pipeline (fixture "full_pipeline.as") with
+  match run_interp_pipeline (fixture "full_pipeline.affine") with
   | Error msg -> Alcotest.fail msg
   | Ok _env -> ()
 
@@ -628,7 +628,7 @@ let interp_tests = [
 *)
 
 let test_opt_constant_folding () =
-  match parse_fixture (fixture "arithmetic.as") with
+  match parse_fixture (fixture "arithmetic.affine") with
   | Error msg -> Alcotest.fail msg
   | Ok prog ->
     let optimized = Opt.fold_constants_program prog in
@@ -638,7 +638,7 @@ let test_opt_constant_folding () =
       (List.length optimized.prog_decls)
 
 let test_opt_preserves_semantics () =
-  match parse_fixture (fixture "interp_simple.as") with
+  match parse_fixture (fixture "interp_simple.affine") with
   | Error msg -> Alcotest.fail msg
   | Ok prog ->
     let optimized = Opt.fold_constants_program prog in
@@ -666,7 +666,7 @@ let optimizer_tests = [
 *)
 
 let test_full_pipeline_all_stages () =
-  let path = fixture "full_pipeline.as" in
+  let path = fixture "full_pipeline.affine" in
 
   (* Stage 1: Parse *)
   let prog = match parse_fixture path with
@@ -723,7 +723,7 @@ let test_full_pipeline_all_stages () =
    | Ok _env -> ())
 
 let test_full_pipeline_wasm_roundtrip () =
-  let path = fixture "wasm_simple.as" in
+  let path = fixture "wasm_simple.affine" in
   match run_wasm_pipeline path with
   | Error msg -> Alcotest.fail msg
   | Ok wasm_mod ->
@@ -737,7 +737,7 @@ let test_full_pipeline_wasm_roundtrip () =
         (size > 8 && size < 1_000_000))
 
 let test_full_pipeline_julia_roundtrip () =
-  let path = fixture "julia_simple.as" in
+  let path = fixture "julia_simple.affine" in
   match run_julia_pipeline path with
   | Error msg -> Alcotest.fail msg
   | Ok code ->

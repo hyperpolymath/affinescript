@@ -42,8 +42,8 @@ type ty =
   | TVar of tyvar_state ref          (** Type variable (mutable for unification) *)
   | TCon of string                   (** Type constructor (Int, Bool, etc.) *)
   | TApp of ty * ty list             (** Type application *)
-  | TArrow of ty * ty * eff          (** Function type with effect *)
-  | TDepArrow of string * ty * ty * eff     (** Dependent function type *)
+  | TArrow of ty * quantity * ty * eff      (** Function type with quantity and effect *)
+  | TDepArrow of string * ty * quantity * ty * eff (** Dependent function type *)
   | TTuple of ty list                (** Tuple type *)
   | TRecord of row                   (** Record type *)
   | TVariant of row                  (** Variant type *)
@@ -157,8 +157,8 @@ let ty_string = TCon "String"
 let ty_never = TCon "Never"
 
 (** Construct an arrow type *)
-let arrow ?(eff = EPure) (a : ty) (b : ty) : ty =
-  TArrow (a, b, eff)
+let arrow ?(q = QOmega) ?(eff = EPure) (a : ty) (b : ty) : ty =
+  TArrow (a, q, b, eff)
 
 (** Construct a tuple type *)
 let tuple (tys : ty list) : ty =
@@ -215,14 +215,14 @@ let rec pp_ty (fmt : Format.formatter) (ty : ty) : unit =
   | TCon c -> Format.fprintf fmt "%s" c
   | TApp (t, args) ->
     Format.fprintf fmt "%a[%a]" pp_ty t pp_ty_list args
-  | TArrow (a, b, EPure) ->
-    Format.fprintf fmt "(%a -> %a)" pp_ty a pp_ty b
-  | TArrow (a, b, eff) ->
-    Format.fprintf fmt "(%a -> %a / %a)" pp_ty a pp_ty b pp_eff eff
-  | TDepArrow (x, a, b, EPure) ->
-    Format.fprintf fmt "((%s: %a) -> %a)" x pp_ty a pp_ty b
-  | TDepArrow (x, a, b, eff) ->
-    Format.fprintf fmt "((%s: %a) -> %a / %a)" x pp_ty a pp_ty b pp_eff eff
+  | TArrow (a, q, b, EPure) ->
+    Format.fprintf fmt "(%a -{%a}-> %a)" pp_ty a pp_quantity q pp_ty b
+  | TArrow (a, q, b, eff) ->
+    Format.fprintf fmt "(%a -{%a}-> %a / %a)" pp_ty a pp_quantity q pp_ty b pp_eff eff
+  | TDepArrow (x, a, q, b, EPure) ->
+    Format.fprintf fmt "((%s: %a) -{%a}-> %a)" x pp_ty a pp_quantity q pp_ty b
+  | TDepArrow (x, a, q, b, eff) ->
+    Format.fprintf fmt "((%s: %a) -{%a}-> %a / %a)" x pp_ty a pp_quantity q pp_ty b pp_eff eff
   | TTuple tys ->
     Format.fprintf fmt "(%a)" pp_ty_tuple tys
   | TRecord row ->
@@ -320,10 +320,10 @@ let rec subst_ty (v : tyvar) (replacement : ty) (ty : ty) : ty =
   | TCon _ -> ty
   | TApp (t, args) ->
     TApp (subst_ty v replacement t, List.map (subst_ty v replacement) args)
-  | TArrow (a, b, eff) ->
-    TArrow (subst_ty v replacement a, subst_ty v replacement b, eff)
-  | TDepArrow (x, a, b, eff) ->
-    TDepArrow (x, subst_ty v replacement a, subst_ty v replacement b, eff)
+  | TArrow (a, q, b, eff) ->
+    TArrow (subst_ty v replacement a, q, subst_ty v replacement b, eff)
+  | TDepArrow (x, a, q, b, eff) ->
+    TDepArrow (x, subst_ty v replacement a, q, subst_ty v replacement b, eff)
   | TTuple tys ->
     TTuple (List.map (subst_ty v replacement) tys)
   | TRecord row ->
@@ -365,9 +365,9 @@ let rec free_tyvars (ty : ty) : TyVarSet.t =
   | TApp (t, args) ->
     List.fold_left TyVarSet.union (free_tyvars t)
       (List.map free_tyvars args)
-  | TArrow (a, b, _) ->
+  | TArrow (a, _, b, _) ->
     TyVarSet.union (free_tyvars a) (free_tyvars b)
-  | TDepArrow (_, a, b, _) ->
+  | TDepArrow (_, a, _, b, _) ->
     TyVarSet.union (free_tyvars a) (free_tyvars b)
   | TTuple tys ->
     List.fold_left TyVarSet.union TyVarSet.empty (List.map free_tyvars tys)

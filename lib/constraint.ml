@@ -224,11 +224,12 @@ let instantiate_dep_arrow
     match repr ty with
     | TVar _ | TCon _ -> ty
     | TApp (t, args) -> TApp (subst_ty t, List.map subst_ty args)
-    | TArrow (a, b, e) -> TArrow (subst_ty a, subst_ty b, e)
-    | TDepArrow (x, _, _, _) when x = param_name ->
+    | TArrow (a, q, b, e) -> TArrow (subst_ty a, q, subst_ty b, e)
+    | TDepArrow (x, _, _, _, _) when x = param_name ->
       ty  (* Shadowed *)
-    | TDepArrow (x, a, b, e) ->
-      TDepArrow (x, subst_ty a, subst_ty b, e)
+    | TDepArrow (x, a, q, b, e) ->
+      TDepArrow (x, subst_ty a, q, subst_ty b, e)
+
     | TTuple tys -> TTuple (List.map subst_ty tys)
     | TRecord row -> TRecord (subst_row row)
     | TVariant row -> TVariant (subst_row row)

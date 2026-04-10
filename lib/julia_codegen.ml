@@ -57,7 +57,7 @@ let rec type_expr_to_julia_string (te : type_expr) : string =
   | TyCon name when name.name = "String" -> "String"
   | TyCon name when name.name = "Unit" -> "Nothing"
   | TyCon name -> name.name  (* Custom type names pass through *)
-  | TyArrow (_, ret, _) ->
+  | TyArrow (_, _, ret, _) ->
       (* Function types: for now, just use ret type annotation *)
       type_expr_to_julia_string ret
   | TyTuple tys ->

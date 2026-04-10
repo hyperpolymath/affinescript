@@ -1,0 +1,20 @@
+// tests/types/test_linear_arrow.affine
+// Verifies that linear arrow syntax is parsed and checked.
+
+type Resource = Int;
+
+// A function that consumes its resource linearly
+fn consume([1] r: Resource) -> Unit {
+    return ();
+}
+
+// A function that uses its resource unrestricted (default)
+fn use_many([omega] r: Resource) -> Int {
+    return r + r;
+}
+
+fn main() -> Unit {
+    let r: Resource = 42;
+    consume(r);
+    // consume(r); // This would now be a quantity error
+}

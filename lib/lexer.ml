@@ -119,6 +119,8 @@ let rec token state buf =
     state.line_start <- Sedlexing.lexeme_end buf;
     token state buf
 
+  (* Multi-char operators with highest precedence *)
+
   (* Comments *)
   | "//" ->
     line_comment state buf;
@@ -201,11 +203,6 @@ let rec token state buf =
   | '!' -> BANG
   | '&' -> AMP
   | '^' -> CARET
-  | '~' -> TILDE
-
-  (* Quantity: special handling for 0 and 1 after certain contexts *)
-  (* For now, just lex as integers; parser will handle context *)
-
   (* Identifiers *)
   | lower_ident ->
     let s = Sedlexing.Utf8.lexeme buf in

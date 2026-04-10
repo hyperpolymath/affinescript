@@ -39,11 +39,10 @@ jobs:
       - name: Build Hypatia scanner (if needed)
         working-directory: ${{ env.HOME }}/hypatia
         run: |
-          if [ ! -f hypatia-v2 ]; then
+          if [ ! -f hypatia ] && [ ! -f hypatia-v2 ]; then
             echo "Building hypatia-v2 scanner..."
             mix deps.get
             mix escript.build
-            mv hypatia hypatia-v2
           fi
 
       - name: Run Hypatia scan

@@ -62,9 +62,9 @@ let rec occurs_in_ty (var : tyvar) (ty : ty) : bool =
   | TCon _ -> false
   | TApp (t, args) ->
     occurs_in_ty var t || List.exists (occurs_in_ty var) args
-  | TArrow (a, b, eff) ->
+  | TArrow (a, _, b, eff) ->
     occurs_in_ty var a || occurs_in_ty var b || occurs_in_eff var eff
-  | TDepArrow (_, a, b, eff) ->
+  | TDepArrow (_, a, _, b, eff) ->
     occurs_in_ty var a || occurs_in_ty var b || occurs_in_eff var eff
   | TTuple tys ->
     List.exists (occurs_in_ty var) tys
@@ -161,20 +161,26 @@ let rec unify (t1 : ty) (t2 : ty) : unit result =
     unify_list args1 args2
 
   (* Arrow types *)
-  | (TArrow (a1, b1, e1), TArrow (a2, b2, e2)) ->
-    let* () = unify a1 a2 in
-    let* () = unify b1 b2 in
-    unify_eff e1 e2
+  | (TArrow (a1, q1, b1, e1), TArrow (a2, q2, b2, e2)) ->
+    if q1 <> q2 then
+      Error (TypeMismatch (t1, t2))
+    else
+      let* () = unify a1 a2 in
+      let* () = unify b1 b2 in
+      unify_eff e1 e2
 
   (* Dependent arrow types *)
-  | (TDepArrow (x1, a1, b1, e1), TDepArrow (x2, a2, b2, e2)) ->
-    (* Unify parameter types first *)
-    let* () = unify a1 a2 in
-    (* For return types, x1 and x2 are bound - they should unify if used consistently *)
-    (* This is alpha-equivalence: (x: A) -> B[x] ≡ (y: A) -> B[y] *)
-    let* () = unify b1 b2 in
-    let _ = (x1, x2) in  (* Names are alpha-equivalent if bodies unify *)
-    unify_eff e1 e2
+  | (TDepArrow (x1, a1, q1, b1, e1), TDepArrow (x2, a2, q2, b2, e2)) ->
+    if q1 <> q2 then
+      Error (TypeMismatch (t1, t2))
+    else
+      (* Unify parameter types first *)
+      let* () = unify a1 a2 in
+      (* For return types, x1 and x2 are bound - they should unify if used consistently *)
+      (* This is alpha-equivalence: (x: A) -> B[x] ≡ (y: A) -> B[y] *)
+      let* () = unify b1 b2 in
+      let _ = (x1, x2) in  (* Names are alpha-equivalent if bodies unify *)
+      unify_eff e1 e2
 
   (* Tuple types *)
   | (TTuple ts1, TTuple ts2) when List.length ts1 = List.length ts2 ->
