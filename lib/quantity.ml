@@ -103,6 +103,32 @@ let add_usage (u1 : usage) (u2 : usage) : usage =
   | (UZero, u) | (u, UZero) -> u
   | _ -> UMany
 
+(** Scale a usage by a quantity — implements the q·u operation that
+    the QTT-orthodox Let rule needs to scale the value-context Γ₁ by
+    the binder's quantity q.
+
+    Per ADR-002, [let x :^q = e1 in e2] is type-checked under
+    [q·Γ₁ + Γ₂ ⊢ ...]. The semiring action on usages is:
+
+      0 · u  = UZero            (erased — usage is annihilated)
+      1 · u  = u                (linear — usage passes through unchanged)
+      ω · UZero = UZero         (no use stays no use)
+      ω · UOne  = UMany         (a single use, replicated, becomes many)
+      ω · UMany = UMany         (many stays many)
+
+    The interesting case is [ω · UOne = UMany]: it is the rule that
+    closes BUG-001. A linear variable consumed in [e1] under an
+    ω-binder gets its usage promoted to UMany, which the
+    [check_quantity] step then catches as
+    [LinearVariableUsedMultiple]. *)
+let scale_usage (q : quantity) (u : usage) : usage =
+  match (q, u) with
+  | (QZero, _) -> UZero
+  | (QOne, u) -> u
+  | (QOmega, UZero) -> UZero
+  | (QOmega, UOne) -> UMany
+  | (QOmega, UMany) -> UMany
+
 (* {1 Errors} *)
 
 (** Quantity checking errors with precise descriptions. *)
@@ -120,21 +146,44 @@ type quantity_error =
 (** Result type carrying a quantity error paired with a source span. *)
 type 'a result = ('a, quantity_error * Span.t) Result.t
 
-(** Format a quantity error for human-readable output. *)
+(** Pretty-print a quantity using the canonical Option C surface form
+    from ADR-007. Used in error messages so source vocabulary and
+    diagnostic vocabulary stay aligned. *)
+let canonical_quantity_name (q : quantity) : string =
+  match q with
+  | QZero -> "@erased"
+  | QOne -> "@linear"
+  | QOmega -> "@unrestricted"
+
+(** Pretty-print a usage count in plain English. *)
+let usage_in_words (u : usage) : string =
+  match u with
+  | UZero -> "never used"
+  | UOne -> "used exactly once"
+  | UMany -> "used multiple times"
+
+(** Format a quantity error for human-readable output. Per ADR-007, all
+    diagnostic text uses the @linear/@erased/@unrestricted vocabulary,
+    even when the source program used the :1/:0/:ω sugar form. The
+    user reads consistent words regardless of which surface they wrote. *)
 let format_quantity_error (err : quantity_error) : string =
   match err with
   | LinearVariableUnused id ->
-    Printf.sprintf "Linear variable '%s' must be used exactly once, but was never used"
+    Printf.sprintf
+      "@linear binding '%s' must be used exactly once, but was never used"
       id.name
   | LinearVariableUsedMultiple id ->
-    Printf.sprintf "Linear variable '%s' must be used exactly once, but was used multiple times"
+    Printf.sprintf
+      "@linear binding '%s' must be used exactly once, but was used multiple times"
       id.name
   | ErasedVariableUsed id ->
-    Printf.sprintf "Erased variable '%s' (quantity 0) must not be used at runtime"
+    Printf.sprintf
+      "@erased binding '%s' must not be used at runtime"
       id.name
   | QuantityMismatch (id, q, u) ->
-    Printf.sprintf "Quantity mismatch for '%s': declared %s but used %s"
-      id.name (show_quantity q) (show_usage u)
+    Printf.sprintf
+      "quantity mismatch for '%s': declared %s but %s"
+      id.name (canonical_quantity_name q) (usage_in_words u)
 
 (* {1 Quantity environment} *)
 
@@ -249,7 +298,41 @@ let rec infer_usage_expr (env : env) (expr : expr) : unit =
     infer_usage_expr env lam.elam_body
 
   | ExprLet lb ->
+    (* ADR-002 / ADR-007: Let value context is scaled by the binder's
+       quantity. Concretely:
+         q·Γ₁ ⊢ e1 : A    (Γ₂, x:^q A) ⊢ e2 : B
+         ─────────────────────────────────────
+              q·Γ₁ + Γ₂ ⊢ let x :^q = e1 in e2 : B
+       For the usage analysis we implement this as: snapshot the env,
+       walk e1 (which records usages into the live env), compute the
+       per-variable delta added by walking e1, scale each delta entry
+       by q, restore the snapshot, and re-apply the scaled deltas as
+       additions. Then walk e2 normally. *)
+    let q = Option.value lb.el_quantity ~default:QOmega in
+    let before_value = env_snapshot env in
     infer_usage_expr env lb.el_value;
+    let after_value = env_snapshot env in
+    env_restore env before_value;
+    (* Re-apply scaled deltas. *)
+    Hashtbl.iter (fun name after_u ->
+      let before_u =
+        Hashtbl.find_opt before_value name |> Option.value ~default:UZero
+      in
+      (* Compute the delta usage added by walking el_value. We model
+         delta as: how many additional uses occurred during the walk.
+         Since usage is a 3-point lattice, the simplest sound rule is
+         "if the walk increased the usage at all, the delta is the
+         after-value's contribution beyond the before-value." We
+         implement this by treating any rise from before to after as
+         the delta usage to scale. *)
+      let delta =
+        if equal_usage before_u after_u then UZero
+        else after_u
+      in
+      let scaled = scale_usage q delta in
+      let merged = add_usage before_u scaled in
+      Hashtbl.replace env.usages name merged
+    ) after_value;
     Option.iter (infer_usage_expr env) lb.el_body
 
   | ExprIf ei ->
@@ -369,7 +452,27 @@ and infer_usage_block (env : env) (blk : block) : unit =
 and infer_usage_stmt (env : env) (stmt : stmt) : unit =
   match stmt with
   | StmtLet sl ->
-    infer_usage_expr env sl.sl_value
+    (* Same scaling treatment as ExprLet — see ADR-002 commentary
+       there. The statement form has no body to walk afterward;
+       subsequent statements in the enclosing block are walked
+       independently by infer_usage_block. *)
+    let q = Option.value sl.sl_quantity ~default:QOmega in
+    let before_value = env_snapshot env in
+    infer_usage_expr env sl.sl_value;
+    let after_value = env_snapshot env in
+    env_restore env before_value;
+    Hashtbl.iter (fun name after_u ->
+      let before_u =
+        Hashtbl.find_opt before_value name |> Option.value ~default:UZero
+      in
+      let delta =
+        if equal_usage before_u after_u then UZero
+        else after_u
+      in
+      let scaled = scale_usage q delta in
+      let merged = add_usage before_u scaled in
+      Hashtbl.replace env.usages name merged
+    ) after_value
   | StmtExpr e ->
     infer_usage_expr env e
   | StmtAssign (lhs, _, rhs) ->

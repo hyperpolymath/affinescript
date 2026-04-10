@@ -435,10 +435,86 @@ let test_quantity_erased_violation () =
         Alcotest.(check bool) "error mentions erased"
           true (String.length msg > 0)
 
+(* ──── BUG-001 / ADR-007 regression cases ──────────────────────────────────
+   The four fixtures cover the cross product of {must-reject, must-accept}
+   × {Option C @linear primary form, Option B :1 sugar form}. Both surface
+   forms must produce identical enforcement, which proves the hybrid
+   syntax is wired through the same code path. *)
+
+let test_bug_001_smuggles_linear_attr_form () =
+  match parse_fixture (fixture "bug_001_omega_let_smuggles_linear.affine") with
+  | Error msg -> Alcotest.fail msg
+  | Ok prog ->
+    match resolve_program prog with
+    | Error msg -> Alcotest.fail msg
+    | Ok (ctx, _) ->
+      match Typecheck.check_program ctx.symbols prog with
+      | Ok _ ->
+        Alcotest.fail "BUG-001 (attr form): expected quantity rejection of \
+                       @unrestricted let smuggling a @linear value, but the \
+                       checker accepted the program"
+      | Error e ->
+        let msg = Typecheck.format_type_error e in
+        Alcotest.(check bool) "error mentions @linear vocabulary" true
+          (try let _ = Str.search_forward (Str.regexp "@linear") msg 0 in true
+           with Not_found -> false)
+
+let test_bug_001_smuggles_linear_sugar_form () =
+  match parse_fixture (fixture "bug_001_sugar_form.affine") with
+  | Error msg -> Alcotest.fail msg
+  | Ok prog ->
+    match resolve_program prog with
+    | Error msg -> Alcotest.fail msg
+    | Ok (ctx, _) ->
+      match Typecheck.check_program ctx.symbols prog with
+      | Ok _ ->
+        Alcotest.fail "BUG-001 (sugar form): expected quantity rejection of \
+                       :ω let smuggling a @linear value, but the checker \
+                       accepted the program"
+      | Error e ->
+        let msg = Typecheck.format_type_error e in
+        Alcotest.(check bool) "error mentions @linear vocabulary" true
+          (try let _ = Str.search_forward (Str.regexp "@linear") msg 0 in true
+           with Not_found -> false)
+
+let test_affine_let_valid_attr_form () =
+  match parse_fixture (fixture "affine_let_valid.affine") with
+  | Error msg -> Alcotest.fail msg
+  | Ok prog ->
+    match resolve_program prog with
+    | Error msg -> Alcotest.fail msg
+    | Ok (ctx, _) ->
+      match Typecheck.check_program ctx.symbols prog with
+      | Ok _ -> ()
+      | Error e ->
+        Alcotest.fail (Printf.sprintf
+          "valid @linear let case rejected: %s"
+          (Typecheck.format_type_error e))
+
+let test_affine_let_valid_sugar_form () =
+  match parse_fixture (fixture "affine_let_valid_sugar.affine") with
+  | Error msg -> Alcotest.fail msg
+  | Ok prog ->
+    match resolve_program prog with
+    | Error msg -> Alcotest.fail msg
+    | Ok (ctx, _) ->
+      match Typecheck.check_program ctx.symbols prog with
+      | Ok _ -> ()
+      | Error e ->
+        Alcotest.fail (Printf.sprintf
+          "valid :1 let case rejected: %s"
+          (Typecheck.format_type_error e))
+
 let quantity_tests = [
   Alcotest.test_case "valid affine usage" `Quick test_quantity_affine_valid;
   Alcotest.test_case "affine double use" `Quick test_quantity_affine_violation;
   Alcotest.test_case "erased usage" `Quick test_quantity_erased_violation;
+  Alcotest.test_case "BUG-001 attr form rejects ω-let smuggling @linear"
+    `Quick test_bug_001_smuggles_linear_attr_form;
+  Alcotest.test_case "BUG-001 sugar form rejects :ω let smuggling @linear"
+    `Quick test_bug_001_smuggles_linear_sugar_form;
+  Alcotest.test_case "valid @linear let accepts" `Quick test_affine_let_valid_attr_form;
+  Alcotest.test_case "valid :1 let accepts" `Quick test_affine_let_valid_sugar_form;
 ]
 
 (* ============================================================================

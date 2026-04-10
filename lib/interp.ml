@@ -343,13 +343,22 @@ let rec eval (env : env) (expr : expr) : value result =
   | ExprSpan (e, _) ->
     eval env e
 
-(** Evaluate a list of expressions *)
+(** Evaluate a list of expressions strictly left-to-right.
+
+    Per ADR-003, all n-ary expression forms (application arguments, tuple
+    components, array elements, record fields) evaluate their subexpressions
+    in source order. The previous implementation used [List.fold_right] with
+    monadic bind, which under OCaml's strict evaluation visited elements
+    right-to-left — inconsistent with [ExprBinary] and a latent divergence
+    point for future affine enforcement and effect handlers. *)
 and eval_list (env : env) (exprs : expr list) : value list result =
-  List.fold_right (fun expr acc ->
-    let* vals = acc in
-    let* v = eval env expr in
-    Ok (v :: vals)
-  ) exprs (Ok [])
+  let rec loop acc = function
+    | [] -> Ok (List.rev acc)
+    | expr :: rest ->
+      let* v = eval env expr in
+      loop (v :: acc) rest
+  in
+  loop [] exprs
 
 (** Evaluate match arms *)
 and eval_match_arms (env : env) (scrut_val : value) (arms : match_arm list) : value result =
