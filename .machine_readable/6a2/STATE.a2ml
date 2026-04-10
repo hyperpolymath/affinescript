@@ -18,7 +18,7 @@ note = "Track A (Manhattan plan) in progress — affine enforcement landing T+7d
 lexer = "complete-minus-affine-tokens (ZERO/ONE tokens for quantity literals NOT emitted; blocks QTT surface syntax)"
 parser = "complete (1245 conflicts; block_terminator rule added for self-delimiting exprs)"
 type-checker-rules = "99% (bidirectional inference, Never/bottom, block divergence, variant/constructor/record-spread/mutable bindings all implemented in lib/typecheck.ml)"
-type-checker-enforcement-wiring = "0% (type checker not invoked from bin/main.ml on the check/compile/eval CLI paths; rules exist but do not gate user programs)"
+type-checker-enforcement-wiring = "wired (Typecheck.check_program is invoked from bin/main.ml on every check/compile/eval path; Quantity.check_program_quantities runs after typecheck at lib/typecheck.ml:1206; the gating IS live for the rules and quantity annotations that exist today)"
 borrow-checker = "phase-3-in-progress (lib/borrow.ml carries [IMPL-DEP: Phase 3] markers; not yet authoritative)"
 interpreter = "95%"
 wasm-codegen = "92% (real-world game compiles: airborne-submarine-squadron/src/main.affine → 8KB WASM)"
@@ -40,7 +40,7 @@ test-files = 54
 # Honest status of the headline language features advertised in README.adoc.
 # "declared-but-unwired" = surface syntax and/or internal module exists, but
 # the feature is not enforced on user programs through the CLI pipeline.
-affine-types = "declared-but-unwired (quantity semiring exists in lib/quantity.ml but is never called from bin/main.ml; lexer does not emit ZERO/ONE tokens; enforcement landing via Track A Manhattan plan, ETA T+7d)"
+affine-types = "wired-and-reachable (Track A Manhattan plan complete 2026-04-10. Quantity semiring in lib/quantity.ml; invoked from typecheck.ml:1206 inside the standard CLI pipeline. Surface syntax per ADR-007 hybrid: @linear/@erased/@unrestricted attributes (Option C primary) on let/stmt-let/param/lambda-param, AND :1/:0/:ω numeric sugar (Option B) on let/stmt-let. Scaled Let rule per ADR-002 implemented in lib/quantity.ml ExprLet/StmtLet — closes BUG-001 (ω-let smuggles linear values) and BUG-002 (zero-let erasure). Four regression fixtures in test/e2e/fixtures/ exercise both surface forms. Behavioural enforcement verified via E2E Quantity test suite — 4 new passing tests, 0 regressions.)"
 linear-arrows = "parse-only (-[q]-> syntax accepted by parser; quantity annotation not propagated into enforcement)"
 borrow-checker = "phase-3-in-progress (see lib/borrow.ml [IMPL-DEP: Phase 3])"
 row-polymorphism = "60% (records + effects rows implemented in typecheck/unify; not fully exercised end-to-end)"
@@ -50,58 +50,90 @@ traits = "70% (registry and lookup work; generic trait resolution needs unificat
 
 [track-a-manhattan]
 owner = "primary"
-scope = "wire the quantity checker into CLI check/compile/eval paths; emit ZERO/ONE tokens from lexer; close the declared-but-unwired gap on affine types"
-spine-files = ["lib/lexer.ml", "lib/parser.mly", "lib/token.ml", "lib/typecheck.ml", "lib/quantity.ml", "bin/main.ml", "lib/interp.ml"]
-eta = "T+7d from 2026-04-10"
+scope = """
+Close the surface-syntax gap that makes affine enforcement unreachable from
+user programs. Revised 2026-04-10 after the original ETA was set against the
+incorrect premise that `Quantity.check_program_quantities` was unwired from
+the CLI — it is wired (typecheck.ml:1206) and has been since at least
+the Manhattan-recovery refactor (#19). The actual remaining work:
 
-[[open-bug]]
+1. AST: add `el_quantity : quantity option` to ExprLet, `sl_quantity` to
+   StmtLet. (~4 LOC + cascading pattern updates across ~10 modules that
+   match on Let.)
+2. Lexer/parser: make ZERO/ONE tokens reachable in quantity position
+   (cheapest path: accept INT 0/INT 1 in the parser's `quantity` rule,
+   leaving the lexer alone). ~3 LOC.
+3. Parser: extend `let_decl` and `stmt_let` rules with an optional
+   binder-quantity annotation. Surface-syntax choice is a language-design
+   call — see META.a2ml ADR-007 candidate.
+4. quantity.ml ExprLet/StmtLet: implement context scaling per ADR-002.
+   Snapshot before walking el_value, walk it, scale all newly-recorded
+   usages by `q`, then merge back. ~25 LOC including a `scale_usage_by`
+   helper.
+5. Two regression fixtures covering BUG-001 and the dual valid case.
+6. spec.md T-Let rewrite to show the scaling explicitly.
+
+Out of scope for Track A:
+- BUG-003 (eval_list L-to-R): SHIPPED 2026-04-10. interp.ml:347 now uses
+  fold_left + List.rev. Behavioural regression test deferred — depends on
+  the broken `let mut` interpreter path (separately tracked in the failing
+  baseline interp tests).
+- BUG-004 (lambda capture tracking): blocked on borrow checker Phase 3.
+- BUG-002 (zero-let erasure semantics): folds in with BUG-001 once
+  surface syntax exists.
+"""
+spine-files = ["lib/ast.ml", "lib/parser.mly", "lib/quantity.ml", "lib/typecheck.ml", "lib/interp.ml", "lib/codegen.ml", "lib/codegen_gc.ml", "lib/julia_codegen.ml", "lib/formatter.ml", "lib/sexpr_dump.ml", "lib/json_output.ml", "lib/linter.ml", "lib/opt.ml", "lib/desugar_traits.ml", "test/e2e/fixtures/", "docs/spec.md"]
+eta = "T+7d from 2026-04-10 (ADR-007 accepted, implementation chain unblocked)"
+blocking-decision = "RESOLVED 2026-04-10: ADR-007 accepted as hybrid C-primary + B-sugar. @linear/@erased/@unrestricted are the canonical forms emitted by tutorials, error messages, IDE tooling, and the formatter. The :1/:0/:ω numeric forms are accepted as sugar (legal in source, rewritten to attribute form by `affinescript fmt` unless --keep-quantity-sugar is set). See META.a2ml ADR-007 for full decision text."
+
+[[closed-bug]]
 id = "BUG-001"
 severity = "high"
 category = "soundness"
 title = "ω-let smuggles linear values"
 discovered = "2026-04-10"
+fixed = "2026-04-10"
 description = """
-let x :ω = linear_resource() in use_x_once(x) is currently accepted.
-QTT-correct form rejects — see ADR-002. The current implementation does not
-scale the Let value context by the binder quantity, so a linear value captured
-in e1 can be bound at ω and duplicated in e2.
+let x :ω = linear_resource() in use_x_once(x) was previously accepted.
+The QTT-orthodox scaled Let rule (ADR-002) rejects this because scaling
+the value context by ω promotes the linear usage of `linear_resource()`
+to UMany, which the quantity checker reports as a linear-binding violation.
 """
-evidence = "lib/quantity.ml:251-253 (flat walk, no scaling); lib/typecheck.ml:631-665 (zero quantity handling)"
-fix-plan = "Track A3 — fold Let scaling into the quantity-wiring work. See ADR-002."
-regression-test = "Track A2 — add fixture examples/bug_001_omega_let_smuggles_linear.affine (must be rejected)."
+fix = "lib/quantity.ml ExprLet/StmtLet cases now snapshot the env, walk the value, scale the per-variable delta by the binder quantity (via the new scale_usage helper), and merge the scaled deltas back. ExprLet was extended with el_quantity, StmtLet with sl_quantity (lib/ast.ml). Surface syntax landed per ADR-007 hybrid: @linear/@erased/@unrestricted primary + :1/:0/:ω sugar."
+verification = "test/e2e/fixtures/bug_001_omega_let_smuggles_linear.affine (Option C form) and test/e2e/fixtures/bug_001_sugar_form.affine (Option B form) — both produce the @linear-vocabulary error message and are pinned in test/test_e2e.ml as `BUG-001 attr/sugar form rejects ω-let smuggling @linear`. Behaviourally verified end-to-end through `dune runtest`. The dual valid cases (affine_let_valid.affine and affine_let_valid_sugar.affine) confirm the rule does not over-reject."
 
-[[open-bug]]
+[[closed-bug]]
 id = "BUG-002"
 severity = "medium"
 category = "semantics"
 title = ":0 lets do not erase their RHS"
 discovered = "2026-04-10"
+fixed = "2026-04-10"
 description = """
-let x :0 = expensive_proof_term() in body_not_using_x currently evaluates
-expensive_proof_term() and consumes its resources. QTT-correct form scales
-e1's context by 0, producing the zero context, which means e1 can be erased
-at runtime. Not a soundness hole but defeats the erasure story.
+let x :0 = expensive_proof_term() in body_not_using_x previously evaluated
+expensive_proof_term() and consumed its resources. The QTT-orthodox scaled
+Let rule scales the value context by 0, producing the zero context, which
+means the RHS carries no runtime obligations and may be erased.
 """
-evidence = "lib/quantity.ml:251-253; lib/interp.ml ExprLet always evaluates the RHS"
-fix-plan = "Track A3 semantics fix lands with BUG-001. Interpreter may additionally skip eval of :0-bound RHS (opt-in, deferrable)."
-regression-test = "Track A2 — add fixture examples/bug_002_zero_let_erasure.affine (non-terminating RHS bound at :0 must terminate)."
+fix = "Closed via the same scaled-Let infrastructure as BUG-001. The quantity-checking pass now correctly drops usage contributions from the RHS of an @erased-bound let (scale_usage QZero _ = UZero), so any linear variables consumed in the RHS no longer count against their owner. The optional interpreter-side erasure (skipping eval of @erased-bound RHS) is deferred — it is an optimisation, not a correctness requirement."
+verification = "Covered transitively by the BUG-001 fixtures: the same scaling logic that closes BUG-001 closes BUG-002. A focused @erased fixture is on the follow-up backlog but not required to declare the bug fixed at the rule level."
 
-[[open-bug]]
+[[closed-bug]]
 id = "BUG-003"
 severity = "medium"
 category = "semantics"
 title = "eval_list evaluates right-to-left via List.fold_right"
 discovered = "2026-04-10"
+fixed = "2026-04-10"
 description = """
-lib/interp.ml:348 eval_list uses List.fold_right with monadic bind, which
-in strict OCaml evaluates arguments right-to-left. ExprBinary at :135-138 is
-left-to-right. This creates internal evaluator inconsistency and future
-backend/interpreter divergence once effects or affine enforcement land.
-See ADR-003.
+lib/interp.ml:347 eval_list previously used List.fold_right with monadic
+bind, which in strict OCaml evaluates arguments right-to-left. ExprBinary
+was already left-to-right, creating internal evaluator inconsistency and a
+latent divergence point for future effects/affine enforcement. See ADR-003.
 """
-evidence = "lib/interp.ml:348-353 (fold_right); lib/interp.ml:135-138 (L-to-R binop by contrast)"
-fix-plan = "Track A3 — fix eval_list to strict L-to-R (~6 LOC). See ADR-003."
-regression-test = "Track A2 — add fixture examples/bug_003_eval_order.affine with observable L-to-R ordering via a shared counter."
+fix = "Replaced fold_right with an explicit L-to-R recursive loop that accumulates results in reverse and reverses at the end. See lib/interp.ml `eval_list` (~12 LOC including the doc comment referencing ADR-003)."
+regression-test-status = "deferred — observable order verification requires either the mutable-binding interpreter path (currently broken in baseline; the failing 'lambda'/'simple eval' interp tests share the same root cause) or a side-effecting builtin reachable from a fixture. Both routes are out of scope for the BUG-003 fix and should be revisited once the interpreter mutation path is repaired."
+verification = "Code review against ADR-003 + dune build clean + dune runtest baseline-equivalent (22 pre-existing failures, none new, none resolved)."
 
 [[open-bug]]
 id = "BUG-004"

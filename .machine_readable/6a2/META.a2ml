@@ -200,3 +200,294 @@ consequences = """
   place that did this, and nobody has filed a bug, so blast radius is
   expected to be zero.
 """
+
+[[adr]]
+id = "ADR-007"
+status = "accepted"
+date = "2026-04-10"
+accepted = "2026-04-10"
+title = "Surface syntax for quantity annotations: @linear/@erased/@unrestricted (primary) + :1/:0/:ω (sugar)"
+context = """
+The Track A audit on 2026-04-10 found that affine enforcement is wired
+through the CLI (Quantity.check_program_quantities runs from
+lib/typecheck.ml:1206 on every check/compile/eval invocation) but
+**unreachable** from user programs because the surface syntax for declaring
+quantity annotations on let-binders does not exist. Specifically:
+
+- lib/ast.ml ExprLet and StmtLet have no quantity field. They carry
+  el_mut/sl_mut, el_pat/sl_pat, el_ty/sl_ty, el_value/sl_value, el_body
+  — no el_quantity. Only function `param` and `type_param` carry
+  `p_quantity`/`tp_quantity`.
+- lib/lexer.ml never emits ZERO/ONE tokens. Source `0` and `1` are lexed
+  as `INT 0`/`INT 1`. The only quantity literal that round-trips through
+  source today is `omega`/`ω` (lexer.ml:53 and lexer.ml:153 respectively).
+- lib/parser.mly's `quantity` rule (lines 180-183) takes ZERO|ONE|OMEGA
+  but only OMEGA is reachable from source. Even on function parameters,
+  `:1` and `:0` annotations cannot be written.
+- ADR-002 specifies the QTT-orthodox scaled Let rule (q·Γ₁ + Γ₂), which
+  requires the binder to carry a quantity. Without surface syntax to
+  attach one, the rule has no input to scale by, BUG-001 cannot be
+  closed, and the headline affine-types feature remains theatre.
+
+Surface syntax is a language-design decision, not an implementation
+detail. The decision needs author input before any of items 1-6 in
+[track-a-manhattan] proceed.
+"""
+options = """
+Three candidate surface syntaxes are listed. None has been chosen.
+
+# Option A — caret-quantity suffix on `let` keyword
+
+  let^1 x = linear_resource() in use_x_once(x)
+  let^0 _proof = expensive_term() in body
+  let^ω y = pure_int() in use_y_many(y)
+
+  Pros:
+  - Visually parallel to T-Let's `let x :^q A` notation in QTT papers.
+  - The `^` is currently unused in the lexer, so no disambiguation cost.
+  - The annotation lives on the keyword, not the binder, which mirrors
+    the type-theory framing where `q` parameterises the rule, not the
+    variable.
+  - Easy parser rule: LET (CARET quantity)? pat (COLON ty)? EQ value.
+
+  Cons:
+  - `^` is unfamiliar surface syntax for users coming from Rust/Idris2.
+  - The `^` may collide with future bitwise-XOR or pow operators
+    (currently OpBitXor exists in ast.ml but the lexer surface form is
+    unclear).
+  - Requires users to type a non-letter character on every annotation.
+
+# Option B — colon-quantity prefix on the type ascription
+
+  let x :1 :Int = linear_resource()
+  let x :0 :Int = expensive_term()
+  let x :ω :Int = pure_int()
+  let x :1 = linear_resource()              # type inferred
+
+  Pros:
+  - Reuses the existing COLON token; no new operators needed.
+  - Mirrors the function parameter syntax, which already accepts
+    `qty? own? name COLON ty` (parser.mly:186).
+  - Familiar to readers of Idris2 (`x : 1 A`) and Quantitative Type
+    Theory papers.
+
+  Cons:
+  - Two consecutive colons looks awkward and may confuse readers
+    expecting `::` (the path separator COLONCOLON token).
+  - When the type is inferred (`let x :1 = e`), the parser needs
+    one-token lookahead to distinguish `:1` (quantity) from `:Int`
+    (type). This is a minor parser challenge but non-zero.
+  - The lexer must additionally route `INT 0`/`INT 1` to ZERO/ONE in
+    quantity position, which is context-sensitive lexing — best handled
+    by accepting `INT 0|INT 1` directly in the parser's quantity rule
+    instead, but that introduces a small grammar wart.
+
+# Option C — annotation-style attribute before `let`
+
+  @linear let x = linear_resource() in use_x_once(x)
+  @erased let _proof = expensive_term() in body
+  @unrestricted let y = pure_int() in use_y_many(y)
+  let z = pure_int() in use_z(z)            # default = unrestricted
+
+  Pros:
+  - Reads naturally; `@linear` and `@erased` are self-documenting and
+    require no quantity-theory background.
+  - Trivially extensible to future modal annotations (e.g. `@borrowed`,
+    `@owned`) without grammar changes.
+  - Parser change is local: AT (ident) LET pat (COLON ty)? EQ value.
+    No COLON disambiguation, no new operator tokens.
+  - Aligns with the language-policy preference for descriptive names
+    over symbolic ones (CLAUDE.md: "Always use descriptive variable
+    names"; the same instinct applied to annotations).
+
+  Cons:
+  - Verbose. `@linear let x = ...` is six tokens vs `let^1 x = ...`'s
+    four.
+  - Diverges from the QTT mathematical notation, making it harder for
+    paper-trained readers to map source to spec. Mitigation: spec.md
+    can show both forms in parallel.
+  - The `@` token is currently unused, so it's free, but introducing
+    it for one feature creates pressure to use it for others (which
+    may or may not be desirable depending on language direction).
+  - Requires a small mapping table from attribute name to quantity
+    value (`linear → QOne`, `erased → QZero`, `unrestricted → QOmega`).
+"""
+decision = """
+Hybrid: Option C accepted as primary, Option B accepted as sugar.
+
+Both surface syntaxes parse to the same internal representation.
+Tutorials, error messages, IDE tooling, and the spec's prose all use
+Option C. Option B remains legal for users porting from QTT papers or
+who prefer the compact form. Option A is rejected outright.
+
+# Primary surface form (Option C — what tutorials and error messages use)
+
+  @linear        — used exactly once (QOne)
+  @erased        — must not be used at runtime (QZero)
+  @unrestricted  — any number of uses (QOmega), the default
+
+Examples:
+  @linear let x = linear_resource() in use_x_once(x)
+  @erased let _proof = expensive_term() in body_not_using_proof
+  @unrestricted let y = pure_int() in use_y_many(y)
+  let z = pure_int() in use_z(z)            # default: @unrestricted
+
+  fn consume(@linear x: Resource) -> Unit = release(x)
+  fn weigh(@erased _proof: Even(n), n: Nat) -> Nat = n / 2
+
+# Sugar surface form (Option B — accepted but not promoted)
+
+  let x :1 :Resource = linear_resource() in use_x_once(x)
+  let _proof :0 :Even(n) = expensive_term() in body
+  let y :ω :Int = pure_int() in use_y_many(y)
+  let z :Int = pure_int() in use_z(z)       # no quantity = @unrestricted
+
+  fn consume(x :1: Resource) -> Unit = release(x)
+  fn weigh(_proof :0: Even(n), n: Nat) -> Nat = n / 2
+
+# Equivalence
+
+  @linear        ≡  :1
+  @erased        ≡  :0
+  @unrestricted  ≡  :ω    (also: omitted entirely)
+
+Both forms parse to the same `el_quantity = Some QOne | QZero | QOmega`
+in lib/ast.ml. The compiler chooses the canonical form (Option C) when
+emitting diagnostics, formatter output, and pretty-printed source. The
+formatter rewrites Option B to Option C on `affinescript fmt`, with an
+opt-out flag `--keep-quantity-sugar` for users who deliberately prefer
+the compact form.
+
+Rationale (decided per the standing priority order
+dependability > security > interop > usability/accessibility/marketability
+> performance > versatility > functional extension):
+
+- Usability/accessibility/marketability beats consistency-with-papers
+  in the priority order, so Option C must be the primary form a new
+  user encounters in tutorials and error messages. A new user reading
+  `@linear let x = e` can form a working hypothesis without consulting
+  the spec. The same user looking at `let x :1 = e` has nothing to
+  Google.
+- However, the priority order does not require *exclusivity*. Accepting
+  Option B as sugar costs ~15 LOC of parser surface area and one
+  paragraph in the spec, and in return it:
+  * Preserves consistency with the existing function-parameter syntax
+    (which uses `qty? own? name COLON ty`), so the param-quantity gap
+    closes with the *same* grammar production rather than a parallel
+    one. Users learning the param syntax already see `:1` in the
+    grammar; the sugar makes that knowledge transfer to let-binders.
+  * Preserves citation isomorphism with QTT papers — anyone porting an
+    Idris2 example or a Granule example can paste the numeric form
+    directly without rewriting it.
+  * Gives advanced users a denser form for code where annotations are
+    frequent and English keywords would create visual noise.
+- Compiler errors and source code share the C vocabulary regardless of
+  which form the user wrote: "`@linear` binding 'x' used 2 times" reads
+  cleanly without mental translation, even if the source was written
+  as `:1`. The diagnostic always speaks the canonical form.
+- Tutorials can be example-driven from the first runnable program with
+  Option C; the QTT semiring and Option B sugar become optional
+  advanced reading rather than a prerequisite for "hello world with
+  affine types."
+- The `@` namespace is now committed to AffineScript and may grow to
+  cover additional modal annotations (e.g. `@total`, `@pure`,
+  `@borrowed`, `@owned`) in future ADRs. This is an intentional
+  reservation, not a side effect.
+- The Rust/Linear-Haskell precedent is real: Rust ships affine
+  semantics under approachable keywords and reaches a vastly larger
+  audience than Linear Haskell, which exposes the type-theory
+  machinery directly. AffineScript chooses Rust's marketing instinct
+  for the primary form, while keeping Linear Haskell's notation
+  available for users who already think in it.
+
+# Style guide commitment
+
+The spec commits explicitly to keeping both forms supported. Future
+contributors proposing to drop Option B sugar must amend this ADR
+rather than removing it silently. The recommended convention in
+published AffineScript code is:
+
+- New code: Option C (`@linear let x = e`).
+- Code accompanying a paper: either form, author's choice.
+- Auto-formatted code: Option C (formatter rewrites unless
+  `--keep-quantity-sugar` is set).
+- Generated code (compiler diagnostics, IDE quick-fixes, refactoring
+  tools): Option C exclusively.
+
+Rejected alternatives:
+
+- Option A (`let^q x = e`): rejected. Lowest implementation cost but
+  worst on the priority order — symbolic, opaque to non-TT readers,
+  forecloses future use of `^` for bitwise XOR or exponentiation.
+- Option B exclusively (without C): rejected for the same
+  accessibility/adoption reasons that make C the primary form.
+- Option C exclusively (without B sugar): considered and rejected. The
+  marginal cost of accepting B is low (~15 LOC parser, one paragraph
+  spec), and the benefit — closing the param-quantity gap with one
+  grammar production and preserving paper-citation isomorphism — is
+  worth the cost given the standing priority order's high weighting
+  of interop alongside accessibility.
+"""
+consequences = """
+- lib/ast.ml gains el_quantity / sl_quantity fields on ExprLet and
+  StmtLet. ~10 modules pattern-matching on Let must be updated
+  mechanically (typecheck, interp, codegen, codegen_gc, julia_codegen,
+  formatter, sexpr_dump, json_output, linter, opt, desugar_traits).
+- lib/lexer.ml gains an AT token for `@`. ~2 LOC.
+- lib/token.ml gains the AT token kind. ~2 LOC.
+- lib/parser.mly gains:
+  * AT ident — a quantity_attr rule that maps `@linear`/`@erased`/
+    `@unrestricted` to QOne/QZero/QOmega and rejects unknown attribute
+    names with a parse error pointing at the documented set.
+  * Optional quantity_attr prefix on let_decl, stmt_let, param, and
+    lambda_param productions. ~15 LOC.
+  * The existing numeric quantity rule (ZERO|ONE|OMEGA) gains INT 0
+    and INT 1 as accepted lexemes (since the lexer emits INT not
+    ZERO/ONE for `0` and `1`). This makes Option B sugar reachable
+    from source on let-binders and params, in addition to type_params
+    where it already worked. ~5 LOC.
+  * Both productions resolve to the same el_quantity / sl_quantity /
+    p_quantity slot — they are alternative concrete syntaxes for the
+    identical abstract syntax.
+- lib/quantity.ml ExprLet/StmtLet cases gain context scaling per
+  ADR-002. ~25 LOC including a `scale_usage_by` helper.
+- Error messages in lib/quantity.ml format_quantity_error are updated
+  to use `@linear` / `@erased` / `@unrestricted` vocabulary instead of
+  the show_quantity numeric forms.
+- Regression fixtures land covering BOTH surface forms:
+  * test/e2e/fixtures/bug_001_omega_let_smuggles_linear.affine — must
+    be rejected (Option C form: `@unrestricted let x = ...`).
+  * test/e2e/fixtures/bug_001_sugar_form.affine — must be rejected
+    (Option B form: `let x :ω = ...`). Proves both surface forms are
+    enforced through the same code path.
+  * test/e2e/fixtures/affine_let_valid.affine — must pass (Option C).
+  * test/e2e/fixtures/affine_let_valid_sugar.affine — must pass
+    (Option B).
+- docs/spec.md T-Let rule is rewritten to show the formal QTT notation
+  alongside both surface forms (Option C primary, Option B sugar) so
+  paper-trained readers and pedagogy-first readers both see their
+  preferred presentation.
+- docs/spec.md gains a "Surface syntax for quantity annotations"
+  section documenting the equivalence table and the style-guide
+  commitment from this ADR.
+- BUG-002 (`:0` lets do not erase their RHS) closes in the same change,
+  per ADR-002's consequence list.
+- The affine-types feature flag in STATE.a2ml [features] flips from
+  `wired-but-unreachable` to `wired-and-reachable` once the change
+  lands.
+- Future modal annotations (`@total`, `@pure`, `@borrowed`, `@owned`,
+  etc.) inherit the same `@`-attribute parsing infrastructure for free.
+- The formatter (lib/formatter.ml) gains a `--keep-quantity-sugar` flag
+  that defaults to OFF (so default `affinescript fmt` rewrites Option
+  B sugar to Option C primary). Users opting in retain their chosen
+  form across format passes.
+"""
+references = [
+  ".machine_readable/6a2/STATE.a2ml [track-a-manhattan]",
+  ".machine_readable/6a2/STATE.a2ml [[open-bug]] BUG-001",
+  ".machine_readable/6a2/STATE.a2ml [[open-bug]] BUG-002",
+  ".machine_readable/6a2/META.a2ml [[adr]] ADR-002 (scaled Let rule)",
+  "lib/ast.ml ExprLet (lines 105-111), StmtLet (lines 170-176)",
+  "lib/lexer.ml (ZERO/ONE never emitted)",
+  "lib/parser.mly quantity rule (lines 180-183)",
+]

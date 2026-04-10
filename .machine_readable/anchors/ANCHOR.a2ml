@@ -74,6 +74,7 @@ authorities:
     # ADR-004: algebraic effect handlers extension point — pending
     # ADR-005: language scope statement (narrow thesis) — pending
     # ADR-006: exceptions as degenerate effect handler — pending
+    - "ADR-007: Surface syntax for quantity annotations — @linear/@erased/@unrestricted primary + :1/:0/:ω sugar (META.a2ml — ACCEPTED 2026-04-10)"
 
 # ─── Relationships ────────────────────────────────────────────────────────────
 

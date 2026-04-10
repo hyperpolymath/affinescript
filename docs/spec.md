@@ -581,11 +581,68 @@ total fn factorial(n: Nat) -> Nat / Pure {
 ```
 
 ### Let Bindings
+
+Per ADR-002, the Let rule scales the value context by the binder's
+quantity, in the QTT-orthodox split-Γ form:
+
 ```
-Γ ⊢ e₁ : τ₁ / ε₁    Γ, x :q τ₁ ⊢ e₂ : τ₂ / ε₂
-───────────────────────────────────────────────── (T-Let)
-Γ ⊢ let x = e₁ in e₂ : τ₂ / ε₁ + ε₂
+Γ₁ ⊢ e₁ : τ₁ / ε₁    Γ₂, x :^q τ₁ ⊢ e₂ : τ₂ / ε₂
+─────────────────────────────────────────────────── (T-Let)
+        q·Γ₁ + Γ₂ ⊢ let x :^q = e₁ in e₂ : τ₂ / ε₁ + ε₂
 ```
+
+The scaling action `q·Γ₁` multiplies every variable's quantity in `Γ₁`
+by the binder's quantity `q`, using the semiring multiplication table
+from §3.2. The two soundness consequences:
+
+- **`q = ω` (unrestricted)** scales every linear (1) usage in `Γ₁` to
+  unrestricted (ω). Concretely, a `@linear` variable consumed once in
+  `e₁` becomes "used multiple times" once viewed through the
+  `@unrestricted` binder, and the quantity checker rejects the
+  program. This is the rule that closes BUG-001
+  (ω-let smuggling linear values).
+- **`q = 0` (erased)** scales `Γ₁` to the zero context, which means
+  `e₁` carries no runtime obligations and may be erased at runtime.
+  This is the rule that closes BUG-002 (erasure failure).
+
+When `q` is omitted in source, the rule defaults to `q = ω`
+(unrestricted), so unannotated lets are unchanged from textbook HM
+semantics for non-quantitative programs.
+
+#### Surface syntax (per ADR-007)
+
+Two surface forms are accepted; both parse to the same internal
+`el_quantity` field. The compiler emits the **Option C** form in
+diagnostics, the formatter rewrites Option B sugar to Option C
+unless `--keep-quantity-sugar` is set, and tutorials use Option C
+exclusively.
+
+| QTT notation | Option C (primary) | Option B (sugar) |
+| --- | --- | --- |
+| `let x :^1 = e` | `@linear let x = e` | `let x :1 = e` |
+| `let x :^0 = e` | `@erased let x = e` | `let x :0 = e` |
+| `let x :^ω = e` | `@unrestricted let x = e` | `let x :ω = e` |
+| `let x = e` (q omitted) | `let x = e` | `let x = e` |
+
+Examples:
+
+```affinescript
+// Option C primary form
+@linear let resource = acquire() in use_once(resource);
+@erased let _proof = expensive_term() in body_not_using_proof;
+@unrestricted let pure_value = 42 in pure_value + pure_value;
+
+// Option B sugar form (equivalent)
+let resource :1 = acquire() in use_once(resource);
+let _proof :0 = expensive_term() in body_not_using_proof;
+let pure_value :ω = 42 in pure_value + pure_value;
+```
+
+The same hybrid surface convention applies to function parameters
+(`@linear x: τ`), lambda parameters, and statement-position let
+bindings inside blocks. Sugar form on function parameters is reserved
+for a future extension and not currently accepted by the parser; only
+the `@`-attribute form is available there today.
 
 ### Records (Row Polymorphism)
 ```
