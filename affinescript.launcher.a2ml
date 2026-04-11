@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: PMPL-1.0-or-later
+# affinescript.launcher.a2ml — Live launcher config for AffineScript compiler
+
+[metadata]
+project = "affinescript"
+version = "0.1.0"
+last-updated = "2026-04-11"
+
+[launcher]
+kind = "cli-tool"
+entry = "dune exec affinescript"
+build-command = "dune build"
+test-command = "dune runtest"
+
+[subcommands]
+lex     = "affinescript lex <file>"
+parse   = "affinescript parse <file>"
+check   = "affinescript check <file>"
+eval    = "affinescript eval <file>"
+compile = "affinescript compile <file> -o <out.wasm>"
+fmt     = "affinescript fmt <file>"
+lint    = "affinescript lint <file>"
+hover   = "affinescript hover <file> <line> <col>"
+goto-def = "affinescript goto-def <file> <line> <col>"
+complete = "affinescript complete <file> <line> <col>"
+tea-bridge = "affinescript tea-bridge -o <out.wasm>"
+
+[paths]
+source = "lib/"
+tests  = "test/"
+examples = "examples/"
+wasm-output = "../../idaptik/public/assets/wasm/"
+
+[notes]
+tea-bridge-target = "idaptik/public/assets/wasm/titlescreen.wasm"
+tea-bridge-note   = "Run `just regen-idaptik-wasm` to regenerate the IDApTIK bridge binary"

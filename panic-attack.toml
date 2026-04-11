@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: PMPL-1.0-or-later
+# panic-attack.toml — AffineScript security scan configuration
+
+[project]
+name = "affinescript"
+language = "ocaml"
+
+[scan]
+# Directories to scan
+include = ["lib", "bin", "test"]
+# Directories to skip
+exclude = [
+    "_build",
+    ".git",
+    "distributions/rattlescript/target",
+    "docs",
+]
+
+[rules]
+# OCaml-specific dangerous patterns
+dangerous_patterns = [
+    { name = "no-obj-magic", pattern = "Obj\\.magic", severity = "critical" },
+    { name = "no-unsafe-string", pattern = "Bytes\\.unsafe_from_string|String\\.unsafe_get", severity = "high" },
+    { name = "no-todo-panic", pattern = "failwith.*TODO|assert false", severity = "medium" },
+    { name = "no-raw-ignore", pattern = "ignore \\(", severity = "low" },
+]
+
+[false-positives]
+# Known acceptable patterns that panic-attack may flag
+# unsafe_blocks: getUnsafe in test fixtures is legitimate (bounds-checked by surrounding logic)

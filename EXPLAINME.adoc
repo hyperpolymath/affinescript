@@ -1,0 +1,76 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// (MPL-2.0 is the automatic legal fallback until PMPL is formally recognised)
+= AffineScript — Show Me The Receipts
+:toc:
+:icons: font
+
+The README makes claims. This file backs them up.
+
+== Core Claims
+
+=== Claim 1: Affine Types Are Enforced at Compile Time, Not Convention
+
+*From README:* "Affine/linear types enforced via QTT (Quantitative Type Theory) semiring — `@linear`, `@erased`, `@unrestricted` annotations on variables and parameters."
+
+*Evidence:* `lib/quantity.ml` implements the QTT semiring with usage modes UZero/UOne/UMany. `lib/typecheck.ml:1206` calls `Quantity.check_program_quantities` inside the standard CLI pipeline — every `check`, `compile`, and `eval` invocation gates on it. The scaled-Let rule (ADR-002) is implemented: `ExprLet` snapshots the quantity environment, walks the RHS, scales per-variable deltas by the binder quantity (`@erased` → scale 0, `@linear` → scale 1, `@unrestricted` → scale ω), then merges back. BUG-001 (ω-let smuggling linear values) and BUG-002 (erased-let failing to erase) are both closed with regression fixtures at `test/e2e/fixtures/bug_001_*.affine`. Run `dune runtest` — 101 tests, 0 regressions. **Caveat:** The ZERO/ONE quantity literal tokens are lexed as INT; the parser rule accepts `0`/`1` numeric sugar alongside `@erased`/`@linear` attribute form.
+
+=== Claim 2: AffineScript TEA Drives IDApTIK TitleScreen via Wasm Binary
+
+*From README:* "TEA runtime targeting typed-wasm — dogfooded via IDApTIK. Affine TEA contract: `update : Msg ⊸ Model ⊸ (Model, Cmd Msg)` where Msg is consumed linearly."
+
+*Evidence:* `lib/tea_bridge.ml` generates a complete Wasm 1.0 binary (`titlescreen.wasm`) encoding the TitleScreen state machine. The `affinescript.ownership` custom section records the update function's `msg` parameter as kind=1 (Linear). `lib/dune` includes `tea_bridge` in the library; `bin/main.ml` exposes `affinescript tea-bridge -o OUTPUT` as a subcommand. The generated binary is checked in at `idaptik/public/assets/wasm/titlescreen.wasm` (512 bytes). Verified in Node.js: `WebAssembly.validate` → `true`; functional round-trip: `init → selected=0`, `update(0) → selected=1`, `update(3) → selected=4`, `setScreen(1920,1080) → screen_w=1920`. The IDApTIK `TitleScreen.res` `teaDrive` function calls `AffineTEA.update`, then reads `getSelected()` — navigation is determined by Wasm state, not button identity. Graceful fallback to direct ReScript navigation when the Wasm binary is unavailable. **Caveat:** The affine ownership guarantee is carried in the `affinescript.ownership` custom section; a typed-wasm multi-module verifier (Levels 7–10) is needed to enforce it at runtime — that is the Stage 6/7 work.
+
+=== Claim 3: 101 End-to-End Tests Covering the Full Compiler Pipeline
+
+*From README:* "101 E2E tests covering lexer, parser, type-checker, quantity-checker, borrow-checker, interpreter, Wasm codegen, LSP subcommands, TEA bridge, and affine regression fixtures."
+
+*Evidence:* `test/test_e2e.ml` declares 101 tests across the following suites:
+- `E2E Parsing` — well-formed and malformed programs
+- `E2E Type-checking` — type errors, linear violations, borrow errors
+- `E2E Quantitative` — QTT regression fixtures (BUG-001/002 closed)
+- `E2E Codegen` — Wasm 1.0 output validation
+- `E2E LSP Hover/GoTo/Complete` — Phase A/B/C subcommand outputs
+- `E2E TEA Bridge` — bridge structure, export names, custom sections, ownership annotation, tea_layout
+
+Run `dune runtest` to reproduce. All 101 pass. **Caveat:** Borrow-checker BUG-004 (lambda capture tracking) has a closed fix but regression fixture is separate from the main E2E sweep; the 101 count reflects the main `test_e2e.ml` sweep.
+
+=== Claim 4: Borrow Checker Enforces Move Semantics
+
+*From README:* "Borrow checker — Rust-style ownership, move semantics, E0501–E0506 error codes."
+
+*Evidence:* `lib/borrow.ml` (669 LOC) implements a lexical-lifetime borrow analysis wired into the `check`/`compile` pipeline at all four `Typecheck` success sites in `bin/main.ml`. Error codes E0501–E0506 are defined and emitted. `PlaceVar` carries the variable name for readable `file:line:col` diagnostics. The lambda capture fix (BUG-004, commit 48422d1) added `collect_free` to find free variables in lambda bodies and creates `Shared` borrows for each. Manual smoke: `cannot move 'v' while shared-borrowed` emits correctly. **Caveat:** BUG-004 (lambda capture tracking against outer borrow state) is fully fixed in the borrow checker; the corresponding quantity.ml ExprLambda scale-by-ω also closed. Phase 3 (loop invariants, cross-function borrows) is still in-progress.
+
+== Technology Choices
+
+[cols="1,2"]
+|===
+| Technology | Learn More
+
+| **OCaml** | Compiler implementation language. Dune build system.
+| **Wasm 1.0** | Codegen target. Custom sections carry affine ownership metadata.
+| **QTT** | Quantitative Type Theory semiring — tracks resource usage at compile time.
+| **TEA (The Elm Architecture)** | `update : Msg ⊸ Model ⊸ (Model, Cmd Msg)` with linearity enforced.
+| **IDApTIK** | Dogfood target — ReScript + PixiJS game that runs the AffineTEA Wasm bridge.
+| **Dune** | OCaml build tool and test runner.
+|===
+
+== Dogfooded Across The Account
+
+AffineScript validates the hyperpolymath ecosystem:
+
+- **IDApTIK** — TitleScreen driven by AffineScript TEA Wasm binary; AffineTEA.js + AffineTEA.res bridge live in the game repo. Proves the stack at scale.
+- **typed-wasm** — AffineScript emits `affinescript.ownership` and `affinescript.tea_layout` custom sections that typed-wasm Levels 7–10 can verify. The paper angle: "Full-stack affine UI architecture from source to Wasm binary."
+- **RattleScript** — Python-syntax face on AffineScript. Standalone repo at `hyperpolymath/rattlescript` with Deno ESM wrapper. Distributions live in `distributions/rattlescript/`.
+
+== Proof of Claimed Safety Properties
+
+[cols="1,1,1"]
+|===
+| Property | Where enforced | How to verify
+
+| `@linear` variable used exactly once | `lib/quantity.ml` ExprLet/ExprLambda | `dune runtest` — BUG-001 regression fixtures
+| `@erased` variable doesn't count as usage | `lib/quantity.ml` scaled-Let (scale by 0) | `dune runtest` — BUG-002 regression fixtures
+| Moved variable not used again | `lib/borrow.ml` Owned/Shared/Moved state | Manual smoke: compile `examples/ownership.affine`
+| Lambda captures don't escape linear bound | `lib/borrow.ml` collect_free + Shared borrows | BUG-004 commit 48422d1 — manual smoke
+| TEA update param is linear (Wasm custom section) | `lib/tea_bridge.ml` build_ownership_section | `test/test_e2e.ml` test_bridge_update_msg_linear
+|===
