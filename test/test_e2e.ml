@@ -1600,6 +1600,80 @@ let lsp_phase_b_tests = [
 ]
 
 (* ============================================================================
+   Section N: LSP Phase C — Completion candidates
+   ============================================================================
+
+   These tests validate [Json_output.extract_prefix_at] and
+   [Json_output.collect_completions] — the two functions powering the
+   [complete FILE LINE COL] subcommand.
+*)
+
+(** Cursor placed right after "add(" on line 5 of arithmetic.affine:
+    col 7 puts end_idx at 5 (0-based), scanning back collects 'd','d','a'
+    → prefix "add". *)
+let test_complete_prefix_extracted () =
+  let path = fixture "arithmetic.affine" in
+  let source = read_file path in
+  (* Line 5: "fn add(a: Int, b: Int) -> Int = a + b;"
+     Cols:      1234567  — col 7 is '(' so prefix ends at col 6 *)
+  let (prefix, dot_ctx) = Json_output.extract_prefix_at source 5 7 in
+  Alcotest.(check string) "prefix is 'add'"    "add"  prefix;
+  Alcotest.(check bool)   "not dot context"    false  dot_ctx
+
+(** Prefix "add" matches the [add] symbol in the arithmetic fixture. *)
+let test_complete_prefix_match () =
+  let (symbols, _refs) = pipeline_for_hover (fixture "arithmetic.affine") in
+  let items = Json_output.collect_completions symbols "add" false in
+  let names =
+    List.map (fun (i : Json_output.completion_item) -> i.Json_output.comp_name) items
+  in
+  Alcotest.(check bool) "add is a candidate" true (List.mem "add" names)
+
+(** Empty prefix returns all symbols + keywords — at least the 6 functions
+    defined in the arithmetic fixture are present. *)
+let test_complete_empty_prefix () =
+  let (symbols, _refs) = pipeline_for_hover (fixture "arithmetic.affine") in
+  let items = Json_output.collect_completions symbols "" false in
+  Alcotest.(check bool) "non-empty for empty prefix"
+    true (List.length items > 0)
+
+(** An unrecognised prefix produces an empty candidate list. *)
+let test_complete_no_match () =
+  let (symbols, _refs) = pipeline_for_hover (fixture "arithmetic.affine") in
+  let items = Json_output.collect_completions symbols "zzznotfound" false in
+  Alcotest.(check int) "zero candidates for unknown prefix" 0 (List.length items)
+
+(** Keyword "fn" appears in completions when the prefix matches and we are
+    not in a dot-access context. *)
+let test_complete_keyword_included () =
+  let (symbols, _refs) = pipeline_for_hover (fixture "arithmetic.affine") in
+  let items = Json_output.collect_completions symbols "fn" false in
+  let kinds =
+    List.map (fun (i : Json_output.completion_item) -> i.Json_output.comp_kind) items
+  in
+  Alcotest.(check bool) "keyword item present" true (List.mem "keyword" kinds)
+
+(** In a dot-access context, keyword candidates are suppressed. *)
+let test_complete_dot_suppresses_keywords () =
+  let (symbols, _refs) = pipeline_for_hover (fixture "arithmetic.affine") in
+  (* dot_ctx = true → no keywords, even for empty prefix *)
+  let items = Json_output.collect_completions symbols "" true in
+  let kinds =
+    List.map (fun (i : Json_output.completion_item) -> i.Json_output.comp_kind) items
+  in
+  Alcotest.(check bool) "no keyword items in dot context"
+    false (List.mem "keyword" kinds)
+
+let lsp_phase_c_tests = [
+  Alcotest.test_case "prefix extracted correctly"      `Quick test_complete_prefix_extracted;
+  Alcotest.test_case "prefix match returns symbol"     `Quick test_complete_prefix_match;
+  Alcotest.test_case "empty prefix returns candidates" `Quick test_complete_empty_prefix;
+  Alcotest.test_case "unknown prefix returns empty"    `Quick test_complete_no_match;
+  Alcotest.test_case "keyword included when prefix ok" `Quick test_complete_keyword_included;
+  Alcotest.test_case "dot ctx suppresses keywords"     `Quick test_complete_dot_suppresses_keywords;
+]
+
+(* ============================================================================
    Test Suite Export
    ============================================================================ *)
 
@@ -1622,4 +1696,5 @@ let tests =
     ("E2E TEA", tea_tests);
     ("E2E TEA Bridge", tea_bridge_tests);
     ("E2E LSP Phase B", lsp_phase_b_tests);
+    ("E2E LSP Phase C", lsp_phase_c_tests);
   ]

@@ -588,3 +588,136 @@ let emit_goto_def (sym_opt : Symbol.symbol option) : unit =
   in
   print_string (Yojson.Basic.to_string json);
   print_newline ()
+
+(** {1 Phase C: Completion candidates}
+
+    Given a file path and cursor position (1-based), the [complete] subcommand
+    extracts the identifier prefix before the cursor, filters the symbol table
+    by that prefix, and emits a JSON array of completion candidates.
+
+    Output schema:
+    {[
+      [
+        { "name": "add",
+          "kind": "function",
+          "type": "Int -> Int -> Int" | null,
+          "detail": "function" }
+      ]
+    ]}
+
+    Keywords are included as candidates with kind ["keyword"] and null type
+    unless the cursor is in a dot-access context (e.g. [record.fie|]).
+*)
+
+(** AffineScript keywords eligible for completion. *)
+let affine_keywords : string list = [
+  "fn"; "let"; "match"; "if"; "else"; "return";
+  "effect"; "handle"; "trait"; "impl"; "type"; "where";
+  "forall"; "use"; "pub"; "mut"; "true"; "false";
+  "Self"; "Int"; "Bool"; "Float"; "String"; "Unit";
+]
+
+(** Extract the identifier prefix ending at column [col] on [line] in [source].
+
+    Scans backward from the character just before [col] (1-based) collecting
+    [a-zA-Z0-9_] characters.  Returns [(prefix, dot_ctx)] where [dot_ctx] is
+    [true] when the character immediately preceding the prefix is ['.'],
+    indicating a field-access / method completion context. *)
+let extract_prefix_at (source : string) (line : int) (col : int) : string * bool =
+  let lines = String.split_on_char '\n' source in
+  match List.nth_opt lines (line - 1) with
+  | None -> ("", false)
+  | Some line_text ->
+    (* col is 1-based; the character to the left of the cursor is at index col-2. *)
+    let end_idx = min (col - 2) (String.length line_text - 1) in
+    if end_idx < 0 then ("", false)
+    else begin
+      let is_ident_char c =
+        (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+        || (c >= '0' && c <= '9') || c = '_'
+      in
+      (* Collect identifier chars in reverse order. *)
+      let buf = Buffer.create 16 in
+      let i = ref end_idx in
+      while !i >= 0 && is_ident_char line_text.[!i] do
+        Buffer.add_char buf line_text.[!i];
+        decr i
+      done;
+      (* Reverse to get forward order. *)
+      let rev_s = Buffer.contents buf in
+      let n = String.length rev_s in
+      let prefix = String.init n (fun k -> rev_s.[n - 1 - k]) in
+      let preceded_by_dot = !i >= 0 && line_text.[!i] = '.' in
+      (prefix, preceded_by_dot)
+    end
+
+(** A single completion candidate. *)
+type completion_item = {
+  comp_name   : string;
+  comp_kind   : string;
+  comp_type   : string option;
+  comp_detail : string;
+}
+
+(** Serialize a completion item to JSON. *)
+let completion_item_to_json (item : completion_item) : Yojson.Basic.t =
+  `Assoc [
+    ("name",   `String item.comp_name);
+    ("kind",   `String item.comp_kind);
+    ("type",   (match item.comp_type with Some t -> `String t | None -> `Null));
+    ("detail", `String item.comp_detail);
+  ]
+
+(** Collect completion candidates from [symbols] whose name begins with [prefix].
+
+    All symbols match when [prefix] is empty.  AffineScript keywords are
+    appended after symbol candidates unless [dot_ctx] is [true] (field-access
+    position — keywords don't apply there). *)
+let collect_completions
+    (symbols  : Symbol.t)
+    (prefix   : string)
+    (dot_ctx  : bool)
+    : completion_item list =
+  let prefix_len = String.length prefix in
+  let starts_with name =
+    String.length name >= prefix_len
+    && String.sub name 0 prefix_len = prefix
+  in
+  (* Symbol candidates. *)
+  let sym_items = ref [] in
+  Hashtbl.iter (fun _id (sym : Symbol.symbol) ->
+    if starts_with sym.sym_name then begin
+      let kind = symbol_kind_to_string sym.sym_kind in
+      let type_str = match sym.sym_type with
+        | Some te -> Some (Ast.show_type_expr te)
+        | None    -> None
+      in
+      sym_items := {
+        comp_name   = sym.sym_name;
+        comp_kind   = kind;
+        comp_type   = type_str;
+        comp_detail = kind;
+      } :: !sym_items
+    end
+  ) symbols.Symbol.all_symbols;
+  let sym_sorted =
+    List.sort (fun a b -> compare a.comp_name b.comp_name) !sym_items
+  in
+  (* Keyword candidates (not in dot-access context). *)
+  let keyword_items =
+    if dot_ctx then []
+    else
+      List.filter_map (fun kw ->
+        if starts_with kw then
+          Some { comp_name = kw; comp_kind = "keyword";
+                 comp_type = None; comp_detail = "keyword" }
+        else None
+      ) affine_keywords
+  in
+  sym_sorted @ keyword_items
+
+(** Emit a completion JSON array on stdout. *)
+let emit_completions (items : completion_item list) : unit =
+  let json = `List (List.map completion_item_to_json items) in
+  print_string (Yojson.Basic.to_string json);
+  print_newline ()

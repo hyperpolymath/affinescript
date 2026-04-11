@@ -792,6 +792,43 @@ let goto_def_cmd =
   let info = Cmd.info "goto-def" ~doc ~man in
   Cmd.v info Term.(ret (const goto_def_file $ face_arg $ path_arg $ line_arg $ col_arg))
 
+(** {1 Phase C: completion subcommand} *)
+
+(** Complete subcommand handler.
+
+    Reads the source file, extracts the identifier prefix at (line, col),
+    resolves the program to build the symbol table, and emits a JSON array
+    of completion candidates on stdout.  Emits an empty array on pipeline
+    failure so the editor doesn't break. *)
+let complete_file face path line col =
+  let face = resolve_face face path in
+  let source = read_file path in
+  (match run_pipeline_for_query face path with
+   | None ->
+     Affinescript.Json_output.emit_completions []
+   | Some (symbols, _refs) ->
+     let (prefix, dot_ctx) =
+       Affinescript.Json_output.extract_prefix_at source line col
+     in
+     let items =
+       Affinescript.Json_output.collect_completions symbols prefix dot_ctx
+     in
+     Affinescript.Json_output.emit_completions items);
+  `Ok ()
+
+(** [complete FILE LINE COL] — return completion candidates at cursor. *)
+let complete_cmd =
+  let doc = "Return completion candidates at a cursor position" in
+  let man = [
+    `S Manpage.s_description;
+    `P "Extracts the identifier prefix at (LINE, COL), filters the symbol \
+        table by prefix match, and prints a JSON array of completion \
+        candidates on stdout.  Each item has {name, kind, type, detail}.";
+    `P "Lines and columns are 1-based integers (LSP convention).";
+  ] in
+  let info = Cmd.info "complete" ~doc ~man in
+  Cmd.v info Term.(ret (const complete_file $ face_arg $ path_arg $ line_arg $ col_arg))
+
 let default_cmd =
   let doc = "The AffineScript compiler" in
   let info = Cmd.info "affinescript" ~version ~doc in
@@ -800,7 +837,7 @@ let default_cmd =
     lex_cmd; parse_cmd; check_cmd; eval_cmd; repl_cmd; compile_cmd;
     fmt_cmd; lint_cmd;
     tea_bridge_cmd;
-    hover_cmd; goto_def_cmd;
+    hover_cmd; goto_def_cmd; complete_cmd;
     preview_python_cmd; preview_js_cmd; preview_pseudocode_cmd
   ]
 
