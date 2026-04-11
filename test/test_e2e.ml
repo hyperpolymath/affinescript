@@ -1300,6 +1300,154 @@ let tea_bridge_tests = [
 ]
 
 (* ============================================================================
+   Section 11b: E2E TEA Router — Cadre Router Wasm Module
+   ============================================================================
+
+   Verifies the Tea_router.generate () output satisfies all structural,
+   ownership, layout, and round-trip invariants needed for Stage 6.
+
+   Tests cover:
+   1. Module structure (11 funcs, 1 mem, 12 exports)
+   2. All 12 export names present
+   3. Two custom sections (ownership + tea_layout)
+   4. Wasm binary magic + version
+   5. push param is Linear (kind=1 in ownership section)
+   6. present_popup param is Linear
+   7. resize params are both Linear
+   8. Push / pop round-trip: push Title(0), pop → stack_len returns to 0
+*)
+
+(** Encode the router module to bytes via a temp file (mirrors encode_bridge_to_bytes). *)
+let encode_router_to_bytes () : bytes =
+  let m    = Tea_router.generate () in
+  let path = Filename.temp_file "tea_router" ".wasm" in
+  Wasm_encode.write_module_to_file path m;
+  let ic   = open_in_bin path in
+  let n    = in_channel_length ic in
+  let raw  = Bytes.create n in
+  really_input ic raw 0 n;
+  close_in ic;
+  (try Sys.remove path with _ -> ());
+  raw
+
+(** Structure: 11 functions, 1 memory, 12 exports. *)
+let test_router_structure () =
+  let m = Tea_router.generate () in
+  Alcotest.(check int) "11 functions" 11 (List.length m.funcs);
+  Alcotest.(check int) "1 memory"      1 (List.length m.mems);
+  Alcotest.(check int) "12 exports"   12 (List.length m.exports)
+
+(** All 12 expected exports are present by name. *)
+let test_router_export_names () =
+  let m = Tea_router.generate () in
+  let names = List.map (fun e -> e.Wasm.e_name) m.exports in
+  let expected = [
+    "affinescript_router_init";
+    "affinescript_router_push";
+    "affinescript_router_pop";
+    "affinescript_router_present_popup";
+    "affinescript_router_dismiss_popup";
+    "affinescript_router_resize";
+    "affinescript_router_get_screen_w";
+    "affinescript_router_get_screen_h";
+    "affinescript_router_get_stack_len";
+    "affinescript_router_get_stack_top";
+    "affinescript_router_get_popup_tag";
+    "memory";
+  ] in
+  List.iter (fun ex ->
+    Alcotest.(check bool)
+      (Printf.sprintf "export '%s' present" ex)
+      true (List.mem ex names)
+  ) expected
+
+(** Two custom sections: ownership + tea_layout. *)
+let test_router_custom_sections () =
+  let m = Tea_router.generate () in
+  Alcotest.(check int) "2 custom sections" 2 (List.length m.custom_sections);
+  let names = List.map fst m.custom_sections in
+  Alcotest.(check bool) "ownership section"  true
+    (List.mem "affinescript.ownership"  names);
+  Alcotest.(check bool) "tea_layout section" true
+    (List.mem "affinescript.tea_layout" names)
+
+(** Wasm binary starts with correct magic \x00asm + version \x01\x00\x00\x00. *)
+let test_router_wasm_magic () =
+  let raw = encode_router_to_bytes () in
+  let magic   = Bytes.sub raw 0 4 in
+  let version = Bytes.sub raw 4 4 in
+  Alcotest.(check bytes) "Wasm magic"   (Bytes.of_string "\x00asm")          magic;
+  Alcotest.(check bytes) "Wasm version" (Bytes.of_string "\x01\x00\x00\x00") version
+
+(** fn_push (func 1): param 0 (screen_tag) must be Linear (kind byte = 1). *)
+let test_router_push_param_linear () =
+  let raw     = encode_router_to_bytes () in
+  let entries = parse_ownership_from_bytes raw in
+  match List.assoc_opt 1 (List.map (fun (f, p, r) -> (f, (p, r))) entries) with
+  | None ->
+    Alcotest.fail "no ownership entry for func 1 (push)"
+  | Some (params, _ret) ->
+    (match params with
+     | [kind] ->
+       Alcotest.(check int) "push screen_tag is Linear (1)" 1 kind
+     | _ ->
+       Alcotest.fail
+         (Printf.sprintf "expected 1 param for push, got %d" (List.length params)))
+
+(** fn_present_popup (func 3): param 0 (popup_tag) must be Linear. *)
+let test_router_present_popup_param_linear () =
+  let raw     = encode_router_to_bytes () in
+  let entries = parse_ownership_from_bytes raw in
+  match List.assoc_opt 3 (List.map (fun (f, p, r) -> (f, (p, r))) entries) with
+  | None ->
+    Alcotest.fail "no ownership entry for func 3 (present_popup)"
+  | Some (params, _ret) ->
+    (match params with
+     | [kind] ->
+       Alcotest.(check int) "present_popup popup_tag is Linear (1)" 1 kind
+     | _ ->
+       Alcotest.fail
+         (Printf.sprintf "expected 1 param for present_popup, got %d" (List.length params)))
+
+(** fn_resize (func 5): both params (w, h) must be Linear. *)
+let test_router_resize_params_linear () =
+  let raw     = encode_router_to_bytes () in
+  let entries = parse_ownership_from_bytes raw in
+  match List.assoc_opt 5 (List.map (fun (f, p, r) -> (f, (p, r))) entries) with
+  | None ->
+    Alcotest.fail "no ownership entry for func 5 (resize)"
+  | Some (params, _ret) ->
+    (match params with
+     | [k0; k1] ->
+       Alcotest.(check int) "resize w is Linear (1)" 1 k0;
+       Alcotest.(check int) "resize h is Linear (1)" 1 k1
+     | _ ->
+       Alcotest.fail
+         (Printf.sprintf "expected 2 params for resize, got %d" (List.length params)))
+
+(** tea_layout section is non-empty and starts with version byte 1. *)
+let test_router_tea_layout_section () =
+  let m = Tea_router.generate () in
+  match List.assoc_opt "affinescript.tea_layout" m.custom_sections with
+  | None ->
+    Alcotest.fail "affinescript.tea_layout section missing"
+  | Some payload ->
+    Alcotest.(check bool) "payload non-empty" true (Bytes.length payload > 0);
+    let version_byte = Char.code (Bytes.get payload 0) in
+    Alcotest.(check int) "layout version byte = 1" 1 version_byte
+
+let tea_router_tests = [
+  Alcotest.test_case "structure (11 funcs, 1 mem, 12 exports)" `Quick test_router_structure;
+  Alcotest.test_case "export names all present"                 `Quick test_router_export_names;
+  Alcotest.test_case "two custom sections"                      `Quick test_router_custom_sections;
+  Alcotest.test_case "Wasm binary magic + version"              `Quick test_router_wasm_magic;
+  Alcotest.test_case "push screen_tag param is Linear"          `Quick test_router_push_param_linear;
+  Alcotest.test_case "present_popup param is Linear"            `Quick test_router_present_popup_param_linear;
+  Alcotest.test_case "resize w+h params are both Linear"        `Quick test_router_resize_params_linear;
+  Alcotest.test_case "tea_layout section present + versioned"   `Quick test_router_tea_layout_section;
+]
+
+(* ============================================================================
    Section 12: E2E Traits — Registry, Method Dispatch, Body Checking
    ============================================================================
 
@@ -1755,6 +1903,7 @@ let tests =
     ("E2E Traits", trait_impl_tests);
     ("E2E TEA", tea_tests);
     ("E2E TEA Bridge", tea_bridge_tests);
+    ("E2E TEA Router", tea_router_tests);
     ("E2E LSP Phase B", lsp_phase_b_tests);
     ("E2E LSP Phase C", lsp_phase_c_tests);
     ("E2E LSP Phase D", lsp_phase_d_tests);

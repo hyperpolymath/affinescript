@@ -354,6 +354,32 @@ let tea_bridge_cmd_fn output =
   Format.printf "Custom sections: affinescript.ownership, affinescript.tea_layout@.";
   `Ok ()
 
+(** Generate the Cadre Router Wasm module.
+
+    Produces a WebAssembly 1.0 module encoding IDApTIK's screen back-stack as
+    an affine resource.  Push/pop consume the old stack linearly and produce a
+    new one — navigation history as a linear type.
+
+    No source file is needed — the module is generated directly from the router
+    ABI specification.  Write to a .wasm file, copy to IDApTIK's
+    public/assets/wasm/ directory, and load via AffineTEARouter.load(). *)
+let router_bridge_cmd_fn output =
+  let m = Affinescript.Tea_router.generate () in
+  Affinescript.Wasm_encode.write_module_to_file output m;
+  Format.printf "Router bridge written to %s@." output;
+  Format.printf "  affinescript_router_init()                          — initialise RouterModel@.";
+  Format.printf "  affinescript_router_push(screen_tag: i32)           — push screen (Linear param)@.";
+  Format.printf "  affinescript_router_pop()                           — pop current screen@.";
+  Format.printf "  affinescript_router_present_popup(popup_tag: i32)   — show popup (Linear param)@.";
+  Format.printf "  affinescript_router_dismiss_popup()                 — dismiss popup@.";
+  Format.printf "  affinescript_router_resize(w: i32, h: i32)          — update screen dims (Linear)@.";
+  Format.printf "  affinescript_router_get_stack_top() -> i32          — current screen (−1 if empty)@.";
+  Format.printf "  affinescript_router_get_popup_tag() -> i32          — active popup (−1 if none)@.";
+  Format.printf "Screen tags: 0=Title 1=CharacterSelect 2=WorldMap 3=Load 4=Game@.";
+  Format.printf "Popup tags:  0=Settings 1=Inventory 2=Hacking@.";
+  Format.printf "Custom sections: affinescript.ownership, affinescript.tea_layout@.";
+  `Ok ()
+
 (** Start the REPL *)
 let repl_cmd_fn () =
   (* TODO: Re-enable when REPL module is restored *)
@@ -652,6 +678,11 @@ let tea_bridge_cmd =
   let info = Cmd.info "tea-bridge" ~doc in
   Cmd.v info Term.(ret (const tea_bridge_cmd_fn $ output_arg))
 
+let router_bridge_cmd =
+  let doc = "Generate the AffineScript Cadre Router Wasm module for IDApTIK" in
+  let info = Cmd.info "router-bridge" ~doc in
+  Cmd.v info Term.(ret (const router_bridge_cmd_fn $ output_arg))
+
 let repl_cmd =
   let doc = "Start the interactive REPL" in
   let info = Cmd.info "repl" ~doc in
@@ -862,7 +893,7 @@ let default_cmd =
   Cmd.group info ~default [
     lex_cmd; parse_cmd; check_cmd; eval_cmd; repl_cmd; compile_cmd;
     fmt_cmd; lint_cmd;
-    tea_bridge_cmd;
+    tea_bridge_cmd; router_bridge_cmd;
     hover_cmd; goto_def_cmd; complete_cmd; server_cmd;
     preview_python_cmd; preview_js_cmd; preview_pseudocode_cmd
   ]
