@@ -27,9 +27,9 @@ enum Result[T, E] {
 }
 
 fn make_point(x: Int, y: Int) -> Point {
-  Point { x: x, y: y };
+  { x: x, y: y }
 }
 
 fn origin() -> Point {
-  Point { x: 0, y: 0 };
+  { x: 0, y: 0 }
 }

@@ -9,10 +9,10 @@ status = "active"
 
 [project-context]
 name = "affinescript"
-completion-percentage = 82
-phase = "python-face-complete"
+completion-percentage = 84
+phase = "faces-architecture-complete"
 tagline = "Rust-inspired language with affine types, dependent types, row polymorphism, and extensible effects"
-note = "Python-face (ADR-010 Priority 2) shipped 2026-04-11. lib/python_face.ml: source-level transformer mapping Python surface syntax to canonical AffineScript before lex+parse. Mappings: def→fn, True/False/None→true/false/(), and/or/not→&&/||/!, class→type, pass→(), #→//, import→use, INDENT/DEDENT→{}/}, colon-at-EOL block openers, else/elif chains. `--face python` flag on `parse` subcommand. 5 new Python-face E2E tests. 73/73 E2E tests: 0 regressions. Previous: ADR-009 conformance complete 2026-04-11 (12/12 valid conformance tests). Next: Priority 3 — LSP Phase B (completion, hover) or borrow checker Phase 3."
+note = "Faces architecture (ADR-010, Priority 2) complete 2026-04-11. (1) lib/python_face.ml: source-level text preprocessor mapping Python surface syntax to canonical AffineScript — indentation→braces, def/True/False/None/and/or/not/class/pass keyword subs, elif/else chains, tail-position semicolon suppression. (2) lib/face.ml: face-aware error formatter mapping canonical error terms to face-specific vocabulary — Python face uses 'Ownership error / single-use variable' for linear violations, 'Name not found' for unbound vars, 'if/else type mismatch' for branch mismatches, renders Unit as None and Bool as bool. (3) bin/main.ml: --face [canonical|python] flag on all subcommands; parse_with_face selects preprocessor path; all error sites route through Face.format_*_error. (4) Span fidelity deferred: error spans currently refer to transformed canonical text positions (planned follow-up). (5) docs/specs/faces.md: face architecture reference doc written. (6) panic-attack audit: 1 High (search.js innerHTML — false positive but fixed to char-replacement), 2 Medium (LSP unwraps/shell heredoc — both false positives), 2 Low (TODO markers — informational). 73/73 E2E tests: 0 regressions. Seam check (items 1+2) verified: --face python on @linear double-use produces correct Python-face ownership error end-to-end."
 
 [components]
 lexer = "complete-minus-affine-tokens (ZERO/ONE tokens for quantity literals NOT emitted; blocks QTT surface syntax). float_exponent now correctly named sub-regexp — scientific notation crash fixed 2026-04-11."
@@ -31,7 +31,7 @@ lsp-phase-d = "pending"
 stdlib = "95% (5 stubs remain as extern builtins)"
 
 [stats]
-compiler-loc = 12712
+compiler-loc = 12750
 compiler-modules = 39
 lsp-files = 5
 test-files = 54

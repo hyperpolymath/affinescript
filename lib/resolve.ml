@@ -403,6 +403,15 @@ let rec resolve_decl (ctx : context) (decl : top_level) : unit result =
   | TopType td ->
     let _ = Symbol.define ctx.symbols td.td_name.name
         Symbol.SKType td.td_name.span td.td_vis in
+    (* Register enum variant constructors so they are reachable as expressions *)
+    (match td.td_body with
+     | TyEnum variants ->
+       List.iter (fun (vd : variant_decl) ->
+         let _ = Symbol.define ctx.symbols vd.vd_name.name
+             Symbol.SKConstructor vd.vd_name.span td.td_vis in
+         ()
+       ) variants
+     | TyAlias _ | TyStruct _ -> ());
     Ok ()
 
   | TopEffect ed ->

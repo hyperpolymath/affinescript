@@ -5,7 +5,7 @@
 fn add(a: Int, b: Int) -> Int = a + b;
 
 fn factorial(n: Int) -> Int {
-  if n <= 1 { 1; } else { n * factorial(n - 1); };
+  if n <= 1 { 1 } else { n * factorial(n - 1) }
 }
 
 fn main() -> () {

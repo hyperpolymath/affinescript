@@ -4,12 +4,18 @@
 (function() {
   'use strict';
 
-  // HTML escape function to prevent XSS
+  // HTML escape function to prevent XSS.
+  // Uses character substitution — no DOM element, no innerHTML write.
+  // (render path uses .textContent assignments throughout, so this helper
+  //  is kept only for any future template-string usage.)
   function escapeHtml(text) {
     if (typeof text !== 'string') return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
   }
 
   // Safe URL validation

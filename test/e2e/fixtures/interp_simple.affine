@@ -11,5 +11,5 @@ fn constant() -> Int = 42;
 fn nested() -> Int {
   let x = 10;
   let y = 20;
-  x + y;
+  x + y
 }

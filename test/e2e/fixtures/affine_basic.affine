@@ -9,3 +9,5 @@ fn use_once(x: Int) -> Int = x + 1;
 fn use_many(x: Int) -> Int = x + x;
 
 fn no_use(x: Int) -> Int = 42;
+
+fn combine(x: Int, y: Int) -> Int = x + y;

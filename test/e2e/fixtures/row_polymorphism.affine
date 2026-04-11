@@ -16,5 +16,5 @@ struct Point3D {
 fn getX(p: Point2D) -> Int = p.x;
 
 fn mk_point(x: Int, y: Int) -> Point2D {
-  Point2D { x: x, y: y };
+  { x: x, y: y }
 }

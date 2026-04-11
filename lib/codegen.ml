@@ -588,6 +588,36 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
         in
         Ok (ctx_with_heap, print_code)
 
+      | ExprVar id when List.mem_assoc id.name ctx.variant_tags ->
+        (* Enum constructor called as a function: Circle(5), Rect({x:1,y:2}), etc.
+           Layout: [tag: i32][field1: i32][field2: i32]...
+           Reuses the same heap-boxing approach as ExprVariant with args. *)
+        let tag = List.assoc id.name ctx.variant_tags in
+        let num_fields = List.length args in
+        let size_in_bytes = 4 + (num_fields * 4) in
+
+        let (ctx_with_heap, alloc_code) = gen_heap_alloc ctx size_in_bytes in
+        let (ctx_with_temp, variant_ptr) = alloc_local ctx_with_heap "__variant_ptr" in
+
+        let store_tag = [
+          LocalTee variant_ptr;
+          I32Const (Int32.of_int tag);
+          I32Store (2, 0);
+        ] in
+
+        let rec store_args ctx' offset arg_list =
+          match arg_list with
+          | [] -> Ok (ctx', [])
+          | arg :: rest ->
+            let* (ctx'', arg_code) = gen_expr ctx' arg in
+            let store_code = [LocalGet variant_ptr] @ arg_code @ [I32Store (2, offset)] in
+            let* (ctx''', rest_code) = store_args ctx'' (offset + 4) rest in
+            Ok (ctx''', store_code @ rest_code)
+        in
+
+        let* (ctx_final, args_store_code) = store_args ctx_with_temp 4 args in
+        Ok (ctx_final, alloc_code @ store_tag @ args_store_code @ [LocalGet variant_ptr])
+
       | _ ->
         (* Not a built-in, proceed with normal function call *)
         (* Generate code for arguments (left to right) *)

@@ -491,3 +491,181 @@ references = [
   "lib/lexer.ml (ZERO/ONE never emitted)",
   "lib/parser.mly quantity rule (lines 180-183)",
 ]
+
+[[adr]]
+id = "ADR-008"
+status = "accepted"
+date = "2026-04-11"
+title = "Effect invocation uses direct call syntax — no 'perform' keyword"
+context = """
+Algebraic effects require a syntax for invoking an effect operation at a
+call site. Two candidates exist in the literature:
+
+1. Direct call: `Http.get(url)` — the effect operation looks like a
+   namespaced function call. The effect is declared in the return type
+   annotation (`-> T / Http, Async`) not at each call site.
+
+2. Explicit perform: `perform Http.get(url)` — the keyword makes the
+   effectful nature of the call visible at every use site. Used by Koka
+   (earlier versions) and some effect-system research languages.
+
+The AffineScript DESIGN-VISION.adoc already shows direct call style in its
+effect examples. The decision needed to be made explicit so the conformance
+suite, parser, and documentation are unambiguous.
+"""
+decision = """
+Effect operations are invoked with direct call syntax. No `perform` keyword.
+
+  fn fetch_user(id: Int) -> User / Http, Async {
+    let resp = Http.get("/users/" ++ show(id))
+    Async.await(resp.json())
+  }
+
+The effect is declared once — in the return type annotation (`/ Http, Async`).
+The call sites are plain calls. The type signature is the contract; the call
+site is just a call.
+"""
+consequences = """
+- The conformance suite, parser, and spec must not admit or require `perform`.
+- Effect operation calls are syntactically indistinguishable from regular
+  function calls; the distinction is entirely in the type system.
+- Error messages for unhandled effects reference the return type annotation,
+  not a `perform` site.
+- This is consistent with the ergonomics goal: effect-heavy code does not
+  accumulate keyword noise at every call site.
+- Face parsers (Python-face, JS-face) can map `async/await` to the Async
+  effect without introducing a `perform` concept — `await` desugars to
+  `Async.await(...)`, which is a direct call.
+"""
+references = [
+  "docs/DESIGN-VISION.adoc (effect examples)",
+  "docs/specs/effects.md",
+]
+
+[[adr]]
+id = "ADR-009"
+status = "accepted"
+date = "2026-04-11"
+title = "The conformance suite is authoritative — parser must conform to spec"
+context = """
+The conformance suite (test/conformance/) contains valid AffineScript programs
+drawn from the spec. As of 2026-04-11, 8 of 12 valid conformance tests fail
+to parse. The three categories of failure are:
+
+1. Uppercase type names — `Int`, `String`, `Bool`, `Option` are written in
+   the spec with PascalCase. The parser's `ident` rule accepts only lowercase,
+   so `Int` fails to parse as a type name.
+
+2. ML-style enum syntax — the spec's enum declaration syntax does not match
+   what the parser accepts.
+
+3. Effect op type parameters — the spec includes type parameters on effect
+   operations; the parser does not support them.
+
+Two possible authorities: the spec (conformance suite) or the parser
+(current implementation).
+"""
+decision = """
+The spec is authoritative. The parser must conform to the spec. This is
+consistent with the standing estate-wide rule: 'Language scope lives in a
+written thesis. Thesis authoritative, code must conform. If disagreement,
+code is wrong.'
+
+Specific required changes:
+1. Parser must accept PascalCase type names (`Int`, `String`, `Bool`, user-
+   defined types). The type name namespace is PascalCase; value names remain
+   camelCase/snake_case. This also fixes the conformance suite failure where
+   effect and enum type names could not be written.
+2. Parser must accept the spec's enum declaration syntax (to be confirmed
+   against spec and fixed accordingly).
+3. Parser must support type parameters on effect operations.
+
+The target is 12/12 conformance suite passing.
+"""
+consequences = """
+- lib/lexer.ml and lib/parser.mly are updated to accept PascalCase type names.
+- The `ident` vs `type_ident` distinction is formalised in the grammar:
+  `ident` = lowercase-leading (values, variables, functions)
+  `type_ident` = uppercase-leading (types, effects, enums, type aliases)
+- lib/parser.mly enum and effect rules are audited against spec and fixed.
+- 12/12 conformance tests pass. The conformance suite becomes a live
+  regression suite — any future parser change that breaks a conformance test
+  is a bug, not a spec disagreement.
+- All fixture files under test/e2e/fixtures/ that use lowercase type names
+  (e.g. `type point = ...`) are reviewed; lowercase type aliases remain valid
+  (they are value-level names) but builtin types (`int` written lowercase)
+  are normalised to PascalCase.
+- Error messages and diagnostics use PascalCase type names consistently.
+"""
+references = [
+  "test/conformance/",
+  "lib/lexer.ml",
+  "lib/parser.mly",
+  "docs/spec.md",
+]
+
+[[adr]]
+id = "ADR-010"
+status = "accepted"
+date = "2026-04-11"
+title = "Face-aware error formatting is a first-class toolchain concern"
+context = """
+AffineScript supports syntactic face layers (Python-face, JS-face,
+pseudocode-face, canonical AffineScript) that allow developers to write
+AffineScript using familiar surface syntax from other languages. The compiler
+pipeline forks only at the parser; everything downstream (type checker,
+codegen) is shared and operates on the canonical AST.
+
+Without face-aware error formatting, a developer writing Python-face
+AffineScript receives type errors expressed in canonical AffineScript
+syntax — terms and constructs they have deliberately not learned yet. This
+shatters the face illusion at the worst possible moment (when the developer
+is stuck and needs help) and is a direct contradiction of the adoption goal.
+"""
+decision = """
+Face-aware error formatting is a first-class toolchain concern, not an
+afterthought. It is implemented as a formatting layer between the compiler
+and the terminal, not inside the compiler itself.
+
+Architecture:
+  compiler (emits errors in canonical AST terms)
+      ↓
+  face-aware error formatter   ← separate concern, swappable
+      ↓
+  terminal / IDE / LSP
+
+The compiler's error representation is canonical and face-agnostic. The
+formatter receives: (error, active-face) → formatted error string.
+
+Each face provides an error vocabulary mapping:
+  canonical term → face term
+  e.g. (python-face) "affine binding" → "single-use variable"
+  e.g. (js-face) "Option[T]" → "T | null"  [with note: 'use .unwrap_or()']
+
+Error source spans are always reported in the face's syntax, not canonical
+AffineScript syntax, since the user's file is written in the face.
+"""
+consequences = """
+- The compiler's error types carry enough information for the formatter to
+  reconstruct face-appropriate messages. No compiler internals leak face
+  knowledge.
+- Each face ships with an error vocabulary file (part of the face definition).
+- The toolchain (CLI, LSP server, playground) passes the active face to the
+  formatter. The formatter is the single point of face-awareness for errors.
+- A developer on Python-face who hits a linearity violation sees:
+    Error: single-use variable 'x' used twice
+      → line 7, in greet
+  not:
+    Error: affine binding 'x' used 2 times (quantity violation: QOne, found 2)
+- The face formatter is versioned alongside the face. When a face is
+  deprecated, its error formatter is deprecated with it.
+- The IDE/LSP integration carries face information in the project config so
+  hover types, completions, and inline errors all speak the face's vocabulary.
+- This is a design commitment, not an immediate implementation task. The
+  canonical compiler error representation must be designed with this
+  formatability requirement in mind from the start.
+"""
+references = [
+  "docs/DESIGN-VISION.adoc (faces section)",
+  "docs/specs/faces.md (to be written)",
+]
