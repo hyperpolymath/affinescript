@@ -1,0 +1,53 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Warmup 01: Basic AffineScript — let bindings, literals, functions
+//
+// Try running each section with:
+//   affinescript eval 01_basics.affine
+//
+// The goal is to get your fingers used to AffineScript syntax before
+// ownership and effects are introduced.
+
+// ── Literals ──────────────────────────────────────────────────────────────────
+
+let answer: Int = 42
+let pi: Float = 3.14159
+let greeting: String = "Hello, AffineScript"
+let am_i_learning: Bool = true
+let nothing: () = ()            // Unit — the absence of a value
+
+// ── Let bindings are immutable by default ─────────────────────────────────────
+
+let x = 10
+let y = x + 5                   // 15 — pure computation, no side effects yet
+
+// ── Functions ─────────────────────────────────────────────────────────────────
+
+// A simple function:
+fn add(a: Int, b: Int) -> Int {
+  a + b
+}
+
+// Functions are values — you can store them in let bindings:
+let double = fn(n: Int) -> Int { n * 2 }
+
+// Generic functions work the same way:
+fn identity[T](x: T) -> T {
+  x
+}
+
+// ── Pattern matching ──────────────────────────────────────────────────────────
+
+fn describe_number(n: Int) -> String {
+  match n {
+    0 => "zero"
+    1 => "one"
+    _ => "many"
+  }
+}
+
+// ── Exercise 1: write a function that returns the absolute value of an Int ────
+// fn abs(n: Int) -> Int { ... }
+
+// ── Exercise 2: write a generic function `const_fn` that ignores its second
+//    argument and always returns the first ─────────────────────────────────────
+// fn const_fn[A, B](a: A, _b: B) -> A { ... }

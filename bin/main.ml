@@ -62,8 +62,10 @@ let lex_file path =
 (** Parse a file using the requested face. *)
 let parse_with_face (face : Affinescript.Face.face) path =
   match face with
-  | Affinescript.Face.Canonical -> Affinescript.Parse_driver.parse_file path
-  | Affinescript.Face.Python    -> Affinescript.Python_face.parse_file_python path
+  | Affinescript.Face.Canonical   -> Affinescript.Parse_driver.parse_file path
+  | Affinescript.Face.Python      -> Affinescript.Python_face.parse_file_python path
+  | Affinescript.Face.Js          -> Affinescript.Js_face.parse_file_js path
+  | Affinescript.Face.Pseudocode  -> Affinescript.Pseudocode_face.parse_file_pseudocode path
 
 (** Preview the Python-face text transform (debug tool). *)
 let preview_python_transform path =
@@ -71,6 +73,22 @@ let preview_python_transform path =
   let s = really_input_string ch (in_channel_length ch) in
   close_in ch;
   print_string (Affinescript.Python_face.preview_transform s);
+  `Ok ()
+
+(** Preview the JS-face text transform (debug tool). *)
+let preview_js_transform path =
+  let ch = open_in_bin path in
+  let s = really_input_string ch (in_channel_length ch) in
+  close_in ch;
+  print_string (Affinescript.Js_face.preview_transform s);
+  `Ok ()
+
+(** Preview the pseudocode-face text transform (debug tool). *)
+let preview_pseudocode_transform path =
+  let ch = open_in_bin path in
+  let s = really_input_string ch (in_channel_length ch) in
+  close_in ch;
+  print_string (Affinescript.Pseudocode_face.preview_transform s);
   `Ok ()
 
 (** Parse a file and print AST (no --json support). *)
@@ -359,14 +377,19 @@ let compile_file face json wasm_gc path output =
         `Error (false, "Parse error")
   end
 
-(** Format a file.  Only canonical face is supported — Python-face formatting
-    requires a reverse transform that is not yet implemented. *)
+(** Format a file.  Only canonical face is supported — non-canonical face
+    formatting requires a reverse transform that is not yet implemented. *)
 let fmt_file face path =
   (match face with
   | Affinescript.Face.Python ->
     Format.eprintf "fmt --face python is not yet supported \
-                    (reverse Python transform is pending).@.";
-    ()
+                    (reverse Python transform is pending).@."; ()
+  | Affinescript.Face.Js ->
+    Format.eprintf "fmt --face js is not yet supported \
+                    (reverse JS transform is pending).@."; ()
+  | Affinescript.Face.Pseudocode ->
+    Format.eprintf "fmt --face pseudocode is not yet supported \
+                    (reverse pseudocode transform is pending).@."; ()
   | Affinescript.Face.Canonical -> ());
   try
     Affinescript.Formatter.format_file path;
@@ -457,15 +480,24 @@ let wasm_gc_arg =
 (** Shared --face flag: select the parser surface-syntax face. *)
 let face_arg =
   let faces = Arg.enum [
-    ("canonical", Affinescript.Face.Canonical);
-    ("python",    Affinescript.Face.Python);
+    ("canonical",  Affinescript.Face.Canonical);
+    ("python",     Affinescript.Face.Python);
+    ("js",         Affinescript.Face.Js);
+    ("javascript", Affinescript.Face.Js);
+    ("pseudocode", Affinescript.Face.Pseudocode);
+    ("pseudo",     Affinescript.Face.Pseudocode);
   ] in
   Arg.(value & opt faces Affinescript.Face.Canonical & info ["face"]
     ~docv:"FACE"
-    ~doc:"Parser face (surface-syntax variant). $(docv) must be $(b,canonical) \
-          (default, standard AffineScript) or $(b,python) (Python-style syntax: \
-          indentation-based blocks, $(b,def)/$(b,True)/$(b,False)/$(b,None)/\
-          $(b,and)/$(b,or)/$(b,not) etc. — compiled to the same canonical AST).")
+    ~doc:"Parser face (surface-syntax variant). \
+          $(b,canonical) (default) — standard AffineScript. \
+          $(b,python) — Python-style syntax ($(b,def)/indentation/$(b,True)/$(b,None)/etc.). \
+          $(b,js) or $(b,javascript) — JavaScript-style syntax \
+          ($(b,const)/$(b,let)/$(b,function)/$(b,=>)/$(b,null)/$(b,===)/import-from). \
+          $(b,pseudocode) or $(b,pseudo) — natural-language pseudocode \
+          ($(b,function)/$(b,set...to)/$(b,if...then)/$(b,end)/$(b,is)/$(b,and)/etc.). \
+          All faces compile to the same canonical AST; errors are reported \
+          in face-appropriate vocabulary.")
 
 let lex_cmd =
   let doc = "Lex a file and print tokens" in
@@ -512,10 +544,24 @@ let preview_python_cmd =
   let info = Cmd.info "preview-python" ~doc in
   Cmd.v info Term.(ret (const preview_python_transform $ path_arg))
 
+let preview_js_cmd =
+  let doc = "Preview the JS-face text transform (debug)" in
+  let info = Cmd.info "preview-js" ~doc in
+  Cmd.v info Term.(ret (const preview_js_transform $ path_arg))
+
+let preview_pseudocode_cmd =
+  let doc = "Preview the pseudocode-face text transform (debug)" in
+  let info = Cmd.info "preview-pseudocode" ~doc in
+  Cmd.v info Term.(ret (const preview_pseudocode_transform $ path_arg))
+
 let default_cmd =
   let doc = "The AffineScript compiler" in
   let info = Cmd.info "affinescript" ~version ~doc in
   let default = Term.(ret (const (`Help (`Pager, None)))) in
-  Cmd.group info ~default [lex_cmd; parse_cmd; check_cmd; eval_cmd; repl_cmd; compile_cmd; fmt_cmd; lint_cmd; preview_python_cmd]
+  Cmd.group info ~default [
+    lex_cmd; parse_cmd; check_cmd; eval_cmd; repl_cmd; compile_cmd;
+    fmt_cmd; lint_cmd;
+    preview_python_cmd; preview_js_cmd; preview_pseudocode_cmd
+  ]
 
 let () = exit (Cmd.eval default_cmd)

@@ -1,0 +1,71 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Warmup 02: Ownership and affine types
+//
+// AffineScript's key insight: resources can only be used once by default.
+// This lets the compiler prove your code is memory-safe without a GC.
+//
+// Run: affinescript check 02_ownership.affine
+
+// ── own: this value is a unique resource ──────────────────────────────────────
+//
+// "own" is surface syntax for the @linear quantity annotation.
+// An own value must be consumed exactly once.
+
+type File = own { fd: Int }
+
+// Consuming a resource (takes ownership, caller can't use it after):
+fn close(file: own File) -> () {
+  ()                            // Implementation would close the fd
+}
+
+// ── ref: borrow without consuming ─────────────────────────────────────────────
+//
+// A ref borrow lets you inspect a resource without consuming it.
+// The original owner keeps the value after the call returns.
+
+fn read_fd(file: ref File) -> Int {
+  file.fd
+}
+
+// ── mut: mutable borrow ───────────────────────────────────────────────────────
+//
+// A mut borrow lets you modify the value in-place.
+// Only one mut borrow can exist at a time (enforced by the borrow checker).
+
+fn set_fd(file: mut File, new_fd: Int) -> () {
+  file.fd = new_fd
+}
+
+// ── @linear / @erased / @unrestricted (the full syntax) ─────────────────────
+//
+// own/ref/mut are ergonomic aliases.  The underlying quantity annotations are:
+//   @linear        ≡  own   — used exactly once
+//   @erased        ≡  :0    — compile-time only, erased at runtime
+//   @unrestricted  ≡  ref   — may be used any number of times (default)
+
+fn use_linear(@linear x: Int) -> Int {
+  x                             // x is consumed here — can't use it again
+}
+
+fn use_erased(@erased _proof: Bool) -> String {
+  "the proof only exists at compile time"
+}
+
+// ── Option and Result are the right tools for fallibility ─────────────────────
+
+fn safe_divide(a: Int, b: Int) -> Option[Int] {
+  if b == 0 { None } else { Some(a / b) }
+}
+
+fn parse_int(s: ref String) -> Result[Int, String] {
+  // In a real program this would parse; here we just illustrate the type:
+  Ok(42)
+}
+
+// ── Exercise 1: write a function that takes own File, reads the fd (ref), ─────
+//    then closes it.  What types do the arguments need?
+// fn read_then_close(file: ???) -> Int { ... }
+
+// ── Exercise 2: write a version of `safe_divide` that returns Result[Int, String]
+//    with a descriptive error message instead of Option. ──────────────────────
+// fn checked_divide(a: Int, b: Int) -> Result[Int, String] { ... }

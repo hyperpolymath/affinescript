@@ -53,6 +53,8 @@ The compiler is face-agnostic throughout.  The two face-aware layers are:
 |------|----------|----------------|--------|
 | Canonical | `--face canonical` (default) | `.affine` | Stable |
 | Python | `--face python` | `.pyaff` | Stable (ADR-010) |
+| JS | `--face js` or `--face javascript` | `.jsaff` | Beta (2026-04-11) |
+| Pseudocode | `--face pseudocode` or `--face pseudo` | `.pseudoaff` | Beta (2026-04-11) |
 
 ---
 

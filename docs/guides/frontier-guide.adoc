@@ -1,0 +1,385 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+= AffineScript Frontier Guide: The Unveiling
+Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+2026-04-11
+:toc:
+:icons: font
+:source-highlighter: rouge
+
+The Frontier Guide takes you from "I write JavaScript / Python" to
+"I understand why AffineScript's design choices produce better programs."
+It is not a reference manual — it is an unveiling.
+
+Each section begins by naming a problem you already know, then shows exactly
+how AffineScript solves it, then gives you something to try.
+
+== The Six Problems of X-Scripts
+
+Before AffineScript, there were many "improved" JS variants.  Most of them
+fixed one or two problems and ignored the rest.  AffineScript's thesis is that
+all six of these problems have the same root cause: **the runtime does not know
+the program's intent** — so neither does the programmer.
+
+[cols="1,2,2"]
+|===
+| Problem | Symptom | AffineScript answer
+
+| Null is a lie
+| Two nothings: `null` and `undefined`
+| `Option[T]` — exactly one nothing
+
+| Mutation is invisible
+| Every variable is secretly mutable
+| `own`/`ref`/`mut` — mutation is in the type
+
+| Errors throw sideways
+| Untyped `throw` / `catch` anywhere
+| `Result[T, E]` — errors in the return type
+
+| Async is bolted on
+| Callbacks → Promises → async/await → signals
+| Algebraic effects — one composable model
+
+| Types become unreadable
+| TypeScript `infer`, conditional types, mapped types
+| Row polymorphism — structural, principled, readable
+
+| Runtime is still JS
+| Type erasure — guarantees vanish at run time
+| Typed WASM (WasmGC) — types survive into execution
+|===
+
+Let us unveil each one.
+
+== Chapter 1: No Null
+
+JavaScript gives you two ways to say "nothing": `null` and `undefined`.
+They behave differently.  TypeScript adds `T | null | undefined` which
+proliferates at every call site.
+
+AffineScript has **one** nothing.
+
+[source,affinescript]
+----
+// Option[T] — present or absent, not three states:
+let name: Option[String] = Some("Alice")
+let missing: Option[String] = None
+
+// Pattern matching forces you to handle both cases:
+fn greet(name: Option[String]) -> String {
+  match name {
+    Some(n) => "Hello, " ++ n ++ "!"
+    None    => "Hello, stranger!"
+  }
+}
+----
+
+The compiler rejects any code that uses a `Some` without matching on `None`.
+There is no way to accidentally treat `None` as a value.
+
+=== Try it
+
+[source,affinescript]
+----
+// Type-check this file and read the error:
+fn greet_broken(name: Option[String]) -> String {
+  // Deliberate mistake: treating None as Some
+  name ++ "!"   // ERROR: Option[String] is not String
+}
+----
+
+Run: `affinescript check` — the error tells you exactly what went wrong and
+on which line.
+
+== Chapter 2: Ownership (Mutation You Can See)
+
+In JavaScript, every object is a shared mutable reference by default.  You
+pass a value to a function; the function might mutate it; you have no idea.
+You copy defensively.  You introduce bugs through aliasing.
+
+AffineScript's type system makes mutation **visible in the type**:
+
+[source,affinescript]
+----
+type Buffer = own { bytes: Array[Int], length: Int }
+
+// ref: read-only borrow — the caller keeps the buffer
+fn size(buf: ref Buffer) -> Int {
+  buf.length
+}
+
+// mut: mutable borrow — modifies in place, caller sees the change
+fn append(buf: mut Buffer, byte: Int) -> () {
+  buf.bytes = buf.bytes ++ [byte];
+  buf.length = buf.length + 1;
+}
+
+// own: transfers ownership — caller cannot use buf after this call
+fn into_bytes(buf: own Buffer) -> Array[Int] {
+  buf.bytes
+}
+----
+
+The compiler tracks usage automatically.  If you pass `buf` to `into_bytes`,
+any later use of `buf` is a compile-time error.  No runtime check needed.
+
+=== The quantity annotations
+
+For fine-grained control, the underlying quantity annotations are available:
+
+[source,affinescript]
+----
+// @linear: must be used exactly once
+fn consume_once(@linear handle: Int) -> () { () }
+
+// @erased: compile-time only (proof terms, type-class witnesses)
+fn trust_me(@erased _proof: Bool) -> String { "I proved it" }
+
+// @unrestricted: unlimited use (the default for all values)
+fn read_many(@unrestricted n: Int) -> Int { n + n }
+----
+
+=== Try it
+
+[source,affinescript]
+----
+type File = own { fd: Int }
+
+fn open() -> own File { File { fd: 1 } }
+fn read(f: ref File) -> String { "contents" }
+fn close(f: own File) -> () { () }
+
+fn broken() -> String {
+  let file = open();
+  close(file);          // file is consumed here
+  read(file)            // ERROR: file used after move
+}
+----
+
+== Chapter 3: Errors in the Return Type
+
+JavaScript `throw` can happen from anywhere.  TypeScript does not check it.
+You write try/catch and hope.
+
+AffineScript errors live in the **return type**:
+
+[source,affinescript]
+----
+// The function signature tells you everything:
+fn parse_int(s: ref String) -> Result[Int, String] {
+  match s {
+    "0" => Ok(0)
+    "1" => Ok(1)
+    _   => Err("not an integer: " ++ s)
+  }
+}
+
+// You must handle both cases — the compiler enforces it:
+fn double_parsed(s: ref String) -> Result[Int, String] {
+  match parse_int(s) {
+    Ok(n)  => Ok(n * 2)
+    Err(e) => Err(e)
+  }
+}
+
+// The `?` operator propagates errors up automatically:
+fn double_parsed_short(s: ref String) -> Result[Int, String] {
+  let n = parse_int(s)?;
+  Ok(n * 2)
+}
+----
+
+There is no hidden throw path.  Reading the signature tells you what can go wrong.
+
+=== Try it
+
+[source,affinescript]
+----
+fn safe_head[T](xs: ref Array[T]) -> Result[ref T, String] {
+  // Complete this function:
+  // Return Ok(first element) if the array is non-empty,
+  // or Err("empty array") if it is empty.
+  Err("TODO")
+}
+----
+
+== Chapter 4: Effects (One Model for Everything Impure)
+
+JavaScript's async history: callbacks (2009), Promises (2012), async/await
+(2017), React Hooks (2019), signals (2023-).  Each layer partially fixes
+the previous one.  They do not compose.
+
+AffineScript uses **algebraic effects** — one model for all of this:
+
+[source,affinescript]
+----
+// Declare what the effect offers:
+effect IO {
+  fn println(s: String);
+  fn read_line() -> String;
+}
+
+effect Async {
+  fn await[T](promise: Promise[T]) -> T;
+  fn spawn[T](f: () -> T) -> Promise[T];
+}
+
+effect State[S] {
+  fn get() -> S;
+  fn put(s: S) -> ();
+}
+
+// Declare which effects a function uses — no surprise impurity:
+fn echo() -> () / IO {
+  let line = IO.read_line();
+  IO.println("You said: " ++ line)
+}
+
+// Compose effects naturally — they are rows:
+fn fetch_and_log(url: ref String) -> Result[String, String] / IO + Async {
+  let response = Async.await(http_get(url));
+  IO.println("fetched " ++ url);
+  Ok(response)
+}
+----
+
+Because effects are types, the compiler rejects code that uses IO in a
+context where IO was not declared.  No accidental side effects.
+
+== Chapter 5: Row Polymorphism (Duck Typing with Proofs)
+
+TypeScript's structural typing is powerful but the inference gets complex.
+AffineScript's row polymorphism is principled and readable:
+
+[source,affinescript]
+----
+// This function works on any record that has at least `name: String`.
+// Whatever other fields it has (captured by `..r`) are passed through.
+fn greet[..r](entity: {name: String, ..r}) -> String {
+  "Hello, " ++ entity.name ++ "!"
+}
+
+type Person = {name: String, age: Int}
+type Company = {name: String, employees: Int, revenue: Float}
+
+// Both work — the row variable absorbs the extra fields:
+greet(Person { name: "Alice", age: 30 })
+greet(Company { name: "Acme", employees: 100, revenue: 9999.0 })
+----
+
+Row polymorphism is also how effects compose:
+
+[source,affinescript]
+----
+// This function accepts any function that uses at least IO,
+// plus any additional effects it may use (`..e`):
+fn run_logged[..e](f: () -> () / IO + ..e) -> () / IO + ..e {
+  IO.println("start");
+  f();
+  IO.println("end");
+}
+----
+
+== Chapter 6: Typed WASM (Guarantees at Runtime)
+
+TypeScript erases all its types when it compiles to JavaScript.  The runtime
+has no idea what you proved.  You rely on defensive checks, branded types,
+and faith.
+
+AffineScript targets **Typed WebAssembly (WasmGC)**.  The type guarantees
+survive into the binary.  The WASM runtime enforces them.
+
+This means:
+- Your struct layout is what you declared — no fields added at runtime.
+- Your variant tags are what the compiler assigned — no stringly-typed dispatch.
+- Linear memory is managed by the AffineScript runtime, not the JS GC.
+- Your ownership invariants hold at the machine level, not just in the source.
+
+[source,bash]
+----
+# Compile to standard WASM:
+affinescript compile hello.affine --output hello.wasm
+
+# Compile to WasmGC (struct.new, array.new_fixed, typed references):
+affinescript compile-gc hello.affine --output hello.wasm
+
+# Run in Deno (which supports WasmGC natively):
+deno run --allow-read runner.js
+----
+
+== Putting It Together: A Complete Program
+
+[source,affinescript]
+----
+// complete_example.affine — a small resource manager
+
+effect IO {
+  fn println(s: String);
+}
+
+effect Exn[E] {
+  fn throw(err: E) -> Never;
+}
+
+type Config = { max_retries: Int, timeout: Int }
+type Request = own { url: String, config: ref Config }
+type Response = { body: String, status: Int }
+type FetchError = { message: String }
+
+// Open a request (produces a linear resource):
+fn make_request(url: String, config: ref Config) -> own Request {
+  Request { url: url, config: config }
+}
+
+// Send the request (consumes it — can't send twice):
+fn send(req: own Request) -> Result[Response, FetchError] / IO {
+  IO.println("Sending request to " ++ req.url);
+  // Real implementation would use the Async effect
+  Ok(Response { body: "OK", status: 200 })
+}
+
+// The return type tells you: this can fail, and it does IO.
+fn fetch_with_retry(
+  url: String,
+  config: ref Config
+) -> Result[String, FetchError] / IO {
+  let req = make_request(url, config);
+  match send(req) {
+    Ok(resp) =>
+      if resp.status == 200 {
+        Ok(resp.body)
+      } else {
+        Err({ message: "HTTP " ++ Int.to_string(resp.status) })
+      }
+    Err(e) => Err(e)
+  }
+}
+----
+
+== What to Read Next
+
+- link:warmup/README.adoc[Warmup scripts] — hands-on exercises, 15 minutes each
+- link:../specs/SPEC.md[Language Specification] — the authoritative grammar and semantics
+- link:../specs/SETTLED-DECISIONS.adoc[Settled Decisions] — architectural choices and why they were made
+- link:../DESIGN-VISION.adoc[Design Vision] — the long view
+
+== Faces: Meeting Learners Where They Are
+
+If canonical AffineScript syntax feels unfamiliar, the `--face` flag lets
+you write in a surface syntax closer to what you already know:
+
+[source,bash]
+----
+# Python-style syntax — def, True/False/None, indentation:
+affinescript --face python check my_program.py
+
+# Preview what the preprocessor produces from a Python-face file:
+affinescript preview-python-transform my_program.py
+----
+
+Regardless of which face you use, the type checker sees canonical
+AffineScript.  Error messages are translated back to the face you chose, so
+"Ownership error: single-use variable" appears instead of internal jargon.
+
+Additional faces (JS-face, Pseudocode-face, and others) are on the roadmap.
+See link:../specs/faces.md[faces.md] for the architecture.
