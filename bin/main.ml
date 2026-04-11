@@ -151,7 +151,11 @@ let check_file face json path =
         (match Affinescript.Typecheck.check_program resolve_ctx.symbols prog with
         | Error e ->
           add (Affinescript.Json_output.of_type_error e)
-        | Ok _ctx -> ()))
+        | Ok _ctx ->
+          (match Affinescript.Borrow.check_program resolve_ctx.symbols prog with
+          | Error e ->
+            add (Affinescript.Json_output.of_borrow_error e)
+          | Ok () -> ())))
     with
     | Affinescript.Lexer.Lexer_error (msg, pos) ->
       add (Affinescript.Json_output.of_lexer_error msg pos path)
@@ -190,8 +194,14 @@ let check_file face json path =
             (Affinescript.Face.format_type_error face e);
           `Error (false, "Type error")
         | Ok _ctx ->
-          Format.printf "Type checking passed@.";
-          `Ok ()))
+          (match Affinescript.Borrow.check_program resolve_ctx.symbols prog with
+          | Error e ->
+            Format.eprintf "@[<v>Borrow error: %s@]@."
+              (Affinescript.Face.format_borrow_error face e);
+            `Error (false, "Borrow error")
+          | Ok () ->
+            Format.printf "Type checking passed@.";
+            `Ok ())))
     with
     | Affinescript.Lexer.Lexer_error (msg, pos) ->
         Format.eprintf "@[<v>%s:%d:%d: lexer error: %s@]@." path pos.line pos.col msg;
@@ -304,37 +314,41 @@ let compile_file face json wasm_gc path output =
         | Error e ->
           add (Affinescript.Json_output.of_type_error e)
         | Ok _type_ctx ->
-          let is_julia = Filename.check_suffix output ".jl" in
-          if is_julia then begin
-            match Affinescript.Julia_codegen.codegen_julia prog resolve_ctx.symbols with
-            | Error msg ->
-              add { severity = Error; code = "E0800";
-                    message = Printf.sprintf "Julia codegen error: %s" msg;
-                    span = Affinescript.Span.dummy; help = None; labels = [] }
-            | Ok julia_code ->
-              let oc = open_out output in
-              output_string oc julia_code;
-              close_out oc
-          end else if wasm_gc then begin
-            match Affinescript.Codegen_gc.generate_gc_module prog with
-            | Error e ->
-              add { severity = Error; code = "E0802";
-                    message = Printf.sprintf "WASM GC codegen error: %s"
-                      (Affinescript.Codegen_gc.format_codegen_error e);
-                    span = Affinescript.Span.dummy; help = None; labels = [] }
-            | Ok gc_module ->
-              Affinescript.Wasm_gc_encode.write_gc_module_to_file output gc_module
-          end else begin
-            let optimized_prog = Affinescript.Opt.fold_constants_program prog in
-            match Affinescript.Codegen.generate_module optimized_prog with
-            | Error e ->
-              add { severity = Error; code = "E0801";
-                    message = Printf.sprintf "WASM codegen error: %s"
-                      (Affinescript.Codegen.show_codegen_error e);
-                    span = Affinescript.Span.dummy; help = None; labels = [] }
-            | Ok wasm_module ->
-              Affinescript.Wasm_encode.write_module_to_file output wasm_module
-          end))
+          (match Affinescript.Borrow.check_program resolve_ctx.symbols prog with
+          | Error e ->
+            add (Affinescript.Json_output.of_borrow_error e)
+          | Ok () ->
+            let is_julia = Filename.check_suffix output ".jl" in
+            if is_julia then begin
+              match Affinescript.Julia_codegen.codegen_julia prog resolve_ctx.symbols with
+              | Error msg ->
+                add { severity = Error; code = "E0800";
+                      message = Printf.sprintf "Julia codegen error: %s" msg;
+                      span = Affinescript.Span.dummy; help = None; labels = [] }
+              | Ok julia_code ->
+                let oc = open_out output in
+                output_string oc julia_code;
+                close_out oc
+            end else if wasm_gc then begin
+              match Affinescript.Codegen_gc.generate_gc_module prog with
+              | Error e ->
+                add { severity = Error; code = "E0802";
+                      message = Printf.sprintf "WASM GC codegen error: %s"
+                        (Affinescript.Codegen_gc.format_codegen_error e);
+                      span = Affinescript.Span.dummy; help = None; labels = [] }
+              | Ok gc_module ->
+                Affinescript.Wasm_gc_encode.write_gc_module_to_file output gc_module
+            end else begin
+              let optimized_prog = Affinescript.Opt.fold_constants_program prog in
+              match Affinescript.Codegen.generate_module optimized_prog with
+              | Error e ->
+                add { severity = Error; code = "E0801";
+                      message = Printf.sprintf "WASM codegen error: %s"
+                        (Affinescript.Codegen.show_codegen_error e);
+                      span = Affinescript.Span.dummy; help = None; labels = [] }
+              | Ok wasm_module ->
+                Affinescript.Wasm_encode.write_module_to_file output wasm_module
+            end)))
     with
     | Affinescript.Lexer.Lexer_error (msg, pos) ->
       add (Affinescript.Json_output.of_lexer_error msg pos path)
@@ -359,39 +373,47 @@ let compile_file face json wasm_gc path output =
             (Affinescript.Face.format_type_error face e);
           `Error (false, "Type error")
         | Ok _type_ctx ->
-          let is_julia = Filename.check_suffix output ".jl" in
-          if is_julia then
-            (match Affinescript.Julia_codegen.codegen_julia prog resolve_ctx.symbols with
-            | Error e ->
-              Format.eprintf "@[<v>Julia codegen error: %s@]@." e;
-              `Error (false, "Julia codegen error")
-            | Ok julia_code ->
-              let oc = open_out output in
-              output_string oc julia_code;
-              close_out oc;
-              Format.printf "Compiled %s -> %s (Julia)@." path output;
-              `Ok ())
-          else if wasm_gc then
-            (match Affinescript.Codegen_gc.generate_gc_module prog with
-            | Error e ->
-              Format.eprintf "@[<v>%s@]@."
-                (Affinescript.Codegen_gc.format_codegen_error e);
-              `Error (false, "WASM GC codegen error")
-            | Ok gc_module ->
-              Affinescript.Wasm_gc_encode.write_gc_module_to_file output gc_module;
-              Format.printf "Compiled %s -> %s (WASM GC)@." path output;
-              `Ok ())
-          else
-            let optimized_prog = Affinescript.Opt.fold_constants_program prog in
-            (match Affinescript.Codegen.generate_module optimized_prog with
-            | Error e ->
-              Format.eprintf "@[<v>Code generation error: %s@]@."
-                (Affinescript.Codegen.show_codegen_error e);
-              `Error (false, "Code generation error")
-            | Ok wasm_module ->
-              Affinescript.Wasm_encode.write_module_to_file output wasm_module;
-              Format.printf "Compiled %s -> %s (WASM)@." path output;
-              `Ok ())))
+          (match Affinescript.Borrow.check_program resolve_ctx.symbols prog with
+          | Error e ->
+            Format.eprintf "@[<v>Borrow error: %s@]@."
+              (Affinescript.Face.format_borrow_error face e);
+            `Error (false, "Borrow error")
+          | Ok () ->
+          begin
+            let is_julia = Filename.check_suffix output ".jl" in
+            if is_julia then
+              (match Affinescript.Julia_codegen.codegen_julia prog resolve_ctx.symbols with
+              | Error e ->
+                Format.eprintf "@[<v>Julia codegen error: %s@]@." e;
+                `Error (false, "Julia codegen error")
+              | Ok julia_code ->
+                let oc = open_out output in
+                output_string oc julia_code;
+                close_out oc;
+                Format.printf "Compiled %s -> %s (Julia)@." path output;
+                `Ok ())
+            else if wasm_gc then
+              (match Affinescript.Codegen_gc.generate_gc_module prog with
+              | Error e ->
+                Format.eprintf "@[<v>%s@]@."
+                  (Affinescript.Codegen_gc.format_codegen_error e);
+                `Error (false, "WASM GC codegen error")
+              | Ok gc_module ->
+                Affinescript.Wasm_gc_encode.write_gc_module_to_file output gc_module;
+                Format.printf "Compiled %s -> %s (WASM GC)@." path output;
+                `Ok ())
+            else
+              let optimized_prog = Affinescript.Opt.fold_constants_program prog in
+              (match Affinescript.Codegen.generate_module optimized_prog with
+              | Error e ->
+                Format.eprintf "@[<v>Code generation error: %s@]@."
+                  (Affinescript.Codegen.show_codegen_error e);
+                `Error (false, "Code generation error")
+              | Ok wasm_module ->
+                Affinescript.Wasm_encode.write_module_to_file output wasm_module;
+                Format.printf "Compiled %s -> %s (WASM)@." path output;
+                `Ok ())
+          end)))
     with
     | Affinescript.Lexer.Lexer_error (msg, pos) ->
         Format.eprintf "@[<v>%s:%d:%d: lexer error: %s@]@." path pos.line pos.col msg;

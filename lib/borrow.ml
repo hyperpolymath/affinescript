@@ -15,7 +15,7 @@ open Ast
 
 (** A place is an l-value that can be borrowed *)
 type place =
-  | PlaceVar of Symbol.symbol_id
+  | PlaceVar of string * Symbol.symbol_id  (** human name, symbol id *)
   | PlaceField of place * string
   | PlaceIndex of place * int option  (** None for dynamic index *)
   | PlaceDeref of place
@@ -129,10 +129,10 @@ let rec is_copy_type (ty_opt : type_expr option) : bool =
   | None -> false  (* Unknown type, assume not Copy *)
   | Some ty ->
     begin match ty with
-      | TyNamed id when id.name = "Int" || id.name = "Bool" || id.name = "Char" -> true
-      | TyNamed id when id.name = "Unit" -> true
+      | TyCon id when id.name = "Int" || id.name = "Bool" || id.name = "Char" -> true
+      | TyCon id when id.name = "Unit" -> true
       | TyTuple tys -> List.for_all (fun t -> is_copy_type (Some t)) tys
-      | TyApp (TyNamed id, _) when id.name = "Ref" -> true  (* Shared references are Copy *)
+      | TyRef _ -> true  (* Shared references are Copy *)
       | _ -> false  (* Records, arrays, owned types, etc. are not Copy *)
     end
 
@@ -149,7 +149,7 @@ let is_copy_expr (expr : expr) : bool =
 (** Check if two places overlap *)
 let rec places_overlap (p1 : place) (p2 : place) : bool =
   match (p1, p2) with
-  | (PlaceVar v1, PlaceVar v2) -> v1 = v2
+  | (PlaceVar (_, v1), PlaceVar (_, v2)) -> v1 = v2
   | (PlaceField (base1, _), PlaceField (base2, _)) ->
     places_overlap base1 base2
   | (PlaceVar _, PlaceField (base, _))
@@ -199,14 +199,17 @@ let record_borrow (state : state) (place : place) (kind : borrow_kind)
     Error (UseAfterMove (place, span, move_site))
   | None ->
     (* Check if trying to mutably borrow an immutable place *)
-    begin match kind with
+    let mut_check = match kind with
     | Exclusive ->
       if not (is_mutable state place) then
         Error (CannotBorrowAsMutable (place, span))
       else
-        ()
-    | Shared -> ()
-    end;
+        Ok ()
+    | Shared -> Ok ()
+    in
+    match mut_check with
+    | Error _ as err -> err
+    | Ok () ->
     let new_borrow = {
       b_place = place;
       b_kind = kind;
@@ -228,6 +231,52 @@ let check_use (state : state) (place : place) (span : Span.t) : unit result =
   match find_move state place with
   | Some move_site -> Error (UseAfterMove (place, span, move_site))
   | None -> Ok ()
+
+(** Format a place for display in error messages. *)
+let rec format_place (p : place) : string =
+  match p with
+  | PlaceVar (name, _)        -> name
+  | PlaceField (base, f)      -> format_place base ^ "." ^ f
+  | PlaceIndex (base, Some i) -> format_place base ^ "[" ^ string_of_int i ^ "]"
+  | PlaceIndex (base, None)   -> format_place base ^ "[_]"
+  | PlaceDeref p'             -> "*" ^ format_place p'
+
+(** Format a span for display. *)
+let format_span (span : Span.t) : string =
+  Format.asprintf "%a" Span.pp_short span
+
+(** Format a borrow error as a human-readable string. *)
+let format_borrow_error (e : borrow_error) : string =
+  match e with
+  | UseAfterMove (place, use_span, move_span) ->
+    Printf.sprintf
+      "use of moved value: `%s`\n  \
+       value used at %s\n  \
+       value moved at %s"
+      (format_place place) (format_span use_span) (format_span move_span)
+  | ConflictingBorrow (b1, b2) ->
+    Printf.sprintf
+      "conflicting borrows on `%s`:\n  \
+       %s borrow (id %d) at %s conflicts with earlier %s borrow (id %d) at %s"
+      (format_place b1.b_place)
+      (show_borrow_kind b1.b_kind) b1.b_id (format_span b1.b_span)
+      (show_borrow_kind b2.b_kind) b2.b_id (format_span b2.b_span)
+  | BorrowOutlivesOwner (b, sym_id) ->
+    Printf.sprintf
+      "borrow of `%s` (id %d) outlives its owner (symbol %d)"
+      (format_place b.b_place) b.b_id sym_id
+  | MoveWhileBorrowed (place, b) ->
+    Printf.sprintf
+      "cannot move `%s` while it is %s-borrowed at %s"
+      (format_place place) (show_borrow_kind b.b_kind) (format_span b.b_span)
+  | CannotMoveOutOfBorrow (place, b) ->
+    Printf.sprintf
+      "cannot move out of `%s`, which is behind a %s borrow at %s"
+      (format_place place) (show_borrow_kind b.b_kind) (format_span b.b_span)
+  | CannotBorrowAsMutable (place, span) ->
+    Printf.sprintf
+      "cannot borrow `%s` as mutable — it is not declared with `let mut` (at %s)"
+      (format_place place) (format_span span)
 
 (** Get span from an expression *)
 let rec expr_span (expr : expr) : Span.t =
@@ -327,7 +376,7 @@ let rec expr_to_place (symbols : Symbol.t) (expr : expr) : place option =
   match expr with
   | ExprVar id ->
     begin match lookup_symbol_by_name symbols id.name with
-      | Some sym -> Some (PlaceVar sym.sym_id)
+      | Some sym -> Some (PlaceVar (id.name, sym.sym_id))
       | None -> None
     end
   | ExprField (base, field) ->
@@ -447,14 +496,61 @@ let rec check_expr (ctx : context) (state : state) (symbols : Symbol.t) (expr : 
 
   | ExprMatch em ->
     let* () = check_expr ctx state symbols em.em_scrutinee in
-    List.fold_left (fun acc arm ->
-      let* () = acc in
-      let* () = match arm.ma_guard with
-        | Some g -> check_expr ctx state symbols g
-        | None -> Ok ()
+    (* Each arm is independent: run each against the post-scrutinee state,
+       then merge.  A place is moved after the match if it is moved in any
+       arm (conservative: we require moves to happen in all arms before
+       assuming the value is gone from the outer scope).  Borrows from
+       individual arms expire at arm exit. *)
+    let base_borrows = state.borrows in
+    let base_moved   = state.moved in
+    let arm_results = List.map (fun arm ->
+      (* Reset to post-scrutinee state for each arm *)
+      state.borrows <- base_borrows;
+      state.moved   <- base_moved;
+      let r =
+        let open Result in
+        bind (match arm.ma_guard with
+          | Some g -> check_expr ctx state symbols g
+          | None   -> Ok ())
+          (fun () -> check_expr ctx state symbols arm.ma_body)
       in
-      check_expr ctx state symbols arm.ma_body
-    ) (Ok ()) em.em_arms
+      (r, state.borrows, state.moved)
+    ) em.em_arms in
+    (* Propagate the first error, or merge successful states *)
+    let errors = List.filter_map (fun (r, _, _) ->
+      match r with Error e -> Some e | Ok () -> None) arm_results in
+    begin match errors with
+    | e :: _ -> Error e
+    | [] ->
+      (* Borrows: active after match only if active in ALL arms *)
+      let all_borrows = List.map (fun (_, bs, _) -> bs) arm_results in
+      let merged_borrows = match all_borrows with
+        | [] -> base_borrows
+        | first :: rest ->
+          List.fold_left (fun acc arm_borrows ->
+            List.filter (fun b ->
+              List.exists (fun b' -> b.b_id = b'.b_id) arm_borrows
+            ) acc
+          ) first rest
+      in
+      (* Moves: conservative union — moved in any arm *)
+      let all_moves = List.concat_map (fun (_, _, ms) ->
+        List.filter (fun mr ->
+          not (List.exists (fun base_mr ->
+            places_overlap mr.m_place base_mr.m_place
+          ) base_moved)
+        ) ms
+      ) arm_results in
+      (* Deduplicate moves by place *)
+      let unique_moves = List.fold_left (fun acc mr ->
+        if List.exists (fun mr' -> places_overlap mr.m_place mr'.m_place) acc
+        then acc
+        else mr :: acc
+      ) [] all_moves in
+      state.borrows <- merged_borrows;
+      state.moved   <- base_moved @ unique_moves;
+      Ok ()
+    end
 
   | ExprTuple exprs ->
     List.fold_left (fun acc e ->
@@ -581,13 +677,24 @@ let rec check_expr (ctx : context) (state : state) (symbols : Symbol.t) (expr : 
     check_expr ctx state symbols e
 
 and check_block (ctx : context) (state : state) (symbols : Symbol.t) (blk : block) : unit result =
+  (* Snapshot borrows at block entry.  Borrows created inside this block for
+     block-local variables expire at block exit (lexical lifetimes).
+     Moves persist — a moved value stays moved after the block. *)
+  let borrows_at_entry = state.borrows in
   let* () = List.fold_left (fun acc stmt ->
     let* () = acc in
     check_stmt ctx state symbols stmt
   ) (Ok ()) blk.blk_stmts in
-  match blk.blk_expr with
-  | Some e -> check_expr ctx state symbols e
-  | None -> Ok ()
+  let* () = match blk.blk_expr with
+    | Some e -> check_expr ctx state symbols e
+    | None   -> Ok ()
+  in
+  (* End borrows for places bound in this block: restore to pre-block borrows,
+     keeping only those that existed before the block (i.e., borrow outer-scope
+     variables that the block merely uses — these are unaffected).
+     This is a conservative lexical-lifetime approximation. *)
+  state.borrows <- borrows_at_entry;
+  Ok ()
 
 and check_stmt (ctx : context) (state : state) (symbols : Symbol.t) (stmt : stmt) : unit result =
   match stmt with

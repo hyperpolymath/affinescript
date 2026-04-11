@@ -329,6 +329,25 @@ let format_type_error (face : face) (err : Typecheck.type_error) : string =
     | Typecheck.QuantityError (qerr, _span) ->
       format_quantity_error face qerr)
 
+(* ─── Borrow errors ──────────────────────────────────────────────────── *)
+
+(** Format a borrow error, optionally translated for the active face. *)
+let format_borrow_error (face : face) (err : Borrow.borrow_error) : string =
+  match face with
+  | Canonical   -> Borrow.format_borrow_error err
+  | Python      ->
+    (* Python-face vocabulary: ownership → "value lifetime" *)
+    let msg = Borrow.format_borrow_error err in
+    (* Rephrase the most common variant *)
+    (match err with
+     | Borrow.UseAfterMove _ ->
+       "Lifetime error: " ^ msg
+     | Borrow.CannotBorrowAsMutable _ ->
+       "Mutation error: " ^ msg
+     | _ -> "Ownership error: " ^ msg)
+  | Js          -> Borrow.format_borrow_error err
+  | Pseudocode  -> Borrow.format_borrow_error err
+
 (* ─── Resolve errors ─────────────────────────────────────────────────── *)
 
 (** Format a name-resolution error for the given face. *)

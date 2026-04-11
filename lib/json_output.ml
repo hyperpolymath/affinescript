@@ -244,6 +244,30 @@ let of_type_error (e : Typecheck.type_error) : diagnostic =
     labels = [];
   }
 
+(** Convert a borrow error to a diagnostic. *)
+let of_borrow_error (e : Borrow.borrow_error) : diagnostic =
+  let code, message, help = match e with
+    | Borrow.UseAfterMove _ ->
+      "E0501", Borrow.format_borrow_error e,
+      Some "Each owned value may be used only once; clone it if you need a copy"
+    | Borrow.ConflictingBorrow _ ->
+      "E0502", Borrow.format_borrow_error e,
+      Some "Cannot have both a mutable and an immutable borrow active at the same time"
+    | Borrow.BorrowOutlivesOwner _ ->
+      "E0503", Borrow.format_borrow_error e,
+      Some "The borrow must not outlive the variable it borrows from"
+    | Borrow.MoveWhileBorrowed _ ->
+      "E0504", Borrow.format_borrow_error e,
+      Some "End all borrows before moving the value"
+    | Borrow.CannotMoveOutOfBorrow _ ->
+      "E0505", Borrow.format_borrow_error e,
+      Some "Dereference the reference and clone the value, or take ownership another way"
+    | Borrow.CannotBorrowAsMutable _ ->
+      "E0506", Borrow.format_borrow_error e,
+      Some "Declare the binding with `let mut` to allow mutable borrows"
+  in
+  { severity = Error; code; message; span = Span.dummy; help; labels = [] }
+
 (** Convert an eval error to a diagnostic. *)
 let of_eval_error (e : Value.eval_error) : diagnostic =
   let code, message = match e with
