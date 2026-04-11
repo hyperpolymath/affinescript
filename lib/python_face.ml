@@ -218,10 +218,23 @@ let elif_condition stripped =
 
 (* ─── Main transformer ───────────────────────────────────────────────── *)
 
+(** True if [raw_line] is blank or comment-only (carries no code). *)
+let is_blank_line raw =
+  let (code, _) = strip_py_comment (String.trim raw) in
+  String.trim code = ""
+
 (** Transform Python-style AffineScript source text to canonical AffineScript.
-    The result is valid input for the standard lexer + Menhir parser. *)
+    The result is valid input for the standard lexer + Menhir parser.
+
+    Tail-position detection: a regular statement (non-block-opener) in the
+    last position of a block — i.e. the next meaningful line's indent is
+    strictly less than the current line's indent — is emitted WITHOUT a
+    trailing `;`.  This preserves the expression-as-return-value semantics
+    that AffineScript blocks require (a trailing `;` would make the block
+    yield unit rather than the expression's value). *)
 let transform_source source =
-  let lines = String.split_on_char '\n' source in
+  let lines = Array.of_list (String.split_on_char '\n' source) in
+  let n = Array.length lines in
   let out = Buffer.create (String.length source + 256) in
   (* Indentation stack: innermost level at head, outermost (0) at tail. *)
   let stack = ref [0] in
@@ -235,7 +248,16 @@ let transform_source source =
     done
   in
 
-  List.iter (fun raw_line ->
+  (* The indent level of the next non-blank/non-comment line after index [i],
+     or [-1] when there is no such line (EOF). *)
+  let next_meaningful_indent i =
+    let j = ref (i + 1) in
+    while !j < n && is_blank_line lines.(!j) do incr j done;
+    if !j >= n then -1 else indent_of lines.(!j)
+  in
+
+  for i = 0 to n - 1 do
+    let raw_line = lines.(i) in
     let ind = indent_of raw_line in
     let (code_part, comment_opt) = strip_py_comment (String.trim raw_line) in
     let stripped = String.trim code_part in
@@ -272,21 +294,28 @@ let transform_source source =
 
       let indent_str = String.make ind ' ' in
 
+      (* Tail-position check: the next meaningful line is less indented (or
+         EOF), meaning this is the last expression in its block.  Omit `;`
+         so the block's value is this expression, not unit. *)
+      let next_ind = next_meaningful_indent i in
+      let is_tail = next_ind < ind in (* -1 (EOF) satisfies this for ind > 0 *)
+
       let line_text = match transform_import_line stripped with
-        | Some s -> s
+        | Some s -> s  (* imports are always top-level statements *)
         | None ->
-          if is_block_opener stripped then begin
+          if is_block_opener stripped then
             (* Replace trailing `:` with ` {` *)
-            let body = apply_keywords (strip_block_colon stripped) in
-            body ^ " {"
-          end else begin
-            (* Regular statement: terminate with `;` *)
+            apply_keywords (strip_block_colon stripped) ^ " {"
+          else if is_tail then
+            (* Tail expression: no `;` — this is the block's return value *)
+            apply_keywords stripped
+          else
+            (* Mid-block statement: terminate with `;` *)
             apply_keywords stripped ^ ";"
-          end
       in
       Buffer.add_string out (indent_str ^ with_comment line_text)
     end
-  ) lines;
+  done;
 
   (* Close any blocks still open at EOF *)
   emit_dedents 0;

@@ -59,6 +59,12 @@ let lex_file path =
     Format.eprintf "@[<v>%s:%d:%d: error: %s@]@." path pos.line pos.col msg;
     `Error (false, "Lexer error")
 
+(** Parse a file using the requested face. *)
+let parse_with_face face path =
+  match face with
+  | `Canonical -> Affinescript.Parse_driver.parse_file path
+  | `Python    -> Affinescript.Python_face.parse_file_python path
+
 (** Preview the Python-face text transform (debug tool). *)
 let preview_python_transform path =
   let ch = open_in_bin path in
@@ -87,14 +93,14 @@ let parse_file face path =
 
 (** Type-check a file.  With [--json], emits a structured diagnostic
     report on stderr. *)
-let check_file json path =
+let check_file face json path =
   if json then begin
     let diags = ref [] in
     let add d = diags := d :: !diags in
     let symbols_table = ref None in
     let resolve_refs = ref [] in
     begin try
-      let prog = Affinescript.Parse_driver.parse_file path in
+      let prog = parse_with_face face path in
       let loader_config = Affinescript.Module_loader.default_config () in
       let loader = Affinescript.Module_loader.create loader_config in
       (match Affinescript.Resolve.resolve_program_with_loader prog loader with
@@ -131,7 +137,7 @@ let check_file json path =
       json_finish final_diags)
   end else begin
     try
-      let prog = Affinescript.Parse_driver.parse_file path in
+      let prog = parse_with_face face path in
       let loader_config = Affinescript.Module_loader.default_config () in
       let loader = Affinescript.Module_loader.create loader_config in
       (match Affinescript.Resolve.resolve_program_with_loader prog loader with
@@ -160,12 +166,12 @@ let check_file json path =
 
 (** Evaluate a file with the interpreter.  With [--json], emits
     diagnostics on stderr instead of human-readable error text. *)
-let eval_file json path =
+let eval_file face json path =
   if json then begin
     let diags = ref [] in
     let add d = diags := d :: !diags in
     begin try
-      let prog = Affinescript.Parse_driver.parse_file path in
+      let prog = parse_with_face face path in
       let loader_config = Affinescript.Module_loader.default_config () in
       let loader = Affinescript.Module_loader.create loader_config in
       (match Affinescript.Resolve.resolve_program_with_loader prog loader with
@@ -194,7 +200,7 @@ let eval_file json path =
     json_finish (List.rev !diags)
   end else begin
     try
-      let prog = Affinescript.Parse_driver.parse_file path in
+      let prog = parse_with_face face path in
       let loader_config = Affinescript.Module_loader.default_config () in
       let loader = Affinescript.Module_loader.create loader_config in
       (match Affinescript.Resolve.resolve_program_with_loader prog loader with
@@ -242,12 +248,12 @@ let repl_cmd_fn () =
 (** Compile a file.  With [--json], emits diagnostics for any
     compilation errors.  With [--wasm-gc], targets the WebAssembly GC
     proposal instead of WASM 1.0 linear memory. *)
-let compile_file json wasm_gc path output =
+let compile_file face json wasm_gc path output =
   if json then begin
     let diags = ref [] in
     let add d = diags := d :: !diags in
     begin try
-      let prog = Affinescript.Parse_driver.parse_file path in
+      let prog = parse_with_face face path in
       let loader_config = Affinescript.Module_loader.default_config () in
       let loader = Affinescript.Module_loader.create loader_config in
       (match Affinescript.Resolve.resolve_program_with_loader prog loader with
@@ -298,7 +304,7 @@ let compile_file json wasm_gc path output =
     json_finish (List.rev !diags)
   end else begin
     try
-      let prog = Affinescript.Parse_driver.parse_file path in
+      let prog = parse_with_face face path in
       let loader_config = Affinescript.Module_loader.default_config () in
       let loader = Affinescript.Module_loader.create loader_config in
       (match Affinescript.Resolve.resolve_program_with_loader prog loader with
@@ -356,8 +362,16 @@ let compile_file json wasm_gc path output =
         `Error (false, "Parse error")
   end
 
-(** Format a file *)
-let fmt_file path =
+(** Format a file.  Only canonical face is supported — Python-face formatting
+    requires a reverse transform that is not yet implemented. *)
+let fmt_file face path =
+  (match face with
+  | `Python ->
+    Format.eprintf "fmt --face python is not yet supported \
+                    (reverse Python transform is pending).@.";
+    (* fall through; format the canonical parse anyway so the file still works *)
+    ()
+  | `Canonical -> ());
   try
     Affinescript.Formatter.format_file path;
     Format.printf "Formatted %s@." path;
@@ -373,12 +387,12 @@ let fmt_file path =
 
 (** Lint a file.  With [--json], emits lint diagnostics as structured
     JSON on stderr. *)
-let lint_file json path =
+let lint_file face json path =
   if json then begin
     let diags = ref [] in
     let add d = diags := d :: !diags in
     begin try
-      let prog = Affinescript.Parse_driver.parse_file path in
+      let prog = parse_with_face face path in
       let loader_config = Affinescript.Module_loader.default_config () in
       let loader = Affinescript.Module_loader.create loader_config in
       (match Affinescript.Resolve.resolve_program_with_loader prog loader with
@@ -398,7 +412,7 @@ let lint_file json path =
     json_finish (List.rev !diags)
   end else begin
     try
-      let prog = Affinescript.Parse_driver.parse_file path in
+      let prog = parse_with_face face path in
       let loader_config = Affinescript.Module_loader.default_config () in
       let loader = Affinescript.Module_loader.create loader_config in
       (match Affinescript.Resolve.resolve_program_with_loader prog loader with
@@ -467,12 +481,12 @@ let parse_cmd =
 let check_cmd =
   let doc = "Type check a file" in
   let info = Cmd.info "check" ~doc in
-  Cmd.v info Term.(ret (const check_file $ json_arg $ path_arg))
+  Cmd.v info Term.(ret (const check_file $ face_arg $ json_arg $ path_arg))
 
 let eval_cmd =
   let doc = "Evaluate a file with the interpreter" in
   let info = Cmd.info "eval" ~doc in
-  Cmd.v info Term.(ret (const eval_file $ json_arg $ path_arg))
+  Cmd.v info Term.(ret (const eval_file $ face_arg $ json_arg $ path_arg))
 
 let repl_cmd =
   let doc = "Start the interactive REPL" in
@@ -482,17 +496,17 @@ let repl_cmd =
 let compile_cmd =
   let doc = "Compile a file to WebAssembly (1.0 or GC proposal) or Julia" in
   let info = Cmd.info "compile" ~doc in
-  Cmd.v info Term.(ret (const compile_file $ json_arg $ wasm_gc_arg $ path_arg $ output_arg))
+  Cmd.v info Term.(ret (const compile_file $ face_arg $ json_arg $ wasm_gc_arg $ path_arg $ output_arg))
 
 let fmt_cmd =
   let doc = "Format a file" in
   let info = Cmd.info "fmt" ~doc in
-  Cmd.v info Term.(ret (const fmt_file $ path_arg))
+  Cmd.v info Term.(ret (const fmt_file $ face_arg $ path_arg))
 
 let lint_cmd =
   let doc = "Lint a file for code quality issues" in
   let info = Cmd.info "lint" ~doc in
-  Cmd.v info Term.(ret (const lint_file $ json_arg $ path_arg))
+  Cmd.v info Term.(ret (const lint_file $ face_arg $ json_arg $ path_arg))
 
 let preview_python_cmd =
   let doc = "Preview the Python-face text transform (debug)" in
