@@ -1674,6 +1674,66 @@ let lsp_phase_c_tests = [
 ]
 
 (* ============================================================================
+   Section N+1: LSP Phase D — JSON-RPC server helpers
+   ============================================================================
+
+   The server loop itself requires a live stdin/stdout pair, so we test
+   the stateless helper functions that underpin every LSP handler:
+   uri_to_path, lsp_range (0-based position conversion), and the in-process
+   pipeline runner.
+*)
+
+(** [file:///abs/path] → [/abs/path]. *)
+let test_lsp_uri_to_path () =
+  let path = Lsp_server.uri_to_path "file:///var/mnt/eclipse/repos/foo.affine" in
+  Alcotest.(check string) "uri_to_path strips prefix"
+    "/var/mnt/eclipse/repos/foo.affine" path
+
+(** Compiler spans are 1-based; LSP ranges must be 0-based. *)
+let test_lsp_position_conversion () =
+  let span = Span.make
+    ~file:"test.affine"
+    ~start_pos:{ Span.line = 5; col = 3; offset = 0 }
+    ~end_pos:  { Span.line = 5; col = 6; offset = 0 }
+  in
+  let range = Lsp_server.lsp_range span in
+  (match range with
+  | `Assoc rf ->
+    (match List.assoc_opt "start" rf with
+    | Some (`Assoc sp) ->
+      let ln = (match List.assoc_opt "line"      sp with Some (`Int n) -> n | _ -> -1) in
+      let ch = (match List.assoc_opt "character" sp with Some (`Int n) -> n | _ -> -1) in
+      Alcotest.(check int) "start.line is 0-based"      4 ln;
+      Alcotest.(check int) "start.character is 0-based" 2 ch
+    | _ -> Alcotest.fail "start is not an object")
+  | _ -> Alcotest.fail "lsp_range must return an Assoc")
+
+(** Valid source → empty diagnostics + symbol table present. *)
+let test_lsp_pipeline_valid () =
+  let source = "fn add(a: Int, b: Int) -> Int = a + b;" in
+  let (diags, symbols_opt, _refs) =
+    Lsp_server.run_pipeline "/tmp/affinescript_lsp_test.affine" source
+  in
+  Alcotest.(check int)  "no diagnostics for valid source" 0  (List.length diags);
+  Alcotest.(check bool) "symbol table present"            true (symbols_opt <> None)
+
+(** Broken source → at least one diagnostic, no crash. *)
+let test_lsp_pipeline_invalid () =
+  let source = "fn broken( " in
+  let (diags, _symbols_opt, _refs) =
+    Lsp_server.run_pipeline "/tmp/affinescript_lsp_test_bad.affine" source
+  in
+  Alcotest.(check bool) "at least one diagnostic for broken source"
+    true (List.length diags > 0)
+
+let lsp_phase_d_tests = [
+  Alcotest.test_case "uri_to_path strips file://"        `Quick test_lsp_uri_to_path;
+  Alcotest.test_case "lsp_range converts to 0-based"     `Quick test_lsp_position_conversion;
+  Alcotest.test_case "pipeline: valid source → no diags" `Quick test_lsp_pipeline_valid;
+  Alcotest.test_case "pipeline: broken source → diag"    `Quick test_lsp_pipeline_invalid;
+]
+
+(* ============================================================================
    Test Suite Export
    ============================================================================ *)
 
@@ -1697,4 +1757,5 @@ let tests =
     ("E2E TEA Bridge", tea_bridge_tests);
     ("E2E LSP Phase B", lsp_phase_b_tests);
     ("E2E LSP Phase C", lsp_phase_c_tests);
+    ("E2E LSP Phase D", lsp_phase_d_tests);
   ]

@@ -792,6 +792,32 @@ let goto_def_cmd =
   let info = Cmd.info "goto-def" ~doc ~man in
   Cmd.v info Term.(ret (const goto_def_file $ face_arg $ path_arg $ line_arg $ col_arg))
 
+(** {1 Phase D: LSP server subcommand} *)
+
+(** Start the JSON-RPC LSP server on stdin/stdout.
+
+    Handles the full lifecycle: initialize → document sync → hover /
+    definition / completion → shutdown / exit.  The server runs
+    entirely in-process; no child processes are spawned. *)
+let server_file () =
+  Affinescript.Lsp_server.run ();
+  `Ok ()
+
+let server_cmd =
+  let doc = "Start the JSON-RPC LSP server on stdin/stdout" in
+  let man = [
+    `S Manpage.s_description;
+    `P "Starts the AffineScript Language Server Protocol server. \
+        Communicates over stdin/stdout using JSON-RPC 2.0 with \
+        Content-Length framing (LSP 3.17 subset).";
+    `P "Capabilities: full document sync, hover, go-to-definition, \
+        completion with keyword candidates.";
+    `P "Configure your editor's LSP client to run: \
+        $(b,affinescript server --stdio)";
+  ] in
+  let info = Cmd.info "server" ~doc ~man in
+  Cmd.v info Term.(ret (const server_file $ const ()))
+
 (** {1 Phase C: completion subcommand} *)
 
 (** Complete subcommand handler.
@@ -837,7 +863,7 @@ let default_cmd =
     lex_cmd; parse_cmd; check_cmd; eval_cmd; repl_cmd; compile_cmd;
     fmt_cmd; lint_cmd;
     tea_bridge_cmd;
-    hover_cmd; goto_def_cmd; complete_cmd;
+    hover_cmd; goto_def_cmd; complete_cmd; server_cmd;
     preview_python_cmd; preview_js_cmd; preview_pseudocode_cmd
   ]
 
