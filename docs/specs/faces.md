@@ -58,6 +58,86 @@ The compiler is face-agnostic throughout.  The two face-aware layers are:
 
 ---
 
+## Roadmap Faces
+
+These faces are on the roadmap but have not been designed in detail.  The
+face architecture makes implementation cheap once the surface mapping is
+settled; the bottleneck is design, not code.
+
+### CoffeeScript-face (strategic priority)
+
+**Rationale:** CoffeeScript has a loyal displaced community that never loved
+JavaScript and were forced away when the ecosystem moved on.  Their syntax
+preferences (significant whitespace, `->` / `=>`, `is`/`isnt`/`unless`,
+`@` for self, `do`, list comprehensions) are coherent and well-documented.
+A CoffeeScript face would offer that community a new home: their familiar
+syntax, but with a sound type system, affine resource semantics, and typed
+WASM output.
+
+**Rough surface mapping (to be designed):**
+
+| CoffeeScript surface | Canonical AffineScript |
+|----------------------|------------------------|
+| `x = expr` | `let x = expr` |
+| `f = (x, y) -> expr` | `fn f(x, y) { expr }` |
+| `f = (x, y) => expr` | `fn f(x, y) { expr }` (bound form) |
+| `unless cond` | `if !cond` |
+| `is` / `isnt` | `==` / `!=` |
+| `and` / `or` / `not` | `&&` / `\|\|` / `!` |
+| `@field` | `self.field` |
+| `class Name` | `type Name` |
+| `null` / `undefined` | `()` |
+| `yes` / `no` | `true` / `false` |
+| Significant whitespace | blocks (like Python-face) |
+| `#` comment | `//` comment |
+
+**Design questions before implementing:**
+- How do CoffeeScript string interpolation (`"#{x}"`) map to AffineScript?
+- List comprehensions — do we support them or emit a hint?
+- Splats (`args...`) — map to variadic or array?
+- Prototype chain (`::`) — not applicable; needs a hint pointing to traits.
+
+**File:** `lib/coffee_face.ml`, `--face coffee` / `--face coffeescript`
+
+---
+
+### ActionScript-face (strategic priority)
+
+**Rationale:** ActionScript 3 was a capable, statically-typed OO language
+with a loyal community (Flash game developers, Flex/AIR developers).  It was
+killed by platform death (Flash end-of-life), not by language quality.
+AS3 developers are comfortable with explicit types, classes, and access
+modifiers — all of which map naturally to AffineScript concepts.
+
+**Rough surface mapping (to be designed):**
+
+| ActionScript surface | Canonical AffineScript |
+|----------------------|------------------------|
+| `var x: Type = expr` | `let x: Type = expr` |
+| `function f(x: T): R { }` | `fn f(x: T) -> R { }` |
+| `public/private/protected` | (access control — AffineScript is module-scoped; emit hint) |
+| `class Name extends Base` | `type Name` (traits for inheritance) |
+| `new Name(args)` | `Name { fields }` or constructor fn |
+| `null` | `()` |
+| `Boolean` / `int` / `Number` | `Bool` / `Int` / `Float` |
+| `String` | `String` (direct) |
+| `Array.<T>` | `Array[T]` |
+| `trace(expr)` | `IO.println(expr)` |
+| `import pkg.Class` | `use pkg::Class` |
+| `package { ... }` | module-level (stripped) |
+| `//` / `/* */` comments | (already valid) |
+
+**Design questions before implementing:**
+- AS3 inheritance (`extends`) — map to trait bounds or emit a migration hint?
+- Interfaces (`implements`) — map to traits?
+- `override` / `super` — no direct equivalent; design needed.
+- Event model (`addEventListener`) — emit a hint pointing to effects.
+- `Vector.<T>` vs `Array.<T>` — both map to `Array[T]`?
+
+**File:** `lib/action_face.ml`, `--face action` / `--face actionscript`
+
+---
+
 ## Python Face Details
 
 ### Source Transform (`lib/python_face.ml`)
