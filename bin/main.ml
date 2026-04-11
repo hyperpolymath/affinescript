@@ -155,7 +155,12 @@ let check_file face json path =
           (match Affinescript.Borrow.check_program resolve_ctx.symbols prog with
           | Error e ->
             add (Affinescript.Json_output.of_borrow_error e)
-          | Ok () -> ())))
+          | Ok () ->
+            (* Stage 1: QTT quantity enforcement *)
+            (match Affinescript.Quantity.check_program_quantities prog with
+            | Error (err, span) ->
+              add (Affinescript.Json_output.of_quantity_error (err, span))
+            | Ok () -> ()))))
     with
     | Affinescript.Lexer.Lexer_error (msg, pos) ->
       add (Affinescript.Json_output.of_lexer_error msg pos path)
@@ -200,8 +205,15 @@ let check_file face json path =
               (Affinescript.Face.format_borrow_error face e);
             `Error (false, "Borrow error")
           | Ok () ->
-            Format.printf "Type checking passed@.";
-            `Ok ())))
+            (* Stage 1: QTT quantity enforcement *)
+            (match Affinescript.Quantity.check_program_quantities prog with
+            | Error (err, _span) ->
+              Format.eprintf "@[<v>Quantity error: %s@]@."
+                (Affinescript.Face.format_quantity_error face err);
+              `Error (false, "Quantity error")
+            | Ok () ->
+              Format.printf "Type checking passed@.";
+              `Ok ()))))
     with
     | Affinescript.Lexer.Lexer_error (msg, pos) ->
         Format.eprintf "@[<v>%s:%d:%d: lexer error: %s@]@." path pos.line pos.col msg;
@@ -236,10 +248,15 @@ let eval_file face json path =
         | Error e ->
           add (Affinescript.Json_output.of_type_error e)
         | Ok () ->
-          (match Affinescript.Interp.eval_program prog with
-          | Ok _env -> ()
-          | Error e ->
-            add (Affinescript.Json_output.of_eval_error e))))
+          (* Stage 1: QTT quantity enforcement *)
+          (match Affinescript.Quantity.check_program_quantities prog with
+          | Error (err, span) ->
+            add (Affinescript.Json_output.of_quantity_error (err, span))
+          | Ok () ->
+            (match Affinescript.Interp.eval_program prog with
+            | Ok _env -> ()
+            | Error e ->
+              add (Affinescript.Json_output.of_eval_error e)))))
     with
     | Affinescript.Lexer.Lexer_error (msg, pos) ->
       add (Affinescript.Json_output.of_lexer_error msg pos path)
@@ -269,14 +286,21 @@ let eval_file face json path =
             (Affinescript.Face.format_type_error face e);
           `Error (false, "Type error")
         | Ok () ->
-          (match Affinescript.Interp.eval_program prog with
-          | Ok _env ->
-            Format.printf "Program executed successfully@.";
-            `Ok ()
-          | Error e ->
-            Format.eprintf "@[<v>Runtime error: %s@]@."
-              (Affinescript.Value.show_eval_error e);
-            `Error (false, "Runtime error"))))
+          (* Stage 1: QTT quantity enforcement *)
+          (match Affinescript.Quantity.check_program_quantities prog with
+          | Error (err, _span) ->
+            Format.eprintf "@[<v>Quantity error: %s@]@."
+              (Affinescript.Face.format_quantity_error face err);
+            `Error (false, "Quantity error")
+          | Ok () ->
+            (match Affinescript.Interp.eval_program prog with
+            | Ok _env ->
+              Format.printf "Program executed successfully@.";
+              `Ok ()
+            | Error e ->
+              Format.eprintf "@[<v>Runtime error: %s@]@."
+                (Affinescript.Value.show_eval_error e);
+              `Error (false, "Runtime error")))))
     with
     | Affinescript.Lexer.Lexer_error (msg, pos) ->
         Format.eprintf "@[<v>%s:%d:%d: lexer error: %s@]@." path pos.line pos.col msg;
@@ -318,6 +342,11 @@ let compile_file face json wasm_gc path output =
           | Error e ->
             add (Affinescript.Json_output.of_borrow_error e)
           | Ok () ->
+            (* Stage 1: QTT quantity enforcement *)
+            (match Affinescript.Quantity.check_program_quantities prog with
+            | Error (err, span) ->
+              add (Affinescript.Json_output.of_quantity_error (err, span))
+            | Ok () ->
             let is_julia = Filename.check_suffix output ".jl" in
             if is_julia then begin
               match Affinescript.Julia_codegen.codegen_julia prog resolve_ctx.symbols with
@@ -348,7 +377,7 @@ let compile_file face json wasm_gc path output =
                       span = Affinescript.Span.dummy; help = None; labels = [] }
               | Ok wasm_module ->
                 Affinescript.Wasm_encode.write_module_to_file output wasm_module
-            end)))
+            end))))
     with
     | Affinescript.Lexer.Lexer_error (msg, pos) ->
       add (Affinescript.Json_output.of_lexer_error msg pos path)
@@ -379,6 +408,13 @@ let compile_file face json wasm_gc path output =
               (Affinescript.Face.format_borrow_error face e);
             `Error (false, "Borrow error")
           | Ok () ->
+            (* Stage 1: QTT quantity enforcement *)
+            (match Affinescript.Quantity.check_program_quantities prog with
+            | Error (err, _span) ->
+              Format.eprintf "@[<v>Quantity error: %s@]@."
+                (Affinescript.Face.format_quantity_error face err);
+              `Error (false, "Quantity error")
+            | Ok () ->
           begin
             let is_julia = Filename.check_suffix output ".jl" in
             if is_julia then
@@ -413,7 +449,7 @@ let compile_file face json wasm_gc path output =
                 Affinescript.Wasm_encode.write_module_to_file output wasm_module;
                 Format.printf "Compiled %s -> %s (WASM)@." path output;
                 `Ok ())
-          end)))
+          end))))
     with
     | Affinescript.Lexer.Lexer_error (msg, pos) ->
         Format.eprintf "@[<v>%s:%d:%d: lexer error: %s@]@." path pos.line pos.col msg;
