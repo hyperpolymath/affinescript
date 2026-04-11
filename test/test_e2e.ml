@@ -1149,6 +1149,7 @@ let tests =
     ("E2E Quantity", quantity_tests);
     ("E2E Linear Arrows", linear_arrow_tests);
     ("E2E WASM", wasm_tests);
+    ("E2E Ownership Schema", ownership_schema_tests);
     ("E2E Julia", julia_tests);
     ("E2E Interp", interp_tests);
     ("E2E Optimizer", optimizer_tests);
