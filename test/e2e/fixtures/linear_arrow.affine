@@ -1,0 +1,15 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// End-to-end test: linear arrow quantity enforcement in lambda expressions
+// Tests:
+//   - Lambda with @linear param produces T -[1]-> U type (not T -[ω]-> U)
+//   - Lambda with @linear param used once passes quantity check
+//   - Named function with @linear param passes quantity check
+
+fn consume_once(@linear x: Int) -> Int = x + 1;
+
+fn wrap_linear() -> Int {
+  let f = |@linear x: Int| x + 1;
+  f(41)
+}
+
+fn hof_linear(g: (Int) -> Int, n: Int) -> Int = g(n);

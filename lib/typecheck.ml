@@ -686,11 +686,21 @@ let rec synth (ctx : context) (expr : expr) : ty result =
       | Some sc -> Hashtbl.replace ctx.name_types n sc
       | None -> Hashtbl.remove ctx.name_types n
     ) old;
-    (* Build the arrow type: curried for multi-param *)
+    (* Build the arrow type: curried for multi-param.
+       Each arrow carries the declared quantity of the corresponding parameter.
+       If the parameter has no explicit annotation, we default to QOmega
+       (unrestricted), matching the convention used by check_fn_decl. *)
     let eff = fresh_effvar ctx.level in
-    let ty = List.fold_right (fun param_ty acc ->
-      TArrow (param_ty, QOmega, acc, eff)
-    ) param_tys body_ty in
+    let param_qty_pairs = List.map2 (fun (p : param) param_ty ->
+      let q = match p.p_quantity with
+        | Some q -> lower_quantity q
+        | None   -> QOmega
+      in
+      (q, param_ty)
+    ) elam_params param_tys in
+    let ty = List.fold_right (fun (q, param_ty) acc ->
+      TArrow (param_ty, q, acc, eff)
+    ) param_qty_pairs body_ty in
     Ok ty
 
   (* Function application *)
@@ -954,13 +964,30 @@ and check_stmt (ctx : context) (stmt : stmt) : unit result =
 (** Check that an expression has the expected type. *)
 and check (ctx : context) (expr : expr) (expected : ty) : unit result =
   match expr with
-  (* Lambda against arrow type: check mode is more precise *)
+  (* Lambda against arrow type: check mode is more precise.
+     We peel the expected arrow type one param at a time.  For each param:
+     - If the param has an explicit quantity annotation, we verify it is
+       consistent with the arrow quantity from the expected type.
+     - The arrow quantity from the expected type is used as the definitive
+       quantity for binding (so an unannotated lambda param correctly inherits
+       the quantity from its context, e.g. a @linear annotation on the let). *)
   | ExprLambda { elam_params; elam_body; elam_ret_ty = _ }
     when (match repr expected with TArrow _ -> true | _ -> false) ->
     let rec peel_arrows ty params =
       match params, repr ty with
       | [], _ -> Ok ()
-      | p :: rest, TArrow (param_ty, _q, ret_ty, _eff) ->
+      | p :: rest, TArrow (param_ty, q, ret_ty, _eff) ->
+        (* Validate explicit quantity annotation against the expected arrow. *)
+        let* () = match p.p_quantity with
+          | Some pq ->
+            let pq' = lower_quantity pq in
+            if pq' = q then Ok ()
+            else Error (TypeMismatch {
+              expected = TArrow (param_ty, q,   ret_ty, EPure);
+              got      = TArrow (param_ty, pq', ret_ty, EPure);
+            })
+          | None -> Ok ()
+        in
         bind_var ctx p.p_name.name param_ty;
         peel_arrows ret_ty rest
       | _ -> synth_and_unify ctx expr expected

@@ -10,6 +10,14 @@
 open Ast
 open Wasm
 
+(** Ownership kind for typed-wasm schema annotations.
+    Maps AffineScript ownership qualifiers to typed-wasm Level 7/10 verification. *)
+type ownership_kind =
+  | Unrestricted  (** Plain value, no ownership constraint (Wasm i32/f64 etc.) *)
+  | Linear        (** TyOwn / own — consumed exactly once (typed-wasm Level 10 linearity) *)
+  | SharedBorrow  (** TyRef / ref — read-only aliasing safety (typed-wasm Level 7) *)
+  | ExclBorrow    (** TyMut / mut — exclusive mutable aliasing safety (typed-wasm Level 7) *)
+
 (** Code generation context *)
 type context = {
   types : func_type list;            (** type section *)
@@ -29,6 +37,10 @@ type context = {
   string_data : (string * int) list; (** string content -> memory offset *)
   next_string_offset : int;          (** next available offset for string data *)
   datas : data list;                 (** data segments *)
+  ownership_annots : (int * ownership_kind list * ownership_kind) list;
+  (** Collected ownership annotations: (func_index, param_kinds, return_kind).
+      Emitted as the [affinescript.ownership] Wasm custom section for typed-wasm
+      Level 7/10 verification. Kind encoding: 0=Unrestricted, 1=Linear, 2=SharedBorrow, 3=ExclBorrow. *)
 }
 
 (** Code generation error *)
@@ -70,7 +82,62 @@ let create_context () : context = {
   string_data = [];
   next_string_offset = 2048;  (* Start strings after heap at offset 2048 *)
   datas = [];
+  ownership_annots = [];
 }
+
+(** Extract ownership kind from a parameter declaration.
+    Checks p_ownership first; falls back to the shape of p_ty. *)
+let ownership_kind_of_param (p : param) : ownership_kind =
+  match p.p_ownership with
+  | Some Own -> Linear
+  | Some Ref -> SharedBorrow
+  | Some Mut -> ExclBorrow
+  | None ->
+    match p.p_ty with
+    | TyOwn _ -> Linear
+    | TyRef _ -> SharedBorrow
+    | TyMut _ -> ExclBorrow
+    | _ -> Unrestricted
+
+(** Extract ownership kind from an optional return type expression *)
+let ownership_kind_of_ret (ret : type_expr option) : ownership_kind =
+  match ret with
+  | Some (TyOwn _) -> Linear
+  | Some (TyRef _) -> SharedBorrow
+  | Some (TyMut _) -> ExclBorrow
+  | _ -> Unrestricted
+
+(** Encode an ownership_kind as a single byte (0–3) *)
+let ownership_kind_byte = function
+  | Unrestricted -> 0 | Linear -> 1 | SharedBorrow -> 2 | ExclBorrow -> 3
+
+(** Build the payload for the [affinescript.ownership] Wasm custom section.
+    Encoding (all little-endian):
+      u32  entry_count
+      per entry:
+        u32  func_index
+        u8   param_count
+        u8*  param_kind  (one per param, see kind encoding above)
+        u8   return_kind *)
+let build_ownership_section (annots : (int * ownership_kind list * ownership_kind) list) : bytes =
+  if annots = [] then Bytes.empty
+  else
+    let buf = Buffer.create 64 in
+    let write_u32_le n =
+      Buffer.add_char buf (Char.chr  (n         land 0xff));
+      Buffer.add_char buf (Char.chr ((n lsr  8) land 0xff));
+      Buffer.add_char buf (Char.chr ((n lsr 16) land 0xff));
+      Buffer.add_char buf (Char.chr ((n lsr 24) land 0xff))
+    in
+    let write_u8 n = Buffer.add_char buf (Char.chr (n land 0xff)) in
+    write_u32_le (List.length annots);
+    List.iter (fun (func_idx, param_kinds, ret_kind) ->
+      write_u32_le func_idx;
+      write_u8 (List.length param_kinds);
+      List.iter (fun k -> write_u8 (ownership_kind_byte k)) param_kinds;
+      write_u8 (ownership_kind_byte ret_kind)
+    ) annots;
+    Buffer.to_bytes buf
 
 (** Map AffineScript type to WASM value type *)
 let type_to_wasm (ty : type_expr) : value_type result =
@@ -1617,9 +1684,14 @@ let gen_decl (ctx : context) (decl : top_level) : context result =
     (* Determine function index before generating *)
     let func_idx = import_func_count ctx_with_type + List.length ctx_with_type.funcs in
 
-    (* Register function name to index mapping *)
+    (* Stage 2: Extract ownership annotations for typed-wasm [affinescript.ownership] section *)
+    let param_kinds = List.map ownership_kind_of_param fd.fd_params in
+    let ret_kind = ownership_kind_of_ret fd.fd_ret_ty in
+
+    (* Register function name to index mapping and record ownership annotations *)
     let ctx_with_func_idx = { ctx_with_type with
-      func_indices = ctx_with_type.func_indices @ [(fd.fd_name.name, func_idx)]
+      func_indices = ctx_with_type.func_indices @ [(fd.fd_name.name, func_idx)];
+      ownership_annots = ctx_with_type.ownership_annots @ [(func_idx, param_kinds, ret_kind)];
     } in
 
     (* Generate function with correct type index *)
@@ -1722,6 +1794,14 @@ let generate_module (prog : program) : wasm_module result =
   (* Add memory export *)
   let exports_with_mem = { e_name = "memory"; e_desc = ExportMemory 0 } :: ctx'.exports in
 
+  (* Stage 2: Build [affinescript.ownership] custom section from collected annotations *)
+  let ownership_payload = build_ownership_section ctx'.ownership_annots in
+  let custom_sections = if Bytes.length ownership_payload > 0 then
+    [("affinescript.ownership", ownership_payload)]
+  else
+    []
+  in
+
   Ok {
     types = ctx'.types;
     funcs = all_funcs;
@@ -1733,4 +1813,5 @@ let generate_module (prog : program) : wasm_module result =
     elems = elems;
     datas = List.rev ctx'.datas;  (* Reverse to get original order *)
     start = None;
+    custom_sections;
   }

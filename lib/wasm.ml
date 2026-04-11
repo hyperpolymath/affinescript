@@ -242,6 +242,11 @@ type wasm_module = {
   elems : elem list;   (** element segments for table initialization *)
   datas : data list;   (** data segments for memory initialization *)
   start : int option;  (** optional start function index *)
+  custom_sections : (string * bytes) list;
+  (** Named custom sections (Wasm section ID 0).
+      Used for [affinescript.ownership] — carries ownership annotations
+      (TyOwn/TyRef/TyMut) that survive to the binary for typed-wasm
+      Level 7/10 verification. *)
 }
 [@@deriving show, eq]
 
@@ -257,4 +262,5 @@ let empty_module () : wasm_module = {
   elems = [];
   datas = [];
   start = None;
+  custom_sections = [];
 }

@@ -360,6 +360,14 @@ let write_module_to_file path (m : wasm_module) : unit =
   add_section buf 10 (fun b -> add_vec b m.funcs add_code);
   add_section buf 11 (fun b -> add_vec b m.datas add_data);
 
+  (* Emit custom sections (Wasm section ID 0) — includes [affinescript.ownership] typed-wasm schema *)
+  List.iter (fun (name, payload) ->
+    add_section buf 0 (fun b ->
+      add_string b name;
+      add_bytes b payload
+    )
+  ) m.custom_sections;
+
   let oc = open_out_bin path in
   output_bytes oc (Bytes.of_string (Buffer.contents buf));
   close_out oc

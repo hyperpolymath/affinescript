@@ -518,6 +518,63 @@ let quantity_tests = [
 ]
 
 (* ============================================================================
+   Section 4b: Linear Arrow Tests
+
+   These tests verify that quantity annotations on lambda parameters are
+   enforced correctly:
+
+   - Lambda synth: |@linear x: T| body  now produces T -[1]-> U, not T -[ω]-> U
+   - Lambda body: @linear param double-use inside a lambda body is rejected
+   - Valid single-use passes without error
+
+   Regression coverage for the linear arrow enforcement PR.
+*)
+
+(** Valid: a lambda with a @linear param used exactly once passes the
+    quantity checker. *)
+let test_linear_arrow_valid () =
+  match parse_fixture (fixture "linear_arrow.affine") with
+  | Error msg -> Alcotest.fail msg
+  | Ok prog ->
+    match resolve_program prog with
+    | Error msg -> Alcotest.fail msg
+    | Ok (ctx, _) ->
+      match Typecheck.check_program ctx.symbols prog with
+      | Ok _ -> ()
+      | Error e ->
+        Alcotest.fail (Printf.sprintf
+          "valid @linear lambda param rejected: %s"
+          (Typecheck.format_type_error e))
+
+(** Violation: a lambda with a @linear param used twice must be rejected.
+    Verifies that the lambda param quantity checker (added alongside the
+    linear arrow synth fix) correctly catches body-level violations. *)
+let test_linear_arrow_lambda_double_use () =
+  match parse_fixture (fixture "linear_arrow_violation.affine") with
+  | Error msg -> Alcotest.fail msg
+  | Ok prog ->
+    match resolve_program prog with
+    | Error msg -> Alcotest.fail msg
+    | Ok (ctx, _) ->
+      match Typecheck.check_program ctx.symbols prog with
+      | Ok _ ->
+        Alcotest.fail
+          "expected rejection: @linear lambda param used twice should be \
+           a quantity error, but the checker accepted it"
+      | Error e ->
+        let msg = Typecheck.format_type_error e in
+        Alcotest.(check bool) "error mentions @linear" true
+          (try let _ = Str.search_forward (Str.regexp "@linear") msg 0 in true
+           with Not_found -> false)
+
+let linear_arrow_tests = [
+  Alcotest.test_case "valid @linear lambda param accepted"
+    `Quick test_linear_arrow_valid;
+  Alcotest.test_case "@linear lambda param double-use rejected"
+    `Quick test_linear_arrow_lambda_double_use;
+]
+
+(* ============================================================================
    Section 5: WASM Backend Tests
    ============================================================================
 
@@ -977,6 +1034,110 @@ let python_face_tests = [
 ]
 
 (* ============================================================================
+   Section N: Stage 2 — Ownership Schema Round-Trip Tests
+   ============================================================================
+
+   Verify that AffineScript ownership qualifiers (own/ref/mut) survive codegen
+   and appear in the [affinescript.ownership] Wasm custom section.
+
+   Kind encoding (matches Codegen.ownership_kind):
+     0 = Unrestricted  (plain value)
+     1 = Linear        (own / TyOwn — typed-wasm Level 10)
+     2 = SharedBorrow  (ref / TyRef — typed-wasm Level 7)
+     3 = ExclBorrow    (mut / TyMut — typed-wasm Level 7)
+*)
+
+(** Find the [affinescript.ownership] custom section payload, if present *)
+let find_ownership_section (wasm_mod : Wasm.wasm_module) : bytes option =
+  List.assoc_opt "affinescript.ownership" wasm_mod.Wasm.custom_sections
+
+(** Parse the ownership section payload into structured entries.
+    Returns a list of (func_index, param_kinds, return_kind) tuples. *)
+let parse_ownership_section (payload : bytes) : (int * int list * int) list =
+  let pos = ref 0 in
+  let read_u32_le () =
+    let b0 = Char.code (Bytes.get payload  !pos)        in
+    let b1 = Char.code (Bytes.get payload (!pos + 1))   in
+    let b2 = Char.code (Bytes.get payload (!pos + 2))   in
+    let b3 = Char.code (Bytes.get payload (!pos + 3))   in
+    pos := !pos + 4;
+    b0 lor (b1 lsl 8) lor (b2 lsl 16) lor (b3 lsl 24)
+  in
+  let read_u8 () =
+    let b = Char.code (Bytes.get payload !pos) in
+    pos := !pos + 1;
+    b
+  in
+  let count = read_u32_le () in
+  List.init count (fun _ ->
+    let func_idx  = read_u32_le () in
+    let n_params  = read_u8 ()     in
+    let param_kinds = List.init n_params (fun _ -> read_u8 ()) in
+    let ret_kind  = read_u8 ()     in
+    (func_idx, param_kinds, ret_kind)
+  )
+
+let test_ownership_section_present () =
+  match run_wasm_pipeline (fixture "ownership_codegen.affine") with
+  | Error msg -> Alcotest.fail msg
+  | Ok wasm_mod ->
+    match find_ownership_section wasm_mod with
+    | None ->
+      Alcotest.fail "Expected [affinescript.ownership] custom section, none found"
+    | Some payload ->
+      Alcotest.(check bool) "section payload is non-empty" true
+        (Bytes.length payload > 0)
+
+let test_ownership_roundtrip () =
+  (* Fixture: consume_owned(x: own Int), borrow_ref(y: ref Int),
+              borrow_mut(z: mut Int), plain(n: Int) — four functions.
+     After codegen, the ownership section must record:
+       consume_owned → param_kinds = [1]   (Linear)
+       borrow_ref    → param_kinds = [2]   (SharedBorrow)
+       borrow_mut    → param_kinds = [3]   (ExclBorrow)
+       plain         → param_kinds = [0]   (Unrestricted) *)
+  match run_wasm_pipeline (fixture "ownership_codegen.affine") with
+  | Error msg -> Alcotest.fail msg
+  | Ok wasm_mod ->
+    match find_ownership_section wasm_mod with
+    | None -> Alcotest.fail "No [affinescript.ownership] section in compiled output"
+    | Some payload ->
+      let entries = parse_ownership_section payload in
+      (* At least one function must have a Linear (1) param — TyOwn survived *)
+      let has_linear = List.exists (fun (_, param_kinds, _) ->
+        List.mem 1 param_kinds
+      ) entries in
+      Alcotest.(check bool) "TyOwn survived as Linear (kind=1)" true has_linear;
+      (* At least one SharedBorrow (2) — TyRef survived *)
+      let has_shared = List.exists (fun (_, param_kinds, _) ->
+        List.mem 2 param_kinds
+      ) entries in
+      Alcotest.(check bool) "TyRef survived as SharedBorrow (kind=2)" true has_shared;
+      (* At least one ExclBorrow (3) — TyMut survived *)
+      let has_excl = List.exists (fun (_, param_kinds, _) ->
+        List.mem 3 param_kinds
+      ) entries in
+      Alcotest.(check bool) "TyMut survived as ExclBorrow (kind=3)" true has_excl
+
+let test_ownership_entry_count () =
+  (* ownership_codegen.affine defines 4 functions; all 4 should be recorded *)
+  match run_wasm_pipeline (fixture "ownership_codegen.affine") with
+  | Error msg -> Alcotest.fail msg
+  | Ok wasm_mod ->
+    match find_ownership_section wasm_mod with
+    | None -> Alcotest.fail "No ownership section"
+    | Some payload ->
+      let entries = parse_ownership_section payload in
+      Alcotest.(check bool) "at least 4 entries (one per function)" true
+        (List.length entries >= 4)
+
+let ownership_schema_tests = [
+  Alcotest.test_case "section present"   `Quick test_ownership_section_present;
+  Alcotest.test_case "round-trip kinds"  `Quick test_ownership_roundtrip;
+  Alcotest.test_case "entry count"       `Quick test_ownership_entry_count;
+]
+
+(* ============================================================================
    Test Suite Export
    ============================================================================ *)
 
@@ -986,6 +1147,7 @@ let tests =
     ("E2E Resolve", resolve_tests);
     ("E2E Typecheck", typecheck_tests);
     ("E2E Quantity", quantity_tests);
+    ("E2E Linear Arrows", linear_arrow_tests);
     ("E2E WASM", wasm_tests);
     ("E2E Julia", julia_tests);
     ("E2E Interp", interp_tests);

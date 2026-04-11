@@ -1,0 +1,10 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Regression: @linear param in a lambda must not be used twice inside the body.
+// The quantity checker must reject this program because `x` is used
+// two times inside the lambda body, violating the @linear (must use once)
+// contract declared on the lambda parameter.
+
+fn trigger_double_use() -> Int {
+  let f = |@linear x: Int| x + x;
+  f(21)
+}

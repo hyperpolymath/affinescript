@@ -198,6 +198,10 @@ type env = {
     (** Declared quantity for each tracked variable. *)
   usages : (string, usage) Hashtbl.t;
     (** Current observed usage count for each tracked variable. *)
+  errors : (quantity_error * Span.t) list ref;
+    (** Quantity errors accumulated by nested constructs (lambda params).
+        [infer_usage_expr] returns [unit], so nested violations are
+        pushed here and drained at the end of [check_function_quantities]. *)
 }
 
 (** Create a fresh quantity environment. *)
@@ -205,6 +209,7 @@ let create_env () : env =
   {
     quantities = Hashtbl.create 16;
     usages = Hashtbl.create 16;
+    errors = ref [];
   }
 
 (** Declare a variable with its quantity annotation in the environment.
@@ -299,23 +304,55 @@ let rec infer_usage_expr (env : env) (expr : expr) : unit =
 
        Consequence: a lambda that captures an @linear variable raises
        LinearVariableUsedMultiple, because scale_usage QOmega UOne = UMany.
-       This closes BUG-004. *)
+       This closes BUG-004.
+
+       Additionally: lambda params with explicit quantity annotations are
+       declared in the env so env_use tracks them, and their usage is
+       verified against their declared quantity after the body walk.
+       Violations are pushed to env.errors (since infer_usage_expr is unit)
+       and drained by check_function_quantities at the top level. *)
     let param_names =
       List.map (fun (p : param) -> p.p_name.name) lam.elam_params
     in
     let before_snapshot = env_snapshot env in
-    (* Shadow lambda params so their usage inside the body doesn't leak
-       into the outer quantity environment. *)
-    List.iter (fun name ->
-      if Hashtbl.mem env.usages name then
-        Hashtbl.replace env.usages name UZero
-      (* Params not yet in env are fine — they are lambda-local. *)
-    ) param_names;
+    (* Save any quantity entries that the param names may shadow, so we
+       can restore them after the lambda body is analysed. *)
+    let old_quantities = List.map (fun name ->
+      (name, Hashtbl.find_opt env.quantities name)
+    ) param_names in
+    (* Declare each lambda param in the env so env_use can track it.
+       Annotated params get their declared quantity; unannotated params
+       get QOmega (unrestricted — no constraint to verify). *)
+    List.iter (fun (p : param) ->
+      let q = Option.value p.p_quantity ~default:QOmega in
+      env_declare env p.p_name.name q
+    ) lam.elam_params;
     infer_usage_expr env lam.elam_body;
     let after_snapshot = env_snapshot env in
+    (* Check annotated params against their declared quantities.
+       Only params with an explicit annotation are verified — unannotated
+       params default to QOmega which accepts any usage count. *)
+    List.iter (fun (p : param) ->
+      match p.p_quantity with
+      | None -> ()
+      | Some declared_q ->
+        let actual =
+          Hashtbl.find_opt after_snapshot p.p_name.name
+          |> Option.value ~default:UZero
+        in
+        (match check_quantity p.p_name declared_q actual with
+         | Ok () -> ()
+         | Error e -> env.errors := e :: !(env.errors))
+    ) lam.elam_params;
     (* Restore outer env, then re-apply QOmega-scaled deltas for captured
        outer variables only (exclude lambda params). *)
     env_restore env before_snapshot;
+    (* Restore quantity entries that lambda params may have shadowed. *)
+    List.iter (fun (name, old_q) ->
+      match old_q with
+      | Some q -> Hashtbl.replace env.quantities name q
+      | None   -> Hashtbl.remove  env.quantities name
+    ) old_quantities;
     Hashtbl.iter (fun name after_u ->
       if List.mem name param_names then ()
       else begin
@@ -562,18 +599,29 @@ let check_function_quantities (fd : fn_decl) : unit result =
   | FnBlock blk -> infer_usage_block env blk
   | FnExpr e -> infer_usage_expr env e
   end;
-  (* Step 3: check each parameter *)
-  List.fold_left (fun acc (param : param) ->
-    match acc with
-    | Error _ -> acc  (* Stop at first error *)
-    | Ok () ->
-      let declared = Option.value param.p_quantity ~default:QOmega in
-      let actual =
-        Hashtbl.find_opt env.usages param.p_name.name
-        |> Option.value ~default:UZero
-      in
-      check_quantity param.p_name declared actual
-  ) (Ok ()) fd.fd_params
+  (* Step 3: check each top-level parameter *)
+  let param_result =
+    List.fold_left (fun acc (param : param) ->
+      match acc with
+      | Error _ -> acc  (* Stop at first error *)
+      | Ok () ->
+        let declared = Option.value param.p_quantity ~default:QOmega in
+        let actual =
+          Hashtbl.find_opt env.usages param.p_name.name
+          |> Option.value ~default:UZero
+        in
+        check_quantity param.p_name declared actual
+    ) (Ok ()) fd.fd_params
+  in
+  (* Step 4: drain errors accumulated by nested lambda param checks.
+     infer_usage_expr is unit, so nested violations are pushed to
+     env.errors during the body walk above. Report the first one. *)
+  match param_result with
+  | Error _ -> param_result
+  | Ok () ->
+    match !(env.errors) with
+    | [] -> Ok ()
+    | (err, span) :: _ -> Error (err, span)
 
 (** Check quantities for all functions in a program.
 
