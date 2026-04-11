@@ -333,6 +333,27 @@ let eval_file face json path =
         `Error (false, "Parse error")
   end
 
+(** Generate the AffineScript TEA bridge Wasm module.
+
+    Emits a validated Wasm 1.0 binary that implements the TitleScreen
+    TEA state machine with clean i32 exports for AffineTEA.js.
+
+    No source file is needed — the module is generated directly from the
+    TEA ABI specification.  Write to a .wasm file, copy to IDApTIK's
+    public/assets/wasm/ directory, and load via AffineTEA.load(). *)
+let tea_bridge_cmd_fn output =
+  let m = Affinescript.Tea_bridge.generate () in
+  Affinescript.Wasm_encode.write_module_to_file output m;
+  Format.printf "TEA bridge written to %s@." output;
+  Format.printf "  affinescript_init()                     — initialise TitleModel@.";
+  Format.printf "  affinescript_update(msg: i32)           — 0=NewGame 1=LoadGame 2=Settings 3=Credits@.";
+  Format.printf "  affinescript_get_selected() -> i32      — 0=none 1=new_game 2=load_game 3=settings 4=credits@.";
+  Format.printf "  affinescript_get_screen_w/h() -> i32    — current screen dimensions@.";
+  Format.printf "  affinescript_set_screen(w: i32, h: i32) — handle resize events@.";
+  Format.printf "  memory                                   — exported linear memory (model at offset 64)@.";
+  Format.printf "Custom sections: affinescript.ownership, affinescript.tea_layout@.";
+  `Ok ()
+
 (** Start the REPL *)
 let repl_cmd_fn () =
   (* TODO: Re-enable when REPL module is restored *)
@@ -626,6 +647,11 @@ let eval_cmd =
   let info = Cmd.info "eval" ~doc in
   Cmd.v info Term.(ret (const eval_file $ face_arg $ json_arg $ path_arg))
 
+let tea_bridge_cmd =
+  let doc = "Generate the AffineScript TEA bridge Wasm module for IDApTIK" in
+  let info = Cmd.info "tea-bridge" ~doc in
+  Cmd.v info Term.(ret (const tea_bridge_cmd_fn $ output_arg))
+
 let repl_cmd =
   let doc = "Start the interactive REPL" in
   let info = Cmd.info "repl" ~doc in
@@ -773,6 +799,7 @@ let default_cmd =
   Cmd.group info ~default [
     lex_cmd; parse_cmd; check_cmd; eval_cmd; repl_cmd; compile_cmd;
     fmt_cmd; lint_cmd;
+    tea_bridge_cmd;
     hover_cmd; goto_def_cmd;
     preview_python_cmd; preview_js_cmd; preview_pseudocode_cmd
   ]
