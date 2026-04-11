@@ -6,6 +6,7 @@ project = "affinescript"
 version = "0.1.0"
 last-updated = "2026-04-11"
 status = "active"
+session-note-2026-04-11-b = "BUG-005 CLOSED: WasmGC silent drop+null fallbacks replaced with explicit CodegenError (UnboundFunction for missing func_indices entries, UnsupportedFeature for indirect/higher-order calls). Effects runtime SHIPPED: TopEffect now registers each op as a PerformEffect-raising VBuiltin in interp.ml (was no-op). Multi-arg handler arg_vals bug fixed. ExprResume wired to __resume__ continuation in handler env. WasmGC path: TopEffect ops registered as unreachable stubs with correct func_indices offsets; ExprHandle and ExprResume reject with UnsupportedFeature (EH proposal or CPS transform required for full dispatch)."
 
 [project-context]
 name = "affinescript"
@@ -44,7 +45,7 @@ affine-types = "wired-and-reachable (Track A Manhattan plan complete 2026-04-10.
 linear-arrows = "parse-only (-[q]-> syntax accepted by parser; quantity annotation not propagated into enforcement)"
 borrow-checker = "phase-3-in-progress (see lib/borrow.ml [IMPL-DEP: Phase 3])"
 row-polymorphism = "60% (records + effects rows implemented in typecheck/unify; not fully exercised end-to-end)"
-effects = "declarations-only (effect types parsed and tracked; handler semantics not yet in interpreter or backends)"
+effects = "interpreter-complete (handler dispatch, PerformEffect propagation, ExprResume, multi-arg ops all wired in interp.ml 2026-04-11). WasmGC: ops registered as unreachable stubs; ExprHandle/ExprResume reject with UnsupportedFeature — full WASM dispatch needs EH proposal or CPS transform."
 dependent-types = "parse-only (TRefined AST node exists and refinement predicates parse, but predicates do not reduce; no SMT/decision procedure wired in)"
 traits = "70% (registry and lookup work; generic trait resolution needs unification integration)"
 
@@ -152,22 +153,21 @@ evidence = "lib/quantity.ml:245-249 (comment admits the gap)"
 fix-plan = "Track D (borrow checker Phase 3) — lambda capture analysis is part of the borrow/ownership story. Not A3 scope."
 regression-test = "Track D fixture — deferred until borrow checker lands."
 
-[[open-bug]]
+[[closed-bug]]
 id = "BUG-005"
 severity = "medium"
 category = "codegen"
 title = "WasmGC backend silently drops unknown function calls"
 discovered = "2026-04-10"
+fixed = "2026-04-11"
 description = """
-lib/codegen_gc.ml ExprApp handling silently emits 'drop all args + push null'
-when the callee is not in the func_indices table, and does the same for
-indirect calls. This is placeholder behaviour that produces wrong code rather
-than failing loudly. Any program that reaches codegen with an unresolved
-function call will compile to nonsense at runtime.
+lib/codegen_gc.ml ExprApp handling silently emitted 'drop all args + push null'
+when the callee was not in the func_indices table, and did the same for
+indirect calls. This was placeholder behaviour that produced wrong code rather
+than failing loudly.
 """
-evidence = "lib/codegen_gc.ml gen_gc_expr ExprApp case (the 38-line block added as part of the in-progress WasmGC work)"
-fix-plan = "Replace silent drops with explicit CodegenError. Direct-call path (via func_indices) and int/float builtin coercions stay — they're correct. Only the fallback arms need to fail loudly."
-regression-test = "Add a fixture that intentionally references an unknown function name and expects a loud compile error."
+fix = "Both fallback arms replaced with explicit CodegenError. Direct-call miss → Error (UnboundFunction id.name). Indirect/higher-order callee → Error (UnsupportedFeature \"indirect / higher-order call in WasmGC backend (call_ref not yet implemented)\"). New UnboundFunction variant added to codegen_error and format_codegen_error. commit b58178a."
+regression-test-status = "deferred — fixture needs a known-unknown function name in a WasmGC compile path"
 
 # ─── Deferred upgrade: bring .machine_readable/ to current standards ──────────
 # AffineScript predates most of the current hyperpolymath .machine_readable/
