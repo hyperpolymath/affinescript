@@ -6,6 +6,7 @@ project = "affinescript"
 version = "0.1.0"
 last-updated = "2026-04-11"
 status = "active"
+session-note-2026-04-11-d = "TRAITS WIRED (commit 1ca143e): trait_registry in context; TopTrait/TopImpl in forward pass; ExprField trait fallback; find_impl unification-based; TopImpl bodies typechecked; 80 tests. NEXT: LSP Phase B."
 session-note-2026-04-11-c = "LINEAR ARROWS ENFORCED (commit d2f9b7b): (1) lambda synth — |@linear x: T| e now synthesises T -[1]-> U; (2) lambda check mode — explicit quantity annotation validated against expected TArrow; (3) quantity.ml ExprLambda — annotated params declared in env, usage verified, violations accumulated in env.errors and drained after check_function_quantities step 3; scope leakage prevented via quantities save/restore. Also fixed codegen.ml missing custom_sections field (pre-existing wasm.ml change). 75 tests, 0 regressions. NEXT: traits generic resolution → unification integration; then LSP Phase B."
 session-note-2026-04-11-b = "BUG-005 CLOSED: WasmGC silent drop+null fallbacks replaced with explicit CodegenError (UnboundFunction for missing func_indices entries, UnsupportedFeature for indirect/higher-order calls). Effects runtime SHIPPED: TopEffect now registers each op as a PerformEffect-raising VBuiltin in interp.ml (was no-op). Multi-arg handler arg_vals bug fixed. ExprResume wired to __resume__ continuation in handler env. WasmGC path: TopEffect ops registered as unreachable stubs with correct func_indices offsets; ExprHandle and ExprResume reject with UnsupportedFeature (EH proposal or CPS transform required for full dispatch)."
 
@@ -48,7 +49,7 @@ borrow-checker = "phase-3-in-progress (see lib/borrow.ml [IMPL-DEP: Phase 3])"
 row-polymorphism = "60% (records + effects rows implemented in typecheck/unify; not fully exercised end-to-end)"
 effects = "interpreter-complete (handler dispatch, PerformEffect propagation, ExprResume, multi-arg ops all wired in interp.ml 2026-04-11). WasmGC: ops registered as unreachable stubs; ExprHandle/ExprResume reject with UnsupportedFeature — full WASM dispatch needs EH proposal or CPS transform."
 dependent-types = "parse-only (TRefined AST node exists and refinement predicates parse, but predicates do not reduce; no SMT/decision procedure wired in)"
-traits = "70% (registry and lookup work; generic trait resolution needs unification integration)"
+traits = "90% (2026-04-11, commit 1ca143e): trait_registry added to typecheck context; TopTrait/TopImpl processed in forward pass; ExprField falls back to Trait.find_method_for_type on record-field failure; find_impl/find_impls_for_type use unification-based matching via fresh_impl_self_ty + Unify.unify instead of name string comparison; TopImpl bodies type-checked via check_fn_decl with Self bound; check_impl_satisfies_trait verifies required methods present. Two E2E fixtures + 2 tests. 80 total, 0 regressions. Remaining: associated type substitution in method bodies, where-clause supertrait enforcement, coherence checking.)"
 
 [track-a-manhattan]
 owner = "primary"
