@@ -52,6 +52,8 @@ __pycache__/
 *.ali
 /obj/
 /bin/
+!bin/*.ml
+!bin/dune
 
 # Haskell
 /.stack-work/
