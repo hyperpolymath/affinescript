@@ -136,22 +136,30 @@ fix = "Replaced fold_right with an explicit L-to-R recursive loop that accumulat
 regression-test-status = "deferred — observable order verification requires either the mutable-binding interpreter path (currently broken in baseline; the failing 'lambda'/'simple eval' interp tests share the same root cause) or a side-effecting builtin reachable from a fixture. Both routes are out of scope for the BUG-003 fix and should be revisited once the interpreter mutation path is repaired."
 verification = "Code review against ADR-003 + dune build clean + dune runtest baseline-equivalent (22 pre-existing failures, none new, none resolved)."
 
-[[open-bug]]
+[[closed-bug]]
 id = "BUG-004"
 severity = "medium"
 category = "soundness"
 title = "Lambda-body usage not tracked against outer captures"
 discovered = "2026-04-10"
+fixed = "2026-04-11"
 description = """
-lib/quantity.ml:245-249 explicitly documents that lambda-bound params are
-not tracked and that 'the lambda body may still reference outer tracked
-variables' — but the current code does not charge usage against those
-captures. A lambda capturing a linear variable can be called multiple times,
-duplicating the captured resource.
+lib/quantity.ml ExprLambda was a no-op for outer variable usage: captures
+were not scaled by QOmega, so a lambda capturing a linear variable did not
+raise LinearVariableUsedMultiple. Borrow checker also ignored captures,
+allowing move of a captured variable after lambda creation.
 """
-evidence = "lib/quantity.ml:245-249 (comment admits the gap)"
-fix-plan = "Track D (borrow checker Phase 3) — lambda capture analysis is part of the borrow/ownership story. Not A3 scope."
-regression-test = "Track D fixture — deferred until borrow checker lands."
+fix = """
+Two coordinated fixes (commit 48422d1):
+1. quantity.ml ExprLambda: snapshot env, walk body (shadowing lambda params),
+   compute per-variable delta, restore env, re-apply delta scaled by QOmega.
+   scale_usage QOmega UOne = UMany → LinearVariableUsedMultiple for linear captures.
+2. borrow.ml ExprLambda: collect_free walker finds all free variables in body,
+   creates Shared borrows for each captured place. Move of captured variable
+   → MoveWhileBorrowed. Borrows expire at block exit via lexical-lifetime clearing.
+   borrow_kind_name replaces show_borrow_kind for readable error messages.
+"""
+verification = "Manual smoke tests: lambda capturing moved value → 'cannot move `v` while shared-borrowed'; valid lambda (no owned captures) → passes. 73/73 tests pass."
 
 [[closed-bug]]
 id = "BUG-005"
