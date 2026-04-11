@@ -251,19 +251,32 @@ let rec eval (env : env) (expr : expr) : value result =
         ) eh.eh_handlers in
         begin match op_arm with
           | Some (HandlerOp (_, pats, body)) ->
-            (* Bind effect arguments to handler parameters.
-               The last parameter is conventionally the resume continuation,
-               but for now we bind a simple identity closure. *)
-            let arg_vals = match args with
-              | [single] -> [single]
-              | multiple -> [VTuple multiple]
-            in
-            let resume_fn = VBuiltin ("resume", fun resume_args ->
+            (* Build the resume continuation.  In this tree-walking interpreter
+               the continuation is shallow: calling resume(v) returns v as the
+               result of the entire `handle` expression.  This is correct for
+               the common single-shot, tail-resume pattern.  Full multi-shot
+               continuations require either OCaml 5 effects or a CPS transform. *)
+            let resume_fn = VBuiltin ("__resume__", fun resume_args ->
               match resume_args with
               | [v] -> Ok v
-              | _ -> Ok VUnit
+              | []  -> Ok VUnit
+              | vs  -> Ok (VTuple vs)
             ) in
-            let all_vals = arg_vals @ [resume_fn] in
+            (* Bind effect argument values to handler patterns.
+               Convention: all declared params first, then the continuation as
+               the last pattern.  Pass args flat (not wrapped in a tuple) so
+               that multi-arg effects bind correctly to separate patterns. *)
+            let all_vals = args @ [resume_fn] in
+            let n_pats = List.length pats in
+            let n_vals = List.length all_vals in
+            (* If the handler omits the continuation param, provide it anyway
+               so that ExprResume still works via the __resume__ env slot. *)
+            let trimmed_vals = List.filteri (fun i _ -> i < n_pats) all_vals in
+            let pad_vals =
+              if n_vals < n_pats then
+                trimmed_vals @ List.init (n_pats - n_vals) (fun _ -> VUnit)
+              else trimmed_vals
+            in
             let bindings = List.fold_left2 (fun acc pat v ->
               match acc with
               | Ok bs ->
@@ -272,9 +285,15 @@ let rec eval (env : env) (expr : expr) : value result =
                   | Error e -> Error e
                 end
               | Error e -> Error e
-            ) (Ok []) pats (List.filteri (fun i _ -> i < List.length pats) all_vals) in
+            ) (Ok []) pats pad_vals in
             let* bindings = bindings in
-            let env' = extend_env_list bindings env in
+            (* Also bind the resume fn under "__resume__" so that the
+               `ExprResume` keyword form can find it regardless of what
+               name the programmer chose for the continuation parameter. *)
+            let env' =
+              extend_env "__resume__" resume_fn
+                (extend_env_list bindings env)
+            in
             eval env' body
           | _ -> Error (RuntimeError ("Unhandled effect: " ^ op_name))
         end
@@ -282,11 +301,19 @@ let rec eval (env : env) (expr : expr) : value result =
     end
 
   | ExprResume arg_opt ->
-    (* Resume is only meaningful inside an effect handler. At the top
-       level it's a no-op that returns the argument or unit. *)
-    begin match arg_opt with
+    (* Evaluate the argument, then call the resume continuation bound in the
+       environment by the enclosing ExprHandle dispatcher.  The continuation
+       is stored under "__resume__" so that the `resume expr` keyword form
+       works without the programmer having to name the continuation parameter.
+       If called outside a handler (no "__resume__" in env), return the value
+       as-is — this matches the surface-syntax intuition "resume x ≈ x". *)
+    let* arg_val = match arg_opt with
       | Some e -> eval env e
-      | None -> Ok VUnit
+      | None   -> Ok VUnit
+    in
+    begin match lookup_env "__resume__" env with
+      | Ok resume_fn -> apply_function resume_fn [arg_val]
+      | Error _      -> Ok arg_val
     end
 
   | ExprTry et ->
@@ -865,9 +892,23 @@ let eval_decl (env : env) (decl : top_level) : env result =
     let* v = eval env tc.tc_value in
     Ok (extend_env tc.tc_name.name v env)
 
-  | TopType _ | TopEffect _ | TopTrait _ | TopImpl _ ->
-    (* Type declarations don't affect runtime *)
+  | TopType _ | TopTrait _ | TopImpl _ ->
+    (* Type/trait/impl declarations don't affect the runtime value environment *)
     Ok env
+
+  | TopEffect ed ->
+    (* Register each effect operation as a PerformEffect-raising builtin.
+       When an effect op is called from within a `handle` expression, the
+       Error(PerformEffect ...) propagates up the call stack until caught by
+       the ExprHandle dispatcher.  Unhandled effects surface as RuntimeError. *)
+    let env' = List.fold_left (fun env (op : effect_op_decl) ->
+      let op_name = op.eod_name.name in
+      let builtin = VBuiltin (op_name, fun args ->
+        Error (PerformEffect (op_name, args))
+      ) in
+      extend_env op_name builtin env
+    ) env ed.ed_ops in
+    Ok env'
 
 (** Evaluate a program *)
 let eval_program (prog : program) : env result =

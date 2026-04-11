@@ -45,6 +45,10 @@ type codegen_error =
   | UnsupportedFeature of string
   | UnboundVariable of string
   | UnboundType of string
+  (** Raised when [ExprApp] names a function that has no entry in [func_indices].
+      This is always a compiler bug — every defined function must be registered
+      before codegen reaches a call-site. *)
+  | UnboundFunction of string
 [@@deriving show]
 
 type 'a cg_result = ('a, codegen_error) Result.t
@@ -355,24 +359,21 @@ let rec gen_gc_expr (ctx : gc_ctx) (expr : expr) : (gc_ctx * gc_instr list) cg_r
         | Some func_idx ->
           Ok (ctx_after_args, arg_codes @ [Std (Wasm.Call func_idx)])
         | None ->
-          (* Function index not found: emit drop for all args + null as placeholder *)
-          let drop_code = List.init (List.length args) (fun _ -> std Wasm.Drop) in
-          Ok (ctx_after_args, arg_codes @ drop_code @ [RefNull HtAny])
+          (* BUG-005: every reachable function must be registered in func_indices
+             before codegen visits any call-site.  Silently emitting drop+null here
+             would produce well-typed but semantically wrong WASM that is impossible
+             to debug at runtime.  Fail loudly instead. *)
+          Error (UnboundFunction id.name)
     end
 
   | ExprApp (callee, args) ->
-    (* Indirect calls or non-variable callees: evaluate and discard for now *)
-    let* (ctx1, callee_code) = gen_gc_expr ctx callee in
-    let* (ctx2, arg_codes_rev) =
-      List.fold_left (fun acc arg ->
-        let* (c, rev_codes) = acc in
-        let* (c', code) = gen_gc_expr c arg in
-        Ok (c', code :: rev_codes)
-      ) (Ok (ctx1, [])) args
-    in
-    let arg_codes = List.concat (List.rev arg_codes_rev) in
-    let drop_code = List.init (List.length args + 1) (fun _ -> std Wasm.Drop) in
-    Ok (ctx2, callee_code @ arg_codes @ drop_code @ [RefNull HtAny])
+    (* BUG-005: indirect / higher-order calls (callee is not a plain ExprVar) are
+       not yet lowered to call_ref in the WasmGC backend.  The old behaviour —
+       evaluate callee+args, drop everything, push null — was silently wrong and
+       would crash at the call-site with an opaque type error.  Reject explicitly
+       until call_ref support is added. *)
+    let _ = (callee, args) in
+    Error (UnsupportedFeature "indirect / higher-order call in WasmGC backend (call_ref not yet implemented)")
 
   (* ── Record allocation (core GC operation) ─────────────────────── *)
 
@@ -739,18 +740,35 @@ let rec gen_gc_expr (ctx : gc_ctx) (expr : expr) : (gc_ctx * gc_instr list) cg_r
 
   (* ── Effect / error-handling passthrough ────────────────────────── *)
 
-  | ExprHandle eh ->
-    (* Effect handlers: compile body only; continuation support deferred *)
-    gen_gc_expr ctx eh.eh_body
+  | ExprHandle _eh ->
+    (* Effect handler dispatch is not implementable in this WasmGC backend
+       without either:
+         - The WASM exception-handling proposal (EH) to propagate PerformEffect
+           across stack frames and capture the perform-site continuation, OR
+         - A whole-program CPS transform before codegen.
+
+       Silently compiling just the body (the previous behaviour) was wrong:
+       any handler arms are dropped, so effects are never caught, and the
+       first `perform` would trap at the op stub rather than dispatch to the
+       correct handler arm.  Fail loudly instead.
+
+       To use algebraic effects, compile with the interpreter backend (-i). *)
+    Error (UnsupportedFeature
+      "effect handler (handle { ... }) in WasmGC backend — \
+       requires WASM EH proposal or CPS transform; use `--interp` / `-i`")
 
   | ExprTry et ->
     gen_gc_block ctx et.et_body
 
-  | ExprResume arg_opt ->
-    begin match arg_opt with
-      | Some e -> gen_gc_expr ctx e
-      | None   -> Ok (ctx, [push_i32 0])
-    end
+  | ExprResume _arg_opt ->
+    (* `resume` is only meaningful inside an effect handler arm.  The WasmGC
+       backend has no handler dispatch (see ExprHandle above), so emitting
+       the argument value here would be silently wrong — the enclosing handle
+       expression already fails with UnsupportedFeature before we ever reach
+       a resume.  Fail consistently. *)
+    Error (UnsupportedFeature
+      "`resume` expression in WasmGC backend — \
+       only valid inside a `handle` block; use `--interp` / `-i`")
 
   | ExprRowRestrict (base, _) ->
     (* Row restriction is type-level; GC pointer is unchanged *)
@@ -1104,8 +1122,45 @@ let gen_gc_decl (ctx : gc_ctx) (decl : top_level) : gc_ctx cg_result =
         Ok ctx
     end
 
-  | TopConst _ | TopEffect _ | TopTrait _ | TopImpl _ ->
+  | TopConst _ | TopTrait _ | TopImpl _ ->
     Ok ctx
+
+  | TopEffect ed ->
+    (* Register each effect operation as an unreachable stub function.
+       This gives each op a valid func_indices entry (so direct calls at
+       least produce a trap rather than a link error), and correctly
+       offsets function indices for all subsequent definitions.
+
+       Full effect handler dispatch requires either:
+         - The WASM exception-handling proposal (EH, standardised 2023) to
+           propagate perform-site continuations across stack frames, OR
+         - A whole-program CPS transform before codegen.
+       Neither is implemented in this backend yet.  Use the interpreter
+       (`-i`) for programs that perform effects.
+
+       All parameters are typed as GcAnyref (conservative): concrete types
+       are not yet propagated from the type-inference pass into codegen. *)
+    let ctx' = List.fold_left (fun ctx (op : effect_op_decl) ->
+      let n_params = List.length op.eod_params in
+      let func_type = GcFuncType {
+        gft_params  = List.init n_params (fun _ -> GcAnyref);
+        gft_results = [GcAnyref];
+      } in
+      let (ctx1, type_idx) = register_gc_type ctx func_type in
+      let func_idx = ctx1.import_count + List.length ctx1.gc_funcs_acc in
+      let stub : gc_func = {
+        gf_type   = type_idx;
+        gf_locals = [];
+        (* Trap immediately: calling an effect op in WasmGC without a
+           handler dispatch mechanism is always a programming error. *)
+        gf_body   = [Std Wasm.Unreachable];
+      } in
+      { ctx1 with
+        func_indices = (op.eod_name.name, func_idx) :: ctx1.func_indices;
+        gc_funcs_acc = ctx1.gc_funcs_acc @ [stub];
+      }
+    ) ctx ed.ed_ops in
+    Ok ctx'
 
 (** {1 Module-level entry point} *)
 
@@ -1144,3 +1199,4 @@ let format_codegen_error (e : codegen_error) : string =
   | UnsupportedFeature msg -> Printf.sprintf "GC codegen: unsupported feature: %s" msg
   | UnboundVariable name   -> Printf.sprintf "GC codegen: unbound variable: %s" name
   | UnboundType name       -> Printf.sprintf "GC codegen: unbound type: %s" name
+  | UnboundFunction name   -> Printf.sprintf "GC codegen: function '%s' has no func_indices entry (compiler bug — register before codegen)" name
