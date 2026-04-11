@@ -200,7 +200,7 @@ let binop_float (op : binary_op) (a : float) (b : float) : value result =
 (** Binary operation on strings *)
 let binop_string (op : binary_op) (a : string) (b : string) : value result =
   match op with
-  | OpAdd -> Ok (VString (a ^ b))
+  | OpAdd | OpConcat -> Ok (VString (a ^ b))  (* both + and ++ concat strings at runtime *)
   | OpEq -> Ok (VBool (a = b))
   | OpNe -> Ok (VBool (a <> b))
   | OpLt -> Ok (VBool (String.compare a b < 0))

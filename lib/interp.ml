@@ -872,6 +872,70 @@ let create_initial_env () : env =
     ("time_now", VBuiltin ("time_now", fun _args ->
       Ok (VFloat (Sys.time ()))
     ));
+
+    (* -- TEA (The Elm Architecture) interpreter runtime -------------------- *)
+    ("tea_run", VBuiltin ("tea_run", fun args ->
+      (* tea_run expects a record with fields: init, update, view, subscriptions.
+         - init        : () -> (Model, [Cmd])
+         - update      : Msg -> Model -> (Model, [Cmd])
+         - view        : Model -> Html    (Html is rendered as a string or shown)
+         - subscriptions: Model -> [Sub]  (unused at interpreter level)
+
+         The interpreter loop:
+           1. Call init() to get the initial model.
+           2. Render and print the initial view.
+           3. Read lines from stdin; each line becomes a variant Msg.
+           4. Call update(msg, model) -> (new_model, cmds).
+           5. Print new view. Repeat until EOF. *)
+      match args with
+      | [VRecord fields] ->
+        let get f = match List.assoc_opt f fields with
+          | Some v -> Ok v
+          | None -> Error (RuntimeError (Printf.sprintf "tea_run: missing field '%s'" f))
+        in
+        let render_html v =
+          let s = match v with
+            | VString s -> s
+            | VVariant ("Text", Some (VString s)) -> s
+            | VVariant ("Node", _) -> "[Html node]"
+            | other -> show_value other
+          in
+          print_endline s
+        in
+        let* init_fn   = get "init"   in
+        let* update_fn = get "update" in
+        let* view_fn   = get "view"   in
+        (* Call init() -> (model, cmds) — 0-param function, no args *)
+        let* init_result = apply_function init_fn [] in
+        let model0 = match init_result with
+          | VTuple (m :: _) -> m
+          | m -> m
+        in
+        (* Render initial view *)
+        let* view0 = apply_function view_fn [model0] in
+        render_html view0;
+        (* Read-eval-print loop: stdin lines become variant Msgs until EOF *)
+        let rec loop model =
+          let input = try Some (read_line ()) with End_of_file -> None in
+          match input with
+          | None -> Ok VUnit  (* EOF — done, clean exit *)
+          | Some "" -> loop model  (* blank line — skip *)
+          | Some line ->
+            let msg = VVariant (String.trim line, None) in
+            let* upd_result = apply_function update_fn [msg; model] in
+            let new_model = match upd_result with
+              | VTuple (m :: _) -> m
+              | m -> m
+            in
+            let* new_view = apply_function view_fn [new_model] in
+            render_html new_view;
+            loop new_model
+        in
+        loop model0
+      | _ ->
+        Error (RuntimeError
+          "tea_run expects a record: {init, update, view, subscriptions}")
+    ));
   ] in
   builtins
 
@@ -892,8 +956,46 @@ let eval_decl (env : env) (decl : top_level) : env result =
     let* v = eval env tc.tc_value in
     Ok (extend_env tc.tc_name.name v env)
 
-  | TopType _ | TopTrait _ | TopImpl _ ->
-    (* Type/trait/impl declarations don't affect the runtime value environment *)
+  | TopType td ->
+    (* Register enum constructors so they can be used as values / constructor functions.
+       Nullary constructors become VVariant values.
+       N-ary constructors become VBuiltin constructor functions. *)
+    begin match td.td_body with
+      | TyEnum variants ->
+        let env' = List.fold_left (fun env (vd : variant_decl) ->
+          let name = vd.vd_name.name in
+          match vd.vd_fields with
+          | [] ->
+            (* Nullary constructor: bind directly as a VVariant value *)
+            extend_env name (VVariant (name, None)) env
+          | [_] ->
+            (* Single-payload constructor: wrap arg in VVariant *)
+            extend_env name
+              (VBuiltin (name, fun args ->
+                match args with
+                | [v] -> Ok (VVariant (name, Some v))
+                | _ -> Error (TypeMismatch (Printf.sprintf "%s expects 1 argument" name))))
+              env
+          | fields ->
+            (* Multi-payload constructor: pack args into a VTuple *)
+            let n = List.length fields in
+            extend_env name
+              (VBuiltin (name, fun args ->
+                if List.length args = n then
+                  Ok (VVariant (name, Some (VTuple args)))
+                else
+                  Error (TypeMismatch
+                    (Printf.sprintf "%s expects %d arguments" name n))))
+              env
+        ) env variants in
+        Ok env'
+      | _ ->
+        (* Struct, alias, and other type declarations don't create runtime bindings *)
+        Ok env
+    end
+
+  | TopTrait _ | TopImpl _ ->
+    (* Trait and impl declarations don't affect the runtime value environment *)
     Ok env
 
   | TopEffect ed ->

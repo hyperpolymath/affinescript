@@ -1,0 +1,77 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// AffineScript TEA counter — Stage 3c dogfood
+//
+// Demonstrates The Elm Architecture in AffineScript:
+//   - Model is an owned value: each update consumes the old model, produces a new one
+//   - Msg is linear: consumed by update, not reusable
+//   - Cmd carries obligations: None means no side-effects, Log carries a message to handle
+//
+// Run: affinescript eval examples/counter.afs
+//   At the stdin prompt, type one of: Increment  Decrement  Reset
+//   Ctrl-D (EOF) exits cleanly.
+
+// ── Msg ─────────────────────────────────────────────────────────────────────
+// Linear: each message is consumed exactly once by update.
+
+enum CounterMsg {
+  Increment,
+  Decrement,
+  Reset
+}
+
+// ── Cmd ─────────────────────────────────────────────────────────────────────
+// Linear obligation.  None → no effect.  Log(String) → something to handle.
+// Dropping a non-None Cmd at compile time is a quantity violation (Stage 1).
+
+enum CounterCmd {
+  None,
+  Log(String)
+}
+
+// ── init ─────────────────────────────────────────────────────────────────────
+// Produces the initial model.  No commands needed at start-up.
+
+fn counter_init() -> Int {
+  0
+}
+
+// ── update ───────────────────────────────────────────────────────────────────
+// Consumes Msg and old Model; produces new Model plus any commands.
+// The old model is gone after this call — AffineScript enforces this via QTT.
+
+fn counter_update(msg: CounterMsg, model: Int) -> Int {
+  match msg {
+    Increment => model + 1,
+    Decrement => model - 1,
+    Reset     => 0
+  }
+}
+
+// ── view ─────────────────────────────────────────────────────────────────────
+// Borrows the model (read-only), renders a string.
+// Rebuilding the view does not consume the model.
+
+fn counter_view(model: Int) -> String {
+  "Count: " ++ int_to_string(model)
+}
+
+// ── subscriptions ────────────────────────────────────────────────────────────
+// No real-time subscriptions at the interpreter level.
+
+fn counter_subs(model: Int) -> String {
+  "None"
+}
+
+// ── main ─────────────────────────────────────────────────────────────────────
+// Wire up the TEA runtime and hand off to the interpreter loop.
+
+fn main() -> () {
+  tea_run({
+    init:          counter_init,
+    update:        counter_update,
+    view:          counter_view,
+    subscriptions: counter_subs
+  })
+}

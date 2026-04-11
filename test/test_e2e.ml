@@ -1196,6 +1196,163 @@ let trait_impl_tests = [
 ]
 
 (* ============================================================================
+   Section N+1: Stage 3 — TEA stdlib (The Elm Architecture) tests
+   ============================================================================
+
+   Verify:
+   3a — Cmd/Sub/Html enum types parse and type-check
+   3b — enum constructors are bound at runtime (nullary + payload)
+   3c — counter.afs: init→0, update(Increment)→1, update(Decrement)→0
+   3d — titlescreen.afs compiles without errors (interpreter-level)
+*)
+
+(** Run eval pipeline through to the interpreter env, then call main() with
+    stdin from a string.  Returns the (stdout, exit code) pair. *)
+let run_tea_program_with_input fixture_name input_lines =
+  (* Write the test input to a temp file and redirect stdin *)
+  let input = String.concat "\n" input_lines ^ "\n" in
+  let tmp_in = Filename.temp_file "affinescript_tea_in" "" in
+  let oc = open_out tmp_in in
+  output_string oc input;
+  close_out oc;
+  let output_buf = Buffer.create 64 in
+  let saved_stdout = Unix.dup Unix.stdout in
+  let tmp_out = Filename.temp_file "affinescript_tea_out" "" in
+  let fd_out = Unix.openfile tmp_out [Unix.O_WRONLY; Unix.O_CREAT; Unix.O_TRUNC] 0o600 in
+  Unix.dup2 fd_out Unix.stdout;
+  Unix.close fd_out;
+  let saved_stdin  = Unix.dup Unix.stdin  in
+  let fd_in  = Unix.openfile tmp_in  [Unix.O_RDONLY] 0o600 in
+  Unix.dup2 fd_in Unix.stdin;
+  Unix.close fd_in;
+  let result = (match run_wasm_pipeline (fixture fixture_name) with
+    | Error _ -> `Failed  (* type/compile error before running *)
+    | Ok _    ->
+      match run_frontend (fixture fixture_name) with
+      | Error _ -> `Failed
+      | Ok (prog, _) ->
+        (match Interp.eval_program prog with
+        | Error _ -> `Failed
+        | Ok env ->
+          (match Value.lookup_env "main" env with
+          | Error _ -> `NoMain
+          | Ok main_fn ->
+            (match Interp.apply_function main_fn [] with
+            | Ok _ -> `Ok
+            | Error _ -> `RuntimeError)))) in
+  Unix.dup2 saved_stdout Unix.stdout;
+  Unix.close saved_stdout;
+  Unix.dup2 saved_stdin  Unix.stdin;
+  Unix.close saved_stdin;
+  let ic = open_in tmp_out in
+  (try while true do
+    Buffer.add_string output_buf (input_line ic); Buffer.add_char output_buf '\n'
+  done with End_of_file -> ());
+  close_in ic;
+  Sys.remove tmp_in; Sys.remove tmp_out;
+  (Buffer.contents output_buf, result)
+
+(** Simpler helper: just check the program compiles and evals without error *)
+let test_tea_counter_compiles () =
+  (* counter.affine should parse, type-check, and run without errors *)
+  match run_frontend (fixture "counter.affine") with
+  | Error msg -> Alcotest.fail ("Frontend error: " ^ msg)
+  | Ok (prog, _) ->
+    match Interp.eval_program prog with
+    | Error e -> Alcotest.fail ("Eval error: " ^ Value.show_eval_error e)
+    | Ok _ -> ()  (* definitions loaded into env — success *)
+
+let test_tea_counter_init () =
+  (* counter_init() should return 0 *)
+  match run_frontend (fixture "counter.affine") with
+  | Error msg -> Alcotest.fail msg
+  | Ok (prog, _) ->
+    match Interp.eval_program prog with
+    | Error e -> Alcotest.fail (Value.show_eval_error e)
+    | Ok env ->
+      match Value.lookup_env "counter_init" env with
+      | Error _ -> Alcotest.fail "counter_init not found in env"
+      | Ok init_fn ->
+        match Interp.apply_function init_fn [] with
+        | Error e -> Alcotest.fail (Value.show_eval_error e)
+        | Ok v ->
+          Alcotest.(check int) "counter starts at 0" 0
+            (match v with Value.VInt n -> n | _ -> -1)
+
+let test_tea_counter_update () =
+  (* counter_update(Increment, 0) should return 1;
+     counter_update(Decrement, 1) should return 0 *)
+  match run_frontend (fixture "counter.affine") with
+  | Error msg -> Alcotest.fail msg
+  | Ok (prog, _) ->
+    match Interp.eval_program prog with
+    | Error e -> Alcotest.fail (Value.show_eval_error e)
+    | Ok env ->
+      match Value.lookup_env "counter_update" env with
+      | Error _ -> Alcotest.fail "counter_update not found"
+      | Ok update_fn ->
+        let incr = Value.VVariant ("Increment", None) in
+        let decr = Value.VVariant ("Decrement", None) in
+        let model0 = Value.VInt 0 in
+        (match Interp.apply_function update_fn [incr; model0] with
+        | Error e -> Alcotest.fail (Value.show_eval_error e)
+        | Ok v1 ->
+          Alcotest.(check int) "Increment 0 → 1" 1
+            (match v1 with Value.VInt n -> n | _ -> -1);
+          match Interp.apply_function update_fn [decr; v1] with
+          | Error e -> Alcotest.fail (Value.show_eval_error e)
+          | Ok v2 ->
+            Alcotest.(check int) "Decrement 1 → 0" 0
+              (match v2 with Value.VInt n -> n | _ -> -1))
+
+let test_tea_titlescreen_compiles () =
+  (* titlescreen.affine should parse, type-check, and eval without errors *)
+  match run_frontend (fixture "titlescreen.affine") with
+  | Error msg -> Alcotest.fail ("Frontend error: " ^ msg)
+  | Ok (prog, _) ->
+    match Interp.eval_program prog with
+    | Error e -> Alcotest.fail ("Eval error: " ^ Value.show_eval_error e)
+    | Ok _ -> ()
+
+let test_tea_titlescreen_update () =
+  (* title_update(NewGame, init_model) should set selected = "new_game" *)
+  match run_frontend (fixture "titlescreen.affine") with
+  | Error msg -> Alcotest.fail msg
+  | Ok (prog, _) ->
+    match Interp.eval_program prog with
+    | Error e -> Alcotest.fail (Value.show_eval_error e)
+    | Ok env ->
+      let get n = match Value.lookup_env n env with
+        | Ok v -> v | Error _ -> Alcotest.fail (n ^ " not found") in
+      let init_fn   = get "title_init"   in
+      let update_fn = get "title_update" in
+      match Interp.apply_function init_fn [] with
+      | Error e -> Alcotest.fail (Value.show_eval_error e)
+      | Ok model ->
+        let new_game_msg = Value.VVariant ("NewGame", None) in
+        (match Interp.apply_function update_fn [new_game_msg; model] with
+        | Error e -> Alcotest.fail (Value.show_eval_error e)
+        | Ok new_model ->
+          (* selected field should be "new_game" *)
+          let selected = match new_model with
+            | Value.VRecord fields ->
+              (match List.assoc_opt "selected" fields with
+              | Some (Value.VString s) -> s
+              | _ -> "?")
+            | _ -> "?"
+          in
+          Alcotest.(check string) "NewGame sets selected=new_game"
+            "new_game" selected)
+
+let tea_tests = [
+  Alcotest.test_case "counter compiles"          `Quick test_tea_counter_compiles;
+  Alcotest.test_case "counter init=0"            `Quick test_tea_counter_init;
+  Alcotest.test_case "counter update transitions" `Quick test_tea_counter_update;
+  Alcotest.test_case "titlescreen compiles"      `Quick test_tea_titlescreen_compiles;
+  Alcotest.test_case "titlescreen NewGame→new_game" `Quick test_tea_titlescreen_update;
+]
+
+(* ============================================================================
    Test Suite Export
    ============================================================================ *)
 
@@ -1215,4 +1372,5 @@ let tests =
     ("E2E Errors", error_tests);
     ("E2E Python-Face", python_face_tests);
     ("E2E Traits", trait_impl_tests);
+    ("E2E TEA", tea_tests);
   ]

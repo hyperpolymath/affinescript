@@ -1084,7 +1084,10 @@ let register_builtins (ctx : context) : unit =
   bind_var ctx "len" (let tv = fresh_tyvar 0 in
     TArrow (TApp (TCon "Array", [tv]), QOmega, ty_int, EPure));
   bind_var ctx "panic" (TArrow (ty_string, QOmega, ty_never, EPure));
-  bind_var ctx "exit" (TArrow (ty_int, QOmega, ty_never, ESingleton "IO"))
+  bind_var ctx "exit" (TArrow (ty_int, QOmega, ty_never, ESingleton "IO"));
+  (* TEA runtime — accepts any record, returns unit with IO effect *)
+  let tea_tv = fresh_tyvar 0 in
+  bind_var ctx "tea_run" (TArrow (tea_tv, QOmega, ty_unit, ESingleton "IO"))
 
 (** Check a top-level function declaration. *)
 let check_fn_decl (ctx : context) (fd : fn_decl) : unit result =

@@ -1,0 +1,93 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// AffineScript TEA TitleScreen — Stage 3d dogfood
+//
+// IDApTIK title screen in AffineScript TEA.
+// This is the bridge target for Stage 4: when the Wasm/JS bridge is done,
+// this exact file compiles to a .wasm that AffineTEA.js drives via PixiJS.
+//
+// Model: screen state (dimensions, music playing, selected option)
+// Msg:   navigation events from the title menu
+// Cmd:   side-effects (BGM, SFX, screen navigation)
+//
+// Run: affinescript eval examples/titlescreen.afs
+//   Type: NewGame  LoadGame  Settings  Credits  Ctrl-D to exit
+
+// ── Msg ──────────────────────────────────────────────────────────────────────
+
+enum TitleMsg {
+  NewGame,
+  LoadGame,
+  Settings,
+  Credits
+}
+
+// ── Cmd ──────────────────────────────────────────────────────────────────────
+
+enum TitleCmd {
+  None,
+  PlayBGM(String),
+  PlaySFX(String),
+  Navigate(String)
+}
+
+// ── Model ────────────────────────────────────────────────────────────────────
+
+struct TitleModel {
+  screen_w:   Int,
+  screen_h:   Int,
+  bgm_playing: Int,
+  selected:   String
+}
+
+// ── init ─────────────────────────────────────────────────────────────────────
+
+fn title_init() -> TitleModel {
+  {
+    screen_w:    1280,
+    screen_h:    720,
+    bgm_playing: 0,
+    selected:    "none"
+  }
+}
+
+// ── update ────────────────────────────────────────────────────────────────────
+// Consumes msg and model; returns updated model.
+// In Stage 4, this also emits Cmd(Navigate(...)) which the JS bridge handles.
+
+fn title_update(msg: TitleMsg, model: TitleModel) -> TitleModel {
+  match msg {
+    NewGame  => { screen_w: model.screen_w, screen_h: model.screen_h, bgm_playing: model.bgm_playing, selected: "new_game" },
+    LoadGame => { screen_w: model.screen_w, screen_h: model.screen_h, bgm_playing: model.bgm_playing, selected: "load_game" },
+    Settings => { screen_w: model.screen_w, screen_h: model.screen_h, bgm_playing: model.bgm_playing, selected: "settings" },
+    Credits  => { screen_w: model.screen_w, screen_h: model.screen_h, bgm_playing: model.bgm_playing, selected: "credits" }
+  }
+}
+
+// ── view ─────────────────────────────────────────────────────────────────────
+// Borrows model, renders the title screen state as a string.
+// In Stage 4, this returns Html that the JS bridge applies to the Pixi scene.
+
+fn title_view(model: TitleModel) -> String {
+  "=== IDApTIK ===" ++ "\n" ++
+  "Screen: " ++ int_to_string(model.screen_w) ++ "x" ++ int_to_string(model.screen_h) ++ "\n" ++
+  "Selected: " ++ model.selected
+}
+
+// ── subscriptions ─────────────────────────────────────────────────────────────
+
+fn title_subs(model: TitleModel) -> String {
+  "None"
+}
+
+// ── main ──────────────────────────────────────────────────────────────────────
+
+fn main() -> () {
+  tea_run({
+    init:          title_init,
+    update:        title_update,
+    view:          title_view,
+    subscriptions: title_subs
+  })
+}

@@ -240,6 +240,8 @@ let eval_file face json path =
         add (Affinescript.Json_output.of_resolve_error e span)
       | Ok (resolve_ctx, type_ctx) ->
         let type_ctx = { type_ctx with symbols = resolve_ctx.symbols } in
+        (* Register builtins (print, int_to_string, tea_run, etc.) before type-checking *)
+        Affinescript.Typecheck.register_builtins type_ctx;
         (match List.fold_left (fun acc decl ->
           match acc with
           | Error _ as e -> e
@@ -254,7 +256,14 @@ let eval_file face json path =
             add (Affinescript.Json_output.of_quantity_error (err, span))
           | Ok () ->
             (match Affinescript.Interp.eval_program prog with
-            | Ok _env -> ()
+            | Ok env ->
+              (* Auto-call main() if defined — entry point for TEA apps and scripts *)
+              (match Affinescript.Value.lookup_env "main" env with
+              | Ok main_fn ->
+                (match Affinescript.Interp.apply_function main_fn [] with
+                | Ok _ -> ()
+                | Error e -> add (Affinescript.Json_output.of_eval_error e))
+              | Error _ -> ())  (* no main — that's fine, just eval declarations *)
             | Error e ->
               add (Affinescript.Json_output.of_eval_error e)))))
     with
@@ -276,6 +285,8 @@ let eval_file face json path =
         `Error (false, "Resolution error")
       | Ok (resolve_ctx, type_ctx) ->
         let type_ctx = { type_ctx with symbols = resolve_ctx.symbols } in
+        (* Register builtins (print, int_to_string, tea_run, etc.) before type-checking *)
+        Affinescript.Typecheck.register_builtins type_ctx;
         (match List.fold_left (fun acc decl ->
           match acc with
           | Error _ as e -> e
@@ -294,9 +305,20 @@ let eval_file face json path =
             `Error (false, "Quantity error")
           | Ok () ->
             (match Affinescript.Interp.eval_program prog with
-            | Ok _env ->
-              Format.printf "Program executed successfully@.";
-              `Ok ()
+            | Ok env ->
+              (* Auto-call main() if defined — entry point for TEA apps and scripts *)
+              (match Affinescript.Value.lookup_env "main" env with
+              | Ok main_fn ->
+                (match Affinescript.Interp.apply_function main_fn [] with
+                | Ok _ -> `Ok ()
+                | Error e ->
+                  Format.eprintf "@[<v>Runtime error: %s@]@."
+                    (Affinescript.Value.show_eval_error e);
+                  `Error (false, "Runtime error"))
+              | Error _ ->
+                (* No main function — declarations evaluated, nothing to run *)
+                Format.printf "Program evaluated successfully@.";
+                `Ok ())
             | Error e ->
               Format.eprintf "@[<v>Runtime error: %s@]@."
                 (Affinescript.Value.show_eval_error e);

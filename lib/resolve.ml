@@ -51,12 +51,32 @@ let create_context () : context =
     imports = [];
     references = [];
   } in
-  (* Register built-in functions *)
-  let _ = Symbol.define ctx.symbols "print" SKFunction Span.dummy Public in
-  let _ = Symbol.define ctx.symbols "println" SKFunction Span.dummy Public in
-  let _ = Symbol.define ctx.symbols "int" SKFunction Span.dummy Public in
-  let _ = Symbol.define ctx.symbols "float" SKFunction Span.dummy Public in
-  let _ = Symbol.define ctx.symbols "sqrt" SKFunction Span.dummy Public in
+  (* Register built-in functions — must match the interpreter's create_initial_env *)
+  let def name = let _ = Symbol.define ctx.symbols name SKFunction Span.dummy Public in () in
+  (* Console I/O *)
+  def "print"; def "println"; def "eprint"; def "eprintln";
+  (* String / char builtins *)
+  def "len"; def "string_get"; def "string_sub"; def "string_find";
+  def "char_to_int"; def "int_to_char"; def "show";
+  def "to_lowercase"; def "to_uppercase"; def "trim";
+  def "int_to_string"; def "float_to_string"; def "string_length";
+  def "parse_int"; def "parse_float";
+  (* Numeric coercions and math *)
+  def "int"; def "float";
+  def "sqrt"; def "cbrt"; def "pow_float"; def "floor"; def "ceil"; def "round";
+  def "abs"; def "max"; def "min";
+  def "sin"; def "cos"; def "tan"; def "atan"; def "atan2";
+  def "exp"; def "log"; def "log10"; def "log2";
+  (* I/O — files, process, environment *)
+  def "read_line"; def "read_file"; def "write_file"; def "append_file";
+  def "file_exists"; def "is_directory";
+  def "getenv"; def "setenv"; def "getcwd"; def "chdir";
+  def "list_dir"; def "create_dir"; def "remove_file"; def "remove_dir";
+  def "panic"; def "exit";
+  (* Time *)
+  def "time_now";
+  (* TEA runtime — The Elm Architecture interpreter loop *)
+  def "tea_run";
   ctx
 
 (** Record a use-site reference for a symbol (Phase C: find-references). *)
