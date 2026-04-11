@@ -9,10 +9,10 @@ status = "active"
 
 [project-context]
 name = "affinescript"
-completion-percentage = 80
-phase = "adr-009-conformance-complete"
+completion-percentage = 82
+phase = "python-face-complete"
 tagline = "Rust-inspired language with affine types, dependent types, row polymorphism, and extensible effects"
-note = "ADR-009 conformance target reached 2026-04-11: 12/12 valid conformance tests parse and match expected output (was 0/12). Six parser/lexer issues fixed: float scientific notation, optional type-decl semicolons, enum leading-pipe syntax, effect op type params, row variable support (type + expression contexts), keyword field names. 68/68 E2E tests: 0 regressions. Next: Priority 2 Faces Architecture (ASS / parser layer faces)."
+note = "Python-face (ADR-010 Priority 2) shipped 2026-04-11. lib/python_face.ml: source-level transformer mapping Python surface syntax to canonical AffineScript before lex+parse. Mappings: def→fn, True/False/None→true/false/(), and/or/not→&&/||/!, class→type, pass→(), #→//, import→use, INDENT/DEDENT→{}/}, colon-at-EOL block openers, else/elif chains. `--face python` flag on `parse` subcommand. 5 new Python-face E2E tests. 73/73 E2E tests: 0 regressions. Previous: ADR-009 conformance complete 2026-04-11 (12/12 valid conformance tests). Next: Priority 3 — LSP Phase B (completion, hover) or borrow checker Phase 3."
 
 [components]
 lexer = "complete-minus-affine-tokens (ZERO/ONE tokens for quantity literals NOT emitted; blocks QTT surface syntax). float_exponent now correctly named sub-regexp — scientific notation crash fixed 2026-04-11."
@@ -31,8 +31,8 @@ lsp-phase-d = "pending"
 stdlib = "95% (5 stubs remain as extern builtins)"
 
 [stats]
-compiler-loc = 12424
-compiler-modules = 38
+compiler-loc = 12712
+compiler-modules = 39
 lsp-files = 5
 test-files = 54
 

@@ -59,10 +59,21 @@ let lex_file path =
     Format.eprintf "@[<v>%s:%d:%d: error: %s@]@." path pos.line pos.col msg;
     `Error (false, "Lexer error")
 
+(** Preview the Python-face text transform (debug tool). *)
+let preview_python_transform path =
+  let ch = open_in_bin path in
+  let s = really_input_string ch (in_channel_length ch) in
+  close_in ch;
+  print_string (Affinescript.Python_face.preview_transform s);
+  `Ok ()
+
 (** Parse a file and print AST (no --json support). *)
-let parse_file path =
+let parse_file face path =
   try
-    let prog = Affinescript.Parse_driver.parse_file path in
+    let prog = match face with
+      | `Canonical -> Affinescript.Parse_driver.parse_file path
+      | `Python    -> Affinescript.Python_face.parse_file_python path
+    in
     Format.printf "%s@." (Affinescript.Ast.show_program prog);
     `Ok ()
   with
@@ -433,6 +444,16 @@ let wasm_gc_arg =
           Requires a runtime that supports the GC proposal: V8/Chrome ≥ 119, \
           SpiderMonkey/Firefox ≥ 120, or Wasmtime with --wasm-features gc.")
 
+(** Shared --face flag: select the parser surface-syntax face. *)
+let face_arg =
+  let faces = Arg.enum [("canonical", `Canonical); ("python", `Python)] in
+  Arg.(value & opt faces `Canonical & info ["face"]
+    ~docv:"FACE"
+    ~doc:"Parser face (surface-syntax variant). $(docv) must be $(b,canonical) \
+          (default, standard AffineScript) or $(b,python) (Python-style syntax: \
+          indentation-based blocks, $(b,def)/$(b,True)/$(b,False)/$(b,None)/\
+          $(b,and)/$(b,or)/$(b,not) etc. — compiled to the same canonical AST).")
+
 let lex_cmd =
   let doc = "Lex a file and print tokens" in
   let info = Cmd.info "lex" ~doc in
@@ -441,7 +462,7 @@ let lex_cmd =
 let parse_cmd =
   let doc = "Parse a file and print AST" in
   let info = Cmd.info "parse" ~doc in
-  Cmd.v info Term.(ret (const parse_file $ path_arg))
+  Cmd.v info Term.(ret (const parse_file $ face_arg $ path_arg))
 
 let check_cmd =
   let doc = "Type check a file" in
@@ -473,10 +494,15 @@ let lint_cmd =
   let info = Cmd.info "lint" ~doc in
   Cmd.v info Term.(ret (const lint_file $ json_arg $ path_arg))
 
+let preview_python_cmd =
+  let doc = "Preview the Python-face text transform (debug)" in
+  let info = Cmd.info "preview-python" ~doc in
+  Cmd.v info Term.(ret (const preview_python_transform $ path_arg))
+
 let default_cmd =
   let doc = "The AffineScript compiler" in
   let info = Cmd.info "affinescript" ~version ~doc in
   let default = Term.(ret (const (`Help (`Pager, None)))) in
-  Cmd.group info ~default [lex_cmd; parse_cmd; check_cmd; eval_cmd; repl_cmd; compile_cmd; fmt_cmd; lint_cmd]
+  Cmd.group info ~default [lex_cmd; parse_cmd; check_cmd; eval_cmd; repl_cmd; compile_cmd; fmt_cmd; lint_cmd; preview_python_cmd]
 
 let () = exit (Cmd.eval default_cmd)

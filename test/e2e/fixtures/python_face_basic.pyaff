@@ -1,0 +1,20 @@
+# Python-face fixture: basic arithmetic and control flow.
+# SPDX-License-Identifier: PMPL-1.0-or-later
+
+def add(x: Int, y: Int) -> Int:
+    let result = x + y
+    result
+
+def classify(n: Int) -> String:
+    if n > 0:
+        "positive"
+    elif n < 0:
+        "negative"
+    else:
+        "zero"
+
+def factorial(n: Int) -> Int:
+    if n == 0:
+        1
+    else:
+        n * factorial(n - 1)

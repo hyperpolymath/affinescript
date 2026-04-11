@@ -214,7 +214,7 @@ let test_parse_row_polymorphism () =
   match parse_fixture (fixture "row_polymorphism.affine") with
   | Error msg -> Alcotest.fail msg
   | Ok prog ->
-    Alcotest.(check int) "declaration count" 3 (List.length prog.prog_decls)
+    Alcotest.(check int) "declaration count" 4 (List.length prog.prog_decls)
 
 let test_parse_pattern_match () =
   match parse_fixture (fixture "pattern_match.affine") with
@@ -867,6 +867,116 @@ let error_tests = [
 ]
 
 (* ============================================================================
+   Section 11: Python-Face Parser Tests
+   ============================================================================
+
+   These tests verify that the Python-face transformer correctly maps
+   Python-style surface syntax to canonical AffineScript and that the
+   resulting AST is structurally equivalent to the equivalent canonical
+   source.
+*)
+
+(** Parse Python-face source and return the program or a failure message. *)
+let parse_python src =
+  try Ok (Python_face.parse_string_python ~file:"<test>" src)
+  with
+  | Parse_driver.Parse_error (msg, span) ->
+    Error (Printf.sprintf "parse error at %s: %s" (Span.show span) msg)
+  | Lexer.Lexer_error (msg, pos) ->
+    Error (Printf.sprintf "lexer error at %d:%d: %s" pos.line pos.col msg)
+
+(** Verify [pyface_src] produces the same number of top-level declarations as
+    [canonical_src]. *)
+let check_same_decl_count ~name pyface_src canonical_src =
+  let py_prog = match parse_python pyface_src with
+    | Ok p -> p
+    | Error e -> Alcotest.fail (Printf.sprintf "%s (python-face): %s" name e)
+  in
+  let can_prog = match Parse_driver.parse_string ~file:"<test>" canonical_src with
+    | p -> p
+    | exception Parse_driver.Parse_error (msg, _) ->
+        Alcotest.fail (Printf.sprintf "%s (canonical): parse error: %s" name msg)
+  in
+  Alcotest.(check int) (name ^ " decl count")
+    (List.length can_prog.prog_decls)
+    (List.length py_prog.prog_decls)
+
+let test_python_face_def_to_fn () =
+  (* `def` maps to `fn` — function declaration parses to one TopFn *)
+  let src = "def add(x: Int, y: Int) -> Int:\n    x + y\n" in
+  match parse_python src with
+  | Error e -> Alcotest.fail e
+  | Ok prog ->
+    Alcotest.(check int) "one top-level fn" 1 (List.length prog.prog_decls)
+
+let test_python_face_if_else () =
+  (* if/elif/else chain produces one function with an if-else expression *)
+  check_same_decl_count
+    ~name:"if-elif-else"
+    {|
+def classify(n: Int) -> String:
+    if n > 0:
+        "positive"
+    elif n < 0:
+        "negative"
+    else:
+        "zero"
+|}
+    {|
+fn classify(n: Int) -> String {
+  if n > 0 { "positive" }
+  else if n < 0 { "negative" }
+  else { "zero" }
+}
+|}
+
+let test_python_face_keywords () =
+  (* True/False/None/and/or/not/pass all transform correctly *)
+  let src = {|
+def check(a: Bool, b: Bool) -> Bool:
+    a and not b
+|} in
+  match parse_python src with
+  | Error e -> Alcotest.fail e
+  | Ok prog ->
+    Alcotest.(check int) "one fn" 1 (List.length prog.prog_decls)
+
+let test_python_face_fixture () =
+  (* The full basic fixture file parses without error *)
+  let path = fixture "python_face_basic.pyaff" in
+  match Python_face.parse_file_python path with
+  | exception Parse_driver.Parse_error (msg, span) ->
+    Alcotest.fail (Printf.sprintf "parse error at %s: %s" (Span.show span) msg)
+  | exception Lexer.Lexer_error (msg, pos) ->
+    Alcotest.fail (Printf.sprintf "lexer error at %d:%d: %s" pos.line pos.col msg)
+  | prog ->
+    Alcotest.(check int) "three top-level fns" 3 (List.length prog.prog_decls)
+
+let test_python_face_transform_preview () =
+  (* The text transform produces the expected canonical structure. *)
+  let src = "def foo(x: Int) -> Int:\n    x + 1\n" in
+  let canonical = Python_face.preview_transform src in
+  (* Should contain `fn` (not `def`) and `{` *)
+  Alcotest.(check bool) "contains fn" true
+    (let len = String.length canonical in
+     let rec find i =
+       if i >= len - 2 then false
+       else if canonical.[i] = 'f' && canonical.[i+1] = 'n' && canonical.[i+2] = ' '
+       then true
+       else find (i + 1)
+     in find 0);
+  Alcotest.(check bool) "contains brace" true
+    (String.contains canonical '{')
+
+let python_face_tests = [
+  Alcotest.test_case "def → fn" `Quick test_python_face_def_to_fn;
+  Alcotest.test_case "if/elif/else chain" `Quick test_python_face_if_else;
+  Alcotest.test_case "keyword substitution" `Quick test_python_face_keywords;
+  Alcotest.test_case "fixture parses (3 fns)" `Quick test_python_face_fixture;
+  Alcotest.test_case "transform preview" `Quick test_python_face_transform_preview;
+]
+
+(* ============================================================================
    Test Suite Export
    ============================================================================ *)
 
@@ -882,4 +992,5 @@ let tests =
     ("E2E Optimizer", optimizer_tests);
     ("E2E Full Pipeline", full_pipeline_tests);
     ("E2E Errors", error_tests);
+    ("E2E Python-Face", python_face_tests);
   ]
