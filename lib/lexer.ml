@@ -104,8 +104,15 @@ let hex_lit = [%sedlex.regexp? "0x", Plus hex_digit]
 let bin_lit = [%sedlex.regexp? "0b", Plus bin_digit]
 let oct_lit = [%sedlex.regexp? "0o", Plus oct_digit]
 
+(* The exponent is defined as a named sub-regexp so that sedlex groups it as a
+   single unit inside Opt.  Writing `Opt ('e' | 'E', Opt ('+' | '-'), Plus digit)`
+   directly causes sedlex to treat the three comma-separated items as top-level
+   concatenation elements rather than as arguments to Opt, resulting in the
+   exponent digits NOT being included in the float match and `float_of_string`
+   receiving a trailing-e string such as "1.0e" that it cannot parse. *)
+let float_exponent = [%sedlex.regexp? ('e' | 'E'), Opt ('+' | '-'), Plus digit]
 let float_lit = [%sedlex.regexp?
-  Opt '-', Plus digit, '.', Plus digit, Opt ('e' | 'E', Opt ('+' | '-'), Plus digit)]
+  Opt '-', Plus digit, '.', Plus digit, Opt float_exponent]
 
 let whitespace = [%sedlex.regexp? ' ' | '\t' | '\r']
 let newline = [%sedlex.regexp? '\n']

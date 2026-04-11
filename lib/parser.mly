@@ -167,6 +167,11 @@ type_params:
 type_param:
   | qty = quantity? name = ident kind = kind_annotation?
     { { tp_quantity = qty; tp_name = name; tp_kind = kind } }
+  (* Row variable type parameter, e.g. `[..r]` — lexed as a single ROW_VAR token *)
+  | rv = ROW_VAR
+    { { tp_quantity = None;
+        tp_name = mk_ident rv $startpos $endpos;
+        tp_kind = Some KRow } }
 
 kind_annotation:
   | COLON k = kind { k }
@@ -241,14 +246,24 @@ trait_bound:
 /* ========== Types ========== */
 
 type_decl:
-  | vis = visibility? TYPE name = ident type_params = type_params? EQ ty = type_expr SEMICOLON
+  /* Type alias: `type Foo = Bar` — semicolon is optional (conformance spec omits it) */
+  | vis = visibility? TYPE name = ident type_params = type_params? EQ ty = type_expr SEMICOLON?
     { { td_vis = Option.value vis ~default:Private;
         td_name = name;
         td_type_params = Option.value type_params ~default:[];
         td_body = TyAlias ty } }
-  /* Inline variant syntax: type X = A | B | C(Int) | D; */
+  /* Inline variant syntax with optional leading pipe:
+       type X = A | B | C(Int)       (no leading pipe — classic style)
+       type X = | A | B | C(Int)     (leading pipe — spec style)
+     Semicolon is optional in both forms (conformance spec omits it). */
   | vis = visibility? TYPE name = ident type_params = type_params? EQ
-    first = variant_decl PIPE rest = separated_nonempty_list(PIPE, variant_decl) SEMICOLON
+    first = variant_decl PIPE rest = separated_nonempty_list(PIPE, variant_decl) SEMICOLON?
+    { { td_vis = Option.value vis ~default:Private;
+        td_name = name;
+        td_type_params = Option.value type_params ~default:[];
+        td_body = TyEnum (first :: rest) } }
+  | vis = visibility? TYPE name = ident type_params = type_params? EQ
+    PIPE first = variant_decl rest = list(preceded(PIPE, variant_decl)) SEMICOLON?
     { { td_vis = Option.value vis ~default:Private;
         td_name = name;
         td_type_params = Option.value type_params ~default:[];
@@ -267,7 +282,7 @@ type_decl:
         td_body = TyEnum variants } }
 
 struct_field:
-  | vis = visibility? name = ident COLON ty = type_expr
+  | vis = visibility? name = field_name COLON ty = type_expr
     { { sf_vis = Option.value vis ~default:Private; sf_name = name; sf_ty = ty } }
 
 variant_decl:
@@ -302,8 +317,13 @@ type_expr_primary:
   | name = upper_ident { TyCon (mk_ident name $startpos $endpos) }
   | name = upper_ident LBRACKET args = separated_nonempty_list(COMMA, type_arg) RBRACKET
     { TyApp (mk_ident name $startpos(name) $endpos(name), args) }
-  | LBRACE fields = separated_list(COMMA, row_field) COMMA? row = row_tail? RBRACE
-    { TyRecord (fields, row) }
+  /* Row-polymorphic record type.  We use a custom recursive rule rather than
+     `separated_list` because Menhir's separated_list greedily consumes the
+     COMMA separator and then cannot backtrack when the next token (ROW_VAR)
+     is not a valid row_field start.  ty_record_body / ty_record_rest parse
+     the interior in one pass without lookahead conflicts. */
+  | LBRACE body = ty_record_body RBRACE
+    { TyRecord (fst body, snd body) }
   /* Built-in types */
   | NAT { TyCon (mk_ident "Nat" $startpos $endpos) }
   | INT_T { TyCon (mk_ident "Int" $startpos $endpos) }
@@ -313,11 +333,42 @@ type_expr_primary:
   | CHAR_T { TyCon (mk_ident "Char" $startpos $endpos) }
   | NEVER { TyCon (mk_ident "Never" $startpos $endpos) }
 
-row_tail:
-  | DOTDOT rv = lower_ident { mk_ident rv $startpos(rv) $endpos(rv) }
+/* ty_record_body / ty_record_rest: recursive rules for the interior of a
+   row-polymorphic record type `{ f1: T1, f2: T2, ..r }`.
+
+   Using `separated_list` would cause an LALR(1) conflict: after parsing the
+   COMMA that separates a row_field from a ROW_VAR tail, the separator has
+   already been consumed and the parser cannot determine whether the next
+   production should be a row_field continuation or the row tail.  These
+   rules shift that decision to the token AFTER the comma. */
+
+ty_record_body:
+  (* empty record: {} *)
+  |
+    { ([], None) }
+  (* record with only a row tail: {..r} *)
+  | rv = ROW_VAR
+    { ([], Some (mk_ident rv $startpos $endpos)) }
+  (* record starting with a named field: {name: T, ...} *)
+  | field = row_field rest = ty_record_rest
+    { (field :: fst rest, snd rest) }
+
+ty_record_rest:
+  (* end — no trailing comma, no row tail *)
+  |
+    { ([], None) }
+  (* trailing comma only *)
+  | COMMA
+    { ([], None) }
+  (* row tail after comma: , ..r *)
+  | COMMA rv = ROW_VAR
+    { ([], Some (mk_ident rv $startpos(rv) $endpos(rv))) }
+  (* another named field after comma: , name: T ... *)
+  | COMMA field = row_field rest = ty_record_rest
+    { (field :: fst rest, snd rest) }
 
 row_field:
-  | name = ident COLON ty = type_expr
+  | name = field_name COLON ty = type_expr
     { { rf_name = name; rf_ty = ty } }
 
 type_arg:
@@ -334,7 +385,8 @@ effect_decl:
         ed_ops = ops } }
 
 effect_op_decl:
-  | FN name = ident LPAREN params = separated_list(COMMA, param) RPAREN ret = return_type? SEMICOLON
+  (* Type parameters on effect operations are allowed: `fn await[T](promise: Promise[T]) -> T;` *)
+  | FN name = ident _type_params = type_params? LPAREN params = separated_list(COMMA, param) RPAREN ret = return_type? SEMICOLON
     { { eod_name = name;
         eod_params = params;
         eod_ret_ty = fst (Option.value ret ~default:(None, None)) } }
@@ -479,11 +531,13 @@ expr_unary:
   | e = expr_postfix { e }
 
 expr_postfix:
-  | e = expr_postfix DOT field = ident { ExprField (e, field) }
+  /* field_name used here so that `r.handle` parses even though `handle` is a
+     keyword; field access is unambiguous after DOT. */
+  | e = expr_postfix DOT field = field_name { ExprField (e, field) }
   | e = expr_postfix DOT n = INT { ExprTupleIndex (e, n) }
   | e = expr_postfix LBRACKET idx = expr RBRACKET { ExprIndex (e, idx) }
   | e = expr_postfix LPAREN args = separated_list(COMMA, expr) RPAREN { ExprApp (e, args) }
-  | e = expr_postfix BACKSLASH field = ident { ExprRowRestrict (e, field) }
+  | e = expr_postfix BACKSLASH field = field_name { ExprRowRestrict (e, field) }
   | e = expr_postfix QUESTION { ExprTry { et_body = { blk_stmts = []; blk_expr = Some e };
                                           et_catch = None; et_finally = None } }
   | e = expr_primary { e }
@@ -499,6 +553,11 @@ expr_primary:
 
   /* Identifiers */
   | name = lower_ident { ExprVar (mk_ident name $startpos $endpos) }
+  /* Struct literal: `Point { x: v, y: w }`.  Must come before the plain
+     upper_ident production so Menhir shifts LBRACE rather than reducing
+     upper_ident to ExprVar when the next token is LBRACE. */
+  | _ty = upper_ident LBRACE b = expr_record_body RBRACE
+    { ExprRecord { er_fields = fst b; er_spread = snd b } }
   | name = upper_ident { ExprVar (mk_ident name $startpos $endpos) }
   | ty = upper_ident COLONCOLON variant = upper_ident
     { ExprVariant (mk_ident ty $startpos(ty) $endpos(ty),
@@ -513,17 +572,12 @@ expr_primary:
   /* Arrays */
   | LBRACKET es = separated_list(COMMA, expr) RBRACKET { ExprArray es }
 
-  /* Records */
-  | LBRACE spread = record_spread COMMA fields = separated_nonempty_list(COMMA, record_field) RBRACE
-    { ExprRecord { er_fields = fields; er_spread = Some spread } }
-  | LBRACE fields = separated_nonempty_list(COMMA, record_field) COMMA spread = record_spread RBRACE
-    { ExprRecord { er_fields = fields; er_spread = Some spread } }
-  | LBRACE fields = separated_nonempty_list(COMMA, record_field) spread = record_spread RBRACE
-    { ExprRecord { er_fields = fields; er_spread = Some spread } }
-  | LBRACE spread = record_spread RBRACE
-    { ExprRecord { er_fields = []; er_spread = Some spread } }
-  | LBRACE fields = separated_list(COMMA, record_field) RBRACE
-    { ExprRecord { er_fields = fields; er_spread = None } }
+  /* Records — use a recursive rule (expr_record_body / expr_record_rest) to
+     avoid the LALR(1) greedy-separator conflict that arises when a ROW_VAR
+     spread like `..record` follows a COMMA that `separated_list` has already
+     consumed expecting another record_field. */
+  | LBRACE b = expr_record_body RBRACE
+    { ExprRecord { er_fields = fst b; er_spread = snd b } }
 
   /* Block */
   | blk = block { ExprBlock blk }
@@ -574,12 +628,47 @@ expr_primary:
   | UNSAFE LBRACE ops = list(unsafe_op) RBRACE
     { ExprUnsafe ops }
 
-record_field:
-  | name = ident COLON value = expr { (name, Some value) }
-  | name = ident { (name, None) }
+/* expr_record_body / expr_record_rest: recursive parse of `{ f:v, ..spread }`
+   record expressions.  Spread is lexed as ROW_VAR when it is a bare
+   identifier (e.g. `..record`), or starts with DOTDOT when it is an
+   arbitrary expression (e.g. `..{ a: 1 }`).  We handle both in
+   expr_record_spread and use a recursive structure to avoid the greedy-
+   separator conflict. */
 
-record_spread:
+expr_record_body:
+  (* empty record: {} *)
+  |
+    { ([], None) }
+  (* spread-only: { ..var } or { ..expr } *)
+  | sp = expr_record_spread
+    { ([], Some sp) }
+  (* field possibly followed by more: { f: v, ... } *)
+  | field = record_field rest = expr_record_rest
+    { (field :: fst rest, snd rest) }
+
+expr_record_rest:
+  (* no more fields, no spread *)
+  |
+    { ([], None) }
+  (* trailing comma only *)
+  | COMMA
+    { ([], None) }
+  (* spread after comma *)
+  | COMMA sp = expr_record_spread
+    { ([], Some sp) }
+  (* another field after comma *)
+  | COMMA field = record_field rest = expr_record_rest
+    { (field :: fst rest, snd rest) }
+
+expr_record_spread:
+  (* `..ident` — lexed as a single ROW_VAR token *)
+  | rv = ROW_VAR { ExprVar (mk_ident rv $startpos $endpos) }
+  (* `..expr` — DOTDOT consumed, then an arbitrary expression *)
   | DOTDOT e = expr { e }
+
+record_field:
+  | name = field_name COLON value = expr { (name, Some value) }
+  | name = field_name { (name, None) }
 
 type_annotation:
   | COLON ty = type_expr { ty }
@@ -722,8 +811,8 @@ pattern_primary:
     { PatAs (mk_ident name $startpos(name) $endpos(name), p) }
 
 pattern_field:
-  | name = ident COLON p = pattern { (name, Some p) }
-  | name = ident { (name, None) }
+  | name = field_name COLON p = pattern { (name, Some p) }
+  | name = field_name { (name, None) }
 
 pattern_rest:
   | COMMA DOTDOT { () }
@@ -733,6 +822,15 @@ pattern_rest:
 ident:
   | name = lower_ident { mk_ident name $startpos $endpos }
   | name = upper_ident { mk_ident name $startpos $endpos }
+
+(* field_name extends ident with contextual keywords that are legal as struct/
+   record field names.  Only keywords that do NOT introduce shift/reduce or
+   reduce/reduce conflicts are listed here.  HANDLE is safe because it always
+   requires `name COLON ty` in type-record context and `name: expr` in
+   expression-record context; the surrounding COLON disambiguates. *)
+field_name:
+  | id = ident { id }
+  | HANDLE { mk_ident "handle" $startpos $endpos }
 
 lower_ident:
   | name = LOWER_IDENT { name }
