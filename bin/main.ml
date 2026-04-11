@@ -60,10 +60,10 @@ let lex_file path =
     `Error (false, "Lexer error")
 
 (** Parse a file using the requested face. *)
-let parse_with_face face path =
+let parse_with_face (face : Affinescript.Face.face) path =
   match face with
-  | `Canonical -> Affinescript.Parse_driver.parse_file path
-  | `Python    -> Affinescript.Python_face.parse_file_python path
+  | Affinescript.Face.Canonical -> Affinescript.Parse_driver.parse_file path
+  | Affinescript.Face.Python    -> Affinescript.Python_face.parse_file_python path
 
 (** Preview the Python-face text transform (debug tool). *)
 let preview_python_transform path =
@@ -74,12 +74,9 @@ let preview_python_transform path =
   `Ok ()
 
 (** Parse a file and print AST (no --json support). *)
-let parse_file face path =
+let parse_file (face : Affinescript.Face.face) path =
   try
-    let prog = match face with
-      | `Canonical -> Affinescript.Parse_driver.parse_file path
-      | `Python    -> Affinescript.Python_face.parse_file_python path
-    in
+    let prog = parse_with_face face path in
     Format.printf "%s@." (Affinescript.Ast.show_program prog);
     `Ok ()
   with
@@ -143,13 +140,13 @@ let check_file face json path =
       (match Affinescript.Resolve.resolve_program_with_loader prog loader with
       | Error (e, _span) ->
         Format.eprintf "@[<v>Resolution error: %s@]@."
-          (Affinescript.Resolve.show_resolve_error e);
+          (Affinescript.Face.format_resolve_error face e);
         `Error (false, "Resolution error")
       | Ok (resolve_ctx, _type_ctx) ->
         (match Affinescript.Typecheck.check_program resolve_ctx.symbols prog with
         | Error e ->
           Format.eprintf "@[<v>%s@]@."
-            (Affinescript.Typecheck.format_type_error e);
+            (Affinescript.Face.format_type_error face e);
           `Error (false, "Type error")
         | Ok _ctx ->
           Format.printf "Type checking passed@.";
@@ -206,7 +203,7 @@ let eval_file face json path =
       (match Affinescript.Resolve.resolve_program_with_loader prog loader with
       | Error (e, _span) ->
         Format.eprintf "@[<v>Resolution error: %s@]@."
-          (Affinescript.Resolve.show_resolve_error e);
+          (Affinescript.Face.format_resolve_error face e);
         `Error (false, "Resolution error")
       | Ok (resolve_ctx, type_ctx) ->
         let type_ctx = { type_ctx with symbols = resolve_ctx.symbols } in
@@ -217,7 +214,7 @@ let eval_file face json path =
         ) (Ok ()) prog.prog_decls with
         | Error e ->
           Format.eprintf "@[<v>%s@]@."
-            (Affinescript.Typecheck.format_type_error e);
+            (Affinescript.Face.format_type_error face e);
           `Error (false, "Type error")
         | Ok () ->
           (match Affinescript.Interp.eval_program prog with
@@ -310,13 +307,13 @@ let compile_file face json wasm_gc path output =
       (match Affinescript.Resolve.resolve_program_with_loader prog loader with
       | Error (e, _span) ->
         Format.eprintf "@[<v>Resolution error: %s@]@."
-          (Affinescript.Resolve.show_resolve_error e);
+          (Affinescript.Face.format_resolve_error face e);
         `Error (false, "Resolution error")
       | Ok (resolve_ctx, _type_ctx) ->
         (match Affinescript.Typecheck.check_program resolve_ctx.symbols prog with
         | Error e ->
           Format.eprintf "@[<v>%s@]@."
-            (Affinescript.Typecheck.format_type_error e);
+            (Affinescript.Face.format_type_error face e);
           `Error (false, "Type error")
         | Ok _type_ctx ->
           let is_julia = Filename.check_suffix output ".jl" in
@@ -366,12 +363,11 @@ let compile_file face json wasm_gc path output =
     requires a reverse transform that is not yet implemented. *)
 let fmt_file face path =
   (match face with
-  | `Python ->
+  | Affinescript.Face.Python ->
     Format.eprintf "fmt --face python is not yet supported \
                     (reverse Python transform is pending).@.";
-    (* fall through; format the canonical parse anyway so the file still works *)
     ()
-  | `Canonical -> ());
+  | Affinescript.Face.Canonical -> ());
   try
     Affinescript.Formatter.format_file path;
     Format.printf "Formatted %s@." path;
@@ -418,7 +414,7 @@ let lint_file face json path =
       (match Affinescript.Resolve.resolve_program_with_loader prog loader with
       | Error (e, _span) ->
         Format.eprintf "@[<v>Resolution error: %s@]@."
-          (Affinescript.Resolve.show_resolve_error e);
+          (Affinescript.Face.format_resolve_error face e);
         `Error (false, "Resolution error")
       | Ok (resolve_ctx, _type_ctx) ->
         let diagnostics = Affinescript.Linter.lint_program resolve_ctx.symbols prog in
@@ -460,8 +456,11 @@ let wasm_gc_arg =
 
 (** Shared --face flag: select the parser surface-syntax face. *)
 let face_arg =
-  let faces = Arg.enum [("canonical", `Canonical); ("python", `Python)] in
-  Arg.(value & opt faces `Canonical & info ["face"]
+  let faces = Arg.enum [
+    ("canonical", Affinescript.Face.Canonical);
+    ("python",    Affinescript.Face.Python);
+  ] in
+  Arg.(value & opt faces Affinescript.Face.Canonical & info ["face"]
     ~docv:"FACE"
     ~doc:"Parser face (surface-syntax variant). $(docv) must be $(b,canonical) \
           (default, standard AffineScript) or $(b,python) (Python-style syntax: \
