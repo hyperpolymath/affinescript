@@ -291,11 +291,47 @@ let rec infer_usage_expr (env : env) (expr : expr) : unit =
     List.iter (infer_usage_expr env) args
 
   | ExprLambda lam ->
-    (* Lambda parameters shadow outer bindings for the body.
-       We do NOT track lambda-bound params here — only function-level
-       params are checked. The lambda body may still reference outer
-       tracked variables. *)
-    infer_usage_expr env lam.elam_body
+    (* A lambda may be called zero or many times, so any outer variable
+       it captures is effectively used QOmega times.  We implement this
+       by walking the body in a temporary copy of the env (shadowing the
+       lambda's own params), computing the per-variable delta, and then
+       merging those deltas back scaled by QOmega.
+
+       Consequence: a lambda that captures an @linear variable raises
+       LinearVariableUsedMultiple, because scale_usage QOmega UOne = UMany.
+       This closes BUG-004. *)
+    let param_names =
+      List.map (fun (p : param) -> p.p_name.name) lam.elam_params
+    in
+    let before_snapshot = env_snapshot env in
+    (* Shadow lambda params so their usage inside the body doesn't leak
+       into the outer quantity environment. *)
+    List.iter (fun name ->
+      if Hashtbl.mem env.usages name then
+        Hashtbl.replace env.usages name UZero
+      (* Params not yet in env are fine — they are lambda-local. *)
+    ) param_names;
+    infer_usage_expr env lam.elam_body;
+    let after_snapshot = env_snapshot env in
+    (* Restore outer env, then re-apply QOmega-scaled deltas for captured
+       outer variables only (exclude lambda params). *)
+    env_restore env before_snapshot;
+    Hashtbl.iter (fun name after_u ->
+      if List.mem name param_names then ()
+      else begin
+        let before_u =
+          Hashtbl.find_opt before_snapshot name |> Option.value ~default:UZero
+        in
+        let delta =
+          if equal_usage before_u after_u then UZero
+          else after_u
+        in
+        (* Any use inside a lambda body counts as potentially-unbounded. *)
+        let scaled = scale_usage QOmega delta in
+        let merged = add_usage before_u scaled in
+        Hashtbl.replace env.usages name merged
+      end
+    ) after_snapshot
 
   | ExprLet lb ->
     (* ADR-002 / ADR-007: Let value context is scaled by the binder's

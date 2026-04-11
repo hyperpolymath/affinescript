@@ -27,6 +27,12 @@ type borrow_kind =
   | Exclusive  (** Mutable borrow (&mut) *)
 [@@deriving show, eq]
 
+(** Human-readable borrow kind for error messages. *)
+let borrow_kind_name (k : borrow_kind) : string =
+  match k with
+  | Shared    -> "shared"
+  | Exclusive -> "exclusive"
+
 (** A borrow record *)
 type borrow = {
   b_place : place;
@@ -259,8 +265,8 @@ let format_borrow_error (e : borrow_error) : string =
       "conflicting borrows on `%s`:\n  \
        %s borrow (id %d) at %s conflicts with earlier %s borrow (id %d) at %s"
       (format_place b1.b_place)
-      (show_borrow_kind b1.b_kind) b1.b_id (format_span b1.b_span)
-      (show_borrow_kind b2.b_kind) b2.b_id (format_span b2.b_span)
+      (borrow_kind_name b1.b_kind) b1.b_id (format_span b1.b_span)
+      (borrow_kind_name b2.b_kind) b2.b_id (format_span b2.b_span)
   | BorrowOutlivesOwner (b, sym_id) ->
     Printf.sprintf
       "borrow of `%s` (id %d) outlives its owner (symbol %d)"
@@ -268,11 +274,11 @@ let format_borrow_error (e : borrow_error) : string =
   | MoveWhileBorrowed (place, b) ->
     Printf.sprintf
       "cannot move `%s` while it is %s-borrowed at %s"
-      (format_place place) (show_borrow_kind b.b_kind) (format_span b.b_span)
+      (format_place place) (borrow_kind_name b.b_kind) (format_span b.b_span)
   | CannotMoveOutOfBorrow (place, b) ->
     Printf.sprintf
       "cannot move out of `%s`, which is behind a %s borrow at %s"
-      (format_place place) (show_borrow_kind b.b_kind) (format_span b.b_span)
+      (format_place place) (borrow_kind_name b.b_kind) (format_span b.b_span)
   | CannotBorrowAsMutable (place, span) ->
     Printf.sprintf
       "cannot borrow `%s` as mutable — it is not declared with `let mut` (at %s)"
@@ -457,6 +463,109 @@ let rec check_expr (ctx : context) (state : state) (symbols : Symbol.t) (expr : 
     ) (Ok ()) args param_ownerships
 
   | ExprLambda lam ->
+    (* Collect every free variable referenced in the lambda body —
+       variables that appear in the body but are NOT bound by the lambda's
+       own parameter list.  Each free variable is "captured" by the closure.
+
+       Borrow-checker contract for captures:
+         - We create a Shared borrow for each captured place.  This
+           prevents the caller from moving the variable out from under the
+           closure while it is still in scope (use-after-move).
+         - The borrows expire at the end of the enclosing block thanks to
+           the lexical-lifetime clearing in check_block.
+         - Ownership / linear duplications are caught by the quantity
+           checker (quantity.ml ExprLambda scales captures by QOmega),
+           so the borrow checker only needs to prevent structural misuse. *)
+    let param_names =
+      List.map (fun (p : param) -> p.p_name.name) lam.elam_params
+    in
+    (* Walk the body collecting every ExprVar name not bound by params. *)
+    let rec collect_free (acc : string list) (expr : expr) : string list =
+      match expr with
+      | ExprVar id ->
+        if List.mem id.name param_names || List.mem id.name acc
+        then acc
+        else id.name :: acc
+      | ExprLambda inner ->
+        (* For nested lambdas, shadow the inner params too. *)
+        let inner_params = List.map (fun (p : param) -> p.p_name.name) inner.elam_params in
+        let outer_free = collect_free acc inner.elam_body in
+        List.filter (fun n -> not (List.mem n inner_params)) outer_free
+      | ExprLit _ | ExprVariant _ -> acc
+      | ExprApp (f, args) ->
+        List.fold_left collect_free (collect_free acc f) args
+      | ExprLet lb ->
+        let acc' = collect_free acc lb.el_value in
+        (match lb.el_body with Some b -> collect_free acc' b | None -> acc')
+      | ExprIf ei ->
+        let acc' = collect_free (collect_free acc ei.ei_cond) ei.ei_then in
+        (match ei.ei_else with Some e -> collect_free acc' e | None -> acc')
+      | ExprMatch em ->
+        let acc' = collect_free acc em.em_scrutinee in
+        List.fold_left (fun a arm ->
+          let a' = match arm.ma_guard with Some g -> collect_free a g | None -> a in
+          collect_free a' arm.ma_body
+        ) acc' em.em_arms
+      | ExprBlock blk ->
+        let acc' = List.fold_left (fun a stmt ->
+          match stmt with
+          | StmtLet sl -> collect_free a sl.sl_value
+          | StmtExpr e -> collect_free a e
+          | StmtAssign (lhs, _, rhs) -> collect_free (collect_free a lhs) rhs
+          | StmtWhile (cond, body) -> collect_free (collect_free a cond) (ExprBlock body)
+          | StmtFor (_, iter, body) -> collect_free (collect_free a iter) (ExprBlock body)
+        ) acc blk.blk_stmts in
+        (match blk.blk_expr with Some e -> collect_free acc' e | None -> acc')
+      | ExprBinary (l, _, r) -> collect_free (collect_free acc l) r
+      | ExprUnary (_, e) | ExprReturn (Some e) | ExprField (e, _)
+      | ExprTupleIndex (e, _) | ExprRowRestrict (e, _) | ExprSpan (e, _) ->
+        collect_free acc e
+      | ExprReturn None | ExprResume None | ExprUnsafe [] -> acc
+      | ExprResume (Some e) -> collect_free acc e
+      | ExprTuple es | ExprArray es -> List.fold_left collect_free acc es
+      | ExprRecord er ->
+        let acc' = List.fold_left (fun a (_, e_opt) ->
+          match e_opt with Some e -> collect_free a e | None -> a
+        ) acc er.er_fields in
+        (match er.er_spread with Some e -> collect_free acc' e | None -> acc')
+      | ExprIndex (a, i) -> collect_free (collect_free acc a) i
+      | ExprTry et ->
+        let acc' = collect_free acc (ExprBlock et.et_body) in
+        let acc'' = match et.et_catch with
+          | Some arms -> List.fold_left (fun a arm ->
+              let a' = match arm.ma_guard with Some g -> collect_free a g | None -> a in
+              collect_free a' arm.ma_body) acc' arms
+          | None -> acc'
+        in
+        (match et.et_finally with Some b -> collect_free acc'' (ExprBlock b) | None -> acc'')
+      | ExprHandle eh ->
+        let acc' = collect_free acc eh.eh_body in
+        List.fold_left (fun a arm ->
+          match arm with
+          | HandlerReturn (_, b) | HandlerOp (_, _, b) -> collect_free a b
+        ) acc' eh.eh_handlers
+      | ExprUnsafe ops ->
+        List.fold_left (fun a op ->
+          match op with
+          | UnsafeRead e | UnsafeForget e -> collect_free a e
+          | UnsafeWrite (e1, e2) | UnsafeOffset (e1, e2) -> collect_free (collect_free a e1) e2
+          | UnsafeTransmute (_, _, e) -> collect_free a e
+        ) acc ops
+    in
+    let free_names = collect_free [] lam.elam_body in
+    (* Create a Shared borrow for each captured free variable.  If a borrow
+       conflict or use-after-move is detected, fail immediately. *)
+    let borrow_span = expr_span (ExprLambda lam) in
+    let* () = List.fold_left (fun acc name ->
+      let* () = acc in
+      match expr_to_place symbols (ExprVar { name; span = borrow_span }) with
+      | Some place ->
+        (* Check the place is not already moved before we borrow it. *)
+        let* _borrow = record_borrow state place Shared borrow_span in
+        Ok ()
+      | None -> Ok ()
+    ) (Ok ()) free_names in
+    (* Walk the body for structural checking (nested borrows / moves). *)
     check_expr ctx state symbols lam.elam_body
 
   | ExprLet lb ->
