@@ -59,6 +59,27 @@ let lex_file path =
     Format.eprintf "@[<v>%s:%d:%d: error: %s@]@." path pos.line pos.col msg;
     `Error (false, "Lexer error")
 
+(** Resolve the effective face, promoting Canonical → face-from-extension when
+    the file extension implies a specific face.  This means a user can run
+    [affinescript check hello.rattle] with no [--face] flag and get
+    Python-face automatically.  An explicit [--face canonical] overrides. *)
+let resolve_face face path =
+  match face with
+  | Affinescript.Face.Canonical ->
+    let ext =
+      try
+        let dot = String.rindex path '.' in
+        String.sub path (dot + 1) (String.length path - dot - 1)
+      with Not_found -> ""
+    in
+    (match ext with
+    | "rattle"    -> Affinescript.Face.Python     (* RattleScript *)
+    | "pyaff"     -> Affinescript.Face.Python
+    | "jsaff"     -> Affinescript.Face.Js
+    | "pseudoaff" -> Affinescript.Face.Pseudocode
+    | _           -> Affinescript.Face.Canonical)
+  | other -> other   (* explicit --face flag always wins *)
+
 (** Parse a file using the requested face. *)
 let parse_with_face (face : Affinescript.Face.face) path =
   match face with
@@ -93,6 +114,7 @@ let preview_pseudocode_transform path =
 
 (** Parse a file and print AST (no --json support). *)
 let parse_file (face : Affinescript.Face.face) path =
+  let face = resolve_face face path in
   try
     let prog = parse_with_face face path in
     Format.printf "%s@." (Affinescript.Ast.show_program prog);
@@ -109,6 +131,7 @@ let parse_file (face : Affinescript.Face.face) path =
 (** Type-check a file.  With [--json], emits a structured diagnostic
     report on stderr. *)
 let check_file face json path =
+  let face = resolve_face face path in
   if json then begin
     let diags = ref [] in
     let add d = diags := d :: !diags in
@@ -182,6 +205,7 @@ let check_file face json path =
 (** Evaluate a file with the interpreter.  With [--json], emits
     diagnostics on stderr instead of human-readable error text. *)
 let eval_file face json path =
+  let face = resolve_face face path in
   if json then begin
     let diags = ref [] in
     let add d = diags := d :: !diags in
@@ -264,6 +288,7 @@ let repl_cmd_fn () =
     compilation errors.  With [--wasm-gc], targets the WebAssembly GC
     proposal instead of WASM 1.0 linear memory. *)
 let compile_file face json wasm_gc path output =
+  let face = resolve_face face path in
   if json then begin
     let diags = ref [] in
     let add d = diags := d :: !diags in
@@ -380,6 +405,7 @@ let compile_file face json wasm_gc path output =
 (** Format a file.  Only canonical face is supported — non-canonical face
     formatting requires a reverse transform that is not yet implemented. *)
 let fmt_file face path =
+  let face = resolve_face face path in
   (match face with
   | Affinescript.Face.Python ->
     Format.eprintf "fmt --face python is not yet supported \
@@ -407,6 +433,7 @@ let fmt_file face path =
 (** Lint a file.  With [--json], emits lint diagnostics as structured
     JSON on stderr. *)
 let lint_file face json path =
+  let face = resolve_face face path in
   if json then begin
     let diags = ref [] in
     let add d = diags := d :: !diags in
