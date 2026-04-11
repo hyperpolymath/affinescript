@@ -1,0 +1,20 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// End-to-end test: trait impl with missing required method
+// Verifies that an impl block that fails to provide a non-default
+// trait method is rejected by the type checker.
+
+trait Describe {
+  fn describe(x: Int) -> String;
+  fn summary(x: Int) -> String;
+}
+
+struct Widget {
+  id: Int
+}
+
+impl Describe for Widget {
+  fn describe(x: Int) -> String = "widget";
+  // summary is intentionally omitted — should be rejected
+}
+
+fn make_widget() -> Int = 1;

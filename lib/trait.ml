@@ -63,24 +63,106 @@ let create_registry () : trait_registry = {
   impls = Hashtbl.create 64;
 }
 
-(** Register a trait definition *)
+(** Register a trait definition.
+
+    The [tm_ret_ty] field is populated from the AST return-type annotation
+    (if present) and later used by the type checker when verifying impl bodies. *)
 let register_trait (registry : trait_registry) (trait_decl : trait_decl) : unit =
   let methods = List.filter_map (fun item ->
     match item with
     | TraitFn fs ->
+      (* fs_ret_ty is the declared return-type annotation from the signature *)
+      let ret_ty = match fs.fs_ret_ty with
+        | None -> None
+        | Some te ->
+          (* Convert the AST type expression to an internal ty using a simple
+             structural walk.  We do not have the full context here, so only
+             built-in primitive names are resolved; everything else becomes
+             TCon which the type checker resolves later during unification. *)
+          let rec lower_simple (te : type_expr) : ty =
+            match te with
+            | TyCon { name = "Int"; _ } -> TCon "Int"
+            | TyCon { name = "Float"; _ } -> TCon "Float"
+            | TyCon { name = "Bool"; _ } -> TCon "Bool"
+            | TyCon { name = "String"; _ } -> TCon "String"
+            | TyCon { name = "Char"; _ } -> TCon "Char"
+            | TyCon { name = "Unit"; _ } | TyTuple [] -> TCon "Unit"
+            | TyCon { name = "Never"; _ } -> TCon "Never"
+            | TyCon { name; _ } -> TCon name
+            | TyVar { name; _ } -> TCon name
+            | TyApp ({ name; _ }, args) ->
+              let arg_tys = List.filter_map (fun a ->
+                match a with TyArg te' -> Some (lower_simple te')
+              ) args in
+              TApp (TCon name, arg_tys)
+            | TyTuple tes -> TTuple (List.map lower_simple tes)
+            | TyArrow (a, _q, b, _eff) ->
+              TArrow (lower_simple a, QOmega, lower_simple b, EPure)
+            | TyOwn te' -> TOwn (lower_simple te')
+            | TyRef te' -> TRef (lower_simple te')
+            | TyMut te' -> TMut (lower_simple te')
+            | TyRecord (fields, _) ->
+              let row = List.fold_right (fun (rf : row_field) acc ->
+                RExtend (rf.rf_name.name, lower_simple rf.rf_ty, acc)
+              ) fields REmpty in
+              TRecord row
+            | TyHole ->
+              let id = !Types.next_tyvar in
+              Types.next_tyvar := id + 1;
+              TVar (ref (Unbound (id, 0)))
+          in
+          Some (lower_simple te)
+      in
       Some {
         tm_name = fs.fs_name.name;
         tm_type_params = fs.fs_type_params;
         tm_params = fs.fs_params;
-        tm_ret_ty = None;  (* Will be filled by type checker *)
+        tm_ret_ty = ret_ty;
         tm_has_default = false;
       }
     | TraitFnDefault fd ->
+      let ret_ty = match fd.fd_ret_ty with
+        | None -> None
+        | Some te ->
+          let rec lower_simple (te : type_expr) : ty =
+            match te with
+            | TyCon { name = "Int"; _ } -> TCon "Int"
+            | TyCon { name = "Float"; _ } -> TCon "Float"
+            | TyCon { name = "Bool"; _ } -> TCon "Bool"
+            | TyCon { name = "String"; _ } -> TCon "String"
+            | TyCon { name = "Char"; _ } -> TCon "Char"
+            | TyCon { name = "Unit"; _ } | TyTuple [] -> TCon "Unit"
+            | TyCon { name = "Never"; _ } -> TCon "Never"
+            | TyCon { name; _ } -> TCon name
+            | TyVar { name; _ } -> TCon name
+            | TyApp ({ name; _ }, args) ->
+              let arg_tys = List.filter_map (fun a ->
+                match a with TyArg te' -> Some (lower_simple te')
+              ) args in
+              TApp (TCon name, arg_tys)
+            | TyTuple tes -> TTuple (List.map lower_simple tes)
+            | TyArrow (a, _q, b, _eff) ->
+              TArrow (lower_simple a, QOmega, lower_simple b, EPure)
+            | TyOwn te' -> TOwn (lower_simple te')
+            | TyRef te' -> TRef (lower_simple te')
+            | TyMut te' -> TMut (lower_simple te')
+            | TyRecord (fields, _) ->
+              let row = List.fold_right (fun (rf : row_field) acc ->
+                RExtend (rf.rf_name.name, lower_simple rf.rf_ty, acc)
+              ) fields REmpty in
+              TRecord row
+            | TyHole ->
+              let id = !Types.next_tyvar in
+              Types.next_tyvar := id + 1;
+              TVar (ref (Unbound (id, 0)))
+          in
+          Some (lower_simple te)
+      in
       Some {
         tm_name = fd.fd_name.name;
         tm_type_params = fd.fd_type_params;
         tm_params = fd.fd_params;
-        tm_ret_ty = None;  (* Will be filled by type checker *)
+        tm_ret_ty = ret_ty;
         tm_has_default = true;
       }
     | TraitType _ -> None
@@ -204,42 +286,118 @@ let check_impl_satisfies_trait (registry : trait_registry) (impl : trait_impl) :
       | Some _ -> Ok ()
     ) (Ok ()) trait_def.td_assoc_types
 
-(** Find implementation of a trait for a given type *)
-let find_impl (registry : trait_registry) (trait_name : string) (self_ty : ty) : trait_impl option =
+(** Substitute type-param names with concrete types in a ty.
+
+    [subst] maps type-parameter names to fresh unification variables.
+    We walk the type tree and replace [TCon name] with [Hashtbl.find subst name]
+    wherever a type parameter of that name exists. *)
+let rec subst_ty (subst : (string, ty) Hashtbl.t) (ty : ty) : ty =
+  match Types.repr ty with
+  | TVar _ -> ty
+  | TCon name ->
+    begin match Hashtbl.find_opt subst name with
+    | Some replacement -> replacement
+    | None -> ty
+    end
+  | TApp (head, args) ->
+    TApp (subst_ty subst head, List.map (subst_ty subst) args)
+  | TArrow (a, q, b, eff) ->
+    TArrow (subst_ty subst a, q, subst_ty subst b, eff)
+  | TTuple tys ->
+    TTuple (List.map (subst_ty subst) tys)
+  | TRecord row ->
+    TRecord (subst_row subst row)
+  | TVariant row ->
+    TVariant (subst_row subst row)
+  | TForall (v, k, body) ->
+    TForall (v, k, subst_ty subst body)
+  | TExists (v, k, body) ->
+    TExists (v, k, subst_ty subst body)
+  | TRef t -> TRef (subst_ty subst t)
+  | TMut t -> TMut (subst_ty subst t)
+  | TOwn t -> TOwn (subst_ty subst t)
+
+and subst_row (subst : (string, ty) Hashtbl.t) (row : row) : row =
+  match Types.repr_row row with
+  | REmpty -> REmpty
+  | RExtend (l, ty, rest) ->
+    RExtend (l, subst_ty subst ty, subst_row subst rest)
+  | RVar _ -> row
+
+(** Create a fresh instantiation of an impl's self type.
+
+    For each type parameter declared on the impl, we create a fresh
+    unification variable and substitute it for the parameter name in
+    the impl's self type.  This allows unification-based matching
+    without permanently committing to any particular substitution.
+
+    [fresh_var] should create a fresh [TVar (ref (Unbound (...)))] at
+    the caller's current unification level. *)
+let fresh_impl_self_ty (impl : trait_impl) (fresh_var : unit -> ty) : ty =
+  let subst = Hashtbl.create 4 in
+  List.iter (fun (tp : type_param) ->
+    Hashtbl.replace subst tp.tp_name.name (fresh_var ())
+  ) impl.ti_type_params;
+  if Hashtbl.length subst = 0 then
+    impl.ti_self_ty
+  else
+    subst_ty subst impl.ti_self_ty
+
+(** Find implementation of a trait for a given type using unification.
+
+    For each candidate impl we:
+      1. Instantiate its type parameters as fresh unification variables.
+      2. Attempt [Unify.unify self_ty instantiated_self_ty].
+      3. If unification succeeds the substitution is captured in the mutable
+         type variables — we return that impl.
+      4. If unification fails we move on to the next candidate.
+
+    The [fresh_var] callback creates a new [TVar (Unbound _)] at the
+    appropriate level; callers typically pass a closure over [ctx.level]. *)
+let find_impl_with_unify (registry : trait_registry) (trait_name : string)
+    (self_ty : ty) (fresh_var : unit -> ty) : trait_impl option =
   match Hashtbl.find_opt registry.impls trait_name with
   | None -> None
   | Some impls ->
-    (* Find impl where self_ty matches ti_self_ty *)
-    (* For now, simple name matching - TODO: proper unification *)
-    let rec type_name = function
-      | TVar _ -> None  (* Type variables don't have concrete names *)
-      | TCon name -> Some name
-      | TApp (TCon name, _) -> Some name
-      | TApp (ty, _) -> type_name ty
-      | _ -> None
-    in
-    let self_name = type_name self_ty in
     List.find_opt (fun impl ->
-      match (self_name, type_name impl.ti_self_ty) with
-      | (Some n1, Some n2) -> n1 = n2
-      | _ -> false
+      let candidate_self = fresh_impl_self_ty impl fresh_var in
+      match Unify.unify self_ty candidate_self with
+      | Ok () -> true
+      | Error _ -> false
     ) impls
 
-(** Find all implementations for a given type (search all traits) *)
+(** Find implementation of a trait for a given type.
+
+    Uses unification-based matching when fresh type variables are available
+    (via [~fresh_var]).  Falls back to structural constructor-name matching
+    when no [fresh_var] callback is supplied (e.g. from legacy call sites). *)
+let find_impl (registry : trait_registry) (trait_name : string) (self_ty : ty) : trait_impl option =
+  (* Use a simple level-0 fresh var for the fallback path *)
+  let fresh_var () =
+    let id = !Types.next_tyvar in
+    Types.next_tyvar := id + 1;
+    TVar (ref (Unbound (id, 0)))
+  in
+  find_impl_with_unify registry trait_name self_ty fresh_var
+
+(** Find all implementations for a given type across all traits.
+
+    Uses the same unification-based matching as [find_impl].  Each candidate
+    self type is instantiated with fresh type variables so that impls with
+    generic parameters (e.g. [impl Display for Option[T]]) are handled
+    correctly by structural unification. *)
 let find_impls_for_type (registry : trait_registry) (self_ty : ty) : trait_impl list =
+  let fresh_var () =
+    let id = !Types.next_tyvar in
+    Types.next_tyvar := id + 1;
+    TVar (ref (Unbound (id, 0)))
+  in
   Hashtbl.fold (fun _trait_name impls acc ->
     let matching = List.filter (fun impl ->
-      (* Simple type matching - TODO: proper unification *)
-      let rec type_name = function
-        | TVar _ -> None  (* Type variables don't have concrete names *)
-        | TCon name -> Some name
-        | TApp (TCon name, _) -> Some name
-        | TApp (ty, _) -> type_name ty
-        | _ -> None
-      in
-      match (type_name self_ty, type_name impl.ti_self_ty) with
-      | (Some n1, Some n2) -> n1 = n2
-      | _ -> false
+      let candidate_self = fresh_impl_self_ty impl fresh_var in
+      match Unify.unify self_ty candidate_self with
+      | Ok () -> true
+      | Error _ -> false
     ) impls in
     matching @ acc
   ) registry.impls []

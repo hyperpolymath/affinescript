@@ -1,0 +1,18 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// End-to-end test: valid trait impl acceptance
+// Verifies that TopTrait and TopImpl declarations are registered and their
+// method bodies are type-checked without error.
+
+trait Greet {
+  fn greet(name: String) -> String;
+}
+
+struct Person {
+  age: Int
+}
+
+impl Greet for Person {
+  fn greet(name: String) -> String = name;
+}
+
+fn make_person() -> Int = 42;

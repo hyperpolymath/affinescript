@@ -1138,6 +1138,64 @@ let ownership_schema_tests = [
 ]
 
 (* ============================================================================
+   Section 12: E2E Traits — Registry, Method Dispatch, Body Checking
+   ============================================================================
+
+   These tests verify the trait resolution pipeline wired in the type checker:
+
+   1. A valid impl (all required methods provided) passes type checking.
+   2. An impl that omits a required method is rejected with a descriptive
+      error that names the missing method.
+
+   Regression coverage for the trait-registry wiring PR.
+*)
+
+(** Valid impl: an impl block that satisfies its trait in full must be
+    accepted by the type checker without error. *)
+let test_trait_impl_valid () =
+  match parse_fixture (fixture "trait_impl_valid.affine") with
+  | Error msg -> Alcotest.fail msg
+  | Ok prog ->
+    match resolve_program prog with
+    | Error msg -> Alcotest.fail msg
+    | Ok (ctx, _) ->
+      match Typecheck.check_program ctx.symbols prog with
+      | Ok _ -> ()  (* Expected: impl accepted *)
+      | Error e ->
+        Alcotest.fail (Printf.sprintf
+          "valid trait impl unexpectedly rejected: %s"
+          (Typecheck.format_type_error e))
+
+(** Missing method: an impl block that omits a non-default required method
+    must be rejected by the type checker.  The error must mention the
+    missing method name so the user knows what to fix. *)
+let test_trait_impl_missing_method () =
+  match parse_fixture (fixture "trait_impl_missing_method.affine") with
+  | Error msg -> Alcotest.fail msg
+  | Ok prog ->
+    match resolve_program prog with
+    | Error msg -> Alcotest.fail msg
+    | Ok (ctx, _) ->
+      match Typecheck.check_program ctx.symbols prog with
+      | Ok _ ->
+        Alcotest.fail
+          "expected rejection: impl omitting a required trait method should \
+           be a type error, but the checker accepted the program"
+      | Error e ->
+        (* The error must mention the omitted method name *)
+        let msg = Typecheck.format_type_error e in
+        Alcotest.(check bool) "error mentions 'summary'" true
+          (try let _ = Str.search_forward (Str.regexp "summary") msg 0 in true
+           with Not_found -> false)
+
+let trait_impl_tests = [
+  Alcotest.test_case "valid impl accepted"
+    `Quick test_trait_impl_valid;
+  Alcotest.test_case "missing method rejected"
+    `Quick test_trait_impl_missing_method;
+]
+
+(* ============================================================================
    Test Suite Export
    ============================================================================ *)
 
@@ -1156,4 +1214,5 @@ let tests =
     ("E2E Full Pipeline", full_pipeline_tests);
     ("E2E Errors", error_tests);
     ("E2E Python-Face", python_face_tests);
+    ("E2E Traits", trait_impl_tests);
   ]

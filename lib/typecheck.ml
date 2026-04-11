@@ -155,6 +155,8 @@ type context = {
   mutable level : int;
   mutable current_eff : eff;
   (** The current effect context — unified with declared effects *)
+  trait_registry : Trait.trait_registry;
+  (** Trait registry — stores trait definitions and impls for dispatch *)
 }
 
 type 'a result = ('a, type_error) Result.t
@@ -183,6 +185,7 @@ let create_context (symbols : Symbol.t) : context =
     symbols;
     level = 0;
     current_eff = fresh_effvar 0;
+    trait_registry = Trait.create_registry ();
   }
 
 (** Enter a deeper let-level. *)
@@ -743,14 +746,47 @@ let rec synth (ctx : context) (expr : expr) : ty result =
     ) field_tys REmpty in
     Ok (TRecord row)
 
-  (* Field access *)
+  (* Field access — first try record-field projection, then trait method lookup *)
   | ExprField (obj, { name = field; _ }) ->
     let* obj_ty = synth ctx obj in
     let field_ty = fresh_tyvar ctx.level in
     let rest_row = fresh_rowvar ctx.level in
     let expected_record = TRecord (RExtend (field, field_ty, rest_row)) in
-    let* () = unify_or_err obj_ty expected_record in
-    Ok field_ty
+    begin match Unify.unify (repr obj_ty) expected_record with
+    | Ok () -> Ok field_ty
+    | Error _ ->
+      (* Record projection failed — try trait method dispatch.
+         We search all registered impls for a method named [field]
+         whose self type unifies with [obj_ty]. *)
+      begin match Trait.find_method_for_type ctx.trait_registry obj_ty field with
+      | Some (_impl, method_decl) ->
+        (* Build the method's monomorphic type from the fn_decl.
+           Parameters: each p_ty is lowered to an internal ty.
+           Return type defaults to a fresh type variable when omitted.
+           Effects are left as a fresh effect variable (unannotated). *)
+        let param_tys = List.map (fun (p : Ast.param) ->
+          lower_type_expr ctx p.p_ty
+        ) method_decl.Ast.fd_params in
+        let ret_ty = match method_decl.Ast.fd_ret_ty with
+          | Some te -> lower_type_expr ctx te
+          | None -> fresh_tyvar ctx.level
+        in
+        let eff = fresh_effvar ctx.level in
+        (* Fold params into a curried arrow, right-to-left *)
+        let method_ty = List.fold_right (fun (param_and_ty) acc ->
+          let (p, pt) = (param_and_ty : Ast.param * ty) in
+          let q = match p.Ast.p_quantity with
+            | Some q -> lower_quantity q
+            | None -> QOmega
+          in
+          TArrow (pt, q, acc, eff)
+        ) (List.combine method_decl.Ast.fd_params param_tys) ret_ty in
+        Ok method_ty
+      | None ->
+        (* Neither record field nor trait method — report a field-not-found error *)
+        Error (FieldNotFound { field; record_ty = obj_ty })
+      end
+    end
 
   (* Tuple indexing *)
   | ExprTupleIndex (tup, idx) ->
@@ -1186,11 +1222,66 @@ let check_decl (ctx : context) (decl : top_level) : (unit, type_error) Result.t 
   | TopEffect ed ->
     register_effect_decl ctx ed
   | TopTrait _td ->
-    (* Trait declarations don't produce type errors in Phase 1 *)
+    (* Trait declarations are registered in the forward pass; nothing to
+       re-check here since there are no bodies to type-check in Phase 1. *)
     Ok ()
-  | TopImpl _ib ->
-    (* Impl blocks don't produce type errors in Phase 1 *)
-    Ok ()
+  | TopImpl ib ->
+    (* Type-check each method body in the impl against the trait's declared
+       method signatures (where those exist).  Methods whose trait signature
+       cannot be found are still checked for internal consistency.
+
+       We also verify that the impl satisfies its trait (all required methods
+       are present) using [Trait.check_impl_satisfies_trait]. *)
+    let self_ty = lower_type_expr ctx ib.ib_self_ty in
+    (* Make Self available as a type alias inside method bodies *)
+    let old_self = Hashtbl.find_opt ctx.type_env "Self" in
+    Hashtbl.replace ctx.type_env "Self" self_ty;
+    (* Build a synthetic trait_impl record for the satisfaction check *)
+    let synth_impl = {
+      Trait.ti_trait_name = (match ib.ib_trait_ref with
+        | Some tr -> tr.Ast.tr_name.name
+        | None -> "");
+      Trait.ti_trait_args = (match ib.ib_trait_ref with
+        | Some tr -> tr.Ast.tr_args
+        | None -> []);
+      Trait.ti_self_ty = self_ty;
+      Trait.ti_type_params = ib.ib_type_params;
+      Trait.ti_methods = List.filter_map (fun item ->
+        match item with
+        | Ast.ImplFn fd -> Some (fd.Ast.fd_name.name, fd)
+        | Ast.ImplType _ -> None
+      ) ib.ib_items;
+      Trait.ti_assoc_types = [];
+      Trait.ti_where = ib.ib_where;
+    } in
+    (* Verify method presence (trait satisfaction) — convert trait errors to
+       type errors so they surface through the standard pipeline. *)
+    let* () = match ib.ib_trait_ref with
+      | None -> Ok ()  (* Inherent impl — no trait to satisfy *)
+      | Some _ ->
+        begin match Trait.check_impl_satisfies_trait ctx.trait_registry synth_impl with
+        | Ok () -> Ok ()
+        | Error re ->
+          Error (NotImplemented (Trait.show_resolution_error re))
+        end
+    in
+    (* Type-check each method body *)
+    let result = List.fold_left (fun acc item ->
+      let* () = acc in
+      match item with
+      | Ast.ImplFn fd ->
+        (* Type-check the method body using the standard function checker *)
+        check_fn_decl ctx fd
+      | Ast.ImplType _ ->
+        (* Associated type definitions carry no body to check *)
+        Ok ()
+    ) (Ok ()) ib.ib_items in
+    (* Restore the previous Self binding *)
+    begin match old_self with
+    | Some ty -> Hashtbl.replace ctx.type_env "Self" ty
+    | None -> Hashtbl.remove ctx.type_env "Self"
+    end;
+    result
   | TopConst { tc_name; tc_ty; tc_value; _ } ->
     let expected = lower_type_expr ctx tc_ty in
     let* () = check ctx tc_value expected in
@@ -1207,7 +1298,8 @@ let check_program (symbols : Symbol.t) (prog : Ast.program)
     : (context, type_error) Result.t =
   let ctx = create_context symbols in
   register_builtins ctx;
-  (* Forward pass: register all types, effects, and function signatures *)
+  (* Forward pass: register all types, effects, traits, impls, and
+     function signatures so that mutually recursive declarations resolve. *)
   let* () = List.fold_left (fun acc decl ->
     let* () = acc in
     match decl with
@@ -1217,6 +1309,17 @@ let check_program (symbols : Symbol.t) (prog : Ast.program)
       (* Pre-register function with a fresh type for mutual recursion *)
       let fn_ty = fresh_tyvar ctx.level in
       bind_var ctx fd.fd_name.name fn_ty;
+      Ok ()
+    | TopTrait td ->
+      (* Register trait definition in the trait registry so that
+         find_impl / find_method_for_type can locate it. *)
+      Trait.register_trait ctx.trait_registry td;
+      Ok ()
+    | TopImpl ib ->
+      (* Lower the self type and register the impl in the trait registry.
+         This makes impl methods visible to ExprField trait fallback. *)
+      let self_ty = lower_type_expr ctx ib.ib_self_ty in
+      Trait.register_impl ctx.trait_registry ib self_ty;
       Ok ()
     | _ -> Ok ()
   ) (Ok ()) prog.prog_decls in
