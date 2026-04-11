@@ -464,3 +464,127 @@ let emit_report_v2 ~(success : bool) (diags : diagnostic list)
     (symbols : Symbol.t) (refs : reference list) : unit =
   let json = report_v2_to_json ~success diags symbols refs in
   Format.eprintf "%s@." (Yojson.Basic.to_string json)
+
+(** {1 Phase B: Hover and goto-definition queries}
+
+    These entry points power the LSP hover and go-to-definition features.
+    Given a file path and cursor position (1-based line/col), the compiler
+    re-runs the pipeline and answers the query from the resolved symbol table.
+
+    Output schema for hover:
+    {[
+      { "found": true,
+        "name": "foo",
+        "kind": "function",
+        "type": "Int -> Int" | null,
+        "quantity": "linear" | null,
+        "def_file": "src/lib.affine",
+        "def_start_line": 3, "def_start_col": 1,
+        "def_end_line":   3, "def_end_col":   4 }
+      | { "found": false }
+    ]}
+
+    Output schema for goto-definition:
+    {[
+      { "found": true,
+        "file": "src/lib.affine",
+        "start_line": 3, "start_col": 1,
+        "end_line":   3, "end_col":   4 }
+      | { "found": false }
+    ]}
+*)
+
+(** Check whether a span contains a given (line, col) position.
+    Lines and columns are 1-based, matching LSP convention. *)
+let span_contains (span : Span.t) (line : int) (col : int) : bool =
+  let sl = span.start_pos.Span.line in
+  let sc = span.start_pos.Span.col  in
+  let el = span.end_pos.Span.line   in
+  let ec = span.end_pos.Span.col    in
+  if sl = el then
+    (* Single-line span *)
+    sl = line && sc <= col && col <= ec
+  else
+    (* Multi-line span *)
+    (line = sl && col >= sc)
+    || (line > sl && line < el)
+    || (line = el && col <= ec)
+
+(** Find the symbol whose definition or use-site span covers the
+    given position.  References are checked first (they are smaller
+    spans and therefore more precise); then definition spans. *)
+let find_symbol_at
+    (symbols : Symbol.t)
+    (refs    : reference list)
+    (line    : int)
+    (col     : int)
+    : Symbol.symbol option =
+  (* 1. Search references (use-sites). *)
+  let via_ref =
+    List.find_opt (fun (r : reference) -> span_contains r.ref_span line col) refs
+  in
+  begin match via_ref with
+  | Some r ->
+    Hashtbl.find_opt symbols.Symbol.all_symbols r.ref_symbol_id
+  | None ->
+    (* 2. Fallback: search definition spans. *)
+    let result = ref None in
+    Hashtbl.iter (fun _id (sym : Symbol.symbol) ->
+      if !result = None && span_contains sym.sym_span line col then
+        result := Some sym
+    ) symbols.Symbol.all_symbols;
+    !result
+  end
+
+(** Serialize a hover result to JSON. *)
+let hover_to_json (sym : Symbol.symbol) : Yojson.Basic.t =
+  let type_str = match sym.sym_type with
+    | Some te -> `String (Ast.show_type_expr te)
+    | None    -> `Null
+  in
+  let qty_str = match sym.sym_quantity with
+    | Some q -> `String (Ast.show_quantity q)
+    | None   -> `Null
+  in
+  (* Prefix each span field with "def_" so the definition location is
+     distinguished from the cursor position in the response. *)
+  let def_span_fields =
+    List.map (fun (k, v) -> ("def_" ^ k, v)) (span_to_json sym.sym_span)
+  in
+  `Assoc (
+    [ ("found",    `Bool true);
+      ("name",     `String sym.sym_name);
+      ("kind",     `String (symbol_kind_to_string sym.sym_kind));
+      ("type",     type_str);
+      ("quantity", qty_str);
+    ]
+    @ def_span_fields
+  )
+
+(** Serialize a goto-definition result to JSON. *)
+let goto_def_to_json (sym : Symbol.symbol) : Yojson.Basic.t =
+  `Assoc (
+    [("found", `Bool true)]
+    @ span_to_json sym.sym_span
+  )
+
+(** Serialize a "not found" result. *)
+let not_found_json : Yojson.Basic.t = `Assoc [("found", `Bool false)]
+
+(** Emit a hover JSON response on stdout. *)
+let emit_hover (sym_opt : Symbol.symbol option) : unit =
+  let json = match sym_opt with
+    | Some sym -> hover_to_json sym
+    | None     -> not_found_json
+  in
+  print_string (Yojson.Basic.to_string json);
+  print_newline ()
+
+(** Emit a goto-definition JSON response on stdout. *)
+let emit_goto_def (sym_opt : Symbol.symbol option) : unit =
+  let json = match sym_opt with
+    | Some sym -> goto_def_to_json sym
+    | None     -> not_found_json
+  in
+  print_string (Yojson.Basic.to_string json);
+  print_newline ()

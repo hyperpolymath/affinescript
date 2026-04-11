@@ -661,6 +661,111 @@ let preview_pseudocode_cmd =
   let info = Cmd.info "preview-pseudocode" ~doc in
   Cmd.v info Term.(ret (const preview_pseudocode_transform $ path_arg))
 
+(** {1 Phase B: hover and goto-definition subcommands}
+
+    Both commands run the full pipeline (parse → resolve → typecheck)
+    on the given file, locate the symbol at the cursor position, and
+    emit a JSON result on stdout.
+
+    Usage:
+      affinescript hover  FILE LINE COL
+      affinescript goto-def FILE LINE COL
+
+    Line and column are 1-based integers matching LSP convention.
+    Exit 0 whether or not a symbol was found; the [found] field in
+    the JSON response indicates presence. *)
+
+(** Shared pipeline runner for hover / goto-def.
+
+    Returns [(symbols, refs)] on success so the caller can query them,
+    or [None] if the pipeline failed (in which case an error is printed). *)
+let run_pipeline_for_query face path =
+  try
+    let prog = parse_with_face face path in
+    let loader_config = Affinescript.Module_loader.default_config () in
+    let loader = Affinescript.Module_loader.create loader_config in
+    match Affinescript.Resolve.resolve_program_with_loader prog loader with
+    | Error (e, _span) ->
+      Format.eprintf "Resolution error: %s@."
+        (Affinescript.Resolve.show_resolve_error e);
+      None
+    | Ok (resolve_ctx, _) ->
+      (* Run type checking to populate sym_type fields on the symbol table.
+         We intentionally ignore the type error here — hover/goto-def should
+         still work on partially-correct programs. *)
+      let _tc_result = Affinescript.Typecheck.check_program resolve_ctx.symbols prog in
+      let refs = List.rev resolve_ctx.references
+                 |> List.map (fun (r : Affinescript.Resolve.reference) ->
+                      Affinescript.Json_output.{
+                        ref_symbol_id = r.ref_symbol_id;
+                        ref_span      = r.ref_span;
+                      })
+      in
+      Some (resolve_ctx.symbols, refs)
+  with
+  | Affinescript.Lexer.Lexer_error (msg, pos) ->
+    Format.eprintf "Lexer error at %d:%d: %s@." pos.line pos.col msg;
+    None
+  | Affinescript.Parse_driver.Parse_error (msg, _span) ->
+    Format.eprintf "Parse error: %s@." msg;
+    None
+
+(** Hover subcommand handler. *)
+let hover_file face path line col =
+  let face = resolve_face face path in
+  (match run_pipeline_for_query face path with
+   | None ->
+     Affinescript.Json_output.emit_hover None
+   | Some (symbols, refs) ->
+     let sym = Affinescript.Json_output.find_symbol_at symbols refs line col in
+     Affinescript.Json_output.emit_hover sym);
+  `Ok ()
+
+(** Goto-definition subcommand handler. *)
+let goto_def_file face path line col =
+  let face = resolve_face face path in
+  (match run_pipeline_for_query face path with
+   | None ->
+     Affinescript.Json_output.emit_goto_def None
+   | Some (symbols, refs) ->
+     let sym = Affinescript.Json_output.find_symbol_at symbols refs line col in
+     Affinescript.Json_output.emit_goto_def sym);
+  `Ok ()
+
+(** Shared line and column arguments (1-based, LSP convention). *)
+let line_arg =
+  Arg.(required & pos 1 (some int) None & info [] ~docv:"LINE"
+    ~doc:"Cursor line (1-based).")
+
+let col_arg =
+  Arg.(required & pos 2 (some int) None & info [] ~docv:"COL"
+    ~doc:"Cursor column (1-based).")
+
+(** [hover FILE LINE COL] — return hover info for the symbol at the cursor. *)
+let hover_cmd =
+  let doc = "Return type information for the symbol at a cursor position" in
+  let man = [
+    `S Manpage.s_description;
+    `P "Runs the full pipeline on FILE, finds the symbol at (LINE, COL), \
+        and prints a JSON object on stdout.  If no symbol is found, \
+        prints {\"found\": false}.";
+    `P "Lines and columns are 1-based integers (LSP convention).";
+  ] in
+  let info = Cmd.info "hover" ~doc ~man in
+  Cmd.v info Term.(ret (const hover_file $ face_arg $ path_arg $ line_arg $ col_arg))
+
+(** [goto-def FILE LINE COL] — return the definition location of the symbol. *)
+let goto_def_cmd =
+  let doc = "Return the definition location of the symbol at a cursor position" in
+  let man = [
+    `S Manpage.s_description;
+    `P "Runs the full pipeline on FILE, finds the symbol at (LINE, COL), \
+        and prints a JSON object with the definition span on stdout.";
+    `P "Lines and columns are 1-based integers (LSP convention).";
+  ] in
+  let info = Cmd.info "goto-def" ~doc ~man in
+  Cmd.v info Term.(ret (const goto_def_file $ face_arg $ path_arg $ line_arg $ col_arg))
+
 let default_cmd =
   let doc = "The AffineScript compiler" in
   let info = Cmd.info "affinescript" ~version ~doc in
@@ -668,6 +773,7 @@ let default_cmd =
   Cmd.group info ~default [
     lex_cmd; parse_cmd; check_cmd; eval_cmd; repl_cmd; compile_cmd;
     fmt_cmd; lint_cmd;
+    hover_cmd; goto_def_cmd;
     preview_python_cmd; preview_js_cmd; preview_pseudocode_cmd
   ]
 

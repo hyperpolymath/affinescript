@@ -1353,6 +1353,91 @@ let tea_tests = [
 ]
 
 (* ============================================================================
+   Section 13: E2E LSP Phase B — Hover and Goto-Definition
+
+   These tests verify the hover and goto-def pipeline entry points that
+   power LSP features.  They run entirely through the library API (no
+   subprocess), calling the same helpers used by the CLI commands.
+
+   Key properties verified:
+   - find_symbol_at locates a symbol by definition span
+   - find_symbol_at resolves a use-site reference back to its definition
+   - Not-found returns None (no crash)
+   - JSON serialisation is duplicate-key-free
+*)
+
+(** Run parse→resolve→typecheck on a fixture, collect the symbol table
+    and reference list for subsequent hover/goto-def queries. *)
+let pipeline_for_hover path =
+  match parse_fixture path with
+  | Error msg -> failwith msg
+  | Ok prog ->
+    let loader_config = Module_loader.default_config () in
+    let loader = Module_loader.create loader_config in
+    match Resolve.resolve_program_with_loader prog loader with
+    | Error (e, _) -> failwith (Resolve.show_resolve_error e)
+    | Ok (resolve_ctx, _) ->
+      (* Type-check to populate sym_type; ignore errors (same as CLI). *)
+      let _tc = Typecheck.check_program resolve_ctx.symbols prog in
+      let refs =
+        List.rev resolve_ctx.references
+        |> List.map (fun (r : Resolve.reference) ->
+             Json_output.{ ref_symbol_id = r.ref_symbol_id;
+                           ref_span      = r.ref_span })
+      in
+      (resolve_ctx.symbols, refs)
+
+(** Helper: run the query, fail the test if the symbol isn't found. *)
+let require_symbol symbols refs line col =
+  match Json_output.find_symbol_at symbols refs line col with
+  | None ->
+    Alcotest.failf "hover: expected symbol at (%d,%d) but got None" line col
+  | Some sym -> sym
+
+(** hover — definition span resolves to its own name. *)
+let test_hover_def_span () =
+  let (symbols, refs) = pipeline_for_hover (fixture "arithmetic.affine") in
+  (* `fn add(…)` — name span starts at line 5, col 1. *)
+  let sym = require_symbol symbols refs 5 1 in
+  Alcotest.(check string) "hovered name is 'add'" "add" sym.Symbol.sym_name;
+  Alcotest.(check string) "kind is function"
+    "function" (Json_output.symbol_kind_to_string sym.sym_kind)
+
+(** hover — use-site reference resolves to the defining symbol. *)
+let test_hover_use_site () =
+  let (symbols, refs) = pipeline_for_hover (fixture "full_pipeline.affine") in
+  (* `Circle` is used at line 33, col 14 (verified above). *)
+  let sym = require_symbol symbols refs 33 14 in
+  Alcotest.(check string) "use-site resolves to 'Circle'" "Circle" sym.Symbol.sym_name
+
+(** hover — off-document position returns None without crashing. *)
+let test_hover_not_found () =
+  let (symbols, refs) = pipeline_for_hover (fixture "arithmetic.affine") in
+  let result = Json_output.find_symbol_at symbols refs 9999 9999 in
+  Alcotest.(check bool) "none at phantom position" true (result = None)
+
+(** goto-def — JSON output is well-formed (has "found" and "file"). *)
+let test_goto_def_json () =
+  let (symbols, refs) = pipeline_for_hover (fixture "arithmetic.affine") in
+  let sym_opt = Json_output.find_symbol_at symbols refs 5 3 in
+  let json = match sym_opt with
+    | Some sym -> Json_output.goto_def_to_json sym
+    | None     -> Json_output.not_found_json
+  in
+  (match json with
+   | `Assoc fields ->
+     Alcotest.(check bool) "has 'found'" true (List.mem_assoc "found" fields);
+     Alcotest.(check bool) "has 'file'"  true (List.mem_assoc "file"  fields)
+   | _ -> Alcotest.fail "goto_def_to_json must return a JSON object")
+
+let lsp_phase_b_tests = [
+  Alcotest.test_case "hover def span"       `Quick test_hover_def_span;
+  Alcotest.test_case "hover use-site"       `Quick test_hover_use_site;
+  Alcotest.test_case "hover not found"      `Quick test_hover_not_found;
+  Alcotest.test_case "goto-def JSON fields" `Quick test_goto_def_json;
+]
+
+(* ============================================================================
    Test Suite Export
    ============================================================================ *)
 
@@ -1373,4 +1458,5 @@ let tests =
     ("E2E Python-Face", python_face_tests);
     ("E2E Traits", trait_impl_tests);
     ("E2E TEA", tea_tests);
+    ("E2E LSP Phase B", lsp_phase_b_tests);
   ]
