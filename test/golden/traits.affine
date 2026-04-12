@@ -1,14 +1,14 @@
 // Test trait declarations
 trait Eq {
-  fn eq(ref self, other: ref Self) -> Bool;
+  fn eq(ref self, ref other: Self) -> Bool;
 }
 
 trait Ord: Eq {
-  fn cmp(ref self, other: ref Self) -> Ordering;
+  fn cmp(ref self, ref other: Self) -> Ordering;
 }
 
 impl Eq for Int {
-  fn eq(ref self, other: ref Int) -> Bool {
+  fn eq(ref self, ref other: Int) -> Bool {
     true
   }
 }

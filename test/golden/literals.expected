@@ -1,44 +1,134 @@
 { Ast.prog_module = None; prog_imports = [];
   prog_decls =
-  [Ast.TopFn
-     { Ast.fd_vis = Ast.Private; fd_total = false;
-       fd_name = { Ast.name = "test_literals"; span = <span> };
-       fd_type_params = []; fd_params = [];
-       fd_ret_ty = (Some (Ast.TyTuple [])); fd_eff = None; fd_where = [];
-       fd_body =
-       (Ast.FnBlock
-          { Ast.blk_stmts =
-            [Ast.StmtLet
-               { Ast.sl_mut = false;
-                 sl_pat = (Ast.PatVar { Ast.name = "i"; span = <span> });
+  [(Ast.TopFn
+      { Ast.fd_vis = Ast.Private; fd_total = false;
+        fd_name =
+        { Ast.name = "test_literals";
+          span =
+          { Span.start_pos = { Span.line = 2; col = 1; offset = 26 };
+            end_pos = { Span.line = 2; col = 4; offset = 29 };
+            file = "test/golden/literals.affine" }
+          };
+        fd_type_params = []; fd_params = [];
+        fd_ret_ty = (Some (Ast.TyTuple [])); fd_eff = None; fd_where = [];
+        fd_body =
+        (Ast.FnBlock
+           { Ast.blk_stmts =
+             [Ast.StmtLet {sl_mut = false; sl_quantity = None;
+                sl_pat =
+                (Ast.PatVar
+                   { Ast.name = "i";
+                     span =
+                     { Span.start_pos =
+                       { Span.line = 3; col = 3; offset = 55 };
+                       end_pos = { Span.line = 3; col = 7; offset = 59 };
+                       file = "test/golden/literals.affine" }
+                     });
+                sl_ty = None;
+                sl_value =
+                (Ast.ExprLit
+                   (Ast.LitInt (42,
+                      { Span.start_pos =
+                        { Span.line = 3; col = 9; offset = 61 };
+                        end_pos = { Span.line = 3; col = 11; offset = 63 };
+                        file = "test/golden/literals.affine" }
+                      )))};
+               Ast.StmtLet {sl_mut = false; sl_quantity = None;
+                 sl_pat =
+                 (Ast.PatVar
+                    { Ast.name = "f";
+                      span =
+                      { Span.start_pos =
+                        { Span.line = 4; col = 3; offset = 69 };
+                        end_pos = { Span.line = 4; col = 7; offset = 73 };
+                        file = "test/golden/literals.affine" }
+                      });
                  sl_ty = None;
-                 sl_value = (Ast.ExprLit (Ast.LitInt (42, <span>))) };
-             Ast.StmtLet
-               { Ast.sl_mut = false;
-                 sl_pat = (Ast.PatVar { Ast.name = "f"; span = <span> });
+                 sl_value =
+                 (Ast.ExprLit
+                    (Ast.LitFloat (3.14,
+                       { Span.start_pos =
+                         { Span.line = 4; col = 9; offset = 75 };
+                         end_pos = { Span.line = 4; col = 11; offset = 77 };
+                         file = "test/golden/literals.affine" }
+                       )))};
+               Ast.StmtLet {sl_mut = false; sl_quantity = None;
+                 sl_pat =
+                 (Ast.PatVar
+                    { Ast.name = "b";
+                      span =
+                      { Span.start_pos =
+                        { Span.line = 5; col = 3; offset = 85 };
+                        end_pos = { Span.line = 5; col = 7; offset = 89 };
+                        file = "test/golden/literals.affine" }
+                      });
                  sl_ty = None;
-                 sl_value = (Ast.ExprLit (Ast.LitFloat (3.14, <span>))) };
-             Ast.StmtLet
-               { Ast.sl_mut = false;
-                 sl_pat = (Ast.PatVar { Ast.name = "b"; span = <span> });
+                 sl_value =
+                 (Ast.ExprLit
+                    (Ast.LitBool (true,
+                       { Span.start_pos =
+                         { Span.line = 5; col = 9; offset = 91 };
+                         end_pos = { Span.line = 5; col = 11; offset = 93 };
+                         file = "test/golden/literals.affine" }
+                       )))};
+               Ast.StmtLet {sl_mut = false; sl_quantity = None;
+                 sl_pat =
+                 (Ast.PatVar
+                    { Ast.name = "s";
+                      span =
+                      { Span.start_pos =
+                        { Span.line = 6; col = 3; offset = 101 };
+                        end_pos = { Span.line = 6; col = 7; offset = 105 };
+                        file = "test/golden/literals.affine" }
+                      });
                  sl_ty = None;
-                 sl_value = (Ast.ExprLit (Ast.LitBool (true, <span>))) };
-             Ast.StmtLet
-               { Ast.sl_mut = false;
-                 sl_pat = (Ast.PatVar { Ast.name = "s"; span = <span> });
+                 sl_value =
+                 (Ast.ExprLit
+                    (Ast.LitString ("hello",
+                       { Span.start_pos =
+                         { Span.line = 6; col = 9; offset = 107 };
+                         end_pos = { Span.line = 6; col = 17; offset = 115 };
+                         file = "test/golden/literals.affine" }
+                       )))};
+               Ast.StmtLet {sl_mut = false; sl_quantity = None;
+                 sl_pat =
+                 (Ast.PatVar
+                    { Ast.name = "c";
+                      span =
+                      { Span.start_pos =
+                        { Span.line = 7; col = 3; offset = 120 };
+                        end_pos = { Span.line = 7; col = 7; offset = 124 };
+                        file = "test/golden/literals.affine" }
+                      });
                  sl_ty = None;
-                 sl_value = (Ast.ExprLit (Ast.LitString ("hello", <span>))) };
-             Ast.StmtLet
-               { Ast.sl_mut = false;
-                 sl_pat = (Ast.PatVar { Ast.name = "c"; span = <span> });
+                 sl_value =
+                 (Ast.ExprLit
+                    (Ast.LitChar ('x',
+                       { Span.start_pos =
+                         { Span.line = 7; col = 9; offset = 126 };
+                         end_pos = { Span.line = 7; col = 12; offset = 129 };
+                         file = "test/golden/literals.affine" }
+                       )))};
+               Ast.StmtLet {sl_mut = false; sl_quantity = None;
+                 sl_pat =
+                 (Ast.PatVar
+                    { Ast.name = "u";
+                      span =
+                      { Span.start_pos =
+                        { Span.line = 8; col = 3; offset = 135 };
+                        end_pos = { Span.line = 8; col = 7; offset = 139 };
+                        file = "test/golden/literals.affine" }
+                      });
                  sl_ty = None;
-                 sl_value = (Ast.ExprLit (Ast.LitChar ('x', <span>))) };
-             Ast.StmtLet
-               { Ast.sl_mut = false;
-                 sl_pat = (Ast.PatVar { Ast.name = "u"; span = <span> });
-                 sl_ty = None;
-                 sl_value = (Ast.ExprLit (Ast.LitUnit <span>)) }
-             ];
-            blk_expr = None })
-       }]
+                 sl_value =
+                 (Ast.ExprLit
+                    (Ast.LitUnit
+                       { Span.start_pos =
+                         { Span.line = 8; col = 9; offset = 141 };
+                         end_pos = { Span.line = 8; col = 12; offset = 144 };
+                         file = "test/golden/literals.affine" }))}
+               ];
+             blk_expr = None })
+        })
+    ]
   }

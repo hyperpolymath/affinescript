@@ -1,75 +1,260 @@
 { Ast.prog_module = None; prog_imports = [];
   prog_decls =
-  [Ast.TopTrait
-     { Ast.trd_vis = Ast.Private;
-       trd_name = { Ast.name = "Eq"; span = <span> };
-       trd_type_params = []; trd_super = [];
-       trd_items =
-       [(Ast.TraitFn
-           { Ast.fs_vis = Ast.Private;
-             fs_name = { Ast.name = "eq"; span = <span> };
-             fs_type_params = [];
-             fs_params =
-             [{ Ast.p_quantity = None; p_ownership = (Some Ast.Ref);
-                p_name = { Ast.name = "self"; span = <span> };
-                p_ty = (Ast.TyCon { Ast.name = "Self"; span = <span> }) };
-              { Ast.p_quantity = None; p_ownership = (Some Ast.Ref);
-                p_name = { Ast.name = "other"; span = <span> };
-                p_ty = (Ast.TyCon { Ast.name = "Self"; span = <span> }) }];
-             fs_ret_ty =
-             (Some (Ast.TyCon { Ast.name = "Bool"; span = <span> }));
-             fs_eff = None })]
-       };
-   Ast.TopTrait
-     { Ast.trd_vis = Ast.Private;
-       trd_name = { Ast.name = "Ord"; span = <span> };
-       trd_type_params = [];
-       trd_super =
-       [{ Ast.tb_name = { Ast.name = "Eq"; span = <span> };
-          tb_args = [] }];
-       trd_items =
-       [(Ast.TraitFn
-           { Ast.fs_vis = Ast.Private;
-             fs_name = { Ast.name = "cmp"; span = <span> };
-             fs_type_params = [];
-             fs_params =
-             [{ Ast.p_quantity = None; p_ownership = (Some Ast.Ref);
-                p_name = { Ast.name = "self"; span = <span> };
-                p_ty = (Ast.TyCon { Ast.name = "Self"; span = <span> }) };
-              { Ast.p_quantity = None; p_ownership = (Some Ast.Ref);
-                p_name = { Ast.name = "other"; span = <span> };
-                p_ty = (Ast.TyCon { Ast.name = "Self"; span = <span> }) }];
-             fs_ret_ty =
-             (Some (Ast.TyCon { Ast.name = "Ordering"; span = <span> }));
-             fs_eff = None })]
-       };
-   Ast.TopImpl
-     { Ast.ib_type_params = [];
-       ib_trait_ref =
-       (Some { Ast.tr_name = { Ast.name = "Eq"; span = <span> };
-               tr_args = [] });
-       ib_self_ty = (Ast.TyCon { Ast.name = "Int"; span = <span> });
-       ib_where = [];
-       ib_items =
-       [(Ast.ImplFn
-           { Ast.fd_vis = Ast.Private; fd_total = false;
-             fd_name = { Ast.name = "eq"; span = <span> };
-             fd_type_params = [];
-             fd_params =
-             [{ Ast.p_quantity = None; p_ownership = (Some Ast.Ref);
-                p_name = { Ast.name = "self"; span = <span> };
-                p_ty = (Ast.TyCon { Ast.name = "Self"; span = <span> }) };
-              { Ast.p_quantity = None; p_ownership = (Some Ast.Ref);
-                p_name = { Ast.name = "other"; span = <span> };
-                p_ty = (Ast.TyCon { Ast.name = "Int"; span = <span> }) }];
-             fd_ret_ty =
-             (Some (Ast.TyCon { Ast.name = "Bool"; span = <span> }));
-             fd_eff = None; fd_where = [];
-             fd_body =
-             (Ast.FnBlock
-                { Ast.blk_stmts = [];
-                  blk_expr =
-                  (Some (Ast.ExprLit (Ast.LitBool (true, <span>)))) })
-             })]
-       }]
+  [(Ast.TopTrait
+      { Ast.trd_vis = Ast.Private;
+        trd_name =
+        { Ast.name = "Eq";
+          span =
+          { Span.start_pos = { Span.line = 2; col = 1; offset = 27 };
+            end_pos = { Span.line = 2; col = 7; offset = 33 };
+            file = "test/golden/traits.affine" }
+          };
+        trd_type_params = []; trd_super = [];
+        trd_items =
+        [(Ast.TraitFn
+            { Ast.fs_vis = Ast.Private;
+              fs_name =
+              { Ast.name = "eq";
+                span =
+                { Span.start_pos = { Span.line = 3; col = 3; offset = 40 };
+                  end_pos = { Span.line = 3; col = 6; offset = 43 };
+                  file = "test/golden/traits.affine" }
+                };
+              fs_type_params = [];
+              fs_params =
+              [{ Ast.p_quantity = None; p_ownership = (Some Ast.Ref);
+                 p_name =
+                 { Ast.name = "self";
+                   span =
+                   { Span.start_pos = { Span.line = 3; col = 8; offset = 45 };
+                     end_pos = { Span.line = 3; col = 13; offset = 50 };
+                     file = "test/golden/traits.affine" }
+                   };
+                 p_ty =
+                 (Ast.TyCon
+                    { Ast.name = "Self";
+                      span =
+                      { Span.start_pos =
+                        { Span.line = 3; col = 8; offset = 45 };
+                        end_pos = { Span.line = 3; col = 13; offset = 50 };
+                        file = "test/golden/traits.affine" }
+                      })
+                 };
+                { Ast.p_quantity = None; p_ownership = (Some Ast.Ref);
+                  p_name =
+                  { Ast.name = "other";
+                    span =
+                    { Span.start_pos =
+                      { Span.line = 3; col = 19; offset = 56 };
+                      end_pos = { Span.line = 3; col = 23; offset = 60 };
+                      file = "test/golden/traits.affine" }
+                    };
+                  p_ty =
+                  (Ast.TyCon
+                     { Ast.name = "Self";
+                       span =
+                       { Span.start_pos =
+                         { Span.line = 3; col = 28; offset = 65 };
+                         end_pos = { Span.line = 3; col = 30; offset = 67 };
+                         file = "test/golden/traits.affine" }
+                       })
+                  }
+                ];
+              fs_ret_ty =
+              (Some (Ast.TyCon
+                       { Ast.name = "Bool";
+                         span =
+                         { Span.start_pos =
+                           { Span.line = 3; col = 36; offset = 73 };
+                           end_pos = { Span.line = 3; col = 39; offset = 76 };
+                           file = "test/golden/traits.affine" }
+                         }));
+              fs_eff = None })
+          ]
+        });
+    (Ast.TopTrait
+       { Ast.trd_vis = Ast.Private;
+         trd_name =
+         { Ast.name = "Ord";
+           span =
+           { Span.start_pos = { Span.line = 6; col = 1; offset = 85 };
+             end_pos = { Span.line = 6; col = 7; offset = 91 };
+             file = "test/golden/traits.affine" }
+           };
+         trd_type_params = [];
+         trd_super =
+         [{ Ast.tb_name =
+            { Ast.name = "Eq";
+              span =
+              { Span.start_pos = { Span.line = 6; col = 10; offset = 94 };
+                end_pos = { Span.line = 6; col = 12; offset = 96 };
+                file = "test/golden/traits.affine" }
+              };
+            tb_args = [] }
+           ];
+         trd_items =
+         [(Ast.TraitFn
+             { Ast.fs_vis = Ast.Private;
+               fs_name =
+               { Ast.name = "cmp";
+                 span =
+                 { Span.start_pos = { Span.line = 7; col = 3; offset = 103 };
+                   end_pos = { Span.line = 7; col = 6; offset = 106 };
+                   file = "test/golden/traits.affine" }
+                 };
+               fs_type_params = [];
+               fs_params =
+               [{ Ast.p_quantity = None; p_ownership = (Some Ast.Ref);
+                  p_name =
+                  { Ast.name = "self";
+                    span =
+                    { Span.start_pos =
+                      { Span.line = 7; col = 9; offset = 109 };
+                      end_pos = { Span.line = 7; col = 14; offset = 114 };
+                      file = "test/golden/traits.affine" }
+                    };
+                  p_ty =
+                  (Ast.TyCon
+                     { Ast.name = "Self";
+                       span =
+                       { Span.start_pos =
+                         { Span.line = 7; col = 9; offset = 109 };
+                         end_pos = { Span.line = 7; col = 14; offset = 114 };
+                         file = "test/golden/traits.affine" }
+                       })
+                  };
+                 { Ast.p_quantity = None; p_ownership = (Some Ast.Ref);
+                   p_name =
+                   { Ast.name = "other";
+                     span =
+                     { Span.start_pos =
+                       { Span.line = 7; col = 20; offset = 120 };
+                       end_pos = { Span.line = 7; col = 24; offset = 124 };
+                       file = "test/golden/traits.affine" }
+                     };
+                   p_ty =
+                   (Ast.TyCon
+                      { Ast.name = "Self";
+                        span =
+                        { Span.start_pos =
+                          { Span.line = 7; col = 29; offset = 129 };
+                          end_pos = { Span.line = 7; col = 31; offset = 131 };
+                          file = "test/golden/traits.affine" }
+                        })
+                   }
+                 ];
+               fs_ret_ty =
+               (Some (Ast.TyCon
+                        { Ast.name = "Ordering";
+                          span =
+                          { Span.start_pos =
+                            { Span.line = 7; col = 37; offset = 137 };
+                            end_pos =
+                            { Span.line = 7; col = 40; offset = 140 };
+                            file = "test/golden/traits.affine" }
+                          }));
+               fs_eff = None })
+           ]
+         });
+    (Ast.TopImpl
+       { Ast.ib_type_params = [];
+         ib_trait_ref =
+         (Some { Ast.tr_name =
+                 { Ast.name = "Eq";
+                   span =
+                   { Span.start_pos =
+                     { Span.line = 10; col = 1; offset = 153 };
+                     end_pos = { Span.line = 10; col = 6; offset = 158 };
+                     file = "test/golden/traits.affine" }
+                   };
+                 tr_args = [] });
+         ib_self_ty =
+         (Ast.TyCon
+            { Ast.name = "Int";
+              span =
+              { Span.start_pos = { Span.line = 10; col = 9; offset = 161 };
+                end_pos = { Span.line = 10; col = 13; offset = 165 };
+                file = "test/golden/traits.affine" }
+              });
+         ib_where = [];
+         ib_items =
+         [(Ast.ImplFn
+             { Ast.fd_vis = Ast.Private; fd_total = false;
+               fd_name =
+               { Ast.name = "eq";
+                 span =
+                 { Span.start_pos = { Span.line = 11; col = 3; offset = 173 };
+                   end_pos = { Span.line = 11; col = 6; offset = 176 };
+                   file = "test/golden/traits.affine" }
+                 };
+               fd_type_params = [];
+               fd_params =
+               [{ Ast.p_quantity = None; p_ownership = (Some Ast.Ref);
+                  p_name =
+                  { Ast.name = "self";
+                    span =
+                    { Span.start_pos =
+                      { Span.line = 11; col = 8; offset = 178 };
+                      end_pos = { Span.line = 11; col = 13; offset = 183 };
+                      file = "test/golden/traits.affine" }
+                    };
+                  p_ty =
+                  (Ast.TyCon
+                     { Ast.name = "Self";
+                       span =
+                       { Span.start_pos =
+                         { Span.line = 11; col = 8; offset = 178 };
+                         end_pos = { Span.line = 11; col = 13; offset = 183 };
+                         file = "test/golden/traits.affine" }
+                       })
+                  };
+                 { Ast.p_quantity = None; p_ownership = (Some Ast.Ref);
+                   p_name =
+                   { Ast.name = "other";
+                     span =
+                     { Span.start_pos =
+                       { Span.line = 11; col = 19; offset = 189 };
+                       end_pos = { Span.line = 11; col = 23; offset = 193 };
+                       file = "test/golden/traits.affine" }
+                     };
+                   p_ty =
+                   (Ast.TyCon
+                      { Ast.name = "Int";
+                        span =
+                        { Span.start_pos =
+                          { Span.line = 11; col = 28; offset = 198 };
+                          end_pos =
+                          { Span.line = 11; col = 30; offset = 200 };
+                          file = "test/golden/traits.affine" }
+                        })
+                   }
+                 ];
+               fd_ret_ty =
+               (Some (Ast.TyCon
+                        { Ast.name = "Bool";
+                          span =
+                          { Span.start_pos =
+                            { Span.line = 11; col = 35; offset = 205 };
+                            end_pos =
+                            { Span.line = 11; col = 38; offset = 208 };
+                            file = "test/golden/traits.affine" }
+                          }));
+               fd_eff = None; fd_where = [];
+               fd_body =
+               (Ast.FnBlock
+                  { Ast.blk_stmts = [];
+                    blk_expr =
+                    (Some (Ast.ExprLit
+                             (Ast.LitBool (true,
+                                { Span.start_pos =
+                                  { Span.line = 11; col = 43; offset = 213 };
+                                  end_pos =
+                                  { Span.line = 12; col = 5; offset = 219 };
+                                  file = "test/golden/traits.affine" }
+                                ))))
+                    })
+               })
+           ]
+         })
+    ]
   }

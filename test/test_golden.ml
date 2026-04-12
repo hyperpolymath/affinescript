@@ -5,8 +5,14 @@
 
 open Affinescript
 
-(** Directory containing golden test files *)
-let golden_dir = "test/golden"
+(** Directory containing golden test files.
+    When run via [dune test], the CWD is [_build/default/test/] where Dune
+    copies the source tree, so [golden/] is directly accessible.
+    When run from the project root (e.g. during development), fall back to
+    [test/golden]. *)
+let golden_dir =
+  if Sys.file_exists "golden" then "golden"
+  else "test/golden"
 
 (** Read file contents *)
 let read_file path =
@@ -24,12 +30,20 @@ let file_exists path =
 
 (** Normalize AST output for comparison (remove span details) *)
 let normalize_ast ast_str =
-  (* Remove span information for stable comparison *)
-  let re_span = Str.regexp {|{ Span.file = "[^"]*"; start_pos = [^}]*; end_pos = [^}]* }|} in
-  let without_spans = Str.global_replace re_span "<span>" ast_str in
-  (* Normalize whitespace *)
+  (* Normalize whitespace first so span records are on a single logical line *)
   let re_ws = Str.regexp "[ \t\n\r]+" in
-  Str.global_replace re_ws " " without_spans
+  let flat = Str.global_replace re_ws " " ast_str in
+  (* Remove span information.  Current field order (ppx_deriving.show):
+       { Span.start_pos = { Span.line = N; col = N; offset = N };
+         end_pos = { Span.line = N; col = N; offset = N };
+         file = "path" }
+     After whitespace normalization this becomes a single-line record.
+     We also handle the legacy { Span.file = ...; start_pos = ...; end_pos = ... }
+     form so that pre-existing <span>-placeholder expected files still match. *)
+  let re_span = Str.regexp
+    {|{ Span\.start_pos = { [^}]* }; end_pos = { [^}]* }; file = "[^"]*" }|}
+  in
+  String.trim (Str.global_replace re_span "<span>" flat)
 
 (** Parse a file and return the AST as a string *)
 let parse_to_string path =
@@ -80,8 +94,13 @@ let discover_tests () =
     |> List.sort String.compare
     |> List.map test_case_of_file
 
-(** Run parser on examples directory and check they all parse *)
-let examples_dir = "examples"
+(** Run parser on examples directory and check they all parse.
+    The examples dir lives one level above the test source tree;
+    Dune's [(source_tree ../examples)] dep makes it available as
+    [../examples] from the test CWD. *)
+let examples_dir =
+  if Sys.file_exists "../examples" then "../examples"
+  else "examples"
 
 let run_example_parse_test filename () =
   let path = Filename.concat examples_dir filename in

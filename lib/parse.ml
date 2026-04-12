@@ -86,6 +86,7 @@ let next_token state () =
     | Token.AS -> Parser.AS
     | Token.UNSAFE -> Parser.UNSAFE
     | Token.ASSUME -> Parser.ASSUME
+    | Token.SELF_KW -> Parser.SELF_KW
     | Token.TRANSMUTE -> Parser.TRANSMUTE
     | Token.FORGET -> Parser.FORGET
     | Token.TRY -> Parser.TRY

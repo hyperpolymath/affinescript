@@ -1,31 +1,103 @@
 { Ast.prog_module = None;
   prog_imports =
   [(Ast.ImportSimple (
-      [{ Ast.name = "std"; span = <span> };
-       { Ast.name = "io"; span = <span> }],
+      [{ Ast.name = "std";
+         span =
+         { Span.start_pos = { Span.line = 2; col = 1; offset = 23 };
+           end_pos = { Span.line = 2; col = 5; offset = 27 };
+           file = "test/golden/imports.affine" }
+         };
+        { Ast.name = "io";
+          span =
+          { Span.start_pos = { Span.line = 2; col = 8; offset = 30 };
+            end_pos = { Span.line = 2; col = 9; offset = 31 };
+            file = "test/golden/imports.affine" }
+          }
+        ],
       None));
-   (Ast.ImportSimple (
-      [{ Ast.name = "std"; span = <span> };
-       { Ast.name = "collections"; span = <span> };
-       { Ast.name = "Vec"; span = <span> }],
-      (Some { Ast.name = "Vector"; span = <span> })));
-   (Ast.ImportList (
-      [{ Ast.name = "std"; span = <span> };
-       { Ast.name = "prelude"; span = <span> }],
-      [{ Ast.ii_name = { Ast.name = "Option"; span = <span> };
-         ii_alias = None };
-       { Ast.ii_name = { Ast.name = "Result"; span = <span> };
-         ii_alias = None }]))
-   ];
+    (Ast.ImportSimple (
+       [{ Ast.name = "std";
+          span =
+          { Span.start_pos = { Span.line = 3; col = 1; offset = 35 };
+            end_pos = { Span.line = 3; col = 5; offset = 39 };
+            file = "test/golden/imports.affine" }
+          };
+         { Ast.name = "collections";
+           span =
+           { Span.start_pos = { Span.line = 3; col = 8; offset = 42 };
+             end_pos = { Span.line = 3; col = 9; offset = 43 };
+             file = "test/golden/imports.affine" }
+           };
+         { Ast.name = "Vec";
+           span =
+           { Span.start_pos = { Span.line = 3; col = 20; offset = 54 };
+             end_pos = { Span.line = 3; col = 21; offset = 55 };
+             file = "test/golden/imports.affine" }
+           }
+         ],
+       (Some { Ast.name = "Vector";
+               span =
+               { Span.start_pos = { Span.line = 3; col = 25; offset = 59 };
+                 end_pos = { Span.line = 3; col = 28; offset = 62 };
+                 file = "test/golden/imports.affine" }
+               })
+       ));
+    (Ast.ImportList (
+       [{ Ast.name = "std";
+          span =
+          { Span.start_pos = { Span.line = 4; col = 1; offset = 70 };
+            end_pos = { Span.line = 4; col = 5; offset = 74 };
+            file = "test/golden/imports.affine" }
+          };
+         { Ast.name = "prelude";
+           span =
+           { Span.start_pos = { Span.line = 4; col = 8; offset = 77 };
+             end_pos = { Span.line = 4; col = 9; offset = 78 };
+             file = "test/golden/imports.affine" }
+           }
+         ],
+       [{ Ast.ii_name =
+          { Ast.name = "Option";
+            span =
+            { Span.start_pos = { Span.line = 4; col = 18; offset = 87 };
+              end_pos = { Span.line = 4; col = 19; offset = 88 };
+              file = "test/golden/imports.affine" }
+            };
+          ii_alias = None };
+         { Ast.ii_name =
+           { Ast.name = "Result";
+             span =
+             { Span.start_pos = { Span.line = 4; col = 25; offset = 94 };
+               end_pos = { Span.line = 4; col = 27; offset = 96 };
+               file = "test/golden/imports.affine" }
+             };
+           ii_alias = None }
+         ]
+       ))
+    ];
   prog_decls =
-  [Ast.TopFn
-     { Ast.fd_vis = Ast.Private; fd_total = false;
-       fd_name = { Ast.name = "main"; span = <span> };
-       fd_type_params = []; fd_params = [];
-       fd_ret_ty = (Some (Ast.TyTuple [])); fd_eff = None; fd_where = [];
-       fd_body =
-       (Ast.FnBlock
-          { Ast.blk_stmts = [];
-            blk_expr = (Some (Ast.ExprLit (Ast.LitUnit <span>))) })
-       }]
+  [(Ast.TopFn
+      { Ast.fd_vis = Ast.Private; fd_total = false;
+        fd_name =
+        { Ast.name = "main";
+          span =
+          { Span.start_pos = { Span.line = 6; col = 1; offset = 106 };
+            end_pos = { Span.line = 6; col = 4; offset = 109 };
+            file = "test/golden/imports.affine" }
+          };
+        fd_type_params = []; fd_params = [];
+        fd_ret_ty = (Some (Ast.TyTuple [])); fd_eff = None; fd_where = [];
+        fd_body =
+        (Ast.FnBlock
+           { Ast.blk_stmts = [];
+             blk_expr =
+             (Some (Ast.ExprLit
+                      (Ast.LitUnit
+                         { Span.start_pos =
+                           { Span.line = 6; col = 17; offset = 122 };
+                           end_pos = { Span.line = 7; col = 4; offset = 127 };
+                           file = "test/golden/imports.affine" })))
+             })
+        })
+    ]
   }

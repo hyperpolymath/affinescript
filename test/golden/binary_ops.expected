@@ -1,44 +1,131 @@
 { Ast.prog_module = None; prog_imports = [];
   prog_decls =
-  [Ast.TopFn
-     { Ast.fd_vis = Ast.Private; fd_total = false;
-       fd_name = { Ast.name = "test_ops"; span = <span> };
-       fd_type_params = []; fd_params = [];
-       fd_ret_ty = (Some (Ast.TyCon { Ast.name = "Int"; span = <span> }));
-       fd_eff = None; fd_where = [];
-       fd_body =
-       (Ast.FnBlock
-          { Ast.blk_stmts = [];
-            blk_expr =
-            (Some (Ast.ExprBinary (
-                     (Ast.ExprLit (Ast.LitInt (1, <span>))), Ast.OpAdd,
-                     (Ast.ExprBinary (
-                        (Ast.ExprLit (Ast.LitInt (2, <span>))), Ast.OpMul,
-                        (Ast.ExprLit (Ast.LitInt (3, <span>)))))
-                     )))
-            })
-       };
-   Ast.TopFn
-     { Ast.fd_vis = Ast.Private; fd_total = false;
-       fd_name = { Ast.name = "test_compare"; span = <span> };
-       fd_type_params = []; fd_params = [];
-       fd_ret_ty = (Some (Ast.TyCon { Ast.name = "Bool"; span = <span> }));
-       fd_eff = None; fd_where = [];
-       fd_body =
-       (Ast.FnBlock
-          { Ast.blk_stmts = [];
-            blk_expr =
-            (Some (Ast.ExprBinary (
-                     (Ast.ExprBinary (
-                        (Ast.ExprVar { Ast.name = "x"; span = <span> }),
-                        Ast.OpEq,
-                        (Ast.ExprVar { Ast.name = "y"; span = <span> }))),
-                     Ast.OpAnd,
-                     (Ast.ExprBinary (
-                        (Ast.ExprVar { Ast.name = "a"; span = <span> }),
-                        Ast.OpLt,
-                        (Ast.ExprVar { Ast.name = "b"; span = <span> })))
-                     )))
-            })
-       }]
+  [(Ast.TopFn
+      { Ast.fd_vis = Ast.Private; fd_total = false;
+        fd_name =
+        { Ast.name = "test_ops";
+          span =
+          { Span.start_pos = { Span.line = 2; col = 1; offset = 40 };
+            end_pos = { Span.line = 2; col = 4; offset = 43 };
+            file = "test/golden/binary_ops.affine" }
+          };
+        fd_type_params = []; fd_params = [];
+        fd_ret_ty =
+        (Some (Ast.TyCon
+                 { Ast.name = "Int";
+                   span =
+                   { Span.start_pos =
+                     { Span.line = 2; col = 15; offset = 54 };
+                     end_pos = { Span.line = 2; col = 18; offset = 57 };
+                     file = "test/golden/binary_ops.affine" }
+                   }));
+        fd_eff = None; fd_where = [];
+        fd_body =
+        (Ast.FnBlock
+           { Ast.blk_stmts = [];
+             blk_expr =
+             (Some (Ast.ExprBinary (
+                      (Ast.ExprLit
+                         (Ast.LitInt (1,
+                            { Span.start_pos =
+                              { Span.line = 2; col = 22; offset = 61 };
+                              end_pos =
+                              { Span.line = 3; col = 3; offset = 65 };
+                              file = "test/golden/binary_ops.affine" }
+                            ))),
+                      Ast.OpAdd,
+                      (Ast.ExprBinary (
+                         (Ast.ExprLit
+                            (Ast.LitInt (2,
+                               { Span.start_pos =
+                                 { Span.line = 3; col = 5; offset = 67 };
+                                 end_pos =
+                                 { Span.line = 3; col = 7; offset = 69 };
+                                 file = "test/golden/binary_ops.affine" }
+                               ))),
+                         Ast.OpMul,
+                         (Ast.ExprLit
+                            (Ast.LitInt (3,
+                               { Span.start_pos =
+                                 { Span.line = 3; col = 9; offset = 71 };
+                                 end_pos =
+                                 { Span.line = 3; col = 11; offset = 73 };
+                                 file = "test/golden/binary_ops.affine" }
+                               )))
+                         ))
+                      )))
+             })
+        });
+    (Ast.TopFn
+       { Ast.fd_vis = Ast.Private; fd_total = false;
+         fd_name =
+         { Ast.name = "test_compare";
+           span =
+           { Span.start_pos = { Span.line = 6; col = 1; offset = 78 };
+             end_pos = { Span.line = 6; col = 4; offset = 81 };
+             file = "test/golden/binary_ops.affine" }
+           };
+         fd_type_params = []; fd_params = [];
+         fd_ret_ty =
+         (Some (Ast.TyCon
+                  { Ast.name = "Bool";
+                    span =
+                    { Span.start_pos =
+                      { Span.line = 6; col = 19; offset = 96 };
+                      end_pos = { Span.line = 6; col = 22; offset = 99 };
+                      file = "test/golden/binary_ops.affine" }
+                    }));
+         fd_eff = None; fd_where = [];
+         fd_body =
+         (Ast.FnBlock
+            { Ast.blk_stmts = [];
+              blk_expr =
+              (Some (Ast.ExprBinary (
+                       (Ast.ExprBinary (
+                          (Ast.ExprVar
+                             { Ast.name = "x";
+                               span =
+                               { Span.start_pos =
+                                 { Span.line = 6; col = 27; offset = 104 };
+                                 end_pos =
+                                 { Span.line = 7; col = 3; offset = 108 };
+                                 file = "test/golden/binary_ops.affine" }
+                               }),
+                          Ast.OpEq,
+                          (Ast.ExprVar
+                             { Ast.name = "y";
+                               span =
+                               { Span.start_pos =
+                                 { Span.line = 7; col = 5; offset = 110 };
+                                 end_pos =
+                                 { Span.line = 7; col = 8; offset = 113 };
+                                 file = "test/golden/binary_ops.affine" }
+                               })
+                          )),
+                       Ast.OpAnd,
+                       (Ast.ExprBinary (
+                          (Ast.ExprVar
+                             { Ast.name = "a";
+                               span =
+                               { Span.start_pos =
+                                 { Span.line = 7; col = 10; offset = 115 };
+                                 end_pos =
+                                 { Span.line = 7; col = 13; offset = 118 };
+                                 file = "test/golden/binary_ops.affine" }
+                               }),
+                          Ast.OpLt,
+                          (Ast.ExprVar
+                             { Ast.name = "b";
+                               span =
+                               { Span.start_pos =
+                                 { Span.line = 7; col = 15; offset = 120 };
+                                 end_pos =
+                                 { Span.line = 7; col = 17; offset = 122 };
+                                 file = "test/golden/binary_ops.affine" }
+                               })
+                          ))
+                       )))
+              })
+         })
+    ]
   }

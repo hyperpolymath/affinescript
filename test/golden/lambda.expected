@@ -1,68 +1,202 @@
 { Ast.prog_module = None; prog_imports = [];
   prog_decls =
-  [Ast.TopFn
-     { Ast.fd_vis = Ast.Private; fd_total = false;
-       fd_name = { Ast.name = "test_lambda"; span = <span> };
-       fd_type_params = []; fd_params = [];
-       fd_ret_ty = (Some (Ast.TyCon { Ast.name = "Int"; span = <span> }));
-       fd_eff = None; fd_where = [];
-       fd_body =
-       (Ast.FnBlock
-          { Ast.blk_stmts =
-            [Ast.StmtLet
-               { Ast.sl_mut = false;
-                 sl_pat = (Ast.PatVar { Ast.name = "f"; span = <span> });
+  [(Ast.TopFn
+      { Ast.fd_vis = Ast.Private; fd_total = false;
+        fd_name =
+        { Ast.name = "test_lambda";
+          span =
+          { Span.start_pos = { Span.line = 2; col = 1; offset = 27 };
+            end_pos = { Span.line = 2; col = 4; offset = 30 };
+            file = "test/golden/lambda.affine" }
+          };
+        fd_type_params = []; fd_params = [];
+        fd_ret_ty =
+        (Some (Ast.TyCon
+                 { Ast.name = "Int";
+                   span =
+                   { Span.start_pos =
+                     { Span.line = 2; col = 18; offset = 44 };
+                     end_pos = { Span.line = 2; col = 21; offset = 47 };
+                     file = "test/golden/lambda.affine" }
+                   }));
+        fd_eff = None; fd_where = [];
+        fd_body =
+        (Ast.FnBlock
+           { Ast.blk_stmts =
+             [Ast.StmtLet {sl_mut = false; sl_quantity = None;
+                sl_pat =
+                (Ast.PatVar
+                   { Ast.name = "f";
+                     span =
+                     { Span.start_pos =
+                       { Span.line = 3; col = 3; offset = 55 };
+                       end_pos = { Span.line = 3; col = 7; offset = 59 };
+                       file = "test/golden/lambda.affine" }
+                     });
+                sl_ty = None;
+                sl_value =
+                Ast.ExprLambda {
+                  elam_params =
+                  [{ Ast.p_quantity = None; p_ownership = None;
+                     p_name =
+                     { Ast.name = "x";
+                       span =
+                       { Span.start_pos =
+                         { Span.line = 3; col = 11; offset = 63 };
+                         end_pos = { Span.line = 3; col = 12; offset = 64 };
+                         file = "test/golden/lambda.affine" }
+                       };
+                     p_ty = Ast.TyHole }
+                    ];
+                  elam_ret_ty = None;
+                  elam_body =
+                  (Ast.ExprBinary (
+                     (Ast.ExprVar
+                        { Ast.name = "x";
+                          span =
+                          { Span.start_pos =
+                            { Span.line = 3; col = 13; offset = 65 };
+                            end_pos =
+                            { Span.line = 3; col = 15; offset = 67 };
+                            file = "test/golden/lambda.affine" }
+                          }),
+                     Ast.OpAdd,
+                     (Ast.ExprLit
+                        (Ast.LitInt (1,
+                           { Span.start_pos =
+                             { Span.line = 3; col = 17; offset = 69 };
+                             end_pos =
+                             { Span.line = 3; col = 19; offset = 71 };
+                             file = "test/golden/lambda.affine" }
+                           )))
+                     ))}}
+               ];
+             blk_expr =
+             (Some (Ast.ExprApp (
+                      (Ast.ExprVar
+                         { Ast.name = "f";
+                           span =
+                           { Span.start_pos =
+                             { Span.line = 3; col = 20; offset = 72 };
+                             end_pos =
+                             { Span.line = 4; col = 3; offset = 76 };
+                             file = "test/golden/lambda.affine" }
+                           }),
+                      [(Ast.ExprLit
+                          (Ast.LitInt (42,
+                             { Span.start_pos =
+                               { Span.line = 4; col = 4; offset = 77 };
+                               end_pos =
+                               { Span.line = 4; col = 5; offset = 78 };
+                               file = "test/golden/lambda.affine" }
+                             )))
+                        ]
+                      )))
+             })
+        });
+    (Ast.TopFn
+       { Ast.fd_vis = Ast.Private; fd_total = false;
+         fd_name =
+         { Ast.name = "test_lambda_typed";
+           span =
+           { Span.start_pos = { Span.line = 7; col = 1; offset = 85 };
+             end_pos = { Span.line = 7; col = 4; offset = 88 };
+             file = "test/golden/lambda.affine" }
+           };
+         fd_type_params = []; fd_params = [];
+         fd_ret_ty =
+         (Some (Ast.TyCon
+                  { Ast.name = "Int";
+                    span =
+                    { Span.start_pos =
+                      { Span.line = 7; col = 24; offset = 108 };
+                      end_pos = { Span.line = 7; col = 27; offset = 111 };
+                      file = "test/golden/lambda.affine" }
+                    }));
+         fd_eff = None; fd_where = [];
+         fd_body =
+         (Ast.FnBlock
+            { Ast.blk_stmts =
+              [Ast.StmtLet {sl_mut = false; sl_quantity = None;
+                 sl_pat =
+                 (Ast.PatVar
+                    { Ast.name = "f";
+                      span =
+                      { Span.start_pos =
+                        { Span.line = 8; col = 3; offset = 119 };
+                        end_pos = { Span.line = 8; col = 7; offset = 123 };
+                        file = "test/golden/lambda.affine" }
+                      });
                  sl_ty = None;
                  sl_value =
-                 (Ast.ExprLambda
-                    { Ast.elam_params =
-                      [{ Ast.p_quantity = None; p_ownership = None;
-                         p_name = { Ast.name = "x"; span = <span> };
-                         p_ty = Ast.TyHole }];
-                      elam_ret_ty = None;
-                      elam_body =
-                      (Ast.ExprBinary (
-                         (Ast.ExprVar { Ast.name = "x"; span = <span> }),
-                         Ast.OpAdd, (Ast.ExprLit (Ast.LitInt (1, <span>)))))
-                      })
-                 }];
-            blk_expr =
-            (Some (Ast.ExprApp (
-                     (Ast.ExprVar { Ast.name = "f"; span = <span> }),
-                     [(Ast.ExprLit (Ast.LitInt (42, <span>)))])))
-            })
-       };
-   Ast.TopFn
-     { Ast.fd_vis = Ast.Private; fd_total = false;
-       fd_name = { Ast.name = "test_lambda_typed"; span = <span> };
-       fd_type_params = []; fd_params = [];
-       fd_ret_ty = (Some (Ast.TyCon { Ast.name = "Int"; span = <span> }));
-       fd_eff = None; fd_where = [];
-       fd_body =
-       (Ast.FnBlock
-          { Ast.blk_stmts =
-            [Ast.StmtLet
-               { Ast.sl_mut = false;
-                 sl_pat = (Ast.PatVar { Ast.name = "f"; span = <span> });
-                 sl_ty = None;
-                 sl_value =
-                 (Ast.ExprLambda
-                    { Ast.elam_params =
-                      [{ Ast.p_quantity = None; p_ownership = None;
-                         p_name = { Ast.name = "x"; span = <span> };
-                         p_ty =
-                         (Ast.TyCon { Ast.name = "Int"; span = <span> }) }];
-                      elam_ret_ty = None;
-                      elam_body =
-                      (Ast.ExprBinary (
-                         (Ast.ExprVar { Ast.name = "x"; span = <span> }),
-                         Ast.OpMul, (Ast.ExprLit (Ast.LitInt (2, <span>)))))
-                      })
-                 }];
-            blk_expr =
-            (Some (Ast.ExprApp (
-                     (Ast.ExprVar { Ast.name = "f"; span = <span> }),
-                     [(Ast.ExprLit (Ast.LitInt (21, <span>)))])))
-            })
-       }]
+                 Ast.ExprLambda {
+                   elam_params =
+                   [{ Ast.p_quantity = None; p_ownership = None;
+                      p_name =
+                      { Ast.name = "x";
+                        span =
+                        { Span.start_pos =
+                          { Span.line = 8; col = 11; offset = 127 };
+                          end_pos = { Span.line = 8; col = 12; offset = 128 };
+                          file = "test/golden/lambda.affine" }
+                        };
+                      p_ty =
+                      (Ast.TyCon
+                         { Ast.name = "Int";
+                           span =
+                           { Span.start_pos =
+                             { Span.line = 8; col = 13; offset = 129 };
+                             end_pos =
+                             { Span.line = 8; col = 15; offset = 131 };
+                             file = "test/golden/lambda.affine" }
+                           })
+                      }
+                     ];
+                   elam_ret_ty = None;
+                   elam_body =
+                   (Ast.ExprBinary (
+                      (Ast.ExprVar
+                         { Ast.name = "x";
+                           span =
+                           { Span.start_pos =
+                             { Span.line = 8; col = 18; offset = 134 };
+                             end_pos =
+                             { Span.line = 8; col = 20; offset = 136 };
+                             file = "test/golden/lambda.affine" }
+                           }),
+                      Ast.OpMul,
+                      (Ast.ExprLit
+                         (Ast.LitInt (2,
+                            { Span.start_pos =
+                              { Span.line = 8; col = 22; offset = 138 };
+                              end_pos =
+                              { Span.line = 8; col = 24; offset = 140 };
+                              file = "test/golden/lambda.affine" }
+                            )))
+                      ))}}
+                ];
+              blk_expr =
+              (Some (Ast.ExprApp (
+                       (Ast.ExprVar
+                          { Ast.name = "f";
+                            span =
+                            { Span.start_pos =
+                              { Span.line = 8; col = 25; offset = 141 };
+                              end_pos =
+                              { Span.line = 9; col = 3; offset = 145 };
+                              file = "test/golden/lambda.affine" }
+                            }),
+                       [(Ast.ExprLit
+                           (Ast.LitInt (21,
+                              { Span.start_pos =
+                                { Span.line = 9; col = 4; offset = 146 };
+                                end_pos =
+                                { Span.line = 9; col = 5; offset = 147 };
+                                file = "test/golden/lambda.affine" }
+                              )))
+                         ]
+                       )))
+              })
+         })
+    ]
   }

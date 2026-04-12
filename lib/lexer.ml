@@ -48,6 +48,7 @@ let () =
       ("try", TRY);
       ("catch", CATCH);
       ("finally", FINALLY);
+      ("self", SELF_KW);
       ("true", TRUE);
       ("false", FALSE);
       ("omega", OMEGA);

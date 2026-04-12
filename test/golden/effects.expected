@@ -1,36 +1,132 @@
 { Ast.prog_module = None; prog_imports = [];
   prog_decls =
-  [Ast.TopEffect
-     { Ast.ed_vis = Ast.Private;
-       ed_name = { Ast.name = "IO"; span = <span> };
-       ed_type_params = [];
-       ed_ops =
-       [{ Ast.eod_name = { Ast.name = "print"; span = <span> };
-          eod_params =
-          [{ Ast.p_quantity = None; p_ownership = None;
-             p_name = { Ast.name = "s"; span = <span> };
-             p_ty = (Ast.TyCon { Ast.name = "String"; span = <span> }) }];
-          eod_ret_ty = (Some (Ast.TyTuple [])) };
-        { Ast.eod_name = { Ast.name = "read"; span = <span> };
-          eod_params = [];
-          eod_ret_ty =
-          (Some (Ast.TyCon { Ast.name = "String"; span = <span> })) }]
-       };
-   Ast.TopEffect
-     { Ast.ed_vis = Ast.Private;
-       ed_name = { Ast.name = "State"; span = <span> };
-       ed_type_params =
-       [{ Ast.tp_quantity = None;
-          tp_name = { Ast.name = "S"; span = <span> }; tp_kind = None }];
-       ed_ops =
-       [{ Ast.eod_name = { Ast.name = "get"; span = <span> };
-          eod_params = [];
-          eod_ret_ty = (Some (Ast.TyVar { Ast.name = "S"; span = <span> })) };
-        { Ast.eod_name = { Ast.name = "put"; span = <span> };
-          eod_params =
-          [{ Ast.p_quantity = None; p_ownership = None;
-             p_name = { Ast.name = "s"; span = <span> };
-             p_ty = (Ast.TyVar { Ast.name = "S"; span = <span> }) }];
-          eod_ret_ty = (Some (Ast.TyTuple [])) }]
-       }]
+  [(Ast.TopEffect
+      { Ast.ed_vis = Ast.Private;
+        ed_name =
+        { Ast.name = "IO";
+          span =
+          { Span.start_pos = { Span.line = 2; col = 1; offset = 28 };
+            end_pos = { Span.line = 2; col = 8; offset = 35 };
+            file = "test/golden/effects.affine" }
+          };
+        ed_type_params = [];
+        ed_ops =
+        [{ Ast.eod_name =
+           { Ast.name = "print";
+             span =
+             { Span.start_pos = { Span.line = 3; col = 3; offset = 42 };
+               end_pos = { Span.line = 3; col = 6; offset = 45 };
+               file = "test/golden/effects.affine" }
+             };
+           eod_params =
+           [{ Ast.p_quantity = None; p_ownership = None;
+              p_name =
+              { Ast.name = "s";
+                span =
+                { Span.start_pos = { Span.line = 3; col = 11; offset = 50 };
+                  end_pos = { Span.line = 3; col = 12; offset = 51 };
+                  file = "test/golden/effects.affine" }
+                };
+              p_ty =
+              (Ast.TyCon
+                 { Ast.name = "String";
+                   span =
+                   { Span.start_pos =
+                     { Span.line = 3; col = 13; offset = 52 };
+                     end_pos = { Span.line = 3; col = 15; offset = 54 };
+                     file = "test/golden/effects.affine" }
+                   })
+              }
+             ];
+           eod_ret_ty = (Some (Ast.TyTuple [])) };
+          { Ast.eod_name =
+            { Ast.name = "read";
+              span =
+              { Span.start_pos = { Span.line = 4; col = 3; offset = 71 };
+                end_pos = { Span.line = 4; col = 6; offset = 74 };
+                file = "test/golden/effects.affine" }
+              };
+            eod_params = [];
+            eod_ret_ty =
+            (Some (Ast.TyCon
+                     { Ast.name = "String";
+                       span =
+                       { Span.start_pos =
+                         { Span.line = 4; col = 13; offset = 81 };
+                         end_pos = { Span.line = 4; col = 16; offset = 84 };
+                         file = "test/golden/effects.affine" }
+                       }))
+            }
+          ]
+        });
+    (Ast.TopEffect
+       { Ast.ed_vis = Ast.Private;
+         ed_name =
+         { Ast.name = "State";
+           span =
+           { Span.start_pos = { Span.line = 7; col = 1; offset = 95 };
+             end_pos = { Span.line = 7; col = 8; offset = 102 };
+             file = "test/golden/effects.affine" }
+           };
+         ed_type_params =
+         [{ Ast.tp_quantity = None;
+            tp_name =
+            { Ast.name = "S";
+              span =
+              { Span.start_pos = { Span.line = 7; col = 13; offset = 107 };
+                end_pos = { Span.line = 7; col = 14; offset = 108 };
+                file = "test/golden/effects.affine" }
+              };
+            tp_kind = None }
+           ];
+         ed_ops =
+         [{ Ast.eod_name =
+            { Ast.name = "get";
+              span =
+              { Span.start_pos = { Span.line = 8; col = 3; offset = 115 };
+                end_pos = { Span.line = 8; col = 6; offset = 118 };
+                file = "test/golden/effects.affine" }
+              };
+            eod_params = [];
+            eod_ret_ty =
+            (Some (Ast.TyCon
+                     { Ast.name = "S";
+                       span =
+                       { Span.start_pos =
+                         { Span.line = 8; col = 12; offset = 124 };
+                         end_pos = { Span.line = 8; col = 15; offset = 127 };
+                         file = "test/golden/effects.affine" }
+                       }))
+            };
+           { Ast.eod_name =
+             { Ast.name = "put";
+               span =
+               { Span.start_pos = { Span.line = 9; col = 3; offset = 132 };
+                 end_pos = { Span.line = 9; col = 6; offset = 135 };
+                 file = "test/golden/effects.affine" }
+               };
+             eod_params =
+             [{ Ast.p_quantity = None; p_ownership = None;
+                p_name =
+                { Ast.name = "s";
+                  span =
+                  { Span.start_pos = { Span.line = 9; col = 9; offset = 138 };
+                    end_pos = { Span.line = 9; col = 10; offset = 139 };
+                    file = "test/golden/effects.affine" }
+                  };
+                p_ty =
+                (Ast.TyCon
+                   { Ast.name = "S";
+                     span =
+                     { Span.start_pos =
+                       { Span.line = 9; col = 11; offset = 140 };
+                       end_pos = { Span.line = 9; col = 13; offset = 142 };
+                       file = "test/golden/effects.affine" }
+                     })
+                }
+               ];
+             eod_ret_ty = (Some (Ast.TyTuple [])) }
+           ]
+         })
+    ]
   }

@@ -1,58 +1,208 @@
 { Ast.prog_module = None; prog_imports = [];
   prog_decls =
-  [Ast.TopFn
-     { Ast.fd_vis = Ast.Private; fd_total = false;
-       fd_name = { Ast.name = "getX"; span = <span> };
-       fd_type_params =
-       [{ Ast.tp_quantity = None;
-          tp_name = { Ast.name = "r"; span = <span> }; tp_kind = None }];
-       fd_params =
-       [{ Ast.p_quantity = None; p_ownership = None;
-          p_name = { Ast.name = "p"; span = <span> };
-          p_ty =
-          (Ast.TyRecord (
-             [{ Ast.rf_name = { Ast.name = "x"; span = <span> };
-                rf_ty = (Ast.TyCon { Ast.name = "Int"; span = <span> }) }],
-             (Some { Ast.name = "r"; span = <span> }))) }];
-       fd_ret_ty = (Some (Ast.TyCon { Ast.name = "Int"; span = <span> }));
-       fd_eff = None; fd_where = [];
-       fd_body =
-       (Ast.FnBlock
-          { Ast.blk_stmts = [];
-            blk_expr =
-            (Some (Ast.ExprField (
-                     (Ast.ExprVar { Ast.name = "p"; span = <span> }),
-                     { Ast.name = "x"; span = <span> })))
-            })
-       };
-   Ast.TopFn
-     { Ast.fd_vis = Ast.Private; fd_total = false;
-       fd_name = { Ast.name = "addY"; span = <span> };
-       fd_type_params =
-       [{ Ast.tp_quantity = None;
-          tp_name = { Ast.name = "r"; span = <span> }; tp_kind = None }];
-       fd_params =
-       [{ Ast.p_quantity = None; p_ownership = None;
-          p_name = { Ast.name = "p"; span = <span> };
-          p_ty =
-          (Ast.TyRecord ([], (Some { Ast.name = "r"; span = <span> }))) }];
-       fd_ret_ty =
-       (Some (Ast.TyRecord (
-                [{ Ast.rf_name = { Ast.name = "y"; span = <span> };
-                   rf_ty = (Ast.TyCon { Ast.name = "Int"; span = <span> }) }],
-                (Some { Ast.name = "r"; span = <span> }))));
-       fd_eff = None; fd_where = [];
-       fd_body =
-       (Ast.FnBlock
-          { Ast.blk_stmts = [];
-            blk_expr =
-            (Some (Ast.ExprRecord
-                     { Ast.er_fields =
-                       [({ Ast.name = "y"; span = <span> },
-                         (Some (Ast.ExprLit (Ast.LitInt (0, <span>)))))];
-                       er_spread =
-                       (Some (Ast.ExprVar { Ast.name = "p"; span = <span> }))
-                       }))
-            })
-       }]
+  [(Ast.TopFn
+      { Ast.fd_vis = Ast.Private; fd_total = false;
+        fd_name =
+        { Ast.name = "getX";
+          span =
+          { Span.start_pos = { Span.line = 2; col = 1; offset = 25 };
+            end_pos = { Span.line = 2; col = 4; offset = 28 };
+            file = "test/golden/rows.affine" }
+          };
+        fd_type_params =
+        [{ Ast.tp_quantity = None;
+           tp_name =
+           { Ast.name = "r";
+             span =
+             { Span.start_pos = { Span.line = 2; col = 8; offset = 32 };
+               end_pos = { Span.line = 2; col = 9; offset = 33 };
+               file = "test/golden/rows.affine" }
+             };
+           tp_kind = (Some Ast.KRow) }
+          ];
+        fd_params =
+        [{ Ast.p_quantity = None; p_ownership = None;
+           p_name =
+           { Ast.name = "p";
+             span =
+             { Span.start_pos = { Span.line = 2; col = 13; offset = 37 };
+               end_pos = { Span.line = 2; col = 14; offset = 38 };
+               file = "test/golden/rows.affine" }
+             };
+           p_ty =
+           (Ast.TyRecord (
+              [{ Ast.rf_name =
+                 { Ast.name = "x";
+                   span =
+                   { Span.start_pos =
+                     { Span.line = 2; col = 17; offset = 41 };
+                     end_pos = { Span.line = 2; col = 18; offset = 42 };
+                     file = "test/golden/rows.affine" }
+                   };
+                 rf_ty =
+                 (Ast.TyCon
+                    { Ast.name = "Int";
+                      span =
+                      { Span.start_pos =
+                        { Span.line = 2; col = 19; offset = 43 };
+                        end_pos = { Span.line = 2; col = 21; offset = 45 };
+                        file = "test/golden/rows.affine" }
+                      })
+                 }
+                ],
+              (Some { Ast.name = "r";
+                      span =
+                      { Span.start_pos =
+                        { Span.line = 2; col = 24; offset = 48 };
+                        end_pos = { Span.line = 2; col = 26; offset = 50 };
+                        file = "test/golden/rows.affine" }
+                      })
+              ))
+           }
+          ];
+        fd_ret_ty =
+        (Some (Ast.TyCon
+                 { Ast.name = "Int";
+                   span =
+                   { Span.start_pos =
+                     { Span.line = 2; col = 32; offset = 56 };
+                     end_pos = { Span.line = 2; col = 35; offset = 59 };
+                     file = "test/golden/rows.affine" }
+                   }));
+        fd_eff = None; fd_where = [];
+        fd_body =
+        (Ast.FnBlock
+           { Ast.blk_stmts = [];
+             blk_expr =
+             (Some (Ast.ExprField (
+                      (Ast.ExprVar
+                         { Ast.name = "p";
+                           span =
+                           { Span.start_pos =
+                             { Span.line = 2; col = 39; offset = 63 };
+                             end_pos =
+                             { Span.line = 3; col = 3; offset = 67 };
+                             file = "test/golden/rows.affine" }
+                           }),
+                      { Ast.name = "x";
+                        span =
+                        { Span.start_pos =
+                          { Span.line = 3; col = 4; offset = 68 };
+                          end_pos = { Span.line = 3; col = 5; offset = 69 };
+                          file = "test/golden/rows.affine" }
+                        }
+                      )))
+             })
+        });
+    (Ast.TopFn
+       { Ast.fd_vis = Ast.Private; fd_total = false;
+         fd_name =
+         { Ast.name = "addY";
+           span =
+           { Span.start_pos = { Span.line = 6; col = 1; offset = 74 };
+             end_pos = { Span.line = 6; col = 4; offset = 77 };
+             file = "test/golden/rows.affine" }
+           };
+         fd_type_params =
+         [{ Ast.tp_quantity = None;
+            tp_name =
+            { Ast.name = "r";
+              span =
+              { Span.start_pos = { Span.line = 6; col = 8; offset = 81 };
+                end_pos = { Span.line = 6; col = 9; offset = 82 };
+                file = "test/golden/rows.affine" }
+              };
+            tp_kind = (Some Ast.KRow) }
+           ];
+         fd_params =
+         [{ Ast.p_quantity = None; p_ownership = None;
+            p_name =
+            { Ast.name = "p";
+              span =
+              { Span.start_pos = { Span.line = 6; col = 13; offset = 86 };
+                end_pos = { Span.line = 6; col = 14; offset = 87 };
+                file = "test/golden/rows.affine" }
+              };
+            p_ty =
+            (Ast.TyRecord ([],
+               (Some { Ast.name = "r";
+                       span =
+                       { Span.start_pos =
+                         { Span.line = 6; col = 17; offset = 90 };
+                         end_pos = { Span.line = 6; col = 18; offset = 91 };
+                         file = "test/golden/rows.affine" }
+                       })
+               ))
+            }
+           ];
+         fd_ret_ty =
+         (Some (Ast.TyRecord (
+                  [{ Ast.rf_name =
+                     { Ast.name = "y";
+                       span =
+                       { Span.start_pos =
+                         { Span.line = 6; col = 27; offset = 100 };
+                         end_pos = { Span.line = 6; col = 28; offset = 101 };
+                         file = "test/golden/rows.affine" }
+                       };
+                     rf_ty =
+                     (Ast.TyCon
+                        { Ast.name = "Int";
+                          span =
+                          { Span.start_pos =
+                            { Span.line = 6; col = 29; offset = 102 };
+                            end_pos =
+                            { Span.line = 6; col = 31; offset = 104 };
+                            file = "test/golden/rows.affine" }
+                          })
+                     }
+                    ],
+                  (Some { Ast.name = "r";
+                          span =
+                          { Span.start_pos =
+                            { Span.line = 6; col = 34; offset = 107 };
+                            end_pos =
+                            { Span.line = 6; col = 36; offset = 109 };
+                            file = "test/golden/rows.affine" }
+                          })
+                  )));
+         fd_eff = None; fd_where = [];
+         fd_body =
+         (Ast.FnBlock
+            { Ast.blk_stmts = [];
+              blk_expr =
+              (Some Ast.ExprRecord {
+                      er_fields =
+                      [({ Ast.name = "y";
+                          span =
+                          { Span.start_pos =
+                            { Span.line = 7; col = 3; offset = 118 };
+                            end_pos =
+                            { Span.line = 7; col = 4; offset = 119 };
+                            file = "test/golden/rows.affine" }
+                          },
+                        (Some (Ast.ExprLit
+                                 (Ast.LitInt (0,
+                                    { Span.start_pos =
+                                      { Span.line = 7; col = 5; offset = 120
+                                        };
+                                      end_pos =
+                                      { Span.line = 7; col = 7; offset = 122
+                                        };
+                                      file = "test/golden/rows.affine" }
+                                    )))))
+                        ];
+                      er_spread =
+                      (Some (Ast.ExprVar
+                               { Ast.name = "p";
+                                 span =
+                                 { Span.start_pos =
+                                   { Span.line = 7; col = 8; offset = 123 };
+                                   end_pos =
+                                   { Span.line = 7; col = 10; offset = 125 };
+                                   file = "test/golden/rows.affine" }
+                                 }))})
+              })
+         })
+    ]
   }

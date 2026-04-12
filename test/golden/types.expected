@@ -1,36 +1,125 @@
 { Ast.prog_module = None; prog_imports = [];
   prog_decls =
-  [Ast.TopType
-     { Ast.td_vis = Ast.Private;
-       td_name = { Ast.name = "Alias"; span = <span> };
-       td_type_params = [];
-       td_body =
-       (Ast.TyAlias (Ast.TyCon { Ast.name = "Int"; span = <span> })) };
-   Ast.TopType
-     { Ast.td_vis = Ast.Private;
-       td_name = { Ast.name = "Point"; span = <span> };
-       td_type_params = [];
-       td_body =
-       (Ast.TyStruct
-          [{ Ast.sf_vis = Ast.Private;
-             sf_name = { Ast.name = "x"; span = <span> };
-             sf_ty = (Ast.TyCon { Ast.name = "Int"; span = <span> }) };
-           { Ast.sf_vis = Ast.Private;
-             sf_name = { Ast.name = "y"; span = <span> };
-             sf_ty = (Ast.TyCon { Ast.name = "Int"; span = <span> }) }])
-       };
-   Ast.TopType
-     { Ast.td_vis = Ast.Private;
-       td_name = { Ast.name = "Option"; span = <span> };
-       td_type_params =
-       [{ Ast.tp_quantity = None;
-          tp_name = { Ast.name = "T"; span = <span> }; tp_kind = None }];
-       td_body =
-       (Ast.TyEnum
-          [{ Ast.vd_name = { Ast.name = "None"; span = <span> };
-             vd_fields = []; vd_ret_ty = None };
-           { Ast.vd_name = { Ast.name = "Some"; span = <span> };
-             vd_fields = [(Ast.TyVar { Ast.name = "T"; span = <span> })];
-             vd_ret_ty = None }])
-       }]
+  [(Ast.TopType
+      { Ast.td_vis = Ast.Private;
+        td_name =
+        { Ast.name = "Alias";
+          span =
+          { Span.start_pos = { Span.line = 2; col = 1; offset = 26 };
+            end_pos = { Span.line = 2; col = 6; offset = 31 };
+            file = "test/golden/types.affine" }
+          };
+        td_type_params = [];
+        td_body =
+        (Ast.TyAlias
+           (Ast.TyCon
+              { Ast.name = "Int";
+                span =
+                { Span.start_pos = { Span.line = 2; col = 12; offset = 37 };
+                  end_pos = { Span.line = 2; col = 14; offset = 39 };
+                  file = "test/golden/types.affine" }
+                }))
+        });
+    (Ast.TopType
+       { Ast.td_vis = Ast.Private;
+         td_name =
+         { Ast.name = "Point";
+           span =
+           { Span.start_pos = { Span.line = 4; col = 1; offset = 45 };
+             end_pos = { Span.line = 4; col = 8; offset = 52 };
+             file = "test/golden/types.affine" }
+           };
+         td_type_params = [];
+         td_body =
+         (Ast.TyStruct
+            [{ Ast.sf_vis = Ast.Private;
+               sf_name =
+               { Ast.name = "x";
+                 span =
+                 { Span.start_pos = { Span.line = 4; col = 14; offset = 58 };
+                   end_pos = { Span.line = 5; col = 3; offset = 62 };
+                   file = "test/golden/types.affine" }
+                 };
+               sf_ty =
+               (Ast.TyCon
+                  { Ast.name = "Int";
+                    span =
+                    { Span.start_pos =
+                      { Span.line = 5; col = 4; offset = 63 };
+                      end_pos = { Span.line = 5; col = 6; offset = 65 };
+                      file = "test/golden/types.affine" }
+                    })
+               };
+              { Ast.sf_vis = Ast.Private;
+                sf_name =
+                { Ast.name = "y";
+                  span =
+                  { Span.start_pos = { Span.line = 5; col = 9; offset = 68 };
+                    end_pos = { Span.line = 6; col = 3; offset = 72 };
+                    file = "test/golden/types.affine" }
+                  };
+                sf_ty =
+                (Ast.TyCon
+                   { Ast.name = "Int";
+                     span =
+                     { Span.start_pos =
+                       { Span.line = 6; col = 4; offset = 73 };
+                       end_pos = { Span.line = 6; col = 6; offset = 75 };
+                       file = "test/golden/types.affine" }
+                     })
+                }
+              ])
+         });
+    (Ast.TopType
+       { Ast.td_vis = Ast.Private;
+         td_name =
+         { Ast.name = "Option";
+           span =
+           { Span.start_pos = { Span.line = 9; col = 1; offset = 82 };
+             end_pos = { Span.line = 9; col = 6; offset = 87 };
+             file = "test/golden/types.affine" }
+           };
+         td_type_params =
+         [{ Ast.tp_quantity = None;
+            tp_name =
+            { Ast.name = "T";
+              span =
+              { Span.start_pos = { Span.line = 9; col = 12; offset = 93 };
+                end_pos = { Span.line = 9; col = 13; offset = 94 };
+                file = "test/golden/types.affine" }
+              };
+            tp_kind = None }
+           ];
+         td_body =
+         (Ast.TyEnum
+            [{ Ast.vd_name =
+               { Ast.name = "None";
+                 span =
+                 { Span.start_pos = { Span.line = 9; col = 16; offset = 97 };
+                   end_pos = { Span.line = 10; col = 3; offset = 101 };
+                   file = "test/golden/types.affine" }
+                 };
+               vd_fields = []; vd_ret_ty = None };
+              { Ast.vd_name =
+                { Ast.name = "Some";
+                  span =
+                  { Span.start_pos =
+                    { Span.line = 10; col = 7; offset = 105 };
+                    end_pos = { Span.line = 11; col = 3; offset = 109 };
+                    file = "test/golden/types.affine" }
+                  };
+                vd_fields =
+                [(Ast.TyCon
+                    { Ast.name = "T";
+                      span =
+                      { Span.start_pos =
+                        { Span.line = 11; col = 7; offset = 113 };
+                        end_pos = { Span.line = 11; col = 8; offset = 114 };
+                        file = "test/golden/types.affine" }
+                      })
+                  ];
+                vd_ret_ty = None }
+              ])
+         })
+    ]
   }

@@ -35,6 +35,7 @@ let mk_ident name startpos endpos =
 %token TRUE FALSE
 
 /* Keywords */
+%token SELF_KW
 %token FN LET CONST MUT OWN REF TYPE STRUCT ENUM TRAIT IMPL
 %token EFFECT HANDLE RESUME MATCH IF ELSE WHILE FOR
 %token RETURN BREAK CONTINUE IN WHERE TOTAL MODULE USE
@@ -220,11 +221,34 @@ quantity_b_sugar:
   | COLON OMEGA { QOmega }
 
 param:
-  | qty = quantity? own = ownership? name = ident COLON ty = type_expr
-    { { p_quantity = qty; p_ownership = own; p_name = name; p_ty = ty } }
-  (* ADR-007 Option C: @linear x: Int *)
-  | qty_attr = quantity_attr own = ownership? name = ident COLON ty = type_expr
-    { { p_quantity = Some qty_attr; p_ownership = own; p_name = name; p_ty = ty } }
+  (* Self receiver: bare `self` — SELF_KW is a distinct keyword token.
+     No COLON or type annotation; type defaults to `Self`.
+     Four forms below cover all quantity × ownership × self combinations
+     that are LR(1) without option() conflicts. *)
+  | SELF_KW
+    { { p_quantity = None; p_ownership = None;
+        p_name = mk_ident "self" $startpos $endpos;
+        p_ty = TyCon (mk_ident "Self" $startpos $endpos) } }
+  | own = ownership SELF_KW
+    { { p_quantity = None; p_ownership = Some own;
+        p_name = mk_ident "self" $startpos $endpos;
+        p_ty = TyCon (mk_ident "Self" $startpos $endpos) } }
+  (* Normal params: explicit combinations to avoid option() LR(1) conflicts.
+     Tokens sets are disjoint: SELF_KW / ownership (REF|OWN|MUT) / quantity
+     (ZERO|ONE|OMEGA) / AT / ident (LOWER_IDENT|UPPER_IDENT). *)
+  | name = ident COLON ty = type_expr
+    { { p_quantity = None; p_ownership = None; p_name = name; p_ty = ty } }
+  | own = ownership name = ident COLON ty = type_expr
+    { { p_quantity = None; p_ownership = Some own; p_name = name; p_ty = ty } }
+  | qty = quantity name = ident COLON ty = type_expr
+    { { p_quantity = Some qty; p_ownership = None; p_name = name; p_ty = ty } }
+  | qty = quantity own = ownership name = ident COLON ty = type_expr
+    { { p_quantity = Some qty; p_ownership = Some own; p_name = name; p_ty = ty } }
+  (* ADR-007 Option C: @linear / @erased / @unrestricted attribute form *)
+  | qty_attr = quantity_attr name = ident COLON ty = type_expr
+    { { p_quantity = Some qty_attr; p_ownership = None; p_name = name; p_ty = ty } }
+  | qty_attr = quantity_attr own = ownership name = ident COLON ty = type_expr
+    { { p_quantity = Some qty_attr; p_ownership = Some own; p_name = name; p_ty = ty } }
 
 ownership:
   | OWN { Own }

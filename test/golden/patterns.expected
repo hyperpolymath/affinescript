@@ -1,88 +1,276 @@
 { Ast.prog_module = None; prog_imports = [];
   prog_decls =
-  [Ast.TopFn
-     { Ast.fd_vis = Ast.Private; fd_total = false;
-       fd_name = { Ast.name = "test_match"; span = <span> };
-       fd_type_params = []; fd_params = [];
-       fd_ret_ty = (Some (Ast.TyCon { Ast.name = "Int"; span = <span> }));
-       fd_eff = None; fd_where = [];
-       fd_body =
-       (Ast.FnBlock
-          { Ast.blk_stmts = [];
-            blk_expr =
-            (Some (Ast.ExprMatch
-                     { Ast.em_scrutinee =
-                       (Ast.ExprVar { Ast.name = "x"; span = <span> });
-                       em_arms =
-                       [{ Ast.ma_pat =
-                          (Ast.PatLit (Ast.LitInt (0, <span>)));
-                          ma_guard = None;
-                          ma_body = (Ast.ExprLit (Ast.LitInt (1, <span>))) };
+  [(Ast.TopFn
+      { Ast.fd_vis = Ast.Private; fd_total = false;
+        fd_name =
+        { Ast.name = "test_match";
+          span =
+          { Span.start_pos = { Span.line = 2; col = 1; offset = 25 };
+            end_pos = { Span.line = 2; col = 4; offset = 28 };
+            file = "test/golden/patterns.affine" }
+          };
+        fd_type_params = []; fd_params = [];
+        fd_ret_ty =
+        (Some (Ast.TyCon
+                 { Ast.name = "Int";
+                   span =
+                   { Span.start_pos =
+                     { Span.line = 2; col = 17; offset = 41 };
+                     end_pos = { Span.line = 2; col = 20; offset = 44 };
+                     file = "test/golden/patterns.affine" }
+                   }));
+        fd_eff = None; fd_where = [];
+        fd_body =
+        (Ast.FnBlock
+           { Ast.blk_stmts = [];
+             blk_expr =
+             (Some Ast.ExprMatch {
+                     em_scrutinee =
+                     (Ast.ExprVar
+                        { Ast.name = "x";
+                          span =
+                          { Span.start_pos =
+                            { Span.line = 3; col = 3; offset = 52 };
+                            end_pos = { Span.line = 3; col = 9; offset = 58 };
+                            file = "test/golden/patterns.affine" }
+                          });
+                     em_arms =
+                     [{ Ast.ma_pat =
+                        (Ast.PatLit
+                           (Ast.LitInt (0,
+                              { Span.start_pos =
+                                { Span.line = 3; col = 11; offset = 60 };
+                                end_pos =
+                                { Span.line = 4; col = 5; offset = 66 };
+                                file = "test/golden/patterns.affine" }
+                              )));
+                        ma_guard = None;
+                        ma_body =
+                        (Ast.ExprLit
+                           (Ast.LitInt (1,
+                              { Span.start_pos =
+                                { Span.line = 4; col = 7; offset = 68 };
+                                end_pos =
+                                { Span.line = 4; col = 10; offset = 71 };
+                                file = "test/golden/patterns.affine" }
+                              )))
+                        };
+                       { Ast.ma_pat =
+                         (Ast.PatVar
+                            { Ast.name = "n";
+                              span =
+                              { Span.start_pos =
+                                { Span.line = 4; col = 11; offset = 72 };
+                                end_pos =
+                                { Span.line = 5; col = 5; offset = 78 };
+                                file = "test/golden/patterns.affine" }
+                              });
+                         ma_guard = None;
+                         ma_body =
+                         (Ast.ExprBinary (
+                            (Ast.ExprVar
+                               { Ast.name = "n";
+                                 span =
+                                 { Span.start_pos =
+                                   { Span.line = 5; col = 7; offset = 80 };
+                                   end_pos =
+                                   { Span.line = 5; col = 10; offset = 83 };
+                                   file = "test/golden/patterns.affine" }
+                                 }),
+                            Ast.OpAdd,
+                            (Ast.ExprLit
+                               (Ast.LitInt (1,
+                                  { Span.start_pos =
+                                    { Span.line = 5; col = 12; offset = 85 };
+                                    end_pos =
+                                    { Span.line = 5; col = 14; offset = 87 };
+                                    file = "test/golden/patterns.affine" }
+                                  )))
+                            ))
+                         }
+                       ]})
+             })
+        });
+    (Ast.TopFn
+       { Ast.fd_vis = Ast.Private; fd_total = false;
+         fd_name =
+         { Ast.name = "test_destructure";
+           span =
+           { Span.start_pos = { Span.line = 9; col = 1; offset = 96 };
+             end_pos = { Span.line = 9; col = 4; offset = 99 };
+             file = "test/golden/patterns.affine" }
+           };
+         fd_type_params = []; fd_params = [];
+         fd_ret_ty =
+         (Some (Ast.TyCon
+                  { Ast.name = "Int";
+                    span =
+                    { Span.start_pos =
+                      { Span.line = 9; col = 23; offset = 118 };
+                      end_pos = { Span.line = 9; col = 26; offset = 121 };
+                      file = "test/golden/patterns.affine" }
+                    }));
+         fd_eff = None; fd_where = [];
+         fd_body =
+         (Ast.FnBlock
+            { Ast.blk_stmts = [];
+              blk_expr =
+              (Some Ast.ExprMatch {
+                      em_scrutinee =
+                      (Ast.ExprVar
+                         { Ast.name = "pair";
+                           span =
+                           { Span.start_pos =
+                             { Span.line = 10; col = 3; offset = 129 };
+                             end_pos =
+                             { Span.line = 10; col = 9; offset = 135 };
+                             file = "test/golden/patterns.affine" }
+                           });
+                      em_arms =
+                      [{ Ast.ma_pat =
+                         (Ast.PatTuple
+                            [(Ast.PatVar
+                                { Ast.name = "a";
+                                  span =
+                                  { Span.start_pos =
+                                    { Span.line = 11; col = 5; offset = 146 };
+                                    end_pos =
+                                    { Span.line = 11; col = 6; offset = 147 };
+                                    file = "test/golden/patterns.affine" }
+                                  });
+                              (Ast.PatVar
+                                 { Ast.name = "b";
+                                   span =
+                                   { Span.start_pos =
+                                     { Span.line = 11; col = 7; offset = 148
+                                       };
+                                     end_pos =
+                                     { Span.line = 11; col = 9; offset = 150
+                                       };
+                                     file = "test/golden/patterns.affine" }
+                                   })
+                              ]);
+                         ma_guard = None;
+                         ma_body =
+                         (Ast.ExprBinary (
+                            (Ast.ExprVar
+                               { Ast.name = "a";
+                                 span =
+                                 { Span.start_pos =
+                                   { Span.line = 11; col = 12; offset = 153 };
+                                   end_pos =
+                                   { Span.line = 11; col = 15; offset = 156 };
+                                   file = "test/golden/patterns.affine" }
+                                 }),
+                            Ast.OpAdd,
+                            (Ast.ExprVar
+                               { Ast.name = "b";
+                                 span =
+                                 { Span.start_pos =
+                                   { Span.line = 11; col = 17; offset = 158 };
+                                   end_pos =
+                                   { Span.line = 11; col = 19; offset = 160 };
+                                   file = "test/golden/patterns.affine" }
+                                 })
+                            ))
+                         }
+                        ]})
+              })
+         });
+    (Ast.TopFn
+       { Ast.fd_vis = Ast.Private; fd_total = false;
+         fd_name =
+         { Ast.name = "test_constructor";
+           span =
+           { Span.start_pos = { Span.line = 15; col = 1; offset = 169 };
+             end_pos = { Span.line = 15; col = 4; offset = 172 };
+             file = "test/golden/patterns.affine" }
+           };
+         fd_type_params = []; fd_params = [];
+         fd_ret_ty =
+         (Some (Ast.TyCon
+                  { Ast.name = "Int";
+                    span =
+                    { Span.start_pos =
+                      { Span.line = 15; col = 23; offset = 191 };
+                      end_pos = { Span.line = 15; col = 26; offset = 194 };
+                      file = "test/golden/patterns.affine" }
+                    }));
+         fd_eff = None; fd_where = [];
+         fd_body =
+         (Ast.FnBlock
+            { Ast.blk_stmts = [];
+              blk_expr =
+              (Some Ast.ExprMatch {
+                      em_scrutinee =
+                      (Ast.ExprVar
+                         { Ast.name = "opt";
+                           span =
+                           { Span.start_pos =
+                             { Span.line = 16; col = 3; offset = 202 };
+                             end_pos =
+                             { Span.line = 16; col = 9; offset = 208 };
+                             file = "test/golden/patterns.affine" }
+                           });
+                      em_arms =
+                      [{ Ast.ma_pat =
+                         (Ast.PatCon (
+                            { Ast.name = "Some";
+                              span =
+                              { Span.start_pos =
+                                { Span.line = 16; col = 13; offset = 212 };
+                                end_pos =
+                                { Span.line = 17; col = 5; offset = 218 };
+                                file = "test/golden/patterns.affine" }
+                              },
+                            [(Ast.PatVar
+                                { Ast.name = "x";
+                                  span =
+                                  { Span.start_pos =
+                                    { Span.line = 17; col = 9; offset = 222 };
+                                    end_pos =
+                                    { Span.line = 17; col = 10; offset = 223
+                                      };
+                                    file = "test/golden/patterns.affine" }
+                                  })
+                              ]
+                            ));
+                         ma_guard = None;
+                         ma_body =
+                         (Ast.ExprVar
+                            { Ast.name = "x";
+                              span =
+                              { Span.start_pos =
+                                { Span.line = 17; col = 13; offset = 226 };
+                                end_pos =
+                                { Span.line = 17; col = 16; offset = 229 };
+                                file = "test/golden/patterns.affine" }
+                              })
+                         };
                         { Ast.ma_pat =
-                          (Ast.PatVar { Ast.name = "n"; span = <span> });
-                          ma_guard = None;
-                          ma_body =
-                          (Ast.ExprBinary (
-                             (Ast.ExprVar { Ast.name = "n"; span = <span> }),
-                             Ast.OpAdd,
-                             (Ast.ExprLit (Ast.LitInt (1, <span>))))) }]
-                       }))
-            })
-       };
-   Ast.TopFn
-     { Ast.fd_vis = Ast.Private; fd_total = false;
-       fd_name = { Ast.name = "test_destructure"; span = <span> };
-       fd_type_params = []; fd_params = [];
-       fd_ret_ty = (Some (Ast.TyCon { Ast.name = "Int"; span = <span> }));
-       fd_eff = None; fd_where = [];
-       fd_body =
-       (Ast.FnBlock
-          { Ast.blk_stmts = [];
-            blk_expr =
-            (Some (Ast.ExprMatch
-                     { Ast.em_scrutinee =
-                       (Ast.ExprVar { Ast.name = "pair"; span = <span> });
-                       em_arms =
-                       [{ Ast.ma_pat =
-                          (Ast.PatTuple
-                             [(Ast.PatVar { Ast.name = "a"; span = <span> });
-                              (Ast.PatVar { Ast.name = "b"; span = <span> })]);
-                          ma_guard = None;
-                          ma_body =
-                          (Ast.ExprBinary (
-                             (Ast.ExprVar { Ast.name = "a"; span = <span> }),
-                             Ast.OpAdd,
-                             (Ast.ExprVar { Ast.name = "b"; span = <span> }))) }]
-                       }))
-            })
-       };
-   Ast.TopFn
-     { Ast.fd_vis = Ast.Private; fd_total = false;
-       fd_name = { Ast.name = "test_constructor"; span = <span> };
-       fd_type_params = []; fd_params = [];
-       fd_ret_ty = (Some (Ast.TyCon { Ast.name = "Int"; span = <span> }));
-       fd_eff = None; fd_where = [];
-       fd_body =
-       (Ast.FnBlock
-          { Ast.blk_stmts = [];
-            blk_expr =
-            (Some (Ast.ExprMatch
-                     { Ast.em_scrutinee =
-                       (Ast.ExprVar { Ast.name = "opt"; span = <span> });
-                       em_arms =
-                       [{ Ast.ma_pat =
                           (Ast.PatCon (
-                             { Ast.name = "Some"; span = <span> },
-                             [(Ast.PatVar { Ast.name = "x"; span = <span> })]));
+                             { Ast.name = "None";
+                               span =
+                               { Span.start_pos =
+                                 { Span.line = 17; col = 17; offset = 230 };
+                                 end_pos =
+                                 { Span.line = 18; col = 5; offset = 236 };
+                                 file = "test/golden/patterns.affine" }
+                               },
+                             []));
                           ma_guard = None;
                           ma_body =
-                          (Ast.ExprVar { Ast.name = "x"; span = <span> }) };
-                        { Ast.ma_pat =
-                          (Ast.PatCon (
-                             { Ast.name = "None"; span = <span> }, []));
-                          ma_guard = None;
-                          ma_body = (Ast.ExprLit (Ast.LitInt (0, <span>))) }]
-                       }))
-            })
-       }]
+                          (Ast.ExprLit
+                             (Ast.LitInt (0,
+                                { Span.start_pos =
+                                  { Span.line = 18; col = 10; offset = 241 };
+                                  end_pos =
+                                  { Span.line = 18; col = 13; offset = 244 };
+                                  file = "test/golden/patterns.affine" }
+                                )))
+                          }
+                        ]})
+              })
+         })
+    ]
   }

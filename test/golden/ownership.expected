@@ -1,34 +1,119 @@
 { Ast.prog_module = None; prog_imports = [];
   prog_decls =
-  [Ast.TopFn
-     { Ast.fd_vis = Ast.Private; fd_total = false;
-       fd_name = { Ast.name = "test_ownership"; span = <span> };
-       fd_type_params = [];
-       fd_params =
-       [{ Ast.p_quantity = None; p_ownership = (Some Ast.Own);
-          p_name = { Ast.name = "x"; span = <span> };
-          p_ty = (Ast.TyCon { Ast.name = "String"; span = <span> }) };
-        { Ast.p_quantity = None; p_ownership = (Some Ast.Ref);
-          p_name = { Ast.name = "y"; span = <span> };
-          p_ty = (Ast.TyCon { Ast.name = "Int"; span = <span> }) };
-        { Ast.p_quantity = None; p_ownership = (Some Ast.Mut);
-          p_name = { Ast.name = "z"; span = <span> };
-          p_ty = (Ast.TyCon { Ast.name = "Bool"; span = <span> }) }];
-       fd_ret_ty = (Some (Ast.TyTuple [])); fd_eff = None; fd_where = [];
-       fd_body =
-       (Ast.FnBlock
-          { Ast.blk_stmts = [];
-            blk_expr = (Some (Ast.ExprLit (Ast.LitUnit <span>))) })
-       };
-   Ast.TopType
-     { Ast.td_vis = Ast.Private;
-       td_name = { Ast.name = "File"; span = <span> };
-       td_type_params = [];
-       td_body =
-       (Ast.TyStruct
-          [{ Ast.sf_vis = Ast.Private;
-             sf_name = { Ast.name = "fd"; span = <span> };
-             sf_ty =
-             (Ast.TyOwn (Ast.TyCon { Ast.name = "Int"; span = <span> })) }])
-       }]
+  [(Ast.TopFn
+      { Ast.fd_vis = Ast.Private; fd_total = false;
+        fd_name =
+        { Ast.name = "test_ownership";
+          span =
+          { Span.start_pos = { Span.line = 2; col = 1; offset = 28 };
+            end_pos = { Span.line = 2; col = 4; offset = 31 };
+            file = "test/golden/ownership.affine" }
+          };
+        fd_type_params = [];
+        fd_params =
+        [{ Ast.p_quantity = None; p_ownership = None;
+           p_name =
+           { Ast.name = "x";
+             span =
+             { Span.start_pos = { Span.line = 2; col = 18; offset = 45 };
+               end_pos = { Span.line = 2; col = 19; offset = 46 };
+               file = "test/golden/ownership.affine" }
+             };
+           p_ty =
+           (Ast.TyOwn
+              (Ast.TyCon
+                 { Ast.name = "String";
+                   span =
+                   { Span.start_pos =
+                     { Span.line = 2; col = 22; offset = 49 };
+                     end_pos = { Span.line = 2; col = 26; offset = 53 };
+                     file = "test/golden/ownership.affine" }
+                   }))
+           };
+          { Ast.p_quantity = None; p_ownership = None;
+            p_name =
+            { Ast.name = "y";
+              span =
+              { Span.start_pos = { Span.line = 2; col = 32; offset = 59 };
+                end_pos = { Span.line = 2; col = 34; offset = 61 };
+                file = "test/golden/ownership.affine" }
+              };
+            p_ty =
+            (Ast.TyRef
+               (Ast.TyCon
+                  { Ast.name = "Int";
+                    span =
+                    { Span.start_pos =
+                      { Span.line = 2; col = 37; offset = 64 };
+                      end_pos = { Span.line = 2; col = 41; offset = 68 };
+                      file = "test/golden/ownership.affine" }
+                    }))
+            };
+          { Ast.p_quantity = None; p_ownership = None;
+            p_name =
+            { Ast.name = "z";
+              span =
+              { Span.start_pos = { Span.line = 2; col = 44; offset = 71 };
+                end_pos = { Span.line = 2; col = 46; offset = 73 };
+                file = "test/golden/ownership.affine" }
+              };
+            p_ty =
+            (Ast.TyMut
+               (Ast.TyCon
+                  { Ast.name = "Bool";
+                    span =
+                    { Span.start_pos =
+                      { Span.line = 2; col = 49; offset = 76 };
+                      end_pos = { Span.line = 2; col = 53; offset = 80 };
+                      file = "test/golden/ownership.affine" }
+                    }))
+            }
+          ];
+        fd_ret_ty = (Some (Ast.TyTuple [])); fd_eff = None; fd_where = [];
+        fd_body =
+        (Ast.FnBlock
+           { Ast.blk_stmts = [];
+             blk_expr =
+             (Some (Ast.ExprLit
+                      (Ast.LitUnit
+                         { Span.start_pos =
+                           { Span.line = 2; col = 65; offset = 92 };
+                           end_pos = { Span.line = 3; col = 4; offset = 97 };
+                           file = "test/golden/ownership.affine" })))
+             })
+        });
+    (Ast.TopType
+       { Ast.td_vis = Ast.Private;
+         td_name =
+         { Ast.name = "File";
+           span =
+           { Span.start_pos = { Span.line = 6; col = 1; offset = 102 };
+             end_pos = { Span.line = 6; col = 8; offset = 109 };
+             file = "test/golden/ownership.affine" }
+           };
+         td_type_params = [];
+         td_body =
+         (Ast.TyStruct
+            [{ Ast.sf_vis = Ast.Private;
+               sf_name =
+               { Ast.name = "fd";
+                 span =
+                 { Span.start_pos = { Span.line = 6; col = 13; offset = 114 };
+                   end_pos = { Span.line = 7; col = 3; offset = 118 };
+                   file = "test/golden/ownership.affine" }
+                 };
+               sf_ty =
+               (Ast.TyOwn
+                  (Ast.TyCon
+                     { Ast.name = "Int";
+                       span =
+                       { Span.start_pos =
+                         { Span.line = 7; col = 7; offset = 122 };
+                         end_pos = { Span.line = 7; col = 11; offset = 126 };
+                         file = "test/golden/ownership.affine" }
+                       }))
+               }
+              ])
+         })
+    ]
   }

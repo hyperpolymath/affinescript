@@ -49,6 +49,7 @@ type t =
   | AS
   | UNSAFE
   | ASSUME
+  | SELF_KW     (** self receiver keyword *)
   | TRANSMUTE
   | FORGET
   | TRY
@@ -165,6 +166,7 @@ let to_string = function
   | AS -> "as"
   | UNSAFE -> "unsafe"
   | ASSUME -> "assume"
+  | SELF_KW -> "self"
   | TRANSMUTE -> "transmute"
   | FORGET -> "forget"
   | TRY -> "try"
