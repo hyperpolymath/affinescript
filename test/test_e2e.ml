@@ -1290,6 +1290,18 @@ let test_bridge_tea_layout_section () =
     let version_byte = Char.code (Bytes.get payload 0) in
     Alcotest.(check int) "layout version byte = 1" 1 version_byte
 
+(** Stage 8: TEA bridge module passes typed-wasm Level 7/10 verification.
+    [fn_update] uses [LocalGet 0] (msg) exactly once — branch-max semantics
+    ensure the if/else in fn_push does not cause false positives here. *)
+let test_bridge_ownership_verify () =
+  let m = Tea_bridge.generate () in
+  match Tw_verify.verify_from_module m with
+  | Ok () -> ()   (* expected *)
+  | Error errs ->
+    let msg = String.concat "; " (List.map (fun e ->
+      Format.asprintf "%a" Tw_verify.pp_error e) errs) in
+    Alcotest.fail (Printf.sprintf "TEA bridge failed ownership verification: %s" msg)
+
 let tea_bridge_tests = [
   Alcotest.test_case "structure (7 funcs, 1 mem, 8 exports)" `Quick test_bridge_structure;
   Alcotest.test_case "export names all present"              `Quick test_bridge_export_names;
@@ -1297,6 +1309,7 @@ let tea_bridge_tests = [
   Alcotest.test_case "Wasm binary magic + version"           `Quick test_bridge_wasm_magic;
   Alcotest.test_case "update msg param is Linear"            `Quick test_bridge_update_msg_linear;
   Alcotest.test_case "tea_layout section present + versioned" `Quick test_bridge_tea_layout_section;
+  Alcotest.test_case "ownership verify: clean"               `Quick test_bridge_ownership_verify;
 ]
 
 (* ============================================================================
@@ -1436,6 +1449,18 @@ let test_router_tea_layout_section () =
     let version_byte = Char.code (Bytes.get payload 0) in
     Alcotest.(check int) "layout version byte = 1" 1 version_byte
 
+(** Stage 8: Router bridge module passes typed-wasm Level 7/10 verification.
+    Branch-max semantics: fn_push uses [LocalGet 0] in the then-branch only
+    (else = stack full, silent drop).  max(1, 0) = 1 → OK. *)
+let test_router_ownership_verify () =
+  let m = Tea_router.generate () in
+  match Tw_verify.verify_from_module m with
+  | Ok () -> ()   (* expected *)
+  | Error errs ->
+    let msg = String.concat "; " (List.map (fun e ->
+      Format.asprintf "%a" Tw_verify.pp_error e) errs) in
+    Alcotest.fail (Printf.sprintf "Router bridge failed ownership verification: %s" msg)
+
 let tea_router_tests = [
   Alcotest.test_case "structure (11 funcs, 1 mem, 12 exports)" `Quick test_router_structure;
   Alcotest.test_case "export names all present"                 `Quick test_router_export_names;
@@ -1445,6 +1470,7 @@ let tea_router_tests = [
   Alcotest.test_case "present_popup param is Linear"            `Quick test_router_present_popup_param_linear;
   Alcotest.test_case "resize w+h params are both Linear"        `Quick test_router_resize_params_linear;
   Alcotest.test_case "tea_layout section present + versioned"   `Quick test_router_tea_layout_section;
+  Alcotest.test_case "ownership verify: clean"                  `Quick test_router_ownership_verify;
 ]
 
 (* ============================================================================

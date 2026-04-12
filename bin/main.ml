@@ -343,6 +343,12 @@ let eval_file face json path =
     public/assets/wasm/ directory, and load via AffineTEA.load(). *)
 let tea_bridge_cmd_fn output =
   let m = Affinescript.Tea_bridge.generate () in
+  (* Stage 8: auto-verify ownership constraints before writing. *)
+  (match Affinescript.Tw_verify.verify_from_module m with
+  | Ok () ->
+    Format.printf "typed-wasm ownership verification: OK@."
+  | Error errs ->
+    Affinescript.Tw_verify.pp_report Format.std_formatter errs);
   Affinescript.Wasm_encode.write_module_to_file output m;
   Format.printf "TEA bridge written to %s@." output;
   Format.printf "  affinescript_init()                     — initialise TitleModel@.";
@@ -365,6 +371,12 @@ let tea_bridge_cmd_fn output =
     public/assets/wasm/ directory, and load via AffineTEARouter.load(). *)
 let router_bridge_cmd_fn output =
   let m = Affinescript.Tea_router.generate () in
+  (* Stage 8: auto-verify ownership constraints before writing. *)
+  (match Affinescript.Tw_verify.verify_from_module m with
+  | Ok () ->
+    Format.printf "typed-wasm ownership verification: OK@."
+  | Error errs ->
+    Affinescript.Tw_verify.pp_report Format.std_formatter errs);
   Affinescript.Wasm_encode.write_module_to_file output m;
   Format.printf "Router bridge written to %s@." output;
   Format.printf "  affinescript_router_init()                          — initialise RouterModel@.";
@@ -515,6 +527,12 @@ let compile_file face json wasm_gc path output =
                   (Affinescript.Codegen.show_codegen_error e);
                 `Error (false, "Code generation error")
               | Ok wasm_module ->
+                (* Stage 8: auto-verify typed-wasm ownership constraints.
+                   Printed as informational; does not block compilation. *)
+                (match Affinescript.Tw_verify.verify_from_module wasm_module with
+                | Ok () -> ()
+                | Error errs ->
+                  Affinescript.Tw_verify.pp_report Format.err_formatter errs);
                 Affinescript.Wasm_encode.write_module_to_file output wasm_module;
                 Format.printf "Compiled %s -> %s (WASM)@." path output;
                 `Ok ())
