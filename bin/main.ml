@@ -610,6 +610,73 @@ let lint_file face json path =
         `Error (false, "Parse error")
   end
 
+(** {1 Stage 7: typed-wasm ownership verifier subcommand} *)
+
+(** Verify typed-wasm Level 7/10 ownership constraints on a compiled AffineScript
+    source file.
+
+    Runs the full frontend pipeline (parse → resolve → typecheck → borrow →
+    quantity → codegen) and then passes the resulting Wasm module through
+    [Tw_verify.verify_from_module], which reads the [affinescript.ownership]
+    custom section and checks each function body for linearity (Level 10) and
+    aliasing-safety (Level 7) violations.
+
+    Exit code 0 = clean.  Exit code 1 = violations found.
+
+    Usage: affinescript verify FILE *)
+let verify_file face path =
+  let face = resolve_face face path in
+  try
+    let prog = parse_with_face face path in
+    let loader_config = Affinescript.Module_loader.default_config () in
+    let loader = Affinescript.Module_loader.create loader_config in
+    (match Affinescript.Resolve.resolve_program_with_loader prog loader with
+    | Error (e, _span) ->
+      Format.eprintf "Resolution error: %s@."
+        (Affinescript.Face.format_resolve_error face e);
+      `Error (false, "Resolution error")
+    | Ok (resolve_ctx, _type_ctx) ->
+      (match Affinescript.Typecheck.check_program resolve_ctx.symbols prog with
+      | Error e ->
+        Format.eprintf "%s@."
+          (Affinescript.Face.format_type_error face e);
+        `Error (false, "Type error")
+      | Ok _type_ctx ->
+        (match Affinescript.Borrow.check_program resolve_ctx.symbols prog with
+        | Error e ->
+          Format.eprintf "Borrow error: %s@."
+            (Affinescript.Face.format_borrow_error face e);
+          `Error (false, "Borrow error")
+        | Ok () ->
+          (match Affinescript.Quantity.check_program_quantities prog with
+          | Error (err, _span) ->
+            Format.eprintf "Quantity error: %s@."
+              (Affinescript.Face.format_quantity_error face err);
+            `Error (false, "Quantity error")
+          | Ok () ->
+            let optimized_prog = Affinescript.Opt.fold_constants_program prog in
+            (match Affinescript.Codegen.generate_module optimized_prog with
+            | Error e ->
+              Format.eprintf "Codegen error: %s@."
+                (Affinescript.Codegen.show_codegen_error e);
+              `Error (false, "Codegen error")
+            | Ok wasm_mod ->
+              (match Affinescript.Tw_verify.verify_from_module wasm_mod with
+              | Ok () ->
+                Format.printf "typed-wasm ownership verification: OK@.";
+                `Ok ()
+              | Error errs ->
+                Affinescript.Tw_verify.pp_report Format.std_formatter errs;
+                `Error (false, "Ownership violations found")))))))
+  with
+  | Affinescript.Lexer.Lexer_error (msg, pos) ->
+    Format.eprintf "%s:%d:%d: lexer error: %s@." path pos.line pos.col msg;
+    `Error (false, "Lexer error")
+  | Affinescript.Parse_driver.Parse_error (msg, span) ->
+    Format.eprintf "%a: parse error: %s@."
+      Affinescript.Span.pp_short span msg;
+    `Error (false, "Parse error")
+
 (** {1 CLI command definitions} *)
 open Cmdliner
 
@@ -682,6 +749,21 @@ let router_bridge_cmd =
   let doc = "Generate the AffineScript Cadre Router Wasm module for IDApTIK" in
   let info = Cmd.info "router-bridge" ~doc in
   Cmd.v info Term.(ret (const router_bridge_cmd_fn $ output_arg))
+
+let verify_cmd =
+  let doc = "Verify typed-wasm Level 7/10 ownership constraints on compiled output" in
+  let man = [
+    `S "DESCRIPTION";
+    `P "Compiles FILE through the full AffineScript pipeline and then verifies \
+        that the emitted Wasm module satisfies typed-wasm ownership contracts:";
+    `P "Level 10 (Linearity): each parameter annotated [own] must be consumed \
+        exactly once in the function body.";
+    `P "Level 7 (Aliasing safety): each parameter annotated [mut] must be \
+        referenced at most once simultaneously.";
+    `P "Exit 0 if all constraints are satisfied; exit 1 if violations are found.";
+  ] in
+  let info = Cmd.info "verify" ~doc ~man in
+  Cmd.v info Term.(ret (const verify_file $ face_arg $ path_arg))
 
 let repl_cmd =
   let doc = "Start the interactive REPL" in
@@ -893,7 +975,7 @@ let default_cmd =
   Cmd.group info ~default [
     lex_cmd; parse_cmd; check_cmd; eval_cmd; repl_cmd; compile_cmd;
     fmt_cmd; lint_cmd;
-    tea_bridge_cmd; router_bridge_cmd;
+    tea_bridge_cmd; router_bridge_cmd; verify_cmd;
     hover_cmd; goto_def_cmd; complete_cmd; server_cmd;
     preview_python_cmd; preview_js_cmd; preview_pseudocode_cmd
   ]

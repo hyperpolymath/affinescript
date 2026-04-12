@@ -1999,6 +1999,159 @@ let try_catch_tests = [
 ]
 
 (* ============================================================================
+   Section: Stage 7 — typed-wasm Ownership Verifier (Tw_verify)
+   ============================================================================
+
+   Verify that [Tw_verify.verify_module] and [Tw_verify.verify_from_module]
+   correctly enforce:
+
+   Level 10 — Linearity: Linear (own) params must be loaded exactly once.
+     * Zero loads → LinearNotUsed violation (param dropped).
+     * Two or more loads → LinearUsedMultiple violation (param duplicated).
+     * Exactly one load → OK.
+
+   Level 7 — Aliasing safety: ExclBorrow (mut) params may be loaded at most once.
+     * Two or more loads → ExclBorrowAliased violation.
+     * One load → OK.
+
+   SharedBorrow (ref) and Unrestricted params are unconstrained — any number
+   of loads is allowed.
+
+   Tests 1-7 build synthetic Wasm modules directly (no compilation).
+   Tests 8-9 run the full pipeline on fixture files.
+*)
+
+(** Build a minimal Wasm module with a single function body. *)
+let mk_single_func_module (body : Wasm.instr list) : Wasm.wasm_module =
+  let func = Wasm.{ f_type = 0; f_locals = []; f_body = body } in
+  { (Wasm.empty_module ()) with Wasm.funcs = [func] }
+
+(** Shorthand: annotate func 0 with given param kinds and Unrestricted return. *)
+let single_annot (param_kinds : Codegen.ownership_kind list)
+    : (int * Codegen.ownership_kind list * Codegen.ownership_kind) list =
+  [(0, param_kinds, Codegen.Unrestricted)]
+
+(* ---- Test 1: Linear param used exactly once — OK ---- *)
+
+let test_verify_linear_ok () =
+  (* Body: LocalGet 0; Return — param 0 loaded once. *)
+  let m = mk_single_func_module [Wasm.LocalGet 0; Wasm.Return] in
+  let errs = Tw_verify.verify_module m (single_annot [Codegen.Linear]) in
+  Alcotest.(check bool) "linear used once → OK" true (errs = [])
+
+(* ---- Test 2: Linear param dropped (never loaded) — violation ---- *)
+
+let test_verify_linear_dropped () =
+  (* Body: I32Const 0; Return — param 0 never loaded. *)
+  let m = mk_single_func_module [Wasm.I32Const 0l; Wasm.Return] in
+  let errs = Tw_verify.verify_module m (single_annot [Codegen.Linear]) in
+  Alcotest.(check bool) "linear dropped → violation" true
+    (List.exists (function
+       | Tw_verify.LinearNotUsed { param_idx = 0; _ } -> true
+       | _ -> false) errs)
+
+(* ---- Test 3: Linear param loaded twice — violation ---- *)
+
+let test_verify_linear_dup () =
+  (* Body: LocalGet 0; LocalGet 0; I32Add; Return — param 0 loaded twice. *)
+  let m = mk_single_func_module
+    [Wasm.LocalGet 0; Wasm.LocalGet 0; Wasm.I32Add; Wasm.Return] in
+  let errs = Tw_verify.verify_module m (single_annot [Codegen.Linear]) in
+  Alcotest.(check bool) "linear duplicated → violation" true
+    (List.exists (function
+       | Tw_verify.LinearUsedMultiple { param_idx = 0; _ } -> true
+       | _ -> false) errs)
+
+(* ---- Test 4: ExclBorrow used once — OK ---- *)
+
+let test_verify_excl_ok () =
+  let m = mk_single_func_module [Wasm.LocalGet 0; Wasm.Return] in
+  let errs = Tw_verify.verify_module m (single_annot [Codegen.ExclBorrow]) in
+  Alcotest.(check bool) "excl borrow once → OK" true (errs = [])
+
+(* ---- Test 5: ExclBorrow aliased (loaded twice) — violation ---- *)
+
+let test_verify_excl_aliased () =
+  let m = mk_single_func_module
+    [Wasm.LocalGet 0; Wasm.LocalGet 0; Wasm.I32Add; Wasm.Return] in
+  let errs = Tw_verify.verify_module m (single_annot [Codegen.ExclBorrow]) in
+  Alcotest.(check bool) "excl borrow aliased → violation" true
+    (List.exists (function
+       | Tw_verify.ExclBorrowAliased { param_idx = 0; _ } -> true
+       | _ -> false) errs)
+
+(* ---- Test 6: Unrestricted param — any number of loads is OK ---- *)
+
+let test_verify_unrestricted_ok () =
+  (* Unrestricted params carry no ownership constraints: loading N times is fine. *)
+  let m = mk_single_func_module
+    [Wasm.LocalGet 0; Wasm.LocalGet 0; Wasm.I32Add; Wasm.Return] in
+  let errs = Tw_verify.verify_module m (single_annot [Codegen.Unrestricted]) in
+  Alcotest.(check bool) "unrestricted multi-load → OK" true (errs = [])
+
+(* ---- Test 7: If branch — Linear used once in each arm → branch-max=1 → OK ---- *)
+
+let test_verify_if_branch_ok () =
+  (* if (1) { LocalGet 0 } else { LocalGet 0 }
+     Branch-max semantics: max(1, 1) = 1 → OK. *)
+  let body = [
+    Wasm.I32Const 1l;
+    Wasm.If (Wasm.BtType Wasm.I32,
+      [Wasm.LocalGet 0],
+      [Wasm.LocalGet 0]);
+  ] in
+  let m = mk_single_func_module body in
+  let errs = Tw_verify.verify_module m (single_annot [Codegen.Linear]) in
+  Alcotest.(check bool) "if/else each use once → branch-max OK" true (errs = [])
+
+(* ---- Test 8: Pipeline — ownership_codegen.affine → LinearNotUsed expected ---- *)
+(*
+   ownership_codegen.affine has bodies that return 0 without using their
+   ownership params.  The verifier should find LinearNotUsed for the
+   [consume_owned] function (kind=1, never loaded). *)
+
+let test_verify_pipeline_violations () =
+  match run_wasm_pipeline (fixture "ownership_codegen.affine") with
+  | Error msg -> Alcotest.fail msg
+  | Ok wasm_mod ->
+    (match Tw_verify.verify_from_module wasm_mod with
+    | Ok () ->
+      Alcotest.fail "Expected violations for dropped linear params, got OK"
+    | Error errs ->
+      let has_linear_not_used = List.exists (function
+        | Tw_verify.LinearNotUsed _ -> true
+        | _ -> false) errs in
+      Alcotest.(check bool) "LinearNotUsed violation detected" true has_linear_not_used)
+
+(* ---- Test 9: Pipeline — verify_ownership_clean.affine → OK ---- *)
+(*
+   verify_ownership_clean.affine uses all params in their bodies.
+   The verifier must report clean. *)
+
+let test_verify_pipeline_clean () =
+  match run_wasm_pipeline (fixture "verify_ownership_clean.affine") with
+  | Error msg -> Alcotest.fail msg
+  | Ok wasm_mod ->
+    (match Tw_verify.verify_from_module wasm_mod with
+    | Ok () -> ()  (* expected *)
+    | Error errs ->
+      let msg = String.concat "; " (List.map (fun e ->
+        Format.asprintf "%a" Tw_verify.pp_error e) errs) in
+      Alcotest.fail (Printf.sprintf "Unexpected violations: %s" msg))
+
+let tw_verify_tests = [
+  Alcotest.test_case "linear used once → OK"         `Quick test_verify_linear_ok;
+  Alcotest.test_case "linear dropped → violation"    `Quick test_verify_linear_dropped;
+  Alcotest.test_case "linear duplicated → violation" `Quick test_verify_linear_dup;
+  Alcotest.test_case "excl borrow once → OK"         `Quick test_verify_excl_ok;
+  Alcotest.test_case "excl borrow aliased → violation" `Quick test_verify_excl_aliased;
+  Alcotest.test_case "unrestricted multi-load → OK"  `Quick test_verify_unrestricted_ok;
+  Alcotest.test_case "if/else branch-max linear → OK" `Quick test_verify_if_branch_ok;
+  Alcotest.test_case "pipeline: dropped linear → violation" `Quick test_verify_pipeline_violations;
+  Alcotest.test_case "pipeline: clean fixture → OK"  `Quick test_verify_pipeline_clean;
+]
+
+(* ============================================================================
    Test Suite Export
    ============================================================================ *)
 
@@ -2025,4 +2178,5 @@ let tests =
     ("E2E LSP Phase C", lsp_phase_c_tests);
     ("E2E LSP Phase D", lsp_phase_d_tests);
     ("E2E Try/Catch/Finally", try_catch_tests);
+    ("E2E Ownership Verify", tw_verify_tests);
   ]

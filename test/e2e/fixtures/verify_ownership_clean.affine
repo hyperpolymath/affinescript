@@ -1,0 +1,23 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Stage 7 verify integration fixture — clean case.
+//
+// This fixture compiles cleanly and the verifier must report OK.
+// All functions have only Unrestricted (plain Int) params so that no
+// LinearNotUsed or ExclBorrowAliased violations can fire.
+// The ownership section will be present with all-zero (Unrestricted) entries.
+
+fn identity(n: Int) -> Int {
+  n
+}
+
+fn add(a: Int, b: Int) -> Int {
+  a + b
+}
+
+fn double(x: Int) -> Int {
+  x + x
+}
+
+fn const_zero(n: Int) -> Int {
+  0
+}
