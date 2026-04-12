@@ -1,0 +1,38 @@
+; SPDX-License-Identifier: PMPL-1.0-or-later
+; TRUST.contractile — AI agent trust levels for AffineScript
+
+(trust-contractile
+  (version "1.0.0")
+  (repo "nextgen-languages/affinescript")
+
+  (default-trust "maximal")
+  ; Rationale: AffineScript is a research compiler. Claude is the primary
+  ; implementer. Maximal trust for all non-destructive work. Jonathan reviews
+  ; via git diff before committing.
+
+  (trust-grant "maximal"
+    (allow "read any file in the repo")
+    (allow "write to lib/*.ml, lib/*.mli, bin/*.ml, test/e2e/")
+    (allow "write to .machine_readable/ (except STATE.a2ml open-bugs — append only)")
+    (allow "write to spec/, docs/")
+    (allow "add new test fixtures in test/e2e/fixtures/")
+    (allow "update CHANGELOG.md")
+    (allow "run dune build and dune runtest")
+    (allow "run panic-attack assail")
+  )
+
+  (trust-deny "all-tiers"
+    (deny "commit directly — always produce a diff for Jonathan to review in this private repo")
+    (deny "push without confirmation in the same session")
+    (deny "add a language feature not in ANCHOR.a2ml thesis")
+    (deny "reverse any ADR (ADR-001 through ADR-010) without a new ADR")
+    (deny "delete or overwrite the 6a2/ core files (STATE/META/ECOSYSTEM/AGENTIC/NEUROSYM/PLAYBOOK)")
+    (deny "modify IDApTIK without explicit instruction (AGPL — separate repo, separate session)")
+  )
+
+  (scope-boundary
+    (note "AffineScript is private (ALL RIGHTS RESERVED in Claude context).")
+    (note "The thesis in ANCHOR.a2ml is the scope boundary. Violating it is a MUST violation.")
+    (note "007 is a separate private language — do not confuse the two compilers.")
+  )
+)

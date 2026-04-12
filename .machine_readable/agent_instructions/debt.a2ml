@@ -1,0 +1,73 @@
+# SPDX-License-Identifier: PMPL-1.0-or-later
+# Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+#
+# debt.a2ml — Meander debt for AffineScript
+# Things found but not fixed. Carried between sessions.
+
+[metadata]
+version = "1.0.0"
+last-updated = "2026-04-12"
+
+# ============================================================================
+# SHOULD — fix next wave
+# ============================================================================
+
+[[debt.should]]
+component = "lib/quantity.ml"
+issue = "BUG-001: ω-let smuggles linear values — Scaled Let rule not fully enforced in all let-binding positions. See STATE.a2ml open-bugs."
+effort = "medium"
+impact = "high"
+discovered = "2026-04-10"
+
+[[debt.should]]
+component = "lib/quantity.ml"
+issue = "BUG-002: zero-let erasure — erased bindings not fully pruned in codegen. See STATE.a2ml open-bugs."
+effort = "medium"
+impact = "medium"
+discovered = "2026-04-10"
+
+[[debt.should]]
+component = "lib/interp.ml"
+issue = "BUG-003: eval list right-to-left — should be left-to-right per ADR-003. See STATE.a2ml open-bugs."
+effort = "easy"
+impact = "medium"
+discovered = "2026-04-10"
+
+[[debt.should]]
+component = "lib/borrow.ml"
+issue = "BUG-004: lambda capture tracking unimplemented — requires type info propagation. See STATE.a2ml open-bugs."
+effort = "hard"
+impact = "high"
+discovered = "2026-04-10"
+
+[[debt.should]]
+component = "lib/lexer.mll"
+issue = "ZERO/ONE tokens for quantity literals not emitted — blocks :1/:0 surface syntax. Grammar has the nodes; lexer does not emit them."
+effort = "easy"
+impact = "medium"
+discovered = "2026-04-11"
+
+# ============================================================================
+# COULD — fix eventually
+# ============================================================================
+
+[[debt.could]]
+component = "lib/typecheck.ml"
+issue = "Associated type substitution in method bodies and where-clause supertrait enforcement not yet implemented in traits. Coherence checking absent."
+effort = "hard"
+impact = "medium"
+discovered = "2026-04-11"
+
+[[debt.could]]
+component = "lib/codegen.ml (wasm-gc)"
+issue = "WasmGC ExprHandle/ExprResume reject with UnsupportedFeature — full WASM dispatch needs EH proposal or CPS transform."
+effort = "hard"
+impact = "low"
+discovered = "2026-04-11"
+
+[[debt.could]]
+component = "error spans"
+issue = "Face-aware error spans refer to transformed canonical positions, not original source positions. Follow-up from faces architecture (ADR-010)."
+effort = "medium"
+impact = "medium"
+discovered = "2026-04-11"

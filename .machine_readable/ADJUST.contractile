@@ -1,0 +1,38 @@
+; SPDX-License-Identifier: PMPL-1.0-or-later
+; ADJUST.contractile — Accessibility instance for AffineScript
+; Compiler/LSP accessibility — subset of WCAG 2.2 AA applicable to developer tools.
+
+(adjust-contractile
+  (version "1.0.0")
+  (repo "nextgen-languages/affinescript")
+  (standard "CLI-accessible (WCAG 2.2 AA where applicable to developer tools)")
+
+  (invariants
+    ; ── CLI output ──
+    (adjust "all error messages include file:line:col — not just a message")
+    (adjust "error messages use plain language — not jargon codes alone")
+    (adjust "no information conveyed by ANSI colour alone (symbol + colour)")
+    (adjust "output safe in non-TTY (piped to file or CI log)")
+    (adjust "all subcommands support --help with plain-text output")
+    (adjust "exit codes documented in QUICKSTART-USER.adoc")
+
+    ; ── Affine type errors ──
+    (adjust "affine/linear violation messages name the variable and say why it is consumed")
+    (adjust "error code E#### always accompanied by human-readable description")
+    (adjust "quantity annotation syntax documented in both @annotation and :sugar forms (ADR-007)")
+
+    ; ── LSP ──
+    (adjust "hover responses in plain Markdown (no raw HTML)")
+    (adjust "completion items include kind field for screen reader discrimination")
+    (adjust "diagnostic ranges use start+end, not character offset alone")
+
+    ; ── Documentation ──
+    (adjust "all diagrams in docs/ have alt text or text description")
+    (adjust "code examples in guides include explanatory comments")
+  )
+
+  (enforcement
+    (ci "panic-attack checks for colour-only output patterns")
+    (manual "LSP output reviewed for plain-Markdown compliance on new diagnostic types")
+  )
+)

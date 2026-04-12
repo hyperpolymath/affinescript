@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: PMPL-1.0-or-later
+# Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+#
+# Vexometer integration for AffineScript
+# Measures irritation surface of the compiler, LSP, and CLI.
+
+[integration]
+name = "vexometer"
+type = "friction-measurement"
+repository = "https://github.com/hyperpolymath/vexometer"
+
+[measurement-config]
+dimensions = 10
+emit-isa-reports = true
+
+[hooks]
+cli-tools = "measure-on-error"         # affine error messages → friction score
+lsp-server = "measure-on-interaction"  # hover/completion/goto latency + quality
+build-failures = "measure-on-failure"  # dune build failures in consumer projects
+
+[friction-areas]
+# Known high-friction areas to watch
+linear-error-messages = "users frequently confused by affine violation messages — prime vexometer target"
+quantity-annotation-syntax = "ADR-007 hybrid syntax (@linear AND :1) causes discoverability friction"
+face-detection = "auto-detected faces (--face flag) sometimes surprising to users"

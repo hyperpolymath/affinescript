@@ -1,0 +1,59 @@
+# SPDX-License-Identifier: PMPL-1.0-or-later
+# Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+#
+# methodology.a2ml — AI agent methodology for AffineScript
+# Declares how agents should approach work here.
+
+[metadata]
+version = "1.0.0"
+last-updated = "2026-04-12"
+
+[methodology]
+default-mode = "convergent"
+ring-ceiling = 1              # Hard ceiling — do not expand beyond immediate compiler modules
+wave-cap = 2                  # Max waves before requiring "keep going"
+spike-required = true         # Sessions must ship code (or verified .machine_readable/ changes), not just designs
+
+[methodology.priority-weights]
+must = 3
+should = 2
+could = 1
+
+[methodology.invariants]
+# These MUST be checked before and after any session
+always-check = [
+  "dune build passes",
+  "dune runtest passes (all E2E tests green)",
+  "no new assert_total / believe_me / Obj.magic introduced",
+  "ANCHOR.a2ml thesis not violated by any code change",
+  "BUG-001 through BUG-004 not made worse"
+]
+
+# These are forbidden regardless of scope
+never-do = [
+  "rewrite type checker naively without reading ANCHOR.a2ml first",
+  "add a language feature not in the ANCHOR.a2ml thesis without a new ADR",
+  "add linear types as a separate concept (subsumed by affine — this is bot scope creep)",
+  "add dependent types (Typed WASM project — out of scope)",
+  "remove the faces architecture",
+  "break the IDApTIK integration (ASS + IDApTIK use affinescript Wasm output)"
+]
+
+[methodology.on-enter]
+# Sequence for beginning any session
+sequence = [
+  "read .machine_readable/anchors/ANCHOR.a2ml",
+  "check dune build passes",
+  "read debt.a2ml for outstanding items",
+  "read coverage.a2ml for what was visited last time",
+  "decide ring-0 targets (open bugs first, then debt.should items)"
+]
+
+[methodology.on-exit]
+# Sequence for ending any session
+sequence = [
+  "run dune build + dune runtest",
+  "update debt.a2ml (add newly found items, remove fixed ones)",
+  "update coverage.a2ml (mark visited components)",
+  "commit: chore(affinescript): session <date> — <short description>"
+]

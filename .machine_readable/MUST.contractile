@@ -1,0 +1,52 @@
+; SPDX-License-Identifier: PMPL-1.0-or-later
+; MUST.contractile — Hard invariants for AffineScript
+; These MUST NOT be violated by any AI agent or human contributor.
+
+(must-contractile
+  (version "1.0.0")
+  (repo "nextgen-languages/affinescript")
+
+  (invariants
+
+    ; === Build ===
+    (must "dune build passes before and after every change")
+    (must "dune runtest passes — all E2E tests green")
+    (must "no compilation errors introduced by any commit")
+
+    ; === Safety patterns ===
+    (must "no assert_total in any OCaml file")
+    (must "no Obj.magic in any OCaml file")
+    (must "no believe_me in any Idris2 file")
+    (must "no TODO-as-implementation (stub bodies are forbidden in shipped code; use explicit failwith with a tag)")
+
+    ; === Scope ===
+    (must "thesis in ANCHOR.a2ml is authoritative — new features require a new ADR")
+    (must "linear types may not be added as a separate concept — they are subsumed by affine types")
+    (must "dependent types remain out of scope — they belong in the Typed WASM project")
+    (must "algebraic effect handlers beyond try/catch remain out of scope (ADR-004 extension point only)")
+
+    ; === Architecture ===
+    (must "the Split-Γ typing context (ADR-001) is canonical — do not introduce alternative context shapes")
+    (must "the Scaled Let rule (ADR-002) governs all let-binding — do not bypass with ad-hoc quantity inference")
+    (must "left-to-right evaluation order (ADR-003) — do not evaluate argument lists right-to-left")
+    (must "face-specific logic belongs in lib/face.ml — do not inline face dispatch in parser.mly or typecheck.ml")
+
+    ; === Tests ===
+    (must "every new language feature ships with at least one E2E test in test/e2e/")
+    (must "regression fixtures must be added when a bug is fixed")
+
+    ; === Licenses ===
+    (must "SPDX-License-Identifier: PMPL-1.0-or-later in every source file")
+    (must "MPL-2.0 as legal fallback (lawyer-confirmed) — no re-labelling needed")
+
+    ; === IDApTIK integration ===
+    (must "do not break the AffineTEA Wasm output consumed by IDApTIK (AGPL project, co-developed with son)")
+    (must "wasm/titlescreen.wasm, wasm/router.wasm in idaptik/public/assets/wasm/ must remain valid after compiler changes")
+  )
+
+  (enforcement
+    (ci "panic-attack assail runs on every PR")
+    (ci "dune build + dune runtest in CI")
+    (pr-block "build failure blocks merge")
+  )
+)

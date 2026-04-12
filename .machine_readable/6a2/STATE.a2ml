@@ -191,39 +191,23 @@ regression-test-status = "deferred — fixture needs a known-unknown function na
 # scope creep into that plan.
 
 [deferred-upgrade]
-session = "separate, not Phase 0"
-estimated-effort = "1-2 focused hours"
+# DONE 2026-04-12 — suite upgrade completed in dedicated session (no .ml changes)
+status = "done"
+completed = "2026-04-12"
 
-present:
-# What AffineScript already has
-present = [
-  ".machine_readable/6a2/AGENTIC.a2ml",
-  ".machine_readable/6a2/ECOSYSTEM.a2ml",
-  ".machine_readable/6a2/META.a2ml",
-  ".machine_readable/6a2/NEUROSYM.a2ml",
-  ".machine_readable/6a2/PLAYBOOK.a2ml",
-  ".machine_readable/6a2/STATE.a2ml",
-  ".machine_readable/anchors/ANCHOR.a2ml",  # added 2026-04-10 as first anchor
-  "contractiles/ (root-level, old location) — dust, k9, lust, must, trust"
-]
-
-missing = [
+added = [
   ".machine_readable/CLADE.a2ml",
-  ".machine_readable/contractiles/ (should migrate from root contractiles/)",
-  ".machine_readable/contractiles/adjust/",
-  ".machine_readable/contractiles/intend/",
-  ".machine_readable/agent_instructions/",
-  ".machine_readable/integrations/",
-  ".machine_readable/ADJUST.contractile (top-level instance)",
-  ".machine_readable/INTENT.contractile (top-level instance)",
-  ".machine_readable/MUST.contractile (top-level instance)",
-  ".machine_readable/TRUST.contractile (top-level instance)"
+  ".machine_readable/contractiles/ (migrated from root via git mv — history preserved)",
+  ".machine_readable/contractiles/adjust/Adjustfile.a2ml",
+  ".machine_readable/contractiles/intend/Intentfile.a2ml",
+  ".machine_readable/agent_instructions/README.adoc",
+  ".machine_readable/agent_instructions/coverage.a2ml",
+  ".machine_readable/agent_instructions/debt.a2ml",
+  ".machine_readable/agent_instructions/methodology.a2ml",
+  ".machine_readable/integrations/verisimdb.a2ml",
+  ".machine_readable/integrations/vexometer.a2ml",
+  ".machine_readable/ADJUST.contractile",
+  ".machine_readable/INTENT.contractile",
+  ".machine_readable/MUST.contractile",
+  ".machine_readable/TRUST.contractile"
 ]
-
-notes = """
-Root-level contractiles/ directory has 5 of 7 current types. The canonical
-pattern is .machine_readable/contractiles/ with all 7 types. Migration is
-deferred to a separate session because it requires reading each contractile
-definition from the standards repo and deciding which apply to AffineScript
-specifically. Do not conflate with Manhattan Phase 0.
-"""

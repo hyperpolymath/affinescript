@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: PMPL-1.0-or-later
+# Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+#
+# VeriSimDB integration for AffineScript
+
+[integration]
+name = "verisimdb"
+type = "data-feed"
+repository = "https://github.com/hyperpolymath/nextgen-databases"
+data-store = "verisimdb-data"
+
+[feed-config]
+emit-scan-results = true
+emit-build-metrics = true
+format = "hexad"
+destination = "verisimdb-data/feeds/affinescript/"
+
+[proof-obligations]
+# AffineScript has no standalone I2 proofs yet (type soundness is in TypeLL + Ephapax).
+# When AffineScript grows its own Idris2 proof, register it here.
+# See: PROOF-NEEDS.md in repo root
+standalone-proofs = []
+related-proofs = [
+  "ephapax: linear type preservation (uses similar Split-Γ)",
+  "typell: session type duality (informs ADR-001 split-Γ design)"
+]
+
+[notes]
+status = "integration stub — emit when CI is instrumented"

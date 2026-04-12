@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: PMPL-1.0-or-later
+# Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+# Clade declaration — part of the gv-clade-index registry
+# See: https://github.com/hyperpolymath/gv-clade-index
+
+[identity]
+uuid = "b3f82c1a-4e9d-4b7a-a831-6c2d5e9f0a14"
+primary-forge = "github"
+primary-owner = "hyperpolymath"
+canonical-name = "affinescript"
+prefixed-name = "gv-affinescript"
+
+[clade]
+primary = "language"
+secondary = ["compiler", "type-system"]
+assigned = "2026-04-12"
+rationale = "AffineScript is a programming language with affine types targeting Typed WASM. Primary clade is 'language'; secondary clades capture the compiler pipeline and type-system research aspects."
+
+[forges]
+github = "hyperpolymath/nextgen-languages"
+# affinescript lives in the nextgen-languages monorepo submodule
+# it is NOT a standalone GitHub repo
+
+[lineage]
+type = "submodule"
+parent = "nextgen-languages — the hyperpolymath language monorepo"
+born = "2025-09-12"
+note = "Predates ANCHOR.a2ml convention. Retroactively assigned clade 2026-04-12 during suite upgrade."
+
+[language]
+# AffineScript-specific fields
+paradigm = ["functional", "affine", "typed"]
+compile-targets = ["typed-wasm", "julia", "wasm-gc"]
+inspiration = ["ReScript", "Rust", "Granule", "OCaml"]
+headline-feature = "affine-types-with-javascript-ergonomics"
+
+[thesis]
+one-sentence = "AffineScript is JavaScript-ergonomic correctness: the developer experience of the -script family raised to a higher correctness floor through affine types, compiling to Typed WASM."

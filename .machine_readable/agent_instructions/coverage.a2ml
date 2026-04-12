@@ -1,0 +1,34 @@
+# SPDX-License-Identifier: PMPL-1.0-or-later
+# Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+#
+# coverage.a2ml — Session coverage tracking for AffineScript
+# Updated at the end of each AI agent session.
+
+[metadata]
+version = "1.0.0"
+last-updated = "2026-04-12"
+
+[coverage]
+total-components = 39          # compiler modules (from STATE.a2ml [stats])
+visited-components = 0
+coverage-percent = 0
+
+# ============================================================================
+# VISITED COMPONENTS
+# ============================================================================
+# Component → session date + what was done
+
+[coverage.visited]
+# Suite upgrade session (2026-04-12) — .machine_readable/ only, no .ml changes
+
+# [coverage.visited.typecheck]
+# date = "2026-04-11"
+# ring = 1
+# fixes = 3
+# note = "Traits wired, linear arrows enforced, borrow checker gated"
+
+# [coverage.visited.lsp-server]
+# date = "2026-04-11"
+# ring = 1
+# fixes = 4
+# note = "Phases A-D complete: hover, goto-def, completion, JSON-RPC server"

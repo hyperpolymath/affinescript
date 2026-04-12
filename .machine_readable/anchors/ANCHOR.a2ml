@@ -98,6 +98,34 @@ siblings:
 # ─── Realignment history ──────────────────────────────────────────────────────
 
 realignment-history:
+  - date: "2026-04-12"
+    event: "suite-upgrade"
+    session-type: "machine-readable-reorganisation"
+    trigger: >
+      Deferred .machine_readable/ suite upgrade executed as a separate session
+      per STATE.a2ml [deferred-upgrade]. No .ml code changes.
+
+    summary: >
+      Brought .machine_readable/ up to the canonical standards repo shape.
+      Migrated root contractiles/ → .machine_readable/contractiles/ (git mv,
+      history preserved). Added: CLADE.a2ml, contractiles/adjust/Adjustfile.a2ml,
+      contractiles/intend/Intentfile.a2ml, agent_instructions/ (README + coverage
+      + debt + methodology), integrations/ (verisimdb + vexometer),
+      ADJUST.contractile, INTENT.contractile, MUST.contractile, TRUST.contractile.
+      STATE.a2ml [deferred-upgrade] marked done.
+
+    changed:
+      - ".machine_readable/ now matches canonical standards shape"
+      - "root contractiles/ migrated to .machine_readable/contractiles/"
+      - "CLADE.a2ml added (clade=language)"
+      - "agent_instructions/ + integrations/ added"
+      - "top-level .contractile instance files added"
+      - "ANCHOR notes section updated"
+
+    references:
+      - "standards/.machine_readable/ (canonical reference shape)"
+      - "STATE.a2ml [deferred-upgrade] (now marked done)"
+
   - date: "2026-04-10"
     event: "manhattan-recovery"
     session-type: "scope-recovery"
@@ -142,15 +170,10 @@ realignment-history:
 # ─── Notes on retroactive status ──────────────────────────────────────────────
 
 notes: >
-  This is the first ANCHOR.a2ml written for AffineScript. The repository
-  predates the ANCHOR convention and predates significant portions of the
-  current hyperpolymath .machine_readable/ suite (CLADE.a2ml, contractiles/
-  as a .machine_readable/ subdirectory, agent_instructions/, integrations/,
-  and top-level .contractile instance files). The existing root-level
-  contractiles/ directory contains 5 of the 7 current contractile types
-  (dust, k9, lust, must, trust — missing adjust and intend).
-
-  A full upgrade to the current canonical suite is deferred as separate work.
-  See STATE.a2ml [deferred-upgrade] for the itemised list. The minimum captured
-  in this first ANCHOR is: identity, thesis, authorities, relationships, and
-  the 2026-04-10 manhattan-recovery realignment event.
+  This ANCHOR was first written 2026-04-10 (manhattan-recovery session).
+  The full .machine_readable/ suite upgrade was completed 2026-04-12 — see
+  realignment-history entry "suite-upgrade". The .machine_readable/ directory
+  now matches the canonical standards repo shape. The minimum captured in the
+  first ANCHOR (identity, thesis, authorities, relationships, manhattan-recovery)
+  is preserved; the suite-upgrade adds the contractile instance files,
+  CLADE.a2ml, agent_instructions/, and integrations/.

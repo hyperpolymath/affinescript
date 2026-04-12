@@ -1,0 +1,40 @@
+; SPDX-License-Identifier: PMPL-1.0-or-later
+; INTENT.contractile — Purpose and anti-scope-creep for AffineScript
+; See ANCHOR.a2ml for the full thesis. This file is the machine-readable summary.
+
+(intent-contractile
+  (version "1.0.0")
+  (repo "nextgen-languages/affinescript")
+
+  (purpose
+    "AffineScript is a programming language with affine types and JavaScript
+     ergonomics, compiling to Typed WASM. Feature set is fixed by thesis in
+     ANCHOR.a2ml.")
+
+  (anti-purpose
+    "NOT a language with dependent types (Typed WASM project)."
+    "NOT a language with linear types as a separate concept (bot scope creep — subsumed by affine)."
+    "NOT a language with tropical types (Typed WASM project)."
+    "NOT a language with units of measure (Typed WASM project)."
+    "NOT a general-purpose JS replacement.")
+
+  (load-bearing-decisions
+    (adr "ADR-001" "Split-Γ typing context")
+    (adr "ADR-002" "Scaled Let rule")
+    (adr "ADR-003" "Left-to-right evaluation")
+    (adr "ADR-007" "Quantity annotation surface syntax")
+    (adr "ADR-010" "Faces architecture"))
+
+  (ecosystem-position
+    (upstream "nextgen-languages monorepo — sister to Ephapax, WokeLang, Eclexia")
+    (compile-target-primary "typed-wasm")
+    (compile-target-secondary "julia")
+    (downstream-consumer "IDApTIK (AGPL, game engine)")
+    (downstream-consumer "airborne-submarine-squadron (AGPL, game)"))
+
+  (scope-creep-history
+    (event "2026-04-10 manhattan-recovery"
+      "Bot scope creep added linear types, dependent types, algebraic effect
+       handler ambitions. Scope narrowed back to 8-feature thesis. Three ADRs
+       adopted. See ANCHOR.a2ml realignment-history for full record."))
+)

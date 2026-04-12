@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: PMPL-1.0-or-later
+# Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+#
+# Adjustfile.a2ml — Accessibility invariants for AffineScript
+#
+# AffineScript is a compiler + LSP server, not a web app. Its accessibility
+# surface is: CLI flags/errors, LSP diagnostics, documentation.
+# WCAG visual rules do not apply directly, but all user-facing output must
+# be accessible to screen readers and assistive tools.
+
+[adjust]
+version = "1.0.0"
+standard = "CLI-accessible (subset of WCAG 2.2 AA)"
+repo = "nextgen-languages/affinescript"
+
+[adjust.cli]
+# Error messages must be plain text, not colour-only
+colour-free-errors = true
+# All errors must include: file, line, col, short description
+error-format = "file:line:col: [E####] short description"
+# --help must always be available on all subcommands
+help-flag = true
+# Exit codes must be documented and consistent
+exit-codes-documented = true
+# No spinner/animation that doesn't degrade gracefully in non-TTY
+tty-safe-output = true
+
+[adjust.lsp]
+# LSP diagnostics must include range (not just offset)
+diagnostic-range = true
+# Hover responses must be plain Markdown, no HTML injection
+hover-format = "markdown-plain"
+# Completion items must have a kind field for screen reader discrimination
+completion-kind = true
+
+[adjust.errors]
+# Errors must identify the construct in plain language (not jargon)
+plain-language = true
+# Linear/affine type errors must name the variable and say WHY it is consumed
+affine-error-detail = true
+# No error message whose only information is a code like E0501 without text
+code-plus-text = true
+
+[adjust.documentation]
+# All public docs must have alt text on diagrams
+diagram-alt-text = true
+# Code examples must have comments explaining non-obvious steps
+commented-examples = true
+# Internationalisation: all user-facing strings must be in English (single lang for now)
+# i18n expansion is tracked in ROADMAP.adoc
+i18n-target = "en"

@@ -1,0 +1,54 @@
+# SPDX-License-Identifier: PMPL-1.0-or-later
+# Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+#
+# Intentfile.a2ml — Purpose and scope for AffineScript
+# Authoritative anti-scope-creep document.
+# See: ANCHOR.a2ml thesis + META.a2ml ADRs for full scope statement.
+
+[intent]
+version = "1.0.0"
+repo = "nextgen-languages/affinescript"
+
+[intent.purpose]
+is = """
+AffineScript is a programming language with affine types and JavaScript ergonomics,
+compiling to Typed WASM. It targets the -script developer community (TypeScript,
+ReScript, PureScript users) and offers a higher correctness floor through a small,
+deliberately chosen set of advanced types. The feature set is fixed by the thesis
+in ANCHOR.a2ml — new features require a thesis change, not a code change.
+"""
+
+is-not = """
+AffineScript is NOT:
+- A language with full dependent types (Typed WASM project)
+- A language with tropical types (Typed WASM project)
+- A language with units of measure (Typed WASM project)
+- A language with algebraic effect handlers (extension point only — ADR-004)
+- A language with linear types (subsumed by affine; was bot scope creep)
+- A general-purpose scripting language or replacement for JavaScript
+- A language targeting native machine code
+"""
+
+[intent.decisions]
+# These ADRs are load-bearing. Do NOT reverse them without a new ADR.
+# Full text in META.a2ml.
+adr-001 = "Split-Γ typing context is canonical"
+adr-002 = "Scaled Let rule governs affine/linear/erased binding"
+adr-003 = "Left-to-right evaluation order"
+adr-007 = "Surface syntax: @linear/@erased/@unrestricted primary, :1/:0/:ω sugar"
+adr-010 = "Faces architecture for Python/JS/Pseudocode surface dialects"
+
+[intent.roadmap]
+next = [
+  "BUG-001: ω-let smuggles linear values (ANCHOR.a2ml)",
+  "BUG-002: zero-let erasure (ANCHOR.a2ml)",
+  "BUG-003: eval list right-to-left (ANCHOR.a2ml)",
+  "BUG-004: lambda capture tracking (ANCHOR.a2ml)",
+  "LSP Phase E: full JSON-RPC server testing",
+  "Typed WASM integration: surface syntax → typed-wasm IR",
+]
+deferred = [
+  "algebraic effect handlers beyond try/catch (ADR-004 extension point)",
+  "dependent types (Typed WASM project)",
+  "ZERO/ONE tokens for quantity literals in lexer",
+]
