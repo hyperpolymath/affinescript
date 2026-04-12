@@ -1090,10 +1090,33 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
     end
 
   | ExprTry et ->
-    (* WASM doesn't have exception handling (outside of the EH proposal).
-       Compile as: evaluate body, skip catch/finally.
-       This is correct for code that doesn't actually throw. *)
-    gen_block ctx et.et_body
+    (* WASM 1.0 has no exception-handling proposal.
+       - catch arms: cannot be lowered — UnsupportedFeature.
+       - body + optional finally: compile sequentially; a local temp
+         preserves the body result across the finally block, matching
+         the language semantics (finally result is always discarded). *)
+    begin match et.et_catch with
+    | Some _ ->
+        Error (UnsupportedFeature
+          "try/catch in WASM 1.0 backend — \
+           requires the WASM exception-handling proposal; \
+           use the Julia backend (-julia) or the interpreter (-i)")
+    | None ->
+        let* (ctx', body_code) = gen_block ctx et.et_body in
+        begin match et.et_finally with
+        | None -> Ok (ctx', body_code)
+        | Some blk ->
+            (* Store body result in a temp local, run finally, restore. *)
+            let (ctx'', tmp_idx) = alloc_local ctx' "__try_result" in
+            let* (ctx''', fin_code) = gen_block ctx'' blk in
+            Ok (ctx''',
+              body_code
+              @ [LocalSet tmp_idx]   (* stash body result      *)
+              @ fin_code
+              @ [Drop]               (* discard finally result  *)
+              @ [LocalGet tmp_idx])  (* restore body result     *)
+        end
+    end
 
   | ExprUnsafe ops ->
     (* Compile unsafe operations — evaluate contained expressions *)

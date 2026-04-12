@@ -1,0 +1,19 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell (hyperpolymath)
+//
+// E2E fixture: try/catch/finally — full three-clause form.
+// Verifies that all three clauses type-check together correctly.
+
+fn full_try(x: Int) -> Int {
+  try {
+    x * 3
+  } catch {
+    e => 0
+  } finally {
+    ()
+  }
+}
+
+fn main() -> Int {
+  full_try(7)
+}

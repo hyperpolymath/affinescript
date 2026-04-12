@@ -1,0 +1,17 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell (hyperpolymath)
+//
+// E2E fixture: try/catch with a named variable pattern.
+// The catch arm binds the exception to a variable and returns a fallback.
+
+fn guarded(x: Int) -> Int {
+  try {
+    x + 1
+  } catch {
+    err => -1
+  }
+}
+
+fn main() -> Int {
+  guarded(99)
+}

@@ -1,0 +1,17 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell (hyperpolymath)
+//
+// E2E fixture: try/catch with a wildcard pattern.
+// The catch arm discards the exception and returns a fallback value.
+
+fn safe_div(x: Int, y: Int) -> Int {
+  try {
+    x
+  } catch {
+    _ => 0
+  }
+}
+
+fn main() -> Int {
+  safe_div(42, 1)
+}

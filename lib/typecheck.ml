@@ -872,9 +872,49 @@ let rec synth (ctx : context) (expr : expr) : ty result =
       | None -> Ok ty_unit
     end
 
-  (* Try-catch *)
-  | ExprTry { et_body; _ } ->
-    synth_block ctx et_body
+  (* Try-catch-finally.
+     Body type is synthesised first and becomes the overall result type.
+     Each catch arm is type-checked against a fresh error-type variable
+     (the effect system will constrain this once effect inference is
+     complete) and its body type must unify with the result type.
+     The finally block (if present) is checked for unit — its value is
+     discarded at runtime; a non-unit finally type is a type error. *)
+  | ExprTry { et_body; et_catch; et_finally } ->
+    let* body_ty = synth_block ctx et_body in
+    let result_ty = fresh_tyvar ctx.level in
+    let* () = unify_or_err result_ty body_ty in
+    let* () = match et_catch with
+      | None -> Ok ()
+      | Some arms ->
+          (* All catch arms match against a single opaque error type. *)
+          let err_ty = fresh_tyvar ctx.level in
+          List.fold_left (fun acc (arm : match_arm) ->
+            let* () = acc in
+            let* bindings = check_pattern ctx arm.ma_pat err_ty in
+            (* Save bindings that will be shadowed, then install new ones. *)
+            let old = List.map (fun (n, _) ->
+              (n, Hashtbl.find_opt ctx.name_types n)
+            ) bindings in
+            List.iter (fun (n, t) -> bind_var ctx n t) bindings;
+            let* arm_ty = synth ctx arm.ma_body in
+            let* () = unify_or_err result_ty arm_ty in
+            (* Restore previous bindings. *)
+            List.iter (fun (n, old_sc) ->
+              match old_sc with
+              | Some sc -> Hashtbl.replace ctx.name_types n sc
+              | None    -> Hashtbl.remove ctx.name_types n
+            ) old;
+            Ok ()
+          ) (Ok ()) arms
+    in
+    let* () = match et_finally with
+      | None -> Ok ()
+      | Some blk ->
+          (* Finally must be unit — its value is always discarded. *)
+          let* fin_ty = synth_block ctx blk in
+          unify_or_err fin_ty ty_unit
+    in
+    Ok result_ty
 
   (* Unsafe *)
   | ExprUnsafe _ ->

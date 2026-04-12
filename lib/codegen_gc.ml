@@ -758,7 +758,31 @@ let rec gen_gc_expr (ctx : gc_ctx) (expr : expr) : (gc_ctx * gc_instr list) cg_r
        requires WASM EH proposal or CPS transform; use `--interp` / `-i`")
 
   | ExprTry et ->
-    gen_gc_block ctx et.et_body
+    (* WasmGC 1.0 does not support the exception-handling proposal.
+       - catch arms: UnsupportedFeature (cannot trap-and-resume in GC mode).
+       - body + optional finally: compile sequentially with a GcAnyref temp
+         to preserve the body result across the finally block. *)
+    begin match et.et_catch with
+    | Some _ ->
+        Error (UnsupportedFeature
+          "try/catch in WasmGC backend — \
+           requires the WASM exception-handling proposal; \
+           use the Julia backend (-julia) or the interpreter (-i)")
+    | None ->
+        let* (ctx', body_code) = gen_gc_block ctx et.et_body in
+        begin match et.et_finally with
+        | None -> Ok (ctx', body_code)
+        | Some blk ->
+            let (ctx'', tmp_idx) = alloc_local ctx' "__try_result" GcAnyref in
+            let* (ctx''', fin_code) = gen_gc_block ctx'' blk in
+            Ok (ctx''',
+              body_code
+              @ [std (Wasm.LocalSet tmp_idx)]   (* stash body result      *)
+              @ fin_code
+              @ [std Wasm.Drop]                 (* discard finally result  *)
+              @ [std (Wasm.LocalGet tmp_idx)]   (* restore body result     *))
+        end
+    end
 
   | ExprResume _arg_opt ->
     (* `resume` is only meaningful inside an effect handler arm.  The WasmGC

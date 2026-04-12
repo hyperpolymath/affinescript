@@ -174,6 +174,42 @@ let rec gen_expr ctx (expr : expr) : string =
       "return " ^ gen_expr ctx e
   | ExprReturn None ->
       "return"
+  | ExprTry { et_body; et_catch; et_finally } ->
+      (* Emit native Julia try/catch/finally.
+         Julia's try block is a statement, so we use a local variable to
+         capture the body result and return it from a begin..end expression.
+         Phase 1.5 limitation: only the first catch arm is emitted; variable
+         and wildcard patterns name the catch variable directly. *)
+      let render_block blk =
+        let stmts = List.map (gen_stmt ctx) blk.blk_stmts in
+        let result = match blk.blk_expr with
+          | Some e -> gen_expr ctx e
+          | None   -> "nothing"
+        in
+        match stmts with
+        | []   -> result
+        | _    -> String.concat "\n    " stmts ^ "\n    " ^ result
+      in
+      let body_str = render_block et_body in
+      let catch_str = match et_catch with
+        | None | Some [] -> ""
+        | Some (arm :: _) ->
+            let catch_var = match arm.ma_pat with
+              | PatVar id    -> id.name
+              | _            -> "_"
+            in
+            let arm_body = gen_expr ctx arm.ma_body in
+            "\n  catch " ^ catch_var ^ "\n    __try_result = " ^ arm_body
+      in
+      let finally_str = match et_finally with
+        | None -> ""
+        | Some blk ->
+            let fin_str = render_block blk in
+            "\n  finally\n    " ^ fin_str
+      in
+      "(begin\n  local __try_result\n  try\n    __try_result = " ^
+      body_str ^ catch_str ^ finally_str ^
+      "\n  end\n  __try_result\nend)"
   | _ ->
       (* Unsupported expressions in Phase 1 *)
       "error(\"Unsupported expression\")"

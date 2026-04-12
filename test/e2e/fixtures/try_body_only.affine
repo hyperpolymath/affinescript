@@ -1,0 +1,15 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell (hyperpolymath)
+//
+// E2E fixture: try block with body only (no catch, no finally).
+// The result is the body value — simplest try form.
+
+fn safe_add(x: Int, y: Int) -> Int {
+  try {
+    x + y
+  }
+}
+
+fn main() -> Int {
+  safe_add(10, 32)
+}

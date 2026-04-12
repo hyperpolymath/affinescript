@@ -1,0 +1,17 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell (hyperpolymath)
+//
+// E2E fixture: try/finally with no catch.
+// The finally block runs for side-effects; the body value is returned.
+
+fn compute(x: Int) -> Int {
+  try {
+    x * 2
+  } finally {
+    ()
+  }
+}
+
+fn main() -> Int {
+  compute(21)
+}
