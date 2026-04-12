@@ -1291,8 +1291,8 @@ let test_bridge_tea_layout_section () =
     Alcotest.(check int) "layout version byte = 1" 1 version_byte
 
 (** Stage 8: TEA bridge module passes typed-wasm Level 7/10 verification.
-    [fn_update] uses [LocalGet 0] (msg) exactly once — branch-max semantics
-    ensure the if/else in fn_push does not cause false positives here. *)
+    [fn_update] uses [LocalGet 0] (msg) exactly once — per-path analysis
+    gives min=1, max=1 → OK. *)
 let test_bridge_ownership_verify () =
   let m = Tea_bridge.generate () in
   match Tw_verify.verify_from_module m with
@@ -1449,9 +1449,9 @@ let test_router_tea_layout_section () =
     let version_byte = Char.code (Bytes.get payload 0) in
     Alcotest.(check int) "layout version byte = 1" 1 version_byte
 
-(** Stage 8: Router bridge module passes typed-wasm Level 7/10 verification.
-    Branch-max semantics: fn_push uses [LocalGet 0] in the then-branch only
-    (else = stack full, silent drop).  max(1, 0) = 1 → OK. *)
+(** Stage 9: Router bridge module passes typed-wasm Level 7/10 verification.
+    fn_push: then-branch stores LocalGet 0, else-branch explicitly [LocalGet 0; Drop].
+    Per-path analysis: min(1,1)=1, max(1,1)=1 → OK. *)
 let test_router_ownership_verify () =
   let m = Tea_router.generate () in
   match Tw_verify.verify_from_module m with
@@ -2115,11 +2115,11 @@ let test_verify_unrestricted_ok () =
   let errs = Tw_verify.verify_module m (single_annot [Codegen.Unrestricted]) in
   Alcotest.(check bool) "unrestricted multi-load → OK" true (errs = [])
 
-(* ---- Test 7: If branch — Linear used once in each arm → branch-max=1 → OK ---- *)
+(* ---- Test 7: If branch — Linear used once in each arm → per-path (1,1) → OK ---- *)
 
 let test_verify_if_branch_ok () =
   (* if (1) { LocalGet 0 } else { LocalGet 0 }
-     Branch-max semantics: max(1, 1) = 1 → OK. *)
+     Per-path analysis: min(1,1)=1, max(1,1)=1 → OK. *)
   let body = [
     Wasm.I32Const 1l;
     Wasm.If (Wasm.BtType Wasm.I32,
@@ -2128,7 +2128,46 @@ let test_verify_if_branch_ok () =
   ] in
   let m = mk_single_func_module body in
   let errs = Tw_verify.verify_module m (single_annot [Codegen.Linear]) in
-  Alcotest.(check bool) "if/else each use once → branch-max OK" true (errs = [])
+  Alcotest.(check bool) "if/else each use once → per-path OK" true (errs = [])
+
+(* ---- Test 10: Linear dropped in one branch only → LinearDroppedOnSomePath ---- *)
+
+let test_verify_if_partial_drop () =
+  (* if (1) { LocalGet 0 } else { [] }
+     Per-path analysis: then=(1,1), else=(0,0) → combined (min=0, max=1).
+     min_uses=0, max_uses=1 → LinearDroppedOnSomePath violation. *)
+  let body = [
+    Wasm.I32Const 1l;
+    Wasm.If (Wasm.BtEmpty,
+      [Wasm.LocalGet 0; Wasm.Drop],
+      []);
+  ] in
+  let m = mk_single_func_module body in
+  let errs = Tw_verify.verify_module m (single_annot [Codegen.Linear]) in
+  Alcotest.(check bool) "linear dropped in one branch → LinearDroppedOnSomePath" true
+    (List.exists (function
+       | Tw_verify.LinearDroppedOnSomePath { param_idx = 0; _ } -> true
+       | _ -> false) errs)
+
+(* ---- Test 11: Linear consumed in then, explicitly dropped in else → OK ---- *)
+(*
+   This mirrors fn_push in tea_router.ml after Stage 9 fix.
+   then: LocalGet 0; I32Store  (uses param once)
+   else: LocalGet 0; Drop       (explicitly drops param)
+   Per-path: min(1,1)=1, max(1,1)=1 → OK. *)
+
+let test_verify_if_explicit_drop_ok () =
+  let body = [
+    Wasm.I32Const 1l;
+    Wasm.If (Wasm.BtEmpty,
+      (* then: use the value *)
+      [Wasm.LocalGet 0; Wasm.Drop],
+      (* else: explicitly discharge ownership *)
+      [Wasm.LocalGet 0; Wasm.Drop]);
+  ] in
+  let m = mk_single_func_module body in
+  let errs = Tw_verify.verify_module m (single_annot [Codegen.Linear]) in
+  Alcotest.(check bool) "explicit drop in else → per-path OK" true (errs = [])
 
 (* ---- Test 8: Pipeline — ownership_codegen.affine → LinearNotUsed expected ---- *)
 (*
@@ -2166,15 +2205,17 @@ let test_verify_pipeline_clean () =
       Alcotest.fail (Printf.sprintf "Unexpected violations: %s" msg))
 
 let tw_verify_tests = [
-  Alcotest.test_case "linear used once → OK"         `Quick test_verify_linear_ok;
-  Alcotest.test_case "linear dropped → violation"    `Quick test_verify_linear_dropped;
-  Alcotest.test_case "linear duplicated → violation" `Quick test_verify_linear_dup;
-  Alcotest.test_case "excl borrow once → OK"         `Quick test_verify_excl_ok;
-  Alcotest.test_case "excl borrow aliased → violation" `Quick test_verify_excl_aliased;
-  Alcotest.test_case "unrestricted multi-load → OK"  `Quick test_verify_unrestricted_ok;
-  Alcotest.test_case "if/else branch-max linear → OK" `Quick test_verify_if_branch_ok;
-  Alcotest.test_case "pipeline: dropped linear → violation" `Quick test_verify_pipeline_violations;
-  Alcotest.test_case "pipeline: clean fixture → OK"  `Quick test_verify_pipeline_clean;
+  Alcotest.test_case "linear used once → OK"                  `Quick test_verify_linear_ok;
+  Alcotest.test_case "linear dropped → violation"             `Quick test_verify_linear_dropped;
+  Alcotest.test_case "linear duplicated → violation"          `Quick test_verify_linear_dup;
+  Alcotest.test_case "excl borrow once → OK"                  `Quick test_verify_excl_ok;
+  Alcotest.test_case "excl borrow aliased → violation"        `Quick test_verify_excl_aliased;
+  Alcotest.test_case "unrestricted multi-load → OK"           `Quick test_verify_unrestricted_ok;
+  Alcotest.test_case "if/else per-path linear → OK"           `Quick test_verify_if_branch_ok;
+  Alcotest.test_case "pipeline: dropped linear → violation"   `Quick test_verify_pipeline_violations;
+  Alcotest.test_case "pipeline: clean fixture → OK"           `Quick test_verify_pipeline_clean;
+  Alcotest.test_case "if one-arm drop → LinearDroppedOnSomePath" `Quick test_verify_if_partial_drop;
+  Alcotest.test_case "if explicit else-drop → per-path OK"    `Quick test_verify_if_explicit_drop_ok;
 ]
 
 (* ============================================================================

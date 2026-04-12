@@ -1,7 +1,7 @@
 (* SPDX-License-Identifier: PMPL-1.0-or-later *)
 (* SPDX-FileCopyrightText: 2024-2026 hyperpolymath *)
 
-(** typed-wasm ownership verifier — Stage 7.
+(** typed-wasm ownership verifier — Stage 7 (per-path analysis added Stage 9).
 
     Statically verifies typed-wasm Level 7 (aliasing safety) and Level 10
     (linearity) constraints on AffineScript's Wasm IR.
@@ -13,21 +13,21 @@
     re-checks them on the emitted Wasm IR to catch any codegen bugs.
 
     Level 10 — Linearity: a parameter annotated [Linear] (TyOwn) must be
-    loaded exactly once in the function body.  Loading zero times means the
-    owned value is dropped; loading more than once means it may be duplicated.
+    loaded exactly once on every execution path.  Zero uses = dropped;
+    more than one use = possible duplication; non-zero use on some paths
+    but zero on others = partial drop (dropped on the zero-count path).
 
     Level 7 — Aliasing safety: a parameter annotated [ExclBorrow] (TyMut)
-    must be loaded at most once.  Multiple loads create aliased references to
-    the same mutable memory, violating exclusive-borrow invariants.
+    must be loaded at most once on any execution path.
 
-    [SharedBorrow] (TyRef) and [Unrestricted] params are not checked by this
-    pass (no constraints violated by multiple reads of a shared reference).
+    [SharedBorrow] (TyRef) and [Unrestricted] params are not checked.
 
-    Branch semantics: for [If] instructions, we take the {b max} of the
-    use-counts across the two branches (since only one branch executes at
-    runtime).  This is conservative: a linear param used exactly once in
-    each branch of an if/else is counted as 1 (correct), not 2.  Stage 8
-    will refine this with a per-path analysis if needed.
+    Branch semantics (per-path min/max): for [If] instructions we compute
+    [(min_then, max_then)] and [(min_else, max_else)] independently and
+    combine as [(min_then, max_then, min_else, max_else) →
+    (min min_then min_else, max max_then max_else)].  A Linear param used
+    exactly once in BOTH branches gives (1, 1) — OK.  A param used in the
+    then-branch only gives (min=0, max=1) — [LinearDroppedOnSomePath].
 
     @see typed-wasm LEVEL-STATUS.md — Level 7 and Level 10 sections.
 *)
@@ -41,37 +41,57 @@ open Codegen
 (** An ownership violation found in a Wasm function body. *)
 type ownership_error =
   | LinearNotUsed of { func_idx : int; param_idx : int }
-  (** Level 10: Linear parameter was never loaded — dropped without consumption.
-      The owned resource leaks. *)
+  (** Level 10: Linear parameter was never loaded on any path — dropped without
+      consumption.  The owned resource leaks unconditionally. *)
+  | LinearDroppedOnSomePath of { func_idx : int; param_idx : int }
+  (** Level 10: Linear parameter is consumed on some execution paths but
+      silently dropped on others (per-path min_uses = 0, max_uses >= 1).
+      The caller's ownership guarantee is satisfied only conditionally —
+      the drop path leaks the resource. *)
   | LinearUsedMultiple of { func_idx : int; param_idx : int; count : int }
-  (** Level 10: Linear parameter was loaded [count] times — potential duplication.
-      Only one consumer is permitted. *)
+  (** Level 10: Linear parameter was loaded [count] times on some path —
+      potential duplication.  Only one consumer is permitted. *)
   | ExclBorrowAliased of { func_idx : int; param_idx : int; count : int }
   (** Level 7: ExclBorrow parameter was loaded [count] times — aliasing violation.
       An exclusive borrow must not have multiple simultaneous references. *)
 
 (* ============================================================================
-   Use-count analysis
+   Per-path use-range analysis
    ============================================================================ *)
 
-(** Count how many times [local_idx] is loaded inside [instrs].
+(** Compute [(min_uses, max_uses)] — the minimum and maximum number of times
+    [local_idx] is loaded across all execution paths within [instrs].
 
-    For [If] nodes the branch counts are combined with [max] rather than
-    summed, reflecting that only one branch executes.  All other nodes are
-    summed.  Nested [Block] and [Loop] bodies are descended into. *)
-let rec count_uses (local_idx : int) (instrs : Wasm.instr list) : int =
-  List.fold_left (fun acc instr -> acc + uses_in_instr local_idx instr) 0 instrs
+    Sequential instructions sum their ranges: if instr A uses the param
+    (1, 1) times and instr B uses it (0, 1) times, the sequence is (1, 2).
 
-and uses_in_instr (local_idx : int) (instr : Wasm.instr) : int =
+    For [If] nodes only one branch executes, so we take the component-wise
+    min/max of the two branch ranges:
+      - [min = min(then_min, else_min)]: may be zero if one branch doesn't use it
+      - [max = max(then_max, else_max)]: the worst-case duplication count
+
+    Example: [If { LocalGet 0 } { LocalGet 0 }] → [(1, 1)] OK for Linear.
+    Example: [If { LocalGet 0 } { [] }]         → [(0, 1)] LinearDroppedOnSomePath.
+    Example: [If { LocalGet 0; LocalGet 0 } { LocalGet 0 }] → [(1, 2)]
+      → LinearUsedMultiple (max = 2).
+
+    Nested [Block] and [Loop] bodies are descended into (no new paths). *)
+let rec count_uses_range (local_idx : int) (instrs : Wasm.instr list) : int * int =
+  List.fold_left (fun (a_min, a_max) instr ->
+    let (i_min, i_max) = uses_range_in_instr local_idx instr in
+    (a_min + i_min, a_max + i_max)
+  ) (0, 0) instrs
+
+and uses_range_in_instr (local_idx : int) (instr : Wasm.instr) : int * int =
   match instr with
-  | Wasm.LocalGet n -> if n = local_idx then 1 else 0
+  | Wasm.LocalGet n -> if n = local_idx then (1, 1) else (0, 0)
   | Wasm.Block (_, body) | Wasm.Loop (_, body) ->
-    count_uses local_idx body
+    count_uses_range local_idx body
   | Wasm.If (_, then_, else_) ->
-    (* Only one branch executes: take max so that
-       If { then: LocalGet 0 } { else: LocalGet 0 } counts as 1, not 2. *)
-    max (count_uses local_idx then_) (count_uses local_idx else_)
-  | _ -> 0
+    let (t_min, t_max) = count_uses_range local_idx then_ in
+    let (e_min, e_max) = count_uses_range local_idx else_ in
+    (min t_min e_min, max t_max e_max)
+  | _ -> (0, 0)
 
 (* ============================================================================
    Per-function verification
@@ -82,27 +102,39 @@ and uses_in_instr (local_idx : int) (instr : Wasm.instr) : int =
     [func] is the Wasm function body.
     [param_kinds] are the ownership annotations for each parameter (in order).
     [func_idx] is the global function index (for error reporting).
-    Returns all violations found (empty list = clean). *)
+    Returns all violations found (empty list = clean).
+
+    Uses per-path min/max analysis:
+    - [LinearNotUsed]: max_uses = 0 (param dropped on every path)
+    - [LinearDroppedOnSomePath]: min_uses = 0, max_uses >= 1 (dropped conditionally)
+    - [LinearUsedMultiple]: max_uses > 1 (duplicated on some path)
+    Multiple violations can be reported for a single param (e.g. both
+    [LinearDroppedOnSomePath] and [LinearUsedMultiple] if min=0, max>1). *)
 let verify_function
     (func     : Wasm.func)
     (param_kinds : ownership_kind list)
     (func_idx : int)
   : ownership_error list =
   List.concat_map (fun (param_idx, kind) ->
-    let uses = count_uses param_idx func.Wasm.f_body in
+    let (min_uses, max_uses) = count_uses_range param_idx func.Wasm.f_body in
     match kind with
     | Linear ->
-      (* Exactly once: zero = dropped, >1 = may be duplicated. *)
-      if uses = 0 then
-        [LinearNotUsed { func_idx; param_idx }]
-      else if uses > 1 then
-        [LinearUsedMultiple { func_idx; param_idx; count = uses }]
-      else
-        []
+      (* Exactly once on every path: zero everywhere = dropped; zero on some
+         path = partial drop; more than one on some path = may duplicate. *)
+      let drop_errors =
+        if max_uses = 0 then [LinearNotUsed { func_idx; param_idx }]
+        else if min_uses = 0 then [LinearDroppedOnSomePath { func_idx; param_idx }]
+        else []
+      in
+      let dup_errors =
+        if max_uses > 1 then [LinearUsedMultiple { func_idx; param_idx; count = max_uses }]
+        else []
+      in
+      drop_errors @ dup_errors
     | ExclBorrow ->
-      (* At most once: >1 creates simultaneous aliases. *)
-      if uses > 1 then
-        [ExclBorrowAliased { func_idx; param_idx; count = uses }]
+      (* At most once on any path: max > 1 creates simultaneous aliases. *)
+      if max_uses > 1 then
+        [ExclBorrowAliased { func_idx; param_idx; count = max_uses }]
       else
         []
     | Unrestricted | SharedBorrow ->
@@ -217,12 +249,17 @@ let pp_error (fmt : Format.formatter) (err : ownership_error) : unit =
   | LinearNotUsed { func_idx; param_idx } ->
     Format.fprintf fmt
       "Level 10 violation: function %d, param %d — Linear (own) param dropped \
-       (must be consumed exactly once)"
+       on all paths (must be consumed exactly once)"
+      func_idx param_idx
+  | LinearDroppedOnSomePath { func_idx; param_idx } ->
+    Format.fprintf fmt
+      "Level 10 violation: function %d, param %d — Linear (own) param dropped \
+       on some paths (per-path min uses = 0; must be consumed on every path)"
       func_idx param_idx
   | LinearUsedMultiple { func_idx; param_idx; count } ->
     Format.fprintf fmt
       "Level 10 violation: function %d, param %d — Linear (own) param loaded \
-       %d times (exactly 1 required; possible duplication)"
+       %d times on some path (exactly 1 required; possible duplication)"
       func_idx param_idx count
   | ExclBorrowAliased { func_idx; param_idx; count } ->
     Format.fprintf fmt

@@ -158,7 +158,13 @@ let fn_init : func = {
     the back-stack if the stack is not full.
 
     Encoding: [stack_data[stack_len] := screen_tag; stack_len += 1].
-    [screen_tag] is Linear — consumed exactly once per TEA update cycle. *)
+    [screen_tag] is Linear — consumed exactly once per TEA update cycle.
+
+    When the stack is full the screen_tag is explicitly dropped via [Drop]
+    rather than left in an unused-param else-branch.  This satisfies the
+    per-path linearity verifier: both branches consume param 0 exactly once
+    (store in the then-branch, explicit drop in the else-branch), giving
+    min_uses = 1, max_uses = 1 → OK. *)
 let fn_push : func = {
   f_type   = 1;
   f_locals = [];
@@ -189,8 +195,8 @@ let fn_push : func = {
         I32Add;
         I32Store (2, 0);
       ],
-      (* else: stack full — no-op, message consumed but state unchanged *)
-      []
+      (* else: stack full — explicitly consume screen_tag (ownership discharged) *)
+      [ LocalGet 0; Drop ]
     );
   ];
 }
