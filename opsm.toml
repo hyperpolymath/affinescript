@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: PMPL-1.0-or-later
+# Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+#
+# affinescript package manifest — OPSM native.
+# This file makes affinescript a first-class OPSM/HFR package.
+
+[package]
+name = "affinescript"
+description = "AffineScript compiler and standard library — affine-typed, WASM-first functional language"
+license = "PMPL-1.0-or-later"
+authors = ["Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>"]
+keywords = ["affinescript", "hyperpolymath", "nextgen-languages", "compiler"]
+homepage = "https://github.com/hyperpolymath/nextgen-languages"
+repository = "https://github.com/hyperpolymath/nextgen-languages"
+forth = "affinescript"
+
+[opsm]
+trust_level = "hyperpolymath"
+registry = "hf"
+
+[dependencies]
+proven = { git = "https://github.com/hyperpolymath/proven", registry = "hf" }
+groove = { git = "https://github.com/hyperpolymath/groove", registry = "hf" }

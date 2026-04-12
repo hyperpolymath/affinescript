@@ -392,6 +392,44 @@ let router_bridge_cmd_fn output =
   Format.printf "Custom sections: affinescript.ownership, affinescript.tea_layout@.";
   `Ok ()
 
+(** Generate the CharacterSelect TEA Bridge Wasm module.
+
+    Produces a WebAssembly 1.0 module that implements the AffineScript TEA
+    ABI for CharacterSelectScreen.  The model holds the player's background
+    selection as a single i32 selected_tag (0=none, 1-6=background, 7=confirmed).
+
+    The exported API surface is identical to the TitleScreen bridge, so the
+    same AffineTEA.js / AffineTEA.res bindings work without modification.
+
+    Msg tags (input to affinescript_update):
+      0=SelectAssault  1=SelectRecon  2=SelectEngineer
+      3=SelectSignals  4=SelectMedic  5=SelectLogistics  6=Confirm
+
+    selected_tag (output from affinescript_get_selected):
+      0=none  1=Assault  2=Recon  3=Engineer  4=Signals  5=Medic  6=Logistics
+      7=confirmed (navigate to JessicaCustomise)
+
+    No source file needed — generated from the CharacterSelect TEA ABI.
+    Write to a .wasm file, copy to IDApTIK's public/assets/wasm/ directory. *)
+let cs_bridge_cmd_fn output =
+  let m = Affinescript.Tea_cs_bridge.generate () in
+  (* Auto-verify ownership constraints before writing. *)
+  (match Affinescript.Tw_verify.verify_from_module m with
+  | Ok () ->
+    Format.printf "typed-wasm ownership verification: OK@."
+  | Error errs ->
+    Affinescript.Tw_verify.pp_report Format.std_formatter errs);
+  Affinescript.Wasm_encode.write_module_to_file output m;
+  Format.printf "CharacterSelect TEA bridge written to %s@." output;
+  Format.printf "  affinescript_init()                     — initialise CharacterSelectModel@.";
+  Format.printf "  affinescript_update(msg: i32)           — 0-5=SelectClass 6=Confirm@.";
+  Format.printf "  affinescript_get_selected() -> i32      — 0=none 1-6=class 7=confirmed@.";
+  Format.printf "  affinescript_get_screen_w/h() -> i32    — current screen dimensions@.";
+  Format.printf "  affinescript_set_screen(w: i32, h: i32) — handle resize events@.";
+  Format.printf "  memory                                   — exported linear memory (model at offset 64)@.";
+  Format.printf "Custom sections: affinescript.ownership, affinescript.tea_layout@.";
+  `Ok ()
+
 (** Start the REPL *)
 let repl_cmd_fn () =
   (* TODO: Re-enable when REPL module is restored *)
