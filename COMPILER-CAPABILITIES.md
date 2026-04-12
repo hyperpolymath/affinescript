@@ -122,24 +122,24 @@ WebAssembly Binary (.wasm)
 ```
 
 ### Supported Features
-- ✅ **Lexer & Parser:** Complete (note: lexer does not yet emit ZERO/ONE quantity literal tokens — blocks QTT surface syntax)
-- ⚠️ **Type Checker:** Rules implemented (bidirectional inference in `lib/typecheck.ml`), but **experimental (enforcement landing soon)** — not yet wired into `check`/`compile`/`eval` CLI paths
-- ⚠️ **Affine Types / QTT:** **experimental (enforcement landing soon)** — quantity semiring in `lib/quantity.ml` exists but is not called from `bin/main.ml`
-- ⚠️ **Borrow Checker:** **experimental (enforcement landing soon)** — `lib/borrow.ml` carries `[IMPL-DEP: Phase 3]` markers; runtime checks in interpreter only
+- ✅ **Lexer & Parser:** Complete (quantity sugar `:0/:1/:ω` and attribute form `@erased/@linear/@unrestricted` accepted)
+- ✅ **Type Checker:** Wired into `check`/`compile`/`eval` CLI paths
+- ✅ **Affine Types / QTT:** Live gate (`Quantity.check_program_quantities` runs in standard CLI pipeline)
+- ⚠️ **Borrow Checker:** Live gate with ongoing Phase 3 work
 - ⚠️ **Dependent / Refinement Types:** parse-only — `TRefined` AST node exists but predicates do not reduce
-- ✅ **WASM Codegen:** Complete (basic operations)
+- ✅ **WASM Codegen:** Primary backend (feature gaps remain for advanced effect-handler lowering)
 - ✅ **Julia Codegen:** Phase 1 (basic types)
 - ❌ **Native Codegen:** Not implemented
 - ❌ **GPU Codegen:** Not implemented
-- ❌ **Optimizer:** Not implemented
+- ⚠️ **Optimizer:** Basic constant folding in `lib/opt.ml`; no full optimization pipeline yet
 
 ### Missing Features
 - ❌ **SIMD Operations:** No WASM SIMD support
 - ❌ **Multithreading:** No WASM threads
 - ❌ **Tail Calls:** Not implemented
 - ❌ **Reference Types:** Not implemented
-- ❌ **Exception Handling:** Not implemented
-- ❌ **Garbage Collection:** No GC (manual memory management)
+- ⚠️ **Exception Handling in WASM Backends:** `try/finally` lowering exists; `try/catch` still requires EH proposal/CPS path
+- ⚠️ **Garbage Collection:** WASM GC backend exists (`--wasm-gc`) but is not full feature parity
 
 ---
 

@@ -204,6 +204,37 @@ type env = {
         pushed here and drained at the end of [check_function_quantities]. *)
 }
 
+(* ============================================================================
+   Cmd linearity — type-annotation-based quantity inference (Stage 11)
+   ============================================================================ *)
+
+(** [is_cmd_type te] — true when [te] is an application of the built-in
+    [Cmd] type constructor (e.g. [Cmd Msg], [Cmd Int]).
+
+    The [Cmd] type is intrinsically linear: every let-binding whose declared
+    type annotation is [Cmd _] is automatically treated as QOne (linear) by
+    the quantity checker.  This means the programmer does not need to write
+    [@linear] explicitly — the type annotation is sufficient.
+
+    Note: this only matches AST-level type annotations supplied by the
+    programmer.  Bindings without a type annotation (e.g. [let cmd = cmd_none])
+    get QOmega as usual.  For full intrinsic linearity without annotation, a
+    post-typecheck elaboration pass would be needed (deferred). *)
+let is_cmd_type (te : type_expr) : bool =
+  match te with
+  | TyApp ({ name = "Cmd"; _ }, _) -> true
+  | _ -> false
+
+(** Infer the quantity of a let-binding from its optional type annotation.
+
+    Returns [QOne] if the annotation is [Cmd _]; [QOmega] otherwise.
+    Explicit [el_quantity] / [sl_quantity] annotations always take precedence
+    (handled at call sites by checking [Option.value] first). *)
+let quantity_of_ty_annotation (te_opt : type_expr option) : quantity =
+  match te_opt with
+  | Some te when is_cmd_type te -> QOne
+  | _ -> QOmega
+
 (** Create a fresh quantity environment. *)
 let create_env () : env =
   {
@@ -380,8 +411,14 @@ let rec infer_usage_expr (env : env) (expr : expr) : unit =
        walk e1 (which records usages into the live env), compute the
        per-variable delta added by walking e1, scale each delta entry
        by q, restore the snapshot, and re-apply the scaled deltas as
-       additions. Then walk e2 normally. *)
-    let q = Option.value lb.el_quantity ~default:QOmega in
+       additions. Then walk e2 normally.
+
+       Stage 11: if no explicit quantity annotation is given but the type
+       annotation is [Cmd _], infer QOne automatically (intrinsic linearity). *)
+    let q = match lb.el_quantity with
+      | Some q -> q
+      | None   -> quantity_of_ty_annotation lb.el_ty
+    in
     let before_value = env_snapshot env in
     infer_usage_expr env lb.el_value;
     let after_value = env_snapshot env in
@@ -518,8 +555,38 @@ let rec infer_usage_expr (env : env) (expr : expr) : unit =
 
 (** Walk a block and record variable usages. *)
 and infer_usage_block (env : env) (blk : block) : unit =
-  List.iter (infer_usage_stmt env) blk.blk_stmts;
-  Option.iter (infer_usage_expr env) blk.blk_expr
+  (* Collect local variables whose quantity must be checked at block end.
+     For each [StmtLet] whose type annotation infers QOne (i.e. [Cmd _] types),
+     we declare the bound variable in the env BEFORE processing the statement so
+     that subsequent uses within the block are tracked via [env_use]. *)
+  let local_linear_vars = ref [] in
+  List.iter (fun stmt ->
+    (match stmt with
+    | StmtLet sl ->
+      let q = match sl.sl_quantity with
+        | Some q -> q
+        | None   -> quantity_of_ty_annotation sl.sl_ty
+      in
+      if q = QOne then
+        (match sl.sl_pat with
+        | PatVar id ->
+          env_declare env id.name QOne;
+          local_linear_vars := id :: !local_linear_vars
+        | _ -> ())
+    | _ -> ());
+    infer_usage_stmt env stmt
+  ) blk.blk_stmts;
+  Option.iter (infer_usage_expr env) blk.blk_expr;
+  (* Check that each local linear variable was used exactly once.
+     Errors are pushed to env.errors for the caller to drain. *)
+  List.iter (fun id ->
+    let actual =
+      Hashtbl.find_opt env.usages id.name |> Option.value ~default:UZero
+    in
+    match check_quantity id QOne actual with
+    | Ok () -> ()
+    | Error e -> env.errors := e :: !(env.errors)
+  ) !local_linear_vars
 
 (** Walk a statement and record variable usages. *)
 and infer_usage_stmt (env : env) (stmt : stmt) : unit =
@@ -528,8 +595,13 @@ and infer_usage_stmt (env : env) (stmt : stmt) : unit =
     (* Same scaling treatment as ExprLet — see ADR-002 commentary
        there. The statement form has no body to walk afterward;
        subsequent statements in the enclosing block are walked
-       independently by infer_usage_block. *)
-    let q = Option.value sl.sl_quantity ~default:QOmega in
+       independently by infer_usage_block.
+       Stage 11: infer QOne from [Cmd _] type annotation when no explicit
+       quantity is given (same rule as ExprLet). *)
+    let q = match sl.sl_quantity with
+      | Some q -> q
+      | None   -> quantity_of_ty_annotation sl.sl_ty
+    in
     let before_value = env_snapshot env in
     infer_usage_expr env sl.sl_value;
     let after_value = env_snapshot env in

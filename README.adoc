@@ -14,7 +14,7 @@ image:https://img.shields.io/badge/Powered%20By-Gossamer%20%26%20Burble-orange.s
 
 [NOTE]
 ====
-*Honest status (2026-04-10):* AffineScript's affine types, QTT quantity checking, borrow checker, and dependent types are **experimental (enforcement landing soon)**. The type-checking rules for these features are implemented in `lib/typecheck.ml` and `lib/quantity.ml`, but they are not yet wired into the `check`/`compile`/`eval` CLI paths, so user programs are not gated on them today. Track A of the Manhattan plan closes this gap; ETA T+7d. See `.machine_readable/6a2/STATE.a2ml` `[features]` for the per-feature honest breakdown.
+*Honest status sync (2026-04-12):* Affine/QTT and borrow checking are wired into the CLI pipeline (`check`, `compile`, `eval`) and gate user programs today. Specifically, `Typecheck.check_program`, `Borrow.check_program`, and `Quantity.check_program_quantities` are all invoked from `bin/main.ml`. Dependent/refinement types remain parse-first (predicates do not reduce yet), and codegen backends still have feature gaps (notably effect-handler lowering in Wasm backends). See `.machine_readable/6a2/STATE.a2ml` `[features]` for the authoritative per-feature status.
 ====
 
 AffineScript is the only language that combines affine types, quantitative type theory, row polymorphism, and algebraic effects in a single practical systems language. This means you can write game code where the compiler *proves* your protocol states, resource lifecycles, and effect boundaries are correct -- with syntax that feels like a modern game scripting language, not a theorem prover.
@@ -124,15 +124,15 @@ AffineScript's type system proves your game logic is correct at compile time. No
 // Game resource that MUST be properly managed
 type GameTexture = own { id: Int, width: Int, height: Int }
 
-fn load_texture(path: ref String) -> own GameTexture / IO + Exn[LoadError] {
+fn load_texture(path: ref String) -{IO + Exn[LoadError]}-> own GameTexture {
   GameTexture { id: 42, width: 1024, height: 1024 }
 }
 
-fn render(scene: ref Scene, texture: ref GameTexture) -> () / Render {
+fn render(scene: ref Scene, texture: ref GameTexture) -{Render}-> () {
   // Use the texture in rendering
 }
 
-fn unload(1 texture: own GameTexture) -> () / IO {
+fn unload(@linear texture: own GameTexture) -{IO}-> () {
   // texture is consumed -- can't use it after this
   // Compiler guarantees no memory leaks!
 }
@@ -141,9 +141,9 @@ fn unload(1 texture: own GameTexture) -> () / IO {
 // - texture is loaded before use
 // - texture is not used after unload
 // - texture is always unloaded (affine: must be consumed)
-fn game_loop() -> () / IO + Render + Exn[LoadError] {
+fn game_loop() -{IO + Render + Exn[LoadError]}-> () {
   let texture = load_texture("player.png");  // texture: own GameTexture
-  render(ref scene, ref texture);            // borrows texture
+  render(scene, texture);                    // borrows texture
   unload(texture);                            // consumes texture
   // texture is GONE here -- using it would be a compile error!
   // No memory leaks, no dangling pointers, no crashes.
@@ -162,8 +162,8 @@ type Connection[..state] = own {
 
 // State transition: Unauthenticated -> Authenticated
 fn authenticate(
-  1 conn: own Connection[{status: Unauthenticated}]
-) -> Connection[{status: Authenticated, user: String}] / Session + IO {
+  @linear conn: own Connection[{status: Unauthenticated}]
+) -{Session + IO}-> Connection[{status: Authenticated, user: String}] {
   let creds = recv();
   // conn is consumed (linear), new state returned
   Connection { socket: conn.socket, status: Authenticated, user: creds.user }
@@ -173,7 +173,7 @@ fn authenticate(
 fn query(
   conn: ref Connection[{status: Authenticated, ..r}],
   sql: ref String
-) -> Result[Rows, DbError] / IO {
+) -{IO}-> Result[Rows, DbError] {
   // ...
 }
 ----
@@ -190,17 +190,17 @@ fn query(
 [source,affinescript]
 ----
 effect IO {
-  fn print(s: String);
+  fn print(s: String) -> ();
   fn read_line() -> String;
 }
 
 effect State[S] {
   fn get() -> S;
-  fn put(s: S);
+  fn put(s: S) -> ();
 }
 
 // The type signature tells you EXACTLY what this function can do
-fn interactive_counter() -> Int / IO + State[Int] {
+fn interactive_counter() -{IO + State[Int]}-> Int {
   let input = read_line();
   let current = get();
   let next = current + 1;
@@ -210,7 +210,7 @@ fn interactive_counter() -> Int / IO + State[Int] {
 }
 
 // Pure functions are PROVEN pure -- no hidden I/O
-fn add(a: Int, b: Int) -> Int / Pure {
+fn add(a: Int, b: Int) -> Int {
   a + b
 }
 ----
@@ -220,7 +220,7 @@ fn add(a: Int, b: Int) -> Int / Pure {
 [source,affinescript]
 ----
 // Works on ANY record with a 'name' field
-fn greet[..r](person: {name: String, ..r}) -> String / Pure {
+fn greet[..r](person: {name: String, ..r}) -> String {
   "Hello, " ++ person.name
 }
 
@@ -240,7 +240,7 @@ type Vec[n: Nat, T: Type] =
   | Cons(head: T, tail: Vec[n, T]) : Vec[n + 1, T]
 
 // Can ONLY be called on non-empty vectors
-total fn head[n: Nat, T](v: Vec[n + 1, T]) -> T / Pure {
+total fn head[n: Nat, T](v: Vec[n + 1, T]) -> T {
   match v {
     Cons(h, _) => h
   }
@@ -249,7 +249,7 @@ total fn head[n: Nat, T](v: Vec[n + 1, T]) -> T / Pure {
 // Result length is provably the sum of input lengths
 total fn append[n: Nat, m: Nat, T](
   a: Vec[n, T], b: Vec[m, T]
-) -> Vec[n + m, T] / Pure {
+) -> Vec[n + m, T] {
   match a {
     Nil => b,
     Cons(h, t) => Cons(h, append(t, b))
@@ -304,31 +304,32 @@ total fn append[n: Nat, m: Nat, T](
 dune build
 
 # Type check a file
-dune exec affinescript -- check examples/hello.affine
+_build/default/bin/main.exe check test/e2e/fixtures/affine_basic.affine
 
 # Run with interpreter
-dune exec affinescript -- eval examples/factorial.affine
+_build/default/bin/main.exe eval test/e2e/fixtures/interp_simple.affine
 
 # Compile to WebAssembly
-dune exec affinescript -- compile examples/hello.affine -o hello.wasm
+_build/default/bin/main.exe compile -o hello.wasm test/e2e/fixtures/wasm_simple.affine
 
 # Format code
-dune exec affinescript -- fmt examples/hello.affine
+_build/default/bin/main.exe fmt test/e2e/fixtures/affine_basic.affine
 
 # Lint for code quality
-dune exec affinescript -- lint examples/hello.affine
+_build/default/bin/main.exe lint test/e2e/fixtures/affine_basic.affine
 
 # JSON diagnostics (for editors/CI)
-dune exec affinescript -- check --json examples/hello.affine
+_build/default/bin/main.exe check --json test/e2e/fixtures/affine_basic.affine
 ----
 
 == Project Status
 
-**Version 0.8 Frontend Complete:** The frontend surface syntax for core type features (Linear Arrows `-[q]->`, Generic Variants, Refinement Types, Kind Checking) parses and elaborates. Note: several of these features are *experimental (enforcement landing soon)* — the quantity checker is not yet called from the CLI, the lexer does not yet emit ZERO/ONE quantity literal tokens, and refinement predicates parse but do not reduce. See `.machine_readable/6a2/STATE.a2ml` `[features]` for per-feature status.
+**Status sync (2026-04-12):** This section is aligned with `.machine_readable/6a2/STATE.a2ml`.
+Core affine/QTT and borrow gates are live in the standard CLI paths. Dependent/refinement types are still parse-only. Effects run in the interpreter; Wasm backend support is still partial for handlers/resume semantics.
 
-NOTE: As of v0.8, the standard file extension for AffineScript is `.affine` (formerly `.affine`, changed to avoid clashes with ActionScript).
+NOTE: The standard file extension for AffineScript source is `.affine`.
 
-AffineScript is in active development. The frontend is solid; the backend and advanced type features are in progress.
+AffineScript is in active development with active weekly commits and a passing `dune runtest` baseline.
 
 [cols="2,1,3"]
 |===
@@ -343,51 +344,56 @@ AffineScript is in active development. The frontend is solid; the backend and ad
 |Module loader, scope analysis, import system
 
 |Type Checker
-|Working
-|Bidirectional inference, unification, let-polymorphism. Quantities and effects not yet integrated into inference.
+|Wired
+|Bidirectional inference/unification active in `check`/`compile`/`eval` pipeline.
 
 |Effect System
-|Declarations only
-|Effect types parsed and tracked; handler semantics not yet in interpreter or backends
+|Interpreter complete
+|Effect operations + handlers + `resume` wired in interpreter. Wasm backends have handler-dispatch limitations.
 
 |Quantity Checking
-|Separate pass
-|Usage tracking works; needs integration with type checker for full QTT
+|Live gate
+|QTT quantity checks run after typecheck and fail builds on violations.
 
 |Borrow Checker
-|Partial
-|Affine tracking at runtime in interpreter; compile-time checking in progress
+|Live gate (Phase 3 in progress)
+|Compile-time borrow checks run in CLI pipeline; advanced phases still in progress.
 
 |Trait System
-|Skeletal
-|Registry and lookup work; generic trait resolution needs unification integration
+|Partial
+|Registry + unification-based impl lookup wired; associated-type/coherence work remains.
 
 |Interpreter
-|75%
-|Closures, pattern matching, builtins. No effect handlers or exceptions yet.
+|95%
+|Closures, pattern matching, effects, and recent try/catch/finally plumbing.
 
 |WASM Codegen
-|30%
-|Basic arithmetic, functions, closures. Types collapse to i32; records missing.
+|92%
+|Primary deploy backend. Effect-handler lowering remains incomplete.
+
+|WASM GC Codegen
+|70%
+|GC backend available via `--wasm-gc`; not full feature parity with interpreter.
 
 |Julia Codegen
-|10%
-|Phase 1 MVP skeleton only
+|Phase 1
+|Basic generation path exists; not the primary deployment backend.
 
 |LSP Server
-|Phase A done
-|JSON diagnostics via `--json`; go-to-definition and references pending
+|Complete (Phases A-D)
+|`server --stdio` shipped with hover, goto-def, completion, diagnostics.
 
 |Formatter + Linter
 |Complete
 |AST-based formatter; 4 lint rules
 |===
 
-=== Roadmap: v0.8 to v0.9
-The immediate priority for v0.9 is to fully propagate the v0.8 language features down through the entire stack, solidifying the architecture for the **Airborne Submarine Squadron** remake:
-* Propagate v0.8 syntax (like `-[q]->`), semantics, and type system upgrades down through the AST, Interpreter, REPL, and Standard Library.
-* Update the compiler backend (WASM generation) to fully support the newly checked Generic Variants and Refinement constraints.
-* Finalize the metacompiler and metainterpreter features.
+=== Next Priorities (Post-Sync)
+The immediate priorities are execution and drift control:
+* Keep `README`, `ROADMAP`, `COMPILER-CAPABILITIES`, and `.machine_readable/6a2/STATE.a2ml` synchronized on each feature milestone.
+* Finish parser/README/example syntax convergence around effects and quantity annotations.
+* Close remaining backend gaps for effect handler lowering so interpreter and Wasm behavior converge.
+* Keep `examples/` parse-checkable in CI to prevent documentation drift from reappearing.
 
 == Design Principles
 

@@ -1,41 +1,19 @@
-// Row polymorphism in AffineScript
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Record/row building blocks (parser-compatible example)
 
-// Works on any record that has a 'name' field
-fn greet[..r](person: {name: String, ..r}) -> String / Pure {
-  "Hello, " ++ person.name
+struct Point2D {
+  x: Int,
+  y: Int
 }
 
-// Works on any record with both 'first' and 'last' fields
-fn fullName[..r](
-  person: {first: String, last: String, ..r}
-) -> {first: String, last: String, fullName: String, ..r} / Pure {
-  {fullName: person.first ++ " " ++ person.last, ..person}
+struct Point3D {
+  x: Int,
+  y: Int,
+  z: Int
 }
 
-// Update a specific field
-fn mapName[..r](
-  record: {name: String, ..r},
-  f: String -> String / Pure
-) -> {name: String, ..r} / Pure {
-  {name: f(record.name), ..record}
-}
+fn getX(p: Point2D) -> Int = p.x;
 
-// Remove a field from a record
-fn removeName[..r](
-  record: own {name: String, ..r}
-) -> (own String, own {..r}) / Pure {
-  (record.name, record \ name)
-}
-
-fn main() -> () / Pure {
-  let alice = {name: "Alice", age: 30, role: "Engineer"};
-  let bob = {name: "Bob", department: "Sales"};
-
-  // Both work despite different record shapes
-  let greeting1 = greet(alice);
-  let greeting2 = greet(bob);
-
-  let person = {first: "Jane", last: "Doe", email: "jane@example.com"};
-  let withFull = fullName(person);
-  // withFull now has: {first, last, fullName, email}
+fn mk_point(x: Int, y: Int) -> Point2D {
+  { x: x, y: y }
 }

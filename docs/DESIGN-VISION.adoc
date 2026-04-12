@@ -150,7 +150,7 @@ effect Async {
 }
 
 // Effects are in the type signature. Compose freely.
-fn fetch_user(id: Int) -> User / Http, Async {
+fn fetch_user(id: Int) -{Http + Async}-> User {
   let resp = Http.get("/users/" ++ show(id));
   Async.await(resp.json())
 }

@@ -873,6 +873,28 @@ let create_initial_env () : env =
       Ok (VFloat (Sys.time ()))
     ));
 
+    (* -- Cmd Msg — linear side-effect obligations (Stage 11) --------------- *)
+    (* cmd_none : Cmd 'msg — the no-op command; the interpreter represents
+       it as VUnit.  At runtime, the TEA loop discards the Cmd after
+       extracting the new model from the (model, cmd) pair.
+       Linearity is enforced at compile time (quantity checker) not runtime. *)
+    ("cmd_none", VUnit);
+    (* cmd_perform : (() ->{IO} unit) -> Cmd 'msg — wraps an IO thunk.
+       In the interpreter, the Cmd is executed eagerly when constructed.
+       In a real browser runtime the thunk would be scheduled by the
+       runtime after the update cycle completes. *)
+    ("cmd_perform", VBuiltin ("cmd_perform", fun args ->
+      match args with
+      | [VClosure _ as f] ->
+        (* Execute the IO thunk immediately in the interpreter *)
+        let* _ = apply_function f [VUnit] in
+        Ok VUnit
+      | [VBuiltin _ as f] ->
+        let* _ = apply_function f [VUnit] in
+        Ok VUnit
+      | _ ->
+        Error (RuntimeError "cmd_perform: expected a zero-argument function")
+    ));
     (* -- TEA (The Elm Architecture) interpreter runtime -------------------- *)
     ("tea_run", VBuiltin ("tea_run", fun args ->
       (* tea_run expects a record with fields: init, update, view, subscriptions.

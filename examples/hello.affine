@@ -5,10 +5,10 @@
 // Part of the AffineScript game examples
 
 effect IO {
-  fn print(s: String);
-  fn println(s: String);
+  fn print(s: String) -> ();
+  fn println(s: String) -> ();
 }
 
-fn main() -> () / IO {
+fn main() -{IO}-> () {
   println("Hello, AffineScript!");
 }

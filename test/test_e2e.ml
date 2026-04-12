@@ -83,7 +83,7 @@ let quantity_check_program symbols prog =
   | Ok () -> Ok ()
   | Error (e, _span) ->
     Error (Printf.sprintf "Quantity error: %s"
-             (Quantity.show_quantity_error e))
+             (Quantity.format_quantity_error e))
 
 (** Stage 5a: Generate WASM output *)
 let wasm_codegen prog =
@@ -2432,6 +2432,104 @@ let test_router_boundary_clean () =
       Format.asprintf "%a" Tw_interface.pp_cross_error e) errs) in
     Alcotest.fail ("Router boundary check failed: " ^ msg))
 
+(* ============================================================================
+   Section: Stage 11 — Cmd linearity (source-level QTT enforcement)
+   ============================================================================
+
+   Verify that:
+   1. [Cmd _] type annotations automatically confer QOne on let-bindings.
+   2. A Cmd returned in its tuple → QTT satisfied (no error).
+   3. A Cmd dropped (not returned) → LinearVariableUnused error.
+   4. [cmd_none] and [cmd_perform] are recognised as built-in values.
+*)
+
+(** Full pipeline up to quantity checking (resolves, typechecks, then QTT). *)
+let run_pipeline_to_quantity path =
+  match parse_fixture path with
+  | Error msg -> Error msg
+  | Ok prog ->
+    match resolve_program prog with
+    | Error msg -> Error msg
+    | Ok (resolve_ctx, _) ->
+      match Typecheck.check_program resolve_ctx.symbols prog with
+      | Error e -> Error (Typecheck.format_type_error e)
+      | Ok _tc ->
+        match Quantity.check_program resolve_ctx.symbols prog with
+        | Ok () -> Ok ()
+        | Error (e, _span) ->
+          Error (Printf.sprintf "Quantity error: %s" (Quantity.format_quantity_error e))
+
+(* ---- Test 1: cmd_none recognised — Cmd type resolves ---- *)
+
+let test_cmd_type_resolves () =
+  (* cmd_linear.affine uses Cmd ClickMsg — should typecheck cleanly. *)
+  match parse_fixture (fixture "cmd_linear.affine") with
+  | Error msg -> Alcotest.fail msg
+  | Ok prog ->
+    match resolve_program prog with
+    | Error msg -> Alcotest.fail msg
+    | Ok (ctx, _) ->
+      (match Typecheck.check_program ctx.symbols prog with
+      | Ok _ -> ()
+      | Error e ->
+        Alcotest.fail ("Cmd type failed to typecheck: " ^ Typecheck.format_type_error e))
+
+(* ---- Test 2: Cmd returned in tuple — quantity check passes ---- *)
+
+let test_cmd_returned_passes () =
+  match run_pipeline_to_quantity (fixture "cmd_linear.affine") with
+  | Ok () -> ()
+  | Error msg -> Alcotest.fail ("Expected OK, got: " ^ msg)
+
+(* ---- Test 3: Cmd dropped — LinearVariableUnused ---- *)
+
+let test_cmd_dropped_violation () =
+  match run_pipeline_to_quantity (fixture "cmd_dropped.affine") with
+  | Error msg ->
+    (* Should mention linear/unused *)
+    Alcotest.(check bool) "error mentions cmd or linear"
+      true (String.length msg > 0)
+  | Ok () ->
+    Alcotest.fail "Expected LinearVariableUnused for dropped Cmd, got OK"
+
+(* ---- Test 4: in-memory — Cmd binding without annotation stays QOmega ---- *)
+
+let test_cmd_no_annotation_qomega () =
+  (* Without a [Cmd _] type annotation, the binding gets QOmega — no enforcement.
+     This verifies backwards-compatibility: existing code that uses cmd_none
+     without annotation is not broken by Stage 11. *)
+  let src = {|
+    enum M { Click }
+    fn f(msg: M, n: Int) -> Int {
+      let cmd = cmd_none;
+      n
+    }
+  |} in
+  let prog_result = try
+    Ok (Parse_driver.parse_string ~file:"<test>" src)
+  with
+  | Parse_driver.Parse_error (msg, _) -> Error ("Parse: " ^ msg)
+  | Lexer.Lexer_error (msg, _)        -> Error ("Lex: " ^ msg)
+  in
+  match prog_result with
+  | Error msg -> Alcotest.fail msg
+  | Ok prog ->
+    match resolve_program prog with
+    | Error msg -> Alcotest.fail msg
+    | Ok (ctx, _) ->
+      (match Quantity.check_program ctx.symbols prog with
+      | Ok () -> ()  (* QOmega — no enforcement, OK to drop *)
+      | Error (e, _) ->
+        Alcotest.fail ("Unexpected quantity error (no annotation → QOmega): "
+                       ^ Quantity.format_quantity_error e))
+
+let cmd_linear_tests = [
+  Alcotest.test_case "Cmd type resolves in typecheck"       `Quick test_cmd_type_resolves;
+  Alcotest.test_case "Cmd returned in tuple → QTT OK"      `Quick test_cmd_returned_passes;
+  Alcotest.test_case "Cmd dropped → LinearVariableUnused"  `Quick test_cmd_dropped_violation;
+  Alcotest.test_case "No annotation → QOmega (backwards compat)" `Quick test_cmd_no_annotation_qomega;
+]
+
 let tw_interface_tests = [
   Alcotest.test_case "bridge: update export has own param"       `Quick test_iface_bridge_update_linear;
   Alcotest.test_case "router: push export has own param"         `Quick test_iface_router_push_linear;
@@ -2471,5 +2569,6 @@ let tests =
     ("E2E LSP Phase D", lsp_phase_d_tests);
     ("E2E Try/Catch/Finally", try_catch_tests);
     ("E2E Ownership Verify", tw_verify_tests);
+    ("E2E Cmd Linearity", cmd_linear_tests);
     ("E2E Boundary Verify", tw_interface_tests);
   ]

@@ -1,30 +1,16 @@
 // SPDX-License-Identifier: PMPL-1.0-or-later
-// Test exception handling with try/catch/finally
+// try/catch/finally example (parser-compatible)
 
-fn safe_divide(a: Int, b: Int) -> Int {
+fn full_try(x: Int) -> Int {
   try {
-    a / b
+    x * 3
   } catch {
-    DivisionByZero => -1
-  }
-}
-
-fn test_with_finally() -> Int {
-  try {
-    42
+    e => 0
   } finally {
-    println("Finally executed")
+    ()
   }
 }
 
-fn test_pattern_match() -> Int {
-  try {
-    let arr = [1, 2, 3];
-    arr[10]
-  } catch {
-    IndexOutOfBounds(idx, len) => {
-      println("Caught index out of bounds");
-      -1
-    }
-  }
+fn main() -> Int {
+  full_try(7)
 }

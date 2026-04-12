@@ -77,6 +77,9 @@ let create_context () : context =
   def "time_now";
   (* TEA runtime — The Elm Architecture interpreter loop *)
   def "tea_run";
+  (* Cmd Msg — linear side-effect obligation builtins (Stage 11) *)
+  def "cmd_none";
+  def "cmd_perform";
   ctx
 
 (** Record a use-site reference for a symbol (Phase C: find-references). *)

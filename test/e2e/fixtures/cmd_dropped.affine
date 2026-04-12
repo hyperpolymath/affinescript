@@ -1,0 +1,18 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell (hyperpolymath)
+//
+// Stage 11 — Cmd linearity: violation (Cmd dropped).
+//
+// The [Cmd ClickMsg] type annotation makes [cmd] linear (QOne).
+// The body returns only [count + 1] — [cmd] is dropped without use.
+// Expected outcome: quantity error LinearVariableUnused for [cmd].
+//
+// This is the compile-time guarantee: a forgotten side-effect is a
+// type error, not a silent behavioural bug.
+
+enum ClickMsg { Click, Hover }
+
+fn update_drop(msg: ClickMsg, count: Int) -> Int {
+  let cmd : Cmd[ClickMsg] = cmd_none;
+  count + 1
+}

@@ -311,7 +311,7 @@ let rec infer_kind (ctx : context) (ty : ty) : kind result =
     end
   | TCon name ->
     begin match name with
-      | "Array" | "Option" | "List" | "Vec" -> Ok (KArrow (KType, KType))
+      | "Array" | "Option" | "List" | "Vec" | "Cmd" -> Ok (KArrow (KType, KType))
       | "Result" -> Ok (KArrow (KType, KArrow (KType, KType)))
       | _ -> Ok KType
     end
@@ -1127,7 +1127,22 @@ let register_builtins (ctx : context) : unit =
   bind_var ctx "exit" (TArrow (ty_int, QOmega, ty_never, ESingleton "IO"));
   (* TEA runtime — accepts any record, returns unit with IO effect *)
   let tea_tv = fresh_tyvar 0 in
-  bind_var ctx "tea_run" (TArrow (tea_tv, QOmega, ty_unit, ESingleton "IO"))
+  bind_var ctx "tea_run" (TArrow (tea_tv, QOmega, ty_unit, ESingleton "IO"));
+  (* Cmd Msg — linear side-effect obligation type (Stage 11).
+     Cmd has kind * → *.
+     cmd_none : Cmd 'a — the no-op command; a linear value obligating zero IO.
+     cmd_perform : (unit ->{IO} unit) -> Cmd 'a — wraps an IO action as a Cmd.
+     Cmd values bound with a [Cmd _] type annotation are automatically
+     treated as QOne (linear) by the quantity checker. *)
+  let cmd_tv  = fresh_tyvar 0 in
+  let cmd_tv2 = fresh_tyvar 0 in
+  bind_var ctx "cmd_none"
+    (TApp (TCon "Cmd", [cmd_tv]));
+  bind_var ctx "cmd_perform"
+    (TArrow (TArrow (ty_unit, QOmega, ty_unit, ESingleton "IO"),
+             QOmega,
+             TApp (TCon "Cmd", [cmd_tv2]),
+             EPure))
 
 (** Check a top-level function declaration. *)
 let check_fn_decl (ctx : context) (fd : fn_decl) : unit result =

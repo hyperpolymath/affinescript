@@ -4,13 +4,22 @@
 :toclevels: 3
 :icons: font
 
-Development plan for AffineScript from current state (85% complete) to production-ready 1.0 release.
+Historical development plan from the January 2026 baseline.
+
+[IMPORTANT]
+====
+Status sync note (2026-04-12): This file contains historical planning text and
+is not the authoritative source for current feature readiness. Use
+`.machine_readable/6a2/STATE.a2ml` for live status (including affine/QTT
+wiring, borrow-checker gating, effect handling status, row polymorphism, and
+dependent/refinement progress).
+====
 
 toc::[]
 
-== Current Status (January 2026)
+== Current Status (January 2026 Baseline)
 
-**Overall Completion: 85%**
+**Overall Completion (historical baseline): 85%**
 
 === ✅ Completed Components
 

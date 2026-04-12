@@ -1,0 +1,23 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell (hyperpolymath)
+//
+// Stage 11 — Cmd linearity: correct usage.
+//
+// Demonstrates that a [Cmd Msg] binding annotated with the [Cmd _] type
+// is automatically treated as QOne (linear) by the quantity checker.
+// The Cmd is returned in the tuple — consumed exactly once — so the
+// quantity check passes.
+//
+// The AffineScript TEA guarantee: update must handle its Cmd obligation.
+// Forgetting to include the Cmd in the return value is a compile error.
+
+enum ClickMsg { Click, Hover }
+
+// update : ClickMsg -> Int -> (Int, Cmd ClickMsg)
+// Returns the new model paired with a no-op Cmd.
+// The Cmd ClickMsg binding is linear: it must appear in the return value.
+
+fn update(msg: ClickMsg, count: Int) -> (Int, Cmd[ClickMsg]) {
+  let cmd : Cmd[ClickMsg] = cmd_none;
+  (count + 1, cmd)
+}
