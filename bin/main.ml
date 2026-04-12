@@ -783,6 +783,146 @@ let verify_cmd =
   let info = Cmd.info "verify" ~doc ~man in
   Cmd.v info Term.(ret (const verify_file $ face_arg $ path_arg))
 
+(** {1 Stage 10: typed-wasm interface extraction subcommand} *)
+
+(** Print the ownership-annotated export interface of a generated bridge module.
+
+    Generates the selected module ([tea-bridge] or [router]) in-memory, extracts
+    its [affinescript.ownership] section, and prints the per-export ownership
+    contract: which parameters are [own] (Linear), [ref] (SharedBorrow), [mut]
+    (ExclBorrow), or plain [val] (Unrestricted).
+
+    This is the machine-readable boundary contract that any caller (JS bridge,
+    another Wasm module, or a future Wasm-to-Wasm linker) must honour to preserve
+    the typed-wasm Level 7/10 guarantees across the module boundary.
+
+    Usage: affinescript interface [--which tea-bridge|router|all] *)
+let interface_cmd_fn which =
+  let show_for name m =
+    let iface = Affinescript.Tw_interface.extract_exports m in
+    Format.printf "=== %s ===@." name;
+    Affinescript.Tw_interface.pp_interface Format.std_formatter iface;
+    Format.printf "@."
+  in
+  (match which with
+  | `TeaBridge ->
+    show_for "tea-bridge" (Affinescript.Tea_bridge.generate ())
+  | `Router ->
+    show_for "router" (Affinescript.Tea_router.generate ())
+  | `All ->
+    show_for "tea-bridge" (Affinescript.Tea_bridge.generate ());
+    show_for "router"     (Affinescript.Tea_router.generate ()));
+  `Ok ()
+
+(** {1 Stage 10: typed-wasm cross-module boundary verifier subcommand} *)
+
+(** Build a synthetic well-formed caller module that imports a single
+    function (type: [i32 → ()]) at import slot 0 and calls it exactly once
+    from its sole local function.
+
+    This is the minimal "correct caller" used to demonstrate that the
+    cross-module verifier accepts a Linear-param import called once per path.
+    The import is named [fn_name] and sourced from module [mod_name]. *)
+let make_linear_caller mod_name fn_name : Affinescript.Wasm.wasm_module =
+  let import = Affinescript.Wasm.{
+    i_module = mod_name;
+    i_name   = fn_name;
+    i_desc   = ImportFunc 0;
+  } in
+  let caller_fn = Affinescript.Wasm.{
+    f_type   = 0;
+    f_locals = [];
+    f_body   = [ I32Const 0l; Call 0 ];
+  } in
+  { (Affinescript.Wasm.empty_module ()) with
+    Affinescript.Wasm.types   = [{ ft_params  = [I32]; ft_results = [] }];
+    Affinescript.Wasm.imports = [import];
+    Affinescript.Wasm.funcs   = [caller_fn];
+  }
+
+(** Verify typed-wasm Level 7/10 cross-module boundary constraints.
+
+    Generates the selected callee module, extracts its ownership-annotated
+    export interface, then verifies a synthetic caller module against it.
+    The synthetic caller imports each Linear-param export and calls it exactly
+    once — this is the correct usage pattern that the verifier must accept.
+
+    For the [router] callee, additionally verifies that [fn_push]'s explicit
+    else-drop (Stage 9 fix) is reflected cleanly in the interface.
+
+    Exit 0 = no violations.  Exit 1 = violations found.
+
+    Usage: affinescript verify-bridge [--which tea-bridge|router|all] *)
+let verify_boundary_fn which =
+  let verify_one name callee_mod fn_name =
+    let iface = Affinescript.Tw_interface.extract_exports callee_mod in
+    let caller = make_linear_caller name fn_name in
+    Format.printf "=== %s — boundary check for '%s' ===@." name fn_name;
+    (match Affinescript.Tw_interface.verify_cross_module iface caller with
+    | Ok () ->
+      Affinescript.Tw_interface.pp_cross_report Format.std_formatter [];
+    | Error errs ->
+      Affinescript.Tw_interface.pp_cross_report Format.std_formatter errs)
+  in
+  (match which with
+  | `TeaBridge ->
+    verify_one "tea-bridge"
+      (Affinescript.Tea_bridge.generate ())
+      "affinescript_tea_update"
+  | `Router ->
+    verify_one "router"
+      (Affinescript.Tea_router.generate ())
+      "affinescript_router_push"
+  | `All ->
+    verify_one "tea-bridge"
+      (Affinescript.Tea_bridge.generate ())
+      "affinescript_tea_update";
+    verify_one "router"
+      (Affinescript.Tea_router.generate ())
+      "affinescript_router_push");
+  `Ok ()
+
+let which_arg =
+  let which = Arg.enum [
+    ("tea-bridge", `TeaBridge);
+    ("router",     `Router);
+    ("all",        `All);
+  ] in
+  Arg.(value & opt which `All & info ["which"]
+    ~docv:"MODULE"
+    ~doc:"Which bridge module to operate on: $(b,tea-bridge), $(b,router), or $(b,all) (default).")
+
+let interface_cmd =
+  let doc = "Print the ownership-annotated export interface of a generated bridge module" in
+  let man = [
+    `S "DESCRIPTION";
+    `P "Extracts the $(b,affinescript.ownership) custom section from the selected \
+        generated Wasm module and prints the per-export ownership contract.";
+    `P "Parameters are annotated: $(b,own) = Linear (consumed exactly once), \
+        $(b,ref) = SharedBorrow (read-only), $(b,mut) = ExclBorrow (exclusive \
+        mutable reference), $(b,val) = Unrestricted (unconstrained).";
+    `P "This is the typed-wasm boundary contract that any caller — JS bridge, \
+        a Wasm linker, or a future multi-module composition tool — must honour \
+        to preserve Level 7/10 guarantees across the module boundary.";
+  ] in
+  let info = Cmd.info "interface" ~doc ~man in
+  Cmd.v info Term.(ret (const interface_cmd_fn $ which_arg))
+
+let verify_bridge_cmd =
+  let doc = "Verify cross-module typed-wasm boundary constraints" in
+  let man = [
+    `S "DESCRIPTION";
+    `P "Generates the selected bridge module, extracts its ownership-annotated \
+        export interface, and verifies that a well-formed synthetic caller module \
+        (one that imports a Linear-param export and calls it exactly once per \
+        execution path) passes Level 7/10 cross-module boundary checking.";
+    `P "This complements the intra-module $(b,verify) subcommand by checking the \
+        boundary between the AffineScript-generated module and its callers.";
+    `P "Exit 0 = boundary clean.  Exit 1 = violations found.";
+  ] in
+  let info = Cmd.info "verify-bridge" ~doc ~man in
+  Cmd.v info Term.(ret (const verify_boundary_fn $ which_arg))
+
 let repl_cmd =
   let doc = "Start the interactive REPL" in
   let info = Cmd.info "repl" ~doc in
@@ -994,6 +1134,7 @@ let default_cmd =
     lex_cmd; parse_cmd; check_cmd; eval_cmd; repl_cmd; compile_cmd;
     fmt_cmd; lint_cmd;
     tea_bridge_cmd; router_bridge_cmd; verify_cmd;
+    interface_cmd; verify_bridge_cmd;
     hover_cmd; goto_def_cmd; complete_cmd; server_cmd;
     preview_python_cmd; preview_js_cmd; preview_pseudocode_cmd
   ]

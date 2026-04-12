@@ -2219,6 +2219,231 @@ let tw_verify_tests = [
 ]
 
 (* ============================================================================
+   Section: Stage 10 — Tw_interface (boundary verifier)
+   ============================================================================
+
+   Verify that [Tw_interface.extract_exports] and
+   [Tw_interface.verify_cross_module] correctly:
+
+   1. Extract ownership-annotated export interfaces from generated modules.
+   2. Accept well-formed callers (Linear-param import called once per path).
+   3. Reject callers that duplicate or conditionally drop Linear-param calls.
+*)
+
+(* ---- Test 1: tea-bridge export interface has update with Linear param ---- *)
+
+let test_iface_bridge_update_linear () =
+  let m = Tea_bridge.generate () in
+  let iface = Tw_interface.extract_exports m in
+  let update_fi =
+    List.find_opt (fun fi -> fi.Tw_interface.fi_name = "affinescript_update") iface
+  in
+  match update_fi with
+  | None -> Alcotest.fail "affinescript_update not found in interface"
+  | Some fi ->
+    let has_own = List.mem Codegen.Linear fi.Tw_interface.fi_param_kinds in
+    Alcotest.(check bool) "affinescript_update has own (Linear) param" true has_own
+
+(* ---- Test 2: router export interface has push with Linear param ---- *)
+
+let test_iface_router_push_linear () =
+  let m = Tea_router.generate () in
+  let iface = Tw_interface.extract_exports m in
+  let push_fi =
+    List.find_opt
+      (fun fi -> fi.Tw_interface.fi_name = "affinescript_router_push") iface
+  in
+  match push_fi with
+  | None -> Alcotest.fail "affinescript_router_push not found in interface"
+  | Some fi ->
+    let has_own = List.mem Codegen.Linear fi.Tw_interface.fi_param_kinds in
+    Alcotest.(check bool) "affinescript_router_push has own (Linear) param" true has_own
+
+(* ---- Test 3: router resize has two Linear params ---- *)
+
+let test_iface_router_resize_two_linear () =
+  let m = Tea_router.generate () in
+  let iface = Tw_interface.extract_exports m in
+  let resize_fi =
+    List.find_opt
+      (fun fi -> fi.Tw_interface.fi_name = "affinescript_router_resize") iface
+  in
+  match resize_fi with
+  | None -> Alcotest.fail "affinescript_router_resize not found in interface"
+  | Some fi ->
+    let n_linear =
+      List.length (List.filter (( = ) Codegen.Linear) fi.Tw_interface.fi_param_kinds)
+    in
+    Alcotest.(check int) "resize has 2 Linear params" 2 n_linear
+
+(* ---- Test 4: cross-module — caller calls Linear import once → OK ---- *)
+
+let test_cross_call_once_ok () =
+  (* Callee: a module with a single Linear-param export named "consume". *)
+  let callee =
+    let m = mk_single_func_module [Wasm.LocalGet 0; Wasm.Drop] in
+    let export = Wasm.{ e_name = "consume"; e_desc = ExportFunc 0 } in
+    let annots = Codegen.build_ownership_section [(0, [Codegen.Linear], Codegen.Unrestricted)] in
+    { m with
+      Wasm.exports        = [export];
+      Wasm.custom_sections = [("affinescript.ownership", annots)];
+    }
+  in
+  let iface = Tw_interface.extract_exports callee in
+  (* Caller: imports "consume" at slot 0, calls it once. *)
+  let caller =
+    let import = Wasm.{ i_module = "test"; i_name = "consume"; i_desc = ImportFunc 0 } in
+    let fn = Wasm.{ f_type = 0; f_locals = []; f_body = [Wasm.I32Const 0l; Wasm.Call 0] } in
+    { (Wasm.empty_module ()) with
+      Wasm.types   = [{ Wasm.ft_params = [Wasm.I32]; ft_results = [] }];
+      Wasm.imports = [import];
+      Wasm.funcs   = [fn];
+    }
+  in
+  (match Tw_interface.verify_cross_module iface caller with
+  | Ok () -> ()
+  | Error errs ->
+    let msg = String.concat "; " (List.map (fun e ->
+      Format.asprintf "%a" Tw_interface.pp_cross_error e) errs) in
+    Alcotest.fail ("Expected OK, got violations: " ^ msg))
+
+(* ---- Test 5: cross-module — caller calls Linear import twice → violation ---- *)
+
+let test_cross_call_twice_violation () =
+  let callee =
+    let m = mk_single_func_module [Wasm.LocalGet 0; Wasm.Drop] in
+    let export = Wasm.{ e_name = "consume"; e_desc = ExportFunc 0 } in
+    let annots = Codegen.build_ownership_section [(0, [Codegen.Linear], Codegen.Unrestricted)] in
+    { m with
+      Wasm.exports        = [export];
+      Wasm.custom_sections = [("affinescript.ownership", annots)];
+    }
+  in
+  let iface = Tw_interface.extract_exports callee in
+  (* Caller: calls "consume" twice → LinearImportCalledMultiple. *)
+  let caller =
+    let import = Wasm.{ i_module = "test"; i_name = "consume"; i_desc = ImportFunc 0 } in
+    let fn = Wasm.{
+      f_type = 0; f_locals = [];
+      f_body = [Wasm.I32Const 0l; Wasm.Call 0; Wasm.I32Const 1l; Wasm.Call 0];
+    } in
+    { (Wasm.empty_module ()) with
+      Wasm.types   = [{ Wasm.ft_params = [Wasm.I32]; ft_results = [] }];
+      Wasm.imports = [import];
+      Wasm.funcs   = [fn];
+    }
+  in
+  (match Tw_interface.verify_cross_module iface caller with
+  | Ok () ->
+    Alcotest.fail "Expected LinearImportCalledMultiple, got OK"
+  | Error errs ->
+    let has_dup = List.exists (function
+      | Tw_interface.LinearImportCalledMultiple _ -> true
+      | _ -> false) errs in
+    Alcotest.(check bool) "duplicate import call → LinearImportCalledMultiple" true has_dup)
+
+(* ---- Test 6: cross-module — caller calls Linear import in one branch only → violation ---- *)
+
+let test_cross_call_partial_violation () =
+  let callee =
+    let m = mk_single_func_module [Wasm.LocalGet 0; Wasm.Drop] in
+    let export = Wasm.{ e_name = "consume"; e_desc = ExportFunc 0 } in
+    let annots = Codegen.build_ownership_section [(0, [Codegen.Linear], Codegen.Unrestricted)] in
+    { m with
+      Wasm.exports        = [export];
+      Wasm.custom_sections = [("affinescript.ownership", annots)];
+    }
+  in
+  let iface = Tw_interface.extract_exports callee in
+  (* Caller: If { Call 0 } { [] } → dropped on else path. *)
+  let caller =
+    let import = Wasm.{ i_module = "test"; i_name = "consume"; i_desc = ImportFunc 0 } in
+    let fn = Wasm.{
+      f_type = 0; f_locals = [];
+      f_body = [
+        Wasm.I32Const 1l;
+        Wasm.If (Wasm.BtEmpty,
+          [Wasm.I32Const 0l; Wasm.Call 0],
+          []);
+      ];
+    } in
+    { (Wasm.empty_module ()) with
+      Wasm.types   = [{ Wasm.ft_params = [Wasm.I32]; ft_results = [] }];
+      Wasm.imports = [import];
+      Wasm.funcs   = [fn];
+    }
+  in
+  (match Tw_interface.verify_cross_module iface caller with
+  | Ok () ->
+    Alcotest.fail "Expected LinearImportDroppedOnSomePath, got OK"
+  | Error errs ->
+    let has_partial = List.exists (function
+      | Tw_interface.LinearImportDroppedOnSomePath _ -> true
+      | _ -> false) errs in
+    Alcotest.(check bool) "partial-path call → LinearImportDroppedOnSomePath" true has_partial)
+
+(* ---- Test 7: generated bridge modules verify clean at boundary ---- *)
+
+let test_bridge_boundary_clean () =
+  (* tea-bridge: affinescript_update has a Linear msg param.
+     Synthetic caller calls it once → clean. *)
+  let callee_iface = Tw_interface.extract_exports (Tea_bridge.generate ()) in
+  let caller =
+    let import = Wasm.{
+      i_module = "env";
+      i_name   = "affinescript_update";
+      i_desc   = ImportFunc 0;
+    } in
+    let fn = Wasm.{ f_type = 0; f_locals = []; f_body = [Wasm.I32Const 0l; Wasm.Call 0] } in
+    { (Wasm.empty_module ()) with
+      Wasm.types   = [{ Wasm.ft_params = [Wasm.I32]; ft_results = [] }];
+      Wasm.imports = [import];
+      Wasm.funcs   = [fn];
+    }
+  in
+  (match Tw_interface.verify_cross_module callee_iface caller with
+  | Ok () -> ()
+  | Error errs ->
+    let msg = String.concat "; " (List.map (fun e ->
+      Format.asprintf "%a" Tw_interface.pp_cross_error e) errs) in
+    Alcotest.fail ("Bridge boundary check failed: " ^ msg))
+
+let test_router_boundary_clean () =
+  (* router: affinescript_router_push has a Linear screen_tag param.
+     Synthetic caller calls it once → clean. *)
+  let callee_iface = Tw_interface.extract_exports (Tea_router.generate ()) in
+  let caller =
+    let import = Wasm.{
+      i_module = "router";
+      i_name   = "affinescript_router_push";
+      i_desc   = ImportFunc 0;
+    } in
+    let fn = Wasm.{ f_type = 0; f_locals = []; f_body = [Wasm.I32Const 1l; Wasm.Call 0] } in
+    { (Wasm.empty_module ()) with
+      Wasm.types   = [{ Wasm.ft_params = [Wasm.I32]; ft_results = [] }];
+      Wasm.imports = [import];
+      Wasm.funcs   = [fn];
+    }
+  in
+  (match Tw_interface.verify_cross_module callee_iface caller with
+  | Ok () -> ()
+  | Error errs ->
+    let msg = String.concat "; " (List.map (fun e ->
+      Format.asprintf "%a" Tw_interface.pp_cross_error e) errs) in
+    Alcotest.fail ("Router boundary check failed: " ^ msg))
+
+let tw_interface_tests = [
+  Alcotest.test_case "bridge: update export has own param"       `Quick test_iface_bridge_update_linear;
+  Alcotest.test_case "router: push export has own param"         `Quick test_iface_router_push_linear;
+  Alcotest.test_case "router: resize export has 2 own params"    `Quick test_iface_router_resize_two_linear;
+  Alcotest.test_case "cross: call once → OK"                     `Quick test_cross_call_once_ok;
+  Alcotest.test_case "cross: call twice → LinearImportCalledMultiple" `Quick test_cross_call_twice_violation;
+  Alcotest.test_case "cross: call one-arm → LinearImportDroppedOnSomePath" `Quick test_cross_call_partial_violation;
+  Alcotest.test_case "bridge boundary: clean caller → OK"        `Quick test_bridge_boundary_clean;
+  Alcotest.test_case "router boundary: clean caller → OK"        `Quick test_router_boundary_clean;
+]
+
+(* ============================================================================
    Test Suite Export
    ============================================================================ *)
 
@@ -2246,4 +2471,5 @@ let tests =
     ("E2E LSP Phase D", lsp_phase_d_tests);
     ("E2E Try/Catch/Finally", try_catch_tests);
     ("E2E Ownership Verify", tw_verify_tests);
+    ("E2E Boundary Verify", tw_interface_tests);
   ]
