@@ -11,7 +11,7 @@ From the repo root:
 ```
 
 The script:
-- compiles every `tests/codegen/*.as` file to `tests/codegen/*.wasm`
+- compiles every `tests/codegen/*.affine` file to `tests/codegen/*.wasm`
 - runs any `tests/codegen/*.mjs` harnesses
 
 ## Notes

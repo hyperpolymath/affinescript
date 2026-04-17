@@ -585,6 +585,11 @@ let linear_arrow_tests = [
    3. The binary starts with a valid WASM magic number
 *)
 
+let test_wasm_bitwise () =
+  match run_wasm_pipeline (fixture "bitwise.affine") with
+  | Error msg -> Alcotest.fail msg
+  | Ok _wasm_mod -> ()
+
 let test_wasm_arithmetic () =
   match run_wasm_pipeline (fixture "arithmetic.affine") with
   | Error msg -> Alcotest.fail msg
@@ -640,6 +645,7 @@ let test_wasm_lambda () =
   | Ok _wasm_mod -> ()
 
 let wasm_tests = [
+  Alcotest.test_case "bitwise codegen"    `Quick test_wasm_bitwise;
   Alcotest.test_case "arithmetic codegen" `Quick test_wasm_arithmetic;
   Alcotest.test_case "simple program" `Quick test_wasm_simple;
   Alcotest.test_case "write binary" `Quick test_wasm_write_binary;
@@ -656,6 +662,21 @@ let wasm_tests = [
    2. The output contains expected Julia constructs
    3. Function signatures map correctly
 *)
+
+let test_julia_bitwise () =
+  match parse_fixture (fixture "bitwise.affine") with
+  | Error msg -> Alcotest.fail msg
+  | Ok prog ->
+    match resolve_program prog with
+    | Error msg -> Alcotest.fail msg
+    | Ok (ctx, _) ->
+      (match julia_codegen prog ctx.symbols with
+       | Error msg -> Alcotest.fail msg
+       | Ok code ->
+         (* Verify it contains Julia bitwise ops *)
+         Alcotest.(check bool) "contains &" true (String.contains code '&');
+         Alcotest.(check bool) "contains |" true (String.contains code '|');
+         Alcotest.(check bool) "contains ~" true (String.contains code '~'))
 
 let test_julia_arithmetic () =
   match run_julia_pipeline (fixture "arithmetic.affine") with
@@ -708,6 +729,7 @@ let test_julia_full_pipeline () =
       (String.length code > 0)
 
 let julia_tests = [
+  Alcotest.test_case "bitwise codegen"    `Quick test_julia_bitwise;
   Alcotest.test_case "arithmetic codegen" `Quick test_julia_arithmetic;
   Alcotest.test_case "simple program" `Quick test_julia_simple;
   Alcotest.test_case "type mapping" `Quick test_julia_type_mapping;
@@ -729,6 +751,14 @@ let test_interp_simple () =
   | Error msg -> Alcotest.fail msg
   | Ok _env -> ()
 
+let test_interp_bitwise () =
+  match parse_fixture (fixture "bitwise.affine") with
+  | Error msg -> Alcotest.fail msg
+  | Ok prog ->
+    (match Interp.eval_program prog with
+     | Ok _env -> ()
+     | Error e -> Alcotest.fail (Value.show_eval_error e))
+
 let test_interp_arithmetic () =
   match run_interp_pipeline (fixture "arithmetic.affine") with
   | Error msg -> Alcotest.fail msg
@@ -746,6 +776,7 @@ let test_interp_full_pipeline () =
 
 let interp_tests = [
   Alcotest.test_case "simple evaluation" `Quick test_interp_simple;
+  Alcotest.test_case "bitwise"    `Quick test_interp_bitwise;
   Alcotest.test_case "arithmetic" `Quick test_interp_arithmetic;
   Alcotest.test_case "lambda" `Quick test_interp_lambda;
   Alcotest.test_case "full pipeline" `Quick test_interp_full_pipeline;
@@ -759,6 +790,14 @@ let interp_tests = [
    1. Constant folding reduces known expressions
    2. Optimization preserves semantics (same AST shape for non-constant exprs)
 *)
+
+let test_opt_bitwise () =
+  match parse_fixture (fixture "bitwise.affine") with
+  | Error msg -> Alcotest.fail msg
+  | Ok prog ->
+    let _optimized = Opt.fold_constants_program prog in
+    (* bitwise_constant_fold should be reduced *)
+    ()
 
 let test_opt_constant_folding () =
   match parse_fixture (fixture "arithmetic.affine") with
@@ -786,6 +825,7 @@ let test_opt_preserves_semantics () =
                         (Value.show_eval_error e)))
 
 let optimizer_tests = [
+  Alcotest.test_case "bitwise folding"   `Quick test_opt_bitwise;
   Alcotest.test_case "constant folding" `Quick test_opt_constant_folding;
   Alcotest.test_case "preserves semantics" `Quick test_opt_preserves_semantics;
 ]

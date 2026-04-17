@@ -52,10 +52,10 @@ golden-path:
     dune build
     @echo "2. Running tests..."
     dune runtest
-    @echo "3. Testing lexer on hello.as..."
-    dune exec affinescript -- lex examples/hello.as
-    @echo "4. Testing parser on ownership.as..."
-    dune exec affinescript -- parse examples/ownership.as
+    @echo "3. Testing lexer on hello.affine..."
+    dune exec affinescript -- lex examples/hello.affine
+    @echo "4. Testing parser on ownership.affine..."
+    dune exec affinescript -- parse examples/ownership.affine
     @echo "=== Golden Path Complete ==="
 
 # Prepare a release

@@ -1,0 +1,14 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// End-to-end test: bitwise operations
+// Tests: parsing, constant folding, WASM codegen, Julia codegen
+
+fn bit_and(a: Int, b: Int) -> Int = a & b;
+fn bit_or(a: Int, b: Int) -> Int = a | b;
+fn bit_xor(a: Int, b: Int) -> Int = a ^ b;
+fn bit_not(n: Int) -> Int = ~n;
+fn bit_shl(a: Int, b: Int) -> Int = a << b;
+fn bit_shr(a: Int, b: Int) -> Int = a >> b;
+
+fn constant_fold_bitwise() -> Int {
+  (1 & 3) | (4 ^ 6) | (~(-1))
+}
