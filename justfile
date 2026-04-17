@@ -39,7 +39,7 @@ conformance:
 
 # Run format check (lint)
 lint:
-    dune fmt --check
+    dune fmt --preview
 
 # Format code in place
 fmt:
@@ -136,7 +136,7 @@ _blitz-security:
 
 _blitz-lint:
     @echo "── [5/6] Lint + Format ──────────────────────"
-    dune fmt --check 2>&1 || echo "    (format diffs present — run: just fmt)"
+    dune fmt --preview 2>&1 || echo "    (format diffs present — run: just fmt)"
 
 _blitz-docs:
     @echo "── [6/6] Doc build ──────────────────────────"

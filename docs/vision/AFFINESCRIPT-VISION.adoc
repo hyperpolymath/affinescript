@@ -1,0 +1,367 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+= AffineScript: Design Vision
+Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+:toc:
+:toclevels: 3
+:icons: font
+
+== What AffineScript Is
+
+AffineScript is a *web programming language*. Its purpose is to replace the
+fragmented x-script ecosystem — JavaScript, TypeScript, ReScript, CoffeeScript,
+ActionScript, and their successors — with a single language that solves the
+problems they collectively fail to solve, without inheriting their compromises.
+
+It compiles to *typed WebAssembly*. Not JavaScript. Not JavaScript-with-types.
+WebAssembly, where the type guarantees survive into the runtime.
+
+== The Core Identity
+
+AffineScript is *affine-first*. This is its permanent resting state, not a
+stepping stone toward something stricter. A resource can be used at most once
+— that is the natural condition of the language. Unrestricted use is the
+explicit opt-in. Linear (exactly once, must be used) is a stricter annotation
+available when needed.
+
+This is different from Ephapax, where affine is the enabler of linear.
+In AffineScript, affine IS the goal. The language rests here.
+
+== What Is Wrong With X-Scripts
+
+The entire x-script world has six unsolved problems:
+
+[cols="1,3", options="header"]
+|===
+| Problem | What it looks like
+
+| *Null is a lie*
+| `string \| null \| undefined` — two different nothings. `?.` and `??` are
+  band-aids that confirm the wound. `strictNullChecks` is opt-in.
+
+| *Mutation is invisible*
+| Everything is mutable by default. You pass an object into a function and it
+  may come back changed, or something may hold a reference and change it later.
+  No type system has a model for this.
+
+| *Errors throw sideways*
+| `throw` accepts anything. `catch (e: unknown)` means you know nothing.
+  Every function that can fail either lies in its type signature or forces
+  untyped exception handling.
+
+| *Async is bolted on in layers*
+| Callbacks → Promises → async/await → hooks → signals. Each layer was added
+  because the previous one was insufficient. None composes. `async` infects
+  everything it touches.
+
+| *Complex types become unreadable*
+| TypeScript generics with `infer`, conditional types, and mapped types produce
+  code nobody can read six months later.
+
+| *The runtime is still JavaScript*
+| Types are erased. Runtime errors that should be compile errors still happen.
+  The type system floats above the execution, not in it.
+|===
+
+== How AffineScript Answers Each
+
+[cols="1,2,2", options="header"]
+|===
+| Problem | X-Script answer | AffineScript answer
+
+| Null
+| `T \| null \| undefined`, `?.`, `??`
+| `Option[T]`. No null. No undefined. No two different nothings.
+
+| Mutation
+| Nothing. `const` does not help. `readonly` is partial.
+| `own`/`ref`/`mut` as surface syntax for quantity annotations. Ownership
+  is in the type. You know from the signature what a function does.
+
+| Errors
+| Untyped `throw`/`catch`
+| `Result[T, E]`. Errors are in the return type. Nothing is hidden.
+
+| Async/effects
+| async/await + hooks + observables (incompatible)
+| Algebraic effects. One model for all of: DOM, fetch, localStorage, timers,
+  websockets, state. Composable by design.
+
+| Complex types
+| `infer`, conditional types, mapped types
+| Row polymorphism. `{ name: String, ..r }` accepts any record with a name
+  field. Structural, readable, compositional.
+
+| Runtime
+| Types erased at runtime
+| Typed WASM. Types survive into the runtime. The guarantees are real.
+|===
+
+== The Type System
+
+=== Affine-First
+
+Resources are affine by default: used at most once. This prevents the entire
+class of bugs where a reference is aliased and mutated through multiple paths.
+
+[source]
+----
+own T    — caller transfers ownership (affine: must not use after)
+ref T    — borrowed view, read-only (unrestricted: can use many times)
+mut T    — exclusive mutable access (affine: one writer, enforced)
+----
+
+These are surface syntax for the underlying quantity annotation system (QTT).
+There is no separate borrow checker. The affine type system handles it.
+
+=== Structural / Row-Polymorphic
+
+Records are structural, not nominal. A function that operates on
+`{ x: Int, ..r }` accepts any record with an `x` field. Type aliases give
+names to shapes — they do not create new nominal types.
+
+[source]
+----
+// Accepts any record that has a name field — nothing else required
+fn get_name[..r](obj: { name: String, ..r }) -> String = obj.name
+
+// Type alias — a name for a shape, not a new nominal type
+type point = { x: Int, y: Int }
+----
+
+This fits the web naturally. JSON is structural. APIs return open shapes.
+Row polymorphism models web data correctly without the complexity of
+TypeScript's mapped and conditional types.
+
+=== Algebraic Effects
+
+The web is effects. Every interaction with the browser — reading the DOM,
+making a network call, writing to storage, receiving a timer event — is an
+effect. AffineScript gives all of these a single, composable model.
+
+[source]
+----
+effect Http {
+  fn get(url: String) -> Response;
+  fn post(url: String, body: String) -> Response;
+}
+
+effect Async {
+  fn await[T](p: Promise[T]) -> T;
+}
+
+// Effects are in the type signature. Compose freely.
+fn fetch_user(id: Int) -{Http + Async}-> User {
+  let resp = Http.get("/users/" ++ show(id));
+  Async.await(resp.json())
+}
+----
+
+The handler — installed at the boundary of your application — is the affine
+resource. Individual invocations are capability uses. No `async` keyword
+contamination. No incompatible effect libraries. One model.
+
+=== No Null, Typed Errors
+
+[source]
+----
+// Nothing is hidden
+fn divide(a: Int, b: Int) -> Result[Int, DivisionByZero] {
+  if b == 0 { Err(DivisionByZero) } else { Ok(a / b) }
+}
+
+// No null, no undefined
+fn find_user(id: Int) -> Option[User]
+----
+
+== Faces Architecture
+
+AffineScript has a single core language with multiple *faces* — syntax sugar
+layers that present the same semantics in different surface styles.  Every face
+compiles through the same type checker and the same backends.
+
+[cols="1,2,2", options="header"]
+|===
+| Face | Surface syntax | Entry point
+
+| *AffineScript (default)*
+| Native AffineScript syntax
+| `.afs` files
+
+| *Python face (RattleScript)*
+| Python-flavoured syntax — `def`, `class`, indentation, Python idioms
+| `.rattle` files — face auto-inferred by `resolve_face`
+
+| *JS face*
+| JS/TypeScript-adjacent syntax — familiar to existing web developers
+| `--face js`
+
+| *Pseudocode face*
+| Simplified pseudocode syntax — for teaching and specification
+| `--face pseudocode`
+|===
+
+The faces are not different languages.  They are entry points.  A Python
+programmer writing `.rattle` files is writing AffineScript with a Python-shaped
+front door.  The type system, the ownership semantics, the algebraic effects, the
+WASM output — all identical.
+
+=== RattleScript
+
+RattleScript is the Python face packaged as a branded standalone distribution.
+It has its own GitHub repo (`hyperpolymath/rattlescript`) with AffineScript as a
+git submodule, its own `.rattle` file extension, and a rattlesnake mascot.
+
+Python programmers are prolific, creative, and often frustrated.  They have
+excellent syntax intuitions and they have built extraordinary things — but Python
+has never truly cracked the web.  It has been stuck on the server side, or
+shoehorned in via Pyodide and similar wrappers that do not feel native.  The web
+stays JavaScript-shaped and Python programmers stay on the outside of it.
+
+RattleScript is the bridge that changes this.  A Python programmer writing
+`.rattle` files is writing in syntax they already know.  But the code they are
+writing has affine resource semantics, a typed effect system, and compiles to
+typed WebAssembly that runs natively in the browser with no interpreter in the
+way.  They get:
+
+* The web — genuinely, as a first-class target
+* Safety guarantees stronger than anything Python offers at runtime
+* A path toward mastery of affine resource semantics, learned gradually through
+  syntax that does not feel foreign
+
+The jump from RattleScript to full AffineScript syntax is small and motivated —
+by the time a programmer has understood *why* the type system works the way it
+does, the native syntax feels natural.  RattleScript is not a ceiling; it is a
+well-designed entrance hall.
+
+All face logic lives in `lib/python_face.ml` and `lib/face.ml` in the AffineScript
+compiler.  The RattleScript repo contains branding, the thin Rust wrapper, and
+examples.
+
+=== The JS Face: A Home for the Displaced
+
+There is a whole community of programmers who knew, long before TypeScript
+existed, that JavaScript was broken.  They saw the problem clearly and reached
+for better tools:
+
+* *CoffeeScript* — cleaner syntax, less noise, but no types; the underlying
+  platform never changed
+* *PureScript* — Haskell on the web, genuinely typed, genuinely principled;
+  but the ecosystem stayed thin and the ceremony steep
+* *Elm* — beautiful architecture, strong guarantees, the best error messages in
+  the industry; but the language closed in on itself rather than opening up
+* *ClojureScript* — dynamic, expressive, the REPL as first-class tool; runtime
+  errors still happen because the type story never arrived
+* *TypeScript* — supposed to be the answer; instead just moved the problem
+  upstairs and called the ceiling "any"
+
+These programmers did not fail.  Their diagnosis was correct.  The tools were
+not ready to honour it.
+
+The JS face of AffineScript is for them.  Syntax that is legible to anyone who
+has written modern JavaScript, but underneath it: a type system that actually
+holds, resource semantics that actually track, effects that actually compose, and
+a runtime (typed WASM) where the guarantees are not erased.  The thing they were
+looking for when they left JavaScript — or when they stayed but felt the
+compromise every day — is here.
+
+The jump from CoffeeScript or PureScript muscle memory to AffineScript's JS face
+is deliberately small.  The jump in what the language gives you is enormous.
+
+=== The Pseudocode Face: A Fine Place to Start
+
+Pseudocode is the language every programmer already speaks.  It lives on
+whiteboards, in notebooks, in comments above code that describes what the code
+*should* do.  It is how people think before they translate thinking into a
+language with rules.
+
+The problem with pseudocode is that it dies.  You write the algorithm, you
+translate it, and the pseudocode is thrown away — inert, un-runnable,
+un-checkable.  The mental model lives in your head.  The code lives elsewhere.
+The gap between them is where bugs are born.
+
+The pseudocode face of AffineScript closes that gap.  You write the algorithm
+in the style you were already using — plain, readable, close to English —
+and it type-checks and runs.  The pseudocode is the program.  There is nothing
+to translate.
+
+For learners, this is the difference between pseudocode as a stepping stone
+(thrown away when "real" programming begins) and pseudocode as a starting point
+in a language you will grow into.  *This is a fine place to start.* The face
+you enter through does not constrain the depths you can reach.  A learner who
+begins writing pseudocode-face AffineScript is already writing programs with
+sound type theory and affine resource semantics — they just do not know it yet.
+The language will show them when they are ready.
+
+=== AffineScript Is for Everyone Who Saw Through the Compromise
+
+The faces exist because the problem with the x-script ecosystem is not that
+its programmers were wrong.  They were right.  The languages around them were
+the problem.
+
+Python programmers who wanted the web got shoebox frameworks and
+server-side workarounds.  CoffeeScript programmers who wanted clean syntax
+got abandoned.  PureScript programmers who wanted types got ecosystem
+isolation.  Pseudocode writers who wanted to run their ideas got told to learn
+a real language first.
+
+AffineScript is the language where each of those communities finds that their
+instincts were correct, the ground is solid, and they did not have to wait for
+anyone else to validate them.  Different doors, same house.  The house is well-built.
+
+== Compilation Targets
+
+*Primary:* WasmGC (typed WebAssembly). The compiler produces WASM modules where
+the type information survives into the runtime. This is the right target for the
+next generation of web applications, browser games, and edge compute.
+
+*Wasm 1.0 backend:* Also available (`codegen.ml`) for environments that do not
+yet support WasmGC. Output runs on any WASM runtime — browsers, Wasmtime/Wasmer,
+WASM3, embedded runtimes, Cloudflare Workers, Fastly Compute.
+
+*Additional backends:* `native_backend.ml`, `audio_kernel.ml`, `gpu_backend.ml`
+for non-browser targets.
+
+A thin JavaScript interop layer exists for calling Web APIs and for incremental
+adoption alongside TypeScript/ReScript codebases, but it is interop — not the
+target.
+
+== What AffineScript Is NOT
+
+* Not a JavaScript variant. Not "TypeScript with better types." A clean break.
+* Not Rust for the web. Rust's borrow checker is a solution to a problem
+  AffineScript does not have (because it has affine types instead).
+* Not a functional-programming language that happens to have a WASM backend.
+  It is a web language that happens to have a sound type system.
+* Not Ephapax. Ephapax is affine-as-enabler-of-linear. AffineScript is
+  affine-as-home. Different purpose, different audience, different character.
+
+== Relationship to Ephapax
+
+Independent. Neither language constrains the other's design.
+
+They converge at typed WebAssembly. An AffineScript module and an Ephapax
+module compiled to typed WASM can interoperate at the binary level — because
+they speak the same bytecode, with agreed type layout conventions.
+
+The aggregate library lives at that convergence point: shared WASM-level
+infrastructure (ABI conventions, stdlib types in typed WASM, linking
+conventions) that neither language owns but both can consume.
+
+== Current State
+
+The compiler is in alpha. It is OCaml-based, passes 126+ tests, and is in
+active use:
+
+* *Stages 1–6 complete* — QTT enforcement, ownership custom section,
+  TEA stdlib (`tea_run`, `Cmd`, `Sub`, `Html`), JS/WASM bridge, screen port,
+  router integration (8-slot back-stack, popup/dismiss/resize)
+* *IDApTIK integration live* — `AffineTEA.js`, `AffineTEA.res`,
+  `AffineTEARouter.js`, `AffineTEARouter.res`.  `router.wasm` (915B) running
+  and validated end-to-end via Node.js
+* *Multiple backends* — `wasm_backend.ml` (WasmGC), `codegen.ml` (Wasm 1.0),
+  `native_backend.ml`, `audio_kernel.ml`, `gpu_backend.ml`
+* *Faces* — Python (RattleScript), JS, and pseudocode faces all ship with the
+  compiler; face auto-inferred from file extension
+
+The design vision above is what the language *is*, not a plan for what it will
+become.  The compiler implements it.
