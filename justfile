@@ -1,5 +1,5 @@
-# SPDX-License-Identifier: PMPL-1.0-or-later
-# (MPL-2.0 is the automatic legal fallback until PMPL is formally recognised)
+# SPDX-License-Identifier: MPL-2.0
+# Palimpsest principles apply as an overlay policy; legal baseline is MPL-2.0.
 # SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 # justfile — hyperpolymath standard task runner for AffineScript
 
