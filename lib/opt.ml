@@ -26,6 +26,11 @@ let rec fold_constants_expr (expr : expr) : expr =
       | OpLe -> ExprLit (LitBool (a <= b, Span.dummy))
       | OpGt -> ExprLit (LitBool (a > b, Span.dummy))
       | OpGe -> ExprLit (LitBool (a >= b, Span.dummy))
+      | OpBitAnd -> ExprLit (LitInt (a land b, Span.dummy))
+      | OpBitOr -> ExprLit (LitInt (a lor b, Span.dummy))
+      | OpBitXor -> ExprLit (LitInt (a lxor b, Span.dummy))
+      | OpShl -> ExprLit (LitInt (a lsl b, Span.dummy))
+      | OpShr -> ExprLit (LitInt (a lsr b, Span.dummy))
       | _ -> expr  (* Don't fold other ops or division by zero *)
     end
 
@@ -44,6 +49,9 @@ let rec fold_constants_expr (expr : expr) : expr =
 
   | ExprUnary (OpNot, ExprLit (LitBool (b, _))) ->
     ExprLit (LitBool (not b, Span.dummy))
+
+  | ExprUnary (OpBitNot, ExprLit (LitInt (n, _))) ->
+    ExprLit (LitInt (lnot n, Span.dummy))
 
   | ExprBinary (left, op, right) ->
     let left' = fold_constants_expr left in

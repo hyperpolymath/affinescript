@@ -385,7 +385,7 @@ let gen_unop (op : unary_op) : instr result =
   match op with
   | OpNeg -> Ok I32Sub  (* 0 - x *)
   | OpNot -> Ok I32Eqz  (* x == 0 *)
-  | OpBitNot -> Error (UnsupportedFeature "Bitwise NOT")
+  | OpBitNot -> Ok I32Xor (* -1 ^ x *)
   | OpRef -> Error (UnsupportedFeature "OpRef handled in ExprUnary")
   | OpDeref -> Error (UnsupportedFeature "OpDeref handled in ExprUnary")
 

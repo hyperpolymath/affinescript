@@ -126,6 +126,206 @@
                           ))
                        )))
               })
+         });
+    (Ast.TopFn
+       { Ast.fd_vis = Ast.Private; fd_total = false;
+         fd_name =
+         { Ast.name = "test_bitwise";
+           span =
+           { Span.start_pos = { Span.line = 10; col = 1; offset = 127 };
+             end_pos = { Span.line = 10; col = 4; offset = 130 };
+             file = "test/golden/binary_ops.affine" }
+           };
+         fd_type_params = [];
+         fd_params =
+         [{ Ast.p_quantity = None; p_ownership = None;
+            p_name =
+            { Ast.name = "a";
+              span =
+              { Span.start_pos = { Span.line = 10; col = 16; offset = 142 };
+                end_pos = { Span.line = 10; col = 17; offset = 143 };
+                file = "test/golden/binary_ops.affine" }
+              };
+            p_ty =
+            (Ast.TyCon
+               { Ast.name = "Int";
+                 span =
+                 { Span.start_pos =
+                   { Span.line = 10; col = 18; offset = 144 };
+                   end_pos = { Span.line = 10; col = 20; offset = 146 };
+                   file = "test/golden/binary_ops.affine" }
+                 })
+            };
+           { Ast.p_quantity = None; p_ownership = None;
+             p_name =
+             { Ast.name = "b";
+               span =
+               { Span.start_pos = { Span.line = 10; col = 23; offset = 149 };
+                 end_pos = { Span.line = 10; col = 25; offset = 151 };
+                 file = "test/golden/binary_ops.affine" }
+               };
+             p_ty =
+             (Ast.TyCon
+                { Ast.name = "Int";
+                  span =
+                  { Span.start_pos =
+                    { Span.line = 10; col = 26; offset = 152 };
+                    end_pos = { Span.line = 10; col = 28; offset = 154 };
+                    file = "test/golden/binary_ops.affine" }
+                  })
+             }
+           ];
+         fd_ret_ty =
+         (Some (Ast.TyCon
+                  { Ast.name = "Int";
+                    span =
+                    { Span.start_pos =
+                      { Span.line = 10; col = 33; offset = 159 };
+                      end_pos = { Span.line = 10; col = 36; offset = 162 };
+                      file = "test/golden/binary_ops.affine" }
+                    }));
+         fd_eff = None; fd_where = [];
+         fd_body =
+         (Ast.FnBlock
+            { Ast.blk_stmts = [];
+              blk_expr =
+              (Some (Ast.ExprBinary (
+                       (Ast.ExprBinary (
+                          (Ast.ExprBinary (
+                             (Ast.ExprBinary (
+                                (Ast.ExprVar
+                                   { Ast.name = "a";
+                                     span =
+                                     { Span.start_pos =
+                                       { Span.line = 11; col = 3;
+                                         offset = 170 };
+                                       end_pos =
+                                       { Span.line = 11; col = 4;
+                                         offset = 171 };
+                                       file = "test/golden/binary_ops.affine"
+                                       }
+                                     }),
+                                Ast.OpBitAnd,
+                                (Ast.ExprVar
+                                   { Ast.name = "b";
+                                     span =
+                                     { Span.start_pos =
+                                       { Span.line = 11; col = 6;
+                                         offset = 173 };
+                                       end_pos =
+                                       { Span.line = 11; col = 8;
+                                         offset = 175 };
+                                       file = "test/golden/binary_ops.affine"
+                                       }
+                                     })
+                                )),
+                             Ast.OpBitOr,
+                             (Ast.ExprBinary (
+                                (Ast.ExprVar
+                                   { Ast.name = "a";
+                                     span =
+                                     { Span.start_pos =
+                                       { Span.line = 11; col = 10;
+                                         offset = 177 };
+                                       end_pos =
+                                       { Span.line = 11; col = 12;
+                                         offset = 179 };
+                                       file = "test/golden/binary_ops.affine"
+                                       }
+                                     }),
+                                Ast.OpBitXor,
+                                (Ast.ExprVar
+                                   { Ast.name = "b";
+                                     span =
+                                     { Span.start_pos =
+                                       { Span.line = 11; col = 14;
+                                         offset = 181 };
+                                       end_pos =
+                                       { Span.line = 11; col = 16;
+                                         offset = 183 };
+                                       file = "test/golden/binary_ops.affine"
+                                       }
+                                     })
+                                ))
+                             )),
+                          Ast.OpShl,
+                          (Ast.ExprLit
+                             (Ast.LitInt (2,
+                                { Span.start_pos =
+                                  { Span.line = 11; col = 19; offset = 186 };
+                                  end_pos =
+                                  { Span.line = 11; col = 22; offset = 189 };
+                                  file = "test/golden/binary_ops.affine" }
+                                )))
+                          )),
+                       Ast.OpShr,
+                       (Ast.ExprLit
+                          (Ast.LitInt (1,
+                             { Span.start_pos =
+                               { Span.line = 11; col = 24; offset = 191 };
+                               end_pos =
+                               { Span.line = 11; col = 27; offset = 194 };
+                               file = "test/golden/binary_ops.affine" }
+                             )))
+                       )))
+              })
+         });
+    (Ast.TopFn
+       { Ast.fd_vis = Ast.Private; fd_total = false;
+         fd_name =
+         { Ast.name = "test_bitwise_not";
+           span =
+           { Span.start_pos = { Span.line = 14; col = 1; offset = 199 };
+             end_pos = { Span.line = 14; col = 4; offset = 202 };
+             file = "test/golden/binary_ops.affine" }
+           };
+         fd_type_params = [];
+         fd_params =
+         [{ Ast.p_quantity = None; p_ownership = None;
+            p_name =
+            { Ast.name = "n";
+              span =
+              { Span.start_pos = { Span.line = 14; col = 20; offset = 218 };
+                end_pos = { Span.line = 14; col = 21; offset = 219 };
+                file = "test/golden/binary_ops.affine" }
+              };
+            p_ty =
+            (Ast.TyCon
+               { Ast.name = "Int";
+                 span =
+                 { Span.start_pos =
+                   { Span.line = 14; col = 22; offset = 220 };
+                   end_pos = { Span.line = 14; col = 24; offset = 222 };
+                   file = "test/golden/binary_ops.affine" }
+                 })
+            }
+           ];
+         fd_ret_ty =
+         (Some (Ast.TyCon
+                  { Ast.name = "Int";
+                    span =
+                    { Span.start_pos =
+                      { Span.line = 14; col = 29; offset = 227 };
+                      end_pos = { Span.line = 14; col = 32; offset = 230 };
+                      file = "test/golden/binary_ops.affine" }
+                    }));
+         fd_eff = None; fd_where = [];
+         fd_body =
+         (Ast.FnBlock
+            { Ast.blk_stmts = [];
+              blk_expr =
+              (Some (Ast.ExprUnary (Ast.OpBitNot,
+                       (Ast.ExprVar
+                          { Ast.name = "n";
+                            span =
+                            { Span.start_pos =
+                              { Span.line = 15; col = 3; offset = 238 };
+                              end_pos =
+                              { Span.line = 15; col = 4; offset = 239 };
+                              file = "test/golden/binary_ops.affine" }
+                            })
+                       )))
+              })
          })
     ]
   }

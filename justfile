@@ -89,9 +89,9 @@ golden-path:
     @echo "2. Running tests..."
     dune runtest
     @echo "3. Lexer smoke test..."
-    dune exec affinescript -- lex examples/hello.affine 2>/dev/null || dune exec affinescript -- lex examples/hello.as 2>/dev/null || echo "(no example file — skip)"
+    dune exec affinescript -- lex examples/hello.affine 2>/dev/null || dune exec affinescript -- lex examples/hello.affine 2>/dev/null || echo "(no example file — skip)"
     @echo "4. Ownership smoke test..."
-    dune exec affinescript -- parse examples/ownership.affine 2>/dev/null || dune exec affinescript -- parse examples/ownership.as 2>/dev/null || echo "(no ownership example — skip)"
+    dune exec affinescript -- parse examples/ownership.affine 2>/dev/null || dune exec affinescript -- parse examples/ownership.affine 2>/dev/null || echo "(no ownership example — skip)"
     @echo "=== Golden Path Complete ==="
 
 # Run panic-attack security scan

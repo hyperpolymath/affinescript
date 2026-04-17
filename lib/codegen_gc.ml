@@ -334,8 +334,12 @@ let rec gen_gc_expr (ctx : gc_ctx) (expr : expr) : (gc_ctx * gc_instr list) cg_r
     let* (ctx', code) = gen_gc_expr ctx operand in
     Ok (ctx', code @ [std Wasm.I32Eqz])
 
-  | ExprUnary (_, operand) ->
-    gen_gc_expr ctx operand
+  | ExprUnary (OpBitNot, operand) ->
+    let* (ctx', code) = gen_gc_expr ctx operand in
+    Ok (ctx', [push_i32 (-1)] @ code @ [std Wasm.I32Xor])
+
+  | ExprUnary (op, _operand) ->
+    Error (UnsupportedFeature (Printf.sprintf "Unary operator %s" (show_unary_op op)))
 
   (* ── Function calls ────────────────────────────────────────────── *)
 

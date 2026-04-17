@@ -68,7 +68,7 @@
     (compile-target
       (primary "typed-wasm")
       (secondary "julia")
-      (rule "AffineScript is a compiled language. Its semantics live in .as source and compiled output. Do not rewrite .as source in another language as a shortcut for refactoring, modularization, or 'improvement'."))
+      (rule "AffineScript is a compiled language. Its semantics live in .affine source and compiled output. Do not rewrite .affine source in another language as a shortcut for refactoring, modularization, or 'improvement'."))
 
     (modularization
       (rule "When asked to modularize or clean up code, operate within AffineScript using the module system, record decomposition (row polymorphism), and phantom type parameters. Do not create new compiler features to solve user-code modularization problems."))
