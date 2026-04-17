@@ -806,6 +806,11 @@ let router_bridge_cmd =
   let info = Cmd.info "router-bridge" ~doc in
   Cmd.v info Term.(ret (const router_bridge_cmd_fn $ output_arg))
 
+let cs_bridge_cmd =
+  let doc = "Generate the AffineScript CharacterSelect TEA bridge Wasm module for IDApTIK" in
+  let info = Cmd.info "cs-bridge" ~doc in
+  Cmd.v info Term.(ret (const cs_bridge_cmd_fn $ output_arg))
+
 let verify_cmd =
   let doc = "Verify typed-wasm Level 7/10 ownership constraints on compiled output" in
   let man = [
@@ -1171,7 +1176,7 @@ let default_cmd =
   Cmd.group info ~default [
     lex_cmd; parse_cmd; check_cmd; eval_cmd; repl_cmd; compile_cmd;
     fmt_cmd; lint_cmd;
-    tea_bridge_cmd; router_bridge_cmd; verify_cmd;
+    tea_bridge_cmd; router_bridge_cmd; cs_bridge_cmd; verify_cmd;
     interface_cmd; verify_bridge_cmd;
     hover_cmd; goto_def_cmd; complete_cmd; server_cmd;
     preview_python_cmd; preview_js_cmd; preview_pseudocode_cmd
