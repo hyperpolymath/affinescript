@@ -39,7 +39,11 @@ conformance:
 
 # Run format check (lint)
 lint:
-    dune fmt --preview
+    @if command -v ocamlformat >/dev/null 2>&1; then \
+      dune fmt --preview; \
+    else \
+      echo "ocamlformat not installed; skipping format check"; \
+    fi
 
 # Format code in place
 fmt:
@@ -136,7 +140,11 @@ _blitz-security:
 
 _blitz-lint:
     @echo "── [5/6] Lint + Format ──────────────────────"
-    dune fmt --preview 2>&1 || echo "    (format diffs present — run: just fmt)"
+    @if command -v ocamlformat >/dev/null 2>&1; then \
+      dune fmt --preview 2>&1 || echo "    (format diffs present — run: just fmt)"; \
+    else \
+      echo "    (ocamlformat missing — lint fmt check skipped)"; \
+    fi
 
 _blitz-docs:
     @echo "── [6/6] Doc build ──────────────────────────"
