@@ -1,5 +1,5 @@
-# SPDX-License-Identifier: PMPL-1.0-or-later
-# (MPL-2.0 is the automatic legal fallback until PMPL is formally recognised)
+# SPDX-License-Identifier: MPL-2.0
+# Palimpsest principles apply as an overlay policy; legal baseline is MPL-2.0.
 # SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 # justfile — hyperpolymath standard task runner for AffineScript
 
@@ -39,7 +39,11 @@ conformance:
 
 # Run format check (lint)
 lint:
-    dune fmt --check
+    @if command -v ocamlformat >/dev/null 2>&1; then \
+      dune fmt --preview; \
+    else \
+      echo "ocamlformat not installed; skipping format check"; \
+    fi
 
 # Format code in place
 fmt:
@@ -136,7 +140,11 @@ _blitz-security:
 
 _blitz-lint:
     @echo "── [5/6] Lint + Format ──────────────────────"
-    dune fmt --check 2>&1 || echo "    (format diffs present — run: just fmt)"
+    @if command -v ocamlformat >/dev/null 2>&1; then \
+      dune fmt --preview 2>&1 || echo "    (format diffs present — run: just fmt)"; \
+    else \
+      echo "    (ocamlformat missing — lint fmt check skipped)"; \
+    fi
 
 _blitz-docs:
     @echo "── [6/6] Doc build ──────────────────────────"
