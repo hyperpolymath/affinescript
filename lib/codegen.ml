@@ -32,7 +32,15 @@ type context = {
   lambda_funcs : func list;          (** lifted lambda functions *)
   next_lambda_id : int;              (** next lambda function ID *)
   heap_ptr : int option;             (** global index for heap pointer, if initialized *)
-  field_layouts : (string * (string * int) list) list;  (** type name -> [(field, offset)] *)
+  field_layouts : (string * (string * int) list) list;  (** variable name -> [(field, offset)] *)
+  struct_layouts : (string * (string * int) list) list;
+  (** Struct type name -> [(field, offset)]. Registered from TopType(TyStruct)
+      at decl time so function-parameter and call-result field accesses can
+      recover the field layout by type, not by let-binding shape. *)
+  fn_ret_structs : (string * string) list;
+  (** Function name -> struct type name it returns (if any). Lets a
+      `let s = make()` call site register s's field layout in field_layouts
+      when the callee's return type is a known struct. *)
   variant_tags : (string * int) list;  (** constructor name -> tag (int) *)
   string_data : (string * int) list; (** string content -> memory offset *)
   next_string_offset : int;          (** next available offset for string data *)
@@ -78,6 +86,8 @@ let create_context () : context = {
   next_lambda_id = 0;
   heap_ptr = None;
   field_layouts = [];
+  struct_layouts = [];
+  fn_ret_structs = [];
   variant_tags = [];
   string_data = [];
   next_string_offset = 2048;  (* Start strings after heap at offset 2048 *)
@@ -98,6 +108,17 @@ let ownership_kind_of_param (p : param) : ownership_kind =
     | TyRef _ -> SharedBorrow
     | TyMut _ -> ExclBorrow
     | _ -> Unrestricted
+
+(** If [ty] names a known struct (through any number of own/ref/mut wrappers),
+    return that struct's name. Lets us recover a struct's field layout from
+    parameter and return-type annotations so `.field_N` reads use the correct
+    offset instead of defaulting to 0. *)
+let rec struct_name_of_ty (ty : type_expr) : string option =
+  match ty with
+  | TyCon id -> Some id.name
+  | TyApp (id, _) -> Some id.name
+  | TyOwn inner | TyRef inner | TyMut inner -> struct_name_of_ty inner
+  | _ -> None
 
 (** Extract ownership kind from an optional return type expression *)
 let ownership_kind_of_ret (ret : type_expr option) : ownership_kind =
@@ -397,8 +418,20 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
     Ok (ctx', [instr])
 
   | ExprVar id ->
-    let* idx = lookup_local ctx id.name in
-    Ok (ctx, [LocalGet idx])
+    begin match lookup_local ctx id.name with
+      | Ok idx -> Ok (ctx, [LocalGet idx])
+      | Error _ ->
+        (* Fallback: bare identifier that names a zero-arity enum variant.
+           Matches the ExprCall resolution at line 658 so that both
+           `Initialised` and `Initialised()` work as expressions when the
+           name is known as a variant constructor. Without this, a match
+           arm body of the form `Uninitialised => Initialised` fails with
+           UnboundVariable even though the parser accepts it. *)
+        begin match List.assoc_opt id.name ctx.variant_tags with
+          | Some tag -> Ok (ctx, [I32Const (Int32.of_int tag)])
+          | None -> Error (UnboundVariable id.name)
+        end
+    end
 
   | ExprBinary (left, op, right) ->
     let* (ctx', left_code) = gen_expr ctx left in
@@ -1215,20 +1248,24 @@ and gen_pattern (ctx : context) (scrutinee_local : int) (pat : pattern)
           ({ ctx with variant_tags = (con.name, new_tag) :: ctx.variant_tags }, new_tag)
       in
 
-      (* Allocate temp for match result *)
-      let (ctx_with_temp, match_result_idx) = alloc_local ctx_with_tag "__match_result" in
-
-      (* Test: load tag from scrutinee and compare, save result *)
+      (* Test: load tag from scrutinee and compare. Leaves the boolean
+         on the stack. Binding code below is stack-neutral (see net-zero
+         analysis in bind_fields), so the boolean survives through to the
+         end of full_code. Prior implementation saved the bool via
+         LocalTee and re-pushed via LocalGet at the end, which left TWO
+         booleans on the stack and broke WASM validation in any match arm
+         whose body produced an i32 result — e.g. enum-in-match returning
+         distinct zero-arity or arg constructors across arms. *)
       let tag_test = [
         LocalGet scrutinee_local;  (* variant pointer *)
         I32Load (2, 0);            (* load tag from offset 0 *)
         I32Const (Int32.of_int tag);
-        I32Eq;
-        LocalTee match_result_idx; (* Save match result *)
+        I32Eq;                     (* bool on stack — one value *)
       ] in
 
-      (* Extract fields and bind variables *)
-      (* For now, only support PatVar sub-patterns *)
+      (* Extract fields and bind variables. Each bind is net-zero on the
+         stack (LocalGet +1, I32Load 0, LocalSet -1), so the tag-test
+         boolean above remains on top of the stack as the pattern result. *)
       let rec bind_fields ctx_acc bindings_acc offset patterns =
         match patterns with
         | [] -> Ok (ctx_acc, bindings_acc)
@@ -1252,10 +1289,9 @@ and gen_pattern (ctx : context) (scrutinee_local : int) (pat : pattern)
           end
       in
 
-      let* (ctx_final, binding_code) = bind_fields ctx_with_temp [] 4 sub_patterns in
+      let* (ctx_final, binding_code) = bind_fields ctx_with_tag [] 4 sub_patterns in
 
-      (* Combine: test tag, bind fields, return test result *)
-      let full_code = tag_test @ binding_code @ [LocalGet match_result_idx] in
+      let full_code = tag_test @ binding_code in
 
       Ok (ctx_final, full_code, [])
 
@@ -1378,15 +1414,46 @@ and gen_stmt (ctx : context) (stmt : stmt) : (context * instr list) result =
     let* (ctx', rhs_code) = gen_expr ctx sl.sl_value in
     begin match sl.sl_pat with
       | PatVar id ->
-        let (ctx'', idx) = alloc_local ctx' id.name in
-        (* If RHS is a record, track its field layout *)
-        let ctx_with_layout = match sl.sl_value with
+        (* Track the bound variable's field layout so subsequent `.field_N`
+           reads pick the right offset. Three sources, in order:
+           1. Explicit `let s: State = ...` annotation → look up struct_layouts.
+           2. RHS is a record literal → layout from literal's field order.
+           3. RHS is `f(...)` where f's declared return type is a struct
+              → look up fn_ret_structs then struct_layouts.
+           4. RHS is another bound variable `let t = s` where s has a
+              tracked layout → copy it.
+           Any source misses fall back to no tracking (existing behaviour). *)
+        let layout_from_ty_annot () =
+          match sl.sl_ty with
+          | Some ty ->
+            begin match struct_name_of_ty ty with
+              | Some sname -> List.assoc_opt sname ctx'.struct_layouts
+              | None -> None
+            end
+          | None -> None
+        in
+        let layout_from_rhs () =
+          match sl.sl_value with
           | ExprRecord rec_expr ->
-            let field_layout = List.mapi (fun i (field_name, _) ->
-              (field_name.name, i * 4)
-            ) rec_expr.er_fields in
-            { ctx'' with field_layouts = (id.name, field_layout) :: ctx''.field_layouts }
-          | _ -> ctx''
+            Some (List.mapi (fun i (fn, _) -> (fn.name, i * 4)) rec_expr.er_fields)
+          | ExprApp (ExprVar fn_id, _) ->
+            begin match List.assoc_opt fn_id.name ctx'.fn_ret_structs with
+              | Some sname -> List.assoc_opt sname ctx'.struct_layouts
+              | None -> None
+            end
+          | ExprVar src_id -> List.assoc_opt src_id.name ctx'.field_layouts
+          | _ -> None
+        in
+        let layout_opt =
+          match layout_from_ty_annot () with
+          | Some _ as s -> s
+          | None -> layout_from_rhs ()
+        in
+        let (ctx'', idx) = alloc_local ctx' id.name in
+        let ctx_with_layout = match layout_opt with
+          | Some layout ->
+            { ctx'' with field_layouts = (id.name, layout) :: ctx''.field_layouts }
+          | None -> ctx''
         in
         Ok (ctx_with_layout, rhs_code @ [LocalSet idx])
       | _ ->
@@ -1659,9 +1726,23 @@ let gen_function (ctx : context) (fd : fn_decl) : (context * func) result =
   (* Create fresh context for function scope, but preserve lambda_funcs and next_lambda_id *)
   let fn_ctx = { ctx with locals = []; next_local = 0; loop_depth = 0 } in
 
-  (* Parameters become locals 0..n-1 *)
+  (* Parameters become locals 0..n-1. When a parameter's declared type
+     names a known struct, register its field layout under the parameter
+     name so body-side `.field_N` reads resolve to the correct offset
+     rather than defaulting to 0. *)
   let (ctx_with_params, _) = List.fold_left (fun (c, _) param ->
-    alloc_local c param.p_name.name
+    let (c', idx) = alloc_local c param.p_name.name in
+    let c'' =
+      match struct_name_of_ty param.p_ty with
+      | Some sname ->
+        begin match List.assoc_opt sname c'.struct_layouts with
+          | Some layout ->
+            { c' with field_layouts = (param.p_name.name, layout) :: c'.field_layouts }
+          | None -> c'
+        end
+      | None -> c'
+    in
+    (c'', idx)
   ) (fn_ctx, 0) fd.fd_params in
 
   let param_count = List.length fd.fd_params in
@@ -1711,10 +1792,21 @@ let gen_decl (ctx : context) (decl : top_level) : context result =
     let param_kinds = List.map ownership_kind_of_param fd.fd_params in
     let ret_kind = ownership_kind_of_ret fd.fd_ret_ty in
 
-    (* Register function name to index mapping and record ownership annotations *)
+    (* Register function name to index mapping and record ownership annotations.
+       Also record the function's return struct name (if any) so call sites
+       `let s = f(...)` can register s's field layout. *)
+    let fn_ret_structs' = match fd.fd_ret_ty with
+      | Some ty ->
+        begin match struct_name_of_ty ty with
+          | Some sname -> (fd.fd_name.name, sname) :: ctx_with_type.fn_ret_structs
+          | None -> ctx_with_type.fn_ret_structs
+        end
+      | None -> ctx_with_type.fn_ret_structs
+    in
     let ctx_with_func_idx = { ctx_with_type with
       func_indices = ctx_with_type.func_indices @ [(fd.fd_name.name, func_idx)];
       ownership_annots = ctx_with_type.ownership_annots @ [(func_idx, param_kinds, ret_kind)];
+      fn_ret_structs = fn_ret_structs';
     } in
 
     (* Generate function with correct type index *)
@@ -1756,7 +1848,6 @@ let gen_decl (ctx : context) (decl : top_level) : context result =
     Ok ctx''
 
   | TopType td ->
-    (* Register variant tags for enum types *)
     begin match td.td_body with
       | TyEnum variants ->
         (* Assign sequential tags to each variant constructor *)
@@ -1765,8 +1856,14 @@ let gen_decl (ctx : context) (decl : top_level) : context result =
           { c_acc with variant_tags = (vd.vd_name.name, idx) :: c_acc.variant_tags }
         ) ctx (List.mapi (fun i v -> (i, v)) variants) in
         Ok ctx_with_tags
-      | _ ->
-        (* Other type declarations (alias, struct) don't need codegen *)
+      | TyStruct fields ->
+        (* Build the struct's field layout so function parameters and call
+           results of this type can resolve `.field_N` to the correct offset.
+           Layout: fields packed sequentially at 4-byte offsets, matching the
+           ExprRecord store path which writes fields in declaration order. *)
+        let layout = List.mapi (fun i sf -> (sf.sf_name.name, i * 4)) fields in
+        Ok { ctx with struct_layouts = (td.td_name.name, layout) :: ctx.struct_layouts }
+      | TyAlias _ ->
         Ok ctx
     end
 
