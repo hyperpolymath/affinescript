@@ -1111,11 +1111,16 @@ let gen_gc_decl (ctx : gc_ctx) (decl : top_level) : gc_ctx cg_result =
     } in
     let* (ctx', func) = gen_gc_function ctx_with_idx fd in
 
-    let export_names =
+    (* Export function if marked `pub` OR if its name matches a reserved
+       game-loop hook (preserved for backward compatibility, mirroring
+       codegen.ml). *)
+    let game_hook_names =
       ["main"; "init_state"; "step_state"; "get_state"; "mission_active"]
     in
+    let is_pub = (fd.fd_vis = Ast.Public) in
+    let is_game_hook = List.mem fd.fd_name.name game_hook_names in
     let new_exports =
-      if List.mem fd.fd_name.name export_names then
+      if is_pub || is_game_hook then
         [{ ge_name = fd.fd_name.name; ge_desc = GcExportFunc func_idx }]
       else []
     in

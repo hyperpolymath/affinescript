@@ -1721,9 +1721,13 @@ let gen_decl (ctx : context) (decl : top_level) : context result =
     let* (ctx_after_gen, func) = gen_function ctx_with_func_idx fd in
     let func_with_type = { func with f_type = type_idx } in
 
-    (* Add export for main and control helpers *)
-    let export_names = ["main"; "init_state"; "step_state"; "get_state"; "mission_active"] in
-    let export = if List.mem fd.fd_name.name export_names then
+    (* Export function if marked `pub` OR if its name matches a reserved
+       game-loop hook (preserved for backward compatibility with the
+       IDApTIK CharacterSelect bridge and the pre-`pub` compiler behaviour). *)
+    let game_hook_names = ["main"; "init_state"; "step_state"; "get_state"; "mission_active"] in
+    let is_pub = (fd.fd_vis = Ast.Public) in
+    let is_game_hook = List.mem fd.fd_name.name game_hook_names in
+    let export = if is_pub || is_game_hook then
       [{ e_name = fd.fd_name.name; e_desc = ExportFunc func_idx }]
     else
       []
