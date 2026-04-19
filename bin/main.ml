@@ -668,6 +668,61 @@ let lint_file face json path =
 
 (** {1 Stage 7: typed-wasm ownership verifier subcommand} *)
 
+(** Compile a source file through the full frontend pipeline
+    (parse → resolve → typecheck → borrow → quantity → codegen) and return
+    the in-memory [Wasm.wasm_module] on success. On any stage failure,
+    formats the diagnostic to stderr in the requested face's vocabulary
+    and returns [Error stage_label].
+
+    Shared by the intra-module [verify] subcommand and the cross-module
+    [verify-boundary] subcommand so the ownership custom section emitted
+    during codegen is the same one consumed by both verifiers. *)
+let compile_to_wasm_module face path
+  : (Affinescript.Wasm.wasm_module, string) Result.t =
+  try
+    let prog = parse_with_face face path in
+    let loader_config = Affinescript.Module_loader.default_config () in
+    let loader = Affinescript.Module_loader.create loader_config in
+    match Affinescript.Resolve.resolve_program_with_loader prog loader with
+    | Error (e, _span) ->
+      Format.eprintf "%s: resolution error: %s@." path
+        (Affinescript.Face.format_resolve_error face e);
+      Error "Resolution error"
+    | Ok (resolve_ctx, _type_ctx) ->
+      match Affinescript.Typecheck.check_program resolve_ctx.symbols prog with
+      | Error e ->
+        Format.eprintf "%s: %s@." path
+          (Affinescript.Face.format_type_error face e);
+        Error "Type error"
+      | Ok _type_ctx ->
+        match Affinescript.Borrow.check_program resolve_ctx.symbols prog with
+        | Error e ->
+          Format.eprintf "%s: borrow error: %s@." path
+            (Affinescript.Face.format_borrow_error face e);
+          Error "Borrow error"
+        | Ok () ->
+          match Affinescript.Quantity.check_program_quantities prog with
+          | Error (err, _span) ->
+            Format.eprintf "%s: quantity error: %s@." path
+              (Affinescript.Face.format_quantity_error face err);
+            Error "Quantity error"
+          | Ok () ->
+            let optimized_prog = Affinescript.Opt.fold_constants_program prog in
+            (match Affinescript.Codegen.generate_module optimized_prog with
+            | Error e ->
+              Format.eprintf "%s: codegen error: %s@." path
+                (Affinescript.Codegen.show_codegen_error e);
+              Error "Codegen error"
+            | Ok wasm_mod -> Ok wasm_mod)
+  with
+  | Affinescript.Lexer.Lexer_error (msg, pos) ->
+    Format.eprintf "%s:%d:%d: lexer error: %s@." path pos.line pos.col msg;
+    Error "Lexer error"
+  | Affinescript.Parse_driver.Parse_error (msg, span) ->
+    Format.eprintf "%a: parse error: %s@."
+      Affinescript.Span.pp_short span msg;
+    Error "Parse error"
+
 (** Verify typed-wasm Level 7/10 ownership constraints on a compiled AffineScript
     source file.
 
@@ -897,6 +952,12 @@ let make_linear_caller mod_name fn_name : Affinescript.Wasm.wasm_module =
 
     Usage: affinescript verify-bridge [--which tea-bridge|router|all] *)
 let verify_boundary_fn which =
+  (* Accumulates total violations so the exit code reflects them. Previously
+     this function always returned `Ok (), so `verify-bridge` silently
+     claimed success even when `verify_cross_module` found violations — the
+     pretty-printed report was visible but the CI contract (exit 1) never
+     triggered. *)
+  let total_violations = ref 0 in
   let verify_one name callee_mod fn_name =
     let iface = Affinescript.Tw_interface.extract_exports callee_mod in
     let caller = make_linear_caller name fn_name in
@@ -905,6 +966,7 @@ let verify_boundary_fn which =
     | Ok () ->
       Affinescript.Tw_interface.pp_cross_report Format.std_formatter [];
     | Error errs ->
+      total_violations := !total_violations + List.length errs;
       Affinescript.Tw_interface.pp_cross_report Format.std_formatter errs)
   in
   (match which with
@@ -923,7 +985,48 @@ let verify_boundary_fn which =
     verify_one "router"
       (Affinescript.Tea_router.generate ())
       "affinescript_router_push");
-  `Ok ()
+  if !total_violations = 0 then `Ok ()
+  else `Error (false, Printf.sprintf "%d boundary violation(s)" !total_violations)
+
+(** Verify typed-wasm Level 7/10 cross-module boundary constraints between
+    two user-compiled AffineScript modules.
+
+    Compiles [callee_path] and [caller_path] through the full frontend
+    pipeline, extracts [callee]'s ownership-annotated export interface from
+    its [affinescript.ownership] custom section, then checks that every
+    function in [caller] invokes each Linear-param import with consistent
+    per-path call counts:
+      - max_calls > 1 on any path → LinearImportCalledMultiple
+      - min_calls = 0 ∧ max_calls ≥ 1 → LinearImportDroppedOnSomePath
+
+    Unlike [verify-bridge] (which exercises the two internal IDApTIK
+    bridges against a synthetic one-call caller), this subcommand takes
+    user modules so any AffineScript consumer can validate its own
+    multi-module composition. The callee exposes [Linear] params via
+    [pub fn f(x: own T)]; the caller imports those exports and its body
+    becomes the subject of the path-sensitive call-count analysis.
+
+    Exit code 0 = clean.  Exit code 1 = violations found. *)
+let verify_boundary_files_fn face callee_path caller_path =
+  let callee_face = resolve_face face callee_path in
+  let caller_face = resolve_face face caller_path in
+  match compile_to_wasm_module callee_face callee_path with
+  | Error label -> `Error (false, "callee: " ^ label)
+  | Ok callee_mod ->
+    match compile_to_wasm_module caller_face caller_path with
+    | Error label -> `Error (false, "caller: " ^ label)
+    | Ok caller_mod ->
+      let iface = Affinescript.Tw_interface.extract_exports callee_mod in
+      Format.printf "=== boundary check: callee=%s caller=%s ===@."
+        callee_path caller_path;
+      match Affinescript.Tw_interface.verify_cross_module iface caller_mod with
+      | Ok () ->
+        Affinescript.Tw_interface.pp_cross_report Format.std_formatter [];
+        `Ok ()
+      | Error errs ->
+        Affinescript.Tw_interface.pp_cross_report Format.std_formatter errs;
+        `Error (false, Printf.sprintf "%d boundary violation(s)"
+                         (List.length errs))
 
 let which_arg =
   let which = Arg.enum [
@@ -952,19 +1055,65 @@ let interface_cmd =
   Cmd.v info Term.(ret (const interface_cmd_fn $ which_arg))
 
 let verify_bridge_cmd =
-  let doc = "Verify cross-module typed-wasm boundary constraints" in
+  let doc = "Verify cross-module typed-wasm boundary constraints (internal bridges)" in
   let man = [
     `S "DESCRIPTION";
-    `P "Generates the selected bridge module, extracts its ownership-annotated \
-        export interface, and verifies that a well-formed synthetic caller module \
-        (one that imports a Linear-param export and calls it exactly once per \
-        execution path) passes Level 7/10 cross-module boundary checking.";
-    `P "This complements the intra-module $(b,verify) subcommand by checking the \
-        boundary between the AffineScript-generated module and its callers.";
+    `P "Generates the selected internal bridge module (tea-bridge, router, or \
+        both), extracts its ownership-annotated export interface, and verifies \
+        that a well-formed synthetic caller module (one that imports a \
+        Linear-param export and calls it exactly once per execution path) \
+        passes Level 7/10 cross-module boundary checking.";
+    `P "Use $(b,verify-boundary) instead when the caller and callee are \
+        user-authored AffineScript modules rather than the internal IDApTIK \
+        bridges.";
     `P "Exit 0 = boundary clean.  Exit 1 = violations found.";
   ] in
   let info = Cmd.info "verify-bridge" ~doc ~man in
   Cmd.v info Term.(ret (const verify_boundary_fn $ which_arg))
+
+(** Positional args for [verify-boundary]: callee first, caller second. *)
+let verify_boundary_callee_arg =
+  Arg.(required & pos 0 (some file) None
+    & info [] ~docv:"CALLEE"
+       ~doc:"AffineScript source for the exporter: its ownership-annotated \
+             $(b,pub fn) declarations define the contract the caller must \
+             honour.")
+
+let verify_boundary_caller_arg =
+  Arg.(required & pos 1 (some file) None
+    & info [] ~docv:"CALLER"
+       ~doc:"AffineScript source for the importer: every local function body \
+             is checked against the callee interface using per-path call-count \
+             analysis.")
+
+let verify_boundary_cmd =
+  let doc = "Verify cross-module typed-wasm boundary constraints between two source files" in
+  let man = [
+    `S "DESCRIPTION";
+    `P "Compiles $(b,CALLEE) and $(b,CALLER) through the full frontend pipeline, \
+        extracts $(b,CALLEE)'s ownership-annotated export interface from its \
+        $(b,affinescript.ownership) custom section, and then checks every \
+        function body in $(b,CALLER) against that interface.";
+    `P "For each import that corresponds to a callee export with at least one \
+        $(b,own) (Linear) parameter, the verifier counts per-execution-path \
+        invocations and reports:";
+    `P "$(b,LinearImportCalledMultiple): the import is called more than once \
+        on some path. The Linear argument would be duplicated, violating \
+        exclusive ownership.";
+    `P "$(b,LinearImportDroppedOnSomePath): the import is called on some paths \
+        but not others (min=0, max≥1). The Linear argument is silently dropped \
+        on the zero-call paths.";
+    `P "Imports that never appear in a function body are not flagged — there \
+        is no obligation for every function to invoke every import.";
+    `P "Exit 0 = boundary clean.  Exit 1 = violations found.";
+    `S "EXAMPLES";
+    `P "  affinescript verify-boundary lib.affine app.affine";
+  ] in
+  let info = Cmd.info "verify-boundary" ~doc ~man in
+  Cmd.v info Term.(ret (const verify_boundary_files_fn
+                          $ face_arg
+                          $ verify_boundary_callee_arg
+                          $ verify_boundary_caller_arg))
 
 let repl_cmd =
   let doc = "Start the interactive REPL" in
@@ -1177,7 +1326,7 @@ let default_cmd =
     lex_cmd; parse_cmd; check_cmd; eval_cmd; repl_cmd; compile_cmd;
     fmt_cmd; lint_cmd;
     tea_bridge_cmd; router_bridge_cmd; cs_bridge_cmd; verify_cmd;
-    interface_cmd; verify_bridge_cmd;
+    interface_cmd; verify_bridge_cmd; verify_boundary_cmd;
     hover_cmd; goto_def_cmd; complete_cmd; server_cmd;
     preview_python_cmd; preview_js_cmd; preview_pseudocode_cmd
   ]
