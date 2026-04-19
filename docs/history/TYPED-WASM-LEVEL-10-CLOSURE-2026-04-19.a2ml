@@ -1,0 +1,108 @@
+# SPDX-License-Identifier: PMPL-1.0-or-later
+# Machine-readable session summary: typed-wasm Level 10 CLI closure +
+# three codegen bug fixes. Bot-primary doc per A2ML standard; see the
+# .adoc companion for human narrative.
+
+[metadata]
+session-date = "2026-04-19"
+triggered-by = "double-track-browser extension_lifecycle_test.affine pilot (web-ecosystem/double-track-browser/tests/affine/extension_lifecycle_test.affine)"
+scope = "single-session"
+closed-by = "Claude Opus 4.7 (1M context)"
+author = "Jonathan D.A. Jewell <6759885+hyperpolymath@users.noreply.github.com>"
+
+[summary]
+headline = "Three codegen bugs fixed + typed-wasm Level 10 cross-module boundary verifier gains public CLI surface"
+state-before = "affinescript-deno-test harness could not run enum+match or multi-field struct tests; Tw_interface.verify_cross_module analysis was complete but only reachable via verify-bridge which hardcodes the two IDApTIK bridges; verify-bridge claimed 'Exit 1 = violations found' but always exited 0"
+state-after = "all three codegen idioms work; user-authored .affine CALLEE + CALLER pair can be passed through verify-boundary; verify-bridge exit code propagates correctly"
+
+[changes.codegen.stack-imbalance]
+file = "lib/codegen.ml"
+function = "gen_pattern"
+pattern = "PatCon"
+severity = "high"
+symptom = "WebAssembly.compile() rejects output with 'expected 1 elements on the stack for fallthru, found 2' on any match arm body that produces an i32 result, when the match scrutinee is an enum and at least one arm pattern has sub-patterns"
+root-cause = "tag-test boolean was saved via LocalTee on a fresh __match_result local then re-pushed via LocalGet after stack-neutral bind_fields code; the enclosing If expected ONE i32 but saw TWO"
+fix = "remove the LocalTee save and trailing LocalGet restore; bind_fields is net-zero on the stack (LocalGet +1, I32Load 0, LocalSet -1) so the I32Eq result from tag_test stays on top of the stack through to the pattern result"
+commit = "35c476d"
+
+[changes.codegen.bare-variant]
+file = "lib/codegen.ml"
+function = "gen_expr"
+pattern = "ExprVar"
+severity = "medium"
+symptom = "Bare zero-arity enum constructor used as an expression (e.g. `Initialised` with no parens, as a match-arm body or let-rhs) failed with UnboundVariable even though the parser accepts it"
+root-cause = "ExprVar only tried lookup_local; the parallel path for ExprCall-with-variant-tag already existed at line 658 but wasn't mirrored"
+fix = "ExprVar falls back to ctx.variant_tags when lookup_local misses, emitting I32Const with the variant's tag — matching the semantics of ExprVariant"
+commit = "35c476d"
+
+[changes.codegen.param-struct-field]
+file = "lib/codegen.ml"
+functions = ["StmtLet", "gen_function", "gen_decl/TopFn", "gen_decl/TopType"]
+severity = "high"
+symptom = "`s.field_1_or_later` on a function parameter `s: State` returned 0 regardless of actual value; `s.tag` (field 0) worked because field 0 was the default offset"
+root-cause = "the per-variable field_layouts map was only populated by let-bindings whose RHS was an ExprRecord literal; function parameters, call-result lets, and type-annotated lets defaulted the offset to 0"
+fix = "added ctx.struct_layouts (type-name keyed) registered from TopType(TyStruct); added ctx.fn_ret_structs (function-name keyed) seeded from fd_ret_ty; propagated to (a) function params via p_ty, (b) call-result lets via ExprApp(ExprVar, _), (c) let-bindings with sl_ty annotation, (d) let-from-let passthroughs via the RHS's tracked layout; added struct_name_of_ty helper recognising TyCon, TyApp, and ownership-wrapper variants (TyOwn/TyRef/TyMut)"
+commit = "35c476d"
+
+[changes.cli.verify-boundary]
+file = "bin/main.ml"
+subcommand = "verify-boundary"
+args = "CALLEE CALLER (positional, both required)"
+behaviour = "Compiles both .affine files through the full frontend pipeline via shared compile_to_wasm_module helper (factored out of verify_file). Extracts the callee's ownership-annotated export interface from its affinescript.ownership custom section. Runs Tw_interface.verify_cross_module(iface, caller). Returns `Ok () on empty error list, `Error (false, count) on violations. Manpage documents LinearImportCalledMultiple and LinearImportDroppedOnSomePath with worked example."
+scope-note = "AffineScript's use A.B imports inline at AST layer — a caller compiled from AffineScript source today produces no cross-module WASM imports for the verifier to check. New CLI is immediately useful for hand-assembled / bridge-pattern callers (IDApTIK bridges, composition tools) and pre-wired for AffineScript-to-AffineScript once the compiler gains cross-module WASM import emission."
+commit = "f6089a2"
+
+[changes.cli.verify-bridge-exit-code]
+file = "bin/main.ml"
+function = "verify_boundary_fn"
+severity = "medium"
+symptom = "verify-bridge documentation claimed 'Exit 1 = violations found' but the function always returned `Ok () even when verify_cross_module reported violations"
+fix = "introduce total_violations ref; accumulate List.length errs across each bridge checked; at end, if total_violations > 0 return `Error (false, msg) so Cmdliner maps to exit 1"
+impact = "CI pipelines calling `affinescript verify-bridge --which all` now fail correctly on boundary drift — previously they silently passed"
+commit = "f6089a2"
+
+[commits]
+affinescript-repo = [
+  "35c476d fix(codegen): enum-in-match stack imbalance + param struct-field reads",
+  "f6089a2 feat(cli): verify-boundary subcommand + verify-bridge exit-code fix",
+]
+nextgen-languages-submodule-bumps = [
+  "61f69e5 bump affinescript: fix enum-in-match + param struct-field codegen",
+  "24a3205 bump affinescript: verify-boundary subcommand + exit-code fix",
+]
+developer-ecosystem-repo = [
+  "b7fbe5f fix(affinescript-deno-test): document codegen-bug resolution + regression tests",
+]
+
+[tests]
+affinescript-alcotest = "177/177 green (unchanged from pre-session)"
+affinescript-deno-test-smoke = "7/7 green (was 4/4; new codegen_regression_test.affine added 3 cases)"
+double-track-browser-pilot = "10/10 green (previously used tagged-struct workaround; now would pass with idiomatic enum+match form too)"
+verify-boundary-cli-smoke = "exits 0 on (callee.affine with pub fn consume(own Int) + caller_empty.affine with no imports) — happy path validated end-to-end"
+verify-bridge-cli-smoke = "exits 0 on --which all (two clean internal bridges) — confirms exit-code fix doesn't regress clean case"
+
+[scope-not-closed]
+affinescript-cross-module-wasm-imports = "separate feature — `use A.B` currently inlines at AST layer rather than emitting WASM import directives. Unblocks Bigger applicability of verify-boundary to AffineScript-native modules. Not a typed-wasm gap."
+
+[follow-ups-enabled]
+ts-to-affinescript-migration = "AI-WORK-todo.md §3c unblocked; remaining 17 files can now use idiomatic enum+match + multi-field structs without workarounds"
+double-track-browser-refactor = "tagged-struct workaround in extension_lifecycle_test.affine can be converted to idiomatic enum Lifecycle { ... } form if desired (optional)"
+affinescript-deno-test-harness-scale = "v0.2.0 MVP constraints removed; harness ready to scale beyond double-track-browser pilot"
+
+[provenance]
+triggering-context = "User asked to lift the affinescript-deno-test harness by fixing the two codegen bugs noted in its README. During investigation, three bugs surfaced (two blocked harness scaling, one blocked bare-constructor usage in match bodies). Scope then extended to 'close typed-wasm Level 10 cross-module' based on user decision after survey of typed-wasm state."
+reasoning-trace = "Bugs reproduced with minimal .affine fixtures. Fix-forward on each: stack-imbalance diagnosed via instruction-level trace of PatCon codegen; bare-variant diagnosed by comparing parser acceptance vs codegen ExprVar lookup; param-struct-field diagnosed by inspecting field_layouts population paths. CLI wiring closed the existing Tw_interface analysis (which was already unit-tested at 7 Alcotest cases) into a user-facing subcommand and fixed an orthogonal exit-code bug discovered during review."
+
+[safe-to-close]
+yes = true
+checklist = [
+  "affinescript compiler tests 177/177 green",
+  "deno-test harness 7/7 green",
+  "double-track-browser pilot 10/10 green",
+  "all commits pushed to origin (GitHub)",
+  "STATE.a2ml session-note-2026-04-19-a added",
+  "KNOWN-ISSUES.md flipped to RESOLVED with root-cause summary",
+  "affinescript-deno-test README.adoc flipped to RESOLVED",
+  "AI-WORK-todo.md §11 flipped to RESOLVED with full evidence",
+  "human-readable companion .adoc in docs/history/",
+]

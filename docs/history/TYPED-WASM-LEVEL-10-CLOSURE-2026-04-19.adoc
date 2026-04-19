@@ -1,0 +1,152 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+= typed-wasm Level 10 CLI closure + three codegen bug fixes
+:toc:
+:date: 2026-04-19
+:commits: affinescript 35c476d, f6089a2
+:tests: 177/177 alcotest · 7/7 deno-test · 10/10 double-track-browser pilot
+
+A single-session unit of work that (a) landed three codegen fixes
+unblocking the `affinescript-deno-test` harness, and (b) closed the
+public CLI surface for typed-wasm Level 10 cross-module boundary
+verification. See the companion
+link:TYPED-WASM-LEVEL-10-CLOSURE-2026-04-19.a2ml[machine-readable A2ML]
+for the exact change inventory and commit hashes; this document is the
+human narrative.
+
+== Trigger
+
+The `affinescript-deno-test` harness (sibling component at
+`developer-ecosystem/affinescript-ecosystem/affinescript-deno-test/`)
+had its v0.2.0 multi-test-per-file release the previous day but its
+`README.adoc` flagged two AffineScript codegen bugs discovered while
+writing the double-track-browser extension-lifecycle pilot:
+
+. Enum-in-match stack imbalance — match arms returning distinct
+  zero-arity or argument-bearing constructors produced invalid WASM
+  ("expected 1 elements on the stack for fallthru, found 2").
+. Non-first struct-field read from a function parameter silently
+  returned 0 regardless of the actual value, because `s.tag` (offset 0)
+  was the only reliable access path for parameters of struct type.
+
+Both blocked scaling the harness to richer application-state test
+suites. The pilot workaround was a tagged-struct encoding; the clean
+fix had to happen upstream in `lib/codegen.ml`.
+
+A third bug surfaced during investigation: a bare zero-arity variant
+constructor used as a standalone expression (e.g. `Initialised` with
+no parens, as a match-arm body) failed with `UnboundVariable` despite
+being accepted by the parser.
+
+== Fixes
+
+=== Bug 1 — stack imbalance in `gen_pattern` PatCon-with-args
+
+`gen_pattern` was saving the tag-test boolean via `LocalTee` on a
+fresh `__match_result` local then re-pushing it via `LocalGet` after
+stack-neutral `bind_fields` code. The enclosing `If` expected ONE i32
+on the stack; it saw TWO. Removing the save/restore is correct because
+`bind_fields` is net-zero on the stack by construction (`LocalGet` +1,
+`I32Load` 0, `LocalSet` −1), so the `I32Eq` result from `tag_test`
+stays on top through to the pattern result.
+
+=== Bug 2 — `ExprVar` fallback for bare variant constructors
+
+Mirrored the existing `ExprCall`-with-variant-tag path: when
+`lookup_local` misses, consult `ctx.variant_tags`; if the name is a
+known zero-arity constructor, emit `I32Const` with its tag. Parser
+acceptance and codegen semantics now agree.
+
+=== Bug 3 — struct-typed parameter/call-result field layouts
+
+The per-variable `field_layouts` map was populated only by
+let-bindings whose RHS was an `ExprRecord` literal. Every other
+binding path defaulted the offset to 0. The fix:
+
+. Register struct layouts globally in `ctx.struct_layouts`, keyed by
+  struct type name, seeded from `TopType(TyStruct)` decls at
+  declaration time.
+. Add `ctx.fn_ret_structs`, keyed by function name, seeded from
+  `fd_ret_ty` when the return type resolves to a known struct.
+. Propagate layouts into the per-variable `field_layouts` from four
+  sources:
+  * function parameters via `p_ty` (in `gen_function`)
+  * call-result lets via `fn_ret_structs` (in `StmtLet` / `ExprApp`)
+  * let-bindings with an explicit `sl_ty` annotation
+  * let-from-let passthroughs, copying the RHS's tracked layout
+. Added `struct_name_of_ty` helper that recognises `TyCon` and `TyApp`
+  and unwraps ownership wrappers (`TyOwn` / `TyRef` / `TyMut`).
+
+== CLI closure — typed-wasm Level 10 cross-module
+
+`Tw_interface.verify_cross_module` had been complete and unit-tested
+(8 Alcotest cases in the E2E Boundary Verify suite) since Stage 10
+landed on 2026-04-12. But its only CLI home was `verify-bridge`, which
+hardcodes the two internal IDApTIK bridges as callee — there was no
+way for an external consumer to run their own CALLEE + CALLER pair
+through the analysis.
+
+Two changes:
+
+=== New `verify-boundary CALLEE CALLER` subcommand
+
+Compiles both `.affine` files through the full frontend pipeline via
+a shared `compile_to_wasm_module` helper factored out of `verify_file`.
+Extracts the callee's ownership-annotated export interface from its
+`affinescript.ownership` custom section. Runs
+`Tw_interface.verify_cross_module` against the caller's imports +
+bodies. Exits 0 on clean, 1 on violations. Manpage documents both
+`LinearImportCalledMultiple` and `LinearImportDroppedOnSomePath` with
+a worked example.
+
+=== Exit-code fix in `verify-bridge`
+
+The handler was returning `` `Ok ()`` to Cmdliner even on violations,
+so the documented `Exit 1 = violations found` contract was
+unenforceable. Fix: accumulate violation count across each bridge
+checked and return `` `Error (false, count)`` when non-zero. CI
+pipelines calling `affinescript verify-bridge --which all` now fail
+correctly on boundary drift.
+
+== Scope note
+
+AffineScript's `use A.B` imports currently inline at the AST layer
+rather than emitting WASM import directives. A caller compiled from
+AffineScript source today produces no cross-module WASM imports for
+the verifier to check — so `verify-boundary callee.affine caller.affine`
+is **immediately useful** for hand-assembled / bridge-pattern callers
+(IDApTIK bridges, composition tools) and **pre-wired** for
+AffineScript-to-AffineScript once the compiler gains cross-module
+WASM import emission. That emission is a separate compiler feature,
+not a typed-wasm gap.
+
+== Evidence
+
+* AffineScript alcotest: 177/177 green unchanged.
+* `affinescript-deno-test` smoke suite: 7/7 green (up from 4/4). New
+  `example/codegen_regression_test.affine` covers enum-match-mixed,
+  param struct-field, and let-from-call struct-field.
+* `web-ecosystem/double-track-browser/tests/affine/extension_lifecycle_test.affine`:
+  10/10 green without the tagged-struct workaround. Existing file
+  still uses the workaround to match its v0.2.0 release narrative;
+  can be converted to idiomatic enum form if desired.
+* CLI smoke: `verify-boundary` exits 0 with "boundary verification:
+  OK" on a clean (callee + no-import caller) pair. `verify-bridge
+  --which all` exits 0 on the two internal bridges.
+
+== What this unblocks
+
+* AI-WORK-todo.md §3c (TS → AffineScript migration of 17 files) —
+  was gated on the codegen bugs; now free to proceed.
+* Harness scale-out beyond the double-track-browser pilot — v0.2.0
+  MVP constraints all removed.
+* Downstream consumers who want typed-wasm boundary validation for
+  their own module compositions: `verify-boundary` now takes
+  arbitrary source files.
+
+== References
+
+* Upstream commits: `affinescript@35c476d` (codegen), `affinescript@f6089a2` (CLI)
+* Submodule bumps: `nextgen-languages@61f69e5`, `nextgen-languages@24a3205`
+* Sibling doc commit: `developer-ecosystem@b7fbe5f` (deno-test README + regression)
+* `KNOWN-ISSUES.md` — flipped to RESOLVED with root-cause summary retained for history
+* `.machine_readable/6a2/STATE.a2ml` — session-note-2026-04-19-a
