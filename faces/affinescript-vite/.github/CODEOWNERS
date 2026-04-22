@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: PMPL-1.0-or-later
+# CODEOWNERS - Define code review assignments
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+#
+# Replace hyperpolymath with your GitHub username or team
+
+# Default owners for everything
+* @hyperpolymath
+
+# Security-sensitive files require explicit review
+SECURITY.md @hyperpolymath
+.github/workflows/ @hyperpolymath
+Trustfile.a2ml @hyperpolymath
+.machine_readable/ @hyperpolymath

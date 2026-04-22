@@ -1,0 +1,68 @@
+{ Ast.prog_module = None; prog_imports = [];
+  prog_decls =
+  [Ast.TopFn
+     { Ast.fd_vis = Ast.Private; fd_total = false;
+       fd_name = { Ast.name = "test_lambda"; span = <span> };
+       fd_type_params = []; fd_params = [];
+       fd_ret_ty = (Some (Ast.TyCon { Ast.name = "Int"; span = <span> }));
+       fd_eff = None; fd_where = [];
+       fd_body =
+       (Ast.FnBlock
+          { Ast.blk_stmts =
+            [Ast.StmtLet
+               { Ast.sl_mut = false;
+                 sl_pat = (Ast.PatVar { Ast.name = "f"; span = <span> });
+                 sl_ty = None;
+                 sl_value =
+                 (Ast.ExprLambda
+                    { Ast.elam_params =
+                      [{ Ast.p_quantity = None; p_ownership = None;
+                         p_name = { Ast.name = "x"; span = <span> };
+                         p_ty = Ast.TyHole }];
+                      elam_ret_ty = None;
+                      elam_body =
+                      (Ast.ExprBinary (
+                         (Ast.ExprVar { Ast.name = "x"; span = <span> }),
+                         Ast.OpAdd, (Ast.ExprLit (Ast.LitInt (1, <span>)))))
+                      })
+                 }];
+            blk_expr =
+            (Some (Ast.ExprApp (
+                     (Ast.ExprVar { Ast.name = "f"; span = <span> }),
+                     [(Ast.ExprLit (Ast.LitInt (42, <span>)))])))
+            })
+       };
+   Ast.TopFn
+     { Ast.fd_vis = Ast.Private; fd_total = false;
+       fd_name = { Ast.name = "test_lambda_typed"; span = <span> };
+       fd_type_params = []; fd_params = [];
+       fd_ret_ty = (Some (Ast.TyCon { Ast.name = "Int"; span = <span> }));
+       fd_eff = None; fd_where = [];
+       fd_body =
+       (Ast.FnBlock
+          { Ast.blk_stmts =
+            [Ast.StmtLet
+               { Ast.sl_mut = false;
+                 sl_pat = (Ast.PatVar { Ast.name = "f"; span = <span> });
+                 sl_ty = None;
+                 sl_value =
+                 (Ast.ExprLambda
+                    { Ast.elam_params =
+                      [{ Ast.p_quantity = None; p_ownership = None;
+                         p_name = { Ast.name = "x"; span = <span> };
+                         p_ty =
+                         (Ast.TyCon { Ast.name = "Int"; span = <span> }) }];
+                      elam_ret_ty = None;
+                      elam_body =
+                      (Ast.ExprBinary (
+                         (Ast.ExprVar { Ast.name = "x"; span = <span> }),
+                         Ast.OpMul, (Ast.ExprLit (Ast.LitInt (2, <span>)))))
+                      })
+                 }];
+            blk_expr =
+            (Some (Ast.ExprApp (
+                     (Ast.ExprVar { Ast.name = "f"; span = <span> }),
+                     [(Ast.ExprLit (Ast.LitInt (21, <span>)))])))
+            })
+       }]
+  }

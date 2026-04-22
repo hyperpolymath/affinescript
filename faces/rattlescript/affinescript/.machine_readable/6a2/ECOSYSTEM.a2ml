@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: PMPL-1.0-or-later
+# ECOSYSTEM.a2ml — Ecosystem position
+# Converted from ECOSYSTEM.scm on 2026-03-21
+
+[metadata]
+project = "affinescript"
+ecosystem = "hyperpolymath"
+
+[position]
+type = "programming-language"
+purpose = "A systems programming language combining affine types, dependent types, row polymorphism, and extensible effects, compiling to WebAssembly"
+
+[pipeline]
+position = "co-product"
+chain = "katagoria → typell → typed-wasm → PanLL"
+notes = "AffineScript compiles to typed WasmGC. TypeLL grounds its type system. typed-wasm provides the shared binary layout and ABI conventions."
+coordination = "nextgen-typing"
+
+[related-projects]
+projects = [
+  { name = "typell", relationship = "type-theory-foundation", notes = "TypeLL's open-ended progressive framework grounds AffineScript's type system. typell-affinescript bridge crate." },
+  { name = "typed-wasm", relationship = "aggregate-library", notes = "Shared binary layout conventions for WasmGC cross-language calls. AffineScript Option[T]/Result[T,E]/String have agreed layouts here." },
+  { name = "nextgen-typing", relationship = "coordination-parent", notes = "Coordination monorepo for the type theory pipeline. Canonical architecture doc." },
+  { name = "ephapax", relationship = "sibling-wasm-target", notes = "Both compile to typed WasmGC. Independent designs; converge at binary level via typed-wasm." },
+  { name = "katagoria", relationship = "research-upstream", notes = "Type theory research origination. Future AffineScript type system extensions may originate there." },
+  { name = "panll", relationship = "consumer", notes = "AffineScript is one of PanLL's development language targets." },
+]

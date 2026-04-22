@@ -1,0 +1,8 @@
+# Expected: parse error for unclosed brace
+# Exit code: 1
+# Error pattern: unexpected end of file or missing '}'
+error[E0002]: Parse error: unexpected end of input
+  --> conformance/invalid/001_unclosed_brace.as:5:1
+   |
+ 5 | // Missing closing brace
+   | ^ expected '}'

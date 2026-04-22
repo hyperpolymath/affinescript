@@ -1,0 +1,48 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+
+= Audit Gate
+Codex
+v1.0, 2026-03-30
+:toc:
+:toclevels: 2
+:sectnums:
+
+== Purpose
+
+This root document exists so humans and bots can see the hard audit posture
+without having to discover the standards repository first.
+
+Canonical source documents live in the `standards` repository. This file is a
+repo-local audit gate summary for template users and automated agents.
+
+== Hard Rules
+
+* Do not call anything `stable`, `v1.0.0`, or full release unless the stable
+  release gate has been passed end to end.
+* Do not publish implementation-facing work below `B` in CRG unless the work is
+  genuinely abstract and makes no implementation-readiness claim.
+* `D` requires RSR compliance or a documented equivalent repository discipline.
+* `C` requires deep code and folder annotation, not just local confidence.
+* `B` means `beta-stable`: external breadth and safe broad trial, not merely
+  public visibility.
+* Papers, whitepapers, release notes, and READMEs must not outrun the proofs,
+  tests, or artefacts that support their claims.
+* Release paths must not ship with placeholders, stubs, `FIXME`, `XXX`,
+  template residue, fake fuzz, fake benches, or partial proof debt hidden as
+  if it were complete.
+
+== Canonical Standards
+
+Read these as the authoritative source:
+
+* `standards/component-readiness-grades/COMPONENT-READINESS-GRADES.md`
+* `standards/release-pre-flight/V1-GATE.adoc`
+* `standards/publication-pre-flight/PREFLIGHT.adoc`
+* `standards/publication-pre-flight/ESTATE-AUDIT-BASELINE-2026-03-30.adoc`
+
+== Bot Requirement
+
+Bots operating in repositories derived from this template should treat this
+document as a key root audit document and should not make optimistic release or
+publication claims that conflict with it.

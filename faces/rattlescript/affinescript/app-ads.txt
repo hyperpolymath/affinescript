@@ -1,0 +1,7 @@
+# Authorized Digital Sellers for Mobile Apps from affinescript.dev
+# https://iabtechlab.com/app-ads-txt/
+
+# Currently, no mobile apps are monetized with ads.
+# Any ads in apps claiming to be from this domain are UNAUTHORIZED.
+
+# Last Updated: 2026-01-31

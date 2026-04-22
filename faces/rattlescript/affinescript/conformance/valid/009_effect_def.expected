@@ -1,0 +1,341 @@
+{ Ast.prog_module = None; prog_imports = [];
+  prog_decls =
+  [(Ast.TopEffect
+      { Ast.ed_vis = Ast.Private;
+        ed_name =
+        { Ast.name = "IO";
+          span =
+          { Span.start_pos = { Span.line = 3; col = 1; offset = 41 };
+            end_pos = { Span.line = 3; col = 8; offset = 48 };
+            file = "conformance/valid/009_effect_def.affine" }
+          };
+        ed_type_params = [];
+        ed_ops =
+        [{ Ast.eod_name =
+           { Ast.name = "print";
+             span =
+             { Span.start_pos = { Span.line = 4; col = 3; offset = 55 };
+               end_pos = { Span.line = 4; col = 6; offset = 58 };
+               file = "conformance/valid/009_effect_def.affine" }
+             };
+           eod_params =
+           [{ Ast.p_quantity = None; p_ownership = None;
+              p_name =
+              { Ast.name = "s";
+                span =
+                { Span.start_pos = { Span.line = 4; col = 11; offset = 63 };
+                  end_pos = { Span.line = 4; col = 12; offset = 64 };
+                  file = "conformance/valid/009_effect_def.affine" }
+                };
+              p_ty =
+              (Ast.TyCon
+                 { Ast.name = "String";
+                   span =
+                   { Span.start_pos =
+                     { Span.line = 4; col = 13; offset = 65 };
+                     end_pos = { Span.line = 4; col = 15; offset = 67 };
+                     file = "conformance/valid/009_effect_def.affine" }
+                   })
+              }
+             ];
+           eod_ret_ty = None };
+          { Ast.eod_name =
+            { Ast.name = "println";
+              span =
+              { Span.start_pos = { Span.line = 5; col = 3; offset = 78 };
+                end_pos = { Span.line = 5; col = 6; offset = 81 };
+                file = "conformance/valid/009_effect_def.affine" }
+              };
+            eod_params =
+            [{ Ast.p_quantity = None; p_ownership = None;
+               p_name =
+               { Ast.name = "s";
+                 span =
+                 { Span.start_pos = { Span.line = 5; col = 13; offset = 88 };
+                   end_pos = { Span.line = 5; col = 14; offset = 89 };
+                   file = "conformance/valid/009_effect_def.affine" }
+                 };
+               p_ty =
+               (Ast.TyCon
+                  { Ast.name = "String";
+                    span =
+                    { Span.start_pos =
+                      { Span.line = 5; col = 15; offset = 90 };
+                      end_pos = { Span.line = 5; col = 17; offset = 92 };
+                      file = "conformance/valid/009_effect_def.affine" }
+                    })
+               }
+              ];
+            eod_ret_ty = None };
+          { Ast.eod_name =
+            { Ast.name = "read_line";
+              span =
+              { Span.start_pos = { Span.line = 6; col = 3; offset = 103 };
+                end_pos = { Span.line = 6; col = 6; offset = 106 };
+                file = "conformance/valid/009_effect_def.affine" }
+              };
+            eod_params = [];
+            eod_ret_ty =
+            (Some (Ast.TyCon
+                     { Ast.name = "String";
+                       span =
+                       { Span.start_pos =
+                         { Span.line = 6; col = 18; offset = 118 };
+                         end_pos = { Span.line = 6; col = 21; offset = 121 };
+                         file = "conformance/valid/009_effect_def.affine" }
+                       }))
+            }
+          ]
+        });
+    (Ast.TopEffect
+       { Ast.ed_vis = Ast.Private;
+         ed_name =
+         { Ast.name = "State";
+           span =
+           { Span.start_pos = { Span.line = 9; col = 1; offset = 132 };
+             end_pos = { Span.line = 9; col = 8; offset = 139 };
+             file = "conformance/valid/009_effect_def.affine" }
+           };
+         ed_type_params =
+         [{ Ast.tp_quantity = None;
+            tp_name =
+            { Ast.name = "S";
+              span =
+              { Span.start_pos = { Span.line = 9; col = 13; offset = 144 };
+                end_pos = { Span.line = 9; col = 14; offset = 145 };
+                file = "conformance/valid/009_effect_def.affine" }
+              };
+            tp_kind = None }
+           ];
+         ed_ops =
+         [{ Ast.eod_name =
+            { Ast.name = "get";
+              span =
+              { Span.start_pos = { Span.line = 10; col = 3; offset = 152 };
+                end_pos = { Span.line = 10; col = 6; offset = 155 };
+                file = "conformance/valid/009_effect_def.affine" }
+              };
+            eod_params = [];
+            eod_ret_ty =
+            (Some (Ast.TyCon
+                     { Ast.name = "S";
+                       span =
+                       { Span.start_pos =
+                         { Span.line = 10; col = 12; offset = 161 };
+                         end_pos = { Span.line = 10; col = 15; offset = 164 };
+                         file = "conformance/valid/009_effect_def.affine" }
+                       }))
+            };
+           { Ast.eod_name =
+             { Ast.name = "put";
+               span =
+               { Span.start_pos = { Span.line = 11; col = 3; offset = 169 };
+                 end_pos = { Span.line = 11; col = 6; offset = 172 };
+                 file = "conformance/valid/009_effect_def.affine" }
+               };
+             eod_params =
+             [{ Ast.p_quantity = None; p_ownership = None;
+                p_name =
+                { Ast.name = "s";
+                  span =
+                  { Span.start_pos =
+                    { Span.line = 11; col = 9; offset = 175 };
+                    end_pos = { Span.line = 11; col = 10; offset = 176 };
+                    file = "conformance/valid/009_effect_def.affine" }
+                  };
+                p_ty =
+                (Ast.TyCon
+                   { Ast.name = "S";
+                     span =
+                     { Span.start_pos =
+                       { Span.line = 11; col = 11; offset = 177 };
+                       end_pos = { Span.line = 11; col = 13; offset = 179 };
+                       file = "conformance/valid/009_effect_def.affine" }
+                     })
+                }
+               ];
+             eod_ret_ty = None }
+           ]
+         });
+    (Ast.TopEffect
+       { Ast.ed_vis = Ast.Private;
+         ed_name =
+         { Ast.name = "Exn";
+           span =
+           { Span.start_pos = { Span.line = 14; col = 1; offset = 186 };
+             end_pos = { Span.line = 14; col = 8; offset = 193 };
+             file = "conformance/valid/009_effect_def.affine" }
+           };
+         ed_type_params =
+         [{ Ast.tp_quantity = None;
+            tp_name =
+            { Ast.name = "E";
+              span =
+              { Span.start_pos = { Span.line = 14; col = 11; offset = 196 };
+                end_pos = { Span.line = 14; col = 12; offset = 197 };
+                file = "conformance/valid/009_effect_def.affine" }
+              };
+            tp_kind = None }
+           ];
+         ed_ops =
+         [{ Ast.eod_name =
+            { Ast.name = "throw";
+              span =
+              { Span.start_pos = { Span.line = 15; col = 3; offset = 204 };
+                end_pos = { Span.line = 15; col = 6; offset = 207 };
+                file = "conformance/valid/009_effect_def.affine" }
+              };
+            eod_params =
+            [{ Ast.p_quantity = None; p_ownership = None;
+               p_name =
+               { Ast.name = "err";
+                 span =
+                 { Span.start_pos =
+                   { Span.line = 15; col = 11; offset = 212 };
+                   end_pos = { Span.line = 15; col = 12; offset = 213 };
+                   file = "conformance/valid/009_effect_def.affine" }
+                 };
+               p_ty =
+               (Ast.TyCon
+                  { Ast.name = "E";
+                    span =
+                    { Span.start_pos =
+                      { Span.line = 15; col = 15; offset = 216 };
+                      end_pos = { Span.line = 15; col = 17; offset = 218 };
+                      file = "conformance/valid/009_effect_def.affine" }
+                    })
+               }
+              ];
+            eod_ret_ty =
+            (Some (Ast.TyCon
+                     { Ast.name = "Never";
+                       span =
+                       { Span.start_pos =
+                         { Span.line = 15; col = 20; offset = 221 };
+                         end_pos = { Span.line = 15; col = 23; offset = 224 };
+                         file = "conformance/valid/009_effect_def.affine" }
+                       }))
+            }
+           ]
+         });
+    (Ast.TopEffect
+       { Ast.ed_vis = Ast.Private;
+         ed_name =
+         { Ast.name = "Async";
+           span =
+           { Span.start_pos = { Span.line = 18; col = 1; offset = 234 };
+             end_pos = { Span.line = 18; col = 8; offset = 241 };
+             file = "conformance/valid/009_effect_def.affine" }
+           };
+         ed_type_params = [];
+         ed_ops =
+         [{ Ast.eod_name =
+            { Ast.name = "await";
+              span =
+              { Span.start_pos = { Span.line = 19; col = 3; offset = 251 };
+                end_pos = { Span.line = 19; col = 6; offset = 254 };
+                file = "conformance/valid/009_effect_def.affine" }
+              };
+            eod_params =
+            [{ Ast.p_quantity = None; p_ownership = None;
+               p_name =
+               { Ast.name = "promise";
+                 span =
+                 { Span.start_pos =
+                   { Span.line = 19; col = 14; offset = 262 };
+                   end_pos = { Span.line = 19; col = 15; offset = 263 };
+                   file = "conformance/valid/009_effect_def.affine" }
+                 };
+               p_ty =
+               (Ast.TyApp (
+                  { Ast.name = "Promise";
+                    span =
+                    { Span.start_pos =
+                      { Span.line = 19; col = 22; offset = 270 };
+                      end_pos = { Span.line = 19; col = 24; offset = 272 };
+                      file = "conformance/valid/009_effect_def.affine" }
+                    },
+                  [(Ast.TyArg
+                      (Ast.TyCon
+                         { Ast.name = "T";
+                           span =
+                           { Span.start_pos =
+                             { Span.line = 19; col = 31; offset = 279 };
+                             end_pos =
+                             { Span.line = 19; col = 32; offset = 280 };
+                             file = "conformance/valid/009_effect_def.affine"
+                             }
+                           }))
+                    ]
+                  ))
+               }
+              ];
+            eod_ret_ty =
+            (Some (Ast.TyCon
+                     { Ast.name = "T";
+                       span =
+                       { Span.start_pos =
+                         { Span.line = 19; col = 36; offset = 284 };
+                         end_pos = { Span.line = 19; col = 39; offset = 287 };
+                         file = "conformance/valid/009_effect_def.affine" }
+                       }))
+            };
+           { Ast.eod_name =
+             { Ast.name = "spawn";
+               span =
+               { Span.start_pos = { Span.line = 20; col = 3; offset = 292 };
+                 end_pos = { Span.line = 20; col = 6; offset = 295 };
+                 file = "conformance/valid/009_effect_def.affine" }
+               };
+             eod_params =
+             [{ Ast.p_quantity = None; p_ownership = None;
+                p_name =
+                { Ast.name = "f";
+                  span =
+                  { Span.start_pos =
+                    { Span.line = 20; col = 14; offset = 303 };
+                    end_pos = { Span.line = 20; col = 15; offset = 304 };
+                    file = "conformance/valid/009_effect_def.affine" }
+                  };
+                p_ty =
+                (Ast.TyArrow ((Ast.TyTuple []), None,
+                   (Ast.TyCon
+                      { Ast.name = "T";
+                        span =
+                        { Span.start_pos =
+                          { Span.line = 20; col = 21; offset = 310 };
+                          end_pos =
+                          { Span.line = 20; col = 24; offset = 313 };
+                          file = "conformance/valid/009_effect_def.affine" }
+                        }),
+                   None))
+                }
+               ];
+             eod_ret_ty =
+             (Some (Ast.TyApp (
+                      { Ast.name = "Promise";
+                        span =
+                        { Span.start_pos =
+                          { Span.line = 20; col = 27; offset = 316 };
+                          end_pos =
+                          { Span.line = 20; col = 30; offset = 319 };
+                          file = "conformance/valid/009_effect_def.affine" }
+                        },
+                      [(Ast.TyArg
+                          (Ast.TyCon
+                             { Ast.name = "T";
+                               span =
+                               { Span.start_pos =
+                                 { Span.line = 20; col = 37; offset = 326 };
+                                 end_pos =
+                                 { Span.line = 20; col = 38; offset = 327 };
+                                 file =
+                                 "conformance/valid/009_effect_def.affine" }
+                               }))
+                        ]
+                      )))
+             }
+           ]
+         })
+    ]
+  }

@@ -1,0 +1,100 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+= affine-ts
+:toc:
+:icons: font
+
+TypeScript-ergonomic wrapper around `@hyperpolymath/affine-js`.
+
+Adds typed call helpers (`callInt`, `callString`, `callResult`, …) and
+narrowing predicates (`isOk`, `isSome`, `expectOk`, …) so TypeScript
+call sites read naturally without manual `returnType` hints.
+
+NOTE: This package is implemented in JavaScript + JSDoc with `.d.ts`
+declarations.  No TypeScript source files are used.  TypeScript type safety
+comes from the declaration files, not from a TypeScript compiler step.
+
+== Installation
+
+[source,json]
+----
+// deno.json
+{
+  "imports": {
+    "@hyperpolymath/affine-ts": "jsr:@hyperpolymath/affine-ts@0.1.0"
+  }
+}
+----
+
+== Quick start
+
+[source,javascript]
+----
+import { AffineModule, callInt, callString, callResult, expectOk, int }
+  from "@hyperpolymath/affine-ts";
+
+const mod = await AffineModule.fromFile("./calculator.wasm");
+
+// Typed helpers — no returnType hint needed:
+const sum   = callInt(mod, "add", int(3), int(4));    // { kind: "int", value: 7 }
+const label = callString(mod, "format_result", sum);   // { kind: "string", value: "7" }
+const res   = callResult(mod, "safe_divide", int(10), int(0));
+
+// Narrowing:
+if (isErr(res)) {
+  console.error("Division failed:", res.value);
+} else {
+  console.log("Result:", expectOk(res));
+}
+----
+
+== API
+
+All exports from `@hyperpolymath/affine-js` are re-exported verbatim.
+
+Additional exports:
+
+[cols="1,2"]
+|===
+| Export | Description
+
+| `callInt(mod, name, ...args)`
+| Call and coerce return to Int
+
+| `callFloat(mod, name, ...args)`
+| Call and coerce return to Float
+
+| `callBool(mod, name, ...args)`
+| Call and coerce return to Bool
+
+| `callString(mod, name, ...args)`
+| Call and coerce return to String
+
+| `callOption(mod, name, ...args)`
+| Call and coerce return to Option
+
+| `callResult(mod, name, ...args)`
+| Call and coerce return to Result
+
+| `expectSome(value)`
+| Assert Some, extract payload; throws on None
+
+| `expectOk(value)`
+| Assert Ok, extract payload; throws on Err with message
+
+| `isNone(value)`
+| Type-narrowing predicate
+
+| `isSome(value)`
+| Type-narrowing predicate
+
+| `isOk(value)`
+| Type-narrowing predicate
+
+| `isErr(value)`
+| Type-narrowing predicate
+|===
+
+== License
+
+PMPL-1.0-or-later.
+See link:../../LICENSE[LICENSE] at the repository root.

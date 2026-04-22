@@ -1,0 +1,12 @@
+(library
+ (name affinescript)
+ (public_name affinescript)
+ (modes byte native)
+ (modules ast codegen codegen_gc desugar_traits effect error error_collector error_formatter face formatter interp js_face julia_codegen json_output lexer linter module_loader opt parse_driver parse parser parser_errors pseudocode_face python_face quantity resolve span symbol token trait typecheck types unify value wasm wasm_encode wasm_gc wasm_gc_encode wasi_runtime)
+ (libraries str unix sedlex fmt menhirLib yojson)
+ (preprocess
+  (pps ppx_deriving.show ppx_deriving.eq ppx_deriving.ord sedlex.ppx)))
+
+(menhir
+ (modules parser)
+ (flags --table))

@@ -1,0 +1,256 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+= AffineScript: Design Vision
+Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+:toc:
+:toclevels: 3
+:icons: font
+
+== What AffineScript Is
+
+AffineScript is a *web programming language*. Its purpose is to replace the
+fragmented x-script ecosystem — JavaScript, TypeScript, ReScript, CoffeeScript,
+ActionScript, and their successors — with a single language that solves the
+problems they collectively fail to solve, without inheriting their compromises.
+
+It compiles to *typed WebAssembly*. Not JavaScript. Not JavaScript-with-types.
+WebAssembly, where the type guarantees survive into the runtime.
+
+== The Core Identity
+
+AffineScript is *affine-first*. This is its permanent resting state, not a
+stepping stone toward something stricter. A resource can be used at most once
+— that is the natural condition of the language. Unrestricted use is the
+explicit opt-in. Linear (exactly once, must be used) is a stricter annotation
+available when needed.
+
+This is different from Ephapax, where affine is the enabler of linear.
+In AffineScript, affine IS the goal. The language rests here.
+
+== What Is Wrong With X-Scripts
+
+The entire x-script world has six unsolved problems:
+
+[cols="1,3", options="header"]
+|===
+| Problem | What it looks like
+
+| *Null is a lie*
+| `string \| null \| undefined` — two different nothings. `?.` and `??` are
+  band-aids that confirm the wound. `strictNullChecks` is opt-in.
+
+| *Mutation is invisible*
+| Everything is mutable by default. You pass an object into a function and it
+  may come back changed, or something may hold a reference and change it later.
+  No type system has a model for this.
+
+| *Errors throw sideways*
+| `throw` accepts anything. `catch (e: unknown)` means you know nothing.
+  Every function that can fail either lies in its type signature or forces
+  untyped exception handling.
+
+| *Async is bolted on in layers*
+| Callbacks → Promises → async/await → hooks → signals. Each layer was added
+  because the previous one was insufficient. None composes. `async` infects
+  everything it touches.
+
+| *Complex types become unreadable*
+| TypeScript generics with `infer`, conditional types, and mapped types produce
+  code nobody can read six months later.
+
+| *The runtime is still JavaScript*
+| Types are erased. Runtime errors that should be compile errors still happen.
+  The type system floats above the execution, not in it.
+|===
+
+== How AffineScript Answers Each
+
+[cols="1,2,2", options="header"]
+|===
+| Problem | X-Script answer | AffineScript answer
+
+| Null
+| `T \| null \| undefined`, `?.`, `??`
+| `Option[T]`. No null. No undefined. No two different nothings.
+
+| Mutation
+| Nothing. `const` does not help. `readonly` is partial.
+| `own`/`ref`/`mut` as surface syntax for quantity annotations. Ownership
+  is in the type. You know from the signature what a function does.
+
+| Errors
+| Untyped `throw`/`catch`
+| `Result[T, E]`. Errors are in the return type. Nothing is hidden.
+
+| Async/effects
+| async/await + hooks + observables (incompatible)
+| Algebraic effects. One model for all of: DOM, fetch, localStorage, timers,
+  websockets, state. Composable by design.
+
+| Complex types
+| `infer`, conditional types, mapped types
+| Row polymorphism. `{ name: String, ..r }` accepts any record with a name
+  field. Structural, readable, compositional.
+
+| Runtime
+| Types erased at runtime
+| Typed WASM. Types survive into the runtime. The guarantees are real.
+|===
+
+== The Type System
+
+=== Affine-First
+
+Resources are affine by default: used at most once. This prevents the entire
+class of bugs where a reference is aliased and mutated through multiple paths.
+
+[source]
+----
+own T    — caller transfers ownership (affine: must not use after)
+ref T    — borrowed view, read-only (unrestricted: can use many times)
+mut T    — exclusive mutable access (affine: one writer, enforced)
+----
+
+These are surface syntax for the underlying quantity annotation system (QTT).
+There is no separate borrow checker. The affine type system handles it.
+
+=== Structural / Row-Polymorphic
+
+Records are structural, not nominal. A function that operates on
+`{ x: Int, ..r }` accepts any record with an `x` field. Type aliases give
+names to shapes — they do not create new nominal types.
+
+[source]
+----
+// Accepts any record that has a name field — nothing else required
+fn get_name[..r](obj: { name: String, ..r }) -> String = obj.name
+
+// Type alias — a name for a shape, not a new nominal type
+type point = { x: Int, y: Int }
+----
+
+This fits the web naturally. JSON is structural. APIs return open shapes.
+Row polymorphism models web data correctly without the complexity of
+TypeScript's mapped and conditional types.
+
+=== Algebraic Effects
+
+The web is effects. Every interaction with the browser — reading the DOM,
+making a network call, writing to storage, receiving a timer event — is an
+effect. AffineScript gives all of these a single, composable model.
+
+[source]
+----
+effect Http {
+  fn get(url: String) -> Response;
+  fn post(url: String, body: String) -> Response;
+}
+
+effect Async {
+  fn await[T](p: Promise[T]) -> T;
+}
+
+// Effects are in the type signature. Compose freely.
+fn fetch_user(id: Int) -> User / Http, Async {
+  let resp = Http.get("/users/" ++ show(id));
+  Async.await(resp.json())
+}
+----
+
+The handler — installed at the boundary of your application — is the affine
+resource. Individual invocations are capability uses. No `async` keyword
+contamination. No incompatible effect libraries. One model.
+
+=== No Null, Typed Errors
+
+[source]
+----
+// Nothing is hidden
+fn divide(a: Int, b: Int) -> Result[Int, DivisionByZero] {
+  if b == 0 { Err(DivisionByZero) } else { Ok(a / b) }
+}
+
+// No null, no undefined
+fn find_user(id: Int) -> Option[User]
+----
+
+== Ergonomics: The Real Ambition
+
+AffineScript's type system is not its primary pitch. The pitch is:
+*this should be easier to write than JavaScript, Python, or pseudocode.*
+
+That is the hard problem. The goal is that a JavaScript developer, a Python
+developer, or someone who has never programmed before can engage with this
+language without first needing to understand type theory.
+
+The rules of the type system should be invisible when you are writing
+straightforward code. You should feel them only at the edges — when you try to
+use a resource twice, when you try to pass `null` where a `String` is expected,
+when you try to call a function that can fail without handling the failure.
+
+The type system enforces what good programmers already do instinctively.
+AffineScript just makes it impossible to forget.
+
+=== What Familiar Looks Like
+
+[cols="1,1,1", options="header"]
+|===
+| Pseudocode / Python | JavaScript | AffineScript
+
+| `x = 5`
+| `const x = 5`
+| `let x = 5`
+
+| `def greet(name):`
+| `function greet(name) {`
+| `fn greet(name: String) -> String {`
+
+| `if x > 0: return "yes"`
+| `if (x > 0) return "yes";`
+| `if x > 0 { "yes" } else { "no" }`
+
+| `result = maybe_thing or default`
+| `result ?? default`
+| `result.unwrap_or(default)`
+
+| `try: ... except: ...`
+| `try { ... } catch(e) { ... }`
+| `match divide(a, b) { Ok(v) -> v, Err(_) -> 0 }`
+|===
+
+The goal: the AffineScript column should feel like the obvious way to write
+the thing, not like a translation from a foreign language.
+
+== Compilation Target
+
+Typed WebAssembly (WasmGC). Not JavaScript. The compiler produces WASM
+modules where the type information survives into the runtime. This is the
+right target for the next generation of web applications, browser games,
+and edge compute.
+
+A thin JavaScript interop layer exists for calling Web APIs and for incremental
+adoption from TypeScript codebases, but it is interop — not the target.
+
+== What AffineScript Is NOT
+
+* Not a JavaScript variant. Not "TypeScript with better types." A clean break.
+* Not Rust for the web. Rust's borrow checker is a solution to a problem
+  AffineScript does not have (because it has affine types instead).
+* Not a functional-programming language that happens to have a WASM backend.
+  It is a web language that happens to have a sound type system.
+* Not Ephapax. Ephapax is affine-as-enabler-of-linear. AffineScript is
+  affine-as-home. Different purpose, different audience, different character.
+
+== Relationship to Ephapax
+
+Independent. Neither language constrains the other's design.
+
+They converge at typed WebAssembly. An AffineScript module and an Ephapax
+module compiled to typed WASM can interoperate at the binary level — because
+they speak the same bytecode, with agreed type layout conventions.
+
+The aggregate library lives at that convergence point: shared WASM-level
+infrastructure (ABI conventions, stdlib types in typed WASM, linking
+conventions) that neither language owns but both can consume.
+
+See `docs/specs/AGGREGATE-LIBRARY.adoc` and the `typed-wasm` repository for
+the convergence infrastructure.

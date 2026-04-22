@@ -1,0 +1,74 @@
+# SPDX-License-Identifier: PMPL-1.0-or-later
+# Trustfile — Integrity and provenance verification
+# Author: Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+
+@abstract:
+Integrity invariants for this repository. These verify that the repo
+has not been tampered with, secrets are not leaked, and provenance
+is traceable.
+@end
+
+## Secrets
+
+### no-secrets-committed
+- description: No credential files in repo
+- run: test ! -f .env && test ! -f credentials.json && test ! -f .env.local && test ! -f .env.production
+- severity: critical
+
+### no-private-keys
+- description: No private key files committed
+- run: "! find . -name '*.pem' -o -name '*.key' -o -name 'id_rsa' -o -name 'id_ed25519' 2>/dev/null | grep -v node_modules | head -1 | grep -q ."
+- severity: critical
+
+### no-tokens-in-source
+- description: No hardcoded API tokens in source
+- run: "! grep -rE '(api[_-]?key|secret|token|password)\s*[:=]\s*[\"'\\''][A-Za-z0-9]{16,}' --include='*.js' --include='*.ts' --include='*.res' --include='*.py' . 2>/dev/null | grep -v node_modules | head -1 | grep -q ."
+- severity: critical
+
+## Provenance
+
+### author-correct
+- description: Git author matches expected identity
+- run: "git log -1 --format='%ae' | grep -qE '(hyperpolymath|j\\.d\\.a\\.jewell)'"
+- severity: warning
+
+### license-content
+- description: LICENSE contains expected identifier
+- run: grep -q 'PMPL\|MPL\|MIT\|Apache\|LGPL' LICENSE
+- severity: warning
+
+## Container Security
+
+### container-images-pinned
+- description: Containerfile uses pinned base images
+- run: test ! -f Containerfile || grep -q 'cgr.dev\|@sha256:' Containerfile
+- severity: warning
+
+### no-dockerfile
+- description: No Dockerfile (use Containerfile)
+- run: test ! -f Dockerfile
+- severity: warning
+
+## Dangerous Patterns
+
+### no-believe-me
+- description: No believe_me, assert_total, Admitted, sorry, unsafeCoerce, Obj.magic
+- run: "! grep -rE 'believe_me|assert_total|Admitted|sorry|unsafeCoerce|Obj\\.magic' --include='*.idr' --include='*.lean' --include='*.v' --include='*.ml' --include='*.hs' . 2>/dev/null | head -1 | grep -q ."
+- severity: critical
+
+### no-unsafe-without-comment
+- description: All unsafe blocks in Rust must have SAFETY comments
+- run: "! grep -B1 'unsafe {' --include='*.rs' -r . 2>/dev/null | grep -v SAFETY | grep 'unsafe {' | head -1 | grep -q ."
+- severity: warning
+
+## Service Security (if applicable)
+
+### localhost-only-bindings
+- description: Backend services bind to 127.0.0.1 only
+- run: "! grep -rE 'bind\\(\"0\\.0\\.0\\.0' --include='*.rs' --include='*.ex' --include='*.ts' . 2>/dev/null | head -1 | grep -q ."
+- severity: critical
+
+### coordination-file-permissions
+- description: Coordination/session files are owner-only (0600)
+- run: test ! -d ~/.claude/coordination || find ~/.claude/coordination -type f ! -perm 600 2>/dev/null | wc -l | grep -q '^0$'
+- severity: warning

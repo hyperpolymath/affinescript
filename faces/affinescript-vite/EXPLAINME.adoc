@@ -1,0 +1,49 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+= {project-name} — Show Me The Receipts
+:toc:
+:icons: font
+
+The README makes claims. This file backs them up.
+
+For each headline feature: what makes it work, where the code is, and an honest
+caveat. Link out to the technology's own docs rather than over-explaining.
+Reference arXiv papers only where the approach is novel. Keep it brief — prove
+the claim, don't write a textbook.
+
+== [Claim from README]
+
+[quote, README]
+____
+Paste the specific claim here.
+____
+
+Brief explanation of _how_ — 2-4 sentences. Link to the technology
+(https://elixir-lang.org[Elixir], https://ziglang.org[Zig], etc.) rather than
+explaining it from scratch.
+
+**Caveat:** What doesn't this cover? Where are the limits?
+
+- Implementation: `path/to/code`
+- Learn more: https://relevant-docs.example.com
+
+== Dogfooded Across The Account
+
+These aren't one-off choices — they're patterns used across hyperpolymath repos:
+
+[cols="1,2"]
+|===
+| Technology | Also Used In
+
+| **[Tech 1]** | https://github.com/hyperpolymath/[repo1], https://github.com/hyperpolymath/[repo2]
+| **[Tech 2]** | https://github.com/hyperpolymath/[repo3]
+|===
+
+== File Map
+
+[cols="1,2"]
+|===
+| Path | Proves
+
+| `src/` | ...
+| `ffi/` | ...
+|===

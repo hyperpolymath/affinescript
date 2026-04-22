@@ -1,0 +1,104 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-FileCopyrightText: 2024-2026 Hyperpolymath Contributors
+
+= AffineScript Documentation Directory
+
+This directory contains all project documentation organized by purpose.
+
+== Structure
+
+[source]
+----
+docs/
+├── README.adoc               # This file
+├── specs/                    # Language specifications
+│   ├── affinescript-spec.md  # Complete language specification
+│   └── SPEC.md               # Core specification
+├── governance/               # Community and process docs
+│   ├── CODE_OF_CONDUCT.md    # Community standards
+│   ├── CONTRIBUTING.adoc     # How to contribute
+│   ├── MAINTAINERS.adoc      # Project maintainers
+│   └── SECURITY.md           # Security policy
+├── standards/                # Design & planning docs
+│   ├── ROADMAP.md            # Development roadmap
+│   ├── DECISIONS.md          # Architecture decisions
+│   ├── RELEASE.md            # Release procedures
+│   └── PALIMPSEST.adoc       # License integration
+└── guides/                   # Testing and guides
+    ├── TESTING-REPORT.adoc   # Test coverage report
+    └── TESTING-REPORT.scm    # Machine-readable test data
+----
+
+== Documentation Categories
+
+=== Language Specifications (`specs/`)
+
+**For language designers and implementers.**
+
+* link:specs/affinescript-spec.md[AffineScript Specification] - Complete language spec
+* link:specs/SPEC.md[Core Specification] - Core language features
+
+=== Governance (`governance/`)
+
+**For contributors and community members.**
+
+* link:governance/CODE_OF_CONDUCT.md[Code of Conduct] - Community behavior standards
+* link:governance/CONTRIBUTING.adoc[Contributing Guide] - How to contribute code/docs
+* link:governance/MAINTAINERS.adoc[Maintainers] - Who maintains what
+* link:governance/SECURITY.md[Security Policy] - How to report vulnerabilities
+
+=== Standards & Planning (`standards/`)
+
+**For understanding project direction and decisions.**
+
+* link:standards/ROADMAP.md[Roadmap] - Development roadmap and milestones
+* link:standards/DECISIONS.md[Architecture Decisions] - Key design choices
+* link:standards/RELEASE.md[Release Process] - How releases are made
+* link:standards/PALIMPSEST.adoc[Palimpsest Integration] - License integration
+
+=== Guides (`guides/`)
+
+**For testing and quality assurance.**
+
+* link:guides/TESTING-REPORT.adoc[Testing Report] - Human-readable test coverage
+* link:guides/TESTING-REPORT.scm[Testing Report (SCM)] - Machine-readable test data
+
+== Quick Links by Role
+
+=== I want to...
+
+**...understand AffineScript**
+→ Start with link:specs/affinescript-spec.md[Language Specification]
+
+**...contribute code**
+→ Read link:governance/CONTRIBUTING.adoc[Contributing Guide]
+
+**...report a security issue**
+→ Follow link:governance/SECURITY.md[Security Policy]
+
+**...understand design decisions**
+→ See link:standards/DECISIONS.md[Architecture Decisions]
+
+**...check the roadmap**
+→ Review link:standards/ROADMAP.md[Roadmap]
+
+**...see test coverage**
+→ Browse link:guides/TESTING-REPORT.adoc[Testing Report]
+
+== Contributing to Documentation
+
+Documentation improvements are always welcome! See link:governance/CONTRIBUTING.adoc[Contributing Guide] for:
+
+* Style guidelines
+* Review process
+* Documentation testing
+
+## External Resources
+
+* **Project Repository**: https://github.com/hyperpolymath/affinescript
+* **Issue Tracker**: https://github.com/hyperpolymath/affinescript/issues
+* **Discussions**: https://github.com/hyperpolymath/affinescript/discussions
+
+---
+
+**Last updated:** 2026-01-23

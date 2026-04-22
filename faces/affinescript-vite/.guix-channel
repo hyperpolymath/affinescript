@@ -1,0 +1,22 @@
+;; SPDX-License-Identifier: PMPL-1.0-or-later
+;; Copyright (c) {{CURRENT_YEAR}} hyperpolymath (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+;;
+;; Guix channel definition for AffineScript-Vite
+;;
+;; To use this channel, add to ~/.config/guix/channels.scm:
+;;
+;;   (channel
+;;     (name 'AffineScript-Vite)
+;;     (url "https://github.com/hyperpolymath/AffineScript-Vite")
+;;     (branch "main"))
+;;
+;; Then: guix pull
+
+(channel
+  (version 0)
+  (url "https://github.com/hyperpolymath/AffineScript-Vite")
+  (dependencies
+   (channel
+     (name 'guix)
+     (url "https://git.savannah.gnu.org/git/guix.git")
+     (branch "master"))))

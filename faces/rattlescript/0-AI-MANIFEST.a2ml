@@ -1,0 +1,61 @@
+# RSR Template AI Manifest (Read First)
+
+This is the root AI manifest for the template repository.
+
+## Template Status
+
+This repository intentionally contains template placeholders before bootstrap.
+Examples: `hyperpolymath`, `rattlescript`, `{{PROJECT_NAME}}`, `[YOUR-REPO-NAME]`.
+
+Do not invent project-specific values unless the operator runs template
+initialization (for example `just init`) or explicitly provides values.
+
+## Authority Split
+
+- Central protocol authority:
+  `standards/session-management-standards/`
+- Local integration authority (this repo):
+  - `Justfile` session recipes
+  - `session/dispatch.sh`
+  - `session/custom-checks.k9`
+  - `session/local-hooks.sh`
+  - `coordination.k9`
+
+## Canonical Session Commands
+
+- `intake repo <path>`
+- `checkpoint change <path>`
+- `verify maintenance <path>`
+- `verify substantial <path>`
+- `verify release <path>`
+- `close planned <path>`
+- `close urgent <path>`
+- `recover repo <path>`
+- `handover full <path>`
+- `handover split <path>`
+- `handover model <path>`
+- `handover human <path>`
+
+## Core Invariants
+
+1. Keep protocol text centralized; do not duplicate full protocol specs here.
+2. Keep local policy and hook behavior local to this repo.
+3. Write runtime session artifacts in working repos (typically `.session/`).
+4. Keep README/AUDIT/manifest claims synchronized with actual files.
+5. Mark stubs and placeholders explicitly.
+
+## Key Local Files
+
+- `AUDIT.adoc` (local audit gate summary)
+- `README.adoc` (template orientation)
+- `EXPLAINME.adoc` (claim-to-implementation map)
+- `session/README.md` (session-binding usage)
+- `.machine_readable/` (machine-readable repo policy/state files)
+
+## Startup Checklist For Agents
+
+1. Read `0-AI-MANIFEST.a2ml`.
+2. Read `AUDIT.adoc`.
+3. Confirm whether placeholders have been initialized.
+4. Use canonical session commands through `session/dispatch.sh` or Just aliases.
+5. Avoid claiming files/paths exist unless verified in this repository.

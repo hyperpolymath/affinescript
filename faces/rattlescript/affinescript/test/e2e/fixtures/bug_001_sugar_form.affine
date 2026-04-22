@@ -1,0 +1,11 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// BUG-001 regression — Option B sugar form. Same program as
+// bug_001_omega_let_smuggles_linear.affine but written with the
+// :1 / :ω numeric quantity sugar instead of @linear / @unrestricted.
+// Both surface forms must produce identical enforcement: the quantity
+// checker must reject this for the same reason.
+
+fn consume(@linear r: Int) -> Int {
+  let alias :ω = r;
+  alias + alias
+}

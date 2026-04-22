@@ -1,0 +1,18 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// BUG-001 regression: ω-let must NOT smuggle a linear value through.
+//
+// `consume` declares its parameter as @linear, so within consume's body
+// the parameter `r` is a linear binding. The body binds `r` under an
+// @unrestricted let — per the QTT-orthodox scaled Let rule (ADR-002),
+// the value context for `e1` is scaled by ω, which promotes any linear
+// usage in `e1` to UMany. The quantity checker must then reject this
+// program because `r` is now considered "used multiple times" inside a
+// @linear binding.
+//
+// This fixture uses Option C surface syntax (@unrestricted, @linear).
+// The dual sugar-form fixture is bug_001_sugar_form.affine.
+
+fn consume(@linear r: Int) -> Int {
+  @unrestricted let alias = r;
+  alias + alias
+}

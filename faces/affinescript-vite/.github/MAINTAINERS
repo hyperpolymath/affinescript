@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: PMPL-1.0-or-later
+# MAINTAINERS - Project maintainers and contact information
+#
+# Format: Name <email> (role)
+# Replace placeholders with actual maintainer information.
+
+hyperpolymath <j.d.a.jewell@open.ac.uk> (Lead Maintainer)
+
+# Additional maintainers:
+# Name <email> (role)

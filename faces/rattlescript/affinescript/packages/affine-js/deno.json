@@ -1,0 +1,10 @@
+{
+  "name": "@hyperpolymath/affine-js",
+  "version": "0.1.0",
+  "exports": {
+    ".": "./mod.js",
+    "./marshal": "./marshal.js",
+    "./runtime": "./runtime.js"
+  },
+  "license": "PMPL-1.0-or-later"
+}

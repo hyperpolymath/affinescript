@@ -1,0 +1,38 @@
+; SPDX-License-Identifier: PMPL-1.0-or-later
+; Groove Protocol Manifest — declares API surfaces this project exposes.
+;
+; Used by V-triple connectors and the Groove bridge for snap-on/snap-off
+; service discovery. Edit this file to match your project's actual APIs.
+;
+; See: https://github.com/hyperpolymath/standards/tree/main/groove-protocol
+
+(groove-manifest
+  (version "1.0")
+
+  ; Service identity — replace rattlescript with your project name
+  (service "rattlescript")
+  (service-version "0.1.0")
+
+  ; Primary port — MUST be unique across the ecosystem.
+  ; Check PORT-REGISTRY.md in the standards repo before assigning.
+  ; https://github.com/hyperpolymath/standards/blob/main/PORT-REGISTRY.md
+  (port 0)  ; 0 = not assigned yet — run `just groove-setup` to assign
+
+  ; API surfaces this project exposes (dodeca-API)
+  ; Remove lines for API types you don't use.
+  (api-surfaces
+    (rest    (enabled true)  (path "/api/v1"))
+    (grpc    (enabled false) (port-offset 1))
+    (graphql (enabled false) (path "/graphql"))
+    (websocket (enabled false) (path "/ws"))
+    (sse     (enabled false) (path "/events"))
+    (groove  (enabled true)  (path "/.well-known/groove")))
+
+  ; Health endpoint — used by Groove discovery
+  (health "/health")
+
+  ; Capabilities — what this service can do for others
+  (capabilities ())
+
+  ; Dependencies — what this service needs from others
+  (dependencies ()))

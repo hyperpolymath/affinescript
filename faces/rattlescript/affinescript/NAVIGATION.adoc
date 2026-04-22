@@ -1,0 +1,198 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-FileCopyrightText: 2024-2026 Hyperpolymath Contributors
+
+= AffineScript Repository Navigation Guide
+
+This guide helps you navigate the AffineScript repository structure.
+
+== Quick Start Files (Root Level)
+
+[cols="1,3"]
+|===
+|File/Directory |Purpose
+
+|**README.adoc** |Project overview and introduction
+|**LICENSE** |PMPL-1.0-or-later license text
+|**STATE.scm** |Current project state and progress
+|===
+
+== Source Code
+
+[cols="1,3"]
+|===
+|Directory |Contents
+
+|**lib/** |OCaml library source code (core compiler)
+|**bin/** |Executable entry points
+|**runtime/** |Runtime system implementation
+|**test/** |Test suites
+|**examples/** |Example AffineScript programs
+|**conformance/** |Conformance test suite
+|**tools/** |Development and build tools
+|===
+
+== Documentation
+
+[cols="1,3"]
+|===
+|Directory |Contents
+
+|**docs/specs/** |Language specifications
+|**docs/governance/** |Community and contribution docs
+|**docs/standards/** |Design decisions, roadmap, releases
+|**docs/guides/** |Testing reports and guides
+|**wiki/** |Extended documentation and wiki content
+|===
+
+**Key specification documents:**
+
+* link:docs/specs/affinescript-spec.md[AffineScript Specification] - Complete language spec
+* link:docs/specs/SPEC.md[Core Specification] - Core language features
+
+**Governance documents:**
+
+* link:docs/governance/CONTRIBUTING.adoc[Contributing Guide] - How to contribute
+* link:docs/governance/CODE_OF_CONDUCT.md[Code of Conduct] - Community standards
+* link:docs/governance/SECURITY.md[Security Policy] - Reporting vulnerabilities
+* link:docs/governance/MAINTAINERS.adoc[Maintainers] - Project maintainers
+
+**Standards and planning:**
+
+* link:docs/standards/ROADMAP.md[Roadmap] - Development roadmap
+* link:docs/standards/DECISIONS.md[Decisions] - Architecture decisions
+* link:docs/standards/RELEASE.md[Release Process] - Release procedures
+* link:docs/standards/PALIMPSEST.adoc[Palimpsest Integration] - License integration
+
+**Guides:**
+
+* link:docs/guides/TESTING-REPORT.adoc[Testing Report (AsciiDoc)] - Test coverage report
+* link:docs/guides/TESTING-REPORT.scm[Testing Report (Scheme)] - Machine-readable test report
+
+== Build System
+
+[cols="1,3"]
+|===
+|Directory |Contents
+
+|**.build/** |Build configuration and tooling
+|**.build/justfile** |Task automation (build, test, deploy)
+|**.build/dune-project** |Dune build configuration (OCaml)
+|**.build/affinescript.opam** |OPAM package definition
+|**.build/Mustfile** |Must-use file enforcement
+|**.build/.ocamlformat** |OCaml formatting rules
+|===
+
+== Project Metadata
+
+[cols="1,3"]
+|===
+|File/Directory |Purpose
+
+|**STATE.scm** |Current project state (symlink to .machine_readable/)
+|**.machine_readable/** |Structured metadata for tooling
+|**.claude/** |AI assistant context and instructions
+|**hooks/** |Git hooks for development workflow
+|===
+
+== Hidden Directories
+
+[cols="1,3"]
+|===
+|Directory |Purpose
+
+|**.build/** |Build configuration files
+|**.claude/** |AI assistant instructions
+|**.machine_readable/** |Machine-readable SCM metadata
+|**.github/** |GitHub Actions workflows and templates
+|**_build/** |OCaml/Dune build artifacts (gitignored)
+|===
+
+== Common Tasks
+
+=== Building the Compiler
+
+[source,bash]
+----
+cd .build/
+just build           # Build compiler
+just test            # Run tests
+just install         # Install locally
+----
+
+=== Running Tests
+
+[source,bash]
+----
+cd .build/
+just test            # Run all tests
+just test-conformance # Run conformance tests
+----
+
+=== Development
+
+[source,bash]
+----
+cd .build/
+just dev             # Development mode
+just watch           # Watch mode for auto-rebuild
+just fmt             # Format code
+----
+
+=== Contributing
+
+1. Read link:docs/governance/CONTRIBUTING.adoc[Contributing Guide]
+2. Check link:docs/governance/CODE_OF_CONDUCT.md[Code of Conduct]
+3. Review link:docs/standards/DECISIONS.md[Architecture Decisions]
+4. Follow link:docs/standards/ROADMAP.md[Development Roadmap]
+
+== Directory Tree Overview
+
+[source]
+----
+affinescript/
+├── README.adoc                    # Start here
+├── NAVIGATION.adoc                # This file
+├── LICENSE                        # Legal terms
+├── STATE.scm                      # Project state
+│
+├── lib/                           # OCaml compiler source
+├── bin/                           # Executables
+├── runtime/                       # Runtime system
+├── test/                          # Test suites
+├── examples/                      # Example programs
+├── conformance/                   # Conformance tests
+├── tools/                         # Development tools
+│
+├── docs/                          # Documentation
+│   ├── specs/                     # Language specs
+│   ├── governance/                # Community docs
+│   ├── standards/                 # Decisions & roadmap
+│   └── guides/                    # Testing & guides
+│
+├── .build/                        # Build system
+│   ├── justfile                   # Task runner
+│   ├── dune-project               # Dune config
+│   ├── affinescript.opam          # OPAM package
+│   └── .ocamlformat               # Code style
+│
+├── wiki/                          # Extended documentation
+├── hooks/                         # Git hooks
+└── .machine_readable/             # Machine metadata
+----
+
+== Getting Help
+
+* **Issues**: https://github.com/hyperpolymath/affinescript/issues
+* **Discussions**: https://github.com/hyperpolymath/affinescript/discussions
+* **Security**: See link:docs/governance/SECURITY.md[Security Policy]
+
+== Document Conventions
+
+* **`.adoc`** - AsciiDoc format (preferred for complex docs)
+* **`.md`** - Markdown format (for GitHub compatibility)
+* **`.scm`** - Guile Scheme (machine-readable metadata)
+* **`.ml`** - OCaml source code
+
+---
+
+**Last updated:** 2026-01-23

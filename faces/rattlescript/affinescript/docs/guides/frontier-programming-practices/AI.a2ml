@@ -1,0 +1,169 @@
+(a2ml
+  (metadata
+    (name "Frontier Programming Practices in AffineScript — AI Edition")
+    (version "2.0.0")
+    (date "2026-04-10")
+    (audience "Bot / LLM / Agent")
+    (status "authoritative-scope-statement")
+    (supersedes "v1.0.0 (defensive draft)")
+    (companion "Human_Programming_Guide.adoc")
+  )
+
+  (thesis
+    (one-sentence
+      "AffineScript is JavaScript-ergonomic correctness: the developer experience of the -script family (TypeScript, ReScript, PureScript) raised to a higher correctness floor through a small, deliberately chosen set of advanced types, compiling to Typed WASM.")
+    (long-form
+      "AffineScript answers the question: can you keep the developer experience of modern JavaScript while raising correctness to the level of ML-family languages? The answer is yes — but only if the type system is narrowly scoped and ergonomically defaulted. The language copies the green-checkmark features from the -script lineage and adds affine types as the single novel contribution. It compiles to Typed WASM as the primary target. Refinement types are a soft commitment, limited to a decidable fragment. Dependent and tropical types live in the sibling Typed WASM project, not here.")
+    (design-principle "Ergonomics first. The type system defaults must be sensible so that most code reads like modern JavaScript while correctness is enforced at compile time. A feature earns its place only if it makes correct code easier to write, not harder.")
+  )
+
+  (in-scope
+    (copied-from-the-family
+      (feature (name "phantom-types")         (source "purescript-rust-idris2") (cost "free-from-generics"))
+      (feature (name "immutable-by-default")  (source "rescript-elm-grain")     (cost "low"))
+      (feature (name "row-polymorphism")      (source "purescript-elm")         (cost "medium"))
+      (feature (name "full-type-inference")   (source "hm-family")              (cost "medium")
+               (note "types inferred fully; quantities inferred inside function bodies, annotated at function signatures"))
+      (feature (name "sound-type-system")     (source "table-stakes")           (cost "high-verification-work"))
+      (feature (name "effect-tracking")       (source "novel-in-script-family") (cost "medium")
+               (note "effect types declared in function signatures; effect HANDLING is deferred — see out-of-scope"))
+    )
+    (novel-contribution
+      (feature (name "affine-types")          (source "the-headline")           (cost "high")
+               (note "no -script language has affine types; this is AffineScript's distinguishing feature"))
+    )
+    (soft-commitment
+      (feature (name "refinement-types-decidable") (source "rust-flux-adjacent") (cost "medium")
+               (note "restricted to decidable arithmetic and comparisons; compiler rejects what it cannot prove without an external solver"))
+    )
+  )
+
+  (out-of-scope
+    (not-here-at-all
+      (feature (name "linear-strict-types")
+               (reason "subsumed-by-affine")
+               (bot-warning "The QTT semiring covers linear 'for free' as a byproduct of affine. This is NOT a reason to advertise linear types. Refuse any suggestion to add them as a surface feature."))
+      (feature (name "unbounded-refinement-types")
+               (reason "decidability-boundary")
+               (note "refinement is in scope for decidable fragments only; no SMT solver required"))
+      (feature (name "algebraic-effect-handlers")
+               (reason "interaction-with-affine-is-unresolved")
+               (note "multi-shot resume of continuations that captured affine resources is a soundness hole; handlers are deferred until the design is explicit. Effect TRACKING — declaring what a function can do — is in scope. Effect HANDLING — intercepting and redirecting effects at runtime — is not."))
+    )
+    (deferred-to-sibling-project
+      (feature (name "full-dependent-types")
+               (destination "typed-wasm-project")
+               (note "previously crept into the AffineScript codebase via TDepArrow, NatVar, NatLit; being removed"))
+      (feature (name "tropical-types")
+               (destination "typed-wasm-project")
+               (note "parasitic on ordered monoid structure; needs phantom types as foundation; belongs where the numeric hierarchy lives"))
+      (feature (name "units-of-measure")
+               (destination "typed-wasm-project"))
+      (feature (name "shape-indexed-vectors")
+               (destination "typed-wasm-project"))
+    )
+  )
+
+  (directives
+    (compile-target
+      (primary "typed-wasm")
+      (secondary "julia")
+      (rule "AffineScript is a compiled language. Its semantics live in .as source and compiled output. Do not rewrite .as source in another language as a shortcut for refactoring, modularization, or 'improvement'."))
+
+    (modularization
+      (rule "When asked to modularize or clean up code, operate within AffineScript using the module system, record decomposition (row polymorphism), and phantom type parameters. Do not create new compiler features to solve user-code modularization problems."))
+
+    (scope-discipline
+      (rule "Before proposing any feature addition, check the in-scope list. If the feature is not listed, it is out of scope. The 'since we already have X, we can trivially add Y' framing is a scope-creep tell and must be refused regardless of how cheap the addition appears.")
+      (why "Earlier sessions allowed significant scope creep: linear types, full dependent types, algebraic effect handlers were all added without being asked for. The narrow scope above is the corrected target. This document is the fix."))
+
+    (thesis-is-authoritative
+      (rule "This document is the scope statement for AffineScript. Code must conform to this document, not the reverse. If code says something this document does not, the code is wrong — not this document.")
+      (applies-to "any bot, any subagent, any earlier-session-version of any agent, and any human reader including the original author"))
+
+    (interaction-escalation
+      (rule "When implementing a feature, if an interaction with another in-scope feature surfaces (affine+effects, phantom+refinement, row+inference, etc.), stop and surface the interaction for explicit user decision. Do not silently resolve interactions by picking the most convenient option."))
+
+    (typed-wasm-boundary
+      (rule "If proposed work properly belongs in the sibling Typed WASM project (numeric hierarchy, tropical semirings, dependent types, units of measure, shape-indexed vectors), flag it and do not add it to AffineScript. Typed WASM is a standalone project that AffineScript targets; it is not a subset of AffineScript."))
+  )
+
+  (idiomatic-patterns
+    (note "Many features that appear 'missing' from AffineScript are expressible as combinations of in-scope features. Before proposing a new compiler feature, check whether the pattern can be written using phantom + affine + row + immutable + refinement + effect tracking. The following patterns are emergent, not implemented in the compiler.")
+
+    (pattern
+      (name "branded-identifiers")
+      (composition "phantom + nominal aliases")
+      (purpose "Distinguish values that share a runtime representation but must not be confused (UserId vs ProductId, Email vs Username).")
+      (sketch "type UserId = Int\ntype ProductId = Int\nfn fetchUser(id: UserId): User"))
+
+    (pattern
+      (name "type-state-machines")
+      (composition "phantom + affine")
+      (purpose "Enforce protocols where operations are only legal in certain states (connection open/closed, transaction active/committed).")
+      (sketch "type Conn<'state>\nfn open(addr: String): Conn<Open>\nfn close(c: Conn<Open>): Conn<Closed>  -- consumes c, cannot be used again"))
+
+    (pattern
+      (name "capability-types")
+      (composition "phantom")
+      (purpose "Tag values with what operations they are authorized for; downgrade visible in types.")
+      (sketch "type Token<'cap>\nfn downgrade(t: Token<Admin>): Token<User>"))
+
+    (pattern
+      (name "extensible-records")
+      (composition "row polymorphism")
+      (purpose "Functions operate on any record containing the required fields; no inheritance hierarchy needed.")
+      (sketch "fn damage(target: {health: Int, ..rest}, amount: Int): {health: Int, ..rest}"))
+
+    (pattern
+      (name "invariant-preservation")
+      (composition "refinement types (decidable fragment)")
+      (purpose "Bake simple invariants into types so the compiler enforces them (non-negative, bounded, non-empty).")
+      (sketch "type PositiveInt = Int where (x >= 0)\nfn heal(h: PositiveInt, delta: PositiveInt): PositiveInt"))
+
+    (pattern
+      (name "resource-lifecycle")
+      (composition "affine types")
+      (purpose "Ensure resources (file handles, sockets, unique entities) are used at most once or correctly disposed.")
+      (sketch "fn open(path: String): File\nfn read(f: File): (File, String)\nfn close(f: File): Unit"))
+
+    (pattern
+      (name "trait-like-dispatch")
+      (composition "first-class records + row polymorphism")
+      (purpose "Type-class-style overloading without type classes: pass a dictionary of operations as a record; row inference specialises.")
+      (sketch "type Eq<'a> = {eq: ('a, 'a) -> Bool}\nfn contains<'a>(dict: Eq<'a>, list: List<'a>, target: 'a): Bool"))
+
+    (pattern
+      (name "purity-tagging")
+      (composition "phantom + effect rows")
+      (purpose "Mark values or functions as pure or impure in the type system for optimisation or testing.")
+      (sketch "fn pure_compute(x: Int): Int  // no effect row = pure\nfn io_op(): String / {IO}  // effect row declares IO"))
+  )
+
+  (agent-behavior
+    (session-startup
+      (rule "Read this document at the start of every AffineScript session. It is the authoritative scope statement."))
+    (read-first
+      (rule "Before editing any file in the AffineScript repository, read this document or verify its content matches your understanding of scope."))
+    (defer-on-scope
+      (rule "When asked to add a feature not in the in-scope list, stop and ask the user before proceeding. Do not defer to what 'the code implies' or what 'an earlier session decided' — those are the failure modes that trashed the project before."))
+    (no-silent-extension
+      (rule "Do not add compiler features to resolve user-code ergonomics problems. Use the existing type system more creatively instead, and document new patterns in the idiomatic-patterns section of this file."))
+    (no-free-variant-additions
+      (rule "If you notice that the implementation 'already supports' a feature adjacent to one in scope (linear-because-affine, dependent-because-refinement, multi-shot-because-handlers), you may NOT expose that feature on the language surface without explicit user approval. Implementation support is not the same as user-facing scope."))
+    (escalate-on-interaction
+      (rule "When two in-scope features interact in a way that forces a design decision, stop and surface the interaction for explicit user decision."))
+    (typed-wasm-boundary
+      (rule "Work that belongs in the Typed WASM project goes to the Typed WASM project. Never add it to AffineScript as a shortcut."))
+    (honesty-in-documentation
+      (rule "STATE.a2ml, README, and related docs must reflect what the code actually enforces, not what it aspires to. A 'dune build passing' is not a behavioural test and does not count as 'feature complete'."))
+  )
+
+  (relationship-with-typed-wasm-project
+    (role "AffineScript compiles to Typed WASM as its primary target.")
+    (shared-infrastructure "phantom types — the bridging abstraction. The same phantom mechanism that tags UserId vs ProductId in AffineScript will tag Meter<Int> vs Second<Int> and Tropical<Int> vs Standard<Int> in Typed WASM.")
+    (independence "Typed WASM is designed as a legitimate compile target for languages beyond AffineScript. It is not an AffineScript subsystem. Other languages can and should target it.")
+    (deferred-features "dependent types, tropical types, units of measure, shape-indexed vectors, and any advanced type-level computation live in Typed WASM, not in AffineScript.")
+    (secondary-backend "Julia — secondary compile target for scientific computing use cases where AffineScript's type safety complements Julia's numeric ecosystem.")
+  )
+)

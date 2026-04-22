@@ -1,0 +1,112 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath)
+= Fuzz Testing
+:toc:
+
+== Status
+
+This directory is a scaffold for fuzz tests.
+**No fuzz harness is configured yet.** Add one when your project has parsers,
+deserializers, protocol handlers, or other input-processing code worth fuzzing.
+
+== Adding Fuzz Tests
+
+Choose the harness that matches your project's primary language:
+
+=== Rust (cargo-fuzz / libFuzzer)
+
+[source,bash]
+----
+# Install cargo-fuzz (one-time)
+cargo install cargo-fuzz
+
+# Initialise fuzz targets in this repo
+cargo fuzz init
+
+# Create a target
+cargo fuzz add my_target
+
+# Run
+cargo fuzz run my_target -- -max_total_time=300
+----
+
+The `cargo fuzz init` command creates `fuzz/Cargo.toml` and `fuzz/fuzz_targets/`.
+Move or symlink those into `tests/fuzz/` to keep the RSR directory layout.
+
+=== Zig (built-in fuzzing, Zig 0.14+)
+
+[source,zig]
+----
+// tests/fuzz/fuzz_parser.zig
+const std = @import("std");
+
+test "fuzz parser" {
+    // Zig's built-in fuzz testing
+    const input = std.testing.fuzzInput(.{});
+    // Call your parser with arbitrary input
+    _ = mylib.parse(input) catch {};
+}
+----
+
+[source,bash]
+----
+zig build test --fuzz
+----
+
+=== Elixir (stream_data property-based testing)
+
+[source,elixir]
+----
+# mix.exs — add {:stream_data, "~> 1.0", only: :test}
+
+# tests/fuzz/my_property_test.exs
+defmodule MyPropertyTest do
+  use ExUnit.Case
+  use ExUnitProperties
+
+  property "parser never crashes on arbitrary input" do
+    check all input <- binary() do
+      # Should not raise
+      MyApp.Parser.parse(input)
+    end
+  end
+end
+----
+
+=== ReScript / Deno (fast-check)
+
+[source,javascript]
+----
+// tests/fuzz/fuzz_parser.test.mjs
+import fc from "npm:fast-check";
+import { parse } from "../../src/parser.mjs";
+
+Deno.test("parser handles arbitrary strings", () => {
+  fc.assert(
+    fc.property(fc.string(), (input) => {
+      // Should not throw
+      try { parse(input); } catch (_) { /* parse errors OK */ }
+    }),
+    { numRuns: 10000 }
+  );
+});
+----
+
+== When to Add Fuzzing
+
+Fuzz testing is most valuable for code that:
+
+* Parses untrusted input (file formats, network protocols, user data)
+* Deserializes structured data (JSON, binary formats, ASN.1)
+* Performs complex string/byte manipulation
+* Has safety-critical invariants
+
+If your project is purely a library of pure functions with typed inputs,
+property-based testing (see `tests/property/`) may be more appropriate than
+byte-level fuzzing.
+
+== CI Integration
+
+Once you have a fuzz harness, add a CI job that runs it for a bounded time
+(e.g., 5 minutes) on each PR. This catches regressions without blocking merges
+for hours.

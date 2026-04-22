@@ -1,0 +1,31 @@
+{
+  "name": "affinescript-vite",
+  "version": "0.1.0",
+  "description": "Vite plugin for AffineScript — compile and reload .as files in your Vite projects.",
+  "type": "module",
+  "main": "./src/index.js",
+  "module": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "scripts": {
+    "dev": "deno run --allow-all node_modules/vite/bin/vite.js",
+    "build": "deno run --allow-all node_modules/vite/bin/vite.js build",
+    "preview": "deno run --allow-all node_modules/vite/bin/vite.js preview"
+  },
+  "keywords": [
+    "vite",
+    "vite-plugin",
+    "affinescript",
+    "wasm",
+    "compiler"
+  ],
+  "author": "hyperpolymath",
+  "license": "AGPL-3.0-or-later",
+  "dependencies": {
+    "vite": "^8.0.5"
+  },
+  "engines": {
+    "deno": ">=2.0.0"
+  }
+}

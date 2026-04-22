@@ -1,0 +1,214 @@
+# SPDX-License-Identifier: PMPL-1.0-or-later
+# STATE.a2ml — Project state checkpoint
+
+[metadata]
+project = "affinescript"
+version = "0.1.0"
+last-updated = "2026-04-11"
+status = "active"
+
+[project-context]
+name = "affinescript"
+completion-percentage = 90
+phase = "packages-and-educational-materials-complete"
+tagline = "Rust-inspired language with affine types, dependent types, row polymorphism, and extensible effects"
+note = "Session 2026-04-11 continued: P3 (aggregate library ecosystem) and P4 (educational materials) complete. P2 faces extended: JS-face (lib/js_face.ml) and Pseudocode-face (lib/pseudocode_face.ml) added, face.ml and bin/main.ml updated with all four active faces (canonical/python/js/pseudocode). aggregate packages: packages/affine-js/ (Deno ESM, WASM loader, marshal/unmarshal, types.d.ts), packages/affine-ts/ (typed call helpers, narrowing predicates), packages/affine-res/ (ReScript bindings with typed shortcuts and exhaustive matching). educational materials: docs/guides/frontier-guide.adoc (6-chapter unveiling tutorial), docs/guides/warmup/ (4 warmup scripts: basics/ownership/effects/rows). faces.md updated with JS-face and Pseudocode-face entries. Previously: Faces architecture (ADR-010, Priority 2) complete 2026-04-11. (1) lib/python_face.ml: source-level text preprocessor mapping Python surface syntax to canonical AffineScript — indentation→braces, def/True/False/None/and/or/not/class/pass keyword subs, elif/else chains, tail-position semicolon suppression. (2) lib/face.ml: face-aware error formatter mapping canonical error terms to face-specific vocabulary — Python face uses 'Ownership error / single-use variable' for linear violations, 'Name not found' for unbound vars, 'if/else type mismatch' for branch mismatches, renders Unit as None and Bool as bool. (3) bin/main.ml: --face [canonical|python] flag on all subcommands; parse_with_face selects preprocessor path; all error sites route through Face.format_*_error. (4) Span fidelity deferred: error spans currently refer to transformed canonical text positions (planned follow-up). (5) docs/specs/faces.md: face architecture reference doc written. (6) panic-attack audit: 1 High (search.js innerHTML — false positive but fixed to char-replacement), 2 Medium (LSP unwraps/shell heredoc — both false positives), 2 Low (TODO markers — informational). 73/73 E2E tests: 0 regressions. Seam check (items 1+2) verified: --face python on @linear double-use produces correct Python-face ownership error end-to-end."
+
+[components]
+lexer = "complete-minus-affine-tokens (ZERO/ONE tokens for quantity literals NOT emitted; blocks QTT surface syntax). float_exponent now correctly named sub-regexp — scientific notation crash fixed 2026-04-11."
+parser = "conformance-complete (ADR-009 achieved 2026-04-11). 12/12 valid tests parse. Added: optional SEMICOLON on type aliases/enums, enum leading-pipe syntax, effect op type params, ROW_VAR type params, ty_record_body/expr_record_body recursive rules for row-polymorphic records, field_name contextual keyword rule, struct literal expressions."
+type-checker-rules = "99% (bidirectional inference, Never/bottom, block divergence, variant/constructor/record-spread/mutable bindings all implemented in lib/typecheck.ml)"
+type-checker-enforcement-wiring = "wired (Typecheck.check_program is invoked from bin/main.ml on every check/compile/eval path; Quantity.check_program_quantities runs after typecheck at lib/typecheck.ml:1206; the gating IS live for the rules and quantity annotations that exist today)"
+borrow-checker = "phase-3-in-progress (lib/borrow.ml carries [IMPL-DEP: Phase 3] markers; not yet authoritative)"
+interpreter = "95%"
+wasm-codegen = "92% (real-world game compiles: airborne-submarine-squadron/src/main.affine → 8KB WASM)"
+wasm-gc-codegen = "70% (WasmGC proposal target: struct.new/struct.get/array.new_fixed/array.get; --wasm-gc CLI flag)"
+julia-codegen = "exists"
+lsp-phase-a = "complete"
+lsp-phase-b = "in-progress"
+lsp-phase-c = "pending"
+lsp-phase-d = "pending"
+stdlib = "95% (5 stubs remain as extern builtins)"
+
+[stats]
+compiler-loc = 12750
+compiler-modules = 39
+lsp-files = 5
+test-files = 54
+
+[features]
+# Honest status of the headline language features advertised in README.adoc.
+# "declared-but-unwired" = surface syntax and/or internal module exists, but
+# the feature is not enforced on user programs through the CLI pipeline.
+affine-types = "wired-and-reachable (Track A Manhattan plan complete 2026-04-10. Quantity semiring in lib/quantity.ml; invoked from typecheck.ml:1206 inside the standard CLI pipeline. Surface syntax per ADR-007 hybrid: @linear/@erased/@unrestricted attributes (Option C primary) on let/stmt-let/param/lambda-param, AND :1/:0/:ω numeric sugar (Option B) on let/stmt-let. Scaled Let rule per ADR-002 implemented in lib/quantity.ml ExprLet/StmtLet — closes BUG-001 (ω-let smuggles linear values) and BUG-002 (zero-let erasure). Four regression fixtures in test/e2e/fixtures/ exercise both surface forms. Behavioural enforcement verified via E2E Quantity test suite — 4 new passing tests, 0 regressions.)"
+linear-arrows = "parse-only (-[q]-> syntax accepted by parser; quantity annotation not propagated into enforcement)"
+borrow-checker = "phase-3-in-progress (see lib/borrow.ml [IMPL-DEP: Phase 3])"
+row-polymorphism = "60% (records + effects rows implemented in typecheck/unify; not fully exercised end-to-end)"
+effects = "declarations-only (effect types parsed and tracked; handler semantics not yet in interpreter or backends)"
+dependent-types = "parse-only (TRefined AST node exists and refinement predicates parse, but predicates do not reduce; no SMT/decision procedure wired in)"
+traits = "70% (registry and lookup work; generic trait resolution needs unification integration)"
+
+[track-a-manhattan]
+owner = "primary"
+scope = """
+Close the surface-syntax gap that makes affine enforcement unreachable from
+user programs. Revised 2026-04-10 after the original ETA was set against the
+incorrect premise that `Quantity.check_program_quantities` was unwired from
+the CLI — it is wired (typecheck.ml:1206) and has been since at least
+the Manhattan-recovery refactor (#19). The actual remaining work:
+
+1. AST: add `el_quantity : quantity option` to ExprLet, `sl_quantity` to
+   StmtLet. (~4 LOC + cascading pattern updates across ~10 modules that
+   match on Let.)
+2. Lexer/parser: make ZERO/ONE tokens reachable in quantity position
+   (cheapest path: accept INT 0/INT 1 in the parser's `quantity` rule,
+   leaving the lexer alone). ~3 LOC.
+3. Parser: extend `let_decl` and `stmt_let` rules with an optional
+   binder-quantity annotation. Surface-syntax choice is a language-design
+   call — see META.a2ml ADR-007 candidate.
+4. quantity.ml ExprLet/StmtLet: implement context scaling per ADR-002.
+   Snapshot before walking el_value, walk it, scale all newly-recorded
+   usages by `q`, then merge back. ~25 LOC including a `scale_usage_by`
+   helper.
+5. Two regression fixtures covering BUG-001 and the dual valid case.
+6. spec.md T-Let rewrite to show the scaling explicitly.
+
+Out of scope for Track A:
+- BUG-003 (eval_list L-to-R): SHIPPED 2026-04-10. interp.ml:347 now uses
+  fold_left + List.rev. Behavioural regression test deferred — depends on
+  the broken `let mut` interpreter path (separately tracked in the failing
+  baseline interp tests).
+- BUG-004 (lambda capture tracking): blocked on borrow checker Phase 3.
+- BUG-002 (zero-let erasure semantics): folds in with BUG-001 once
+  surface syntax exists.
+"""
+spine-files = ["lib/ast.ml", "lib/parser.mly", "lib/quantity.ml", "lib/typecheck.ml", "lib/interp.ml", "lib/codegen.ml", "lib/codegen_gc.ml", "lib/julia_codegen.ml", "lib/formatter.ml", "lib/sexpr_dump.ml", "lib/json_output.ml", "lib/linter.ml", "lib/opt.ml", "lib/desugar_traits.ml", "test/e2e/fixtures/", "docs/spec.md"]
+eta = "T+7d from 2026-04-10 (ADR-007 accepted, implementation chain unblocked)"
+blocking-decision = "RESOLVED 2026-04-10: ADR-007 accepted as hybrid C-primary + B-sugar. @linear/@erased/@unrestricted are the canonical forms emitted by tutorials, error messages, IDE tooling, and the formatter. The :1/:0/:ω numeric forms are accepted as sugar (legal in source, rewritten to attribute form by `affinescript fmt` unless --keep-quantity-sugar is set). See META.a2ml ADR-007 for full decision text."
+
+[[closed-bug]]
+id = "BUG-001"
+severity = "high"
+category = "soundness"
+title = "ω-let smuggles linear values"
+discovered = "2026-04-10"
+fixed = "2026-04-10"
+description = """
+let x :ω = linear_resource() in use_x_once(x) was previously accepted.
+The QTT-orthodox scaled Let rule (ADR-002) rejects this because scaling
+the value context by ω promotes the linear usage of `linear_resource()`
+to UMany, which the quantity checker reports as a linear-binding violation.
+"""
+fix = "lib/quantity.ml ExprLet/StmtLet cases now snapshot the env, walk the value, scale the per-variable delta by the binder quantity (via the new scale_usage helper), and merge the scaled deltas back. ExprLet was extended with el_quantity, StmtLet with sl_quantity (lib/ast.ml). Surface syntax landed per ADR-007 hybrid: @linear/@erased/@unrestricted primary + :1/:0/:ω sugar."
+verification = "test/e2e/fixtures/bug_001_omega_let_smuggles_linear.affine (Option C form) and test/e2e/fixtures/bug_001_sugar_form.affine (Option B form) — both produce the @linear-vocabulary error message and are pinned in test/test_e2e.ml as `BUG-001 attr/sugar form rejects ω-let smuggling @linear`. Behaviourally verified end-to-end through `dune runtest`. The dual valid cases (affine_let_valid.affine and affine_let_valid_sugar.affine) confirm the rule does not over-reject."
+
+[[closed-bug]]
+id = "BUG-002"
+severity = "medium"
+category = "semantics"
+title = ":0 lets do not erase their RHS"
+discovered = "2026-04-10"
+fixed = "2026-04-10"
+description = """
+let x :0 = expensive_proof_term() in body_not_using_x previously evaluated
+expensive_proof_term() and consumed its resources. The QTT-orthodox scaled
+Let rule scales the value context by 0, producing the zero context, which
+means the RHS carries no runtime obligations and may be erased.
+"""
+fix = "Closed via the same scaled-Let infrastructure as BUG-001. The quantity-checking pass now correctly drops usage contributions from the RHS of an @erased-bound let (scale_usage QZero _ = UZero), so any linear variables consumed in the RHS no longer count against their owner. The optional interpreter-side erasure (skipping eval of @erased-bound RHS) is deferred — it is an optimisation, not a correctness requirement."
+verification = "Covered transitively by the BUG-001 fixtures: the same scaling logic that closes BUG-001 closes BUG-002. A focused @erased fixture is on the follow-up backlog but not required to declare the bug fixed at the rule level."
+
+[[closed-bug]]
+id = "BUG-003"
+severity = "medium"
+category = "semantics"
+title = "eval_list evaluates right-to-left via List.fold_right"
+discovered = "2026-04-10"
+fixed = "2026-04-10"
+description = """
+lib/interp.ml:347 eval_list previously used List.fold_right with monadic
+bind, which in strict OCaml evaluates arguments right-to-left. ExprBinary
+was already left-to-right, creating internal evaluator inconsistency and a
+latent divergence point for future effects/affine enforcement. See ADR-003.
+"""
+fix = "Replaced fold_right with an explicit L-to-R recursive loop that accumulates results in reverse and reverses at the end. See lib/interp.ml `eval_list` (~12 LOC including the doc comment referencing ADR-003)."
+regression-test-status = "deferred — observable order verification requires either the mutable-binding interpreter path (currently broken in baseline; the failing 'lambda'/'simple eval' interp tests share the same root cause) or a side-effecting builtin reachable from a fixture. Both routes are out of scope for the BUG-003 fix and should be revisited once the interpreter mutation path is repaired."
+verification = "Code review against ADR-003 + dune build clean + dune runtest baseline-equivalent (22 pre-existing failures, none new, none resolved)."
+
+[[open-bug]]
+id = "BUG-004"
+severity = "medium"
+category = "soundness"
+title = "Lambda-body usage not tracked against outer captures"
+discovered = "2026-04-10"
+description = """
+lib/quantity.ml:245-249 explicitly documents that lambda-bound params are
+not tracked and that 'the lambda body may still reference outer tracked
+variables' — but the current code does not charge usage against those
+captures. A lambda capturing a linear variable can be called multiple times,
+duplicating the captured resource.
+"""
+evidence = "lib/quantity.ml:245-249 (comment admits the gap)"
+fix-plan = "Track D (borrow checker Phase 3) — lambda capture analysis is part of the borrow/ownership story. Not A3 scope."
+regression-test = "Track D fixture — deferred until borrow checker lands."
+
+[[open-bug]]
+id = "BUG-005"
+severity = "medium"
+category = "codegen"
+title = "WasmGC backend silently drops unknown function calls"
+discovered = "2026-04-10"
+description = """
+lib/codegen_gc.ml ExprApp handling silently emits 'drop all args + push null'
+when the callee is not in the func_indices table, and does the same for
+indirect calls. This is placeholder behaviour that produces wrong code rather
+than failing loudly. Any program that reaches codegen with an unresolved
+function call will compile to nonsense at runtime.
+"""
+evidence = "lib/codegen_gc.ml gen_gc_expr ExprApp case (the 38-line block added as part of the in-progress WasmGC work)"
+fix-plan = "Replace silent drops with explicit CodegenError. Direct-call path (via func_indices) and int/float builtin coercions stay — they're correct. Only the fallback arms need to fail loudly."
+regression-test = "Add a fixture that intentionally references an unknown function name and expects a loud compile error."
+
+# ─── Deferred upgrade: bring .machine_readable/ to current standards ──────────
+# AffineScript predates most of the current hyperpolymath .machine_readable/
+# suite. The 6a2 core is present; the surrounding machinery is not. This is
+# logged as deferred work, separate from the Manhattan recovery, to avoid
+# scope creep into that plan.
+
+[deferred-upgrade]
+session = "separate, not Phase 0"
+estimated-effort = "1-2 focused hours"
+
+present:
+# What AffineScript already has
+present = [
+  ".machine_readable/6a2/AGENTIC.a2ml",
+  ".machine_readable/6a2/ECOSYSTEM.a2ml",
+  ".machine_readable/6a2/META.a2ml",
+  ".machine_readable/6a2/NEUROSYM.a2ml",
+  ".machine_readable/6a2/PLAYBOOK.a2ml",
+  ".machine_readable/6a2/STATE.a2ml",
+  ".machine_readable/anchors/ANCHOR.a2ml",  # added 2026-04-10 as first anchor
+  "contractiles/ (root-level, old location) — dust, k9, lust, must, trust"
+]
+
+missing = [
+  ".machine_readable/CLADE.a2ml",
+  ".machine_readable/contractiles/ (should migrate from root contractiles/)",
+  ".machine_readable/contractiles/adjust/",
+  ".machine_readable/contractiles/intend/",
+  ".machine_readable/agent_instructions/",
+  ".machine_readable/integrations/",
+  ".machine_readable/ADJUST.contractile (top-level instance)",
+  ".machine_readable/INTENT.contractile (top-level instance)",
+  ".machine_readable/MUST.contractile (top-level instance)",
+  ".machine_readable/TRUST.contractile (top-level instance)"
+]
+
+notes = """
+Root-level contractiles/ directory has 5 of 7 current types. The canonical
+pattern is .machine_readable/contractiles/ with all 7 types. Migration is
+deferred to a separate session because it requires reading each contractile
+definition from the standards repo and deciding which apply to AffineScript
+specifically. Do not conflate with Manhattan Phase 0.
+"""

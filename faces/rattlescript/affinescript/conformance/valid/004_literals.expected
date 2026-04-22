@@ -1,0 +1,267 @@
+{ Ast.prog_module = None; prog_imports = [];
+  prog_decls =
+  [(Ast.TopFn
+      { Ast.fd_vis = Ast.Private; fd_total = false;
+        fd_name =
+        { Ast.name = "test_literals";
+          span =
+          { Span.start_pos = { Span.line = 3; col = 1; offset = 37 };
+            end_pos = { Span.line = 3; col = 4; offset = 40 };
+            file = "conformance/valid/004_literals.affine" }
+          };
+        fd_type_params = []; fd_params = [];
+        fd_ret_ty = (Some (Ast.TyTuple [])); fd_eff = None; fd_where = [];
+        fd_body =
+        (Ast.FnBlock
+           { Ast.blk_stmts =
+             [Ast.StmtLet {sl_mut = false; sl_quantity = None;
+                sl_pat =
+                (Ast.PatVar
+                   { Ast.name = "dec";
+                     span =
+                     { Span.start_pos =
+                       { Span.line = 5; col = 3; offset = 80 };
+                       end_pos = { Span.line = 5; col = 7; offset = 84 };
+                       file = "conformance/valid/004_literals.affine" }
+                     });
+                sl_ty = None;
+                sl_value =
+                (Ast.ExprLit
+                   (Ast.LitInt (42,
+                      { Span.start_pos =
+                        { Span.line = 5; col = 11; offset = 88 };
+                        end_pos = { Span.line = 5; col = 13; offset = 90 };
+                        file = "conformance/valid/004_literals.affine" }
+                      )))};
+               Ast.StmtLet {sl_mut = false; sl_quantity = None;
+                 sl_pat =
+                 (Ast.PatVar
+                    { Ast.name = "neg";
+                      span =
+                      { Span.start_pos =
+                        { Span.line = 6; col = 3; offset = 96 };
+                        end_pos = { Span.line = 6; col = 7; offset = 100 };
+                        file = "conformance/valid/004_literals.affine" }
+                      });
+                 sl_ty = None;
+                 sl_value =
+                 (Ast.ExprLit
+                    (Ast.LitInt (-10,
+                       { Span.start_pos =
+                         { Span.line = 6; col = 11; offset = 104 };
+                         end_pos = { Span.line = 6; col = 13; offset = 106 };
+                         file = "conformance/valid/004_literals.affine" }
+                       )))};
+               Ast.StmtLet {sl_mut = false; sl_quantity = None;
+                 sl_pat =
+                 (Ast.PatVar
+                    { Ast.name = "hex";
+                      span =
+                      { Span.start_pos =
+                        { Span.line = 7; col = 3; offset = 113 };
+                        end_pos = { Span.line = 7; col = 7; offset = 117 };
+                        file = "conformance/valid/004_literals.affine" }
+                      });
+                 sl_ty = None;
+                 sl_value =
+                 (Ast.ExprLit
+                    (Ast.LitInt (255,
+                       { Span.start_pos =
+                         { Span.line = 7; col = 11; offset = 121 };
+                         end_pos = { Span.line = 7; col = 13; offset = 123 };
+                         file = "conformance/valid/004_literals.affine" }
+                       )))};
+               Ast.StmtLet {sl_mut = false; sl_quantity = None;
+                 sl_pat =
+                 (Ast.PatVar
+                    { Ast.name = "bin";
+                      span =
+                      { Span.start_pos =
+                        { Span.line = 8; col = 3; offset = 131 };
+                        end_pos = { Span.line = 8; col = 7; offset = 135 };
+                        file = "conformance/valid/004_literals.affine" }
+                      });
+                 sl_ty = None;
+                 sl_value =
+                 (Ast.ExprLit
+                    (Ast.LitInt (10,
+                       { Span.start_pos =
+                         { Span.line = 8; col = 11; offset = 139 };
+                         end_pos = { Span.line = 8; col = 13; offset = 141 };
+                         file = "conformance/valid/004_literals.affine" }
+                       )))};
+               Ast.StmtLet {sl_mut = false; sl_quantity = None;
+                 sl_pat =
+                 (Ast.PatVar
+                    { Ast.name = "oct";
+                      span =
+                      { Span.start_pos =
+                        { Span.line = 9; col = 3; offset = 151 };
+                        end_pos = { Span.line = 9; col = 7; offset = 155 };
+                        file = "conformance/valid/004_literals.affine" }
+                      });
+                 sl_ty = None;
+                 sl_value =
+                 (Ast.ExprLit
+                    (Ast.LitInt (511,
+                       { Span.start_pos =
+                         { Span.line = 9; col = 11; offset = 159 };
+                         end_pos = { Span.line = 9; col = 13; offset = 161 };
+                         file = "conformance/valid/004_literals.affine" }
+                       )))};
+               Ast.StmtLet {sl_mut = false; sl_quantity = None;
+                 sl_pat =
+                 (Ast.PatVar
+                    { Ast.name = "pi";
+                      span =
+                      { Span.start_pos =
+                        { Span.line = 12; col = 3; offset = 183 };
+                        end_pos = { Span.line = 12; col = 7; offset = 187 };
+                        file = "conformance/valid/004_literals.affine" }
+                      });
+                 sl_ty = None;
+                 sl_value =
+                 (Ast.ExprLit
+                    (Ast.LitFloat (3.14159,
+                       { Span.start_pos =
+                         { Span.line = 12; col = 10; offset = 190 };
+                         end_pos = { Span.line = 12; col = 12; offset = 192 };
+                         file = "conformance/valid/004_literals.affine" }
+                       )))};
+               Ast.StmtLet {sl_mut = false; sl_quantity = None;
+                 sl_pat =
+                 (Ast.PatVar
+                    { Ast.name = "neg_float";
+                      span =
+                      { Span.start_pos =
+                        { Span.line = 13; col = 3; offset = 203 };
+                        end_pos = { Span.line = 13; col = 7; offset = 207 };
+                        file = "conformance/valid/004_literals.affine" }
+                      });
+                 sl_ty = None;
+                 sl_value =
+                 (Ast.ExprLit
+                    (Ast.LitFloat (-2.5,
+                       { Span.start_pos =
+                         { Span.line = 13; col = 17; offset = 217 };
+                         end_pos = { Span.line = 13; col = 19; offset = 219 };
+                         file = "conformance/valid/004_literals.affine" }
+                       )))};
+               Ast.StmtLet {sl_mut = false; sl_quantity = None;
+                 sl_pat =
+                 (Ast.PatVar
+                    { Ast.name = "sci";
+                      span =
+                      { Span.start_pos =
+                        { Span.line = 14; col = 3; offset = 227 };
+                        end_pos = { Span.line = 14; col = 7; offset = 231 };
+                        file = "conformance/valid/004_literals.affine" }
+                      });
+                 sl_ty = None;
+                 sl_value =
+                 (Ast.ExprLit
+                    (Ast.LitFloat (10000000000.,
+                       { Span.start_pos =
+                         { Span.line = 14; col = 11; offset = 235 };
+                         end_pos = { Span.line = 14; col = 13; offset = 237 };
+                         file = "conformance/valid/004_literals.affine" }
+                       )))};
+               Ast.StmtLet {sl_mut = false; sl_quantity = None;
+                 sl_pat =
+                 (Ast.PatVar
+                    { Ast.name = "t";
+                      span =
+                      { Span.start_pos =
+                        { Span.line = 17; col = 3; offset = 262 };
+                        end_pos = { Span.line = 17; col = 7; offset = 266 };
+                        file = "conformance/valid/004_literals.affine" }
+                      });
+                 sl_ty = None;
+                 sl_value =
+                 (Ast.ExprLit
+                    (Ast.LitBool (true,
+                       { Span.start_pos =
+                         { Span.line = 17; col = 9; offset = 268 };
+                         end_pos = { Span.line = 17; col = 11; offset = 270 };
+                         file = "conformance/valid/004_literals.affine" }
+                       )))};
+               Ast.StmtLet {sl_mut = false; sl_quantity = None;
+                 sl_pat =
+                 (Ast.PatVar
+                    { Ast.name = "f";
+                      span =
+                      { Span.start_pos =
+                        { Span.line = 18; col = 3; offset = 278 };
+                        end_pos = { Span.line = 18; col = 7; offset = 282 };
+                        file = "conformance/valid/004_literals.affine" }
+                      });
+                 sl_ty = None;
+                 sl_value =
+                 (Ast.ExprLit
+                    (Ast.LitBool (false,
+                       { Span.start_pos =
+                         { Span.line = 18; col = 9; offset = 284 };
+                         end_pos = { Span.line = 18; col = 11; offset = 286 };
+                         file = "conformance/valid/004_literals.affine" }
+                       )))};
+               Ast.StmtLet {sl_mut = false; sl_quantity = None;
+                 sl_pat =
+                 (Ast.PatVar
+                    { Ast.name = "s";
+                      span =
+                      { Span.start_pos =
+                        { Span.line = 21; col = 3; offset = 309 };
+                        end_pos = { Span.line = 21; col = 7; offset = 313 };
+                        file = "conformance/valid/004_literals.affine" }
+                      });
+                 sl_ty = None;
+                 sl_value =
+                 (Ast.ExprLit
+                    (Ast.LitString ("hello world",
+                       { Span.start_pos =
+                         { Span.line = 21; col = 9; offset = 315 };
+                         end_pos = { Span.line = 21; col = 23; offset = 329 };
+                         file = "conformance/valid/004_literals.affine" }
+                       )))};
+               Ast.StmtLet {sl_mut = false; sl_quantity = None;
+                 sl_pat =
+                 (Ast.PatVar
+                    { Ast.name = "escaped";
+                      span =
+                      { Span.start_pos =
+                        { Span.line = 22; col = 3; offset = 334 };
+                        end_pos = { Span.line = 22; col = 7; offset = 338 };
+                        file = "conformance/valid/004_literals.affine" }
+                      });
+                 sl_ty = None;
+                 sl_value =
+                 (Ast.ExprLit
+                    (Ast.LitString ("line\nbreak\ttab",
+                       { Span.start_pos =
+                         { Span.line = 22; col = 15; offset = 346 };
+                         end_pos = { Span.line = 22; col = 34; offset = 365 };
+                         file = "conformance/valid/004_literals.affine" }
+                       )))};
+               Ast.StmtLet {sl_mut = false; sl_quantity = None;
+                 sl_pat =
+                 (Ast.PatVar
+                    { Ast.name = "u";
+                      span =
+                      { Span.start_pos =
+                        { Span.line = 25; col = 3; offset = 381 };
+                        end_pos = { Span.line = 25; col = 7; offset = 385 };
+                        file = "conformance/valid/004_literals.affine" }
+                      });
+                 sl_ty = None;
+                 sl_value =
+                 (Ast.ExprLit
+                    (Ast.LitUnit
+                       { Span.start_pos =
+                         { Span.line = 25; col = 9; offset = 387 };
+                         end_pos = { Span.line = 25; col = 12; offset = 390 };
+                         file = "conformance/valid/004_literals.affine" }))}
+               ];
+             blk_expr = None })
+        })
+    ]
+  }

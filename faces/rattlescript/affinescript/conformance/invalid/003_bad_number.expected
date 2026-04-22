@@ -1,0 +1,8 @@
+# Expected: lex error for invalid hex literal
+# Exit code: 1
+# Error pattern: invalid hexadecimal literal
+error[E0001]: Lexical error: invalid hexadecimal literal
+  --> conformance/invalid/003_bad_number.as:4:11
+   |
+ 4 |   let x = 0xGHI;
+   |           ^^^^^ invalid hex digit 'G'

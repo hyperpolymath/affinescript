@@ -1,0 +1,485 @@
+= AffineScript: The Game Developer's Secret Weapon
+// SPDX-License-Identifier: PMPL-1.0-or-later
+
+image:https://img.shields.io/badge/License-PMPL--1.0-blue.svg[License: PMPL-1.0,link="https://github.com/hyperpolymath/palimpsest-license"]
+image:https://img.shields.io/badge/Built%20For-Games-red.svg[Built for Games]
+image:https://img.shields.io/badge/Powered%20By-Gossamer%20%26%20Burble-orange.svg[Powered by Gossamer & Burble]
+
+:toc: macro
+:toclevels: 3
+:icons: font
+:source-highlighter: rouge
+
+**Write games where the compiler catches your bugs before players do.**
+
+[NOTE]
+====
+*Honest status (2026-04-10):* AffineScript's affine types, QTT quantity checking, borrow checker, and dependent types are **experimental (enforcement landing soon)**. The type-checking rules for these features are implemented in `lib/typecheck.ml` and `lib/quantity.ml`, but they are not yet wired into the `check`/`compile`/`eval` CLI paths, so user programs are not gated on them today. Track A of the Manhattan plan closes this gap; ETA T+7d. See `.machine_readable/6a2/STATE.a2ml` `[features]` for the per-feature honest breakdown.
+====
+
+AffineScript is the only language that combines affine types, quantitative type theory, row polymorphism, and algebraic effects in a single practical systems language. This means you can write game code where the compiler *proves* your protocol states, resource lifecycles, and effect boundaries are correct -- with syntax that feels like a modern game scripting language, not a theorem prover.
+
+Built on the same battle-tested technologies as https://github.com/hyperpolymath/gossamer[Gossamer] (resource-safe desktop apps with zero handle leaks) and https://github.com/hyperpolymath/burble[Burble] (sub-10ms latency voice comms with Zig SIMD acceleration), AffineScript brings industrial-strength correctness to game development.
+
+toc::[]
+
+== Why Game Developers Love AffineScript
+
+**Your compiler becomes your QA team:**
+
+[cols="1,1,1,1,1"]
+|===
+|Feature |Rust |TypeScript |GDScript |**AffineScript**
+
+|**Catches protocol bugs at compile time**
+|No
+|No
+|No
+|**Yes** ✅
+
+|**Proves resource leaks impossible**
+|Partial (RC)
+|No
+|No
+|**Yes** ✅
+
+|**Type-safe game state transitions**
+|Manual
+|Runtime
+|Runtime
+|**Compile-time** ✅
+
+|**Effect tracking (I/O, async, etc.)**
+|No
+|No
+|No
+|**Yes** ✅
+
+|**Row polymorphism (flexible data)**
+|No
+|No
+|No
+|**Yes** ✅
+
+|**Compiles to WASM**
+|Yes
+|Yes
+|Yes
+|**Yes** ✅
+|===
+
+**What this means for you:**
+
+* ✅ **No more "forgot to close connection" bugs** - Compiler proves network protocols are correct
+* ✅ **No more memory leaks** - Affine types guarantee resources are properly cleaned up
+* ✅ **No more invalid state bugs** - Type system enforces valid game state transitions
+* ✅ **No more hidden I/O in pure functions** - Effect types make side effects explicit
+* ✅ **Flexible data without boilerplate** - Row polymorphism adapts to your game entities
+
+[cols="1,1,1,1,1"]
+|===
+|Feature |Rust |Idris 2 |Koka |**AffineScript**
+
+|Affine/linear types
+|Ownership
+|QTT (0/1/w)
+|No
+|**QTT (0/1/w) + ownership**
+
+|Dependent types
+|No
+|Full
+|No
+|**Refinements + type-level nats**
+
+|Row polymorphism
+|No
+|No
+|Row effects
+|**Records + effects**
+
+|Algebraic effects
+|No
+|No
+|Full
+|**Full with handlers**
+
+|Compiles to WASM
+|Yes
+|Scheme/C
+|C/JS
+|**Yes (native target)**
+|===
+
+The practical consequence: AffineScript can express things no other language can type-check.
+
+== The Killer Feature: Bug-Free Game Logic
+
+AffineScript's type system proves your game logic is correct at compile time. No runtime crashes, no test coverage gaps, no "how did this bug get through QA?" moments.
+
+=== Type-Safe Game Resource Management
+
+[source,affinescript]
+----
+// Game resource that MUST be properly managed
+type GameTexture = own { id: Int, width: Int, height: Int }
+
+fn load_texture(path: ref String) -> own GameTexture / IO + Exn[LoadError] {
+  GameTexture { id: 42, width: 1024, height: 1024 }
+}
+
+fn render(scene: ref Scene, texture: ref GameTexture) -> () / Render {
+  // Use the texture in rendering
+}
+
+fn unload(1 texture: own GameTexture) -> () / IO {
+  // texture is consumed -- can't use it after this
+  // Compiler guarantees no memory leaks!
+}
+
+// The compiler PROVES:
+// - texture is loaded before use
+// - texture is not used after unload
+// - texture is always unloaded (affine: must be consumed)
+fn game_loop() -> () / IO + Render + Exn[LoadError] {
+  let texture = load_texture("player.png");  // texture: own GameTexture
+  render(ref scene, ref texture);            // borrows texture
+  unload(texture);                            // consumes texture
+  // texture is GONE here -- using it would be a compile error!
+  // No memory leaks, no dangling pointers, no crashes.
+}
+----
+
+=== Protocol State Machines in the Type System
+
+[source,affinescript]
+----
+// Row polymorphism tracks connection state as type-level fields
+type Connection[..state] = own {
+  socket: own Socket,
+  ..state
+}
+
+// State transition: Unauthenticated -> Authenticated
+fn authenticate(
+  1 conn: own Connection[{status: Unauthenticated}]
+) -> Connection[{status: Authenticated, user: String}] / Session + IO {
+  let creds = recv();
+  // conn is consumed (linear), new state returned
+  Connection { socket: conn.socket, status: Authenticated, user: creds.user }
+}
+
+// Can ONLY be called on authenticated connections -- enforced by types
+fn query(
+  conn: ref Connection[{status: Authenticated, ..r}],
+  sql: ref String
+) -> Result[Rows, DbError] / IO {
+  // ...
+}
+----
+
+**What the compiler proves:**
+
+* You cannot query before authenticating (type mismatch)
+* You cannot authenticate twice (affine: connection consumed on first auth)
+* You cannot use a connection after closing it (affine: consumed)
+* Every connection state transition is explicit and type-checked
+
+=== Effect-Tracked I/O
+
+[source,affinescript]
+----
+effect IO {
+  fn print(s: String);
+  fn read_line() -> String;
+}
+
+effect State[S] {
+  fn get() -> S;
+  fn put(s: S);
+}
+
+// The type signature tells you EXACTLY what this function can do
+fn interactive_counter() -> Int / IO + State[Int] {
+  let input = read_line();
+  let current = get();
+  let next = current + 1;
+  put(next);
+  print("Count: " ++ int_to_string(next));
+  next
+}
+
+// Pure functions are PROVEN pure -- no hidden I/O
+fn add(a: Int, b: Int) -> Int / Pure {
+  a + b
+}
+----
+
+=== Row-Polymorphic Records
+
+[source,affinescript]
+----
+// Works on ANY record with a 'name' field
+fn greet[..r](person: {name: String, ..r}) -> String / Pure {
+  "Hello, " ++ person.name
+}
+
+let alice = {name: "Alice", age: 30, role: "Engineer"};
+let bob = {name: "Bob", department: "Sales"};
+
+greet(alice);  // "Hello, Alice" -- extra fields preserved
+greet(bob);    // "Hello, Bob"   -- different shape, same function
+----
+
+=== Dependent Types
+
+[source,affinescript]
+----
+type Vec[n: Nat, T: Type] =
+  | Nil : Vec[0, T]
+  | Cons(head: T, tail: Vec[n, T]) : Vec[n + 1, T]
+
+// Can ONLY be called on non-empty vectors
+total fn head[n: Nat, T](v: Vec[n + 1, T]) -> T / Pure {
+  match v {
+    Cons(h, _) => h
+  }
+}
+
+// Result length is provably the sum of input lengths
+total fn append[n: Nat, m: Nat, T](
+  a: Vec[n, T], b: Vec[m, T]
+) -> Vec[n + m, T] / Pure {
+  match a {
+    Nil => b,
+    Cons(h, t) => Cons(h, append(t, b))
+  }
+}
+----
+
+== Where This Matters
+
+[cols="1,2,2"]
+|===
+|Domain |What AffineScript Proves |What Others Can't
+
+|**Network protocols**
+|Protocol states enforced at compile time
+|Rust needs manual typestate via PhantomData
+
+|**Database drivers**
+|Connection lifecycle type-checked (open/query/close ordering)
+|All other languages check at runtime
+
+|**Cryptographic APIs**
+|Keys used exactly once, zeroised after use
+|Rust uses Drop trait (runtime, not compile-time)
+
+|**File format parsers**
+|Linear consumption proves complete parsing
+|Rust needs unsafe for zero-copy parsing
+
+|**Plugin systems**
+|Row polymorphism for extensible interfaces
+|Most languages need trait objects or interfaces
+
+|**Effect-safe libraries**
+|Effect types prevent unexpected I/O in pure code
+|Only Koka matches this, but without ownership
+|===
+
+== Getting Started
+
+=== Prerequisites
+
+* OCaml 5.1+
+* Dune 3.14+
+* opam packages: `sedlex`, `menhir`, `ppx_deriving`, `cmdliner`, `yojson`
+
+=== Build and Run
+
+[source,bash]
+----
+# Build the compiler
+dune build
+
+# Type check a file
+dune exec affinescript -- check examples/hello.affine
+
+# Run with interpreter
+dune exec affinescript -- eval examples/factorial.affine
+
+# Compile to WebAssembly
+dune exec affinescript -- compile examples/hello.affine -o hello.wasm
+
+# Format code
+dune exec affinescript -- fmt examples/hello.affine
+
+# Lint for code quality
+dune exec affinescript -- lint examples/hello.affine
+
+# JSON diagnostics (for editors/CI)
+dune exec affinescript -- check --json examples/hello.affine
+----
+
+== Project Status
+
+**Version 0.8 Frontend Complete:** The frontend surface syntax for core type features (Linear Arrows `-[q]->`, Generic Variants, Refinement Types, Kind Checking) parses and elaborates. Note: several of these features are *experimental (enforcement landing soon)* — the quantity checker is not yet called from the CLI, the lexer does not yet emit ZERO/ONE quantity literal tokens, and refinement predicates parse but do not reduce. See `.machine_readable/6a2/STATE.a2ml` `[features]` for per-feature status.
+
+NOTE: As of v0.8, the standard file extension for AffineScript is `.affine` (formerly `.affine`, changed to avoid clashes with ActionScript).
+
+AffineScript is in active development. The frontend is solid; the backend and advanced type features are in progress.
+
+[cols="2,1,3"]
+|===
+|Component |Status |Notes
+
+|Lexer + Parser
+|Complete
+|Menhir grammar, sedlex tokenizer, full syntax coverage
+
+|Name Resolution
+|Complete
+|Module loader, scope analysis, import system
+
+|Type Checker
+|Working
+|Bidirectional inference, unification, let-polymorphism. Quantities and effects not yet integrated into inference.
+
+|Effect System
+|Declarations only
+|Effect types parsed and tracked; handler semantics not yet in interpreter or backends
+
+|Quantity Checking
+|Separate pass
+|Usage tracking works; needs integration with type checker for full QTT
+
+|Borrow Checker
+|Partial
+|Affine tracking at runtime in interpreter; compile-time checking in progress
+
+|Trait System
+|Skeletal
+|Registry and lookup work; generic trait resolution needs unification integration
+
+|Interpreter
+|75%
+|Closures, pattern matching, builtins. No effect handlers or exceptions yet.
+
+|WASM Codegen
+|30%
+|Basic arithmetic, functions, closures. Types collapse to i32; records missing.
+
+|Julia Codegen
+|10%
+|Phase 1 MVP skeleton only
+
+|LSP Server
+|Phase A done
+|JSON diagnostics via `--json`; go-to-definition and references pending
+
+|Formatter + Linter
+|Complete
+|AST-based formatter; 4 lint rules
+|===
+
+=== Roadmap: v0.8 to v0.9
+The immediate priority for v0.9 is to fully propagate the v0.8 language features down through the entire stack, solidifying the architecture for the **Airborne Submarine Squadron** remake:
+* Propagate v0.8 syntax (like `-[q]->`), semantics, and type system upgrades down through the AST, Interpreter, REPL, and Standard Library.
+* Update the compiler backend (WASM generation) to fully support the newly checked Generic Variants and Refinement constraints.
+* Finalize the metacompiler and metainterpreter features.
+
+== Design Principles
+
+. **Protocol correctness is free** -- if it compiles, the protocol is correct
+. **Types as documentation** -- the signature tells you what a function can do and what it can't
+. **No runtime cost for safety** -- affine types and effects are erased at compile time
+. **Composable** -- row polymorphism and effects compose without boilerplate
+. **Honest defaults** -- functions are partial unless marked `total`; effects are explicit
+
+== Repository Structure
+
+[source]
+----
+affinescript/
++-- lib/                    # Core compiler (OCaml)
+|   +-- ast.ml              # Abstract syntax tree
+|   +-- lexer.ml            # Sedlex tokenizer
+|   +-- parser.mly          # Menhir grammar
+|   +-- typecheck.ml        # Bidirectional type checker
+|   +-- unify.ml            # Type/row/effect unification
+|   +-- quantity.ml          # QTT quantity tracking
+|   +-- types.ml            # Internal type representation
+|   +-- codegen.ml          # WASM code generation
+|   +-- interp.ml           # Tree-walking interpreter
+|   +-- json_output.ml      # JSON diagnostic output (LSP)
++-- bin/main.ml             # CLI (check, eval, compile, fmt, lint)
++-- tools/affinescript-lsp/  # Language server (Rust)
++-- editors/                # VSCode extension, Tree-sitter grammar
++-- test/                   # Golden tests, e2e fixtures
++-- docs/                   # Specification, guides, academic papers
++-- stdlib/                 # Standard library modules
++-- examples/               # Example programs
+----
+
+== Ecosystem and Related Technologies
+
+AffineScript is part of a broader ecosystem of proven technologies:
+
+* **Gossamer**: A linearly-typed webview shell that brings the same resource safety guarantees to desktop app development. No handle leaks, no IPC mismatches, no permission bypasses -- all enforced by the compiler.
+
+* **Burble**: A self-hostable voice communications platform with sub-10ms latency using Zig SIMD NIFs. Features IEEE 1588 PTP for sub-microsecond synchronization and Erlang/OTP fault tolerance.
+
+Both technologies share AffineScript's core philosophy: correctness by construction, not by discipline.
+
+== Documentation
+
+* `affinescript-spec.md` -- Complete language specification
+* `docs/wiki/compiler/` -- Compiler architecture
+* `docs/wiki/language-reference/` -- Language feature guides
+* `docs/academic/` -- Mechanised proofs (Agda, Coq, Lean)
+
+== License
+
+This repository is documented and distributed under AGPL-3.0-or-later. The Palimpsest-MPL license layer on top of MPL-2.0 is the licensing for:
+
+* **Gossamer**: A linearly-typed webview shell for resource-safe desktop app development
+* **Burble**: High-assurance multiplayer communications platform with sub-10ms latency
+* **AffineScript**: Affine-type programming language compiling to WASM
+
+For full license terms:
+- **AGPL-3.0-or-later**: https://www.gnu.org/licenses/agpl-3.0.html
+- **PMPL-1.0 (Palimpsest-MPL)**: https://github.com/hyperpolymath/palimpsest-license
+
+**Game Content**: AGPL-3.0-or-later ensures game modifications remain open.
+**Core Technology**: PMPL-1.0-or-later provides permissive licensing for tooling.
+
+== See Also
+
+* link:ROADMAP.adoc[Development Roadmap]
+* link:EXPLAINME.adoc[Why should you believe these claims?]
+* link:affinescript-spec.md[Language Specification]
+* https://github.com/hyperpolymath/gossamer[Gossamer - PMPL-1.0-or-later]
+* https://github.com/hyperpolymath/burble[Burble - PMPL-1.0-or-later]
+
+== Alpha-1 Release Notes
+
+This is the first alpha release of AffineScript, prepared for GitHub and itch.io distribution.
+All core functionality is working, with some advanced features still in development.
+
+**What's Included:**
+* ✅ Complete language specification
+* ✅ Working compiler (OCaml backend)
+* ✅ WebAssembly code generation
+* ✅ Tree-sitter grammar for syntax highlighting
+* ✅ VSCode extension
+* ✅ Game-focused examples
+* ✅ Comprehensive documentation
+
+**Known Limitations:**
+* Effect handlers: Declarations only (runtime not yet implemented)
+* Trait system: 70% complete (basic traits work, advanced features in progress)
+* WASM backend: Basic types only (records and advanced types coming soon)
+
+**Perfect for:** Game developers who want to experiment with type-safe game programming,
+learn affine types, or build small games with guaranteed correctness.

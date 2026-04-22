@@ -1,0 +1,270 @@
+{ Ast.prog_module = None; prog_imports = [];
+  prog_decls =
+  [(Ast.TopType
+      { Ast.td_vis = Ast.Private;
+        td_name =
+        { Ast.name = "Option";
+          span =
+          { Span.start_pos = { Span.line = 3; col = 1; offset = 39 };
+            end_pos = { Span.line = 3; col = 6; offset = 44 };
+            file = "conformance/valid/008_enum_def.affine" }
+          };
+        td_type_params =
+        [{ Ast.tp_quantity = None;
+           tp_name =
+           { Ast.name = "T";
+             span =
+             { Span.start_pos = { Span.line = 3; col = 12; offset = 50 };
+               end_pos = { Span.line = 3; col = 13; offset = 51 };
+               file = "conformance/valid/008_enum_def.affine" }
+             };
+           tp_kind = None }
+          ];
+        td_body =
+        (Ast.TyEnum
+           [{ Ast.vd_name =
+              { Ast.name = "None";
+                span =
+                { Span.start_pos = { Span.line = 4; col = 3; offset = 58 };
+                  end_pos = { Span.line = 4; col = 5; offset = 60 };
+                  file = "conformance/valid/008_enum_def.affine" }
+                };
+              vd_fields = []; vd_ret_ty = None };
+             { Ast.vd_name =
+               { Ast.name = "Some";
+                 span =
+                 { Span.start_pos = { Span.line = 5; col = 3; offset = 67 };
+                   end_pos = { Span.line = 5; col = 5; offset = 69 };
+                   file = "conformance/valid/008_enum_def.affine" }
+                 };
+               vd_fields =
+               [(Ast.TyCon
+                   { Ast.name = "T";
+                     span =
+                     { Span.start_pos =
+                       { Span.line = 5; col = 9; offset = 73 };
+                       end_pos = { Span.line = 5; col = 10; offset = 74 };
+                       file = "conformance/valid/008_enum_def.affine" }
+                     })
+                 ];
+               vd_ret_ty = None }
+             ])
+        });
+    (Ast.TopType
+       { Ast.td_vis = Ast.Private;
+         td_name =
+         { Ast.name = "Result";
+           span =
+           { Span.start_pos = { Span.line = 7; col = 1; offset = 78 };
+             end_pos = { Span.line = 7; col = 6; offset = 83 };
+             file = "conformance/valid/008_enum_def.affine" }
+           };
+         td_type_params =
+         [{ Ast.tp_quantity = None;
+            tp_name =
+            { Ast.name = "T";
+              span =
+              { Span.start_pos = { Span.line = 7; col = 12; offset = 89 };
+                end_pos = { Span.line = 7; col = 13; offset = 90 };
+                file = "conformance/valid/008_enum_def.affine" }
+              };
+            tp_kind = None };
+           { Ast.tp_quantity = None;
+             tp_name =
+             { Ast.name = "E";
+               span =
+               { Span.start_pos = { Span.line = 7; col = 14; offset = 91 };
+                 end_pos = { Span.line = 7; col = 16; offset = 93 };
+                 file = "conformance/valid/008_enum_def.affine" }
+               };
+             tp_kind = None }
+           ];
+         td_body =
+         (Ast.TyEnum
+            [{ Ast.vd_name =
+               { Ast.name = "Ok";
+                 span =
+                 { Span.start_pos = { Span.line = 8; col = 3; offset = 100 };
+                   end_pos = { Span.line = 8; col = 5; offset = 102 };
+                   file = "conformance/valid/008_enum_def.affine" }
+                 };
+               vd_fields =
+               [(Ast.TyCon
+                   { Ast.name = "T";
+                     span =
+                     { Span.start_pos =
+                       { Span.line = 8; col = 7; offset = 104 };
+                       end_pos = { Span.line = 8; col = 8; offset = 105 };
+                       file = "conformance/valid/008_enum_def.affine" }
+                     })
+                 ];
+               vd_ret_ty = None };
+              { Ast.vd_name =
+                { Ast.name = "Err";
+                  span =
+                  { Span.start_pos = { Span.line = 9; col = 3; offset = 110 };
+                    end_pos = { Span.line = 9; col = 5; offset = 112 };
+                    file = "conformance/valid/008_enum_def.affine" }
+                  };
+                vd_fields =
+                [(Ast.TyCon
+                    { Ast.name = "E";
+                      span =
+                      { Span.start_pos =
+                        { Span.line = 9; col = 8; offset = 115 };
+                        end_pos = { Span.line = 9; col = 9; offset = 116 };
+                        file = "conformance/valid/008_enum_def.affine" }
+                      })
+                  ];
+                vd_ret_ty = None }
+              ])
+         });
+    (Ast.TopType
+       { Ast.td_vis = Ast.Private;
+         td_name =
+         { Ast.name = "List";
+           span =
+           { Span.start_pos = { Span.line = 11; col = 1; offset = 120 };
+             end_pos = { Span.line = 11; col = 6; offset = 125 };
+             file = "conformance/valid/008_enum_def.affine" }
+           };
+         td_type_params =
+         [{ Ast.tp_quantity = None;
+            tp_name =
+            { Ast.name = "T";
+              span =
+              { Span.start_pos = { Span.line = 11; col = 10; offset = 129 };
+                end_pos = { Span.line = 11; col = 11; offset = 130 };
+                file = "conformance/valid/008_enum_def.affine" }
+              };
+            tp_kind = None }
+           ];
+         td_body =
+         (Ast.TyEnum
+            [{ Ast.vd_name =
+               { Ast.name = "Nil";
+                 span =
+                 { Span.start_pos = { Span.line = 12; col = 3; offset = 137 };
+                   end_pos = { Span.line = 12; col = 5; offset = 139 };
+                   file = "conformance/valid/008_enum_def.affine" }
+                 };
+               vd_fields = []; vd_ret_ty = None };
+              { Ast.vd_name =
+                { Ast.name = "Cons";
+                  span =
+                  { Span.start_pos =
+                    { Span.line = 13; col = 3; offset = 145 };
+                    end_pos = { Span.line = 13; col = 5; offset = 147 };
+                    file = "conformance/valid/008_enum_def.affine" }
+                  };
+                vd_fields =
+                [(Ast.TyCon
+                    { Ast.name = "T";
+                      span =
+                      { Span.start_pos =
+                        { Span.line = 13; col = 9; offset = 151 };
+                        end_pos = { Span.line = 13; col = 10; offset = 152 };
+                        file = "conformance/valid/008_enum_def.affine" }
+                      });
+                  (Ast.TyApp (
+                     { Ast.name = "List";
+                       span =
+                       { Span.start_pos =
+                         { Span.line = 13; col = 11; offset = 153 };
+                         end_pos = { Span.line = 13; col = 13; offset = 155 };
+                         file = "conformance/valid/008_enum_def.affine" }
+                       },
+                     [(Ast.TyArg
+                         (Ast.TyCon
+                            { Ast.name = "T";
+                              span =
+                              { Span.start_pos =
+                                { Span.line = 13; col = 17; offset = 159 };
+                                end_pos =
+                                { Span.line = 13; col = 18; offset = 160 };
+                                file =
+                                "conformance/valid/008_enum_def.affine" }
+                              }))
+                       ]
+                     ))
+                  ];
+                vd_ret_ty = None }
+              ])
+         });
+    (Ast.TopType
+       { Ast.td_vis = Ast.Private;
+         td_name =
+         { Ast.name = "Color";
+           span =
+           { Span.start_pos = { Span.line = 15; col = 1; offset = 165 };
+             end_pos = { Span.line = 15; col = 6; offset = 170 };
+             file = "conformance/valid/008_enum_def.affine" }
+           };
+         td_type_params = [];
+         td_body =
+         (Ast.TyEnum
+            [{ Ast.vd_name =
+               { Ast.name = "Red";
+                 span =
+                 { Span.start_pos = { Span.line = 16; col = 3; offset = 180 };
+                   end_pos = { Span.line = 16; col = 5; offset = 182 };
+                   file = "conformance/valid/008_enum_def.affine" }
+                 };
+               vd_fields = []; vd_ret_ty = None };
+              { Ast.vd_name =
+                { Ast.name = "Green";
+                  span =
+                  { Span.start_pos =
+                    { Span.line = 17; col = 3; offset = 188 };
+                    end_pos = { Span.line = 17; col = 5; offset = 190 };
+                    file = "conformance/valid/008_enum_def.affine" }
+                  };
+                vd_fields = []; vd_ret_ty = None };
+              { Ast.vd_name =
+                { Ast.name = "Blue";
+                  span =
+                  { Span.start_pos =
+                    { Span.line = 18; col = 3; offset = 198 };
+                    end_pos = { Span.line = 18; col = 5; offset = 200 };
+                    file = "conformance/valid/008_enum_def.affine" }
+                  };
+                vd_fields = []; vd_ret_ty = None };
+              { Ast.vd_name =
+                { Ast.name = "RGB";
+                  span =
+                  { Span.start_pos =
+                    { Span.line = 19; col = 3; offset = 207 };
+                    end_pos = { Span.line = 19; col = 5; offset = 209 };
+                    file = "conformance/valid/008_enum_def.affine" }
+                  };
+                vd_fields =
+                [(Ast.TyCon
+                    { Ast.name = "Int";
+                      span =
+                      { Span.start_pos =
+                        { Span.line = 19; col = 8; offset = 212 };
+                        end_pos = { Span.line = 19; col = 9; offset = 213 };
+                        file = "conformance/valid/008_enum_def.affine" }
+                      });
+                  (Ast.TyCon
+                     { Ast.name = "Int";
+                       span =
+                       { Span.start_pos =
+                         { Span.line = 19; col = 12; offset = 216 };
+                         end_pos = { Span.line = 19; col = 14; offset = 218 };
+                         file = "conformance/valid/008_enum_def.affine" }
+                       });
+                  (Ast.TyCon
+                     { Ast.name = "Int";
+                       span =
+                       { Span.start_pos =
+                         { Span.line = 19; col = 17; offset = 221 };
+                         end_pos = { Span.line = 19; col = 19; offset = 223 };
+                         file = "conformance/valid/008_enum_def.affine" }
+                       })
+                  ];
+                vd_ret_ty = None }
+              ])
+         })
+    ]
+  }

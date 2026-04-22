@@ -1,0 +1,11 @@
+{
+  "name": "@hyperpolymath/affine-ts",
+  "version": "0.1.0",
+  "exports": {
+    ".": "./mod.js"
+  },
+  "imports": {
+    "@hyperpolymath/affine-js": "../affine-js/mod.js"
+  },
+  "license": "PMPL-1.0-or-later"
+}

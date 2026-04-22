@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: PMPL-1.0-or-later
+# SPDX-FileCopyrightText: 2024-2026 Jonathan D.A. Jewell (hyperpolymath)
+
+# RattleScript — Hello World
+# This is a .rattle file (Python-face AffineScript).
+# You can also use .pyaff if you prefer.
+
+def greet(name: String) -> String:
+    "Hello, " + name + "!"
+
+def main() -> ():
+    let msg = greet("world")
+    IO.println(msg)

@@ -1,0 +1,68 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+= RSR Template Repo - Explainme
+:toc:
+:icons: font
+
+This file explains how the key template claims map to real files.
+
+== Central Session Protocol Authority
+
+Claim:
+Session protocols are centrally maintained and not duplicated in this template.
+
+How this is implemented:
+
+* The local dispatcher (`session/dispatch.sh`) maps canonical commands to central
+  protocol paths in `standards/session-management-standards`.
+* Local files (`session/custom-checks.k9`, `session/local-hooks.sh`,
+  `coordination.k9`) are integration-only.
+
+Caveat:
+
+* If `SESSION_STANDARDS_DIR` is unset and no adjacent standards checkout exists,
+  the dispatcher records the command but cannot resolve central checklist paths.
+
+== Canonical Command Surface
+
+Claim:
+Template bindings align to one canonical command model.
+
+How this is implemented:
+
+* `Justfile` provides thin aliases (`intake-repo`, `checkpoint-change`,
+  `verify-maintenance`, `verify-substantial`, `verify-release`, `close-planned`,
+  `close-urgent`, `recover-repo`, `handover-*`).
+* Every alias calls `session/dispatch.sh` with canonical verb-object pairs.
+
+Caveat:
+
+* Recipes are wrappers only. They do not replace protocol content from
+  the central standards repo.
+
+== Runtime State Is Local
+
+Claim:
+Session state is per-repository runtime output, not standards text.
+
+How this is implemented:
+
+* `session/dispatch.sh` writes command and continuity-core capture stubs to
+  `.session/LAST-CANONICAL-COMMAND.md` in the target repository path.
+
+Caveat:
+
+* Runtime files are intentionally lightweight and require human/agent completion.
+
+== Template Token Policy
+
+Claim:
+Placeholders are explicit template content until initialization.
+
+How this is implemented:
+
+* `README.adoc` and bootstrap recipes keep `{{TOKEN}}` placeholders visible.
+* `just init` performs token replacement.
+
+Caveat:
+
+* Uninitialized placeholders must not be treated as project-specific truth.

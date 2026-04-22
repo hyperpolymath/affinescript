@@ -1,0 +1,351 @@
+= AffineScript: Frontier Programming Practices
+Human Edition, v2.0
+:sectnums:
+:toc: left
+:icons: font
+:source-highlighter: rouge
+:revdate: 2026-04-10
+
+[NOTE]
+====
+This guide supersedes the v1.0 defensive draft. It describes what AffineScript *is* and how to use it well, rather than warning what not to do. Its machine-readable companion is `AI.a2ml` in this same folder — read by bots at session start.
+====
+
+== The Thesis
+
+AffineScript is **JavaScript-ergonomic correctness**.
+
+It takes the developer experience of the `-script` family — TypeScript, ReScript, PureScript — and raises the floor on correctness through a small, deliberately chosen set of advanced types. It compiles to **Typed WASM** for performance, portability, and safety.
+
+The design principle is ergonomics first: the type system's defaults are sensible, so most code reads like modern JavaScript. Correctness is enforced at compile time rather than hoped for at runtime.
+
+The language is small on purpose. Every feature in it was chosen for a specific reason, after looking at what the rest of the `-script` family already does well and what nobody in that family has tried yet.
+
+== What's In the Box
+
+AffineScript ships with eight type-system features, grouped by role:
+
+=== The Six Copied from the Family
+
+These are features that other sound `-script` languages already have. AffineScript copies them because they work.
+
+* **Phantom types** — types that exist only at compile time. Distinguish `UserId` from `ProductId` so you can't mix them up by accident.
+* **Immutable by default** — `let x = 5` binds a value, not a variable. Use `let mut` when you want mutation. Matches `const` in modern JavaScript.
+* **Row polymorphism** — functions operate on any record containing the fields they need. No inheritance hierarchy required.
+* **Full type inference** — types are inferred; you rarely annotate them. You do annotate quantities (the affine part) at function signatures, but not inside function bodies.
+* **Sound type system** — if the type checker says your code is fine, it really is. No `any`, no unsafe escape hatches, no runtime surprises from type mistakes.
+* **Effect tracking** — functions declare which effects they perform (IO, mutation, failure). Callers see at a glance what a function can do.
+
+=== The One Novel Contribution
+
+* **Affine types** — values that can be used *at most once*. Perfect for resources: file handles, network sockets, unique game entities, exchange tokens. "Use after close" becomes a compile error, not a runtime crash.
+
+=== The Soft Commitment
+
+* **Refinement types** (decidable fragment) — types that carry simple invariants: "this `Int` is always non-negative," "this array index is in bounds." Restricted to what the compiler can prove quickly without calling out to an SMT solver.
+
+== What's Deliberately Not in the Box
+
+Because AffineScript aims at ergonomic correctness — not research-grade expressiveness — several powerful features are left out on purpose:
+
+* **Linear (strict exactly-once) types** — subsumed by affine. Use affine instead.
+* **Full dependent types** — too expensive for daily use. They live in the sibling Typed WASM project, not here.
+* **Tropical types, units of measure, shape-indexed vectors** — useful, but they belong in Typed WASM where the numeric hierarchy and decidable type-level arithmetic live.
+* **Full algebraic effect handlers** — effect *tracking* is in; effect *handling* (intercepting and redirecting effects at runtime with multi-shot resume) is deferred until its interaction with affine types is resolved.
+* **Unbounded refinement** — refinement is restricted to what the compiler can prove without calling an external solver.
+
+If you want any of those, the Typed WASM project is where they live or will live. AffineScript compiles *to* Typed WASM, so the two projects are complementary, not competing.
+
+== The Type System in Practice
+
+=== Affine Types for Resources
+
+Values you want to use at most once:
+
+[source,affinescript]
+----
+fn open(path: String): File
+fn read(f: File): (File, String)   // returns the file back so you can keep using it
+fn close(f: File): Unit             // consumes the file; cannot be used after
+
+fn good(path: String): String {
+  let f = open(path);
+  let (f, contents) = read(f);
+  close(f);
+  contents
+}
+
+fn bad(path: String): String {
+  let f = open(path);
+  let (_, contents) = read(f);
+  close(f);              // COMPILE ERROR: f was already consumed by read
+  contents
+}
+----
+
+The compiler tracks resource lifetimes and refuses to compile code that uses a file after it's been consumed or forgets to close it.
+
+=== Row Polymorphism for Extensible Records
+
+Functions operate on any record containing the fields they need, without inheritance or classes:
+
+[source,affinescript]
+----
+fn damage(target: {health: Int, ..rest}, amount: Int): {health: Int, ..rest} {
+  { ..target, health: target.health - amount }
+}
+
+let player = {health: 100, name: "Alice", level: 5};
+let damaged = damage(player, 10);
+// damaged has type {health: Int, name: String, level: Int}
+// The function doesn't know or care about `name` and `level` — it passes them through.
+----
+
+`..rest` is a row variable: "the rest of the fields, whatever they are." The compiler infers it and threads it through.
+
+=== Refinement Types for Invariants
+
+Bake invariants into types so the compiler enforces them:
+
+[source,affinescript]
+----
+type PositiveInt = Int where (x >= 0);
+
+fn heal(h: PositiveInt, delta: PositiveInt): PositiveInt {
+  h + delta
+}
+
+let hp: PositiveInt = 100;
+let after = heal(hp, 25);       // ok
+let broken = heal(hp, -10);     // COMPILE ERROR: -10 is not PositiveInt
+----
+
+Refinements are restricted to the decidable fragment (arithmetic, comparisons, boolean combinations) so the compiler can prove things without needing an SMT solver. If you write a refinement the compiler can't decide, it tells you so and asks you to narrow it.
+
+=== Phantom Types for Compile-Time Distinctions
+
+Use the type system to distinguish values that look the same at runtime:
+
+[source,affinescript]
+----
+type UserId = Int;
+type ProductId = Int;
+
+fn fetchUser(id: UserId): User
+fn fetchProduct(id: ProductId): Product
+
+let u: UserId = 42;
+let p: ProductId = 99;
+
+fetchUser(u);      // ok
+fetchUser(p);      // COMPILE ERROR: expected UserId, got ProductId
+----
+
+Zero runtime cost. The distinction exists only in the type checker. A Rust user would recognise this as "newtype"; a Haskell user as "phantom"; a TypeScript user as "branded types done properly."
+
+=== Immutable by Default
+
+`let` binds an immutable value. `let mut` binds a mutable one.
+
+[source,affinescript]
+----
+let x = 5;
+x = 6;             // COMPILE ERROR: x is immutable
+
+let mut counter = 0;
+counter = counter + 1;   // ok
+----
+
+Matches `const` in JavaScript and `let` in ReScript — familiar to most developers.
+
+=== Effect Tracking
+
+Functions declare what effects they can perform:
+
+[source,affinescript]
+----
+fn pureCompute(x: Int): Int                    // no effect row = pure
+fn readFile(path: String): String / {IO}       // may perform IO
+fn maybeParse(s: String): Int / {Fail}         // may fail
+fn runScript(path: String): Int / {IO, Fail}   // both
+----
+
+Callers see at a glance what a function can do. The compiler tracks effect propagation so a "pure" function can't accidentally call an impure one without declaring it.
+
+NOTE: Effect *tracking* is in. Effect *handling* (intercepting effects at runtime) is not — that's a separate design problem that hasn't been solved in a way that's compatible with affine types.
+
+== Idiomatic Patterns
+
+AffineScript has a small feature set chosen carefully. Many advanced type-level patterns emerge *for free* by combining existing features — you don't need to wait for the compiler to add them.
+
+=== Type-State Machines (phantom + affine)
+
+Model state transitions at the type level:
+
+[source,affinescript]
+----
+type Connection<state>;
+type Open;
+type Closed;
+
+fn connect(addr: String): Connection<Open>
+fn send(c: Connection<Open>, data: String): Connection<Open>
+fn close(c: Connection<Open>): Connection<Closed>
+
+// Compiler refuses to send() on a Connection<Closed>.
+// Compiler refuses to close() twice because Connection<Open> is consumed.
+----
+
+This is the resource-lifecycle pattern from the old guide, expressed cleanly using two in-scope features.
+
+=== Capability Types (phantom)
+
+Tag values with what they're authorized to do:
+
+[source,affinescript]
+----
+type Token<cap>;
+type Admin;
+type User;
+
+fn downgrade(t: Token<Admin>): Token<User>
+fn dangerousOp(t: Token<Admin>): Result
+fn safeOp(t: Token<User>): Result
+----
+
+Callers must hold the right capability. Downgrades are visible in the type signature.
+
+=== Branded Identifiers (phantom + nominal aliases)
+
+Avoid mixing up identifiers that share a runtime type:
+
+[source,affinescript]
+----
+type UserId = Int;
+type OrderId = Int;
+type Email = String;
+
+// Cannot accidentally pass a UserId where an OrderId is expected.
+----
+
+=== Trait-Like Dispatch (records + rows)
+
+AffineScript doesn't have type classes, but you can build equivalent functionality using records and row polymorphism:
+
+[source,affinescript]
+----
+type Eq<a> = {eq: (a, a) -> Bool};
+
+fn contains<a>(dict: Eq<a>, list: List<a>, target: a): Bool {
+  // uses dict.eq to compare elements
+}
+
+let intEq: Eq<Int> = {eq: \(a, b) -> a == b};
+contains(intEq, [1, 2, 3], 2);  // true
+----
+
+Dictionary passing gives you overloading and type-class-like dispatch without the compiler needing to support them natively.
+
+=== Purity Tagging (phantom + effect rows)
+
+Use effects as compile-time tags for purity:
+
+[source,affinescript]
+----
+fn pureCompute(x: Int): Int { x * 2 }            // no effect row, pure
+fn ioOp(): String / {IO} { ... }                 // tagged IO
+----
+
+A function without an effect row is pure. Tests can rely on pure functions being deterministic. Impure functions can't be called from pure contexts without propagating the effect.
+
+=== Resource Pools (affine + higher-order functions)
+
+Manage finite resources with compile-time checks:
+
+[source,affinescript]
+----
+fn withFile<r>(path: String, action: File -> (File, r)): r {
+  let f = open(path);
+  let (f, result) = action(f);
+  close(f);
+  result
+}
+
+let contents = withFile("data.txt", \f -> read(f));
+----
+
+The caller never sees the raw `File` and can't forget to close it.
+
+== The Compilation Target
+
+AffineScript compiles to **Typed WASM** as its primary target. WASM gives you:
+
+* Near-native performance
+* Portability — browser, server, edge, embedded
+* Strong isolation — sandboxed by default
+* A stable, standardised, evolving platform
+
+**Typed WASM** is a sibling project: it defines a richer type system on top of WebAssembly. AffineScript is one of its consumers, but Typed WASM is designed as a general-purpose compile target — other languages can use it too.
+
+A **Julia** backend exists as a secondary target for scientific computing use cases where you want AffineScript's type safety alongside Julia's numeric ecosystem.
+
+=== The WASM Co-processor Model
+
+In the intended deployment, AffineScript serves as the "brain" — logic, physics, math, state machines — while the frontend (Gossamer, Deno, browser JS) serves as the "senses" — rendering, input, network. The two communicate by passing raw primitives (Ints, Floats, Arrays) across the WASM boundary.
+
+[source,text]
+----
+┌────────────────────┐    primitives     ┌────────────────────┐
+│  Frontend (JS/TS)  │  ←──────────→     │  AffineScript      │
+│  Gossamer / Deno   │   over WASM       │  logic + physics   │
+│  (rendering/input) │   boundary        │  (brain)           │
+└────────────────────┘                   └────────────────────┘
+----
+
+The AffineScript side is where the correctness guarantees live: affine resource tracking, row-polymorphic domain models, refinement-typed invariants. The frontend side is where the ergonomics of JS are most useful: DOM, WebGL, input handling.
+
+== Design Principles
+
+=== Ergonomics Over Expressiveness
+
+Some powerful type-system features are deliberately excluded because they come at high ergonomic cost. The question we ask for every feature is: *does it make correct code easier to write, or does it make the language harder to use?* If the answer is the latter, it doesn't go in.
+
+=== Copy What Works
+
+Six of the eight features are copied from `-script` languages that have already proven the design in production. We're not inventing new type-system machinery where existing machinery works. The novelty budget is spent on **affine types**, which no `-script` has.
+
+=== Small, Chosen Feature Set
+
+We don't add features because they might be useful someday. We add them when there's a concrete use case that can't be expressed any other way. Many patterns that look like "missing features" turn out to be expressible using existing features — see the Idiomatic Patterns section.
+
+=== Scope Discipline
+
+The scope of AffineScript lives in this document and its machine-readable companion `AI.a2ml`. Any feature not listed there is out of scope. If a collaborator (human, bot, or earlier-you) suggests adding a feature, the first question is: *is it in the scope document?* If not, the scope document is the source of truth — not the code.
+
+This sounds bureaucratic; it isn't. It's the one discipline that stops a language from drifting into accidental complexity.
+
+=== Honest Status
+
+Completion claims must reflect what the code actually enforces, not what it aspires to. "The type checker compiles" is not the same as "the type checker enforces the advertised rules on user programs." STATE.a2ml and related docs split those two things explicitly.
+
+== Getting Help
+
+* **Scope question?** Check `AI.a2ml` (machine-readable) and this document. They are the source of truth.
+* **Confusing type error?** The compiler tries to give source location, the offending usage, and a suggested fix. If an error is unhelpful, file it — error messages are part of the correctness story.
+* **Pattern unclear?** See the Idiomatic Patterns section. If your use case isn't covered, propose it.
+* **"Is this idiomatic?"** If it uses in-scope features and compiles cleanly, it's legitimate AffineScript. Idiomatic style emerges from practice; the patterns here are starting points, not the only ways.
+
+== The Typed WASM Project
+
+If you need features that aren't in AffineScript — dependent types, tropical types, units of measure, shape-indexed arrays — the Typed WASM project is where they live (or will live).
+
+* **Typed WASM** is a compile target, not a language. It provides a richer type layer on top of WebAssembly.
+* **AffineScript** compiles to Typed WASM.
+* **Other languages** can also compile to Typed WASM; it's designed as a general-purpose target.
+
+The split is deliberate: AffineScript is the ergonomic, correctness-focused surface language; Typed WASM is the powerful, language-agnostic type layer that any language can target.
+
+[TIP]
+====
+If you find yourself wanting to add a research-grade type feature to AffineScript, stop and ask: *does this belong in AffineScript, or in Typed WASM?* The answer, most of the time, is Typed WASM.
+====

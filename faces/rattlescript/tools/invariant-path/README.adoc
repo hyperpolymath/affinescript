@@ -1,0 +1,18 @@
+= Invariant Path Integration (RSR Template)
+
+Run Invariant Path from this repository root:
+
+[source,bash]
+----
+./scripts/invariant-path.sh scan --file ./README.adoc --artifact-uri repo://README.adoc --write
+----
+
+Or through Just:
+
+[source,bash]
+----
+just invariant-path scan --file ./README.adoc --artifact-uri repo://README.adoc --write
+----
+
+This wrapper points to the shared workspace at `/var/mnt/eclipse/repos/invariant-path`
+and defaults to the `generic` profile.

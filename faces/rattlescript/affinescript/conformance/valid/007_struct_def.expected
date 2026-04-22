@@ -1,0 +1,302 @@
+{ Ast.prog_module = None; prog_imports = [];
+  prog_decls =
+  [(Ast.TopType
+      { Ast.td_vis = Ast.Private;
+        td_name =
+        { Ast.name = "Point";
+          span =
+          { Span.start_pos = { Span.line = 3; col = 1; offset = 41 };
+            end_pos = { Span.line = 3; col = 6; offset = 46 };
+            file = "conformance/valid/007_struct_def.affine" }
+          };
+        td_type_params = [];
+        td_body =
+        (Ast.TyAlias
+           (Ast.TyRecord (
+              [{ Ast.rf_name =
+                 { Ast.name = "x";
+                   span =
+                   { Span.start_pos =
+                     { Span.line = 3; col = 14; offset = 54 };
+                     end_pos = { Span.line = 4; col = 3; offset = 58 };
+                     file = "conformance/valid/007_struct_def.affine" }
+                   };
+                 rf_ty =
+                 (Ast.TyCon
+                    { Ast.name = "Int";
+                      span =
+                      { Span.start_pos =
+                        { Span.line = 4; col = 4; offset = 59 };
+                        end_pos = { Span.line = 4; col = 6; offset = 61 };
+                        file = "conformance/valid/007_struct_def.affine" }
+                      })
+                 };
+                { Ast.rf_name =
+                  { Ast.name = "y";
+                    span =
+                    { Span.start_pos =
+                      { Span.line = 4; col = 9; offset = 64 };
+                      end_pos = { Span.line = 5; col = 3; offset = 68 };
+                      file = "conformance/valid/007_struct_def.affine" }
+                    };
+                  rf_ty =
+                  (Ast.TyCon
+                     { Ast.name = "Int";
+                       span =
+                       { Span.start_pos =
+                         { Span.line = 5; col = 4; offset = 69 };
+                         end_pos = { Span.line = 5; col = 6; offset = 71 };
+                         file = "conformance/valid/007_struct_def.affine" }
+                       })
+                  }
+                ],
+              None)))
+        });
+    (Ast.TopType
+       { Ast.td_vis = Ast.Private;
+         td_name =
+         { Ast.name = "Person";
+           span =
+           { Span.start_pos = { Span.line = 8; col = 1; offset = 78 };
+             end_pos = { Span.line = 8; col = 6; offset = 83 };
+             file = "conformance/valid/007_struct_def.affine" }
+           };
+         td_type_params = [];
+         td_body =
+         (Ast.TyAlias
+            (Ast.TyRecord (
+               [{ Ast.rf_name =
+                  { Ast.name = "name";
+                    span =
+                    { Span.start_pos =
+                      { Span.line = 8; col = 15; offset = 92 };
+                      end_pos = { Span.line = 9; col = 3; offset = 96 };
+                      file = "conformance/valid/007_struct_def.affine" }
+                    };
+                  rf_ty =
+                  (Ast.TyCon
+                     { Ast.name = "String";
+                       span =
+                       { Span.start_pos =
+                         { Span.line = 9; col = 7; offset = 100 };
+                         end_pos = { Span.line = 9; col = 9; offset = 102 };
+                         file = "conformance/valid/007_struct_def.affine" }
+                       })
+                  };
+                 { Ast.rf_name =
+                   { Ast.name = "age";
+                     span =
+                     { Span.start_pos =
+                       { Span.line = 9; col = 15; offset = 108 };
+                       end_pos = { Span.line = 10; col = 3; offset = 112 };
+                       file = "conformance/valid/007_struct_def.affine" }
+                     };
+                   rf_ty =
+                   (Ast.TyCon
+                      { Ast.name = "Int";
+                        span =
+                        { Span.start_pos =
+                          { Span.line = 10; col = 6; offset = 115 };
+                          end_pos = { Span.line = 10; col = 8; offset = 117 };
+                          file = "conformance/valid/007_struct_def.affine" }
+                        })
+                   };
+                 { Ast.rf_name =
+                   { Ast.name = "email";
+                     span =
+                     { Span.start_pos =
+                       { Span.line = 10; col = 11; offset = 120 };
+                       end_pos = { Span.line = 11; col = 3; offset = 124 };
+                       file = "conformance/valid/007_struct_def.affine" }
+                     };
+                   rf_ty =
+                   (Ast.TyCon
+                      { Ast.name = "String";
+                        span =
+                        { Span.start_pos =
+                          { Span.line = 11; col = 8; offset = 129 };
+                          end_pos =
+                          { Span.line = 11; col = 10; offset = 131 };
+                          file = "conformance/valid/007_struct_def.affine" }
+                        })
+                   }
+                 ],
+               None)))
+         });
+    (Ast.TopType
+       { Ast.td_vis = Ast.Private;
+         td_name =
+         { Ast.name = "Generic";
+           span =
+           { Span.start_pos = { Span.line = 14; col = 1; offset = 141 };
+             end_pos = { Span.line = 14; col = 6; offset = 146 };
+             file = "conformance/valid/007_struct_def.affine" }
+           };
+         td_type_params =
+         [{ Ast.tp_quantity = None;
+            tp_name =
+            { Ast.name = "T";
+              span =
+              { Span.start_pos = { Span.line = 14; col = 13; offset = 153 };
+                end_pos = { Span.line = 14; col = 14; offset = 154 };
+                file = "conformance/valid/007_struct_def.affine" }
+              };
+            tp_kind = None }
+           ];
+         td_body =
+         (Ast.TyAlias
+            (Ast.TyRecord (
+               [{ Ast.rf_name =
+                  { Ast.name = "value";
+                    span =
+                    { Span.start_pos =
+                      { Span.line = 14; col = 19; offset = 159 };
+                      end_pos = { Span.line = 15; col = 3; offset = 163 };
+                      file = "conformance/valid/007_struct_def.affine" }
+                    };
+                  rf_ty =
+                  (Ast.TyCon
+                     { Ast.name = "T";
+                       span =
+                       { Span.start_pos =
+                         { Span.line = 15; col = 8; offset = 168 };
+                         end_pos = { Span.line = 15; col = 10; offset = 170 };
+                         file = "conformance/valid/007_struct_def.affine" }
+                       })
+                  };
+                 { Ast.rf_name =
+                   { Ast.name = "count";
+                     span =
+                     { Span.start_pos =
+                       { Span.line = 15; col = 11; offset = 171 };
+                       end_pos = { Span.line = 16; col = 3; offset = 175 };
+                       file = "conformance/valid/007_struct_def.affine" }
+                     };
+                   rf_ty =
+                   (Ast.TyCon
+                      { Ast.name = "Int";
+                        span =
+                        { Span.start_pos =
+                          { Span.line = 16; col = 8; offset = 180 };
+                          end_pos =
+                          { Span.line = 16; col = 10; offset = 182 };
+                          file = "conformance/valid/007_struct_def.affine" }
+                        })
+                   }
+                 ],
+               None)))
+         });
+    (Ast.TopFn
+       { Ast.fd_vis = Ast.Private; fd_total = false;
+         fd_name =
+         { Ast.name = "make_point";
+           span =
+           { Span.start_pos = { Span.line = 19; col = 1; offset = 189 };
+             end_pos = { Span.line = 19; col = 4; offset = 192 };
+             file = "conformance/valid/007_struct_def.affine" }
+           };
+         fd_type_params = [];
+         fd_params =
+         [{ Ast.p_quantity = None; p_ownership = None;
+            p_name =
+            { Ast.name = "x";
+              span =
+              { Span.start_pos = { Span.line = 19; col = 14; offset = 202 };
+                end_pos = { Span.line = 19; col = 15; offset = 203 };
+                file = "conformance/valid/007_struct_def.affine" }
+              };
+            p_ty =
+            (Ast.TyCon
+               { Ast.name = "Int";
+                 span =
+                 { Span.start_pos =
+                   { Span.line = 19; col = 16; offset = 204 };
+                   end_pos = { Span.line = 19; col = 18; offset = 206 };
+                   file = "conformance/valid/007_struct_def.affine" }
+                 })
+            };
+           { Ast.p_quantity = None; p_ownership = None;
+             p_name =
+             { Ast.name = "y";
+               span =
+               { Span.start_pos = { Span.line = 19; col = 21; offset = 209 };
+                 end_pos = { Span.line = 19; col = 23; offset = 211 };
+                 file = "conformance/valid/007_struct_def.affine" }
+               };
+             p_ty =
+             (Ast.TyCon
+                { Ast.name = "Int";
+                  span =
+                  { Span.start_pos =
+                    { Span.line = 19; col = 24; offset = 212 };
+                    end_pos = { Span.line = 19; col = 26; offset = 214 };
+                    file = "conformance/valid/007_struct_def.affine" }
+                  })
+             }
+           ];
+         fd_ret_ty =
+         (Some (Ast.TyCon
+                  { Ast.name = "Point";
+                    span =
+                    { Span.start_pos =
+                      { Span.line = 19; col = 31; offset = 219 };
+                      end_pos = { Span.line = 19; col = 34; offset = 222 };
+                      file = "conformance/valid/007_struct_def.affine" }
+                    }));
+         fd_eff = None; fd_where = [];
+         fd_body =
+         (Ast.FnBlock
+            { Ast.blk_stmts = [];
+              blk_expr =
+              (Some Ast.ExprRecord {
+                      er_fields =
+                      [({ Ast.name = "x";
+                          span =
+                          { Span.start_pos =
+                            { Span.line = 20; col = 9; offset = 238 };
+                            end_pos =
+                            { Span.line = 20; col = 11; offset = 240 };
+                            file = "conformance/valid/007_struct_def.affine"
+                            }
+                          },
+                        (Some (Ast.ExprVar
+                                 { Ast.name = "x";
+                                   span =
+                                   { Span.start_pos =
+                                     { Span.line = 20; col = 12; offset = 241
+                                       };
+                                     end_pos =
+                                     { Span.line = 20; col = 14; offset = 243
+                                       };
+                                     file =
+                                     "conformance/valid/007_struct_def.affine"
+                                     }
+                                   })));
+                        ({ Ast.name = "y";
+                           span =
+                           { Span.start_pos =
+                             { Span.line = 20; col = 15; offset = 244 };
+                             end_pos =
+                             { Span.line = 20; col = 17; offset = 246 };
+                             file = "conformance/valid/007_struct_def.affine"
+                             }
+                           },
+                         (Some (Ast.ExprVar
+                                  { Ast.name = "y";
+                                    span =
+                                    { Span.start_pos =
+                                      { Span.line = 20; col = 18;
+                                        offset = 247 };
+                                      end_pos =
+                                      { Span.line = 20; col = 20;
+                                        offset = 249 };
+                                      file =
+                                      "conformance/valid/007_struct_def.affine"
+                                      }
+                                    })))
+                        ];
+                      er_spread = None})
+              })
+         })
+    ]
+  }

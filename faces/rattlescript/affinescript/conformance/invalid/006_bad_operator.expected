@@ -1,0 +1,8 @@
+# Expected: lex error for invalid operator
+# Exit code: 1
+# Error pattern: unknown operator or unexpected character
+error[E0001]: Lexical error: unexpected character
+  --> conformance/invalid/006_bad_operator.as:4:15
+   |
+ 4 |   let x = 1 @@ 2;
+   |               ^ unexpected '@'

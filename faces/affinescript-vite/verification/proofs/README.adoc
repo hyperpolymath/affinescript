@@ -1,0 +1,59 @@
+= Formal Verification Proofs
+// SPDX-License-Identifier: PMPL-1.0-or-later
+
+This directory contains formal proofs organised by proof assistant.
+
+== Directory Structure
+
+[source]
+----
+proofs/
+├── idris2/          # Idris2 proofs (ABI, dependent types)
+│   ├── ABI/         # ABI-specific proofs (mandatory)
+│   │   ├── Pointers.idr    # Non-null pointer safety
+│   │   ├── Layout.idr      # Memory layout correctness
+│   │   ├── Platform.idr    # Platform type size proofs
+│   │   ├── Foreign.idr     # FFI return type proofs
+│   │   └── Compliance.idr  # C ABI compliance
+│   └── Types.idr    # Core data type well-formedness
+├── lean4/           # Lean4 proofs (algebra, lattices)
+│   └── ApiTypes.lean
+├── agda/            # Agda proofs (induction, metatheory)
+│   └── Properties.agda
+├── coq/             # Coq proofs (type systems, compilation)
+│   └── TypeSafety.v
+└── tlaplus/         # TLA+ specs (distributed protocols)
+    └── StateMachine.tla
+----
+
+== Verification Commands
+
+[source,bash]
+----
+just proof-check-all       # Run all proof checkers
+just proof-check-idris2    # Idris2 only
+just proof-check-lean4     # Lean4 only
+just proof-check-agda      # Agda only
+just proof-check-coq       # Coq only
+----
+
+== Banned Patterns
+
+The following MUST NOT appear in any proof file:
+
+- `believe_me` (Idris2)
+- `assert_total` (Idris2)
+- `postulate` (Idris2/Agda)
+- `sorry` (Lean4)
+- `Admitted` (Coq)
+- `unsafeCoerce` (Haskell)
+
+CI enforces this via `panic-attack assail --proofs-only`.
+
+== Adding New Proofs
+
+1. Choose the appropriate prover (see PROOF-NEEDS.md)
+2. Create the `.idr`/`.lean`/`.agda`/`.v`/`.tla` file in the right directory
+3. Ensure `%default total` (Idris2) or equivalent
+4. Run the verification command
+5. Update PROOF-STATUS.md

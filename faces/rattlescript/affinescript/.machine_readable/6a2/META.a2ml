@@ -1,0 +1,671 @@
+# SPDX-License-Identifier: PMPL-1.0-or-later
+# META.a2ml — Project meta-information
+# Converted from META.scm on 2026-03-21
+
+[metadata]
+project = "affinescript"
+author = "Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>"
+license = "PMPL-1.0-or-later"
+standard = "RSR 2026"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Architecture Decision Records
+# ──────────────────────────────────────────────────────────────────────────────
+# ADRs are numbered sequentially and never renumbered. Superseded ADRs remain
+# in place with status = "superseded" and a pointer to the replacement.
+# Added 2026-04-10 during Track F1 (Idris2 Solo-core formalisation) — the
+# formal-verification track surfaced three decisions about the QTT type system
+# that were previously implicit.
+
+[[adr]]
+id = "ADR-001"
+status = "accepted"
+date = "2026-04-10"
+title = "Split-Γ is the canonical presentation of the QTT type system"
+context = """
+The Idris2 Solo-core formalisation (docs/academic/formal-verification/solo-core/)
+revealed that docs/spec.md §3.6 presents typing rules against a shared Γ
+(writing e.g. T-App with both premises typed under the same Γ), while
+lib/quantity.ml runs a post-hoc usage walk that accumulates per-variable
+usage summed across subterms. The literature-standard QTT presentation
+(Atkey 2018, Granule, Idris2 core) uses explicit context splitting
+  Γ = Γ₁ + q·Γ₂
+at every eliminator position.
+
+Both forms are extensionally equivalent for the Solo core (same programs
+accepted/rejected). The difference is purely presentational.
+"""
+decision = """
+Split-Γ is canonical. The spec, the formalisation, and all future
+documentation present typing rules in split-Γ form. The post-hoc usage walk
+in lib/quantity.ml is an equivalent implementation strategy, documented as
+such in a comment, not the definition of the type system.
+"""
+consequences = """
+- docs/spec.md §3.6 is rewritten to show explicit context splitting (~30-60 LOC).
+- lib/quantity.ml gets a header comment explaining that its flat walk is an
+  equivalent implementation of the split-Γ rules, with a pointer to this ADR.
+- The Idris2 formalisation's Typing.idr (which uses split-Γ) becomes the
+  mechanised witness of the spec — no translation layer required.
+- Progress + preservation proofs can proceed in textbook form.
+- Dependability gain: one source of truth. The spec-vs-impl gap (the failure
+  mode flagged in Track B's audit of TYPECHECKER-COMPLETION.md) cannot
+  structurally hide in this part of the system.
+- Interop gain: the spec becomes citable and legible to anyone with QTT
+  background (Atkey, Idris2, Granule, Quill readers).
+- Reader-tax cost: split-Γ notation is heavier than shared-Γ for newcomers.
+  Mitigated by surface-language tutorials keeping informal shared-Γ intuition
+  while the spec remains the formal reference.
+"""
+
+[[adr]]
+id = "ADR-002"
+status = "accepted"
+date = "2026-04-10"
+title = "Let rule scales value context by binder quantity (QTT-orthodox)"
+context = """
+During the Decision-2 audit of docs/spec.md T-Let against lib/typecheck.ml
+and lib/quantity.ml, the current implementation was found to handle Let
+unsoundly:
+
+- lib/typecheck.ml:631-665 (ExprLet) does zero quantity handling — pure
+  HM-style inference with let-generalisation, quantities entirely absent.
+- lib/quantity.ml:251-253 (ExprLet in infer_usage_expr) does a flat walk
+  that sums e1's and e2's usages without scaling e1 by the binder's quantity.
+
+This is equivalent to the rule
+  Γ₁ ⊢ e1 : A    (Γ₂, x:A) ⊢ e2 : B
+  ─────────────────────────────────
+            Γ₁ + Γ₂ ⊢ let x = e1 in e2 : B
+rather than the QTT-orthodox
+  Γ₁ ⊢ e1 : A    (Γ₂, x:^q A) ⊢ e2 : B
+  ─────────────────────────────────────
+         q·Γ₁ + Γ₂ ⊢ let x :^q = e1 in e2 : B
+
+Two concrete soundness bugs follow:
+
+BUG-001 (high severity — linear-value smuggling):
+  let x :ω = linear_resource() in use_x_once(x)
+  Current impl accepts; QTT-correct form rejects (e1's Γ must be scaled by
+  ω, so any Γ₁ containing a linear variable becomes ill-formed).
+
+BUG-002 (medium severity — erasure failure):
+  let x :0 = expensive_proof_term() in body_not_using_x
+  Current impl evaluates e1 and consumes its resources; QTT-correct form
+  scales e1's Γ by 0, producing the zero context, which means e1 can be
+  erased at runtime.
+
+BUG-001 is a soundness hole that defeats the point of affine types in any
+program where ω-binders and linear values coexist.
+"""
+decision = """
+The Let rule in both the spec and the implementation scales the value
+context by the binder's quantity. T-Let becomes:
+
+  Γ₁ ⊢ e1 : A    (Γ₂, x:^q A) ⊢ e2 : B
+  ─────────────────────────────────────
+         q·Γ₁ + Γ₂ ⊢ let x :^q = e1 in e2 : B
+
+Unannotated Let defaults to q = ω (matching current behaviour for all
+existing unannotated code — so the fix is non-breaking for the common case).
+"""
+consequences = """
+- lib/quantity.ml ExprLet case grows a scale-by-q step before summing
+  into the outer context (~10 LOC).
+- lib/typecheck.ml ExprLet case threads quantities (folded into Track A3
+  which is already rewriting quantity flow through typecheck.ml).
+- docs/spec.md T-Let rule is rewritten to show the scaling explicitly.
+- Two regression tests added as Track A2 fixtures covering BUG-001 and
+  BUG-002.
+- The Idris2 formalisation (Typing.idr THLet) already assumes the scaled
+  form — no rework there.
+- Users who had previously (accidentally) relied on the unsound behaviour
+  to duplicate linear values through ω-lets will now get a compile error.
+  Expected blast radius: near-zero because affine enforcement was never
+  wired in the first place (see ADR-001 rationale).
+"""
+
+[[adr]]
+id = "ADR-003"
+status = "accepted"
+date = "2026-04-10"
+title = "Evaluation order is strict CBV, left-to-right, for all n-ary forms"
+context = """
+During the Decision-3 audit of lib/interp.ml for the Track F1 Step relation,
+the evaluator was found to be internally inconsistent about evaluation order
+of n-ary expression forms.
+
+- ExprBinary (lib/interp.ml:135-138) is explicitly left-to-right:
+    let* left_val = eval env left in
+    let* right_val = eval env right in
+    eval_binop op left_val right_val
+- ExprApp args (:130), ExprTuple (:144), ExprArray (:148) all delegate to
+  eval_list, which is implemented with List.fold_right:
+    and eval_list env exprs =
+      List.fold_right (fun expr acc ->
+        let* vals = acc in
+        let* v = eval env expr in
+        Ok (v :: vals)
+      ) exprs (Ok [])
+  OCaml is strict, so in f (fold_right f [a;b;c] init) the innermost
+  application runs first — eval env c is forced before eval env b before
+  eval env a. Net result: right-to-left.
+
+This was almost certainly unintentional; nothing currently depends on the
+order because affine enforcement was never wired. However:
+
+- The WASM and Julia backends will naturally generate left-to-right code,
+  producing cross-backend semantic divergence for any program with effectful
+  or resource-consuming arguments.
+- The effect system (70% complete per STATE.a2ml) would observe handler
+  ordering tied to evaluation order, making this a latent soundness hazard.
+- A Track F1 Step relation defined in textbook CBV left-to-right form would
+  disagree with the interpreter, requiring a non-standard right-to-left
+  presentation or a proof of order-independence (which is false in general
+  for effectful languages).
+"""
+decision = """
+All n-ary expression forms evaluate their subterms strict left-to-right.
+This applies to: application arguments, tuples, arrays, record fields,
+function calls in all positions.
+
+lib/interp.ml eval_list is fixed to left-to-right:
+  and eval_list env exprs =
+    let rec loop acc = function
+      | [] -> Ok (List.rev acc)
+      | e :: rest ->
+        let* v = eval env e in
+        loop (v :: acc) rest
+    in
+    loop [] exprs
+
+Track F1's Step relation uses the standard CBV left-to-right presentation
+  e1 → e1'  ⟹  e1 e2 → e1' e2       (reduce function first)
+  e2 → e2'  ⟹  v1 e2 → v1 e2'       (then argument, only once function is a value)
+with the symmetric congruences for pairs, tuples, etc.
+"""
+consequences = """
+- lib/interp.ml eval_list is replaced (~6 LOC diff).
+- docs/spec.md gains (or receives an edit to) an explicit operational
+  semantics section stating strict CBV, left-to-right.
+- A regression test lands in Track A2 exercising a program whose output
+  depends on left-to-right evaluation (e.g. a tuple of two side-effecting
+  calls that mutate a shared counter).
+- WASM, Julia, and the effect system all become consistent with the
+  interpreter by default — no backend fix required.
+- Track F1 can proceed on its current footing to mechanise Step and the
+  progress/preservation proofs without author input.
+- Existing programs are unaffected unless they rely on observable right-
+  to-left evaluation of tuple/arg components. The interpreter is the only
+  place that did this, and nobody has filed a bug, so blast radius is
+  expected to be zero.
+"""
+
+[[adr]]
+id = "ADR-007"
+status = "accepted"
+date = "2026-04-10"
+accepted = "2026-04-10"
+title = "Surface syntax for quantity annotations: @linear/@erased/@unrestricted (primary) + :1/:0/:ω (sugar)"
+context = """
+The Track A audit on 2026-04-10 found that affine enforcement is wired
+through the CLI (Quantity.check_program_quantities runs from
+lib/typecheck.ml:1206 on every check/compile/eval invocation) but
+**unreachable** from user programs because the surface syntax for declaring
+quantity annotations on let-binders does not exist. Specifically:
+
+- lib/ast.ml ExprLet and StmtLet have no quantity field. They carry
+  el_mut/sl_mut, el_pat/sl_pat, el_ty/sl_ty, el_value/sl_value, el_body
+  — no el_quantity. Only function `param` and `type_param` carry
+  `p_quantity`/`tp_quantity`.
+- lib/lexer.ml never emits ZERO/ONE tokens. Source `0` and `1` are lexed
+  as `INT 0`/`INT 1`. The only quantity literal that round-trips through
+  source today is `omega`/`ω` (lexer.ml:53 and lexer.ml:153 respectively).
+- lib/parser.mly's `quantity` rule (lines 180-183) takes ZERO|ONE|OMEGA
+  but only OMEGA is reachable from source. Even on function parameters,
+  `:1` and `:0` annotations cannot be written.
+- ADR-002 specifies the QTT-orthodox scaled Let rule (q·Γ₁ + Γ₂), which
+  requires the binder to carry a quantity. Without surface syntax to
+  attach one, the rule has no input to scale by, BUG-001 cannot be
+  closed, and the headline affine-types feature remains theatre.
+
+Surface syntax is a language-design decision, not an implementation
+detail. The decision needs author input before any of items 1-6 in
+[track-a-manhattan] proceed.
+"""
+options = """
+Three candidate surface syntaxes are listed. None has been chosen.
+
+# Option A — caret-quantity suffix on `let` keyword
+
+  let^1 x = linear_resource() in use_x_once(x)
+  let^0 _proof = expensive_term() in body
+  let^ω y = pure_int() in use_y_many(y)
+
+  Pros:
+  - Visually parallel to T-Let's `let x :^q A` notation in QTT papers.
+  - The `^` is currently unused in the lexer, so no disambiguation cost.
+  - The annotation lives on the keyword, not the binder, which mirrors
+    the type-theory framing where `q` parameterises the rule, not the
+    variable.
+  - Easy parser rule: LET (CARET quantity)? pat (COLON ty)? EQ value.
+
+  Cons:
+  - `^` is unfamiliar surface syntax for users coming from Rust/Idris2.
+  - The `^` may collide with future bitwise-XOR or pow operators
+    (currently OpBitXor exists in ast.ml but the lexer surface form is
+    unclear).
+  - Requires users to type a non-letter character on every annotation.
+
+# Option B — colon-quantity prefix on the type ascription
+
+  let x :1 :Int = linear_resource()
+  let x :0 :Int = expensive_term()
+  let x :ω :Int = pure_int()
+  let x :1 = linear_resource()              # type inferred
+
+  Pros:
+  - Reuses the existing COLON token; no new operators needed.
+  - Mirrors the function parameter syntax, which already accepts
+    `qty? own? name COLON ty` (parser.mly:186).
+  - Familiar to readers of Idris2 (`x : 1 A`) and Quantitative Type
+    Theory papers.
+
+  Cons:
+  - Two consecutive colons looks awkward and may confuse readers
+    expecting `::` (the path separator COLONCOLON token).
+  - When the type is inferred (`let x :1 = e`), the parser needs
+    one-token lookahead to distinguish `:1` (quantity) from `:Int`
+    (type). This is a minor parser challenge but non-zero.
+  - The lexer must additionally route `INT 0`/`INT 1` to ZERO/ONE in
+    quantity position, which is context-sensitive lexing — best handled
+    by accepting `INT 0|INT 1` directly in the parser's quantity rule
+    instead, but that introduces a small grammar wart.
+
+# Option C — annotation-style attribute before `let`
+
+  @linear let x = linear_resource() in use_x_once(x)
+  @erased let _proof = expensive_term() in body
+  @unrestricted let y = pure_int() in use_y_many(y)
+  let z = pure_int() in use_z(z)            # default = unrestricted
+
+  Pros:
+  - Reads naturally; `@linear` and `@erased` are self-documenting and
+    require no quantity-theory background.
+  - Trivially extensible to future modal annotations (e.g. `@borrowed`,
+    `@owned`) without grammar changes.
+  - Parser change is local: AT (ident) LET pat (COLON ty)? EQ value.
+    No COLON disambiguation, no new operator tokens.
+  - Aligns with the language-policy preference for descriptive names
+    over symbolic ones (CLAUDE.md: "Always use descriptive variable
+    names"; the same instinct applied to annotations).
+
+  Cons:
+  - Verbose. `@linear let x = ...` is six tokens vs `let^1 x = ...`'s
+    four.
+  - Diverges from the QTT mathematical notation, making it harder for
+    paper-trained readers to map source to spec. Mitigation: spec.md
+    can show both forms in parallel.
+  - The `@` token is currently unused, so it's free, but introducing
+    it for one feature creates pressure to use it for others (which
+    may or may not be desirable depending on language direction).
+  - Requires a small mapping table from attribute name to quantity
+    value (`linear → QOne`, `erased → QZero`, `unrestricted → QOmega`).
+"""
+decision = """
+Hybrid: Option C accepted as primary, Option B accepted as sugar.
+
+Both surface syntaxes parse to the same internal representation.
+Tutorials, error messages, IDE tooling, and the spec's prose all use
+Option C. Option B remains legal for users porting from QTT papers or
+who prefer the compact form. Option A is rejected outright.
+
+# Primary surface form (Option C — what tutorials and error messages use)
+
+  @linear        — used exactly once (QOne)
+  @erased        — must not be used at runtime (QZero)
+  @unrestricted  — any number of uses (QOmega), the default
+
+Examples:
+  @linear let x = linear_resource() in use_x_once(x)
+  @erased let _proof = expensive_term() in body_not_using_proof
+  @unrestricted let y = pure_int() in use_y_many(y)
+  let z = pure_int() in use_z(z)            # default: @unrestricted
+
+  fn consume(@linear x: Resource) -> Unit = release(x)
+  fn weigh(@erased _proof: Even(n), n: Nat) -> Nat = n / 2
+
+# Sugar surface form (Option B — accepted but not promoted)
+
+  let x :1 :Resource = linear_resource() in use_x_once(x)
+  let _proof :0 :Even(n) = expensive_term() in body
+  let y :ω :Int = pure_int() in use_y_many(y)
+  let z :Int = pure_int() in use_z(z)       # no quantity = @unrestricted
+
+  fn consume(x :1: Resource) -> Unit = release(x)
+  fn weigh(_proof :0: Even(n), n: Nat) -> Nat = n / 2
+
+# Equivalence
+
+  @linear        ≡  :1
+  @erased        ≡  :0
+  @unrestricted  ≡  :ω    (also: omitted entirely)
+
+Both forms parse to the same `el_quantity = Some QOne | QZero | QOmega`
+in lib/ast.ml. The compiler chooses the canonical form (Option C) when
+emitting diagnostics, formatter output, and pretty-printed source. The
+formatter rewrites Option B to Option C on `affinescript fmt`, with an
+opt-out flag `--keep-quantity-sugar` for users who deliberately prefer
+the compact form.
+
+Rationale (decided per the standing priority order
+dependability > security > interop > usability/accessibility/marketability
+> performance > versatility > functional extension):
+
+- Usability/accessibility/marketability beats consistency-with-papers
+  in the priority order, so Option C must be the primary form a new
+  user encounters in tutorials and error messages. A new user reading
+  `@linear let x = e` can form a working hypothesis without consulting
+  the spec. The same user looking at `let x :1 = e` has nothing to
+  Google.
+- However, the priority order does not require *exclusivity*. Accepting
+  Option B as sugar costs ~15 LOC of parser surface area and one
+  paragraph in the spec, and in return it:
+  * Preserves consistency with the existing function-parameter syntax
+    (which uses `qty? own? name COLON ty`), so the param-quantity gap
+    closes with the *same* grammar production rather than a parallel
+    one. Users learning the param syntax already see `:1` in the
+    grammar; the sugar makes that knowledge transfer to let-binders.
+  * Preserves citation isomorphism with QTT papers — anyone porting an
+    Idris2 example or a Granule example can paste the numeric form
+    directly without rewriting it.
+  * Gives advanced users a denser form for code where annotations are
+    frequent and English keywords would create visual noise.
+- Compiler errors and source code share the C vocabulary regardless of
+  which form the user wrote: "`@linear` binding 'x' used 2 times" reads
+  cleanly without mental translation, even if the source was written
+  as `:1`. The diagnostic always speaks the canonical form.
+- Tutorials can be example-driven from the first runnable program with
+  Option C; the QTT semiring and Option B sugar become optional
+  advanced reading rather than a prerequisite for "hello world with
+  affine types."
+- The `@` namespace is now committed to AffineScript and may grow to
+  cover additional modal annotations (e.g. `@total`, `@pure`,
+  `@borrowed`, `@owned`) in future ADRs. This is an intentional
+  reservation, not a side effect.
+- The Rust/Linear-Haskell precedent is real: Rust ships affine
+  semantics under approachable keywords and reaches a vastly larger
+  audience than Linear Haskell, which exposes the type-theory
+  machinery directly. AffineScript chooses Rust's marketing instinct
+  for the primary form, while keeping Linear Haskell's notation
+  available for users who already think in it.
+
+# Style guide commitment
+
+The spec commits explicitly to keeping both forms supported. Future
+contributors proposing to drop Option B sugar must amend this ADR
+rather than removing it silently. The recommended convention in
+published AffineScript code is:
+
+- New code: Option C (`@linear let x = e`).
+- Code accompanying a paper: either form, author's choice.
+- Auto-formatted code: Option C (formatter rewrites unless
+  `--keep-quantity-sugar` is set).
+- Generated code (compiler diagnostics, IDE quick-fixes, refactoring
+  tools): Option C exclusively.
+
+Rejected alternatives:
+
+- Option A (`let^q x = e`): rejected. Lowest implementation cost but
+  worst on the priority order — symbolic, opaque to non-TT readers,
+  forecloses future use of `^` for bitwise XOR or exponentiation.
+- Option B exclusively (without C): rejected for the same
+  accessibility/adoption reasons that make C the primary form.
+- Option C exclusively (without B sugar): considered and rejected. The
+  marginal cost of accepting B is low (~15 LOC parser, one paragraph
+  spec), and the benefit — closing the param-quantity gap with one
+  grammar production and preserving paper-citation isomorphism — is
+  worth the cost given the standing priority order's high weighting
+  of interop alongside accessibility.
+"""
+consequences = """
+- lib/ast.ml gains el_quantity / sl_quantity fields on ExprLet and
+  StmtLet. ~10 modules pattern-matching on Let must be updated
+  mechanically (typecheck, interp, codegen, codegen_gc, julia_codegen,
+  formatter, sexpr_dump, json_output, linter, opt, desugar_traits).
+- lib/lexer.ml gains an AT token for `@`. ~2 LOC.
+- lib/token.ml gains the AT token kind. ~2 LOC.
+- lib/parser.mly gains:
+  * AT ident — a quantity_attr rule that maps `@linear`/`@erased`/
+    `@unrestricted` to QOne/QZero/QOmega and rejects unknown attribute
+    names with a parse error pointing at the documented set.
+  * Optional quantity_attr prefix on let_decl, stmt_let, param, and
+    lambda_param productions. ~15 LOC.
+  * The existing numeric quantity rule (ZERO|ONE|OMEGA) gains INT 0
+    and INT 1 as accepted lexemes (since the lexer emits INT not
+    ZERO/ONE for `0` and `1`). This makes Option B sugar reachable
+    from source on let-binders and params, in addition to type_params
+    where it already worked. ~5 LOC.
+  * Both productions resolve to the same el_quantity / sl_quantity /
+    p_quantity slot — they are alternative concrete syntaxes for the
+    identical abstract syntax.
+- lib/quantity.ml ExprLet/StmtLet cases gain context scaling per
+  ADR-002. ~25 LOC including a `scale_usage_by` helper.
+- Error messages in lib/quantity.ml format_quantity_error are updated
+  to use `@linear` / `@erased` / `@unrestricted` vocabulary instead of
+  the show_quantity numeric forms.
+- Regression fixtures land covering BOTH surface forms:
+  * test/e2e/fixtures/bug_001_omega_let_smuggles_linear.affine — must
+    be rejected (Option C form: `@unrestricted let x = ...`).
+  * test/e2e/fixtures/bug_001_sugar_form.affine — must be rejected
+    (Option B form: `let x :ω = ...`). Proves both surface forms are
+    enforced through the same code path.
+  * test/e2e/fixtures/affine_let_valid.affine — must pass (Option C).
+  * test/e2e/fixtures/affine_let_valid_sugar.affine — must pass
+    (Option B).
+- docs/spec.md T-Let rule is rewritten to show the formal QTT notation
+  alongside both surface forms (Option C primary, Option B sugar) so
+  paper-trained readers and pedagogy-first readers both see their
+  preferred presentation.
+- docs/spec.md gains a "Surface syntax for quantity annotations"
+  section documenting the equivalence table and the style-guide
+  commitment from this ADR.
+- BUG-002 (`:0` lets do not erase their RHS) closes in the same change,
+  per ADR-002's consequence list.
+- The affine-types feature flag in STATE.a2ml [features] flips from
+  `wired-but-unreachable` to `wired-and-reachable` once the change
+  lands.
+- Future modal annotations (`@total`, `@pure`, `@borrowed`, `@owned`,
+  etc.) inherit the same `@`-attribute parsing infrastructure for free.
+- The formatter (lib/formatter.ml) gains a `--keep-quantity-sugar` flag
+  that defaults to OFF (so default `affinescript fmt` rewrites Option
+  B sugar to Option C primary). Users opting in retain their chosen
+  form across format passes.
+"""
+references = [
+  ".machine_readable/6a2/STATE.a2ml [track-a-manhattan]",
+  ".machine_readable/6a2/STATE.a2ml [[open-bug]] BUG-001",
+  ".machine_readable/6a2/STATE.a2ml [[open-bug]] BUG-002",
+  ".machine_readable/6a2/META.a2ml [[adr]] ADR-002 (scaled Let rule)",
+  "lib/ast.ml ExprLet (lines 105-111), StmtLet (lines 170-176)",
+  "lib/lexer.ml (ZERO/ONE never emitted)",
+  "lib/parser.mly quantity rule (lines 180-183)",
+]
+
+[[adr]]
+id = "ADR-008"
+status = "accepted"
+date = "2026-04-11"
+title = "Effect invocation uses direct call syntax — no 'perform' keyword"
+context = """
+Algebraic effects require a syntax for invoking an effect operation at a
+call site. Two candidates exist in the literature:
+
+1. Direct call: `Http.get(url)` — the effect operation looks like a
+   namespaced function call. The effect is declared in the return type
+   annotation (`-> T / Http, Async`) not at each call site.
+
+2. Explicit perform: `perform Http.get(url)` — the keyword makes the
+   effectful nature of the call visible at every use site. Used by Koka
+   (earlier versions) and some effect-system research languages.
+
+The AffineScript DESIGN-VISION.adoc already shows direct call style in its
+effect examples. The decision needed to be made explicit so the conformance
+suite, parser, and documentation are unambiguous.
+"""
+decision = """
+Effect operations are invoked with direct call syntax. No `perform` keyword.
+
+  fn fetch_user(id: Int) -> User / Http, Async {
+    let resp = Http.get("/users/" ++ show(id))
+    Async.await(resp.json())
+  }
+
+The effect is declared once — in the return type annotation (`/ Http, Async`).
+The call sites are plain calls. The type signature is the contract; the call
+site is just a call.
+"""
+consequences = """
+- The conformance suite, parser, and spec must not admit or require `perform`.
+- Effect operation calls are syntactically indistinguishable from regular
+  function calls; the distinction is entirely in the type system.
+- Error messages for unhandled effects reference the return type annotation,
+  not a `perform` site.
+- This is consistent with the ergonomics goal: effect-heavy code does not
+  accumulate keyword noise at every call site.
+- Face parsers (Python-face, JS-face) can map `async/await` to the Async
+  effect without introducing a `perform` concept — `await` desugars to
+  `Async.await(...)`, which is a direct call.
+"""
+references = [
+  "docs/DESIGN-VISION.adoc (effect examples)",
+  "docs/specs/effects.md",
+]
+
+[[adr]]
+id = "ADR-009"
+status = "accepted"
+date = "2026-04-11"
+title = "The conformance suite is authoritative — parser must conform to spec"
+context = """
+The conformance suite (test/conformance/) contains valid AffineScript programs
+drawn from the spec. As of 2026-04-11, 8 of 12 valid conformance tests fail
+to parse. The three categories of failure are:
+
+1. Uppercase type names — `Int`, `String`, `Bool`, `Option` are written in
+   the spec with PascalCase. The parser's `ident` rule accepts only lowercase,
+   so `Int` fails to parse as a type name.
+
+2. ML-style enum syntax — the spec's enum declaration syntax does not match
+   what the parser accepts.
+
+3. Effect op type parameters — the spec includes type parameters on effect
+   operations; the parser does not support them.
+
+Two possible authorities: the spec (conformance suite) or the parser
+(current implementation).
+"""
+decision = """
+The spec is authoritative. The parser must conform to the spec. This is
+consistent with the standing estate-wide rule: 'Language scope lives in a
+written thesis. Thesis authoritative, code must conform. If disagreement,
+code is wrong.'
+
+Specific required changes:
+1. Parser must accept PascalCase type names (`Int`, `String`, `Bool`, user-
+   defined types). The type name namespace is PascalCase; value names remain
+   camelCase/snake_case. This also fixes the conformance suite failure where
+   effect and enum type names could not be written.
+2. Parser must accept the spec's enum declaration syntax (to be confirmed
+   against spec and fixed accordingly).
+3. Parser must support type parameters on effect operations.
+
+The target is 12/12 conformance suite passing.
+"""
+consequences = """
+- lib/lexer.ml and lib/parser.mly are updated to accept PascalCase type names.
+- The `ident` vs `type_ident` distinction is formalised in the grammar:
+  `ident` = lowercase-leading (values, variables, functions)
+  `type_ident` = uppercase-leading (types, effects, enums, type aliases)
+- lib/parser.mly enum and effect rules are audited against spec and fixed.
+- 12/12 conformance tests pass. The conformance suite becomes a live
+  regression suite — any future parser change that breaks a conformance test
+  is a bug, not a spec disagreement.
+- All fixture files under test/e2e/fixtures/ that use lowercase type names
+  (e.g. `type point = ...`) are reviewed; lowercase type aliases remain valid
+  (they are value-level names) but builtin types (`int` written lowercase)
+  are normalised to PascalCase.
+- Error messages and diagnostics use PascalCase type names consistently.
+"""
+references = [
+  "test/conformance/",
+  "lib/lexer.ml",
+  "lib/parser.mly",
+  "docs/spec.md",
+]
+
+[[adr]]
+id = "ADR-010"
+status = "accepted"
+date = "2026-04-11"
+title = "Face-aware error formatting is a first-class toolchain concern"
+context = """
+AffineScript supports syntactic face layers (Python-face, JS-face,
+pseudocode-face, canonical AffineScript) that allow developers to write
+AffineScript using familiar surface syntax from other languages. The compiler
+pipeline forks only at the parser; everything downstream (type checker,
+codegen) is shared and operates on the canonical AST.
+
+Without face-aware error formatting, a developer writing Python-face
+AffineScript receives type errors expressed in canonical AffineScript
+syntax — terms and constructs they have deliberately not learned yet. This
+shatters the face illusion at the worst possible moment (when the developer
+is stuck and needs help) and is a direct contradiction of the adoption goal.
+"""
+decision = """
+Face-aware error formatting is a first-class toolchain concern, not an
+afterthought. It is implemented as a formatting layer between the compiler
+and the terminal, not inside the compiler itself.
+
+Architecture:
+  compiler (emits errors in canonical AST terms)
+      ↓
+  face-aware error formatter   ← separate concern, swappable
+      ↓
+  terminal / IDE / LSP
+
+The compiler's error representation is canonical and face-agnostic. The
+formatter receives: (error, active-face) → formatted error string.
+
+Each face provides an error vocabulary mapping:
+  canonical term → face term
+  e.g. (python-face) "affine binding" → "single-use variable"
+  e.g. (js-face) "Option[T]" → "T | null"  [with note: 'use .unwrap_or()']
+
+Error source spans are always reported in the face's syntax, not canonical
+AffineScript syntax, since the user's file is written in the face.
+"""
+consequences = """
+- The compiler's error types carry enough information for the formatter to
+  reconstruct face-appropriate messages. No compiler internals leak face
+  knowledge.
+- Each face ships with an error vocabulary file (part of the face definition).
+- The toolchain (CLI, LSP server, playground) passes the active face to the
+  formatter. The formatter is the single point of face-awareness for errors.
+- A developer on Python-face who hits a linearity violation sees:
+    Error: single-use variable 'x' used twice
+      → line 7, in greet
+  not:
+    Error: affine binding 'x' used 2 times (quantity violation: QOne, found 2)
+- The face formatter is versioned alongside the face. When a face is
+  deprecated, its error formatter is deprecated with it.
+- The IDE/LSP integration carries face information in the project config so
+  hover types, completions, and inline errors all speak the face's vocabulary.
+- This is a design commitment, not an immediate implementation task. The
+  canonical compiler error representation must be designed with this
+  formatability requirement in mind from the start.
+"""
+references = [
+  "docs/DESIGN-VISION.adoc (faces section)",
+  "docs/specs/faces.md (to be written)",
+]

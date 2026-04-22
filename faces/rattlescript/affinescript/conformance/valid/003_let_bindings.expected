@@ -1,0 +1,155 @@
+{ Ast.prog_module = None; prog_imports = [];
+  prog_decls =
+  [(Ast.TopFn
+      { Ast.fd_vis = Ast.Private; fd_total = false;
+        fd_name =
+        { Ast.name = "test";
+          span =
+          { Span.start_pos = { Span.line = 3; col = 1; offset = 35 };
+            end_pos = { Span.line = 3; col = 4; offset = 38 };
+            file = "conformance/valid/003_let_bindings.affine" }
+          };
+        fd_type_params = []; fd_params = [];
+        fd_ret_ty = (Some (Ast.TyTuple [])); fd_eff = None; fd_where = [];
+        fd_body =
+        (Ast.FnBlock
+           { Ast.blk_stmts =
+             [Ast.StmtLet {sl_mut = false; sl_quantity = None;
+                sl_pat =
+                (Ast.PatVar
+                   { Ast.name = "x";
+                     span =
+                     { Span.start_pos =
+                       { Span.line = 4; col = 3; offset = 55 };
+                       end_pos = { Span.line = 4; col = 7; offset = 59 };
+                       file = "conformance/valid/003_let_bindings.affine" }
+                     });
+                sl_ty = None;
+                sl_value =
+                (Ast.ExprLit
+                   (Ast.LitInt (42,
+                      { Span.start_pos =
+                        { Span.line = 4; col = 9; offset = 61 };
+                        end_pos = { Span.line = 4; col = 11; offset = 63 };
+                        file = "conformance/valid/003_let_bindings.affine" }
+                      )))};
+               Ast.StmtLet {sl_mut = false; sl_quantity = None;
+                 sl_pat =
+                 (Ast.PatVar
+                    { Ast.name = "y";
+                      span =
+                      { Span.start_pos =
+                        { Span.line = 5; col = 3; offset = 69 };
+                        end_pos = { Span.line = 5; col = 7; offset = 73 };
+                        file = "conformance/valid/003_let_bindings.affine" }
+                      });
+                 sl_ty =
+                 (Some (Ast.TyCon
+                          { Ast.name = "Int";
+                            span =
+                            { Span.start_pos =
+                              { Span.line = 5; col = 8; offset = 74 };
+                              end_pos =
+                              { Span.line = 5; col = 10; offset = 76 };
+                              file =
+                              "conformance/valid/003_let_bindings.affine" }
+                            }));
+                 sl_value =
+                 (Ast.ExprLit
+                    (Ast.LitInt (10,
+                       { Span.start_pos =
+                         { Span.line = 5; col = 14; offset = 80 };
+                         end_pos = { Span.line = 5; col = 16; offset = 82 };
+                         file = "conformance/valid/003_let_bindings.affine" }
+                       )))};
+               Ast.StmtLet {sl_mut = false; sl_quantity = None;
+                 sl_pat =
+                 (Ast.PatVar
+                    { Ast.name = "z";
+                      span =
+                      { Span.start_pos =
+                        { Span.line = 6; col = 3; offset = 88 };
+                        end_pos = { Span.line = 6; col = 7; offset = 92 };
+                        file = "conformance/valid/003_let_bindings.affine" }
+                      });
+                 sl_ty = None;
+                 sl_value =
+                 (Ast.ExprBinary (
+                    (Ast.ExprVar
+                       { Ast.name = "x";
+                         span =
+                         { Span.start_pos =
+                           { Span.line = 6; col = 9; offset = 94 };
+                           end_pos = { Span.line = 6; col = 11; offset = 96 };
+                           file = "conformance/valid/003_let_bindings.affine"
+                           }
+                         }),
+                    Ast.OpAdd,
+                    (Ast.ExprVar
+                       { Ast.name = "y";
+                         span =
+                         { Span.start_pos =
+                           { Span.line = 6; col = 13; offset = 98 };
+                           end_pos =
+                           { Span.line = 6; col = 15; offset = 100 };
+                           file = "conformance/valid/003_let_bindings.affine"
+                           }
+                         })
+                    ))};
+               Ast.StmtLet {sl_mut = true; sl_quantity = None;
+                 sl_pat =
+                 (Ast.PatVar
+                    { Ast.name = "counter";
+                      span =
+                      { Span.start_pos =
+                        { Span.line = 7; col = 7; offset = 109 };
+                        end_pos = { Span.line = 7; col = 11; offset = 113 };
+                        file = "conformance/valid/003_let_bindings.affine" }
+                      });
+                 sl_ty = None;
+                 sl_value =
+                 (Ast.ExprLit
+                    (Ast.LitInt (0,
+                       { Span.start_pos =
+                         { Span.line = 7; col = 19; offset = 121 };
+                         end_pos = { Span.line = 7; col = 21; offset = 123 };
+                         file = "conformance/valid/003_let_bindings.affine" }
+                       )))};
+               (Ast.StmtAssign (
+                  (Ast.ExprVar
+                     { Ast.name = "counter";
+                       span =
+                       { Span.start_pos =
+                         { Span.line = 7; col = 22; offset = 124 };
+                         end_pos = { Span.line = 8; col = 3; offset = 128 };
+                         file = "conformance/valid/003_let_bindings.affine" }
+                       }),
+                  Ast.AssignEq,
+                  (Ast.ExprBinary (
+                     (Ast.ExprVar
+                        { Ast.name = "counter";
+                          span =
+                          { Span.start_pos =
+                            { Span.line = 8; col = 11; offset = 136 };
+                            end_pos =
+                            { Span.line = 8; col = 13; offset = 138 };
+                            file =
+                            "conformance/valid/003_let_bindings.affine" }
+                          }),
+                     Ast.OpAdd,
+                     (Ast.ExprLit
+                        (Ast.LitInt (1,
+                           { Span.start_pos =
+                             { Span.line = 8; col = 21; offset = 146 };
+                             end_pos =
+                             { Span.line = 8; col = 23; offset = 148 };
+                             file =
+                             "conformance/valid/003_let_bindings.affine" }
+                           )))
+                     ))
+                  ))
+               ];
+             blk_expr = None })
+        })
+    ]
+  }

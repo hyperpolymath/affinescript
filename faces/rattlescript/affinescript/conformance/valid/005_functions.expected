@@ -1,0 +1,287 @@
+{ Ast.prog_module = None; prog_imports = [];
+  prog_decls =
+  [(Ast.TopFn
+      { Ast.fd_vis = Ast.Private; fd_total = false;
+        fd_name =
+        { Ast.name = "simple";
+          span =
+          { Span.start_pos = { Span.line = 3; col = 1; offset = 44 };
+            end_pos = { Span.line = 3; col = 4; offset = 47 };
+            file = "conformance/valid/005_functions.affine" }
+          };
+        fd_type_params = []; fd_params = [];
+        fd_ret_ty = (Some (Ast.TyTuple [])); fd_eff = None; fd_where = [];
+        fd_body =
+        (Ast.FnBlock
+           { Ast.blk_stmts = [];
+             blk_expr =
+             (Some (Ast.ExprLit
+                      (Ast.LitUnit
+                         { Span.start_pos =
+                           { Span.line = 3; col = 19; offset = 62 };
+                           end_pos = { Span.line = 4; col = 4; offset = 67 };
+                           file = "conformance/valid/005_functions.affine" })))
+             })
+        });
+    (Ast.TopFn
+       { Ast.fd_vis = Ast.Private; fd_total = false;
+         fd_name =
+         { Ast.name = "with_param";
+           span =
+           { Span.start_pos = { Span.line = 7; col = 1; offset = 72 };
+             end_pos = { Span.line = 7; col = 4; offset = 75 };
+             file = "conformance/valid/005_functions.affine" }
+           };
+         fd_type_params = [];
+         fd_params =
+         [{ Ast.p_quantity = None; p_ownership = None;
+            p_name =
+            { Ast.name = "x";
+              span =
+              { Span.start_pos = { Span.line = 7; col = 14; offset = 85 };
+                end_pos = { Span.line = 7; col = 15; offset = 86 };
+                file = "conformance/valid/005_functions.affine" }
+              };
+            p_ty =
+            (Ast.TyCon
+               { Ast.name = "Int";
+                 span =
+                 { Span.start_pos = { Span.line = 7; col = 16; offset = 87 };
+                   end_pos = { Span.line = 7; col = 18; offset = 89 };
+                   file = "conformance/valid/005_functions.affine" }
+                 })
+            }
+           ];
+         fd_ret_ty =
+         (Some (Ast.TyCon
+                  { Ast.name = "Int";
+                    span =
+                    { Span.start_pos =
+                      { Span.line = 7; col = 23; offset = 94 };
+                      end_pos = { Span.line = 7; col = 26; offset = 97 };
+                      file = "conformance/valid/005_functions.affine" }
+                    }));
+         fd_eff = None; fd_where = [];
+         fd_body =
+         (Ast.FnBlock
+            { Ast.blk_stmts = [];
+              blk_expr =
+              (Some (Ast.ExprVar
+                       { Ast.name = "x";
+                         span =
+                         { Span.start_pos =
+                           { Span.line = 7; col = 30; offset = 101 };
+                           end_pos = { Span.line = 8; col = 3; offset = 105 };
+                           file = "conformance/valid/005_functions.affine" }
+                         }))
+              })
+         });
+    (Ast.TopFn
+       { Ast.fd_vis = Ast.Private; fd_total = false;
+         fd_name =
+         { Ast.name = "two_params";
+           span =
+           { Span.start_pos = { Span.line = 11; col = 1; offset = 110 };
+             end_pos = { Span.line = 11; col = 4; offset = 113 };
+             file = "conformance/valid/005_functions.affine" }
+           };
+         fd_type_params = [];
+         fd_params =
+         [{ Ast.p_quantity = None; p_ownership = None;
+            p_name =
+            { Ast.name = "x";
+              span =
+              { Span.start_pos = { Span.line = 11; col = 14; offset = 123 };
+                end_pos = { Span.line = 11; col = 15; offset = 124 };
+                file = "conformance/valid/005_functions.affine" }
+              };
+            p_ty =
+            (Ast.TyCon
+               { Ast.name = "Int";
+                 span =
+                 { Span.start_pos =
+                   { Span.line = 11; col = 16; offset = 125 };
+                   end_pos = { Span.line = 11; col = 18; offset = 127 };
+                   file = "conformance/valid/005_functions.affine" }
+                 })
+            };
+           { Ast.p_quantity = None; p_ownership = None;
+             p_name =
+             { Ast.name = "y";
+               span =
+               { Span.start_pos = { Span.line = 11; col = 21; offset = 130 };
+                 end_pos = { Span.line = 11; col = 23; offset = 132 };
+                 file = "conformance/valid/005_functions.affine" }
+               };
+             p_ty =
+             (Ast.TyCon
+                { Ast.name = "Int";
+                  span =
+                  { Span.start_pos =
+                    { Span.line = 11; col = 24; offset = 133 };
+                    end_pos = { Span.line = 11; col = 26; offset = 135 };
+                    file = "conformance/valid/005_functions.affine" }
+                  })
+             }
+           ];
+         fd_ret_ty =
+         (Some (Ast.TyCon
+                  { Ast.name = "Int";
+                    span =
+                    { Span.start_pos =
+                      { Span.line = 11; col = 31; offset = 140 };
+                      end_pos = { Span.line = 11; col = 34; offset = 143 };
+                      file = "conformance/valid/005_functions.affine" }
+                    }));
+         fd_eff = None; fd_where = [];
+         fd_body =
+         (Ast.FnBlock
+            { Ast.blk_stmts = [];
+              blk_expr =
+              (Some (Ast.ExprBinary (
+                       (Ast.ExprVar
+                          { Ast.name = "x";
+                            span =
+                            { Span.start_pos =
+                              { Span.line = 11; col = 38; offset = 147 };
+                              end_pos =
+                              { Span.line = 12; col = 3; offset = 151 };
+                              file = "conformance/valid/005_functions.affine"
+                              }
+                            }),
+                       Ast.OpAdd,
+                       (Ast.ExprVar
+                          { Ast.name = "y";
+                            span =
+                            { Span.start_pos =
+                              { Span.line = 12; col = 5; offset = 153 };
+                              end_pos =
+                              { Span.line = 12; col = 7; offset = 155 };
+                              file = "conformance/valid/005_functions.affine"
+                              }
+                            })
+                       )))
+              })
+         });
+    (Ast.TopFn
+       { Ast.fd_vis = Ast.Private; fd_total = false;
+         fd_name =
+         { Ast.name = "generic";
+           span =
+           { Span.start_pos = { Span.line = 15; col = 1; offset = 160 };
+             end_pos = { Span.line = 15; col = 4; offset = 163 };
+             file = "conformance/valid/005_functions.affine" }
+           };
+         fd_type_params =
+         [{ Ast.tp_quantity = None;
+            tp_name =
+            { Ast.name = "T";
+              span =
+              { Span.start_pos = { Span.line = 15; col = 11; offset = 170 };
+                end_pos = { Span.line = 15; col = 12; offset = 171 };
+                file = "conformance/valid/005_functions.affine" }
+              };
+            tp_kind = None }
+           ];
+         fd_params =
+         [{ Ast.p_quantity = None; p_ownership = None;
+            p_name =
+            { Ast.name = "x";
+              span =
+              { Span.start_pos = { Span.line = 15; col = 14; offset = 173 };
+                end_pos = { Span.line = 15; col = 15; offset = 174 };
+                file = "conformance/valid/005_functions.affine" }
+              };
+            p_ty =
+            (Ast.TyCon
+               { Ast.name = "T";
+                 span =
+                 { Span.start_pos =
+                   { Span.line = 15; col = 16; offset = 175 };
+                   end_pos = { Span.line = 15; col = 18; offset = 177 };
+                   file = "conformance/valid/005_functions.affine" }
+                 })
+            }
+           ];
+         fd_ret_ty =
+         (Some (Ast.TyCon
+                  { Ast.name = "T";
+                    span =
+                    { Span.start_pos =
+                      { Span.line = 15; col = 21; offset = 180 };
+                      end_pos = { Span.line = 15; col = 24; offset = 183 };
+                      file = "conformance/valid/005_functions.affine" }
+                    }));
+         fd_eff = None; fd_where = [];
+         fd_body =
+         (Ast.FnBlock
+            { Ast.blk_stmts = [];
+              blk_expr =
+              (Some (Ast.ExprVar
+                       { Ast.name = "x";
+                         span =
+                         { Span.start_pos =
+                           { Span.line = 15; col = 26; offset = 185 };
+                           end_pos =
+                           { Span.line = 16; col = 3; offset = 189 };
+                           file = "conformance/valid/005_functions.affine" }
+                         }))
+              })
+         });
+    (Ast.TopFn
+       { Ast.fd_vis = Ast.Private; fd_total = false;
+         fd_name =
+         { Ast.name = "total_func";
+           span =
+           { Span.start_pos = { Span.line = 19; col = 1; offset = 194 };
+             end_pos = { Span.line = 19; col = 4; offset = 197 };
+             file = "conformance/valid/005_functions.affine" }
+           };
+         fd_type_params = [];
+         fd_params =
+         [{ Ast.p_quantity = None; p_ownership = None;
+            p_name =
+            { Ast.name = "n";
+              span =
+              { Span.start_pos = { Span.line = 19; col = 14; offset = 207 };
+                end_pos = { Span.line = 19; col = 15; offset = 208 };
+                file = "conformance/valid/005_functions.affine" }
+              };
+            p_ty =
+            (Ast.TyCon
+               { Ast.name = "Nat";
+                 span =
+                 { Span.start_pos =
+                   { Span.line = 19; col = 16; offset = 209 };
+                   end_pos = { Span.line = 19; col = 18; offset = 211 };
+                   file = "conformance/valid/005_functions.affine" }
+                 })
+            }
+           ];
+         fd_ret_ty =
+         (Some (Ast.TyCon
+                  { Ast.name = "Nat";
+                    span =
+                    { Span.start_pos =
+                      { Span.line = 19; col = 23; offset = 216 };
+                      end_pos = { Span.line = 19; col = 26; offset = 219 };
+                      file = "conformance/valid/005_functions.affine" }
+                    }));
+         fd_eff = None; fd_where = [];
+         fd_body =
+         (Ast.FnBlock
+            { Ast.blk_stmts = [];
+              blk_expr =
+              (Some (Ast.ExprVar
+                       { Ast.name = "n";
+                         span =
+                         { Span.start_pos =
+                           { Span.line = 19; col = 30; offset = 223 };
+                           end_pos =
+                           { Span.line = 20; col = 3; offset = 227 };
+                           file = "conformance/valid/005_functions.affine" }
+                         }))
+              })
+         })
+    ]
+  }

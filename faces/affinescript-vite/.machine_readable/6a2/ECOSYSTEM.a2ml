@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: PMPL-1.0-or-later
+# Copyright (c) 2026 hyperpolymath (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+#
+# ECOSYSTEM.a2ml — Project ecosystem position
+# Relationships, dependencies, integration points.
+
+[metadata]
+version = "0.1.0"
+last-updated = "2026-04-11"
+
+[project]
+name = "AffineScript-Vite"
+purpose = ""  # TODO: describe project purpose
+role = ""  # TODO: describe project role  # e.g. ffi-infrastructure, cli-tool, library, service
+
+[position-in-ecosystem]
+tier = "infrastructure"  # 1 | 2 | infrastructure
+
+[related-projects]
+# relationship types: sibling-standard, dependency, dependent, inspiration, potential-consumer
+# - { name = "language-bridges", relationship = "sibling-standard" }
+# - { name = "hypatia", relationship = "potential-consumer" }
+
+[integration-points]
+# External systems this project connects to
+# - { system = "gitbot-fleet", direction = "outbound", protocol = "repository_dispatch" }

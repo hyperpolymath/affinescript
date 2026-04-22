@@ -1,0 +1,8 @@
+# Expected: lex error for invalid escape sequence
+# Exit code: 1
+# Error pattern: invalid escape sequence
+error[E0001]: Lexical error: invalid escape sequence '\q'
+  --> conformance/invalid/011_bad_escape.as:4:16
+   |
+ 4 |   let s = "bad \q escape";
+   |                ^^ unknown escape sequence
