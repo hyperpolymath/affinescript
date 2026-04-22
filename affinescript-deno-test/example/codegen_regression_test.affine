@@ -1,0 +1,74 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Regression tests for the two AffineScript codegen bugs discovered
+// 2026-04-19 and fixed in lib/codegen.ml on the same day:
+//
+//   1. Enum-in-match stack imbalance — PatCon-with-args left the tag-test
+//      boolean on the stack twice, so any match arm whose body produced an
+//      i32 value broke WASM validation with "expected 1 elements on the
+//      stack for fallthru, found 2". Fixed by removing the redundant
+//      LocalTee/LocalGet around the match_result local.
+//
+//   2. Non-first struct field read from a function parameter returned 0.
+//      field_layouts was only populated for let-bound ExprRecord literals,
+//      so every other binding path defaulted the offset to 0. Fixed by
+//      registering struct layouts globally from TopType(TyStruct) and
+//      propagating them to function parameters (via p_ty), call-result
+//      lets (via fn_ret_structs), and let-annotated bindings.
+
+enum Lifecycle {
+  LUninit,
+  LInit,
+  LWithProfile(Int),
+  LRunning(Int, Int),
+  LTerminated
+}
+
+struct Counters {
+  tag: Int,
+  profile_id: Int,
+  activity_count: Int
+}
+
+fn advance(s: Lifecycle) -> Lifecycle {
+  return match s {
+    LUninit          => LInit(),
+    LInit            => LWithProfile(0),
+    LWithProfile(p)  => LRunning(p, 0),
+    LRunning(p, c)   => LRunning(p, c + 1),
+    LTerminated      => LTerminated()
+  };
+}
+
+fn make_counters() -> Counters {
+  { tag: 1, profile_id: 42, activity_count: 7 }
+}
+
+fn read_profile_id(c: Counters) -> Int {
+  c.profile_id
+}
+
+fn read_activity_count(c: Counters) -> Int {
+  c.activity_count
+}
+
+pub fn test_enum_match_mixed_constructors() -> Bool {
+  // Previously: "expected 1 elements on the stack" during instantiate.
+  let s0 = LUninit();
+  let s1 = advance(s0);
+  return true;
+}
+
+pub fn test_param_struct_field_offsets() -> Bool {
+  // Previously: both helpers returned 0 because field_layouts defaulted
+  // the offset. Now the declared `c: Counters` annotation pulls in the
+  // struct's layout, so each field reads the right memory slot.
+  let c = make_counters();
+  return read_profile_id(c) == 42 && read_activity_count(c) == 7;
+}
+
+pub fn test_let_from_call_struct_field() -> Bool {
+  // Previously: `let c = make_counters()` did not register a layout
+  // because RHS wasn't a record literal. Now fn_ret_structs kicks in.
+  let c = make_counters();
+  return c.activity_count == 7;
+}

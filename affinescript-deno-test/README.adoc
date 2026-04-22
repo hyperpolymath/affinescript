@@ -1,0 +1,216 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+= affinescript-deno-test
+:toc:
+:icons: font
+
+A Deno test-framework integration for AffineScript. Compiles `.affine` test
+files to WebAssembly via the standard `affinescript` compiler, loads them
+through the existing `@hyperpolymath/affine-js` bridge, and registers each
+as a `Deno.test()` case so `deno test` reports pass/fail in the usual way.
+
+Part of the https://github.com/hyperpolymath/developer-ecosystem[developer-ecosystem]
+monorepo. Sibling tools in the AffineScript ecosystem live alongside this
+component: `affinescript/` (the compiler — actually mirrored from upstream),
+`affinescriptiser/`, `affinescript-vite/`, `rattlescript/`.
+
+== Status
+
+*v0.2.0.* Multi-test-per-file harness. The "one test per file" MVP
+constraint was resolved same-day via an upstream compiler change (see
+<<constraints>>).
+
+== Quick start
+
+[source,bash]
+----
+# Compile + smoke-test the bundled example:
+deno task smoke:test
+# → hello ... ok (1 passed, 0 failed)
+----
+
+== Writing a test
+
+Each test case is a top-level `pub fn test_<name>() -> Bool`. Return `true`
+to pass, `false` to fail. One `.affine` file may contain as many test cases
+as you like. Non-`pub` helpers stay internal to the module. Filename ends
+in `_test.affine` or `.test.affine`.
+
+[source,affine]
+----
+// example/hello_test.affine
+// SPDX-License-Identifier: PMPL-1.0-or-later
+
+pub fn test_addition() -> Bool {
+  let result = 2 + 3;
+  result == 5
+}
+
+pub fn test_identity() -> Bool {
+  let x = 42;
+  x == 42
+}
+
+fn helper_not_exported() -> Int {
+  99
+}
+
+pub fn test_uses_helper() -> Bool {
+  helper_not_exported() == 99
+}
+----
+
+The harness reports each test as `<filestem> / <casename>` — e.g. the file
+above produces `hello / addition`, `hello / identity`, `hello / uses_helper`
+under `deno test`.
+
+== Running tests
+
+The public API is `runAll(root)` in `mod.ts`:
+
+[source,typescript]
+----
+// driver.ts
+import { runAll } from "@hyperpolymath/affinescript-deno-test";
+
+await runAll("./tests");
+----
+
+Invoke with `deno test`:
+
+[source,bash]
+----
+deno test --allow-read --allow-run --allow-env driver.ts
+----
+
+The runner:
+
+. Walks `root` for `*_test.affine` / `*.test.affine` files
+. Compiles each via `affinescript compile ... -o ....wasm`
+. Loads the WASM (with a minimal WASI `fd_write` stub — AffineScript codegen
+  imports this unconditionally)
+. Registers a `Deno.test()` case named after the file (stripped of the
+  `_test` suffix) that invokes `main` and checks the Bool return
+
+== CLI (smoke-check)
+
+`cli.ts` is a thin smoke-check that prints discovery + compile results
+without running assertions. Useful for CI pipelines that want to fail fast
+on compile errors before invoking `deno test`.
+
+[source,bash]
+----
+deno run --allow-read --allow-run --allow-env cli.ts ./tests
+# Discovered 3 test file(s):
+#   ✓ tests/foo_test.affine → tests/foo_test.wasm
+#   ✓ tests/bar_test.affine → tests/bar_test.wasm
+#   ...
+----
+
+== Configuration
+
+* `AFFINESCRIPT_BIN` env var — absolute path to the `affinescript` compiler.
+  Default: `/var/mnt/eclipse/repos/developer-ecosystem/nextgen-languages/affinescript/_build/install/default/bin/affinescript`
+  (the local dev build). Override when the compiler is installed elsewhere
+  or on `$PATH`.
+
+[[constraints]]
+== Constraints and planned follow-ups
+
+Two constraints were resolved same-day (one for v0.2.0, plus the
+three codegen bugs below). Two remain, both resolvable with small
+upstream changes.
+
+=== RESOLVED (v0.2.0): one test per file
+
+The AffineScript codegen previously hardcoded an exportable-name allowlist
+to `["main"; "init_state"; "step_state"; "get_state"; "mission_active"]`
+with no `pub fn` / `@export` keyword — so only those five names appeared
+in the WASM export list, no matter the source.
+
+The fix (AffineScript commit `ce324fa`) makes both `codegen.ml` and
+`codegen_gc.ml` honour the AST's `fd_vis = Public` field in addition to
+the game-hook allowlist. The allowlist is retained verbatim for backward
+compatibility (pre-`pub` programs and the IDApTIK CharacterSelect bridge
+continue to work unchanged).
+
+The harness now uses the expected multi-test convention: any top-level
+`pub fn test_<name>() -> Bool` becomes a separate `Deno.test()` case.
+
+=== WASI `fd_write` imported unconditionally
+
+Every AffineScript WASM output imports `wasi_snapshot_preview1.fd_write`
+even when the program uses no IO. The harness provides a minimal no-op
+stub so tests instantiate cleanly.
+
+*Planned follow-up:* upstream compiler change so pure programs (no `effect
+IO`) skip the WASI import entirely. Until then, the stub is correct and
+harmless.
+
+=== `@hyperpolymath/affine-js` only supplies `env` imports
+
+The existing bridge's `AffineModule.fromBytes` merges custom imports under
+the `env` module key only. For WASM modules that import from a non-`env`
+module (e.g. `wasi_snapshot_preview1`), the harness bypasses `AffineModule`
+and uses raw `WebAssembly.instantiate` plus its own WASI stub. The Bool
+return is unmarshalled by hand (AffineScript compiles `Bool` → i32, 0/1).
+
+*Planned follow-up:* extend `affine-js` to accept a `namespacedImports:
+Record<string, Record<string, ImportValue>>` option, then unify both paths
+behind `AffineModule`.
+
+=== RESOLVED (2026-04-19): codegen bugs blocking richer test idioms
+
+Both bugs discovered while writing the double-track-browser lifecycle
+test pilot were fixed upstream in `developer-ecosystem/nextgen-languages/
+affinescript/lib/codegen.ml` the same day. Regression coverage lives in
+`example/codegen_regression_test.affine` and the full
+double-track-browser `extension_lifecycle_test.affine` (10/10 green).
+
+* **Enum-in-match stack imbalance** — `PatCon`-with-args pushed the
+  tag-test boolean onto the stack twice (`LocalTee` + a trailing
+  `LocalGet` on the match-result local), so any arm body that produced
+  an i32 blew up WASM validation with "expected 1 elements on the stack
+  for fallthru, found 2". Fixed by removing the save/restore pair; the
+  field-binding code between them is stack-neutral by construction.
+* **Bare zero-arity variant as an expression** — `Initialised` (no
+  parens) fell through to the `ExprVar` lookup and failed with
+  `UnboundVariable` unless written as `State::Initialised`. Fixed by
+  falling back to `ctx.variant_tags` when `lookup_local` misses, mirroring
+  the existing `ExprCall`-with-variant-tag branch.
+* **Non-first struct-field read from parameter/call-result** — the
+  per-variable `field_layouts` map was only populated for let-bound
+  `ExprRecord` literals, so every other binding path defaulted offsets
+  to 0 and `.field_1_or_later` read the tag byte. Fixed by registering
+  struct layouts globally from `TopType(TyStruct)` and propagating them
+  to (a) function parameters via `p_ty`, (b) call-result lets via a new
+  `fn_ret_structs` map, (c) let-bindings with an explicit type
+  annotation, and (d) let-bindings whose RHS is another tracked variable.
+
+The harness now supports idiomatic enum-plus-match application-state
+test suites without fallback tagged-struct workarounds.
+
+== Why AffineScript rather than ReScript?
+
+ReScript is the estate's default TypeScript replacement and has a mature
+Deno integration (see `fireflag`). The AffineScript path exists because
+AffineScript has stronger semantics for:
+
+* affine / quantitative types (resource lifecycle tracking)
+* algebraic effects (explicit side-effect boundaries)
+* row polymorphism (extensible records)
+
+Test suites that want to *demonstrate* these properties — e.g. "this
+resource is consumed exactly once", "this protocol sequence is honoured" —
+are a natural fit for AffineScript. Plain behavioural tests can continue
+in ReScript; there's no migration pressure either direction.
+
+The trade-off today: AffineScript's compiler matures while ReScript's is
+mature, so this harness carries the MVP constraints above. As the compiler
+gains `pub fn` / effect-conditional WASI imports / better bridge ergonomics,
+the harness sheds them.
+
+== License
+
+PMPL-1.0-or-later. See the repository root LICENSE file.
+Legal fallback: MPL-2.0 (automatic, per the hyperpolymath License Policy
+Rule 2 in `~/.claude/CLAUDE.md`).

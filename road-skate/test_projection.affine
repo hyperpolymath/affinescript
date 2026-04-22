@@ -1,0 +1,65 @@
+// Test 3D Projection for Road Markers
+// Verifies that markers appear centered on horizon
+
+use Physics_td3
+
+fn main() -> () {
+  (* Screen setup *)
+  let screen_width = 800
+  let screen_height = 600
+  let focal_length = 500.0
+  
+  (* Car at origin *)
+  let car_position = { x: 0.0, y: 0.0, z: 0.0 }
+  
+  (* Road markers at z=50 (50 meters ahead) *)
+  let left_marker = { x: -5.0, y: 0.0, z: 50.0 }
+  let right_marker = { x: 5.0, y: 0.0, z: 50.0 }
+  
+  (* Project to screen coordinates *)
+  let (left_x, left_y) = project_3d_to_2d(left_marker, focal_length, screen_width, screen_height)
+  let (right_x, right_y) = project_3d_to_2d(right_marker, focal_length, screen_width, screen_height)
+  
+  (* Verify results *)
+  print("=== 3D Projection Test ===")
+  print("Screen dimensions: " ++ int_to_string(screen_width) ++ "x" ++ int_to_string(screen_height))
+  print("Focal length: " ++ float_to_string(focal_length))
+  print("")
+  print("Car position: (" ++ float_to_string(car_position.x) ++ ", " ++ 
+        float_to_string(car_position.y) ++ ", " ++ float_to_string(car_position.z) ++ ")")
+  print("")
+  print("Left marker (-5, 0, 50): (" ++ int_to_string(left_x) ++ ", " ++ int_to_string(left_y) ++ ")")
+  print("Right marker (5, 0, 50): (" ++ int_to_string(right_x) ++ ", " ++ int_to_string(right_y) ++ ")")
+  print("")
+  
+  (* Check if markers are centered on horizon *)
+  let horizon_y = screen_height / 2
+  let screen_center_x = screen_width / 2
+  
+  if left_y == horizon_y && right_y == horizon_y then {
+    print("✓ Both markers are on the horizon (Y=" ++ int_to_string(horizon_y) ++ ")")
+  } else {
+    print("✗ Markers are NOT on the horizon!")
+  }
+  
+  (* Check symmetry *)
+  let distance_from_center = abs(left_x - screen_center_x)
+  if distance_from_center == abs(right_x - screen_center_x) then {
+    print("✓ Markers are symmetric around screen center")
+    print("  Distance from center: " ++ int_to_string(distance_from_center) ++ " pixels")
+  } else {
+    print("✗ Markers are NOT symmetric!")
+  }
+  
+  (* Calculate separation *)
+  let separation = abs(right_x - left_x)
+  print("Marker separation: " ++ int_to_string(separation) ++ " pixels")
+  
+  (* Expected values *)
+  print("")
+  print("Expected results:")
+  print("  Both markers at Y=300 (horizon)")
+  print("  Left at X=350, Right at X=450")
+  print("  Separation: 100 pixels")
+  print("  Centered around X=400")
+}

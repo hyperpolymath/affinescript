@@ -1,0 +1,16 @@
+// Road Rendering with Perspective - Test Drive III "Passion" Vibe
+// Minimal working version
+
+// Road configuration as a type to comply with AffineScript v0.1 spec
+type Config = {
+  screen_width: Int,
+  screen_height: Int,
+  focal_length: Float,
+  road_width: Float,
+  half_width: Float
+}
+
+// Simple main function without complex record creation
+fn main() -> () {
+  print("Road rendering initialized")
+}

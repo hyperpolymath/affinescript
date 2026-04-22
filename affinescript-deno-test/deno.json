@@ -1,0 +1,19 @@
+{
+  "//": "SPDX-License-Identifier: PMPL-1.0-or-later",
+  "name": "@hyperpolymath/affinescript-deno-test",
+  "version": "0.2.0",
+  "exports": {
+    ".": "./mod.ts",
+    "./cli": "./cli.ts"
+  },
+  "license": "PMPL-1.0-or-later",
+  "imports": {
+    "@hyperpolymath/affine-js": "../../nextgen-languages/affinescript/packages/affine-js/mod.js"
+  },
+  "tasks": {
+    "smoke:compile": "deno run --allow-read --allow-run --allow-env cli.ts example",
+    "smoke:test": "deno test --allow-read --allow-run --allow-env example/smoke_driver.ts",
+    "fmt": "deno fmt",
+    "lint": "deno lint"
+  }
+}

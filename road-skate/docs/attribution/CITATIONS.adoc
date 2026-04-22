@@ -1,0 +1,35 @@
+= AffineScript-Vite - Citation Guide
+:toc:
+
+== BibTeX
+
+[source,bibtex]
+----
+@software{AffineScript-Vite_{{CURRENT_YEAR}},
+  author = {{{AUTHOR_LAST}}, {{AUTHOR_FIRST}}},
+  title = {AffineScript-Vite},
+  year = {{{CURRENT_YEAR}}},
+  url = {https://github.com/hyperpolymath/AffineScript-Vite},
+  license = {PMPL-1.0-or-later}
+}
+----
+
+== Harvard Style
+
+{{AUTHOR_LAST}}, {{AUTHOR_INITIALS}} ({{CURRENT_YEAR}}) _AffineScript-Vite_ [Computer software]. Available at: https://github.com/hyperpolymath/AffineScript-Vite
+
+== OSCOLA
+
+hyperpolymath, 'AffineScript-Vite' ({{CURRENT_YEAR}}) <https://github.com/hyperpolymath/AffineScript-Vite>
+
+== MLA
+
+{{AUTHOR_LAST}}, {{AUTHOR_FIRST}} "AffineScript-Vite." {{CURRENT_YEAR}}, github.com/hyperpolymath/AffineScript-Vite.
+
+== APA 7
+
+{{AUTHOR_LAST}}, {{AUTHOR_INITIALS}} ({{CURRENT_YEAR}}). _AffineScript-Vite_ [Computer software]. GitHub. https://github.com/hyperpolymath/AffineScript-Vite
+
+== See Also
+
+* link:CITATION.cff[CITATION.cff]

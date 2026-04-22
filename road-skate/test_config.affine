@@ -1,0 +1,9 @@
+// Test config type
+type Config = {
+  screen_width: Int,
+  screen_height: Int
+}
+
+fn test() -> () {
+  let config = Config { screen_width: 800, screen_height: 600 }
+}

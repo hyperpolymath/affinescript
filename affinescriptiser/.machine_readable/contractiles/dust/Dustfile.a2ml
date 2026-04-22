@@ -1,0 +1,66 @@
+# SPDX-License-Identifier: PMPL-1.0-or-later
+# Dustfile — Cleanup and hygiene contract for affinescriptiser
+# Author: Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+
+@abstract:
+What should be cleaned up or removed from affinescriptiser.
+These are housekeeping items, not blockers.
+@end
+
+## Template Residue
+
+### no-template-placeholders
+- description: No unresolved template placeholders
+- run: "! grep -rE '\{\{(REPO|OWNER|FORGE|PROJECT)\}\}' . --include='*.rs' --include='*.toml' --include='*.adoc' --include='*.md' --include='*.yml' 2>/dev/null | grep -v target/ | head -1 | grep -q ."
+- severity: warning
+
+### no-todo-stubs
+- description: No TODO/FIXME stubs in production code (src/ only)
+- run: "! grep -rn 'TODO\|FIXME\|HACK\|XXX' src/ --include='*.rs' 2>/dev/null | wc -l | grep -qE '^[5-9][0-9]|^[0-9]{3,}'"
+- severity: info
+
+## Stale Files
+
+### no-stale-snapshots
+- description: No dated status/completion files in root
+- run: "! ls *-STATUS-*.md *-COMPLETION-*.md *-COMPLETE.md *-VERIFIED-*.md 2>/dev/null | head -1 | grep -q ."
+- severity: info
+
+### no-ai-djot
+- description: AI.djot superseded by 0-AI-MANIFEST.a2ml
+- run: test ! -f AI.djot
+- severity: warning
+
+### no-next-steps
+- description: NEXT_STEPS.md superseded by ROADMAP.adoc
+- run: test ! -f NEXT_STEPS.md
+- severity: info
+
+## Build Artifacts
+
+### no-tracked-artifacts
+- description: No build artifacts tracked in git
+- run: "! git ls-files target/ _build/ lib/bs/ 2>/dev/null | head -1 | grep -q ."
+- severity: warning
+
+### cargo-lock-present
+- description: Cargo.lock committed for binary crate
+- run: test -f Cargo.lock
+- severity: warning
+
+## Format Duplicates
+
+### no-duplicate-contributing
+- description: Only one CONTRIBUTING format
+- run: "! (test -f CONTRIBUTING.md && test -f CONTRIBUTING.adoc)"
+- severity: warning
+
+### no-duplicate-readme
+- description: Only one README format
+- run: "! (test -f README.md && test -f README.adoc && [ $(wc -l < README.md) -gt 5 ])"
+- severity: warning
+
+### no-duplicate-changelog
+- description: Only one CHANGELOG format (prefer .adoc)
+- run: "! (test -f CHANGELOG.md && test -f CHANGELOG.adoc)"
+- severity: warning

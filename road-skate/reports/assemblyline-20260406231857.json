@@ -1,0 +1,10 @@
+{
+  "created_at": "2026-04-06T23:18:57.548856129+00:00",
+  "directory": ".",
+  "repos_scanned": 0,
+  "repos_with_findings": 0,
+  "repos_skipped": 0,
+  "total_weak_points": 0,
+  "total_critical": 0,
+  "results": []
+}

@@ -1,0 +1,187 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+= Affinescriptiser
+Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+:toc: left
+:icons: font
+:source-highlighter: rouge
+
+== What Is Affinescriptiser?
+
+Affinescriptiser takes existing code written in Rust, C, or Zig and wraps it with
+https://github.com/hyperpolymath/affinescript[AffineScript]'s type system -- combining
+**affine types** (resources used at most once) with **dependent types** (compile-time
+value constraints) -- then compiles the result to **WebAssembly**.
+
+The outcome: resources such as file descriptors, sockets, GPU buffers, and heap
+allocations become *provably* safe. They cannot be leaked, double-freed, or used
+after release. The wrapped code ships as a `.wasm` binary with zero garbage collector
+and zero runtime overhead from the type proofs.
+
+Affinescriptiser is part of the https://github.com/hyperpolymath/iseriser[-iser family],
+a collection of tools that wrap existing code in a target language's capabilities
+without requiring users to learn that language.
+
+== How It Works
+
+You describe your code in an `affinescriptiser.toml` manifest, point at your source
+files, and declare which resources need affine tracking.
+
+[source,toml]
+----
+# affinescriptiser.toml — example manifest
+[workload]
+name = "secure-file-processor"
+entry = "src/lib.rs::process_file"
+strategy = "affine-wrap"
+
+[data]
+input-type = "FileHandle"
+output-type = "ProcessedResult"
+
+[options]
+flags = ["track-file-descriptors", "track-allocations", "wasm-size-opt"]
+----
+
+Affinescriptiser then:
+
+1. **Analyses** your function signatures and identifies resource handles
+   (file descriptors, heap allocations, locks, GPU buffers)
+2. **Generates** AffineScript type annotations that enforce at-most-once usage
+   for each tracked resource
+3. **Proves** via Idris2 that affine invariants hold across the FFI boundary
+4. **Compiles** the wrapped code to WebAssembly with size and performance
+   optimisation
+
+== Architecture
+
+....
+                            affinescriptiser pipeline
+  ┌──────────────────────────────────────────────────────────────────────────┐
+  │                                                                          │
+  │  ┌─────────────────┐     ┌───────────────────┐     ┌────────────────┐   │
+  │  │ affinescriptiser │     │  Source Analysis   │     │  Idris2 ABI    │   │
+  │  │     .toml        │────▶│  (Rust CLI)        │────▶│  Proofs        │   │
+  │  │                  │     │                    │     │                │   │
+  │  │  - entry point   │     │  - parse signatures│     │  - ResourceKind│   │
+  │  │  - resource list │     │  - find handles    │     │  - Linearity   │   │
+  │  │  - WASM flags    │     │  - map ownership   │     │  - Ownership   │   │
+  │  └─────────────────┘     └───────────────────┘     └───────┬────────┘   │
+  │                                                             │            │
+  │                                                             ▼            │
+  │  ┌─────────────────┐     ┌───────────────────┐     ┌────────────────┐   │
+  │  │  .wasm output    │◀────│  AffineScript     │◀────│  Zig FFI       │   │
+  │  │                  │     │  Codegen           │     │  Bridge        │   │
+  │  │  - zero GC       │     │                    │     │                │   │
+  │  │  - size-optimised│     │  - affine wrappers │     │  - C headers   │   │
+  │  │  - portable      │     │  - effect handlers │     │  - zero-cost   │   │
+  │  └─────────────────┘     └───────────────────┘     └────────────────┘   │
+  │                                                                          │
+  └──────────────────────────────────────────────────────────────────────────┘
+....
+
+=== Layer Responsibilities
+
+[cols="1,3"]
+|===
+| Layer | Role
+
+| **Manifest** (`affinescriptiser.toml`)
+| User declares what code to wrap and which resources to track.
+
+| **Source Analysis** (Rust, `src/manifest/`, `src/codegen/`)
+| Parses input source files, identifies resource handles and ownership patterns.
+
+| **Idris2 ABI** (`src/interface/abi/`)
+| Formal proofs that affine invariants (at-most-once usage, no leaks) hold.
+  Defines `ResourceKind`, `Linearity`, `Ownership`, and WASM memory layout.
+
+| **Zig FFI** (`src/interface/ffi/`)
+| C-ABI compatible bridge between the proven ABI and the generated code.
+  Zero runtime overhead, cross-compilation built in.
+
+| **AffineScript Codegen** (`src/codegen/`)
+| Generates AffineScript wrapper code with ownership annotations and
+  algebraic effect handlers. Compiles to WASM.
+
+| **WASM Output**
+| Final `.wasm` binary. No garbage collector, no runtime, minimal size.
+|===
+
+== Key Value
+
+**Automatic resource safety** -- files, sockets, GPU buffers, and heap allocations
+cannot be leaked or double-freed. The type system proves this at compile time, not
+at runtime.
+
+**WASM deployment** -- the output is a portable WebAssembly binary that runs in
+browsers, edge workers, IoT devices, or any WASM runtime. No GC means predictable
+latency and tiny binary size.
+
+**Zero target-language exposure** -- users never write AffineScript directly. They
+describe their intent in TOML and let affinescriptiser handle the wrapping, proving,
+and compilation.
+
+== Use Cases
+
+* **Browser sandboxed computation** -- run resource-safe code in the browser via WASM
+  without worrying about memory leaks in long-running tabs
+* **Edge computing** -- deploy provably-safe WASM modules to Cloudflare Workers,
+  Fastly Compute, or Deno Deploy with guaranteed resource bounds
+* **IoT firmware** -- compile to WASM for microcontrollers with formal proof that
+  bounded memory is respected
+* **GPU buffer management** -- wrap CUDA/Vulkan buffer allocations with affine types
+  to prevent double-free and use-after-free in compute shaders
+* **Secure file processing** -- process sensitive files with compile-time proof that
+  file handles are closed exactly once
+
+== CLI Commands
+
+[source,bash]
+----
+# Initialise a new manifest in the current directory
+affinescriptiser init
+
+# Validate your manifest
+affinescriptiser validate -m affinescriptiser.toml
+
+# Generate AffineScript wrappers, Zig FFI bridge, and C headers
+affinescriptiser generate -m affinescriptiser.toml -o generated/affinescriptiser
+
+# Build the generated artifacts
+affinescriptiser build -m affinescriptiser.toml --release
+
+# Run the workload
+affinescriptiser run -m affinescriptiser.toml -- --input data.bin
+
+# Show manifest information
+affinescriptiser info -m affinescriptiser.toml
+----
+
+== Building from Source
+
+[source,bash]
+----
+# Prerequisites: Rust (nightly), Idris2, Zig
+cargo build --release
+
+# Run tests
+cargo test
+
+# Full quality check (format, lint, test)
+just quality
+----
+
+== Status
+
+**Pre-alpha / Scaffold.** The architecture is defined, the CLI is functional (init,
+validate, info), and the RSR template with full CI/CD is in place. Code generation
+is stubbed -- the `generate` command creates output directories but does not yet emit
+AffineScript wrappers. The Idris2 ABI proofs and Zig FFI bridge contain template
+placeholders awaiting domain-specific implementation.
+
+See link:ROADMAP.adoc[ROADMAP.adoc] for the phased development plan.
+
+== License
+
+SPDX-License-Identifier: PMPL-1.0-or-later

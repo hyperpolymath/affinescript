@@ -1,0 +1,31 @@
+{
+  "name": "@affinescript/pixijs",
+  "version": "0.1.0",
+  "description": "AffineScript connector for PixiJS — high-performance 2D graphics with typed WASM.",
+  "type": "module",
+  "main": "./src/pixi.as",
+  "exports": {
+    ".": "./src/pixi.as"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "keywords": [
+    "affinescript",
+    "pixijs",
+    "wasm",
+    "typed-wasm",
+    "graphics"
+  ],
+  "author": "hyperpolymath",
+  "license": "AGPL-3.0-or-later",
+  "dependencies": {
+    "pixi.js": "^8.0.0"
+  },
+  "devDependencies": {
+    "affinescript-vite": "file:../../../../affinescript-vite",
+    "vite": "^8.0.5"
+  }
+}

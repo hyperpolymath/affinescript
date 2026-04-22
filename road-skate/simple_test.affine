@@ -1,0 +1,17 @@
+// Simple test
+type Config = {
+  width: Int,
+  height: Int
+}
+
+fn create_config() -> Config {
+  Config {
+    width: 800,
+    height: 600
+  }
+}
+
+fn main() -> () {
+  let config = create_config()
+  print("Config created")
+}

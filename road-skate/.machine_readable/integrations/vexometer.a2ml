@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: PMPL-1.0-or-later
+# OPTIONAL: Vexometer Integration — Irritation Surface Analysis
+# Delete this file if your project does not use vexometer.
+
+[integration]
+name = "vexometer"
+type = "friction-measurement"
+repository = "https://github.com/hyperpolymath/vexometer"
+
+[measurement-config]
+dimensions = 10
+emit-isa-reports = true
+lazy-eliminator = true
+satellite-interventions = true
+
+[hooks]
+cli-tools = "measure-on-error"
+ui-panels = "measure-on-interaction"
+build-failures = "measure-on-failure"

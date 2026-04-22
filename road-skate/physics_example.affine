@@ -1,0 +1,49 @@
+// Test Drive III Physics Example
+// Demonstrates the centripetal force steering model
+
+use Physics_td3
+
+// Create initial car state
+fn init_car() -> CarState {
+  {
+    position: { x: 0.0, y: 0.0, z: 0.0 },
+    velocity: { x: 0.0, y: 0.0, z: 0.0 },
+    speed_kmh: 0.0,
+    steering_angle: 0.0,
+    surface: SurfaceType.Road
+  }
+}
+
+// Simulate a turn at 60 km/h
+fn simulate_turn() -> CarState {
+  let car = init_car()
+  
+  (* Accelerate to 60 km/h *)
+  let car1 = apply_engine_force(car, 0.8, 1.0)  // 80% throttle for 1 second
+  
+  (* Apply steering at 60 km/h *)
+  let input = {
+    throttle: 0.0,    // Coasting
+    brake: 0.0,       // No braking
+    steering: 0.5,    // Moderate turn
+    surface: SurfaceType.Road
+  }
+  
+  apply_steering(car1, 0.5, 0.1)  // 0.1 second time step
+}
+
+// Main function
+fn main() -> () {
+  let car = simulate_turn()
+  
+  (* Project 3D position to 2D screen coordinates *)
+  let (screen_x, screen_y) = project_3d_to_2d(car.position, 500.0, 800, 600)
+  
+  print("Car position after turn: ")
+  print("X: " ++ float_to_string(car.position.x))
+  print("Y: " ++ float_to_string(car.position.y))
+  print("Z: " ++ float_to_string(car.position.z))
+  print("Screen coordinates: (" ++ int_to_string(screen_x) ++ ", " ++ int_to_string(screen_y) ++ ")")
+  print("Speed: " ++ float_to_string(car.speed_kmh) ++ " km/h")
+  print("Steering angle: " ++ float_to_string(car.steering_angle))
+}

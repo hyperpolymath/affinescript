@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: PMPL-1.0-or-later
+# Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+#
+# ECOSYSTEM.a2ml — Affinescriptiser ecosystem position
+[metadata]
+version = "0.1.0"
+last-updated = "2026-04-11"
+
+[project]
+name = "Affinescriptiser"
+purpose = "Wrap existing Rust/C/Zig code in affine + dependent types, compile to WASM via AffineScript"
+role = "tool"
+
+[position-in-ecosystem]
+category = ""
+
+[related-projects]
+projects = [
+  # No related projects recorded
+]

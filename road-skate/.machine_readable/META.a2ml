@@ -1,0 +1,30 @@
+;; SPDX-License-Identifier: PMPL-1.0-or-later
+;; Architecture decisions and development practices
+(meta
+  (version "1.0.0")
+  (project "affinescript-vite")
+  (governance
+    (axis-1 "must > intend > like")
+    (axis-2 "corrective > adaptive > perfective")
+    (axis-3 "systems > compliance > effects"))
+  (auditing
+    (scoping-first true)
+    (idris-unsound-scan "believe_me/assert_total")
+    (audit-focus "systems in place, documentation explains actual state, safety/security accounted for, observed effects reviewed")
+    (compliance-focus "seams/compromises/exception register, bounded exceptions, anti-drift checks")
+    (effects-evidence "benchmark execution/results and maintainer status dialogue/review"))
+  (architecture-decisions)
+  (development-practices
+    (code-review "required")
+    (branch-protection "enabled")
+    (ci-cd "github-actions")))
+
+;; RSR compliance strings for grep validation
+;; axis-1 = "must > intend > like"
+;; axis-2 = "corrective > adaptive > perfective"
+;; axis-3 = "systems > compliance > effects"
+;; scoping-first = true
+;; idris-unsound-scan = "believe_me/assert_total"
+;; audit-focus = "systems in place, documentation explains actual state, safety/security accounted for, observed effects reviewed"
+;; compliance-focus = "seams/compromises/exception register, bounded exceptions, anti-drift checks"
+;; effects-evidence = "benchmark execution/results and maintainer status dialogue/review"

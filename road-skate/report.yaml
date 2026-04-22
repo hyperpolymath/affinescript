@@ -1,0 +1,6 @@
+Running assail analysis on: .
+
+Assail Summary:
+  Language: Shell
+  Weak points: 16
+  Recommended attacks: [Disk, Cpu, Memory, Network]

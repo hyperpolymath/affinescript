@@ -1,0 +1,45 @@
+// Road Rendering with Perspective - Test Drive III "Passion" Vibe
+// Renders a 3D road with proper perspective projection
+
+// Road configuration as a type to comply with AffineScript v0.1 spec
+type Config = {
+  screen_width: Int,
+  screen_height: Int,
+  focal_length: Float,
+  road_width: Float,
+  half_width: Float
+}
+
+// Create configuration with proper initialization
+fn create_config() -> Config {
+  let road_width = 10.0  // Total width of road (meters)
+  Config {
+    screen_width: 800,
+    screen_height: 600,
+    focal_length: 500.0,  // Consistent with physics library
+    road_width: road_width,
+    half_width: road_width / 2.0
+  }
+}
+
+// Create a string-based grid for rendering
+fn create_empty_grid(config: Config) -> Vector[String] {
+  Vector.init(config.screen_height, fun(_) -> String.make(config.screen_width, ' '))
+}
+
+// Draw a point on the grid
+fn draw_point(grid: Vector[String], x: Int, y: Int, char: Char, config: Config) -> Vector[String] {
+  if x >= 0 && x < config.screen_width && y >= 0 && y < config.screen_height then {
+    let row = Vector.get(grid, y)
+    let new_row = String.set(row, x, char)
+    Vector.set(grid, y, new_row)
+  } else {
+    grid
+  }
+}
+
+fn main() -> () {
+  let config = create_config()
+  let grid = create_empty_grid(config)
+  print("Grid created")
+}

@@ -1,0 +1,37 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+= Changelog
+:toc:
+
+All notable changes to affinescriptiser will be documented in this file.
+
+This format is based on https://keepachangelog.com/en/1.1.0/[Keep a Changelog],
+and this project adheres to https://semver.org/spec/v2.0.0.html[Semantic Versioning].
+
+== [0.2.0] - 2026-03-21
+
+=== Phase 1 Complete — RSR Compliance Sweep
+
+==== Added
+- Bespoke Idris2 ABI types: ResourceKind, Linearity, Ownership with WASM memory layout
+- Zig FFI with source registration, affine analysis, and WASM compilation stubs
+- CLI scaffold with subcommands (init, validate, generate, build, run, info)
+- Manifest parser for affinescriptiser.toml
+- Codegen engine stubs for affine type wrapping and WASM compilation
+- Full RSR template (17 CI workflows, governance, bot directives)
+- Bespoke documentation: README.adoc, ROADMAP.adoc, CONTRIBUTING.adoc
+- RSR compliance sweep: STATE.a2ml updated, contractiles made bespoke, Intendfile added
+- CHANGELOG converted from Markdown to AsciiDoc
+
+== [0.1.0] - 2026-03-20
+
+=== Initial Scaffold
+
+==== Added
+- Initial project scaffold from rsr-template-repo
+- CLI with subcommands (init, validate, generate, build, run, info)
+- Manifest parser (`affinescriptiser.toml`)
+- Codegen engine (stubs — target-language-specific implementation pending)
+- ABI module (Idris2 proof type definitions)
+- Library API for programmatic use
+- Full RSR template (17 CI workflows, governance docs, bot directives)
+- README.adoc with architecture overview and value proposition

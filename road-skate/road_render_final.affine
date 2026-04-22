@@ -1,0 +1,28 @@
+// Road Rendering with Perspective - Test Drive III "Passion" Vibe
+// Renders a 3D road with proper perspective projection
+
+// Road configuration as a type to comply with AffineScript v0.1 spec
+type Config = {
+  screen_width: Int,
+  screen_height: Int,
+  focal_length: Float,
+  road_width: Float,
+  half_width: Float
+}
+
+// Create configuration with proper initialization
+fn create_config() -> Config {
+  let road_width = 10.0
+  Config {
+    screen_width: 800,
+    screen_height: 600,
+    focal_length: 500.0,
+    road_width: road_width,
+    half_width: road_width / 2.0
+  }
+}
+
+fn main() -> () {
+  let config = create_config()
+  print("Config created")
+}

@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: PMPL-1.0-or-later
+# Intendfile — Intent declarations for affinescriptiser
+# Author: Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+
+@abstract:
+Declared intents for affinescriptiser.
+These record what the project claims about its current state and goals.
+@end
+
+## Phase Status
+
+### phase-1-complete
+- description: Phase 1 (scaffold + bespoke ABI/FFI + CLI + RSR compliance) is complete
+- declared: 2026-03-21
+- evidence: "All scaffold steps done, bespoke Idris2 ABI types and Zig FFI stubs implemented, 17 CI workflows present, contractiles bespoke, documentation complete"
+- confidence: high
+
+### api-stable
+- description: CLI interface and manifest schema are stable for Phase 1
+- declared: 2026-03-21
+- evidence: "Subcommands (init, validate, generate, build, run, info) finalised; affinescriptiser.toml schema documented"
+- confidence: medium
+- caveat: "Phase 2 may add new subcommands but existing ones will not change"
+
+## Architecture Intents
+
+### idris2-abi-zig-ffi
+- description: Project follows Idris2 ABI + Zig FFI architecture standard
+- declared: 2026-03-21
+- evidence: "src/abi/ contains bespoke Idris2 type definitions; ffi/zig/ contains matching Zig implementation stubs"
+- confidence: high
+
+### rust-cli-host
+- description: Rust is the CLI host language; domain logic delegates to ABI/FFI
+- declared: 2026-03-21
+- evidence: "Cargo.toml defines binary crate; src/main.rs provides CLI entry point"
+- confidence: high
+
+## Ecosystem Intents
+
+### iser-family-member
+- description: Part of the -iser family coordinated by iseriser
+- declared: 2026-03-21
+- evidence: "Follows iseriser conventions for manifest, CLI, and codegen architecture"
+- confidence: high
+
+### boj-cartridge-planned
+- description: BoJ cartridge integration planned for Phase 2+
+- declared: 2026-03-21
+- evidence: "ROADMAP.adoc lists BoJ cartridge as future milestone"
+- confidence: medium

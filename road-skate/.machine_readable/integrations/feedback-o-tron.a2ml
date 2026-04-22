@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: PMPL-1.0-or-later
+# OPTIONAL: Feedback-o-Tron Integration — Autonomous Bug Reporting
+# Delete this file if your project does not use feedback-o-tron.
+
+[integration]
+name = "feedback-o-tron"
+type = "bug-reporter"
+repository = "https://github.com/hyperpolymath/feedback-o-tron"
+
+[reporting-config]
+platforms = ["github", "gitlab", "bugzilla"]
+deduplication = true
+audit-logging = true
+auto-file-upstream = "on-external-dependency-failure"

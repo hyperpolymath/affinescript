@@ -1,0 +1,27 @@
+# affinescriptiser manifest — Example: GPU buffer and session token safety
+# SPDX-License-Identifier: PMPL-1.0-or-later
+
+[project]
+name = "wasm-safe"
+
+[[sources]]
+name = "core-lib"
+path = "examples/wasm-safe/core.rs"
+language = "rust"
+
+[[resources]]
+name = "GpuBuffer"
+allocator = "create_buffer"
+deallocator = "release_buffer"
+affinity = "affine"              # at-most-once — dropping without free is OK
+
+[[resources]]
+name = "SessionToken"
+allocator = "create_session"
+deallocator = "revoke_session"
+affinity = "linear"              # exactly-once — must be explicitly revoked
+
+[wasm]
+target = "wasm32-unknown-unknown"
+optimize = true
+size-limit-kb = 512

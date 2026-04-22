@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: PMPL-1.0-or-later
+# RFC 9116 - security.txt
+# https://securitytxt.org/
+
+Contact: mailto:{{SECURITY_EMAIL}}
+Expires: 2026-12-31T23:59:59.000Z
+Encryption: {{PGP_KEY_URL}}
+Preferred-Languages: en
+Canonical: https://github.com/hyperpolymath/affinescriptiser/.well-known/security.txt
+Policy: https://github.com/hyperpolymath/affinescriptiser/blob/main/SECURITY.md
+Hiring: https://{{WEBSITE}}/careers

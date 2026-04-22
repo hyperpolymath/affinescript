@@ -1,0 +1,33 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Example AffineScript test file for affinescript-deno-test.
+//
+// Convention (v0.2.0+): each top-level `pub fn test_<name>() -> Bool`
+// becomes a separate Deno.test() case. The harness iterates WASM exports
+// matching `test_*` and wraps each as a test. Returns:
+//   true  → test passes
+//   false → test fails
+//
+// Non-`pub` helpers stay internal to the module and are not exposed to
+// the test runner.
+
+pub fn test_addition() -> Bool {
+  let result = 2 + 3;
+  result == 5
+}
+
+pub fn test_identity() -> Bool {
+  let x = 42;
+  x == 42
+}
+
+pub fn test_inequality() -> Bool {
+  1 != 2
+}
+
+fn helper_not_exported() -> Int {
+  99
+}
+
+pub fn test_uses_helper() -> Bool {
+  helper_not_exported() == 99
+}

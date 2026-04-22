@@ -1,0 +1,94 @@
+= AffineScript-Vite
+:toc: macro
+:toclevels: 3
+:icons: font
+
+image:https://img.shields.io/badge/License-AGPL--3.0-blue.svg[License: AGPL-3.0]
+image:https://img.shields.io/badge/CRG-C-yellow.svg?style=flat-square[Component Readiness Grade: C,link="https://github.com/hyperpolymath/standards/tree/main/component-readiness-grades"]
+image:https://img.shields.io/badge/Vite-Plugin-orange.svg[Vite Plugin]
+image:https://img.shields.io/badge/Language-AffineScript-red.svg[AffineScript]
+
+**Bring the power of AffineScript to your Vite-powered frontend.**
+
+AffineScript-Vite is the official Vite plugin for integrating link:https://github.com/hyperpolymath/nextgen-languages/tree/main/affinescript[AffineScript] into your web applications. It handles the compilation of `.as` and `.affine` files into optimized WebAssembly and JavaScript, enabling near-instant Hot Module Replacement (HMR) for your game logic.
+
+== Why AffineScript with Vite?
+
+Vite provides the fastest developer experience for the web. AffineScript provides the most correct developer experience for game logic. Together, they enable a "Fast & Safe" workflow:
+
+* ✅ **Near-Instant HMR**: Changes to your `.as` files are compiled and reloaded in milliseconds.
+* ✅ **Type-Safe Frontend**: Catch protocol bugs, resource leaks, and invalid state transitions before they hit the browser.
+* ✅ **Optimized WASM**: Leverage AffineScript's native WASM backend for high-performance game loops.
+* ✅ **Zero Configuration**: Sensible defaults for the hyperpolymath ecosystem (Gossamer, Burble).
+
+== Installation
+
+[source,bash]
+----
+# Using Deno (Recommended)
+deno add npm:affinescript-vite
+
+# Using Bun
+bun add affinescript-vite
+
+# Using NPM
+npm install affinescript-vite
+----
+
+== Usage
+
+Add the plugin to your `vite.config.js`:
+
+[source,javascript]
+----
+import { defineConfig } from 'vite';
+import affinePlugin from 'affinescript-vite';
+
+export default defineConfig({
+  plugins: [
+    affinePlugin({
+      // Optional: path to your affinescript compiler binary
+      compilerPath: 'affinescript'
+    })
+  ]
+});
+----
+
+Then import your AffineScript files directly in your JavaScript or ReScript:
+
+[source,javascript]
+----
+import gameLogic from './logic.as';
+
+// gameLogic is now available as a WASM module or JS bridge
+gameLogic.init();
+----
+
+== Configuration Options
+
+[cols="1,1,2"]
+|===
+|Option |Default |Description
+
+|`compilerPath`
+|`'affinescript'`
+|The path to the AffineScript compiler executable.
+
+|`wasm`
+|`true`
+|Whether to compile to WebAssembly (true) or JavaScript (false).
+
+|`strict`
+|`true`
+|Enforce strict affine and quantity checks during dev.
+|===
+
+== License
+
+This project is licensed under **AGPL-3.0-or-later**.
+
+== See Also
+
+* link:ROADMAP.adoc[Roadmap]
+* link:https://github.com/hyperpolymath/nextgen-languages/tree/main/affinescript[AffineScript Language]
+* link:https://github.com/hyperpolymath/gossamer[Gossamer Desktop Shell]

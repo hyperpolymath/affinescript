@@ -1,0 +1,40 @@
+# SPDX-License-Identifier: PMPL-1.0-or-later
+# Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+#
+# STATE.a2ml — Affinescriptiser project state
+[metadata]
+project = "affinescriptiser"
+version = "0.1.0"
+last-updated = "2026-03-21"
+status = "active"
+session = "converted from scheme — 2026-04-11"
+
+[project-context]
+name = "Affinescriptiser"
+purpose = """Wrap existing code in affine + dependent types targeting WASM via AffineScript"""
+completion-percentage = 45
+
+[position]
+phase = "phase-1-complete"   # design | implementation | testing | maintenance | archived
+maturity = "experimental"  # experimental | alpha | beta | production | lts
+
+[route-to-mvp]
+milestones = [
+  # No milestones recorded
+]
+
+[blockers-and-issues]
+issues = [
+  "Phase 1 complete — no blockers. Phase 2 requires domain logic implementation.",
+]
+
+[critical-next-actions]
+actions = [
+  "Implement core domain logic in src/core/",
+  "Write first end-to-end example with real input",
+  "Begin Idris2 formal proofs for domain-specific invariants",
+]
+
+[maintenance-status]
+last-run-utc = "2026-03-21T00:00:00Z"
+last-result = "unknown"  # unknown | pass | warn | fail

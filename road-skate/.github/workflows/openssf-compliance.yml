@@ -1,0 +1,123 @@
+# SPDX-License-Identifier: PMPL-1.0-or-later
+# OpenSSF Best Practices compliance gate — blocks PRs and pushes that lack
+# required files or still contain unfilled placeholder tokens.
+name: OpenSSF Compliance
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  openssf-compliance:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Check SECURITY.md exists and has substance
+        run: |
+          SECFILE=""
+          [ -f "SECURITY.md" ] && SECFILE="SECURITY.md"
+          [ -f "SECURITY.adoc" ] && SECFILE="SECURITY.adoc"
+          [ -f ".github/SECURITY.md" ] && SECFILE=".github/SECURITY.md"
+
+          if [ -z "$SECFILE" ]; then
+            echo "::error::SECURITY.md (or SECURITY.adoc) is required for OpenSSF Best Practices"
+            exit 1
+          fi
+
+          LINES=$(wc -l < "$SECFILE")
+          if [ "$LINES" -lt 10 ]; then
+            echo "::error::$SECFILE has only $LINES lines — must have >10 lines of substantive content"
+            exit 1
+          fi
+          echo "SECURITY file: OK ($SECFILE, $LINES lines)"
+
+      - name: Check LICENSE exists
+        run: |
+          if [ ! -f "LICENSE" ] && [ ! -f "LICENSE.txt" ] && [ ! -f "LICENSE.md" ]; then
+            echo "::error::LICENSE file is required for OpenSSF Best Practices"
+            exit 1
+          fi
+          echo "LICENSE: OK"
+
+      - name: Check CONTRIBUTING exists
+        run: |
+          if [ ! -f "CONTRIBUTING.md" ] && [ ! -f "CONTRIBUTING.adoc" ]; then
+            echo "::error::CONTRIBUTING file is required for OpenSSF Best Practices"
+            exit 1
+          fi
+          echo "CONTRIBUTING: OK"
+
+      - name: Check README exists
+        run: |
+          if [ ! -f "README.md" ] && [ ! -f "README.adoc" ] && [ ! -f "README.rst" ] && [ ! -f "README.txt" ] && [ ! -f "README" ]; then
+            echo "::error::README file is required for OpenSSF Best Practices"
+            exit 1
+          fi
+          echo "README: OK"
+
+      - name: Check .machine_readable directory and STATE.a2ml
+        run: |
+          if [ ! -d ".machine_readable" ]; then
+            echo "::error::.machine_readable/ directory is required"
+            exit 1
+          fi
+
+          if [ ! -f ".machine_readable/STATE.a2ml" ]; then
+            echo "::error::.machine_readable/STATE.a2ml is required"
+            exit 1
+          fi
+          echo ".machine_readable/STATE.a2ml: OK"
+
+      - name: Check CHANGELOG exists
+        run: |
+          if [ ! -f "CHANGELOG.md" ] && [ ! -f "CHANGELOG.adoc" ] && [ ! -f "CHANGES.md" ]; then
+            echo "::error::CHANGELOG.md is required for OpenSSF Best Practices"
+            exit 1
+          fi
+          echo "CHANGELOG: OK"
+
+      - name: Check no unfilled placeholder tokens in required files
+        run: |
+          ERRORS=0
+          REQUIRED_FILES=""
+
+          # Collect all required files that exist
+          for f in SECURITY.md SECURITY.adoc .github/SECURITY.md LICENSE LICENSE.txt \
+                   CONTRIBUTING.md CONTRIBUTING.adoc README.md README.adoc \
+                   .machine_readable/STATE.a2ml .machine_readable/META.a2ml \
+                   .machine_readable/ECOSYSTEM.a2ml CHANGELOG.md CHANGELOG.adoc; do
+            [ -f "$f" ] && REQUIRED_FILES="$REQUIRED_FILES $f"
+          done
+
+          for f in $REQUIRED_FILES; do
+            # Match {{ANYTHING}} placeholder tokens
+            PLACEHOLDERS=$(grep -cE '\{\{[A-Z_]+\}\}' "$f" 2>/dev/null || true)
+            if [ "$PLACEHOLDERS" -gt 0 ]; then
+              echo "::error::$f contains $PLACEHOLDERS unfilled {{PLACEHOLDER}} tokens"
+              grep -nE '\{\{[A-Z_]+\}\}' "$f" | head -5
+              ERRORS=$((ERRORS + 1))
+            fi
+          done
+
+          if [ "$ERRORS" -gt 0 ]; then
+            echo ""
+            echo "::error::$ERRORS file(s) still contain placeholder tokens — run 'just init' to fill them"
+            exit 1
+          fi
+          echo "Placeholder check: OK (no unfilled tokens in required files)"
+
+      - name: Summary
+        run: |
+          echo "=== OpenSSF Best Practices Compliance: PASS ==="
+          echo "All required files present and placeholder-free."

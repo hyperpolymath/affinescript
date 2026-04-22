@@ -1,0 +1,28 @@
+{
+  "name": "@affinescript/dom",
+  "version": "0.1.0",
+  "description": "High-assurance DOM connector for AffineScript — memory-safe web manipulation.",
+  "type": "module",
+  "main": "./src/dom.as",
+  "exports": {
+    ".": "./src/dom.as"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "keywords": [
+    "affinescript",
+    "dom",
+    "wasm",
+    "typed-wasm",
+    "high-assurance"
+  ],
+  "author": "hyperpolymath",
+  "license": "AGPL-3.0-or-later",
+  "devDependencies": {
+    "affinescript-vite": "file:../../../../affinescript-vite",
+    "vite": "^8.0.5"
+  }
+}

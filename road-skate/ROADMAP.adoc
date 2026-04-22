@@ -1,0 +1,27 @@
+= AffineScript-Vite Roadmap
+:toc: macro
+:toclevels: 2
+
+== Phase 1: Foundation (Current)
+- [x] Basic Vite plugin structure
+- [x] Handle `.as` and `.affine` file extensions
+- [x] Deno 2.0 runtime support
+- [x] Initial GitHub repository setup
+
+== Phase 2: Compiler Integration (Q2 2026)
+- [ ] Direct invocation of `affinescript` OCaml compiler
+- [ ] WASM output bundling for browser consumption
+- [ ] JavaScript bridge generation for game logic
+- [ ] Source map support for `.as` files
+
+== Phase 3: Developer Experience (Q3 2026)
+- [ ] Advanced HMR (Hot Module Replacement) with state preservation
+- [ ] In-browser error reporting and diagnostic overlays
+- [ ] Integration with `rescript-vite` for hybrid projects
+- [ ] Starter templates for Gossamer and Burble
+
+== Phase 4: Optimization & Ecosystem (Q4 2026)
+- [ ] Tree-shaking for AffineScript standard library
+- [ ] Optimized WASM delivery via CDN/Subresource Integrity
+- [ ] Support for custom algebraic effect handlers in Vite dev server
+- [ ] Community-driven plugin hooks for game asset management

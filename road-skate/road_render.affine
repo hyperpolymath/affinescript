@@ -1,0 +1,71 @@
+// Road Rendering with Perspective - Test Drive III "Passion" Vibe
+// Renders a 3D road with proper perspective projection
+
+use Physics_td3
+
+// Road configuration
+let screen_width = 800
+let screen_height = 600
+let focal_length = 500.0  // Consistent with physics library
+let road_width = 10.0      // Total width of road (meters)
+let half_width = road_width / 2.0
+
+// Create a string-based grid for rendering
+fn create_empty_grid() -> Vector[String] {
+  Vector.init(screen_height, fun(_) -> String.make(screen_width, ' '))
+}
+
+// Draw a point on the grid
+fn draw_point(grid: Vector[String], x: Int, y: Int, char: Char) -> Vector[String] {
+  if x >= 0 && x < screen_width && y >= 0 && y < screen_height then {
+    let row = Vector.get(grid, y)
+    let new_row = String.set(row, x, char)
+    Vector.set(grid, y, new_row)
+  } else {
+    grid
+  }
+}
+
+// Render the road with perspective
+fn render_road() -> String {
+  let grid = create_empty_grid()
+  
+  (* Draw road segments at different Z distances *)
+  let distances = [20, 40, 60, 80, 100]
+  
+  for z in distances do {
+    (* Left road edge *)
+    let left_marker = { x: -half_width, y: 0.0, z: float_of_int(z) }
+    let (left_x, left_y) = project_3d_to_2d(left_marker, focal_length, screen_width, screen_height)
+    
+    (* Right road edge *)
+    let right_marker = { x: half_width, y: 0.0, z: float_of_int(z) }
+    let (right_x, right_y) = project_3d_to_2d(right_marker, focal_length, screen_width, screen_height)
+    
+    (* Draw road edges *)
+    let grid = draw_point(grid, left_x, left_y, '|')
+    let grid = draw_point(grid, right_x, right_y, '|')
+    
+    (* Draw center line *)
+    let center_marker = { x: 0.0, y: 0.0, z: float_of_int(z) }
+    let (center_x, center_y) = project_3d_to_2d(center_marker, focal_length, screen_width, screen_height)
+    let grid = draw_point(grid, center_x, center_y, '.')
+  }
+  
+  (* Convert grid to string *)
+  let result = Vector.fold_left (fun acc row -> acc ++ row ++ "\n") "" grid
+  
+  (* Add header *)
+  "=== Test Drive III: Road with Perspective ===\n" ++
+  "Focal length: " ++ float_to_string(focal_length) ++ "\n" ++
+  "Screen: " ++ int_to_string(screen_width) ++ "x" ++ int_to_string(screen_height) ++ "\n" ++
+  "Road segments at Z=20,40,60,80,100 meters\n" ++
+  "| = road edges, . = center line\n\n" ++
+  result
+}
+
+// Main function
+fn main() -> () {
+  let road_rendering = render_road()
+  print(road_rendering)
+}

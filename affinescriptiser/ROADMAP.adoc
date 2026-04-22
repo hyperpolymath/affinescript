@@ -1,0 +1,111 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+= Affinescriptiser Roadmap
+Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+:toc: left
+:icons: font
+
+== Phase 0: Scaffold (COMPLETE)
+
+* [x] RSR template with full CI/CD (17 workflows)
+* [x] Rust CLI with subcommands (init, validate, generate, build, run, info)
+* [x] Manifest parser (`affinescriptiser.toml` → `Manifest` struct)
+* [x] Codegen module stubs (`src/codegen/mod.rs`)
+* [x] Idris2 ABI template files (Types.idr, Layout.idr, Foreign.idr)
+* [x] Zig FFI template files (build.zig, main.zig, integration_test.zig)
+* [x] README with architecture diagram
+* [x] Machine-readable metadata (STATE.a2ml, META.a2ml, ECOSYSTEM.a2ml)
+
+== Phase 1: Source Analysis
+
+Parse Rust, C, and Zig source files to identify resource handles that need
+affine tracking.
+
+* [ ] Rust source parser -- identify types implementing `Drop`, `File`, `TcpStream`,
+      `MutexGuard`, raw pointers with paired `alloc`/`dealloc`
+* [ ] C source parser -- identify `FILE *`, `malloc`/`free` pairs, `open`/`close`
+      pairs, `pthread_mutex_lock`/`unlock`
+* [ ] Zig source parser -- identify `std.mem.Allocator` usage, `defer` patterns,
+      error union return types
+* [ ] Resource handle registry -- canonical map of (handle type, acquire fn, release fn)
+      extracted from source analysis
+* [ ] Manifest enrichment -- `affinescriptiser.toml` gains `[resources]` section where
+      users can override or supplement auto-detected resource handles
+* [ ] First end-to-end example: wrap a Rust file processor so `FileHandle` is
+      affine-tracked through to WASM output
+
+== Phase 2: Affine Wrapping
+
+Generate AffineScript type annotations that enforce at-most-once usage for
+every tracked resource.
+
+* [ ] AffineScript AST builder -- programmatically construct `affine T`, `linear T`,
+      and `dependent (n : Nat) -> Vec n T` annotations
+* [ ] Ownership graph -- build a directed graph of resource ownership transfers and
+      verify it is acyclic
+* [ ] Drop insertion -- automatically insert resource release calls at scope exit
+      for affine-typed values
+* [ ] Effect handler generation -- generate algebraic effect handlers for IO, file
+      operations, and network calls
+* [ ] Error path analysis -- prove that resources are released on *every* error path,
+      not just the happy path
+* [ ] Codegen integration -- wire the AST builder into `src/codegen/mod.rs` so
+      `affinescriptiser generate` emits real AffineScript source
+
+== Phase 3: WASM Compilation
+
+Compile the wrapped code to `.wasm` with size and performance optimisation.
+
+* [ ] AffineScript-to-WASM backend -- lower AffineScript AST to WASM instructions
+* [ ] Size optimisation -- dead code elimination, function merging, wasm-opt passes
+* [ ] Memory model -- linear memory layout matching Idris2 `Layout.idr` proofs,
+      no GC, stack-based allocation where possible
+* [ ] WASI support -- optional WASI imports for file I/O, clocks, random
+* [ ] Multi-target -- `wasm32-unknown-unknown` (browser), `wasm32-wasi` (server/edge),
+      `wasm32-unknown-emscripten` (legacy)
+* [ ] Binary size budget -- target <50KB for a minimal affine-wrapped function,
+      <200KB for a full file processor
+* [ ] Performance benchmarks -- compare latency and throughput against native Rust
+      and against untyped WASM
+
+== Phase 4: Idris2 Formal Proofs
+
+Replace template placeholders with domain-specific proofs that affine invariants
+hold across the FFI boundary.
+
+* [ ] `ResourceKind` -- prove completeness: every detected resource handle maps to
+      exactly one `ResourceKind` variant
+* [ ] `Linearity` proof -- prove that for every `affine T` annotation, the generated
+      code uses `T` at most once on every execution path
+* [ ] `Ownership` transfer proof -- prove that ownership graph edges preserve
+      linearity (no aliasing of affine resources)
+* [ ] WASM memory layout proof -- prove that `Layout.idr` field offsets match the
+      actual WASM linear memory layout emitted by Phase 3
+* [ ] FFI boundary proof -- prove that every C-ABI function in `Foreign.idr` correctly
+      translates affine ownership semantics across the Zig FFI bridge
+* [ ] Regression proof suite -- automated CI check that proofs still hold after
+      codegen changes
+
+== Phase 5: Ecosystem Integration
+
+* [ ] **BoJ cartridge** -- package affinescriptiser as a BoJ-server cartridge for
+      on-demand affine wrapping via MCP
+* [ ] **PanLL panel** -- affinescriptiser panel showing resource ownership graph,
+      affine violation diagnostics, and WASM binary size breakdown
+* [ ] **IDE integration** -- LSP-compatible diagnostics for affine violations
+      (red squiggles on double-use, yellow on potential leak)
+* [ ] **iseriser integration** -- register affinescriptiser in the meta-framework so
+      `iseriser new affinescript <name>` scaffolds a project
+* [ ] **VeriSimDB backing** -- store analysis results, proof artefacts, and WASM
+      binaries in VeriSimDB for reproducible builds
+* [ ] **crates.io publish** -- release affinescriptiser CLI to crates.io
+* [ ] **WASM package registry** -- publish generated `.wasm` modules to WAPM or
+      a custom registry
+
+== Non-Goals
+
+* Affinescriptiser does *not* implement a general-purpose AffineScript compiler.
+  It generates targeted wrappers for existing code.
+* Affinescriptiser does *not* support languages beyond Rust, C, and Zig as input.
+  Other -iser tools handle other source languages.
+* Affinescriptiser does *not* provide a runtime. The output is a static WASM binary.

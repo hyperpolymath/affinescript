@@ -1,0 +1,14 @@
+// Test exact syntax from conformance
+type Point = {
+  x: Int,
+  y: Int
+}
+
+fn make_point(x: Int, y: Int) -> Point {
+  Point { x: x, y: y }
+}
+
+fn main() -> () {
+  let p = make_point(10, 20)
+  print("Point created")
+}
