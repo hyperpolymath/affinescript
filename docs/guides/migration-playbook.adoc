@@ -125,7 +125,44 @@ The rest of this document is a catalogue of common source-language patterns and 
 | Discriminated unions (`{ kind: "a" } \| { kind: "b" }`)
 | Sum types with named constructors; `match` on the constructor
 | Pattern matching is exhaustive; the compiler enforces what TypeScript can only suggest.
+
+| `2.0 + 3.0` (any Float arithmetic in JS/TS source)
+| Direct mapping. Both operands must be `Float`; the lhs drives the op's type.
+| Until 2026-05-02 the AffineScript typechecker hard-coded arithmetic as `Int×Int→Int` — Float math didn't typecheck at all. That gap is now closed: `OpAdd`/`OpSub`/`OpMul`/`OpDiv`/`OpMod` and the comparisons synthesise the lhs first, and if it's `Float`, pin the rhs to `Float`. There is no implicit coercion: `Float + Int` is still a type error. Translators previously forced to scale Floats into Ints (e.g. `idaptik-hitbox.adoc`) no longer need that workaround.
+
+| `arr[i] = expr` where `arr` is a function parameter
+| AffineScript: `mut arr: Array[T]` parameter syntax; the borrow checker now seeds parameters into mutable bindings.
+| Until 2026-05-02 the borrow checker rejected indexed writes through `mut` parameters because (a) param ownership wasn't seeded into mutable bindings and (b) `places_overlap` had no `PlaceIndex` case so `arr[i]` against `arr` returned "no overlap." Both fixed. Note the keyword position: AffineScript writes `mut arr: Array[T]` (binder-modifier), not `arr: mut Array[T]` (type-modifier — rejected by the grammar).
 |===
+
+[#calling-target-intrinsics]
+=== Calling Target Intrinsics (CUDA `__shfl_xor`, ONNX `Relu`, Faust `tanh`, Verilog `$display`, …)
+
+Backends often need to call runtime ops that AffineScript's resolver doesn't know about — GPU shuffle intrinsics, ONNX operators, DSP primitives, hardware-simulation tasks. The canonical pattern is:
+
+. Declare the op as a **stub function** in user code with the right signature.
+. The resolver and typechecker accept the stub.
+. The backend pattern-matches the stub's *name* (case-insensitive where appropriate) and emits the target's intrinsic.
+. The stub's *body* is irrelevant — it's a placeholder so the AS frontend has something to bind. Use any value-shape that returns a sensible default.
+
+[source,affinescript]
+----
+// Stubs for ONNX operators — the body is placeholder; the ONNX
+// codegen pattern-matches the name `relu` → ONNX op `Relu`, etc.
+fn relu(x: Array[Float]) -> Array[Float] { x }
+fn add(a: Array[Float], b: Array[Float]) -> Array[Float] { a }
+
+// Use them as if they were real:
+fn graph(x: Array[Float], y: Array[Float]) -> Array[Float] {
+  let s: Array[Float] = add(x, y);
+  let r: Array[Float] = relu(s);
+  r
+}
+----
+
+The `affinescript compile graph.affine -o graph.onnx` invocation produces a real ONNX `ModelProto` with an `Add` node and a `Relu` node — the codegen *ignored* the stub bodies and used the names. The same pattern applies to every kernel-sublanguage backend (Tier C in the backend taxonomy).
+
+Why this matters for migration: when porting code that calls platform-specific functions, you do not need to extend AffineScript itself. Declare the platform's API as stubs in your translation unit, and let the backend recognise them. This keeps the frontend small and the backend self-contained.
 
 [#decision-criteria]
 == Decision Criteria
@@ -300,4 +337,8 @@ If you complete a non-trivial `.res → .affine` translation and the re-decompos
 | 1.1
 | 2026-05-02
 | Two additions surfaced by the link:lessons/migrations/idaptik-user-settings.adoc[idaptik UserSettings design walk-through]: (1) service-locator-globals row added to the ReScript pattern index; (2) coupled-writes subsection added to Decision Criteria, with the rule "keep coupling local unless the invariant must be observable across callers." No removals; existing v1.0 guidance unchanged.
+
+| 1.2
+| 2026-05-02
+| Backend-buildout findings folded into TS→AS index and a new recipe: (1) Float-arithmetic typechecker gap is now closed (no more Int-scaling workaround); (2) `mut`-parameter indexed-write borrow gap is now closed (note the binder-modifier keyword position); (3) new `<<calling-target-intrinsics>>` recipe documents the stub-as-intrinsic pattern that lets user code call CUDA / ONNX / Faust / Verilog runtime ops without extending the language.
 |===

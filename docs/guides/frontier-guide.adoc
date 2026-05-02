@@ -132,6 +132,24 @@ fn into_bytes(buf: own Buffer) -> Array[Int] {
 The compiler tracks usage automatically.  If you pass `buf` to `into_bytes`,
 any later use of `buf` is a compile-time error.  No runtime check needed.
 
+[NOTE]
+====
+**Where the keyword goes.** Notice that `mut` / `ref` / `own` annotates the
+*binder*, not the type. AffineScript writes `mut buf: Buffer`, never
+`buf: mut Buffer`. The grammar rejects the latter. This is a real fork in
+the road for translators coming from Rust (`&mut T`), Swift
+(`var`/`let`), or TypeScript (`readonly T[]`):
+
+* `mut buf: Buffer` — *the binding is mutable*; the buffer it points at
+  may also be mutable, but ownership of "who is allowed to mutate" lives
+  with the binder.
+* `buf: mut Buffer` — would say *the type is mutable*, separable from the
+  binding. AffineScript made the first choice; the compiler tracks
+  mutability through the binder, so the `mut` lives there.
+
+When porting Rust-shaped code, the `mut` moves left.
+====
+
 === The quantity annotations
 
 For fine-grained control, the underlying quantity annotations are available:
@@ -289,6 +307,37 @@ fn run_logged[..e](f: () -> () / IO + ..e) -> () / IO + ..e {
 }
 ----
 
+=== Arithmetic Without Typeclasses
+
+Other languages let you forget which numeric type you're in. JavaScript's
+`+` is overloaded across numbers and strings; Python's `+` polymorphises
+across `int`, `float`, `Decimal`. AffineScript makes you commit — *but
+only on the lhs* — and the rhs and result follow.
+
+[source,affinescript]
+----
+// lhs is Float → rhs is checked as Float, result is Float:
+fn scale(x: Float, k: Float) -> Float { x * k + 1.5 }
+
+// lhs is Int → rhs is checked as Int, result is Int:
+fn step(n: Int) -> Int { n * 2 + 1 }
+
+// Mixed Int/Float — type error, no coercion:
+fn bad(x: Float, n: Int) -> Float { x + n }     // ERROR: Float vs Int
+----
+
+The rule: arithmetic and comparison operators (`+`, `-`, `*`, `/`, `%`,
+`<`, `<=`, `>`, `>=`) synthesise the lhs type first. If it's `Float`, the
+rhs is checked against `Float`. Otherwise the operator is monomorphic at
+`Int×Int → Int`. There is no implicit promotion and no typeclass
+dispatch. If you want to mix, convert explicitly.
+
+This earns its keep in two ways. First, error messages name a single
+concrete type instead of a tyvar; you read the failure on the offending
+line. Second, the lowering to every backend (WASM, JS, C, Faust, WGSL,
+…) emits the right per-type instruction without needing dictionary
+passing: `add` becomes `i64.add` or `fadd`, never both.
+
 == Chapter 6: Typed WASM (Guarantees at Runtime)
 
 TypeScript erases all its types when it compiles to JavaScript.  The runtime
@@ -315,6 +364,85 @@ affinescript compile-gc hello.affine --output hello.wasm
 # Run in Deno (which supports WasmGC natively):
 deno run --allow-read runner.js
 ----
+
+== Chapter 7: Faces In, Backends Out
+
+AffineScript reaches users through two orthogonal axes. Reading the
+documentation of either alone leads to the wrong assumption that they
+compose. They don't. The diagram is:
+
+----
+[ Python source ]   [ JS source ]   [ Lucid source ]   [ canonical .affine ]
+        \                |                |                /
+         ─────────► AffineScript AST ◄──────────────
+                          |
+       ┌──────┬──────┬────┴────┬──────┬──────┬─ ─ ─
+     WASM    JS     C       WGSL   Faust   ONNX  ...
+----
+
+**Faces are input skins.** A face is a parser front-end: Python-shaped
+syntax, JavaScript-shaped syntax, pseudocode, PureScript-shaped Lucid,
+CoffeeScript-shaped Cafe. The `--face` flag picks the parser; the AST
+that comes out the other side is canonical AffineScript. Error messages
+are translated back into the face's vocabulary, so a Python-face user
+sees `def`, `True`, indentation, not `fn`, `true`, `{}`.
+
+**Backends are output skins.** A backend is a code generator: WASM,
+WASM-GC, Julia, JavaScript, C, Rust, OCaml, Lua, Bash, Gleam, ReScript,
+Nickel, WGSL (compute shaders), Faust (DSP), ONNX (tensor graphs),
+LLVM IR, Verilog, … The output extension picks the backend
+(`-o foo.js`, `-o foo.wgsl`, `-o foo.onnx`, …).
+
+The two axes don't compose: there is no "JS face implies JS output" or
+"Python face implies Python output." You can write Python-faced source
+and compile it to WGSL; you can write canonical AffineScript and compile
+it to ReScript. The face you read in is independent from the target you
+write out.
+
+[NOTE]
+====
+**Why this matters for design.** Once you internalise the orthogonality,
+the whole `affinescript compile` command becomes legible: it's
+*N faces × M backends* compositions, not a fixed pipeline. New surface
+syntaxes don't require new backends; new backends don't require new
+surfaces. This is why the language can keep adding both without
+combinatorial cost.
+====
+
+== Chapter 8: What Every Backend Gets vs. What Some Get
+
+The backend list is long, but not every backend accepts every program.
+Backends are tiered by how much of the source language they take. The
+tier is part of the *user contract*, not a limitation to be apologised
+for — kernel sublanguages are restricted *on purpose*, because their
+target runtimes are restricted.
+
+[cols="1,2,2"]
+|===
+| Tier | Members | Acceptance
+
+| **A — host-language emitters**
+| WASM 1.0, WASM-GC, Julia, JS, C, Rust, OCaml, ReScript, Lua, Bash, Gleam, Nickel
+| Full AffineScript surface. Anything you can write in canonical AS, these accept. Missing features in the codegen produce a loud error at compile time, never silent miscompilation.
+
+| **B — IR / native**
+| LLVM IR (Cranelift planned)
+| Full surface, lower level of abstraction. Some passes (closures, traits) may need lowering that doesn't exist yet. From LLVM IR, `llc` retargets to x86-64, ARM64, RISC-V, AVR, PTX, AMDGPU.
+
+| **C — kernel sublanguages**
+| WGSL (compute shaders), SPIR-V (planned), CUDA / Metal / OpenCL (planned), Faust (DSP), ONNX (tensor graphs), MLIR/StableHLO (planned)
+| Deliberately restricted subset. No `match`, no algebraic effects, no dynamic allocation, often no `String`. Anything outside the subset rejects explicitly. The acceptance criteria are documented per backend.
+|===
+
+A program that compiles to Tier A may not compile to Tier C. That is by
+design: you wouldn't expect `match` over enum variants to work on a GPU
+shader, and the WGSL backend's job is to tell you that explicitly rather
+than emit shader code that misbehaves at runtime.
+
+A practical implication for translators: identify your target's tier
+*before* you start re-decomposing. If you're aiming at WGSL, you're
+writing kernel-shaped code from the first line; sum types and effects
+won't be available, and that should drive the design.
 
 == Putting It Together: A Complete Program
 
@@ -395,6 +523,51 @@ AffineScript.  Error messages are translated back to the face you chose, so
 Additional faces (JS-face, Pseudocode-face, and others) are on the roadmap.
 See link:../specs/faces.md[faces.md] for the architecture.
 
+[appendix]
+== Appendix: Bringing in Target Intrinsics
+
+Backends often need to call runtime ops the AffineScript resolver doesn't
+know about — GPU shuffle intrinsics, ONNX operators, DSP primitives,
+hardware-simulation tasks. You don't need to extend the language for
+these. The pattern is **declare-then-recognise**:
+
+. Declare the op as a stub function in your source file with the right
+  signature.
+. The resolver and typechecker accept the stub as a normal function.
+. The backend codegen pattern-matches the stub's *name* (case-insensitive
+  where appropriate) and emits the target's intrinsic.
+. The stub's *body* is irrelevant — it's a placeholder so the AS frontend
+  has something to bind. Use any value-shape that returns a sensible
+  default.
+
+[source,affinescript]
+----
+// Stubs for ONNX operators. Bodies are placeholders; the ONNX codegen
+// recognises `relu` → ONNX op `Relu` and ignores what follows the `=`.
+fn relu(x: Array[Float]) -> Array[Float] { x }
+fn add(a: Array[Float], b: Array[Float]) -> Array[Float] { a }
+
+fn graph(x: Array[Float], y: Array[Float]) -> Array[Float] {
+  let s: Array[Float] = add(x, y);
+  let r: Array[Float] = relu(s);
+  r
+}
+----
+
+`affinescript compile graph.affine -o graph.onnx` produces a real ONNX
+`ModelProto` containing `Add` and `Relu` nodes. The codegen ignored the
+stub bodies and used the names. The same pattern applies to every Tier-C
+kernel-sublanguage backend: CUDA's `__shfl_xor`, Metal's `metal::float4`,
+Faust's `tanh`, Verilog's `$display`, and so on.
+
+Why this is preferable to extending the language: each backend stays
+self-contained. The frontend remains target-agnostic. Stubs live in the
+user's source where they're visible at the call site, rather than in a
+hidden compiler-internal table that drifts as targets evolve. And when a
+new target ships, its intrinsic vocabulary is just *whatever names its
+codegen recognises* — a property the user can read off from the
+backend's documentation and reproduce locally.
+
 [appendix#revision-history]
 == Revision History
 
@@ -407,5 +580,15 @@ This document is intended to evolve. When you change it — adding a chapter, sh
 | 1.0
 | 2026-04-11
 | Initial unveiling. The six X-Script problems and AffineScript's answers; chapters 1–6; complete-program example; faces.
+
+| 1.1
+| 2026-05-02
+| Findings from the May-2026 backend buildout (16 new backends shipped: JS, C, WGSL, Faust, ONNX, OCaml, Lua, Bash, Nickel, ReScript, Rust, LLVM, Verilog, Gleam, plus protobuf and onnx_proto support modules) folded back into the guide:
+  (1) Chapter 2 gains a "where the keyword goes" sidebar — `mut` annotates the binder, not the type.
+  (2) Chapter 5 gains the *Arithmetic Without Typeclasses* sub-section — the typechecker now dispatches arithmetic on the lhs type (Float-aware as of 2026-05-02), with no implicit promotion.
+  (3) New Chapter 7 — *Faces In, Backends Out* — makes the orthogonality of input skins and output backends explicit.
+  (4) New Chapter 8 — *What Every Backend Gets vs. What Some Get* — introduces the A/B/C tier taxonomy so users know which backends accept full AS and which are kernel sublanguages by design.
+  (5) New Appendix — *Bringing in Target Intrinsics* — documents the stub-as-intrinsic pattern that lets user code call CUDA / ONNX / Faust / Verilog runtime ops without extending the language.
+  No removals; existing v1.0 content unchanged.
 
 |===

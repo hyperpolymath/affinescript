@@ -59,7 +59,11 @@ jobs:
           ocaml-compiler: "5.1"
 
       - name: Install dependencies
-        run: opam install . --deps-only
+        # Match the build job: `dune build` compiles everything including
+        # test/ (which depends on alcotest, with-test) and the @doc target
+        # below (which depends on odoc, with-doc). Without these flags, lint
+        # fails on missing alcotest before it ever reaches the doc step.
+        run: opam install . --deps-only --with-test --with-doc
 
       - name: Build
         run: opam exec -- dune build

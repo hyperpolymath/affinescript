@@ -813,18 +813,66 @@ let rec synth (ctx : context) (expr : expr) : ty result =
     let* () = unify_or_err arr_ty (TApp (TCon "Array", [elem_ty])) in
     Ok elem_ty
 
-  (* Binary operators *)
-  | ExprBinary (lhs, op, rhs) ->
-    let (lhs_ty, rhs_ty, result_ty) = type_of_binop op in
-    let* () = check ctx lhs lhs_ty in
-    let* () = check ctx rhs rhs_ty in
-    Ok result_ty
+  (* Binary operators
 
-  (* Unary operators *)
+     Arithmetic and comparison ops are dispatched on the lhs type so that
+     [Float] kernels typecheck without requiring a typeclass system. Order:
+     synthesise lhs, walk through repr to pierce variables; if it's a Float,
+     pin rhs to Float and return the matching result type; otherwise fall
+     through to the legacy [type_of_binop] path which is Int-monomorphic. *)
+  | ExprBinary (lhs, op, rhs) ->
+    let arith_or_bitwise = match op with
+      | OpAdd | OpSub | OpMul | OpDiv | OpMod
+      | OpBitAnd | OpBitOr | OpBitXor | OpShl | OpShr -> true
+      | _ -> false
+    in
+    let comparison = match op with
+      | OpLt | OpLe | OpGt | OpGe -> true
+      | _ -> false
+    in
+    if arith_or_bitwise then begin
+      let* lhs_ty = synth ctx lhs in
+      match repr lhs_ty with
+      | TCon "Float" ->
+        let* () = check ctx rhs ty_float in
+        Ok ty_float
+      | _ ->
+        let (lhs_ty', rhs_ty, result_ty) = type_of_binop op in
+        let* () = unify_or_err lhs_ty lhs_ty' in
+        let* () = check ctx rhs rhs_ty in
+        Ok result_ty
+    end else if comparison then begin
+      let* lhs_ty = synth ctx lhs in
+      match repr lhs_ty with
+      | TCon "Float" ->
+        let* () = check ctx rhs ty_float in
+        Ok ty_bool
+      | _ ->
+        let (lhs_ty', rhs_ty, result_ty) = type_of_binop op in
+        let* () = unify_or_err lhs_ty lhs_ty' in
+        let* () = check ctx rhs rhs_ty in
+        Ok result_ty
+    end else begin
+      let (lhs_ty, rhs_ty, result_ty) = type_of_binop op in
+      let* () = check ctx lhs lhs_ty in
+      let* () = check ctx rhs rhs_ty in
+      Ok result_ty
+    end
+
+  (* Unary operators — OpNeg dispatches Int/Float on operand, like binops. *)
   | ExprUnary (op, operand) ->
-    let (operand_ty, result_ty) = type_of_unop op in
-    let* () = check ctx operand operand_ty in
-    Ok result_ty
+    (match op with
+     | OpNeg ->
+       let* operand_ty = synth ctx operand in
+       (match repr operand_ty with
+        | TCon "Float" -> Ok ty_float
+        | _ ->
+          let* () = unify_or_err operand_ty ty_int in
+          Ok ty_int)
+     | _ ->
+       let (operand_ty, result_ty) = type_of_unop op in
+       let* () = check ctx operand operand_ty in
+       Ok result_ty)
 
   (* Block *)
   | ExprBlock blk ->
