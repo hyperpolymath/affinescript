@@ -2,12 +2,12 @@
 // SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
 = AffineScript Migration Playbook: Re-decomposition Patterns
 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
-v1.0, 2026-05-02
+v1.1, 2026-05-02
 :sectnums:
 :toc: left
 :icons: font
 :source-highlighter: rouge
-:revnumber: 1.0
+:revnumber: 1.1
 :revdate: 2026-05-02
 
 [NOTE]
@@ -90,6 +90,10 @@ The rest of this document is a catalogue of common source-language patterns and 
 | `unit` returns from impure code
 | `() / IO` (or whichever effects apply)
 | In ReScript, `unit` says nothing about whether the function did IO. In AffineScript, the effect row makes it visible.
+
+| Module-level getter for a singleton runtime — `Module.get(): Option<Thing>`
+| Lift to an effect (`effect Thing { fn current() -> Option[ref Thing]; }`); make the "is the runtime available?" branch a typed `Result`, not a silent no-op
+| A service-locator is mutable global state with a thin `Option` wrapper. Every consumer gains a hidden dependency on whether the global has been initialised, and the "not initialised" branch tends to become a silent no-op that masks real bugs. Lifting it to an effect makes the dependency visible at the call site and lets tests install a mock without monkey-patching a global.
 |===
 
 === TypeScript → AffineScript
@@ -156,6 +160,23 @@ The default for resources (files, sockets, tokens, allocations) is `own` — any
 * **`@linear`** — *must* be used exactly once. Dropping is a compile error.
 
 Prefer `own`. Reach for `@linear` only when forgetting to consume the value is a real bug — typically protocol handles, transactions, and capability tokens.
+
+=== Coupled writes — multiple effects in one action
+
+When a single user action must update both an in-memory subsystem AND persist to storage (volume that touches `Audio` and `Storage`, theme that touches `UI` and `Storage`, etc.), there are two ways to express it:
+
+[cols="1,2"]
+|===
+| Shape | When to choose
+
+| **One function calling two (or more) effects.** Default.
+| Each effect is independently meaningful and independently testable. The wrapper function *is* the coupling; it is visible at every call site through both effects appearing in the row.
+
+| **A wrapper effect that internally sequences the two.** E.g. `effect Settings { fn set_master_volume(v: Float) -> Result[(), NoEngine]; }`.
+| The runtime invariant is "Audio and Storage must always agree" and partial success is a bug. The wrapper's handler enforces atomicity (both succeed or neither does), which the two-effect call site cannot.
+|===
+
+The decision tracks the same logic as `mut` vs `State`: keep coupling local unless the invariant must be observable across callers. If two callers can validly compose `Audio.set_master_volume` and `Storage.set_number` differently — for example, "set the audio without persisting" for a transient ducking effect — the wrapper effect is wrong, because it forecloses that composition.
 
 [#anti-patterns]
 == Anti-patterns: Faithful-but-monolithic Translation
@@ -274,4 +295,8 @@ If you complete a non-trivial `.res → .affine` translation and the re-decompos
 | 1.0
 | 2026-05-02
 | Initial draft. ReScript and TypeScript pattern indices, decision criteria, file-buffer anti-pattern. Companion to `frontier-guide.adoc` v1.0.
+
+| 1.1
+| 2026-05-02
+| Two additions surfaced by the link:lessons/migrations/idaptik-user-settings.adoc[idaptik UserSettings design walk-through]: (1) service-locator-globals row added to the ReScript pattern index; (2) coupled-writes subsection added to Decision Criteria, with the rule "keep coupling local unless the invariant must be observable across callers." No removals; existing v1.0 guidance unchanged.
 |===
