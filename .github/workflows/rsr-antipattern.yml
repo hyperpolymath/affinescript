@@ -26,15 +26,34 @@ jobs:
 
       - name: Check for TypeScript
         run: |
-          # Exclude bindings/deno/ - those are Deno FFI files using Deno.dlopen, not plain TypeScript
-          # Exclude .d.ts files - those are TypeScript type declarations for ReScript FFI
-          TS_FILES=$(find . \( -name "*.ts" -o -name "*.tsx" \) | grep -v node_modules | grep -v 'bindings/deno' | grep -v '\.d\.ts$' || true)
+          # Exclusions, in order of specificity. Each is "essential glue" —
+          # the platform requires TypeScript and a ReScript replacement is
+          # not viable.
+          #
+          # - bindings/deno/ : Deno FFI files using Deno.dlopen.
+          # - *.d.ts         : TypeScript declarations for ReScript FFI.
+          # - affinescript-deno-test/ : Deno-native test runner (Deno is
+          #   TS-native; the test driver imports Deno.test which has no
+          #   ReScript binding).
+          # - editors/vscode/ : VS Code extension. The extension API is
+          #   exclusively TypeScript; no ReScript path exists.
+          # - faces/         : vendored snapshots of upstream face
+          #   implementations; the antipattern policy applies to upstream,
+          #   not to a vendored copy in this repo.
+          TS_FILES=$(find . \( -name "*.ts" -o -name "*.tsx" \) \
+            | grep -v node_modules \
+            | grep -v 'bindings/deno' \
+            | grep -v '\.d\.ts$' \
+            | grep -v '^\./affinescript-deno-test/' \
+            | grep -v '^\./editors/vscode/' \
+            | grep -v '^\./faces/' \
+            || true)
           if [ -n "$TS_FILES" ]; then
             echo "❌ TypeScript files detected - use ReScript instead"
             echo "$TS_FILES"
             exit 1
           fi
-          echo "✅ No TypeScript files (Deno FFI bindings excluded)"
+          echo "✅ No TypeScript files (essential-glue exclusions applied)"
 
       - name: Check for Go
         run: |
