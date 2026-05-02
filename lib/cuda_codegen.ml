@@ -1,0 +1,159 @@
+(* SPDX-License-Identifier: PMPL-1.0-or-later *)
+(* SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell *)
+
+(** CUDA C++ kernel sublanguage emitter (MVP).
+
+    Same kernel shape as the WGSL backend: first param is the global index,
+    remaining params are buffers. Lowers to a [__global__ void] function
+    plus a host wrapper that the user can call from C++. *)
+
+open Ast
+
+exception Cuda_unsupported of string
+let unsupported m = raise (Cuda_unsupported m)
+
+let mangle s = s
+
+let scalar_of_type_name = function
+  | "Int"   -> "int"
+  | "Float" -> "float"
+  | "Bool"  -> "bool"
+  | n -> unsupported ("type not allowed in CUDA kernel: " ^ n)
+
+let rec scalar_of (te : type_expr) : string =
+  match te with
+  | TyCon id -> scalar_of_type_name id.name
+  | TyOwn t | TyRef t | TyMut t -> scalar_of t
+  | _ -> unsupported "complex type not allowed in CUDA kernel"
+
+let array_element (te : type_expr) : string =
+  let rec strip = function
+    | TyOwn t | TyRef t | TyMut t -> strip t
+    | t -> t
+  in
+  match strip te with
+  | TyApp (id, [TyArg inner]) when id.name = "Array" -> scalar_of inner
+  | _ -> unsupported "expected Array[Int|Float] for kernel buffer"
+
+let const_qual = function
+  | Some Mut -> ""
+  | _        -> "const "
+
+let rec gen_expr (e : expr) : string =
+  match e with
+  | ExprLit lit -> gen_lit lit
+  | ExprVar id -> mangle id.name
+  | ExprBinary (a, op, b) ->
+      let s = match op with
+        | OpAdd -> "+" | OpSub -> "-" | OpMul -> "*" | OpDiv -> "/" | OpMod -> "%"
+        | OpEq  -> "==" | OpNe -> "!="
+        | OpLt  -> "<" | OpLe -> "<=" | OpGt -> ">" | OpGe -> ">="
+        | OpAnd -> "&&" | OpOr -> "||"
+        | OpBitAnd -> "&" | OpBitOr -> "|" | OpBitXor -> "^"
+        | OpShl -> "<<" | OpShr -> ">>"
+        | OpConcat -> unsupported "concat not supported in CUDA"
+      in
+      "(" ^ gen_expr a ^ " " ^ s ^ " " ^ gen_expr b ^ ")"
+  | ExprUnary (OpNeg, x) -> "(-" ^ gen_expr x ^ ")"
+  | ExprUnary (OpNot, x) -> "(!" ^ gen_expr x ^ ")"
+  | ExprUnary (OpBitNot, x) -> "(~" ^ gen_expr x ^ ")"
+  | ExprUnary _ -> unsupported "unary op not supported in CUDA kernel"
+  | ExprIf { ei_cond; ei_then; ei_else } ->
+      let f = match ei_else with Some e -> gen_expr e | None -> "0" in
+      Printf.sprintf "(%s ? %s : %s)" (gen_expr ei_cond) (gen_expr ei_then) f
+  | ExprIndex (a, i) -> Printf.sprintf "%s[%s]" (gen_expr a) (gen_expr i)
+  | ExprApp (callee, args) ->
+      let name = match callee with
+        | ExprVar id -> id.name
+        | _ -> unsupported "indirect call"
+      in
+      let known = ["sin"; "cos"; "tan"; "sqrt"; "exp"; "log"; "pow";
+                   "fabs"; "floor"; "ceil"; "min"; "max"; "tanh"] in
+      if not (List.mem name known) then
+        unsupported ("call to non-builtin in CUDA kernel: " ^ name);
+      Printf.sprintf "%s(%s)" name
+        (String.concat ", " (List.map gen_expr args))
+  | ExprSpan (inner, _) -> gen_expr inner
+  | _ -> unsupported "expression form not supported in CUDA kernel"
+
+and gen_lit = function
+  | LitInt (n, _) -> string_of_int n
+  | LitFloat (f, _) ->
+      let s = string_of_float f in
+      let s = if String.length s > 0 && s.[String.length s - 1] = '.' then s ^ "0" else s in
+      s ^ "f"
+  | LitBool (true, _) -> "true"
+  | LitBool (false, _) -> "false"
+  | _ -> unsupported "literal form not supported in CUDA kernel"
+
+let rec gen_stmt (s : stmt) : string =
+  match s with
+  | StmtLet { sl_pat = PatVar id; sl_value; sl_ty; _ } ->
+      let ty = match sl_ty with Some t -> scalar_of t | None -> "int" in
+      Printf.sprintf "%s %s = %s;" ty (mangle id.name) (gen_expr sl_value)
+  | StmtLet _ -> unsupported "destructuring let not supported in CUDA"
+  | StmtAssign (lhs, op, rhs) ->
+      let s = match op with
+        | AssignEq -> "=" | AssignAdd -> "+=" | AssignSub -> "-="
+        | AssignMul -> "*=" | AssignDiv -> "/=" in
+      Printf.sprintf "%s %s %s;" (gen_expr lhs) s (gen_expr rhs)
+  | StmtExpr e -> gen_expr e ^ ";"
+  | StmtWhile (c, b) ->
+      Printf.sprintf "while (%s) { %s }" (gen_expr c)
+        (String.concat " " (List.map gen_stmt b.blk_stmts))
+  | StmtFor _ -> unsupported "for-in not supported in CUDA kernel"
+
+let pick_kernel (program : program) : fn_decl =
+  let fns = List.filter_map (function TopFn fd -> Some fd | _ -> None) program.prog_decls in
+  match List.find_opt (fun fd -> fd.fd_name.name = "kernel") fns with
+  | Some fd -> fd
+  | None -> match fns with
+            | fd :: _ -> fd
+            | [] -> unsupported "no function found"
+
+let validate_kernel (fd : fn_decl) : unit =
+  match fd.fd_params with
+  | [] -> unsupported "kernel must take an Int index parameter"
+  | first :: _ ->
+      match first.p_ty with
+      | TyCon id when id.name = "Int" -> ()
+      | _ -> unsupported "first param must be Int"
+
+let generate (program : program) (_symbols : Symbol.t) : string =
+  let buf = Buffer.create 1024 in
+  Buffer.add_string buf "// Generated by AffineScript compiler (CUDA C++)\n";
+  Buffer.add_string buf "// SPDX-License-Identifier: PMPL-1.0-or-later\n\n";
+  Buffer.add_string buf "#include <cuda_runtime.h>\n\n";
+  let fd = pick_kernel program in
+  validate_kernel fd;
+  let idx = match fd.fd_params with first :: _ -> first.p_name.name | _ -> "i" in
+  let bufs = match fd.fd_params with _ :: rest -> rest | [] -> [] in
+  let buf_decls = List.map (fun (p : param) ->
+    Printf.sprintf "%s%s *%s"
+      (const_qual p.p_ownership) (array_element p.p_ty) p.p_name.name
+  ) bufs in
+  Buffer.add_string buf "__global__\n";
+  Buffer.add_string buf
+    (Printf.sprintf "void %s(%s) {\n" (mangle fd.fd_name.name)
+       (String.concat ", " buf_decls));
+  Buffer.add_string buf
+    (Printf.sprintf "  int %s = blockIdx.x * blockDim.x + threadIdx.x;\n" idx);
+  (match fd.fd_body with
+   | FnExpr e ->
+       Buffer.add_string buf (Printf.sprintf "  (void)(%s);\n" (gen_expr e))
+   | FnBlock b ->
+       List.iter (fun s ->
+         Buffer.add_string buf ("  " ^ gen_stmt s ^ "\n")
+       ) b.blk_stmts;
+       (match b.blk_expr with
+        | Some e -> Buffer.add_string buf (Printf.sprintf "  (void)(%s);\n" (gen_expr e))
+        | None -> ()));
+  Buffer.add_string buf "}\n";
+  Buffer.contents buf
+
+let codegen_cuda (program : program) (symbols : Symbol.t) : (string, string) result =
+  try Ok (generate program symbols)
+  with
+  | Cuda_unsupported m -> Error ("CUDA backend: " ^ m)
+  | Failure m          -> Error ("CUDA codegen error: " ^ m)
+  | e                  -> Error ("CUDA codegen error: " ^ Printexc.to_string e)
