@@ -36,6 +36,7 @@ depends: [
   "odoc" {>= "2.4" & with-doc}
   "js_of_ocaml" {>= "5.0"}
   "js_of_ocaml-ppx" {>= "5.0"}
+  "ocamlformat" {>= "0.26" & with-test}
 ]
 build: [
   ["dune" "subst"] {dev}
