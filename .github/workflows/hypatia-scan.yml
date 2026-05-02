@@ -55,6 +55,11 @@ jobs:
 
       - name: Run Hypatia scan
         id: scan
+        env:
+          # Hypatia uses Dependabot alerts as one of its signal sources.
+          # Without GITHUB_TOKEN it warns and exits 1. The default GITHUB_TOKEN
+          # has the security_events:read scope needed to query alerts.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "Scanning repository: ${{ github.repository }}"
 
