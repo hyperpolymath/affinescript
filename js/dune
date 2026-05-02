@@ -5,6 +5,8 @@
  (modes js)
  (modules playground js_api)
  (libraries affinescript js_of_ocaml)
- (preprocess (pps js_of_ocaml-ppx))
+ (preprocess
+  (pps js_of_ocaml-ppx))
  (js_of_ocaml
-  (flags (:standard --enable=effects --source-map))))
+  (flags
+   (:standard --enable=effects --source-map))))
