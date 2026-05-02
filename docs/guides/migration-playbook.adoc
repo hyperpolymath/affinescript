@@ -1,0 +1,277 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+= AffineScript Migration Playbook: Re-decomposition Patterns
+Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+v1.0, 2026-05-02
+:sectnums:
+:toc: left
+:icons: font
+:source-highlighter: rouge
+:revnumber: 1.0
+:revdate: 2026-05-02
+
+[NOTE]
+====
+This guide is the **systematic companion** to link:frontier-guide.adoc[`frontier-guide.adoc`].
+
+* The Frontier Guide unveils what AffineScript *is* — read it if you are starting a new program.
+* This playbook describes how to **carry an existing codebase across the boundary** — read it if you are translating ReScript, TypeScript, or another `-script` family language into AffineScript.
+
+The machine-readable companion for AI agents is link:frontier-programming-practices/AI.a2ml[`AI.a2ml`].
+====
+
+== The Cardinal Rule
+
+**Re-decompose. Do not transliterate.**
+
+A 1:1 syntactic port — `let mutable` becomes `mut`, `option<T>` becomes `Option[T]`, `try/catch` becomes `try/catch`, classes become records-with-methods — produces code that _type-checks in AffineScript while still carrying the design problems AffineScript was built to solve_.
+
+The Frontier Guide's thesis: every X-Script's six pathologies share one root — *the runtime does not know the program's intent*. Translation must therefore re-express *intent*, not just syntax. If a faithful port leaves the original design untouched, the destination language is being used as a syntax veneer and none of its guarantees do any work.
+
+The rest of this document is a catalogue of common source-language patterns and the re-decompositions they invite.
+
+== How to Use This Playbook
+
+. Start from the source file. Identify the patterns it contains using <<source-pattern-index>>.
+. For each pattern, read the **Decomposition** column — that is the AffineScript *shape*, not just the AffineScript *syntax*.
+. If the source mixes several patterns into one structure (a class with mutable fields, an exception path, and a callback), expect the AffineScript output to have **more, smaller** declarations — not the same number of larger ones.
+. Where two decompositions are valid, the <<decision-criteria>> table tells you which one fits.
+. The <<anti-patterns>> section shows what a faithful-but-monolithic translation looks like, paired with its re-decomposed form.
+
+[#source-pattern-index]
+== Source-Pattern Index
+
+=== ReScript → AffineScript
+
+[cols="1,2,2"]
+|===
+| Source | Decomposition | Why
+
+| `let mutable x = ...`
+| `mut` field on an owned record, **or** lift to a `State` effect
+| Local mutation in a single owner stays local; mutation visible across calls becomes an effect.
+
+| `ref<'a>` (mutable cell)
+| Same choice as `let mutable`; default to lifting to an effect when the cell crosses a function boundary
+| A bare `ref` is mutation that has already escaped its scope — typically the wrong default.
+
+| `option<'a>` (built-in)
+| `Option[T]`
+| Direct mapping; no decomposition needed.
+
+| `result<'a, 'e>`
+| `Result[T, E]`
+| Direct mapping; tighten `'e` from `string` or `exn` to a named error type if you can.
+
+| `exception Foo` + `try/catch`
+| `Result[T, E]` where `E` is a named variant covering each failure
+| Replaces an untyped throw path with an exhaustive return type. The compiler forces every caller to handle the `Err` shape.
+
+| `Js.Promise.t<'a>` / async ReScript
+| `Async` effect on the function row
+| Promises silently allow racing, ignoring errors, and detached lifetimes. The `Async` effect makes lifetime and error explicit.
+
+| ReScript object types `Js.t<{..}>`
+| Records with row variables `{ field: T, ..r }`
+| Row polymorphism replaces structural object types principle-for-principle.
+
+| Polymorphic variants `[#A \| #B]`
+| Open variant rows / sum types
+| Same idea, integrated with the rest of the type system rather than parallel to it.
+
+| Module functors
+| Row-polymorphic functions parameterised over their effects
+| Most functor uses are an indirect way to parameterise over a small set of operations — effects do this directly.
+
+| Class via PPX (`%@react.component`, etc.)
+| Owned record + standalone functions; lift effectful methods into effect rows
+| A class is a tangle of state, methods, and implicit lifetimes. Each strand becomes its own declaration.
+
+| `unit` returns from impure code
+| `() / IO` (or whichever effects apply)
+| In ReScript, `unit` says nothing about whether the function did IO. In AffineScript, the effect row makes it visible.
+|===
+
+=== TypeScript → AffineScript
+
+[cols="1,2,2"]
+|===
+| Source | Decomposition | Why
+
+| `T \| null \| undefined`
+| `Option[T]`
+| Frontier Guide chapter 1: one nothing, not three states.
+
+| `throw new Error()` + `try/catch`
+| `Result[T, E]` for recoverable errors; `Exn[E]` effect for cross-cutting failure
+| A bare `throw` in TypeScript is invisible at the call site. Both replacements make it visible.
+
+| `Promise<T>` / `async function`
+| `Async` effect
+| Same reasoning as the ReScript case.
+
+| `class Foo { private x; method() {} }`
+| Owned record + standalone functions; lift mutation to `mut` or `State`
+| Encapsulation comes from ownership and module scope, not from class privacy.
+
+| `any` / `unknown`
+| Forbidden in AffineScript output. Pin the type, or describe the unknown shape with a row variable.
+| `any` is the absence of a thesis. Every translation must replace it with one.
+
+| Discriminated unions (`{ kind: "a" } \| { kind: "b" }`)
+| Sum types with named constructors; `match` on the constructor
+| Pattern matching is exhaustive; the compiler enforces what TypeScript can only suggest.
+|===
+
+[#decision-criteria]
+== Decision Criteria
+
+When a source pattern admits more than one AffineScript shape, choose with these tests.
+
+=== `Option[T]` vs `Result[T, E]`
+
+* **`Option[T]`** when *absence is normal* — a lookup that may not find anything, a config field that may be unset.
+* **`Result[T, E]`** when *absence has a reason you can describe* — parse failure, validation error, IO error.
+
+If you find yourself reaching for `Result[T, ()]` or `Result[T, String]`, you probably wanted `Option[T]` (or a richer `E`).
+
+=== `mut` vs effect
+
+* **`mut`** for local mutation contained in a single owner — buffer construction, an accumulator inside a function.
+* **`State[S]` effect** for mutation that must be observable across calls — game state, session state, a setting visible to many subsystems.
+
+If two callers need to see the same mutation, it is no longer *local* — lift it.
+
+=== `ref` vs `mut` vs `own`
+
+* **`ref Buffer`** — the caller keeps the value and the function only reads it.
+* **`mut Buffer`** — the function modifies in place; the caller keeps using the value afterwards.
+* **`own Buffer`** — the function consumes the value; the caller cannot use it after the call.
+
+The default for resources (files, sockets, tokens, allocations) is `own` — anything else hides the lifetime.
+
+=== Linear (`@linear`) vs affine (`own`)
+
+* **`own`** (affine) — *may* be used at most once. Dropping is allowed.
+* **`@linear`** — *must* be used exactly once. Dropping is a compile error.
+
+Prefer `own`. Reach for `@linear` only when forgetting to consume the value is a real bug — typically protocol handles, transactions, and capability tokens.
+
+[#anti-patterns]
+== Anti-patterns: Faithful-but-monolithic Translation
+
+The following ReScript is a small file buffer that conflates state, lifetime, and IO.
+
+[source,rescript]
+----
+// ReScript — original
+type fileBuffer = {
+  mutable data: array<string>,
+  mutable open_: bool,
+}
+
+let make = (): fileBuffer => { data: [], open_: true }
+
+let read = (b: fileBuffer): string =>
+  if b.open_ { Array.joinWith(b.data, "") } else { raise(Failure("closed")) }
+
+let write = (b: fileBuffer, s: string): unit => {
+  if !b.open_ { raise(Failure("closed")) }
+  b.data = Array.concat(b.data, [s])
+  Console.log("wrote " ++ s)
+}
+
+let close = (b: fileBuffer): unit => { b.open_ = false }
+----
+
+=== Faithful-but-monolithic translation — don't do this
+
+[source,affinescript]
+----
+// AffineScript — same shape, none of the guarantees doing any work
+type FileBuffer = own {
+  data: mut Array[String],
+  open_: mut Bool,
+}
+
+fn make() -> own FileBuffer { FileBuffer { data: [], open_: true } }
+
+fn read(b: ref FileBuffer) -> String {
+  if b.open_ { String.join(b.data, "") } else { panic("closed") }
+}
+
+fn write(b: mut FileBuffer, s: String) -> () {
+  if !b.open_ { panic("closed") }
+  b.data = b.data ++ [s];
+  // IO is silently invisible — same problem as the original
+}
+
+fn close(b: mut FileBuffer) -> () { b.open_ = false }
+----
+
+This compiles. It is also no better than the ReScript original: the `closed` invariant is still a runtime check, the IO is still invisible, and `close` does not actually consume the buffer.
+
+=== Re-decomposed translation
+
+[source,affinescript]
+----
+// Two types — a closed buffer is statically distinguishable from an open one
+type OpenBuffer = own { data: Array[String] }
+type ClosedBuffer = own { data: Array[String] }
+
+effect IO { fn log(s: String); }
+
+fn make() -> own OpenBuffer { OpenBuffer { data: [] } }
+
+// read takes a borrow — caller keeps the buffer:
+fn read(b: ref OpenBuffer) -> String { String.join(b.data, "") }
+
+// write is in-place; IO is in the row:
+fn write(b: mut OpenBuffer, s: String) -> () / IO {
+  b.data = b.data ++ [s];
+  IO.log("wrote " ++ s)
+}
+
+// close consumes Open and returns Closed — "use after close" becomes a type error:
+fn close(b: own OpenBuffer) -> own ClosedBuffer { ClosedBuffer { data: b.data } }
+----
+
+What changed:
+
+. `closed` moved from a runtime field to a *type* (`OpenBuffer` vs `ClosedBuffer`) — "use after close" is now a compile error.
+. `close` consumes its argument (`own`) — there is no `b` left to misuse afterwards.
+. `IO` is in the effect row of `write` — every caller of `write` declares it transitively.
+. The mutable boolean is gone; `data` is reached only through `mut OpenBuffer`, which makes ownership explicit.
+
+The two versions are roughly the same number of lines. They are different programs.
+
+== Lessons from Real Migrations
+
+Case studies from in-flight migrations land in link:lessons/migrations/[`docs/guides/lessons/migrations/`]. (The sibling `lessons/` folder is the 10-lesson tutorial track for new AffineScript users — different audience.)
+
+Existing entries:
+
+* link:lessons/migrations/idaptik-hitbox.adoc[idaptik `Hitbox.res` → `Hitbox.affine`] — the first compilable translation; pure-leaf collision primitives. Surfaces the v0.1.0 Float-arithmetic typechecker gap.
+* link:lessons/migrations/idaptik-user-settings.adoc[idaptik `UserSettings.res` (design-only)] — multi-pattern, dependency-heavy persistence layer. Stress-tests the playbook against five external module dependencies; surfaces three small playbook gaps.
+
+If you complete a non-trivial `.res → .affine` translation and the re-decomposition reveals something future translators would benefit from, write it up there. The format is loose: original snippet, faithful port, re-decomposed port, and what the second one buys you. Mark the lesson "design-only" if the destination toolchain cannot yet compile it — the design walk-through still pressures the playbook.
+
+== See Also
+
+* link:frontier-guide.adoc[Frontier Guide: The Unveiling] — the *what* and *why* of AffineScript's design.
+* link:frontier-programming-practices/Human_Programming_Guide.adoc[Frontier Programming Practices] — the wider design philosophy.
+* link:frontier-programming-practices/AI.a2ml[`AI.a2ml`] — machine-readable companion, read by AI agents at session start.
+* link:../specs/SETTLED-DECISIONS.adoc[Settled Decisions] — architectural choices and why they were made.
+* link:../specs/SPEC.md[Language Specification] — authoritative grammar and semantics.
+
+[appendix]
+== Revision History
+
+[cols="1,1,3"]
+|===
+| Revision | Date | Notes
+
+| 1.0
+| 2026-05-02
+| Initial draft. ReScript and TypeScript pattern indices, decision criteria, file-buffer anti-pattern. Companion to `frontier-guide.adoc` v1.0.
+|===

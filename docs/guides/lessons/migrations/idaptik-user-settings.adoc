@@ -1,0 +1,326 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell (hyperpolymath)
+= Migration Lesson: idaptik `UserSettings.res` → `UserSettings.affine` (design-only)
+:revdate: 2026-05-02
+:icons: font
+:source-highlighter: rouge
+
+[NOTE]
+====
+**Status: design walk-through, not yet compiled.** Unlike
+xref:idaptik-hitbox.adoc[idaptik-hitbox], this lesson does not produce a
+compilable `.affine` file against AffineScript v0.1.0. `UserSettings.res`
+depends on five external modules (`Storage`, `Audio`, `DesktopIntegration`,
+`GetEngine`, `Option.getOr`) and uses `Float` for volume values — neither the
+dependency surface nor the Float-arithmetic typechecker gap is resolved yet.
+
+The lesson has value anyway: it stress-tests the
+xref:../../migration-playbook.adoc[migration playbook] against a realistic,
+dependency-heavy file rather than a pure leaf, and surfaces three small
+playbook gaps that the hitbox lesson did not.
+====
+
+== Why this file
+
+`src/app/utils/UserSettings.res` (127 lines) is the persistence layer for
+user-modifiable settings: character stance, particles, difficulty, three
+volume levels, system tray. It is interesting because it does three jobs in
+one place — read from Storage, push values into the runtime
+(Audio/DesktopIntegration), supply defaults — with implicit IO and several
+stringly-typed values. Every pattern in the
+xref:../../migration-playbook.adoc#source-pattern-index[source-pattern index]
+shows up at least once.
+
+Three of those patterns are walked through here. The rest are repetitions
+of the same shape.
+
+== Pattern 1 — Sum-type round-trip through a string-keyed Storage
+
+=== Original (ReScript)
+
+[source,rescript]
+----
+type stance = Jessica | Q
+let keyStance = "character-stance"
+
+let getCharacterStance = (): stance =>
+  switch Storage.getString(keyStance) {
+  | Some("Q") => Q
+  | _ => Jessica  // accepts None, garbage, AND Some("Jessica")
+  }
+
+let setCharacterStance = (s: stance): unit => {
+  let value = switch s { | Jessica => "Jessica" | Q => "Q" }
+  Storage.setString(keyStance, value)
+}
+----
+
+The asymmetry is the bug. `setCharacterStance(Jessica)` writes `"Jessica"`,
+but `getCharacterStance` only matches `Some("Q") => Q` and falls through
+everything else (including `Some("Jessica")` *and* arbitrary garbage in
+storage) to `Jessica`. The default-on-fallthrough is doing two jobs:
+"absent" and "malformed."
+
+=== Faithful-but-monolithic AffineScript
+
+[source,affinescript]
+----
+// don't do this
+type Stance = Jessica | Q
+
+fn get_character_stance() -> Stance {
+  match Storage.get_string("character-stance") {
+    Some("Q") => Q
+    _         => Jessica
+  }
+}
+----
+
+Same bug, AffineScript syntax. Storage IO is invisible; "absent" and
+"malformed" still collapse to the same default.
+
+=== Re-decomposed
+
+[source,affinescript]
+----
+type Stance = Jessica | Q
+
+// Codecs are exhaustive. "absent" and "malformed" are different values.
+fn parse_stance(s: ref String) -> Option[Stance] {
+  match s {
+    "Q"       => Some(Q)
+    "Jessica" => Some(Jessica)
+    _         => None
+  }
+}
+
+fn render_stance(s: Stance) -> String {
+  match s { Jessica => "Jessica", Q => "Q" }
+}
+
+// IO is in the row. Defaults live in one place.
+fn get_character_stance() -> Stance / Storage {
+  Storage.get_string("character-stance")
+    .and_then(parse_stance)
+    .unwrap_or(Jessica)
+}
+----
+
+What the re-decomposition buys:
+
+- Reading garbage from Storage is now *separable from* reading nothing. A
+  malformed value can be logged, surfaced to the user, or — if the policy
+  is still "fall back to default" — handled at the same `unwrap_or` site
+  that handles absence. The choice becomes explicit.
+- `parse_stance` is exhaustive and round-trips with `render_stance`. Adding
+  a third stance variant later is a single-file change with two compile
+  errors to fix; in the original it is a silent runtime bug.
+- Every caller of `get_character_stance` declares `Storage` in its effect
+  row. No hidden persistence at the call site.
+
+== Pattern 2 — Stringly-typed config
+
+=== Original (ReScript)
+
+[source,rescript]
+----
+let getDifficulty = (): string =>
+  Storage.getString(keyDifficulty)->Option.getOr("normal")
+
+let setDifficulty = (d: string): unit => Storage.setString(keyDifficulty, d)
+----
+
+Difficulty is a `string` at the public boundary. Every call site has to
+remember the magic values `"easy" | "normal" | "hard"`, and a typo
+(`"hardd"`) becomes a silent default at the next read.
+
+=== Re-decomposed
+
+[source,affinescript]
+----
+type Difficulty = Easy | Normal | Hard
+
+fn parse_difficulty(s: ref String) -> Option[Difficulty] {
+  match s {
+    "easy"   => Some(Easy)
+    "normal" => Some(Normal)
+    "hard"   => Some(Hard)
+    _        => None
+  }
+}
+
+fn render_difficulty(d: Difficulty) -> String {
+  match d { Easy => "easy", Normal => "normal", Hard => "hard" }
+}
+
+fn get_difficulty() -> Difficulty / Storage {
+  Storage.get_string("game-difficulty")
+    .and_then(parse_difficulty)
+    .unwrap_or(Normal)
+}
+----
+
+This is the
+xref:../../migration-playbook.adoc#source-pattern-index["any / unknown" rule]
+applied to a ReScript file: a `string` at the public boundary is the same
+abdication of a thesis as TypeScript's `any`. Pin it.
+
+== Pattern 3 — Coupled write through a service-locator global
+
+=== Original (ReScript)
+
+[source,rescript]
+----
+let setMasterVolume = (value: float): unit =>
+  switch GetEngine.get() {
+  | Some(_) =>
+    Audio.setMasterVolume(value)
+    Storage.setNumber(keyVolumeMaster, value)
+  | None => ()
+  }
+----
+
+This single function does three things: looks up a process-wide singleton
+(`GetEngine.get()`), updates the audio runtime, persists to storage. If the
+engine isn't available the entire operation silently no-ops — including the
+storage write that *could* have succeeded without the engine. The UI thinks
+the volume was set; it wasn't.
+
+=== Re-decomposed
+
+[source,affinescript]
+----
+// 1. Engine is no longer a service-locator. It's an effect.
+//    Callers that need the engine declare it. Tests install a mock.
+effect Engine {
+  fn current() -> Option[ref EngineHandle];
+}
+
+// 2. Audio and Storage are also effects. Their use shows up everywhere.
+effect Audio   { fn set_master_volume(v: Float) -> (); }
+effect Storage { fn set_number(key: String, value: Float) -> (); }
+
+// 3. The "no engine" case is a typed Result, not a silent ().
+//    Callers must decide what to do with NoEngine.
+type NoEngine = NoEngine
+
+fn set_master_volume(v: Float)
+  -> Result[(), NoEngine] / Storage + Audio + Engine
+{
+  match Engine.current() {
+    Some(_) => {
+      Audio.set_master_volume(v);
+      Storage.set_number("volume-master", v);
+      Ok(())
+    }
+    None => Err(NoEngine)
+  }
+}
+----
+
+The biggest win is the last one: the silent no-op becomes a `Result` the
+caller must inspect. The UI can show a "settings unavailable" banner
+instead of pretending the change took effect. This is the
+xref:../../migration-playbook.adoc#anti-patterns[same failure-mode-made-visible
+pattern as the file-buffer "use after close"] — the destination type system
+is forced to do the work the source language was leaving to runtime
+discipline.
+
+== Constraints from v0.1.0 — why this lesson does not compile
+
+The hitbox lesson translates to a working `Hitbox.affine` because hitbox is a
+single-file, integer-arithmetic, dependency-free leaf. UserSettings is none
+of those things. Three v0.1.0 gaps stand between this design and a real
+compile:
+
+. **Float arithmetic typechecker gap.** Per the
+  xref:idaptik-hitbox.adoc[hitbox lesson], `+`/`-`/`*`/`/`/`<`/`>` default
+  to `Int` in v0.1.0. Volumes are `Float`. Even reading and writing them is
+  fine; any clamping or scaling is not. Workaround for now: avoid Float
+  *arithmetic* in the migrated code, only Float *plumbing*.
+. **No `Storage` / `Audio` / `Engine` modules in the AffineScript stdlib.**
+  These would have to ship first (in idaptik or upstream) before any
+  `UserSettings.affine` could resolve its imports. Effects-as-modules is a
+  larger design discussion — see
+  xref:../../frontier-programming-practices/Human_Programming_Guide.adoc[Frontier
+  Programming Practices] §Effects.
+. **Effect-row syntax (`/ Storage + Audio + Engine`) and `Result[T, E]`
+  propagation (`?`) are documented in the frontier-guide but not all yet
+  in the v0.1.0 typechecker.** Specific operator availability needs a
+  v0.1.x audit before this design can be committed as code.
+
+The honest reading: **UserSettings is the right second case study to
+*design*, but the wrong second case study to *ship*.** A more dependency-light
+file (e.g. `combat/PlayerHP.res` — six mutable Float fields, no IO, no
+service-locators) is the natural next compilable target. UserSettings ships
+when the stdlib catches up.
+
+== Playbook verdict
+
+=== Held up cleanly
+
+- *"Stringly-typed → sum type"* (TS table, Discriminated unions / `any`) —
+  covered Difficulty and Stance.
+- *"`unit` returns from impure code → `() / IO`"* — covered Storage and
+  Audio effects.
+- *"`option<T>` → `Option[T]` direct mapping"* — covered the `Option.getOr`
+  pattern.
+- *"`let _ = ` discarded `Result`"* — surfaced by the system-tray code
+  (`let _ = DesktopIntegration.toggleSystemTray(...)`); becomes explicit
+  `Result` handling in the re-decomposed form.
+
+=== Gaps the playbook should address
+
+. **Service-locator globals.** `GetEngine.get(): Option<engine>` is a
+  common ReScript pattern and its re-decomposition (lift to effect) is
+  not named in the source-pattern index. The playbook covers `ref` and
+  `let mutable` but not "module-level getter for a singleton runtime."
+  *Proposed addition: one row in the ReScript table.*
+. **Coupled-write composition.** When one user action both updates an
+  in-memory subsystem AND persists to Storage (the volume case), the
+  playbook does not say whether to express this as one function calling
+  two effects or as a wrapper effect. *Proposed addition: a short
+  subsection in
+  xref:../../migration-playbook.adoc#decision-criteria[Decision Criteria].*
+. **Lessons-folder pointer in the playbook is wrong.** It points at
+  `docs/guides/lessons/` but that folder is the 10-lesson tutorial track;
+  the actual destination is `docs/guides/lessons/migrations/`.
+  *Proposed fix: one-line correction, alongside this lesson's commit.*
+
+Gap (3) is fixed in the same commit as this file. Gaps (1) and (2) are
+playbook-text changes deferred to a v1.1 follow-up so the policy PR (#36)
+can land focused.
+
+== What this lesson covers, generalised
+
+When translating a multi-pattern, dependency-heavy `.res` file:
+
+. **Surface the asymmetry first.** Every "default on fallthrough" hides
+  two cases: absent and malformed. Split them in the codec.
+. **A `string` at a module's public boundary is the same abdication as
+  `any`.** Pin every string that has a fixed set of legal values.
+. **A service-locator (`Module.get()` returning `Option<thing>`) is mutable
+  global state.** It deserves the same treatment as `let mutable` — lift
+  to an effect. The "is the runtime available?" branch becomes a typed
+  Result, not a silent no-op.
+. **If the destination toolchain cannot yet compile the file, write the
+  lesson anyway.** The design walk-through pressures the playbook the
+  same way a working compile does. Mark the status honestly so future
+  readers know what to verify.
+
+== Reproducibility
+
+This lesson is design-only against AffineScript v0.1.0 — it does not produce
+a compilable `.affine` file. The original ReScript:
+
+[source,bash]
+----
+$ wc -l idaptik/src/app/utils/UserSettings.res
+127 idaptik/src/app/utils/UserSettings.res
+----
+
+A compilable translation will be added at `idaptik/src/app/utils/UserSettings.affine`
+once the stdlib provides `Storage`, `Audio`, and `Engine` modules and the
+effect-row + `Result[T, E]` operator surface is confirmed in the v0.1.x
+typechecker. When that happens, this lesson will gain a Reproducibility
+block matching xref:idaptik-hitbox.adoc[idaptik-hitbox].
