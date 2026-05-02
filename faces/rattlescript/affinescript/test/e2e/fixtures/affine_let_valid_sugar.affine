@@ -1,9 +1,0 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
-// ADR-002 / ADR-007 valid case — Option B sugar form.
-// Identical semantics to affine_let_valid.affine, written with :1
-// numeric quantity sugar in place of @linear.
-
-fn forward(@linear r: Int) -> Int {
-  let s :1 = r;
-  s
-}
