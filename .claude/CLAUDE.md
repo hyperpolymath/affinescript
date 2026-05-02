@@ -68,6 +68,21 @@ Both are FOSS with independent governance (no Big Tech).
 5. **Python only for SaltStack** - All other Python must be rewritten
 6. **No Kotlin/Swift for mobile** - Use Tauri 2.0+ or Dioxus
 
+### TypeScript Exemptions (Approved)
+
+The "no new TypeScript" rule has nine approved exemptions in this repo. These paths are *not* policy violations — they are documented carve-outs because the file format or downstream consumer requires TypeScript:
+
+| Path | Files | Rationale | Unblock condition |
+|---|---|---|---|
+| `packages/affine-js/types.d.ts` | 1 | TypeScript declaration file — the public API contract by which JS callers consume AffineScript-compiled artefacts. `.d.ts` is TS by definition. | Generate from canonical compiler output (issue: see ROADMAP). |
+| `packages/affine-ts/types.d.ts` | 1 | Same, for TS callers. | Same as above. |
+| `editors/vscode/src/extension.ts` | 1 | VS Code extension entry point. Path pinned by `package.json`'s `main` field. | AffineScript issue #35 (Node-target codegen). |
+| `affinescript-deno-test/*.ts` | 6 | Deno-based test harness for AffineScript itself: `cli.ts`, `mod.ts`, `lib/{compile,discover,runner}.ts`, `example/smoke_driver.ts`. Deno test runner is TS-native. | AffineScript stdlib + Deno bindings (no scheduled issue). |
+
+Adding to this list requires explicit user approval and an unblock condition. New TypeScript files outside this list are still banned per the policy table above.
+
+The 5 external references to `affinescript-deno-test/` (CI workflow, status docs, history docs) and the 3 references to `packages/affine-{js,ts}/` (status docs, Deno config) are why physical relocation into a `vendor/` subtree was rejected — the relocation cost exceeded the visibility benefit when the directories are already named clearly.
+
 ### Package Management
 
 - **Primary**: Guix (guix.scm)
