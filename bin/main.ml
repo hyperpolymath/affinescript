@@ -507,6 +507,24 @@ let compile_file face json wasm_gc path output =
             let is_js = Filename.check_suffix output ".js" in
             let is_c = Filename.check_suffix output ".c" in
             let is_wgsl = Filename.check_suffix output ".wgsl" in
+            let is_faust = Filename.check_suffix output ".dsp" in
+            let is_onnx = Filename.check_suffix output ".onnx" in
+            let is_ocaml = Filename.check_suffix output ".ml" in
+            let is_lua = Filename.check_suffix output ".lua" in
+            let is_bash = Filename.check_suffix output ".sh" in
+            let is_nickel = Filename.check_suffix output ".ncl" in
+            let is_rescript = Filename.check_suffix output ".res" in
+            let is_rust = Filename.check_suffix output ".rs" in
+            let is_llvm = Filename.check_suffix output ".ll" in
+            let is_verilog = Filename.check_suffix output ".v" in
+            let is_gleam = Filename.check_suffix output ".gleam" in
+            let is_cuda = Filename.check_suffix output ".cu" in
+            let is_metal = Filename.check_suffix output ".metal" in
+            let is_opencl = Filename.check_suffix output ".cl" in
+            let is_mlir = Filename.check_suffix output ".mlir" in
+            let is_why3 = Filename.check_suffix output ".mlw" in
+            let is_lean = Filename.check_suffix output ".lean" in
+            let is_spirv = Filename.check_suffix output ".spv" in
             if is_julia then begin
               match Affinescript.Julia_codegen.codegen_julia prog resolve_ctx.symbols with
               | Error msg ->
@@ -546,6 +564,73 @@ let compile_file face json wasm_gc path output =
               | Ok wgsl_code ->
                 let oc = open_out output in
                 output_string oc wgsl_code;
+                close_out oc
+            end else if is_faust then begin
+              match Affinescript.Faust_codegen.codegen_faust prog resolve_ctx.symbols with
+              | Error msg ->
+                add { severity = Error; code = "E0806";
+                      message = Printf.sprintf "Faust codegen error: %s" msg;
+                      span = Affinescript.Span.dummy; help = None; labels = [] }
+              | Ok faust_code ->
+                let oc = open_out output in
+                output_string oc faust_code;
+                close_out oc
+            end else if is_onnx then begin
+              match Affinescript.Onnx_codegen.codegen_onnx prog resolve_ctx.symbols with
+              | Error msg ->
+                add { severity = Error; code = "E0807";
+                      message = Printf.sprintf "ONNX codegen error: %s" msg;
+                      span = Affinescript.Span.dummy; help = None; labels = [] }
+              | Ok bytes ->
+                let oc = open_out_bin output in
+                output_string oc bytes;
+                close_out oc
+            end else if is_ocaml || is_lua || is_bash || is_nickel || is_rescript
+                     || is_rust || is_llvm || is_verilog || is_gleam
+                     || is_cuda || is_metal || is_opencl || is_mlir
+                     || is_why3 || is_lean || is_spirv then begin
+              let (label, code, result) =
+                if is_ocaml then ("OCaml", "E0808",
+                  Affinescript.Ocaml_codegen.codegen_ocaml prog resolve_ctx.symbols)
+                else if is_lua then ("Lua", "E0809",
+                  Affinescript.Lua_codegen.codegen_lua prog resolve_ctx.symbols)
+                else if is_bash then ("Bash", "E0810",
+                  Affinescript.Bash_codegen.codegen_bash prog resolve_ctx.symbols)
+                else if is_nickel then ("Nickel", "E0811",
+                  Affinescript.Nickel_codegen.codegen_nickel prog resolve_ctx.symbols)
+                else if is_rescript then ("ReScript", "E0812",
+                  Affinescript.Rescript_codegen.codegen_rescript prog resolve_ctx.symbols)
+                else if is_rust then ("Rust", "E0813",
+                  Affinescript.Rust_codegen.codegen_rust prog resolve_ctx.symbols)
+                else if is_llvm then ("LLVM", "E0814",
+                  Affinescript.Llvm_codegen.codegen_llvm prog resolve_ctx.symbols)
+                else if is_verilog then ("Verilog", "E0815",
+                  Affinescript.Verilog_codegen.codegen_verilog prog resolve_ctx.symbols)
+                else if is_gleam then ("Gleam", "E0816",
+                  Affinescript.Gleam_codegen.codegen_gleam prog resolve_ctx.symbols)
+                else if is_cuda then ("CUDA", "E0817",
+                  Affinescript.Cuda_codegen.codegen_cuda prog resolve_ctx.symbols)
+                else if is_metal then ("Metal", "E0818",
+                  Affinescript.Metal_codegen.codegen_metal prog resolve_ctx.symbols)
+                else if is_opencl then ("OpenCL", "E0819",
+                  Affinescript.Opencl_codegen.codegen_opencl prog resolve_ctx.symbols)
+                else if is_mlir then ("MLIR", "E0820",
+                  Affinescript.Mlir_codegen.codegen_mlir prog resolve_ctx.symbols)
+                else if is_why3 then ("Why3", "E0821",
+                  Affinescript.Why3_codegen.codegen_why3 prog resolve_ctx.symbols)
+                else if is_lean then ("Lean", "E0822",
+                  Affinescript.Lean_codegen.codegen_lean prog resolve_ctx.symbols)
+                else ("SPIR-V", "E0823",
+                  Affinescript.Spirv_codegen.codegen_spirv prog resolve_ctx.symbols)
+              in
+              match result with
+              | Error msg ->
+                add { severity = Error; code;
+                      message = Printf.sprintf "%s codegen error: %s" label msg;
+                      span = Affinescript.Span.dummy; help = None; labels = [] }
+              | Ok src ->
+                let oc = if is_spirv then open_out_bin output else open_out output in
+                output_string oc src;
                 close_out oc
             end else if wasm_gc then begin
               match Affinescript.Codegen_gc.generate_gc_module prog with
@@ -609,6 +694,24 @@ let compile_file face json wasm_gc path output =
             let is_js = Filename.check_suffix output ".js" in
             let is_c = Filename.check_suffix output ".c" in
             let is_wgsl = Filename.check_suffix output ".wgsl" in
+            let is_faust = Filename.check_suffix output ".dsp" in
+            let is_onnx = Filename.check_suffix output ".onnx" in
+            let is_ocaml = Filename.check_suffix output ".ml" in
+            let is_lua = Filename.check_suffix output ".lua" in
+            let is_bash = Filename.check_suffix output ".sh" in
+            let is_nickel = Filename.check_suffix output ".ncl" in
+            let is_rescript = Filename.check_suffix output ".res" in
+            let is_rust = Filename.check_suffix output ".rs" in
+            let is_llvm = Filename.check_suffix output ".ll" in
+            let is_verilog = Filename.check_suffix output ".v" in
+            let is_gleam = Filename.check_suffix output ".gleam" in
+            let is_cuda = Filename.check_suffix output ".cu" in
+            let is_metal = Filename.check_suffix output ".metal" in
+            let is_opencl = Filename.check_suffix output ".cl" in
+            let is_mlir = Filename.check_suffix output ".mlir" in
+            let is_why3 = Filename.check_suffix output ".mlw" in
+            let is_lean = Filename.check_suffix output ".lean" in
+            let is_spirv = Filename.check_suffix output ".spv" in
             if is_julia then
               (match Affinescript.Julia_codegen.codegen_julia prog resolve_ctx.symbols with
               | Error e ->
@@ -652,6 +755,76 @@ let compile_file face json wasm_gc path output =
                 output_string oc wgsl_code;
                 close_out oc;
                 Format.printf "Compiled %s -> %s (WGSL)@." path output;
+                `Ok ())
+            else if is_faust then
+              (match Affinescript.Faust_codegen.codegen_faust prog resolve_ctx.symbols with
+              | Error e ->
+                Format.eprintf "@[<v>Faust codegen error: %s@]@." e;
+                `Error (false, "Faust codegen error")
+              | Ok faust_code ->
+                let oc = open_out output in
+                output_string oc faust_code;
+                close_out oc;
+                Format.printf "Compiled %s -> %s (Faust)@." path output;
+                `Ok ())
+            else if is_onnx then
+              (match Affinescript.Onnx_codegen.codegen_onnx prog resolve_ctx.symbols with
+              | Error e ->
+                Format.eprintf "@[<v>ONNX codegen error: %s@]@." e;
+                `Error (false, "ONNX codegen error")
+              | Ok bytes ->
+                let oc = open_out_bin output in
+                output_string oc bytes;
+                close_out oc;
+                Format.printf "Compiled %s -> %s (ONNX)@." path output;
+                `Ok ())
+            else if is_ocaml || is_lua || is_bash || is_nickel || is_rescript
+                 || is_rust || is_llvm || is_verilog || is_gleam
+                 || is_cuda || is_metal || is_opencl || is_mlir
+                 || is_why3 || is_lean || is_spirv then
+              let (label, result) =
+                if is_ocaml then ("OCaml",
+                  Affinescript.Ocaml_codegen.codegen_ocaml prog resolve_ctx.symbols)
+                else if is_lua then ("Lua",
+                  Affinescript.Lua_codegen.codegen_lua prog resolve_ctx.symbols)
+                else if is_bash then ("Bash",
+                  Affinescript.Bash_codegen.codegen_bash prog resolve_ctx.symbols)
+                else if is_nickel then ("Nickel",
+                  Affinescript.Nickel_codegen.codegen_nickel prog resolve_ctx.symbols)
+                else if is_rescript then ("ReScript",
+                  Affinescript.Rescript_codegen.codegen_rescript prog resolve_ctx.symbols)
+                else if is_rust then ("Rust",
+                  Affinescript.Rust_codegen.codegen_rust prog resolve_ctx.symbols)
+                else if is_llvm then ("LLVM",
+                  Affinescript.Llvm_codegen.codegen_llvm prog resolve_ctx.symbols)
+                else if is_verilog then ("Verilog",
+                  Affinescript.Verilog_codegen.codegen_verilog prog resolve_ctx.symbols)
+                else if is_gleam then ("Gleam",
+                  Affinescript.Gleam_codegen.codegen_gleam prog resolve_ctx.symbols)
+                else if is_cuda then ("CUDA",
+                  Affinescript.Cuda_codegen.codegen_cuda prog resolve_ctx.symbols)
+                else if is_metal then ("Metal",
+                  Affinescript.Metal_codegen.codegen_metal prog resolve_ctx.symbols)
+                else if is_opencl then ("OpenCL",
+                  Affinescript.Opencl_codegen.codegen_opencl prog resolve_ctx.symbols)
+                else if is_mlir then ("MLIR",
+                  Affinescript.Mlir_codegen.codegen_mlir prog resolve_ctx.symbols)
+                else if is_why3 then ("Why3",
+                  Affinescript.Why3_codegen.codegen_why3 prog resolve_ctx.symbols)
+                else if is_lean then ("Lean",
+                  Affinescript.Lean_codegen.codegen_lean prog resolve_ctx.symbols)
+                else ("SPIR-V",
+                  Affinescript.Spirv_codegen.codegen_spirv prog resolve_ctx.symbols)
+              in
+              (match result with
+              | Error e ->
+                Format.eprintf "@[<v>%s codegen error: %s@]@." label e;
+                `Error (false, label ^ " codegen error")
+              | Ok src ->
+                let oc = if is_spirv then open_out_bin output else open_out output in
+                output_string oc src;
+                close_out oc;
+                Format.printf "Compiled %s -> %s (%s)@." path output label;
                 `Ok ())
             else if wasm_gc then
               (match Affinescript.Codegen_gc.generate_gc_module prog with
@@ -1264,7 +1437,7 @@ let repl_cmd =
   Cmd.v info Term.(ret (const repl_cmd_fn $ const ()))
 
 let compile_cmd =
-  let doc = "Compile a file to WebAssembly (1.0 or GC proposal), Julia (.jl), JavaScript (.js), C (.c), or a WGSL kernel (.wgsl)" in
+  let doc = "Compile a file to WebAssembly (1.0 or GC proposal), Julia (.jl), JavaScript (.js), C (.c), a WGSL compute kernel (.wgsl), a Faust DSP program (.dsp), or an ONNX model (.onnx)" in
   let info = Cmd.info "compile" ~doc in
   Cmd.v info Term.(ret (const compile_file $ face_arg $ json_arg $ wasm_gc_arg $ path_arg $ output_arg))
 

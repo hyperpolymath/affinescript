@@ -1,0 +1,200 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell (hyperpolymath)
+= Migration Lesson: idaptik `Hitbox.res` → `Hitbox.affine`
+:revdate: 2026-05-02
+:icons: font
+
+NOTE: First-ever `.res → .affine` translation in the IDApTIK migration. Picked
+because it is small, pure, and has no transitive imports — a reasonable
+proof-of-pattern target. The lessons below generalise to other small leaves.
+
+== The original (28 lines, ReScript)
+
+[source,rescript]
+----
+type rect = { x: float, y: float, w: float, h: float }
+
+let overlaps = (a: rect, b: rect): bool =>
+  a.x < b.x +. b.w && a.x +. a.w > b.x && a.y < b.y +. b.h && a.y +. a.h > b.y
+
+let contains = (r: rect, ~pointX: float, ~pointY: float): bool =>
+  pointX >= r.x && pointX <= r.x +. r.w && pointY >= r.y && pointY <= r.y +. r.h
+
+let fromCenter = (~cx: float, ~cy: float, ~w: float, ~h: float): rect =>
+  { x: cx -. w /. 2.0, y: cy -. h /. 2.0, w, h }
+----
+
+A small file. Nothing dramatic to re-decompose. The interesting question: *what
+does AffineScript actually do better here?*
+
+== The translation (re-decomposed)
+
+[source,affinescript]
+----
+struct Rect  { x: Int, y: Int, w: Int, h: Int }
+struct Point { x: Int, y: Int }
+struct Size  { w: Int, h: Int }
+
+fn overlaps(a: Rect, b: Rect) -> Bool {
+  a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y
+}
+
+fn contains(r: Rect, p: Point) -> Bool {
+  p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h
+}
+
+fn from_center(c: Point, size: Size) -> Rect {
+  { x: c.x - size.w / 2, y: c.y - size.h / 2, w: size.w, h: size.h }
+}
+----
+
+Typechecks. Compiles to a 384-byte WASM MVP module via the containerized
+compiler. The line count is roughly the same (12 vs 13 of code). The shape is
+not.
+
+== What changed
+
+=== 1. Labelled arguments → semantic struct types
+
+The ReScript original disambiguates positional floats with labels:
+
+----
+contains(r, ~pointX, ~pointY)
+fromCenter(~cx, ~cy, ~w, ~h)
+----
+
+Strip the labels and the call sites become indistinguishable bags of floats —
+nothing prevents a caller from passing `cx, cy, w, h` in the wrong order, or
+mistaking a centre coordinate for a top-left coordinate. Labels are a
+**convention**, enforced only at the call site by syntactic prompting.
+
+In AffineScript, the same disambiguation is carried by **types**, not labels.
+`Point` and `Size` are nominally distinct from each other and from a bare
+`(Int, Int)` tuple. The compiler refuses to pass a `Size` where a `Point` is
+expected. The work the labels were doing informally is now done formally.
+
+This is the
+xref:../../frontier-programming-practices/AI.a2ml#branded-identifiers[branded-identifiers
+pattern] from the AI scope statement, applied to function signatures rather
+than newtype-style aliases. **Whenever you see ReScript labelled args of the
+same primitive type, ask whether they want to be a struct.**
+
+=== 2. The faithful-but-monolithic version was discarded
+
+A direct port keeping `rect` as the only type, with `pointX/pointY` and
+`cx/cy/w/h` as bare positional `Int`s:
+
+[source,affinescript]
+----
+// don't do this
+fn contains(r: Rect, point_x: Int, point_y: Int) -> Bool { /* … */ }
+fn from_center(cx: Int, cy: Int, w: Int, h: Int) -> Rect { /* … */ }
+----
+
+This typechecks. It is also no better than the original — every call site
+still has to remember the parameter order, and the compiler does no work for
+us. This is exactly the failure mode the migration playbook flags as
+"faithful-but-monolithic": the destination language compiled it but did not
+benefit from it.
+
+=== 3. No `own` / `ref` / `mut` was needed
+
+The collision primitives are pure value-level computation — no resources, no
+mutation, no aliasing concern. The default copy-by-value semantics apply.
+Deciding "what about ownership?" before writing the code is healthy; deciding
+*nothing changes* is also valid.
+
+Rule of thumb: **add affine annotations when something would break without
+them, not pre-emptively.** The point of affine types is correctness, not
+ceremony.
+
+=== 4. No effects, no `Option`/`Result`
+
+`overlaps`, `contains`, `from_center` are total — every input has a defined
+output. No need to introduce `Option` or `Result`. The translation playbook's
+decision criteria suggest reaching for `Result` only when absence has a reason
+*you can describe*; "is X inside Y" has no failure mode.
+
+== A real complication: AffineScript v0.1.0 cannot type Float arithmetic
+
+The original ReScript uses `float` because in-game collision needs sub-pixel
+precision. The natural translation would use `Float`:
+
+[source,affinescript]
+----
+struct Rect { x: Float, y: Float, w: Float, h: Float }
+
+fn overlaps(a: Rect, b: Rect) -> Bool {
+  a.x < b.x + b.w && /* … */
+}
+----
+
+This **fails to typecheck** in AffineScript v0.1.0:
+
+----
+Unification error: (Unify.TypeMismatch (Int, Float))
+affinescript: Type error
+----
+
+The `+`, `-`, `*`, `/`, `<`, `>` operators in v0.1.0 default to `Int`. Float
+literals (`3.14`) are recognised by the parser and the typechecker accepts a
+function returning `Float` from a Float literal — but `3.14 + 3.14` does not
+typecheck. The interpreter's runtime supports float operations
+(`value.ml:OpAdd → VFloat (a +. b)`), so this is a typechecker gap, not a
+codegen one.
+
+**Workarounds, in order of preference:**
+
+. *Use `Int` if precision loss is tolerable.* For idaptik's stomp/charge
+  collision, integer pixel coordinates are coarse but workable. This is what
+  the migrated `Hitbox.affine` does, **with the limitation explicitly
+  documented in the source comment header.**
+. *Wait for compiler support.* Per the AffineScript scope statement
+  (`AI.a2ml`), full numeric tower work belongs in the sibling Typed WASM
+  project; AffineScript is expected to gain Float-arithmetic operators when
+  Typed WASM is consumed.
+. *Hand-write FFI calls* to a Float helper. Overkill for collision; correct
+  for hot-path numerics.
+
+**Do not silently use the wrong precision.** A migration that quietly converts
+`float` to `Int` is the same failure mode the playbook calls out for `any →
+unknown`: a type-system shortcut that suppresses the original signal. The
+fact that this lesson is foregrounding the issue is the safety mechanism — the
+honest version of the same compromise.
+
+== What this lesson covers, generalised
+
+When translating any small ReScript leaf:
+
+. **Look at the labels first.** ReScript labelled args of the same primitive
+  type often want to become struct types. The compiler will then enforce what
+  the labels merely suggested.
+. **Look at the types second.** A single record type often wants to fission
+  into 2–3 nominally distinct types when the values served different roles in
+  practice.
+. **Don't add affine annotations pre-emptively.** Pure value code stays pure
+  value code; `own`/`ref`/`mut` are for resources, not ergonomics.
+. **Watch for the v0.1.0 numeric-operator gap.** Anything that does Float
+  arithmetic with `+`/`-`/`*`/`/` cannot yet typecheck. Document the
+  workaround in the file header so the next translator doesn't relive the
+  surprise.
+
+== Reproducibility
+
+The translation, the typecheck, the compile, and the WASM emission can be
+reproduced from the IDApTIK repository at HEAD as of 2026-05-02:
+
+[source,bash]
+----
+$ just affinescript-stage
+$ just affinescript-container-build              # Wave 0 — one-off
+$ ./scripts/affinescript-host-shim.sh check    src/app/combat/Hitbox.affine
+Type checking passed
+$ ./scripts/affinescript-host-shim.sh compile  src/app/combat/Hitbox.affine -o src/app/combat/Hitbox.wasm
+Compiled src/app/combat/Hitbox.affine -> src/app/combat/Hitbox.wasm (WASM)
+$ file src/app/combat/Hitbox.wasm
+src/app/combat/Hitbox.wasm: WebAssembly (wasm) binary module version 0x1 (MVP)
+----
+
+The IDApTIK side of this lesson lives at `idaptik/src/app/combat/Hitbox.affine`
+(translation) and `idaptik/src/app/combat/Hitbox.res` (original).

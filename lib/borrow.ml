@@ -152,17 +152,32 @@ let is_copy_expr (expr : expr) : bool =
   | ExprUnary (OpRef, _) -> true  (* Reference creation produces a Copy pointer *)
   | _ -> false
 
-(** Check if two places overlap *)
-let rec places_overlap (p1 : place) (p2 : place) : bool =
-  match (p1, p2) with
-  | (PlaceVar (_, v1), PlaceVar (_, v2)) -> v1 = v2
-  | (PlaceField (base1, _), PlaceField (base2, _)) ->
-    places_overlap base1 base2
-  | (PlaceVar _, PlaceField (base, _))
-  | (PlaceField (base, _), PlaceVar _) ->
-    places_overlap p1 base || places_overlap base p2
-  | (PlaceDeref p1', PlaceDeref p2') ->
-    places_overlap p1' p2'
+(** Walk to the root variable of a place, if any. *)
+let rec root_var (p : place) : Symbol.symbol_id option =
+  match p with
+  | PlaceVar (_, id)     -> Some id
+  | PlaceField (base, _)
+  | PlaceIndex (base, _)
+  | PlaceDeref base      -> root_var base
+
+(** Check if two places overlap.
+
+    Two places overlap when they share the same root variable. This is
+    deliberately conservative — [a.x] and [a.y] overlap, [a[0]] and [a[1]]
+    overlap — which is the safe direction for a borrow checker (it may
+    report conflicts that a more precise analysis would allow, but never
+    misses a real conflict). The rule terminates trivially because
+    [root_var] always descends.
+
+    The previous implementation case-split on shape and recursed into
+    sub-place pairs; that worked for [PlaceVar]/[PlaceField] alone but
+    produced an infinite recursion once [PlaceIndex] was added to the
+    cross-shape arms, and silently returned [false] on
+    [PlaceIndex] vs [PlaceVar] before that — which is why writes through
+    [mut buf: Array[T]] parameters were spuriously rejected. *)
+let places_overlap (p1 : place) (p2 : place) : bool =
+  match root_var p1, root_var p2 with
+  | Some r1, Some r2 -> r1 = r2
   | _ -> false
 
 (** Check if a place is moved and return the move site if so *)
@@ -852,9 +867,23 @@ and check_stmt (ctx : context) (state : state) (symbols : Symbol.t) (stmt : stmt
     let* () = check_expr ctx state symbols iter in
     check_block ctx state symbols body
 
-(** Check a function *)
+(** Check a function
+
+    Parameters declared with [mut] ownership are seeded into
+    [mutable_bindings] so the body may assign through them (e.g.
+    [out[i] = expr] for a buffer parameter). Without this, the assignment
+    check at [StmtAssign] rejects all writes through parameters even when
+    the surface syntax explicitly opted in with [mut]. *)
 let check_function (ctx : context) (symbols : Symbol.t) (fd : fn_decl) : unit result =
   let state = create () in
+  List.iter (fun (p : param) ->
+    if p.p_ownership = Some Mut then
+      match lookup_symbol_by_name symbols p.p_name.name with
+      | Some sym ->
+        let place = PlaceVar (p.p_name.name, sym.sym_id) in
+        state.mutable_bindings <- place :: state.mutable_bindings
+      | None -> ()
+  ) fd.fd_params;
   match fd.fd_body with
   | FnBlock blk -> check_block ctx state symbols blk
   | FnExpr e -> check_expr ctx state symbols e
