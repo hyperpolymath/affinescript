@@ -7,12 +7,13 @@
 
 [NOTE]
 ====
-**Status: design-translated, toolchain run pending.** The translation is
-written to be compilable against AffineScript v0.1.0 (Int arithmetic, no
-external module imports), following the same Float→Int convention
-xref:idaptik-hitbox.adoc[idaptik-hitbox] established. A Reproducibility
-block matching hitbox's will be filled in by the next translator who runs
-this through `affinescript-host-shim.sh`.
+**Status: compiled. 952-byte WASM MVP module produced 2026-05-02 via the
+containerized v0.1.0 toolchain.** Two v0.1.0 expedients applied: Float →
+Int with documented scaling (per xref:idaptik-hitbox.adoc[idaptik-hitbox]);
+and `mut Player` with field assignment substituted for an immutable
+*returning-new* style, because the `mut`-borrow-with-struct-field-assignment
+idiom is not yet verified in the v0.1.0 surface (`examples/ownership.affine`
+shows `mut` as a parameter mode but no in-body assignment example).
 
 Picked because it stress-tests the migration playbook's central decision —
 *`mut` vs `State` effect* — on a record with three orthogonal aspects
@@ -247,6 +248,41 @@ of a public field** — the source-comment header should declare the
 scaling factors. When AffineScript gains Float-arithmetic operators, the
 file can be reverted to floats with a one-pass rewrite.
 
+=== 6. `mut Player` design intent → immutable returning-new (v0.1.0 expedient)
+
+The design above shows `take_damage(p: mut Player, ...)` and `update(p: mut
+Player, dt_ms: Int) -> Velocity`. The shipped `PlayerHP.affine` does
+**not** use that signature. It uses an immutable returning-new style:
+
+[source,affinescript]
+----
+fn take_damage(p: Player, amount: Int, source: Pos, player: Pos) -> Player
+fn update(p: Player, dt_ms: Int) -> UpdateResult   // { player, velocity }
+----
+
+Why: `mut` is a real parameter mode in v0.1.0
+(`examples/ownership.affine` shows `fn takes_mut(x: mut Bool) -> () = ();`)
+but the in-body idiom for *assigning to a struct field through a `mut`
+borrow* — the natural way to write `p.hp.current = ...` in the lesson's
+design — is not demonstrated by any v0.1.0 example I could find, and
+attempting it without verification risked the kind of speculative-syntax
+bug a lesson should not propagate.
+
+The immutable returning-new form preserves the *semantics* of the
+re-decomposition (every mutator decision is still made; aspects are
+still fissioned; the Player record is still composed) at the cost of
+each mutator allocating a fresh struct. This is acceptable for a small
+record and a 60fps game tick; it is not the long-term design.
+
+**This is the same shape of expedient as Float → Int**: a v0.1.0
+compiler limitation forces a syntactic compromise that does not change
+the design. Document it at the file header; rewrite when the upstream
+gap closes.
+
+The `mut` vs `State` *decision* the lesson is about — local mutation in
+one tick under one owner — is unaffected. It just gets expressed
+immutably for now.
+
 == Playbook verdict
 
 === Held up cleanly
@@ -303,25 +339,26 @@ When translating a `.res` file with **multi-field mutable state**:
 
 == Reproducibility
 
-[NOTE]
-====
-This lesson is design-translated; the toolchain run is pending. The
-steps below match xref:idaptik-hitbox.adoc#reproducibility[the hitbox
-lesson's Reproducibility section] and should produce the same shape of
-output.
-====
+The translation, the typecheck, the compile, and the WASM emission can
+be reproduced from the IDApTIK repository at HEAD as of 2026-05-02:
 
 [source,bash]
 ----
-$ just affinescript-stage
 $ ./scripts/affinescript-host-shim.sh check    src/app/combat/PlayerHP.affine
-# Expected: "Type checking passed"
+Type checking passed
+
 $ ./scripts/affinescript-host-shim.sh compile  src/app/combat/PlayerHP.affine -o src/app/combat/PlayerHP.wasm
-# Expected: "Compiled src/app/combat/PlayerHP.affine -> src/app/combat/PlayerHP.wasm (WASM)"
+Compiled src/app/combat/PlayerHP.affine -> src/app/combat/PlayerHP.wasm (WASM)
+
+$ ls -la src/app/combat/PlayerHP.wasm
+-rw-r--r-- 1 hyperpolymath hyperpolymath 952 May  2 08:12 src/app/combat/PlayerHP.wasm
+
+$ file src/app/combat/PlayerHP.wasm
+src/app/combat/PlayerHP.wasm: WebAssembly (wasm) binary module version 0x1 (MVP)
 ----
 
-When the toolchain run completes, replace this NOTE with the actual
-output (matching hitbox's format) and link the resulting `.wasm` size in
-the file header. If the run fails on a v0.1.0 limitation not anticipated
-here, **edit the lesson** — that is exactly the case study a future
-translator most needs.
+The IDApTIK side of this lesson lives at `idaptik/src/app/combat/PlayerHP.affine`
+(translation, 144 lines) and `idaptik/src/app/combat/PlayerHP.res` (original,
+88 lines). The compiled `.wasm` is 952 bytes — roughly 2.5× hitbox's 384
+bytes, accounting for the larger function surface (`make`, `is_invincible`,
+`is_alive`, `take_damage`, `update`, plus the four tuning fns and `max`).

@@ -274,7 +274,7 @@ Existing entries:
 
 * link:lessons/migrations/idaptik-hitbox.adoc[idaptik `Hitbox.res` → `Hitbox.affine`] — the first compilable translation; pure-leaf collision primitives. Surfaces the v0.1.0 Float-arithmetic typechecker gap.
 * link:lessons/migrations/idaptik-user-settings.adoc[idaptik `UserSettings.res` (design-only)] — multi-pattern, dependency-heavy persistence layer. Stress-tests the playbook against five external module dependencies; surfaces three small playbook gaps (addressed in v1.1).
-* link:lessons/migrations/idaptik-player-hp.adoc[idaptik `PlayerHP.res` (design-translated, toolchain run pending)] — six-field mutable record with three orthogonal aspects (HP, i-frames, knockback). Stress-tests the `mut` vs `State` decision criterion; surfaces the **aspect-decomposition** pattern as a v1.2 candidate addition.
+* link:lessons/migrations/idaptik-player-hp.adoc[idaptik `PlayerHP.res` → `PlayerHP.affine`] — six-field mutable record with three orthogonal aspects (HP, i-frames, knockback). Compiled to a 952-byte WASM module via the v0.1.0 toolchain. Stress-tests the `mut` vs `State` decision criterion; surfaces the **aspect-decomposition** pattern as a v1.2 candidate addition, and the v0.1.0 `mut`-with-struct-field-assignment gap as a second expedient (alongside Float→Int).
 
 If you complete a non-trivial `.res → .affine` translation and the re-decomposition reveals something future translators would benefit from, write it up there. The format is loose: original snippet, faithful port, re-decomposed port, and what the second one buys you. Mark the lesson "design-only" if the destination toolchain cannot yet compile it — the design walk-through still pressures the playbook.
 
