@@ -166,4 +166,153 @@
     (deferred-features "dependent types, tropical types, units of measure, shape-indexed vectors, and any advanced type-level computation live in Typed WASM, not in AffineScript.")
     (secondary-backend "Julia — secondary compile target for scientific computing use cases where AffineScript's type safety complements Julia's numeric ecosystem.")
   )
+
+  (faces
+    (note "AffineScript is one core, many faces. A face is a sugared surface syntax that lowers to the canonical AST via a single OCaml module in lib/<name>_face.ml. Established faces: canonical, RattleScript (Python-like), JaffaScript (JS/TS-like), PseudoScript (pedagogy), LucidScript (PureScript/Haskell-like), CafeScripto (CoffeeScript-like). The rules below were earned during the May-2026 LucidScript+CafeScripto buildout and the eject of the five non-canonical faces into top-level brand-surface repos at github.com/hyperpolymath/{rattlescript,jaffascript,pseudoscript,lucidscript,cafescripto}.")
+
+    (rules
+      (brand-surface-not-fork
+        (rule "A face is a transformer module in this repo PLUS a brand repo carrying README, examples, justfile, and a thin shim that defaults --face. The brand repo MUST NOT carry a parser, type checker, borrow checker, codegen, or vendored copy of the canonical compiler. There is exactly one compiler.")
+        (shim-pattern "#!/usr/bin/env bash\nif [ $# -eq 0 ]; then\n  exec affinescript\nfi\nsubcmd=\"$1\"\nshift\nexec affinescript \"$subcmd\" --face <face_name> \"$@\"")
+        (anti-pattern "Cargo.toml, vendored affinescript/ submodule, separate <face>script binary, per-face parser. Each is a divergence vector that forces re-porting every canonical change to every face."))
+
+      (identity-in-content
+        (rule "Every face uses the canonical .affine extension. Face is selected by a face: pragma on the first comment line (# face:, // face:, -- face:, (* face: *)) or by --face on the CLI. Per-face extensions (.rattle, .pyaff, .jsaff) were tried and abandoned.")
+        (why "Single extension means build tools, editors, and LSP configure once. File renames don't change semantics. Polyglot directories don't need per-face globs.")
+        (deprecation-path "Extension dispatch is preserved in resolve_face for migration only; pragma takes precedence and emits a deprecation warning when extension dispatch is used."))
+
+      (snapshot-plus-roundtrip
+        (rule "Every face transformer ships with a snapshot test PLUS a round-trip parse. The snapshot diffs preview-<face> output against tests/faces/<base>.expected.txt; the round-trip parses that output as canonical to confirm grammar legality. Either alone is insufficient; visual review without round-trip parse missed five distinct transformer bugs in the May-2026 buildout.")
+        (harness "tools/run_face_transformer_tests.sh — modes: check (default), --update (rewrite snapshots), --record-missing (bootstrap)")
+        (just-recipes "test-faces, test-faces-update, test-faces-record")
+        (generalization "Any pure text-to-text transformer in the codebase (formatter, codegen text emitters, source rewriters) deserves the same harness. The pattern is not face-specific."))
+
+      (examples-are-tests
+        (rule "Every file under examples/faces/ MUST round-trip clean through the snapshot test. If an example exercises a known transformer gap and won't round-trip, simplify the example to use the documented workaround — do not ship a broken example with a hand-wave.")
+        (gap-disclosure "Known transformer gaps go in examples/faces/README.adoc under 'Caveats' → 'Known transformer gaps' with one-line workaround. The example file uses the workaround. Users find gaps via docs, not via confused parse errors on their own code.")
+        (consequence-of-violation "An example that breaks round-trip but ships in the README is a documented falsehood. README and test suite must agree, or one is lying."))
+
+      (error-vocabulary-cost
+        (rule "Adding a face means adding one arm per user-facing error kind to lib/face.ml's format_*_for_face dispatch tables. There is no shortcut. Face-shaped vocabulary is part of the face contract: a Haskell-shaped face must not say 'borrow checker rejected this binding'; a CoffeeScript-shaped face must not reference 'do notation' that the surface lacks.")
+        (cost-shape "O(faces × error_kinds). Currently 6 faces × ~12 error formatters; growth in either dimension multiplies.")
+        (drift-symptom "If the dispatch table lags the parser/checker, the face leaks canonical-flavoured errors and the brand promise erodes. Fix is mechanical, not creative — keep the table in sync."))
+
+      (span-fidelity-honesty
+        (rule "A face transformer rewrites user source; subsequent error line numbers refer to the transformed canonical text, not the user's original face source. This is a genuine UX regression. Document it in the face's brand-repo README under 'Caveats'. Do NOT paper over it with phantom span improvements that don't actually translate locations.")
+        (honest-options
+          "1. document the regression in the brand-repo README (chosen for all 5 non-canonical faces, May-2026, alpha status)"
+          "2. have the transformer record a canonical→source span map and have the diagnostic layer translate"
+          "3. build the face into the parser proper (cmdliner already supports --face), trading parser complexity for span fidelity")
+        (escalation "When promoting a face from alpha to beta, revisit the choice. The current option-1 stance is honest for alpha; for beta, option-2 is the minimum honest improvement.")))
+
+    (when-adding-face-N+1
+      (step (n 1) (do "create lib/<name>_face.ml; clone the closest existing face module (python_face.ml for indent-based; js_face.ml for brace-based; pseudocode_face.ml for keyword-heavy) and substitute the lowering rules"))
+      (step (n 2) (do "register the face in lib/face_pragma.ml's alias table and lib/face.ml's Face variant"))
+      (step (n 3) (do "extend bin/main.ml: parse_with_face arm, fmt_file arm, face_arg cmdliner enum, preview-<name> subcommand"))
+      (step (n 4) (do "add the face name to lib/dune modules list"))
+      (step (n 5) (do "build: opam exec -- dune build lib/ bin/"))
+      (step (n 6) (do "create examples/faces/hello-<name>.affine; iterate until snapshot+roundtrip pass via just test-faces-record then just test-faces"))
+      (step (n 7) (do "extend lib/face.ml format_*_for_face dispatch tables — one arm per error kind, in face-appropriate vocabulary"))
+      (step (n 8) (do "ship the brand repo: README.adoc + LICENSE + CONTRIBUTING.md + bin/<face> shim + justfile + examples/hello.affine + .gitignore. NO Cargo.toml, NO vendored compiler, NO separate binary"))
+      (step (n 9) (do "add link to the brand repo in this repo's README.adoc faces list"))
+      (step (n 10) (do "document any transformer gap in examples/faces/README.adoc 'Known transformer gaps'; if the gap is severe enough, demote the example to a workaround variant rather than ship a broken round-trip")))
+
+    (known-limitations
+      (limitation
+        (name "transformer-span-loss")
+        (since "0.1.0")
+        (impact "Diagnostic line numbers refer to transformed canonical, not original face source. Acceptable for alpha; must be addressed before beta. See span-fidelity-honesty rule for the three escalation options.")
+        (recommendation "Document in each brand-repo README until span-map translation lands."))
+
+      (limitation
+        (name "deferred-face-transformations")
+        (since "0.1.0")
+        (impact "Several Python/Haskell/Coffee idioms are not yet lowered: multi-clause def-bodies, do-notation, where-blocks, list comprehensions, splats, no-paren calls. These need AST-level rewrites rather than text-level substitution and are deferred to a face-AST-rewriter milestone.")
+        (recommendation "When sweeping the gap list, skip these categories — they require an AST-rewriter pass that doesn't exist yet, not just sugar additions to the existing text transformer.")
+        (tracked-in "examples/faces/README.adoc → Known transformer gaps"))
+
+      (limitation
+        (name "no-face-aware-formatter")
+        (since "0.1.0")
+        (impact "affinescript fmt produces canonical output regardless of input face. Round-tripping face → canonical → face is not supported; once you canonicalize, you lose the face presentation.")
+        (recommendation "Treat face source as the human-edited form and canonical as the build-time artifact. Do not run fmt on face files until per-face formatters exist.")))
+  )
+
+  (backends
+    (note "AffineScript is one frontend, many backends. There is no middle-end IR — each backend lowers AST→target directly. Adding a new backend is templated work; the lessons below were earned during the May-2026 backend buildout (JS/C/WGSL/Faust/ONNX/Rust/LLVM/OCaml/Lua/Bash/Nickel/ReScript/Verilog/Gleam landed alongside the pre-existing WASM/WASM-GC/Julia).")
+
+    (tiers
+      (tier
+        (name "A — host-language emitters")
+        (members "WASM 1.0, WASM-GC, Julia, JS, C, Rust, OCaml, ReScript, Lua, Bash, Gleam, Nickel")
+        (acceptance "full AffineScript surface; missing features error loudly at codegen time")
+        (file-shape "lib/<name>_codegen.ml, ~200-400 lines, single-file output with a tiny inline runtime prelude"))
+      (tier
+        (name "B — IR / native")
+        (members "LLVM IR (Cranelift candidate)")
+        (acceptance "full surface, lower level of abstraction; some passes (closures, traits) need lowering that may not exist yet")
+        (file-shape "SSA-shaped emitter; needs current-block tracking for phi predecessors"))
+      (tier
+        (name "C — kernel sublanguages")
+        (members "WGSL, SPIR-V (planned), CUDA C++ (planned), Metal (planned), OpenCL (planned), Faust, ONNX, MLIR/StableHLO (planned)")
+        (acceptance "DELIBERATELY restricted subset; everything outside that subset must reject explicitly via `unsupported`")
+        (file-shape "validation pre-pass on the AST shape (e.g., 'first param is Int', 'all types are Float'), then targeted lowering")))
+
+    (rules
+      (clone-don't-redesign
+        (rule "When adding a new backend, clone the closest existing emitter and substitute lowering rules. Do NOT redesign the codegen module shape from scratch — every backend after the first cost ~200 lines because the modules are isomorphic.")
+        (template-pairs
+          "JS/C/Lua/Rust/OCaml/ReScript/Gleam/Nickel/Bash → julia_codegen.ml"
+          "WGSL/SPIR-V/CUDA/Metal/OpenCL → wgsl_codegen.ml"
+          "Faust/Csound → faust_codegen.ml"
+          "ONNX/MLIR/TFLite → onnx_codegen.ml"
+          "Verilog/VHDL → verilog_codegen.ml"))
+
+      (validate-end-to-end
+        (rule "Every shipped backend must round-trip through the target's reference toolchain. Bytes a human read are not bytes that work. The honest MVP claim is 'the bytes round-trip,' not 'the bytes look right.'")
+        (validators "naga (WGSL), faust (Faust), oxionnx-proto (ONNX), cc (C), rustc (Rust), ocaml (OCaml), lua5.4 (Lua), bash -n (Bash), nickel typecheck (Nickel), llc (LLVM), node/deno (JS)")
+        (when-no-validator "If the target has no installable validator in the dev environment, document that explicitly in the recap. Do not claim end-to-end validation by inspection alone."))
+
+      (single-file-no-runtime
+        (rule "Generated output is one file. Tiny runtime preludes (Some/None constructors, println shims, a few factories) go INLINE at the top of the emitted file, not as a separate runtime.h / runtime.lua / runtime.rs. This dodges version-skew bugs that would otherwise haunt every compile."))
+
+      (loud-failures
+        (rule "Surface unsupported source shapes with `raise (X_unsupported \"...\")` so the codegen errors at compile time. Never emit silently miscompilable output. A loud `unsupported` is the load-bearing API contract of every backend."))
+
+      (frontend-gaps-don't-paper-at-backend
+        (rule "If a backend can't lower something the surface syntax accepts, fix the frontend or document the restriction. Do NOT compensate at the backend layer — that produces silent miscompilation later. Examples from the May-2026 buildout: the typechecker's monomorphic-Int restriction (fixed in typecheck.ml) and the borrow checker's missing mut-param seeding (fixed in borrow.ml) both first surfaced as 'WGSL won't accept Float kernels' / 'Faust SAXPY won't borrow-check'; both were frontend bugs masquerading as backend limitations."))
+
+      (stubs-as-intrinsics
+        (rule "When a target has runtime ops AffineScript's resolver doesn't know about (CUDA's __shfl_xor, ONNX's Relu, Faust's tanh, Verilog's $display), declare them in user code as stub functions and recognise them by name in the codegen. The stub body is a placeholder; the resolver passes; the backend pattern-matches. This is the canonical way to smuggle target intrinsics through a universal frontend.")
+        (example "fn relu(x: Array[Float]) -> Array[Float] { x }  // stub for ONNX Relu")
+        (rationale "Avoids extending the language for every target's vocabulary; keeps each backend self-contained.")))
+
+    (when-adding-backend-N+1
+      (step (n 1) (do "identify the tier (A/B/C above); pick the template emitter from the tier's template-pairs list"))
+      (step (n 2) (do "create lib/<name>_codegen.ml as a clone with target-specific lowering rules; reuse mangle / type-mapping / gen_lit shape"))
+      (step (n 3) (do "register the module in lib/dune (alphabetical) and add `.<ext>` dispatch in bin/main.ml (both --json and human branches)"))
+      (step (n 4) (do "build: `eval $(opam env --switch=default) && dune build lib bin/main.exe`"))
+      (step (n 5) (do "validate end-to-end with the target's reference toolchain on /tmp/cdemo.affine (the canonical Int/branch/let test); record the result in the recap"))
+      (step (n 6) (do "for tier-C kernel backends: also test Float arithmetic, since the typechecker patch landed 2026-05-02"))
+      (step (n 7) (do "document any frontend gap surfaced by the work in this AI.a2ml file under (backends → known-limitations); fix it BEFORE the next adaptive task per the corrective-before-adaptive ordering rule")))
+
+    (known-limitations
+      (limitation
+        (name "no-target-intrinsic-protocol")
+        (since "0.1.0")
+        (impact "Each backend keeps its own ad-hoc builtin allowlist (sin/cos/relu/etc). User stubs work as a workaround per the stubs-as-intrinsics rule, but unifying behind @target(\"foo\") fn declarations would let one stdlib serve all backends. Perfective task; not blocking.")
+        (recommendation "Don't extend per-backend builtin lists ad-hoc; if a target needs a new op, prefer the stub-recognise-by-name pattern."))
+
+      (limitation
+        (name "no-tensor-type")
+        (since "0.1.0")
+        (impact "The frontend has no Tensor[T, S]; ONNX is currently a 'proof of wire format' rather than a real ML target. Adding tensor types is multiple weeks of frontend work and belongs in (out-of-scope deferred-to-sibling-project) until/unless a user demands it.")
+        (recommendation "When ONNX scope expands, file the request and check (out-of-scope) before extending."))
+
+      (limitation
+        (name "kernel-sublangs-share-no-validator")
+        (since "0.1.0")
+        (impact "WGSL, Faust, ONNX each have their own restriction predicate. A shared 'kernel-sublanguage validator' module would let backends declare their accepted subset declaratively. Perfective task.")
+        (recommendation "If two new tier-C backends ship with overlapping restrictions, factor the validator before adding the third.")))
+  )
 )
