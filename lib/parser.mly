@@ -348,6 +348,16 @@ type_expr_primary:
      the interior in one pass without lookahead conflicts. */
   | LBRACE body = ty_record_body RBRACE
     { TyRecord (fst body, snd body) }
+  /* Array shorthand: `[T]` desugars to `Array[T]`.  This is the syntax
+     stdlib has used all along (`fn map<T, U>(arr: [T], f: T -> U) -> [U]`,
+     `Result[[T], E]`, etc.) but it was previously only accepted in stdlib
+     load paths, not in user source.  The typechecker (lib/typecheck.ml
+     lines 724, 813, 1024) canonicalises array literals/operations on
+     `TApp (TCon "Array", ...)`, so `Array` is the right desugar target —
+     using `List` here triggers a `Unify.TypeMismatch (List, Array)` at
+     check time. Closes #40. */
+  | LBRACKET ty = type_expr RBRACKET
+    { TyApp (mk_ident "Array" $startpos $endpos, [TyArg ty]) }
   /* Built-in types */
   | NAT { TyCon (mk_ident "Nat" $startpos $endpos) }
   | INT_T { TyCon (mk_ident "Int" $startpos $endpos) }
