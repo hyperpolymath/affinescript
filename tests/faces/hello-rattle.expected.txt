@@ -1,0 +1,17 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell
+// 
+// RattleScript face. Distinctive features exercised: `def` keyword,
+// indentation as block delimiter, `#` line comments, `True/False/None`
+// literals, `and/or/not` boolean keywords, `:` block opener.
+// face: rattlescript
+
+effect IO {
+    fn println(s: String) -> ();
+
+}
+fn main() -{IO}-> () {
+    let greeting = "Hello, RattleScript!";
+    println(greeting)
+
+}

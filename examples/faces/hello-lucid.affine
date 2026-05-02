@@ -1,0 +1,19 @@
+-- SPDX-License-Identifier: AGPL-3.0-or-later
+-- SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell
+--
+-- LucidScript face. Distinctive features exercised: module declaration
+-- with `where`, type signatures kept as comments, equation-style
+-- function definitions, `--` line comments. (The unit-parameter idiom
+-- `main () = …` lowers to canonical `fn main() { … }`. Function
+-- application uses canonical paren syntax `f(x)` rather than Haskell
+-- currying `f x` — see examples/faces/README.adoc.)
+-- face: lucidscript
+
+module Hello where
+
+effect IO {
+  fn println(s: String) -> ();
+}
+
+main :: -{IO}-> ()
+main () = println("Hello, LucidScript!")
