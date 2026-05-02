@@ -276,6 +276,124 @@ let contents = withFile("data.txt", \f -> read(f));
 
 The caller never sees the raw `File` and can't forget to close it.
 
+[CAUTION]
+.Affine + async interaction
+====
+The example above is synchronous. **Real-world code that consumes affine resources across `await` points raises an unresolved design question:** if the async is cancelled mid-flight while holding the affine resource, what happens?
+
+`AI.a2ml` flags algebraic effect handlers as out-of-scope partly because "multi-shot resume of continuations that captured affine resources is a soundness hole". The same family of issue applies here. A `withFile` over an async `action` doesn't have a settled story for cancellation cleanup.
+
+If your migration hits this, **name it explicitly** in the code (\`// affine + async cancellation TBD\`) and consult the issue tracker before assuming a working pattern.
+====
+
+=== Refinements in Argument Positions
+
+Refinement types are most useful **on caller-provided values**: sizes, counts, indices, and bounded numerics that need to be valid before a function does anything with them.
+
+[source,affinescript]
+----
+type WindowConfig = {
+  minWidth: Int where (>= 320),
+  minHeight: Int where (>= 480),
+  background: String,
+  letterbox: Bool,
+};
+
+fn createWindow(cfg: WindowConfig): Window
+----
+
+Compare with the migration source:
+
+[source,rescript]
+----
+~resizeOptions={
+  minWidth: 768.0,
+  minHeight: 1024.0,
+  letterbox: false,
+},
+----
+
+The ReScript form has no compile-time guard against being set to `0.0`, `-100.0`, or `1.0` — only runtime checks (if any). Argument-position refinements catch this at the call site.
+
+**This is where 80% of refinement types' daily ergonomic value comes from**: not invariants on internal state, but pre-conditions on caller input.
+
+=== Migrating from -script Languages
+
+This chapter exists because the most-frequent migrator question is **"I have ReScript / TypeScript / JavaScript code that does X — what does the AffineScript form look like?"**. The patterns below address the six anti-patterns most commonly encountered.
+
+==== Anti-pattern 1: Side-effect imports (`let _ = X.constructor`)
+
+**Symptom**: a top-of-module sequence of `let _ = SomeModule.value` lines whose only purpose is to trigger module-load side effects (registry registration, plugin install, etc.).
+
+**Root cause**: ReScript / JS module loading runs top-level code as a side effect of `import`. AffineScript compiles to wasm where there is no implicit module-load-time side effect.
+
+**Fix**: move the registration into an explicit function call, invoked from your boot sequence:
+
+[source,affinescript]
+----
+fn registerScreens(engine: Engine) {
+  engine.screens.add(TitleScreen.constructor);
+  engine.screens.add(WorldMapScreen.constructor);
+  // ...
+}
+----
+
+==== Anti-pattern 2: `%raw` JS / `unsafe!` blobs
+
+**Symptom**: inline `%raw` (ReScript) or `as any` (TypeScript) blocks containing JS that pokes at the DOM, console, or browser globals.
+
+**Decision tree for the migration**:
+
+. **Is there a typed binding** (`@affinescript/dom`, `@affinescript/pixijs`, etc.) for the operation? Use it.
+. **Is the binding missing?** Add it to the relevant binding package; do **not** inline a `%raw` equivalent in your application code.
+. **Is the operation fundamentally untyped** (e.g. interacting with a third-party JS library no one has bound)? Use a documented `Unsafe.embed` escape with a comment naming why and tracking the binding-it-needs in an issue.
+
+The first answer is by far the common case. The wrong move is to inline raw JS, which carries no type checking, no effect tracking, and no migration story to the eventual typed binding.
+
+==== Anti-pattern 3: Monolithic init functions
+
+**Symptom**: a single 100+-line function (often called `init`, `start`, or `boot`) that creates the engine, registers screens, wires multiplayer, sets up audio, and fires the first frame, all in one big async block.
+
+**Fix**: decompose along step boundaries. Each step takes the affine resource, produces a Result, and the boot sequence threads them with `?` (or `>>=`).
+
+The decomposition is itself a Frontier-Guide-worthy pattern: small functions, each effect-tracked, each independently testable.
+
+==== Anti-pattern 4: Inline lambda callbacks
+
+**Symptom**: a function that takes 8-12 named-argument lambdas as a callback bundle. Sub-cases hidden in 60+ lines of inline closures.
+
+**Fix**: row-polymorphic handler record. Construct once, pass once.
+
+[source,affinescript]
+----
+type HandlerSet<rest> = {
+  onJoin: Player -> Unit / {IO},
+  onLeave: PlayerId -> Unit / {IO},
+  onMove: (PlayerId, Float, Float) -> Unit / {IO},
+  ..rest,
+};
+
+fn makeDefault(): HandlerSet<{}> {
+  { onJoin: ..., onLeave: ..., onMove: ... }
+}
+----
+
+The `..rest` lets future handlers be added without churn at every call site.
+
+==== Anti-pattern 5: Untyped exceptions / Promise umbrella
+
+**Symptom**: a single top-level `Promise.catch(e => ...)` (or top-level `try { ... } catch (e: unknown)`) that absorbs every async failure into one untyped handler. This pattern has come to be called the **Promise umbrella** — picture-clear: one thing on top, rains absorbed below.
+
+The umbrella is lossy (every failure is the same opaque value), untyped (handler can't dispatch on cause), encourages swallow-and-continue, and lifts errors away from their call site.
+
+**Fix**: structured `Result[StartupError, RunningGame]` (or domain equivalent) where `StartupError` is a sum type naming each failure mode. The `?` operator threads errors back through the call graph; the umbrella becomes a `match` on the structured error at the surface.
+
+==== Anti-pattern 6: Mutable globals / setters for callbacks
+
+**Symptom**: `MultiplayerGlobal.voice.onConnectionChange = Some(...)` or similar — registering callbacks by mutating a global record.
+
+**Fix**: pass the handler record as an argument at construction time (Anti-pattern 4's solution applies). The type system can see the wiring; mutable globals are an effect the compiler can't track.
+
 == The Compilation Target
 
 AffineScript compiles to **Typed WASM** as its primary target. WASM gives you:
