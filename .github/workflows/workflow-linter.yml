@@ -61,11 +61,15 @@ jobs:
       - name: Check SHA-Pinned Actions
         run: |
           echo "=== Checking Action Pinning ==="
-          # Find any uses: lines that don't have @SHA format
-          # Pattern: uses: owner/repo@<40-char-hex>
-          unpinned=$(grep -rn "uses:" .github/workflows/ | \
+          # Match only YAML uses: keys (allowing optional list-item dash and
+          # leading whitespace), not the literal substring "uses:" inside a
+          # run-script comment — otherwise the linter false-positives on its
+          # own explanatory comments (every previous "uses: lines..." comment
+          # was being flagged as unpinned).
+          # Pattern: <indent>[- ]uses: owner/repo@<40-char-hex>
+          unpinned=$(grep -rEn "^[[:space:]]*-?[[:space:]]+uses:[[:space:]]" .github/workflows/ | \
             grep -v "@[a-f0-9]\{40\}" | \
-            grep -v "uses: \./\|uses: docker://\|uses: actions/github-script" || true)
+            grep -vE "uses: \./|uses: docker://|uses: actions/github-script" || true)
 
           if [ -n "$unpinned" ]; then
             echo "ERROR: Found unpinned actions:"
