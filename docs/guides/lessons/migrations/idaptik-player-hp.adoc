@@ -1,0 +1,327 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell (hyperpolymath)
+= Migration Lesson: idaptik `PlayerHP.res` → `PlayerHP.affine`
+:revdate: 2026-05-02
+:icons: font
+:source-highlighter: rouge
+
+[NOTE]
+====
+**Status: design-translated, toolchain run pending.** The translation is
+written to be compilable against AffineScript v0.1.0 (Int arithmetic, no
+external module imports), following the same Float→Int convention
+xref:idaptik-hitbox.adoc[idaptik-hitbox] established. A Reproducibility
+block matching hitbox's will be filled in by the next translator who runs
+this through `affinescript-host-shim.sh`.
+
+Picked because it stress-tests the migration playbook's central decision —
+*`mut` vs `State` effect* — on a record with three orthogonal aspects
+bundled into one struct. Unlike
+xref:idaptik-user-settings.adoc[idaptik-user-settings], PlayerHP has no
+external dependencies; unlike xref:idaptik-hitbox.adoc[idaptik-hitbox], it
+has interesting state.
+====
+
+== The original (88 lines, ReScript)
+
+[source,rescript]
+----
+type t = {
+  mutable current: float,
+  mutable max: float,
+  mutable invincibleTimer: float,
+  mutable knockbackVelX: float,
+  mutable knockbackVelY: float,
+  mutable knockbackTimer: float,
+}
+
+let make = (~con: float): t => {
+  let maxHP = 80.0 +. 20.0 *. (con /. 100.0)
+  { current: maxHP, max: maxHP, invincibleTimer: 0.0,
+    knockbackVelX: 0.0, knockbackVelY: 0.0, knockbackTimer: 0.0 }
+}
+
+let isInvincible = (hp: t): bool => hp.invincibleTimer > 0.0
+let isAlive      = (hp: t): bool => hp.current > 0.0
+
+let takeDamage = (hp: t, ~amount, ~fromX, ~playerX): unit => {
+  if !isInvincible(hp) {
+    hp.current = Math.max(0.0, hp.current -. amount)
+    hp.invincibleTimer = Knockback.iFrames
+    let dx = playerX -. fromX
+    let direction = if dx >= 0.0 { 1.0 } else { -1.0 }
+    hp.knockbackVelX = direction *. Knockback.speed
+    hp.knockbackVelY = -80.0
+    hp.knockbackTimer = Knockback.duration
+  }
+}
+
+let update = (hp: t, ~dt): (float, float) => { /* decay timers, return knockback velocity */ }
+----
+
+A single mutable record carrying three orthogonal concerns: **health**
+(`current`, `max`), **invincibility** (`invincibleTimer`), and
+**knockback** (`knockbackVelX`, `knockbackVelY`, `knockbackTimer`). Six
+mutable fields; one type. The labelled args (`~con`, `~amount`, `~fromX`,
+`~playerX`, `~dt`) are also doing work the type system isn't.
+
+== The decision the playbook forces you to make
+
+The playbook's
+xref:../../migration-playbook.adoc#decision-criteria[`mut` vs `State`
+effect] criterion gives two candidates:
+
+. **`mut PlayerHP`** — caller owns the value, mutation is local to each
+  function call, the HP record is threaded through call sites that need
+  it.
+. **`State[Player]` effect** — the HP record lives inside an effect
+  handler, callers say `Player.take_damage(15)` without holding a
+  reference.
+
+But there's a third candidate the playbook doesn't name explicitly: it
+falls out of the playbook's *cardinal rule* (re-decompose, do not
+transliterate) plus the rejection of monolithic instances:
+
+[start=3]
+. **Decompose the type by aspect first, then choose mutation discipline
+  per aspect.** `HP`, `IFrames`, `Knockback` are three independent
+  state-machines that happen to be triggered by the same event.
+
+The right answer depends on whether the three aspects are genuinely
+independent or whether their coupling *is* the program. Two pieces of
+evidence point at "genuinely independent":
+
+* `update(dt)` decays the i-frame timer and the knockback timer
+  separately. They share no state; they just both happen to decay.
+* The renderer reads `current`/`max` for the HP bar, the physics code
+  reads `knockbackVelX`/`Y`, the damage code reads `invincibleTimer`.
+  No single consumer reads all three.
+
+The bundling in the original is not a design — it is a side-effect of
+ReScript's "one record per gameplay subsystem" idiom.
+
+== The translation (aspect-decomposed, `mut`-based)
+
+[source,affinescript]
+----
+// HP measured in tenths (max baseline = 1000 = 100.0 HP).
+// Timers measured in milliseconds (16ms ≈ 60fps frame; 1000ms = 1.0s).
+// Float arithmetic is unsupported in AffineScript v0.1.0 (see hitbox lesson).
+
+struct HP       { current: Int, max: Int }
+struct IFrames  { remaining_ms: Int }
+struct Knockback { vel_x: Int, vel_y: Int, remaining_ms: Int }
+
+struct Player {
+  hp: HP,
+  iframes: IFrames,
+  knockback: Knockback,
+}
+
+// Constants — module-style namespacing
+struct Damage {
+  static let robo_dog_contact: Int = 150
+  static let guard_dog_bite: Int   = 100
+  static let assassin_strike: Int  = 350
+  static let guard_melee: Int      = 100
+}
+
+struct Tuning {
+  static let knockback_speed: Int        = 200
+  static let knockback_duration_ms: Int  = 300
+  static let iframe_duration_ms: Int     = 1000
+  static let knockback_pop_y: Int        = -80
+}
+
+// CON is a 0-200 scaling factor; baseline 100 → 1000 (= 100.0 HP in tenths).
+fn make(con: Int) -> Player {
+  let max_hp = 800 + 2 * con
+  Player {
+    hp:        HP { current: max_hp, max: max_hp },
+    iframes:   IFrames  { remaining_ms: 0 },
+    knockback: Knockback { vel_x: 0, vel_y: 0, remaining_ms: 0 },
+  }
+}
+
+fn is_invincible(p: ref Player) -> Bool { p.iframes.remaining_ms > 0 }
+fn is_alive(p: ref Player) -> Bool      { p.hp.current > 0 }
+
+// Position is a struct, not two same-typed labelled args:
+struct Pos { x: Int }
+
+fn take_damage(p: mut Player, amount: Int, source: Pos, player: Pos) -> () {
+  if is_invincible(p) { return }
+
+  // 1. HP — clamped subtract
+  p.hp.current = max(0, p.hp.current - amount)
+
+  // 2. IFrames — start the invincibility window
+  p.iframes.remaining_ms = Tuning.iframe_duration_ms
+
+  // 3. Knockback — direction is +1 right of source, -1 left of source
+  let direction = if player.x >= source.x { 1 } else { -1 }
+  p.knockback.vel_x        = direction * Tuning.knockback_speed
+  p.knockback.vel_y        = Tuning.knockback_pop_y
+  p.knockback.remaining_ms = Tuning.knockback_duration_ms
+}
+
+struct Velocity { x: Int, y: Int }
+
+// Tick all three timers; return knockback velocity for this frame.
+fn update(p: mut Player, dt_ms: Int) -> Velocity {
+  // IFrames decay
+  if p.iframes.remaining_ms > 0 {
+    p.iframes.remaining_ms = max(0, p.iframes.remaining_ms - dt_ms)
+  }
+
+  // Knockback decay + velocity emission
+  if p.knockback.remaining_ms > 0 {
+    p.knockback.remaining_ms = max(0, p.knockback.remaining_ms - dt_ms)
+    let v = Velocity { x: p.knockback.vel_x, y: p.knockback.vel_y }
+    if p.knockback.remaining_ms <= 0 {
+      p.knockback.vel_x = 0
+      p.knockback.vel_y = 0
+    }
+    v
+  } else {
+    Velocity { x: 0, y: 0 }
+  }
+}
+----
+
+== What changed
+
+=== 1. One monolithic struct → three aspect structs
+
+`HP`, `IFrames`, `Knockback` are nominally distinct. The compiler refuses
+`is_invincible(some_hp)` — only a `Player` (or, with refactoring, a
+`ref IFrames`) is acceptable. Each aspect has a clear lifetime, a clear
+mutator, and a clear reader. A future contributor adding e.g. a *poison*
+status effect drops in alongside the existing three rather than mutating
+a six-field god-struct.
+
+=== 2. `mut Player`, not `State[Player]` effect
+
+This is the playbook's
+xref:../../migration-playbook.adoc#decision-criteria[`mut` vs `State`]
+decision applied carefully. Two consumers (combat and physics) need to
+mutate `Player`; both are called from the same game-loop tick under a
+single owner (the `Engine` or `World`). No third caller observes the
+mutation across the tick boundary. **Coupling is local to one frame.**
+
+If a future system needed to react to "player got hit" *between* combat
+and physics in the same tick, that would be the moment to lift to a
+`State[Player]` effect (or, more honestly, to a `Damage` effect with
+handlers in both subsystems). The point of `mut` here is that we get
+explicit local mutation now without fabricating a global effect that
+isn't doing any work.
+
+=== 3. Tuning constants in `static let` slots, not bare module values
+
+ReScript's `module Damage = { let roboDogContact = 15.0 }` works because
+modules are namespaces. AffineScript's idiomatic equivalent (per the
+hitbox lesson and the v0.1.0 surface) is `static let` inside a `struct`,
+which gives the same `Damage.robo_dog_contact` access path with a
+typed-WASM-friendly representation.
+
+=== 4. Same-typed labelled args → struct types
+
+`takeDamage(hp, ~amount, ~fromX, ~playerX)` becomes
+`take_damage(p, amount, source: Pos, player: Pos)`. The labels `fromX`
+and `playerX` were doing real work — disambiguating two `float` values —
+which is exactly the case the
+xref:idaptik-hitbox.adoc[hitbox lesson] flagged as the canonical
+"labels-want-to-be-types" pattern.
+
+=== 5. Float → Int with documented precision compromise
+
+* HP: tenths (max baseline 1000 = 100.0 HP). Damage values rescale by 10
+  (`15.0` → `150`). One-decimal precision is fine for game logic.
+* Timers: milliseconds. 60fps `dt` is `~16ms`. The original `0.3`-second
+  knockback duration becomes `300`. The original `1.0`-second i-frame
+  duration becomes `1000`.
+
+This is the same compromise xref:idaptik-hitbox.adoc[idaptik-hitbox]
+documented for collision rectangles. **Do not silently change the unit
+of a public field** — the source-comment header should declare the
+scaling factors. When AffineScript gains Float-arithmetic operators, the
+file can be reverted to floats with a one-pass rewrite.
+
+== Playbook verdict
+
+=== Held up cleanly
+
+* xref:../../migration-playbook.adoc#anti-patterns[The "monolithic
+  instance" anti-pattern] — six mutable fields under one type *is* the
+  pattern. Aspect-decomposition follows directly from "smaller, more
+  declarations."
+* xref:../../migration-playbook.adoc#decision-criteria[`mut` vs `State`
+  decision criterion] — gave a defensible answer once we asked "do
+  consumers observe the mutation across calls or within a tick?"
+* The Float → Int compromise *and* the requirement to document the
+  scaling factors — flowed directly from xref:idaptik-hitbox.adoc[the
+  hitbox lesson's existing rule].
+
+=== Gap surfaced
+
+**Aspect-decomposition vs single-record translation is not named in the
+playbook.** The cardinal rule says "more, smaller declarations" and the
+file-buffer anti-pattern shows two-types-from-one — but a *six-field
+mutable record with three orthogonal concerns* is a distinct pattern
+that wants its own row in the source-pattern index.
+
+*Proposed for a v1.2 follow-up:* a row in the ReScript pattern index for
+"record with N orthogonal aspects bundled into one type" with the
+decomposition "fission into N nominally distinct types whose lifetimes
+and consumers differ; compose them in a parent type only when they
+genuinely share a lifetime." This is *the* central pattern of game-state
+migration and deserves explicit naming.
+
+=== Decision criterion not exercised
+
+The xref:../../migration-playbook.adoc#decision-criteria[coupled-writes
+subsection added in v1.1] did not apply here — PlayerHP has no
+persistence and no IO. That is information about the v1.1 addition's
+scope, not a gap.
+
+== What this lesson covers, generalised
+
+When translating a `.res` file with **multi-field mutable state**:
+
+. **Look at the fields by consumer, not by name.** If different
+  consumers read disjoint subsets of the fields, the bundling is
+  incidental, not structural. Fission.
+. **Choose `mut` vs `State` by call-site distance.** If all mutators
+  run inside one tick under one owner, `mut` is honest. If the
+  mutation must be observed across an asynchronous boundary, lift to
+  `State`.
+. **Do not lift to `State` to *organise* the code.** Effects are for
+  observability across callers, not for namespace cleanliness.
+. **Document Float→Int scaling factors at the file header.** The next
+  translator inherits the precision compromise; do not make them
+  rediscover it.
+
+== Reproducibility
+
+[NOTE]
+====
+This lesson is design-translated; the toolchain run is pending. The
+steps below match xref:idaptik-hitbox.adoc#reproducibility[the hitbox
+lesson's Reproducibility section] and should produce the same shape of
+output.
+====
+
+[source,bash]
+----
+$ just affinescript-stage
+$ ./scripts/affinescript-host-shim.sh check    src/app/combat/PlayerHP.affine
+# Expected: "Type checking passed"
+$ ./scripts/affinescript-host-shim.sh compile  src/app/combat/PlayerHP.affine -o src/app/combat/PlayerHP.wasm
+# Expected: "Compiled src/app/combat/PlayerHP.affine -> src/app/combat/PlayerHP.wasm (WASM)"
+----
+
+When the toolchain run completes, replace this NOTE with the actual
+output (matching hitbox's format) and link the resulting `.wasm` size in
+the file header. If the run fails on a v0.1.0 limitation not anticipated
+here, **edit the lesson** — that is exactly the case study a future
+translator most needs.
