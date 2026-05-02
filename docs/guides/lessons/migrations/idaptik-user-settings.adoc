@@ -287,9 +287,13 @@ when the stdlib catches up.
   the actual destination is `docs/guides/lessons/migrations/`.
   *Proposed fix: one-line correction, alongside this lesson's commit.*
 
-Gap (3) is fixed in the same commit as this file. Gaps (1) and (2) are
-playbook-text changes deferred to a v1.1 follow-up so the policy PR (#36)
-can land focused.
+Gap (3) is fixed in the same commit as this file. Gaps (1) and (2) were
+deferred to a v1.1 follow-up so the policy PR (#36) could land focused;
+both are now addressed in playbook v1.1 — see the
+xref:../../migration-playbook.adoc#source-pattern-index[service-locator
+row in the ReScript table] and the
+xref:../../migration-playbook.adoc#decision-criteria[coupled-writes
+subsection in Decision Criteria].
 
 == What this lesson covers, generalised
 
