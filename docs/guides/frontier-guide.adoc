@@ -1,10 +1,19 @@
 // SPDX-License-Identifier: PMPL-1.0-or-later
 = AffineScript Frontier Guide: The Unveiling
 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
-2026-04-11
+v1.0, 2026-04-11
 :toc:
 :icons: font
 :source-highlighter: rouge
+:revnumber: 1.0
+:revdate: 2026-04-11
+
+[NOTE]
+====
+Status: **canonical, living document.** This guide is the design reference for AffineScript itself and for any migration into AffineScript. Edits are welcome; record them in the <<revision-history>> appendix so the timeline is visible to future readers and AI agents.
+
+For systematic translation patterns from ReScript, TypeScript, or another `-script` family language, read this guide first, then the link:migration-playbook.adoc[Migration Playbook].
+====
 
 The Frontier Guide takes you from "I write JavaScript / Python" to
 "I understand why AffineScript's design choices produce better programs."
@@ -359,6 +368,8 @@ fn fetch_with_retry(
 == What to Read Next
 
 - link:warmup/README.adoc[Warmup scripts] — hands-on exercises, 15 minutes each
+- link:migration-playbook.adoc[Migration Playbook] — systematic re-decomposition rules for porting ReScript / TypeScript / other `-script` codebases into AffineScript
+- link:frontier-programming-practices/Human_Programming_Guide.adoc[Frontier Programming Practices] — the wider design philosophy (v2.0, 2026-04-10)
 - link:../specs/SPEC.md[Language Specification] — the authoritative grammar and semantics
 - link:../specs/SETTLED-DECISIONS.adoc[Settled Decisions] — architectural choices and why they were made
 - link:../DESIGN-VISION.adoc[Design Vision] — the long view
@@ -383,3 +394,18 @@ AffineScript.  Error messages are translated back to the face you chose, so
 
 Additional faces (JS-face, Pseudocode-face, and others) are on the roadmap.
 See link:../specs/faces.md[faces.md] for the architecture.
+
+[appendix#revision-history]
+== Revision History
+
+This document is intended to evolve. When you change it — adding a chapter, sharpening an example, retiring an obsolete claim — record the change here so that downstream readers (especially AI agents loading the guide at session start) can see what has moved.
+
+[cols="1,1,3"]
+|===
+| Revision | Date | Notes
+
+| 1.0
+| 2026-04-11
+| Initial unveiling. The six X-Script problems and AffineScript's answers; chapters 1–6; complete-program example; faces.
+
+|===
