@@ -51,7 +51,12 @@ __pycache__/
 # Ada/SPARK
 *.ali
 /obj/
-/bin/
+# `/bin/` excludes the directory itself, which makes git unable to re-include
+# files inside it (negations can't re-include children of an excluded dir).
+# `/bin/*` excludes the *contents* so `!bin/*.ml` and `!bin/dune` actually
+# re-include their targets. The previous `/bin/` form silently dropped
+# bin/dune from origin and broke CI's executable build.
+/bin/*
 !bin/*.ml
 !bin/dune
 

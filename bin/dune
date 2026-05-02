@@ -1,0 +1,7 @@
+; SPDX-License-Identifier: MIT OR AGPL-3.0-or-later
+
+(executable
+ (name main)
+ (public_name affinescript)
+ (package affinescript)
+ (libraries affinescript cmdliner fmt fmt.tty))
