@@ -1,7 +1,11 @@
 // Test if-expression constant folding
 
 fn main() -> Int {
-  let x = if true { 42; } else { 0; };   // Should fold to 42
-  let y = if false { 99; } else { 10; }; // Should fold to 10
+  // No trailing semicolons inside the if-branches: a trailing `;` makes
+  // the branch return Unit, so `let x = if ...` would fail with
+  // "Unification error: (Unify.TypeMismatch (Unit, Int))". The bare
+  // expression form returns Int.
+  let x = if true { 42 } else { 0 };   // Should fold to 42
+  let y = if false { 99 } else { 10 }; // Should fold to 10
   return x + y;  // 42 + 10 = 52
 }
