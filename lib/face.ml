@@ -23,6 +23,8 @@ type face =
   | Python      (** Python-style surface syntax; Python-friendly messages. *)
   | Js          (** JavaScript/TypeScript-style syntax; JS-friendly messages. *)
   | Pseudocode  (** Natural-language-adjacent pseudocode; beginner-friendly messages. *)
+  | Lucid       (** PureScript/Haskell-style surface; Haskell-family vocabulary. *)
+  | Cafe        (** CoffeeScript-style surface; concise JS-family vocabulary. *)
 
 (* ─── Helpers ────────────────────────────────────────────────────────── *)
 
@@ -47,6 +49,19 @@ let render_ty (face : face) (ty : Types.ty) : string =
   | Pseudocode ->
     let s = if s = "Unit" then "nothing" else s in
     let s = if s = "Bool" then "Boolean" else s in
+    s
+  | Lucid ->
+    (* PureScript/Haskell vocabulary: Unit stays Unit, Bool → Boolean,
+       Option[T] → Maybe T (PureScript spelling). *)
+    let s = if s = "Bool" then "Boolean" else s in
+    let s = Str.global_replace (Str.regexp {|Option\[\(.*\)\]|}) {|Maybe \1|} s in
+    s
+  | Cafe ->
+    (* CoffeeScript inherits JS types; render in JS-style with the
+       optional postfix [?] for Option (CoffeeScript existential). *)
+    let s = if s = "Unit" then "null" else s in
+    let s = if s = "Bool" then "Boolean" else s in
+    let s = Str.global_replace (Str.regexp {|Option\[\(.*\)\]|}) {|\1?|} s in
     s
 
 (* ─── Quantity / ownership errors ────────────────────────────────────── *)
@@ -138,6 +153,59 @@ let format_quantity_error (face : face) (err : Quantity.quantity_error) : string
       in
       Printf.sprintf "ERROR: '%s' was declared as %s but used in an inconsistent way."
         id.name decl)
+  | Lucid ->
+    (match err with
+    | Quantity.LinearVariableUnused id ->
+      Printf.sprintf
+        "Linearity error: linear variable '%s' is never consumed.\n\
+         A linear value must be consumed exactly once. Bind it to '_' \
+         or pass it to a function that takes ownership."
+        id.name
+    | Quantity.LinearVariableUsedMultiple id ->
+      Printf.sprintf
+        "Linearity error: linear variable '%s' is used more than once.\n\
+         A linear value cannot be duplicated. Use Data.Clone (clone) to \
+         produce an independent copy, or refactor so it flows through a \
+         single consumer."
+        id.name
+    | Quantity.ErasedVariableUsed id ->
+      Printf.sprintf
+        "Erasure error: '%s' has multiplicity 0 and exists only at compile time. \
+         It cannot appear in a runtime expression."
+        id.name
+    | Quantity.QuantityMismatch (id, q, _u) ->
+      let decl = match q with
+        | Ast.QZero -> "Erased (multiplicity 0)"
+        | Ast.QOne -> "Linear (multiplicity 1)"
+        | Ast.QOmega -> "Unrestricted (multiplicity ω)"
+      in
+      Printf.sprintf
+        "Multiplicity error: '%s' was declared %s but is used at a different multiplicity."
+        id.name decl)
+  | Cafe ->
+    (match err with
+    | Quantity.LinearVariableUnused id ->
+      Printf.sprintf
+        "Resource leak: '%s' is a one-shot value but was never used.\n\
+         hint: pass it to something that consumes it, or rename to '_%s'."
+        id.name id.name
+    | Quantity.LinearVariableUsedMultiple id ->
+      Printf.sprintf
+        "Resource error: '%s' is a one-shot value — you used it more than once.\n\
+         hint: clone before the second use, or restructure so it's consumed only once."
+        id.name
+    | Quantity.ErasedVariableUsed id ->
+      Printf.sprintf
+        "Compile-time value '%s' cannot show up at runtime."
+        id.name
+    | Quantity.QuantityMismatch (id, q, _u) ->
+      let decl = match q with
+        | Ast.QZero -> "compile-time"
+        | Ast.QOne -> "one-shot"
+        | Ast.QOmega -> "shareable"
+      in
+      Printf.sprintf "Resource error: '%s' was declared %s but used inconsistently."
+        id.name decl)
 
 (* ─── Unification errors ─────────────────────────────────────────────── *)
 
@@ -204,6 +272,46 @@ let format_unify_error (face : face) (ue : Unify.unify_error) : string =
       "TYPE ERROR: wrong kind of type argument"
     | Unify.LabelNotFound (label, _) ->
       Printf.sprintf "FIELD ERROR: the record has no field named '%s'" label)
+  | Lucid ->
+    (match ue with
+    | Unify.TypeMismatch (expected, got) ->
+      Printf.sprintf "Could not match type '%s' with type '%s'"
+        (render_ty face got)
+        (render_ty face expected)
+    | Unify.OccursCheck _ ->
+      "Cannot construct the infinite type — a type variable refers to itself"
+    | Unify.RowMismatch _ ->
+      "Could not match record type — labels differ"
+    | Unify.RowOccursCheck _ ->
+      "Cannot construct the infinite record type"
+    | Unify.EffectMismatch _ ->
+      "Could not match effect rows — function performs effects not in its signature"
+    | Unify.EffectOccursCheck _ ->
+      "Cannot construct the infinite effect row"
+    | Unify.KindMismatch _ ->
+      "Kind mismatch — type-level argument has the wrong kind"
+    | Unify.LabelNotFound (label, _) ->
+      Printf.sprintf "No field '%s' in record" label)
+  | Cafe ->
+    (match ue with
+    | Unify.TypeMismatch (expected, got) ->
+      Printf.sprintf "Type doesn't fit: expected %s, got %s"
+        (render_ty face expected)
+        (render_ty face got)
+    | Unify.OccursCheck _ ->
+      "Type loops back on itself"
+    | Unify.RowMismatch _ ->
+      "Object shape doesn't match — missing or extra fields"
+    | Unify.RowOccursCheck _ ->
+      "Object type loops back on itself"
+    | Unify.EffectMismatch _ ->
+      "Effect mismatch: function does effects that weren't declared"
+    | Unify.EffectOccursCheck _ ->
+      "Effect type loops back on itself"
+    | Unify.KindMismatch _ ->
+      "Type argument is the wrong kind"
+    | Unify.LabelNotFound (label, _) ->
+      Printf.sprintf "No field '%s' on this object" label)
 
 (* ─── Type errors ────────────────────────────────────────────────────── *)
 
@@ -328,6 +436,82 @@ let format_type_error (face : face) (err : Typecheck.type_error) : string =
         (render_ty face else_ty)
     | Typecheck.QuantityError (qerr, _span) ->
       format_quantity_error face qerr)
+  | Lucid ->
+    (match err with
+    | Typecheck.UnboundVariable v ->
+      Printf.sprintf "Variable not in scope: '%s'\n\
+                      hint: bring it into scope with 'import' or define it with '%s = ...'."
+        v v
+    | Typecheck.TypeMismatch { expected; got } ->
+      Printf.sprintf "Could not match expected type '%s' with actual type '%s'"
+        (render_ty face expected)
+        (render_ty face got)
+    | Typecheck.OccursCheck (v, ty) ->
+      Printf.sprintf "Cannot construct the infinite type: %s ~ %s"
+        v (render_ty face ty)
+    | Typecheck.NotImplemented msg ->
+      Printf.sprintf "Compiler limitation: %s" msg
+    | Typecheck.ArityMismatch { name; expected; got } ->
+      Printf.sprintf "'%s' takes %d argument%s but was applied to %d"
+        name expected (if expected = 1 then "" else "s") got
+    | Typecheck.NotAFunction ty ->
+      Printf.sprintf "This is not a function: it has type %s" (render_ty face ty)
+    | Typecheck.FieldNotFound { field; record_ty } ->
+      Printf.sprintf "No field '%s' in record of type '%s'"
+        field (render_ty face record_ty)
+    | Typecheck.TupleIndexOutOfBounds { index; length } ->
+      Printf.sprintf "Tuple index %d out of range (tuple has %d element%s)"
+        index length (if length = 1 then "" else "s")
+    | Typecheck.DuplicateField f ->
+      Printf.sprintf "Duplicate label '%s' in record" f
+    | Typecheck.UnificationError ue ->
+      format_unify_error face ue
+    | Typecheck.PatternTypeMismatch msg ->
+      Printf.sprintf "Pattern match error: %s" msg
+    | Typecheck.BranchTypeMismatch { then_ty; else_ty } ->
+      Printf.sprintf
+        "Branches of 'if' have different types: then-branch returns %s, \
+         else-branch returns %s — both branches must agree."
+        (render_ty face then_ty)
+        (render_ty face else_ty)
+    | Typecheck.QuantityError (qerr, _span) ->
+      format_quantity_error face qerr)
+  | Cafe ->
+    (match err with
+    | Typecheck.UnboundVariable v ->
+      Printf.sprintf "Can't find '%s'.\n\
+                      hint: declare it first with '%s = ...'." v v
+    | Typecheck.TypeMismatch { expected; got } ->
+      Printf.sprintf "Type doesn't fit: expected %s, got %s."
+        (render_ty face expected)
+        (render_ty face got)
+    | Typecheck.OccursCheck (v, ty) ->
+      Printf.sprintf "Type '%s' loops back on itself: %s = %s"
+        v v (render_ty face ty)
+    | Typecheck.NotImplemented msg ->
+      Printf.sprintf "Compiler limitation: %s" msg
+    | Typecheck.ArityMismatch { name; expected; got } ->
+      Printf.sprintf "'%s' wants %d argument%s but got %d."
+        name expected (if expected = 1 then "" else "s") got
+    | Typecheck.NotAFunction ty ->
+      Printf.sprintf "This isn't callable — it's a %s." (render_ty face ty)
+    | Typecheck.FieldNotFound { field; record_ty } ->
+      Printf.sprintf "No field '%s' on type %s." field (render_ty face record_ty)
+    | Typecheck.TupleIndexOutOfBounds { index; length } ->
+      Printf.sprintf "Tuple index %d out of range (length %d)." index length
+    | Typecheck.DuplicateField f ->
+      Printf.sprintf "Field '%s' appears twice." f
+    | Typecheck.UnificationError ue ->
+      format_unify_error face ue
+    | Typecheck.PatternTypeMismatch msg ->
+      Printf.sprintf "Pattern error: %s" msg
+    | Typecheck.BranchTypeMismatch { then_ty; else_ty } ->
+      Printf.sprintf
+        "Branches don't match: then→%s, else→%s. Both branches need the same type."
+        (render_ty face then_ty)
+        (render_ty face else_ty)
+    | Typecheck.QuantityError (qerr, _span) ->
+      format_quantity_error face qerr)
 
 (* ─── Borrow errors ──────────────────────────────────────────────────── *)
 
@@ -347,6 +531,21 @@ let format_borrow_error (face : face) (err : Borrow.borrow_error) : string =
      | _ -> "Ownership error: " ^ msg)
   | Js          -> Borrow.format_borrow_error err
   | Pseudocode  -> Borrow.format_borrow_error err
+  | Lucid       ->
+    (* Linear-Haskell vocabulary: borrowing is ownership transfer. *)
+    let msg = Borrow.format_borrow_error err in
+    (match err with
+     | Borrow.UseAfterMove _ ->
+       "Linearity error (use-after-move): " ^ msg
+     | Borrow.CannotBorrowAsMutable _ ->
+       "Aliasing error (mutable borrow blocked): " ^ msg
+     | _ -> "Linearity error: " ^ msg)
+  | Cafe        ->
+    let msg = Borrow.format_borrow_error err in
+    (match err with
+     | Borrow.UseAfterMove _ -> "Use-after-move: " ^ msg
+     | Borrow.CannotBorrowAsMutable _ -> "Cannot borrow as mutable: " ^ msg
+     | _ -> "Borrow error: " ^ msg)
 
 (* ─── Resolve errors ─────────────────────────────────────────────────── *)
 
@@ -412,3 +611,42 @@ let format_resolve_error (face : face) (err : Resolve.resolve_error) : string =
       Printf.sprintf "ERROR: '%s' is not accessible here: %s" id.name msg
     | Resolve.ImportError msg ->
       Printf.sprintf "IMPORT ERROR: %s" msg)
+  | Lucid ->
+    (match err with
+    | Resolve.UndefinedVariable id ->
+      Printf.sprintf "Variable not in scope: '%s'\n\
+                      hint: import the module that exports it, or define it with '%s = ...'."
+        id.name id.name
+    | Resolve.UndefinedType id ->
+      Printf.sprintf "Type constructor not in scope: '%s'\n\
+                      hint: declare 'data %s = ...' or import it."
+        id.name id.name
+    | Resolve.UndefinedEffect id ->
+      Printf.sprintf "Effect '%s' not in scope" id.name
+    | Resolve.UndefinedModule id ->
+      Printf.sprintf "Could not find module '%s'\n\
+                      hint: 'import %s' at the top of the file."
+        id.name id.name
+    | Resolve.DuplicateDefinition id ->
+      Printf.sprintf "Multiple declarations of '%s'" id.name
+    | Resolve.VisibilityError (id, msg) ->
+      Printf.sprintf "'%s' is not exported from its module: %s" id.name msg
+    | Resolve.ImportError msg ->
+      Printf.sprintf "Import error: %s" msg)
+  | Cafe ->
+    (match err with
+    | Resolve.UndefinedVariable id ->
+      Printf.sprintf "Can't find '%s'.\n\
+                      hint: assign to it first with '%s = ...'." id.name id.name
+    | Resolve.UndefinedType id ->
+      Printf.sprintf "Can't find type '%s' — declare or import it." id.name
+    | Resolve.UndefinedEffect id ->
+      Printf.sprintf "Effect '%s' isn't in scope." id.name
+    | Resolve.UndefinedModule id ->
+      Printf.sprintf "No module '%s' — require it first." id.name
+    | Resolve.DuplicateDefinition id ->
+      Printf.sprintf "'%s' is already defined here." id.name
+    | Resolve.VisibilityError (id, msg) ->
+      Printf.sprintf "'%s' isn't accessible: %s" id.name msg
+    | Resolve.ImportError msg ->
+      Printf.sprintf "Import error: %s" msg)

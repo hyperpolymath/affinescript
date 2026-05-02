@@ -76,12 +76,16 @@ On top of that core, the language supports _faces_: sugared surface syntaxes tha
 
 A face is not a separate language. It is a different presentation layer over the same core model.
 
-Examples include:
+The established faces are:
 
 - *AffineScript* — the canonical face
-- *JaffaScript* — a JavaScript-like face
-- *RattleScript* — a Python-like face
-- *PseudoScript* — a pseudocode-oriented face
+- *JaffaScript* — a JavaScript / TypeScript-like face
+- *RattleScript* — a Python-like face (also positioned as "Python for the web" via typed-wasm)
+- *PseudoScript* — a pseudocode-oriented face for CS pedagogy
+- *LucidScript* — a PureScript / Haskell-like face
+- *CafeScripto* — a CoffeeScript-like face
+
+Every face shares the canonical `.affine` file extension; the active face is selected by an optional `face:` pragma on the first comment line of the file (e.g. `# face: rattlescript`, `// face: jaffascript`, `-- face: lucidscript`), or by `--face NAME` on the CLI.
 
 This means people can bring familiarity from a language family they already love, while still entering a system with stronger guarantees around ownership, effects, state, and resource usage.
 
@@ -312,11 +316,15 @@ face syntax  ->  AffineScript core AST  ->  type/effect/ownership checks  ->  ba
 
 Examples:
 
-- JaffaScript lowers JavaScript-like syntax into the AffineScript core
+- JaffaScript lowers JavaScript / TypeScript-like syntax into the AffineScript core
 - RattleScript lowers Python-like syntax into the same core
 - PseudoScript lowers structured pedagogical pseudocode into the same core
+- LucidScript lowers PureScript / Haskell-like syntax into the same core
+- CafeScripto lowers CoffeeScript-like syntax into the same core
 
-So the question is not “which face is the real language?”  
+Side-by-side examples for each face live under `examples/faces/`; you can preview the canonical lowering of any file with `affinescript preview-python` / `preview-js` / `preview-pseudocode` / `preview-lucid` / `preview-cafe`.
+
+So the question is not “which face is the real language?”
 The answer is: the core semantics are the language; faces are entrances.
 
 == Backends and Targets

@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell
+#
+# CafeScripto face. Distinctive features exercised: `#` line comments,
+# `###` block comments, paren-arrow `(args) -> body`, bare-arrow `-> body`,
+# Yes/No/On/Off literal aliases.
+# face: cafescripto
+
+###
+  All other CoffeeScript surface conveniences — postfix-if, @ shorthand,
+  `unless`/`until`, list comprehensions, no-paren calls — are documented
+  in examples/faces/README.adoc with their current support status.
+###
+
+effect IO {
+  fn println(s: String) -> ();
+}
+
+fn main() -{IO}-> () {
+  let greeting = "Hello, CafeScripto!";
+  let ready = Yes;
+  println(greeting);
+}

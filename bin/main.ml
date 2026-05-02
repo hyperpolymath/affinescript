@@ -59,25 +59,44 @@ let lex_file path =
     Format.eprintf "@[<v>%s:%d:%d: error: %s@]@." path pos.line pos.col msg;
     `Error (false, "Lexer error")
 
-(** Resolve the effective face, promoting Canonical → face-from-extension when
-    the file extension implies a specific face.  This means a user can run
-    [affinescript check hello.rattle] with no [--face] flag and get
-    Python-face automatically.  An explicit [--face canonical] overrides. *)
-let resolve_face face path =
+(** Resolve the effective face. Priority order, highest first:
+
+    1. An explicit non-Canonical [--face] flag (always wins).
+    2. A [face:] pragma in the leading comment lines of the source file
+       (see {!Affinescript.Face_pragma}). This is the recommended mechanism
+       once every source file shares the canonical [.affine] extension.
+    3. A deprecated face-implying file extension ([.rattle], [.pyaff],
+       [.jsaff], [.pseudoaff]). Triggers a one-line stderr warning.
+    4. Canonical default.
+
+    [quiet] suppresses the deprecation notice for JSON and LSP commands
+    whose stderr is consumed by tools (LSP clients, CI, editors). *)
+let resolve_face ?(quiet = false) face path =
   match face with
   | Affinescript.Face.Canonical ->
-    let ext =
-      try
-        let dot = String.rindex path '.' in
-        String.sub path (dot + 1) (String.length path - dot - 1)
-      with Not_found -> ""
-    in
-    (match ext with
-    | "rattle"    -> Affinescript.Face.Python     (* RattleScript *)
-    | "pyaff"     -> Affinescript.Face.Python
-    | "jsaff"     -> Affinescript.Face.Js
-    | "pseudoaff" -> Affinescript.Face.Pseudocode
-    | _           -> Affinescript.Face.Canonical)
+    (match Affinescript.Face_pragma.detect_in_file path with
+    | Some f -> f
+    | None ->
+      let ext =
+        try
+          let dot = String.rindex path '.' in
+          String.sub path (dot + 1) (String.length path - dot - 1)
+        with Not_found -> ""
+      in
+      let warn_deprecated alias =
+        if not quiet then
+          Format.eprintf
+            "@[<v>warning: file extension .%s is deprecated; \
+             rename to .affine and add a pragma '# face: %s' on the first \
+             line (use --face %s to silence this warning)@]@."
+            ext alias alias
+      in
+      (match ext with
+      | "rattle"    -> warn_deprecated "rattle";     Affinescript.Face.Python
+      | "pyaff"     -> warn_deprecated "python";     Affinescript.Face.Python
+      | "jsaff"     -> warn_deprecated "js";         Affinescript.Face.Js
+      | "pseudoaff" -> warn_deprecated "pseudocode"; Affinescript.Face.Pseudocode
+      | _           -> Affinescript.Face.Canonical))
   | other -> other   (* explicit --face flag always wins *)
 
 (** Parse a file using the requested face. *)
@@ -87,6 +106,8 @@ let parse_with_face (face : Affinescript.Face.face) path =
   | Affinescript.Face.Python      -> Affinescript.Python_face.parse_file_python path
   | Affinescript.Face.Js          -> Affinescript.Js_face.parse_file_js path
   | Affinescript.Face.Pseudocode  -> Affinescript.Pseudocode_face.parse_file_pseudocode path
+  | Affinescript.Face.Lucid       -> Affinescript.Lucid_face.parse_file_lucid path
+  | Affinescript.Face.Cafe        -> Affinescript.Cafe_face.parse_file_cafe path
 
 (** Preview the Python-face text transform (debug tool). *)
 let preview_python_transform path =
@@ -112,6 +133,22 @@ let preview_pseudocode_transform path =
   print_string (Affinescript.Pseudocode_face.preview_transform s);
   `Ok ()
 
+(** Preview the Lucid-face (PureScript-style) text transform (debug tool). *)
+let preview_lucid_transform path =
+  let ch = open_in_bin path in
+  let s = really_input_string ch (in_channel_length ch) in
+  close_in ch;
+  print_string (Affinescript.Lucid_face.preview_transform s);
+  `Ok ()
+
+(** Preview the Cafe-face (CoffeeScript-style) text transform (debug tool). *)
+let preview_cafe_transform path =
+  let ch = open_in_bin path in
+  let s = really_input_string ch (in_channel_length ch) in
+  close_in ch;
+  print_string (Affinescript.Cafe_face.preview_transform s);
+  `Ok ()
+
 (** Parse a file and print AST (no --json support). *)
 let parse_file (face : Affinescript.Face.face) path =
   let face = resolve_face face path in
@@ -131,7 +168,7 @@ let parse_file (face : Affinescript.Face.face) path =
 (** Type-check a file.  With [--json], emits a structured diagnostic
     report on stderr. *)
 let check_file face json path =
-  let face = resolve_face face path in
+  let face = resolve_face ~quiet:json face path in
   if json then begin
     let diags = ref [] in
     let add d = diags := d :: !diags in
@@ -227,7 +264,7 @@ let check_file face json path =
 (** Evaluate a file with the interpreter.  With [--json], emits
     diagnostics on stderr instead of human-readable error text. *)
 let eval_file face json path =
-  let face = resolve_face face path in
+  let face = resolve_face ~quiet:json face path in
   if json then begin
     let diags = ref [] in
     let add d = diags := d :: !diags in
@@ -441,7 +478,7 @@ let repl_cmd_fn () =
     compilation errors.  With [--wasm-gc], targets the WebAssembly GC
     proposal instead of WASM 1.0 linear memory. *)
 let compile_file face json wasm_gc path output =
-  let face = resolve_face face path in
+  let face = resolve_face ~quiet:json face path in
   if json then begin
     let diags = ref [] in
     let add d = diags := d :: !diags in
@@ -467,6 +504,9 @@ let compile_file face json wasm_gc path output =
               add (Affinescript.Json_output.of_quantity_error (err, span))
             | Ok () ->
             let is_julia = Filename.check_suffix output ".jl" in
+            let is_js = Filename.check_suffix output ".js" in
+            let is_c = Filename.check_suffix output ".c" in
+            let is_wgsl = Filename.check_suffix output ".wgsl" in
             if is_julia then begin
               match Affinescript.Julia_codegen.codegen_julia prog resolve_ctx.symbols with
               | Error msg ->
@@ -476,6 +516,36 @@ let compile_file face json wasm_gc path output =
               | Ok julia_code ->
                 let oc = open_out output in
                 output_string oc julia_code;
+                close_out oc
+            end else if is_js then begin
+              match Affinescript.Js_codegen.codegen_js prog resolve_ctx.symbols with
+              | Error msg ->
+                add { severity = Error; code = "E0803";
+                      message = Printf.sprintf "JS codegen error: %s" msg;
+                      span = Affinescript.Span.dummy; help = None; labels = [] }
+              | Ok js_code ->
+                let oc = open_out output in
+                output_string oc js_code;
+                close_out oc
+            end else if is_c then begin
+              match Affinescript.C_codegen.codegen_c prog resolve_ctx.symbols with
+              | Error msg ->
+                add { severity = Error; code = "E0804";
+                      message = Printf.sprintf "C codegen error: %s" msg;
+                      span = Affinescript.Span.dummy; help = None; labels = [] }
+              | Ok c_code ->
+                let oc = open_out output in
+                output_string oc c_code;
+                close_out oc
+            end else if is_wgsl then begin
+              match Affinescript.Wgsl_codegen.codegen_wgsl prog resolve_ctx.symbols with
+              | Error msg ->
+                add { severity = Error; code = "E0805";
+                      message = Printf.sprintf "WGSL codegen error: %s" msg;
+                      span = Affinescript.Span.dummy; help = None; labels = [] }
+              | Ok wgsl_code ->
+                let oc = open_out output in
+                output_string oc wgsl_code;
                 close_out oc
             end else if wasm_gc then begin
               match Affinescript.Codegen_gc.generate_gc_module prog with
@@ -536,6 +606,9 @@ let compile_file face json wasm_gc path output =
             | Ok () ->
           begin
             let is_julia = Filename.check_suffix output ".jl" in
+            let is_js = Filename.check_suffix output ".js" in
+            let is_c = Filename.check_suffix output ".c" in
+            let is_wgsl = Filename.check_suffix output ".wgsl" in
             if is_julia then
               (match Affinescript.Julia_codegen.codegen_julia prog resolve_ctx.symbols with
               | Error e ->
@@ -546,6 +619,39 @@ let compile_file face json wasm_gc path output =
                 output_string oc julia_code;
                 close_out oc;
                 Format.printf "Compiled %s -> %s (Julia)@." path output;
+                `Ok ())
+            else if is_js then
+              (match Affinescript.Js_codegen.codegen_js prog resolve_ctx.symbols with
+              | Error e ->
+                Format.eprintf "@[<v>JS codegen error: %s@]@." e;
+                `Error (false, "JS codegen error")
+              | Ok js_code ->
+                let oc = open_out output in
+                output_string oc js_code;
+                close_out oc;
+                Format.printf "Compiled %s -> %s (JS)@." path output;
+                `Ok ())
+            else if is_c then
+              (match Affinescript.C_codegen.codegen_c prog resolve_ctx.symbols with
+              | Error e ->
+                Format.eprintf "@[<v>C codegen error: %s@]@." e;
+                `Error (false, "C codegen error")
+              | Ok c_code ->
+                let oc = open_out output in
+                output_string oc c_code;
+                close_out oc;
+                Format.printf "Compiled %s -> %s (C)@." path output;
+                `Ok ())
+            else if is_wgsl then
+              (match Affinescript.Wgsl_codegen.codegen_wgsl prog resolve_ctx.symbols with
+              | Error e ->
+                Format.eprintf "@[<v>WGSL codegen error: %s@]@." e;
+                `Error (false, "WGSL codegen error")
+              | Ok wgsl_code ->
+                let oc = open_out output in
+                output_string oc wgsl_code;
+                close_out oc;
+                Format.printf "Compiled %s -> %s (WGSL)@." path output;
                 `Ok ())
             else if wasm_gc then
               (match Affinescript.Codegen_gc.generate_gc_module prog with
@@ -599,6 +705,12 @@ let fmt_file face path =
   | Affinescript.Face.Pseudocode ->
     Format.eprintf "fmt --face pseudocode is not yet supported \
                     (reverse pseudocode transform is pending).@."; ()
+  | Affinescript.Face.Lucid ->
+    Format.eprintf "fmt --face lucid is not yet supported \
+                    (reverse Lucid/PureScript transform is pending).@."; ()
+  | Affinescript.Face.Cafe ->
+    Format.eprintf "fmt --face cafe is not yet supported \
+                    (reverse Cafe/CoffeeScript transform is pending).@."; ()
   | Affinescript.Face.Canonical -> ());
   try
     Affinescript.Formatter.format_file path;
@@ -616,7 +728,7 @@ let fmt_file face path =
 (** Lint a file.  With [--json], emits lint diagnostics as structured
     JSON on stderr. *)
 let lint_file face json path =
-  let face = resolve_face face path in
+  let face = resolve_face ~quiet:json face path in
   if json then begin
     let diags = ref [] in
     let add d = diags := d :: !diags in
@@ -812,24 +924,55 @@ let wasm_gc_arg =
 (** Shared --face flag: select the parser surface-syntax face. *)
 let face_arg =
   let faces = Arg.enum [
-    ("canonical",  Affinescript.Face.Canonical);
-    ("python",     Affinescript.Face.Python);
-    ("js",         Affinescript.Face.Js);
-    ("javascript", Affinescript.Face.Js);
-    ("pseudocode", Affinescript.Face.Pseudocode);
-    ("pseudo",     Affinescript.Face.Pseudocode);
+    (* Generic names. *)
+    ("canonical",    Affinescript.Face.Canonical);
+    ("python",       Affinescript.Face.Python);
+    ("js",           Affinescript.Face.Js);
+    ("javascript",   Affinescript.Face.Js);
+    ("pseudocode",   Affinescript.Face.Pseudocode);
+    ("pseudo",       Affinescript.Face.Pseudocode);
+    ("lucid",        Affinescript.Face.Lucid);
+    ("purescript",   Affinescript.Face.Lucid);
+    ("cafe",         Affinescript.Face.Cafe);
+    ("coffee",       Affinescript.Face.Cafe);
+    ("coffeescript", Affinescript.Face.Cafe);
+    (* Brand names from README.adoc — "Different faces, same cube". *)
+    ("affinescript", Affinescript.Face.Canonical);
+    ("rattle",       Affinescript.Face.Python);
+    ("rattlescript", Affinescript.Face.Python);
+    ("jaffa",        Affinescript.Face.Js);
+    ("jaffascript",  Affinescript.Face.Js);
+    ("pseudoscript", Affinescript.Face.Pseudocode);
+    ("lucidscript",  Affinescript.Face.Lucid);
+    ("cafescripto",  Affinescript.Face.Cafe);
   ] in
   Arg.(value & opt faces Affinescript.Face.Canonical & info ["face"]
     ~docv:"FACE"
-    ~doc:"Parser face (surface-syntax variant). \
-          $(b,canonical) (default) — standard AffineScript. \
-          $(b,python) — Python-style syntax ($(b,def)/indentation/$(b,True)/$(b,None)/etc.). \
-          $(b,js) or $(b,javascript) — JavaScript-style syntax \
+    ~doc:"Parser face (surface-syntax variant). The established faces \
+          (per README.adoc — 'different faces, same cube'): \
+          $(b,canonical)/$(b,affinescript) (default) — the canonical face. \
+          $(b,python)/$(b,rattle)/$(b,rattlescript) — Python-style \
+          ($(b,def)/indentation/$(b,True)/$(b,None)/etc.). \
+          $(b,js)/$(b,javascript)/$(b,jaffa)/$(b,jaffascript) — JavaScript-style \
           ($(b,const)/$(b,let)/$(b,function)/$(b,=>)/$(b,null)/$(b,===)/import-from). \
-          $(b,pseudocode) or $(b,pseudo) — natural-language pseudocode \
+          $(b,pseudocode)/$(b,pseudo)/$(b,pseudoscript) — natural-language pseudocode \
           ($(b,function)/$(b,set...to)/$(b,if...then)/$(b,end)/$(b,is)/$(b,and)/etc.). \
-          All faces compile to the same canonical AST; errors are reported \
-          in face-appropriate vocabulary.")
+          $(b,lucid)/$(b,lucidscript)/$(b,purescript) — PureScript-style \
+          ($(b,module … where)/$(b,data)/$(b,class)/$(b,instance)/$(b,case … of)/\
+           $(b,\\x ->)/$(b,let … in)/$(b,True)/$(b,--) comments). \
+          $(b,cafe)/$(b,cafescripto)/$(b,coffee)/$(b,coffeescript) — CoffeeScript-style \
+          ($(b,->)/$(b,=>)/$(b,@)/$(b,unless)/$(b,until)/postfix-if/postfix-unless/\
+           $(b,Yes)/$(b,No)/$(b,On)/$(b,Off)/$(b,#) comments/$(b,###) blocks). \
+          All faces compile to the same canonical AST and produce identical \
+          typed-wasm output; errors are reported in face-appropriate \
+          vocabulary. Resolution order when this flag is omitted: \
+          (1) a $(b,face:) pragma in the source file's leading comment lines \
+          (e.g. $(b,'# face: rattlescript') or $(b,'-- face: lucidscript')); \
+          (2) a deprecated face-implying extension \
+          ($(b,.rattle), $(b,.pyaff), $(b,.jsaff), $(b,.pseudoaff)) — \
+          warns and is scheduled for removal; \
+          (3) Canonical. The recommended layout is $(b,.affine) everywhere \
+          with a pragma on the first line of non-canonical files.")
 
 let lex_cmd =
   let doc = "Lex a file and print tokens" in
@@ -1121,7 +1264,7 @@ let repl_cmd =
   Cmd.v info Term.(ret (const repl_cmd_fn $ const ()))
 
 let compile_cmd =
-  let doc = "Compile a file to WebAssembly (1.0 or GC proposal) or Julia" in
+  let doc = "Compile a file to WebAssembly (1.0 or GC proposal), Julia (.jl), JavaScript (.js), C (.c), or a WGSL kernel (.wgsl)" in
   let info = Cmd.info "compile" ~doc in
   Cmd.v info Term.(ret (const compile_file $ face_arg $ json_arg $ wasm_gc_arg $ path_arg $ output_arg))
 
@@ -1149,6 +1292,16 @@ let preview_pseudocode_cmd =
   let doc = "Preview the pseudocode-face text transform (debug)" in
   let info = Cmd.info "preview-pseudocode" ~doc in
   Cmd.v info Term.(ret (const preview_pseudocode_transform $ path_arg))
+
+let preview_lucid_cmd =
+  let doc = "Preview the Lucid-face (PureScript) text transform (debug)" in
+  let info = Cmd.info "preview-lucid" ~doc in
+  Cmd.v info Term.(ret (const preview_lucid_transform $ path_arg))
+
+let preview_cafe_cmd =
+  let doc = "Preview the Cafe-face (CoffeeScript) text transform (debug)" in
+  let info = Cmd.info "preview-cafe" ~doc in
+  Cmd.v info Term.(ret (const preview_cafe_transform $ path_arg))
 
 (** {1 Phase B: hover and goto-definition subcommands}
 
@@ -1201,7 +1354,7 @@ let run_pipeline_for_query face path =
 
 (** Hover subcommand handler. *)
 let hover_file face path line col =
-  let face = resolve_face face path in
+  let face = resolve_face ~quiet:true face path in
   (match run_pipeline_for_query face path with
    | None ->
      Affinescript.Json_output.emit_hover None
@@ -1212,7 +1365,7 @@ let hover_file face path line col =
 
 (** Goto-definition subcommand handler. *)
 let goto_def_file face path line col =
-  let face = resolve_face face path in
+  let face = resolve_face ~quiet:true face path in
   (match run_pipeline_for_query face path with
    | None ->
      Affinescript.Json_output.emit_goto_def None
@@ -1290,7 +1443,7 @@ let server_cmd =
     of completion candidates on stdout.  Emits an empty array on pipeline
     failure so the editor doesn't break. *)
 let complete_file face path line col =
-  let face = resolve_face face path in
+  let face = resolve_face ~quiet:true face path in
   let source = read_file path in
   (match run_pipeline_for_query face path with
    | None ->
@@ -1328,7 +1481,8 @@ let default_cmd =
     tea_bridge_cmd; router_bridge_cmd; cs_bridge_cmd; verify_cmd;
     interface_cmd; verify_bridge_cmd; verify_boundary_cmd;
     hover_cmd; goto_def_cmd; complete_cmd; server_cmd;
-    preview_python_cmd; preview_js_cmd; preview_pseudocode_cmd
+    preview_python_cmd; preview_js_cmd; preview_pseudocode_cmd;
+    preview_lucid_cmd; preview_cafe_cmd
   ]
 
 let () = exit (Cmd.eval default_cmd)

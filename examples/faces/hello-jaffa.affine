@@ -1,0 +1,16 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell
+//
+// JaffaScript face. Distinctive features exercised: `function` keyword,
+// `const`/`let` bindings (let lowers to let mut), brace-delimited
+// blocks, `===` equality.
+// face: jaffascript
+
+effect IO {
+  fn println(s: String) -> ();
+}
+
+function main() -{IO}-> () {
+  const greeting = "Hello, JaffaScript!";
+  println(greeting);
+}

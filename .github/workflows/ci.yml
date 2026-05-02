@@ -40,6 +40,9 @@ jobs:
       - name: Run codegen WASM tests
         run: opam exec -- ./tools/run_codegen_wasm_tests.sh
 
+      - name: Run face-transformer regression tests
+        run: opam exec -- ./tools/run_face_transformer_tests.sh
+
       - name: Check formatting
         run: opam exec -- dune build @fmt
 

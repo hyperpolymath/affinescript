@@ -35,6 +35,18 @@ test:
 conformance:
     dune runtest conformance
 
+# Run face-transformer regression tests (snapshot diff + round-trip parse)
+test-faces:
+    ./tools/run_face_transformer_tests.sh
+
+# Record any missing face-transformer snapshots (first-run / new face)
+test-faces-record:
+    ./tools/run_face_transformer_tests.sh --record-missing
+
+# Update all face-transformer snapshots (intentional transformer change)
+test-faces-update:
+    ./tools/run_face_transformer_tests.sh --update
+
 # ── Format / Lint ─────────────────────────────────────────────────────────────
 
 # Run format check (lint)

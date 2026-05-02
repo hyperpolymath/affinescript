@@ -1,0 +1,15 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell
+//
+// Canonical face — the AffineScript reference syntax. All other faces in
+// this directory lower to this same shape via their respective transformers.
+// face: canonical
+
+effect IO {
+  fn println(s: String) -> ();
+}
+
+fn main() -{IO}-> () {
+  let greeting = "Hello, AffineScript!";
+  println(greeting);
+}

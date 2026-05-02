@@ -1,0 +1,116 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell
+
+= Faces — Different Surfaces, Same Cube
+
+This directory contains the same logical "hello" program written once in each of the six established AffineScript faces. Every file:
+
+* uses the canonical `.affine` extension,
+* declares its face with a pragma on the first non-blank comment line (`# face: …`, `// face: …`, or `-- face: …`),
+* compiles to the same canonical AST and the same typed-wasm output.
+
+== The six files
+
+[cols="1,2,3"]
+|===
+| File | Face | Demonstrates
+
+| `hello-canonical.affine`
+| AffineScript (canonical)
+| The reference syntax — all other faces lower to this shape.
+
+| `hello-rattle.affine`
+| RattleScript (Python)
+| `def`, indentation blocks, `#` comments, `True`/`False`/`None`, `and`/`or`/`not`, `import a.b`.
+
+| `hello-jaffa.affine`
+| JaffaScript (JavaScript / TypeScript)
+| `function`, `const`/`let`, `import { x } from "m"`, `null`/`undefined`, `===`/`!==`.
+
+| `hello-pseudo.affine`
+| PseudoScript (pseudocode)
+| `function … do … end`, `set X to Y`, `output X`, `is`/`is not`, `yes`/`no`, `and`/`or`.
+
+| `hello-lucid.affine`
+| LucidScript (PureScript / Haskell)
+| `module … where`, dotted imports with `(name)` lists, `name :: Type` signatures, equation-style `f x = …`, `\x -> …` lambdas, `--` comments.
+
+| `hello-cafe.affine`
+| CafeScripto (CoffeeScript)
+| `#` and `###` comments, `->` / `=>` arrows, `@` shorthand, `unless`/`until`, postfix-if, `Yes`/`No`/`On`/`Off`.
+|===
+
+== See the lowering
+
+The `preview-*` debug commands run a face through its transformer and print the canonical AffineScript text it produces — no parsing, no type-checking, just the string-to-string transform.
+
+[source,bash]
+----
+# Show how RattleScript lowers
+affinescript preview-python  examples/faces/hello-rattle.affine
+
+# Show how JaffaScript lowers
+affinescript preview-js      examples/faces/hello-jaffa.affine
+
+# Show how PseudoScript lowers
+affinescript preview-pseudocode examples/faces/hello-pseudo.affine
+
+# Show how LucidScript lowers
+affinescript preview-lucid   examples/faces/hello-lucid.affine
+
+# Show how CafeScripto lowers
+affinescript preview-cafe    examples/faces/hello-cafe.affine
+----
+
+The output of each `preview-*` command is the same logical program in canonical AffineScript syntax, modulo whitespace and comment placement. Diffing two previews is a good way to see what each transformer actually does.
+
+== Parse-only verification
+
+To confirm a face file lowers to syntactically valid canonical AffineScript:
+
+[source,bash]
+----
+affinescript parse examples/faces/hello-rattle.affine
+----
+
+(The face is auto-detected from the pragma; pass `--face NAME` to force a specific face.)
+
+== Caveats
+
+* These examples demonstrate *surface syntax*. They are written to round-trip through their respective transformers (preview → canonical → parse) so the regression test in `tests/faces/` can catch drift, not to be full type-correct, runnable programs. That depends on what's in scope from `stdlib/`.
+* Span fidelity: error messages from non-canonical faces refer to the canonical-text form (post-transform), not the original face source. This is a known limitation of all face transformers, including the original three.
+* The examples deliberately avoid features each transformer can't yet handle. Known transformer gaps that the simpler examples sidestep:
++
+[cols="1,3"]
+|===
+| Face | Pending transformer work
+
+| Python (Rattle)
+| Bare assignment `x = y` is not yet auto-lifted to `let x = y` (the example uses explicit `let`); `import a.b` lowering does not produce the canonical `use a::b::{…};` brace form.
+
+| JS (Jaffa)
+| `import { x } from "module";` lowering has a string-stripping bug when the trailing `;` is present (the example avoids `import` entirely for now).
+
+| Pseudocode (Pseudo)
+| No automatic `;` between non-tail statements — examples use single-statement function bodies. Token substitutions can bleed into comment text (e.g. `or` → `\|\|` inside a `//` comment). `output X` lowers to `IO.println(X)` rather than canonical `println(X)`.
+
+| Lucid (PureScript)
+| Haskell-style currying calls `f x` are NOT converted to canonical `f(x)` — the example uses canonical paren syntax. Multi-clause definitions, `do`-notation, and `where`-block hoisting are deferred to AST-level rewrites.
+
+| Cafe (CoffeeScript)
+| List comprehensions, no-paren calls, splat / destructuring, and string interpolation are deferred to AST-level rewrites.
+|===
++
+These gaps are tracked as follow-up work; the regression test in this directory will catch drift in *what does work today*, and additional examples can be added once the corresponding transformer feature lands.
+
+== Adding a new face
+
+The architecture (ADR-010) makes adding a face mechanical:
+
+1. Add a variant to `lib/face.ml`'s `face` type.
+2. Write a `lib/<name>_face.ml` text transformer (model on `python_face.ml`, `js_face.ml`, `pseudocode_face.ml`, `lucid_face.ml`, or `cafe_face.ml`).
+3. Add error-vocabulary branches in `lib/face.ml`'s six `format_*_for_face` functions.
+4. Register in `bin/main.ml`: `parse_with_face` arm, `face_arg` enum entry, optional `preview-*` debug command.
+5. Add name aliases to `lib/face_pragma.ml`.
+
+No compiler internals change: the transformer outputs canonical text, which the existing pipeline (resolve → typecheck → borrow → quantity → codegen → tw_verify) processes unchanged.

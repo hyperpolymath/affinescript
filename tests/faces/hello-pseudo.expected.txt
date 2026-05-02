@@ -1,0 +1,17 @@
+// SPDX-License-Identifier: AGPL-3.0-||-later
+// SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell
+//
+// PseudoScript face. Distinctive features exercised:
+// function ... do ... end blocks, `--` Haskell/SQL-style comments.
+// (Note: pseudocode-face does not yet auto-insert statement separators,
+// so this minimal demo keeps each function body to a single expression.
+// See examples/faces/README.adoc for a list of pending transformer gaps.)
+// face: pseudoscript
+
+effect IO {
+  fn println(s: String) -> ();
+}
+
+fn main() -{IO}-> () {
+    println("Hello, PseudoScript!")
+}
