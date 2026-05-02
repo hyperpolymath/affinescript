@@ -304,6 +304,89 @@ In the intended deployment, AffineScript serves as the "brain" — logic, physic
 
 The AffineScript side is where the correctness guarantees live: affine resource tracking, row-polymorphic domain models, refinement-typed invariants. The frontend side is where the ergonomics of JS are most useful: DOM, WebGL, input handling.
 
+== Faces: Frontend Surfaces
+
+A face is a sugared surface syntax over the canonical AffineScript AST. AffineScript ships with six established faces — canonical, RattleScript (Python-like), JaffaScript (JS/TS-like), PseudoScript (pedagogy), LucidScript (PureScript/Haskell-like), and CafeScripto (CoffeeScript-like). The six rules below were earned during the May-2026 buildout of LucidScript and CafeScripto, and during the eject of the five non-canonical faces into their own brand-surface repos.
+
+=== Faces Are Brand Surfaces, Not Compiler Forks
+
+A face is a *transformer* (one OCaml module in `lib/<name>_face.ml`) plus a *brand repo* (README, examples, a thin shim that defaults `--face`). The brand repo carries no parser, no checker, no codegen. The compiler lives here, in `affinescript`, and there is exactly one of it.
+
+Symptoms of forgetting this: the brand repo grows a `Cargo.toml`, a vendored copy of the canonical compiler, or a separate binary. Each of those is a divergence vector. When the canonical type checker gains a feature, every fork has to re-port it. After two forks, no two faces type-check the same program the same way.
+
+The shim pattern (used by all five non-canonical face repos):
+
+[source,bash]
+----
+#!/usr/bin/env bash
+if [ $# -eq 0 ]; then
+  exec affinescript
+fi
+subcmd="$1"
+shift
+exec affinescript "$subcmd" --face <face_name> "$@"
+----
+
+That is the entire delivery surface. Anything more, and you have a fork.
+
+=== Identity Belongs in Content, Not in the Filesystem
+
+Every face uses the canonical `.affine` extension. The face is selected by a `face:` pragma on the first comment line, or by `--face NAME` on the CLI. Per-face extensions (`.rattle`, `.pyaff`, `.jsaff`, `.lucidaff`, `.cafeaff`) were tried and abandoned.
+
+Why the single extension wins:
+
+- Build tools, editors, and language servers configure once, not N times.
+- A file rename never changes its semantics.
+- Polyglot directories don't need per-face glob patterns.
+- A face transformer is free to evolve its sugar without breaking file discovery.
+
+The pragma is the source of truth. Extension dispatch is kept around as a deprecation path only.
+
+=== Pure Text-to-Text Transformers Need Snapshot Tests Plus Round-Trip Parse
+
+A face transformer is a string-to-string function over source text. The cheap, high-signal test for it is a snapshot diff plus a round-trip parse:
+
+. Run `preview-<face>` over an example file, capture stdout.
+. Diff against `tests/faces/<base>.expected.txt`. If the snapshot moves, you see exactly what changed.
+. Parse the captured output as canonical. If parse fails, the transformer produced something the canonical grammar rejects.
+
+The May-2026 buildout shipped this as `tools/run_face_transformer_tests.sh` with three modes — `check` (default), `--update` (rewrite snapshots), `--record-missing` (bootstrap). On its first run it caught five distinct transformer bugs across Lucid and Cafe that visual review had missed. None of the five would have been visible without the round-trip parse step.
+
+The lesson generalises beyond faces: any pure text-to-text transformer in the codebase (formatter, codegen, source rewriter) deserves the same snapshot-plus-roundtrip harness.
+
+=== Examples Are Tests, Not Demonstrations
+
+Every file under `examples/faces/` must round-trip clean through the snapshot test. If an example exercises a transformer gap and won't round-trip, simplify the example until it does — or fix the transformer.
+
+The discipline is what makes the face system honest. An example that breaks round-trip but ships in the README anyway is a documented falsehood. The README either matches the test suite, or one of them is lying.
+
+When a real-world program hits a known transformer gap, that gap goes in the `examples/faces/README.adoc` "Known transformer gaps" list, with a one-line workaround. The example file itself uses the workaround. Users discover the gap through the docs, not through a confused parse error on their own code.
+
+=== Error-Vocabulary Cost Scales as O(faces × error_kinds)
+
+When a face is added, every error class the user can hit needs a face-appropriate phrasing. A Haskell-shaped surface should not say "borrow checker rejected this binding" — it should say "Linearity error" or "Could not match type". A CoffeeScript-shaped surface should not say "linearity violation in 'do' notation" because there is no `do` notation.
+
+The codebase keeps this cost manageable by routing every user-facing error string through `lib/face.ml`'s dispatch table (`format_*_for_face` functions). Adding a face means adding one arm per error kind. There is no shortcut: face-shaped vocabulary is part of the face contract.
+
+If the dispatch table starts to lag the parser/checker, the face slowly leaks canonical-flavoured errors and the brand promise erodes. The fix is mechanical, not creative — keep the table in sync.
+
+=== Span Fidelity Has a UX Cost
+
+A face transformer rewrites the user's source. The line numbers in any subsequent error message refer to the *transformed canonical text*, not the user's original face source. This is a real UX regression compared to writing canonical directly.
+
+Three honest options:
+
+- Document the regression in the face's README under "Caveats".
+- Have the transformer record a span map from canonical to source, and have the diagnostic layer translate.
+- Build the face into the parser proper (cmdliner already supports `--face`), which costs more in the parser and saves the span work.
+
+The May-2026 buildout chose the first option for all five non-canonical faces, because they are alpha and the alternative is a substantial parser refactor. The choice is recorded honestly. Do not paper over it with phantom span improvements.
+
+[NOTE]
+====
+Two further lessons from the May-2026 work — the *adapt-then-commit* pattern for ejecting an existing GitHub repo with history preserved, and the *focused-add discipline* for committing in a working tree that has unrelated dirty changes — are operational rather than language-level. They live in a separate playbook rather than in this scope document.
+====
+
 == Design Principles
 
 === Ergonomics Over Expressiveness

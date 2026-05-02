@@ -17,6 +17,13 @@ jobs:
   scan:
     name: Hypatia Neurosymbolic Analysis
     runs-on: ubuntu-latest
+    env:
+      # ${{ env.HOME }} is empty in working-directory context (HOME is not in
+      # env unless explicitly set), which makes the directory resolve to "/hypatia"
+      # and the build step fails with "No such file or directory". A job-level env
+      # var is visible to both shell ($HYPATIA_DIR) and Actions expressions
+      # (${{ env.HYPATIA_DIR }}).
+      HYPATIA_DIR: /home/runner/hypatia
 
     steps:
       - name: Checkout repository
@@ -32,12 +39,12 @@ jobs:
 
       - name: Clone Hypatia
         run: |
-          if [ ! -d "$HOME/hypatia" ]; then
-            git clone https://github.com/hyperpolymath/hypatia.git "$HOME/hypatia"
+          if [ ! -d "$HYPATIA_DIR" ]; then
+            git clone https://github.com/hyperpolymath/hypatia.git "$HYPATIA_DIR"
           fi
 
       - name: Build Hypatia scanner (if needed)
-        working-directory: ${{ env.HOME }}/hypatia
+        working-directory: ${{ env.HYPATIA_DIR }}
         run: |
           if [ ! -f hypatia-v2 ]; then
             echo "Building hypatia-v2 scanner..."
@@ -52,7 +59,7 @@ jobs:
           echo "Scanning repository: ${{ github.repository }}"
 
           # Run scanner
-          HYPATIA_FORMAT=json "$HOME/hypatia/hypatia-cli.sh" scan . > hypatia-findings.json
+          HYPATIA_FORMAT=json "$HYPATIA_DIR/hypatia-cli.sh" scan . > hypatia-findings.json
 
           # Count findings
           FINDING_COUNT=$(jq '. | length' hypatia-findings.json 2>/dev/null || echo 0)

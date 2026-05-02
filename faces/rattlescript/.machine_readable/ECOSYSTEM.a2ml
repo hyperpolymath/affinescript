@@ -1,8 +1,0 @@
-;; SPDX-License-Identifier: PMPL-1.0-or-later
-;; Ecosystem position and relationships
-(ecosystem
-  (version "1.0.0")
-  (name "rattlescript")
-  (type "library")
-  (purpose "{{REPO_DESCRIPTION}}")
-  (related-projects))

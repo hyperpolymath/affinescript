@@ -1,5 +1,0 @@
-# Regex patterns for justified permission-policy exceptions.
-# One pattern per line.
-# Example:
-# ^vendor/
-# ^third_party/
