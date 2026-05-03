@@ -1,0 +1,112 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+= AffineScript: Effects Migration Stance
+:author: Jonathan D.A. Jewell (hyperpolymath)
+:revdate: 2026-05-02
+:revnumber: 1.0.0-draft
+:toc: left
+:icons: font
+
+[NOTE]
+====
+*Status:* draft. This document closes the gap migrators hit when *effect tracking* (in scope) interacts with *effect handling* (out of scope). It does not announce a runtime; it describes the intended posture *until* the handler design is settled.
+====
+
+== The gap
+
+`AI.a2ml` is unambiguous:
+
+> `algebraic-effect-handlers` — `(reason "interaction-with-affine-is-unresolved")`
+> "Effect TRACKING is in scope. Effect HANDLING is not."
+
+This is a sound, deliberate position. It is also a *practical* dead-end for migrators: when you translate code that reads or writes shared state, the migration playbook says "lift to a `State` effect" — and then you need a way to actually *run* the program. With no handlers, the function signature compiles but the program cannot execute.
+
+A large fraction of any real `-script` codebase is operations against shared mutable state, executed for their side effects (singletons, registries, DOM, network). Without guidance, migrators hit this gate, stall, and either revert or invent ad-hoc workarounds that diverge across projects.
+
+This document picks one explicit interim posture and names it.
+
+== The interim posture
+
+For code that conceptually needs `State` / `IO` / `Async` / `Throws[E]` effects, **today's recommended migration path is option (b)** from the candidate list: **hand-written FFI shims that wrap the JS-side mutation as opaque foreign primitives, paired with effect *tracking* (no handling) at the AffineScript-side signature**.
+
+Concretely:
+
+* The AffineScript signature declares `/{IO, …}` so callers see what the function does.
+* The body is *not* an interpretable AffineScript expression that needs an effect handler. It is a call to a host primitive (provided via the `extern fn` mechanism, see https://github.com/hyperpolymath/affinescript/issues/42[#42]).
+* The host primitive does the actual mutation / IO / network call and returns a value (or `Result`).
+* Affine resources are never threaded through a handler-resumable continuation, so the soundness hole that motivated the out-of-scope decision is not reachable.
+
+This posture does not require implementing handlers. It uses the existing `extern` + effect-tracking machinery (once #42 lands) to express what the function does without resolving how to *intercept* effects in pure AffineScript.
+
+== What gets deferred, and why
+
+The following are explicitly *not* recommended in the interim:
+
+* **Option (a)** — defer translation entirely. Defensible for hot-path code, not viable for the breadth of a real migration.
+* **Option (c)** — encode state-passing manually with affine resources (no shared cell, but threaded). Theoretically clean, but rewrites the program's data flow on every call site that touches the state. The migration cost is unbounded; this is the option to keep in your back pocket for the few cases where shared state is *actually* a design smell.
+* **Option (d)** — wait for the handler design. Useful guidance for *new* code, not for migration.
+
+== What changes when handlers ship
+
+When the handler design lands and is integrated:
+
+* The interim FFI shims become *first-class* AffineScript code: the foreign primitive is replaced by a `handle eff …` block.
+* The signatures don't change — they already say what the function does.
+* Callers don't change either — `let v = doIO()?` still threads through the effect, just now interpreted in-AffineScript instead of by the host.
+* The migration through (b) is therefore *forward-compatible* with handlers, not a dead end that has to be unwound.
+
+== Examples for the most common patterns
+
+**Singleton state** (e.g. `let instance: ref<option<Engine>> = ref(None)`):
+
+[source,affinescript]
+----
+// extern declarations live in your ffi.affine module
+extern fn host_engine_get(): Option<Engine>;
+extern fn host_engine_set(e: Engine): Unit;
+
+pub fn engine_get(): Option<Engine> / {IO} {
+  host_engine_get()
+}
+
+pub fn engine_set(e: Engine): Unit / {IO} {
+  host_engine_set(e)
+}
+----
+
+The host side (Gossamer / Deno / browser JS) holds the mutable cell. AffineScript side declares `/{IO}` so callers know it's not pure. Future-handler-replaceable: when handlers ship, the body becomes a `handle State[Engine] …` block instead of an extern call.
+
+**Async network call**:
+
+[source,affinescript]
+----
+extern fn host_fetch(url: String): Promise<Response>;
+
+pub fn fetch(url: String): Response / {IO, Async} {
+  await host_fetch(url)
+}
+----
+
+The host promise is consumed via the `await` machinery (host-side); AffineScript declares `Async`. Same forward-compatibility property.
+
+**Logging / Console**:
+
+[source,affinescript]
+----
+extern fn host_console_log(msg: String): Unit;
+
+pub fn log(msg: String): Unit / {IO} {
+  host_console_log(msg)
+}
+----
+
+== Cross-reference
+
+* `AI.a2ml` `(out-of-scope.algebraic-effect-handlers)` — the canonical out-of-scope statement
+* https://github.com/hyperpolymath/affinescript/issues/42[#42] — `extern fn` parser support, prerequisite for this posture
+* https://github.com/hyperpolymath/idaptik[idaptik] migration — concrete consumer; surfaced this gap
+
+== Open questions
+
+* **Timeline for handler design.** Not pinned in this document; a separate roadmap question. Migrators should plan for "interim until handlers are designed", not "interim until next sprint".
+* **Cancellation semantics.** When an `Async`-effecting function holding an affine resource is cancelled, what happens? Same family of question as the handler-design issue. The interim FFI posture punts to host semantics (which is whatever Promise cancellation does in the host environment).
+* **`extern fn` integration with the affine quantity calculus.** When the host primitive consumes an affine value, does the type system know? Probably yes, via the extern's signature, but worth verifying once #42 lands.
