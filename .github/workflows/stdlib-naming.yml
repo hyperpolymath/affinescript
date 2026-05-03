@@ -1,0 +1,42 @@
+# SPDX-License-Identifier: PMPL-1.0-or-later
+# Stdlib naming convention check
+#
+# Enforces: stdlib/*.affine filenames are lowercase.
+#
+# Why: a 2026-04 transition introduced lowercase versions alongside
+# pre-existing PascalCase ones (Math.affine + math.affine etc.).
+# This caused a permanent case-collision on case-insensitive
+# filesystems (Windows NTFS, default macOS). Pinning the convention
+# at lowercase prevents the duplicate-file regression.
+
+name: Stdlib Naming Convention
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  enforce-lowercase-stdlib:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+
+      - name: Enforce lowercase .affine filenames in stdlib/
+        run: |
+          BAD=$(find stdlib -maxdepth 1 -type f -name '*.affine' | grep -E '/stdlib/[A-Z]' || true)
+          if [ -n "$BAD" ]; then
+            echo "❌ stdlib/ requires lowercase .affine filenames. Found:"
+            echo "$BAD"
+            echo ""
+            echo "Convention: stdlib/foo.affine, not stdlib/Foo.affine."
+            echo "PascalCase files cause case-collision on case-insensitive"
+            echo "filesystems (Windows NTFS, default macOS HFS+/APFS) when a"
+            echo "lowercase counterpart also exists in the tree."
+            exit 1
+          fi
+          echo "✅ stdlib/ filenames lowercase OK"
