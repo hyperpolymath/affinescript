@@ -138,6 +138,34 @@
       (composition "phantom + effect rows")
       (purpose "Mark values or functions as pure or impure in the type system for optimisation or testing.")
       (sketch "fn pure_compute(x: Int): Int  // no effect row = pure\nfn io_op(): String / {IO}  // effect row declares IO"))
+
+    (pattern
+      (name "per-element-error-extraction")
+      (composition "polymorphic-per-element + Validation")
+      (purpose "Accumulate errors from heterogeneously-typed Validation values without forcing them into a uniform list.")
+      (anti-pattern "List (Validation E a) when each element has a different `a` — non-starter type-theoretically; cannot unify a single `a` across heterogeneous components.")
+      (sketch "let allErrs = errsOf v1 ++ errsOf v2 ++ errsOf v3\n     where errsOf : Validation E a -> List E"))
+
+    (pattern
+      (name "fuel-based-total-recursion")
+      (composition "Nat parameter + structural decrease")
+      (purpose "Make recursive parsers / interpreters / search algorithms provably total without sized types.")
+      (anti-pattern "Depth tracking with `if depth > N then bail` — runtime guarantee, not provable. Totality checker cannot see incrementing parameters as well-founded.")
+      (sketch "fn parse(fuel: Nat, input: List Char) { match fuel { Z => Err(\"depth\"); S(f) => recurse(f, ...) } }"))
+
+    (pattern
+      (name "validation-chain-over-tuple-match")
+      (composition "Validation applicative + <*>")
+      (purpose "Accumulate errors across N independent extractions without N-tuple matches.")
+      (anti-pattern "case (a, b, c, d, e, f, g) of (Ok, Ok, Ok, ...) => ... — N>=5 tuple matches blow type inference / ambiguity-resolution budgets.")
+      (sketch "MkRecord <$> a <*> b <*> c <*> d <*> e <*> f <*> g"))
+
+    (pattern
+      (name "status-sum-vs-string-enum")
+      (composition "sum types")
+      (purpose "Distinguish status / kind values at compile time. Replaces stringly-typed dispatch (\"compromised\" / \"clean\" / etc.).")
+      (anti-pattern "dispatch(deviceId, \"compromised\") — typo \"compromied\" silently mis-matches at runtime.")
+      (sketch "type DeviceStatus = Compromised | Clean | Suspect | Unknown\nfn dispatch(d: DeviceId, s: DeviceStatus)"))
   )
 
   (agent-behavior
@@ -157,6 +185,12 @@
       (rule "Work that belongs in the Typed WASM project goes to the Typed WASM project. Never add it to AffineScript as a shortcut."))
     (honesty-in-documentation
       (rule "STATE.a2ml, README, and related docs must reflect what the code actually enforces, not what it aspires to. A 'dune build passing' is not a behavioural test and does not count as 'feature complete'."))
+    (stdlib-floor
+      (rule "Validation[E,A], Result[E,A], Option[A], and Either[E,A] are stdlib floor. Reject any project that re-implements them. Pointing migrators at canonical types prevents the heterogeneous-list-as-homogeneous antipattern."))
+    (eta-style
+      (rule "When a function has named pi-binders ((name : Type) -> ...), prefer eta-expanded definitions over point-free. Point-free is a parser-cascade trigger when the eta-rewrite's argument name disagrees with the declared signature's name."))
+    (no-side-effect-imports
+      (rule "AffineScript modules do not run code at load time. Migrating ReScript/JS code that uses `let _ = X.foo` for module-load side effects must be rewritten to call an explicit registration function. There is no implicit module-load-time side effect to hook in wasm."))
   )
 
   (relationship-with-typed-wasm-project
