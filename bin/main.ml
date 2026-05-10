@@ -489,8 +489,10 @@ let compile_file face json wasm_gc path output =
       (match Affinescript.Resolve.resolve_program_with_loader prog loader with
       | Error (e, span) ->
         add (Affinescript.Json_output.of_resolve_error e span)
-      | Ok (resolve_ctx, _type_ctx) ->
-        (match Affinescript.Typecheck.check_program resolve_ctx.symbols prog with
+      | Ok (resolve_ctx, import_type_ctx) ->
+        (match Affinescript.Typecheck.check_program
+                 ~import_types:import_type_ctx.Affinescript.Typecheck.name_types
+                 resolve_ctx.symbols prog with
         | Error e ->
           add (Affinescript.Json_output.of_type_error e)
         | Ok _type_ctx ->
@@ -503,6 +505,12 @@ let compile_file face json wasm_gc path output =
             | Error (err, span) ->
               add (Affinescript.Json_output.of_quantity_error (err, span))
             | Ok () ->
+            (* For non-Wasm codegens (Julia, JS, C, ReScript, ...), inline
+               imports into prog.prog_decls so each backend doesn't need its
+               own module-system implementation. The Wasm and Wasm-GC paths
+               use the original [prog] because they handle imports natively
+               via Codegen.gen_imports / the import section. *)
+            let flat_prog = Affinescript.Module_loader.flatten_imports loader prog in
             let is_julia = Filename.check_suffix output ".jl" in
             let is_js = Filename.check_suffix output ".js" in
             let is_c = Filename.check_suffix output ".c" in
@@ -526,7 +534,7 @@ let compile_file face json wasm_gc path output =
             let is_lean = Filename.check_suffix output ".lean" in
             let is_spirv = Filename.check_suffix output ".spv" in
             if is_julia then begin
-              match Affinescript.Julia_codegen.codegen_julia prog resolve_ctx.symbols with
+              match Affinescript.Julia_codegen.codegen_julia flat_prog resolve_ctx.symbols with
               | Error msg ->
                 add { severity = Error; code = "E0800";
                       message = Printf.sprintf "Julia codegen error: %s" msg;
@@ -536,7 +544,7 @@ let compile_file face json wasm_gc path output =
                 output_string oc julia_code;
                 close_out oc
             end else if is_js then begin
-              match Affinescript.Js_codegen.codegen_js prog resolve_ctx.symbols with
+              match Affinescript.Js_codegen.codegen_js flat_prog resolve_ctx.symbols with
               | Error msg ->
                 add { severity = Error; code = "E0803";
                       message = Printf.sprintf "JS codegen error: %s" msg;
@@ -546,7 +554,7 @@ let compile_file face json wasm_gc path output =
                 output_string oc js_code;
                 close_out oc
             end else if is_c then begin
-              match Affinescript.C_codegen.codegen_c prog resolve_ctx.symbols with
+              match Affinescript.C_codegen.codegen_c flat_prog resolve_ctx.symbols with
               | Error msg ->
                 add { severity = Error; code = "E0804";
                       message = Printf.sprintf "C codegen error: %s" msg;
@@ -556,7 +564,7 @@ let compile_file face json wasm_gc path output =
                 output_string oc c_code;
                 close_out oc
             end else if is_wgsl then begin
-              match Affinescript.Wgsl_codegen.codegen_wgsl prog resolve_ctx.symbols with
+              match Affinescript.Wgsl_codegen.codegen_wgsl flat_prog resolve_ctx.symbols with
               | Error msg ->
                 add { severity = Error; code = "E0805";
                       message = Printf.sprintf "WGSL codegen error: %s" msg;
@@ -566,7 +574,7 @@ let compile_file face json wasm_gc path output =
                 output_string oc wgsl_code;
                 close_out oc
             end else if is_faust then begin
-              match Affinescript.Faust_codegen.codegen_faust prog resolve_ctx.symbols with
+              match Affinescript.Faust_codegen.codegen_faust flat_prog resolve_ctx.symbols with
               | Error msg ->
                 add { severity = Error; code = "E0806";
                       message = Printf.sprintf "Faust codegen error: %s" msg;
@@ -576,7 +584,7 @@ let compile_file face json wasm_gc path output =
                 output_string oc faust_code;
                 close_out oc
             end else if is_onnx then begin
-              match Affinescript.Onnx_codegen.codegen_onnx prog resolve_ctx.symbols with
+              match Affinescript.Onnx_codegen.codegen_onnx flat_prog resolve_ctx.symbols with
               | Error msg ->
                 add { severity = Error; code = "E0807";
                       message = Printf.sprintf "ONNX codegen error: %s" msg;
@@ -591,37 +599,37 @@ let compile_file face json wasm_gc path output =
                      || is_why3 || is_lean || is_spirv then begin
               let (label, code, result) =
                 if is_ocaml then ("OCaml", "E0808",
-                  Affinescript.Ocaml_codegen.codegen_ocaml prog resolve_ctx.symbols)
+                  Affinescript.Ocaml_codegen.codegen_ocaml flat_prog resolve_ctx.symbols)
                 else if is_lua then ("Lua", "E0809",
-                  Affinescript.Lua_codegen.codegen_lua prog resolve_ctx.symbols)
+                  Affinescript.Lua_codegen.codegen_lua flat_prog resolve_ctx.symbols)
                 else if is_bash then ("Bash", "E0810",
-                  Affinescript.Bash_codegen.codegen_bash prog resolve_ctx.symbols)
+                  Affinescript.Bash_codegen.codegen_bash flat_prog resolve_ctx.symbols)
                 else if is_nickel then ("Nickel", "E0811",
-                  Affinescript.Nickel_codegen.codegen_nickel prog resolve_ctx.symbols)
+                  Affinescript.Nickel_codegen.codegen_nickel flat_prog resolve_ctx.symbols)
                 else if is_rescript then ("ReScript", "E0812",
-                  Affinescript.Rescript_codegen.codegen_rescript prog resolve_ctx.symbols)
+                  Affinescript.Rescript_codegen.codegen_rescript flat_prog resolve_ctx.symbols)
                 else if is_rust then ("Rust", "E0813",
-                  Affinescript.Rust_codegen.codegen_rust prog resolve_ctx.symbols)
+                  Affinescript.Rust_codegen.codegen_rust flat_prog resolve_ctx.symbols)
                 else if is_llvm then ("LLVM", "E0814",
-                  Affinescript.Llvm_codegen.codegen_llvm prog resolve_ctx.symbols)
+                  Affinescript.Llvm_codegen.codegen_llvm flat_prog resolve_ctx.symbols)
                 else if is_verilog then ("Verilog", "E0815",
-                  Affinescript.Verilog_codegen.codegen_verilog prog resolve_ctx.symbols)
+                  Affinescript.Verilog_codegen.codegen_verilog flat_prog resolve_ctx.symbols)
                 else if is_gleam then ("Gleam", "E0816",
-                  Affinescript.Gleam_codegen.codegen_gleam prog resolve_ctx.symbols)
+                  Affinescript.Gleam_codegen.codegen_gleam flat_prog resolve_ctx.symbols)
                 else if is_cuda then ("CUDA", "E0817",
-                  Affinescript.Cuda_codegen.codegen_cuda prog resolve_ctx.symbols)
+                  Affinescript.Cuda_codegen.codegen_cuda flat_prog resolve_ctx.symbols)
                 else if is_metal then ("Metal", "E0818",
-                  Affinescript.Metal_codegen.codegen_metal prog resolve_ctx.symbols)
+                  Affinescript.Metal_codegen.codegen_metal flat_prog resolve_ctx.symbols)
                 else if is_opencl then ("OpenCL", "E0819",
-                  Affinescript.Opencl_codegen.codegen_opencl prog resolve_ctx.symbols)
+                  Affinescript.Opencl_codegen.codegen_opencl flat_prog resolve_ctx.symbols)
                 else if is_mlir then ("MLIR", "E0820",
-                  Affinescript.Mlir_codegen.codegen_mlir prog resolve_ctx.symbols)
+                  Affinescript.Mlir_codegen.codegen_mlir flat_prog resolve_ctx.symbols)
                 else if is_why3 then ("Why3", "E0821",
-                  Affinescript.Why3_codegen.codegen_why3 prog resolve_ctx.symbols)
+                  Affinescript.Why3_codegen.codegen_why3 flat_prog resolve_ctx.symbols)
                 else if is_lean then ("Lean", "E0822",
-                  Affinescript.Lean_codegen.codegen_lean prog resolve_ctx.symbols)
+                  Affinescript.Lean_codegen.codegen_lean flat_prog resolve_ctx.symbols)
                 else ("SPIR-V", "E0823",
-                  Affinescript.Spirv_codegen.codegen_spirv prog resolve_ctx.symbols)
+                  Affinescript.Spirv_codegen.codegen_spirv flat_prog resolve_ctx.symbols)
               in
               match result with
               | Error msg ->
@@ -641,6 +649,20 @@ let compile_file face json wasm_gc path output =
                       span = Affinescript.Span.dummy; help = None; labels = [] }
               | Ok gc_module ->
                 Affinescript.Wasm_gc_encode.write_gc_module_to_file output gc_module
+            end else if Filename.check_suffix output ".cjs" then begin
+              (* Issue #35 Phase 1: Node-CJS shim around the compiled wasm. *)
+              let optimized_prog = Affinescript.Opt.fold_constants_program prog in
+              match Affinescript.Codegen.generate_module optimized_prog with
+              | Error e ->
+                add { severity = Error; code = "E0810";
+                      message = Printf.sprintf "Node-CJS codegen error: %s"
+                        (Affinescript.Codegen.show_codegen_error e);
+                      span = Affinescript.Span.dummy; help = None; labels = [] }
+              | Ok wasm_module ->
+                let cjs = Affinescript.Codegen_node.emit_node_cjs wasm_module in
+                let oc = open_out output in
+                output_string oc cjs;
+                close_out oc
             end else begin
               let optimized_prog = Affinescript.Opt.fold_constants_program prog in
               match Affinescript.Codegen.generate_module optimized_prog with
@@ -669,8 +691,10 @@ let compile_file face json wasm_gc path output =
         Format.eprintf "@[<v>Resolution error: %s@]@."
           (Affinescript.Face.format_resolve_error face e);
         `Error (false, "Resolution error")
-      | Ok (resolve_ctx, _type_ctx) ->
-        (match Affinescript.Typecheck.check_program resolve_ctx.symbols prog with
+      | Ok (resolve_ctx, import_type_ctx) ->
+        (match Affinescript.Typecheck.check_program
+                 ~import_types:import_type_ctx.Affinescript.Typecheck.name_types
+                 resolve_ctx.symbols prog with
         | Error e ->
           Format.eprintf "@[<v>%s@]@."
             (Affinescript.Face.format_type_error face e);
@@ -690,6 +714,10 @@ let compile_file face json wasm_gc path output =
               `Error (false, "Quantity error")
             | Ok () ->
           begin
+            (* See JSON-path notes above for the [flat_prog] rationale: inline
+               cross-module imports for backends that don't have native
+               module-system support. Wasm/Wasm-GC keep the original [prog]. *)
+            let flat_prog = Affinescript.Module_loader.flatten_imports loader prog in
             let is_julia = Filename.check_suffix output ".jl" in
             let is_js = Filename.check_suffix output ".js" in
             let is_c = Filename.check_suffix output ".c" in
@@ -713,7 +741,7 @@ let compile_file face json wasm_gc path output =
             let is_lean = Filename.check_suffix output ".lean" in
             let is_spirv = Filename.check_suffix output ".spv" in
             if is_julia then
-              (match Affinescript.Julia_codegen.codegen_julia prog resolve_ctx.symbols with
+              (match Affinescript.Julia_codegen.codegen_julia flat_prog resolve_ctx.symbols with
               | Error e ->
                 Format.eprintf "@[<v>Julia codegen error: %s@]@." e;
                 `Error (false, "Julia codegen error")
@@ -724,7 +752,7 @@ let compile_file face json wasm_gc path output =
                 Format.printf "Compiled %s -> %s (Julia)@." path output;
                 `Ok ())
             else if is_js then
-              (match Affinescript.Js_codegen.codegen_js prog resolve_ctx.symbols with
+              (match Affinescript.Js_codegen.codegen_js flat_prog resolve_ctx.symbols with
               | Error e ->
                 Format.eprintf "@[<v>JS codegen error: %s@]@." e;
                 `Error (false, "JS codegen error")
@@ -735,7 +763,7 @@ let compile_file face json wasm_gc path output =
                 Format.printf "Compiled %s -> %s (JS)@." path output;
                 `Ok ())
             else if is_c then
-              (match Affinescript.C_codegen.codegen_c prog resolve_ctx.symbols with
+              (match Affinescript.C_codegen.codegen_c flat_prog resolve_ctx.symbols with
               | Error e ->
                 Format.eprintf "@[<v>C codegen error: %s@]@." e;
                 `Error (false, "C codegen error")
@@ -746,7 +774,7 @@ let compile_file face json wasm_gc path output =
                 Format.printf "Compiled %s -> %s (C)@." path output;
                 `Ok ())
             else if is_wgsl then
-              (match Affinescript.Wgsl_codegen.codegen_wgsl prog resolve_ctx.symbols with
+              (match Affinescript.Wgsl_codegen.codegen_wgsl flat_prog resolve_ctx.symbols with
               | Error e ->
                 Format.eprintf "@[<v>WGSL codegen error: %s@]@." e;
                 `Error (false, "WGSL codegen error")
@@ -757,7 +785,7 @@ let compile_file face json wasm_gc path output =
                 Format.printf "Compiled %s -> %s (WGSL)@." path output;
                 `Ok ())
             else if is_faust then
-              (match Affinescript.Faust_codegen.codegen_faust prog resolve_ctx.symbols with
+              (match Affinescript.Faust_codegen.codegen_faust flat_prog resolve_ctx.symbols with
               | Error e ->
                 Format.eprintf "@[<v>Faust codegen error: %s@]@." e;
                 `Error (false, "Faust codegen error")
@@ -768,7 +796,7 @@ let compile_file face json wasm_gc path output =
                 Format.printf "Compiled %s -> %s (Faust)@." path output;
                 `Ok ())
             else if is_onnx then
-              (match Affinescript.Onnx_codegen.codegen_onnx prog resolve_ctx.symbols with
+              (match Affinescript.Onnx_codegen.codegen_onnx flat_prog resolve_ctx.symbols with
               | Error e ->
                 Format.eprintf "@[<v>ONNX codegen error: %s@]@." e;
                 `Error (false, "ONNX codegen error")
@@ -784,37 +812,37 @@ let compile_file face json wasm_gc path output =
                  || is_why3 || is_lean || is_spirv then
               let (label, result) =
                 if is_ocaml then ("OCaml",
-                  Affinescript.Ocaml_codegen.codegen_ocaml prog resolve_ctx.symbols)
+                  Affinescript.Ocaml_codegen.codegen_ocaml flat_prog resolve_ctx.symbols)
                 else if is_lua then ("Lua",
-                  Affinescript.Lua_codegen.codegen_lua prog resolve_ctx.symbols)
+                  Affinescript.Lua_codegen.codegen_lua flat_prog resolve_ctx.symbols)
                 else if is_bash then ("Bash",
-                  Affinescript.Bash_codegen.codegen_bash prog resolve_ctx.symbols)
+                  Affinescript.Bash_codegen.codegen_bash flat_prog resolve_ctx.symbols)
                 else if is_nickel then ("Nickel",
-                  Affinescript.Nickel_codegen.codegen_nickel prog resolve_ctx.symbols)
+                  Affinescript.Nickel_codegen.codegen_nickel flat_prog resolve_ctx.symbols)
                 else if is_rescript then ("ReScript",
-                  Affinescript.Rescript_codegen.codegen_rescript prog resolve_ctx.symbols)
+                  Affinescript.Rescript_codegen.codegen_rescript flat_prog resolve_ctx.symbols)
                 else if is_rust then ("Rust",
-                  Affinescript.Rust_codegen.codegen_rust prog resolve_ctx.symbols)
+                  Affinescript.Rust_codegen.codegen_rust flat_prog resolve_ctx.symbols)
                 else if is_llvm then ("LLVM",
-                  Affinescript.Llvm_codegen.codegen_llvm prog resolve_ctx.symbols)
+                  Affinescript.Llvm_codegen.codegen_llvm flat_prog resolve_ctx.symbols)
                 else if is_verilog then ("Verilog",
-                  Affinescript.Verilog_codegen.codegen_verilog prog resolve_ctx.symbols)
+                  Affinescript.Verilog_codegen.codegen_verilog flat_prog resolve_ctx.symbols)
                 else if is_gleam then ("Gleam",
-                  Affinescript.Gleam_codegen.codegen_gleam prog resolve_ctx.symbols)
+                  Affinescript.Gleam_codegen.codegen_gleam flat_prog resolve_ctx.symbols)
                 else if is_cuda then ("CUDA",
-                  Affinescript.Cuda_codegen.codegen_cuda prog resolve_ctx.symbols)
+                  Affinescript.Cuda_codegen.codegen_cuda flat_prog resolve_ctx.symbols)
                 else if is_metal then ("Metal",
-                  Affinescript.Metal_codegen.codegen_metal prog resolve_ctx.symbols)
+                  Affinescript.Metal_codegen.codegen_metal flat_prog resolve_ctx.symbols)
                 else if is_opencl then ("OpenCL",
-                  Affinescript.Opencl_codegen.codegen_opencl prog resolve_ctx.symbols)
+                  Affinescript.Opencl_codegen.codegen_opencl flat_prog resolve_ctx.symbols)
                 else if is_mlir then ("MLIR",
-                  Affinescript.Mlir_codegen.codegen_mlir prog resolve_ctx.symbols)
+                  Affinescript.Mlir_codegen.codegen_mlir flat_prog resolve_ctx.symbols)
                 else if is_why3 then ("Why3",
-                  Affinescript.Why3_codegen.codegen_why3 prog resolve_ctx.symbols)
+                  Affinescript.Why3_codegen.codegen_why3 flat_prog resolve_ctx.symbols)
                 else if is_lean then ("Lean",
-                  Affinescript.Lean_codegen.codegen_lean prog resolve_ctx.symbols)
+                  Affinescript.Lean_codegen.codegen_lean flat_prog resolve_ctx.symbols)
                 else ("SPIR-V",
-                  Affinescript.Spirv_codegen.codegen_spirv prog resolve_ctx.symbols)
+                  Affinescript.Spirv_codegen.codegen_spirv flat_prog resolve_ctx.symbols)
               in
               (match result with
               | Error e ->
@@ -836,9 +864,24 @@ let compile_file face json wasm_gc path output =
                 Affinescript.Wasm_gc_encode.write_gc_module_to_file output gc_module;
                 Format.printf "Compiled %s -> %s (WASM GC)@." path output;
                 `Ok ())
+            else if Filename.check_suffix output ".cjs" then
+              (* Issue #35 Phase 1: Node-CJS shim around the compiled wasm. *)
+              let optimized_prog = Affinescript.Opt.fold_constants_program prog in
+              (match Affinescript.Codegen.generate_module ~loader optimized_prog with
+              | Error e ->
+                Format.eprintf "@[<v>Node-CJS codegen error: %s@]@."
+                  (Affinescript.Codegen.show_codegen_error e);
+                `Error (false, "Node-CJS codegen error")
+              | Ok wasm_module ->
+                let cjs = Affinescript.Codegen_node.emit_node_cjs wasm_module in
+                let oc = open_out output in
+                output_string oc cjs;
+                close_out oc;
+                Format.printf "Compiled %s -> %s (Node-CJS)@." path output;
+                `Ok ())
             else
               let optimized_prog = Affinescript.Opt.fold_constants_program prog in
-              (match Affinescript.Codegen.generate_module optimized_prog with
+              (match Affinescript.Codegen.generate_module ~loader optimized_prog with
               | Error e ->
                 Format.eprintf "@[<v>Code generation error: %s@]@."
                   (Affinescript.Codegen.show_codegen_error e);
@@ -973,8 +1016,10 @@ let compile_to_wasm_module face path
       Format.eprintf "%s: resolution error: %s@." path
         (Affinescript.Face.format_resolve_error face e);
       Error "Resolution error"
-    | Ok (resolve_ctx, _type_ctx) ->
-      match Affinescript.Typecheck.check_program resolve_ctx.symbols prog with
+    | Ok (resolve_ctx, import_type_ctx) ->
+      match Affinescript.Typecheck.check_program
+              ~import_types:import_type_ctx.Affinescript.Typecheck.name_types
+              resolve_ctx.symbols prog with
       | Error e ->
         Format.eprintf "%s: %s@." path
           (Affinescript.Face.format_type_error face e);
@@ -1031,8 +1076,10 @@ let verify_file face path =
       Format.eprintf "Resolution error: %s@."
         (Affinescript.Face.format_resolve_error face e);
       `Error (false, "Resolution error")
-    | Ok (resolve_ctx, _type_ctx) ->
-      (match Affinescript.Typecheck.check_program resolve_ctx.symbols prog with
+    | Ok (resolve_ctx, import_type_ctx) ->
+      (match Affinescript.Typecheck.check_program
+               ~import_types:import_type_ctx.Affinescript.Typecheck.name_types
+               resolve_ctx.symbols prog with
       | Error e ->
         Format.eprintf "%s@."
           (Affinescript.Face.format_type_error face e);
@@ -1051,7 +1098,7 @@ let verify_file face path =
             `Error (false, "Quantity error")
           | Ok () ->
             let optimized_prog = Affinescript.Opt.fold_constants_program prog in
-            (match Affinescript.Codegen.generate_module optimized_prog with
+            (match Affinescript.Codegen.generate_module ~loader optimized_prog with
             | Error e ->
               Format.eprintf "Codegen error: %s@."
                 (Affinescript.Codegen.show_codegen_error e);

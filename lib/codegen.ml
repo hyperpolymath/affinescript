@@ -767,9 +767,13 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
 
                 (* Find or add this type *)
                 let type_idx =
-                  match List.find_index (fun t -> t = call_type) ctx_temp2.types with
-                  | Some idx -> idx
-                  | None -> List.length ctx_temp2.types
+                  (* OCaml 4.14 compat: List.find_index is 5.1+. Inline equivalent. *)
+                  let rec find_idx i = function
+                    | [] -> List.length ctx_temp2.types
+                    | t :: _ when t = call_type -> i
+                    | _ :: rest -> find_idx (i + 1) rest
+                  in
+                  find_idx 0 ctx_temp2.types
                 in
 
                 (* Call: push env, push user args, push func_id, call indirect *)
@@ -796,9 +800,13 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
 
         (* Find matching type index *)
         let type_idx =
-          match List.find_index (fun t -> t = call_type) ctx_with_lambda.types with
-          | Some idx -> idx
-          | None -> List.length ctx_with_lambda.types
+          (* OCaml 4.14 compat: List.find_index is 5.1+. Inline equivalent. *)
+          let rec find_idx i = function
+            | [] -> List.length ctx_with_lambda.types
+            | t :: _ when t = call_type -> i
+            | _ :: rest -> find_idx (i + 1) rest
+          in
+          find_idx 0 ctx_with_lambda.types
         in
 
         Ok (ctx_with_lambda, all_arg_code @ lambda_code @ [CallIndirect type_idx])
@@ -861,9 +869,13 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
 
         (* Find matching type index *)
         let type_idx =
-          match List.find_index (fun t -> t = call_type) ctx_final.types with
-          | Some idx -> idx
-          | None -> List.length ctx_final.types
+          (* OCaml 4.14 compat: List.find_index is 5.1+. Inline equivalent. *)
+          let rec find_idx i = function
+            | [] -> List.length ctx_final.types
+            | t :: _ when t = call_type -> i
+            | _ :: rest -> find_idx (i + 1) rest
+          in
+          find_idx 0 ctx_final.types
         in
 
         Ok (ctx_final, all_arg_code @ func_code @ [CallIndirect type_idx])
@@ -1773,8 +1785,50 @@ let gen_function (ctx : context) (fd : fn_decl) : (context * func) result =
   Ok (ctx_final, func)
 
 (** Generate code for a top-level declaration *)
+(** Find the index of [ft] in [types], or append it. Returns (idx, new_types). *)
+let intern_func_type (types : func_type list) (ft : func_type) : int * func_type list =
+  let rec find_idx i = function
+    | [] -> (List.length types, types @ [ft])
+    | t :: _ when t = ft -> (i, types)
+    | _ :: rest -> find_idx (i + 1) rest
+  in
+  find_idx 0 types
+
+(** Build a WASM-side [func_type] for a top-level function declaration, mirroring
+    the convention used by [gen_decl TopFn]: every param is i32, the result is
+    [i32]. Used both for local fn types and for imported fn types so that calls
+    through either path agree on signature. *)
+let func_type_of_fn_decl (fd : fn_decl) : func_type =
+  let params = List.map (fun _ -> I32) fd.fd_params in
+  let results = [I32] in
+  { ft_params = params; ft_results = results }
+
 let gen_decl (ctx : context) (decl : top_level) : context result =
   match decl with
+  | TopFn fd when fd.fd_body = FnExtern ->
+    (* `extern fn name(params) -> Ret;` — host-supplied implementation.
+       Emit a Wasm import entry under the conventional "env" namespace
+       (matches what the Node-CJS shim's import map populates) and register
+       the local alias in func_indices so call sites resolve normally.
+       Mirrors gen_imports's lowering for cross-module imports. *)
+    let ft = func_type_of_fn_decl fd in
+    let (type_idx, types_after) = intern_func_type ctx.types ft in
+    let import_func_idx = import_func_count ctx in
+    let import = {
+      i_module = "env";
+      i_name = fd.fd_name.name;
+      i_desc = ImportFunc type_idx;
+    } in
+    Ok { ctx with
+         types = types_after;
+         imports = ctx.imports @ [import];
+         func_indices = (fd.fd_name.name, import_func_idx) :: ctx.func_indices;
+       }
+
+  | TopType td when td.td_body = TyExtern ->
+    (* Opaque host-supplied type — no Wasm artifact. *)
+    Ok ctx
+
   | TopFn fd ->
     (* Create function type *)
     let param_types = List.map (fun _ -> I32) fd.fd_params in
@@ -1871,8 +1925,84 @@ let gen_decl (ctx : context) (decl : top_level) : context result =
     (* These declarations don't generate code *)
     Ok ctx
 
-(** Generate WASM module from AffineScript program *)
-let generate_module (prog : program) : wasm_module result =
+(** Cross-module imports: walk [prog.prog_imports], load each referenced module
+    via [loader], and for every imported function name register
+    a WASM [(import "<mod>" "<fn>" (func ...))] entry plus a
+    [(local_alias_name → func_idx)] mapping in [func_indices].
+
+    [ImportSimple] (e.g. [use Core]) brings the namespace itself but no specific
+    symbol; nothing to emit. [ImportList] emits one import per listed item.
+    [ImportGlob] enumerates every public [TopFn] in the loaded module.
+
+    The verifier matches imports by [i_name] only, so the [i_module] string is
+    informational; we use the dotted module path to keep it human-readable.
+
+    Silent on missing modules / non-function items / loader errors: the
+    resolver runs before codegen and would have already errored. *)
+let gen_imports (loader : Module_loader.t) (imports : import_decl list) (ctx : context)
+    : context result =
+  let process_one ctx (mod_path, orig_name, alias_opt) =
+    match Module_loader.load_module loader mod_path with
+    | Error _ -> Ok ctx
+    | Ok loaded ->
+      let fn_decl_opt = List.find_map (function
+        | TopFn fd when fd.fd_name.name = orig_name -> Some fd
+        | _ -> None
+      ) loaded.mod_program.prog_decls in
+      match fn_decl_opt with
+      | None -> Ok ctx
+      | Some fd ->
+        let local_name = Option.value alias_opt ~default:orig_name in
+        let ft = func_type_of_fn_decl fd in
+        let (type_idx, types_after) = intern_func_type ctx.types ft in
+        let import_func_idx = import_func_count ctx in
+        let import = {
+          i_module = String.concat "." mod_path;
+          i_name = orig_name;
+          i_desc = ImportFunc type_idx;
+        } in
+        Ok { ctx with
+             types = types_after;
+             imports = ctx.imports @ [import];
+             func_indices = (local_name, import_func_idx) :: ctx.func_indices;
+           }
+  in
+  let expand_import imp : (string list * string * string option) list =
+    let path_strs path = List.map (fun (id : ident) -> id.name) path in
+    match imp with
+    | ImportSimple _ -> []
+    | ImportList (path, items) ->
+      let p = path_strs path in
+      List.map (fun item ->
+        (p, item.ii_name.name, Option.map (fun (id : ident) -> id.name) item.ii_alias)
+      ) items
+    | ImportGlob path ->
+      let p = path_strs path in
+      (match Module_loader.load_module loader p with
+       | Error _ -> []
+       | Ok lm ->
+         List.filter_map (function
+           | TopFn fd when fd.fd_vis = Public || fd.fd_vis = PubCrate ->
+             Some (p, fd.fd_name.name, None)
+           | _ -> None
+         ) lm.mod_program.prog_decls)
+  in
+  let entries = List.concat_map expand_import imports in
+  List.fold_left (fun acc e ->
+    let* ctx = acc in
+    process_one ctx e
+  ) (Ok ctx) entries
+
+(** Generate WASM module from AffineScript program.
+
+    [?loader] supplies the module loader used to resolve cross-module imports.
+    Defaults to a fresh loader with [Module_loader.default_config ()] so that
+    existing call sites keep working without modification. *)
+let generate_module ?loader (prog : program) : wasm_module result =
+  let loader = match loader with
+    | Some l -> l
+    | None -> Module_loader.create (Module_loader.default_config ())
+  in
   let ctx = create_context () in
 
   (* Add WASI fd_write import at index 0 *)
@@ -1886,10 +2016,12 @@ let generate_module (prog : program) : wasm_module result =
     imports = fd_write_import_fixed :: ctx.imports;
   } in
 
+  let* ctx_with_imports = gen_imports loader prog.prog_imports ctx_with_wasi in
+
   let* ctx' = List.fold_left (fun acc decl ->
     let* c = acc in
     gen_decl c decl
-  ) (Ok ctx_with_wasi) prog.prog_decls in
+  ) (Ok ctx_with_imports) prog.prog_decls in
 
   (* Merge regular functions and lambda functions *)
   let num_regular_funcs = List.length ctx'.funcs in

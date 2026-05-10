@@ -60,6 +60,20 @@ const Err  = (error) => ({ tag: "Err", error });
 const Unit = null;
 const print   = (s) => { (typeof Deno !== "undefined" ? Deno.stdout.writeSync(new TextEncoder().encode(String(s))) : process.stdout.write(String(s))); };
 const println = (s) => { console.log(String(s)); };
+// Synchronous line read. Buffers all of stdin on first call, then yields
+// one line per invocation. Works under Node without await ceremony.
+let __as_stdin_buf = null, __as_stdin_off = 0;
+const read_line = () => {
+  if (__as_stdin_buf === null) {
+    try { __as_stdin_buf = require("fs").readFileSync(0, "utf8"); }
+    catch (_) { __as_stdin_buf = ""; }
+  }
+  const nl = __as_stdin_buf.indexOf("\n", __as_stdin_off);
+  if (nl < 0) { const r = __as_stdin_buf.slice(__as_stdin_off); __as_stdin_off = __as_stdin_buf.length; return r; }
+  const r = __as_stdin_buf.slice(__as_stdin_off, nl);
+  __as_stdin_off = nl + 1;
+  return r;
+};
 // ---- end runtime ----
 
 |}

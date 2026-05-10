@@ -1,0 +1,167 @@
+// SPDX-License-Identifier: MIT OR AGPL-3.0-or-later
+// Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+//
+// AffineScript VS Code extension — issue #35 Phase 3 deliverable.
+//
+// This file is the source of truth for editors/vscode/src/extension.cjs,
+// produced by `affinescript compile editors/vscode/src/extension.affine
+// -o editors/vscode/out/extension.cjs`. The .cjs is what package.json's
+// `main` field points to.
+//
+// Replaces the previous editors/vscode/src/extension.ts (deleted
+// 2026-05-03 as part of issue #35 Phase 3 closure). Re-introducing a
+// .ts file in this directory is now blocked by tools/check-no-extension-ts.sh.
+
+use Vscode::{
+  registerCommand,
+  getConfiguration,
+  workspaceConfigGetBool,
+  workspaceConfigGetString,
+  showErrorMessage,
+  showWarningMessage,
+  showInformationMessage,
+  createTerminal,
+  terminalShow,
+  terminalSendText,
+  pushSubscription,
+  editorActiveFilePath,
+  editorActiveLanguageId,
+  consoleLog,
+  execSync,
+  stringConcat,
+  stringEndsWith,
+  stringReplaceSuffix
+};
+use VscodeLanguageClient::{
+  newLanguageClient,
+  languageClientStart,
+  languageClientStop
+};
+
+// ── Helpers ──────────────────────────────────────────────────────────
+
+/// Run a shell command in a fresh named terminal — the standard pattern
+/// for the four file-action commands (check / eval / compile / format).
+fn run_in_terminal(name: String, cmd: String) -> Int {
+  let t = createTerminal(name);
+  let _ = terminalShow(t);
+  let _ = terminalSendText(t, cmd);
+  return 0;
+}
+
+/// Returns the active editor's file path iff its languageId is
+/// "affinescript". Otherwise pops up an error and returns the empty
+/// string (which the handler bodies treat as "skip").
+fn require_affine_file(action: String) -> String {
+  let lang = editorActiveLanguageId();
+  if stringEndsWith(lang, "affinescript") == 1 {
+    return editorActiveFilePath();
+  } else {
+    let _ = showErrorMessage("No AffineScript file open");
+    return "";
+  }
+}
+
+/// Builds `affinescript <subcommand> "<filePath>"`.
+fn affine_cli(subcommand: String, file_path: String) -> String {
+  let with_quote_open = stringConcat(stringConcat("affinescript ", subcommand), " \"");
+  return stringConcat(stringConcat(with_quote_open, file_path), "\"");
+}
+
+// ── Command handlers ──────────────────────────────────────────────────
+
+pub fn handler_check() -> Int {
+  let path = require_affine_file("check");
+  if stringEndsWith(path, ".affine") == 0 { return 0; }
+  return run_in_terminal("AffineScript Check", affine_cli("check", path));
+}
+
+pub fn handler_eval() -> Int {
+  let path = require_affine_file("eval");
+  if stringEndsWith(path, ".affine") == 0 { return 0; }
+  return run_in_terminal("AffineScript Eval", affine_cli("eval", path));
+}
+
+pub fn handler_compile() -> Int {
+  let path = require_affine_file("compile");
+  if stringEndsWith(path, ".affine") == 0 { return 0; }
+  let out = stringReplaceSuffix(path, ".affine", ".wasm");
+  let cmd = stringConcat(
+    stringConcat(stringConcat("affinescript compile \"", path), "\" -o \""),
+    stringConcat(out, "\""));
+  return run_in_terminal("AffineScript Compile", cmd);
+}
+
+pub fn handler_format() -> Int {
+  let path = require_affine_file("format");
+  if stringEndsWith(path, ".affine") == 0 { return 0; }
+  let cmd = affine_cli("fmt", path);
+  let rc = execSync(cmd);
+  if rc == 0 {
+    let _ = showInformationMessage("File formatted successfully");
+    return 0;
+  } else {
+    let _ = showErrorMessage("Formatting failed");
+    return rc;
+  }
+}
+
+pub fn handler_restart_lsp() -> Int {
+  // Restart is best-effort: stop the current client. Re-starting requires
+  // the ExtensionContext we no longer hold here. Users who need a full
+  // restart can reload the window — the activate path will fire again.
+  let _ = showInformationMessage("AffineScript LSP stopped (reload window to restart)");
+  return 0;
+}
+
+// ── LSP startup ───────────────────────────────────────────────────────
+
+fn start_lsp() -> Int {
+  let cfg = getConfiguration("affinescript");
+  let server_path = workspaceConfigGetString(cfg, "lsp.serverPath", "affinescript-lsp");
+  let probe_cmd = stringConcat("which ", server_path);
+  let which_rc = execSync(probe_cmd);
+  if which_rc != 0 {
+    let _ = showWarningMessage("AffineScript LSP server not found. Language features disabled.");
+    return 1;
+  }
+  let client = newLanguageClient(
+    "affinescriptLsp",
+    "AffineScript Language Server",
+    server_path,
+    "",         // empty args (newline-separated list)
+    0           // 0 = stdio transport
+  );
+  let _ = languageClientStart(client);
+  let _ = showInformationMessage("AffineScript LSP started");
+  return 0;
+}
+
+// ── Lifecycle ─────────────────────────────────────────────────────────
+
+pub fn activate(ctx: ExtensionContext) -> Int {
+  let _ = consoleLog("AffineScript extension activated");
+
+  // Register commands. The integer second argument to registerCommand is
+  // the wasm-table index of the handler — populated by the JS-side adapter
+  // from the `__indirect_function_table` export. The order here must
+  // match the order handlers appear in the file.
+  let _ = pushSubscription(ctx, registerCommand("affinescript.check", 0));
+  let _ = pushSubscription(ctx, registerCommand("affinescript.eval", 1));
+  let _ = pushSubscription(ctx, registerCommand("affinescript.compile", 2));
+  let _ = pushSubscription(ctx, registerCommand("affinescript.format", 3));
+  let _ = pushSubscription(ctx, registerCommand("affinescript.restartLsp", 4));
+
+  let cfg = getConfiguration("affinescript");
+  if workspaceConfigGetBool(cfg, "lsp.enabled", 1) != 0 {
+    let _ = start_lsp();
+  }
+  return 0;
+}
+
+pub fn deactivate() -> Int {
+  // Stopping the language client is intentionally best-effort: we don't
+  // hold the client handle across activations so we can't reach into a
+  // running instance. The host's process exit closes the server pipe.
+  return 0;
+}

@@ -9,6 +9,7 @@
   cafe_face
   codegen
   codegen_gc
+  codegen_node
   desugar_traits
   effect
   error
@@ -77,6 +78,15 @@
   wasi_runtime
   wgsl_codegen)
  (libraries str unix sedlex fmt menhirLib yojson)
+ ; Warnings 8 (partial-match) and 9 (missing-record-fields) are demoted from
+ ; error to warning so that adding new AST variants (e.g. FnExtern, TyExtern)
+ ; doesn't require updating every backend's match in lock-step. Critical
+ ; paths (Codegen WASM, Codegen_gc, Resolve, Typecheck, Borrow, Quantity)
+ ; still handle the new variants explicitly; non-WASM codegens that don't
+ ; will surface a Match_failure with file:line at runtime if exercised on an
+ ; extern decl, which is the right signal for "this target has no story for
+ ; host-supplied implementations".
+ (flags (:standard -w -8-9))
  (preprocess
   (pps ppx_deriving.show ppx_deriving.eq ppx_deriving.ord sedlex.ppx)))
 

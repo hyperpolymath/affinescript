@@ -316,8 +316,17 @@ let rec gen_gc_expr (ctx : gc_ctx) (expr : expr) : (gc_ctx * gc_instr list) cg_r
   (* ── Variable access ───────────────────────────────────────────── *)
 
   | ExprVar id ->
-    let* idx = lookup_local ctx id.name in
-    Ok (ctx, [std (Wasm.LocalGet idx)])
+    (* Resolve bare identifiers as locals first; fall back to variant tags so
+       that `return Happy` (a zero-arg variant referenced without parens)
+       lowers to its i32 tag — matches the WASM 1.0 backend's behavior at
+       lib/codegen.ml. *)
+    begin match lookup_local ctx id.name with
+      | Ok idx -> Ok (ctx, [std (Wasm.LocalGet idx)])
+      | Error _ ->
+        match List.assoc_opt id.name ctx.variant_tags with
+        | Some tag -> Ok (ctx, [push_i32 tag])
+        | None -> Error (UnboundVariable id.name)
+    end
 
   (* ── Arithmetic / logical / comparison ─────────────────────────── *)
 
@@ -344,31 +353,58 @@ let rec gen_gc_expr (ctx : gc_ctx) (expr : expr) : (gc_ctx * gc_instr list) cg_r
   (* ── Function calls ────────────────────────────────────────────── *)
 
   | ExprApp (ExprVar id, args) ->
-    let* (ctx_after_args, arg_codes_rev) =
-      List.fold_left (fun acc arg ->
-        let* (c, rev_codes) = acc in
-        let* (c', code) = gen_gc_expr c arg in
-        Ok (c', code :: rev_codes)
-      ) (Ok (ctx, [])) args
-    in
-    let arg_codes = List.concat (List.rev arg_codes_rev) in
+    (* Bare-name variant constructor: `Some(42)` parses to ExprApp(ExprVar
+       Some, [42]) — check variant_tags before func_indices, mirroring the
+       WASM 1.0 backend.  TopType(TyEnum) populated variant_tags at decl
+       time so this lookup is well-defined. *)
+    if List.mem_assoc id.name ctx.variant_tags then
+      gen_variant_with_args ctx id.name args
+    else begin
+      let* (ctx_after_args, arg_codes_rev) =
+        List.fold_left (fun acc arg ->
+          let* (c, rev_codes) = acc in
+          let* (c', code) = gen_gc_expr c arg in
+          Ok (c', code :: rev_codes)
+        ) (Ok (ctx, [])) args
+      in
+      let arg_codes = List.concat (List.rev arg_codes_rev) in
 
-    begin match id.name with
-      | "int" ->
-        Ok (ctx_after_args, arg_codes @ [Std (Wasm.I32TruncF64S)])
-      | "float" ->
-        Ok (ctx_after_args, arg_codes @ [Std (Wasm.F64ConvertI32S)])
-      | _ ->
-        match List.assoc_opt id.name ctx_after_args.func_indices with
-        | Some func_idx ->
-          Ok (ctx_after_args, arg_codes @ [Std (Wasm.Call func_idx)])
-        | None ->
-          (* BUG-005: every reachable function must be registered in func_indices
-             before codegen visits any call-site.  Silently emitting drop+null here
-             would produce well-typed but semantically wrong WASM that is impossible
-             to debug at runtime.  Fail loudly instead. *)
-          Error (UnboundFunction id.name)
+      begin match id.name with
+        | "int" ->
+          Ok (ctx_after_args, arg_codes @ [Std (Wasm.I32TruncF64S)])
+        | "float" ->
+          Ok (ctx_after_args, arg_codes @ [Std (Wasm.F64ConvertI32S)])
+        | _ ->
+          match List.assoc_opt id.name ctx_after_args.func_indices with
+          | Some func_idx ->
+            Ok (ctx_after_args, arg_codes @ [Std (Wasm.Call func_idx)])
+          | None ->
+            (* BUG-005: every reachable function must be registered in func_indices
+               before codegen visits any call-site.  Silently emitting drop+null here
+               would produce well-typed but semantically wrong WASM that is impossible
+               to debug at runtime.  Fail loudly instead. *)
+            Error (UnboundFunction id.name)
+      end
     end
+
+  (* ── Variant constructor with arguments ────────────────────────────
+
+     `Type::Constructor(args)` parses to ExprApp(ExprVariant(...), args). The
+     bare-name form `Constructor(args)` is handled in the ExprApp(ExprVar id)
+     branch above when id matches a known variant tag.
+
+     Both paths funnel through [gen_variant_with_args], which lowers to a
+     tagged anon struct: [tag: i32, payload_0: anyref, ...].  Primitive args
+     are boxed via ref.i31 so heterogeneous payloads (Int, Bool, refs) all
+     fit the same anyref slot type without needing per-variant struct shapes.
+
+     Pattern matching on the resulting struct (PatCon with sub-patterns) is
+     not yet implemented — see the match arm fallback for the loud-failure
+     diagnostic.  Construction is the prerequisite; destructuring is the
+     follow-on. *)
+
+  | ExprApp (ExprVariant (_type_name, variant_name), args) ->
+    gen_variant_with_args ctx variant_name.name args
 
   | ExprApp (callee, args) ->
     (* BUG-005: indirect / higher-order calls (callee is not a plain ExprVar) are
@@ -682,6 +718,18 @@ let rec gen_gc_expr (ctx : gc_ctx) (expr : expr) : (gc_ctx * gc_instr list) cg_r
     let (ctx2, scrutinee_local) = alloc_local ctx1 "__scrutinee" GcAnyref in
     let save_code = [std (Wasm.LocalSet scrutinee_local)] in
 
+    (* If ANY PatCon arm has non-empty sub_pats, the scrutinee was
+       constructed via gen_variant_with_args and is a tagged struct. In that
+       case ALL PatCon arms (including zero-arg ones — same enum) must read
+       the tag via RefCast + StructGet 0, not bare i32 comparison. *)
+    let scrutinee_is_struct_shaped =
+      List.exists (fun arm ->
+        match arm.ma_pat with
+        | PatCon (_, sub_pats) -> sub_pats <> []
+        | _ -> false
+      ) m.em_arms
+    in
+
     (* Build right-to-left if/else chain: last arm is the default *)
     let* (ctx_final, match_code) =
       List.fold_right
@@ -702,12 +750,25 @@ let rec gen_gc_expr (ctx : gc_ctx) (expr : expr) : (gc_ctx * gc_instr list) cg_r
                 body_code)
 
             | PatLit lit ->
-              let lit_instr = match lit with
-                | LitBool (b, _) -> push_i32 (if b then 1 else 0)
-                | LitInt (n, _)  -> push_i32 n
-                | LitChar (c, _) -> push_i32 (Char.code c)
-                | _              -> push_i32 0
+              let lit_result = match lit with
+                | LitBool (b, _) -> Ok (push_i32 (if b then 1 else 0))
+                | LitInt (n, _)  -> Ok (push_i32 n)
+                | LitChar (c, _) -> Ok (push_i32 (Char.code c))
+                | LitFloat _ ->
+                  Error (UnsupportedFeature
+                    "float literal pattern in `match` not supported by \
+                     WasmGC backend (would require f64.eq with NaN \
+                     handling — not yet implemented)")
+                | LitString _ ->
+                  Error (UnsupportedFeature
+                    "string literal pattern in `match` not supported by \
+                     WasmGC backend (would require structural equality on \
+                     anyref — not yet implemented)")
+                | LitUnit _ ->
+                  (* Unit pattern matches any unit scrutinee. *)
+                  Ok (push_i32 0)
               in
+              let* lit_instr = lit_result in
               let* (c', body_code) = gen_gc_expr c_acc arm.ma_body in
               let test =
                 [std (Wasm.LocalGet scrutinee_local);
@@ -716,8 +777,8 @@ let rec gen_gc_expr (ctx : gc_ctx) (expr : expr) : (gc_ctx * gc_instr list) cg_r
               Ok (c', test @
                 [GcIf (GcBtPrim I32, body_code, default_code)])
 
-            | PatCon (con, _sub_pats) ->
-              let (tag, c_acc') =
+            | PatCon (con, sub_pats) ->
+              let (tag, c_acc0) =
                 match List.assoc_opt con.name c_acc.variant_tags with
                 | Some t -> (t, c_acc)
                 | None   ->
@@ -725,17 +786,105 @@ let rec gen_gc_expr (ctx : gc_ctx) (expr : expr) : (gc_ctx * gc_instr list) cg_r
                   (t, { c_acc with variant_tags =
                     (con.name, t) :: c_acc.variant_tags })
               in
-              let* (c', body_code) = gen_gc_expr c_acc' arm.ma_body in
-              let test =
-                [std (Wasm.LocalGet scrutinee_local);
-                 push_i32 tag; std Wasm.I32Eq]
-              in
-              Ok (c', test @
-                [GcIf (GcBtPrim I32, body_code, default_code)])
+              if sub_pats = [] && not scrutinee_is_struct_shaped then begin
+                (* Zero-arg variant in an i32-only match — direct
+                   comparison against the tag. *)
+                let* (c', body_code) = gen_gc_expr c_acc0 arm.ma_body in
+                let test =
+                  [std (Wasm.LocalGet scrutinee_local);
+                   push_i32 tag; std Wasm.I32Eq]
+                in
+                Ok (c', test @
+                  [GcIf (GcBtPrim I32, body_code, default_code)])
+              end
+              else if sub_pats = [] && scrutinee_is_struct_shaped then begin
+                (* Mixed-arity match: a sibling arm has PatCon sub_pats
+                   (struct-shaped scrutinee) but THIS arm is zero-arg.
+                   Each variant is currently registered as its own anon
+                   struct type with arity-specific shape, so a single
+                   RefCast can't reach both. Unifying the representation
+                   (e.g. uniform `struct { tag: i32; payload: anyref }`)
+                   is a follow-on to this milestone. *)
+                Error (UnsupportedFeature
+                  "mixed-arity variant match (zero-arg + with-args in the \
+                   same `match`) under WasmGC — each variant currently \
+                   has its own struct type. Workaround: split into two \
+                   match expressions, or use the WASM 1.0 backend.")
+              end
+              else begin
+                (* Variant with sub-patterns: scrutinee is the tagged-struct
+                   shape produced by gen_variant_with_args. Match steps:
+                     1. Cast scrutinee anyref → (ref struct_type)
+                     2. struct.get 0 → tag i32; compare against variant_tag
+                     3. On match, bind each PatVar sub_pat by struct.get N+1
+                        (unboxing i31 → i32 when the slot was boxed)
+                     4. Then evaluate the arm body
+                   Sub-patterns must be PatVar (or PatWildcard) for now —
+                   richer sub-pattern shapes (nested PatCon, PatTuple) are
+                   the next destructuring milestone. *)
+                let arity = List.length sub_pats in
+                let field_names =
+                  (con.name ^ "_tag")
+                  :: List.init arity (fun i -> con.name ^ "_" ^ string_of_int i)
+                in
+                let field_types =
+                  field_i32 :: List.init arity (fun _ -> field_anyref)
+                in
+                let (c_with_struct, struct_idx, _field_map) =
+                  find_or_register_anon_struct c_acc0 field_names field_types
+                in
+                (* Bind each sub_pat to a local + emit the binding code. *)
+                let* (c_with_binds, bind_code) =
+                  List.fold_left (fun acc (i, sp) ->
+                    let* (c, code) = acc in
+                    match sp with
+                    | PatWildcard _ -> Ok (c, code)
+                    | PatVar id ->
+                      (* Construction boxed i32 args via ref.i31. Mirror
+                         that here: extract the anyref payload, downcast to
+                         i31, unbox to i32, bind as I32 local. Assumes the
+                         payload was an i32 (the only primitive that
+                         gen_variant_with_args boxes). For anyref payloads
+                         this would also work iff the value happens to be a
+                         valid i31ref — richer type info would let us pick
+                         per-field but isn't tracked yet. *)
+                      let (c', local_idx) = alloc_local c id.name (GcPrim I32) in
+                      let extract =
+                        [std (Wasm.LocalGet scrutinee_local);
+                         RefCast (HtConcrete struct_idx);
+                         StructGet (struct_idx, i + 1);
+                         RefCast HtI31;
+                         I31GetS;
+                         std (Wasm.LocalSet local_idx)]
+                      in
+                      Ok (c', code @ extract)
+                    | _ ->
+                      Error (UnsupportedFeature
+                        "nested sub-pattern in PatCon (only PatVar / \
+                         PatWildcard supported in WasmGC backend so far)")
+                  ) (Ok (c_with_struct, []))
+                  (List.mapi (fun i sp -> (i, sp)) sub_pats)
+                in
+                let* (c', body_code) = gen_gc_expr c_with_binds arm.ma_body in
+                let test =
+                  [std (Wasm.LocalGet scrutinee_local);
+                   RefCast (HtConcrete struct_idx);
+                   StructGet (struct_idx, 0);
+                   push_i32 tag; std Wasm.I32Eq]
+                in
+                Ok (c', test @
+                  [GcIf (GcBtPrim I32, bind_code @ body_code, default_code)])
+              end
 
             | _ ->
-              (* Unsupported pattern: skip arm, fall to default *)
-              Ok (c_acc, default_code)
+              (* Silently skipping unsupported patterns and falling to the
+                 default arm produced WasmGC that compiled but ignored the
+                 author's intent — same class of bug as the swallowed-arm
+                 fallback in [ExprMatch] before BUG-005.  Reject loudly. *)
+              Error (UnsupportedFeature
+                "pattern in `match` arm not supported by WasmGC backend \
+                 (only PatWildcard / PatVar / PatLit (bool|int|char) / \
+                 PatCon (no sub-patterns) are implemented)")
           end)
         m.em_arms
         (Ok (ctx2, [push_i32 0]))  (* terminal default: return 0 *)
@@ -805,13 +954,73 @@ let rec gen_gc_expr (ctx : gc_ctx) (expr : expr) : (gc_ctx * gc_instr list) cg_r
   | ExprSpan (e, _) ->
     gen_gc_expr ctx e
 
-  (* ── Fallback ───────────────────────────────────────────────────── *)
+  (* ── Genuinely unsupported expressions ─────────────────────────────
 
-  | _ ->
-    (* Unsupported expression: null anyref is a safe non-crashing placeholder *)
-    Ok (ctx, [RefNull HtAny])
+     The previous catch-all here pushed [RefNull HtAny] as a "safe non-crashing
+     placeholder", which silently miscompiled any expression we didn't handle —
+     the same class of bug as BUG-005 (silent fallback in ExprApp).  Reject
+     loudly instead so the call-site, not a downstream type error, surfaces
+     the gap. *)
+
+  | ExprLambda _ ->
+    Error (UnsupportedFeature
+      "lambda expression in WasmGC backend — requires call_ref + closure \
+       conversion (not yet implemented); use the WASM 1.0 backend or the \
+       interpreter (-i)")
+
+  | ExprUnsafe _ ->
+    Error (UnsupportedFeature
+      "`unsafe` block in WasmGC backend — raw memory ops do not fit the \
+       GC-managed reference model; use the WASM 1.0 backend")
 
 (** {1 Block codegen} *)
+
+(** Lower a variant constructor application to a tagged-struct allocation.
+
+    Layout: [tag: i32; payload_0: anyref; ...; payload_n-1: anyref].
+    Primitive args are boxed via ref.i31 so the same struct shape works for
+    any payload type composition.  f64 args are rejected because i31ref
+    cannot box them and a heap-allocated f64 box per variant slot is not yet
+    implemented. *)
+and gen_variant_with_args
+    (ctx : gc_ctx) (variant_name : string) (args : expr list)
+    : (gc_ctx * gc_instr list) cg_result =
+  let arity = List.length args in
+  let (tag, ctx0) =
+    match List.assoc_opt variant_name ctx.variant_tags with
+    | Some t -> (t, ctx)
+    | None ->
+      let t = List.length ctx.variant_tags in
+      (t, { ctx with variant_tags = (variant_name, t) :: ctx.variant_tags })
+  in
+  let* (ctx_after_args, arg_codes_rev) =
+    List.fold_left (fun acc arg ->
+      let* (c, rev_codes) = acc in
+      match gc_valtype_of_expr arg with
+      | GcPrim F64 ->
+        Error (UnsupportedFeature
+          "f64 argument to variant constructor in WasmGC backend — \
+           would need a heap-allocated f64 box (not yet implemented)")
+      | vt ->
+        let* (c', code) = gen_gc_expr c arg in
+        let boxed = match vt with
+          | GcPrim I32 -> code @ [RefI31]
+          | _          -> code
+        in
+        Ok (c', boxed :: rev_codes)
+    ) (Ok (ctx0, [])) args
+  in
+  let arg_codes = List.concat (List.rev arg_codes_rev) in
+  let field_names =
+    (variant_name ^ "_tag")
+    :: List.init arity (fun i -> variant_name ^ "_" ^ string_of_int i)
+  in
+  let field_types = field_i32 :: List.init arity (fun _ -> field_anyref) in
+  let (ctx_with_struct, type_idx, _field_map) =
+    find_or_register_anon_struct ctx_after_args field_names field_types
+  in
+  Ok (ctx_with_struct,
+      [push_i32 tag] @ arg_codes @ [StructNew type_idx])
 
 (** Generate GC instructions for a block.
 
@@ -1065,7 +1274,24 @@ let gen_gc_function (ctx : gc_ctx) (fd : fn_decl) : (gc_ctx * gc_func) cg_result
     | FnBlock blk -> ExprBlock blk
     | FnExpr e    -> e
   in
-  let* (ctx_after, body_code) = gen_gc_expr ctx_with_ftype body_expr in
+  let* (ctx_after, body_code_raw) = gen_gc_expr ctx_with_ftype body_expr in
+
+  (* gen_gc_block emits a trailing [push_i32 0] when blk_expr=None — fine for
+     i32-returning functions but a validator-rejected type mismatch when the
+     function actually returns anyref or f64 (e.g. when the body ends in an
+     explicit `return MyVariant(...)` whose actual result is a struct ref).
+     Swap the trailing default for one that matches result_vt. *)
+  let body_code =
+    let push_default = match result_vt with
+      | GcPrim I32 -> push_i32 0
+      | GcPrim F64 -> Std (Wasm.F64Const 0.0)
+      | GcAnyref | _ -> RefNull HtAny
+    in
+    match List.rev body_code_raw with
+    | last :: rest_rev when last = push_i32 0 && push_default <> push_i32 0 ->
+      List.rev (push_default :: rest_rev)
+    | _ -> body_code_raw
+  in
 
   (* Collect extra locals (those declared beyond the parameters) *)
   let extra_locals =

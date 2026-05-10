@@ -71,6 +71,26 @@ typedef const char *as_str_t;
 
 static inline void print(as_str_t s)   { fputs(s, stdout); }
 static inline void println(as_str_t s) { puts(s); }
+/* String concat: allocates the joined buffer with malloc. The MVP runtime
+   does not free it — programs that concat in a tight loop should be
+   reviewed; long-running output is fine. */
+static inline as_str_t as_concat(as_str_t a, as_str_t b) {
+  size_t la = strlen(a), lb = strlen(b);
+  char *r = (char *)malloc(la + lb + 1);
+  memcpy(r, a, la);
+  memcpy(r + la, b, lb);
+  r[la + lb] = '\0';
+  return r;
+}
+/* Read a line from stdin; returns the empty string at EOF. Trailing \n
+   is stripped. Allocated with malloc and not freed (MVP). */
+static inline as_str_t read_line(void) {
+  char *buf = (char *)malloc(4096);
+  if (!fgets(buf, 4096, stdin)) { buf[0] = '\0'; return buf; }
+  size_t n = strlen(buf);
+  if (n > 0 && buf[n - 1] == '\n') buf[n - 1] = '\0';
+  return buf;
+}
 /* ---- end runtime ---- */
 
 |}
@@ -101,6 +121,23 @@ let mangle (name : string) : string =
    truth for full type-driven lowering.
    ============================================================================ *)
 
+(* Tuple-shape table: maps a list of element-type strings to a synthesised
+   typedef name. Populated by [c_type_of_ty] on the first occurrence of
+   each distinct shape; the typedefs are emitted into [types_buf] before
+   any code that uses them. *)
+let tuple_table : (string list, string) Hashtbl.t = Hashtbl.create 16
+let next_tuple_id = ref 0
+
+let intern_tuple (elem_types : string list) : string =
+  match Hashtbl.find_opt tuple_table elem_types with
+  | Some n -> n
+  | None ->
+      let id = !next_tuple_id in
+      incr next_tuple_id;
+      let name = Printf.sprintf "_AsTuple_%d" id in
+      Hashtbl.add tuple_table elem_types name;
+      name
+
 let rec c_type_of_ty (te : type_expr) : string =
   match te with
   | TyCon name when name.name = "Int"    -> "as_int_t"
@@ -108,10 +145,13 @@ let rec c_type_of_ty (te : type_expr) : string =
   | TyCon name when name.name = "Bool"   -> "as_bool_t"
   | TyCon name when name.name = "String" -> "as_str_t"
   | TyCon name when name.name = "Unit"   -> "void"
-  | TyCon name                           -> mangle name.name  (* user-declared typedef *)
+  | TyCon name                           -> mangle name.name
   | TyApp _                              -> "void *"
   | TyArrow (_, _, _, _)                 -> "void *"
-  | TyTuple _ | TyRecord _               -> "void *"
+  | TyTuple ts                           ->
+      let elems = List.map c_type_of_ty ts in
+      intern_tuple elems
+  | TyRecord _                           -> "void *"
   | TyOwn t | TyRef t | TyMut t          -> c_type_of_ty t
   | TyVar _ | TyHole                     -> "void *"
 
@@ -203,15 +243,26 @@ let rec gen_expr ctx (expr : expr) : string =
   | ExprResume (Some e) -> gen_expr ctx e
   | ExprResume None     -> "((void)0)"
   | ExprRecord { er_fields; _ } ->
-      (* Emit just the designated-initializer brace block; the surrounding
-         context (gen_let_with_hint) supplies the [(Type)] cast. *)
       let fs = List.map (fun (id, e_opt) ->
         let v = match e_opt with Some e -> gen_expr ctx e | None -> mangle id.name in
         Printf.sprintf ".%s = %s" (mangle id.name) v
       ) er_fields in
       "{ " ^ String.concat ", " fs ^ " }"
-  | ExprVariant (_ty, ctor) -> mangle ctor.name  (* refs a generated constant or fn *)
-  | ExprTuple _ | ExprArray _ | ExprLambda _ | ExprTry _
+  | ExprTuple es ->
+      (* Emit a fully-cast compound literal so the type is unambiguous in
+         expression position. Each element gets its own [c_type_of_ty]
+         (which also registers the shape in [tuple_table]). *)
+      let pairs = List.mapi (fun i e -> (i, gen_expr ctx e)) es in
+      (* We don't have type info on the elements here — assume long for
+         the inner field type and rely on C's implicit conversion. The
+         tuple's typedef field types are what was registered earlier when
+         the user's let annotation was lowered. *)
+      let _ = pairs in
+      let inits = List.mapi (fun i e ->
+        Printf.sprintf ".f%d = %s" i (gen_expr ctx e)) es in
+      "{ " ^ String.concat ", " inits ^ " }"
+  | ExprVariant (_ty, ctor) -> mangle ctor.name
+  | ExprArray _ | ExprLambda _ | ExprTry _
   | ExprRowRestrict _ | ExprUnsafe _ ->
       "(__as_unsupported_expr_for_c_backend())"
 
@@ -282,13 +333,15 @@ and gen_stmt ctx (stmt : stmt) : string =
         | Some t -> c_type_of_ty t
         | None   -> "long"
       in
-      (* Record literals need a `(Type)` cast in C. When the let has a type
-         annotation pointing at a typedef, prepend it so designated braces
-         parse as a compound literal. *)
+      (* Compound literals need a [(Type)] cast prefix in C. Both records
+         (via TyCon name) and tuples (via TyTuple ts → synthesised typedef)
+         go through the same path. *)
       let value_str =
         match sl_value, sl_ty with
         | ExprRecord _, Some (TyCon id) ->
             Printf.sprintf "(%s)%s" (mangle id.name) (gen_expr ctx sl_value)
+        | ExprTuple _, Some (TyTuple _ as t) ->
+            Printf.sprintf "(%s)%s" (c_type_of_ty t) (gen_expr ctx sl_value)
         | _ -> gen_expr ctx sl_value
       in
       Printf.sprintf "%s %s = %s;" ty_str var value_str
@@ -453,18 +506,81 @@ let main_entry_for (program : program) : string =
       else
         Printf.sprintf "int main(void) { return (int)main_(); }\n"
 
+(* Walk the AST forcing [c_type_of_ty] on every reachable type expression
+   so [tuple_table] is fully populated before we emit typedefs. *)
+let prewalk_for_tuple_shapes (program : program) : unit =
+  let visit_ty t = ignore (c_type_of_ty t) in
+  let visit_ty_opt = function Some t -> visit_ty t | None -> () in
+  let rec visit_expr (e : expr) : unit =
+    match e with
+    | ExprLet { el_ty; el_value; el_body; _ } ->
+        visit_ty_opt el_ty;
+        visit_expr el_value;
+        (match el_body with Some b -> visit_expr b | None -> ())
+    | ExprIf { ei_cond; ei_then; ei_else } ->
+        visit_expr ei_cond; visit_expr ei_then;
+        (match ei_else with Some e -> visit_expr e | None -> ())
+    | ExprMatch { em_scrutinee; em_arms } ->
+        visit_expr em_scrutinee;
+        List.iter (fun a -> visit_expr a.ma_body) em_arms
+    | ExprBlock blk ->
+        List.iter visit_stmt blk.blk_stmts;
+        (match blk.blk_expr with Some e -> visit_expr e | None -> ())
+    | ExprApp (f, args) -> visit_expr f; List.iter visit_expr args
+    | ExprBinary (a, _, b) -> visit_expr a; visit_expr b
+    | ExprUnary (_, x) -> visit_expr x
+    | ExprTuple es | ExprArray es -> List.iter visit_expr es
+    | ExprRecord { er_fields; er_spread } ->
+        List.iter (fun (_, e_opt) ->
+          match e_opt with Some e -> visit_expr e | None -> ()) er_fields;
+        (match er_spread with Some e -> visit_expr e | None -> ())
+    | ExprField (e, _) | ExprTupleIndex (e, _) -> visit_expr e
+    | ExprIndex (a, b) -> visit_expr a; visit_expr b
+    | ExprSpan (e, _) | ExprReturn (Some e) -> visit_expr e
+    | _ -> ()
+  and visit_stmt = function
+    | StmtLet { sl_ty; sl_value; _ } -> visit_ty_opt sl_ty; visit_expr sl_value
+    | StmtExpr e | StmtAssign (e, _, _) -> visit_expr e
+    | StmtWhile (c, b) -> visit_expr c; visit_block b
+    | StmtFor (_, e, b) -> visit_expr e; visit_block b
+  and visit_block (b : block) =
+    List.iter visit_stmt b.blk_stmts;
+    (match b.blk_expr with Some e -> visit_expr e | None -> ())
+  in
+  List.iter (function
+    | TopFn fd ->
+        List.iter (fun (p : param) -> visit_ty p.p_ty) fd.fd_params;
+        visit_ty_opt fd.fd_ret_ty;
+        (match fd.fd_body with
+         | FnExpr e -> visit_expr e
+         | FnBlock b -> visit_block b)
+    | TopType _ | TopConst _ | TopEffect _ | TopTrait _ | TopImpl _ -> ()
+  ) program.prog_decls
+
+let emit_tuple_typedefs (buf : Buffer.t) : unit =
+  let entries = Hashtbl.fold (fun elems name acc -> (name, elems) :: acc)
+                  tuple_table [] in
+  let entries = List.sort (fun (a, _) (b, _) -> compare a b) entries in
+  List.iter (fun (name, elems) ->
+    let fields = List.mapi (fun i ty -> Printf.sprintf "  %s f%d;" ty i) elems in
+    Buffer.add_string buf
+      (Printf.sprintf "typedef struct {\n%s\n} %s;\n\n"
+         (String.concat "\n" fields) name)
+  ) entries
+
 let generate (program : program) (symbols : Symbol.t) : string =
+  Hashtbl.clear tuple_table;
+  next_tuple_id := 0;
+  prewalk_for_tuple_shapes program;
+
   let ctx = create_ctx symbols in
   emit_line ctx "/* Generated by AffineScript compiler */";
   emit_line ctx "/* SPDX-License-Identifier: PMPL-1.0-or-later */";
   emit ctx prelude;
 
-  (* Three-pass emission so forward declarations and body code see all
-     types: (1) type decls (typedefs, tagged unions, ctor inlines) into
-     types_buf; (2) function bodies into bodies_buf, accumulating fn
-     forward decls into fwd_decls. Final layout is types → fwd → bodies. *)
   let types_buf  = Buffer.create 512 in
   let bodies_buf = Buffer.create 1024 in
+  emit_tuple_typedefs types_buf;
   let types_ctx  = { ctx with output = types_buf } in
   let body_ctx   = { ctx with output = bodies_buf } in
   List.iter (function

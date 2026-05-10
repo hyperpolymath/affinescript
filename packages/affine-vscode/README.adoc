@@ -1,0 +1,63 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+= affine-vscode
+
+JS-side adapter for the `stdlib/Vscode.affine` and
+`stdlib/VscodeLanguageClient.affine` binding modules. Issue #35 Phase 2
+deliverable.
+
+== Usage
+
+In your AffineScript-authored VS Code extension's CJS entry point, after
+loading the `.cjs` produced by `affinescript compile extension.affine
+-o extension.cjs`, plug this adapter into the Wasm imports:
+
+[source,javascript]
+----
+const vscode = require("vscode");
+const lc = require("vscode-languageclient/node");
+const makeBindings = require("@hyperpolymath/affine-vscode");
+
+// The Node-CJS shim emitted by affinescript's compile -o *.cjs path lazily
+// instantiates the wasm. Patch its `_extraImports()` hook before the first
+// activate/deactivate call so the extern fns resolve to live vscode APIs.
+
+let instance;
+const adapter = require("./extension.cjs");
+const original = adapter._extraImports || (() => ({}));
+adapter._extraImports = () => makeBindings(vscode, lc, () => instance);
+
+// (Real wiring belongs in the codegen — Phase 3 will replace this manual
+// hookup with auto-generated glue once `extension.affine` is the source of
+// truth for the extension entry point.)
+----
+
+== Surface
+
+The adapter implements every `extern fn` declared in:
+
+* `stdlib/Vscode.affine` — 11 bindings covering vscode.commands.registerCommand,
+  workspace.getConfiguration / createFileSystemWatcher,
+  window.showErrorMessage / showWarningMessage / showInformationMessage,
+  window.createTerminal + terminal.show / sendText,
+  ExtensionContext.subscriptions.push, and window.activeTextEditor.
+* `stdlib/VscodeLanguageClient.affine` — 3 bindings covering
+  new LanguageClient(...) / start() / stop().
+
+== Design notes
+
+* All host objects (Disposable, Terminal, ExtensionContext, ...) are
+  represented as opaque integer handles on both sides of the FFI. The
+  adapter maintains a JS-side handle table.
+* String args are passed across as i32 pointers into the wasm linear
+  memory; the adapter reads the `[u32 length][utf-8 bytes]` layout out
+  of `instance.exports.memory.buffer`.
+* Wasm function-pointer args (e.g. command handlers) come in as
+  `__indirect_function_table` indices; the adapter wraps each in a JS
+  thunk that re-enters the wasm module on invocation.
+
+== Status
+
+Phase 2 — bindings landed. Phase 3 (`editors/vscode/src/extension.ts` →
+`editors/vscode/src/extension.affine` rewrite) is the next milestone. Phase 4
+sweeps the rattlescript-face copy.

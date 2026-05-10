@@ -1,0 +1,16 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2026 Jonathan D.A. Jewell
+//
+// Caller that calls the Linear-param import on one branch only — silently
+// drops the linear argument on the zero-call branch. Verify-boundary must
+// report LinearImportDroppedOnSomePath.
+
+use CrossCallee::{consume};
+
+pub fn pick(flag: Int) -> Int {
+  if flag > 0 {
+    return consume(42);
+  } else {
+    return 0;
+  }
+}

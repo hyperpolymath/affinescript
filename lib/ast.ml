@@ -248,6 +248,8 @@ type fn_decl = {
 and fn_body =
   | FnBlock of block
   | FnExpr of expr
+  | FnExtern  (** No body: implementation supplied by the host environment.
+                  Surfaces as `extern fn name(...) -> Ret;` in user source. *)
 [@@deriving show, eq]
 
 (** Type declaration *)
@@ -262,6 +264,7 @@ and type_body =
   | TyAlias of type_expr
   | TyStruct of struct_field list
   | TyEnum of variant_decl list
+  | TyExtern  (** Opaque host-supplied type: `extern type Name;` *)
 
 and struct_field = {
   sf_vis : visibility;
