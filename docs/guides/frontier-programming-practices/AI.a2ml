@@ -302,6 +302,11 @@
           "ONNX/MLIR/TFLite → onnx_codegen.ml"
           "Verilog/VHDL → verilog_codegen.ml"))
 
+      (use-shared-kernel-sublang-module
+        (rule "Every Tier-C kernel sublanguage backend opens [Kernel_sublang] and reuses its primitives instead of inlining its own. The module provides: the [Unsupported] exception (one shared type, not per-backend), [pick_entry ?names], [strip_ownership], [is_unit_ty], [array_element], [require_array_element], [math_builtins], [is_math_builtin], [validate_return], [validate_params], and [validate_compute_kernel_shape] (the canonical 'first param Int, rest Array buffers, returns Unit' predicate used by WGSL/SPIR-V/CUDA/Metal/OpenCL).")
+        (location "lib/kernel_sublang.ml")
+        (extend-not-fork "If a new Tier-C backend needs an intrinsic the shared math_builtins list lacks, add it to that list rather than maintaining a parallel allowlist. If a new validation rule emerges that two or more backends need, factor it into Kernel_sublang rather than copying."))
+
       (validate-end-to-end
         (rule "Every shipped backend must round-trip through the target's reference toolchain. Bytes a human read are not bytes that work. The honest MVP claim is 'the bytes round-trip,' not 'the bytes look right.'")
         (validators "naga (WGSL), faust (Faust), oxionnx-proto (ONNX), cc (C), rustc (Rust), ocaml (OCaml), lua5.4 (Lua), bash -n (Bash), nickel typecheck (Nickel), llc (LLVM), node/deno (JS)")
@@ -324,13 +329,30 @@
     (when-adding-backend-N+1
       (step (n 1) (do "identify the tier (A/B/C above); pick the template emitter from the tier's template-pairs list"))
       (step (n 2) (do "create lib/<name>_codegen.ml as a clone with target-specific lowering rules; reuse mangle / type-mapping / gen_lit shape"))
-      (step (n 3) (do "register the module in lib/dune (alphabetical) and add `.<ext>` dispatch in bin/main.ml (both --json and human branches)"))
-      (step (n 4) (do "build: `eval $(opam env --switch=default) && dune build lib bin/main.exe`"))
-      (step (n 5) (do "validate end-to-end with the target's reference toolchain on /tmp/cdemo.affine (the canonical Int/branch/let test); record the result in the recap"))
-      (step (n 6) (do "for tier-C kernel backends: also test Float arithmetic, since the typechecker patch landed 2026-05-02"))
-      (step (n 7) (do "document any frontend gap surfaced by the work in this AI.a2ml file under (backends → known-limitations); fix it BEFORE the next adaptive task per the corrective-before-adaptive ordering rule")))
+      (step (n 3) (do "for Tier-C backends: open Kernel_sublang and use its shared primitives (pick_entry / strip_ownership / array_element / math_builtins / Unsupported) instead of inlining your own"))
+      (step (n 4) (do "register the module in lib/dune (alphabetical) and add `.<ext>` dispatch in bin/main.ml (both --json and human branches)"))
+      (step (n 5) (do "build: `eval $(opam env --switch=default) && dune build lib bin/main.exe`"))
+      (step (n 6) (do "validate end-to-end with the target's reference toolchain on /tmp/cdemo.affine (the canonical Int/branch/let test); record the result in the recap"))
+      (step (n 7) (do "for tier-C kernel backends: also test Float arithmetic, since the typechecker patch landed 2026-05-02"))
+      (step (n 8) (do "for Tier-A backends: also test the Phase-4 trio (tuple p4a, record p4b, variant+match p4c) end-to-end; emit `Unsupported` loudly for any shape outside scope"))
+      (step (n 9) (do "document any frontend gap surfaced by the work in this AI.a2ml file under (backends → known-limitations); fix it BEFORE the next adaptive task per the corrective-before-adaptive ordering rule")))
 
     (known-limitations
+      (limitation
+        (name "wasm-stdin-and-exit-propagation")
+        (since "0.1.0")
+        (resolved "partial — 2026-05-03")
+        (impact
+          "WASM Phase 6 is now end-to-end on wasmtime — println of string literals works for any number of calls; the heap-alignment trap that surfaced after the first println was an iovec-layout bug in [wasi_runtime.gen_println] (1-byte newline placed before a 4-byte iovec, causing an unaligned i32.store at temp+1). Fixed by reordering the layout so the iovec sits at temp+0 (aligned) and the newline byte moves to temp+12. Total allocation rounded from 13 to 16 bytes so subsequent allocs stay aligned.")
+        (deferred
+          "Three pieces remain for a fully Phase-6-and-7 WASM backend, all in [lib/wasi_runtime.ml] / [lib/codegen.ml]:
+           (1) [fd_read] import + [gen_read_line] helper — mirror [create_fd_write_import] / [gen_print_str]; the line-reader needs a byte-loop because [fd_read] returns N bytes, not lines (~80 lines of wasm IR);
+           (2) Exit-code propagation — replace the [(start $main)] directive with an exported [_start] that calls [main] then [proc_exit(retval)] via a [wasi_snapshot_preview1.proc_exit] import. Side effect: wasmtime runs without [--invoke main] and exit codes flow naturally;
+           (3) Real [OpConcat] (currently a placeholder [I32Add]) — needs allocation + byte-copy. Without [I32Load8U]/[I32Store8] in [lib/wasm.ml]'s instruction set the byte loop is awkward; consider adding bulk-memory ([memory.copy], opcode 0xfc 0x0a) to the AST first.
+           Estimated scope: 2-3 hours of focused WASM work in the 1900-line backend, additive to the existing helper structure.")
+        (recommendation
+          "Tackle exit-code propagation first — it's the smallest of the three (one new import, swap [(start)] for [(_start)], propagate a single i32 to proc_exit) and unblocks running WASM programs without the [--invoke main] flag. Then add [fd_read]/[gen_read_line]. [OpConcat] last; consider extending [wasm.ml] with [MemoryCopy] before writing the helper."))
+
       (limitation
         (name "no-target-intrinsic-protocol")
         (since "0.1.0")
@@ -346,7 +368,8 @@
       (limitation
         (name "kernel-sublangs-share-no-validator")
         (since "0.1.0")
-        (impact "WGSL, Faust, ONNX each have their own restriction predicate. A shared 'kernel-sublanguage validator' module would let backends declare their accepted subset declaratively. Perfective task.")
-        (recommendation "If two new tier-C backends ship with overlapping restrictions, factor the validator before adding the third.")))
+        (resolved "0.1.1 — 2026-05-03")
+        (impact "Originally each Tier-C backend kept its own restriction predicate; resolved by factoring the shared primitives into [lib/kernel_sublang.ml]. ~140 lines of duplicated boilerplate removed across 7 backends; the module exposes Unsupported, pick_entry, strip_ownership, is_unit_ty, array_element, require_array_element, math_builtins, validate_compute_kernel_shape, etc.")
+        (recommendation "Use Kernel_sublang for any new Tier-C backend; extend the module rather than fork its rules.")))
   )
 )
