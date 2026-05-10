@@ -28,7 +28,11 @@ type context = {
   locals : (string * int) list;      (** local variable name to index map *)
   next_local : int;                  (** next available local index *)
   loop_depth : int;                  (** current loop nesting depth *)
-  func_indices : (string * int) list;  (** function name to index map *)
+  func_indices : (string * int) list;
+  (** Top-level name environment shared by functions and constants.
+      - [k >= 0]: Wasm function index (imports + defined functions).
+      - [k < 0]:  Constant (global): actual global index is [-(k+1)].
+      Both [TopFn] and [TopConst] insert into this table in declaration order. *)
   lambda_funcs : func list;          (** lifted lambda functions *)
   next_lambda_id : int;              (** next lambda function ID *)
   heap_ptr : int option;             (** global index for heap pointer, if initialized *)

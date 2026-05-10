@@ -25,7 +25,7 @@ row_var       = ".." lower_ident
 ### 1.2 Keywords
 
 ```
-fn let mut own ref type struct enum trait impl effect handle
+fn let const extern mut own ref type struct enum trait impl effect handle
 resume handler match if else while for return break continue in
 true false where total module use pub as unsafe assume transmute
 forget Nat Int Bool Float String Type Row
@@ -68,6 +68,7 @@ Special:     \ (row restriction)
 ```ebnf
 program     = [module_decl] {import_decl} {top_level}
 top_level   = fn_decl | type_decl | trait_decl | impl_block | effect_decl
+            | const_decl | extern_type_decl | extern_fn_decl
 ```
 
 ### 2.2 Type Declarations
@@ -193,6 +194,27 @@ trait_item  = fn_sig ";" | fn_decl | assoc_type
 impl_block  = "impl" [type_params] [trait_ref "for"] type_expr
               [where_clause] "{" {impl_item} "}"
 ```
+
+### 2.9 Constant Declarations
+
+```ebnf
+const_decl  = [visibility] "const" LOWER_IDENT ":" type_expr "=" expr ";"
+```
+
+Top-level `const` bindings are evaluated at compile time and emitted as
+immutable WebAssembly globals. Both function names and const names are
+registered in the codegen name environment (see §5.1).
+
+### 2.10 Extern Declarations
+
+```ebnf
+extern_type_decl = "extern" "type" UPPER_IDENT ";"
+extern_fn_decl   = "extern" "fn" LOWER_IDENT "(" [param_list] ")" ["->" type_expr] ";"
+```
+
+`extern type` declares an opaque host-provided type. `extern fn` declares a
+function whose implementation is supplied by the host environment at link time
+(a WebAssembly import). Both are top-level only and carry no body.
 
 ## 3. Type System
 
@@ -523,6 +545,42 @@ Compiles to (ownership removed):
 (func $useFile (param $file (ref $File))
   (call $close (local.get $file)))
 ```
+
+## 8. Codegen Module Environment
+
+This section describes how the WebAssembly code generator (`lib/codegen.ml`)
+builds its name environment. It is implementation documentation aimed at
+contributors; the language semantics are fully specified in §2–4.
+
+### 8.1 Name Environment (`func_indices`)
+
+The codegen context maintains a single association list `func_indices :
+(string * int) list` that maps every top-level name visible at call sites to an
+integer key. Two distinct kinds of binding share this table:
+
+| Source declaration | Key value | Meaning |
+|--------------------|-----------|---------|
+| `fn f(…) { … }` | `k ≥ 0` | WebAssembly function index (import + defined functions combined) |
+| `const C: T = e` | `-(g+1)` where `g` is the global index | Negative sentinel; caller must emit `global.get g` not `call k` |
+
+The negative-index encoding lets call-site code distinguish constants from
+functions with a single sign test before emitting the appropriate instruction.
+
+**Population order.** Both `TopFn` and `TopConst` are processed by `gen_decl`
+in declaration order (the single pass in `gen_program`). Each inserts its name
+into `func_indices` before any later declaration can reference it. Forward
+references to functions are therefore not supported in the current
+single-pass design.
+
+### 8.2 Extern Bindings
+
+`TopExternFn` declarations are added to the WebAssembly import section and
+their names are registered in `func_indices` with the resulting import function
+index. `TopExternType` declarations register an opaque type name and generate
+no code.
+
+The WebAssembly module name for an `extern fn` import defaults to `"env"` unless
+overridden by a `@module("…")` pragma on the declaration (not yet implemented).
 
 ## Appendix: Grammar Reference
 
