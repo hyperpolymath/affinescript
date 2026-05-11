@@ -13,7 +13,7 @@ docs/
 ├── README.adoc               # This file
 ├── specs/                    # Language specifications
 │   ├── affinescript-spec.md  # Complete language specification
-│   └── SPEC.md               # Core specification
+│   └── SPEC.adoc             # Core specification
 ├── governance/               # Community and process docs
 │   ├── CODE_OF_CONDUCT.md    # Community standards
 │   ├── CONTRIBUTING.adoc     # How to contribute
@@ -36,7 +36,7 @@ docs/
 **For language designers and implementers.**
 
 * link:specs/affinescript-spec.md[AffineScript Specification] - Complete language spec
-* link:specs/SPEC.md[Core Specification] - Core language features
+* link:specs/SPEC.adoc[Core Specification] - Core language features
 
 === Governance (`governance/`)
 

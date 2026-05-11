@@ -5,7 +5,7 @@ This is the first public release of AffineScript, featuring a complete specifica
 ## What's Included
 
 ### Specification
-- `SPEC.md` - Condensed language specification (essential grammar and semantics)
+- `SPEC.adoc` - Condensed language specification (essential grammar and semantics)
 - `affinescript-spec.md` - Complete language specification v2.0
 
 ### Reference Implementation
@@ -228,7 +228,7 @@ affinescript/
 │   └── test_parser.ml      # Parser tests
 ├── examples/               # Example programs
 ├── wiki/                   # Documentation
-├── SPEC.md                 # Condensed specification
+├── SPEC.adoc               # Condensed specification
 ├── affinescript-spec.md    # Full specification
 └── RELEASE.md              # This file
 ```
@@ -252,5 +252,5 @@ MIT License - see LICENSE file.
 ## Links
 
 - Repository: https://github.com/hyperpolymath/affinescript
-- Specification: See `SPEC.md` or `affinescript-spec.md`
+- Specification: See `SPEC.adoc` or `affinescript-spec.md`
 - Issues: https://github.com/hyperpolymath/affinescript/issues

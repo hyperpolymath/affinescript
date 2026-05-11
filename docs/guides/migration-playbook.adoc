@@ -321,7 +321,7 @@ If you complete a non-trivial `.res → .affine` translation and the re-decompos
 * link:frontier-programming-practices/Human_Programming_Guide.adoc[Frontier Programming Practices] — the wider design philosophy.
 * link:frontier-programming-practices/AI.a2ml[`AI.a2ml`] — machine-readable companion, read by AI agents at session start.
 * link:../specs/SETTLED-DECISIONS.adoc[Settled Decisions] — architectural choices and why they were made.
-* link:../specs/SPEC.md[Language Specification] — authoritative grammar and semantics.
+* link:../specs/SPEC.adoc[Language Specification] — authoritative grammar and semantics.
 
 [appendix]
 == Revision History
