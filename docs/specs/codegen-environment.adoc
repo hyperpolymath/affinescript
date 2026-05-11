@@ -1,0 +1,98 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+= Codegen Environment Rules — Top-Level Bindings
+:toc: macro
+:toclevels: 2
+:source-highlighter: rouge
+
+This spec clarifies how top-level declarations — `fn`, `const`, `type`, `effect`, `trait`, `impl` — are threaded through the codegen environment, with particular attention to the two declarations that emit runtime artefacts: `fn` and `const`.
+
+This is the doc-companion to https://github.com/hyperpolymath/affinescript/issues/89[#89]; the implementation reference for the WASM target is the `gen_decl` cases in `lib/codegen.ml`. The intra-module `const`-referenced-by-`fn` failure mode is tracked in https://github.com/hyperpolymath/affinescript/issues/73[#73].
+
+toc::[]
+
+== Overview
+
+The codegen environment is a `ctx` record threaded through `gen_decl` for each top-level declaration in source order. The two fields that hold name → index bindings are:
+
+[cols="1,3", options="header"]
+|===
+| Field | Purpose
+| `func_indices` | Maps both function names AND constant names to a signed integer. *Positive* indices point into `funcs` (a function); *negative* indices encode `-(global_idx + 1)` to point into `globals` (a constant).
+| `globals` | The WASM globals table — one entry per `TopConst`, holding type + mutability + initialiser expression.
+|===
+
+The signed-int sentinel trick is **internal**: every `ExprVar` lookup in fn bodies must consult `func_indices` and dispatch on the sign to emit either a `call` or a `global.get`.
+
+== TopFn (top-level function)
+
+Mechanism in `lib/codegen.ml`:
+
+. The function body is generated against a fresh context derived from `ctx` (`gen_fn_body`), producing a list of WASM instructions and any lambda-funcs created during generation.
+. A new entry is appended to `ctx.funcs` with a fresh index `func_idx = List.length ctx.funcs`.
+. `func_indices` gains `(fd.fd_name.name, func_idx)`.
+. If `Public` or matches a game-hook export name (`init`, `update`, `draw`, ...), an `ExportFunc` export is added.
+
+ExprVar lookup against a TopFn: `List.assoc name func_indices` returns a non-negative `func_idx`; the call site emits `Call func_idx`.
+
+== TopConst (top-level constant)
+
+Mechanism in `lib/codegen.ml` (see the `| TopConst tc ->` case in `gen_decl`):
+
+. The initialiser expression is compiled against the current ctx via `gen_expr`. The result must be a constant expression — a single `I32Const` (or analogue). Non-constant initialisers are not yet supported and will fail at WASM validation.
+. A new entry is appended to `ctx.globals`:
++
+[source]
+----
+{ g_type = I32; g_mutable = false; g_init = init_code }
+----
+. The const's name is registered in `func_indices` with a *negative* index: `(tc.tc_name.name, -(global_idx + 1))`. This sentinel encoding lets ExprVar lookup dispatch on the sign without a separate `const_indices` table.
+
+ExprVar lookup against a TopConst: `List.assoc name func_indices` returns a negative index `i`; the call site decodes `global_idx = -i - 1` and emits `GlobalGet global_idx`.
+
+== Order matters
+
+Top-level declarations are processed in source order. A `fn` body that references a `const` defined *later* in the file currently fails at codegen with `Codegen.UnboundVariable`, because `func_indices` only contains entries for declarations already processed. This forward-reference limitation is a known constraint.
+
+Recommended source ordering:
+
+. Top-level types (`type`)
+. Top-level effects (`effect`)
+. Top-level constants (`const`)
+. Top-level traits / impls
+. Top-level functions
+
+This ordering matches how the typechecker resolves dependencies and avoids forward-reference failures in codegen.
+
+== Cross-module: imported top-level bindings
+
+Cross-module imports (`use OtherModule::{thing}`) are handled by two passes:
+
+* **WASM and WasmGC targets** — `Codegen.gen_imports` walks `prog.prog_imports`, loads each referenced module via `Module_loader`, and emits one `(import "<modpath>" "<fn>" (func ...))` entry per imported function. The imported name lands in `func_indices` with a positive index pointing into the imports section.
+* **All other codegens** (Rust, JS, Lua, OCaml, Julia, C, WGSL, Faust, ONNX, Bash, Nickel, ReScript, LLVM, Verilog, Gleam, CUDA, Metal, OpenCL, MLIR, Why3, Lean, SPIR-V) — `Module_loader.flatten_imports` prepends imported public `TopFn` declarations into the importer's `prog_decls` (deduplicating against local fn names). The non-WASM codegens then see the imports as if they were locally-defined and emit them inline.
+
+Imported `TopConst`s are **not** currently threaded by either path. This is a known gap; only `TopFn` flows across module boundaries today.
+
+== Non-WASM targets
+
+Each non-WASM codegen has its own `gen_decl` (or equivalent) and may or may not implement `TopConst`. The expected behaviour, target-by-target:
+
+[cols="1,2", options="header"]
+|===
+| Target | TopConst handling
+| `js_codegen.ml` | Emits `const <name> = <init>;` at module top-level. Same-file fn bodies reference it directly.
+| `rust_codegen.ml` | Emits `pub const <name>: <ty> = <init>;` at module top-level (or `static` for non-`Copy` types).
+| `ocaml_codegen.ml` | Emits `let <name> = <init>` at module top-level.
+| Other backends | If unimplemented, `gen_decl` may silently skip `TopConst`, producing a successful build whose runtime then fails with an unbound-name error. Codegens that explicitly do not support `TopConst` should raise `CodegenError UnsupportedFeature` per the loud-fail policy.
+|===
+
+When auditing or adding a backend, the env-population rule is the same: **register the name and emit a target-appropriate definition before any fn body that might reference it**.
+
+== Known issues
+
+* https://github.com/hyperpolymath/affinescript/issues/73[#73] — `Codegen.UnboundVariable` for top-level `const` bindings: typechecker accepts the reference, codegen ExprVar lookup fails. Implementation status varies by target; verify against the current `gen_decl` for the target in question.
+
+== References
+
+* `lib/codegen.ml` — WASM `gen_decl`, especially the `TopFn`, `TopConst`, and `gen_imports` cases.
+* `lib/module_loader.ml` — `flatten_imports` for non-WASM cross-module threading.
+* `bin/main.ml` — pipeline wiring (parse → resolve → typecheck → codegen with loader threading).

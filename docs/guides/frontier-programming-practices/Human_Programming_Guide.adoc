@@ -350,6 +350,27 @@ fn registerScreens(engine: Engine) {
 
 The first answer is by far the common case. The wrong move is to inline raw JS, which carries no type checking, no effect tracking, and no migration story to the eventual typed binding.
 
+**What `%raw` becomes in practice** — three concrete examples from the idaptik Wave 3 pilot, where a `Main.res` with three distinct `%raw` blocks was migrated cleanly to `migration/main/`:
+
+[cols="1,2,2", options="header"]
+|===
+| `%raw` use | Replaced by | Mechanism
+
+| `%raw("console.log(arg)")`
+| `Console.log` (typed)
+| `@affinescript/dom` exposes a typed `Console` module — `Console.log(message)`, `Console.error(err)`, etc. — backed by an `extern fn` to the host's `console` global.
+
+| Manual error-pane DOM injection via `%raw("document.getElementById('err').innerHTML = ...")`
+| Typed DOM binding
+| `@affinescript/dom` exposes `Document.queryById(id) -> Option<Element>` and `Element.setTextContent(el, str)`. The decision tree's step 2 applied: the binding existed for `queryById` but `setTextContent` was missing, so it was added to the binding package rather than inlined as `%raw`.
+
+| `%raw("try { ... } catch (e) { e.message + ' at ' + e.stack }")`
+| Structured `Result` + error sum
+| `Result[E, T]` with `E` as a sum naming each failure mode. The `try`/`catch` text-splicing became a `match` on the structured error at the surface. See Anti-pattern 5 (Promise umbrella) for the wider pattern.
+|===
+
+All three translated without any `Unsafe.embed` (the step-3 escape hatch). The 80/20 outcome of step 1 — "use the typed binding" — holds: in practice, the binding either exists or one missing helper needs to be added once for the whole codebase.
+
 ==== Anti-pattern 3: Monolithic init functions
 
 **Symptom**: a single 100+-line function (often called `init`, `start`, or `boot`) that creates the engine, registers screens, wires multiplayer, sets up audio, and fires the first frame, all in one big async block.
