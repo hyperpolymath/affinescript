@@ -652,7 +652,7 @@ let compile_file face json wasm_gc path output =
             end else if Filename.check_suffix output ".cjs" then begin
               (* Issue #35 Phase 1: Node-CJS shim around the compiled wasm. *)
               let optimized_prog = Affinescript.Opt.fold_constants_program prog in
-              match Affinescript.Codegen.generate_module optimized_prog with
+              match Affinescript.Codegen.generate_module ~loader optimized_prog with
               | Error e ->
                 add { severity = Error; code = "E0810";
                       message = Printf.sprintf "Node-CJS codegen error: %s"
@@ -665,7 +665,7 @@ let compile_file face json wasm_gc path output =
                 close_out oc
             end else begin
               let optimized_prog = Affinescript.Opt.fold_constants_program prog in
-              match Affinescript.Codegen.generate_module optimized_prog with
+              match Affinescript.Codegen.generate_module ~loader optimized_prog with
               | Error e ->
                 add { severity = Error; code = "E0801";
                       message = Printf.sprintf "WASM codegen error: %s"
@@ -1038,7 +1038,7 @@ let compile_to_wasm_module face path
             Error "Quantity error"
           | Ok () ->
             let optimized_prog = Affinescript.Opt.fold_constants_program prog in
-            (match Affinescript.Codegen.generate_module optimized_prog with
+            (match Affinescript.Codegen.generate_module ~loader optimized_prog with
             | Error e ->
               Format.eprintf "%s: codegen error: %s@." path
                 (Affinescript.Codegen.show_codegen_error e);
