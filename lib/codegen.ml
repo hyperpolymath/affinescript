@@ -1938,84 +1938,30 @@ let gen_decl (ctx : context) (decl : top_level) : context result =
     (* These declarations don't generate code *)
     Ok ctx
 
-(** Cross-module imports: walk [prog.prog_imports], load each referenced module
-    via [loader], and for every imported function name register
-    a WASM [(import "<mod>" "<fn>" (func ...))] entry plus a
-    [(local_alias_name → func_idx)] mapping in [func_indices].
+  | TopExternType _ ->
+    (* Opaque host type — no code generated; type is available to the type-checker *)
+    Ok ctx
 
-    [ImportSimple] (e.g. [use Core]) brings the namespace itself but no specific
-    symbol; nothing to emit. [ImportList] emits one import per listed item.
-    [ImportGlob] enumerates every public [TopFn] in the loaded module.
+  | TopExternFn ef ->
+    (* Add a WebAssembly import for the extern fn declaration.
+       Module name defaults to "env" (conventional host environment namespace). *)
+    let param_types = List.map (fun _ -> I32) ef.ef_params in
+    let result_types = match ef.ef_ret_ty with
+      | None -> []
+      | Some _ -> [I32]
+    in
+    let func_type = { ft_params = param_types; ft_results = result_types } in
+    let type_idx = List.length ctx.types in
+    let ctx_with_type = { ctx with types = ctx.types @ [func_type] } in
+    let func_idx = import_func_count ctx_with_type in
+    let import_entry = { i_module = "env"; i_name = ef.ef_name.name;
+                         i_desc = ImportFunc type_idx } in
+    Ok { ctx_with_type with
+         imports = ctx_with_type.imports @ [import_entry];
+         func_indices = (ef.ef_name.name, func_idx) :: ctx_with_type.func_indices }
 
-    The verifier matches imports by [i_name] only, so the [i_module] string is
-    informational; we use the dotted module path to keep it human-readable.
-
-    Silent on missing modules / non-function items / loader errors: the
-    resolver runs before codegen and would have already errored. *)
-let gen_imports (loader : Module_loader.t) (imports : import_decl list) (ctx : context)
-    : context result =
-  let process_one ctx (mod_path, orig_name, alias_opt) =
-    match Module_loader.load_module loader mod_path with
-    | Error _ -> Ok ctx
-    | Ok loaded ->
-      let fn_decl_opt = List.find_map (function
-        | TopFn fd when fd.fd_name.name = orig_name -> Some fd
-        | _ -> None
-      ) loaded.mod_program.prog_decls in
-      match fn_decl_opt with
-      | None -> Ok ctx
-      | Some fd ->
-        let local_name = Option.value alias_opt ~default:orig_name in
-        let ft = func_type_of_fn_decl fd in
-        let (type_idx, types_after) = intern_func_type ctx.types ft in
-        let import_func_idx = import_func_count ctx in
-        let import = {
-          i_module = String.concat "." mod_path;
-          i_name = orig_name;
-          i_desc = ImportFunc type_idx;
-        } in
-        Ok { ctx with
-             types = types_after;
-             imports = ctx.imports @ [import];
-             func_indices = (local_name, import_func_idx) :: ctx.func_indices;
-           }
-  in
-  let expand_import imp : (string list * string * string option) list =
-    let path_strs path = List.map (fun (id : ident) -> id.name) path in
-    match imp with
-    | ImportSimple _ -> []
-    | ImportList (path, items) ->
-      let p = path_strs path in
-      List.map (fun item ->
-        (p, item.ii_name.name, Option.map (fun (id : ident) -> id.name) item.ii_alias)
-      ) items
-    | ImportGlob path ->
-      let p = path_strs path in
-      (match Module_loader.load_module loader p with
-       | Error _ -> []
-       | Ok lm ->
-         List.filter_map (function
-           | TopFn fd when fd.fd_vis = Public || fd.fd_vis = PubCrate ->
-             Some (p, fd.fd_name.name, None)
-           | _ -> None
-         ) lm.mod_program.prog_decls)
-  in
-  let entries = List.concat_map expand_import imports in
-  List.fold_left (fun acc e ->
-    let* ctx = acc in
-    process_one ctx e
-  ) (Ok ctx) entries
-
-(** Generate WASM module from AffineScript program.
-
-    [?loader] supplies the module loader used to resolve cross-module imports.
-    Defaults to a fresh loader with [Module_loader.default_config ()] so that
-    existing call sites keep working without modification. *)
-let generate_module ?loader (prog : program) : wasm_module result =
-  let loader = match loader with
-    | Some l -> l
-    | None -> Module_loader.create (Module_loader.default_config ())
-  in
+(** Generate WASM module from AffineScript program *)
+let generate_module (prog : program) : wasm_module result =
   let ctx = create_context () in
 
   (* Add WASI fd_write import at index 0 *)
