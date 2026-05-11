@@ -1,0 +1,19 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+//
+// Sqlite.affine — extern bindings for an SQLite backend.
+//
+// All database handles are opaque Int. Query parameters are JSON-encoded
+// strings; each result row is returned as a JSON-encoded string for
+// caller-side decoding. The Node-CJS shim wraps Deno sqlite or node:sqlite.
+
+module Sqlite;
+
+pub extern type Db;
+
+pub extern fn db_open(path: String) -> Db;
+pub extern fn db_close(d: Db) -> Int;
+pub extern fn db_execute(d: Db, sql: String) -> Int;
+pub extern fn db_query(d: Db, sql: String, params_json: String) -> String;
+pub extern fn db_query_one(d: Db, sql: String, params_json: String) -> String;
+pub extern fn db_query_int(d: Db, sql: String, params_json: String) -> Int;

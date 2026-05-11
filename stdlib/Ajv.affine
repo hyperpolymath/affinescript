@@ -1,0 +1,16 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+//
+// Ajv.affine — extern bindings for AJV v8 JSON Schema Validator.
+// The Node-CJS shim instantiates ajv@8 with allErrors:true, strict:false
+// and ajv-formats@3 applied. All handles are opaque Int.
+
+module Ajv;
+
+pub extern type AjvInstance;
+pub extern type Validator;
+
+pub extern fn ajv_new() -> AjvInstance;
+pub extern fn ajv_compile(a: AjvInstance, schema_json: String) -> Validator;
+pub extern fn ajv_validate(v: Validator, value_json: String) -> Bool;
+pub extern fn ajv_errors_json(v: Validator) -> String;
