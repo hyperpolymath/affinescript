@@ -436,7 +436,13 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
            UnboundVariable even though the parser accepts it. *)
         begin match List.assoc_opt id.name ctx.variant_tags with
           | Some tag -> Ok (ctx, [I32Const (Int32.of_int tag)])
-          | None -> Error (UnboundVariable id.name)
+          | None ->
+            (* Top-level const bindings are stored in func_indices with a
+               negative sentinel: actual global index = -(k+1). *)
+            begin match List.assoc_opt id.name ctx.func_indices with
+              | Some k when k < 0 -> Ok (ctx, [GlobalGet (-(k + 1))])
+              | _ -> Error (UnboundVariable id.name)
+            end
         end
     end
 
