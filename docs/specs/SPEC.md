@@ -25,7 +25,7 @@ row_var       = ".." lower_ident
 ### 1.2 Keywords
 
 ```
-fn let const extern mut own ref type struct enum trait impl effect handle
+fn let const mut own ref type struct enum trait impl effect handle
 resume handler match if else while for return break continue in
 true false where total module use pub as unsafe assume transmute
 forget Nat Int Bool Float String Type Row
@@ -68,7 +68,7 @@ Special:     \ (row restriction)
 ```ebnf
 program     = [module_decl] {import_decl} {top_level}
 top_level   = fn_decl | type_decl | trait_decl | impl_block | effect_decl
-            | const_decl | extern_type_decl | extern_fn_decl
+            | const_decl
 ```
 
 ### 2.2 Type Declarations
@@ -201,20 +201,15 @@ impl_block  = "impl" [type_params] [trait_ref "for"] type_expr
 const_decl  = [visibility] "const" LOWER_IDENT ":" type_expr "=" expr ";"
 ```
 
-Top-level `const` bindings are evaluated at compile time and emitted as
-immutable WebAssembly globals. Both function names and const names are
-registered in the codegen name environment (see §5.1).
+A top-level `const` binding compiles to an immutable WebAssembly global. The
+initializer expression must reduce to a Wasm constant expression (a literal
+or a constant arithmetic combination thereof); non-constant initializers are
+not yet supported by the linear-memory backend.
 
-### 2.10 Extern Declarations
-
-```ebnf
-extern_type_decl = "extern" "type" UPPER_IDENT ";"
-extern_fn_decl   = "extern" "fn" LOWER_IDENT "(" [param_list] ")" ["->" type_expr] ";"
-```
-
-`extern type` declares an opaque host-provided type. `extern fn` declares a
-function whose implementation is supplied by the host environment at link time
-(a WebAssembly import). Both are top-level only and carry no body.
+Both function names and const names are registered in the same codegen name
+environment so that later top-level declarations may refer to either kind of
+binding by name. See §8 (*Codegen Module Environment*) for the encoding and
+the current single-pass population order.
 
 ## 3. Type System
 
@@ -554,33 +549,46 @@ contributors; the language semantics are fully specified in §2–4.
 
 ### 8.1 Name Environment (`func_indices`)
 
-The codegen context maintains a single association list `func_indices :
-(string * int) list` that maps every top-level name visible at call sites to an
+The codegen context maintains a single association list
+
+```ocaml
+func_indices : (string * int) list
+```
+
+that maps every top-level name visible at later declaration sites to an
 integer key. Two distinct kinds of binding share this table:
 
 | Source declaration | Key value | Meaning |
 |--------------------|-----------|---------|
-| `fn f(…) { … }` | `k ≥ 0` | WebAssembly function index (import + defined functions combined) |
-| `const C: T = e` | `-(g+1)` where `g` is the global index | Negative sentinel; caller must emit `global.get g` not `call k` |
+| `fn f(…) { … }` | `k ≥ 0` | WebAssembly function index (imports + defined functions, combined) |
+| `const C: T = e` | `-(g + 1)`, where `g` is the global's index in the Wasm `globals` vector | Negative sentinel reserved for constants |
 
-The negative-index encoding lets call-site code distinguish constants from
-functions with a single sign test before emitting the appropriate instruction.
+Sign-based partitioning is deliberate: `k ≥ 0` decodes directly as a Wasm
+`funcidx`, and `k < 0` recovers the global index as `g = -(k + 1)`. A
+single integer per name keeps the lookup uniform across both kinds of binding.
 
-**Population order.** Both `TopFn` and `TopConst` are processed by `gen_decl`
-in declaration order (the single pass in `gen_program`). Each inserts its name
-into `func_indices` before any later declaration can reference it. Forward
-references to functions are therefore not supported in the current
-single-pass design.
+**Population.** Top-level declarations are visited in source order by
+`gen_decl`, which is folded over `prog.prog_decls` from `generate_module`.
+The two relevant cases are:
 
-### 8.2 Extern Bindings
+- `TopFn fd` — registers `(fd.fd_name.name, func_idx)` in `func_indices`
+  *before* generating the function body, so the body may recursively refer
+  to its own name.
+- `TopConst tc` — generates the global initializer, appends the global to
+  `ctx.globals`, then registers `(tc.tc_name.name, -(global_idx + 1))` in
+  `func_indices`.
 
-`TopExternFn` declarations are added to the WebAssembly import section and
-their names are registered in `func_indices` with the resulting import function
-index. `TopExternType` declarations register an opaque type name and generate
-no code.
+Because population is strictly single-pass and in declaration order,
+forward references (to either functions or constants declared later in the
+file) are not supported by the current backend.
 
-The WebAssembly module name for an `extern fn` import defaults to `"env"` unless
-overridden by a `@module("…")` pragma on the declaration (not yet implemented).
+**Call-site lookup.** The `ExprApp (ExprVar id, _)` branch of `gen_expr`
+consults `func_indices` to translate a direct call into a Wasm `call k`
+instruction. Decoding the negative sentinel back to a `global.get` —
+needed to make a bare `const` identifier usable inside another top-level
+declaration's body — is tracked as a known gap in issue #73. The encoding
+documented in this section is the data layout the fix relies on; the
+call-site decode path will land alongside that fix.
 
 ## Appendix: Grammar Reference
 
