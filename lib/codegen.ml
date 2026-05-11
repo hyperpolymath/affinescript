@@ -1871,6 +1871,28 @@ let gen_decl (ctx : context) (decl : top_level) : context result =
     (* These declarations don't generate code *)
     Ok ctx
 
+  | TopExternType _ ->
+    (* Opaque host type — no code generated; type is available to the type-checker *)
+    Ok ctx
+
+  | TopExternFn ef ->
+    (* Add a WebAssembly import for the extern fn declaration.
+       Module name defaults to "env" (conventional host environment namespace). *)
+    let param_types = List.map (fun _ -> I32) ef.ef_params in
+    let result_types = match ef.ef_ret_ty with
+      | None -> []
+      | Some _ -> [I32]
+    in
+    let func_type = { ft_params = param_types; ft_results = result_types } in
+    let type_idx = List.length ctx.types in
+    let ctx_with_type = { ctx with types = ctx.types @ [func_type] } in
+    let func_idx = import_func_count ctx_with_type in
+    let import_entry = { i_module = "env"; i_name = ef.ef_name.name;
+                         i_desc = ImportFunc type_idx } in
+    Ok { ctx_with_type with
+         imports = ctx_with_type.imports @ [import_entry];
+         func_indices = (ef.ef_name.name, func_idx) :: ctx_with_type.func_indices }
+
 (** Generate WASM module from AffineScript program *)
 let generate_module (prog : program) : wasm_module result =
   let ctx = create_context () in

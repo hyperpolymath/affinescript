@@ -367,6 +367,14 @@ type top_level =
       tc_ty : type_expr;
       tc_value : expr;
     }
+  | TopExternType of {
+      et_name : ident;
+    }
+  | TopExternFn of {
+      ef_name : ident;
+      ef_params : param list;
+      ef_ret_ty : type_expr option;
+    }
 [@@deriving show, eq]
 
 (** Complete program *)
