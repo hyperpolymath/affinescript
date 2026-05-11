@@ -137,8 +137,10 @@ All JS ↔ WASM value exchanges use the `AffineValue` tagged-union type:
 package without any additional steps — the type definitions are automatically
 picked up by `tsc` and editors.
 
-For TypeScript projects, the companion `@hyperpolymath/affine-ts` package
-provides enhanced declarations with stricter generics.
+TypeScript is not a first-class consumer in the AffineScript ecosystem. There
+is no `@hyperpolymath/affine-ts` package; TS callers should consume
+`@hyperpolymath/affine-js` directly via the shipped `.d.ts` and supply any
+project-specific typings themselves.
 
 == Return type hints
 
