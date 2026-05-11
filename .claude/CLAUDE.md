@@ -70,20 +70,20 @@ Both are FOSS with independent governance (no Big Tech).
 
 ### TypeScript Exemptions (Approved)
 
-The "no new TypeScript" rule has eight approved exemptions in this repo. These paths are *not* policy violations — they are documented carve-outs because the file format or downstream consumer requires TypeScript:
+The "no new TypeScript" rule has seven approved exemptions in this repo. These paths are *not* policy violations — they are documented carve-outs because the file format or downstream consumer requires TypeScript:
 
 | Path | Files | Rationale | Unblock condition |
 |---|---|---|---|
 | `packages/affine-js/types.d.ts` | 1 | TypeScript declaration file — the public API contract by which JS callers consume AffineScript-compiled artefacts. `.d.ts` is TS by definition. | Generate from canonical compiler output (issue: see ROADMAP). |
-| `packages/affine-ts/types.d.ts` | 1 | Same, for TS callers. | Same as above. |
 | `affinescript-deno-test/*.ts` | 6 | Deno-based test harness for AffineScript itself: `cli.ts`, `mod.ts`, `lib/{compile,discover,runner}.ts`, `example/smoke_driver.ts`. Deno test runner is TS-native. | AffineScript stdlib + Deno bindings (no scheduled issue). |
 
 Adding to this list requires explicit user approval and an unblock condition. New TypeScript files outside this list are still banned per the policy table above.
 
 **Closed exemptions:**
 - `editors/vscode/src/extension.ts` — closed 2026-05-03 by issue #35 Phase 3 (Node-target codegen + Vscode bindings landed). Source of truth is now `editors/vscode/src/extension.affine`, compiled to `out/extension.cjs`. Re-introducing the .ts file is blocked by `tools/check-no-extension-ts.sh` (wired into `just check` and `.github/workflows/ci.yml`).
+- `packages/affine-ts/` — removed 2026-05-11 (issue #66 closed won't-do). TypeScript is not a first-class consumer; TS callers should use `@hyperpolymath/affine-js` directly and supply their own typings.
 
-The 5 external references to `affinescript-deno-test/` (CI workflow, status docs, history docs) and the 3 references to `packages/affine-{js,ts}/` (status docs, Deno config) are why physical relocation into a `vendor/` subtree was rejected — the relocation cost exceeded the visibility benefit when the directories are already named clearly.
+The 5 external references to `affinescript-deno-test/` (CI workflow, status docs, history docs) and the references to `packages/affine-js/` (status docs, Deno config) are why physical relocation into a `vendor/` subtree was rejected — the relocation cost exceeded the visibility benefit when the directories are already named clearly.
 
 ### Package Management
 
