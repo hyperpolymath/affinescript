@@ -130,6 +130,11 @@ pub extern fn stringReplaceSuffix(s: String,
                                    suffix: String,
                                    replacement: String) -> String;
 
+/// Returns 1 if `s` has zero length, 0 otherwise. Useful for testing the
+/// "no result" sentinel returned by getters like `workspaceFolderFirstPath`
+/// without needing a String=String primitive in the AffineScript surface.
+pub extern fn stringIsEmpty(s: String) -> Int;
+
 // ── Workspace ─────────────────────────────────────────────────────────
 
 /// First workspace folder's `uri.fsPath`, or "" if there is no workspace.

@@ -150,6 +150,7 @@ module.exports = function makeVscodeBindings(vscode, lcModule, hostShim) {
       const out = s.endsWith(suffix) ? s.slice(0, -suffix.length) + replacement : s;
       return reg(out);
     },
+    stringIsEmpty: (sPtr) => readString(sPtr).length === 0 ? 1 : 0,
 
     // ── Workspace ───────────────────────────────────────────────────
     workspaceFolderFirstPath: () => {
