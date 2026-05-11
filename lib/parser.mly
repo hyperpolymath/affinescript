@@ -158,17 +158,6 @@ const_decl:
     { TopConst { tc_vis = Option.value vis ~default:Private;
                  tc_name = name; tc_ty = ty; tc_value = value } }
 
-extern_type_decl:
-  | EXTERN TYPE name = upper_ident SEMICOLON
-    { TopExternType { et_name = name } }
-
-extern_fn_decl:
-  | EXTERN FN name = ident LPAREN params = separated_list(COMMA, param) RPAREN SEMICOLON
-    { TopExternFn { ef_name = name; ef_params = params; ef_ret_ty = None } }
-  | EXTERN FN name = ident LPAREN params = separated_list(COMMA, param) RPAREN ARROW ret = type_expr SEMICOLON
-    { TopExternFn { ef_name = name; ef_params = params; ef_ret_ty = Some ret } }
-
-/* ========== Functions ========== */
 
 fn_decl:
   | vis = visibility? total = TOTAL? FN name = ident
