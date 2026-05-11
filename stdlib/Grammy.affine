@@ -1,0 +1,30 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+//
+// Grammy.affine — extern bindings for the Grammy Telegram Bot framework.
+//
+// All Grammy host objects are opaque Int handles maintained by the Node-CJS
+// shim. Function names mirror the Grammy/Telegram API where possible, with
+// namespaces flattened (e.g. bot.api.sendMessage -> bot_send_message).
+//
+// API surface: the subset used by avow-protocol/telegram-bot in standards.
+
+module Grammy;
+
+pub extern type Bot;
+pub extern type Context;
+pub extern type BotInfo;
+
+pub extern fn bot_new(token: String) -> Bot;
+pub extern fn bot_command(b: Bot, command: String, handler: Int) -> Int;
+pub extern fn bot_catch(b: Bot, err_handler: Int) -> Int;
+pub extern fn bot_start(b: Bot, on_start_handler: Int) -> Int;
+pub extern fn bot_send_message(b: Bot, chat_id: Int, text: String, parse_mode: String) -> Int;
+
+pub extern fn ctx_from_id(ctx: Context) -> Option<Int>;
+pub extern fn ctx_from_username(ctx: Context) -> Option<String>;
+pub extern fn ctx_reply(ctx: Context, text: String, parse_mode: String) -> Int;
+
+pub extern fn botinfo_username(info: BotInfo) -> String;
+
+pub extern fn set_interval(handler: Int, interval_ms: Int) -> Int;

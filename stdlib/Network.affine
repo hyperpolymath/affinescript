@@ -1,0 +1,10 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+//
+// Network.affine — extern bindings for synchronous HTTP requests.
+// The Node-CJS shim wraps Node's built-in node:https via a sync adapter.
+
+module Network;
+
+pub extern fn http_get_status(url: String) -> Int;
+pub extern fn http_get_response_time_ms(url: String) -> Int;
