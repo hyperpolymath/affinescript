@@ -31,8 +31,11 @@ type context = {
   func_indices : (string * int) list;
   (** Top-level name environment shared by functions and constants.
       - [k >= 0]: Wasm function index (imports + defined functions).
+                  Populated by both [TopFn] (defined function) and
+                  [TopFn _ with fd_body = FnExtern] (host-supplied import).
       - [k < 0]:  Constant (global): actual global index is [-(k+1)].
-      Both [TopFn] and [TopConst] insert into this table in declaration order. *)
+                  Populated by [TopConst].
+      Entries are inserted in source declaration order by [gen_decl]. *)
   lambda_funcs : func list;          (** lifted lambda functions *)
   next_lambda_id : int;              (** next lambda function ID *)
   heap_ptr : int option;             (** global index for heap pointer, if initialized *)

@@ -25,7 +25,7 @@ row_var       = ".." lower_ident
 ### 1.2 Keywords
 
 ```
-fn let const mut own ref type struct enum trait impl effect handle
+fn let const extern mut own ref type struct enum trait impl effect handle
 resume handler match if else while for return break continue in
 true false where total module use pub as unsafe assume transmute
 forget Nat Int Bool Float String Type Row
@@ -68,7 +68,7 @@ Special:     \ (row restriction)
 ```ebnf
 program     = [module_decl] {import_decl} {top_level}
 top_level   = fn_decl | type_decl | trait_decl | impl_block | effect_decl
-            | const_decl
+            | const_decl | extern_fn_decl | extern_type_decl
 ```
 
 ### 2.2 Type Declarations
@@ -210,6 +210,28 @@ Both function names and const names are registered in the same codegen name
 environment so that later top-level declarations may refer to either kind of
 binding by name. See §8 (*Codegen Module Environment*) for the encoding and
 the current single-pass population order.
+
+### 2.10 Extern Declarations
+
+```ebnf
+extern_fn_decl   = [visibility] "extern" "fn" LOWER_IDENT
+                   [type_params] "(" [param_list] ")"
+                   ["->" type_expr] ["/" effects] ";"
+extern_type_decl = [visibility] "extern" "type" UPPER_IDENT
+                   [type_params] ";"
+```
+
+`extern fn` declares a function whose implementation is supplied by the host
+environment at link time. The linear-memory WebAssembly backend lowers each
+`extern fn` to an `(import "env" "<name>" (func …))` entry; the import slot
+is registered in the codegen name environment so call sites resolve through
+`call k` exactly as for locally-defined functions (see §8).
+
+`extern type` declares an opaque, host-provided type. It carries no runtime
+representation and generates no Wasm artifact; the typechecker treats the
+name as a nominal opaque type whose internal structure is unknown.
+
+Both forms are terminated by `;` and carry no body.
 
 ## 3. Type System
 
@@ -569,11 +591,18 @@ single integer per name keeps the lookup uniform across both kinds of binding.
 
 **Population.** Top-level declarations are visited in source order by
 `gen_decl`, which is folded over `prog.prog_decls` from `generate_module`.
-The two relevant cases are:
+The relevant cases are:
 
-- `TopFn fd` — registers `(fd.fd_name.name, func_idx)` in `func_indices`
-  *before* generating the function body, so the body may recursively refer
-  to its own name.
+- `TopFn fd` with `fd.fd_body <> FnExtern` — picks the next Wasm function
+  index (`import_func_count ctx + List.length ctx.funcs`), registers
+  `(fd.fd_name.name, func_idx)` in `func_indices` *before* generating the
+  body so the body may recursively refer to its own name, then appends the
+  emitted function to `ctx.funcs`.
+- `TopFn fd` with `fd.fd_body = FnExtern` — emits a Wasm import (module
+  `"env"`, name `fd.fd_name.name`) and registers
+  `(fd.fd_name.name, import_func_idx)` in `func_indices`, where
+  `import_func_idx` is the number of imports before adding this one. No
+  function body is generated. See §8.2.
 - `TopConst tc` — generates the global initializer, appends the global to
   `ctx.globals`, then registers `(tc.tc_name.name, -(global_idx + 1))` in
   `func_indices`.
@@ -589,6 +618,27 @@ needed to make a bare `const` identifier usable inside another top-level
 declaration's body — is tracked as a known gap in issue #73. The encoding
 documented in this section is the data layout the fix relies on; the
 call-site decode path will land alongside that fix.
+
+### 8.2 Extern Bindings
+
+An `extern fn name(…) -> Ret;` declaration produces a `TopFn` with
+`fd_body = FnExtern`. Codegen lowers it to a Wasm import:
+
+```
+(import "env" "<name>" (func (param …) (result …)))
+```
+
+The resulting import function index is positive (it counts among the
+combined "imports + defined functions" view used by every other call
+site), so the name is registered in `func_indices` with `k ≥ 0` and call
+sites resolve through `call k` indistinguishably from a locally-defined
+function. The Wasm module name is currently hard-coded to `"env"`,
+matching the convention adopted by the Node-CJS host shim.
+
+An `extern type Name;` declaration produces a `TopType` with
+`td_body = TyExtern`. It generates no Wasm artifact — opaque types are
+purely a typechecker concern — and the codegen `TopType TyExtern` case
+returns the unchanged context.
 
 ## Appendix: Grammar Reference
 
