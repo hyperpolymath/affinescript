@@ -47,7 +47,7 @@ This guide helps you navigate the AffineScript repository structure.
 **Key specification documents:**
 
 * link:docs/specs/affinescript-spec.md[AffineScript Specification] - Complete language spec
-* link:docs/specs/SPEC.md[Core Specification] - Core language features
+* link:docs/specs/SPEC.adoc[Core Specification] - Core language features
 
 **Governance documents:**
 

@@ -17,7 +17,7 @@
     4. A top-level entry point [{!check_function_quantities}] for integration
        with the type checker.
 
-    Reference: AffineScript SPEC.md Section 3.2 — QTT semiring specification. *)
+    Reference: AffineScript SPEC.adoc Section 3.2 — QTT semiring specification. *)
 
 open Ast
 

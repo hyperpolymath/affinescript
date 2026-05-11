@@ -498,7 +498,7 @@ fn fetch_with_retry(
 - link:warmup/README.adoc[Warmup scripts] — hands-on exercises, 15 minutes each
 - link:migration-playbook.adoc[Migration Playbook] — systematic re-decomposition rules for porting ReScript / TypeScript / other `-script` codebases into AffineScript
 - link:frontier-programming-practices/Human_Programming_Guide.adoc[Frontier Programming Practices] — the wider design philosophy (v2.0, 2026-04-10)
-- link:../specs/SPEC.md[Language Specification] — the authoritative grammar and semantics
+- link:../specs/SPEC.adoc[Language Specification] — the authoritative grammar and semantics
 - link:../specs/SETTLED-DECISIONS.adoc[Settled Decisions] — architectural choices and why they were made
 - link:../DESIGN-VISION.adoc[Design Vision] — the long view
 
@@ -521,7 +521,7 @@ AffineScript.  Error messages are translated back to the face you chose, so
 "Ownership error: single-use variable" appears instead of internal jargon.
 
 Additional faces (JS-face, Pseudocode-face, and others) are on the roadmap.
-See link:../specs/faces.md[faces.md] for the architecture.
+See link:../specs/faces.adoc[faces.adoc] for the architecture.
 
 [appendix]
 == Appendix: Bringing in Target Intrinsics
