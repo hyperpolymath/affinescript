@@ -36,17 +36,43 @@ adapter._extraImports = () => makeBindings(vscode, lc, () => instance);
 
 The adapter implements every `extern fn` declared in:
 
-* `stdlib/Vscode.affine` — 11 bindings covering vscode.commands.registerCommand,
+* `stdlib/Vscode.affine` — initial set (issue #35 Phase 2): commands.registerCommand,
   workspace.getConfiguration / createFileSystemWatcher,
-  window.showErrorMessage / showWarningMessage / showInformationMessage,
+  window.{showError,showWarning,showInformation}Message,
   window.createTerminal + terminal.show / sendText,
-  ExtensionContext.subscriptions.push, and window.activeTextEditor.
+  ExtensionContext.subscriptions.push, window.activeTextEditor,
+  editorActive{FilePath,LanguageId}, workspaceConfigGet{Bool,String},
+  consoleLog, execSync, and three string helpers.
++
+Expanded 2026-05-11 for the rsr-certifier port (issue #64):
+workspaceFolderFirstPath / workspaceRootUri, uriFromPath / uriJoinPath / uriPath,
+fsWriteFile, openTextDocument / showTextDocument,
+createStatusBarItem + statusBarItem.{setText,setTooltip,setCommand,setBackgroundColorTheme,show,hide,asDisposable},
+createDiagnosticCollection + diagnosticCollection.{clear,setForUri,asDisposable},
+createWebviewPanel + webviewPanel.{setHtml,asDisposable},
+clipboardWriteText, onDidSaveTextDocument,
+pathBasename / pathJoin / processPlatform, and extensionAbsolutePath.
+
 * `stdlib/VscodeLanguageClient.affine` — 3 bindings covering
   new LanguageClient(...) / start() / stop().
 
+== Deliberate omissions
+
+Two API shapes are not bound because they cannot be expressed in the
+current synchronous extern-call ABI without an async-extern hookup:
+
+* `vscode.window.withProgress(opts, async task)` — the second arg is an
+  async Thenable-returning task.
+* `LanguageClient.sendRequest(method, params)` — returns a Thenable.
+
+Extensions that need either should fall back to shelling out to a CLI
+via `Vscode::createTerminal` / `Vscode::execSync` until an async-extern
+ABI lands.
+
 == Design notes
 
-* All host objects (Disposable, Terminal, ExtensionContext, ...) are
+* All host objects (Disposable, Terminal, ExtensionContext, StatusBarItem,
+  DiagnosticCollection, WebviewPanel, Uri, TextDocument, ...) are
   represented as opaque integer handles on both sides of the FFI. The
   adapter maintains a JS-side handle table.
 * String args are passed across as i32 pointers into the wasm linear
@@ -55,9 +81,14 @@ The adapter implements every `extern fn` declared in:
 * Wasm function-pointer args (e.g. command handlers) come in as
   `__indirect_function_table` indices; the adapter wraps each in a JS
   thunk that re-enters the wasm module on invocation.
+* Diagnostics avoid a Range+Diagnostic struct FFI by accepting a JSON
+  array: `[{startLine,startCol,endLine,endCol,message,severity}, ...]`.
+  The adapter parses it and constructs the vscode objects.
 
 == Status
 
-Phase 2 — bindings landed. Phase 3 (`editors/vscode/src/extension.ts` →
-`editors/vscode/src/extension.affine` rewrite) is the next milestone. Phase 4
-sweeps the rattlescript-face copy.
+Phase 2 — bindings landed. The pilot affinescript port (issue #63) and
+external-extension ports (issue #64: my-lang, rsr-certifier) consume
+this adapter; the long-term plan is to publish it to npm so consumers
+do not have to vendor `mod.js`. Phase 4 (rattlescript-face sweep) still
+to do.
