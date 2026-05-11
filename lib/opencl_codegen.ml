@@ -5,28 +5,19 @@
     -triple spir64 -xcl] or any conformant OpenCL implementation. *)
 
 open Ast
-
-exception Cl_unsupported of string
-let unsupported m = raise (Cl_unsupported m)
+open Kernel_sublang
 
 let scalar_of_type_name = function
   | "Int" -> "int" | "Float" -> "float" | "Bool" -> "bool"
   | n -> unsupported ("type not allowed in OpenCL kernel: " ^ n)
 
-let rec scalar_of (te : type_expr) : string =
-  match te with
+let scalar_of (te : type_expr) : string =
+  match strip_ownership te with
   | TyCon id -> scalar_of_type_name id.name
-  | TyOwn t | TyRef t | TyMut t -> scalar_of t
   | _ -> unsupported "complex type not allowed"
 
 let array_element (te : type_expr) : string =
-  let rec strip = function
-    | TyOwn t | TyRef t | TyMut t -> strip t
-    | t -> t
-  in
-  match strip te with
-  | TyApp (id, [TyArg inner]) when id.name = "Array" -> scalar_of inner
-  | _ -> unsupported "expected Array[Int|Float] for kernel buffer"
+  scalar_of_type_name (require_array_element "Array[Int|Float]" te)
 
 let access_qual = function
   | Some Mut -> ""              (* read+write *)
@@ -57,9 +48,7 @@ let rec gen_expr (e : expr) : string =
   | ExprIndex (a, i) -> Printf.sprintf "%s[%s]" (gen_expr a) (gen_expr i)
   | ExprApp (callee, args) ->
       let name = match callee with ExprVar id -> id.name | _ -> unsupported "indirect call" in
-      let known = ["sin"; "cos"; "tan"; "sqrt"; "exp"; "log"; "pow";
-                   "fabs"; "floor"; "ceil"; "min"; "max"; "tanh"] in
-      if not (List.mem name known) then
+      if not (is_math_builtin name || name = "fabs") then
         unsupported ("call to non-builtin in OpenCL kernel: " ^ name);
       Printf.sprintf "%s(%s)" name (String.concat ", " (List.map gen_expr args))
   | ExprSpan (inner, _) -> gen_expr inner
@@ -92,11 +81,7 @@ let rec gen_stmt (s : stmt) : string =
         (String.concat " " (List.map gen_stmt b.blk_stmts))
   | StmtFor _ -> unsupported "for-in"
 
-let pick_kernel (program : program) : fn_decl =
-  let fns = List.filter_map (function TopFn fd -> Some fd | _ -> None) program.prog_decls in
-  match List.find_opt (fun fd -> fd.fd_name.name = "kernel") fns with
-  | Some fd -> fd
-  | None -> match fns with fd :: _ -> fd | [] -> unsupported "no function found"
+let pick_kernel = pick_entry
 
 let generate (program : program) (_symbols : Symbol.t) : string =
   let buf = Buffer.create 1024 in
@@ -128,6 +113,6 @@ let generate (program : program) (_symbols : Symbol.t) : string =
 let codegen_opencl (program : program) (symbols : Symbol.t) : (string, string) result =
   try Ok (generate program symbols)
   with
-  | Cl_unsupported m -> Error ("OpenCL backend: " ^ m)
+  | Unsupported m -> Error ("OpenCL backend: " ^ m)
   | Failure m        -> Error ("OpenCL codegen error: " ^ m)
   | e                -> Error ("OpenCL codegen error: " ^ Printexc.to_string e)

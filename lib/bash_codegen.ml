@@ -71,6 +71,8 @@ let gen_function (fd : fn_decl) : string =
     | FnBlock { blk_stmts = []; blk_expr = Some e } -> e
     | FnBlock _ ->
         unsupported "Bash backend accepts only single-expression function bodies"
+    | FnExtern ->
+        unsupported "Bash backend has no story for `extern fn` (no host-link concept)"
   in
   let body_str = gen_expr body_expr in
   let buf = Buffer.create 128 in

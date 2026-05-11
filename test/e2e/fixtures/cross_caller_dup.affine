@@ -1,0 +1,14 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2026 Jonathan D.A. Jewell
+//
+// Caller that calls the Linear-param import twice on the same path —
+// duplicates the linear argument. Verify-boundary must report
+// LinearImportCalledMultiple.
+
+use CrossCallee::{consume};
+
+pub fn main() -> Int {
+  let a = consume(1);
+  let b = consume(2);
+  return a + b;
+}

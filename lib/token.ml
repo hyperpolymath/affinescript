@@ -47,6 +47,7 @@ type t =
   | USE
   | PUB
   | AS
+  | EXTERN
   | UNSAFE
   | ASSUME
   | SELF_KW     (** self receiver keyword *)
@@ -164,6 +165,7 @@ let to_string = function
   | USE -> "use"
   | PUB -> "pub"
   | AS -> "as"
+  | EXTERN -> "extern"
   | UNSAFE -> "unsafe"
   | ASSUME -> "assume"
   | SELF_KW -> "self"

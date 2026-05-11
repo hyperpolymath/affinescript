@@ -887,6 +887,7 @@ let check_function (ctx : context) (symbols : Symbol.t) (fd : fn_decl) : unit re
   match fd.fd_body with
   | FnBlock blk -> check_block ctx state symbols blk
   | FnExpr e -> check_expr ctx state symbols e
+  | FnExtern -> Ok ()  (* No body to borrow-check *)
 
 (** Check a program *)
 let check_program (symbols : Symbol.t) (program : program) : unit result =

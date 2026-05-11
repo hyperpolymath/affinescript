@@ -43,6 +43,14 @@ jobs:
       - name: Run face-transformer regression tests
         run: opam exec -- ./tools/run_face_transformer_tests.sh
 
+      - name: Issue #35 Phase 3 — block extension.ts regression
+        # The vscode extension is now authored in extension.affine and
+        # compiled to extension.cjs. Re-introducing extension.ts would
+        # silently drift the source-of-truth back to TypeScript, which
+        # the policy forbids. See tools/check-no-extension-ts.sh for
+        # rationale + recovery instructions.
+        run: ./tools/check-no-extension-ts.sh
+
       - name: Check formatting
         run: opam exec -- dune build @fmt
 

@@ -41,6 +41,7 @@ let () =
       ("use", USE);
       ("pub", PUB);
       ("as", AS);
+      ("extern", EXTERN);
       ("unsafe", UNSAFE);
       ("assume", ASSUME);
       ("transmute", TRANSMUTE);

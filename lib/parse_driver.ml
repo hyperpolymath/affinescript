@@ -78,6 +78,7 @@ let lexer_of_token_stream (next : unit -> Token.t * Span.t) : Lexing.lexbuf -> P
     | Token.USE -> Parser.USE
     | Token.PUB -> Parser.PUB
     | Token.AS -> Parser.AS
+    | Token.EXTERN -> Parser.EXTERN
     | Token.UNSAFE -> Parser.UNSAFE
     | Token.ASSUME -> Parser.ASSUME
     | Token.SELF_KW -> Parser.SELF_KW

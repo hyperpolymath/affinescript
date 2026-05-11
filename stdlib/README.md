@@ -9,7 +9,7 @@ Basic utilities and operations.
 
 **Functions:**
 - `id[T](x: T) -> T` - Identity function
-- `const[A, B](x: A, _y: B) -> A` - Constant function
+- `always[A, B](x: A, _y: B) -> A` - Constant function (returns x, ignores y; named `always` since `const` is a reserved keyword)
 - `compose[A, B, C](f, g)` - Function composition
 - `flip[A, B, C](f)` - Flip function arguments
 - `min(a, b)`, `max(a, b)`, `clamp(x, low, high)` - Numeric operations

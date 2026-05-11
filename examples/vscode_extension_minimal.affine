@@ -1,0 +1,33 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+//
+// Minimal demonstration of issue #35 Phase 2 — a VS Code extension
+// authored entirely in AffineScript that uses the stdlib/Vscode.affine
+// bindings.
+//
+// Compile via:  affinescript compile examples/vscode_extension_minimal.affine -o ext.cjs
+// Then point a VS Code extension package.json's "main" field at ext.cjs
+// and wire the JS-side adapter (see packages/affine-vscode/README.adoc).
+//
+// The extension registers a single command ("affinescript.helloAffine")
+// that pops up an information message when invoked.
+
+use Vscode::{registerCommand, showInformationMessage, pushSubscription};
+
+// `handler_0` is a no-arg function whose Wasm table index becomes the
+// callback bound to the registered command. Phase 3 will replace this
+// hand-rolled indirection with proper closure conversion.
+pub fn handler_0() -> Int {
+  let _ = showInformationMessage("Hello from AffineScript!");
+  return 0;
+}
+
+pub fn activate(ctx: ExtensionContext) -> Int {
+  let d = registerCommand("affinescript.helloAffine", 0);  // 0 = handler table index
+  let _ = pushSubscription(ctx, d);
+  return 0;
+}
+
+pub fn deactivate() -> Int {
+  return 0;
+}

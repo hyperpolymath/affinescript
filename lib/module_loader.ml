@@ -190,3 +190,78 @@ let is_loaded (loader : t) (mod_path : string list) : bool =
 let clear_cache (loader : t) : unit =
   Hashtbl.clear loader.loaded;
   Hashtbl.clear loader.loading
+
+(** Flatten cross-module imports by inlining the public top-level decls of
+    each imported module into [prog.prog_decls], with deduplication by name.
+
+    The WASM backend handles cross-module imports via a separate Wasm-import
+    section ([Codegen.gen_imports]). Every other codegen ([Julia / JS / C /
+    Rust / OCaml / ReScript / Lua / Bash / Nickel / LLVM / ...]) iterates
+    [prog.prog_decls] only and would otherwise fail to find imported
+    functions at codegen time. Inlining here is the simplest correct
+    semantics for those targets and saves implementing per-backend module
+    systems.
+
+    The loader must already have been used by [Resolve.resolve_program_with_loader]
+    so that the cache is populated; this function does NOT re-load on
+    demand. If a referenced module isn't cached, its imports are silently
+    skipped — the resolver would have reported the error already.
+
+    Imports are processed in declaration order; later imports override
+    earlier ones with the same fn name. Local decls in [prog.prog_decls]
+    always win over imported ones. *)
+let flatten_imports (loader : t) (prog : program) : program =
+  let local_fn_names =
+    List.filter_map (function
+      | TopFn fd -> Some fd.fd_name.name
+      | _ -> None
+    ) prog.prog_decls
+  in
+  let already_in = Hashtbl.create 32 in
+  List.iter (fun n -> Hashtbl.add already_in n ()) local_fn_names;
+  let imported_fns =
+    List.concat_map (fun imp ->
+      let path_strs path =
+        List.map (fun (id : ident) -> id.name) path
+      in
+      let mod_path = match imp with
+        | ImportSimple (p, _) | ImportList (p, _) | ImportGlob p -> path_strs p
+      in
+      match Hashtbl.find_opt loader.loaded mod_path with
+      | None -> []
+      | Some lm ->
+        let public_fns = List.filter_map (function
+          | TopFn fd when fd.fd_vis = Public || fd.fd_vis = PubCrate ->
+            Some (fd.fd_name.name, fd)
+          | _ -> None
+        ) lm.mod_program.prog_decls in
+        let select : (string * fn_decl) list = match imp with
+          | ImportGlob _ -> public_fns
+          | ImportSimple _ ->
+            (* `use Foo` brings the namespace into scope but doesn't import
+               specific symbols. For codegens that need them inlined we still
+               include all public fns — same as glob. The resolver determines
+               what's referenceable; codegen just needs the bodies present. *)
+            public_fns
+          | ImportList (_, items) ->
+            List.filter_map (fun item ->
+              let target = item.ii_name.name in
+              List.find_opt (fun (n, _) -> n = target) public_fns
+              |> Option.map (fun (_, fd) ->
+                let bound_name = match item.ii_alias with
+                  | Some a -> a.name
+                  | None -> fd.fd_name.name
+                in
+                (bound_name, { fd with fd_name = { fd.fd_name with name = bound_name } }))
+            ) items
+        in
+        List.filter_map (fun (name, fd) ->
+          if Hashtbl.mem already_in name then None
+          else begin
+            Hashtbl.add already_in name ();
+            Some (TopFn fd)
+          end
+        ) select
+    ) prog.prog_imports
+  in
+  { prog with prog_decls = imported_fns @ prog.prog_decls }

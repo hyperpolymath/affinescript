@@ -32,9 +32,7 @@
 *)
 
 open Ast
-
-exception Onnx_unsupported of string
-let unsupported msg = raise (Onnx_unsupported msg)
+open Kernel_sublang
 
 (* ============================================================================
    Op recognition
@@ -66,13 +64,11 @@ let recognise_op (name : string) : (string * int) option =
    surface forms [Array[Float]], [ref Array[Float]], [mut Array[Float]].
    ============================================================================ *)
 
-let rec strip_ownership = function
-  | TyOwn t | TyRef t | TyMut t -> strip_ownership t
-  | t -> t
+(* [strip_ownership] now comes from Kernel_sublang. *)
 
 let is_array_float (te : type_expr) : bool =
-  match strip_ownership te with
-  | TyApp (id, [TyArg (TyCon e)]) when id.name = "Array" && e.name = "Float" -> true
+  match array_element te with
+  | Some "Float" -> true
   | _ -> false
 
 (* ============================================================================
@@ -188,19 +184,10 @@ let rec lower_expr (st : build_state) (e : expr) : string =
    Driver
    ============================================================================ *)
 
-let pick_entry (program : program) : fn_decl =
-  let fns = List.filter_map (function TopFn fd -> Some fd | _ -> None)
-              program.prog_decls in
-  let by_name n = List.find_opt (fun fd -> fd.fd_name.name = n) fns in
-  match by_name "graph" with
-  | Some fd -> fd
-  | None ->
-      match by_name "main" with
-      | Some fd -> fd
-      | None ->
-          match fns with
-          | fd :: _ -> fd
-          | [] -> unsupported "no function found to lower as ONNX graph"
+(* ONNX's canonical entry name is [graph]; fall back to main / first-fn via
+   Kernel_sublang's shared finder. *)
+let onnx_pick_entry (program : program) : fn_decl =
+  pick_entry ~names:["graph"; "main"; "kernel"] program
 
 let validate_entry (fd : fn_decl) : unit =
   List.iter (fun (p : param) ->
@@ -224,7 +211,7 @@ let value_info_for (name : string) : Onnx_proto.value_info = {
 }
 
 let generate (program : program) (_symbols : Symbol.t) : string =
-  let entry = pick_entry program in
+  let entry = onnx_pick_entry program in
   validate_entry entry;
   let st = { nodes = []; next_id = 0 } in
   let output_name = match entry.fd_body with
@@ -252,6 +239,6 @@ let generate (program : program) (_symbols : Symbol.t) : string =
 let codegen_onnx (program : program) (symbols : Symbol.t) : (string, string) result =
   try Ok (generate program symbols)
   with
-  | Onnx_unsupported msg -> Error ("ONNX backend: " ^ msg)
+  | Unsupported msg -> Error ("ONNX backend: " ^ msg)
   | Failure msg          -> Error ("ONNX codegen error: " ^ msg)
   | e                    -> Error ("ONNX codegen error: " ^ Printexc.to_string e)

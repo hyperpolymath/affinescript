@@ -1,0 +1,11 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2026 Jonathan D.A. Jewell
+//
+// Cross-module callee fixture for typed-wasm Level 10 boundary verification.
+// Exposes a Linear-param fn that callers must consume exactly once per path.
+
+module CrossCallee;
+
+pub fn consume(own x: Int) -> Int {
+  return x;
+}

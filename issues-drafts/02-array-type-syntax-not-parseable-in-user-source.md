@@ -1,5 +1,14 @@
 # Array type syntax `[T]` not parseable in user source code
 
+**STATUS: CLOSED 2026-05-03** — `[T]` desugars to `Array[T]` in any
+type-expr position via the new rule in `lib/parser.mly`'s
+`type_expr_primary`. Verified for fn params, return types, struct fields,
+and nested `[[T]]`. See `STATE.a2ml` `session-note-2026-05-03-c` and the
+`E2E Array Type Sugar` test suite. Original issue text preserved below
+for historical context.
+
+---
+
 **Surfaced by:** IDApTIK migration (Wave 3 / Wave 4, 2026-05-02)
 **Affected version:** v0.1.0 (`affinescript` compiler at HEAD as of 2026-05-02)
 **Severity:** Blocking for the majority of idaptik's `.res / .ts → .affine` translation surface — almost every cross-component data type uses arrays/lists.

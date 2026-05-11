@@ -10,19 +10,21 @@ pub fn id[T](x: T) -> T {
   return x;
 }
 
-// Constant function
-pub fn const[A, B](x: A, own y: B) -> A {
+// Constant function — `always(x)` returns a function that ignores its
+// argument and yields x. Named `always` (per Elm) rather than `const`
+// because `const` is a reserved keyword for compile-time bindings.
+pub fn always[A, B](x: A, own y: B) -> A {
   return x;
 }
 
 /// Function composition: (f >> g)(x) = g(f(x))
 pub fn compose[A, B, C](f: A -> B, g: B -> C) -> (A -> C) {
-  return fn(x: A) -> C { g(f(x)) };
+  return |x: A| g(f(x));
 }
 
-/// Flip argument order: flip(f)(a, b) = f(b, a)
+/// Flip argument order: flip(f)(b, a) = f(a, b).
 pub fn flip[A, B, C](f: (A, B) -> C) -> ((B, A) -> C) {
-  return fn(b: B, a: A) -> C { f(a, b) };
+  return |b: B, a: A| f(a, b);
 }
 
 /// Apply a function to a value (pipe operator)

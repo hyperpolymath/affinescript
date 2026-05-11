@@ -1,0 +1,11 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2026 Jonathan D.A. Jewell
+//
+// Caller that consumes the imported Linear param exactly once. Verify-boundary
+// must accept this.
+
+use CrossCallee::{consume};
+
+pub fn main() -> Int {
+  return consume(42);
+}

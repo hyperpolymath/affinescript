@@ -23,6 +23,7 @@ local Some = function(v) return { tag = "Some", value = v } end
 local None = { tag = "None" }
 local Ok   = function(v) return { tag = "Ok",  value = v } end
 local Err  = function(e) return { tag = "Err", error = e } end
+local function read_line() local l = io.read("l"); return l or "" end
 
 |}
 

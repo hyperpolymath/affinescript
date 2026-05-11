@@ -1,0 +1,115 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+//
+// Vscode.affine — issue #35 Phase 2 bindings for the VS Code extension API.
+//
+// All host objects (Disposable, Terminal, ExtensionContext, ...) are opaque
+// handles represented as Int. The JS-side shim (see packages/affine-vscode/
+// or whatever your Node-CJS extension's _extraImports() returns) maintains a
+// per-process JS handle table and translates between Int handles and live JS
+// objects when each `extern fn` is invoked.
+//
+// Convention: every binding is `extern fn <name>(...) -> ...;` and the
+// Wasm import lands under the `env` namespace (matches what the Node-CJS
+// shim's import map expects). The function names match the vscode API
+// where possible; nested namespaces are flattened (e.g.
+// `vscode.commands.registerCommand` → `registerCommand`).
+//
+// API surface inventoried in issue #35: the ten symbols actually used by
+// the AffineScript and rattlescript-face VS Code extensions today. Add
+// further bindings on demand — keep this file's growth proportional to
+// real consumers.
+
+module Vscode;
+
+// ── Opaque host-supplied handle types ──────────────────────────────────
+
+pub extern type Disposable;
+pub extern type WorkspaceConfiguration;
+pub extern type FileSystemWatcher;
+pub extern type TextEditor;
+pub extern type Terminal;
+pub extern type Thenable;
+pub extern type ExtensionContext;
+
+// ── vscode.commands ───────────────────────────────────────────────────
+
+/// `vscode.commands.registerCommand(name, handler)`.
+/// `handler` is a function-pointer index into the Wasm table; the JS shim
+/// wraps it as a JS callback that re-enters Wasm when invoked.
+pub extern fn registerCommand(name: String, handler: Int) -> Disposable;
+
+// ── vscode.workspace ──────────────────────────────────────────────────
+
+pub extern fn getConfiguration(section: String) -> WorkspaceConfiguration;
+
+/// `cfg.get<String>(key, default)` — current binding only supports the
+/// String-returning shape. Numeric / boolean variants can be added with
+/// per-type extern fns when needed.
+pub extern fn workspaceConfigGetString(cfg: WorkspaceConfiguration,
+                                    key: String,
+                                    default_value: String) -> String;
+
+pub extern fn createFileSystemWatcher(glob: String) -> FileSystemWatcher;
+
+// ── vscode.window ─────────────────────────────────────────────────────
+
+/// Returns 0 if there is no active text editor (host returns a sentinel
+/// handle of 0 in the absent case).
+pub extern fn activeTextEditor() -> TextEditor;
+
+pub extern fn showErrorMessage(msg: String) -> Thenable;
+pub extern fn showWarningMessage(msg: String) -> Thenable;
+pub extern fn showInformationMessage(msg: String) -> Thenable;
+
+pub extern fn createTerminal(name: String) -> Terminal;
+pub extern fn terminalShow(t: Terminal) -> Int;
+pub extern fn terminalSendText(t: Terminal, text: String) -> Int;
+
+// ── ExtensionContext ──────────────────────────────────────────────────
+
+/// `context.subscriptions.push(disposable)` — registers a Disposable
+/// for cleanup when the extension is deactivated.
+pub extern fn pushSubscription(ctx: ExtensionContext, d: Disposable) -> Int;
+
+// ── Editor document helpers ───────────────────────────────────────────
+//
+// These collapse `vscode.window.activeTextEditor.document.{uri.fsPath,languageId}`
+// into single calls because AffineScript doesn't have a chained-property
+// accessor for opaque host objects yet — a per-leaf extern is the natural
+// shape until that lands.
+
+/// Path of the active editor's open file (empty string if no active editor).
+pub extern fn editorActiveFilePath() -> String;
+
+/// Language ID of the active editor's open document (empty string if none).
+pub extern fn editorActiveLanguageId() -> String;
+
+// ── Boolean configuration values ──────────────────────────────────────
+
+/// `cfg.get<boolean>(key, default)` returning 0/1.
+pub extern fn workspaceConfigGetBool(cfg: WorkspaceConfiguration,
+                                     key: String,
+                                     default_value: Int) -> Int;
+
+// ── Host process / IO ────────────────────────────────────────────────
+
+/// `console.log(msg)` for activation logging.
+pub extern fn consoleLog(msg: String) -> Int;
+
+/// Synchronous `child_process.execSync` wrapper — returns the exit code
+/// (0 = success). Used to probe whether a command is on PATH.
+pub extern fn execSync(cmd: String) -> Int;
+
+// ── String helpers ────────────────────────────────────────────────────
+//
+// These lift JS String ops to AffineScript so the extension can build
+// terminal command lines without needing AffineScript's own String
+// primitives (which are still WIP). All return new strings; inputs are
+// not mutated.
+
+pub extern fn stringConcat(a: String, b: String) -> String;
+pub extern fn stringEndsWith(s: String, suffix: String) -> Int;
+pub extern fn stringReplaceSuffix(s: String,
+                                   suffix: String,
+                                   replacement: String) -> String;

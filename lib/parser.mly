@@ -39,7 +39,7 @@ let mk_ident name startpos endpos =
 %token FN LET CONST MUT OWN REF TYPE STRUCT ENUM TRAIT IMPL
 %token EFFECT HANDLE RESUME MATCH IF ELSE WHILE FOR
 %token RETURN BREAK CONTINUE IN WHERE TOTAL MODULE USE
-%token PUB AS UNSAFE ASSUME TRANSMUTE FORGET TRY CATCH FINALLY
+%token PUB AS EXTERN UNSAFE ASSUME TRANSMUTE FORGET TRY CATCH FINALLY
 
 /* Built-in types */
 %token NAT INT_T BOOL FLOAT_T STRING_T CHAR_T TYPE_K ROW NEVER
@@ -121,6 +121,37 @@ top_level:
   | tr = trait_decl { TopTrait tr }
   | i = impl_block { TopImpl i }
   | c = const_decl { c }
+  | f = extern_fn_decl { TopFn f }
+  | t = extern_type_decl { TopType t }
+
+/* `extern fn name[T..](params) -> Ret;` — host-supplied implementation,
+   no body, terminated by SEMICOLON. The fn_decl carries FnExtern as its
+   body so downstream passes can detect the extern shape. */
+extern_fn_decl:
+  | vis = visibility? EXTERN FN name = ident
+    type_params = type_params?
+    LPAREN params = separated_list(COMMA, param) RPAREN
+    ret = return_type?
+    SEMICOLON
+    { { fd_vis = Option.value vis ~default:Private;
+        fd_total = false;
+        fd_name = name;
+        fd_type_params = Option.value type_params ~default:[];
+        fd_params = params;
+        fd_ret_ty = fst (Option.value ret ~default:(None, None));
+        fd_eff = snd (Option.value ret ~default:(None, None));
+        fd_where = [];
+        fd_body = FnExtern } }
+
+/* `extern type Name[T..];` — opaque host-supplied type. */
+extern_type_decl:
+  | vis = visibility? EXTERN TYPE name = ident
+    type_params = type_params?
+    SEMICOLON
+    { { td_vis = Option.value vis ~default:Private;
+        td_name = name;
+        td_type_params = Option.value type_params ~default:[];
+        td_body = TyExtern } }
 
 const_decl:
   | vis = visibility? CONST name = ident COLON ty = type_expr EQ value = expr SEMICOLON
@@ -164,6 +195,9 @@ visibility:
 
 type_params:
   | LBRACKET params = separated_nonempty_list(COMMA, type_param) RBRACKET { params }
+  /* Angle-bracket alias matching the type-application syntax: `fn f<T>` ≡
+     `fn f[T]`, `type Option<T> = ...` ≡ `type Option[T] = ...`. */
+  | LT params = separated_nonempty_list(COMMA, type_param) GT { params }
 
 type_param:
   | qty = quantity? name = ident kind = kind_annotation?
@@ -326,6 +360,13 @@ type_expr_arrow:
     { TyArrow (arg, None, ret, None) }
   | arg = type_expr_primary MINUS LBRACE eff = effect_expr RBRACE ARROW ret = type_expr_arrow
     { TyArrow (arg, None, ret, Some eff) }
+  /* `(A, B, ...) -> R` lowers to the curried arrow `A -> B -> ... -> R`
+     so user source can write multi-arg fn types without manual currying.
+     The existing tuple-as-type rule (LPAREN ty COMMA tys RPAREN) still
+     applies when no ARROW follows — disambiguated at the first lookahead
+     past the closing RPAREN. */
+  | LPAREN ty1 = type_expr COMMA tys = separated_nonempty_list(COMMA, type_expr) RPAREN ARROW ret = type_expr_arrow
+    { List.fold_right (fun p acc -> TyArrow (p, None, acc, None)) (ty1 :: tys) ret }
   | ty = type_expr_primary { ty }
 
 type_expr_primary:
@@ -341,6 +382,26 @@ type_expr_primary:
   | name = upper_ident { TyCon (mk_ident name $startpos $endpos) }
   | name = upper_ident LBRACKET args = separated_nonempty_list(COMMA, type_arg) RBRACKET
     { TyApp (mk_ident name $startpos(name) $endpos(name), args) }
+  /* Angle-bracket alias for type application: `Option<T>` ≡ `Option[T]`,
+     `Result<T, E>` ≡ `Result[T, E]`. Type contexts don't admit comparison
+     operators so `<` / `>` are unambiguous here even though the lexer's
+     LT/GT tokens are shared with expression-position less-than. */
+  | name = upper_ident LT args = separated_nonempty_list(COMMA, type_arg) GT
+    { TyApp (mk_ident name $startpos(name) $endpos(name), args) }
+  /* Array sugar: [T] desugars to Array[T] (issues-drafts/02). The element
+     type can be any type_expr (recursive), so [[Int]] means Array[Array[Int]]
+     and [Result[T, E]] works as expected. */
+  | LBRACKET elem = type_expr RBRACKET
+    { TyApp (mk_ident "Array" $startpos $endpos, [TyArg elem]) }
+  /* Function-type-as-type: `fn(A, B) -> C` lowers to the curried arrow
+     chain `A -> B -> C`. Zero-arg `fn() -> T` lowers to `Unit -> T`
+     (modelled as `TyTuple [] -> T`). Required for higher-order signatures
+     like `f: fn() -> T` in stdlib/Option.affine. */
+  | FN LPAREN params = separated_list(COMMA, type_expr) RPAREN ARROW
+    ret = type_expr_arrow
+    { match params with
+      | [] -> TyArrow (TyTuple [], None, ret, None)
+      | _  -> List.fold_right (fun p acc -> TyArrow (p, None, acc, None)) params ret }
   /* Row-polymorphic record type.  We use a custom recursive rule rather than
      `separated_list` because Menhir's separated_list greedily consumes the
      COMMA separator and then cannot backtrack when the next token (ROW_VAR)
