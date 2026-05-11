@@ -55,6 +55,7 @@ jobs:
 
       - name: Run Hypatia scan
         id: scan
+        continue-on-error: true  # scanner exits 1 on infra errors; critical findings block via the separate Check step
         env:
           # Hypatia uses Dependabot alerts as one of its signal sources.
           # Without GITHUB_TOKEN it warns and exits 1. The default GITHUB_TOKEN
