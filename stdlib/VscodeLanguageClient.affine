@@ -1,0 +1,33 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+//
+// VscodeLanguageClient.affine — issue #35 Phase 2 bindings for the
+// `vscode-languageclient/node` package's Node-side LSP client.
+//
+// Same conventions as Vscode.affine: opaque handles as Int, host shim
+// maintains the JS-side handle table, all imports under the `env`
+// namespace.
+//
+// The 4 LSP types from the issue (LanguageClient + ServerOptions +
+// LanguageClientOptions + Executable/TransportKind) collapse to a single
+// LanguageClient handle in this binding because the constructor's
+// arguments are passed inline as primitives. The host shim builds the
+// concrete TS records from those primitives before invoking
+// `new LanguageClient(...)`.
+
+module VscodeLanguageClient;
+
+pub extern type LanguageClient;
+
+/// Construct a LanguageClient for an LSP server launched as a subprocess.
+/// `id` and `name` identify the client; `command` and `args` (newline-
+/// separated) describe how to launch the server; `transport_kind` is 0
+/// for stdio, 1 for ipc.
+pub extern fn newLanguageClient(id: String,
+                             name: String,
+                             command: String,
+                             args_nl: String,
+                             transport_kind: Int) -> LanguageClient;
+
+pub extern fn languageClientStart(c: LanguageClient) -> Int;
+pub extern fn languageClientStop(c: LanguageClient) -> Int;

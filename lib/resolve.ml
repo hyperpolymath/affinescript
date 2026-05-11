@@ -419,6 +419,7 @@ let rec resolve_decl (ctx : context) (decl : top_level) : unit result =
     let result = match fd.fd_body with
       | FnBlock blk -> resolve_block ctx blk
       | FnExpr e -> resolve_expr ctx e
+      | FnExtern -> Ok ()  (* No body to resolve. *)
     in
     Symbol.exit_scope ctx.symbols;
     result
@@ -434,7 +435,7 @@ let rec resolve_decl (ctx : context) (decl : top_level) : unit result =
              Symbol.SKConstructor vd.vd_name.span td.td_vis in
          ()
        ) variants
-     | TyAlias _ | TyStruct _ -> ());
+     | TyAlias _ | TyStruct _ | TyExtern -> ());
     Ok ()
 
   | TopEffect ed ->
@@ -517,12 +518,31 @@ let resolve_and_typecheck_module (loaded_mod : Module_loader.loaded_module)
     let msg = Typecheck.show_type_error type_err in
     Error (ImportError ("Type checking failed: " ^ msg), Span.dummy)
 
-(** Import symbols from a resolved module into the current context *)
+(** Look up a scheme for [sym] in [source_types] (sym_id-keyed) first, then
+    fall back to [source_name_types] (name-keyed). The fallback is needed
+    because [resolve_and_typecheck_module] runs [Typecheck.check_decl], which
+    binds via [bind_scheme] (name-keyed) but never writes [var_types]. *)
+let lookup_source_scheme
+    (source_types : (Symbol.symbol_id, Types.scheme) Hashtbl.t)
+    (source_name_types : (string, Types.scheme) Hashtbl.t)
+    (sym : Symbol.symbol)
+  : Types.scheme option =
+  match Hashtbl.find_opt source_types sym.Symbol.sym_id with
+  | Some sc -> Some sc
+  | None    -> Hashtbl.find_opt source_name_types sym.Symbol.sym_name
+
+(** Import symbols from a resolved module into the current context.
+
+    [dest_name_types] is the destination type checker's name-keyed scheme map;
+    populating it here is what makes imported functions visible to a freshly
+    created [Typecheck.check_program] (which keys lookups on name, not sym_id). *)
 let import_resolved_symbols
     (dest_symbols : Symbol.t)
     (dest_types : (Symbol.symbol_id, Types.scheme) Hashtbl.t)
+    (dest_name_types : (string, Types.scheme) Hashtbl.t)
     (source_symbols : Symbol.t)
     (source_types : (Symbol.symbol_id, Types.scheme) Hashtbl.t)
+    (source_name_types : (string, Types.scheme) Hashtbl.t)
     (_alias : string option) : unit =
 
   (* Get all public symbols from the source *)
@@ -531,20 +551,22 @@ let import_resolved_symbols
     | Public | PubCrate ->
       (* Register symbol in destination *)
       let _ = Symbol.register_import dest_symbols sym None in
-      (* Copy type information *)
-      begin match Hashtbl.find_opt source_types sym.Symbol.sym_id with
-        | Some scheme -> Hashtbl.replace dest_types sym.Symbol.sym_id scheme
-        | None -> ()
-      end
+      Option.iter (fun scheme ->
+        Hashtbl.replace dest_types sym.Symbol.sym_id scheme;
+        Hashtbl.replace dest_name_types sym.Symbol.sym_name scheme
+      ) (lookup_source_scheme source_types source_name_types sym)
     | _ -> ()  (* Private symbols not imported *)
   ) source_symbols.all_symbols
 
-(** Import specific items from resolved symbols *)
+(** Import specific items from resolved symbols. See
+    [import_resolved_symbols] for the role of [dest_name_types]. *)
 let import_specific_items
     (dest_symbols : Symbol.t)
     (dest_types : (Symbol.symbol_id, Types.scheme) Hashtbl.t)
+    (dest_name_types : (string, Types.scheme) Hashtbl.t)
     (source_symbols : Symbol.t)
     (source_types : (Symbol.symbol_id, Types.scheme) Hashtbl.t)
+    (source_name_types : (string, Types.scheme) Hashtbl.t)
     (items : import_item list) : unit result =
 
   List.fold_left (fun acc item ->
@@ -556,11 +578,11 @@ let import_specific_items
         | Public | PubCrate ->
           let alias = Option.map (fun id -> id.name) item.ii_alias in
           let _ = Symbol.register_import dest_symbols sym alias in
-          (* Copy type information *)
-          begin match Hashtbl.find_opt source_types sym.Symbol.sym_id with
-            | Some scheme -> Hashtbl.replace dest_types sym.Symbol.sym_id scheme
-            | None -> ()
-          end;
+          let bound_name = Option.value alias ~default:sym.Symbol.sym_name in
+          Option.iter (fun scheme ->
+            Hashtbl.replace dest_types sym.Symbol.sym_id scheme;
+            Hashtbl.replace dest_name_types bound_name scheme
+          ) (lookup_source_scheme source_types source_name_types sym);
           Ok ()
         | _ ->
           Error (VisibilityError (item.ii_name, "Symbol is not public"), item.ii_name.span)
@@ -587,8 +609,13 @@ let resolve_imports_with_loader
           begin match resolve_and_typecheck_module loaded_mod with
             | Ok (mod_symbols, mod_type_ctx) ->
               let alias_str = Option.map (fun id -> id.name) alias in
-              import_resolved_symbols ctx.symbols type_ctx.Typecheck.var_types
-                mod_symbols mod_type_ctx.Typecheck.var_types alias_str;
+              import_resolved_symbols ctx.symbols
+                type_ctx.Typecheck.var_types
+                type_ctx.Typecheck.name_types
+                mod_symbols
+                mod_type_ctx.Typecheck.var_types
+                mod_type_ctx.Typecheck.name_types
+                alias_str;
               Ok ()
             | Error e -> Error e
           end
@@ -607,8 +634,13 @@ let resolve_imports_with_loader
           (* Resolve and type-check the module *)
           begin match resolve_and_typecheck_module loaded_mod with
             | Ok (mod_symbols, mod_type_ctx) ->
-              import_specific_items ctx.symbols type_ctx.Typecheck.var_types
-                mod_symbols mod_type_ctx.Typecheck.var_types items
+              import_specific_items ctx.symbols
+                type_ctx.Typecheck.var_types
+                type_ctx.Typecheck.name_types
+                mod_symbols
+                mod_type_ctx.Typecheck.var_types
+                mod_type_ctx.Typecheck.name_types
+                items
             | Error e -> Error e
           end
         | Error (Module_loader.ModuleNotFound _) ->
@@ -631,11 +663,13 @@ let resolve_imports_with_loader
                 match sym.Symbol.sym_visibility with
                 | Public | PubCrate ->
                   let _ = Symbol.register_import ctx.symbols sym None in
-                  (* Copy type information *)
-                  begin match Hashtbl.find_opt mod_type_ctx.Typecheck.var_types sym.Symbol.sym_id with
-                    | Some scheme -> Hashtbl.replace type_ctx.Typecheck.var_types sym.Symbol.sym_id scheme
-                    | None -> ()
-                  end
+                  Option.iter (fun scheme ->
+                    Hashtbl.replace type_ctx.Typecheck.var_types sym.Symbol.sym_id scheme;
+                    Hashtbl.replace type_ctx.Typecheck.name_types sym.Symbol.sym_name scheme
+                  ) (lookup_source_scheme
+                       mod_type_ctx.Typecheck.var_types
+                       mod_type_ctx.Typecheck.name_types
+                       sym)
                 | _ -> ()
               ) mod_symbols.all_symbols;
               Ok ()

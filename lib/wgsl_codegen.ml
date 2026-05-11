@@ -24,13 +24,11 @@
 *)
 
 open Ast
+open Kernel_sublang
 
-(* ============================================================================
-   Errors
-   ============================================================================ *)
-
-exception Wgsl_unsupported of string
-let unsupported msg = raise (Wgsl_unsupported msg)
+(* Per-target type strings (i32 / f32 / bool) stay below; everything else —
+   the [Unsupported] exception, [pick_entry], [strip_ownership],
+   [array_element], etc. — comes from [Kernel_sublang]. *)
 
 (* ============================================================================
    Context
@@ -84,20 +82,14 @@ let scalar_of_type_name = function
   | "Bool"  -> "bool"
   | other   -> unsupported ("type not allowed in WGSL kernel: " ^ other)
 
-let rec scalar_of (te : type_expr) : string =
-  match te with
+let scalar_of (te : type_expr) : string =
+  match strip_ownership te with
   | TyCon id -> scalar_of_type_name id.name
-  | TyOwn t | TyRef t | TyMut t -> scalar_of t
   | _ -> unsupported "complex type not allowed in WGSL kernel"
 
-let array_element (te : type_expr) : string =
-  let rec strip = function
-    | TyOwn t | TyRef t | TyMut t -> strip t
-    | t -> t
-  in
-  match strip te with
-  | TyApp (id, [TyArg inner]) when id.name = "Array" -> scalar_of inner
-  | _ -> unsupported "expected Array[Int] or Array[Float] for kernel buffer"
+(* WGSL-specific: map Array[Int] -> "i32", Array[Float] -> "f32". *)
+let array_element_str (te : type_expr) : string =
+  scalar_of_type_name (require_array_element "Array[Int] or Array[Float]" te)
 
 let access_for_ownership (own : ownership option) : string =
   match own with
@@ -245,39 +237,18 @@ and gen_block ctx (blk : block) =
    Top-level: pick the kernel function and emit it
    ============================================================================ *)
 
-let pick_kernel (program : program) : fn_decl =
-  let fns = List.filter_map (function TopFn fd -> Some fd | _ -> None)
-              program.prog_decls
-  in
-  match List.find_opt (fun fd -> fd.fd_name.name = "kernel") fns with
-  | Some fd -> fd
-  | None ->
-      match List.find_opt (fun fd -> fd.fd_name.name = "main") fns with
-      | Some fd -> fd
-      | None ->
-          match fns with
-          | fd :: _ -> fd
-          | []      -> unsupported "no function found to lower as kernel"
-
-let validate_kernel (fd : fn_decl) : unit =
-  (match fd.fd_ret_ty with
-   | None -> ()
-   | Some (TyCon id) when id.name = "Unit" -> ()
-   | Some (TyTuple []) -> ()  (* `() ` parses as TyTuple [], synonymous with Unit *)
-   | _ -> unsupported "kernel function must return Unit or ()");
-  match fd.fd_params with
-  | [] -> unsupported "kernel must take at least an Int index parameter"
-  | first :: _ ->
-      (match first.p_ty with
-       | TyCon id when id.name = "Int" -> ()
-       | _ -> unsupported "first kernel parameter must be Int (the global index)")
+(* Picking + validation now share Kernel_sublang's helpers; this is the
+   canonical compute-kernel shape (first param Int, rest Array buffers,
+   returns Unit). *)
+let pick_kernel = pick_entry
+let validate_kernel = validate_compute_kernel_shape
 
 let emit_buffer_bindings ctx (params : param list) : ctx =
   (* Skip the first param (the index); the rest become storage buffers. *)
   let rec go i ctx = function
     | [] -> ctx
     | (p : param) :: rest ->
-        let elem = array_element p.p_ty in
+        let elem = array_element_str p.p_ty in
         let access = access_for_ownership p.p_ownership in
         let name = mangle p.p_name.name in
         emit_line ctx
@@ -321,6 +292,6 @@ let generate (program : program) (_symbols : Symbol.t) : string =
 let codegen_wgsl (program : program) (symbols : Symbol.t) : (string, string) result =
   try Ok (generate program symbols)
   with
-  | Wgsl_unsupported msg -> Error ("WGSL backend: " ^ msg)
+  | Unsupported msg -> Error ("WGSL backend: " ^ msg)
   | Failure msg          -> Error ("WGSL codegen error: " ^ msg)
   | e                    -> Error ("WGSL codegen error: " ^ Printexc.to_string e)

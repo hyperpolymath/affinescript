@@ -17,9 +17,7 @@
 *)
 
 open Ast
-
-exception Spirv_unsupported of string
-let unsupported m = raise (Spirv_unsupported m)
+open Kernel_sublang
 
 (* ============================================================================
    Word emission
@@ -79,13 +77,7 @@ let emit_op_with_string (buf : Buffer.t) (opcode : int) (prefix : int list)
    12. Function definitions
    ============================================================================ *)
 
-let pick_kernel (program : program) : fn_decl =
-  let fns = List.filter_map (function TopFn fd -> Some fd | _ -> None) program.prog_decls in
-  match List.find_opt (fun fd -> fd.fd_name.name = "kernel") fns with
-  | Some fd -> fd
-  | None -> match fns with
-            | fd :: _ -> fd
-            | [] -> unsupported "no function found"
+let pick_kernel = pick_entry
 
 let generate (program : program) (_symbols : Symbol.t) : string =
   let entry = pick_kernel program in
@@ -149,6 +141,6 @@ let generate (program : program) (_symbols : Symbol.t) : string =
 let codegen_spirv (program : program) (symbols : Symbol.t) : (string, string) result =
   try Ok (generate program symbols)
   with
-  | Spirv_unsupported m -> Error ("SPIR-V backend: " ^ m)
+  | Unsupported m -> Error ("SPIR-V backend: " ^ m)
   | Failure m           -> Error ("SPIR-V codegen error: " ^ m)
   | e                   -> Error ("SPIR-V codegen error: " ^ Printexc.to_string e)

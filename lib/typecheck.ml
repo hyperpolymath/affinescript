@@ -1194,6 +1194,39 @@ let register_builtins (ctx : context) : unit =
 
 (** Check a top-level function declaration. *)
 let check_fn_decl (ctx : context) (fd : fn_decl) : unit result =
+  (* Extern functions have no body — register the signature so callers can
+     typecheck against it, then bail out before the body-check pass. *)
+  if fd.fd_body = FnExtern then begin
+    let* param_tys = List.fold_left (fun acc (p : param) ->
+      let* tys = acc in
+      let ty = lower_type_expr ctx p.p_ty in
+      let* () = check_kind ctx ty KType in
+      Ok (ty :: tys)
+    ) (Ok []) fd.fd_params in
+    let param_tys = List.rev param_tys in
+    let* ret_ty = match fd.fd_ret_ty with
+      | Some te ->
+        let ty = lower_type_expr ctx te in
+        let* () = check_kind ctx ty KType in
+        Ok ty
+      | None -> Ok (fresh_tyvar ctx.level)
+    in
+    let fn_eff = match fd.fd_eff with
+      | Some ee -> lower_effect_expr ctx ee
+      | None -> fresh_effvar ctx.level
+    in
+    let fn_ty = List.fold_right2 (fun param_ty (p : param) acc ->
+      let q = match p.p_quantity with
+        | Some q -> lower_quantity q
+        | None -> QOmega
+      in
+      TArrow (param_ty, q, acc, fn_eff)
+    ) param_tys fd.fd_params ret_ty in
+    let sc = generalize ctx fn_ty in
+    bind_scheme ctx fd.fd_name.name sc;
+    Ok ()
+  end
+  else
   (* Lower parameter types *)
   let* param_tys = List.fold_left (fun acc (p : param) ->
     let* tys = acc in
@@ -1295,6 +1328,10 @@ let register_type_decl (ctx : context) (td : type_decl) : unit result =
         else
           bind_scheme ctx vd.vd_name.name sc
       ) variants;
+      Ok (TCon td.td_name.name)
+    | TyExtern ->
+      (* Opaque host-supplied type. Register a TCon so user code can name it
+         in signatures; the body is intentionally absent. *)
       Ok (TCon td.td_name.name)
   in
   Hashtbl.replace ctx.type_env td.td_name.name ty;
@@ -1399,11 +1436,20 @@ let check_decl (ctx : context) (decl : top_level) : (unit, type_error) Result.t 
 (** Type-check an entire program.
 
     First registers all type and effect declarations (forward pass),
-    then checks all function declarations and constants. *)
-let check_program (symbols : Symbol.t) (prog : Ast.program)
+    then checks all function declarations and constants.
+
+    [?import_types] seeds [name_types] with cross-module imports — supplied by
+    [Resolve.resolve_program_with_loader] so that [ExprApp (ExprVar f, ...)]
+    can resolve [f] to the imported function's scheme even though [f] does
+    not appear in [prog.prog_decls]. *)
+let check_program ?(import_types : (string, scheme) Hashtbl.t option)
+    (symbols : Symbol.t) (prog : Ast.program)
     : (context, type_error) Result.t =
   let ctx = create_context symbols in
   register_builtins ctx;
+  Option.iter (fun tbl ->
+    Hashtbl.iter (fun name sc -> Hashtbl.replace ctx.name_types name sc) tbl
+  ) import_types;
   (* Forward pass: register all types, effects, traits, impls, and
      function signatures so that mutually recursive declarations resolve. *)
   let* () = List.fold_left (fun acc decl ->

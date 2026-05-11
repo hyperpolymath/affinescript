@@ -2570,6 +2570,634 @@ let cmd_linear_tests = [
   Alcotest.test_case "No annotation → QOmega (backwards compat)" `Quick test_cmd_no_annotation_qomega;
 ]
 
+(* ---- Source-level cross-module boundary tests ----
+
+   Exercise the full pipeline (parse → resolve_with_loader → typecheck-with-
+   imported types → quantity → codegen.generate_module-with-loader) on real
+   .affine sources where the caller imports the callee. Verifies that the
+   caller's emitted Wasm carries the right (i_module, i_name) entries and
+   that Tw_interface.verify_cross_module agrees with the per-path call count
+   on each violation class. *)
+
+let compile_fixture_to_wasm path : (Wasm.wasm_module, string) Result.t =
+  let loader_config = {
+    Module_loader.stdlib_path = "stdlib";
+    search_paths = [];
+    current_dir = fixture_dir;
+  } in
+  let loader = Module_loader.create loader_config in
+  match parse_fixture path with
+  | Error e -> Error e
+  | Ok prog ->
+    match Resolve.resolve_program_with_loader prog loader with
+    | Error (e, _span) ->
+      Error (Printf.sprintf "Resolution: %s" (Resolve.show_resolve_error e))
+    | Ok (resolve_ctx, import_type_ctx) ->
+      match Typecheck.check_program
+              ~import_types:import_type_ctx.Typecheck.name_types
+              resolve_ctx.symbols prog with
+      | Error e -> Error (Printf.sprintf "Type: %s" (Typecheck.format_type_error e))
+      | Ok _ ->
+        let optimized = Opt.fold_constants_program prog in
+        match Codegen.generate_module ~loader optimized with
+        | Error e -> Error (Printf.sprintf "Codegen: %s" (Codegen.show_codegen_error e))
+        | Ok m -> Ok m
+
+let test_xmod_clean () =
+  match compile_fixture_to_wasm (fixture "CrossCallee.affine"),
+        compile_fixture_to_wasm (fixture "cross_caller_ok.affine") with
+  | Ok callee, Ok caller ->
+    let iface = Tw_interface.extract_exports callee in
+    (match Tw_interface.verify_cross_module iface caller with
+     | Ok () -> ()
+     | Error errs ->
+       let msg = String.concat "; " (List.map (fun e ->
+         Format.asprintf "%a" Tw_interface.pp_cross_error e) errs) in
+       Alcotest.fail ("Expected clean OK, got: " ^ msg))
+  | Error e, _ | _, Error e -> Alcotest.fail e
+
+let test_xmod_dup_violation () =
+  match compile_fixture_to_wasm (fixture "CrossCallee.affine"),
+        compile_fixture_to_wasm (fixture "cross_caller_dup.affine") with
+  | Ok callee, Ok caller ->
+    let iface = Tw_interface.extract_exports callee in
+    (match Tw_interface.verify_cross_module iface caller with
+     | Ok () ->
+       Alcotest.fail "Expected LinearImportCalledMultiple, got OK"
+     | Error errs ->
+       let has_dup = List.exists (function
+         | Tw_interface.LinearImportCalledMultiple { import_name; _ }
+           when import_name = "consume" -> true
+         | _ -> false) errs in
+       Alcotest.(check bool) "double-call → LinearImportCalledMultiple"
+         true has_dup)
+  | Error e, _ | _, Error e -> Alcotest.fail e
+
+let test_xmod_drop_violation () =
+  match compile_fixture_to_wasm (fixture "CrossCallee.affine"),
+        compile_fixture_to_wasm (fixture "cross_caller_drop.affine") with
+  | Ok callee, Ok caller ->
+    let iface = Tw_interface.extract_exports callee in
+    (match Tw_interface.verify_cross_module iface caller with
+     | Ok () ->
+       Alcotest.fail "Expected LinearImportDroppedOnSomePath, got OK"
+     | Error errs ->
+       let has_drop = List.exists (function
+         | Tw_interface.LinearImportDroppedOnSomePath { import_name; _ }
+           when import_name = "consume" -> true
+         | _ -> false) errs in
+       Alcotest.(check bool) "one-arm call → LinearImportDroppedOnSomePath"
+         true has_drop)
+  | Error e, _ | _, Error e -> Alcotest.fail e
+
+(* ---- WasmGC backend: loud-failure regression markers ----
+
+   Lock in the BUG-005-class fixes that replaced silent miscompilation with
+   explicit UnsupportedFeature errors:
+     - lambda expressions
+     - `unsafe` blocks
+     - match arms with patterns the GC backend cannot lower
+   Each test compiles a small source via parse_string + Codegen_gc.generate_gc_module
+   and asserts the emitted error contains the expected feature label. *)
+
+let parse_string_for_gc src : Ast.program =
+  Parse_driver.parse_string ~file:"<test>" src
+
+let gc_compile_and_expect_unsupported src ~must_contain ~label =
+  let prog = parse_string_for_gc src in
+  match Codegen_gc.generate_gc_module prog with
+  | Ok _ ->
+    Alcotest.failf "[%s] expected UnsupportedFeature, got Ok" label
+  | Error err ->
+    let msg = Codegen_gc.format_codegen_error err in
+    let contains s sub =
+      let n = String.length sub and m = String.length s in
+      let rec scan i = i + n <= m && (String.sub s i n = sub || scan (i + 1)) in
+      scan 0
+    in
+    Alcotest.(check bool)
+      (Printf.sprintf "[%s] error mentions '%s'" label must_contain)
+      true (contains msg must_contain)
+
+let test_gc_lambda_loud_fail () =
+  gc_compile_and_expect_unsupported
+    {|fn main() -> Int { let f = |x| x + 1; f(41) }|}
+    ~must_contain:"lambda"
+    ~label:"lambda"
+
+let test_gc_unsafe_loud_fail () =
+  (* `unsafe { read(p); }` parses to ExprUnsafe [UnsafeRead p].  The GC backend
+     must not silently emit RefNull for this — it has no GC-safe lowering. *)
+  gc_compile_and_expect_unsupported
+    {|fn main(p: Int) -> Int { unsafe { read(p); } }|}
+    ~must_contain:"unsafe"
+    ~label:"unsafe"
+
+let wasm_gc_loud_fail_tests = [
+  Alcotest.test_case "lambda → UnsupportedFeature (no silent RefNull)" `Quick test_gc_lambda_loud_fail;
+  Alcotest.test_case "unsafe block → UnsupportedFeature (no silent RefNull)" `Quick test_gc_unsafe_loud_fail;
+]
+
+(* ---- WasmGC variant-with-args construction ----
+
+   Verifies that `MySome(42)` lowers to a tagged struct allocation
+   (push_i32 tag + push args + RefI31 boxing for primitives + StructNew),
+   producing a binary that can be compiled and instantiated by the host. *)
+
+let count_instr_kind body kind_pred : int =
+  let rec walk acc = function
+    | [] -> acc
+    | i :: rest ->
+      let acc = if kind_pred i then acc + 1 else acc in
+      let acc = match (i : Wasm_gc.gc_instr) with
+        | GcBlock (_, body) | GcLoop (_, body) -> walk acc body
+        | GcIf (_, t, e) -> walk (walk acc t) e
+        | _ -> acc
+      in
+      walk acc rest
+  in
+  walk 0 body
+
+let test_gc_variant_with_args_construction () =
+  let prog = parse_string_for_gc
+    {|enum MyOpt { MyNone, MySome(Int) }
+      fn main() -> MyOpt { return MySome(42); }|}
+  in
+  match Codegen_gc.generate_gc_module prog with
+  | Error e ->
+    Alcotest.failf "expected Ok, got: %s" (Codegen_gc.format_codegen_error e)
+  | Ok m ->
+    (* The main fn body should contain exactly one StructNew (the variant
+       allocation) and one RefI31 (boxing the i32 payload). *)
+    let main_body = (List.hd m.gc_funcs).gf_body in
+    let n_struct_new = count_instr_kind main_body
+      (function Wasm_gc.StructNew _ -> true | _ -> false) in
+    let n_ref_i31 = count_instr_kind main_body
+      (function Wasm_gc.RefI31 -> true | _ -> false) in
+    Alcotest.(check int) "exactly one StructNew" 1 n_struct_new;
+    Alcotest.(check int) "exactly one RefI31 (Int payload boxed)" 1 n_ref_i31
+
+let test_gc_variant_with_two_args () =
+  let prog = parse_string_for_gc
+    {|enum Pair { Mk(Int, Bool) }
+      fn main() -> Pair { return Mk(7, true); }|}
+  in
+  match Codegen_gc.generate_gc_module prog with
+  | Error e ->
+    Alcotest.failf "expected Ok, got: %s" (Codegen_gc.format_codegen_error e)
+  | Ok m ->
+    let main_body = (List.hd m.gc_funcs).gf_body in
+    let n_struct_new = count_instr_kind main_body
+      (function Wasm_gc.StructNew _ -> true | _ -> false) in
+    let n_ref_i31 = count_instr_kind main_body
+      (function Wasm_gc.RefI31 -> true | _ -> false) in
+    Alcotest.(check int) "one StructNew for the variant" 1 n_struct_new;
+    Alcotest.(check int) "two RefI31 (Int + Bool both boxed)" 2 n_ref_i31
+
+let test_gc_zero_arg_variant_still_i32 () =
+  (* Zero-arg variants should still lower to a bare i32 tag — no struct
+     allocation, no RefI31. *)
+  let prog = parse_string_for_gc
+    {|enum Mood { Happy, Sad }
+      fn main() -> Mood { return Happy; }|}
+  in
+  match Codegen_gc.generate_gc_module prog with
+  | Error e ->
+    Alcotest.failf "expected Ok, got: %s" (Codegen_gc.format_codegen_error e)
+  | Ok m ->
+    let main_body = (List.hd m.gc_funcs).gf_body in
+    let n_struct_new = count_instr_kind main_body
+      (function Wasm_gc.StructNew _ -> true | _ -> false) in
+    Alcotest.(check int) "no StructNew (zero-arg uses i32 tag)" 0 n_struct_new
+
+let wasm_gc_variant_tests = [
+  Alcotest.test_case "single-arg variant: MySome(42) → struct.new + ref.i31" `Quick test_gc_variant_with_args_construction;
+  Alcotest.test_case "two-arg variant: Mk(7, true) → 1 struct.new + 2 ref.i31" `Quick test_gc_variant_with_two_args;
+  Alcotest.test_case "zero-arg variant still uses bare i32 tag" `Quick test_gc_zero_arg_variant_still_i32;
+]
+
+(* ---- Issue #35 Phase 1: Node-CJS emit ----
+
+   Verifies that Codegen_node.emit_node_cjs wraps a compiled wasm module in
+   a CJS shim with the expected anchors: "use strict", base64-encoded wasm
+   constant, the activate/deactivate exports, and the handle-table helpers
+   that Phase 2 binding modules will populate. *)
+
+let test_node_cjs_shim_shape () =
+  let prog = parse_string_for_gc
+    {|pub fn activate(ctx_handle: Int) -> Int { return 0; }
+      pub fn deactivate() -> Int { return 0; }|}
+  in
+  match Codegen.generate_module prog with
+  | Error e ->
+    Alcotest.failf "wasm codegen failed: %s" (Codegen.show_codegen_error e)
+  | Ok wasm_module ->
+    let cjs = Codegen_node.emit_node_cjs wasm_module in
+    let must_contain s sub =
+      let n = String.length sub and m = String.length s in
+      let rec scan i = i + n <= m && (String.sub s i n = sub || scan (i + 1)) in
+      scan 0
+    in
+    Alcotest.(check bool) "starts with strict-mode pragma"
+      true (must_contain cjs "\"use strict\";");
+    Alcotest.(check bool) "embeds wasm as base64 constant"
+      true (must_contain cjs "_wasmBase64");
+    Alcotest.(check bool) "exports.activate present"
+      true (must_contain cjs "exports.activate");
+    Alcotest.(check bool) "exports.deactivate present"
+      true (must_contain cjs "exports.deactivate");
+    Alcotest.(check bool) "_registerHandle exported (Phase 2 hook)"
+      true (must_contain cjs "exports._registerHandle");
+    Alcotest.(check bool) "wires WASI fd_write so println works"
+      true (must_contain cjs "fd_write")
+
+let test_node_cjs_base64_roundtrip () =
+  (* Sanity check on the inline base64 encoder — encode known input and
+     decode externally would require a decoder; instead, check known prefix
+     and length invariant: output_len = ceil(input_len/3)*4. *)
+  let bytes = Bytes.of_string "Many hands make light work." in
+  let b64 = Codegen_node.base64_encode bytes in
+  Alcotest.(check int) "length is 4*ceil(27/3) = 36"
+    36 (String.length b64);
+  Alcotest.(check string) "matches RFC 4648 §10 vector"
+    "TWFueSBoYW5kcyBtYWtlIGxpZ2h0IHdvcmsu" b64
+
+let codegen_node_tests = [
+  Alcotest.test_case "Node-CJS shim has all anchors (use strict, exports.activate, ...)" `Quick test_node_cjs_shim_shape;
+  Alcotest.test_case "base64 encoder matches RFC 4648 vector"                              `Quick test_node_cjs_base64_roundtrip;
+]
+
+(* ---- Stdlib parse + Core import regression ----
+
+   Locks in the Core.affine fixes (renamed `const` → `always`, `fn(x: T)`
+   lambdas converted to `|x: T|`, `flip` curried to dodge the
+   `(A, B) -> C` tuple-arrow ambiguity) so they don't quietly regress.
+
+   This test exercises the full pipeline against the project's actual
+   stdlib/Core.affine on disk — not a synthetic copy — so a future stdlib
+   regression surfaces here. *)
+
+let test_stdlib_core_parses_and_typechecks () =
+  let core_path =
+    let candidates = [
+      "stdlib/Core.affine";          (* run from project root *)
+      "../../../stdlib/Core.affine"; (* run from _build/default/test *)
+      "../../../../stdlib/Core.affine";
+    ] in
+    match List.find_opt Sys.file_exists candidates with
+    | Some p -> p
+    | None -> Alcotest.failf "stdlib/Core.affine not found in any of: %s"
+                (String.concat ", " candidates)
+  in
+  match parse_fixture core_path with
+  | Error e -> Alcotest.failf "stdlib/Core.affine parse failed: %s" e
+  | Ok prog ->
+    match resolve_program prog with
+    | Error e -> Alcotest.failf "stdlib/Core.affine resolve failed: %s" e
+    | Ok (resolve_ctx, _import_type_ctx) ->
+      match Typecheck.check_program resolve_ctx.symbols prog with
+      | Error e -> Alcotest.failf "stdlib/Core.affine typecheck failed: %s"
+                     (Typecheck.format_type_error e)
+      | Ok _ -> ()
+
+let stdlib_tests = [
+  Alcotest.test_case "stdlib/Core.affine parses + resolves + typechecks" `Quick test_stdlib_core_parses_and_typechecks;
+]
+
+(* ---- Cross-module imports for non-Wasm backends ----
+
+   Verifies Module_loader.flatten_imports inlines public TopFns from
+   imported modules into the importer's prog_decls, so backends that
+   iterate prog.prog_decls only (Julia / JS / C / Rust / Lua / OCaml /
+   ReScript / ...) automatically pick up imported function bodies without
+   each needing to implement its own module-system hooks. *)
+
+let test_flatten_imports_inlines_public_fns () =
+  let loader = Module_loader.create {
+    Module_loader.stdlib_path = "stdlib";
+    search_paths = [];
+    current_dir = fixture_dir;
+  } in
+  match parse_fixture (fixture "cross_caller_ok.affine") with
+  | Error e -> Alcotest.failf "parse failed: %s" e
+  | Ok caller_prog ->
+    (* Run resolution to populate the loader's cache *)
+    (match Resolve.resolve_program_with_loader caller_prog loader with
+     | Error _ -> ()  (* even partial loads populate cache *)
+     | Ok _ -> ());
+    let flat = Module_loader.flatten_imports loader caller_prog in
+    let local_fn_names = List.filter_map (function
+      | Ast.TopFn fd -> Some fd.fd_name.name
+      | _ -> None
+    ) caller_prog.prog_decls in
+    let flat_fn_names = List.filter_map (function
+      | Ast.TopFn fd -> Some fd.fd_name.name
+      | _ -> None
+    ) flat.prog_decls in
+    Alcotest.(check bool) "caller's main fn still present"
+      true (List.mem "main" flat_fn_names);
+    Alcotest.(check bool) "imported `consume` was inlined"
+      true (List.mem "consume" flat_fn_names);
+    Alcotest.(check bool) "originally only had local fns (no consume)"
+      false (List.mem "consume" local_fn_names);
+    Alcotest.(check bool) "fn count grew (consume added)"
+      true (List.length flat.prog_decls > List.length caller_prog.prog_decls)
+
+let test_flatten_imports_dedup_local_wins () =
+  (* If the caller defines a fn with the same name as an imported one, the
+     local definition must win — flatten_imports must not duplicate. *)
+  let loader = Module_loader.create {
+    Module_loader.stdlib_path = "stdlib";
+    search_paths = [];
+    current_dir = fixture_dir;
+  } in
+  let src = {|use CrossCallee::{consume};
+              pub fn consume(own x: Int) -> Int { return x + 1; }
+              pub fn main() -> Int { return consume(0); }|} in
+  let prog = Parse_driver.parse_string ~file:"<test>" src in
+  (match Resolve.resolve_program_with_loader prog loader with
+   | _ -> ());
+  let flat = Module_loader.flatten_imports loader prog in
+  let consume_count = List.fold_left (fun n decl ->
+    match decl with
+    | Ast.TopFn fd when fd.fd_name.name = "consume" -> n + 1
+    | _ -> n
+  ) 0 flat.prog_decls in
+  Alcotest.(check int) "local consume wins; imported one not duplicated"
+    1 consume_count
+
+let cross_module_other_codegens_tests = [
+  Alcotest.test_case "flatten_imports inlines imported public fns"          `Quick test_flatten_imports_inlines_public_fns;
+  Alcotest.test_case "flatten_imports: local def shadows imported, no dup"  `Quick test_flatten_imports_dedup_local_wins;
+]
+
+(* ---- extern declarations (issues-drafts/04) ----
+
+   `extern fn name(args) -> Ret;` and `extern type Name;` both parse, the
+   resolver and typechecker register them, and the WASM codegen emits a
+   real `(import "env" "name" (func ...))` entry for each extern fn. *)
+
+let test_extern_fn_parses () =
+  let src = {|extern type Application;
+              extern fn createApplication(width: Int, height: Int) -> Application;
+              pub fn init_pixi(width: Int, height: Int) -> Application {
+                return createApplication(width, height);
+              }|} in
+  let prog = Parse_driver.parse_string ~file:"<test>" src in
+  let extern_fns = List.filter_map (function
+    | Ast.TopFn fd when fd.fd_body = Ast.FnExtern -> Some fd.fd_name.name
+    | _ -> None
+  ) prog.prog_decls in
+  let extern_types = List.filter_map (function
+    | Ast.TopType td when td.td_body = Ast.TyExtern -> Some td.td_name.name
+    | _ -> None
+  ) prog.prog_decls in
+  Alcotest.(check (list string)) "extern fn parsed" ["createApplication"] extern_fns;
+  Alcotest.(check (list string)) "extern type parsed" ["Application"] extern_types
+
+let test_extern_fn_codegen_emits_wasm_import () =
+  let src = {|extern type Application;
+              extern fn createApplication(width: Int, height: Int) -> Application;
+              pub fn init_pixi(width: Int, height: Int) -> Application {
+                return createApplication(width, height);
+              }|} in
+  let prog = Parse_driver.parse_string ~file:"<test>" src in
+  match Codegen.generate_module prog with
+  | Error e -> Alcotest.failf "codegen failed: %s" (Codegen.show_codegen_error e)
+  | Ok m ->
+    let has_extern_import = List.exists (fun (i : Wasm.import) ->
+      i.i_name = "createApplication"
+      && i.i_module = "env"
+      && (match i.i_desc with Wasm.ImportFunc _ -> true | _ -> false)
+    ) m.imports in
+    Alcotest.(check bool) "extern fn → (import \"env\" \"createApplication\" ...)"
+      true has_extern_import
+
+let extern_tests = [
+  Alcotest.test_case "extern fn / extern type parse" `Quick test_extern_fn_parses;
+  Alcotest.test_case "extern fn → WASM import in 'env' namespace" `Quick test_extern_fn_codegen_emits_wasm_import;
+]
+
+(* ---- Issue #35 Phase 2 — Vscode bindings ----
+
+   Verifies stdlib/Vscode.affine and stdlib/VscodeLanguageClient.affine
+   parse + typecheck + can be `use`d from a downstream extension, and the
+   compiled WASM emits one import per extern fn under the bindings'
+   module name (so the JS-side adapter's namespaced shape lines up). *)
+
+let test_vscode_bindings_parse_and_typecheck () =
+  let candidates_for f = [
+    "stdlib/" ^ f;
+    "../../../stdlib/" ^ f;
+    "../../../../stdlib/" ^ f;
+  ] in
+  let find p = List.find_opt Sys.file_exists (candidates_for p) in
+  let check_one path =
+    match find path with
+    | None -> Alcotest.failf "not found: %s" path
+    | Some p ->
+      match parse_fixture p with
+      | Error e -> Alcotest.failf "%s parse failed: %s" path e
+      | Ok prog ->
+        match resolve_program prog with
+        | Error e -> Alcotest.failf "%s resolve failed: %s" path e
+        | Ok (resolve_ctx, _) ->
+          match Typecheck.check_program resolve_ctx.symbols prog with
+          | Error e -> Alcotest.failf "%s typecheck failed: %s" path
+                         (Typecheck.format_type_error e)
+          | Ok _ -> ()
+  in
+  check_one "Vscode.affine";
+  check_one "VscodeLanguageClient.affine"
+
+let test_vscode_extern_emits_wasm_imports () =
+  let src = {|use Vscode::{registerCommand, showInformationMessage};
+              pub fn handler() -> Int { return showInformationMessage("hi"); }
+              pub fn activate(ctx: Int) -> Int { return registerCommand("x", 0); }|} in
+  let prog = Parse_driver.parse_string ~file:"<test>" src in
+  let stdlib_dir = List.find Sys.file_exists [
+    "stdlib"; "../../../stdlib"; "../../../../stdlib"
+  ] in
+  let loader_config = {
+    Module_loader.stdlib_path = stdlib_dir;
+    search_paths = [];
+    current_dir = stdlib_dir;
+  } in
+  let loader = Module_loader.create loader_config in
+  (match Resolve.resolve_program_with_loader prog loader with
+   | Error (e, _) ->
+     Alcotest.failf "resolve failed: %s" (Resolve.show_resolve_error e)
+   | Ok _ -> ());
+  match Codegen.generate_module ~loader prog with
+  | Error e -> Alcotest.failf "codegen failed: %s" (Codegen.show_codegen_error e)
+  | Ok m ->
+    let names = List.filter_map (fun (i : Wasm.import) ->
+      if i.i_module = "Vscode" then Some i.i_name else None
+    ) m.imports in
+    Alcotest.(check bool) "Vscode.registerCommand imported"
+      true (List.mem "registerCommand" names);
+    Alcotest.(check bool) "Vscode.showInformationMessage imported"
+      true (List.mem "showInformationMessage" names)
+
+let vscode_bindings_tests = [
+  Alcotest.test_case "Vscode + VscodeLanguageClient parse + typecheck" `Quick test_vscode_bindings_parse_and_typecheck;
+  Alcotest.test_case "use Vscode::{...} → WASM (import \"Vscode\" \"...\" ...)" `Quick test_vscode_extern_emits_wasm_imports;
+]
+
+(* ---- Array type [T] in user source (issues-drafts/02) ----
+
+   `[T]` desugars to `Array[T]` in any type-expr position: param types,
+   return types, struct fields, nested. Verified across the three shapes
+   the issue called out as broken. *)
+
+let test_array_type_parses_in_param () =
+  let src = {|fn first(xs: [Int]) -> Int { return 0; }|} in
+  let prog = Parse_driver.parse_string ~file:"<test>" src in
+  match resolve_program prog with
+  | Error e -> Alcotest.failf "resolve failed: %s" e
+  | Ok (resolve_ctx, _) ->
+    match Typecheck.check_program resolve_ctx.symbols prog with
+    | Error e -> Alcotest.failf "typecheck failed: %s" (Typecheck.format_type_error e)
+    | Ok _ -> ()
+
+let test_array_type_parses_nested () =
+  let src = {|fn nested(xs: [[Int]]) -> Int { return 0; }|} in
+  let prog = Parse_driver.parse_string ~file:"<test>" src in
+  match resolve_program prog with
+  | Error e -> Alcotest.failf "resolve failed: %s" e
+  | Ok (resolve_ctx, _) ->
+    match Typecheck.check_program resolve_ctx.symbols prog with
+    | Error e -> Alcotest.failf "typecheck failed: %s" (Typecheck.format_type_error e)
+    | Ok _ -> ()
+
+let test_array_type_parses_in_struct_field () =
+  let src = {|struct Tags { names: [String] } fn main() -> Int { return 0; }|} in
+  let prog = Parse_driver.parse_string ~file:"<test>" src in
+  match resolve_program prog with
+  | Error e -> Alcotest.failf "resolve failed: %s" e
+  | Ok (resolve_ctx, _) ->
+    match Typecheck.check_program resolve_ctx.symbols prog with
+    | Error e -> Alcotest.failf "typecheck failed: %s" (Typecheck.format_type_error e)
+    | Ok _ -> ()
+
+let array_type_tests = [
+  Alcotest.test_case "[T] in fn param parses + typechecks"  `Quick test_array_type_parses_in_param;
+  Alcotest.test_case "[[T]] nested parses + typechecks"     `Quick test_array_type_parses_nested;
+  Alcotest.test_case "[T] in struct field parses + typechecks" `Quick test_array_type_parses_in_struct_field;
+]
+
+(* ---- Type-syntax sugars: fn(...) -> T, Option<T>, (A, B) -> C ---- *)
+
+let parse_check_passes src : bool =
+  let prog = Parse_driver.parse_string ~file:"<test>" src in
+  match resolve_program prog with
+  | Error _ -> false
+  | Ok (resolve_ctx, _) ->
+    match Typecheck.check_program resolve_ctx.symbols prog with
+    | Error _ -> false
+    | Ok _ -> true
+
+let test_fn_type_zero_arg () =
+  Alcotest.(check bool) "fn() -> T parses + typechecks" true
+    (parse_check_passes
+       {|fn run[T](f: fn() -> T) -> T { return f(); }|})
+
+let test_fn_type_multi_arg () =
+  Alcotest.(check bool) "fn(A, B) -> T parses + typechecks" true
+    (parse_check_passes
+       {|fn apply2(g: fn(Int, Int) -> Int, x: Int, y: Int) -> Int { return g(x, y); }|})
+
+let test_angle_brackets_type_app () =
+  Alcotest.(check bool) "Option<T> parses + typechecks" true
+    (parse_check_passes
+       {|fn first(opt: Option<Int>) -> Int { return 0; }|})
+
+let test_angle_brackets_two_args () =
+  Alcotest.(check bool) "Result<T, E> parses + typechecks" true
+    (parse_check_passes
+       {|fn both(r: Result<Int, String>) -> Int { return 0; }|})
+
+let test_angle_brackets_type_params () =
+  Alcotest.(check bool) "fn f<T> ... parses + typechecks" true
+    (parse_check_passes
+       {|fn id<T>(x: T) -> T { return x; }|})
+
+let test_multi_arg_arrow () =
+  Alcotest.(check bool) "(A, B) -> C parses + typechecks" true
+    (parse_check_passes
+       {|fn flip<A, B, C>(f: (A, B) -> C) -> ((B, A) -> C) {
+           return |b: B, a: A| f(a, b);
+         }|})
+
+let test_tuple_type_still_works () =
+  Alcotest.(check bool) "(A, B) without arrow stays a tuple type" true
+    (parse_check_passes
+       {|fn first(t: (Int, String)) -> Int { return 0; }|})
+
+let type_syntax_sugar_tests = [
+  Alcotest.test_case "fn() -> T (zero-arg fn type)"           `Quick test_fn_type_zero_arg;
+  Alcotest.test_case "fn(A, B) -> T (multi-arg fn type)"      `Quick test_fn_type_multi_arg;
+  Alcotest.test_case "Option<T> (angle brackets, type app)"   `Quick test_angle_brackets_type_app;
+  Alcotest.test_case "Result<T, E> (angle brackets, 2 args)"  `Quick test_angle_brackets_two_args;
+  Alcotest.test_case "fn f<T> (angle brackets, type params)"  `Quick test_angle_brackets_type_params;
+  Alcotest.test_case "(A, B) -> C (multi-arg arrow)"          `Quick test_multi_arg_arrow;
+  Alcotest.test_case "(A, B) without arrow remains tuple"     `Quick test_tuple_type_still_works;
+]
+
+(* ---- PatCon sub-pattern destructuring under WasmGC ----
+
+   `match Mk(7, 99) { Mk(a, b) => a }` correctly extracts the first payload
+   (RefCast + StructGet + RefCast HtI31 + I31GetS + LocalSet). Mixed-arity
+   matches (zero-arg + with-args in same enum) error loudly with the
+   documented workaround. *)
+
+let test_gc_patcon_destructure_same_arity () =
+  let prog = parse_string_for_gc
+    {|enum Pair { Mk(Int, Int) }
+      fn first(p: Pair) -> Int {
+        return match p { Mk(a, b) => { return a; }, };
+      }
+      pub fn main() -> Int { return first(Mk(7, 99)); }|}
+  in
+  match Codegen_gc.generate_gc_module prog with
+  | Error e ->
+    Alcotest.failf "expected Ok, got: %s" (Codegen_gc.format_codegen_error e)
+  | Ok m ->
+    (* `first` is the function with the match (declared first → index 0). *)
+    let first_body = (List.nth m.gc_funcs 0).gf_body in
+    let n_struct_get = count_instr_kind first_body
+      (function Wasm_gc.StructGet _ -> true | _ -> false) in
+    Alcotest.(check bool) "match emits at least one StructGet"
+      true (n_struct_get > 0)
+
+let test_gc_patcon_mixed_arity_loud_fail () =
+  let prog = parse_string_for_gc
+    {|enum MyOpt { MyNone, MySome(Int) }
+      fn unwrap_or(opt: MyOpt, default: Int) -> Int {
+        return match opt {
+          MySome(x) => { return x; },
+          MyNone => { return default; },
+        };
+      }
+      pub fn main() -> Int { return unwrap_or(MySome(42), 0); }|}
+  in
+  match Codegen_gc.generate_gc_module prog with
+  | Ok _ -> Alcotest.fail "expected mixed-arity error, got Ok"
+  | Error err ->
+    let msg = Codegen_gc.format_codegen_error err in
+    let contains s sub =
+      let n = String.length sub and m = String.length s in
+      let rec scan i = i + n <= m && (String.sub s i n = sub || scan (i + 1)) in
+      scan 0
+    in
+    Alcotest.(check bool) "error mentions 'mixed-arity'"
+      true (contains msg "mixed-arity")
+
+let wasm_gc_patcon_tests = [
+  Alcotest.test_case "PatCon destructure same-arity match works (Mk(a, b) → a)" `Quick test_gc_patcon_destructure_same_arity;
+  Alcotest.test_case "mixed-arity match (None + Some(x)) → loud UnsupportedFeature" `Quick test_gc_patcon_mixed_arity_loud_fail;
+]
+
 let tw_interface_tests = [
   Alcotest.test_case "bridge: update export has own param"       `Quick test_iface_bridge_update_linear;
   Alcotest.test_case "router: push export has own param"         `Quick test_iface_router_push_linear;
@@ -2579,6 +3207,9 @@ let tw_interface_tests = [
   Alcotest.test_case "cross: call one-arm → LinearImportDroppedOnSomePath" `Quick test_cross_call_partial_violation;
   Alcotest.test_case "bridge boundary: clean caller → OK"        `Quick test_bridge_boundary_clean;
   Alcotest.test_case "router boundary: clean caller → OK"        `Quick test_router_boundary_clean;
+  Alcotest.test_case "src-level xmod: ok caller verifies clean"  `Quick test_xmod_clean;
+  Alcotest.test_case "src-level xmod: dup caller → LinearImportCalledMultiple" `Quick test_xmod_dup_violation;
+  Alcotest.test_case "src-level xmod: drop caller → LinearImportDroppedOnSomePath" `Quick test_xmod_drop_violation;
 ]
 
 (* ============================================================================
@@ -2611,4 +3242,14 @@ let tests =
     ("E2E Ownership Verify", tw_verify_tests);
     ("E2E Cmd Linearity", cmd_linear_tests);
     ("E2E Boundary Verify", tw_interface_tests);
+    ("E2E WasmGC Loud-Fail", wasm_gc_loud_fail_tests);
+    ("E2E WasmGC Variants",  wasm_gc_variant_tests);
+    ("E2E Node-CJS Codegen", codegen_node_tests);
+    ("E2E Stdlib",           stdlib_tests);
+    ("E2E Xmod Other Codegens", cross_module_other_codegens_tests);
+    ("E2E Externs",              extern_tests);
+    ("E2E Vscode Bindings",      vscode_bindings_tests);
+    ("E2E Array Type Sugar",     array_type_tests);
+    ("E2E WasmGC PatCon Destructure", wasm_gc_patcon_tests);
+    ("E2E Type Syntax Sugar",         type_syntax_sugar_tests);
   ]

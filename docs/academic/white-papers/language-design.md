@@ -448,7 +448,7 @@ We thank the academic community for foundational work on type theory, linear log
 
 ---
 
-**Appendix A**: Full syntax grammar (see SPEC.md)
+**Appendix A**: Full syntax grammar (see SPEC.adoc)
 
 **Appendix B**: Typing rules (see proofs/type-soundness.md)
 

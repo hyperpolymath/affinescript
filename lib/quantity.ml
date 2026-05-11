@@ -17,7 +17,7 @@
     4. A top-level entry point [{!check_function_quantities}] for integration
        with the type checker.
 
-    Reference: AffineScript SPEC.md Section 3.2 — QTT semiring specification. *)
+    Reference: AffineScript SPEC.adoc Section 3.2 — QTT semiring specification. *)
 
 open Ast
 
@@ -670,6 +670,7 @@ let check_function_quantities (fd : fn_decl) : unit result =
   begin match fd.fd_body with
   | FnBlock blk -> infer_usage_block env blk
   | FnExpr e -> infer_usage_expr env e
+  | FnExtern -> ()  (* No body to inspect *)
   end;
   (* Step 3: check each top-level parameter *)
   let param_result =

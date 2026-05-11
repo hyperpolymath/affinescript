@@ -1,5 +1,16 @@
 # `extern type` / `extern fn` declarations not parseable in user source
 
+**STATUS: CLOSED 2026-05-03** — `extern fn name(...) -> Ret;` and
+`extern type Name;` both parse, resolve, typecheck, and emit
+`(import "env" "<name>" (func ...))` in the WASM target. New `EXTERN`
+keyword in lexer/token/parse_driver, new `FnExtern` / `TyExtern` AST
+variants, new parser rules in `lib/parser.mly`. See `STATE.a2ml`
+`session-note-2026-05-03-c` and the `E2E Externs` test suite. Vscode
+bindings (`stdlib/Vscode.affine`) are the first real consumer. Original
+issue text preserved below for historical context.
+
+---
+
 **Surfaced by:** IDApTIK migration / `affinescript-pixijs` integration attempt (2026-05-02)
 **Affected version:** v0.1.0
 **Severity:** Blocking for `@affinescript/pixijs` and any other connector package that uses FFI-style imports. The package's own `src/pixi.as` cannot be compiled by today's toolchain.

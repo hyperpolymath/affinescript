@@ -61,8 +61,13 @@ lint:
 fmt:
     dune fmt
 
-# Run all checks (lint + test)
-check: lint test
+# Run all checks (lint + test + regression guards)
+check: lint test guard
+
+# Issue #35 Phase 3 regression guard — fails if extension.ts reappears
+# under editors/vscode/src or any face's vscode extension dir
+guard:
+    ./tools/check-no-extension-ts.sh
 
 # ── Compiler subcommands ──────────────────────────────────────────────────────
 

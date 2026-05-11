@@ -199,44 +199,51 @@ let gen_print_int (heap_ptr_global : int) (fd_write_idx : int) (num_local : int)
 let gen_println (heap_ptr_global : int) (fd_write_idx : int) (temp_local : int)
     : instr list =
   let newline_byte = 10l in  (* ASCII '\n' *)
+  (* Layout — every i32 store sits on a 4-byte boundary:
+       offset  0..3:  iovec.buf_ptr (i32) — points at offset 12 below
+       offset  4..7:  iovec.buf_len (i32) — always 1
+       offset  8..11: nwritten     (i32) — fd_write writes here
+       offset 12:     newline byte  ('\n', 1 byte)
+       offset 13..15: padding so subsequent allocs stay aligned
+     Total 16 bytes. The previous layout stored the newline at temp+0 and
+     the iovec at temp+1, which traps under wasmtime's strict alignment
+     check. *)
   [
-    (* Allocate space for 1 byte + iovec + nwritten = 13 bytes *)
     GlobalGet heap_ptr_global;
-    I32Const 13l;
+    I32Const 16l;
     I32Add;
     GlobalSet heap_ptr_global;
 
     GlobalGet heap_ptr_global;
-    I32Const 13l;
+    I32Const 16l;
     I32Sub;
     LocalSet temp_local;
 
-    (* Store newline character *)
+    (* iovec.buf_ptr = temp + 12 (where the newline byte lives) *)
     LocalGet temp_local;
-    I32Const newline_byte;
-    I32Store (0, 0);
-
-    (* Create iovec *)
     LocalGet temp_local;
-    I32Const 1l;
+    I32Const 12l;
     I32Add;
-    LocalGet temp_local;
     I32Store (2, 0);
 
+    (* iovec.buf_len = 1 *)
     LocalGet temp_local;
-    I32Const 1l;
-    I32Add;
     I32Const 1l;
     I32Store (2, 4);
 
-    (* Call fd_write *)
+    (* Write the newline byte at temp + 12. We use I32Store to lay down a
+       full 4 bytes — the upper 3 are slack but harmless because fd_write
+       only reads buf_len = 1. *)
+    LocalGet temp_local;
+    I32Const newline_byte;
+    I32Store (2, 12);
+
+    (* Call fd_write(stdout, iovec_ptr=temp, iovs_len=1, nwritten_ptr=temp+8) *)
     I32Const fd_stdout;
     LocalGet temp_local;
     I32Const 1l;
-    I32Add;
-    I32Const 1l;
     LocalGet temp_local;
-    I32Const 9l;
+    I32Const 8l;
     I32Add;
     Call fd_write_idx;
 

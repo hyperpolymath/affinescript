@@ -159,6 +159,7 @@ let fold_constants_decl (decl : top_level) : top_level =
         TopFn { fd with fd_body = FnBlock (fold_constants_block blk) }
       | FnExpr e ->
         TopFn { fd with fd_body = FnExpr (fold_constants_expr e) }
+      | FnExtern -> decl  (* no body to fold *)
     end
   | _ -> decl
 

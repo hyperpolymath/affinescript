@@ -28,7 +28,7 @@
   "activationEvents": [
     "onLanguage:affinescript"
   ],
-  "main": "./out/extension.js",
+  "main": "./out/extension.cjs",
   "contributes": {
     "languages": [
       {
@@ -135,15 +135,14 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
+    "compile": "affinescript compile src/extension.affine -o out/extension.cjs",
+    "watch": "echo 'watch mode not implemented for AffineScript source — re-run npm run compile'",
+    "guard": "../../tools/check-no-extension-ts.sh",
     "package": "vsce package",
     "publish": "vsce publish"
   },
   "devDependencies": {
-    "@types/node": "^20.0.0",
     "@types/vscode": "^1.80.0",
-    "typescript": "^5.0.0",
     "vsce": "^2.15.0"
   },
   "dependencies": {

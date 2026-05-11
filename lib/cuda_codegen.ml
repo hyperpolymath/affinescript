@@ -8,9 +8,7 @@
     plus a host wrapper that the user can call from C++. *)
 
 open Ast
-
-exception Cuda_unsupported of string
-let unsupported m = raise (Cuda_unsupported m)
+open Kernel_sublang
 
 let mangle s = s
 
@@ -20,20 +18,13 @@ let scalar_of_type_name = function
   | "Bool"  -> "bool"
   | n -> unsupported ("type not allowed in CUDA kernel: " ^ n)
 
-let rec scalar_of (te : type_expr) : string =
-  match te with
+let scalar_of (te : type_expr) : string =
+  match strip_ownership te with
   | TyCon id -> scalar_of_type_name id.name
-  | TyOwn t | TyRef t | TyMut t -> scalar_of t
   | _ -> unsupported "complex type not allowed in CUDA kernel"
 
 let array_element (te : type_expr) : string =
-  let rec strip = function
-    | TyOwn t | TyRef t | TyMut t -> strip t
-    | t -> t
-  in
-  match strip te with
-  | TyApp (id, [TyArg inner]) when id.name = "Array" -> scalar_of inner
-  | _ -> unsupported "expected Array[Int|Float] for kernel buffer"
+  scalar_of_type_name (require_array_element "Array[Int|Float]" te)
 
 let const_qual = function
   | Some Mut -> ""
@@ -67,9 +58,7 @@ let rec gen_expr (e : expr) : string =
         | ExprVar id -> id.name
         | _ -> unsupported "indirect call"
       in
-      let known = ["sin"; "cos"; "tan"; "sqrt"; "exp"; "log"; "pow";
-                   "fabs"; "floor"; "ceil"; "min"; "max"; "tanh"] in
-      if not (List.mem name known) then
+      if not (is_math_builtin name || name = "fabs") then
         unsupported ("call to non-builtin in CUDA kernel: " ^ name);
       Printf.sprintf "%s(%s)" name
         (String.concat ", " (List.map gen_expr args))
@@ -103,21 +92,8 @@ let rec gen_stmt (s : stmt) : string =
         (String.concat " " (List.map gen_stmt b.blk_stmts))
   | StmtFor _ -> unsupported "for-in not supported in CUDA kernel"
 
-let pick_kernel (program : program) : fn_decl =
-  let fns = List.filter_map (function TopFn fd -> Some fd | _ -> None) program.prog_decls in
-  match List.find_opt (fun fd -> fd.fd_name.name = "kernel") fns with
-  | Some fd -> fd
-  | None -> match fns with
-            | fd :: _ -> fd
-            | [] -> unsupported "no function found"
-
-let validate_kernel (fd : fn_decl) : unit =
-  match fd.fd_params with
-  | [] -> unsupported "kernel must take an Int index parameter"
-  | first :: _ ->
-      match first.p_ty with
-      | TyCon id when id.name = "Int" -> ()
-      | _ -> unsupported "first param must be Int"
+let pick_kernel = pick_entry
+let validate_kernel = validate_compute_kernel_shape
 
 let generate (program : program) (_symbols : Symbol.t) : string =
   let buf = Buffer.create 1024 in
@@ -154,6 +130,6 @@ let generate (program : program) (_symbols : Symbol.t) : string =
 let codegen_cuda (program : program) (symbols : Symbol.t) : (string, string) result =
   try Ok (generate program symbols)
   with
-  | Cuda_unsupported m -> Error ("CUDA backend: " ^ m)
+  | Unsupported m -> Error ("CUDA backend: " ^ m)
   | Failure m          -> Error ("CUDA codegen error: " ^ m)
   | e                  -> Error ("CUDA codegen error: " ^ Printexc.to_string e)

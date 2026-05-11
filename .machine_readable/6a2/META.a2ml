@@ -667,5 +667,5 @@ consequences = """
 """
 references = [
   "docs/DESIGN-VISION.adoc (faces section)",
-  "docs/specs/faces.md (to be written)",
+  "docs/specs/faces.adoc",
 ]
