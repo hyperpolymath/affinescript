@@ -150,6 +150,173 @@ module.exports = function makeVscodeBindings(vscode, lcModule, hostShim) {
       const out = s.endsWith(suffix) ? s.slice(0, -suffix.length) + replacement : s;
       return reg(out);
     },
+
+    // ── Workspace ───────────────────────────────────────────────────
+    workspaceFolderFirstPath: () => {
+      const folders = vscode.workspace.workspaceFolders;
+      const first = folders && folders[0];
+      return reg(first ? first.uri.fsPath : "");
+    },
+    workspaceRootUri: () => {
+      const folders = vscode.workspace.workspaceFolders;
+      const first = folders && folders[0];
+      return first ? reg(first.uri) : 0;
+    },
+
+    // ── URI / file-system / text documents ─────────────────────────
+    uriFromPath: (pathPtr) => reg(vscode.Uri.file(readString(pathPtr))),
+    uriJoinPath: (baseHandle, segPtr) => {
+      const base = get(baseHandle);
+      if (!base) return 0;
+      return reg(vscode.Uri.joinPath(base, readString(segPtr)));
+    },
+    uriPath: (uHandle) => {
+      const u = get(uHandle);
+      return reg(u ? u.fsPath : "");
+    },
+    fsWriteFile: (uHandle, contentPtr) => {
+      const u = get(uHandle);
+      if (!u) return 1;
+      try {
+        // Fire-and-forget the Thenable. The host serialises FS ops so
+        // a subsequent openTextDocument on the same URI sees the file.
+        vscode.workspace.fs.writeFile(u, Buffer.from(readString(contentPtr)));
+        return 0;
+      } catch (e) {
+        return 1;
+      }
+    },
+    openTextDocument: (uHandle) => {
+      const u = get(uHandle);
+      if (!u) return 0;
+      // openTextDocument returns a Thenable<TextDocument>. The synchronous
+      // FFI returns a handle to the Thenable itself; showTextDocument is
+      // also Thenable-returning and chains via vscode's internal queue,
+      // so this works in practice for the open-then-show pattern.
+      return reg(vscode.workspace.openTextDocument(u));
+    },
+    showTextDocument: (dHandle) => {
+      const d = get(dHandle);
+      if (!d) return 1;
+      // If `d` is itself a Thenable<TextDocument>, vscode unwraps it.
+      Promise.resolve(d).then((doc) => vscode.window.showTextDocument(doc));
+      return 0;
+    },
+
+    // ── Status bar ─────────────────────────────────────────────────
+    createStatusBarItem: (alignment, priority) => {
+      const align = alignment === 1
+        ? vscode.StatusBarAlignment.Right
+        : vscode.StatusBarAlignment.Left;
+      return reg(vscode.window.createStatusBarItem(align, priority));
+    },
+    statusBarItemSetText: (sHandle, tPtr) => {
+      const s = get(sHandle);
+      if (s) s.text = readString(tPtr);
+      return 0;
+    },
+    statusBarItemSetTooltip: (sHandle, tPtr) => {
+      const s = get(sHandle);
+      if (s) s.tooltip = readString(tPtr);
+      return 0;
+    },
+    statusBarItemSetCommand: (sHandle, cPtr) => {
+      const s = get(sHandle);
+      if (s) s.command = readString(cPtr);
+      return 0;
+    },
+    statusBarItemSetBackgroundColorTheme: (sHandle, cPtr) => {
+      const s = get(sHandle);
+      if (!s) return 0;
+      const name = readString(cPtr);
+      s.backgroundColor = name.length === 0 ? undefined : new vscode.ThemeColor(name);
+      return 0;
+    },
+    statusBarItemShow: (sHandle) => { const s = get(sHandle); if (s) s.show(); return 0; },
+    statusBarItemHide: (sHandle) => { const s = get(sHandle); if (s) s.hide(); return 0; },
+    statusBarItemAsDisposable: (sHandle) => sHandle, // same JS object is a Disposable
+
+    // ── Diagnostics ────────────────────────────────────────────────
+    createDiagnosticCollection: (namePtr) =>
+      reg(vscode.languages.createDiagnosticCollection(readString(namePtr))),
+    diagnosticCollectionClear: (cHandle) => {
+      const c = get(cHandle);
+      if (c) c.clear();
+      return 0;
+    },
+    diagnosticCollectionSetForUri: (cHandle, uHandle, jsonPtr) => {
+      const c = get(cHandle);
+      const u = get(uHandle);
+      if (!c || !u) return 1;
+      let arr;
+      try { arr = JSON.parse(readString(jsonPtr)); }
+      catch (e) { return 2; }
+      if (!Array.isArray(arr)) return 3;
+      const diagnostics = arr.map((d) => {
+        const range = new vscode.Range(
+          d.startLine | 0, d.startCol | 0,
+          d.endLine | 0, d.endCol | 0
+        );
+        const severity = [
+          vscode.DiagnosticSeverity.Error,
+          vscode.DiagnosticSeverity.Warning,
+          vscode.DiagnosticSeverity.Information,
+          vscode.DiagnosticSeverity.Hint,
+        ][Math.max(0, Math.min(3, d.severity | 0))];
+        return new vscode.Diagnostic(range, String(d.message ?? ""), severity);
+      });
+      c.set(u, diagnostics);
+      return 0;
+    },
+    diagnosticCollectionAsDisposable: (cHandle) => cHandle,
+
+    // ── Webview ────────────────────────────────────────────────────
+    createWebviewPanel: (vtPtr, titlePtr, vc) => {
+      const viewColumn =
+        vc === 2 ? vscode.ViewColumn.Two :
+        vc === 3 ? vscode.ViewColumn.Three :
+        vscode.ViewColumn.One;
+      return reg(vscode.window.createWebviewPanel(
+        readString(vtPtr), readString(titlePtr), viewColumn, {}
+      ));
+    },
+    webviewPanelSetHtml: (pHandle, htmlPtr) => {
+      const p = get(pHandle);
+      if (p) p.webview.html = readString(htmlPtr);
+      return 0;
+    },
+    webviewPanelAsDisposable: (pHandle) => pHandle,
+
+    // ── Clipboard ──────────────────────────────────────────────────
+    clipboardWriteText: (tPtr) => {
+      try {
+        vscode.env.clipboard.writeText(readString(tPtr));
+        return 0;
+      } catch (e) {
+        return 1;
+      }
+    },
+
+    // ── Events ─────────────────────────────────────────────────────
+    onDidSaveTextDocument: (handlerIdx) => {
+      const thunk = wrapHandler(handlerIdx);
+      // The vscode event ships a TextDocument; we deliberately drop it at
+      // the FFI boundary (see Vscode.affine docstring). Handlers that
+      // need the saved file path can call editorActiveFilePath().
+      return reg(vscode.workspace.onDidSaveTextDocument(() => thunk()));
+    },
+
+    // ── Path helpers ───────────────────────────────────────────────
+    pathBasename: (pPtr) => reg(require("path").basename(readString(pPtr))),
+    pathJoin: (aPtr, bPtr) =>
+      reg(require("path").join(readString(aPtr), readString(bPtr))),
+    processPlatform: () => reg(process.platform),
+
+    // ── ExtensionContext helpers ───────────────────────────────────
+    extensionAbsolutePath: (ctxHandle, relPtr) => {
+      const ctx = get(ctxHandle);
+      return reg(ctx ? ctx.asAbsolutePath(readString(relPtr)) : "");
+    },
   };
 
   const VscodeLanguageClient = {

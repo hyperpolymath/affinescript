@@ -19,6 +19,17 @@
 // the AffineScript and rattlescript-face VS Code extensions today. Add
 // further bindings on demand — keep this file's growth proportional to
 // real consumers.
+//
+// Surface expanded 2026-05-11 for the rsr-certifier port (affinescript#64
+// — Port external VS Code extensions). Additions cover the workspace,
+// file-system, status-bar, diagnostics, webview, clipboard, and path
+// surfaces actually used by rhodium-standard-repositories/.../rsr-certifier.
+// Two API shapes were deliberately omitted from this expansion because
+// they cannot be expressed in the current synchronous extern-call ABI:
+//   - vscode.window.withProgress(opts, async task)
+//   - LanguageClient.sendRequest(method, params) (returns Thenable)
+// Extensions that need those features should fall back to terminal /
+// child_process shells until an async-extern ABI lands.
 
 module Vscode;
 
@@ -31,6 +42,11 @@ pub extern type TextEditor;
 pub extern type Terminal;
 pub extern type Thenable;
 pub extern type ExtensionContext;
+pub extern type StatusBarItem;
+pub extern type DiagnosticCollection;
+pub extern type WebviewPanel;
+pub extern type Uri;
+pub extern type TextDocument;
 
 // ── vscode.commands ───────────────────────────────────────────────────
 
@@ -113,3 +129,152 @@ pub extern fn stringEndsWith(s: String, suffix: String) -> Int;
 pub extern fn stringReplaceSuffix(s: String,
                                    suffix: String,
                                    replacement: String) -> String;
+
+// ── Workspace ─────────────────────────────────────────────────────────
+
+/// First workspace folder's `uri.fsPath`, or "" if there is no workspace.
+/// Equivalent to `vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? ""`.
+pub extern fn workspaceFolderFirstPath() -> String;
+
+/// First workspace folder as a `vscode.Uri`. Used as the `base` for
+/// `uriJoinPath` when building paths under the workspace root. Returns a
+/// sentinel handle of 0 when there is no workspace.
+pub extern fn workspaceRootUri() -> Uri;
+
+// ── URI / file-system / text documents ───────────────────────────────
+
+/// `vscode.Uri.file(path)` — wraps a filesystem path as a Uri handle.
+pub extern fn uriFromPath(path: String) -> Uri;
+
+/// `vscode.Uri.joinPath(base, segment)` — single-segment join only;
+/// callers that need multiple segments should chain.
+pub extern fn uriJoinPath(base: Uri, segment: String) -> Uri;
+
+/// `uri.fsPath` — returns the filesystem path the Uri represents.
+pub extern fn uriPath(u: Uri) -> String;
+
+/// `vscode.workspace.fs.writeFile(uri, Buffer.from(content))`. The write
+/// is dispatched to the VS Code FS API; the binding returns 0 on a clean
+/// dispatch and a non-zero error code otherwise. The underlying write
+/// returns a Thenable — the binding does not await it. Best-effort by
+/// design (sufficient for the rsr.initConfig use-case which immediately
+/// opens the file for the user to inspect).
+pub extern fn fsWriteFile(u: Uri, content: String) -> Int;
+
+/// `vscode.workspace.openTextDocument(uri)` — likewise best-effort
+/// dispatch; the returned handle is valid for `showTextDocument`.
+pub extern fn openTextDocument(u: Uri) -> TextDocument;
+
+/// `vscode.window.showTextDocument(doc)`.
+pub extern fn showTextDocument(d: TextDocument) -> Int;
+
+// ── Status bar ───────────────────────────────────────────────────────
+
+/// `vscode.window.createStatusBarItem(alignment, priority)`.
+/// `alignment`: 0 = Left, 1 = Right (matches `vscode.StatusBarAlignment`).
+pub extern fn createStatusBarItem(alignment: Int, priority: Int) -> StatusBarItem;
+
+pub extern fn statusBarItemSetText(s: StatusBarItem, text: String) -> Int;
+pub extern fn statusBarItemSetTooltip(s: StatusBarItem, tooltip: String) -> Int;
+pub extern fn statusBarItemSetCommand(s: StatusBarItem, command_id: String) -> Int;
+
+/// Sets `statusBarItem.backgroundColor` to a `new vscode.ThemeColor(name)`.
+/// An empty `theme_color` clears the background (sets it to `undefined`).
+pub extern fn statusBarItemSetBackgroundColorTheme(s: StatusBarItem,
+                                                    theme_color: String) -> Int;
+
+pub extern fn statusBarItemShow(s: StatusBarItem) -> Int;
+pub extern fn statusBarItemHide(s: StatusBarItem) -> Int;
+
+/// Reinterprets a `StatusBarItem` as a `Disposable` so it can be pushed
+/// onto `context.subscriptions`. (The vscode-API contract: status-bar
+/// items implement Disposable.)
+pub extern fn statusBarItemAsDisposable(s: StatusBarItem) -> Disposable;
+
+// ── Diagnostics ──────────────────────────────────────────────────────
+//
+// To avoid an FFI for `Range` and `Diagnostic` constructors plus an array
+// type, diagnostics are passed as a JSON array of objects:
+//
+//   [
+//     {
+//       "message": "...",
+//       "severity": 0..3,     // Error|Warning|Information|Hint
+//       "startLine": 0,
+//       "startCol": 0,
+//       "endLine": 0,
+//       "endCol": 0
+//     },
+//     ...
+//   ]
+//
+// The adapter parses the JSON and constructs `vscode.Diagnostic`
+// instances. Range fields are required; sentinel `0,0,0,0` is the
+// established convention for "no specific location, attach to the file
+// as a whole" (matches what the rsr-certifier TS extension did).
+
+pub extern fn createDiagnosticCollection(name: String) -> DiagnosticCollection;
+pub extern fn diagnosticCollectionClear(c: DiagnosticCollection) -> Int;
+
+/// `c.set(uri, parseDiagnosticsJson(diagnostics_json))`. Returns 0 on
+/// success or a parse-error sentinel (non-zero) if `diagnostics_json`
+/// failed to parse.
+pub extern fn diagnosticCollectionSetForUri(c: DiagnosticCollection,
+                                              u: Uri,
+                                              diagnostics_json: String) -> Int;
+
+/// Returns a `Disposable` for `c` so it can join `context.subscriptions`.
+pub extern fn diagnosticCollectionAsDisposable(c: DiagnosticCollection) -> Disposable;
+
+// ── Webview ──────────────────────────────────────────────────────────
+
+/// `vscode.window.createWebviewPanel(viewType, title, viewColumn, {})`.
+/// `view_column`: 1 = One, 2 = Two, 3 = Three (matches
+/// `vscode.ViewColumn`). No webview options exposed in this first cut —
+/// the default (no scripts, no retained context) is what rsr-certifier's
+/// existing report uses.
+pub extern fn createWebviewPanel(view_type: String,
+                                  title: String,
+                                  view_column: Int) -> WebviewPanel;
+
+/// Assigns to `panel.webview.html`.
+pub extern fn webviewPanelSetHtml(p: WebviewPanel, html: String) -> Int;
+
+pub extern fn webviewPanelAsDisposable(p: WebviewPanel) -> Disposable;
+
+// ── Clipboard ────────────────────────────────────────────────────────
+
+/// `vscode.env.clipboard.writeText(text)`. Best-effort dispatch; the
+/// underlying call returns a Thenable that the binding does not await.
+pub extern fn clipboardWriteText(text: String) -> Int;
+
+// ── Events ───────────────────────────────────────────────────────────
+
+/// `vscode.workspace.onDidSaveTextDocument(() => handler())`.
+///
+/// The handler is registered as a zero-argument wasm-table thunk. The
+/// `TextDocument` argument that the underlying event ships is discarded
+/// at the FFI boundary; handlers that need the saved file path can call
+/// `editorActiveFilePath()` from inside the thunk. That covers the
+/// 95% case where the saved doc is the active editor; the remaining
+/// cases (background-saved docs) degrade to "no action".
+pub extern fn onDidSaveTextDocument(handler: Int) -> Disposable;
+
+// ── Path helpers ─────────────────────────────────────────────────────
+
+/// `path.basename(p)` — last segment of a slash- or backslash-separated
+/// path.
+pub extern fn pathBasename(p: String) -> String;
+
+/// `path.join(a, b)` — single-segment join using the host platform's
+/// separator.
+pub extern fn pathJoin(a: String, b: String) -> String;
+
+/// `process.platform` — "win32" | "linux" | "darwin" | "freebsd" | ...
+pub extern fn processPlatform() -> String;
+
+// ── ExtensionContext helpers ─────────────────────────────────────────
+
+/// `context.asAbsolutePath(rel_path)` — resolves a path relative to the
+/// extension's install location.
+pub extern fn extensionAbsolutePath(ctx: ExtensionContext, rel_path: String) -> String;
