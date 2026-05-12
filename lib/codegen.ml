@@ -1961,11 +1961,19 @@ let gen_decl (ctx : context) (decl : top_level) : context result =
          func_indices = (ef.ef_name.name, func_idx) :: ctx_with_type.func_indices }
 
 (** Cross-module imports: walk [prog.prog_imports], load each referenced module
-    via [loader], and for every imported function name register
-    a WASM [(import "<mod>" "<fn>" (func ...))] entry plus a
-    [(local_alias_name -> func_idx)] mapping in [func_indices].
+    via [loader], and for every imported top-level binding register the
+    appropriate WASM artefact + entry in [func_indices].
 
-    Silent on missing modules / non-function items / loader errors: the
+    - Imported [TopFn]: emit a WASM [(import "<mod>" "<fn>" (func ...))]
+      entry and bind the local alias to its positive function index.
+    - Imported [TopConst]: compile its initialiser inline against the
+      importer's context and append a fresh [global] entry; bind the
+      local alias under the negative-sentinel convention from §3 of
+      `docs/specs/codegen-environment.adoc`. (WASM module-linking for
+      globals isn't standard yet, so each importer keeps its own copy
+      of the constant — fine for the v0.1 surface.)
+
+    Silent on missing modules / unresolved items / loader errors: the
     resolver runs before codegen and would have already errored. *)
 let gen_imports (loader : Module_loader.t) (imports : import_decl list) (ctx : context)
     : context result =
@@ -1973,14 +1981,21 @@ let gen_imports (loader : Module_loader.t) (imports : import_decl list) (ctx : c
     match Module_loader.load_module loader mod_path with
     | Error _ -> Ok ctx
     | Ok loaded ->
-      let fn_decl_opt = List.find_map (function
-        | TopFn fd when fd.fd_name.name = orig_name -> Some fd
+      let local_name = Option.value alias_opt ~default:orig_name in
+      (* Look up the imported binding — function or constant — in declaration
+         order. The first match wins; same-name fn+const in the same module
+         would be a resolver-level error and never reach codegen.
+         Inline-record fields (TopConst) are destructured at the match site
+         so the constructor's anonymous record type does not escape. *)
+      let item = List.find_map (function
+        | TopFn fd when fd.fd_name.name = orig_name -> Some (`Fn fd)
+        | TopConst { tc_name; tc_value; _ } when tc_name.name = orig_name ->
+          Some (`Const tc_value)
         | _ -> None
       ) loaded.mod_program.prog_decls in
-      match fn_decl_opt with
+      match item with
       | None -> Ok ctx
-      | Some fd ->
-        let local_name = Option.value alias_opt ~default:orig_name in
+      | Some (`Fn fd) ->
         let ft = func_type_of_fn_decl fd in
         let (type_idx, types_after) = intern_func_type ctx.types ft in
         let import_func_idx = import_func_count ctx in
@@ -1993,6 +2008,18 @@ let gen_imports (loader : Module_loader.t) (imports : import_decl list) (ctx : c
              types = types_after;
              imports = ctx.imports @ [import];
              func_indices = (local_name, import_func_idx) :: ctx.func_indices;
+           }
+      | Some (`Const tc_value) ->
+        let* (ctx', init_code) = gen_expr ctx tc_value in
+        let global_idx = List.length ctx'.globals in
+        let global = {
+          g_type = I32;
+          g_mutable = false;
+          g_init = init_code;
+        } in
+        Ok { ctx' with
+             globals = ctx'.globals @ [global];
+             func_indices = (local_name, -(global_idx + 1)) :: ctx'.func_indices;
            }
   in
   let expand_import imp : (string list * string * string option) list =
@@ -2012,6 +2039,9 @@ let gen_imports (loader : Module_loader.t) (imports : import_decl list) (ctx : c
          List.filter_map (function
            | TopFn fd when fd.fd_vis = Public || fd.fd_vis = PubCrate ->
              Some (p, fd.fd_name.name, None)
+           | TopConst { tc_vis; tc_name; _ }
+             when tc_vis = Public || tc_vis = PubCrate ->
+             Some (p, tc_name.name, None)
            | _ -> None
          ) lm.mod_program.prog_decls)
   in

@@ -1,0 +1,15 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2026 Jonathan D.A. Jewell
+//
+// Cross-module const-export fixture. Regression coverage for
+// https://github.com/hyperpolymath/affinescript/issues/107 — the WASM
+// codegen previously dropped imported TopConst bindings, breaking any
+// `use M::{some_const}` that the typechecker accepted.
+
+module PortNames;
+
+pub const input_marker: Int = 256;
+
+pub fn marker_plus(x: Int) -> Int {
+  return x + input_marker;
+}

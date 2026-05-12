@@ -202,7 +202,9 @@ during typechecking and trait-dictionary insertion.
 
 `gen_imports : Module_loader.t -> import_decl list -> context -> context result`
 walks `prog.prog_imports` once at the start of `generate_module`,
-*before* any local `gen_decl` call. For every imported function:
+*before* any local `gen_decl` call. For every imported item:
+
+=== 5.1 Imported `TopFn`
 
 1. Load the referenced module via `Module_loader`.
 2. Find the matching `TopFn` (or fail silently if absent — the resolver
@@ -214,14 +216,29 @@ walks `prog.prog_imports` once at the start of `generate_module`,
 5. Register the local alias (or original name) in `func_indices` with
    the positive `import_func_idx`.
 
-Glob imports (`use M::*`) expand to one entry per public `TopFn` /
-`PubCrate TopFn` in `M`'s `prog_decls`.
+=== 5.2 Imported `TopConst`
 
-`TopConst` items are *not* threaded across module boundaries by
-`gen_imports`. This is the cross-module gap acknowledged in
-SPEC §8.4 — addressing it requires emitting the constant as a global
-in the importing module (or via WASM module-linking) and remains
-future work.
+WASM module-linking for globals isn't standard yet, so cross-module
+const support inlines the value into the importer's module:
+
+1. Load the referenced module via `Module_loader` and locate the
+   matching `TopConst` (matching on the original name; alias renaming
+   happens at registration time).
+2. Compile the const's initialiser against the importer's context via
+   `gen_expr` (same lowering as `gen_decl TopConst`, §4.4).
+3. Append the resulting `global` entry to `ctx.globals`.
+4. Register `(local_name, -(global_idx + 1))` in `func_indices` — the
+   same negative-sentinel encoding used for locally-declared consts
+   (§3), so use-site lookup is uniform.
+
+The importer keeps its own copy of the constant value; cross-module
+const identity is by value, not by reference. This is fine because
+AffineScript consts are immutable.
+
+=== 5.3 Glob Imports
+
+Glob imports (`use M::*`) expand to one entry per public `TopFn` AND
+per public `TopConst` (`Public` or `PubCrate`) in `M`'s `prog_decls`.
 
 == 6. Identifier Resolution at Use Sites
 
@@ -359,10 +376,22 @@ which appends): `[("main", 2); ("withInput", 1); ("inputSuffix", -1)]`.
 == 10. Closed Issues
 
 * https://github.com/hyperpolymath/affinescript/issues/73[#73] —
-  `Codegen.UnboundVariable` for top-level `const` bindings. **Closed.**
-  Resolved by the `Some k when k < 0` arm in `ExprVar` (`lib/codegen.ml`,
-  line 442–445). The negative-sentinel encoding is the load-bearing
-  invariant; new back-ends adopting `func_indices` must preserve it.
+  `Codegen.UnboundVariable` for top-level `const` bindings (intra-module).
+  **Closed.** Resolved by the `Some k when k < 0` arm in `ExprVar`
+  (`lib/codegen.ml`, line 442–445). The negative-sentinel encoding is
+  the load-bearing invariant; new back-ends adopting `func_indices` must
+  preserve it.
+
+* https://github.com/hyperpolymath/affinescript/issues/107[#107] —
+  Cross-module `const` imports dropped by `gen_imports` /
+  `flatten_imports`. **Closed.** Both paths now thread `TopConst`:
+  - `Codegen.gen_imports` matches `TopConst` alongside `TopFn` and
+    inlines the initialiser as a fresh global on the importer (§5.2).
+  - `Module_loader.flatten_imports` includes public consts in its
+    inlined declaration set, with the same alias-renaming machinery
+    used for fns, so non-WASM back-ends pick them up unchanged.
+  Regression tests live in `test/test_e2e.ml`
+  (`E2E Xmod Other Codegens` group, items 2–3).
 
 == 11. References
 

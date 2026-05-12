@@ -1,0 +1,13 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2026 Jonathan D.A. Jewell
+//
+// Caller that imports both a public const and a public fn from another
+// module. Regression coverage for affinescript#107: prior to the fix,
+// the imported `input_marker` was silently dropped by
+// `Codegen.gen_imports`, producing an `UnboundVariable` at WASM codegen.
+
+use PortNames::{input_marker, marker_plus};
+
+pub fn main() -> Int {
+  return marker_plus(input_marker);
+}
