@@ -650,92 +650,148 @@ Compiles to (ownership removed):
   (call $close (local.get $file)))
 ----
 
-== 8. Codegen Module Environment
+== 8. Top-Level Binding Environment
 
-This section describes how the WebAssembly code generator (`lib/codegen.ml`)
-builds its name environment. It is implementation documentation aimed at
-contributors; the language semantics are fully specified in §2–4.
+This section specifies how top-level declarations populate the binding
+environment that subsequent declarations and their bodies resolve against.
+It complements §3 (which gives the typing judgements) by fixing the
+*operational* rules every conforming code generator must obey, independent
+of any concrete target.
 
-=== 8.1 Name Environment (`func_indices`)
+The WebAssembly realisation of these rules is documented at
+link:codegen-environment.adoc[`docs/specs/codegen-environment.adoc`].
 
-The codegen context maintains a single association list
+=== 8.1 Top-Level Kinds
 
-[source,ocaml]
-----
-func_indices : (string * int) list
-----
+A program is an ordered sequence of top-level declarations. Each kind
+contributes to the binding environment as follows:
 
-that maps every top-level name visible at later declaration sites to an
-integer key. Two distinct kinds of binding share this table:
-
-[cols="2,2,3", options="header"]
+[cols="1,2,2", options="header"]
 |===
-| Source declaration | Key value | Meaning
+| Declaration | Binds | Runtime artefact
 
-| `fn f(…) { … }`
-| `k ≥ 0`
-| WebAssembly function index (imports + defined functions, combined)
+| `fn f(…) { … }` (§2.4)
+| `f` as a function value
+| Yes — function in the target module
 
-| `const C: T = e`
-| `-(g + 1)`, where `g` is the global's index in the Wasm `globals` vector
-| Negative sentinel reserved for constants
+| `extern fn f(…) -> T;` (§2.10)
+| `f` as a function value
+| Yes — host-supplied import
+
+| `const c: T = e;` (§2.9)
+| `c` as an immutable value of type `T`
+| Yes — same-type immutable cell
+
+| `type T = …;` (§2.2)
+| `T` as a type
+| No — compile-time only
+
+| `extern type T;` (§2.10)
+| `T` as an opaque type
+| No — compile-time only
+
+| `effect E { … }` (§2.7)
+| `E` and its operations
+| No — handled by effect lowering (§7)
+
+| `trait Tr { … }` (§2.8)
+| `Tr` as a trait
+| No — compile-time only
+
+| `impl Tr for T { … }` (§2.8)
+| Trait dictionary for `(Tr, T)`
+| No — compile-time only
 |===
 
-Sign-based partitioning is deliberate: `k ≥ 0` decodes directly as a Wasm
-`funcidx`, and `k < 0` recovers the global index as `g = -(k + 1)`. A
-single integer per name keeps the lookup uniform across both kinds of binding.
+=== 8.2 Declaration Order and Visibility
 
-*Population.* Top-level declarations are visited in source order by
-`gen_decl`, which is folded over `prog.prog_decls` from `generate_module`.
-The relevant cases are:
+Top-level declarations are processed in source order. The binding
+environment in scope when a declaration is processed contains exactly
+the names of declarations that *precede* it in source order, together
+with the names introduced by the module's `use` clauses (§8.4).
 
-- `TopFn fd` with `fd.fd_body <> FnExtern` — picks the next Wasm function
-  index (`import_func_count ctx + List.length ctx.funcs`), registers
-  `(fd.fd_name.name, func_idx)` in `func_indices` _before_ generating the
-  body so the body may recursively refer to its own name, then appends the
-  emitted function to `ctx.funcs`.
-- `TopFn fd` with `fd.fd_body = FnExtern` — emits a Wasm import (module
-  `"env"`, name `fd.fd_name.name`) and registers
-  `(fd.fd_name.name, import_func_idx)` in `func_indices`, where
-  `import_func_idx` is the number of imports before adding this one. No
-  function body is generated. See §8.2.
-- `TopConst tc` — generates the global initializer, appends the global to
-  `ctx.globals`, then registers `(tc.tc_name.name, -(global_idx + 1))` in
-  `func_indices`.
+A reference to a name not yet bound at its use site is a static error:
 
-Because population is strictly single-pass and in declaration order,
-forward references (to either functions or constants declared later in the
-file) are not supported by the current backend.
-
-*Call-site lookup.* The `ExprApp (ExprVar id, _)` branch of `gen_expr`
-consults `func_indices` to translate a direct call into a Wasm `call k`
-instruction. Decoding the negative sentinel back to a `global.get` —
-needed to make a bare `const` identifier usable inside another top-level
-declaration's body — is tracked as a known gap in issue #73. The encoding
-documented in this section is the data layout the fix relies on; the
-call-site decode path will land alongside that fix.
-
-=== 8.2 Extern Bindings
-
-An `extern fn name(…) -> Ret;` declaration produces a `TopFn` with
-`fd_body = FnExtern`. Codegen lowers it to a Wasm import:
-
-[source]
+[source,affinescript]
 ----
-(import "env" "<name>" (func (param …) (result …)))
+fn use_pi() -> Float { pi }      // ERROR: `pi` not yet declared
+const pi: Float = 3.141592;
 ----
 
-The resulting import function index is positive (it counts among the
-combined "imports + defined functions" view used by every other call
-site), so the name is registered in `func_indices` with `k ≥ 0` and call
-sites resolve through `call k` indistinguishably from a locally-defined
-function. The Wasm module name is currently hard-coded to `"env"`,
-matching the convention adopted by the Node-CJS host shim.
+Reordering resolves it:
 
-An `extern type Name;` declaration produces a `TopType` with
-`td_body = TyExtern`. It generates no Wasm artifact — opaque types are
-purely a typechecker concern — and the codegen `TopType TyExtern` case
-returns the unchanged context.
+[source,affinescript]
+----
+const pi: Float = 3.141592;
+fn use_pi() -> Float { pi }      // OK: `pi` is in scope here
+----
+
+The recommended source ordering — types, effects, constants, traits,
+impls, functions — is sufficient (though not necessary) to avoid every
+forward-reference error.
+
+=== 8.3 Identifier Resolution
+
+A bare identifier `x` in expression position resolves by the following
+lookup order, in the context where the expression appears:
+
+. Local bindings introduced by enclosing `let`, lambda parameters, or
+  function parameters.
+. Variant constructors of any in-scope `enum` type, resolved to their
+  tag (§2.2).
+. Top-level bindings: `fn`, `extern fn`, and `const` names registered
+  under §8.1.
+
+A call expression `f(args)` resolves `f` against the same environment.
+A name bound to a `const` may appear in expression position only; a
+name bound to a `fn` or `extern fn` may appear in either expression or
+call position. The well-formedness of these positions is established by
+the type system (§3); a backend may rely on the typechecker having
+rejected ill-positioned references.
+
+=== 8.4 Cross-Module Bindings
+
+Imports (`use M::{…}`, `use M::*`) extend the binding environment of
+the importer with the public top-level names of the imported module,
+under the alias chosen by the import form (§2.1). The order in which
+import-introduced names enter the environment is *before* every
+local top-level declaration of the importer.
+
+Status of cross-module flow at v0.1:
+
+* `fn` and `extern fn` items flow across module boundaries.
+* `const` items do not yet flow across module boundaries; a `const`
+  declared in module `M` and named by `use M::{c}` is a known
+  restriction, not a language-level prohibition.
+
+=== 8.5 Conformance Criteria
+
+A conforming code generator MUST:
+
+C1:: Process top-level declarations in source order.
+
+C2:: Register a top-level name in its environment *before* generating
+the body of any later declaration that may reference it.
+
+C3:: For each runtime-bearing declaration (`fn`, `extern fn`, `const`)
+emit an artefact whose denotation matches §2 and §3 — functions are
+first-class values, constants are immutable cells of their declared
+type.
+
+C4:: For each compile-time declaration (`type`, `extern type`, `effect`,
+`trait`, `impl`) record sufficient information in the environment for
+subsequent declarations to typecheck and lower correctly, without
+necessarily emitting any target artefact.
+
+C5:: Report a static error (rather than emit a malformed module) when
+an identifier escapes its lexical scope or names a binding not yet in
+the environment under C1–C2.
+
+C6:: If a binding kind is unsupported by the target, raise
+`UnsupportedFeature` at the declaration site, never silently drop it.
+
+Implementations MAY use any internal representation for the binding
+environment; C1–C6 fix what is observable, not how it is stored.
 
 == Appendix: Grammar Reference
 
