@@ -2926,9 +2926,59 @@ let test_flatten_imports_dedup_local_wins () =
   Alcotest.(check int) "local consume wins; imported one not duplicated"
     1 consume_count
 
+(* Regression for affinescript#107: imported public consts must be
+   threaded into the importer's environment by both paths (WASM via
+   gen_imports, non-WASM via flatten_imports). *)
+
+let test_flatten_imports_inlines_public_const () =
+  let loader = Module_loader.create {
+    Module_loader.stdlib_path = "stdlib";
+    search_paths = [];
+    current_dir = fixture_dir;
+  } in
+  match parse_fixture (fixture "cross_const_caller.affine") with
+  | Error e -> Alcotest.failf "parse failed: %s" e
+  | Ok caller_prog ->
+    (match Resolve.resolve_program_with_loader caller_prog loader with
+     | _ -> ());
+    let flat = Module_loader.flatten_imports loader caller_prog in
+    let flat_const_names = List.filter_map (function
+      | Ast.TopConst { tc_name; _ } -> Some tc_name.name
+      | _ -> None
+    ) flat.prog_decls in
+    let flat_fn_names = List.filter_map (function
+      | Ast.TopFn fd -> Some fd.fd_name.name
+      | _ -> None
+    ) flat.prog_decls in
+    Alcotest.(check bool) "imported `input_marker` const inlined"
+      true (List.mem "input_marker" flat_const_names);
+    Alcotest.(check bool) "imported `marker_plus` fn inlined"
+      true (List.mem "marker_plus" flat_fn_names);
+    Alcotest.(check bool) "caller's main fn still present"
+      true (List.mem "main" flat_fn_names)
+
+let test_wasm_cross_module_const_compiles () =
+  match compile_fixture_to_wasm (fixture "PortNames.affine"),
+        compile_fixture_to_wasm (fixture "cross_const_caller.affine") with
+  | Ok _, Ok caller ->
+    (* The imported const must have produced exactly one global on the
+       caller side, with the same I32Const initialiser as the callee's
+       value (256). *)
+    Alcotest.(check bool) "caller emits at least one global for the imported const"
+      true (List.length caller.globals >= 1);
+    let has_marker_init = List.exists (fun (g : Wasm.global) ->
+      List.exists (function Wasm.I32Const n -> Int32.to_int n = 256 | _ -> false) g.g_init
+    ) caller.globals in
+    Alcotest.(check bool) "caller has a global initialised to 256 (input_marker value)"
+      true has_marker_init
+  | Error e, _ -> Alcotest.fail ("callee compile failed: " ^ e)
+  | _, Error e -> Alcotest.fail ("caller compile failed (regression for #107): " ^ e)
+
 let cross_module_other_codegens_tests = [
   Alcotest.test_case "flatten_imports inlines imported public fns"          `Quick test_flatten_imports_inlines_public_fns;
   Alcotest.test_case "flatten_imports: local def shadows imported, no dup"  `Quick test_flatten_imports_dedup_local_wins;
+  Alcotest.test_case "flatten_imports inlines imported public consts (#107)" `Quick test_flatten_imports_inlines_public_const;
+  Alcotest.test_case "WASM gen_imports threads imported consts (#107)"      `Quick test_wasm_cross_module_const_compiles;
 ]
 
 (* ---- extern declarations (issues-drafts/04) ----

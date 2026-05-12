@@ -757,12 +757,13 @@ under the alias chosen by the import form (§2.1). The order in which
 import-introduced names enter the environment is *before* every
 local top-level declaration of the importer.
 
-Status of cross-module flow at v0.1:
+Items that flow across module boundaries:
 
-* `fn` and `extern fn` items flow across module boundaries.
-* `const` items do not yet flow across module boundaries; a `const`
-  declared in module `M` and named by `use M::{c}` is a known
-  restriction, not a language-level prohibition.
+* `fn` and `extern fn` — imported as references to the original definition.
+* `const` — its initialiser is compiled inline into the importer's
+  module, so each importer materialises its own copy of the value.
+  The denotation seen at use sites is the same as the source `const`
+  in the defining module.
 
 === 8.5 Conformance Criteria
 
