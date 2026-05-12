@@ -652,90 +652,9 @@ Compiles to (ownership removed):
 
 == 8. Codegen Module Environment
 
-This section describes how the WebAssembly code generator (`lib/codegen.ml`)
-builds its name environment. It is implementation documentation aimed at
-contributors; the language semantics are fully specified in §2–4.
-
-=== 8.1 Name Environment (`func_indices`)
-
-The codegen context maintains a single association list
-
-[source,ocaml]
-----
-func_indices : (string * int) list
-----
-
-that maps every top-level name visible at later declaration sites to an
-integer key. Two distinct kinds of binding share this table:
-
-[cols="2,2,3", options="header"]
-|===
-| Source declaration | Key value | Meaning
-
-| `fn f(…) { … }`
-| `k ≥ 0`
-| WebAssembly function index (imports + defined functions, combined)
-
-| `const C: T = e`
-| `-(g + 1)`, where `g` is the global's index in the Wasm `globals` vector
-| Negative sentinel reserved for constants
-|===
-
-Sign-based partitioning is deliberate: `k ≥ 0` decodes directly as a Wasm
-`funcidx`, and `k < 0` recovers the global index as `g = -(k + 1)`. A
-single integer per name keeps the lookup uniform across both kinds of binding.
-
-*Population.* Top-level declarations are visited in source order by
-`gen_decl`, which is folded over `prog.prog_decls` from `generate_module`.
-The relevant cases are:
-
-- `TopFn fd` with `fd.fd_body <> FnExtern` — picks the next Wasm function
-  index (`import_func_count ctx + List.length ctx.funcs`), registers
-  `(fd.fd_name.name, func_idx)` in `func_indices` _before_ generating the
-  body so the body may recursively refer to its own name, then appends the
-  emitted function to `ctx.funcs`.
-- `TopFn fd` with `fd.fd_body = FnExtern` — emits a Wasm import (module
-  `"env"`, name `fd.fd_name.name`) and registers
-  `(fd.fd_name.name, import_func_idx)` in `func_indices`, where
-  `import_func_idx` is the number of imports before adding this one. No
-  function body is generated. See §8.2.
-- `TopConst tc` — generates the global initializer, appends the global to
-  `ctx.globals`, then registers `(tc.tc_name.name, -(global_idx + 1))` in
-  `func_indices`.
-
-Because population is strictly single-pass and in declaration order,
-forward references (to either functions or constants declared later in the
-file) are not supported by the current backend.
-
-*Call-site lookup.* The `ExprApp (ExprVar id, _)` branch of `gen_expr`
-consults `func_indices` to translate a direct call into a Wasm `call k`
-instruction. Decoding the negative sentinel back to a `global.get` —
-needed to make a bare `const` identifier usable inside another top-level
-declaration's body — is tracked as a known gap in issue #73. The encoding
-documented in this section is the data layout the fix relies on; the
-call-site decode path will land alongside that fix.
-
-=== 8.2 Extern Bindings
-
-An `extern fn name(…) -> Ret;` declaration produces a `TopFn` with
-`fd_body = FnExtern`. Codegen lowers it to a Wasm import:
-
-[source]
-----
-(import "env" "<name>" (func (param …) (result …)))
-----
-
-The resulting import function index is positive (it counts among the
-combined "imports + defined functions" view used by every other call
-site), so the name is registered in `func_indices` with `k ≥ 0` and call
-sites resolve through `call k` indistinguishably from a locally-defined
-function. The Wasm module name is currently hard-coded to `"env"`,
-matching the convention adopted by the Node-CJS host shim.
-
-An `extern type Name;` declaration produces a `TopType` with
-`td_body = TyExtern`. It generates no Wasm artifact — opaque types are
-purely a typechecker concern — and the codegen `TopType TyExtern` case
-returns the unchanged context.
+See link:codegen-environment.adoc[`docs/specs/codegen-environment.adoc`] for the
+full codegen module environment reference, including the `func_indices`
+dual-use encoding, population order, and extern binding rules.
 
 == Appendix: Grammar Reference
 
