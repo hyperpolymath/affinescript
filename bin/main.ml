@@ -477,7 +477,8 @@ let repl_cmd_fn () =
 (** Compile a file.  With [--json], emits diagnostics for any
     compilation errors.  With [--wasm-gc], targets the WebAssembly GC
     proposal instead of WASM 1.0 linear memory. *)
-let compile_file face json wasm_gc path output =
+let compile_file face json wasm_gc vscode_ext vscode_adapter vscode_no_lc
+    path output =
   let face = resolve_face ~quiet:json face path in
   if json then begin
     let diags = ref [] in
@@ -659,7 +660,13 @@ let compile_file face json wasm_gc path output =
                         (Affinescript.Codegen.show_codegen_error e);
                       span = Affinescript.Span.dummy; help = None; labels = [] }
               | Ok wasm_module ->
-                let cjs = Affinescript.Codegen_node.emit_node_cjs wasm_module in
+                let cjs =
+                  Affinescript.Codegen_node.emit_node_cjs
+                    ~vscode_extension:vscode_ext
+                    ?vscode_extension_adapter:vscode_adapter
+                    ~vscode_extension_no_lc:vscode_no_lc
+                    wasm_module
+                in
                 let oc = open_out output in
                 output_string oc cjs;
                 close_out oc
@@ -873,11 +880,18 @@ let compile_file face json wasm_gc path output =
                   (Affinescript.Codegen.show_codegen_error e);
                 `Error (false, "Node-CJS codegen error")
               | Ok wasm_module ->
-                let cjs = Affinescript.Codegen_node.emit_node_cjs wasm_module in
+                let cjs =
+                  Affinescript.Codegen_node.emit_node_cjs
+                    ~vscode_extension:vscode_ext
+                    ?vscode_extension_adapter:vscode_adapter
+                    ~vscode_extension_no_lc:vscode_no_lc
+                    wasm_module
+                in
                 let oc = open_out output in
                 output_string oc cjs;
                 close_out oc;
-                Format.printf "Compiled %s -> %s (Node-CJS)@." path output;
+                Format.printf "Compiled %s -> %s (Node-CJS%s)@." path output
+                  (if vscode_ext then ", --vscode-extension" else "");
                 `Ok ())
             else
               let optimized_prog = Affinescript.Opt.fold_constants_program prog in
@@ -1140,6 +1154,29 @@ let wasm_gc_arg =
     ~doc:"Target the WebAssembly GC proposal (struct/array types, no linear memory). \
           Requires a runtime that supports the GC proposal: V8/Chrome ≥ 119, \
           SpiderMonkey/Firefox ≥ 120, or Wasmtime with --wasm-features gc.")
+
+(* Issue #105: --vscode-extension and its sub-flags. Only meaningful when
+   the output is a [.cjs] Node-CJS shim; ignored for other targets. *)
+let vscode_ext_arg =
+  Arg.(value & flag & info ["vscode-extension"]
+    ~doc:"When emitting a Node-CJS shim (.cjs output), inline the vscode-API \
+          wiring so the generated file is directly loadable as a VS Code \
+          extension's `main` — no hand-written index.cjs or vendored adapter. \
+          Installs exports.extraImports calling the \
+          @hyperpolymath/affine-vscode adapter.")
+
+let vscode_adapter_arg =
+  Arg.(value & opt (some string) None & info ["vscode-extension-adapter"]
+    ~docv:"SPECIFIER"
+    ~doc:"Override the require() specifier for the vscode adapter used by \
+          --vscode-extension (default: @hyperpolymath/affine-vscode). Useful \
+          for testing against a local checkout or vendoring a custom adapter.")
+
+let vscode_no_lc_arg =
+  Arg.(value & flag & info ["vscode-extension-no-lc"]
+    ~doc:"With --vscode-extension, omit the vscode-languageclient/node \
+          dependency for extensions that ship no language client; the \
+          wiring passes null in its place.")
 
 (** Shared --face flag: select the parser surface-syntax face. *)
 let face_arg =
@@ -1486,7 +1523,9 @@ let repl_cmd =
 let compile_cmd =
   let doc = "Compile a file to WebAssembly (1.0 or GC proposal), Julia (.jl), JavaScript (.js), C (.c), a WGSL compute kernel (.wgsl), a Faust DSP program (.dsp), or an ONNX model (.onnx)" in
   let info = Cmd.info "compile" ~doc in
-  Cmd.v info Term.(ret (const compile_file $ face_arg $ json_arg $ wasm_gc_arg $ path_arg $ output_arg))
+  Cmd.v info Term.(ret (const compile_file $ face_arg $ json_arg $ wasm_gc_arg
+    $ vscode_ext_arg $ vscode_adapter_arg $ vscode_no_lc_arg
+    $ path_arg $ output_arg))
 
 let fmt_cmd =
   let doc = "Format a file" in
