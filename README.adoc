@@ -387,9 +387,35 @@ Games are one place where the language’s properties are easy to demonstrate. T
 
 === Prerequisites
 
-- OCaml 5.1+
+- OCaml 4.14.2+ (dune-project lists `>= 5.1`, but the current tree also builds clean on 4.14.2; the constraint is stricter than the actual code requires)
 - Dune 3.14+
-- opam packages: `sedlex`, `menhir`, `ppx_deriving`, `cmdliner`, `yojson`
+- opam packages: `sedlex`, `menhir`, `ppx_deriving`, `ppx_sexp_conv`, `sexplib0`, `fmt`, `cmdliner`, `yojson`, `alcotest` (test), `ocamlformat` (test), `js_of_ocaml`, `js_of_ocaml-ppx`, `js_of_ocaml-compiler`
+
+[NOTE]
+====
+The top-level `dune build` compiles every target including `js/playground.bc.js`, so `js_of_ocaml*` are required for an out-of-the-box build. If you only need the CLI and tests, you can build the subtrees explicitly:
+
+[source,bash]
+----
+dune build lib/ bin/ test/
+----
+====
+
+=== One-shot opam setup
+
+[source,bash]
+----
+# Install the full dep set into the active switch
+opam install -y \
+  sedlex menhir ppx_deriving ppx_sexp_conv sexplib0 fmt cmdliner yojson \
+  alcotest ocamlformat \
+  js_of_ocaml js_of_ocaml-ppx js_of_ocaml-compiler
+
+# Make `dune`, `ocaml`, etc. visible to non-interactive shells
+eval "$(opam env --switch=default --set-switch)"
+----
+
+For login shells, persist the PATH wiring by appending the equivalent to `~/.profile` — opam's own `opam-init/init.sh` gates PATH-setup behind `[ -t 0 ]`, so `wsl bash -lc '...'`-style invocations don't pick it up without an explicit eval.
 
 === Build
 
