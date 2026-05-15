@@ -116,7 +116,7 @@ If you experience or witness unacceptable behaviour, or have any other concerns,
 
 | Method | Details | Best For |
 |--------|---------|----------|
-| **Email** | jonathan.jewell@gmail.com | Detailed reports, sensitive matters |
+| **Email** | j.d.a.jewell@open.ac.uk | Detailed reports, sensitive matters |
 | **Private Message** | Contact any maintainer directly | Quick questions, minor issues |
 
 **What to Include**
@@ -199,7 +199,7 @@ The maintainers will follow these guidelines in determining consequences:
 If you believe an enforcement decision was made in error:
 
 1. **Wait 7 days** after the decision (cooling-off period)
-2. **Email** jonathan.jewell@gmail.com with subject line "Appeal: [Original Report ID]"
+2. **Email** j.d.a.jewell@open.ac.uk with subject line "Appeal: [Original Report ID]"
 3. **Explain** why you believe the decision should be reconsidered
 4. **Provide** any new information not previously available
 
@@ -277,7 +277,7 @@ We thank these communities for their leadership in creating welcoming spaces.
 If you have questions about this Code of Conduct:
 
 - Open a [Discussion](https://github.com/hyperpolymath/affinescript/discussions) (for general questions)
-- Email jonathan.jewell@gmail.com (for private questions)
+- Email j.d.a.jewell@open.ac.uk (for private questions)
 - Contact any maintainer directly
 
 ---
