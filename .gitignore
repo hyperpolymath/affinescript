@@ -13,6 +13,7 @@ Thumbs.db
 # Build
 /target/
 /_build/
+/_opam/
 /build/
 /dist/
 /out/
