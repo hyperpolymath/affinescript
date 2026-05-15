@@ -135,7 +135,7 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
-    "compile": "affinescript compile src/extension.affine -o out/extension.cjs",
+    "compile": "affinescript compile src/extension.affine -o out/extension.cjs --vscode-extension",
     "watch": "echo 'watch mode not implemented for AffineScript source — re-run npm run compile'",
     "guard": "../../tools/check-no-extension-ts.sh",
     "package": "vsce package",
@@ -146,6 +146,7 @@
     "vsce": "^2.15.0"
   },
   "dependencies": {
+    "@hyperpolymath/affine-vscode": "^0.1.0",
     "vscode-languageclient": "^9.0.0"
   }
 }

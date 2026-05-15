@@ -2822,9 +2822,89 @@ let test_node_cjs_base64_roundtrip () =
   Alcotest.(check string) "matches RFC 4648 §10 vector"
     "TWFueSBoYW5kcyBtYWtlIGxpZ2h0IHdvcmsu" b64
 
+(* ---- Issue #105: --vscode-extension inline wiring ----
+
+   Verifies that emit_node_cjs ~vscode_extension:true inlines the
+   exports.extraImports glue (calling the @hyperpolymath/affine-vscode
+   adapter) so the generated .cjs is directly loadable as a VS Code
+   extension's `main` — no hand-written index.cjs / vendored adapter. *)
+
+let contains s sub =
+  let n = String.length sub and m = String.length s in
+  let rec scan i = i + n <= m && (String.sub s i n = sub || scan (i + 1)) in
+  n = 0 || scan 0
+
+let cjs_of ?vscode_extension ?vscode_extension_adapter
+    ?vscode_extension_no_lc src =
+  let prog = parse_string_for_gc src in
+  match Codegen.generate_module prog with
+  | Error e -> Alcotest.failf "wasm codegen failed: %s" (Codegen.show_codegen_error e)
+  | Ok wasm_module ->
+    Codegen_node.emit_node_cjs ?vscode_extension ?vscode_extension_adapter
+      ?vscode_extension_no_lc wasm_module
+
+let activate_src =
+  {|pub fn activate(ctx_handle: Int) -> Int { return 0; }
+    pub fn deactivate() -> Int { return 0; }|}
+
+let test_vscode_extension_off_by_default () =
+  let cjs = cjs_of activate_src in
+  Alcotest.(check bool) "no extraImports assignment without the flag"
+    false (contains cjs "exports.extraImports = function");
+  Alcotest.(check bool) "no adapter require without the flag"
+    false (contains cjs "@hyperpolymath/affine-vscode")
+
+let test_vscode_extension_inlines_wiring () =
+  let cjs = cjs_of ~vscode_extension:true activate_src in
+  Alcotest.(check bool) "installs exports.extraImports"
+    true (contains cjs "exports.extraImports = function");
+  Alcotest.(check bool) "requires the default adapter"
+    true (contains cjs {|require("@hyperpolymath/affine-vscode")|});
+  Alcotest.(check bool) "requires the vscode module"
+    true (contains cjs {|require("vscode")|});
+  Alcotest.(check bool) "requires the language client"
+    true (contains cjs {|require("vscode-languageclient/node")|});
+  Alcotest.(check bool) "passes exports as the host shim"
+    true (contains cjs "exports,\n  );");
+  (* The base shim (use strict, activate, handle table) is still present. *)
+  Alcotest.(check bool) "base shim still intact"
+    true (contains cjs "exports._registerHandle")
+
+let test_vscode_extension_adapter_override () =
+  let cjs = cjs_of ~vscode_extension:true
+      ~vscode_extension_adapter:"../local/adapter.cjs" activate_src in
+  Alcotest.(check bool) "uses the overridden adapter specifier"
+    true (contains cjs {|require("../local/adapter.cjs")|});
+  Alcotest.(check bool) "does not fall back to the default adapter"
+    false (contains cjs "@hyperpolymath/affine-vscode")
+
+let test_vscode_extension_no_lc () =
+  let cjs = cjs_of ~vscode_extension:true ~vscode_extension_no_lc:true
+      activate_src in
+  Alcotest.(check bool) "skips the language-client require"
+    false (contains cjs "vscode-languageclient/node");
+  Alcotest.(check bool) "passes null in its place"
+    true (contains cjs "    null,\n");
+  Alcotest.(check bool) "still requires vscode + adapter"
+    true (contains cjs {|require("vscode")|}
+          && contains cjs {|require("@hyperpolymath/affine-vscode")|})
+
+let test_vscode_extension_adapter_escaped () =
+  (* A specifier containing a double quote must not break out of the JS
+     string literal. *)
+  let cjs = cjs_of ~vscode_extension:true
+      ~vscode_extension_adapter:{|a"b\c|} activate_src in
+  Alcotest.(check bool) "double quote and backslash are escaped"
+    true (contains cjs {|require("a\"b\\c")|})
+
 let codegen_node_tests = [
   Alcotest.test_case "Node-CJS shim has all anchors (use strict, exports.activate, ...)" `Quick test_node_cjs_shim_shape;
   Alcotest.test_case "base64 encoder matches RFC 4648 vector"                              `Quick test_node_cjs_base64_roundtrip;
+  Alcotest.test_case "--vscode-extension off by default"                                   `Quick test_vscode_extension_off_by_default;
+  Alcotest.test_case "--vscode-extension inlines extraImports wiring"                      `Quick test_vscode_extension_inlines_wiring;
+  Alcotest.test_case "--vscode-extension-adapter overrides the require specifier"          `Quick test_vscode_extension_adapter_override;
+  Alcotest.test_case "--vscode-extension-no-lc skips the language client"                  `Quick test_vscode_extension_no_lc;
+  Alcotest.test_case "--vscode-extension-adapter specifier is JS-escaped"                  `Quick test_vscode_extension_adapter_escaped;
 ]
 
 (* ---- Stdlib parse + Core import regression ----
