@@ -6,11 +6,42 @@ JS-side adapter for the `stdlib/Vscode.affine` and
 `stdlib/VscodeLanguageClient.affine` binding modules. Issue #35 Phase 2
 deliverable.
 
+== Install
+
+[source,sh]
+----
+npm install @hyperpolymath/affine-vscode
+----
+
+Add it to your extension's `package.json` `dependencies`. `vscode` and
+`vscode-languageclient` are peer dependencies (the latter is optional —
+omit it with `--vscode-extension-no-lc`).
+
 == Usage
 
-In your AffineScript-authored VS Code extension's CJS entry point, after
-loading the `.cjs` produced by `affinescript compile extension.affine
--o extension.cjs`, plug this adapter into the Wasm imports:
+=== Recommended: `--vscode-extension` (issue #105)
+
+Compile with the `--vscode-extension` flag and the generated `.cjs` is
+directly loadable as the extension's `main` — the adapter wiring is
+emitted inline, so there is no hand-written entry point to maintain:
+
+[source,sh]
+----
+affinescript compile src/extension.affine -o out/extension.cjs --vscode-extension
+----
+
+Point your extension's `package.json` `main` at the unmodified
+`out/extension.cjs` and list `@hyperpolymath/affine-vscode` in
+`dependencies`. Sub-flags: `--vscode-extension-adapter <specifier>`
+overrides the adapter `require()` target; `--vscode-extension-no-lc`
+omits the `vscode-languageclient/node` dependency.
+
+=== Manual wiring (fallback)
+
+If you cannot use the flag, set the shim's `extraImports` hook before the
+first `activate`/`deactivate` call so the extern fns resolve to live
+vscode APIs. Pass the shim module itself as the third argument — the
+adapter reads its handle table and `_instance` lazily:
 
 [source,javascript]
 ----
@@ -18,18 +49,11 @@ const vscode = require("vscode");
 const lc = require("vscode-languageclient/node");
 const makeBindings = require("@hyperpolymath/affine-vscode");
 
-// The Node-CJS shim emitted by affinescript's compile -o *.cjs path lazily
-// instantiates the wasm. Patch its `_extraImports()` hook before the first
-// activate/deactivate call so the extern fns resolve to live vscode APIs.
+const shim = require("./extension.cjs");
+shim.extraImports = () => makeBindings(vscode, lc, shim);
 
-let instance;
-const adapter = require("./extension.cjs");
-const original = adapter._extraImports || (() => ({}));
-adapter._extraImports = () => makeBindings(vscode, lc, () => instance);
-
-// (Real wiring belongs in the codegen — Phase 3 will replace this manual
-// hookup with auto-generated glue once `extension.affine` is the source of
-// truth for the extension entry point.)
+exports.activate = shim.activate;
+exports.deactivate = shim.deactivate;
 ----
 
 == Surface

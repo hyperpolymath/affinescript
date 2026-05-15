@@ -3,18 +3,21 @@
 //
 // affine-vscode: JS-side adapter for stdlib/Vscode.affine + stdlib/VscodeLanguageClient.affine.
 //
-// Issue #35 Phase 2 deliverable. Plug this into your Node-CJS extension's
-// `_extraImports()` so each `extern fn` declared in the bindings resolves
-// to the right vscode API call.
+// Issue #35 Phase 2 deliverable. Resolves each `extern fn` declared in the
+// bindings to the right vscode API call.
 //
-// Usage from a hand-written .cjs (until Phase 3 automates the wiring):
+// Preferred wiring (issue #105): compile with `--vscode-extension` and the
+// generated .cjs installs `exports.extraImports` calling this adapter
+// automatically — no hand-written entry point.
 //
-//   const vscodeBindings = require("@hyperpolymath/affine-vscode")(
+// Manual wiring (fallback), from a hand-written .cjs:
+//
+//   const shim = require("./extension.cjs");
+//   shim.extraImports = () => require("@hyperpolymath/affine-vscode")(
 //     require("vscode"),
 //     require("vscode-languageclient/node"),
-//     instance,                         // WebAssembly.Instance, set after instantiate
+//     shim,                             // the .cjs shim module (hostShim)
 //   );
-//   // Pass vscodeBindings into the Wasm imports map under "env".
 //
 // The adapter maintains a per-process JS-side handle table keyed by Int
 // so opaque handles passed across the FFI boundary survive round-trips.
