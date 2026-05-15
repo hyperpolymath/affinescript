@@ -25,7 +25,7 @@
  (description
   "AffineScript combines Rust-style ownership (affine types), compile-time size verification (dependent types), extensible records (row polymorphism), and trackable side effects (extensible effects). It compiles to WebAssembly for efficient, portable execution.")
  (depends
-  (ocaml (>= 5.1))
+  (ocaml (>= 4.14))
   (dune (>= 3.14))
   (menhir (>= 20231231))
   (sedlex (>= 3.2))
