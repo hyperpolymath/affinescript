@@ -387,7 +387,7 @@ Games are one place where the language’s properties are easy to demonstrate. T
 
 === Prerequisites
 
-- OCaml 4.14.2+ (dune-project lists `>= 5.1`, but the current tree also builds clean on 4.14.2; the constraint is stricter than the actual code requires)
+- OCaml 4.14.2+
 - Dune 3.14+
 - opam packages: `sedlex`, `menhir`, `ppx_deriving`, `ppx_sexp_conv`, `sexplib0`, `fmt`, `cmdliner`, `yojson`, `alcotest` (test), `ocamlformat` (test), `js_of_ocaml`, `js_of_ocaml-ppx`, `js_of_ocaml-compiler`
 
