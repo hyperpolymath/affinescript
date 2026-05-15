@@ -1,0 +1,38 @@
+{
+  "name": "@hyperpolymath/affine-vscode",
+  "version": "0.1.0",
+  "description": "JS-side adapter for AffineScript's stdlib/Vscode.affine + stdlib/VscodeLanguageClient.affine binding modules. Resolves each extern fn to a real vscode / vscode-languageclient call and maintains the FFI handle table.",
+  "main": "./mod.js",
+  "license": "PMPL-1.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hyperpolymath/affinescript.git",
+    "directory": "packages/affine-vscode"
+  },
+  "homepage": "https://github.com/hyperpolymath/affinescript/tree/main/packages/affine-vscode",
+  "bugs": "https://github.com/hyperpolymath/affinescript/issues",
+  "keywords": [
+    "affinescript",
+    "vscode",
+    "vscode-extension",
+    "language-server",
+    "wasm",
+    "ffi-adapter"
+  ],
+  "files": [
+    "mod.js",
+    "README.adoc"
+  ],
+  "peerDependencies": {
+    "vscode": "*",
+    "vscode-languageclient": "^9.0.0"
+  },
+  "peerDependenciesMeta": {
+    "vscode-languageclient": {
+      "optional": true
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

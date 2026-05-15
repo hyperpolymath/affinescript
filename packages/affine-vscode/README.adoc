@@ -6,6 +6,17 @@ JS-side adapter for the `stdlib/Vscode.affine` and
 `stdlib/VscodeLanguageClient.affine` binding modules. Issue #35 Phase 2
 deliverable.
 
+== Install
+
+[source,sh]
+----
+npm install @hyperpolymath/affine-vscode
+----
+
+Add it to your extension's `package.json` `dependencies`. `vscode` and
+`vscode-languageclient` are peer dependencies (the latter is optional —
+omit it with `--vscode-extension-no-lc`).
+
 == Usage
 
 === Recommended: `--vscode-extension` (issue #105)

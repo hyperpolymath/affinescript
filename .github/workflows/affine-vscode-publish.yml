@@ -1,0 +1,63 @@
+# SPDX-License-Identifier: PMPL-1.0-or-later
+# Publishes @hyperpolymath/affine-vscode to npm on a scoped tag push.
+#
+# This repo is Deno-first (see CLAUDE.md). The npm publish here is a
+# deliberate, owner-sanctioned exception (issue #104): the VS Code
+# extension host is npm-native and cannot consume the Deno/JSR manifest,
+# so AffineScript-authored extensions resolve the adapter via
+# `require("@hyperpolymath/affine-vscode")`. Only the publish step touches
+# npm; no npm runtime deps are added to the repo and no .npmrc is
+# committed (the auth file is written to $HOME at runtime).
+#
+# Trigger: push a tag matching `affine-vscode-v*` (e.g. affine-vscode-v0.1.0).
+# This pattern is intentionally distinct from the `v*` tags used by the
+# OCaml compiler Release workflow so the two never collide.
+#
+# Requires repository secret NPM_TOKEN (an npm automation token with
+# publish rights to the @hyperpolymath scope).
+
+name: Publish affine-vscode
+
+on:
+  push:
+    tags:
+      - 'affine-vscode-v*'
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Verify tag matches package version
+        working-directory: packages/affine-vscode
+        run: |
+          tag="${GITHUB_REF_NAME#affine-vscode-v}"
+          pkg="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$pkg" ]; then
+            echo "❌ Tag version ($tag) does not match package.json version ($pkg)" >&2
+            exit 1
+          fi
+          echo "✅ Publishing @hyperpolymath/affine-vscode@$pkg"
+
+      - name: Configure npm auth
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "${NPM_TOKEN}" ]; then
+            echo "❌ NPM_TOKEN secret is not set" >&2
+            exit 1
+          fi
+          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > "${HOME}/.npmrc"
+
+      - name: Publish to npm
+        working-directory: packages/affine-vscode
+        run: npm publish --access public
+
+      - name: Clean up npm auth
+        if: always()
+        run: rm -f "${HOME}/.npmrc"
