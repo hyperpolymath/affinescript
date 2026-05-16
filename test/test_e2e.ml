@@ -2851,8 +2851,11 @@ let test_vscode_extension_off_by_default () =
   let cjs = cjs_of activate_src in
   Alcotest.(check bool) "no extraImports assignment without the flag"
     false (contains cjs "exports.extraImports = function");
+  (* Assert the absence of the actual adapter *wiring* (the require
+     call), not the bare specifier string — the latter legitimately
+     appears in an explanatory comment and is not adapter wiring. *)
   Alcotest.(check bool) "no adapter require without the flag"
-    false (contains cjs "@hyperpolymath/affine-vscode")
+    false (contains cjs {|require("@hyperpolymath/affine-vscode")|})
 
 let test_vscode_extension_inlines_wiring () =
   let cjs = cjs_of ~vscode_extension:true activate_src in

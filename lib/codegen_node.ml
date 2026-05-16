@@ -228,10 +228,10 @@ function _buildImports() {
       return 0;
     },
   };
-  // Phase 2 hook: callers can replace exports.extraImports with a function
-  // returning a `{ ModuleName: { exportName: fn, ... } }` map of concrete
-  // host bindings (e.g. the @hyperpolymath/affine-vscode adapter). Default
-  // is empty so the shim works standalone.
+  // Phase 2 hook: a caller may install an `extraImports` factory on the
+  // exports object returning a `{ ModuleName: { exportName: fn, ... } }`
+  // map of concrete host bindings (this is what the --vscode-extension
+  // wiring installs). Default is empty so the shim works standalone.
   const extras = (typeof exports.extraImports === "function")
     ? exports.extraImports()
     : %s;
