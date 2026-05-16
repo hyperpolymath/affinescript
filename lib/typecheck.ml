@@ -863,6 +863,20 @@ let rec synth (ctx : context) (expr : expr) : ty result =
         let* () = unify_or_err lhs_ty lhs_ty' in
         let* () = check ctx rhs rhs_ty in
         Ok result_ty
+    end else if (match op with OpConcat -> true | _ -> false) then begin
+      (* `++` is polymorphic over String and [T] (issue #122 v2.5):
+         `a ++ b` (string concat) and `acc ++ [x]` (array concat) — the
+         latter is how stdlib/string.affine's split/join/etc. accumulate.
+         Dispatch on the synthesised lhs type. *)
+      let* lhs_ty = synth ctx lhs in
+      match repr lhs_ty with
+      | TApp (TCon "Array", [elem]) ->
+        let* () = check ctx rhs (TApp (TCon "Array", [elem])) in
+        Ok (TApp (TCon "Array", [elem]))
+      | _ ->
+        let* () = unify_or_err lhs_ty ty_string in
+        let* () = check ctx rhs ty_string in
+        Ok ty_string
     end else begin
       let (lhs_ty, rhs_ty, result_ty) = type_of_binop op in
       let* () = check ctx lhs lhs_ty in
@@ -1180,8 +1194,35 @@ let register_builtins (ctx : context) : unit =
   bind_var ctx "max" int_binop;
   bind_var ctx "min" int_binop;
   bind_var ctx "pow_float" float_binop;
+  (* `len` is polymorphic over String and [T] (issue #122 v2.5):
+     stdlib/string.affine calls `len` on both. Broadened from
+     Array[tv]->Int to 'a->Int (matches the interpreter's dynamic len;
+     the codegen lowers it to `.length`, valid for string and array). *)
   bind_var ctx "len" (let tv = fresh_tyvar 0 in
-    TArrow (TApp (TCon "Array", [tv]), QOmega, ty_int, EPure));
+    TArrow (tv, QOmega, ty_int, EPure));
+  (* Honest string/char primitives underpinning stdlib/string.affine
+     (issue #122 v2.5). Concrete String/Char types; the Deno-ESM backend
+     lowers each to a JS intrinsic. char ::= TCon "Char". *)
+  let ty_char = TCon "Char" in
+  let opt t = TApp (TCon "Option", [t]) in
+  bind_var ctx "string_get"
+    (TArrow (ty_string, QOmega, TArrow (ty_int, QOmega, ty_char, EPure), EPure));
+  bind_var ctx "string_sub"
+    (TArrow (ty_string, QOmega,
+       TArrow (ty_int, QOmega,
+         TArrow (ty_int, QOmega, ty_string, EPure), EPure), EPure));
+  bind_var ctx "string_find"
+    (TArrow (ty_string, QOmega,
+       TArrow (ty_string, QOmega, ty_int, EPure), EPure));
+  bind_var ctx "to_lowercase" (TArrow (ty_string, QOmega, ty_string, EPure));
+  bind_var ctx "to_uppercase" (TArrow (ty_string, QOmega, ty_string, EPure));
+  bind_var ctx "trim"         (TArrow (ty_string, QOmega, ty_string, EPure));
+  bind_var ctx "parse_int"    (TArrow (ty_string, QOmega, opt ty_int, EPure));
+  bind_var ctx "parse_float"  (TArrow (ty_string, QOmega, opt ty_float, EPure));
+  bind_var ctx "char_to_int"  (TArrow (ty_char, QOmega, ty_int, EPure));
+  bind_var ctx "int_to_char"  (TArrow (ty_int, QOmega, ty_char, EPure));
+  bind_var ctx "show"
+    (let tv = fresh_tyvar 0 in TArrow (tv, QOmega, ty_string, EPure));
   bind_var ctx "panic" (TArrow (ty_string, QOmega, ty_never, EPure));
   bind_var ctx "exit" (TArrow (ty_int, QOmega, ty_never, ESingleton "IO"));
   (* TEA runtime — accepts any record, returns unit with IO effect *)

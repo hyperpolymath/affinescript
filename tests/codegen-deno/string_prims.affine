@@ -1,0 +1,29 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// issue #122 v2.5 regression: the honest string/number primitive layer
+// (len/string_sub/string_find/int_to_string + `++` shape dispatch) that
+// lets stdlib/string.affine — real AffineScript — run under Deno-ESM.
+// These mirror the exact primitives stdlib/string.affine is built on.
+
+pub fn ends_with2(s: String, suffix: String) -> Bool {
+  let slen = len(s);
+  let sfxlen = len(suffix);
+  if sfxlen > slen {
+    return false;
+  }
+  return string_sub(s, slen - sfxlen, sfxlen) == suffix;
+}
+
+pub fn strip_suffix(s: String, suffix: String) -> String {
+  if ends_with2(s, suffix) {
+    return string_sub(s, 0, len(s) - len(suffix));
+  }
+  return s;
+}
+
+pub fn find(s: String, needle: String) -> Int = string_find(s, needle);
+
+pub fn n2s(n: Int) -> String = int_to_string(n);
+
+pub fn str_cat(a: String, b: String) -> String = a ++ b;
+
+pub fn arr_cat(xs: [Int]) -> [Int] = xs ++ [99];

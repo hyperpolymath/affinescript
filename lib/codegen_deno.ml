@@ -59,6 +59,10 @@ type codegen_ctx = {
      receiver-first free-function source style (the only form the current
      grammar accepts — no [self]/inherent-[impl]) read as real methods. *)
   assoc : (string, string) Hashtbl.t;
+  (* Top-level functions/consts defined in this program. A user
+     definition shadows a same-named host intrinsic ({!deno_builtins}),
+     so e.g. a user `fn len(xs: IntList)` is NOT lowered to `.length`. *)
+  local_fns : (string, unit) Hashtbl.t;
 }
 
 let create_ctx symbols = {
@@ -68,6 +72,7 @@ let create_ctx symbols = {
   externs = Hashtbl.create 32;
   self_name = None;
   assoc = Hashtbl.create 32;
+  local_fns = Hashtbl.create 64;
 }
 
 let emit ctx str = Buffer.add_string ctx.output str
@@ -117,11 +122,29 @@ const __as_readDirNames = (p) => {
   return names;
 };
 const __as_isNotFound = (e) => (e instanceof Deno.errors.NotFound);
-const __as_endsWith = (s, suffix) => String(s).endsWith(suffix);
-const __as_stripSuffix = (s, suffix) =>
-  String(s).endsWith(suffix) ? String(s).slice(0, -suffix.length) : String(s);
 const __as_wasmInstance = (bytes) =>
   new WebAssembly.Instance(new WebAssembly.Module(bytes)).exports;
+// `++` is overloaded (string concat / array concat); `a + b` would
+// stringify arrays. Dispatch on shape so stdlib/string.affine's
+// `result ++ [x]` and `a ++ b` are both correct.
+const __as_concat = (a, b) => Array.isArray(a) ? a.concat(b) : (a + b);
+// Honest host/runtime primitives underpinning the AffineScript-level
+// stdlib/string.affine (its is_empty/starts_with/ends_with/split/join/
+// replace/... are real AffineScript on top of these).
+const __as_strSub = (s, start, n) => String(s).slice(start, start + n);
+const __as_strGet = (s, i) => String(s)[i];
+const __as_strFind = (s, n) => String(s).indexOf(n);
+const __as_charToInt = (c) => String(c).codePointAt(0);
+const __as_intToChar = (n) => String.fromCodePoint(n);
+const __as_parseInt = (s) => {
+  const n = parseInt(String(s), 10);
+  return Number.isNaN(n) ? None : Some(n);
+};
+const __as_parseFloat = (s) => {
+  const n = parseFloat(String(s));
+  return Number.isNaN(n) ? None : Some(n);
+};
+const __as_show = (v) => (typeof v === "string" ? v : JSON.stringify(v));
 // ---- end runtime ----
 
 |}
@@ -154,12 +177,29 @@ let () =
   b "jsonParse"           (fun a -> Printf.sprintf "JSON.parse(%s)" (arg 0 a));
   (* ---- misc host ---- *)
   b "dateNow"     (fun _ -> "Date.now()");
-  b "numToFixed2" (fun a -> Printf.sprintf "(Number(%s) / 1024).toFixed(2)" (arg 0 a));
-  b "endsWith"    (fun a -> Printf.sprintf "__as_endsWith(%s, %s)" (arg 0 a) (arg 1 a));
-  b "stripSuffix" (fun a -> Printf.sprintf "__as_stripSuffix(%s, %s)" (arg 0 a) (arg 1 a));
   b "wasmInstance" (fun a -> Printf.sprintf "__as_wasmInstance(%s)" (arg 0 a));
   (* Generic JS array push helper (returns the array, fluent). *)
-  b "arrayPush" (fun a -> Printf.sprintf "(%s.push(%s), %s)" (arg 0 a) (arg 1 a) (arg 0 a))
+  b "arrayPush" (fun a -> Printf.sprintf "(%s.push(%s), %s)" (arg 0 a) (arg 1 a) (arg 0 a));
+  (* ---- honest string/number primitives underpinning the
+     AffineScript-level stdlib/string.affine. These are intrinsics (no
+     AffineScript definition exists; the interpreter binds them too),
+     not externs — endsWith/stripSuffix/pathJoin/etc. are NOT here:
+     they are real AffineScript built on `ends_with`/`substring`/`++`. *)
+  b "len"            (fun a -> Printf.sprintf "((%s).length)" (arg 0 a));
+  b "string_length"  (fun a -> Printf.sprintf "((%s).length)" (arg 0 a));
+  b "string_get"     (fun a -> Printf.sprintf "__as_strGet(%s, %s)" (arg 0 a) (arg 1 a));
+  b "string_sub"     (fun a -> Printf.sprintf "__as_strSub(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
+  b "string_find"    (fun a -> Printf.sprintf "__as_strFind(%s, %s)" (arg 0 a) (arg 1 a));
+  b "to_lowercase"   (fun a -> Printf.sprintf "String(%s).toLowerCase()" (arg 0 a));
+  b "to_uppercase"   (fun a -> Printf.sprintf "String(%s).toUpperCase()" (arg 0 a));
+  b "trim"           (fun a -> Printf.sprintf "String(%s).trim()" (arg 0 a));
+  b "int_to_string"  (fun a -> Printf.sprintf "String(%s)" (arg 0 a));
+  b "float_to_string" (fun a -> Printf.sprintf "String(%s)" (arg 0 a));
+  b "parse_int"      (fun a -> Printf.sprintf "__as_parseInt(%s)" (arg 0 a));
+  b "parse_float"    (fun a -> Printf.sprintf "__as_parseFloat(%s)" (arg 0 a));
+  b "char_to_int"    (fun a -> Printf.sprintf "__as_charToInt(%s)" (arg 0 a));
+  b "int_to_char"    (fun a -> Printf.sprintf "__as_intToChar(%s)" (arg 0 a));
+  b "show"           (fun a -> Printf.sprintf "__as_show(%s)" (arg 0 a))
 
 (* ============================================================================
    Identifier sanitisation (JS reserved words -> trailing underscore)
@@ -220,23 +260,34 @@ let rec gen_expr ctx (expr : expr) : string =
               an expression sub-term, so await it (valid: it only occurs
               inside the [async] method bodies we emit). *)
            "(await " ^ recv ^ "." ^ m ^ "(" ^ String.concat ", " rest ^ "))"
+       | ExprVar id
+         when Hashtbl.mem deno_builtins id.name
+              && not (Hashtbl.mem ctx.local_fns id.name) ->
+           (* Honest host/runtime intrinsic (FS/JSON/Date/Wasm extern or
+              a string/number primitive underpinning stdlib/string.affine).
+              Applied to ANY matching call head, not only declared externs,
+              so AffineScript-level stdlib compiled here resolves — but a
+              same-named user definition shadows it (e.g. a user `len`). *)
+           (Hashtbl.find deno_builtins id.name) (List.map (gen_expr ctx) args)
        | ExprVar id when Hashtbl.mem ctx.externs id.name ->
+           (* Declared extern with no intrinsic lowering: assume a
+              same-named host symbol is in scope. *)
            let arg_strs = List.map (gen_expr ctx) args in
-           (match Hashtbl.find_opt deno_builtins id.name with
-            | Some lower -> lower arg_strs
-            | None ->
-                (* Unknown extern: assume a same-named host symbol in scope. *)
-                mangle id.name ^ "(" ^ String.concat ", " arg_strs ^ ")")
+           mangle id.name ^ "(" ^ String.concat ", " arg_strs ^ ")"
        | _ ->
            let arg_strs = List.map (gen_expr ctx) args in
            gen_expr ctx func ^ "(" ^ String.concat ", " arg_strs ^ ")")
+  | ExprBinary (e1, OpConcat, e2) ->
+      (* `++` is string- OR array-concat; dispatch on shape at runtime so
+         `a ++ b` (string) and `acc ++ [x]` (array) are both correct. *)
+      "__as_concat(" ^ gen_expr ctx e1 ^ ", " ^ gen_expr ctx e2 ^ ")"
   | ExprBinary (e1, op, e2) ->
       let op_str = match op with
         | OpAdd -> "+" | OpSub -> "-" | OpMul -> "*" | OpDiv -> "/"
         | OpMod -> "%" | OpEq -> "===" | OpNe -> "!==" | OpLt -> "<"
         | OpLe -> "<=" | OpGt -> ">" | OpGe -> ">=" | OpAnd -> "&&"
         | OpOr -> "||" | OpBitAnd -> "&" | OpBitOr -> "|" | OpBitXor -> "^"
-        | OpShl -> "<<" | OpShr -> ">>" | OpConcat -> "+"
+        | OpShl -> "<<" | OpShr -> ">>" | OpConcat -> "+" (* unreachable *)
       in
       "(" ^ gen_expr ctx e1 ^ " " ^ op_str ^ " " ^ gen_expr ctx e2 ^ ")"
   | ExprUnary (op, e) ->
@@ -734,12 +785,21 @@ let gen_type_decl ctx (td : type_decl) : unit =
 
 let generate (program : program) (symbols : Symbol.t) : string =
   let ctx = create_ctx symbols in
-  (* Register extern names so calls lower via the builtin table. *)
+  (* Register extern names so calls lower via the builtin table, and
+     user-defined top-level names so they shadow host intrinsics. *)
   List.iter (function
     | TopExternFn { ef_name; _ } ->
         Hashtbl.replace ctx.externs ef_name.name ()
     | TopFn fd when fd.fd_body = FnExtern ->
         Hashtbl.replace ctx.externs fd.fd_name.name ()
+    | TopFn fd ->
+        Hashtbl.replace ctx.local_fns fd.fd_name.name ()
+    | TopConst { tc_name; _ } ->
+        Hashtbl.replace ctx.local_fns tc_name.name ()
+    | TopImpl ib ->
+        List.iter (function
+          | ImplFn fd -> Hashtbl.replace ctx.local_fns fd.fd_name.name ()
+          | ImplType _ -> ()) ib.ib_items
     | _ -> ()) program.prog_decls;
 
   emit_line ctx "// Generated by AffineScript compiler (Deno-ESM target, issue #122)";
