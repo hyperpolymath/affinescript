@@ -576,8 +576,10 @@ let transform_source source =
 
     if stripped = "" then begin
       (match comment_opt with
-      | Some c -> Buffer.add_string out ("// " ^ String.trim c ^ "\n")
-      | None   -> Buffer.add_char out '\n')
+      | Some c ->
+        let c' = String.trim c in
+        Buffer.add_string out (if c' = "" then "//\n" else "// " ^ c' ^ "\n")
+      | None -> Buffer.add_char out '\n')
     end else if starts_with stripped "//" || starts_with stripped "/*" then begin
       (* Already-canonical comment lines pass through unchanged. *)
       let indent_str = String.make ind ' ' in
