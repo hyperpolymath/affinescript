@@ -77,22 +77,16 @@ affinescript parse examples/faces/hello-rattle.affine
 
 == Caveats
 
-* These examples demonstrate *surface syntax*. They are written to round-trip through their respective transformers (preview → canonical → parse) so the regression test in `tests/faces/` can catch drift, not to be full type-correct, runnable programs. That depends on what's in scope from `stdlib/`.
+* These examples demonstrate *surface syntax*. They are written to round-trip through their respective transformers (preview → canonical → parse) so the regression test in `tests/faces/` can catch drift, not to be full type-correct, runnable programs. That depends on what’s in scope from `stdlib/`.
 * Span fidelity: error messages from non-canonical faces refer to the canonical-text form (post-transform), not the original face source. This is a known limitation of all face transformers, including the original three.
-* The examples deliberately avoid features each transformer can't yet handle. Known transformer gaps that the simpler examples sidestep:
+* The examples deliberately avoid features each transformer can’t yet handle. Known transformer gaps that the simpler examples sidestep:
 +
 [cols="1,3"]
 |===
 | Face | Pending transformer work
 
 | Python (Rattle)
-| Bare assignment `x = y` is not yet auto-lifted to `let x = y` (the example uses explicit `let`); `import a.b` lowering does not produce the canonical `use a::b::{…};` brace form.
-
-| JS (Jaffa)
-| `import { x } from "module";` lowering has a string-stripping bug when the trailing `;` is present (the example avoids `import` entirely for now).
-
-| Pseudocode (Pseudo)
-| No automatic `;` between non-tail statements — examples use single-statement function bodies. Token substitutions can bleed into comment text (e.g. `or` → `\|\|` inside a `//` comment). `output X` lowers to `IO.println(X)` rather than canonical `println(X)`.
+| Bare assignment `x = y` is not yet auto-lifted to `let x = y` (the example uses explicit `let`); `import a.b` lowering does not produce the canonical `use a::b::{...};` brace form.
 
 | Lucid (PureScript)
 | Haskell-style currying calls `f x` are NOT converted to canonical `f(x)` — the example uses canonical paren syntax. Multi-clause definitions, `do`-notation, and `where`-block hoisting are deferred to AST-level rewrites.
