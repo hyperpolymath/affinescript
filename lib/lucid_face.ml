@@ -658,7 +658,10 @@ let transform_source source =
   for _ = 1 to !toplevel_braces do
     Buffer.add_string out "}\n"
   done;
-  Buffer.contents out
+  let s = Buffer.contents out in
+  let l = String.length s in
+  if l >= 2 && s.[l-1] = '\n' && s.[l-2] = '\n' then String.sub s 0 (l-1)
+  else s
 
 (* ─── Entry points ────────────────────────────────────────────────────────────── *)
 
