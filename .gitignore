@@ -89,3 +89,9 @@ htmlcov/
 *.bak
 *.wasm
 /a.out
+
+# issue #122: generated Deno-ESM regression outputs (compiled from the
+# committed *.affine fixtures by tools/run_codegen_deno_tests.sh).
+/tests/codegen-deno/*.deno.js
+# Local-only build workaround (see file header); never committed.
+/dune-workspace
