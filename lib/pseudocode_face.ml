@@ -161,15 +161,17 @@ let transform_function_decl trimmed =
 
 (** [set x to expr] → [let x = expr] *)
 let transform_set line =
-  let line = String.trim line in
-  if starts_with line "set " then begin
-    let rest = String.sub line 4 (String.length line - 4) in
+  let trimmed = String.trim line in
+  let indent_len = String.length line - String.length trimmed in
+  let indent = String.sub line 0 indent_len in
+  if starts_with trimmed "set " then begin
+    let rest = String.sub trimmed 4 (String.length trimmed - 4) in
     (* Look for " to " *)
     match String.split_on_char ' ' rest with
     | name :: "to" :: "mut" :: value_parts ->
-      Printf.sprintf "let mut %s = %s" name (String.concat " " value_parts)
+      indent ^ Printf.sprintf "let mut %s = %s" name (String.concat " " value_parts)
     | name :: "to" :: value_parts ->
-      Printf.sprintf "let %s = %s" name (String.concat " " value_parts)
+      indent ^ Printf.sprintf "let %s = %s" name (String.concat " " value_parts)
     | _ -> line
   end else line
 
