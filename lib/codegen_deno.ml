@@ -63,6 +63,12 @@ type codegen_ctx = {
      definition shadows a same-named host intrinsic ({!deno_builtins}),
      so e.g. a user `fn len(xs: IntList)` is NOT lowered to `.length`. *)
   local_fns : (string, unit) Hashtbl.t;
+  (* True while emitting a synthesised `async` method body. The
+     expression-position IIFE wrappers (block/try/match/let/return) must
+     then be `async` and awaited, because they may contain an awaited
+     associated call (`(await this.m(...))`) — `await` inside a plain
+     `(() => {...})()` is a SyntaxError ("Unexpected reserved word"). *)
+  in_async : bool;
 }
 
 let create_ctx symbols = {
@@ -73,7 +79,15 @@ let create_ctx symbols = {
   self_name = None;
   assoc = Hashtbl.create 32;
   local_fns = Hashtbl.create 64;
+  in_async = false;
 }
+
+(* Expression-position IIFE wrapper. In an async method body it must be
+   `(await (async () => { ... })())` so a contained `await` is legal;
+   elsewhere a plain `(() => { ... })()`. *)
+let iife ctx (inner : string) : string =
+  if ctx.in_async then "(await (async () => { " ^ inner ^ " })())"
+  else "(() => { " ^ inner ^ " })()"
 
 let emit ctx str = Buffer.add_string ctx.output str
 
@@ -321,11 +335,11 @@ let rec gen_expr ctx (expr : expr) : string =
       let kw = if el_mut then "let" else "const" in
       (match el_body with
        | Some body ->
-           "((() => { " ^ kw ^ " " ^ pat_str ^ " = " ^ val_str ^ "; return "
-           ^ gen_expr ctx body ^ "; })())"
+           iife ctx (kw ^ " " ^ pat_str ^ " = " ^ val_str ^ "; return "
+                     ^ gen_expr ctx body ^ ";")
        | None ->
-           "((() => { " ^ kw ^ " " ^ pat_str ^ " = " ^ val_str
-           ^ "; return Unit; })())")
+           iife ctx (kw ^ " " ^ pat_str ^ " = " ^ val_str
+                     ^ "; return Unit;"))
   | ExprTuple exprs | ExprArray exprs ->
       "[" ^ String.concat ", " (List.map (gen_expr ctx) exprs) ^ "]"
   | ExprIndex (arr, idx) ->
@@ -349,8 +363,8 @@ let rec gen_expr ctx (expr : expr) : string =
   | ExprMatch { em_scrutinee; em_arms } ->
       gen_match ctx em_scrutinee em_arms
   | ExprBlock block -> gen_block_expr ctx block
-  | ExprReturn (Some e) -> "(() => { return " ^ gen_expr ctx e ^ "; })()"
-  | ExprReturn None     -> "(() => { return Unit; })()"
+  | ExprReturn (Some e) -> iife ctx ("return " ^ gen_expr ctx e ^ ";")
+  | ExprReturn None     -> iife ctx "return Unit;"
   | ExprLambda { elam_params; elam_body; elam_ret_ty = _ } ->
       let ps = List.map (fun (p : param) -> mangle p.p_name.name) elam_params in
       "((" ^ String.concat ", " ps ^ ") => " ^ gen_expr ctx elam_body ^ ")"
@@ -367,7 +381,7 @@ let rec gen_expr ctx (expr : expr) : string =
   | ExprResume (Some e) -> gen_expr ctx e
   | ExprResume None     -> "Unit"
   | ExprUnsafe _ ->
-      "(() => { throw new Error('unsafe op not supported in Deno-ESM backend'); })()"
+      iife ctx "throw new Error('unsafe op not supported in Deno-ESM backend');"
 
 and gen_literal (lit : literal) : string =
   match lit with
@@ -423,7 +437,11 @@ and gen_match ctx scrutinee arms =
         in
         prefix ^ " " ^ gen_arms rest
   in
-  "((" ^ scrut_var ^ ") => { " ^ gen_arms arms ^ " })(" ^ scrutinee_str ^ ")"
+  if ctx.in_async then
+    "(await (async (" ^ scrut_var ^ ") => { " ^ gen_arms arms ^ " })("
+    ^ scrutinee_str ^ "))"
+  else
+    "((" ^ scrut_var ^ ") => { " ^ gen_arms arms ^ " })(" ^ scrutinee_str ^ ")"
 
 and gen_pattern_test scrut pat =
   match pat with
@@ -485,7 +503,7 @@ and gen_block_expr ctx block =
     | Some e -> "return " ^ gen_expr ctx e ^ ";"
     | None   -> "return Unit;"
   in
-  "(() => { " ^ Buffer.contents body ^ result ^ " })()"
+  iife ctx (Buffer.contents body ^ result)
 
 and gen_try ctx body catch finally =
   let body_str = gen_block_expr ctx body in
@@ -502,8 +520,7 @@ and gen_try ctx body catch finally =
     | None -> ""
     | Some blk -> " finally { " ^ gen_block_expr ctx blk ^ "; }"
   in
-  "(() => { try { return " ^ body_str ^ "; } " ^ catch_str ^ finally_str
-  ^ " })()"
+  iife ctx ("try { return " ^ body_str ^ "; } " ^ catch_str ^ finally_str)
 
 (* Unwrap span markers to inspect an expression's real head. *)
 and unspan = function
@@ -695,7 +712,7 @@ let gen_method ctx ~(recv_name : string) ~(js_name : string)
   let rest_params = match fd.fd_params with _ :: t -> t | [] -> [] in
   let params =
     List.map (fun (p : param) -> mangle p.p_name.name) rest_params in
-  let ctx_m = { ctx with self_name = Some recv_name } in
+  let ctx_m = { ctx with self_name = Some recv_name; in_async = true } in
   emit_line ctx_m
     (Printf.sprintf "async %s(%s) {" (mangle js_name)
        (String.concat ", " params));
