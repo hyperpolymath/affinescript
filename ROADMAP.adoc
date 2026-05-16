@@ -319,3 +319,4 @@ SPDX-License-Identifier: PMPL-1.0-or-later-or-later
 * link:README.adoc[Project Overview]
 * link:affinescript-spec.md[Language Specification]
 * link:STATE.scm[Current Project State]
+# AffineScript v2 Grammar Phase 1
