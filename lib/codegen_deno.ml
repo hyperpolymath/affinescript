@@ -154,6 +154,7 @@ let () =
   b "jsonParse"           (fun a -> Printf.sprintf "JSON.parse(%s)" (arg 0 a));
   (* ---- misc host ---- *)
   b "dateNow"     (fun _ -> "Date.now()");
+  b "numToFixed2" (fun a -> Printf.sprintf "(Number(%s) / 1024).toFixed(2)" (arg 0 a));
   b "endsWith"    (fun a -> Printf.sprintf "__as_endsWith(%s, %s)" (arg 0 a) (arg 1 a));
   b "stripSuffix" (fun a -> Printf.sprintf "__as_stripSuffix(%s, %s)" (arg 0 a) (arg 1 a));
   b "wasmInstance" (fun a -> Printf.sprintf "__as_wasmInstance(%s)" (arg 0 a));
@@ -441,12 +442,87 @@ and gen_try ctx body catch finally =
   "(() => { try { return " ^ body_str ^ "; } " ^ catch_str ^ finally_str
   ^ " })()"
 
+(* Unwrap span markers to inspect an expression's real head. *)
+and unspan = function
+  | ExprSpan (e, _) -> unspan e
+  | e -> e
+
+(* Lower an expression in STATEMENT position, where `return` and control
+   flow are real JS statements (not IIFE-wrapped — that was the inherited
+   js_codegen bug: a statement-position `return e;` became
+   `(() => { return e; })();`, discarding the value, so the enclosing
+   function returned undefined). [gen_expr] keeps the IIFE form for the
+   genuine expression-position cases. *)
+and gen_stmt_expr ctx (e : expr) : string =
+  match unspan e with
+  | ExprReturn (Some e) -> "return " ^ gen_expr ctx e ^ ";"
+  | ExprReturn None     -> "return;"
+  | ExprIf { ei_cond; ei_then; ei_else } ->
+      let elseb = match ei_else with
+        | Some e -> " else { " ^ gen_branch ctx e ^ " }"
+        | None   -> ""
+      in
+      "if (" ^ gen_expr ctx ei_cond ^ ") { " ^ gen_branch ctx ei_then
+      ^ " }" ^ elseb
+  | ExprBlock blk -> gen_stmt_seq ctx blk
+  | ExprMatch { em_scrutinee; em_arms } ->
+      gen_match_stmt ctx em_scrutinee em_arms
+  | ExprTry { et_body; et_catch; et_finally } ->
+      gen_try_stmt ctx et_body et_catch et_finally
+  | other -> gen_expr ctx other ^ ";"
+
+(* An if/try/match branch body: splice a block's statements, else treat
+   the expression as a single statement. *)
+and gen_branch ctx e =
+  match unspan e with
+  | ExprBlock blk -> gen_stmt_seq ctx blk
+  | other -> gen_stmt_expr ctx other
+
+and gen_stmt_seq ctx blk =
+  let b = Buffer.create 64 in
+  List.iter (fun s ->
+    Buffer.add_string b (gen_stmt ctx s);
+    Buffer.add_char b ' ') blk.blk_stmts;
+  (match blk.blk_expr with
+   | Some e -> Buffer.add_string b (gen_stmt_expr ctx e)
+   | None   -> ());
+  Buffer.contents b
+
+and gen_match_stmt ctx scrut arms =
+  let sv = "__scrut" in
+  let rec arms_js = function
+    | [] -> "throw new Error(\"non-exhaustive match\");"
+    | arm :: rest ->
+        let cond = gen_pattern_test sv arm.ma_pat in
+        let binds = gen_pattern_bindings sv arm.ma_pat in
+        let guard = match arm.ma_guard with
+          | Some g -> " && (" ^ gen_expr ctx g ^ ")" | None -> "" in
+        "if (" ^ cond ^ guard ^ ") { " ^ binds
+        ^ gen_branch ctx arm.ma_body ^ " } else " ^ arms_js rest
+  in
+  "{ const " ^ sv ^ " = " ^ gen_expr ctx scrut ^ "; " ^ arms_js arms ^ " }"
+
+and gen_try_stmt ctx body catch finally =
+  let b = gen_stmt_seq ctx body in
+  let c = match catch with
+    | None | Some [] -> "catch (__e) { throw __e; }"
+    | Some (arm :: _) ->
+        let bind = match arm.ma_pat with
+          | PatVar id -> "const " ^ mangle id.name ^ " = __e; " | _ -> ""
+        in
+        "catch (__e) { " ^ bind ^ gen_branch ctx arm.ma_body ^ " }"
+  in
+  let f = match finally with
+    | None -> "" | Some blk -> " finally { " ^ gen_stmt_seq ctx blk ^ " }"
+  in
+  "try { " ^ b ^ " } " ^ c ^ f
+
 and gen_stmt ctx (stmt : stmt) : string =
   match stmt with
   | StmtLet { sl_pat; sl_value; sl_mut; sl_quantity = _; sl_ty = _ } ->
       let kw = if sl_mut then "let" else "const" in
       kw ^ " " ^ gen_pattern ctx sl_pat ^ " = " ^ gen_expr ctx sl_value ^ ";"
-  | StmtExpr e -> gen_expr ctx e ^ ";"
+  | StmtExpr e -> gen_stmt_expr ctx e
   | StmtAssign (lhs, op, rhs) ->
       let op_str = match op with
         | AssignEq -> "=" | AssignAdd -> "+=" | AssignSub -> "-="
@@ -457,13 +533,13 @@ and gen_stmt ctx (stmt : stmt) : string =
       "while (" ^ gen_expr ctx cond ^ ") { "
       ^ String.concat " " (List.map (gen_stmt ctx) body.blk_stmts)
       ^ (match body.blk_expr with
-         | Some e -> " " ^ gen_expr ctx e ^ ";" | None -> "")
+         | Some e -> " " ^ gen_stmt_expr ctx e | None -> "")
       ^ " }"
   | StmtFor (pat, iter, body) ->
       "for (const " ^ gen_pattern ctx pat ^ " of " ^ gen_expr ctx iter ^ ") { "
       ^ String.concat " " (List.map (gen_stmt ctx) body.blk_stmts)
       ^ (match body.blk_expr with
-         | Some e -> " " ^ gen_expr ctx e ^ ";" | None -> "")
+         | Some e -> " " ^ gen_stmt_expr ctx e | None -> "")
       ^ " }"
 
 (* ============================================================================
