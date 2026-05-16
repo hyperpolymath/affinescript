@@ -20,6 +20,18 @@ let mk_span startpos endpos =
 let mk_ident name startpos endpos =
   { name; span = mk_span startpos endpos }
 
+(* issue #122 v2: inherent-impl support. The old grammar pre-committed to
+   `impl_trait_ref? self_ty` where both alternatives start with an ident,
+   so `impl Counter {` (inherent) was a parse error at `{`. The rule now
+   parses one type_expr unconditionally, then an optional `FOR type_expr`;
+   when the `FOR` is present the leading type was the trait. This recovers
+   the trait name/args from that leading type_expr. *)
+let trait_ref_of_type_expr (t : type_expr) : trait_ref =
+  match t with
+  | TyCon id | TyVar id -> { tr_name = id; tr_args = [] }
+  | TyApp (id, args)    -> { tr_name = id; tr_args = args }
+  | _ -> failwith "impl: trait reference must be a named type"
+
 %}
 
 /* Tokens with values */
@@ -535,20 +547,23 @@ fn_sig:
 
 impl_block:
   | IMPL type_params = type_params?
-    trait_ref = impl_trait_ref?
-    self_ty = type_expr
+    head = type_expr
+    forspec = impl_for?
     where_clause = where_clause?
     LBRACE items = list(impl_item) RBRACE
-    { { ib_type_params = Option.value type_params ~default:[];
+    { let trait_ref, self_ty =
+        match forspec with
+        | Some st -> (Some (trait_ref_of_type_expr head), st)
+        | None    -> (None, head)
+      in
+      { ib_type_params = Option.value type_params ~default:[];
         ib_trait_ref = trait_ref;
         ib_self_ty = self_ty;
         ib_where = Option.value where_clause ~default:[];
         ib_items = items } }
 
-impl_trait_ref:
-  | name = ident FOR { { tr_name = name; tr_args = [] } }
-  | name = ident LBRACKET args = separated_list(COMMA, type_arg) RBRACKET FOR
-    { { tr_name = name; tr_args = args } }
+impl_for:
+  | FOR self_ty = type_expr { self_ty }
 
 impl_item:
   | f = fn_decl { ImplFn f }
@@ -646,6 +661,14 @@ expr_primary:
   | FALSE { ExprLit (LitBool (false, mk_span $startpos $endpos)) }
 
   /* Identifiers */
+  /* `self` in expression position (issue #122 v2). The method-receiver
+     param productions already bind a parameter named "self"; this lets
+     the body actually reference it (`self.field`, `self.method(x)`).
+     Without this production SELF_KW had no expression form, so every
+     method body referencing self was a parse error — even
+     stdlib/traits.affine failed to parse. Resolves/typechecks as an
+     ordinary parameter binding named "self". */
+  | SELF_KW { ExprVar (mk_ident "self" $startpos $endpos) }
   | name = lower_ident { ExprVar (mk_ident name $startpos $endpos) }
   /* Struct literal: `Point { x: v, y: w }`.  Must come before the plain
      upper_ident production so Menhir shifts LBRACE rather than reducing
