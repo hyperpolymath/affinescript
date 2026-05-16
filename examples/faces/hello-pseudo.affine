@@ -2,10 +2,8 @@
 -- SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell
 --
 -- PseudoScript face. Distinctive features exercised:
--- function ... do ... end blocks, `--` Haskell/SQL-style comments.
--- (Note: pseudocode-face does not yet auto-insert statement separators,
--- so this minimal demo keeps each function body to a single expression.
--- See examples/faces/README.adoc for a list of pending transformer gaps.)
+-- function ... do ... end blocks, `--` Haskell/SQL-style comments,
+-- `set X to Y` bindings, `output X` I/O, multi-statement function bodies.
 -- face: pseudoscript
 
 effect IO {
@@ -13,5 +11,6 @@ effect IO {
 }
 
 function main() -{IO}-> () do
-    println("Hello, PseudoScript!")
+    set greeting to "Hello, PseudoScript!"
+    output greeting
 end

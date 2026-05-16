@@ -35,7 +35,7 @@
       None / nothing / null / nil                →  ()
       yes / YES                                  →  true
       no / NO                                    →  false
-      output expr / print expr / display expr   →  IO.println(expr)
+      output expr / print expr / display expr   →  println(expr)
       // comment                                 →  (already valid)
       -- comment (Haskell/SQL style)             →  // comment
     v}
@@ -50,7 +50,7 @@
     text.
 *)
 
-(* ─── Character helpers ────────────────────────────────────────────────── *)
+(* ─── Character helpers ────────────────────────────────────────── *)
 
 let is_id_char c =
   (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
@@ -98,7 +98,7 @@ let transform_double_dash_comment line =
     indent ^ "//" ^ String.sub trimmed 2 (String.length trimmed - 2)
   else line
 
-(* ─── Operator / keyword substitutions ────────────────────────────────── *)
+(* ─── Operator / keyword substitutions ────────────────────────────────────── *)
 
 (** Apply multi-word comparisons first (longest-match order). *)
 let apply_comparisons line =
@@ -136,7 +136,7 @@ let apply_literal_subs line =
   let line = subst_word line "NO"      "false" in
   line
 
-(* ─── Statement-level transforms ──────────────────────────────────────── *)
+(* ─── Statement-level transforms ────────────────────────────────────────────── *)
 
 (** [function/procedure name(params) returns T {] → [fn name(params) -> T {] *)
 let transform_function_decl trimmed =
@@ -191,7 +191,7 @@ let transform_io_output line =
     if starts_with t keyword then begin
       let rest = String.trim (String.sub t (String.length keyword)
                                 (String.length t - String.length keyword)) in
-      Some (indent ^ "IO.println(" ^ rest ^ ")")
+      Some (indent ^ "println(" ^ rest ^ ")")
     end else None
   in
   match try_io "output " with
@@ -217,6 +217,9 @@ let transform_control_flow line =
       else if ends_with cond_str " do" then String.sub cond_str 0 (String.length cond_str - 3)
       else cond_str
     in
+    let cond_str = apply_comparisons cond_str in
+    let cond_str = apply_boolean_ops cond_str in
+    let cond_str = apply_literal_subs cond_str in
     ignore cond;
     indent ^ "if " ^ cond_str ^ " {"
   in
@@ -226,10 +229,13 @@ let transform_control_flow line =
   let open_for cond =
     indent ^ "for " ^ cond ^ " {"
   in
+  let apply_cond_subs s =
+    apply_literal_subs (apply_boolean_ops (apply_comparisons s))
+  in
   if starts_with t "else if " then begin
     let rest = String.sub t 8 (String.length t - 8) in
     let rest = subst_word rest "then" "" in
-    let rest = String.trim rest in
+    let rest = apply_cond_subs (String.trim rest) in
     indent ^ "} else if " ^ rest ^ " {"
   end else if t = "else" then
     indent ^ "} else {"
@@ -238,21 +244,21 @@ let transform_control_flow line =
   else if starts_with t "while " then begin
     let rest = String.sub t 6 (String.length t - 6) in
     let rest = if ends_with rest " do" then String.sub rest 0 (String.length rest - 3) else rest in
-    open_while (String.trim rest)
+    open_while (apply_cond_subs (String.trim rest))
   end else if starts_with t "for " then begin
     let rest = String.sub t 4 (String.length t - 4) in
     let rest = if ends_with rest " do" then String.sub rest 0 (String.length rest - 3) else rest in
-    open_for (String.trim rest)
+    open_for (apply_cond_subs (String.trim rest))
   end else if starts_with t "match " then begin
     let rest = String.sub t 6 (String.length t - 6) in
     let rest = if ends_with rest " on" then String.sub rest 0 (String.length rest - 3) else rest in
-    indent ^ "match " ^ String.trim rest ^ " {"
+    indent ^ "match " ^ apply_cond_subs (String.trim rest) ^ " {"
   end else if t = "end if" || t = "end while" || t = "end for"
            || t = "end match" || t = "end" || t = "fi" || t = "od" then
     indent ^ "}"
   else line
 
-(* ─── Line-by-line transform ────────────────────────────────────────────── *)
+(* ─── Line-by-line transform ──────────────────────────────────────────────── *)
 
 let transform_line line =
   let t = String.trim line in
@@ -263,8 +269,9 @@ let transform_line line =
     (* 1. Convert double-dash comments *)
     let line = transform_double_dash_comment line in
     let t = String.trim line in
+    if starts_with t "//" then line
     (* 2. Function/procedure declarations *)
-    if starts_with t "function " || starts_with t "procedure " then
+    else if starts_with t "function " || starts_with t "procedure " then
       transform_function_decl t
     (* 3. set ... to ... *)
     else if starts_with t "set " then
@@ -302,12 +309,37 @@ let transform_line line =
     end
   end
 
-(* ─── File-level entry points ─────────────────────────────────────────── *)
+(* ─── File-level entry points ────────────────────────────────────────────── *)
 
 let transform_source source =
   let lines = String.split_on_char '\n' source in
-  let out = List.map transform_line lines in
-  String.concat "\n" out
+  let transformed = Array.of_list (List.map transform_line lines) in
+  let n = Array.length transformed in
+  let result = Array.copy transformed in
+  let depth = ref 0 in
+  let next_non_empty i =
+    let j = ref (i + 1) in
+    while !j < n && String.trim transformed.(!j) = "" do incr j done;
+    if !j >= n then "" else String.trim transformed.(!j)
+  in
+  for i = 0 to n - 1 do
+    let line = transformed.(i) in
+    let t = String.trim line in
+    let len = String.length t in
+    let ends_with_brace = len > 0 && t.[len - 1] = '{' in
+    let is_close_brace = t = "}" in
+    if is_close_brace && !depth > 0 then decr depth;
+    if !depth > 0 && t <> "" && not ends_with_brace && not is_close_brace
+       && not (len > 1 && t.[0] = '/' && t.[1] = '/')
+    then begin
+      let next = next_non_empty i in
+      let next_is_close = String.length next > 0 && next.[0] = '}' in
+      if not next_is_close && (len = 0 || t.[len - 1] <> ';') then
+        result.(i) <- line ^ ";"
+    end;
+    if ends_with_brace then incr depth
+  done;
+  String.concat "\n" (Array.to_list result)
 
 let parse_file_pseudocode path =
   let source = In_channel.with_open_text path In_channel.input_all in
