@@ -869,14 +869,25 @@ let rec synth (ctx : context) (expr : expr) : ty result =
          latter is how stdlib/string.affine's split/join/etc. accumulate.
          Dispatch on the synthesised lhs type. *)
       let* lhs_ty = synth ctx lhs in
-      match repr lhs_ty with
-      | TApp (TCon "Array", [elem]) ->
-        let* () = check ctx rhs (TApp (TCon "Array", [elem])) in
-        Ok (TApp (TCon "Array", [elem]))
-      | _ ->
-        let* () = unify_or_err lhs_ty ty_string in
-        let* () = check ctx rhs ty_string in
-        Ok ty_string
+      (match repr lhs_ty with
+       | TApp (TCon "Array", [elem]) ->
+         let* () = check ctx rhs (TApp (TCon "Array", [elem])) in
+         Ok (TApp (TCon "Array", [elem]))
+       | TCon "String" ->
+         let* () = check ctx rhs ty_string in
+         Ok ty_string
+       | _ ->
+         (* lhs type not yet determined (e.g. `let mut acc = []`):
+            disambiguate on the rhs rather than defaulting to String. *)
+         let* rhs_ty = synth ctx rhs in
+         (match repr rhs_ty with
+          | TApp (TCon "Array", [elem]) ->
+            let* () = unify_or_err lhs_ty (TApp (TCon "Array", [elem])) in
+            Ok (TApp (TCon "Array", [elem]))
+          | _ ->
+            let* () = unify_or_err lhs_ty ty_string in
+            let* () = unify_or_err rhs_ty ty_string in
+            Ok ty_string))
     end else begin
       let (lhs_ty, rhs_ty, result_ty) = type_of_binop op in
       let* () = check ctx lhs lhs_ty in

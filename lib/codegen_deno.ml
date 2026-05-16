@@ -175,6 +175,17 @@ let () =
   b "jsonStringify"       (fun a -> Printf.sprintf "JSON.stringify(%s)" (arg 0 a));
   b "jsonStringifyPretty" (fun a -> Printf.sprintf "JSON.stringify(%s, null, 2)" (arg 0 a));
   b "jsonParse"           (fun a -> Printf.sprintf "JSON.parse(%s)" (arg 0 a));
+  b "jsonNull"            (fun _ -> "null");
+  (* Opaque-object field/index read (the boundary primitive for treating
+     an arbitrary JS value as data — ubicity's `experience.id` etc.). *)
+  b "jsonGet"     (fun a -> Printf.sprintf "(%s)[%s]" (arg 0 a) (arg 1 a));
+  b "jsonGetStr"  (fun a -> Printf.sprintf "String((%s)[%s])" (arg 0 a) (arg 1 a));
+  (* Nullish default — preserves a JS default parameter when the arg is
+     omitted (`new ExperienceStorage()` -> './ubicity-data'). *)
+  b "orDefault"   (fun a -> Printf.sprintf "(%s ?? %s)" (arg 0 a) (arg 1 a));
+  (* Kilobyte display string: `(n/1024).toFixed(2)` — runtime number
+     formatting is an honest host primitive in every language. *)
+  b "kbString"    (fun a -> Printf.sprintf "(Number(%s) / 1024).toFixed(2)" (arg 0 a));
   (* ---- misc host ---- *)
   b "dateNow"     (fun _ -> "Date.now()");
   b "wasmInstance" (fun a -> Printf.sprintf "__as_wasmInstance(%s)" (arg 0 a));
@@ -199,7 +210,8 @@ let () =
   b "parse_float"    (fun a -> Printf.sprintf "__as_parseFloat(%s)" (arg 0 a));
   b "char_to_int"    (fun a -> Printf.sprintf "__as_charToInt(%s)" (arg 0 a));
   b "int_to_char"    (fun a -> Printf.sprintf "__as_intToChar(%s)" (arg 0 a));
-  b "show"           (fun a -> Printf.sprintf "__as_show(%s)" (arg 0 a))
+  b "show"           (fun a -> Printf.sprintf "__as_show(%s)" (arg 0 a));
+  b "panic"          (fun a -> Printf.sprintf "(() => { throw new Error(%s); })()" (arg 0 a))
 
 (* ============================================================================
    Identifier sanitisation (JS reserved words -> trailing underscore)

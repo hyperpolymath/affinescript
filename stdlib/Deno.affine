@@ -1,0 +1,133 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+//
+// Deno.affine — issue #122 host bindings for the Deno-ESM backend.
+//
+// Unlike stdlib/Vscode.affine (issue #35), these externs are NOT a
+// wasm-FFI surface with an Int-handle/readString contract. The
+// `--deno-esm` backend (lib/codegen_deno.ml) is a *direct* AST → ES
+// module transpiler with no wasm boundary, so each `extern fn` below is
+// lowered, at compile time, straight to its host expression:
+//
+//   writeTextFile(p, c)  ->  Deno.writeTextFileSync(p, c)
+//   jsonParse(s)         ->  JSON.parse(s)
+//   dateNow()            ->  Date.now()
+//   ...
+//
+// The lowering table lives in lib/codegen_deno.ml (`deno_builtins`);
+// the non-trivial leaves are emitted inlined into every module's
+// prelude so the output is genuinely drop-in (no runtime adapter, no
+// extra package to resolve). packages/affine-deno/mod.js mirrors the
+// same surface as a standalone ESM module for `deno test`.
+//
+// All FS operations are synchronous (`Deno.*Sync`). `await` on a
+// synchronously-returned value is valid JS, so an async-shaped consumer
+// (e.g. hyperpolymath/ubicity) keeps working without an async-extern
+// ABI (issue #103 — documented future work, not required here).
+//
+// Names here MUST match the `deno_builtins` table keys exactly; an
+// unmatched extern silently falls through to a same-named host symbol.
+
+module Deno;
+
+// ── Opaque host value types ────────────────────────────────────────
+//
+// `Json` is any structured JS value (object/array/string/number/bool/
+// null) crossing the boundary opaquely — the AffineScript side never
+// inspects it, it only routes it between JSON.* and the host. `Bytes`
+// is a Uint8Array; `WasmExports` is an instantiated module's exports.
+
+pub extern type Json;
+pub extern type Bytes;
+pub extern type WasmExports;
+
+// ── Filesystem (synchronous) ───────────────────────────────────────
+
+/// `Deno.writeTextFileSync(path, content)`. Returns 0.
+pub extern fn writeTextFile(path: String, content: String) -> Int;
+
+/// `Deno.readTextFileSync(path)`. Throws on missing file — pair with
+/// `isNotFound` in a `try`/`catch` for the not-found-is-null pattern.
+pub extern fn readTextFile(path: String) -> String;
+
+/// `Deno.readFileSync(path)` — raw bytes (for wasm modules).
+pub extern fn readFileBytes(path: String) -> Bytes;
+
+/// `Deno.removeSync(path)`. Throws if absent (catch + `isNotFound`).
+pub extern fn removePath(path: String) -> Int;
+
+/// `Deno.mkdirSync(path, { recursive: true })`.
+pub extern fn mkdirRecursive(path: String) -> Int;
+
+/// mkdir -p that swallows AlreadyExists (idempotent ensure-directory).
+pub extern fn ensureDir(path: String) -> Int;
+
+/// Names of the *file* entries in `path` (skips sub-directories).
+pub extern fn readDirNames(path: String) -> [String];
+
+/// `Deno.statSync(path).size` in bytes.
+pub extern fn statSize(path: String) -> Int;
+
+// ── Path ───────────────────────────────────────────────────────────
+
+/// Single-segment join with a `/` separator (idempotent on a trailing
+/// slash). Sufficient for the storage-layout use-case.
+pub extern fn pathJoin(a: String, b: String) -> String;
+
+// ── Error classification ───────────────────────────────────────────
+
+/// `e instanceof Deno.errors.NotFound` — the only error class the
+/// storage layer special-cases (missing file/dir => null/empty).
+pub extern fn isNotFound(e: Json) -> Bool;
+
+// ── JSON ───────────────────────────────────────────────────────────
+
+pub extern fn jsonStringify(v: Json) -> String;
+
+/// `JSON.stringify(v, null, 2)` — the on-disk pretty form.
+pub extern fn jsonStringifyPretty(v: Json) -> String;
+
+pub extern fn jsonParse(s: String) -> Json;
+
+/// JS `null` as an opaque Json (the not-found / absent sentinel).
+pub extern fn jsonNull() -> Json;
+
+/// Opaque field/index read: `value[key]`. The boundary primitive for
+/// treating an arbitrary host JS value as data without the AffineScript
+/// side modelling its shape (e.g. `experience.id`).
+pub extern fn jsonGet(value: Json, key: String) -> Json;
+pub extern fn jsonGetStr(value: Json, key: String) -> String;
+
+/// Nullish default — `x ?? d`. Preserves a JS default parameter when
+/// the caller omits the argument.
+pub extern fn orDefault(x: String, d: String) -> String;
+
+/// Kilobyte display string: `(bytes / 1024).toFixed(2)`. Runtime number
+/// formatting is an honest host primitive (cf. Rust `format!`).
+pub extern fn kbString(bytes: Int) -> String;
+
+// ── Misc host ──────────────────────────────────────────────────────
+
+/// `Date.now()` — epoch millis (used for timestamped report names).
+pub extern fn dateNow() -> Int;
+
+/// `(Number(bytes) / 1024).toFixed(2)` — kilobyte display string.
+pub extern fn numToFixed2(bytes: Int) -> String;
+
+pub extern fn endsWith(s: String, suffix: String) -> Bool;
+
+/// `s` with a trailing `suffix` removed (no-op if absent).
+pub extern fn stripSuffix(s: String, suffix: String) -> String;
+
+// ── WebAssembly (synchronous instantiate) ──────────────────────────
+
+/// `new WebAssembly.Instance(new WebAssembly.Module(bytes)).exports`.
+pub extern fn wasmInstance(bytes: Bytes) -> WasmExports;
+
+// ── Array helper ───────────────────────────────────────────────────
+//
+// AffineScript has no mutable-array push primitive in this subset;
+// this fluent helper appends and returns the array so accumulation
+// reads functionally: `acc = arrayPush(acc, x)`.
+
+pub extern fn arrayPush(arr: [Json], v: Json) -> [Json];
