@@ -1,0 +1,34 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// issue #122 v2.4 regression: qualified `Type::Variant` patterns in
+// match arms (nullary + payload), as both `= match {..};` expression
+// bodies and recursive functions. Previously a parse error
+// (pattern_primary had no `Type::Variant` production).
+
+pub enum Color { Red, Green, Blue }
+
+pub fn rank(c: Color) -> Int = match c {
+  Color::Red => 1,
+  Color::Green => 2,
+  Color::Blue => 3
+};
+
+pub enum IntList { Nil, Cons(Int, IntList) }
+
+pub fn len(xs: IntList) -> Int {
+  match xs {
+    IntList::Nil => 0,
+    IntList::Cons(h, t) => 1 + len(t)
+  }
+}
+
+pub fn sum(xs: IntList) -> Int {
+  match xs {
+    IntList::Nil => 0,
+    IntList::Cons(h, t) => h + sum(t)
+  }
+}
+
+// Construction uses the bare enum-factory names (Nil / Cons) emitted by
+// the enum codegen; qualified `Type::Variant` is exercised in the match
+// patterns above (the v2.4 feature under test).
+pub fn demo_list() -> IntList = Cons(10, Cons(20, Cons(30, Nil)));

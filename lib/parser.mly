@@ -918,6 +918,17 @@ pattern_primary:
   | name = upper_ident { PatCon (mk_ident name $startpos $endpos, []) }
   | name = upper_ident LPAREN pats = separated_list(COMMA, pattern) RPAREN
     { PatCon (mk_ident name $startpos(name) $endpos(name), pats) }
+  /* Qualified variant patterns `Type::Variant` / `Type::Variant(p, ..)`
+     (issue #122 v2). The type qualifier is discarded — PatCon carries
+     only the variant name, matching ExprVariant and the codegen tag
+     dispatch (`scrut.tag === "Variant"`). Without these, `match c {
+     Color::Red => .. }` (and stdlib/traits.affine's `Ordering::Less`)
+     was a parse error. */
+  | _ty = upper_ident COLONCOLON name = upper_ident
+    { PatCon (mk_ident name $startpos(name) $endpos(name), []) }
+  | _ty = upper_ident COLONCOLON name = upper_ident
+    LPAREN pats = separated_list(COMMA, pattern) RPAREN
+    { PatCon (mk_ident name $startpos(name) $endpos(name), pats) }
   | LPAREN RPAREN { PatTuple [] }
   | LPAREN p = pattern RPAREN { p }
   | LPAREN p = pattern COMMA ps = separated_nonempty_list(COMMA, pattern) RPAREN
