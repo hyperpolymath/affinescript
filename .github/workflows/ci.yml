@@ -40,6 +40,12 @@ jobs:
       - name: Run codegen WASM tests
         run: opam exec -- ./tools/run_codegen_wasm_tests.sh
 
+      - name: Run codegen Deno-ESM tests (issue #122)
+        # Compiles tests/codegen-deno/*.affine with the --deno-esm backend
+        # and runs the *.harness.mjs under Node (CI has Node 20, not Deno;
+        # the Phase 1 fixtures are pure logic so Node ESM exercises them).
+        run: opam exec -- ./tools/run_codegen_deno_tests.sh
+
       - name: Run face-transformer regression tests
         run: opam exec -- ./tools/run_face_transformer_tests.sh
 

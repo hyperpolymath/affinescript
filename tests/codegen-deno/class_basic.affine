@@ -1,0 +1,31 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// issue #122 Phase 1 regression: Deno-ESM backend.
+//
+// Exercises: struct + receiver-first free fns -> `export class` (the
+// current grammar accepts neither inherent `impl` nor a `self`
+// expression, so methods are free functions taking the struct first);
+// constructor synthesis from a struct-returning fn; cross-method calls
+// (`Counter_*` -> `this.*`); `extern fn` lowering (jsonStringify ->
+// JSON.stringify); `pub fn`/`pub const`/`pub enum` -> `export`.
+//
+// Pure logic only (no FS / print), so it runs under plain Node ESM —
+// CI has Node 20 but no Deno.
+
+pub extern fn jsonStringify(v: Int) -> String;
+
+struct Counter { start: Int }
+
+pub fn Counter_new(start: Int) -> Counter = Counter { start: start };
+
+pub fn Counter_bumped(c: Counter, by: Int) -> Int = c.start + by;
+
+pub fn Counter_bumpedTwice(c: Counter, by: Int) -> Int =
+  Counter_bumped(c, by) + by;
+
+pub fn Counter_encodedStart(c: Counter) -> String = jsonStringify(c.start);
+
+pub fn double(x: Int) -> Int = x * 2;
+
+pub const ANSWER: Int = 42;
+
+pub enum Color { Red, Green, Blue }

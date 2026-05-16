@@ -1,0 +1,15 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// issue #122 v2.3 regression: struct field access through ref/own/mut
+// receivers must typecheck (auto-deref before record projection).
+// Previously `fn(c: ref S) = c.field` failed: "Field 'field' not found
+// in type ref {...}".
+
+struct Point { x: Int, y: Int }
+
+pub fn mk_point(x: Int, y: Int) -> Point = Point { x: x, y: y };
+
+pub fn sum_ref(p: ref Point) -> Int = p.x + p.y;
+
+pub fn get_x_own(p: own Point) -> Int = p.x;
+
+pub fn get_y_mut(p: mut Point) -> Int = p.y;

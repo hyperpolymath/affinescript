@@ -8,6 +8,7 @@
   c_codegen
   cafe_face
   codegen
+  codegen_deno
   codegen_gc
   codegen_node
   desugar_traits
