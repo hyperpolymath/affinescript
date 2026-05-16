@@ -80,6 +80,16 @@ let create_context () : context =
   (* Cmd Msg — linear side-effect obligation builtins (Stage 11) *)
   def "cmd_none";
   def "cmd_perform";
+  (* Option / Result value constructors — seeded as builtin constructors so
+     the honest stdlib (stdlib/string.affine `char_at`, stdlib/result.affine,
+     …) resolves without importing the legacy stdlib/prelude. `Option`/`Result`
+     are already builtin type constructors; this closes the matching value-side
+     gap. A user/prelude `type Option`/`type Result` decl cleanly shadows these
+     (Hashtbl.replace in Symbol.define). Issue #122. *)
+  let defc name =
+    let _ = Symbol.define ctx.symbols name SKConstructor Span.dummy Public in ()
+  in
+  defc "Some"; defc "None"; defc "Ok"; defc "Err";
   ctx
 
 (** Record a use-site reference for a symbol (Phase C: find-references). *)

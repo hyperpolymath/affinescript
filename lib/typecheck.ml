@@ -1225,6 +1225,45 @@ let register_builtins (ctx : context) : unit =
      lowers each to a JS intrinsic. char ::= TCon "Char". *)
   let ty_char = TCon "Char" in
   let opt t = TApp (TCon "Option", [t]) in
+  (* Option / Result value constructors — seeded as polymorphic builtin
+     schemes so the honest stdlib resolves without the legacy prelude
+     (mirrors the Resolve.create_context constructor seeding). Codegen
+     (codegen_deno.ml:111-114) already provides the Some/None/Ok/Err
+     runtime; this is purely the front-end type side. A user/prelude
+     `type Option`/`type Result` decl shadows these. Issue #122. *)
+  let res a b = TApp (TCon "Result", [a; b]) in
+  let fresh_named () =
+    let tv = fresh_tyvar 0 in
+    let v = (match tv with
+      | TVar r -> (match !r with Unbound (v, _) -> v | _ -> assert false)
+      | _ -> assert false) in
+    (v, tv)
+  in
+  let (v_none, t_none) = fresh_named () in
+  bind_scheme ctx "None"
+    { sc_tyvars = [(v_none, Types.KType)]; sc_effvars = []; sc_rowvars = [];
+      sc_body = opt t_none };
+  Hashtbl.replace ctx.constructor_env "None" (opt t_none);
+  let (v_some, t_some) = fresh_named () in
+  let some_ty = TArrow (t_some, QOmega, opt t_some, EPure) in
+  bind_scheme ctx "Some"
+    { sc_tyvars = [(v_some, Types.KType)]; sc_effvars = []; sc_rowvars = [];
+      sc_body = some_ty };
+  Hashtbl.replace ctx.constructor_env "Some" some_ty;
+  let (v_oka, t_oka) = fresh_named () in
+  let (v_okb, t_okb) = fresh_named () in
+  let ok_ty = TArrow (t_oka, QOmega, res t_oka t_okb, EPure) in
+  bind_scheme ctx "Ok"
+    { sc_tyvars = [(v_oka, Types.KType); (v_okb, Types.KType)];
+      sc_effvars = []; sc_rowvars = []; sc_body = ok_ty };
+  Hashtbl.replace ctx.constructor_env "Ok" ok_ty;
+  let (v_erra, t_erra) = fresh_named () in
+  let (v_errb, t_errb) = fresh_named () in
+  let err_ty = TArrow (t_errb, QOmega, res t_erra t_errb, EPure) in
+  bind_scheme ctx "Err"
+    { sc_tyvars = [(v_erra, Types.KType); (v_errb, Types.KType)];
+      sc_effvars = []; sc_rowvars = []; sc_body = err_ty };
+  Hashtbl.replace ctx.constructor_env "Err" err_ty;
   bind_var ctx "string_get"
     (TArrow (ty_string, QOmega, TArrow (ty_int, QOmega, ty_char, EPure), EPure));
   bind_var ctx "string_sub"
