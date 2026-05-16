@@ -749,10 +749,21 @@ let rec synth (ctx : context) (expr : expr) : ty result =
   (* Field access — first try record-field projection, then trait method lookup *)
   | ExprField (obj, { name = field; _ }) ->
     let* obj_ty = synth ctx obj in
+    (* Auto-deref reference/owned wrappers before record projection
+       (issue #122 v2): `c.field` where `c : ref/own/mut S` projects the
+       field of S — the borrow checker still governs aliasing separately.
+       Without this, `fn(c: ref S) = c.field` failed with
+       "Field 'field' not found in type ref {...}". *)
+    let rec strip_ref t =
+      match repr t with
+      | TRef u | TMut u | TOwn u -> strip_ref u
+      | u -> u
+    in
+    let obj_ty_deref = strip_ref obj_ty in
     let field_ty = fresh_tyvar ctx.level in
     let rest_row = fresh_rowvar ctx.level in
     let expected_record = TRecord (RExtend (field, field_ty, rest_row)) in
-    begin match Unify.unify (repr obj_ty) expected_record with
+    begin match Unify.unify (repr obj_ty_deref) expected_record with
     | Ok () -> Ok field_ty
     | Error _ ->
       (* Record projection failed — try trait method dispatch.
