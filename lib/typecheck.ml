@@ -1205,12 +1205,21 @@ let register_builtins (ctx : context) : unit =
   bind_var ctx "max" int_binop;
   bind_var ctx "min" int_binop;
   bind_var ctx "pow_float" float_binop;
-  (* `len` is polymorphic over String and [T] (issue #122 v2.5):
-     stdlib/string.affine calls `len` on both. Broadened from
-     Array[tv]->Int to 'a->Int (matches the interpreter's dynamic len;
-     the codegen lowers it to `.length`, valid for string and array). *)
-  bind_var ctx "len" (let tv = fresh_tyvar 0 in
-    TArrow (tv, QOmega, ty_int, EPure));
+  (* `len` / `show` are TRULY polymorphic — bound as generalized schemes
+     so each call site instantiates a fresh tyvar. v2.5/v2.6 mistakenly
+     bound them via bind_var as `'a -> _` with a SINGLE SHARED tyvar:
+     the first `len(String)` pinned it, then `len([T])` failed with
+     `Unify TypeMismatch (String, Array[T])` (diagnosed via the sb7
+     minimal repro; blocked the ubicity#30 storage port). issue #122. *)
+  let poly1 (body_of : ty -> ty) : scheme =
+    let tv = fresh_tyvar 0 in
+    let v = (match tv with
+      | TVar r -> (match !r with Unbound (v, _) -> v | _ -> assert false)
+      | _ -> assert false) in
+    { sc_tyvars = [(v, Types.KType)]; sc_effvars = []; sc_rowvars = [];
+      sc_body = body_of tv }
+  in
+  bind_scheme ctx "len" (poly1 (fun a -> TArrow (a, QOmega, ty_int, EPure)));
   (* Honest string/char primitives underpinning stdlib/string.affine
      (issue #122 v2.5). Concrete String/Char types; the Deno-ESM backend
      lowers each to a JS intrinsic. char ::= TCon "Char". *)
@@ -1232,8 +1241,8 @@ let register_builtins (ctx : context) : unit =
   bind_var ctx "parse_float"  (TArrow (ty_string, QOmega, opt ty_float, EPure));
   bind_var ctx "char_to_int"  (TArrow (ty_char, QOmega, ty_int, EPure));
   bind_var ctx "int_to_char"  (TArrow (ty_int, QOmega, ty_char, EPure));
-  bind_var ctx "show"
-    (let tv = fresh_tyvar 0 in TArrow (tv, QOmega, ty_string, EPure));
+  bind_scheme ctx "show"
+    (poly1 (fun a -> TArrow (a, QOmega, ty_string, EPure)));
   bind_var ctx "panic" (TArrow (ty_string, QOmega, ty_never, EPure));
   bind_var ctx "exit" (TArrow (ty_int, QOmega, ty_never, ESingleton "IO"));
   (* TEA runtime — accepts any record, returns unit with IO effect *)
