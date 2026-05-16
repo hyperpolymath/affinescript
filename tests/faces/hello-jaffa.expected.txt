@@ -3,8 +3,10 @@
 //
 // JaffaScript face. Distinctive features exercised: `function` keyword,
 // `const`/`let` bindings (let lowers to let mut), brace-delimited
-// blocks, `==` equality.
+// blocks, `==` equality, `import { x } from "m";` imports.
 // face: jaffascript
+
+use io::{println};
 
 effect IO {
 fn println(s: String) -> ();

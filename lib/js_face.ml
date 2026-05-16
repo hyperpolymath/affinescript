@@ -39,7 +39,7 @@
     [{ expr }].  Full multi-line arrow bodies are a follow-up task.
 *)
 
-(* ─── Character helpers ────────────────────────────────────────────────── *)
+(* ─── Character helpers ────────────────────────────────────────────── *)
 
 let is_id_char c =
   (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
@@ -113,7 +113,7 @@ let ends_with s suffix =
   let sl = String.length s and tl = String.length suffix in
   sl >= tl && String.sub s (sl - tl) tl = suffix
 
-(* ─── Import / export handling ─────────────────────────────────────────── *)
+(* ─── Import / export handling ────────────────────────────────────────────── *)
 
 (** Transform JavaScript import declarations to AffineScript use declarations.
     Examples:
@@ -136,6 +136,11 @@ let transform_import line =
       let rest = String.trim rest in
       if starts_with rest "from " then begin
         let mod_part = String.trim (String.sub rest 5 (String.length rest - 5)) in
+        (* Strip a trailing `;` before stripping the surrounding quotes. *)
+        let mod_part =
+          if ends_with mod_part ";" then String.sub mod_part 0 (String.length mod_part - 1)
+          else mod_part
+        in
         let mod_name = String.sub mod_part 1 (String.length mod_part - 2) in (* strip quotes *)
         let mod_name = String.map (fun c -> if c = '/' || c = '-' then '_' else c) mod_name in
         let names = String.trim names_raw in
@@ -151,6 +156,10 @@ let transform_import line =
       if starts_with rest "from " then
         (* import * from "module" — just bring in module *)
         let mod_part = String.trim (String.sub rest 5 (String.length rest - 5)) in
+        let mod_part =
+          if ends_with mod_part ";" then String.sub mod_part 0 (String.length mod_part - 1)
+          else mod_part
+        in
         let mod_name = String.sub mod_part 1 (String.length mod_part - 2) in
         let mod_name = String.map (fun c -> if c = '/' || c = '-' then '_' else c) mod_name in
         Printf.sprintf "use %s;" mod_name
@@ -158,6 +167,10 @@ let transform_import line =
         (* import name from "module" *)
         match String.split_on_char ' ' rest with
         | name :: "from" :: quoted :: _ ->
+          let quoted =
+            if ends_with quoted ";" then String.sub quoted 0 (String.length quoted - 1)
+            else quoted
+          in
           let mod_name = String.sub quoted 1 (String.length quoted - 2) in
           let mod_name = String.map (fun c -> if c = '/' || c = '-' then '_' else c) mod_name in
           Printf.sprintf "use %s::%s;" mod_name name
@@ -176,7 +189,7 @@ let strip_export line =
     String.sub line 7 (String.length line - 7)
   else line
 
-(* ─── Function / variable declarations ────────────────────────────────── *)
+(* ─── Function / variable declarations ──────────────────────────────────────────── *)
 
 (** Transform a [const]/[let]/[var] binding line. *)
 let transform_var_decl line =
@@ -251,7 +264,7 @@ let transform_arrow_body line =
       before ^ "{ " ^ after ^ " }"
   end else line
 
-(* ─── Line-by-line transform ────────────────────────────────────────────── *)
+(* ─── Line-by-line transform ────────────────────────────────────────────────── *)
 
 (** Transform a single source line from JS-face to canonical AffineScript.
     Order matters: export stripping before function detection, variable
@@ -287,7 +300,7 @@ let transform_line line =
     end
   end
 
-(* ─── File-level entry points ─────────────────────────────────────────── *)
+(* ─── File-level entry points ────────────────────────────────────────────── *)
 
 (** Transform a full JS-face source string to canonical AffineScript. *)
 let transform_source source =
