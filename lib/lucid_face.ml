@@ -50,7 +50,7 @@
     - Span fidelity: errors refer to the canonical text, not Lucid source.
 *)
 
-(* ─── Character helpers ──────────────────────────────────────────────── *)
+(* ─── Character helpers ──────────────────────────────────────────── *)
 
 let is_id_char c =
   (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
@@ -70,16 +70,7 @@ let indent_of line =
   while !i < len && (line.[!i] = ' ' || line.[!i] = '\t') do incr i done;
   !i
 
-(* ─── Comment handling ───────────────────────────────────────────────── *)
-
-(** Convert a leading [-- comment] to [// comment] at the original indent. *)
-let convert_dashdash_comment line =
-  let trimmed = String.trim line in
-  if starts_with trimmed "--" then
-    let indent_len = String.length line - String.length trimmed in
-    let indent = String.sub line 0 indent_len in
-    indent ^ "//" ^ String.sub trimmed 2 (String.length trimmed - 2)
-  else line
+(* ─── Comment handling ────────────────────────────────────────────── *)
 
 (** Strip a trailing [-- ...] comment (respecting string literals) and
     return [(code_part, comment_text option)]. *)
@@ -105,7 +96,7 @@ let strip_dashdash_comment line =
   else (String.sub line 0 !cut,
         Some (String.sub line (!cut + 2) (len - !cut - 2)))
 
-(* ─── Word-level keyword substitution ────────────────────────────────── *)
+(* ─── Word-level keyword substitution ───────────────────────────────────── *)
 
 let replace_word ~from_w ~to_w s =
   let flen = String.length from_w in
@@ -144,7 +135,7 @@ let apply_logic_subs s =
   let s = replace_word ~from_w:"not" ~to_w:"!" s in
   s
 
-(* ─── Module path helpers ────────────────────────────────────────────── *)
+(* ─── Module path helpers ────────────────────────────────────────────────── *)
 
 (** [Data.Map.Strict] → [Data::Map::Strict]. *)
 let dots_to_colons s =
@@ -156,7 +147,7 @@ let dots_to_colons s =
   ) s;
   Buffer.contents buf
 
-(* ─── Import translation ─────────────────────────────────────────────── *)
+(* ─── Import translation ───────────────────────────────────────────────────── *)
 
 (** Try to transform a PureScript [import …] line. *)
 let transform_import_line stripped =
@@ -221,7 +212,7 @@ let transform_import_line stripped =
     end
   end
 
-(* ─── Module declaration ─────────────────────────────────────────────── *)
+(* ─── Module declaration ───────────────────────────────────────────────────── *)
 
 (** [module Foo where] / [module Foo (exports) where] → [module Foo;].
     Canonical AffineScript uses [module] as a file-level header (no
@@ -252,7 +243,7 @@ let transform_module_line stripped =
     Some (Printf.sprintf "module %s;" mod_path)
   end
 
-(* ─── Type signature handling ────────────────────────────────────────── *)
+(* ─── Type signature handling ──────────────────────────────────────────────── *)
 
 (** A line of the form [name :: type ...] is a type signature. Lucid keeps
     it as a comment so the canonical type inferer is the source of truth.
@@ -267,7 +258,7 @@ let is_type_signature stripped =
   has_dcolon && len > 0
   && (stripped.[0] >= 'a' && stripped.[0] <= 'z' || stripped.[0] = '_')
 
-(* ─── Data / class / instance declarations ───────────────────────────── *)
+(* ─── Data / class / instance declarations ───────────────────────────────────── *)
 
 (** [data Foo a b = Ctor1 a | Ctor2] → [type Foo[a, b] = Ctor1(a) | Ctor2].
     Best-effort: parameterised constructor arguments wrapped in parens. *)
@@ -350,7 +341,7 @@ let transform_instance_decl stripped =
     | _ -> Some (Printf.sprintf "impl %s {" body)
   end
 
-(* ─── Function equations ─────────────────────────────────────────────── *)
+(* ─── Function equations ────────────────────────────────────────────────────── *)
 
 (** [f x y = expr] — wrap parameters and emit canonical [fn].
     Returns [None] when the line isn't a recognisable equation. *)
@@ -395,7 +386,7 @@ let transform_equation stripped =
       end
     end
 
-(* ─── Expression-level substitutions ─────────────────────────────────── *)
+(* ─── Expression-level substitutions ───────────────────────────────────────────── *)
 
 (** [\x -> body] / [\x y -> body] → [(x, y) => body]. *)
 let transform_lambda_inline s =
@@ -535,11 +526,14 @@ let render_block_head head marker =
     head ^ " = {"
   | _ -> head
 
-(* ─── Main transformer ───────────────────────────────────────────────── *)
+(* ─── Main transformer ───────────────────────────────────────────────────────── *)
 
 let is_blank_line raw =
-  let (code, _) = strip_dashdash_comment (String.trim raw) in
-  String.trim code = ""
+  let t = String.trim raw in
+  if starts_with t "//" then true
+  else
+    let (code, _) = strip_dashdash_comment t in
+    String.trim code = ""
 
 let transform_source source =
   let lines = Array.of_list (String.split_on_char '\n' source) in
@@ -571,8 +565,7 @@ let transform_source source =
   for i = 0 to n - 1 do
     let raw_line = lines.(i) in
     let ind = indent_of raw_line in
-    let line = convert_dashdash_comment raw_line in
-    let (code_part, comment_opt) = strip_dashdash_comment (String.trim line) in
+    let (code_part, comment_opt) = strip_dashdash_comment (String.trim raw_line) in
     let stripped = String.trim code_part in
 
     let with_comment line_text =
@@ -583,8 +576,14 @@ let transform_source source =
 
     if stripped = "" then begin
       (match comment_opt with
-      | Some c -> Buffer.add_string out ("// " ^ String.trim c ^ "\n")
-      | None   -> Buffer.add_char out '\n')
+      | Some c ->
+        let c' = String.trim c in
+        Buffer.add_string out (if c' = "" then "//\n" else "// " ^ c' ^ "\n")
+      | None -> Buffer.add_char out '\n')
+    end else if starts_with stripped "//" || starts_with stripped "/*" then begin
+      (* Already-canonical comment lines pass through unchanged. *)
+      let indent_str = String.make ind ' ' in
+      Buffer.add_string out (indent_str ^ stripped ^ "\n")
     end else if is_type_signature stripped then begin
       (* Keep type signatures as a comment so the inferer drives types. *)
       let indent_str = String.make ind ' ' in
@@ -659,9 +658,12 @@ let transform_source source =
   for _ = 1 to !toplevel_braces do
     Buffer.add_string out "}\n"
   done;
-  Buffer.contents out
+  let s = Buffer.contents out in
+  let l = String.length s in
+  if l >= 2 && s.[l-1] = '\n' && s.[l-2] = '\n' then String.sub s 0 (l-1)
+  else s
 
-(* ─── Entry points ───────────────────────────────────────────────────── *)
+(* ─── Entry points ────────────────────────────────────────────────────────────── *)
 
 let parse_string_lucid ~file content =
   let canonical = transform_source content in
