@@ -726,6 +726,16 @@ expr_primary:
     { ExprLambda { elam_params = params; elam_ret_ty = None; elam_body = body } }
   | PIPE params = separated_list(COMMA, lambda_param) PIPE ARROW ret = type_expr body = block
     { ExprLambda { elam_params = params; elam_ret_ty = Some ret; elam_body = ExprBlock body } }
+  /* `fn(params) => expr` and `fn(params) -> RetTy { block }` — anonymous
+     function expressions (issue #135). Lowers to the same ExprLambda as the
+     `|params| body` form; this is the surface the stdlib actually uses
+     (`map(fn(x) => Some(x), list)` in stdlib/option.affine). The leading
+     `fn` + parenthesised params is unambiguous in expression position
+     (no other expression form starts with `fn`). */
+  | FN LPAREN params = separated_list(COMMA, lambda_param) RPAREN FAT_ARROW body = expr
+    { ExprLambda { elam_params = params; elam_ret_ty = None; elam_body = body } }
+  | FN LPAREN params = separated_list(COMMA, lambda_param) RPAREN ARROW ret = type_expr body = block
+    { ExprLambda { elam_params = params; elam_ret_ty = Some ret; elam_body = ExprBlock body } }
 
   /* Return */
   | RETURN e = expr? { ExprReturn e }
