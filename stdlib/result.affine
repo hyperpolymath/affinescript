@@ -6,7 +6,7 @@
 module result;
 
 // `Option`/`Result` types + constructors are owned by `prelude` (ADR-011).
-use prelude::{Result, Ok, Err, Option, Some, None};
+use prelude::{Result, Ok, Err, Option, Some, None, map};
 
 // This module is the single canonical home for the Result *operations*
 // (is_ok/is_err/unwrap/unwrap_or/map_ok/map_err/…). #133 removed the
@@ -187,7 +187,7 @@ fn partition_results<T, E>(results: [Result<T, E>]) -> ([T], [E]) {
 
 /// Try to apply function to all elements, collecting errors
 fn try_map<T, U, E>(f: T -> Result<U, E>, list: [T]) -> Result<[U], E> {
-  let results = map(f, list);
+  let results = map(list, f);
   collect(results)
 }
 
