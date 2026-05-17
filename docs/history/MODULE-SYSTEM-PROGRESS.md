@@ -349,3 +349,54 @@ type context = {
 2. Phase 2: Function call implementation
 
 **Current State:** Ready to begin Phase 3 (Advanced Type System)
+
+---
+
+## Decision: stdlib namespace model (2026-05-17, issue #132 / ADR-011)
+
+Settles the open question gating the #128 stdlib-AOT epic: does the stdlib
+have real modules, or stay flat-and-deduplicated?
+
+**Decision: real modules with qualified paths.** Not a flat de-duplicated
+prelude. Status: **accepted, settled** (ADR-011 in
+`.machine_readable/6a2/META.a2ml`; ledger entry in
+`docs/specs/SETTLED-DECISIONS.adoc`).
+
+### Rationale
+
+The compiler already has the machinery — the grammar accepts `module X;`,
+`use path;` and `::`-qualified paths; `module_loader.ml` resolves module
+paths with search paths, nested modules and caching; and the *newer*
+stdlib files (Core, Crypto, Ajv, Sqlite, Grammy, Deno, Network, Vscode,
+VscodeLanguageClient) already declare `module X;` and use qualified
+constructors (`Ordering::Less`). Only the legacy core files (prelude,
+option, result, collections, string, io, testing, effects, math, traits)
+are flat interpreter-era code with conflicting duplicate definitions
+(`prelude.map(arr, f)` vs `option.map(f, opt)`). Choosing real modules
+aligns the legacy files with the model the language already commits to,
+and makes the AOT pipeline exercise real cross-module resolution — the
+actual objective of #128.
+
+### Model
+
+- Every `stdlib/*.affine` declares `module <Name>;`.
+- Cross-file use is explicit: `use option::{Option, Some, None};` /
+  qualified `Result::unwrap`.
+- Exactly one canonical definition per name, owned by its module. The
+  prelude/option/result overlaps are resolved by single ownership; the
+  others `use` the owner (no signature-divergent copies).
+- A minimal prelude module may *re-export* the universally needed names
+  (`Option`, `Result`, `Some`/`None`/`Ok`/`Err`) — re-exports only.
+- The b895374 seeded `Some/None/Ok/Err` builtins are removed once
+  resolution flows through the module path (#138); not load-bearing.
+
+### Downstream sequencing (this epic)
+
+| Issue | Work unlocked by this decision |
+|---|---|
+| #133 | Remove prelude/option/result conflicting dups via single ownership; non-owners `use` the owner. |
+| #135 | Bring legacy core files under `module`/`use` as each is made to compile resolve→typecheck→codegen. |
+| #137 | Multi-module integration test (`use`s several stdlib modules together) — now a meaningful test. |
+| #138 | Delete the b895374 seeded-builtins band-aid once the prelude re-export module exists. |
+
+No code change in #132 (decision + documentation only).
