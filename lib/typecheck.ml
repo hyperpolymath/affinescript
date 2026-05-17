@@ -1312,6 +1312,28 @@ let register_builtins (ctx : context) : unit =
 
 (** Check a top-level function declaration. *)
 let check_fn_decl (ctx : context) (fd : fn_decl) : unit result =
+  (* #135 slice 7: register the explicit `<T>` type parameters as fresh,
+     generalizable unification variables before lowering param/return
+     types.  Without this, an uppercase param like `x: T` lowered to a
+     *rigid* `TCon "T"` (lower_type_expr TyCon fallthrough), which
+     `generalize` ignores — so every generic top-level function was
+     effectively monomorphic and the second instantiation blew up with
+     `Unify.TypeMismatch (T, Int)` (and `use prelude::{…}` import-checks
+     failed transitively).  Mirrors the let-generalization discipline:
+     enter a deeper level, create the vars there, generalize at the outer
+     level so they become the scheme's quantified tyvars. *)
+  let tp_names = List.map (fun (tp : type_param) -> tp.tp_name.name)
+      fd.fd_type_params in
+  let saved_tp = List.map (fun n -> (n, Hashtbl.find_opt ctx.type_env n))
+      tp_names in
+  enter_level ctx;
+  List.iter (fun n ->
+    Hashtbl.replace ctx.type_env n (fresh_tyvar ctx.level)) tp_names;
+  let restore_tp () =
+    List.iter (fun (n, old) -> match old with
+      | Some t -> Hashtbl.replace ctx.type_env n t
+      | None -> Hashtbl.remove ctx.type_env n) saved_tp
+  in
   (* Extern functions have no body — register the signature so callers can
      typecheck against it, then bail out before the body-check pass. *)
   if fd.fd_body = FnExtern then begin
@@ -1340,8 +1362,10 @@ let check_fn_decl (ctx : context) (fd : fn_decl) : unit result =
       in
       TArrow (param_ty, q, acc, fn_eff)
     ) param_tys fd.fd_params ret_ty in
+    exit_level ctx;
     let sc = generalize ctx fn_ty in
     bind_scheme ctx fd.fd_name.name sc;
+    restore_tp ();
     Ok ()
   end
   else
@@ -1396,9 +1420,13 @@ let check_fn_decl (ctx : context) (fd : fn_decl) : unit result =
     | Some sc -> Hashtbl.replace ctx.name_types n sc
     | None -> Hashtbl.remove ctx.name_types n
   ) old;
-  (* Generalize and rebind the function with its polymorphic type *)
+  (* Generalize and rebind the function with its polymorphic type.
+     exit_level first so the `<T>` type-param vars (created at the deeper
+     level above) are quantified by `generalize` (#135 slice 7). *)
+  exit_level ctx;
   let sc = generalize ctx fn_ty in
   bind_scheme ctx fd.fd_name.name sc;
+  restore_tp ();
   Ok ()
 
 (** Register a type declaration in the context. *)
