@@ -132,3 +132,25 @@ Neither role is subordinate. They are kept distinct in documentation and in
 
 See `typed-wasm/docs/architecture/AGGREGATE-LIBRARY-VISION.adoc` for the
 aggregate library design.
+
+== Stdlib Namespace Model: Real Modules (ADR-011)
+
+The standard library uses real modules with qualified paths, *not* a flat
+de-duplicated prelude.
+
+Every `stdlib/*.affine` declares `module <Name>;`; cross-file use is
+explicit (`use option::{Option, Some, None};` / `Result::unwrap`); there is
+exactly one canonical definition per name, owned by its module. A minimal
+prelude module may *re-export* the universally needed names (`Option`,
+`Result`, `Some`/`None`/`Ok`/`Err`) — re-exports, never independent
+redefinitions.
+
+This resolves the `prelude` vs `option` vs `result` signature-divergent
+duplicates (`prelude.map(arr, f)` vs `option.map(f, opt)`) by single
+ownership, and makes the AOT pipeline exercise real cross-module
+resolution — the actual objective of issue #128. It is consistent with
+the machinery the compiler (`module_loader.ml`, `module`/`use`/`::`
+grammar) and the newer stdlib files (Core, Deno, Vscode, …) already use.
+
+Settles issue #132; gates #133/#135/#137/#138. Full ADR in
+`.machine_readable/6a2/META.a2ml` (ADR-011).

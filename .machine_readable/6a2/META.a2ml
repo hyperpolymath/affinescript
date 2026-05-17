@@ -669,3 +669,77 @@ references = [
   "docs/DESIGN-VISION.adoc (faces section)",
   "docs/specs/faces.adoc",
 ]
+
+[[adr]]
+id = "ADR-011"
+status = "accepted"
+date = "2026-05-17"
+title = "Stdlib namespace model: real modules with qualified paths"
+context = """
+The AffineScript stdlib was never compiled through the static
+resolve → typecheck → codegen pipeline as a coherent unit (issue #128).
+Its core files (prelude, option, result, collections, string, io,
+testing, effects, math, traits) are interpreter-era code: a flat global
+namespace with no `module`/`use`/`open`, and conflicting duplicate
+definitions across files — `prelude.affine` and `option.affine` both
+define `is_some`/`unwrap`/`map`/… with *incompatible* signatures
+(`prelude.map(arr, f)` vs `option.map(f, opt)`). Commit b895374 seeded
+`Some/None/Ok/Err` as builtins to make `string.affine` resolve
+standalone, a band-aid that entrenches the flat namespace.
+
+Issue #132 required a single ruling — real modules vs intentionally
+flat-and-deduplicated — because #133 (dedup), #135 (whole-stdlib
+compile), #137 (multi-module integration test) and #138 (band-aid
+removal) all branch on it.
+
+The compiler already has the machinery: the grammar accepts
+`module X;`, `use path;` and `::`-qualified paths; `module_loader.ml`
+resolves module paths to files with search paths, nested modules and
+caching; and the *newer* stdlib files (Core, Crypto, Ajv, Sqlite,
+Grammy, Deno, Network, Vscode, VscodeLanguageClient) already declare
+`module X;` and use qualified constructors (`Ordering::Less` in
+traits.affine). Only the legacy core files are flat.
+"""
+decision = """
+The stdlib uses **real modules with qualified paths**, not a flat
+de-duplicated prelude.
+
+- Every `stdlib/*.affine` declares `module <Name>;` and is addressed by
+  its module path.
+- Cross-file use is explicit: `use option::{Option, Some, None};` /
+  qualified references `Result::unwrap`.
+- There is exactly one canonical definition per name, owned by its
+  module. The `prelude`/`option`/`result` overlaps are resolved by
+  giving each name a single owning module and having the others `use`
+  it (no duplicate, signature-divergent copies).
+- A minimal, explicit prelude module may re-export the few universally
+  needed names (`Option`, `Result`, `Some`, `None`, `Ok`, `Err`); it
+  contains *re-exports*, not independent redefinitions.
+- The b895374 seeded builtins are removed once resolution flows through
+  the module path (tracked by #138); they are not load-bearing.
+
+This is the path consistent with the machinery the compiler and the
+newer stdlib already use; it makes the AOT pipeline exercise real
+cross-module resolution, which is the actual #128 objective.
+"""
+consequences = """
+- #133 removes the duplicate/conflicting prelude/option/result defs by
+  assigning each name one owning module; non-owners `use` it.
+- #135 brings the legacy core files under `module`/`use` as it makes
+  each compile through resolve → typecheck → codegen.
+- #137 (multi-module integration test) is meaningful: it exercises
+  several modules `use`d together, which the flat model could not test.
+- #138 can delete the seeded-builtins band-aid once the prelude
+  re-export module exists and resolution uses it.
+- Slightly more up-front import wiring than a flat prelude, but it is
+  the model the language already commits to elsewhere (ADR pointer:
+  newer stdlib + `module_loader.ml`), so no new compiler design debt.
+- This decision is settled; do not reopen without amending this ADR.
+"""
+references = [
+  "https://github.com/hyperpolymath/affinescript/issues/128",
+  "https://github.com/hyperpolymath/affinescript/issues/132",
+  "docs/history/MODULE-SYSTEM-PROGRESS.md (2026-05-17 decision section)",
+  "lib/module_loader.ml",
+  "lib/parser.mly (module_decl / import_decl / COLONCOLON)",
+]
