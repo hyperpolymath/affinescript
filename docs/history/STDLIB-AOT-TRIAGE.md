@@ -3,77 +3,71 @@
 
 # Stdlib AOT triage — #135 punch list
 
-**Refreshed 2026-05-17** after merging slices 1, 2, 3, 6. Live per-file
-state of driving every `stdlib/*.affine` through
-`resolve → typecheck → codegen` (Deno-ESM).
+**Refreshed 2026-05-17 (r2)** after merging #135 slices 1,2,3,5,6,6b,7,8.
 
 ## Done (merged to main)
 
 | Slice | What | PR |
 |---|---|---|
-| #131 | `>>` nested-generic close (keystone) | #149 |
-| #134 | prelude unwrap/unwrap_result soundness | #150 |
-| #132 | namespace ADR-011 | #151 |
-| #133 | single-ownership dedup | #152 |
-| #135 sl.1 | `fn(x) => e` anon-function expressions | #153 |
-| #135 sl.2 | slice/range index `e[a:b]` via `slice` builtin | #154 |
-| #135 sl.3 | bare `effect E;` + ADR-008 `-> T / E` row | #155 |
-| #135 sl.6 | `try`→`attempt`, `ref`→`make_ref` (keyword-as-ident) | #156 |
+| #131/#134/#132/#133 | front (keystone/soundness/ADR-011/dedup) | #149/#150/#151/#152 |
+| sl.1 | `fn(x)=>e` anon-function expressions | #153 |
+| sl.2 | slice/range index `e[a:b]` via `slice` builtin | #154 |
+| sl.3 | bare `effect E;` + ADR-008 `-> T / E` row | #155 |
+| sl.6 | `try`→`attempt`, `ref`→`make_ref` | #156 |
+| sl.6b | `as`→`xs` (collections) | #158 |
+| sl.5 | trait default bodies (left-factored; conflicts ↓) | #159 |
+| **sl.7** | **let-polymorphism**: generic fn `<T>` instantiation + prelude `mut` | #163 |
+| sl.8 | module visibility/imports per ADR-011 | #164 |
 
 ## Current sweep
 
-| File | Stage | Site | Slice / root cause |
-|---|---|---|---|
-| `string` | ✅ OK | — | full pipeline |
-| `Core` | ✅ OK | — | full pipeline |
-| `Ajv`/`Crypto`/`Grammy`/`Network`/`Sqlite`/`Vscode`/`VscodeLanguageClient` | ✅ OK | — | full pipeline |
-| `traits` | PARSE | `12:43` | **Slice 5** — trait method *default body* + `ref self` (`pub fn ne(ref self, ...) { ... }`) |
-| `collections` | PARSE | `40:13` | **Slice 6b** — `as` used as a parameter name (`fn zip<A,B>(as: [A], ...)`); `as` is the AS keyword. Same class as slice 6 → rename (`elems`) |
-| `math` | PARSE | `354:3` | **Slice 4** — `if cond { ... }` (no else) used as a statement between other statements; the parser commits to if-as-trailing-expr |
-| `testing` | PARSE | `302:3` | **Slice 4** — record literal `{ f: v }` as the block's final expression after statements (the pre-existing `list(stmt)` vs `expr_record_body` r/r) |
-| `option` | PARSE | `320:15` | **Slice 9** — `&mut Option<T>` reference parameter type (`fn take<T>(opt: &mut Option<T>)`); flagged in #128 itself (take/get_or_insert + affine/borrow lowering) |
-| `result` | RESOLVE | — | **Slice 8** — module/`use prelude::{...}` resolution (post-#133 model) |
-| `io` | RESOLVE | — | **Slice 8** — builtin/extern + namespace resolution; model-coupled |
-| `prelude` | TYPECHECK | `Unify (T, Int)` | **Slice 7 (root cause refined)** — *not* a simple empty-array literal (that pattern compiles in isolation). Deeper type-instantiation: `fold`'s `(U,T)->U` HOF instantiated monomorphically by `sum`/`product` (`fold(arr, 0, …)` forces `0:Int`). Needs careful typecheck investigation |
-| `effects` | TYPECHECK | "Not implemented: Too many arguments for kind" | **Slice 10** — kind-checking of generic externs (`extern fn make_ref<T>(x: T) -> Ref<T> / state`); distinct codegen/kind defect |
+| File | Stage | Slice / root cause |
+|---|---|---|
+| `prelude` | ✅ OK | compiles end-to-end (sl.7 + sl.8) |
+| `string` `Core` + 7 module files | ✅ OK | — |
+| `result` | TYPECHECK | post-sl.8 deeper typecheck (imports now resolve) — **slice 12** |
+| `collections` | RESOLVE UndefinedVariable | `binary_search`→`binary_search_helper` — **slice 11** (resolver forward-ref) |
+| `io` | RESOLVE UndefinedVariable | `split` lives in `string.affine`; needs cross-module import — **slice 8-tail** |
+| `option` | PARSE 320 | `&mut Option<T>` ref param (`take`/`get_or_insert`) — **slice 9** |
+| `testing` | PARSE 302 | record-literal `{f:v}` as final block expr after stmts — **slice 4** |
+| `math` | PARSE 354 | `if`(no else) as a statement between stmts — **slice 4** |
+| `traits` | PARSE 124 | `while let` / `Vec::new()` / `let mut` mid-block — **slice 4** |
+| `effects` | TYPECHECK | "Too many arguments for kind" — generic-extern kind-check — **slice 10** |
 
-9/19 compile end-to-end. Parse walls + deeper defects regroup into the
-slices below.
+~10/19 compile end-to-end (was 9 at session start; the *highest-leverage*
+compiler fix — let-polymorphism, sl.7 — is the session's key win: it
+unblocked the entire typecheck wall).
 
-## Remaining slices — difficulty & autonomy
+## Remaining slices — all correctness-/grammar-critical (rigorous, not auto)
 
-**Safe to do autonomously (bounded, low risk):**
-- **Slice 6b** — `as` param-name in `collections.affine` → rename
-  (`elems`/`xs`). Pure stdlib edit, zero grammar risk. ~15 min.
-- **Slice 5** — trait default bodies + `ref self`. `trait_item`
-  already has `TraitFnDefault f` (line ~537); the gap is the `ref self`
-  receiver in trait-method position. Grammar-bounded, medium; verify
-  conflict counts.
-
-**Needs care — rigorous, not auto-rushed:**
-- **Slice 4** (testing, math) — block/statement ambiguity. The hardest:
-  `if`/`while`/`for` as statements vs trailing-expr, and record-literal
-  vs block `{`. This is the grammar's pre-existing `list(stmt)` /
-  `expr_record_body` reduce/reduce. High regression risk; needs a
-  careful block-grammar restructure with full conflict + suite
-  re-verification. Multi-step.
-- **Slice 9** (option) — `&mut T` reference parameters with
-  reassignment. Touches affine/borrow lowering (the #128-noted hard
-  case). Correctness-critical (ownership) — must be rigorous.
-- **Slice 7** (prelude) — type-checker instantiation of HOF `fold`
-  under monomorphic `sum`/`product`. Correctness-critical typecheck
-  code; investigate, don't guess.
-- **Slice 8** (result, io) — module/extern resolution against the
-  post-#133 model (ADR-011). Model-coupled.
-- **Slice 10** (effects) — generic-extern kind-checking
-  ("Too many arguments for kind"). Distinct kind/codegen defect.
+- **slice 4** — block/statement LR ambiguity (testing/math/traits). The
+  grammar's pre-existing `list(stmt)` vs `expr_record_body` r/r:
+  `if`/`while`/`for` as statements vs trailing-expr; record-literal vs
+  block `{`; `while let`. High regression risk; careful checkpointed
+  block-grammar restructure + full conflict re-verify.
+- **slice 9** — `&mut T` reference parameters with reassignment
+  (`option` take/get_or_insert). Affine/borrow lowering;
+  ownership-soundness-critical.
+- **slice 10** — generic-extern kind-checking ("Too many arguments for
+  kind"); `effects` `extern fn make_ref<T>`.
+- **slice 11** (NEW, discovered in sl.8) — the resolver is single-pass
+  with no top-level pre-registration, so **forward references between
+  top-level functions fail** (`fn a(){ b() } fn b(){}` errors even
+  *without* `module`). Pre-existing, affects collections and likely
+  many files; resolver two-pass fix — resolver-critical.
+- **slice 8-tail** — `io` needs `split` from `string.affine`
+  cross-module; requires `module string; pub fn split` + `use
+  string::{split}`, then re-verify every string.affine consumer
+  (string currently compiles — must not regress).
+- **slice 12** — `result` post-sl.8 deeper typecheck (separate from
+  sl.7; surfaced once imports resolved).
 
 ## Closure
 
-#135 closes when all files compile resolve→typecheck→codegen; then
-#138 (remove b895374 band-aid), #136 (CI AOT smoke gate), #137
-(multi-module integration test). The safe slices (6b, 5) are ~1 short
-session; slices 4/7/8/9/10 are correctness-/grammar-critical and are
-each their own focused, rigorous unit (the "rigorous over partial-hack"
-discipline applies — no guessed changes to typecheck/borrow/block
-grammar).
+#135 closes when all files compile resolve→typecheck→codegen, then
+#138/#136/#137. Slices 4/9/10/11/12 + 8-tail each remain their own
+rigorous, focused unit (per the "rigorous over partial-hack"
+discipline — no unattended changes to the block grammar, borrow
+checker, kind checker, or resolver two-pass). The two highest-impact
+remaining are **slice 11** (resolver forward-ref — likely unblocks
+several files at once) and **slice 4** (3 files).
