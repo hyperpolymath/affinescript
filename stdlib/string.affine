@@ -116,7 +116,7 @@ fn repeat(s: String, n: Int) -> String {
 }
 
 /// Split string by a delimiter
-fn split(s: String, delimiter: String) -> [String] {
+pub fn split(s: String, delimiter: String) -> [String] {
   let slen = len(s);
   let dlen = len(delimiter);
 
