@@ -299,11 +299,11 @@ fn bench(f: () -> (), iterations: Int) -> BenchResult {
     i = i + 1;
   }
 
-  let total = time_now() - start;
+  let tot = time_now() - start;
   {
     iterations: iterations,
-    total_time: total,
-    avg_time: total / (iterations + 0.0)
+    total_time: tot,
+    avg_time: tot / (iterations + 0.0)
   }
 }
 
