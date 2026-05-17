@@ -3267,12 +3267,41 @@ let test_tuple_type_still_works () =
     (parse_check_passes
        {|fn first(t: (Int, String)) -> Int { return 0; }|})
 
+(* Issue #131: nested applied generics whose closing '>'s fuse into a single
+   ">>" (or ">>>") token must still parse — the lexer emits GTGT but the
+   driver re-splits it when closing a type-argument list. *)
+let test_angle_nested_gtgt () =
+  Alcotest.(check bool) "Option<Result<T, E>> (>> close) parses + typechecks" true
+    (parse_check_passes
+       {|fn f(o: Option<Result<Int, String>>) -> Int { return 0; }|})
+
+let test_angle_nested_gtgtgt () =
+  Alcotest.(check bool) "Option<Option<Result<T, E>>> (>>> close) parses" true
+    (parse_check_passes
+       {|fn f(o: Option<Option<Result<Int, String>>>) -> Int { return 0; }|})
+
+let test_angle_nested_return_pos () =
+  Alcotest.(check bool) "-> Result<Option<T>, E> nested in return position" true
+    (parse_check_passes
+       {|fn f() -> Result<Option<Int>, String> { return Ok(None); }|})
+
+(* Non-regression: a real right-shift expression must still be one GTGT,
+   not split, since GTGT is grammatical there. *)
+let test_shift_operator_not_split () =
+  Alcotest.(check bool) "a >> b right-shift expression unaffected by #131 fix" true
+    (parse_check_passes
+       {|fn sh(a: Int, b: Int) -> Int { return a >> b; }|})
+
 let type_syntax_sugar_tests = [
   Alcotest.test_case "fn() -> T (zero-arg fn type)"           `Quick test_fn_type_zero_arg;
   Alcotest.test_case "fn(A, B) -> T (multi-arg fn type)"      `Quick test_fn_type_multi_arg;
   Alcotest.test_case "Option<T> (angle brackets, type app)"   `Quick test_angle_brackets_type_app;
   Alcotest.test_case "Result<T, E> (angle brackets, 2 args)"  `Quick test_angle_brackets_two_args;
   Alcotest.test_case "fn f<T> (angle brackets, type params)"  `Quick test_angle_brackets_type_params;
+  Alcotest.test_case "Option<Result<T,E>> (#131 >> close)"    `Quick test_angle_nested_gtgt;
+  Alcotest.test_case "Option<Option<Result<T,E>>> (#131 >>>)" `Quick test_angle_nested_gtgtgt;
+  Alcotest.test_case "-> Result<Option<T>,E> (#131 nested)"   `Quick test_angle_nested_return_pos;
+  Alcotest.test_case "a >> b shift unaffected (#131 guard)"   `Quick test_shift_operator_not_split;
   Alcotest.test_case "(A, B) -> C (multi-arg arrow)"          `Quick test_multi_arg_arrow;
   Alcotest.test_case "(A, B) without arrow remains tuple"     `Quick test_tuple_type_still_works;
 ]
