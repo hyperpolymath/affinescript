@@ -774,12 +774,55 @@ let test_interp_full_pipeline () =
   | Error msg -> Alcotest.fail msg
   | Ok _env -> ()
 
+(* Issue #134: prelude `unwrap`/`unwrap_result` previously only println'd on
+   None/Err and fell through returning Unit (unsound for a `-> T` signature).
+   They must now diverge via `panic`. These assert the panic path. *)
+let test_unwrap_none_panics () =
+  let src = {|
+type Option<T> = Some(T) | None
+fn unwrap<T>(opt: Option<T>) -> T {
+  match opt {
+    Some(value) => value,
+    None => panic("Called unwrap on None")
+  }
+}
+const result: Int = unwrap(None);
+|} in
+  let prog = Parse_driver.parse_string ~file:"<test>" src in
+  match Interp.eval_program prog with
+  | Ok _ -> Alcotest.fail "expected unwrap(None) to panic; evaluation succeeded"
+  | Error (Value.RuntimeError msg) ->
+      Alcotest.(check string) "panic message" "Called unwrap on None" msg
+  | Error e -> Alcotest.failf "expected RuntimeError, got: %s"
+                 (Value.show_eval_error e)
+
+let test_unwrap_result_err_panics () =
+  let src = {|
+type Result<T, E> = Ok(T) | Err(E)
+fn unwrap_result<T, E>(res: Result<T, E>) -> T {
+  match res {
+    Ok(value) => value,
+    Err(_) => panic("Called unwrap on Err")
+  }
+}
+const result: Int = unwrap_result(Err("boom"));
+|} in
+  let prog = Parse_driver.parse_string ~file:"<test>" src in
+  match Interp.eval_program prog with
+  | Ok _ -> Alcotest.fail "expected unwrap_result(Err) to panic; evaluation succeeded"
+  | Error (Value.RuntimeError msg) ->
+      Alcotest.(check string) "panic message" "Called unwrap on Err" msg
+  | Error e -> Alcotest.failf "expected RuntimeError, got: %s"
+                 (Value.show_eval_error e)
+
 let interp_tests = [
   Alcotest.test_case "simple evaluation" `Quick test_interp_simple;
   Alcotest.test_case "bitwise"    `Quick test_interp_bitwise;
   Alcotest.test_case "arithmetic" `Quick test_interp_arithmetic;
   Alcotest.test_case "lambda" `Quick test_interp_lambda;
   Alcotest.test_case "full pipeline" `Quick test_interp_full_pipeline;
+  Alcotest.test_case "#134 unwrap(None) panics" `Quick test_unwrap_none_panics;
+  Alcotest.test_case "#134 unwrap_result(Err) panics" `Quick test_unwrap_result_err_panics;
 ]
 
 (* ============================================================================
