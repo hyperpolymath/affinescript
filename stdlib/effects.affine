@@ -18,7 +18,9 @@ extern fn read_file(path: String) -> String / io;
 extern fn write_file(path: String, content: String) -> Unit / io;
 
 // Built-in State operations
-extern fn ref<T>(x: T) -> Ref<T> / state;
+// `make_ref` (not `ref`) because `ref` is a reserved ownership keyword;
+// see #135 keyword-as-identifier slice.
+extern fn make_ref<T>(x: T) -> Ref<T> / state;
 extern fn get<T>(r: Ref<T>) -> T / state;
 extern fn set<T>(r: Ref<T>, x: T) -> Unit / state;
 

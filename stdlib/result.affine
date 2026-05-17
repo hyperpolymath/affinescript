@@ -225,8 +225,10 @@ fn result_or<T, E>(a: Result<T, E>, b: Result<T, E>) -> Result<T, E> {
 // Error Handling Patterns
 // ============================================================================
 
-/// Try block emulation - execute function and catch panics as Err
-fn try<T>(f: () -> T) -> Result<T, String> {
+/// Try block emulation - execute function and catch panics as Err.
+/// Named `attempt` (not `try`) because `try` is a reserved keyword
+/// (try/catch/finally); see #135 keyword-as-identifier slice.
+fn attempt<T>(f: () -> T) -> Result<T, String> {
   // TODO: Requires exception handling support
   try {
     Ok(f())
