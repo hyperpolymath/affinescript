@@ -56,7 +56,7 @@ let create_context () : context =
   (* Console I/O *)
   def "print"; def "println"; def "eprint"; def "eprintln";
   (* String / char builtins *)
-  def "len"; def "string_get"; def "string_sub"; def "string_find";
+  def "len"; def "slice"; def "string_get"; def "string_sub"; def "string_find";
   def "char_to_int"; def "int_to_char"; def "show";
   def "to_lowercase"; def "to_uppercase"; def "trim";
   def "int_to_string"; def "float_to_string"; def "string_length";

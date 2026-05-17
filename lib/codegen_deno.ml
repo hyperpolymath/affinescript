@@ -211,6 +211,8 @@ let () =
      not externs — endsWith/stripSuffix/pathJoin/etc. are NOT here:
      they are real AffineScript built on `ends_with`/`substring`/`++`. *)
   b "len"            (fun a -> Printf.sprintf "((%s).length)" (arg 0 a));
+  b "slice"          (fun a -> Printf.sprintf "((%s).slice(%s, %s))"
+                                 (arg 0 a) (arg 1 a) (arg 2 a));
   b "string_length"  (fun a -> Printf.sprintf "((%s).length)" (arg 0 a));
   b "string_get"     (fun a -> Printf.sprintf "__as_strGet(%s, %s)" (arg 0 a) (arg 1 a));
   b "string_sub"     (fun a -> Printf.sprintf "__as_strSub(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));

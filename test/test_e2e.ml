@@ -3318,6 +3318,19 @@ let test_fn_lambda_typed_block () =
     (parse_check_passes
        {|fn use_it() -> Int { let g = fn(x: Int) -> Int { x }; return g(2); }|})
 
+(* Issue #135 slice 2: slice/range index `e[a:b]` / `e[a:]` / `e[:b]` / `e[:]`
+   desugars to the `slice` builtin. Used by option.affine (`list[1:]`) and
+   collections.affine. Plain `e[i]` indexing must be unaffected. *)
+let test_slice_full_range () =
+  Alcotest.(check bool) "xs[1:3] / xs[1:] / xs[:2] / xs[:] parse + typecheck" true
+    (parse_check_passes
+       {|fn s(xs: [Int]) -> [Int] { let a = xs[1:3]; let b = xs[1:]; let c = xs[:2]; return xs[:]; }|})
+
+let test_slice_index_not_regressed () =
+  Alcotest.(check bool) "plain xs[0] index still parses + typechecks" true
+    (parse_check_passes
+       {|fn idx(xs: [Int]) -> Int { return xs[0]; }|})
+
 let test_multi_arg_arrow () =
   Alcotest.(check bool) "(A, B) -> C parses + typechecks" true
     (parse_check_passes
@@ -3368,6 +3381,8 @@ let type_syntax_sugar_tests = [
   Alcotest.test_case "fn(x) => x (#135 fn-lambda expr)"       `Quick test_fn_lambda_arrow_expr;
   Alcotest.test_case "fn(x) => e as arg (#135 fn-lambda)"     `Quick test_fn_lambda_higher_order;
   Alcotest.test_case "fn(x:Int) -> Int { } (#135 fn-lambda)"  `Quick test_fn_lambda_typed_block;
+  Alcotest.test_case "xs[a:b]/[a:]/[:b]/[:] (#135 slice 2)"   `Quick test_slice_full_range;
+  Alcotest.test_case "xs[0] index non-regressed (#135 sl.2)"  `Quick test_slice_index_not_regressed;
   Alcotest.test_case "(A, B) -> C (multi-arg arrow)"          `Quick test_multi_arg_arrow;
   Alcotest.test_case "(A, B) without arrow remains tuple"     `Quick test_tuple_type_still_works;
 ]
