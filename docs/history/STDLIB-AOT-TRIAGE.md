@@ -3,104 +3,77 @@
 
 # Stdlib AOT triage — #135 punch list
 
-**Generated 2026-05-17**, against the compiler at `feat/135a-lambda-expr`
-(origin/main + #131/#134 merged, #133/PR #152 auto-merging, + #135 slice 1
-`fn(params) => expr`). This is the live per-file state of driving every
-`stdlib/*.affine` through `resolve → typecheck → codegen` (Deno-ESM).
+**Refreshed 2026-05-17** after merging slices 1, 2, 3, 6. Live per-file
+state of driving every `stdlib/*.affine` through
+`resolve → typecheck → codegen` (Deno-ESM).
 
-Methodology: `affinescript compile stdlib/<f>.affine -o /tmp/x.js
---deno-esm`, first error per file, classified by pipeline stage.
+## Done (merged to main)
 
-## Status snapshot
+| Slice | What | PR |
+|---|---|---|
+| #131 | `>>` nested-generic close (keystone) | #149 |
+| #134 | prelude unwrap/unwrap_result soundness | #150 |
+| #132 | namespace ADR-011 | #151 |
+| #133 | single-ownership dedup | #152 |
+| #135 sl.1 | `fn(x) => e` anon-function expressions | #153 |
+| #135 sl.2 | slice/range index `e[a:b]` via `slice` builtin | #154 |
+| #135 sl.3 | bare `effect E;` + ADR-008 `-> T / E` row | #155 |
+| #135 sl.6 | `try`→`attempt`, `ref`→`make_ref` (keyword-as-ident) | #156 |
 
-| File | Stage | Site | Root cause / slice |
+## Current sweep
+
+| File | Stage | Site | Slice / root cause |
 |---|---|---|---|
 | `string` | ✅ OK | — | full pipeline |
 | `Core` | ✅ OK | — | full pipeline |
-| `Ajv` `Crypto` `Grammy` `Network` `Sqlite` `Vscode` `VscodeLanguageClient` | ✅ OK | — | full pipeline (already `module`-declared) |
-| `prelude` | TYPECHECK | `Unify.TypeMismatch (T, Int)` | **Slice 7** — empty-array literal `let result = []` then `result ++ [..]` not generalised |
-| `option` | PARSE | `238:15` `Some(list[1:])` | **Slice 2** — slice/range index `list[1:]` |
-| `collections` | PARSE | `24:35` `take(n-1, list[1:])` | **Slice 2** — same slice syntax |
-| `result` | PARSE | `221:1` `fn try<T>(...)` | **Slice 6** — `try` is a reserved keyword (TRY); used as a fn name |
-| `effects` | PARSE | `5:8` `effect io;` | **Slice 3** — bare `effect <name>;` declaration form |
-| `testing` | PARSE | `302:3` `let total = ...;` then `{` | **Slice 4** — statement sequencing: `let;` followed by a block expr |
-| `math` | PARSE | `354:3` `let total = 0.0;` then `for` | **Slice 4** — same: `let;` followed by `for` statement |
-| `traits` | PARSE | `12:43` `pub fn ne(ref self, ...) -> Bool {` | **Slice 5** — trait method *default bodies* / `ref self` receiver |
-| `io` | RESOLVE | `Resolve.UndefinedVariable` | **Slice 8** — builtin/extern + namespace wiring; interacts with #132/#133 module model |
+| `Ajv`/`Crypto`/`Grammy`/`Network`/`Sqlite`/`Vscode`/`VscodeLanguageClient` | ✅ OK | — | full pipeline |
+| `traits` | PARSE | `12:43` | **Slice 5** — trait method *default body* + `ref self` (`pub fn ne(ref self, ...) { ... }`) |
+| `collections` | PARSE | `40:13` | **Slice 6b** — `as` used as a parameter name (`fn zip<A,B>(as: [A], ...)`); `as` is the AS keyword. Same class as slice 6 → rename (`elems`) |
+| `math` | PARSE | `354:3` | **Slice 4** — `if cond { ... }` (no else) used as a statement between other statements; the parser commits to if-as-trailing-expr |
+| `testing` | PARSE | `302:3` | **Slice 4** — record literal `{ f: v }` as the block's final expression after statements (the pre-existing `list(stmt)` vs `expr_record_body` r/r) |
+| `option` | PARSE | `320:15` | **Slice 9** — `&mut Option<T>` reference parameter type (`fn take<T>(opt: &mut Option<T>)`); flagged in #128 itself (take/get_or_insert + affine/borrow lowering) |
+| `result` | RESOLVE | — | **Slice 8** — module/`use prelude::{...}` resolution (post-#133 model) |
+| `io` | RESOLVE | — | **Slice 8** — builtin/extern + namespace resolution; model-coupled |
+| `prelude` | TYPECHECK | `Unify (T, Int)` | **Slice 7 (root cause refined)** — *not* a simple empty-array literal (that pattern compiles in isolation). Deeper type-instantiation: `fold`'s `(U,T)->U` HOF instantiated monomorphically by `sum`/`product` (`fold(arr, 0, …)` forces `0:Int`). Needs careful typecheck investigation |
+| `effects` | TYPECHECK | "Not implemented: Too many arguments for kind" | **Slice 10** — kind-checking of generic externs (`extern fn make_ref<T>(x: T) -> Ref<T> / state`); distinct codegen/kind defect |
 
-9/19 already compile end-to-end. The remaining 10 reduce to **7 distinct
-feature slices**, none of which is the #131 angle-bracket or #135-slice-1
-lambda defect (both fixed).
+9/19 compile end-to-end. Parse walls + deeper defects regroup into the
+slices below.
 
-## Slices (proposed order, each its own PR)
+## Remaining slices — difficulty & autonomy
 
-Ordering rationale: do the two-for-one parser slices first (max files
-unblocked per change), keep the model-coupled one (Slice 8) until after
-#133/PR #152 lands, and the typecheck/keyword ones are independent.
+**Safe to do autonomously (bounded, low risk):**
+- **Slice 6b** — `as` param-name in `collections.affine` → rename
+  (`elems`/`xs`). Pure stdlib edit, zero grammar risk. ~15 min.
+- **Slice 5** — trait default bodies + `ref self`. `trait_item`
+  already has `TraitFnDefault f` (line ~537); the gap is the `ref self`
+  receiver in trait-method position. Grammar-bounded, medium; verify
+  conflict counts.
 
-### Slice 2 — slice/range index `list[1:]`  *(unblocks `option`, `collections`)*
-Postfix index currently accepts `e[i]` only. Add range-index
-`e[a:b]` / `e[a:]` / `e[:b]` / `e[:]` to the postfix-expr rule, lowering
-to the existing slice/`Array` op (check `lib/parser.mly` postfix rule +
-how `typecheck.ml`/codegen model slices — `string` already slices, so a
-lowering target likely exists). Two files, one feature. Independent.
+**Needs care — rigorous, not auto-rushed:**
+- **Slice 4** (testing, math) — block/statement ambiguity. The hardest:
+  `if`/`while`/`for` as statements vs trailing-expr, and record-literal
+  vs block `{`. This is the grammar's pre-existing `list(stmt)` /
+  `expr_record_body` reduce/reduce. High regression risk; needs a
+  careful block-grammar restructure with full conflict + suite
+  re-verification. Multi-step.
+- **Slice 9** (option) — `&mut T` reference parameters with
+  reassignment. Touches affine/borrow lowering (the #128-noted hard
+  case). Correctness-critical (ownership) — must be rigorous.
+- **Slice 7** (prelude) — type-checker instantiation of HOF `fold`
+  under monomorphic `sum`/`product`. Correctness-critical typecheck
+  code; investigate, don't guess.
+- **Slice 8** (result, io) — module/extern resolution against the
+  post-#133 model (ADR-011). Model-coupled.
+- **Slice 10** (effects) — generic-extern kind-checking
+  ("Too many arguments for kind"). Distinct kind/codegen defect.
 
-### Slice 3 — `effect <name>;` declaration  *(unblocks `effects`)*
-Grammar has `effect_decl` for `effect E { ops }`; `effects.affine` uses
-the bare forward-declaration form `effect io;`. Add the bare form to
-`effect_decl` (empty-op effect) or a dedicated production. Independent;
-small.
+## Closure
 
-### Slice 4 — statement sequencing: `let …;` then block/`for`  *(unblocks `testing`, `math`)*
-Both fail where a `let …;` statement is immediately followed by another
-statement that is a block expr (`{ … }`) or a `for`. Root cause is in
-the block/statement-list rule (the `list(stmt)` vs `expr_record_body`
-reduce/reduce noted in the grammar). Needs the statement-sequence rule
-disambiguated so a trailing-semicolon `let` composes with a following
-block/`for`. Independent; medium (touches the known r/r conflict — do
-rigorously, re-check conflict counts before/after).
-
-### Slice 5 — trait method default bodies + `ref self`  *(unblocks `traits`)*
-`trait_decl` accepts method *signatures*; `traits.affine` provides
-*default bodies* (`pub fn ne(ref self, ref other: Self) -> Bool { … }`).
-Add optional `fn_body` to trait method items and accept the `ref self`
-receiver form. Independent; medium.
-
-### Slice 6 — `try` as a value identifier  *(unblocks `result`)*
-`try` is the TRY keyword (try/catch). `result.affine` defines
-`fn try<T>(…)`. Decide: (a) make `try` a contextual keyword (allow as
-fn name / ident), or (b) rename the stdlib function (e.g. `attempt`).
-(a) is the resolve-at-source fix but wider; (b) is local and safe.
-Recommend (b) unless `try`-as-ident is wanted broadly. Independent; small.
-
-### Slice 7 — empty-array literal generalisation  *(unblocks `prelude`)*
-`map`/`filter` do `let result = []; for x in arr { result = result ++ [f(x)] }`.
-`[]` is inferred at a concrete element type (`Int`) and then conflicts
-with `[U]`. Needs the empty-array literal to take a fresh element tyvar
-unified by later use (or an annotation path). Typecheck/inference, not
-parsing. Independent; medium — touch `typecheck.ml` array-literal rule
-with care + regression test.
-
-### Slice 8 — `io` resolution / builtin + namespace  *(unblocks `io`)*  — **do after #133/PR #152**
-`io.affine` references runtime builtins (`print`, `read_file`, …) the
-static resolver doesn't know. This couples to the module/extern model
-(ADR-011 / #132) and the #133 ownership changes. Sequence it after
-PR #152 (#133) lands so it is solved against the real module model, not
-the interpreter-era flat namespace. Medium; model-coupled.
-
-## After all slices
-
-Then #135 closes; unblocks #136 (CI AOT smoke gate), #137 (multi-module
-integration test), #138 (remove b895374 band-aid). Estimated 3–5 further
-focused sessions for slices 2–8 (each: feature + tests + conflict
-re-verification), per the "rigorous over partial-hack" discipline.
-
-## Done so far (this epic)
-
-| Issue | PR | State |
-|---|---|---|
-| #131 `>>` nested-generic | #149 | merged |
-| #134 prelude unwrap soundness | #150 | merged |
-| #132 namespace ADR-011 | #151 | merged |
-| #133 single-ownership dedup | #152 | auto-merging |
-| #135 slice 1 (`fn(x)=>e`) | this PR | open |
+#135 closes when all files compile resolve→typecheck→codegen; then
+#138 (remove b895374 band-aid), #136 (CI AOT smoke gate), #137
+(multi-module integration test). The safe slices (6b, 5) are ~1 short
+session; slices 4/7/8/9/10 are correctness-/grammar-critical and are
+each their own focused, rigorous unit (the "rigorous over partial-hack"
+discipline applies — no guessed changes to typecheck/borrow/block
+grammar).
