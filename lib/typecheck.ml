@@ -1220,6 +1220,13 @@ let register_builtins (ctx : context) : unit =
       sc_body = body_of tv }
   in
   bind_scheme ctx "len" (poly1 (fun a -> TArrow (a, QOmega, ty_int, EPure)));
+  (* slice : a -> Int -> Int -> a  (issue #135 slice 2; arrays and strings,
+     mirroring `len`'s permissive `a`).  Curried like other builtin schemes. *)
+  bind_scheme ctx "slice"
+    (poly1 (fun a ->
+       TArrow (a, QOmega,
+         TArrow (ty_int, QOmega,
+           TArrow (ty_int, QOmega, a, EPure), EPure), EPure)));
   (* Honest string/char primitives underpinning stdlib/string.affine
      (issue #122 v2.5). Concrete String/Char types; the Deno-ESM backend
      lowers each to a JS intrinsic. char ::= TCon "Char". *)

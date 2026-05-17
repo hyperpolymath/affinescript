@@ -526,6 +526,23 @@ let create_initial_env () : env =
       | _ -> Error (TypeMismatch "len expects array or string")
     ));
 
+    (* slice(coll, lo, hi) — issue #135 slice 2. Half-open [lo, hi);
+       negative indices count from the end; bounds are clamped (JS .slice
+       semantics, matching the Deno-ESM backend lowering). *)
+    ("slice", VBuiltin ("slice", fun args ->
+      let norm n i = if i < 0 then max 0 (n + i) else min i n in
+      match args with
+      | [VArray arr; VInt lo; VInt hi] ->
+        let n = Array.length arr in
+        let lo = norm n lo and hi = norm n hi in
+        Ok (VArray (if hi > lo then Array.sub arr lo (hi - lo) else [||]))
+      | [VString s; VInt lo; VInt hi] ->
+        let n = String.length s in
+        let lo = norm n lo and hi = norm n hi in
+        Ok (VString (if hi > lo then String.sub s lo (hi - lo) else ""))
+      | _ -> Error (TypeMismatch "slice expects (array|string, Int, Int)")
+    ));
+
     (* -- String builtins --------------------------------------------------- *)
     ("string_get", VBuiltin ("string_get", fun args ->
       match args with

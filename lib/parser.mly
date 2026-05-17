@@ -645,6 +645,23 @@ expr_postfix:
   | e = expr_postfix DOT field = field_name { ExprField (e, field) }
   | e = expr_postfix DOT n = INT { ExprTupleIndex (e, n) }
   | e = expr_postfix LBRACKET idx = expr RBRACKET { ExprIndex (e, idx) }
+  /* Slice / range index (issue #135 slice 2): `e[a:b]`, `e[a:]`, `e[:b]`,
+     `e[:]`.  Desugars to the `slice` builtin (a -> Int -> Int -> a; lowered
+     to JS `.slice` on the Deno-ESM backend, like `len`).  No new AST node:
+     missing low = 0, missing high = `len(e)`.  Used by stdlib/option.affine
+     (`list[1:]`) and stdlib/collections.affine. */
+  | e = expr_postfix LBRACKET lo = expr COLON hi = expr RBRACKET
+    { ExprApp (ExprVar (mk_ident "slice" $startpos $endpos), [e; lo; hi]) }
+  | e = expr_postfix LBRACKET lo = expr COLON RBRACKET
+    { ExprApp (ExprVar (mk_ident "slice" $startpos $endpos),
+               [e; lo; ExprApp (ExprVar (mk_ident "len" $startpos $endpos), [e])]) }
+  | e = expr_postfix LBRACKET COLON hi = expr RBRACKET
+    { ExprApp (ExprVar (mk_ident "slice" $startpos $endpos),
+               [e; ExprLit (LitInt (0, mk_span $startpos $endpos)); hi]) }
+  | e = expr_postfix LBRACKET COLON RBRACKET
+    { ExprApp (ExprVar (mk_ident "slice" $startpos $endpos),
+               [e; ExprLit (LitInt (0, mk_span $startpos $endpos));
+                ExprApp (ExprVar (mk_ident "len" $startpos $endpos), [e])]) }
   | e = expr_postfix LPAREN args = separated_list(COMMA, expr) RPAREN { ExprApp (e, args) }
   | e = expr_postfix BACKSLASH field = field_name { ExprRowRestrict (e, field) }
   | e = expr_postfix QUESTION { ExprTry { et_body = { blk_stmts = []; blk_expr = Some e };
