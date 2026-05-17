@@ -351,18 +351,18 @@ fn mean(values: [Float]) -> Float {
   if n == 0 {
     return 0.0;
   }
-  let total = 0.0;
+  let mut tot = 0.0;
   for v in values {
-    total = total + v;
+    tot = tot + v;
   }
-  total / to_float(n)
+  tot / to_float(n)
 }
 
 /// Sum of a list of floats
 fn sum_float(values: [Float]) -> Float {
-  let total = 0.0;
+  let mut tot = 0.0;
   for v in values {
-    total = total + v;
+    tot = tot + v;
   }
-  total
+  tot
 }
