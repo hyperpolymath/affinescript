@@ -6,6 +6,8 @@
 (** Exception for parse errors *)
 exception Parse_error of string * Span.t
 
+module I = Parser.MenhirInterpreter
+
 (** Buffered token stream that provides Menhir-compatible interface *)
 type token_buffer = {
   mutable current_token : Token.t;
@@ -13,33 +15,8 @@ type token_buffer = {
   mutable next_token : unit -> Token.t * Span.t;
 }
 
-(** Create a Menhir-compatible lexer function from our token stream *)
-let lexer_of_token_stream (next : unit -> Token.t * Span.t) : Lexing.lexbuf -> Parser.token =
-  (* We need to track position for Menhir *)
-  let buf = ref None in
-  let get_next () =
-    match !buf with
-    | Some (tok, span) ->
-        buf := None;
-        (tok, span)
-    | None -> next ()
-  in
-  fun lexbuf ->
-    let (tok, span) = get_next () in
-    (* Update lexbuf positions for Menhir *)
-    lexbuf.Lexing.lex_start_p <- {
-      Lexing.pos_fname = span.Span.file;
-      pos_lnum = span.start_pos.line;
-      pos_bol = span.start_pos.offset - span.start_pos.col + 1;
-      pos_cnum = span.start_pos.offset;
-    };
-    lexbuf.Lexing.lex_curr_p <- {
-      Lexing.pos_fname = span.Span.file;
-      pos_lnum = span.end_pos.line;
-      pos_bol = span.end_pos.offset - span.end_pos.col + 1;
-      pos_cnum = span.end_pos.offset;
-    };
-    (* Convert our token type to Menhir's *)
+(** Convert our token type to Menhir's. *)
+let to_menhir_token (tok : Token.t) : Parser.token =
     match tok with
     | Token.INT n -> Parser.INT n
     | Token.FLOAT f -> Parser.FLOAT f
@@ -146,27 +123,82 @@ let lexer_of_token_stream (next : unit -> Token.t * Span.t) : Lexing.lexbuf -> P
     | Token.ROW_VAR s -> Parser.ROW_VAR s
     | Token.EOF -> Parser.EOF
 
-(** Parse a program from a string *)
-let parse_string ~file content =
-  let token_stream = Lexer.from_string ~file content in
-  let lexbuf = Lexing.from_string content in
-  lexbuf.Lexing.lex_curr_p <- { lexbuf.Lexing.lex_curr_p with pos_fname = file };
-  let lexer = lexer_of_token_stream token_stream in
-  try
-    Parser.program lexer lexbuf
+(** Convert a Span position to a Menhir/Lexing position. *)
+let lexing_pos ~file (p : Span.pos) : Lexing.position =
+  { Lexing.pos_fname = file;
+    pos_lnum = p.Span.line;
+    pos_bol = p.offset - p.col + 1;
+    pos_cnum = p.offset }
+
+(** Create a Menhir-compatible lexer function from our token stream.
+    Retained for any monolithic-API caller; the file/expr entry points
+    below use the incremental driver instead. *)
+let lexer_of_token_stream (next : unit -> Token.t * Span.t) : Lexing.lexbuf -> Parser.token =
+  let buf = ref None in
+  let get_next () =
+    match !buf with
+    | Some (tok, span) -> buf := None; (tok, span)
+    | None -> next ()
+  in
+  fun lexbuf ->
+    let (tok, span) = get_next () in
+    lexbuf.Lexing.lex_start_p <- lexing_pos ~file:span.Span.file span.start_pos;
+    lexbuf.Lexing.lex_curr_p  <- lexing_pos ~file:span.Span.file span.end_pos;
+    to_menhir_token tok
+
+(* The lexer emits ">>" as a single GTGT token (the right-shift operator).
+   In nested applied generics — `Option<Result<T, E>>` — the inner and outer
+   closing '>' fuse into that one GTGT, and the LR grammar, which expects a
+   single GT to close each type-argument list, cannot proceed (issue #131).
+
+   Real LR compilers (rustc, Roslyn) solve this by splitting the token at
+   parse time, *driven by the parser's own state* rather than a lexical
+   guess: a GTGT is re-read as two GT tokens only when, in the current state,
+   the parser would accept GT but not GTGT — i.e. we are closing a type-
+   argument list, where the shift operator is not grammatical.  Expression
+   `a >> b` is untouched: there GTGT is acceptable, so no split happens.
+   `>>>` lexes as GTGT then GT and is handled by one split plus the trailing
+   GT; deeper nestings compose the same way.  This requires the incremental
+   API so we can interrogate the parser via [I.acceptable]. *)
+let drive (type a) ~file
+    (start : Lexing.position -> a I.checkpoint)
+    (next : unit -> Token.t * Span.t) : a =
+  let pending : (Parser.token * Lexing.position * Lexing.position) option ref =
+    ref None in
+  let last_span = ref Span.dummy in
+  let next_triple () =
+    match !pending with
+    | Some t -> pending := None; t
+    | None ->
+        let (tok, span) = next () in
+        last_span := span;
+        let sp = lexing_pos ~file:span.Span.file span.start_pos in
+        let ep = lexing_pos ~file:span.Span.file span.end_pos in
+        (to_menhir_token tok, sp, ep)
+  in
+  let rec run (cp : a I.checkpoint) =
+    match cp with
+    | I.InputNeeded _ ->
+        let (ptok, sp, ep) = next_triple () in
+        let triple =
+          match ptok with
+          | Parser.GTGT
+            when (not (I.acceptable cp Parser.GTGT sp))
+                 && I.acceptable cp Parser.GT sp ->
+              let mid = { sp with Lexing.pos_cnum = sp.Lexing.pos_cnum + 1 } in
+              pending := Some (Parser.GT, mid, ep);
+              (Parser.GT, sp, mid)
+          | _ -> (ptok, sp, ep)
+        in
+        run (I.offer cp triple)
+    | I.Shifting _ | I.AboutToReduce _ -> run (I.resume cp)
+    | I.HandlingError _ | I.Rejected -> raise Parser.Error
+    | I.Accepted v -> v
+  in
+  try run (start (lexing_pos ~file { Span.line = 1; col = 1; offset = 0 }))
   with
   | Parser.Error ->
-      let pos = lexbuf.Lexing.lex_curr_p in
-      let span = Span.make
-        ~file
-        ~start_pos:{ Span.line = pos.pos_lnum;
-                     col = pos.pos_cnum - pos.pos_bol + 1;
-                     offset = pos.pos_cnum }
-        ~end_pos:{ Span.line = pos.pos_lnum;
-                   col = pos.pos_cnum - pos.pos_bol + 1;
-                   offset = pos.pos_cnum }
-      in
-      raise (Parse_error ("Syntax error", span))
+      raise (Parse_error ("Syntax error", !last_span))
   | Parser_errors.Parse_action_error (msg, startpos, endpos) ->
       let span = Span.make
         ~file
@@ -178,6 +210,10 @@ let parse_string ~file content =
                    offset = endpos.pos_cnum }
       in
       raise (Parse_error (msg, span))
+
+(** Parse a program from a string *)
+let parse_string ~file content =
+  drive ~file Parser.Incremental.program (Lexer.from_string ~file content)
 
 (** Parse a program from a file *)
 let parse_file filename =
@@ -190,33 +226,4 @@ let parse_file filename =
 
 (** Parse a single expression from a string *)
 let parse_expr ~file content =
-  let token_stream = Lexer.from_string ~file content in
-  let lexbuf = Lexing.from_string content in
-  lexbuf.Lexing.lex_curr_p <- { lexbuf.Lexing.lex_curr_p with pos_fname = file };
-  let lexer = lexer_of_token_stream token_stream in
-  try
-    Parser.expr_only lexer lexbuf
-  with
-  | Parser.Error ->
-      let pos = lexbuf.Lexing.lex_curr_p in
-      let span = Span.make
-        ~file
-        ~start_pos:{ Span.line = pos.pos_lnum;
-                     col = pos.pos_cnum - pos.pos_bol + 1;
-                     offset = pos.pos_cnum }
-        ~end_pos:{ Span.line = pos.pos_lnum;
-                   col = pos.pos_cnum - pos.pos_bol + 1;
-                   offset = pos.pos_cnum }
-      in
-      raise (Parse_error ("Syntax error", span))
-  | Parser_errors.Parse_action_error (msg, startpos, endpos) ->
-      let span = Span.make
-        ~file
-        ~start_pos:{ Span.line = startpos.Lexing.pos_lnum;
-                     col = startpos.pos_cnum - startpos.pos_bol + 1;
-                     offset = startpos.pos_cnum }
-        ~end_pos:{ Span.line = endpos.Lexing.pos_lnum;
-                   col = endpos.pos_cnum - endpos.pos_bol + 1;
-                   offset = endpos.pos_cnum }
-      in
-      raise (Parse_error (msg, span))
+  drive ~file Parser.Incremental.expr_only (Lexer.from_string ~file content)
