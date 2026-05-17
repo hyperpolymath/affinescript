@@ -2,73 +2,23 @@
 // AffineScript Standard Library - Prelude
 // Common functions and utilities automatically available
 
+module prelude;
+
 // ============================================================================
-// Option type - represents optional values
+// Core sum types (canonical home — ADR-011)
+//
+// `Option` and `Result` (and their constructors) are owned here, the
+// foundational module. The `option` / `result` modules provide the
+// *operations* over them and `use prelude::{...}` for the types. The
+// duplicate/conflicting Option/Result ops that previously lived here
+// (is_some, is_none, unwrap, unwrap_or, is_ok, is_err, unwrap_result,
+// unwrap_or_result) were removed in #133: option::* and result::* are
+// the single canonical bindings for those.
 // ============================================================================
 
 type Option<T> = Some(T) | None
 
-fn is_some<T>(opt: Option<T>) -> Bool {
-  match opt {
-    Some(_) => true,
-    None => false
-  }
-}
-
-fn is_none<T>(opt: Option<T>) -> Bool {
-  match opt {
-    Some(_) => false,
-    None => true
-  }
-}
-
-fn unwrap<T>(opt: Option<T>) -> T {
-  match opt {
-    Some(value) => value,
-    None => panic("Called unwrap on None")
-  }
-}
-
-fn unwrap_or<T>(opt: Option<T>, default: T) -> T {
-  match opt {
-    Some(value) => value,
-    None => default
-  }
-}
-
-// ============================================================================
-// Result type - represents success or failure
-// ============================================================================
-
 type Result<T, E> = Ok(T) | Err(E)
-
-fn is_ok<T, E>(res: Result<T, E>) -> Bool {
-  match res {
-    Ok(_) => true,
-    Err(_) => false
-  }
-}
-
-fn is_err<T, E>(res: Result<T, E>) -> Bool {
-  match res {
-    Ok(_) => false,
-    Err(_) => true
-  }
-}
-
-fn unwrap_result<T, E>(res: Result<T, E>) -> T {
-  match res {
-    Ok(value) => value,
-    Err(_) => panic("Called unwrap on Err")
-  }
-}
-
-fn unwrap_or_result<T, E>(res: Result<T, E>, default: T) -> T {
-  match res {
-    Ok(value) => value,
-    Err(_) => default
-  }
-}
 
 // ============================================================================
 // List utilities
