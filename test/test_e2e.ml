@@ -3380,6 +3380,26 @@ let test_generic_hof_monomorphic_caller () =
        {|fn fold<T, U>(arr: [T], init: U, f: (U, T) -> U) -> U { return init; }
          fn sum(a: [Int]) -> Int { return fold(a, 0, fn(acc, x) => acc + x); }|})
 
+(* Issue #135 slice 11: the resolver is two-pass — all top-level names
+   are forward-declared before any body is resolved.  Before, a call to
+   a function defined later in the file was `UndefinedVariable`. *)
+let test_forward_reference () =
+  Alcotest.(check bool) "fn calling a later-defined fn resolves" true
+    (parse_check_passes
+       {|fn a() -> Int { return b(); }
+         fn b() -> Int { return 1; }|})
+
+let test_mutual_recursion () =
+  Alcotest.(check bool) "mutually recursive fns resolve + typecheck" true
+    (parse_check_passes
+       {|fn even(n: Int) -> Bool { if n == 0 { return true; } return odd(n - 1); }
+         fn odd(n: Int) -> Bool { if n == 0 { return false; } return even(n - 1); }|})
+
+let test_self_recursion_not_regressed () =
+  Alcotest.(check bool) "self-recursion still resolves" true
+    (parse_check_passes
+       {|fn rec(n: Int) -> Int { if n <= 0 { return 0; } return rec(n - 1); }|})
+
 let test_multi_arg_arrow () =
   Alcotest.(check bool) "(A, B) -> C parses + typechecks" true
     (parse_check_passes
@@ -3437,6 +3457,9 @@ let type_syntax_sugar_tests = [
   Alcotest.test_case "trait sig + assoc non-regressed (#135 sl5)" `Quick test_trait_sig_and_assoc_not_regressed;
   Alcotest.test_case "generic fn multi-instantiation (#135 sl7)" `Quick test_generic_fn_multi_instantiation;
   Alcotest.test_case "generic HOF + mono caller (#135 sl7)"     `Quick test_generic_hof_monomorphic_caller;
+  Alcotest.test_case "forward reference resolves (#135 sl11)"   `Quick test_forward_reference;
+  Alcotest.test_case "mutual recursion (#135 sl11)"             `Quick test_mutual_recursion;
+  Alcotest.test_case "self-recursion non-regressed (#135 sl11)" `Quick test_self_recursion_not_regressed;
   Alcotest.test_case "(A, B) -> C (multi-arg arrow)"          `Quick test_multi_arg_arrow;
   Alcotest.test_case "(A, B) without arrow remains tuple"     `Quick test_tuple_type_still_works;
 ]
