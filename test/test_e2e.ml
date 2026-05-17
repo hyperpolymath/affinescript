@@ -3298,6 +3298,26 @@ let test_angle_brackets_type_params () =
     (parse_check_passes
        {|fn id<T>(x: T) -> T { return x; }|})
 
+(* Issue #135 (slice 1): `fn(params) => expr` / `fn(params) -> T { block }`
+   anonymous-function expressions. This is the lambda surface the stdlib
+   actually uses (`map(fn(x) => Some(x), list)` in option.affine); only the
+   `|x| body` form parsed before. *)
+let test_fn_lambda_arrow_expr () =
+  Alcotest.(check bool) "fn(x) => x parses + typechecks" true
+    (parse_check_passes
+       {|fn use_it() -> Int { let g = fn(x) => x; return g(1); }|})
+
+let test_fn_lambda_higher_order () =
+  Alcotest.(check bool) "fn(x) => e as a call argument" true
+    (parse_check_passes
+       {|fn apply1(g: fn(Int) -> Int, n: Int) -> Int { return g(n); }
+         fn run() -> Int { return apply1(fn(x) => x, 5); }|})
+
+let test_fn_lambda_typed_block () =
+  Alcotest.(check bool) "fn(x: Int) -> Int { block } parses + typechecks" true
+    (parse_check_passes
+       {|fn use_it() -> Int { let g = fn(x: Int) -> Int { x }; return g(2); }|})
+
 let test_multi_arg_arrow () =
   Alcotest.(check bool) "(A, B) -> C parses + typechecks" true
     (parse_check_passes
@@ -3345,6 +3365,9 @@ let type_syntax_sugar_tests = [
   Alcotest.test_case "Option<Option<Result<T,E>>> (#131 >>>)" `Quick test_angle_nested_gtgtgt;
   Alcotest.test_case "-> Result<Option<T>,E> (#131 nested)"   `Quick test_angle_nested_return_pos;
   Alcotest.test_case "a >> b shift unaffected (#131 guard)"   `Quick test_shift_operator_not_split;
+  Alcotest.test_case "fn(x) => x (#135 fn-lambda expr)"       `Quick test_fn_lambda_arrow_expr;
+  Alcotest.test_case "fn(x) => e as arg (#135 fn-lambda)"     `Quick test_fn_lambda_higher_order;
+  Alcotest.test_case "fn(x:Int) -> Int { } (#135 fn-lambda)"  `Quick test_fn_lambda_typed_block;
   Alcotest.test_case "(A, B) -> C (multi-arg arrow)"          `Quick test_multi_arg_arrow;
   Alcotest.test_case "(A, B) without arrow remains tuple"     `Quick test_tuple_type_still_works;
 ]
