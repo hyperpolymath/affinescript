@@ -488,9 +488,52 @@ let rec resolve_decl (ctx : context) (decl : top_level) : unit result =
         Symbol.SKVariable tc.tc_name.span tc.tc_vis in
     resolve_expr ctx tc.tc_value
 
+(** Pre-register a top-level declaration's *names* (no body resolution),
+    so that forward references between top-level declarations resolve
+    (issue #135 slice 11).  Previously [resolve_decl] defined a name then
+    immediately resolved its body, and [resolve_program] folded in source
+    order — so `fn a() { b() } fn b() {}` failed with `UndefinedVariable
+    b`.  This is a standard two-pass: pass 1 declares every top-level
+    name, pass 2 resolves bodies.  [Symbol.define] is [Hashtbl.replace]
+    based, so the re-definition inside [resolve_decl] is idempotent. *)
+let pre_register_decl (ctx : context) (decl : top_level) : unit =
+  match decl with
+  | TopFn fd ->
+    ignore (Symbol.define ctx.symbols fd.fd_name.name
+              Symbol.SKFunction fd.fd_name.span fd.fd_vis)
+  | TopType td ->
+    ignore (Symbol.define ctx.symbols td.td_name.name
+              Symbol.SKType td.td_name.span td.td_vis);
+    (match td.td_body with
+     | TyEnum variants ->
+       List.iter (fun (vd : variant_decl) ->
+         ignore (Symbol.define ctx.symbols vd.vd_name.name
+                   Symbol.SKConstructor vd.vd_name.span td.td_vis)
+       ) variants
+     | TyAlias _ | TyStruct _ | TyExtern -> ())
+  | TopEffect ed ->
+    ignore (Symbol.define ctx.symbols ed.ed_name.name
+              Symbol.SKEffect ed.ed_name.span ed.ed_vis);
+    List.iter (fun op ->
+      ignore (Symbol.define ctx.symbols op.eod_name.name
+                Symbol.SKEffectOp op.eod_name.span ed.ed_vis)
+    ) ed.ed_ops
+  | TopTrait td ->
+    ignore (Symbol.define ctx.symbols td.trd_name.name
+              Symbol.SKTrait td.trd_name.span td.trd_vis)
+  | TopConst tc ->
+    ignore (Symbol.define ctx.symbols tc.tc_name.name
+              Symbol.SKVariable tc.tc_name.span tc.tc_vis)
+  | TopImpl _ -> ()
+
+(** Run the forward-declaration pass over a whole program. *)
+let pre_register_program (ctx : context) (program : program) : unit =
+  List.iter (pre_register_decl ctx) program.prog_decls
+
 (** Resolve an entire program *)
 let resolve_program (program : program) : (context, resolve_error * Span.t) Result.t =
   let ctx = create_context () in
+  pre_register_program ctx program;
   match List.fold_left (fun acc decl ->
     match acc with
     | Error e -> Error e
@@ -506,7 +549,9 @@ let resolve_and_typecheck_module (loaded_mod : Module_loader.loaded_module)
   let symbols = Symbol.create () in
   let mod_ctx = { symbols; current_module = []; imports = []; references = [] } in
 
-  (* Resolve all declarations in the module *)
+  (* Pass 1: forward-declare every top-level name (#135 slice 11). *)
+  pre_register_program mod_ctx prog;
+  (* Pass 2: resolve all declaration bodies. *)
   let* () = List.fold_left (fun acc decl ->
     match acc with
     | Error e -> Error e
@@ -753,7 +798,9 @@ let resolve_program_with_loader
   let type_ctx = Typecheck.create_context ctx.symbols in
   (* First resolve imports using module loader *)
   let* () = resolve_imports_with_loader ctx type_ctx loader program.prog_imports in
-  (* Then resolve declarations *)
+  (* Pass 1: forward-declare every top-level name (#135 slice 11). *)
+  pre_register_program ctx program;
+  (* Pass 2: resolve declaration bodies. *)
   let* () = List.fold_left (fun acc decl ->
     match acc with
     | Error e -> Error e
