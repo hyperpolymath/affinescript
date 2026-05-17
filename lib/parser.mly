@@ -552,7 +552,25 @@ supertraits:
 
 trait_item:
   | sig_ = fn_sig SEMICOLON { TraitFn sig_ }
-  | f = fn_decl { TraitFnDefault f }
+  /* Trait method *default body* (issue #135 slice 5).  Previously the two
+     forms were `fn_sig SEMICOLON` vs a whole `fn_decl`, which share the
+     long prefix `visibility? FN name params return_type?`; the LR conflict
+     resolved toward the signature form, so `pub fn ne(ref self, ...) ->
+     Bool { ... }` (stdlib/traits.affine) failed at the `{`.  Left-factor:
+     parse `fn_sig` once, then branch on SEMICOLON vs fn_body — no shared-
+     prefix ambiguity (the two now differ purely on the next token).
+     Trait defaults don't use `total`/`where` (none in stdlib); fd_total
+     = false, fd_where = []. */
+  | sig_ = fn_sig body = fn_body
+    { TraitFnDefault { fd_vis = sig_.fs_vis;
+                       fd_total = false;
+                       fd_name = sig_.fs_name;
+                       fd_type_params = sig_.fs_type_params;
+                       fd_params = sig_.fs_params;
+                       fd_ret_ty = sig_.fs_ret_ty;
+                       fd_eff = sig_.fs_eff;
+                       fd_where = [];
+                       fd_body = body } }
   | TYPE name = ident kind = kind_annotation? default = type_default? SEMICOLON
     { TraitType { tt_name = name; tt_kind = kind; tt_default = default } }
 
