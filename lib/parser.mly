@@ -191,6 +191,24 @@ fn_decl:
 return_type:
   | ARROW ty = type_expr { (Some ty, None) }
   | MINUS LBRACE eff = effect_expr RBRACE ARROW ty = type_expr { (Some ty, Some eff) }
+  /* `-> T / E` — the ADR-008 canonical effect-row return annotation
+     (issue #135 slice 3).  This was the *settled* surface
+     (SETTLED-DECISIONS ADR-008) yet entirely absent from the grammar; the
+     whole stdlib effect layer uses it (`extern fn print(s: String) ->
+     Unit / io;` etc.) and even a normal `fn ... -> T / io` could not be
+     written.  Single `effect_term` covers 100% of stdlib usage; multi-
+     effect rows remain expressible via the existing `-{ E1 + E2 }->`
+     form.  Grammar-cost note: adding any `ARROW type_expr SLASH _`
+     production to `return_type` adds exactly one arbitrarily-resolved
+     reduce/reduce item to an already-r/r state (35 -> 36; the 5 r/r
+     states are unchanged).  This is irreducible without a grammar-wide
+     restructure of return/effect parsing, is in this grammar's existing
+     permissive-ambiguity class, and per ADR-009 ("conformance suite is
+     authoritative; the parser conforms to the spec, validated by tests")
+     is accepted: behaviour is verified — `-> T / io` parses, division
+     `a / b`, `-{ E }->`, and braced `effect E {}` are all unaffected,
+     full suite green.  ADR-008 mandates this syntax; it is not sugar. */
+  | ARROW ty = type_expr SLASH eff = effect_term { (Some ty, Some eff) }
 
 fn_body:
   | blk = block { FnBlock blk }
@@ -489,6 +507,16 @@ effect_decl:
         ed_name = name;
         ed_type_params = Option.value type_params ~default:[];
         ed_ops = ops } }
+  /* Bare forward-declaration form `effect <name>;` (issue #135 slice 3).
+     stdlib/effects.affine declares `effect io;` / `effect state;` etc. and
+     supplies the operations separately as `extern fn ... / io;`. An empty
+     op list is the right model: the effect is a named row label whose ops
+     live in externs. */
+  | vis = visibility? EFFECT name = ident type_params = type_params? SEMICOLON
+    { { ed_vis = Option.value vis ~default:Private;
+        ed_name = name;
+        ed_type_params = Option.value type_params ~default:[];
+        ed_ops = [] } }
 
 effect_op_decl:
   (* Type parameters on effect operations are allowed: `fn await[T](promise: Promise[T]) -> T;` *)
