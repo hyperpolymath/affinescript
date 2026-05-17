@@ -3,7 +3,15 @@
 //
 // Result - Error handling with Result<T, E> type
 
-// Result type is defined in prelude, but here are utilities
+module result;
+
+// `Option`/`Result` types + constructors are owned by `prelude` (ADR-011).
+use prelude::{Result, Ok, Err, Option, Some, None};
+
+// This module is the single canonical home for the Result *operations*
+// (is_ok/is_err/unwrap/unwrap_or/map_ok/map_err/…). #133 removed the
+// duplicate/redundant copies (is_ok/is_err/unwrap_result/unwrap_or_result)
+// that previously also lived in prelude.affine.
 
 // ============================================================================
 // Constructors and Conversions

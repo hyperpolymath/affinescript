@@ -3,7 +3,14 @@
 //
 // Option - Utilities for Option<T> type
 
-// Option type is defined in prelude, but here are utilities
+module option;
+
+// `Option`/`Result` types + constructors are owned by `prelude` (ADR-011).
+use prelude::{Option, Some, None, Result, Ok, Err};
+
+// This module is the single canonical home for the Option *operations*
+// (is_some/is_none/unwrap/unwrap_or/map/filter/contains/…). #133 removed
+// the duplicate copies that previously also lived in prelude.affine.
 
 // ============================================================================
 // Combinators
