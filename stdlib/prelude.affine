@@ -25,7 +25,7 @@ type Result<T, E> = Ok(T) | Err(E)
 // ============================================================================
 
 fn map<T, U>(arr: [T], f: T -> U) -> [U] {
-  let result = [];
+  let mut result = [];
   for x in arr {
     result = result ++ [f(x)];
   }
@@ -33,7 +33,7 @@ fn map<T, U>(arr: [T], f: T -> U) -> [U] {
 }
 
 fn filter<T>(arr: [T], predicate: T -> Bool) -> [T] {
-  let result = [];
+  let mut result = [];
   for x in arr {
     if predicate(x) {
       result = result ++ [x];
@@ -43,7 +43,7 @@ fn filter<T>(arr: [T], predicate: T -> Bool) -> [T] {
 }
 
 fn fold<T, U>(arr: [T], init: U, f: (U, T) -> U) -> U {
-  let acc = init;
+  let mut acc = init;
   for x in arr {
     acc = f(acc, x);
   }
@@ -121,8 +121,8 @@ fn any(arr: [Bool]) -> Bool {
 // ============================================================================
 
 fn range(start: Int, end: Int) -> [Int] {
-  let result = [];
-  let i = start;
+  let mut result = [];
+  let mut i = start;
   while i < end {
     result = result ++ [i];
     i = i + 1;
@@ -131,8 +131,8 @@ fn range(start: Int, end: Int) -> [Int] {
 }
 
 fn repeat<T>(value: T, n: Int) -> [T] {
-  let result = [];
-  let i = 0;
+  let mut result = [];
+  let mut i = 0;
   while i < n {
     result = result ++ [value];
     i = i + 1;

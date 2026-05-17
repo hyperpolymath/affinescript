@@ -3363,6 +3363,23 @@ let test_trait_sig_and_assoc_not_regressed () =
            pub fn next(mut self) -> Option<Int>;
          }|})
 
+(* Issue #135 slice 7: top-level generic functions must instantiate their
+   `<T>` scheme with fresh vars per call.  Before, `<T>` lowered to a rigid
+   `TCon "T"` that `generalize` ignored, so any 2nd instantiation failed
+   with `Unify.TypeMismatch (T, Int)` (and `use prelude` import-checks
+   failed transitively). *)
+let test_generic_fn_multi_instantiation () =
+  Alcotest.(check bool) "id<T> called at Int and Bool in one program" true
+    (parse_check_passes
+       {|fn id<T>(x: T) -> T { return x; }
+         fn use_it() -> Bool { let a = id(1); let b = id(true); return b; }|})
+
+let test_generic_hof_monomorphic_caller () =
+  Alcotest.(check bool) "generic fold<T,U> called by monomorphic Int sum" true
+    (parse_check_passes
+       {|fn fold<T, U>(arr: [T], init: U, f: (U, T) -> U) -> U { return init; }
+         fn sum(a: [Int]) -> Int { return fold(a, 0, fn(acc, x) => acc + x); }|})
+
 let test_multi_arg_arrow () =
   Alcotest.(check bool) "(A, B) -> C parses + typechecks" true
     (parse_check_passes
@@ -3418,6 +3435,8 @@ let type_syntax_sugar_tests = [
   Alcotest.test_case "effect E; + -> T / E (#135 slice 3)"    `Quick test_bare_effect_and_effect_row;
   Alcotest.test_case "trait default body + ref self (#135 sl5)" `Quick test_trait_default_body;
   Alcotest.test_case "trait sig + assoc non-regressed (#135 sl5)" `Quick test_trait_sig_and_assoc_not_regressed;
+  Alcotest.test_case "generic fn multi-instantiation (#135 sl7)" `Quick test_generic_fn_multi_instantiation;
+  Alcotest.test_case "generic HOF + mono caller (#135 sl7)"     `Quick test_generic_hof_monomorphic_caller;
   Alcotest.test_case "(A, B) -> C (multi-arg arrow)"          `Quick test_multi_arg_arrow;
   Alcotest.test_case "(A, B) without arrow remains tuple"     `Quick test_tuple_type_still_works;
 ]
