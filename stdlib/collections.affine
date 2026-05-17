@@ -37,23 +37,23 @@ fn drop<T>(n: Int, list: [T]) -> [T] {
 }
 
 /// Zip two lists together
-fn zip<A, B>(as: [A], bs: [B]) -> [(A, B)] {
-  if len(as) == 0 || len(bs) == 0 {
+fn zip<A, B>(xs: [A], bs: [B]) -> [(A, B)] {
+  if len(xs) == 0 || len(bs) == 0 {
     []
   } else {
-    [(as[0], bs[0])] ++ zip(as[1:], bs[1:])
+    [(xs[0], bs[0])] ++ zip(xs[1:], bs[1:])
   }
 }
 
 /// Unzip a list of pairs
 fn unzip<A, B>(pairs: [(A, B)]) -> ([A], [B]) {
-  let as = [];
+  let xs = [];
   let bs = [];
   for (a, b) in pairs {
-    as = as ++ [a];
+    xs = xs ++ [a];
     bs = bs ++ [b];
   }
-  (as, bs)
+  (xs, bs)
 }
 
 /// Find first element matching predicate
