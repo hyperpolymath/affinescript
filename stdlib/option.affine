@@ -6,7 +6,7 @@
 module option;
 
 // `Option`/`Result` types + constructors are owned by `prelude` (ADR-011).
-use prelude::{Option, Some, None, Result, Ok, Err};
+use prelude::{Option, Some, None, Result, Ok, Err, map};
 
 // This module is the single canonical home for the Option *operations*
 // (is_some/is_none/unwrap/unwrap_or/map/filter/contains/…). #133 removed

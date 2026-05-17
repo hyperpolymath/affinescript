@@ -16,15 +16,15 @@ module prelude;
 // the single canonical bindings for those.
 // ============================================================================
 
-type Option<T> = Some(T) | None
+pub type Option<T> = Some(T) | None
 
-type Result<T, E> = Ok(T) | Err(E)
+pub type Result<T, E> = Ok(T) | Err(E)
 
 // ============================================================================
 // List utilities
 // ============================================================================
 
-fn map<T, U>(arr: [T], f: T -> U) -> [U] {
+pub fn map<T, U>(arr: [T], f: T -> U) -> [U] {
   let mut result = [];
   for x in arr {
     result = result ++ [f(x)];
@@ -32,7 +32,7 @@ fn map<T, U>(arr: [T], f: T -> U) -> [U] {
   result
 }
 
-fn filter<T>(arr: [T], predicate: T -> Bool) -> [T] {
+pub fn filter<T>(arr: [T], predicate: T -> Bool) -> [T] {
   let mut result = [];
   for x in arr {
     if predicate(x) {
@@ -42,7 +42,7 @@ fn filter<T>(arr: [T], predicate: T -> Bool) -> [T] {
   result
 }
 
-fn fold<T, U>(arr: [T], init: U, f: (U, T) -> U) -> U {
+pub fn fold<T, U>(arr: [T], init: U, f: (U, T) -> U) -> U {
   let mut acc = init;
   for x in arr {
     acc = f(acc, x);
@@ -51,7 +51,7 @@ fn fold<T, U>(arr: [T], init: U, f: (U, T) -> U) -> U {
 }
 
 /// Conforms to aLib collection/contains spec v1.0
-fn contains<T>(arr: [T], element: T) -> Bool {
+pub fn contains<T>(arr: [T], element: T) -> Bool {
   for x in arr {
     if x == element {
       return true;
@@ -60,11 +60,11 @@ fn contains<T>(arr: [T], element: T) -> Bool {
   false
 }
 
-fn sum(arr: [Int]) -> Int {
+pub fn sum(arr: [Int]) -> Int {
   fold(arr, 0, |acc, x| acc + x)
 }
 
-fn product(arr: [Int]) -> Int {
+pub fn product(arr: [Int]) -> Int {
   fold(arr, 1, |acc, x| acc * x)
 }
 
@@ -72,15 +72,15 @@ fn product(arr: [Int]) -> Int {
 // Comparison and ordering
 // ============================================================================
 
-fn min(a: Int, b: Int) -> Int {
+pub fn min(a: Int, b: Int) -> Int {
   if a < b { a } else { b }
 }
 
-fn max(a: Int, b: Int) -> Int {
+pub fn max(a: Int, b: Int) -> Int {
   if a > b { a } else { b }
 }
 
-fn clamp(value: Int, min_val: Int, max_val: Int) -> Int {
+pub fn clamp(value: Int, min_val: Int, max_val: Int) -> Int {
   if value < min_val {
     min_val
   } else if value > max_val {
@@ -94,11 +94,11 @@ fn clamp(value: Int, min_val: Int, max_val: Int) -> Int {
 // Boolean utilities
 // ============================================================================
 
-fn not(b: Bool) -> Bool {
+pub fn not(b: Bool) -> Bool {
   if b { false } else { true }
 }
 
-fn all(arr: [Bool]) -> Bool {
+pub fn all(arr: [Bool]) -> Bool {
   for b in arr {
     if not(b) {
       return false;
@@ -107,7 +107,7 @@ fn all(arr: [Bool]) -> Bool {
   true
 }
 
-fn any(arr: [Bool]) -> Bool {
+pub fn any(arr: [Bool]) -> Bool {
   for b in arr {
     if b {
       return true;
@@ -120,7 +120,7 @@ fn any(arr: [Bool]) -> Bool {
 // Range and iteration utilities
 // ============================================================================
 
-fn range(start: Int, end: Int) -> [Int] {
+pub fn range(start: Int, end: Int) -> [Int] {
   let mut result = [];
   let mut i = start;
   while i < end {
@@ -130,7 +130,7 @@ fn range(start: Int, end: Int) -> [Int] {
   result
 }
 
-fn repeat<T>(value: T, n: Int) -> [T] {
+pub fn repeat<T>(value: T, n: Int) -> [T] {
   let mut result = [];
   let mut i = 0;
   while i < n {

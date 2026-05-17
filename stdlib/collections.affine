@@ -3,6 +3,12 @@
 //
 // Collections - Advanced list, array, and data structure operations
 
+module collections;
+
+// `Option` + constructors and the generic list utilities are owned by
+// `prelude` (ADR-011); collections is a consumer module (#135 slice 8).
+use prelude::{Option, Some, None, filter, map, range, any};
+
 // ============================================================================
 // List Operations
 // ============================================================================
