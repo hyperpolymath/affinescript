@@ -119,11 +119,13 @@ pub trait Iterator {
     return n;
   }
 
-  /// Collect into Vec
-  pub fn collect(mut self) -> Vec[Item] {
-    let mut result = Vec::new();
+  /// Collect into a list.  (`Vec` is not a stdlib type; the stdlib
+  /// builds lists with `[]` + `++`, as in prelude/option/result —
+  /// #135 slice 4-traits.)
+  pub fn collect(mut self) -> [Item] {
+    let mut result = [];
     while let Some(item) = self.next() {
-      result.push(item);
+      result = result ++ [item];
     }
     return result;
   }
