@@ -109,19 +109,50 @@ runtime mechanism.
 * Not a general delimited-continuation feature — only the `Async`
   effect, only enough to make `Thenable` transparent.
 
-== Delivery plan (incremental, each behind the 258 gate)
+== Implementation refinement (amends the plan; finding 2026-05-18)
 
-. *This doc → ADR* on approval (`SETTLED-DECISIONS.adoc` +
-  `META.a2ml`); mirror the ABI section into the typed-wasm convergence
-  spec; flag Ephapax co-stakeholder review.
-. *PR 1 — transform skeleton:* single async boundary, no live-local
-  capture (straight-line `Async` fn ending in one async call). Wasm
-  e2e: `Http.get` round-trip via stubbed host.
-. *PR 2 — live-local capture* via the #199 env ABI; multi-statement
-  continuations; affine-capture borrow rule + once-resumption assert.
-. *PR 3 — composition:* `Async` fn calling another `Async` fn
-  (chained `Thenable`); `Response` typed reader; full
-  `http_fetch`-parity wasm test.
+Confirmed against `bin/main.ml` + `lib/codegen.ml`: *the WasmGC backend
+does not flatten imports* (only the source-to-source backends do). A
+cross-module `pub fn` is emitted as a Wasm **import** named
+`<Module>.<fn>` — the stdlib AffineScript bodies are not compiled into
+the unit; the host supplies them. Verified: a unit using `Http.get`
+imports `{module:"Http", name:"get"}`, exactly as `httpPostJson` is a
+host import today.
+
+Consequence — the work splits cleanly in two:
+
+* *Host adapter (no compiler-correctness risk).* `Http.get`/`fetch`/
+  `post`/`request`/`is_ok` on wasm are *host imports*, implemented in
+  JS exactly like the proven `httpPostJson`/#205 surface. This is an
+  adapter, mirroring `packages/affine-vscode/mod.js`. It delivers the
+  large majority of the typed-wasm Http target with zero risk to the
+  compiler.
+* *CPS transform (the hard tail).* Needed only for a **user** `Async`
+  function that interleaves an async call with subsequent local work
+  in the same body (`get(u).status`, `is_ok(get(u))`, …). This is the
+  binding-correctness piece and is gated behind the Ephapax ABI review
+  (typed-wasm#31).
+
+The transparent `fetch/get -> Response` source surface (ADR-013's
+goal) is unchanged; it is delivered by the transform sitting *on top
+of* the verified Thenable-surface primitives.
+
+== Delivery plan (revised; each behind the 258 gate)
+
+. *This doc → ADR* — done (ADR-013).
+. *PR 1 — host adapter + verified foundation:* generic Http wasm
+  adapter (`packages/affine-http/mod.js`) + `Thenable`-returning lower
+  primitives in `stdlib/Http.affine` (mirroring the proven
+  `httpPostJson`/#205 shape) + wasm e2e round-trip with a stubbed
+  `fetch`. No compiler change; this is the verified base the transform
+  builds on.
+. *PR 2 — transform base case:* WasmGC `Async` user fn with a single
+  async boundary and no live-local capture (`get(u).status`); emits
+  the continuation registration; once-resumption assert.
+. *PR 3 — live-local capture + composition:* #199 env ABI capture;
+  affine-capture borrow rule; `Async`→`Async` chaining; `Response`
+  typed reader; full `http_fetch`-parity wasm test. (Gated behind
+  Ephapax ABI review, typed-wasm#31.)
 . *PR 4 — joint-close:* both targets green ⇒ close #160 and #225.
 
 == References

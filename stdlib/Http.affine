@@ -87,3 +87,31 @@ pub fn post(url: String, body: String) -> Response / { Net, Async } {
 pub fn is_ok(resp: Response) -> Bool {
   resp.status >= 200 && resp.status < 300
 }
+
+// ── Lower-level wasm-consumable surface (issue #225, ADR-013) ─────────
+//
+// On the WasmGC backend an async result cannot be returned synchronously
+// across the i32 boundary. The established convergence convention (#205)
+// is a `Thenable` host handle the side resolving it observes via the
+// shared continuation protocol. `http_request_thenable` mirrors the
+// proven `Vscode.httpPostJson` shape exactly: it returns a `Thenable`
+// handle the host registers; settlement carries the JSON-encoded
+// `{ status, headers, body }`.
+//
+// This is NOT a second public surface: `fetch`/`get`/`post` above remain
+// the single portable source API. On Deno the source-to-source backend
+// awaits directly and never touches this. On wasm the transparent CPS
+// transform (ADR-013) lowers the high-level surface ONTO this verified
+// primitive — callers still write `fetch(req) -> Response`. This
+// declaration is the host-import contract + the foundation that
+// transform is built and tested on (#225 PR 1).
+
+pub extern type Thenable;
+
+/// Issue an HTTP request, returning a host `Thenable` that settles with
+/// the JSON-encoded response `{ status, headers, body }`. `body` is the
+/// empty string for verbs that carry none. Wasm-path primitive; see the
+/// module note. Resolved via the shared #205 continuation protocol.
+pub extern fn http_request_thenable(url: String,
+                                    method: String,
+                                    body: String) -> Thenable / { Net, Async };
