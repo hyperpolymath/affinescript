@@ -142,15 +142,15 @@ fn start_lsp() -> Int {
 pub fn activate(ctx: ExtensionContext) -> Int {
   let _ = consoleLog("AffineScript extension activated");
 
-  // Register commands. The integer second argument to registerCommand is
-  // the wasm-table index of the handler — populated by the JS-side adapter
-  // from the `__indirect_function_table` export. The order here must
-  // match the order handlers appear in the file.
-  let _ = pushSubscription(ctx, registerCommand("affinescript.check", 0));
-  let _ = pushSubscription(ctx, registerCommand("affinescript.eval", 1));
-  let _ = pushSubscription(ctx, registerCommand("affinescript.compile", 2));
-  let _ = pushSubscription(ctx, registerCommand("affinescript.format", 3));
-  let _ = pushSubscription(ctx, registerCommand("affinescript.restartLsp", 4));
+  // Register commands. The handler is now a function value (#199
+  // function-value callback ABI) — no more brittle wasm-table indices.
+  // Each lambda takes the explicit `Unit` param (zero-param-fn return-
+  // type collapse) and delegates to the named handler.
+  let _ = pushSubscription(ctx, registerCommand("affinescript.check", fn(u: Unit) => handler_check()));
+  let _ = pushSubscription(ctx, registerCommand("affinescript.eval", fn(u: Unit) => handler_eval()));
+  let _ = pushSubscription(ctx, registerCommand("affinescript.compile", fn(u: Unit) => handler_compile()));
+  let _ = pushSubscription(ctx, registerCommand("affinescript.format", fn(u: Unit) => handler_format()));
+  let _ = pushSubscription(ctx, registerCommand("affinescript.restartLsp", fn(u: Unit) => handler_restart_lsp()));
 
   let cfg = getConfiguration("affinescript");
   if workspaceConfigGetBool(cfg, "lsp.enabled", 1) != 0 {

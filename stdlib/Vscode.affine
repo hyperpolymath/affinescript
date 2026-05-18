@@ -51,9 +51,11 @@ pub extern type TextDocument;
 // ── vscode.commands ───────────────────────────────────────────────────
 
 /// `vscode.commands.registerCommand(name, handler)`.
-/// `handler` is a function-pointer index into the Wasm table; the JS shim
-/// wraps it as a JS callback that re-enters Wasm when invoked.
-pub extern fn registerCommand(name: String, handler: Int) -> Disposable;
+/// `handler` is a function value (#199 function-value callback ABI). The
+/// `Unit` parameter is explicit because AffineScript types a zero-param
+/// function as its bare return type — `fn() -> Int` would collapse to
+/// `Int`; `fn(Unit) -> Int` is the honest callback shape.
+pub extern fn registerCommand(name: String, handler: fn(Unit) -> Int) -> Disposable;
 
 // ── vscode.workspace ──────────────────────────────────────────────────
 
@@ -263,7 +265,7 @@ pub extern fn clipboardWriteText(text: String) -> Int;
 /// `editorActiveFilePath()` from inside the thunk. That covers the
 /// 95% case where the saved doc is the active editor; the remaining
 /// cases (background-saved docs) degrade to "no action".
-pub extern fn onDidSaveTextDocument(handler: Int) -> Disposable;
+pub extern fn onDidSaveTextDocument(handler: fn(Unit) -> Int) -> Disposable;
 
 // ── Path helpers ─────────────────────────────────────────────────────
 
@@ -295,10 +297,11 @@ pub extern fn extensionAbsolutePath(ctx: ExtensionContext, rel_path: String) -> 
 // JS implementation lives in packages/affine-vscode/mod.js (follow-up
 // slice); these declarations are the binding surface + effect tracking.
 
-pub extern type Thenable;
+// `Thenable` is already declared in the opaque-type block above; no
+// re-declaration here (the duplicate from #198 is removed at source).
 
 /// `vscode.window.withProgress({ location: Notification, title }, task)`.
-/// `work_thunk` is a wasm/host table index of the `() -> Thenable` task
-/// (same thunk-handle convention as `onDidSaveTextDocument`). Returns the
-/// progress Thenable.
-pub extern fn withProgressNotification(title: String, work_thunk: Int) -> Thenable / Async;
+/// `work` is the task function (#199 function-value callback ABI; the
+/// explicit `Unit` param avoids the zero-param-fn return-type collapse).
+/// Returns the progress Thenable.
+pub extern fn withProgressNotification(title: String, work: fn(Unit) -> Thenable) -> Thenable / Async;
