@@ -10,4 +10,5 @@ let () =
       (* ("Parser", Test_parser.tests); *)  (* TODO: Re-enable when test_parser is implemented *)
       ("Golden", Test_golden.tests);
       ("Examples", Test_golden.example_tests);
+      ("Effects (#59)", Test_effects.tests);
     ] @ Test_e2e.tests @ Test_stdlib_aot.tests)
