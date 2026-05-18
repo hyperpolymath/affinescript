@@ -283,3 +283,22 @@ pub extern fn processPlatform() -> String;
 /// `context.asAbsolutePath(rel_path)` — resolves a path relative to the
 /// extension's install location.
 pub extern fn extensionAbsolutePath(ctx: ExtensionContext, rel_path: String) -> String;
+
+// ── Async-extern ABI (issue #103) ────────────────────────────────────
+//
+// AffineScript's extern-call shape is synchronous, but most of vscode's
+// interactive surface returns a JS Thenable. `Thenable` is an opaque
+// host handle; the Deno/Node source-to-source backend lowers a
+// Thenable-returning extern to a plain host call, so the emitted JS is a
+// real Promise and a consumer's `await` is valid source JS. The `Async`
+// effect (v1 registry, #59) tracks this in signatures. The vscode-host
+// JS implementation lives in packages/affine-vscode/mod.js (follow-up
+// slice); these declarations are the binding surface + effect tracking.
+
+pub extern type Thenable;
+
+/// `vscode.window.withProgress({ location: Notification, title }, task)`.
+/// `work_thunk` is a wasm/host table index of the `() -> Thenable` task
+/// (same thunk-handle convention as `onDidSaveTextDocument`). Returns the
+/// progress Thenable.
+pub extern fn withProgressNotification(title: String, work_thunk: Int) -> Thenable / Async;
