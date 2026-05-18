@@ -120,3 +120,31 @@ let string_of_eff (e : eff) : string =
       end
   in
   aux (normalize_eff e)
+
+(** {1 Effect-row v1 canonical registry (issue #59)}
+
+    Pins the v1 effect-name list so migration can begin without every
+    contributor inventing their own names.  This is effect *tracking*
+    only — handler design remains out of scope (see
+    [docs/guides/effects-migration-stance.adoc]). *)
+
+(** Canonical v1 effect names.  [Throws] is written [Throws[E]] at use
+    sites; the type parameter is carried syntactically but not yet
+    threaded (tracking-only v1). *)
+let v1_effects = [ "IO"; "Async"; "Partial"; "Throws"; "Mut" ]
+
+(** Reserved for v1.x — recognised so the names are not repurposed, not
+    yet wired into the stdlib. *)
+let reserved_effects = [ "Random"; "Time"; "Net" ]
+
+(** Legacy lowercase stdlib effects → canonical v1.  Kept as aliases so
+    [stdlib/effects.affine] and existing code compile unchanged
+    (additive migration; a rename sweep is a later, separate change). *)
+let legacy_aliases = [ ("io", "IO"); ("state", "Mut"); ("exn", "Throws") ]
+
+(** Canonical registry name for a source effect name, or [None] if it is
+    neither a v1/reserved name nor a legacy alias.  Callers additionally
+    accept user-declared effects (`effect <name>;`). *)
+let canonical_effect_name (s : string) : string option =
+  if List.mem s v1_effects || List.mem s reserved_effects then Some s
+  else List.assoc_opt s legacy_aliases
