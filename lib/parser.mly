@@ -83,6 +83,20 @@ let rec effect_union_of_list = function
 %token EOF
 
 /* Precedence (lowest to highest) */
+/* `LOWEST_TYPE_ARROW` is a pseudo-token (never lexed) carrying the
+   lowest precedence. It tags the base `type_expr_arrow -> type_expr_primary`
+   reduction so that in state 41 — after a `type_expr_primary`, lookahead
+   `ARROW` (continue an arrow type) or `MINUS` (open the legacy `-{E}->`
+   effect row) — the parser SHIFTS rather than reducing the base case.
+   Shift was already Menhir's (correct) arbitrary resolution there (a
+   bare type can never be followed by `->`/`-{` *and* want to stop), so
+   declaring this precedence is parse-behaviour-preserving and only
+   silences the spurious conflict. `ARROW` has no precedence elsewhere
+   and is a conflict lookahead ONLY in state 41 (verified via
+   `menhir --explain`), so giving it precedence here is side-effect-free.
+   See affinescript#215 (family A). */
+%nonassoc LOWEST_TYPE_ARROW
+%nonassoc ARROW
 %right EQ PLUSEQ MINUSEQ STAREQ SLASHEQ
 %left PIPEPIPE
 %left AMPAMP
@@ -416,7 +430,7 @@ type_expr_arrow:
      past the closing RPAREN. */
   | LPAREN ty1 = type_expr COMMA tys = separated_nonempty_list(COMMA, type_expr) RPAREN ARROW ret = type_expr_arrow
     { List.fold_right (fun p acc -> TyArrow (p, None, acc, None)) (ty1 :: tys) ret }
-  | ty = type_expr_primary { ty }
+  | ty = type_expr_primary %prec LOWEST_TYPE_ARROW { ty }
 
 type_expr_primary:
   | LPAREN RPAREN { TyTuple [] }
