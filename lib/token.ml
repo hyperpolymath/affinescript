@@ -72,6 +72,7 @@ type t =
   | LPAREN
   | RPAREN
   | LBRACE
+  | HASH_LBRACE
   | RBRACE
   | LBRACKET
   | RBRACKET
@@ -186,6 +187,7 @@ let to_string = function
   | LPAREN -> "("
   | RPAREN -> ")"
   | LBRACE -> "{"
+  | HASH_LBRACE -> "#{"
   | RBRACE -> "}"
   | LBRACKET -> "["
   | RBRACKET -> "]"

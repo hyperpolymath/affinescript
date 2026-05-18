@@ -183,6 +183,9 @@ let rec token state buf =
   | "-=" -> MINUSEQ
   | "*=" -> STAREQ
   | "/=" -> SLASHEQ
+  (* `#{` opens a record/struct literal (#218); longest-match, and `#` has
+     no other lexer rule, so this never shadows a single-char token. *)
+  | "#{" -> HASH_LBRACE
 
   (* Single-char tokens *)
   | '(' -> LPAREN

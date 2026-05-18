@@ -66,6 +66,10 @@ let rec effect_union_of_list = function
 
 /* Punctuation */
 %token LPAREN RPAREN LBRACE RBRACE LBRACKET RBRACKET
+/* `#{` opens a record/struct literal (#218). `{` is ALWAYS a block in
+   expression position — this structurally removes the block-vs-record
+   ambiguity (#215 families C+D) with no lookahead heuristic. */
+%token HASH_LBRACE
 %token COMMA SEMICOLON COLON COLONCOLON DOT DOTDOT
 %token ARROW FAT_ARROW PIPE AT UNDERSCORE BACKSLASH QUESTION
 
@@ -768,10 +772,10 @@ expr_primary:
      ordinary parameter binding named "self". */
   | SELF_KW { ExprVar (mk_ident "self" $startpos $endpos) }
   | name = lower_ident { ExprVar (mk_ident name $startpos $endpos) }
-  /* Struct literal: `Point { x: v, y: w }`.  Must come before the plain
-     upper_ident production so Menhir shifts LBRACE rather than reducing
-     upper_ident to ExprVar when the next token is LBRACE. */
-  | _ty = upper_ident LBRACE b = expr_record_body RBRACE
+  /* Struct literal: `Point #{ x: v, y: w }` (#218).  The `#{` sigil makes
+     this unambiguous against the plain `upper_ident` production and against
+     a following block, so no LBRACE-shift heuristic is needed any more. */
+  | _ty = upper_ident HASH_LBRACE b = expr_record_body RBRACE
     { ExprRecord { er_fields = fst b; er_spread = snd b } }
   | name = upper_ident { ExprVar (mk_ident name $startpos $endpos) }
   | ty = upper_ident COLONCOLON variant = upper_ident
@@ -787,11 +791,12 @@ expr_primary:
   /* Arrays */
   | LBRACKET es = separated_list(COMMA, expr) RBRACKET { ExprArray es }
 
-  /* Records — use a recursive rule (expr_record_body / expr_record_rest) to
-     avoid the LALR(1) greedy-separator conflict that arises when a ROW_VAR
-     spread like `..record` follows a COMMA that `separated_list` has already
-     consumed expecting another record_field. */
-  | LBRACE b = expr_record_body RBRACE
+  /* Anonymous record `#{ f: v, ..spread }` (#218).  Uses a recursive rule
+     (expr_record_body / expr_record_rest) to avoid the LALR(1) greedy-
+     separator conflict that arises when a ROW_VAR spread like `..record`
+     follows a COMMA that `separated_list` has already consumed expecting
+     another record_field. */
+  | HASH_LBRACE b = expr_record_body RBRACE
     { ExprRecord { er_fields = fst b; er_spread = snd b } }
 
   /* Block */
