@@ -290,8 +290,8 @@ type Person = {name: String, age: Int}
 type Company = {name: String, employees: Int, revenue: Float}
 
 // Both work — the row variable absorbs the extra fields:
-greet(Person { name: "Alice", age: 30 })
-greet(Company { name: "Acme", employees: 100, revenue: 9999.0 })
+greet(Person #{ name: "Alice", age: 30 })
+greet(Company #{ name: "Acme", employees: 100, revenue: 9999.0 })
 ----
 
 Row polymorphism is also how effects compose:
@@ -465,14 +465,14 @@ type FetchError = { message: String }
 
 // Open a request (produces a linear resource):
 fn make_request(url: String, config: ref Config) -> own Request {
-  Request { url: url, config: config }
+  Request #{ url: url, config: config }
 }
 
 // Send the request (consumes it — can't send twice):
 fn send(req: own Request) -> Result[Response, FetchError] / IO {
   IO.println("Sending request to " ++ req.url);
   // Real implementation would use the Async effect
-  Ok(Response { body: "OK", status: 200 })
+  Ok(Response #{ body: "OK", status: 200 })
 }
 
 // The return type tells you: this can fail, and it does IO.

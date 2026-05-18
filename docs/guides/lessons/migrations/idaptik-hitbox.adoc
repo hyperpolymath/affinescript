@@ -44,7 +44,7 @@ fn contains(r: Rect, p: Point) -> Bool {
 }
 
 fn from_center(c: Point, size: Size) -> Rect {
-  { x: c.x - size.w / 2, y: c.y - size.h / 2, w: size.w, h: size.h }
+  #{ x: c.x - size.w / 2, y: c.y - size.h / 2, w: size.w, h: size.h }
 }
 ----
 

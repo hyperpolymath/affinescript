@@ -192,7 +192,7 @@ This includes code such as:
 type Texture = own { id: Int, width: Int, height: Int }
 
 fn load_texture(path: ref String) -{IO + Exn[LoadError]}-> own Texture {
-  Texture { id: 42, width: 1024, height: 1024 }
+  Texture #{ id: 42, width: 1024, height: 1024 }
 }
 
 fn render(scene: ref Scene, texture: ref Texture) -{Render}-> () {
@@ -231,7 +231,7 @@ fn authenticate(
   @linear conn: own Connection[{status: Unauthenticated}]
 ) -{Session + IO}-> Connection[{status: Authenticated, user: String}] {
   let creds = recv();
-  Connection { socket: conn.socket, status: Authenticated, user: creds.user }
+  Connection #{ socket: conn.socket, status: Authenticated, user: creds.user }
 }
 
 fn query(
@@ -287,8 +287,8 @@ fn greet[..r](person: {name: String, ..r}) -> String {
   "Hello, " ++ person.name
 }
 
-let alice = {name: "Alice", age: 30, role: "Engineer"};
-let bob = {name: "Bob", department: "Sales"};
+let alice = #{name: "Alice", age: 30, role: "Engineer"};
+let bob = #{name: "Bob", department: "Sales"};
 
 greet(alice);
 greet(bob);
