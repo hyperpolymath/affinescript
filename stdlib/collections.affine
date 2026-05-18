@@ -17,7 +17,7 @@ use prelude::{Option, Some, None, filter, map};
 // ============================================================================
 
 /// Reverse a list
-fn reverse<T>(list: [T]) -> [T] {
+pub fn reverse<T>(list: [T]) -> [T] {
   let mut result = [];
   for x in list {
     result = [x] ++ result;

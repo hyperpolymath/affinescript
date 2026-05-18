@@ -113,7 +113,7 @@ fn expect<T>(opt: Option<T>, msg: String) -> T {
 }
 
 /// Unwrap or provide default value
-fn unwrap_or<T>(opt: Option<T>, default: T) -> T {
+pub fn unwrap_or<T>(opt: Option<T>, default: T) -> T {
   match opt {
     Some(value) => value,
     None => default

@@ -4,4 +4,5 @@
  (deps
   (source_tree golden)
   (source_tree e2e)
-  (source_tree ../examples)))
+  (source_tree ../examples)
+  (source_tree ../stdlib)))
