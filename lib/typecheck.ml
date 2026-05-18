@@ -488,11 +488,29 @@ let rec check_pattern (ctx : context) (pat : pattern) (expected : ty)
     let* bindings_list = check_patterns ctx pats elem_tys in
     Ok (List.concat bindings_list)
   | PatCon ({ name; _ }, sub_pats) ->
-    (* Look up the constructor type *)
-    begin match Hashtbl.find_opt ctx.constructor_env name with
-      | Some ctor_ty ->
-        let ctor_ty' = instantiate ctx.level
-          { sc_tyvars = []; sc_effvars = []; sc_rowvars = []; sc_body = ctor_ty } in
+    (* Resolve the constructor's type, freshly instantiated *per use-site*.
+       Prefer the polymorphic scheme bound in [name_types] (set via
+       [bind_scheme] for both builtin Ok/Err/Some/None/RuntimeError and
+       user-declared variants) so every occurrence gets independent type
+       variables — exactly as [lookup_var] does for ordinary identifiers.
+       Fall back to the monomorphic [constructor_env] entry only when no
+       scheme is registered. Previously this read [constructor_env] alone
+       and wrapped it as a 0-tyvar scheme, so all occurrences *shared* one
+       set of variables: two `Ok(_)` patterns in one match then forced both
+       payloads to the same type (`Unify ((_ -> _), T)` in result.affine). *)
+    let ctor_ty_opt =
+      match Hashtbl.find_opt ctx.name_types name with
+      | Some sc -> Some (instantiate ctx.level sc)
+      | None ->
+        (match Hashtbl.find_opt ctx.constructor_env name with
+         | Some ctor_ty ->
+           Some (instantiate ctx.level
+             { sc_tyvars = []; sc_effvars = []; sc_rowvars = [];
+               sc_body = ctor_ty })
+         | None -> None)
+    in
+    begin match ctor_ty_opt with
+      | Some ctor_ty' ->
         (* Constructor type should be T1 -> T2 -> ... -> ResultType *)
         let rec peel_arrows ty pats acc =
           match pats with
