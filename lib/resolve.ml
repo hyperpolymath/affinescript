@@ -64,6 +64,7 @@ let create_context () : context =
   (* Numeric coercions and math *)
   def "int"; def "float";
   def "sqrt"; def "cbrt"; def "pow_float"; def "floor"; def "ceil"; def "round";
+  def "trunc";
   def "abs"; def "max"; def "min";
   def "sin"; def "cos"; def "tan"; def "atan"; def "atan2";
   def "exp"; def "log"; def "log10"; def "log2";
