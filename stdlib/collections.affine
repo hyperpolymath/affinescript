@@ -7,7 +7,10 @@ module collections;
 
 // `Option` + constructors and the generic list utilities are owned by
 // `prelude` (ADR-011); collections is a consumer module (#135 slice 8).
-use prelude::{Option, Some, None, filter, map, range, any};
+// `any` and `range` are defined locally below with a (pred, list)
+// signature that differs from prelude's, so they are NOT imported
+// (importing would conflict with the local definitions).
+use prelude::{Option, Some, None, filter, map};
 
 // ============================================================================
 // List Operations
@@ -15,7 +18,7 @@ use prelude::{Option, Some, None, filter, map, range, any};
 
 /// Reverse a list
 fn reverse<T>(list: [T]) -> [T] {
-  let result = [];
+  let mut result = [];
   for x in list {
     result = [x] ++ result;
   }
@@ -53,8 +56,8 @@ fn zip<A, B>(xs: [A], bs: [B]) -> [(A, B)] {
 
 /// Unzip a list of pairs
 fn unzip<A, B>(pairs: [(A, B)]) -> ([A], [B]) {
-  let xs = [];
-  let bs = [];
+  let mut xs = [];
+  let mut bs = [];
   for (a, b) in pairs {
     xs = xs ++ [a];
     bs = bs ++ [b];
@@ -94,8 +97,8 @@ fn all<T>(pred: T -> Bool, list: [T]) -> Bool {
 
 /// Partition list into two lists based on predicate
 fn partition<T>(pred: T -> Bool, list: [T]) -> ([T], [T]) {
-  let trues = [];
-  let falses = [];
+  let mut trues = [];
+  let mut falses = [];
   for x in list {
     if pred(x) {
       trues = trues ++ [x];
@@ -112,8 +115,8 @@ fn group<T>(list: [T]) -> [[T]] {
     []
   } else {
     let first = list[0];
-    let same = filter(fn(x) => x == first, list);
-    let different = filter(fn(x) => x != first, list);
+    let same = filter(list, fn(x) => x == first);
+    let different = filter(list, fn(x) => x != first);
     [same] ++ group(different)
   }
 }
@@ -125,7 +128,7 @@ fn unique<T>(list: [T]) -> [T] {
   } else {
     let first = list[0];
     let rest = list[1:];
-    let filtered = filter(fn(x) => x != first, rest);
+    let filtered = filter(rest, fn(x) => x != first);
     [first] ++ unique(filtered)
   }
 }
@@ -141,7 +144,7 @@ fn intersperse<T>(sep: T, list: [T]) -> [T] {
 
 /// Concatenate list of lists
 fn concat<T>(lists: [[T]]) -> [T] {
-  let result = [];
+  let mut result = [];
   for list in lists {
     result = result ++ list;
   }
@@ -150,7 +153,7 @@ fn concat<T>(lists: [[T]]) -> [T] {
 
 /// Flat map (map then concat)
 fn flat_map<A, B>(f: A -> [B], list: [A]) -> [B] {
-  concat(map(f, list))
+  concat(map(list, f))
 }
 
 // ============================================================================
@@ -159,7 +162,7 @@ fn flat_map<A, B>(f: A -> [B], list: [A]) -> [B] {
 
 /// Fill array with value
 fn array_fill<T>(size: Int, value: T) -> [T] {
-  let arr = [];
+  let mut arr = [];
   let mut i = 0;
   while i < size {
     arr = arr ++ [value];
@@ -197,8 +200,8 @@ fn sort<T>(list: [T]) -> [T] {
   } else {
     let pivot = list[0];
     let rest = list[1:];
-    let smaller = filter(fn(x) => x < pivot, rest);
-    let greater = filter(fn(x) => x >= pivot, rest);
+    let smaller = filter(rest, fn(x) => x < pivot);
+    let greater = filter(rest, fn(x) => x >= pivot);
     sort(smaller) ++ [pivot] ++ sort(greater)
   }
 }
@@ -235,12 +238,12 @@ fn set_union<T>(a: [T], b: [T]) -> [T] {
 
 /// Intersection of two sets
 fn set_intersection<T>(a: [T], b: [T]) -> [T] {
-  filter(fn(x) => any(fn(y) => x == y, b), a)
+  filter(a, fn(x) => any(fn(y) => x == y, b))
 }
 
 /// Difference of two sets
 fn set_difference<T>(a: [T], b: [T]) -> [T] {
-  filter(fn(x) => !any(fn(y) => x == y, b), a)
+  filter(a, fn(x) => !any(fn(y) => x == y, b))
 }
 
 /// Check if element is in set
