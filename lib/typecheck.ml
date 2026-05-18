@@ -311,7 +311,7 @@ let rec infer_kind (ctx : context) (ty : ty) : kind result =
     end
   | TCon name ->
     begin match name with
-      | "Array" | "Option" | "List" | "Vec" | "Cmd" -> Ok (KArrow (KType, KType))
+      | "Array" | "Option" | "List" | "Vec" | "Cmd" | "Ref" -> Ok (KArrow (KType, KType))
       | "Result" -> Ok (KArrow (KType, KArrow (KType, KType)))
       | _ -> Ok KType
     end
