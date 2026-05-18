@@ -439,17 +439,17 @@ let check_coherence (registry : trait_registry) (trait_name : string) : unit res
 (** Standard library traits - automatically registered *)
 let register_stdlib_traits (registry : trait_registry) : unit =
   (* Eq trait *)
-  let self_ty = Ast.TyCon { Ast.name = "Self"; span = Span.dummy } in
+  let self_ty = Ast.TyCon (Ast.mk_ident "Self") in
   let eq_self_param = {
     Ast.p_quantity = None;
     p_ownership = Some Ast.Ref;
-    p_name = { Ast.name = "self"; span = Span.dummy };
+    p_name = Ast.mk_ident "self";
     p_ty = self_ty;
   } in
   let eq_other_param = {
     Ast.p_quantity = None;
     p_ownership = Some Ast.Ref;
-    p_name = { Ast.name = "other"; span = Span.dummy };
+    p_name = Ast.mk_ident "other";
     p_ty = self_ty;
   } in
   let eq_trait = {
@@ -471,20 +471,20 @@ let register_stdlib_traits (registry : trait_registry) : unit =
   let ord_self_param = {
     Ast.p_quantity = None;
     p_ownership = Some Ast.Ref;
-    p_name = { Ast.name = "self"; span = Span.dummy };
+    p_name = Ast.mk_ident "self";
     p_ty = self_ty;
   } in
   let ord_other_param = {
     Ast.p_quantity = None;
     p_ownership = Some Ast.Ref;
-    p_name = { Ast.name = "other"; span = Span.dummy };
+    p_name = Ast.mk_ident "other";
     p_ty = self_ty;
   } in
   let ord_trait = {
     td_name = "Ord";
     td_type_params = [];
     td_super = [{
-      tb_name = { name = "Eq"; span = Span.dummy };
+      tb_name = Ast.mk_ident "Eq";
       tb_args = [];
     }];
     td_methods = [{
@@ -502,7 +502,7 @@ let register_stdlib_traits (registry : trait_registry) : unit =
   let hash_self_param = {
     Ast.p_quantity = None;
     p_ownership = Some Ast.Ref;
-    p_name = { Ast.name = "self"; span = Span.dummy };
+    p_name = Ast.mk_ident "self";
     p_ty = self_ty;
   } in
   let hash_trait = {
@@ -524,7 +524,7 @@ let register_stdlib_traits (registry : trait_registry) : unit =
   let display_self_param = {
     Ast.p_quantity = None;
     p_ownership = Some Ast.Ref;
-    p_name = { Ast.name = "self"; span = Span.dummy };
+    p_name = Ast.mk_ident "self";
     p_ty = self_ty;
   } in
   let display_trait = {

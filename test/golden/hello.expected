@@ -7,8 +7,8 @@
           span =
           { Span.start_pos = { Span.line = 2; col = 1; offset = 22 };
             end_pos = { Span.line = 2; col = 4; offset = 25 };
-            file = "test/golden/hello.affine" }
-          };
+            file = "test/golden/hello.affine" };
+          modpath = [] };
         fd_type_params = []; fd_params = [];
         fd_ret_ty = (Some (Ast.TyTuple [])); fd_eff = None; fd_where = [];
         fd_body =

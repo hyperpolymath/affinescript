@@ -1,0 +1,7 @@
+// SPDX-License-Identifier: MPL-2.0
+// issue #228 / ADR-014 conformance support module: declares a PUBLIC
+// effect so the sibling fixture can name it through a sound qualified
+// effect path. Loaded via the module loader's search path.
+module effmod;
+
+pub effect Logging;

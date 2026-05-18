@@ -573,7 +573,7 @@ let rec check_expr (ctx : context) (state : state) (symbols : Symbol.t) (expr : 
     let borrow_span = expr_span (ExprLambda lam) in
     let* () = List.fold_left (fun acc name ->
       let* () = acc in
-      match expr_to_place symbols (ExprVar { name; span = borrow_span }) with
+      match expr_to_place symbols (ExprVar (mk_ident ~span:borrow_span name)) with
       | Some place ->
         (* Check the place is not already moved before we borrow it. *)
         let* _borrow = record_borrow state place Shared borrow_span in

@@ -1,0 +1,10 @@
+// SPDX-License-Identifier: MPL-2.0
+// issue #228 / ADR-014 conformance (NEGATIVE): an unknown module in a
+// qualified type path must be a *resolution* error (sound
+// module-scoped lookup), NOT a parse error and NOT silently accepted.
+// Expected: type error "Unknown module 'Nope' ... (ADR-014)".
+module ConformanceUnknownModule;
+
+pub fn f(x: Int) -> Nope.Bar[Int] {
+  x
+}

@@ -3,12 +3,30 @@
 
 (** Abstract Syntax Tree for AffineScript *)
 
-(** Identifiers *)
+(** Identifiers.
+
+    [modpath] holds a module-qualified prefix for type/effect paths
+    (issue #228, ADR-014).  [modpath = []] means the identifier is
+    unqualified (the overwhelming majority of idents).  A qualified
+    type/effect path like [A.B.C] is represented as
+    [{ name = "C"; modpath = ["A"; "B"]; span }], where [name] is the
+    final member segment and [modpath] is the module path that the
+    member must be looked up *within* (sound module-scoped resolution,
+    not flat-scope). The dot [.] is the canonical separator; [::]
+    remains value/import per ADR-011. *)
 type ident = {
   name : string;
   span : Span.t;
+  modpath : string list;
 }
 [@@deriving show, eq]
+
+(** Construct an unqualified identifier ([modpath = []]). Used by
+    compiler-internal synthetic idents (trait desugaring, codegen
+    helpers, …) so the [modpath] field (issue #228) is set in exactly
+    one place rather than scattered as record literals. *)
+let mk_ident ?(span : Span.t = Span.dummy) (name : string) : ident =
+  { name; span; modpath = [] }
 
 (** Quantity annotations for QTT *)
 type quantity =

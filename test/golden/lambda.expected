@@ -7,8 +7,8 @@
           span =
           { Span.start_pos = { Span.line = 2; col = 1; offset = 27 };
             end_pos = { Span.line = 2; col = 4; offset = 30 };
-            file = "test/golden/lambda.affine" }
-          };
+            file = "test/golden/lambda.affine" };
+          modpath = [] };
         fd_type_params = []; fd_params = [];
         fd_ret_ty =
         (Some (Ast.TyCon
@@ -17,8 +17,8 @@
                    { Span.start_pos =
                      { Span.line = 2; col = 18; offset = 44 };
                      end_pos = { Span.line = 2; col = 21; offset = 47 };
-                     file = "test/golden/lambda.affine" }
-                   }));
+                     file = "test/golden/lambda.affine" };
+                   modpath = [] }));
         fd_eff = None; fd_where = [];
         fd_body =
         (Ast.FnBlock
@@ -31,8 +31,8 @@
                      { Span.start_pos =
                        { Span.line = 3; col = 3; offset = 55 };
                        end_pos = { Span.line = 3; col = 7; offset = 59 };
-                       file = "test/golden/lambda.affine" }
-                     });
+                       file = "test/golden/lambda.affine" };
+                     modpath = [] });
                 sl_ty = None;
                 sl_value =
                 Ast.ExprLambda {
@@ -44,8 +44,8 @@
                        { Span.start_pos =
                          { Span.line = 3; col = 11; offset = 63 };
                          end_pos = { Span.line = 3; col = 12; offset = 64 };
-                         file = "test/golden/lambda.affine" }
-                       };
+                         file = "test/golden/lambda.affine" };
+                       modpath = [] };
                      p_ty = Ast.TyHole }
                     ];
                   elam_ret_ty = None;
@@ -58,8 +58,8 @@
                             { Span.line = 3; col = 13; offset = 65 };
                             end_pos =
                             { Span.line = 3; col = 15; offset = 67 };
-                            file = "test/golden/lambda.affine" }
-                          }),
+                            file = "test/golden/lambda.affine" };
+                          modpath = [] }),
                      Ast.OpAdd,
                      (Ast.ExprLit
                         (Ast.LitInt (1,
@@ -80,8 +80,8 @@
                              { Span.line = 3; col = 20; offset = 72 };
                              end_pos =
                              { Span.line = 4; col = 3; offset = 76 };
-                             file = "test/golden/lambda.affine" }
-                           }),
+                             file = "test/golden/lambda.affine" };
+                           modpath = [] }),
                       [(Ast.ExprLit
                           (Ast.LitInt (42,
                              { Span.start_pos =
@@ -101,8 +101,8 @@
            span =
            { Span.start_pos = { Span.line = 7; col = 1; offset = 85 };
              end_pos = { Span.line = 7; col = 4; offset = 88 };
-             file = "test/golden/lambda.affine" }
-           };
+             file = "test/golden/lambda.affine" };
+           modpath = [] };
          fd_type_params = []; fd_params = [];
          fd_ret_ty =
          (Some (Ast.TyCon
@@ -111,8 +111,8 @@
                     { Span.start_pos =
                       { Span.line = 7; col = 24; offset = 108 };
                       end_pos = { Span.line = 7; col = 27; offset = 111 };
-                      file = "test/golden/lambda.affine" }
-                    }));
+                      file = "test/golden/lambda.affine" };
+                    modpath = [] }));
          fd_eff = None; fd_where = [];
          fd_body =
          (Ast.FnBlock
@@ -125,8 +125,8 @@
                       { Span.start_pos =
                         { Span.line = 8; col = 3; offset = 119 };
                         end_pos = { Span.line = 8; col = 7; offset = 123 };
-                        file = "test/golden/lambda.affine" }
-                      });
+                        file = "test/golden/lambda.affine" };
+                      modpath = [] });
                  sl_ty = None;
                  sl_value =
                  Ast.ExprLambda {
@@ -138,8 +138,8 @@
                         { Span.start_pos =
                           { Span.line = 8; col = 11; offset = 127 };
                           end_pos = { Span.line = 8; col = 12; offset = 128 };
-                          file = "test/golden/lambda.affine" }
-                        };
+                          file = "test/golden/lambda.affine" };
+                        modpath = [] };
                       p_ty =
                       (Ast.TyCon
                          { Ast.name = "Int";
@@ -148,8 +148,8 @@
                              { Span.line = 8; col = 13; offset = 129 };
                              end_pos =
                              { Span.line = 8; col = 15; offset = 131 };
-                             file = "test/golden/lambda.affine" }
-                           })
+                             file = "test/golden/lambda.affine" };
+                           modpath = [] })
                       }
                      ];
                    elam_ret_ty = None;
@@ -162,8 +162,8 @@
                              { Span.line = 8; col = 18; offset = 134 };
                              end_pos =
                              { Span.line = 8; col = 20; offset = 136 };
-                             file = "test/golden/lambda.affine" }
-                           }),
+                             file = "test/golden/lambda.affine" };
+                           modpath = [] }),
                       Ast.OpMul,
                       (Ast.ExprLit
                          (Ast.LitInt (2,
@@ -184,8 +184,8 @@
                               { Span.line = 8; col = 25; offset = 141 };
                               end_pos =
                               { Span.line = 9; col = 3; offset = 145 };
-                              file = "test/golden/lambda.affine" }
-                            }),
+                              file = "test/golden/lambda.affine" };
+                            modpath = [] }),
                        [(Ast.ExprLit
                            (Ast.LitInt (21,
                               { Span.start_pos =

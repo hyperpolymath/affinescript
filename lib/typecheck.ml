@@ -112,6 +112,11 @@ type type_error =
           function's explicitly declared effect row (issue #59). Only
           raised when a row is declared; an undeclared row stays
           permissive under tracking-only v1. *)
+  | QualifiedPathError of string * Span.t
+      (** issue #228 / ADR-014: a module-qualified type/effect path
+          `A.B.C` failed sound module-scoped resolution — unknown
+          module, missing member, wrong kind, or non-public member.
+          Carries a human message and the use-site span. *)
 
 (** Format a type error for human consumption. *)
 let show_type_error = function
@@ -156,6 +161,7 @@ let show_type_error = function
        performs `Partial` — add it to the row, e.g. /{%s}."
       inferred declared
       (if declared = "" then "Partial" else declared ^ ", Partial")
+  | QualifiedPathError (msg, _span) -> msg
 
 let format_type_error = show_type_error
 
@@ -163,6 +169,13 @@ let format_type_error = show_type_error
     the [check_program] boundary and converted to [UnknownEffect]
     (lowering is not in the result monad). *)
 exception Effect_validation_error of string
+
+(** issue #228 / ADR-014: raised by [lower_type_expr] /
+    [lower_effect_expr] when a module-qualified path fails sound
+    module-scoped member resolution; caught at the [check_program]
+    boundary and converted to [QualifiedPathError] (lowering is not in
+    the result monad — same pattern as [Effect_validation_error]). *)
+exception Qualified_path_error of string * Span.t
 
 (** {1 Context} *)
 
@@ -189,6 +202,20 @@ type context = {
   declared_effects : (string, unit) Hashtbl.t;
   (** User-declared effect names (`effect <name>;`). Consulted by
       [lower_effect_expr] alongside the v1 registry (issue #59). *)
+  mutable qualified_member_check :
+    (string list -> string -> [ `Type | `Effect ] -> Span.t ->
+       (unit, string * Span.t) Result.t) option;
+  (** issue #228 / ADR-014: sound module-scoped validator for a
+      qualified type/effect path [A.B.C]. Given the module prefix
+      (the [A.B] part), the member name (the [C] part), the kind, and
+      the use-site span, it loads + resolves + type-checks module
+      [["A";"B"]] and confirms [C] is a [Public]/[PubCrate] symbol of
+      the right kind *within that module*. Returns [Ok ()] or an error
+      message + span. Injected by [Resolve] (which owns the
+      [Module_loader]); [None] when no loader is available (e.g. a
+      bare [check_program] with no imports), in which case a qualified
+      path that reaches lowering is rejected as unresolved rather than
+      silently accepted (sound default). *)
 }
 
 type 'a result = ('a, type_error) Result.t
@@ -219,6 +246,7 @@ let create_context (symbols : Symbol.t) : context =
     current_eff = fresh_effvar 0;
     trait_registry = Trait.create_registry ();
     declared_effects = Hashtbl.create 16;
+    qualified_member_check = None;
   }
 
 (** Enter a deeper let-level. *)
@@ -387,6 +415,35 @@ let lower_quantity (q : Ast.quantity) : Types.quantity =
 
     Type variables are looked up in [type_env]; unknown names become
     fresh unification variables so that inference can resolve them. *)
+(** issue #228 / ADR-014: validate a module-qualified type/effect
+    path by *sound module-scoped member lookup*. [id.modpath] is the
+    module path; [id.name] the member. Delegates to the loader-backed
+    validator injected by [Resolve]; raises [Qualified_path_error] on
+    any failure (unknown module, missing/private member, wrong kind)
+    or when no validator is wired (sound default — a qualified path is
+    rejected, never silently accepted). A no-op for unqualified idents
+    ([modpath = []]). *)
+let check_qualified_member
+    (ctx : context) (id : ident) (kind : [ `Type | `Effect ]) : unit =
+  match id.modpath with
+  | [] -> ()
+  | prefix ->
+    begin match ctx.qualified_member_check with
+      | Some f ->
+        begin match f prefix id.name kind id.span with
+          | Ok () -> ()
+          | Error (msg, sp) -> raise (Qualified_path_error (msg, sp))
+        end
+      | None ->
+        raise (Qualified_path_error
+          (Printf.sprintf
+             "Qualified %s path '%s.%s' cannot be resolved: no module \
+              loader is available in this compilation unit."
+             (match kind with `Type -> "type" | `Effect -> "effect")
+             (String.concat "." prefix) id.name,
+           id.span))
+    end
+
 let rec lower_type_expr (ctx : context) (te : type_expr) : ty =
   match te with
   | TyVar { name; _ } ->
@@ -398,6 +455,25 @@ let rec lower_type_expr (ctx : context) (te : type_expr) : ty =
         Hashtbl.replace ctx.type_env name tv;
         tv
     end
+  | TyCon ({ name; modpath; _ } as id) when modpath <> [] ->
+    (* issue #228 / ADR-014: `A.B.C` in type position. Soundly verify
+       `C` is a public type member *of module A.B*, then lower to the
+       canonical nominal `TCon C` — the same type the bare/imported
+       form denotes (the validation, not the representation, is what
+       makes this sound). *)
+    check_qualified_member ctx id `Type;
+    begin match Hashtbl.find_opt ctx.type_env name with
+      | Some ty -> ty
+      | None -> TCon name
+    end
+  | TyApp (({ name; modpath; _ } as id), args) when modpath <> [] ->
+    check_qualified_member ctx id `Type;
+    let head = match Hashtbl.find_opt ctx.type_env name with
+      | Some ty -> ty
+      | None -> TCon name
+    in
+    let arg_tys = List.map (fun (TyArg te) -> lower_type_expr ctx te) args in
+    TApp (head, arg_tys)
   | TyCon { name; _ } ->
     begin match name with
       | "Int" -> ty_int
@@ -464,6 +540,31 @@ and lower_effect_expr (ctx : context) (ee : effect_expr) : eff =
         else raise (Effect_validation_error name)
   in
   match ee with
+  | EffVar ({ modpath; _ } as id) when modpath <> [] ->
+    (* issue #228 / ADR-014: `A.B.E` in effect position. Soundly
+       verify `E` is a public effect member *of module A.B*. Once the
+       module-scoped gate confirms it is a real Public/PubCrate
+       SKEffect of that module, register the name as a declared effect
+       so it resolves exactly like an unqualified user-declared effect
+       (issue #59 `resolve` otherwise only knows the v1 registry +
+       *this* module's `declared_effects`; a sibling module's public
+       effect is just as legitimate, and the soundness comes from the
+       module-scoped check having already passed). *)
+    check_qualified_member ctx id `Effect;
+    Hashtbl.replace ctx.declared_effects id.name ();
+    resolve id.name
+  | EffCon (({ modpath; _ } as id), args) when modpath <> [] ->
+    check_qualified_member ctx id `Effect;
+    Hashtbl.replace ctx.declared_effects id.name ();
+    (match resolve id.name with
+     | ESingleton base when args <> [] ->
+       let arg_str =
+         args
+         |> List.map (fun (TyArg te) -> ty_to_string (lower_type_expr ctx te))
+         |> String.concat ", "
+       in
+       ESingleton (base ^ "[" ^ arg_str ^ "]")
+     | other -> other)
   | EffVar { name; _ } -> resolve name
   | EffCon ({ name; _ }, args) ->
     (* Parametric effect, e.g. `Throws[MyErr]` (issue #59). Effect
@@ -1753,10 +1854,18 @@ let check_decl (ctx : context) (decl : top_level) : (unit, type_error) Result.t 
     can resolve [f] to the imported function's scheme even though [f] does
     not appear in [prog.prog_decls]. *)
 let check_program ?(import_types : (string, scheme) Hashtbl.t option)
+    ?(qualified_member_check :
+        (string list -> string -> [ `Type | `Effect ] -> Span.t ->
+           (unit, string * Span.t) Result.t) option)
     (symbols : Symbol.t) (prog : Ast.program)
     : (context, type_error) Result.t =
   try
   let ctx = create_context symbols in
+  (* issue #228 / ADR-014: thread the sound module-scoped validator
+     into the *fresh* context this entry point creates, so a qualified
+     type/effect path reaching [lower_type_expr]/[lower_effect_expr]
+     is checked against the named module's real public symbols. *)
+  ctx.qualified_member_check <- qualified_member_check;
   register_builtins ctx;
   Option.iter (fun tbl ->
     Hashtbl.iter (fun name sc -> Hashtbl.replace ctx.name_types name sc) tbl
@@ -1802,4 +1911,6 @@ let check_program ?(import_types : (string, scheme) Hashtbl.t option)
       Error (QuantityError (qerr, span))
     end
   | Error e -> Error e
-  with Effect_validation_error name -> Error (UnknownEffect name)
+  with
+  | Effect_validation_error name -> Error (UnknownEffect name)
+  | Qualified_path_error (msg, sp) -> Error (QualifiedPathError (msg, sp))

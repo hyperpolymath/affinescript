@@ -1,0 +1,12 @@
+// SPDX-License-Identifier: MPL-2.0
+// issue #228 / ADR-014 conformance: a module-qualified EFFECT path
+// that resolves by sound module-scoped member lookup.
+//
+// `effmod.Logging` must load module `effmod`, resolve+typecheck it,
+// and find `Logging` as a Public SKEffect *within that module*.
+// Expected: type checking passes.
+module ConformanceQualifiedEffect;
+
+pub fn act(x: Int) -> Int / effmod.Logging {
+  x
+}

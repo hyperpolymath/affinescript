@@ -7,8 +7,8 @@
           span =
           { Span.start_pos = { Span.line = 2; col = 1; offset = 30 };
             end_pos = { Span.line = 2; col = 4; offset = 33 };
-            file = "test/golden/functions.affine" }
-          };
+            file = "test/golden/functions.affine" };
+          modpath = [] };
         fd_type_params = [];
         fd_params =
         [{ Ast.p_quantity = None; p_ownership = None;
@@ -17,16 +17,16 @@
              span =
              { Span.start_pos = { Span.line = 2; col = 10; offset = 39 };
                end_pos = { Span.line = 2; col = 11; offset = 40 };
-               file = "test/golden/functions.affine" }
-             };
+               file = "test/golden/functions.affine" };
+             modpath = [] };
            p_ty =
            (Ast.TyCon
               { Ast.name = "Int";
                 span =
                 { Span.start_pos = { Span.line = 2; col = 12; offset = 41 };
                   end_pos = { Span.line = 2; col = 14; offset = 43 };
-                  file = "test/golden/functions.affine" }
-                })
+                  file = "test/golden/functions.affine" };
+                modpath = [] })
            }
           ];
         fd_ret_ty =
@@ -36,8 +36,8 @@
                    { Span.start_pos =
                      { Span.line = 2; col = 19; offset = 48 };
                      end_pos = { Span.line = 2; col = 22; offset = 51 };
-                     file = "test/golden/functions.affine" }
-                   }));
+                     file = "test/golden/functions.affine" };
+                   modpath = [] }));
         fd_eff = None; fd_where = [];
         fd_body =
         (Ast.FnBlock
@@ -51,8 +51,8 @@
                              { Span.line = 2; col = 26; offset = 55 };
                              end_pos =
                              { Span.line = 3; col = 3; offset = 59 };
-                             file = "test/golden/functions.affine" }
-                           }),
+                             file = "test/golden/functions.affine" };
+                           modpath = [] }),
                       Ast.OpAdd,
                       (Ast.ExprLit
                          (Ast.LitInt (1,
@@ -72,8 +72,8 @@
            span =
            { Span.start_pos = { Span.line = 6; col = 7; offset = 74 };
              end_pos = { Span.line = 6; col = 10; offset = 77 };
-             file = "test/golden/functions.affine" }
-           };
+             file = "test/golden/functions.affine" };
+           modpath = [] };
          fd_type_params = [];
          fd_params =
          [{ Ast.p_quantity = None; p_ownership = None;
@@ -82,16 +82,16 @@
               span =
               { Span.start_pos = { Span.line = 6; col = 14; offset = 81 };
                 end_pos = { Span.line = 6; col = 15; offset = 82 };
-                file = "test/golden/functions.affine" }
-              };
+                file = "test/golden/functions.affine" };
+              modpath = [] };
             p_ty =
             (Ast.TyCon
                { Ast.name = "Nat";
                  span =
                  { Span.start_pos = { Span.line = 6; col = 16; offset = 83 };
                    end_pos = { Span.line = 6; col = 18; offset = 85 };
-                   file = "test/golden/functions.affine" }
-                 })
+                   file = "test/golden/functions.affine" };
+                 modpath = [] })
             }
            ];
          fd_ret_ty =
@@ -101,8 +101,8 @@
                     { Span.start_pos =
                       { Span.line = 6; col = 23; offset = 90 };
                       end_pos = { Span.line = 6; col = 26; offset = 93 };
-                      file = "test/golden/functions.affine" }
-                    }));
+                      file = "test/golden/functions.affine" };
+                    modpath = [] }));
          fd_eff = None; fd_where = [];
          fd_body =
          (Ast.FnBlock
@@ -114,8 +114,8 @@
                          { Span.start_pos =
                            { Span.line = 6; col = 30; offset = 97 };
                            end_pos = { Span.line = 7; col = 3; offset = 101 };
-                           file = "test/golden/functions.affine" }
-                         }))
+                           file = "test/golden/functions.affine" };
+                         modpath = [] }))
               })
          });
     (Ast.TopFn
@@ -125,8 +125,8 @@
            span =
            { Span.start_pos = { Span.line = 10; col = 1; offset = 106 };
              end_pos = { Span.line = 10; col = 4; offset = 109 };
-             file = "test/golden/functions.affine" }
-           };
+             file = "test/golden/functions.affine" };
+           modpath = [] };
          fd_type_params =
          [{ Ast.tp_quantity = None;
             tp_name =
@@ -134,8 +134,8 @@
               span =
               { Span.start_pos = { Span.line = 10; col = 11; offset = 116 };
                 end_pos = { Span.line = 10; col = 12; offset = 117 };
-                file = "test/golden/functions.affine" }
-              };
+                file = "test/golden/functions.affine" };
+              modpath = [] };
             tp_kind = None }
            ];
          fd_params =
@@ -145,8 +145,8 @@
               span =
               { Span.start_pos = { Span.line = 10; col = 14; offset = 119 };
                 end_pos = { Span.line = 10; col = 15; offset = 120 };
-                file = "test/golden/functions.affine" }
-              };
+                file = "test/golden/functions.affine" };
+              modpath = [] };
             p_ty =
             (Ast.TyCon
                { Ast.name = "T";
@@ -154,8 +154,8 @@
                  { Span.start_pos =
                    { Span.line = 10; col = 16; offset = 121 };
                    end_pos = { Span.line = 10; col = 18; offset = 123 };
-                   file = "test/golden/functions.affine" }
-                 })
+                   file = "test/golden/functions.affine" };
+                 modpath = [] })
             }
            ];
          fd_ret_ty =
@@ -165,8 +165,8 @@
                     { Span.start_pos =
                       { Span.line = 10; col = 21; offset = 126 };
                       end_pos = { Span.line = 10; col = 24; offset = 129 };
-                      file = "test/golden/functions.affine" }
-                    }));
+                      file = "test/golden/functions.affine" };
+                    modpath = [] }));
          fd_eff = None; fd_where = [];
          fd_body =
          (Ast.FnBlock
@@ -179,8 +179,8 @@
                            { Span.line = 10; col = 26; offset = 131 };
                            end_pos =
                            { Span.line = 11; col = 3; offset = 135 };
-                           file = "test/golden/functions.affine" }
-                         }))
+                           file = "test/golden/functions.affine" };
+                         modpath = [] }))
               })
          });
     (Ast.TopFn
@@ -190,8 +190,8 @@
            span =
            { Span.start_pos = { Span.line = 14; col = 5; offset = 144 };
              end_pos = { Span.line = 14; col = 8; offset = 147 };
-             file = "test/golden/functions.affine" }
-           };
+             file = "test/golden/functions.affine" };
+           modpath = [] };
          fd_type_params = []; fd_params = [];
          fd_ret_ty = (Some (Ast.TyTuple [])); fd_eff = None; fd_where = [];
          fd_body =

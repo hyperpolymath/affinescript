@@ -680,7 +680,9 @@ let rec resolve_and_typecheck_module
      imported modules must check the same way top-level programs do.) *)
   match
     Typecheck.check_program
-      ~import_types:type_ctx.Typecheck.name_types symbols prog
+      ~import_types:type_ctx.Typecheck.name_types
+      ~qualified_member_check:(make_qualified_member_check mod_ctx loader)
+      symbols prog
   with
   | Ok final_ctx -> Ok (symbols, final_ctx)
   | Error type_err ->
@@ -779,6 +781,87 @@ and resolve_imports_with_loader
       end
   ) (Ok ()) imports
 
+(* issue #228 / ADR-014: build the sound module-scoped member
+   validator that [Typecheck.lower_type_expr] / [lower_effect_expr]
+   call for a qualified path [A.B.C].
+
+   Soundness: it does NOT consult the flat current scope. It loads
+   module [A.B] *through the loader*, runs the same resolve +
+   type-check it would get as an import ([resolve_and_typecheck_module]
+   — hence membership in this recursive group), and then looks [C] up
+   *inside that module's own resolved symbol table*, requiring it to
+   be [Public]/[PubCrate] and of the expected kind ([SKType] for
+   types, [SKEffect] for effects). A wrong/unknown module, a missing
+   member, a private member, or a member of the wrong kind is an error
+   reported at the use-site span. On success the use-site reference is
+   recorded (LSP find-references). *)
+and make_qualified_member_check
+    (ctx : context)
+    (loader : Module_loader.t)
+  : string list -> string -> [ `Type | `Effect ] -> Span.t ->
+      (unit, string * Span.t) Result.t =
+  fun prefix member kind span ->
+    let kind_word = match kind with `Type -> "type" | `Effect -> "effect" in
+    let mod_str = String.concat "." prefix in
+    match Module_loader.load_module loader prefix with
+    | Error (Module_loader.ModuleNotFound _) ->
+      Error (Printf.sprintf
+        "Unknown module '%s' in qualified %s path '%s.%s' (ADR-014)."
+        mod_str kind_word mod_str member, span)
+    | Error e ->
+      Error (Printf.sprintf
+        "Cannot load module '%s' for qualified %s path '%s.%s': %s"
+        mod_str kind_word mod_str member
+        (Module_loader.show_load_error e), span)
+    | Ok loaded_mod ->
+      begin match resolve_and_typecheck_module loader loaded_mod with
+        | Error (rerr, _) ->
+          Error (Printf.sprintf
+            "Module '%s' (named in qualified %s path '%s.%s') failed to \
+             resolve/type-check: %s"
+            mod_str kind_word mod_str member (show_resolve_error rerr), span)
+        | Ok (mod_symbols, _mod_type_ctx) ->
+          begin match Symbol.lookup mod_symbols member with
+            | None ->
+              Error (Printf.sprintf
+                "Module '%s' has no member '%s' (qualified %s path \
+                 '%s.%s', ADR-014)."
+                mod_str member kind_word mod_str member, span)
+            | Some sym ->
+              let kind_ok = match kind, sym.Symbol.sym_kind with
+                | `Type, Symbol.SKType -> true
+                | `Effect, Symbol.SKEffect -> true
+                | _ -> false
+              in
+              let vis_ok = match sym.Symbol.sym_visibility with
+                | Public | PubCrate -> true
+                | _ -> false
+              in
+              if not kind_ok then
+                Error (Printf.sprintf
+                  "'%s.%s' resolves to a %s, not a %s (ADR-014)."
+                  mod_str member
+                  (match sym.Symbol.sym_kind with
+                   | Symbol.SKType -> "type" | Symbol.SKEffect -> "effect"
+                   | Symbol.SKFunction -> "function"
+                   | Symbol.SKConstructor -> "constructor"
+                   | Symbol.SKVariable -> "variable"
+                   | Symbol.SKTypeVar -> "type variable"
+                   | Symbol.SKEffectOp -> "effect operation"
+                   | Symbol.SKModule -> "module")
+                  kind_word, span)
+              else if not vis_ok then
+                Error (Printf.sprintf
+                  "Member '%s' of module '%s' is private; a qualified %s \
+                   path requires a `pub`/`pub(crate)` member (ADR-014)."
+                  member mod_str kind_word, span)
+              else begin
+                record_reference ctx sym span;
+                Ok ()
+              end
+          end
+      end
+
 (** Resolve imports in a program (legacy, without module loader) *)
 let resolve_imports (ctx : context) (imports : import_decl list) : unit result =
   List.fold_left (fun acc import ->
@@ -836,6 +919,8 @@ let resolve_program_with_loader
     (loader : Module_loader.t) : (context * Typecheck.context) result =
   let ctx = create_context () in
   let type_ctx = Typecheck.create_context ctx.symbols in
+  type_ctx.Typecheck.qualified_member_check <-
+    Some (make_qualified_member_check ctx loader);
   (* First resolve imports using module loader *)
   let* () = resolve_imports_with_loader ctx type_ctx loader program.prog_imports in
   (* Pass 1: forward-declare every top-level name (#135 slice 11). *)

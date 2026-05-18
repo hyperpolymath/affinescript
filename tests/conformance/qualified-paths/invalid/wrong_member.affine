@@ -1,0 +1,19 @@
+// SPDX-License-Identifier: MPL-2.0
+// issue #228 / ADR-014 conformance (NEGATIVE): the module exists and
+// is public, but it has no such member. Sound module-scoped lookup
+// must reject a member that is absent from *that* module's resolved
+// public symbols (it must NOT fall back to flat current scope, even
+// though `Option` IS imported below — soundness comes from looking
+// the member up inside the named module).
+//
+// `prelude` is real and `Option` is public there, but `prelude` has
+// no member `DefinitelyNotHere`.
+// Expected: type error "Module 'prelude' has no member
+// 'DefinitelyNotHere' ... (ADR-014)".
+module ConformanceWrongMember;
+
+use prelude::{Option, Some, None};
+
+pub fn f(x: Int) -> prelude.DefinitelyNotHere {
+  x
+}

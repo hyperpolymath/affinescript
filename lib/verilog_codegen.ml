@@ -83,7 +83,7 @@ let gen_module (buf : Buffer.t) (fd : fn_decl) : unit =
     Printf.sprintf "%s%s" kind p.p_name.name
   ) fd.fd_params in
   let out_kind = ty_to_decl
-    (match fd.fd_ret_ty with Some t -> t | None -> TyCon { name="Int"; span=Span.dummy })
+    (match fd.fd_ret_ty with Some t -> t | None -> TyCon (mk_ident "Int"))
     "output" in
   let port_list = String.concat ",\n  " (ports @ [out_kind ^ "out"]) in
   Buffer.add_string buf (Printf.sprintf "module %s (\n  %s\n);\n" name port_list);

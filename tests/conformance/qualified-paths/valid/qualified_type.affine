@@ -1,0 +1,19 @@
+// SPDX-License-Identifier: MPL-2.0
+// issue #228 / ADR-014 conformance: a module-qualified TYPE path that
+// resolves by sound module-scoped member lookup.
+//
+// `prelude.Option` must load module `prelude`, resolve+typecheck it,
+// and find `Option` as a Public SKType *within that module*. The dot
+// `.` is the canonical separator (ADR-011 keeps `::` for value/import).
+// Expected: type checking passes.
+module ConformanceQualifiedType;
+
+use prelude::{Option, Some, None};
+
+pub fn wrap(x: Int) -> prelude.Option[Int] {
+  Some(x)
+}
+
+pub fn wrap_angle(x: Int) -> prelude.Option<Int> {
+  Some(x)
+}

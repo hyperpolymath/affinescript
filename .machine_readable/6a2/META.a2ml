@@ -872,3 +872,94 @@ references = [
   "stdlib/Vscode.affine + packages/affine-vscode/mod.js (#205 thenableThen)",
   "typed-wasm ADR-004 (convergence / aggregate library; Ephapax)",
 ]
+
+[[adr]]
+id = "ADR-014"
+status = "accepted"
+date = "2026-05-18"
+title = "Module-qualified type & effect paths: dot separator, sound module-scoped member lookup"
+context = """
+The type/effect grammar had NO module-qualified path production.
+`Externs.Res` / `Pkg.Type` in type or effect position failed
+`parse error` at the `.`. `type_expr_primary` only had
+`upper_ident -> TyCon` / `upper_ident [..]/<..> -> TyApp`;
+`effect_term` only `ident -> EffVar` / `ident [..] -> EffCon`.
+`module_path` already parsed `ident (DOT ident)*` for module/use.
+ADR-011 settled real modules with qualified paths; the estate's
+Frontier-playbook ports pervasively write `Externs.Foo` in type/effect
+position, contradicting a grammar that could not represent it. An
+oracle audit (28 repos / 1176 .affine files) measured 498 DRIFT-SYNTAX
+files, dominated by exactly this unrepresentable qualified-path shape.
+"""
+decision = """
+A module-qualified path `A.B.C` is admissible in TYPE and EFFECT
+position. The dot `.` is the canonical separator for these paths;
+`::` remains value/import (ADR-011 unchanged). Module-prefix segments
+may be lower- OR upper-case (stdlib modules are `prelude`/`option`/
+`string`/`result` as well as `Network`/`Http`); the final segment is
+the type/effect member and is `upper_ident`.
+
+`A.B.C` resolves by SOUND MODULE-SCOPED MEMBER LOOKUP, never flat
+current scope:
+- load module `[A;B]` through the module loader;
+- resolve + type-check it exactly as an import would
+  (`Resolve.resolve_and_typecheck_module`);
+- look `C` up INSIDE that module's own resolved symbol table,
+  requiring `Public`/`PubCrate` and the right kind (`SKType` for
+  types, `SKEffect` for effects).
+An unknown/wrong module, a missing member, a private member, or a
+member of the wrong kind is a *resolution* error at the use-site span
+— not a parse error, never silently accepted. A validated qualified
+effect's name is admitted as a declared effect (issue #59) so a
+sibling module's public effect is usable like a local one.
+
+Design (ripple-minimised):
+- `ast.ml`: `ident` gains `modpath : string list` ([] = unqualified).
+- `parser.mly`: `mk_qualified_ident`; a `qualified_type_path` helper
+  (`module_prefix DOT upper_ident`); bare / [args] / <args> applied
+  forms for types, bare / [args] for effects.
+- `typecheck.ml`: `lower_type_expr`/`lower_effect_expr` handle the
+  qualified case via a loader-backed validator threaded into the
+  context (`qualified_member_check`), raising `Qualified_path_error`
+  -> `QualifiedPathError` at the `check_program` boundary (same
+  pattern as `Effect_validation_error`). Resolved representation is
+  the canonical nominal type/effect — identical to the bare/imported
+  form; the validation, not the representation, is the soundness gate.
+- `resolve.ml`: `make_qualified_member_check` built where the loader
+  lives; in the `resolve_and_typecheck_module` recursive group so
+  transitively-qualified stdlib paths resolve too.
+
+The `upper_ident` vs `upper_ident DOT …` choice is the expected
+benign DOT shift (Menhir shifts, ADR-012). Verified: parser-conflict
+summary UNCHANGED — 21 shift/reduce states, 1 reduce/reduce state,
+68 s/r + 7 r/r arbitrarily resolved, identical to the pre-change
+parser. No new unexplained conflict.
+"""
+consequences = """
+- Estate Frontier-playbook ports that write `Externs.Foo` /
+  `prelude.Option` in type/effect position now resolve soundly; the
+  oracle re-audit shows a large DRIFT-SYNTAX -> PASS/TYPE-ONLY shift.
+- Typecheck/codegen unchanged: a qualified ident is treated by its
+  resolved symbol exactly like an unqualified one.
+- Adding `modpath` to `ident` reflows every golden `.expected` AST
+  dump (regenerated; the span-normalised gate confirms no structural
+  change). 5 conformance cases added under
+  tests/conformance/qualified-paths/{valid,invalid}; the full gate is
+  green (258 -> 263, zero regressions).
+- STAGE-C peer of #225 (typed-wasm Http) and #160 (C-spine). Language
+  decision is human-gated (ISSUE-CLOSURE): Refs #228, NOT Closes.
+- Settled; do not reopen without amending this ADR.
+"""
+references = [
+  "https://github.com/hyperpolymath/affinescript/issues/228",
+  "https://github.com/hyperpolymath/affinescript/issues/225",
+  "https://github.com/hyperpolymath/affinescript/issues/160",
+  "docs/specs/SETTLED-DECISIONS.adoc (ADR-014 section)",
+  "lib/ast.ml (ident.modpath)",
+  "lib/parser.mly (qualified_type_path; mk_qualified_ident)",
+  "lib/typecheck.ml (lower_type_expr/lower_effect_expr; qualified_member_check)",
+  "lib/resolve.ml (make_qualified_member_check; module-scoped lookup)",
+  "tests/conformance/qualified-paths/{valid,invalid}",
+  "ADR-011 (real modules with qualified paths)",
+  "ADR-012 (parser-conflict disclosure; benign DOT shift)",
+]

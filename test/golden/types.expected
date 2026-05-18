@@ -7,8 +7,8 @@
           span =
           { Span.start_pos = { Span.line = 2; col = 1; offset = 26 };
             end_pos = { Span.line = 2; col = 6; offset = 31 };
-            file = "test/golden/types.affine" }
-          };
+            file = "test/golden/types.affine" };
+          modpath = [] };
         td_type_params = [];
         td_body =
         (Ast.TyAlias
@@ -17,8 +17,8 @@
                 span =
                 { Span.start_pos = { Span.line = 2; col = 12; offset = 37 };
                   end_pos = { Span.line = 2; col = 14; offset = 39 };
-                  file = "test/golden/types.affine" }
-                }))
+                  file = "test/golden/types.affine" };
+                modpath = [] }))
         });
     (Ast.TopType
        { Ast.td_vis = Ast.Private;
@@ -27,8 +27,8 @@
            span =
            { Span.start_pos = { Span.line = 4; col = 1; offset = 45 };
              end_pos = { Span.line = 4; col = 8; offset = 52 };
-             file = "test/golden/types.affine" }
-           };
+             file = "test/golden/types.affine" };
+           modpath = [] };
          td_type_params = [];
          td_body =
          (Ast.TyStruct
@@ -38,8 +38,8 @@
                  span =
                  { Span.start_pos = { Span.line = 4; col = 14; offset = 58 };
                    end_pos = { Span.line = 5; col = 3; offset = 62 };
-                   file = "test/golden/types.affine" }
-                 };
+                   file = "test/golden/types.affine" };
+                 modpath = [] };
                sf_ty =
                (Ast.TyCon
                   { Ast.name = "Int";
@@ -47,8 +47,8 @@
                     { Span.start_pos =
                       { Span.line = 5; col = 4; offset = 63 };
                       end_pos = { Span.line = 5; col = 6; offset = 65 };
-                      file = "test/golden/types.affine" }
-                    })
+                      file = "test/golden/types.affine" };
+                    modpath = [] })
                };
               { Ast.sf_vis = Ast.Private;
                 sf_name =
@@ -56,8 +56,8 @@
                   span =
                   { Span.start_pos = { Span.line = 5; col = 9; offset = 68 };
                     end_pos = { Span.line = 6; col = 3; offset = 72 };
-                    file = "test/golden/types.affine" }
-                  };
+                    file = "test/golden/types.affine" };
+                  modpath = [] };
                 sf_ty =
                 (Ast.TyCon
                    { Ast.name = "Int";
@@ -65,8 +65,8 @@
                      { Span.start_pos =
                        { Span.line = 6; col = 4; offset = 73 };
                        end_pos = { Span.line = 6; col = 6; offset = 75 };
-                       file = "test/golden/types.affine" }
-                     })
+                       file = "test/golden/types.affine" };
+                     modpath = [] })
                 }
               ])
          });
@@ -77,8 +77,8 @@
            span =
            { Span.start_pos = { Span.line = 9; col = 1; offset = 82 };
              end_pos = { Span.line = 9; col = 6; offset = 87 };
-             file = "test/golden/types.affine" }
-           };
+             file = "test/golden/types.affine" };
+           modpath = [] };
          td_type_params =
          [{ Ast.tp_quantity = None;
             tp_name =
@@ -86,8 +86,8 @@
               span =
               { Span.start_pos = { Span.line = 9; col = 12; offset = 93 };
                 end_pos = { Span.line = 9; col = 13; offset = 94 };
-                file = "test/golden/types.affine" }
-              };
+                file = "test/golden/types.affine" };
+              modpath = [] };
             tp_kind = None }
            ];
          td_body =
@@ -97,8 +97,8 @@
                  span =
                  { Span.start_pos = { Span.line = 9; col = 16; offset = 97 };
                    end_pos = { Span.line = 10; col = 3; offset = 101 };
-                   file = "test/golden/types.affine" }
-                 };
+                   file = "test/golden/types.affine" };
+                 modpath = [] };
                vd_fields = []; vd_ret_ty = None };
               { Ast.vd_name =
                 { Ast.name = "Some";
@@ -106,8 +106,8 @@
                   { Span.start_pos =
                     { Span.line = 10; col = 7; offset = 105 };
                     end_pos = { Span.line = 11; col = 3; offset = 109 };
-                    file = "test/golden/types.affine" }
-                  };
+                    file = "test/golden/types.affine" };
+                  modpath = [] };
                 vd_fields =
                 [(Ast.TyCon
                     { Ast.name = "T";
@@ -115,8 +115,8 @@
                       { Span.start_pos =
                         { Span.line = 11; col = 7; offset = 113 };
                         end_pos = { Span.line = 11; col = 8; offset = 114 };
-                        file = "test/golden/types.affine" }
-                      })
+                        file = "test/golden/types.affine" };
+                      modpath = [] })
                   ];
                 vd_ret_ty = None }
               ])

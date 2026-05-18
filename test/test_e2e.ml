@@ -3468,6 +3468,92 @@ let type_syntax_sugar_tests = [
   Alcotest.test_case "(A, B) without arrow remains tuple"     `Quick test_tuple_type_still_works;
 ]
 
+(* ---- issue #228 / ADR-014: sound module-qualified type & effect paths ----
+
+   These exercise the FULL sound pipeline exactly as `main.exe check`
+   does: parse -> resolve_program_with_loader (which builds the
+   loader-backed module-scoped validator) -> check_program with that
+   validator threaded in. The conformance fixtures live under
+   tests/conformance/qualified-paths/{valid,invalid}/. The loader
+   search-path includes the valid/ dir so the `effmod` support module
+   (a public effect) is found by sound module-scoped lookup. *)
+
+let qpath_dir sub =
+  let cands = [
+    "../tests/conformance/qualified-paths/" ^ sub;       (* _build/default/test (dune source_tree) *)
+    "tests/conformance/qualified-paths/" ^ sub;          (* project root *)
+    "../../../tests/conformance/qualified-paths/" ^ sub; (* fallback *)
+  ] in
+  match List.find_opt Sys.file_exists cands with
+  | Some p -> p
+  | None -> Alcotest.failf "qualified-paths/%s not found (tried: %s)"
+              sub (String.concat ", " cands)
+
+(* Run the sound frontend the way main.exe does: the validator built by
+   resolve_program_with_loader is threaded into check_program. *)
+let qpath_run file =
+  let valid_dir = qpath_dir "valid" in
+  let loader = Module_loader.create {
+    Module_loader.stdlib_path = "stdlib";
+    search_paths = [valid_dir; "../../../stdlib"; "../../../../stdlib"];
+    current_dir = Filename.dirname file;
+  } in
+  match parse_fixture file with
+  | Error e -> Error (Printf.sprintf "parse error: %s" e)
+  | Ok prog ->
+    match Resolve.resolve_program_with_loader prog loader with
+    | Error (e, _) -> Error (Printf.sprintf "resolve error: %s"
+                               (Resolve.show_resolve_error e))
+    | Ok (resolve_ctx, type_ctx) ->
+      match
+        Typecheck.check_program
+          ~import_types:type_ctx.Typecheck.name_types
+          ?qualified_member_check:type_ctx.Typecheck.qualified_member_check
+          resolve_ctx.symbols prog
+      with
+      | Ok _ -> Ok ()
+      | Error e -> Error (Typecheck.format_type_error e)
+
+let test_qpath_valid_type () =
+  match qpath_run (Filename.concat (qpath_dir "valid") "qualified_type.affine") with
+  | Ok () -> ()
+  | Error e -> Alcotest.failf "expected qualified type to resolve, got: %s" e
+
+let test_qpath_valid_effect () =
+  match qpath_run (Filename.concat (qpath_dir "valid") "qualified_effect.affine") with
+  | Ok () -> ()
+  | Error e -> Alcotest.failf "expected qualified effect to resolve, got: %s" e
+
+let expect_err ~contains file =
+  match qpath_run file with
+  | Ok () -> Alcotest.failf "%s: expected an error, but it passed" file
+  | Error msg ->
+    let re = Str.regexp_string contains in
+    (try ignore (Str.search_forward re msg 0)
+     with Not_found ->
+       Alcotest.failf "%s: error did not mention %S; got: %s"
+         file contains msg)
+
+let test_qpath_unknown_module () =
+  expect_err ~contains:"Unknown module"
+    (Filename.concat (qpath_dir "invalid") "unknown_module.affine")
+
+let test_qpath_private_member () =
+  expect_err ~contains:"is private"
+    (Filename.concat (qpath_dir "invalid") "private_member.affine")
+
+let test_qpath_wrong_member () =
+  expect_err ~contains:"has no member"
+    (Filename.concat (qpath_dir "invalid") "wrong_member.affine")
+
+let qualified_path_tests = [
+  Alcotest.test_case "valid: prelude.Option[Int]/<Int> resolves (#228)" `Quick test_qpath_valid_type;
+  Alcotest.test_case "valid: effmod.Logging effect resolves (#228)"     `Quick test_qpath_valid_effect;
+  Alcotest.test_case "invalid: unknown module -> resolution error (#228)" `Quick test_qpath_unknown_module;
+  Alcotest.test_case "invalid: private member rejected (#228)"          `Quick test_qpath_private_member;
+  Alcotest.test_case "invalid: absent member rejected (#228)"           `Quick test_qpath_wrong_member;
+]
+
 (* ---- PatCon sub-pattern destructuring under WasmGC ----
 
    `match Mk(7, 99) { Mk(a, b) => a }` correctly extracts the first payload
@@ -3576,4 +3662,5 @@ let tests =
     ("E2E Array Type Sugar",     array_type_tests);
     ("E2E WasmGC PatCon Destructure", wasm_gc_patcon_tests);
     ("E2E Type Syntax Sugar",         type_syntax_sugar_tests);
+    ("E2E Qualified Paths (#228)",     qualified_path_tests);
   ]

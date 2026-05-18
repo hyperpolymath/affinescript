@@ -18,7 +18,15 @@ let mk_span startpos endpos =
   Span.make ~file ~start_pos ~end_pos
 
 let mk_ident name startpos endpos =
-  { name; span = mk_span startpos endpos }
+  { name; span = mk_span startpos endpos; modpath = [] }
+
+(* issue #228 / ADR-014: a module-qualified type/effect path `A.B.C`.
+   [path] is the module prefix (["A"; "B"]) and [name] is the final
+   member segment ("C") that resolution must look up *within* that
+   module's resolved public symbols (sound module-scoped lookup, not
+   flat current scope). The span covers the whole dotted path. *)
+let mk_qualified_ident (path : string list) name startpos endpos =
+  { name; span = mk_span startpos endpos; modpath = path }
 
 (* issue #122 v2: inherent-impl support. The old grammar pre-committed to
    `impl_trait_ref? self_ty` where both alternatives start with an ident,
@@ -450,6 +458,26 @@ type_expr_primary:
   | MUT ty = type_expr_primary { TyMut ty }
   | name = lower_ident { TyVar (mk_ident name $startpos $endpos) }
   | name = upper_ident { TyCon (mk_ident name $startpos $endpos) }
+  /* issue #228 / ADR-014: module-qualified type path `A.B.C`. The
+     prefix segments `A.B` are the module path; the last segment `C`
+     is the type member, resolved *within* that module's public
+     symbols (sound module-scoped lookup — see lib/typecheck.ml
+     lower_type_expr / lib/resolve.ml). `.` is canonical (ADR-011
+     keeps `::` for value/import). The `upper_ident` vs
+     `upper_ident DOT ...` choice is the expected benign shift on
+     DOT (Menhir shifts; disclosed per ADR-012). Bare / [args] /
+     <args> applied forms all supported. */
+  | qp = qualified_type_path
+    { let (prefix, last, sp, ep) = qp in
+      TyCon (mk_qualified_ident prefix last sp ep) }
+  | qp = qualified_type_path
+    LBRACKET args = separated_nonempty_list(COMMA, type_arg) RBRACKET
+    { let (prefix, last, sp, ep) = qp in
+      TyApp (mk_qualified_ident prefix last sp ep, args) }
+  | qp = qualified_type_path
+    LT args = separated_nonempty_list(COMMA, type_arg) GT
+    { let (prefix, last, sp, ep) = qp in
+      TyApp (mk_qualified_ident prefix last sp ep, args) }
   | name = upper_ident LBRACKET args = separated_nonempty_list(COMMA, type_arg) RBRACKET
     { TyApp (mk_ident name $startpos(name) $endpos(name), args) }
   /* Angle-bracket alias for type application: `Option<T>` ≡ `Option[T]`,
@@ -569,6 +597,19 @@ effect_term:
   | name = ident { EffVar name }
   | name = ident LBRACKET args = separated_list(COMMA, type_arg) RBRACKET
     { EffCon (name, args) }
+  /* issue #228 / ADR-014: module-qualified effect path `A.B.Eff`.
+     Same module-scoped soundness as qualified types: the prefix is a
+     module path, the last segment the effect member resolved within
+     it. Reuses `qualified_type_path` (module + member both upper —
+     stdlib effects are `IO`/`Mut`/`Throws`, module names upper). The
+     applied `[args]` form mirrors the parametric-effect rule above. */
+  | qp = qualified_type_path
+    { let (prefix, last, sp, ep) = qp in
+      EffVar (mk_qualified_ident prefix last sp ep) }
+  | qp = qualified_type_path
+    LBRACKET args = separated_list(COMMA, type_arg) RBRACKET
+    { let (prefix, last, sp, ep) = qp in
+      EffCon (mk_qualified_ident prefix last sp ep, args) }
 
 /* ========== Traits ========== */
 
@@ -1061,6 +1102,32 @@ pattern_rest:
   | COMMA DOTDOT { () }
 
 /* ========== Helpers ========== */
+
+/* issue #228 / ADR-014: a module-qualified type/effect path
+   `A.B.C`. Returns (module-prefix, member, startpos, endpos). The
+   member (last segment) is the type/effect name and is always
+   `upper_ident` (stdlib types `Option`/`Result`/… and effects
+   `IO`/`Mut`/`Throws` are uppercase; a lowercase final segment is
+   not a valid type/effect anyway). The module-prefix segments may be
+   *either* case because real stdlib module names are lowercase
+   (`prelude`, `option`, `string`, `result`) as well as uppercase
+   (`Network`, `Http`) — this mirrors `module_path`/`use`, which
+   accept `ident` (both cases). Length is >=2 (>=1 prefix segment +
+   the member), enforced by the `module_prefix DOT upper_ident`
+   shape. Left-recursive prefix. The `upper_ident` vs
+   `upper_ident DOT ...` decision is the expected benign DOT shift
+   (Menhir shifts; disclosed per ADR-012). */
+path_seg:
+  | s = lower_ident { s }
+  | s = upper_ident { s }
+
+module_prefix:
+  | s = path_seg { [s] }
+  | p = module_prefix DOT s = path_seg { p @ [s] }
+
+qualified_type_path:
+  | p = module_prefix DOT m = upper_ident
+    { (p, m, $startpos, $endpos) }
 
 ident:
   | name = lower_ident { mk_ident name $startpos $endpos }

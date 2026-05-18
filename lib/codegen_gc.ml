@@ -430,7 +430,7 @@ let rec gen_gc_expr (ctx : gc_ctx) (expr : expr) : (gc_ctx * gc_instr list) cg_r
           | Some e -> e
           | None   ->
             let i = List.length rev_codes in
-            ExprVar { name = List.nth field_names i; span = Span.dummy }
+            ExprVar (mk_ident (List.nth field_names i))
         in
         let* (c', code) = gen_gc_expr c fexpr in
         Ok (c', code :: rev_codes)

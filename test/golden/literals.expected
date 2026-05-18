@@ -7,8 +7,8 @@
           span =
           { Span.start_pos = { Span.line = 2; col = 1; offset = 26 };
             end_pos = { Span.line = 2; col = 4; offset = 29 };
-            file = "test/golden/literals.affine" }
-          };
+            file = "test/golden/literals.affine" };
+          modpath = [] };
         fd_type_params = []; fd_params = [];
         fd_ret_ty = (Some (Ast.TyTuple [])); fd_eff = None; fd_where = [];
         fd_body =
@@ -22,8 +22,8 @@
                      { Span.start_pos =
                        { Span.line = 3; col = 3; offset = 55 };
                        end_pos = { Span.line = 3; col = 7; offset = 59 };
-                       file = "test/golden/literals.affine" }
-                     });
+                       file = "test/golden/literals.affine" };
+                     modpath = [] });
                 sl_ty = None;
                 sl_value =
                 (Ast.ExprLit
@@ -41,8 +41,8 @@
                       { Span.start_pos =
                         { Span.line = 4; col = 3; offset = 69 };
                         end_pos = { Span.line = 4; col = 7; offset = 73 };
-                        file = "test/golden/literals.affine" }
-                      });
+                        file = "test/golden/literals.affine" };
+                      modpath = [] });
                  sl_ty = None;
                  sl_value =
                  (Ast.ExprLit
@@ -60,8 +60,8 @@
                       { Span.start_pos =
                         { Span.line = 5; col = 3; offset = 85 };
                         end_pos = { Span.line = 5; col = 7; offset = 89 };
-                        file = "test/golden/literals.affine" }
-                      });
+                        file = "test/golden/literals.affine" };
+                      modpath = [] });
                  sl_ty = None;
                  sl_value =
                  (Ast.ExprLit
@@ -79,8 +79,8 @@
                       { Span.start_pos =
                         { Span.line = 6; col = 3; offset = 101 };
                         end_pos = { Span.line = 6; col = 7; offset = 105 };
-                        file = "test/golden/literals.affine" }
-                      });
+                        file = "test/golden/literals.affine" };
+                      modpath = [] });
                  sl_ty = None;
                  sl_value =
                  (Ast.ExprLit
@@ -98,8 +98,8 @@
                       { Span.start_pos =
                         { Span.line = 7; col = 3; offset = 120 };
                         end_pos = { Span.line = 7; col = 7; offset = 124 };
-                        file = "test/golden/literals.affine" }
-                      });
+                        file = "test/golden/literals.affine" };
+                      modpath = [] });
                  sl_ty = None;
                  sl_value =
                  (Ast.ExprLit
@@ -117,8 +117,8 @@
                       { Span.start_pos =
                         { Span.line = 8; col = 3; offset = 135 };
                         end_pos = { Span.line = 8; col = 7; offset = 139 };
-                        file = "test/golden/literals.affine" }
-                      });
+                        file = "test/golden/literals.affine" };
+                      modpath = [] });
                  sl_ty = None;
                  sl_value =
                  (Ast.ExprLit

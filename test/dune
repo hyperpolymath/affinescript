@@ -5,4 +5,5 @@
   (source_tree golden)
   (source_tree e2e)
   (source_tree ../examples)
-  (source_tree ../stdlib)))
+  (source_tree ../stdlib)
+  (source_tree ../tests/conformance/qualified-paths)))

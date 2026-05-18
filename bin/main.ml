@@ -187,6 +187,7 @@ let check_file face json path =
         resolve_refs := List.rev resolve_ctx.references;
         (match Affinescript.Typecheck.check_program
                  ~import_types:type_ctx.Affinescript.Typecheck.name_types
+                 ?qualified_member_check:type_ctx.Affinescript.Typecheck.qualified_member_check
                  resolve_ctx.symbols prog with
         | Error e ->
           add (Affinescript.Json_output.of_type_error e)
@@ -234,6 +235,7 @@ let check_file face json path =
       | Ok (resolve_ctx, type_ctx) ->
         (match Affinescript.Typecheck.check_program
                  ~import_types:type_ctx.Affinescript.Typecheck.name_types
+                 ?qualified_member_check:type_ctx.Affinescript.Typecheck.qualified_member_check
                  resolve_ctx.symbols prog with
         | Error e ->
           Format.eprintf "@[<v>%s@]@."
@@ -497,6 +499,7 @@ let compile_file face json wasm_gc vscode_ext vscode_adapter vscode_no_lc
       | Ok (resolve_ctx, import_type_ctx) ->
         (match Affinescript.Typecheck.check_program
                  ~import_types:import_type_ctx.Affinescript.Typecheck.name_types
+                 ?qualified_member_check:import_type_ctx.Affinescript.Typecheck.qualified_member_check
                  resolve_ctx.symbols prog with
         | Error e ->
           add (Affinescript.Json_output.of_type_error e)
@@ -716,6 +719,7 @@ let compile_file face json wasm_gc vscode_ext vscode_adapter vscode_no_lc
       | Ok (resolve_ctx, import_type_ctx) ->
         (match Affinescript.Typecheck.check_program
                  ~import_types:import_type_ctx.Affinescript.Typecheck.name_types
+                 ?qualified_member_check:import_type_ctx.Affinescript.Typecheck.qualified_member_check
                  resolve_ctx.symbols prog with
         | Error e ->
           Format.eprintf "@[<v>%s@]@."
@@ -1060,6 +1064,7 @@ let compile_to_wasm_module face path
     | Ok (resolve_ctx, import_type_ctx) ->
       match Affinescript.Typecheck.check_program
               ~import_types:import_type_ctx.Affinescript.Typecheck.name_types
+                 ?qualified_member_check:import_type_ctx.Affinescript.Typecheck.qualified_member_check
               resolve_ctx.symbols prog with
       | Error e ->
         Format.eprintf "%s: %s@." path
@@ -1120,6 +1125,7 @@ let verify_file face path =
     | Ok (resolve_ctx, import_type_ctx) ->
       (match Affinescript.Typecheck.check_program
                ~import_types:import_type_ctx.Affinescript.Typecheck.name_types
+                 ?qualified_member_check:import_type_ctx.Affinescript.Typecheck.qualified_member_check
                resolve_ctx.symbols prog with
       | Error e ->
         Format.eprintf "%s@."

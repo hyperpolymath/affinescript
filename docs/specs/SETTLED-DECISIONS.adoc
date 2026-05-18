@@ -243,3 +243,38 @@ agreed async ABI for the typed-wasm convergence layer; Ephapax is a
 co-stakeholder (typed-wasm ADR-004). Delivered as 4 incremental,
 gated PRs. Full design in `docs/specs/async-on-wasm-cps.adoc`; full ADR
 in `.machine_readable/6a2/META.a2ml` (ADR-013).
+
+== Module-Qualified Type & Effect Paths: Dot Separator, Sound Member Lookup (ADR-014)
+
+A module-qualified path `A.B.C` is admissible in *type* and *effect*
+position, not only value/import position. The dot `.` is the canonical
+separator for these paths; `::` remains the value/import separator
+(ADR-011 is unchanged). Module-prefix segments may be lower- or
+upper-case (real stdlib modules are `prelude`, `option`, `string`,
+`result` as well as `Network`, `Http`); the final member segment is
+the type/effect name.
+
+`A.B.C` resolves by *sound module-scoped member lookup*, never by flat
+current scope: the compiler loads module `[A;B]` through the module
+loader, resolves and type-checks it exactly as an import would, then
+looks `C` up *inside that module's own resolved symbol table*,
+requiring it to be `Public`/`pub(crate)` and of the right kind
+(`SKType` for types, `SKEffect` for effects). An unknown or wrong
+module, a missing member, a private member, or a member of the wrong
+kind is a *resolution* error reported at the use-site span — not a
+parse error and never silently accepted. Soundness comes from looking
+the member up within the named module, so importing `C` flatly does
+not make a bogus `A.B.C` resolve. A validated qualified effect's name
+is admitted as a declared effect (issue #59), so a sibling module's
+public effect is usable exactly like a locally declared one.
+
+This is consistent with ADR-011 (real modules with qualified paths)
+and ADR-012 (the `upper_ident` vs `upper_ident DOT …` choice is the
+expected benign DOT shift; the masked-conflict count is unchanged —
+21 shift/reduce states, 1 reduce/reduce state, identical to the
+pre-change parser). Typecheck/codegen are unchanged: a qualified
+ident is treated by its resolved symbol exactly like an unqualified
+one (the validation, not the representation, is the soundness gate).
+
+Refs issue #228 (language decision human-gated; not auto-closed). Full
+ADR in `.machine_readable/6a2/META.a2ml` (ADR-014).

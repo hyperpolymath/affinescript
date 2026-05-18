@@ -1,0 +1,15 @@
+// SPDX-License-Identifier: MPL-2.0
+// issue #228 / ADR-014 conformance (NEGATIVE): the named module exists
+// but the member is NOT public. Sound module-scoped lookup must
+// reject a private member (visibility is enforced *inside* the named
+// module, not via flat scope).
+//
+// `effects` is a real stdlib module; it declares `effect IO;` WITHOUT
+// `pub`, so a qualified path to it is a VisibilityError.
+// Expected: type error "Member 'IO' of module 'effects' is private
+// ... (ADR-014)".
+module ConformancePrivateMember;
+
+pub fn f(x: Int) -> Int / effects.IO {
+  x
+}
