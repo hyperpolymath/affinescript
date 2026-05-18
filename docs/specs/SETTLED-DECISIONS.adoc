@@ -154,3 +154,60 @@ grammar) and the newer stdlib files (Core, Deno, Vscode, …) already use.
 
 Settles issue #132; gates #133/#135/#137/#138. Full ADR in
 `.machine_readable/6a2/META.a2ml` (ADR-011).
+
+== Grammar Changes Are Correctness Assertions; Parser-Conflict Disclosure (ADR-012)
+
+*Principle.* AffineScript's grammar is changed only to make it state
+something *true* about the language's semantics. The grammar is never
+contorted to lower a cosmetic build metric (e.g. a parser-generator
+conflict count). Correctness is the target; tooling noise is downstream
+of it, not the other way round.
+
+*Applications of the principle.*
+
+* *`#{ }` record syntax (issue #218, #215 families C+D).* `{` in
+  expression position is unconditionally a block; record/struct
+  construction uses the `#{ … }` sigil. Justification is *semantic*:
+  it removes the block-vs-record ambiguity and the
+  struct-literal-in-`if`/`match`-scrutinee hazard by construction. The
+  fall in conflict count was a *consequence*, never the rationale.
+* *`return`/`resume` are diverging prefix expressions (issue #215
+  family B).* They are parsed at statement-expression top level, not as
+  `expr_primary`. Justification is *semantic*: `return e` has type
+  `Never` — it never yields a value to an enclosing operator, so
+  `(return a) + b` is dead code wearing an expression's costume.
+  Hoisting them makes the grammar assert "control flow diverges and
+  greedily owns the rest of the computation; it is not an operand."
+  `(return a) + b` now requires explicit parentheses — a *feature*
+  (post-divergence dead code is made visible), in the same spirit as
+  affine typing and explicit effect rows. This change is **not**
+  motivated by, and does **not** reduce, the conflict count.
+
+*Residual LALR conflicts: won't-fix, on correctness grounds.* After the
+above, the parser still emits ~68 shift/reduce and a small number of
+reduce/reduce notices (chiefly the inherent expression-cascade
+ambiguity and the block trailing-expression-vs-statement boundary,
+state 401). These are **inherent LALR(1) artefacts that Menhir resolves
+correctly** — the full `just test` gate (257 cases, incl. AOT, golden,
+e2e) proves every accepted parse is the intended one. Eliminating them
+would require systemic precedence/left-factoring surgery across the
+core expression grammar: high blast radius (it can shift the parse of
+every existing program), for a payoff that is *cosmetic only*. That is
+exactly the contortion this ADR forbids. They are therefore
+**intentionally left in place** and tracked as a documented won't-fix on
+issue #215.
+
+*Disclosure policy (masking is not hiding).* Because a wall of
+"conflicts arbitrarily resolved" warnings makes a *correct* toolchain
+look broken — particularly damaging when correctness is the product —
+the default `just build` **masks** these specific benign notices. It
+does not pretend they are absent: every build that masks them prints
+the masked count, states that the parser parses correctly, references
+this decision, and gives the exact command (`just build-loud`, or
+`AFFINESCRIPT_SHOW_MENHIR_NOISE=1`, or plain `dune build`) to show the
+full raw output. Nothing is suppressed at the parser-generator level
+(that would itself be risky change for a cosmetic end); the underlying
+build is byte-for-byte unchanged and fully transparent on demand.
+
+Settles the disposition of issue #215 residual families. Full ADR in
+`.machine_readable/6a2/META.a2ml` (ADR-012).

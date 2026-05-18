@@ -743,3 +743,62 @@ references = [
   "lib/module_loader.ml",
   "lib/parser.mly (module_decl / import_decl / COLONCOLON)",
 ]
+
+[[adr]]
+id = "ADR-012"
+status = "accepted"
+date = "2026-05-18"
+title = "Grammar changes are correctness assertions; parser-conflict disclosure"
+context = """
+The Menhir parser emitted a wall of "N shift/reduce conflicts were
+arbitrarily resolved" notices. Issues #215/#218 set out to address the
+real concern: a correct toolchain looking broken — acutely damaging when
+correctness is the product. Two grammar changes were made along the way
+(#222 record `#{ }`; #215 family B `return`/`resume` hoist). It became
+necessary to state, permanently, *why* the grammar may change and how the
+residual benign notices are handled — so that in the long term no one
+mistakes either the changes or the remaining notices for sloppiness.
+"""
+decision = """
+The grammar is changed only to make it assert something TRUE about the
+language's semantics; it is never contorted to lower a cosmetic metric.
+
+- `#{ }` records (#218): semantic — kills block-vs-record ambiguity and
+  the struct-literal-in-scrutinee hazard by construction. Conflict-count
+  fall was a consequence, not the reason.
+- `return`/`resume` as diverging prefix expressions (#215 family B):
+  semantic — `return e : Never`, never an operator operand;
+  `(return a) + b` now needs explicit parens (a feature: post-divergence
+  dead code made visible). NOT motivated by, and does NOT reduce, the
+  conflict count (proven: 21->21 S/R states, net-neutral).
+- Residual ~68 S/R + small R/R (incl. state 401, the block
+  trailing-expr-vs-statement boundary): inherent LALR(1) artefacts that
+  Menhir resolves CORRECTLY (257-case gate green). Eliminating them =
+  systemic precedence/left-factoring surgery, estate-wide parse blast
+  radius, cosmetic-only payoff = exactly the contortion this ADR
+  forbids. Intentionally LEFT IN PLACE; documented won't-fix on #215.
+- Disclosure: default `just build` MASKS these specific benign notices
+  but prints the masked count + correctness proof + this ADR pointer +
+  the exact reveal command (`just build-loud` /
+  AFFINESCRIPT_SHOW_MENHIR_NOISE=1 / plain `dune build`). The
+  parser-generator output is not suppressed at source (that would be
+  risky change for a cosmetic end); the build is unchanged and fully
+  transparent on demand. Masking is disclosure, not concealment.
+"""
+consequences = """
+- Every grammar change in the history has a recorded semantic
+  justification; none was made to chase a number.
+- The residual notices are settled won't-fix — do not reopen as "bugs"
+  without amending this ADR.
+- Contributors see a calm, honest build; auditors see everything via
+  one documented command.
+- This decision is settled; do not reopen without amending this ADR.
+"""
+references = [
+  "https://github.com/hyperpolymath/affinescript/issues/215",
+  "https://github.com/hyperpolymath/affinescript/issues/218",
+  "https://github.com/hyperpolymath/affinescript/pull/222",
+  "docs/specs/SETTLED-DECISIONS.adoc (ADR-012 section)",
+  "justfile (build / build-loud recipes)",
+  "lib/parser.mly (expr_assign return/resume; record #{ )",
+]
