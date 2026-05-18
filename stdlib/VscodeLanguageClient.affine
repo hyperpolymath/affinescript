@@ -31,3 +31,16 @@ pub extern fn newLanguageClient(id: String,
 
 pub extern fn languageClientStart(c: LanguageClient) -> Int;
 pub extern fn languageClientStop(c: LanguageClient) -> Int;
+
+// ── Async-extern ABI (issue #103) ────────────────────────────────────
+// Opaque host handle, declared per-module (these binding modules are
+// self-contained; the host erases the type). See stdlib/Vscode.affine.
+
+pub extern type Thenable;
+
+/// `LanguageClient.sendRequest(method, params)` — returns a Thenable of
+/// the JSON-encoded response. `params_json` is the request params encoded
+/// as a JSON string; the host shim parses it before the LSP call.
+pub extern fn languageClientSendRequest(c: LanguageClient,
+                                        method: String,
+                                        params_json: String) -> Thenable / Async;
