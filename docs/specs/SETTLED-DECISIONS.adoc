@@ -211,3 +211,35 @@ build is byte-for-byte unchanged and fully transparent on demand.
 
 Settles the disposition of issue #215 residual families. Full ADR in
 `.machine_readable/6a2/META.a2ml` (ADR-012).
+
+== Async on WasmGC: Transparent CPS Continuation Transform (ADR-013)
+
+`stdlib/Http.affine` exposes one portable surface,
+`fetch(req) -> Response / { Net, Async }`. The Deno-ESM backend lowers
+it to a direct `await` (#226). The WasmGC backend cannot — extern calls
+are synchronous, the boundary is i32-only, and the estate's
+async-over-wasm mechanism (#205) is callback-shaped. Issue #225
+(Option 2, owner-chosen) requires *one byte-identical source surface on
+both targets*: the wasm backend hides the continuation plumbing.
+
+Decision: on the WasmGC backend only, functions whose effect row
+includes `Async` are compiled via a *selective CPS transform*. Each
+async boundary splits the body; the post-split code becomes a generated
+continuation captured via the existing #199 closure ABI and registered
+via the existing #205 `thenableThen` host→guest re-entry. The enclosing
+`Async` function returns a `Thenable` handle, so it composes
+transparently up the call chain. Pure / non-`Async` code is untouched;
+this is *not* JSPI and *not* a general continuation feature — new
+orchestration over three proven primitives only.
+
+Binding correctness obligations: affine/linear capture is the borrow
+checker's single use with double-resumption impossible; the transform
+triggers iff `Async ∈ fd_eff`; `Response` reconstruction is a typed
+reader with no silent lossiness (general decode deferred to #161); the
+258-case gate is green at every commit with a wasm e2e parity test.
+
+The `Thenable`-handle + `thenableThen` continuation protocol is the
+agreed async ABI for the typed-wasm convergence layer; Ephapax is a
+co-stakeholder (typed-wasm ADR-004). Delivered as 4 incremental,
+gated PRs. Full design in `docs/specs/async-on-wasm-cps.adoc`; full ADR
+in `.machine_readable/6a2/META.a2ml` (ADR-013).

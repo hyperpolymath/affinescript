@@ -1,0 +1,15 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// issue #225 PR 1 — typed-wasm Http skeleton.
+//
+// Proves the WasmGC Http boundary + the #205 Thenable convergence
+// protocol end-to-end via a host adapter, with NO compiler transform
+// (pure pass-through: `launch` returns the Thenable handle the host
+// resolves). The transparent fetch/get -> Response surface (ADR-013's
+// CPS transform) is built on top of THIS in PR 2/3. URL is a literal
+// so the harness needs no guest-memory writes to drive it.
+
+use Http::{Thenable, http_request_thenable};
+
+pub fn launch() -> Thenable / { Net, Async } {
+  http_request_thenable("https://example.test/ok", "GET", "")
+}
