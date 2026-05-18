@@ -3,6 +3,16 @@
 
 # Stdlib AOT triage — #135 punch list
 
+> **CLOSED 2026-05-18.** This punch list is complete. All 19 `stdlib/*.affine`
+> files now compile through `resolve → typecheck → codegen`; epic #128 and
+> sub-issues **#131–#138 are all merged and closed**. The "Current sweep" and
+> "Remaining slices" sections below are preserved **as historical record** of
+> the in-flight state on 2026-05-17 r2 — they no longer describe the tree.
+> Live status is now machine-enforced by the CI gate `test/test_stdlib_aot.ml`
+> (STAGE-A AOT smoke, 19/19 + the #137 multi-module integration test), so the
+> AOT path cannot silently rot again. See the **Closure** section for the
+> final state. Verified locally 2026-05-18: `dune runtest` = 253 tests green.
+
 **Refreshed 2026-05-17 (r2)** after merging #135 slices 1,2,3,5,6,6b,7,8.
 
 ## Done (merged to main)
@@ -64,10 +74,29 @@ unblocked the entire typecheck wall).
 
 ## Closure
 
-#135 closes when all files compile resolve→typecheck→codegen, then
-#138/#136/#137. Slices 4/9/10/11/12 + 8-tail each remain their own
-rigorous, focused unit (per the "rigorous over partial-hack"
-discipline — no unattended changes to the block grammar, borrow
-checker, kind checker, or resolver two-pass). The two highest-impact
-remaining are **slice 11** (resolver forward-ref — likely unblocks
-several files at once) and **slice 4** (3 files).
+**Reached 2026-05-18 — epic #128 fully delivered.**
+
+The criterion above was met: all 19 `stdlib/*.affine` files compile
+`resolve → typecheck → codegen`. Final disposition of the slices:
+
+- **slice 4** (block/statement LR ambiguity — testing/math/traits),
+  **slice 9** (`&mut T` reference params), **slice 10** (generic-extern
+  kind-check), **slice 11** (resolver two-pass / forward-ref), **slice
+  8-tail** (`io` ← `string` cross-module), **slice 12** (`result`
+  deeper typecheck) — all resolved under #135 (#172–#192).
+- **#135** — every `stdlib/*.affine` compiles end-to-end. Closed.
+- **#138** — `b895374` Some/None/Ok/Err seed band-aid removed;
+  resolution now goes through `use prelude::{…}` (PR #193). Closed.
+- **#136** — stdlib-wide AOT compile-smoke gate added as
+  `test/test_stdlib_aot.ml`, run under `dune runtest` / CI (PR #194).
+  Closed.
+- **#137** — multi-module integration test (`prelude` + `string` +
+  `option` + `collections` together) in the same file (PR #194).
+  Closed.
+
+Sub-issues **#131–#138 are all closed**; epic **#128**'s only remaining
+scope is the consumer-side echidna trackers (#61–64), which close with
+that migration, not this epic. The rigorous-over-partial-hack discipline
+held throughout — no unattended changes to the block grammar, borrow
+checker, kind checker, or resolver two-pass. This document is now a
+historical record; the live invariant is the CI gate.
