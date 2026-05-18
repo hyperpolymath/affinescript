@@ -336,3 +336,19 @@ pub extern fn thenableResultJson(t: Thenable) -> String;
 /// Resolves with the JSON-decoded response body. Use thenableThen /
 /// thenableResultJson to read the settled value from a wasm guest.
 pub extern fn httpPostJson(url: String, body_json: String) -> Thenable / Async;
+
+// ── Minimal JSON field extraction ────────────────────────────────────
+//
+// The guest has no JSON parser and only stringConcat/stringEndsWith/
+// stringIsEmpty for strings, so it cannot decode the payloads returned
+// by thenableResultJson / httpPostJson. This synchronous String->String
+// extern reads one top-level field, mirroring the thenableResultJson
+// shape (no Async; "" sentinel). It deliberately stays minimal (one
+// top-level key, scalar coerced to its string form) — enough for result
+// objects like { tier, tier_code, score } and the { __error } reject
+// shape; nested/array access is out of scope by design.
+
+/// The top-level `key` of JSON object `json`, coerced to its string
+/// form (numbers/bools stringified). Empty string if `json` is not an
+/// object, does not parse, or has no such key.
+pub extern fn jsonField(json: String, key: String) -> String;
