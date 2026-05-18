@@ -164,6 +164,40 @@ The `affinescript compile graph.affine -o graph.onnx` invocation produces a real
 
 Why this matters for migration: when porting code that calls platform-specific functions, you do not need to extend AffineScript itself. Declare the platform's API as stubs in your translation unit, and let the backend recognise them. This keeps the frontend small and the backend self-contained.
 
+[#portable-http]
+=== Portable HTTP (ReScript `fetch` / `Js.Promise` → `Http` stdlib)
+
+ReScript networking is `fetch(...)` returning a `Js.Promise.t`, usually
+wrapped in a `.then`/`.catch` umbrella. Do not port the promise. Port to
+the `Http` stdlib module (`use Http::{fetch, get, post, request};`),
+whose surface is a typed request/response with an honest effect row:
+
+[source]
+----
+pub fn fetch(req: Request) -> Response / { Net, Async }
+// Request  #{ url, method, headers: [(String, String)], body: Option<String> }
+// Response #{ status: Int, headers: [(String, String)], body: String }
+----
+
+Re-decomposition rules:
+
+* The `.catch` umbrella becomes a `match` on `is_ok(resp)` / `resp.status`
+  — failure is data, not a detached rejected promise.
+* Headers are an *association list* `[(String, String)]`, not an opaque
+  object. Build/read them explicitly. (This will become `Dict` once #162
+  lands; the change is source-compatible for callers using the helpers.)
+* The response `body` is raw text. JSON decoding is a *separate* step
+  (the #161 `Json` primitive) — do not conflate transport with parsing.
+* Every function that transitively calls `Http` carries `/ { Net, Async }`
+  in its signature. That is the point: the network and its asynchrony are
+  visible in the type, where ReScript hid them in a `Promise`.
+
+Backend status: the Deno-ESM target lowers this to a `globalThis.fetch`
+round-trip (Deno / Node 18+ / browser ESM) and is fully exercised
+end-to-end. The typed-wasm target is a tracked next slice — the
+convergence ABI shared with Ephapax (see <<see-also,Settled Decisions>>,
+typed-wasm ADR-004); AffineScript is not coupled to it.
+
 [#decision-criteria]
 == Decision Criteria
 
@@ -341,4 +375,8 @@ If you complete a non-trivial `.res → .affine` translation and the re-decompos
 | 1.2
 | 2026-05-02
 | Backend-buildout findings folded into TS→AS index and a new recipe: (1) Float-arithmetic typechecker gap is now closed (no more Int-scaling workaround); (2) `mut`-parameter indexed-write borrow gap is now closed (note the binder-modifier keyword position); (3) new `<<calling-target-intrinsics>>` recipe documents the stub-as-intrinsic pattern that lets user code call CUDA / ONNX / Faust / Verilog runtime ops without extending the language.
+
+| 1.3
+| 2026-05-18
+| New `<<portable-http>>` recipe for the C-spine `Http` stdlib primitive (issue #160): ReScript `fetch`/`Js.Promise` → typed `Request`/`Response` with a `/ { Net, Async }` effect row. Deno-ESM target landed and exercised end-to-end; typed-wasm target tracked as the next slice (convergence ABI shared with Ephapax). No existing guidance changed.
 |===

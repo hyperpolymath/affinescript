@@ -63,6 +63,11 @@ type codegen_ctx = {
      definition shadows a same-named host intrinsic ({!deno_builtins}),
      so e.g. a user `fn len(xs: IntList)` is NOT lowered to `.length`. *)
   local_fns : (string, unit) Hashtbl.t;
+  (* Top-level functions declared with an `Async` effect row. A call to
+     one of these is a Promise; from an async context the call site must
+     `await` it (e.g. `get(u).status` would otherwise read `.status` off
+     a pending Promise). Populated in {!generate}. *)
+  async_fns : (string, unit) Hashtbl.t;
   (* True while emitting a synthesised `async` method body. The
      expression-position IIFE wrappers (block/try/match/let/return) must
      then be `async` and awaited, because they may contain an awaited
@@ -79,6 +84,7 @@ let create_ctx symbols = {
   self_name = None;
   assoc = Hashtbl.create 32;
   local_fns = Hashtbl.create 64;
+  async_fns = Hashtbl.create 32;
   in_async = false;
 }
 
@@ -97,6 +103,19 @@ let emit_line ctx str =
   Buffer.add_char ctx.output '\n'
 
 let increase_indent ctx = { ctx with indent = ctx.indent + 1 }
+
+(* True if an effect row mentions `Async`. A function whose declared
+   effect row includes Async compiles to an `async function`, and its
+   body is emitted in async context (`in_async`) so an awaited host
+   call (e.g. the `http_request` -> `await fetch(...)` lowering for
+   issue #160) is legal JS. This is the free-function analogue of the
+   unconditionally-async synthesised methods (`gen_class`). *)
+let rec eff_has_async : effect_expr -> bool = function
+  | EffVar id | EffCon (id, _) -> id.name = "Async"
+  | EffUnion (a, b) -> eff_has_async a || eff_has_async b
+
+let fd_is_async (fd : fn_decl) : bool =
+  match fd.fd_eff with Some e -> eff_has_async e | None -> false
 
 (* ============================================================================
    Runtime prelude (ESM, Deno-flavoured)
@@ -159,6 +178,34 @@ const __as_parseFloat = (s) => {
   return Number.isNaN(n) ? None : Some(n);
 };
 const __as_show = (v) => (typeof v === "string" ? v : JSON.stringify(v));
+// ---- Http (issue #160): portable fetch round-trip ----
+// `headers` crosses the boundary as an AffineScript [(String, String)]
+// assoc list == JS array of [name, value] pairs. `body` is an
+// AffineScript Option<String> == { tag: "Some", value } | { tag: "None" }.
+// The result is the `Response` record shape { status, headers, body }.
+const __as_httpHeadersToObject = (pairs) => {
+  const o = {};
+  for (const kv of (pairs || [])) o[kv[0]] = kv[1];
+  return o;
+};
+const __as_httpHeadersFromResponse = (res) => {
+  const out = [];
+  res.headers.forEach((value, key) => out.push([key, value]));
+  return out;
+};
+const __as_httpFetch = async (url, method, headers, bodyOpt) => {
+  const init = { method, headers: __as_httpHeadersToObject(headers) };
+  if (bodyOpt && bodyOpt.tag === "Some") init.body = bodyOpt.value;
+  // `globalThis.fetch` explicitly: the stdlib `Http.fetch` compiles to a
+  // module-level `function fetch`, which would otherwise shadow the host.
+  const res = await globalThis.fetch(url, init);
+  const text = await res.text();
+  return {
+    status: res.status,
+    headers: __as_httpHeadersFromResponse(res),
+    body: text,
+  };
+};
 // ---- end runtime ----
 
 |}
@@ -227,7 +274,14 @@ let () =
   b "char_to_int"    (fun a -> Printf.sprintf "__as_charToInt(%s)" (arg 0 a));
   b "int_to_char"    (fun a -> Printf.sprintf "__as_intToChar(%s)" (arg 0 a));
   b "show"           (fun a -> Printf.sprintf "__as_show(%s)" (arg 0 a));
-  b "panic"          (fun a -> Printf.sprintf "(() => { throw new Error(%s); })()" (arg 0 a))
+  b "panic"          (fun a -> Printf.sprintf "(() => { throw new Error(%s); })()" (arg 0 a));
+  (* ---- Http (issue #160) ---- *)
+  (* `await` is legal: every caller of `http_request` is declared
+     `/ Net, Async` and so is emitted as an `async function`
+     (see {!fd_is_async}). *)
+  b "http_request" (fun a ->
+    Printf.sprintf "(await __as_httpFetch(%s, %s, %s, %s))"
+      (arg 0 a) (arg 1 a) (arg 2 a) (arg 3 a))
 
 (* ============================================================================
    Identifier sanitisation (JS reserved words -> trailing underscore)
@@ -304,7 +358,15 @@ let rec gen_expr ctx (expr : expr) : string =
            mangle id.name ^ "(" ^ String.concat ", " arg_strs ^ ")"
        | _ ->
            let arg_strs = List.map (gen_expr ctx) args in
-           gen_expr ctx func ^ "(" ^ String.concat ", " arg_strs ^ ")")
+           let call =
+             gen_expr ctx func ^ "(" ^ String.concat ", " arg_strs ^ ")" in
+           (match func with
+            | ExprVar id
+              when Hashtbl.mem ctx.async_fns id.name && ctx.in_async ->
+                (* Async free fn returns a Promise; await at the call
+                   site so `get(u).status` reads the resolved value. *)
+                "(await " ^ call ^ ")"
+            | _ -> call))
   | ExprBinary (e1, OpConcat, e2) ->
       (* `++` is string- OR array-concat; dispatch on shape at runtime so
          `a ++ b` (string) and `acc ++ [x]` (array) are both correct. *)
@@ -648,11 +710,18 @@ let gen_function ctx (fd : fn_decl) : unit =
   let name = mangle fd.fd_name.name in
   let params =
     List.map (fun (p : param) -> mangle p.p_name.name) fd.fd_params in
+  let is_async = fd_is_async fd in
+  let async_kw = if is_async then "async " else "" in
   let kw =
-    if visibility_is_public fd.fd_vis then "export function" else "function" in
+    if visibility_is_public fd.fd_vis
+    then "export " ^ async_kw ^ "function"
+    else async_kw ^ "function" in
   emit_line ctx
     (Printf.sprintf "%s %s(%s) {" kw name (String.concat ", " params));
-  gen_body (increase_indent ctx) fd.fd_body;
+  let body_ctx = increase_indent ctx in
+  let body_ctx =
+    if is_async then { body_ctx with in_async = true } else body_ctx in
+  gen_body body_ctx fd.fd_body;
   emit_line ctx "}";
   emit ctx "\n"
 
@@ -824,7 +893,9 @@ let generate (program : program) (symbols : Symbol.t) : string =
     | TopFn fd when fd.fd_body = FnExtern ->
         Hashtbl.replace ctx.externs fd.fd_name.name ()
     | TopFn fd ->
-        Hashtbl.replace ctx.local_fns fd.fd_name.name ()
+        Hashtbl.replace ctx.local_fns fd.fd_name.name ();
+        if fd_is_async fd then
+          Hashtbl.replace ctx.async_fns fd.fd_name.name ()
     | TopConst { tc_name; _ } ->
         Hashtbl.replace ctx.local_fns tc_name.name ()
     | TopImpl ib ->

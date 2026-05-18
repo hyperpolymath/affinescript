@@ -1,0 +1,89 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// Http.affine — portable HTTP requests (issue #160).
+//
+// The C-spine migration primitive that replaces ReScript's
+// `fetch`/`Promise`-based networking with a typed, effect-rowed surface.
+//
+// Portability: the single `http_request` extern is lowered by the
+// Deno-ESM backend (lib/codegen_deno.ml) to a `globalThis.fetch`
+// round-trip, which runs unmodified on Deno, Node 18+, and browser ESM.
+// The WasmGC / Node-CJS host-import path is a tracked follow-up
+// (the runtime there has no `fetch` import yet) — see the issue thread.
+//
+// Headers are an association list `[(String, String)]` rather than a
+// `Dict<String, String>`: this lets #160 land independently of #162
+// (Dict) while keeping the stated spine order #160 -> #161 -> #162.
+// Upgrading `headers` to `Dict` later is an additive, source-compatible
+// change for callers that build/read headers through the helpers here.
+
+module Http;
+
+// `Option`/`Some`/`None` are owned by `prelude` (ADR-011).
+use prelude::{Option, Some, None};
+
+// Networking uses the reserved built-in effect `Net` (no declaration
+// needed — it is one of the language's reserved effect names alongside
+// `Random`/`Time`). Every signature that can touch the network carries
+// `/ Net`; the host round-trip is also `Async`, so the effect row
+// stays honest end to end. A bespoke `effect Http;` would not be
+// visible to importing modules' effect checker, so `Net` is both more
+// correct and the only cross-module-sound choice.
+
+/// An outgoing HTTP request.
+///
+/// `headers` is an ordered association list of `(name, value)` pairs.
+/// `body` is absent for verbs that take none (GET/HEAD).
+pub type Request = {
+  url: String,
+  method: String,
+  headers: [(String, String)],
+  body: Option<String>
+}
+
+/// A host HTTP response. `body` is the raw response text; structured
+/// decoding (JSON) is the caller's concern and is the subject of the
+/// next spine primitive, #161.
+pub type Response = {
+  status: Int,
+  headers: [(String, String)],
+  body: String
+}
+
+// Core boundary primitive. No AffineScript body: the Deno-ESM backend
+// lowers a call here to `(await __as_httpFetch(url, method, headers,
+// body))`. The `Async` effect is real — callers compile to
+// `async function` (codegen_deno async-fn detection).
+extern fn http_request(url: String,
+                        method: String,
+                        headers: [(String, String)],
+                        body: Option<String>) -> Response / { Net, Async };
+
+/// Build a `Request` value (ergonomic constructor for the record).
+pub fn request(method: String,
+                url: String,
+                headers: [(String, String)],
+                body: Option<String>) -> Request {
+  #{ url: url, method: method, headers: headers, body: body }
+}
+
+/// Perform the HTTP request described by `req`.
+pub fn fetch(req: Request) -> Response / { Net, Async } {
+  http_request(req.url, req.method, req.headers, req.body)
+}
+
+/// `GET url` with no extra request headers.
+pub fn get(url: String) -> Response / { Net, Async } {
+  http_request(url, "GET", [], None)
+}
+
+/// `POST body` to `url` with no extra request headers.
+pub fn post(url: String, body: String) -> Response / { Net, Async } {
+  http_request(url, "POST", [], Some(body))
+}
+
+/// True for a 2xx status.
+pub fn is_ok(resp: Response) -> Bool {
+  resp.status >= 200 && resp.status < 300
+}
