@@ -6,7 +6,7 @@
 
 struct Point { x: Int, y: Int }
 
-pub fn mk_point(x: Int, y: Int) -> Point = Point { x: x, y: y };
+pub fn mk_point(x: Int, y: Int) -> Point = Point #{ x: x, y: y };
 
 pub fn sum_ref(p: ref Point) -> Int = p.x + p.y;
 

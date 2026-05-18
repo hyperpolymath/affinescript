@@ -1,0 +1,39 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// issue #160 — portable Http.fetch end-to-end on the Deno-ESM backend.
+//
+// Exercises the real stdlib/Http.affine (flattened in via `use`): the
+// `http_request` extern -> `(await __as_httpFetch(...))` lowering, the
+// `/ { Net, Async }` effect row -> `async function` detection, the
+// [(String,String)] header assoc list, and the Option<String> body.
+// The harness stubs `globalThis.fetch`, so no network is touched.
+//
+// Signatures stay in primitives (Int/String/Bool) so the fixture never
+// re-annotates the imported nominal `Request`/`Response` across the
+// module boundary; field access on the inferred response is enough.
+
+use prelude::{Some, None};
+use Http::{fetch, get, post, request, is_ok};
+
+pub fn get_status(url: String) -> Int / { Net, Async } {
+  get(url).status
+}
+
+pub fn get_body(url: String) -> String / { Net, Async } {
+  get(url).body
+}
+
+pub fn post_status(url: String, body: String) -> Int / { Net, Async } {
+  post(url, body).status
+}
+
+pub fn req_get_status(url: String) -> Int / { Net, Async } {
+  fetch(request("GET", url, [("x-test", "1")], None)).status
+}
+
+pub fn req_post_body(url: String, body: String) -> String / { Net, Async } {
+  fetch(request("POST", url, [], Some(body))).body
+}
+
+pub fn ok_get(url: String) -> Bool / { Net, Async } {
+  is_ok(get(url))
+}

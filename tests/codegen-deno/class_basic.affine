@@ -15,7 +15,7 @@ pub extern fn jsonStringify(v: Int) -> String;
 
 struct Counter { start: Int }
 
-pub fn Counter_new(start: Int) -> Counter = Counter { start: start };
+pub fn Counter_new(start: Int) -> Counter = Counter #{ start: start };
 
 pub fn Counter_bumped(c: Counter, by: Int) -> Int = c.start + by;
 
