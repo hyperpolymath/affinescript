@@ -67,7 +67,7 @@ fn add(x: Int, y: Int) -> Int {
 }
 
 // Impure function with IO effect
-fn main() -> Unit / io {
+fn main() -> Unit / IO {
   println("Hello, AffineScript!");
   let result = add(40, 2);
   println(int_to_string(result));
@@ -79,11 +79,11 @@ fn main() -> Unit / io {
 ```affinescript
 // Pure functions cannot call impure functions
 fn pure() -> Int {
-  return read_line();  // ❌ ERROR: Cannot perform effect io in pure context
+  return read_line();  // ❌ ERROR: Cannot perform effect IO in pure context
 }
 
 // Impure functions can call pure or impure
-fn impure() -> Int / io {
+fn impure() -> Int / IO {
   return read_line();  // ✅ OK
 }
 ```
@@ -95,7 +95,7 @@ fn use_value(x: @affine String) -> Unit {
   println(x);  // x is consumed here
 }
 
-fn main() -> Unit / io {
+fn main() -> Unit / IO {
   let s = "hello";
   use_value(s);
   println(s);  // ❌ ERROR: use after move

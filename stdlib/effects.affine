@@ -2,31 +2,31 @@
 // AffineScript Standard Library - Effect Declarations
 
 // Core IO effect - file and console operations
-effect io;
+effect IO;
 
 // State effect - mutable references
-effect state;
+effect Mut;
 
 // Exception effect - panics and error handling
-effect exn;
+effect Throws;
 
 // Built-in IO operations
-extern fn print(s: String) -> Unit / io;
-extern fn println(s: String) -> Unit / io;
-extern fn read_line() -> String / io;
-extern fn read_file(path: String) -> String / io;
-extern fn write_file(path: String, content: String) -> Unit / io;
+extern fn print(s: String) -> Unit / IO;
+extern fn println(s: String) -> Unit / IO;
+extern fn read_line() -> String / IO;
+extern fn read_file(path: String) -> String / IO;
+extern fn write_file(path: String, content: String) -> Unit / IO;
 
 // Built-in State operations
 // `make_ref` (not `ref`) because `ref` is a reserved ownership keyword;
 // see #135 keyword-as-identifier slice.
-extern fn make_ref<T>(x: T) -> Ref<T> / state;
-extern fn get<T>(r: Ref<T>) -> T / state;
-extern fn set<T>(r: Ref<T>, x: T) -> Unit / state;
+extern fn make_ref<T>(x: T) -> Ref<T> / Mut;
+extern fn get<T>(r: Ref<T>) -> T / Mut;
+extern fn set<T>(r: Ref<T>, x: T) -> Unit / Mut;
 
 // Built-in Exception operations
-extern fn panic(msg: String) -> Never / exn;
-extern fn error<T>(msg: String) -> T / exn;
+extern fn panic(msg: String) -> Never / Throws;
+extern fn error<T>(msg: String) -> T / Throws;
 
 // Pure operations (no effects)
 extern fn int_to_string(n: Int) -> String;

@@ -137,14 +137,13 @@ let v1_effects = [ "IO"; "Async"; "Partial"; "Throws"; "Mut" ]
     yet wired into the stdlib. *)
 let reserved_effects = [ "Random"; "Time"; "Net" ]
 
-(** Legacy lowercase stdlib effects → canonical v1.  Kept as aliases so
-    [stdlib/effects.affine] and existing code compile unchanged
-    (additive migration; a rename sweep is a later, separate change). *)
-let legacy_aliases = [ ("io", "IO"); ("state", "Mut"); ("exn", "Throws") ]
-
 (** Canonical registry name for a source effect name, or [None] if it is
-    neither a v1/reserved name nor a legacy alias.  Callers additionally
-    accept user-declared effects (`effect <name>;`). *)
+    neither a v1 nor a reserved name.  Callers additionally accept
+    user-declared effects (`effect <name>;`).
+
+    The lowercase [io]/[state]/[exn] migration aliases were retired once
+    [stdlib/effects.affine] was renamed to the canonical names; legacy
+    lowercase effect names are now only valid if explicitly declared. *)
 let canonical_effect_name (s : string) : string option =
   if List.mem s v1_effects || List.mem s reserved_effects then Some s
-  else List.assoc_opt s legacy_aliases
+  else None
