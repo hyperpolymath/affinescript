@@ -345,6 +345,27 @@ module.exports = function makeVscodeBindings(vscode, lcModule, hostShim) {
       if (c) c.stop();
       return 0;
     },
+    // `LanguageClient.sendRequest(method, params)` (issue #103). `params`
+    // arrives as a JSON string (the binding's synchronous extern shape);
+    // we parse it, invoke the LSP request, and register the returned
+    // Thenable in the handle table. The consumer awaits it on the
+    // source-to-source path (the wasm path additionally needs the
+    // thenable-resolution primitives — tracked in #199). An empty or
+    // malformed params string is treated as no params.
+    languageClientSendRequest: (cHandle, methodPtr, paramsJsonPtr) => {
+      const c = get(cHandle);
+      if (!c) return 0;
+      const method = readString(methodPtr);
+      const raw = readString(paramsJsonPtr);
+      let params;
+      if (raw && raw.length > 0) {
+        try { params = JSON.parse(raw); } catch (_e) { params = undefined; }
+      }
+      const thenable = params === undefined
+        ? c.sendRequest(method)
+        : c.sendRequest(method, params);
+      return reg(thenable);
+    },
   };
 
   return { Vscode, VscodeLanguageClient };
