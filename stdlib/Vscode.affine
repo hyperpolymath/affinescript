@@ -322,3 +322,17 @@ pub extern fn thenableThen(t: Thenable, on_settle: fn(Unit) -> Int) -> Disposabl
 /// The resolved value of `t`, JSON-encoded. Empty string until `t` has
 /// settled (i.e. until the `thenableThen` callback has fired).
 pub extern fn thenableResultJson(t: Thenable) -> String;
+
+// ── Out-of-process JSON POST (BoJ cartridge calls) ───────────────────
+//
+// Lets an extension reach a BoJ-server cartridge endpoint (e.g.
+// `reposystem_run_audit` on boj-server :7700) as a real in-process
+// request instead of shelling a CLI. Returns a Thenable of the parsed
+// JSON response; the wasm guest observes it with the #205 primitives
+// (`thenableThen` then `thenableResultJson`), exactly as for
+// `languageClientSendRequest`. Same handle/`Async` convention.
+
+/// POST `body_json` to `url` with `Content-Type: application/json`.
+/// Resolves with the JSON-decoded response body. Use thenableThen /
+/// thenableResultJson to read the settled value from a wasm guest.
+pub extern fn httpPostJson(url: String, body_json: String) -> Thenable / Async;

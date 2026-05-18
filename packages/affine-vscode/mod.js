@@ -363,6 +363,27 @@ module.exports = function makeVscodeBindings(vscode, lcModule, hostShim) {
       try { return reg(JSON.stringify(__thenableResults.get(tHandle))); }
       catch (_e) { return reg(""); }
     },
+
+    // `httpPostJson(url, body_json)` — out-of-process JSON POST for BoJ
+    // cartridge calls (e.g. boj-server :7700 reposystem_run_audit). Like
+    // languageClientSendRequest, we register the response Thenable in the
+    // handle table and let the guest observe it via thenableThen /
+    // thenableResultJson. Resolves with the parsed JSON body so
+    // thenableResultJson re-serialises it consistently; a non-JSON or
+    // failed response settles as { __error } (same shape thenableThen
+    // uses for rejections), so the guest can branch to its fallback.
+    httpPostJson: (urlPtr, bodyPtr) => {
+      const url = readString(urlPtr);
+      const body = readString(bodyPtr);
+      const doFetch = (typeof fetch === "function")
+        ? fetch(url, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body,
+          }).then((r) => r.json())
+        : Promise.reject(new Error("fetch unavailable"));
+      return reg(doFetch.catch((err) => ({ __error: String(err) })));
+    },
   };
 
   const VscodeLanguageClient = {
