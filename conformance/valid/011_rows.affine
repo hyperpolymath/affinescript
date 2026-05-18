@@ -9,7 +9,7 @@ fn get_name[..r](entity: {name: String, ..r}) -> String {
 }
 
 fn with_id[..r](record: {..r}, id: Int) -> {id: Int, ..r} {
-  { id: id, ..record }
+  #{ id: id, ..record }
 }
 
 type HasPosition[..r] = {x: Int, y: Int, ..r}

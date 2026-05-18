@@ -12,7 +12,7 @@ enum Shape {
 }
 
 fn vec2_add(a: Vec2, b: Vec2) -> Vec2 {
-  { x: a.x + b.x, y: a.y + b.y }
+  #{ x: a.x + b.x, y: a.y + b.y }
 }
 
 fn area(s: Shape) -> Int {
@@ -30,7 +30,7 @@ fn larger_area(s1: Shape, s2: Shape) -> Int = max(area(s1), area(s2));
 
 fn main() -> () {
   let circle = Circle(5);
-  let rect = Rect({ x: 3, y: 4 });
+  let rect = Rect(#{ x: 3, y: 4 });
   let result = larger_area(circle, rect);
   ();
 }

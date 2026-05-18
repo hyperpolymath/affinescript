@@ -44,7 +44,7 @@ struct TitleModel {
 // ── init ─────────────────────────────────────────────────────────────────────
 
 fn title_init() -> TitleModel {
-  {
+  #{
     screen_w:    1280,
     screen_h:    720,
     bgm_playing: 0,
@@ -58,10 +58,10 @@ fn title_init() -> TitleModel {
 
 fn title_update(msg: TitleMsg, model: TitleModel) -> TitleModel {
   match msg {
-    NewGame  => { screen_w: model.screen_w, screen_h: model.screen_h, bgm_playing: model.bgm_playing, selected: "new_game" },
-    LoadGame => { screen_w: model.screen_w, screen_h: model.screen_h, bgm_playing: model.bgm_playing, selected: "load_game" },
-    Settings => { screen_w: model.screen_w, screen_h: model.screen_h, bgm_playing: model.bgm_playing, selected: "settings" },
-    Credits  => { screen_w: model.screen_w, screen_h: model.screen_h, bgm_playing: model.bgm_playing, selected: "credits" }
+    NewGame  => #{ screen_w: model.screen_w, screen_h: model.screen_h, bgm_playing: model.bgm_playing, selected: "new_game" },
+    LoadGame => #{ screen_w: model.screen_w, screen_h: model.screen_h, bgm_playing: model.bgm_playing, selected: "load_game" },
+    Settings => #{ screen_w: model.screen_w, screen_h: model.screen_h, bgm_playing: model.bgm_playing, selected: "settings" },
+    Credits  => #{ screen_w: model.screen_w, screen_h: model.screen_h, bgm_playing: model.bgm_playing, selected: "credits" }
   }
 }
 
@@ -84,7 +84,7 @@ fn title_subs(model: TitleModel) -> String {
 // ── main ──────────────────────────────────────────────────────────────────────
 
 fn main() -> () {
-  tea_run({
+  tea_run(#{
     init:          title_init,
     update:        title_update,
     view:          title_view,
