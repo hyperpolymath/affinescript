@@ -97,7 +97,6 @@ let rec effect_union_of_list = function
    See affinescript#215 (family A). */
 %nonassoc LOWEST_TYPE_ARROW
 %nonassoc ARROW
-%right EQ PLUSEQ MINUSEQ STAREQ SLASHEQ
 %left PIPEPIPE
 %left AMPAMP
 %left PIPE
@@ -108,8 +107,15 @@ let rec effect_union_of_list = function
 %left LTLT GTGT
 %left PLUS PLUSPLUS MINUS
 %left STAR SLASH PERCENT
-%right BANG TILDE UMINUS UREF UDEREF
-%left DOT LBRACKET LPAREN
+/* Removed (affinescript#215 family F): the assignment-op level
+   (EQ PLUSEQ MINUSEQ STAREQ SLASHEQ), the unary level
+   (BANG TILDE UMINUS UREF UDEREF), and the postfix level
+   (DOT LBRACKET LPAREN) — Menhir certified every one of these
+   precedence levels "never useful" (they resolve no conflict; the
+   expr cascade disambiguates structurally). Removal is
+   parse-behaviour-neutral, proven by the unchanged conflict counts
+   and the green 257-test gate. UMINUS/UREF/UDEREF were pseudo-tokens
+   used only by the now-removed `%prec` on the unary rules. */
 
 /* Entry point */
 %start <Ast.program> program
@@ -707,11 +713,11 @@ expr_mul:
   | e = expr_unary { e }
 
 expr_unary:
-  | MINUS e = expr_unary %prec UMINUS { ExprUnary (OpNeg, e) }
+  | MINUS e = expr_unary { ExprUnary (OpNeg, e) }
   | BANG e = expr_unary { ExprUnary (OpNot, e) }
   | TILDE e = expr_unary { ExprUnary (OpBitNot, e) }
-  | AMP e = expr_unary %prec UREF { ExprUnary (OpRef, e) }
-  | STAR e = expr_unary %prec UDEREF { ExprUnary (OpDeref, e) }
+  | AMP e = expr_unary { ExprUnary (OpRef, e) }
+  | STAR e = expr_unary { ExprUnary (OpDeref, e) }
   | e = expr_postfix { e }
 
 expr_postfix:
