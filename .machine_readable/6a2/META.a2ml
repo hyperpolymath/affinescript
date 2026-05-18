@@ -802,3 +802,73 @@ references = [
   "justfile (build / build-loud recipes)",
   "lib/parser.mly (expr_assign return/resume; record #{ )",
 ]
+
+[[adr]]
+id = "ADR-013"
+status = "accepted"
+date = "2026-05-18"
+title = "Async on the WasmGC backend: transparent CPS continuation transform"
+context = """
+stdlib/Http.affine exposes one portable surface
+`fetch(req) -> Response / { Net, Async }`. The Deno-ESM backend lowers
+it to a direct `await` (#226, shipped). The WasmGC backend cannot:
+extern calls are synchronous, the boundary is i32-only, and the
+estate's async-over-wasm mechanism (#205) is callback-shaped
+(`-> Thenable` + thenableThen/thenableResultJson). Issue #225 Option 2
+(owner-chosen) requires one BYTE-IDENTICAL source surface on both
+targets, so the wasm backend must hide the continuation plumbing.
+typed-wasm is the shared convergence ABI (ADR-004); Ephapax is a
+co-stakeholder for the async ABI.
+"""
+decision = """
+On the WasmGC backend ONLY, functions whose effect row includes `Async`
+are compiled via a selective continuation-passing (CPS) transform.
+Pure / non-Async functions are untouched (no codegen or perf change).
+
+- Each async boundary (call to an extern returning under /Async, or to
+  another Async function) splits the body; code after it becomes a
+  generated continuation function whose env is the live-local capture
+  set, marshalled via the EXISTING #199 closure ABI
+  ([fnId@0,envPtr@4] through __indirect_function_table).
+- The split lowers to thenableThen(handle, <continuation-closure>) (the
+  EXISTING #205 host->guest re-entry); the enclosing Async function
+  itself returns a Thenable handle, so Thenable composes transparently
+  up the call chain. At the host boundary the outermost Thenable is
+  awaited. The programmer never sees Thenable — effect row is the
+  abstraction, backend chooses the mechanism (as on the Deno side).
+- New orchestration over three proven primitives (find_free_vars, #199
+  closure ABI, #205 re-entry); NOT a new runtime, NOT JSPI (rejected),
+  NOT a general delimited-continuation feature.
+
+Correctness obligations (binding, pre-merge):
+1. A linear/own local captured into a continuation is the borrow
+   checker's single use; double-resumption impossible (Thenable settles
+   once; thenableThen fires once — asserted).
+2. Transform triggers iff Async in fd_eff; Net/other effects ride
+   along; fd_is_async reused as predicate.
+3. Response reconstruction uses a minimal typed reader (jsonField is
+   insufficient for headers: [(String,String)]); general decode
+   deferred to #161. No silent lossiness.
+4. Full `dune test --force` (258) green at every commit; wasm e2e
+   parity test mirrors tests/codegen-deno/http_fetch.*.
+"""
+consequences = """
+- Single portable Http surface across Deno-ESM and WasmGC; #160 closes
+  only when both targets are green (joint-close with #225).
+- The Thenable-handle + thenableThen continuation protocol is the
+  agreed async ABI for the typed-wasm convergence layer; Ephapax
+  co-stakeholder review is required for the convergence-spec section.
+- Delivered incrementally (4 PRs, each behind the 258 gate); scope is
+  WasmGC Async functions only.
+- This decision is settled; do not reopen without amending this ADR.
+"""
+references = [
+  "https://github.com/hyperpolymath/affinescript/issues/225",
+  "https://github.com/hyperpolymath/affinescript/issues/160",
+  "https://github.com/hyperpolymath/affinescript/pull/226",
+  "docs/specs/async-on-wasm-cps.adoc (full design)",
+  "docs/specs/SETTLED-DECISIONS.adoc (ADR-013 section)",
+  "lib/codegen.ml (find_free_vars; #199 closure ABI)",
+  "stdlib/Vscode.affine + packages/affine-vscode/mod.js (#205 thenableThen)",
+  "typed-wasm ADR-004 (convergence / aggregate library; Ephapax)",
+]

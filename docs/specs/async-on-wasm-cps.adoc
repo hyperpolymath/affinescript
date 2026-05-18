@@ -3,15 +3,16 @@
 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 :toc:
 :icons: font
-:status: PROPOSED — awaiting owner approval (issue #225)
+:status: ACCEPTED 2026-05-18 — ADR-013 (issue #225)
 
 == Status
 
-PROPOSED. Design-before-implementation for a high-blast-radius,
-cross-stakeholder change (issue #225). On approval this is promoted to
-an ADR in `SETTLED-DECISIONS.adoc` + `.machine_readable/6a2/META.a2ml`,
-and becomes a section of the typed-wasm convergence ABI (Ephapax is a
-co-stakeholder — typed-wasm ADR-004).
+ACCEPTED (owner-approved 2026-05-18). Recorded as ADR-013
+(`SETTLED-DECISIONS.adoc` + `.machine_readable/6a2/META.a2ml`). The
+async ABI section is mirrored into the typed-wasm convergence layer
+with an Ephapax co-stakeholder review flag (typed-wasm ADR-004 —
+tracked separately). Implementation proceeds as the 4-PR plan below,
+each behind the 258-case gate.
 
 == Problem
 
