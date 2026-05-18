@@ -305,3 +305,20 @@ pub extern fn extensionAbsolutePath(ctx: ExtensionContext, rel_path: String) -> 
 /// explicit `Unit` param avoids the zero-param-fn return-type collapse).
 /// Returns the progress Thenable.
 pub extern fn withProgressNotification(title: String, work: fn(Unit) -> Thenable) -> Thenable / Async;
+
+// ── Thenable resolution (issue #205) ─────────────────────────────────
+//
+// The source-to-source backend can `await` a Thenable directly; the
+// wasm/Node backend cannot, so these primitives let a wasm guest
+// observe a settled host Thenable. `thenableThen` registers a guest
+// callback (the #199 function-value ABI — the host re-enters it when
+// the Thenable settles); `thenableResultJson` reads the settled payload
+// JSON-encoded once the callback has fired.
+
+/// Run `on_settle` when `t` resolves. `on_settle` is a function value
+/// (#199); the host invokes it after settlement. Returns a Disposable.
+pub extern fn thenableThen(t: Thenable, on_settle: fn(Unit) -> Int) -> Disposable / Async;
+
+/// The resolved value of `t`, JSON-encoded. Empty string until `t` has
+/// settled (i.e. until the `thenableThen` callback has fired).
+pub extern fn thenableResultJson(t: Thenable) -> String;
