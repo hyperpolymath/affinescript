@@ -669,15 +669,20 @@ let rec resolve_and_typecheck_module
     | Ok () -> resolve_decl mod_ctx decl
   ) (Ok ()) prog.prog_decls in
 
-  (* Type-check all declarations. *)
-  let type_result = List.fold_left (fun acc decl ->
-    match acc with
-    | Error e -> Error e
-    | Ok () -> Typecheck.check_decl type_ctx decl
-  ) (Ok ()) prog.prog_decls in
-
-  match type_result with
-  | Ok () -> Ok (symbols, type_ctx)
+  (* Type-check via [check_program] (NOT a raw check_decl fold): it runs
+     the forward-declaration pass that pre-registers every function
+     signature, so a module with internal forward references — e.g.
+     collections.affine's `binary_search` calling the later
+     `binary_search_helper` — type-checks on the import path exactly as
+     it does standalone. The imports this module resolved above were
+     written into [type_ctx.name_types]; thread them in as [import_types]
+     so [check_program]'s fresh context still sees them. (#128 coherence:
+     imported modules must check the same way top-level programs do.) *)
+  match
+    Typecheck.check_program
+      ~import_types:type_ctx.Typecheck.name_types symbols prog
+  with
+  | Ok final_ctx -> Ok (symbols, final_ctx)
   | Error type_err ->
     let msg = Typecheck.show_type_error type_err in
     Error (ImportError ("Type checking failed: " ^ msg), Span.dummy)
