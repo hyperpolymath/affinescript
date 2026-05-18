@@ -276,5 +276,20 @@ pre-change parser). Typecheck/codegen are unchanged: a qualified
 ident is treated by its resolved symbol exactly like an unqualified
 one (the validation, not the representation, is the soundness gate).
 
+*Known limitation (conformance harness).* The qualified-*type*
+positive fixture is self-contained (`prelude.Option`, a stdlib
+module). The qualified-*effect* positive fixture
+(`tests/conformance/qualified-paths/valid/qualified_effect.affine`)
+must reference a sibling support module (`effmod`) because **no stdlib
+module currently declares a public effect**, so it resolves only with
+the test harness's module search-path and *fails a bare `affinescript
+check`*. Bare-oracle audits (including the estate dialect-conformance
+`.affine-audit` harness) must treat that one fixture as harness-only.
+Qualified-effect resolution itself is sound and independently proven
+by the `invalid/private_member` fixture (it loads stdlib `effects` and
+rejects the private member). Resolving this fully — a public stdlib
+effect for a self-contained positive — is tracked as follow-up, not a
+blocker for the language decision.
+
 Refs issue #228 (language decision human-gated; not auto-closed). Full
 ADR in `.machine_readable/6a2/META.a2ml` (ADR-014).

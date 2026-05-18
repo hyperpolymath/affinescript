@@ -5,6 +5,19 @@
 // `effmod.Logging` must load module `effmod`, resolve+typecheck it,
 // and find `Logging` as a Public SKEffect *within that module*.
 // Expected: type checking passes.
+//
+// ⚠️ KNOWN LIMITATION (issue #228 / ADR-014): the sibling support
+// module `effmod` is NOT stdlib, so this fixture resolves ONLY when
+// the test harness adds this directory to the module-loader
+// search-path. A bare `affinescript check` on this file alone WILL
+// fail with "Unknown module 'effmod'". There is no public stdlib
+// effect to build a self-contained positive (unlike `prelude.Option`
+// for the qualified-*type* fixture). Bare-oracle audits — including
+// the estate dialect-conformance `.affine-audit` harness — MUST treat
+// THIS fixture as harness-only and exclude it from drift counts.
+// Qualified-effect resolution itself is sound and independently
+// proven by invalid/private_member.affine (loads stdlib `effects`,
+// rejects the private member).
 module ConformanceQualifiedEffect;
 
 pub fn act(x: Int) -> Int / effmod.Logging {
