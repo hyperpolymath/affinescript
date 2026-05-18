@@ -1,0 +1,92 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-FileCopyrightText: 2025 hyperpolymath
+//
+// Future - async sequencing combinators (echidna#62)
+//
+// Backs the ReScript->AffineScript migration's async requirement
+// (echidna `[migration-roadmap.rescript-to-affinescript]`, Client.res):
+// every Client function is `promise<result<T, string>>` and chains
+// through `Promise.then` / `Promise.catch` / `Promise.resolve`.
+//
+// THE ASYNC MODEL (read before using)
+// -----------------------------------
+// On the migration's Deno-ESM target the compiler emits *native* JS
+// `async`/`await` (lib/codegen_deno.ml: all methods are `async`,
+// `await` on a synchronous value is valid JS) and host promises cross
+// the boundary as the `Thenable` extern ABI (issue #103). Suspension
+// therefore happens *at the extern boundary* (echidna#61 `Http` over
+// Deno fetch); the AffineScript source never needs a promise monad.
+//
+// So an "async value" in the migration is just its settled
+// `Result<T, String>` (the `result<T, string>` half of Client.res's
+// `promise<result<T, string>>`), carried by a function in the `Async`
+// effect (declared in effects.affine; `/{Async}`). These combinators
+// are the **value-level** half — a 1:1 map of the ReScript promise
+// chain onto that `Result` — and intentionally add no wrapper type:
+//
+//   * AffineScript user-defined generic types are not usable in
+//     signatures here (compiler kind limitation: a generic `Async<T>`
+//     ADT/alias raises "Too many arguments for kind"; only prelude's
+//     `Option`/`Result` are sound generic carriers). `Result<T,
+//     String>` is therefore the carrier, which is also exactly the
+//     shape Client.res already uses.
+//
+// ReScript -> this module:
+//   Promise.resolve(x)     -> resolve(x)
+//   Promise.reject / fail  -> reject(e)
+//   p->Promise.then(f)     -> then(p, f)        (f : T -> Result<U,String>)
+//   p->Promise.thenResolve -> map_ok(p, f)      (f : T -> U)
+//   p->Promise.catch(h)    -> recover(p, h)     (h : String -> Result<T,String>)
+//   error remapping        -> map_err(p, f)
+
+module future;
+
+use prelude::{ Result, Ok, Err };
+
+/// `Promise.resolve(x)` — a settled-successful async value.
+pub fn resolve<T>(x: T) -> Result<T, String> {
+  Ok(x)
+}
+
+/// A settled-rejected async value (rejection carried as the error
+/// string, matching Client.res's `result<_, string>`).
+pub fn reject<T>(e: String) -> Result<T, String> {
+  Err(e)
+}
+
+/// `Promise.then` over the success channel: run `f` on success,
+/// short-circuit an existing rejection. `f` itself yields an async
+/// `Result` (so `then` chains async steps, like `.then(x => fetch…)`).
+pub fn then<T, U>(a: Result<T, String>, f: T -> Result<U, String>) -> Result<U, String> {
+  match a {
+    Ok(x) => f(x),
+    Err(e) => Err(e)
+  }
+}
+
+/// `Promise.then` with a pure mapper (`.then(x => pureValue)` /
+/// `thenResolve`): transform the success value, keep rejection.
+pub fn map_ok<T, U>(a: Result<T, String>, f: T -> U) -> Result<U, String> {
+  match a {
+    Ok(x) => Ok(f(x)),
+    Err(e) => Err(e)
+  }
+}
+
+/// `Promise.catch` — recover from a rejection. `h` may itself produce
+/// a fresh async `Result` (resolve a fallback, or re-reject).
+pub fn recover<T>(a: Result<T, String>, h: String -> Result<T, String>) -> Result<T, String> {
+  match a {
+    Ok(x) => Ok(x),
+    Err(e) => h(e)
+  }
+}
+
+/// Remap the rejection reason, leaving a success untouched
+/// (e.g. wrap a low-level error string with context).
+pub fn map_err<T>(a: Result<T, String>, f: String -> String) -> Result<T, String> {
+  match a {
+    Ok(x) => Ok(x),
+    Err(e) => Err(f(e))
+  }
+}
