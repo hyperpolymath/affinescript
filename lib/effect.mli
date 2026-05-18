@@ -35,9 +35,6 @@ val v1_effects : string list
 (** Reserved-for-v1.x effect names. *)
 val reserved_effects : string list
 
-(** Legacy lowercase stdlib effect → canonical v1 name. *)
-val legacy_aliases : (string * string) list
-
 (** Canonical registry name for a source effect name, or [None] if
     unknown to the registry (caller also accepts declared effects). *)
 val canonical_effect_name : string -> string option
