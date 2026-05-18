@@ -660,6 +660,14 @@ expr:
   | e = expr_assign { e }
 
 expr_assign:
+  /* `return`/`resume` are diverging prefix expressions: they greedily
+     consume the whole trailing expression and are NOT operands of
+     binary operators (affinescript#215 family B). Hoisting them here,
+     out of expr_primary, removes the ~12 per-precedence-level S/R
+     conflicts. `(return a) + b` now needs the explicit parens — which
+     is correct, since `return` diverges and was never a useful operand. */
+  | RETURN e = expr? { ExprReturn e }
+  | RESUME e = expr? { ExprResume e }
   | lhs = expr_or EQ rhs = expr_assign
     { ExprLet { el_mut = false; el_quantity = None;
                 el_pat = PatVar (mk_ident "_" $startpos(lhs) $endpos(lhs));
@@ -838,15 +846,11 @@ expr_primary:
   | FN LPAREN params = separated_list(COMMA, lambda_param) RPAREN ARROW ret = type_expr body = block
     { ExprLambda { elam_params = params; elam_ret_ty = Some ret; elam_body = ExprBlock body } }
 
-  /* Return */
-  | RETURN e = expr? { ExprReturn e }
+  /* `return`/`resume` moved to expr_assign (affinescript#215 family B) */
 
   /* Handle */
   | HANDLE body = expr LBRACE handlers = list(handler_arm) RBRACE
     { ExprHandle { eh_body = body; eh_handlers = handlers } }
-
-  /* Resume */
-  | RESUME e = expr? { ExprResume e }
 
   /* Try/catch/finally */
   | TRY body = block catch = try_catch? finally = try_finally?
