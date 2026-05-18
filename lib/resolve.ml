@@ -43,16 +43,14 @@ type context = {
 (* Helper for Result bind *)
 let ( let* ) = Result.bind
 
-(** Create a new resolution context *)
-let create_context () : context =
-  let ctx = {
-    symbols = Symbol.create ();
-    current_module = [];
-    imports = [];
-    references = [];
-  } in
-  (* Register built-in functions — must match the interpreter's create_initial_env *)
-  let def name = let _ = Symbol.define ctx.symbols name SKFunction Span.dummy Public in () in
+(** Seed the builtin functions/constructors into a symbol table.
+    Shared by [create_context] (top-level program) and
+    [resolve_and_typecheck_module] (imported modules) so that an imported
+    stdlib module — e.g. [string.affine] pulled in by [use string::{...}] —
+    resolves its own use of builtins like [len] instead of failing with
+    [UndefinedVariable]. Must match the interpreter's create_initial_env. *)
+let seed_builtins (symbols : Symbol.t) : unit =
+  let def name = let _ = Symbol.define symbols name SKFunction Span.dummy Public in () in
   (* Console I/O *)
   def "print"; def "println"; def "eprint"; def "eprintln";
   (* String / char builtins *)
@@ -88,9 +86,19 @@ let create_context () : context =
      gap. A user/prelude `type Option`/`type Result` decl cleanly shadows these
      (Hashtbl.replace in Symbol.define). Issue #122. *)
   let defc name =
-    let _ = Symbol.define ctx.symbols name SKConstructor Span.dummy Public in ()
+    let _ = Symbol.define symbols name SKConstructor Span.dummy Public in ()
   in
-  defc "Some"; defc "None"; defc "Ok"; defc "Err";
+  defc "Some"; defc "None"; defc "Ok"; defc "Err"
+
+(** Create a new resolution context, pre-seeded with builtins. *)
+let create_context () : context =
+  let ctx = {
+    symbols = Symbol.create ();
+    current_module = [];
+    imports = [];
+    references = [];
+  } in
+  seed_builtins ctx.symbols;
   ctx
 
 (** Record a use-site reference for a symbol (Phase C: find-references). *)
@@ -548,6 +556,7 @@ let resolve_and_typecheck_module (loaded_mod : Module_loader.loaded_module)
     : (Symbol.t * Typecheck.context) result =
   let prog = Module_loader.get_program loaded_mod in
   let symbols = Symbol.create () in
+  seed_builtins symbols;
   let mod_ctx = { symbols; current_module = []; imports = []; references = [] } in
 
   (* Pass 1: forward-declare every top-level name (#135 slice 11). *)
@@ -559,8 +568,12 @@ let resolve_and_typecheck_module (loaded_mod : Module_loader.loaded_module)
     | Ok () -> resolve_decl mod_ctx decl
   ) (Ok ()) prog.prog_decls in
 
-  (* Type-check all declarations *)
+  (* Type-check all declarations. Seed builtin schemes (len, arithmetic,
+     Some/None/…) exactly as Typecheck.check_program does for the top-level
+     program — the manual check_decl fold below otherwise leaves an imported
+     module's use of builtins as "Unbound variable". *)
   let type_ctx = Typecheck.create_context symbols in
+  Typecheck.register_builtins type_ctx;
   let type_result = List.fold_left (fun acc decl ->
     match acc with
     | Error e -> Error e

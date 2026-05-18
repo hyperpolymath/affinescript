@@ -1194,6 +1194,8 @@ let register_builtins (ctx : context) : unit =
   let float_binop = TArrow (ty_float, QOmega, TArrow (ty_float, QOmega, ty_float, EPure), EPure) in
   bind_var ctx "print" (TArrow (ty_string, QOmega, ty_unit, ESingleton "IO"));
   bind_var ctx "println" (TArrow (ty_string, QOmega, ty_unit, ESingleton "IO"));
+  bind_var ctx "eprint" (TArrow (ty_string, QOmega, ty_unit, ESingleton "IO"));
+  bind_var ctx "eprintln" (TArrow (ty_string, QOmega, ty_unit, ESingleton "IO"));
   bind_var ctx "read_line" (TArrow (ty_unit, QOmega, ty_string, ESingleton "IO"));
   bind_var ctx "int_to_string" (TArrow (ty_int, QOmega, ty_string, EPure));
   bind_var ctx "int" (TArrow (ty_float, QOmega, ty_int, EPure));
