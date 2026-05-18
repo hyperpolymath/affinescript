@@ -384,6 +384,27 @@ module.exports = function makeVscodeBindings(vscode, lcModule, hostShim) {
         : Promise.reject(new Error("fetch unavailable"));
       return reg(doFetch.catch((err) => ({ __error: String(err) })));
     },
+
+    // `jsonField(json, key)` — minimal one-level JSON field read for
+    // guests with no JSON parser. Mirrors thenableResultJson's
+    // synchronous reg(string) shape; "" on parse failure / non-object /
+    // missing key (the guest treats "" as absent). Scalars are coerced
+    // to their string form; objects/arrays are re-serialised so the
+    // guest can at least detect presence / pass them on.
+    jsonField: (jsonPtr, keyPtr) => {
+      const raw = readString(jsonPtr);
+      const key = readString(keyPtr);
+      try {
+        const obj = JSON.parse(raw);
+        if (obj === null || typeof obj !== "object") return reg("");
+        if (!(key in obj)) return reg("");
+        const v = obj[key];
+        if (v === null || v === undefined) return reg("");
+        return reg(typeof v === "object" ? JSON.stringify(v) : String(v));
+      } catch (_e) {
+        return reg("");
+      }
+    },
   };
 
   const VscodeLanguageClient = {
