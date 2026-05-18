@@ -133,7 +133,7 @@ fn assert_length<T>(list: [T], expected_len: Int, message: String) -> () {
 
 /// Assert list contains a specific element
 fn assert_contains<T>(list: [T], element: T, message: String) -> () {
-  let found = false;
+  let mut found = false;
   for x in list {
     if x == element {
       found = true;
@@ -303,7 +303,7 @@ fn bench(f: () -> (), iterations: Int) -> BenchResult {
   {
     iterations: iterations,
     total_time: tot,
-    avg_time: tot / (iterations + 0.0)
+    avg_time: tot / float(iterations)
   }
 }
 
