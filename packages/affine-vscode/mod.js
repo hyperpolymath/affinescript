@@ -47,16 +47,28 @@ module.exports = function makeVscodeBindings(vscode, lcModule, hostShim) {
     return new TextDecoder("utf-8").decode(bytes);
   }
 
-  // ── Wasm-table callbacks → JS callable ─────────────────────────────
-  // Wasm function-pointer args (e.g. command handlers) come in as table
-  // indices. Wrap each in a JS thunk that re-enters the Wasm module.
-  function wrapHandler(idx) {
+  // ── Wasm closure callbacks → JS callable ───────────────────────────
+  // Post-#199 (function-value callback ABI) a handler arrives as a
+  // *closure pointer*, not a bare table index: an 8-byte heap pair
+  // [i32 function_id @ +0][i32 env_ptr @ +4] (codegen.ml). To invoke,
+  // read the pair from exported memory, look the compiled lambda up in
+  // __indirect_function_table by function_id, and call it with env_ptr
+  // as the first argument (the closure calling convention), zero-filling
+  // any further declared params (e.g. the `Unit` handler arg).
+  function wrapHandler(closurePtr) {
     return () => {
       const inst = getInstance();
-      const tbl = inst && inst.exports && inst.exports.__indirect_function_table;
+      if (!inst || !inst.exports || !inst.exports.memory) return;
+      const tbl = inst.exports.__indirect_function_table;
       if (!tbl) return;
-      const fn = tbl.get(idx);
-      if (typeof fn === "function") fn();
+      const dv = new DataView(inst.exports.memory.buffer);
+      const fnId = dv.getInt32(closurePtr, true);
+      const envPtr = dv.getInt32(closurePtr + 4, true);
+      const fn = tbl.get(fnId);
+      if (typeof fn !== "function") return;
+      const args = [envPtr];
+      while (args.length < fn.length) args.push(0);
+      return fn(...args);
     };
   }
 
@@ -66,9 +78,9 @@ module.exports = function makeVscodeBindings(vscode, lcModule, hostShim) {
   // import map's top-level keys must match.
   const Vscode = {
     // ── vscode.commands ──────────────────────────────────────────────
-    registerCommand: (namePtr, handlerIdx) => {
+    registerCommand: (namePtr, handlerPtr) => {
       const name = readString(namePtr);
-      const handler = wrapHandler(handlerIdx);
+      const handler = wrapHandler(handlerPtr);
       const disposable = vscode.commands.registerCommand(name, handler);
       return reg(disposable);
     },
@@ -302,8 +314,8 @@ module.exports = function makeVscodeBindings(vscode, lcModule, hostShim) {
     },
 
     // ── Events ─────────────────────────────────────────────────────
-    onDidSaveTextDocument: (handlerIdx) => {
-      const thunk = wrapHandler(handlerIdx);
+    onDidSaveTextDocument: (handlerPtr) => {
+      const thunk = wrapHandler(handlerPtr);
       // The vscode event ships a TextDocument; we deliberately drop it at
       // the FFI boundary (see Vscode.affine docstring). Handlers that
       // need the saved file path can call editorActiveFilePath().
