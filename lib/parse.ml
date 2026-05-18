@@ -105,6 +105,7 @@ let next_token state () =
     | Token.LPAREN -> Parser.LPAREN
     | Token.RPAREN -> Parser.RPAREN
     | Token.LBRACE -> Parser.LBRACE
+    | Token.HASH_LBRACE -> Parser.HASH_LBRACE
     | Token.RBRACE -> Parser.RBRACE
     | Token.LBRACKET -> Parser.LBRACKET
     | Token.RBRACKET -> Parser.RBRACKET

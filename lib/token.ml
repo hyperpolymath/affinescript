@@ -73,6 +73,7 @@ type t =
   | RPAREN
   | LBRACE
   | RBRACE
+  | HASH_LBRACE   (** #{ — record-literal opener (affinescript#215) *)
   | LBRACKET
   | RBRACKET
   | COMMA
@@ -187,6 +188,7 @@ let to_string = function
   | RPAREN -> ")"
   | LBRACE -> "{"
   | RBRACE -> "}"
+  | HASH_LBRACE -> "#{"
   | LBRACKET -> "["
   | RBRACKET -> "]"
   | COMMA -> ","
