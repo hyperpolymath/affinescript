@@ -1196,7 +1196,8 @@ let register_builtins (ctx : context) : unit =
   bind_var ctx "println" (TArrow (ty_string, QOmega, ty_unit, ESingleton "IO"));
   bind_var ctx "eprint" (TArrow (ty_string, QOmega, ty_unit, ESingleton "IO"));
   bind_var ctx "eprintln" (TArrow (ty_string, QOmega, ty_unit, ESingleton "IO"));
-  bind_var ctx "read_line" (TArrow (ty_unit, QOmega, ty_string, ESingleton "IO"));
+  bind_var ctx "read_line"
+    (TArrow (ty_unit, QOmega, TApp (TCon "Result", [ty_string; ty_string]), ESingleton "IO"));
   bind_var ctx "int_to_string" (TArrow (ty_int, QOmega, ty_string, EPure));
   bind_var ctx "int" (TArrow (ty_float, QOmega, ty_int, EPure));
   bind_var ctx "float" (TArrow (ty_int, QOmega, ty_float, EPure));
@@ -1291,6 +1292,35 @@ let register_builtins (ctx : context) : unit =
   bind_var ctx "int_to_char"  (TArrow (ty_int, QOmega, ty_char, EPure));
   bind_scheme ctx "show"
     (poly1 (fun a -> TArrow (a, QOmega, ty_string, EPure)));
+  (* Reconcile with the resolver builtin-seed list (resolve.ml seed_builtins):
+     file-I/O / env / time / float-math builtins were seeded for resolution
+     but never typed here, so stdlib files using them failed typecheck with
+     "Unbound variable". Signatures per the io.affine / math.affine headers. *)
+  (* File I/O — effectful, Result/Option-returning *)
+  bind_var ctx "read_file"
+    (TArrow (ty_string, QOmega, res ty_string ty_string, ESingleton "IO"));
+  bind_var ctx "write_file"
+    (TArrow (ty_string, QOmega,
+       TArrow (ty_string, QOmega, res ty_unit ty_string, ESingleton "IO"), EPure));
+  bind_var ctx "append_file"
+    (TArrow (ty_string, QOmega,
+       TArrow (ty_string, QOmega, res ty_unit ty_string, ESingleton "IO"), EPure));
+  bind_var ctx "file_exists" (TArrow (ty_string, QOmega, ty_bool, ESingleton "IO"));
+  bind_var ctx "is_directory" (TArrow (ty_string, QOmega, ty_bool, ESingleton "IO"));
+  (* Environment / process / time *)
+  bind_var ctx "getenv" (TArrow (ty_string, QOmega, opt ty_string, ESingleton "IO"));
+  bind_var ctx "getcwd" (TArrow (ty_unit, QOmega, res ty_string ty_string, ESingleton "IO"));
+  bind_var ctx "time_now" (TArrow (ty_unit, QOmega, ty_float, ESingleton "IO"));
+  (* Float math — pure; floor/ceil/round/trunc truncate to Int per headers *)
+  let f_to_i = TArrow (ty_float, QOmega, ty_int, EPure) in
+  let f_to_f = TArrow (ty_float, QOmega, ty_float, EPure) in
+  bind_var ctx "floor" f_to_i; bind_var ctx "ceil" f_to_i;
+  bind_var ctx "round" f_to_i; bind_var ctx "trunc" f_to_i;
+  bind_var ctx "sin" f_to_f; bind_var ctx "cos" f_to_f; bind_var ctx "tan" f_to_f;
+  bind_var ctx "atan" f_to_f; bind_var ctx "exp" f_to_f; bind_var ctx "cbrt" f_to_f;
+  bind_var ctx "log" f_to_f; bind_var ctx "log10" f_to_f; bind_var ctx "log2" f_to_f;
+  bind_var ctx "atan2"
+    (TArrow (ty_float, QOmega, TArrow (ty_float, QOmega, ty_float, EPure), EPure));
   bind_var ctx "panic" (TArrow (ty_string, QOmega, ty_never, EPure));
   bind_var ctx "exit" (TArrow (ty_int, QOmega, ty_never, ESingleton "IO"));
   (* TEA runtime — accepts any record, returns unit with IO effect *)
