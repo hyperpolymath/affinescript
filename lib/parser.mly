@@ -32,6 +32,14 @@ let trait_ref_of_type_expr (t : type_expr) : trait_ref =
   | TyApp (id, args)    -> { tr_name = id; tr_args = args }
   | _ -> failwith "impl: trait reference must be a named type"
 
+(* Fold a non-empty comma-separated braced effect row `{E1, E2, ...}`
+   into the binary EffUnion AST.  Right-associated; union is
+   order-insensitive downstream so association is immaterial. *)
+let rec effect_union_of_list = function
+  | []        -> assert false  (* separated_nonempty_list guarantees >= 1 *)
+  | [e]       -> e
+  | e :: rest -> EffUnion (e, effect_union_of_list rest)
+
 %}
 
 /* Tokens with values */
@@ -209,6 +217,18 @@ return_type:
      `a / b`, `-{ E }->`, and braced `effect E {}` are all unaffected,
      full suite green.  ADR-008 mandates this syntax; it is not sugar. */
   | ARROW ty = type_expr SLASH eff = effect_term { (Some ty, Some eff) }
+  /* `-> T / {E1, E2, ...}` — braced comma-separated effect row.  This is
+     the surface the effects-migration-stance guide uses verbatim
+     (`/{IO}`, `/{IO, Async}`); previously only the bare single-term
+     `-> T / E` and the prefix `-{ E1 + E2 }->` forms parsed, so migrators
+     could not write the documented syntax.  The `SLASH LBRACE` prefix is
+     unambiguous: bare `-> T / E` continues on IDENT, the prefix row uses
+     `MINUS LBRACE`, and `{` cannot open a division operand in type
+     position — so this adds no new reduce/reduce item beyond the existing
+     ADR-008/ADR-009 permissive-ambiguity class (verified by conflict
+     count + full suite). */
+  | ARROW ty = type_expr SLASH LBRACE effs = separated_nonempty_list(COMMA, effect_term) RBRACE
+    { (Some ty, Some (effect_union_of_list effs)) }
 
 fn_body:
   | blk = block { FnBlock blk }
