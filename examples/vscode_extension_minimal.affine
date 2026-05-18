@@ -23,7 +23,7 @@ pub fn handler_0() -> Int {
 }
 
 pub fn activate(ctx: ExtensionContext) -> Int {
-  let d = registerCommand("affinescript.helloAffine", 0);  // 0 = handler table index
+  let d = registerCommand("affinescript.helloAffine", fn(u: Unit) => handler_0());
   let _ = pushSubscription(ctx, d);
   return 0;
 }
