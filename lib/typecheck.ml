@@ -709,7 +709,24 @@ let rec synth (ctx : context) (expr : expr) : ty result =
   (* Function application *)
   | ExprApp (fn_expr, args) ->
     let* fn_ty = synth ctx fn_expr in
-    apply_args ctx fn_ty args
+    begin match args with
+      | [] ->
+        (* A zero-argument call [f()]. Zero-parameter function
+           *declarations* are typed as their bare return type (the param
+           fold in [check_fn_decl] is over []), so [apply_args fn_ty []]
+           correctly yields that type. But an explicit [() -> T] thunk
+           type — a record field, a parameter, a lambda — lowers to
+           [TArrow (Unit, _, T, _)]; invoking it must consume the unit and
+           yield [T]. Curried/partial application never reaches this branch
+           with [args = []] (it always carries a non-empty arg list at the
+           [ExprApp] site), so peeling a single unit arrow here is sound. *)
+        begin match repr fn_ty with
+          | TArrow (param_ty, _q, ret_ty, _eff)
+            when repr param_ty = ty_unit -> Ok ret_ty
+          | _ -> apply_args ctx fn_ty args
+        end
+      | _ -> apply_args ctx fn_ty args
+    end
 
   (* Tuple *)
   | ExprTuple exprs ->
@@ -1086,10 +1103,13 @@ and check_stmt (ctx : context) (stmt : stmt) : unit result =
         synth ctx sl_value
     end in
     exit_level ctx;
-    let sc = generalize ctx val_ty in
     let* bindings = check_pattern ctx sl_pat val_ty in
-    List.iter (fun (name, _ty) ->
-      bind_scheme ctx name sc
+    (* Bind each name to *its own* type. For a plain [let x = e] the sole
+       binding's type is [val_ty], so this generalizes exactly as before;
+       for a destructuring [let (a, b) = e] / record pattern each name is
+       generalized at its component type rather than the whole tuple. *)
+    List.iter (fun (name, ty) ->
+      bind_scheme ctx name (generalize ctx ty)
     ) bindings;
     Ok ()
   | StmtExpr e ->
@@ -1274,6 +1294,18 @@ let register_builtins (ctx : context) : unit =
     { sc_tyvars = [(v_erra, Types.KType); (v_errb, Types.KType)];
       sc_effvars = []; sc_rowvars = []; sc_body = err_ty };
   Hashtbl.replace ctx.constructor_env "Err" err_ty;
+  (* [RuntimeError(String)] is the interpreter's builtin exception variant
+     (see [Interp]: panics surface as [VVariant ("RuntimeError", VString
+     msg)]). The honest stdlib pattern-matches it in [try/catch] arms
+     (stdlib/testing.affine, stdlib/result.affine). The catch error type is
+     opaque (a fresh tyvar per [try]), so the result is left polymorphic and
+     unifies with whatever the arm expects. *)
+  let (v_rte, t_rte) = fresh_named () in
+  let rte_ty = TArrow (ty_string, QOmega, t_rte, EPure) in
+  bind_scheme ctx "RuntimeError"
+    { sc_tyvars = [(v_rte, Types.KType)]; sc_effvars = []; sc_rowvars = [];
+      sc_body = rte_ty };
+  Hashtbl.replace ctx.constructor_env "RuntimeError" rte_ty;
   bind_var ctx "string_get"
     (TArrow (ty_string, QOmega, TArrow (ty_int, QOmega, ty_char, EPure), EPure));
   bind_var ctx "string_sub"

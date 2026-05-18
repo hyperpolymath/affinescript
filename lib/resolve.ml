@@ -88,7 +88,10 @@ let seed_builtins (symbols : Symbol.t) : unit =
   let defc name =
     let _ = Symbol.define symbols name SKConstructor Span.dummy Public in ()
   in
-  defc "Some"; defc "None"; defc "Ok"; defc "Err"
+  defc "Some"; defc "None"; defc "Ok"; defc "Err";
+  (* Interpreter builtin exception variant, pattern-matched in try/catch
+     arms by the honest stdlib (testing.affine, result.affine). *)
+  defc "RuntimeError"
 
 (** Create a new resolution context, pre-seeded with builtins. *)
 let create_context () : context =
