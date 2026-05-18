@@ -452,7 +452,22 @@ and lower_effect_expr (ctx : context) (ee : effect_expr) : eff =
   in
   match ee with
   | EffVar { name; _ } -> resolve name
-  | EffCon ({ name; _ }, _args) -> resolve name
+  | EffCon ({ name; _ }, args) ->
+    (* Parametric effect, e.g. `Throws[MyErr]` (issue #59). Effect
+       *tracking* only: carry the type argument by mangling it into the
+       singleton name, so `Throws[A]`, `Throws[B]` and bare `Throws` are
+       distinct under the string-equality unification of `eff` — without
+       growing the `eff` ADT (which would ripple across every effect
+       operation). The base name is still validated via `resolve`. *)
+    (match resolve name with
+     | ESingleton base when args <> [] ->
+       let arg_str =
+         args
+         |> List.map (fun (TyArg te) -> ty_to_string (lower_type_expr ctx te))
+         |> String.concat ", "
+       in
+       ESingleton (base ^ "[" ^ arg_str ^ "]")
+     | other -> other)
   | EffUnion (e1, e2) ->
     EUnion [lower_effect_expr ctx e1; lower_effect_expr ctx e2]
 
