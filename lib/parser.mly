@@ -437,9 +437,14 @@ type_expr_primary:
      LT/GT tokens are shared with expression-position less-than. */
   | name = upper_ident LT args = separated_nonempty_list(COMMA, type_arg) GT
     { TyApp (mk_ident name $startpos(name) $endpos(name), args) }
-  /* Array sugar: [T] desugars to Array[T] (issues-drafts/02). The element
-     type can be any type_expr (recursive), so [[Int]] means Array[Array[Int]]
-     and [Result[T, E]] works as expected. */
+  /* Array sugar: `[T]` desugars to `Array[T]` (issues-drafts/02; #40). The
+     element type can be any type_expr (recursive), so `[[Int]]` means
+     Array[Array[Int]] and `[Result[T, E]]` works as expected. This is the
+     syntax stdlib has used all along (`fn map<T, U>(arr: [T], ...)`). The
+     typechecker (lib/typecheck.ml ~724, 813, 1024) canonicalises array
+     literals/operations on `TApp (TCon "Array", ...)`, so `Array` is the
+     right desugar target — `List` here would trigger a
+     `Unify.TypeMismatch (List, Array)` at check time. */
   | LBRACKET elem = type_expr RBRACKET
     { TyApp (mk_ident "Array" $startpos $endpos, [TyArg elem]) }
   /* Function-type-as-type: `fn(A, B) -> C` lowers to the curried arrow
@@ -458,16 +463,6 @@ type_expr_primary:
      the interior in one pass without lookahead conflicts. */
   | LBRACE body = ty_record_body RBRACE
     { TyRecord (fst body, snd body) }
-  /* Array shorthand: `[T]` desugars to `Array[T]`.  This is the syntax
-     stdlib has used all along (`fn map<T, U>(arr: [T], f: T -> U) -> [U]`,
-     `Result[[T], E]`, etc.) but it was previously only accepted in stdlib
-     load paths, not in user source.  The typechecker (lib/typecheck.ml
-     lines 724, 813, 1024) canonicalises array literals/operations on
-     `TApp (TCon "Array", ...)`, so `Array` is the right desugar target —
-     using `List` here triggers a `Unify.TypeMismatch (List, Array)` at
-     check time. Closes #40. */
-  | LBRACKET ty = type_expr RBRACKET
-    { TyApp (mk_ident "Array" $startpos $endpos, [TyArg ty]) }
   /* Built-in types */
   | NAT { TyCon (mk_ident "Nat" $startpos $endpos) }
   | INT_T { TyCon (mk_ident "Int" $startpos $endpos) }
