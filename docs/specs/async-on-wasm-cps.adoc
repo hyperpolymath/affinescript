@@ -1,0 +1,131 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+= Async on the WasmGC backend: transparent CPS continuation transform
+Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+:toc:
+:icons: font
+:status: PROPOSED — awaiting owner approval (issue #225)
+
+== Status
+
+PROPOSED. Design-before-implementation for a high-blast-radius,
+cross-stakeholder change (issue #225). On approval this is promoted to
+an ADR in `SETTLED-DECISIONS.adoc` + `.machine_readable/6a2/META.a2ml`,
+and becomes a section of the typed-wasm convergence ABI (Ephapax is a
+co-stakeholder — typed-wasm ADR-004).
+
+== Problem
+
+`stdlib/Http.affine` exposes one portable surface:
+
+[source]
+----
+pub fn fetch(req: Request) -> Response / { Net, Async }
+----
+
+The Deno-ESM backend lowers this to a direct `await` (shipped, #226).
+The WasmGC backend cannot: an `extern` call is synchronous and the
+wasm boundary is i32-only. The estate's established async-over-wasm
+mechanism (#205) is *callback-based* — an async extern returns a
+`Thenable` **handle**; the guest registers a continuation closure via
+`thenableThen` and the host re-enters the guest after settlement,
+whereupon `thenableResultJson` yields the value.
+
+That mechanism is correct but its *surface* is callback-shaped
+(`-> Thenable` + explicit `thenableThen`/`thenableResultJson`). The
+owner's decision (issue #225, Option 2) is to keep **one
+byte-identical source surface** — `fetch -> Response` on both targets —
+and make the wasm backend do the continuation plumbing invisibly.
+
+== Decision
+
+On the WasmGC backend only, functions whose effect row includes
+`Async` are compiled via a **selective continuation-passing (CPS)
+transform**. Pure / non-`Async` functions are untouched (no codegen or
+performance change for them).
+
+=== Mechanism
+
+For an `Async` function body, each *async boundary* — a call to an
+`extern` returning under `/ Async`, or a call to another `Async`
+function — splits the body:
+
+. Code up to and including the async call is emitted normally; the call
+  yields a `Thenable` handle (the existing #205 host convention).
+. Code *after* the async call becomes a generated **continuation
+  function**. Its environment is the set of live locals at the split
+  point, captured exactly via the existing #199 closure ABI
+  (`find_free_vars` + an `[fnId@0, envPtr@4]` heap record reachable
+  through `__indirect_function_table`).
+. The split lowers to `thenableThen(handle, <continuation-closure>)`;
+  the enclosing function itself returns a `Thenable` handle
+  representing *its own* eventual completion.
+. The continuation, when re-entered by the host, reconstructs the
+  resolved value (for `http_request`: a `Response` from the settled
+  payload) and resumes.
+
+Because every `Async` caller is transformed identically, `Thenable`
+handles compose up the call chain transparently; at the host boundary
+the outermost `Thenable` is what the host awaits. The AffineScript
+programmer never sees any of this — the effect row is the abstraction,
+the backend chooses the mechanism, exactly as on the Deno side.
+
+=== Why this is sound to build on what exists
+
+* `find_free_vars` (codegen.ml) already computes capture sets.
+* The #199 closure ABI already marshals `[fnId, envPtr]` and dispatches
+  through `__indirect_function_table`.
+* The #205 `thenableThen` primitive already performs host→guest
+  re-entry after a settled `Promise`.
+
+The transform is new orchestration over proven primitives, not a new
+runtime mechanism.
+
+== Correctness obligations (must hold before any merge)
+
+. *Affine/linear capture.* A linear (`@linear` / `own`) local captured
+  into a continuation env is used exactly once *by the continuation*.
+  The borrow checker must treat continuation capture as that single
+  use; double-resumption must be impossible (a `Thenable` settles once;
+  `thenableThen` fires its callback once — assert this).
+. *Effect-row fidelity.* The transform triggers iff `Async ∈ fd_eff`.
+  `Net`/other effects ride along unchanged; `fd_is_async` already
+  exists (Deno side) and is reused as the trigger predicate.
+. *Value reconstruction.* `Response` reconstruction from the settled
+  payload needs structured decode. `jsonField` (one-level scalar) is
+  insufficient for `headers: [(String,String)]`; this slice introduces
+  a minimal typed reader for the fixed `Response` shape and defers
+  general decode to #161 (Json). No silent lossiness.
+. *Gate.* Full `dune test --force` (currently 258) green at every
+  commit; a wasm e2e parity test mirrors
+  `tests/codegen-deno/http_fetch.*`.
+
+== Blast radius / non-goals
+
+* Scope: WasmGC backend `Async` functions only. Deno-ESM unchanged.
+  Non-`Async` code unchanged.
+* Not JSPI (explicitly rejected, issue #225). No browser/runtime
+  suspension dependency.
+* Not a general delimited-continuation feature — only the `Async`
+  effect, only enough to make `Thenable` transparent.
+
+== Delivery plan (incremental, each behind the 258 gate)
+
+. *This doc → ADR* on approval (`SETTLED-DECISIONS.adoc` +
+  `META.a2ml`); mirror the ABI section into the typed-wasm convergence
+  spec; flag Ephapax co-stakeholder review.
+. *PR 1 — transform skeleton:* single async boundary, no live-local
+  capture (straight-line `Async` fn ending in one async call). Wasm
+  e2e: `Http.get` round-trip via stubbed host.
+. *PR 2 — live-local capture* via the #199 env ABI; multi-statement
+  continuations; affine-capture borrow rule + once-resumption assert.
+. *PR 3 — composition:* `Async` fn calling another `Async` fn
+  (chained `Thenable`); `Response` typed reader; full
+  `http_fetch`-parity wasm test.
+. *PR 4 — joint-close:* both targets green ⇒ close #160 and #225.
+
+== References
+
+* Issue #225 (this work), #160 (Http primitive), #226 (Deno-ESM, shipped)
+* #199 (function-value closure ABI), #205 (Thenable resolution)
+* typed-wasm ADR-004 (convergence / aggregate library; Ephapax)
+* `docs/guides/migration-playbook.adoc` `#portable-http`
