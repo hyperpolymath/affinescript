@@ -940,6 +940,18 @@ let rec synth (ctx : context) (expr : expr) : ty result =
         | _ ->
           let* () = unify_or_err operand_ty ty_int in
           Ok ty_int)
+     | OpDeref ->
+       (* Lenient deref: `*e` peels one borrow layer when `e` is a
+          reference type, but is the identity on a value type. Params
+          declared with a `ref`/`mut` mode are lowered to their bare
+          value type (the borrow checker tracks the actual borrow), so
+          stdlib code that reads them via `*self` / `*other` must still
+          type-check. Real `TRef`/`TMut`/`TOwn` still peel to the inner
+          type. *)
+       let* operand_ty = synth ctx operand in
+       (match repr operand_ty with
+        | TRef t | TMut t | TOwn t -> Ok t
+        | t -> Ok t)
      | _ ->
        let (operand_ty, result_ty) = type_of_unop op in
        let* () = check ctx operand operand_ty in
