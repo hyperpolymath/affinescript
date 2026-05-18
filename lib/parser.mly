@@ -771,8 +771,8 @@ expr_primary:
   /* Struct literal: `Point { x: v, y: w }`.  Must come before the plain
      upper_ident production so Menhir shifts LBRACE rather than reducing
      upper_ident to ExprVar when the next token is LBRACE. */
-  | _ty = upper_ident LBRACE b = expr_record_body RBRACE
-    { ExprRecord { er_fields = fst b; er_spread = snd b } }
+  | _ty = upper_ident l = LBRACE b = expr_record_body RBRACE
+    { Codemod_hook.note $startpos(l); ignore l; ExprRecord { er_fields = fst b; er_spread = snd b } }
   | name = upper_ident { ExprVar (mk_ident name $startpos $endpos) }
   | ty = upper_ident COLONCOLON variant = upper_ident
     { ExprVariant (mk_ident ty $startpos(ty) $endpos(ty),
@@ -791,8 +791,8 @@ expr_primary:
      avoid the LALR(1) greedy-separator conflict that arises when a ROW_VAR
      spread like `..record` follows a COMMA that `separated_list` has already
      consumed expecting another record_field. */
-  | LBRACE b = expr_record_body RBRACE
-    { ExprRecord { er_fields = fst b; er_spread = snd b } }
+  | l = LBRACE b = expr_record_body RBRACE
+    { Codemod_hook.note $startpos(l); ignore l; ExprRecord { er_fields = fst b; er_spread = snd b } }
 
   /* Block */
   | blk = block { ExprBlock blk }

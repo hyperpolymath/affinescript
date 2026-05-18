@@ -1,0 +1,3 @@
+(executable
+ (name codemod)
+ (libraries affinescript))

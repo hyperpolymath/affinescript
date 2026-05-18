@@ -4,6 +4,7 @@
  (modes byte native)
  (modules
   ast
+  codemod_hook
   borrow
   c_codegen
   cafe_face
