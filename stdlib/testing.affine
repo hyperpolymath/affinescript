@@ -8,6 +8,9 @@
 //
 // Depends on builtins: show, panic, time_now
 
+// Cross-module import (ADR-011: explicit `use module::{...}`)
+use prelude::{ Option, Result, Some, None, Ok, Err };
+
 // ============================================================================
 // Assertions
 // ============================================================================

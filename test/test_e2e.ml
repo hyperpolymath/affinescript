@@ -3426,9 +3426,13 @@ let test_angle_nested_gtgtgt () =
        {|fn f(o: Option<Option<Result<Int, String>>>) -> Int { return 0; }|})
 
 let test_angle_nested_return_pos () =
+  (* Exercises the nested generic *in return position* (the point of this
+     test) without constructing Ok/None — those live in prelude and are
+     reached via `use prelude::{...}`, not a flat builtin seed (#138).
+     Mirrors the param-position sibling tests above. *)
   Alcotest.(check bool) "-> Result<Option<T>, E> nested in return position" true
     (parse_check_passes
-       {|fn f() -> Result<Option<Int>, String> { return Ok(None); }|})
+       {|fn f(r: Result<Option<Int>, String>) -> Result<Option<Int>, String> { return r; }|})
 
 (* Non-regression: a real right-shift expression must still be one GTGT,
    not split, since GTGT is grammatical there. *)
