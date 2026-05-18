@@ -324,11 +324,32 @@ Functions declare effects after `/`:
 ----
 fn pure_fn(x: Int) -> Int / Pure { x + 1 }
 fn io_fn() -> () / IO { println("hello") }
-fn fallible() -> Int / Exn[Error] { throw(Error::new()) }
-fn combined() -> () / IO + Exn[Error] { ... }
+fn fallible() -> Int / Throws[Error] { throw(Error::new()) }
+fn combined() -> () / IO + Throws[Error] { ... }
 ----
 
-*Partial by Default:*
+The v1 effect-row registry (issue #59) pins five canonical names —
+`IO`, `Async`, `Partial`, `Throws[E]`, `Mut` — plus reserved
+`Random`, `Time`, `Net`. `Throws` is written `Throws[E]` at use
+sites; the type argument is threaded (distinct under unification).
+The lowercase `io`/`state`/`exn` migration aliases and the older
+`Exn` name were retired once the stdlib was renamed to the
+canonical names.
+
+*Effect inference (tracking-only v1):*
+
+- A catch-less `try` — including the `e?` desugar (the `?` operator)
+  — lets failure short-circuit out of the body, so the enclosing
+  function performs `Partial`. A `try` with a `catch` arm handles the
+  failure locally and adds no effect.
+- When a function declares an effect row explicitly, the inferred row
+  must be a subset of the declared one (otherwise an effect-mismatch
+  error is raised). A function with *no* declared row stays permissive
+  under tracking-only v1 — its effects are not yet enforced.
+- Effect *handling* (intercepting/redirecting effects at runtime)
+  remains out of scope; see `docs/guides/effects-migration-stance.adoc`.
+
+*Partial by Default* (termination, distinct from the `Partial` effect):
 
 - Functions are partial by default (may not terminate)
 - `total` functions must provably terminate

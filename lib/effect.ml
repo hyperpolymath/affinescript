@@ -129,8 +129,9 @@ let string_of_eff (e : eff) : string =
     [docs/guides/effects-migration-stance.adoc]). *)
 
 (** Canonical v1 effect names.  [Throws] is written [Throws[E]] at use
-    sites; the type parameter is carried syntactically but not yet
-    threaded (tracking-only v1). *)
+    sites; the type argument is threaded by [Typecheck.lower_effect_expr]
+    (mangled into the singleton name, so [Throws[A]], [Throws[B]] and
+    bare [Throws] are distinct under effect unification). *)
 let v1_effects = [ "IO"; "Async"; "Partial"; "Throws"; "Mut" ]
 
 (** Reserved for v1.x — recognised so the names are not repurposed, not
