@@ -26,3 +26,18 @@ val normalize_eff : eff -> eff
 
 (** Pretty print effect *)
 val string_of_eff : eff -> string
+
+(** {1 Effect-row v1 canonical registry (issue #59)} *)
+
+(** Canonical v1 effect names. *)
+val v1_effects : string list
+
+(** Reserved-for-v1.x effect names. *)
+val reserved_effects : string list
+
+(** Legacy lowercase stdlib effect → canonical v1 name. *)
+val legacy_aliases : (string * string) list
+
+(** Canonical registry name for a source effect name, or [None] if
+    unknown to the registry (caller also accepts declared effects). *)
+val canonical_effect_name : string -> string option

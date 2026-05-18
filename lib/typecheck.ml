@@ -103,6 +103,9 @@ type type_error =
   | BranchTypeMismatch of { then_ty : ty; else_ty : ty }
   | QuantityError of Quantity.quantity_error * Span.t
       (** QTT quantity violation detected after type checking. *)
+  | UnknownEffect of string
+      (** Effect name not in the v1 registry, not a legacy alias, and
+          not a user-declared effect (issue #59). *)
 
 (** Format a type error for human consumption. *)
 let show_type_error = function
@@ -132,8 +135,21 @@ let show_type_error = function
       (ty_to_string then_ty) (ty_to_string else_ty)
   | QuantityError (qerr, _span) ->
     Printf.sprintf "Quantity error: %s" (Quantity.format_quantity_error qerr)
+  | UnknownEffect name ->
+    Printf.sprintf
+      "Unknown effect '%s'. Use a v1 effect (%s), a reserved name (%s), \
+       or declare it with `effect %s;`."
+      name
+      (String.concat ", " Effect.v1_effects)
+      (String.concat ", " Effect.reserved_effects)
+      name
 
 let format_type_error = show_type_error
+
+(** Raised by [lower_effect_expr] for an unknown effect name; caught at
+    the [check_program] boundary and converted to [UnknownEffect]
+    (lowering is not in the result monad). *)
+exception Effect_validation_error of string
 
 (** {1 Context} *)
 
@@ -157,6 +173,9 @@ type context = {
   (** The current effect context — unified with declared effects *)
   trait_registry : Trait.trait_registry;
   (** Trait registry — stores trait definitions and impls for dispatch *)
+  declared_effects : (string, unit) Hashtbl.t;
+  (** User-declared effect names (`effect <name>;`). Consulted by
+      [lower_effect_expr] alongside the v1 registry (issue #59). *)
 }
 
 type 'a result = ('a, type_error) Result.t
@@ -186,6 +205,7 @@ let create_context (symbols : Symbol.t) : context =
     level = 0;
     current_eff = fresh_effvar 0;
     trait_registry = Trait.create_registry ();
+    declared_effects = Hashtbl.create 16;
   }
 
 (** Enter a deeper let-level. *)
@@ -418,14 +438,21 @@ let rec lower_type_expr (ctx : context) (te : type_expr) : ty =
     fresh_tyvar ctx.level
 
 and lower_effect_expr (ctx : context) (ee : effect_expr) : eff =
+  (* Resolve a source effect name to a canonical singleton (issue #59):
+     Pure → pure; v1/reserved/legacy-alias → canonical registry name;
+     user-declared (`effect <name>;`) → kept as written; anything else
+     is rejected so contributors cannot silently invent effect names. *)
+  let resolve (name : string) : eff =
+    if name = "Pure" then EPure
+    else match Effect.canonical_effect_name name with
+      | Some canonical -> ESingleton canonical
+      | None ->
+        if Hashtbl.mem ctx.declared_effects name then ESingleton name
+        else raise (Effect_validation_error name)
+  in
   match ee with
-  | EffVar { name; _ } ->
-    begin match name with
-      | "Pure" -> EPure
-      | _ -> ESingleton name
-    end
-  | EffCon ({ name; _ }, _args) ->
-    ESingleton name
+  | EffVar { name; _ } -> resolve name
+  | EffCon ({ name; _ }, _args) -> resolve name
   | EffUnion (e1, e2) ->
     EUnion [lower_effect_expr ctx e1; lower_effect_expr ctx e2]
 
@@ -1565,6 +1592,7 @@ let register_type_decl (ctx : context) (td : type_decl) : unit result =
 
 (** Register an effect declaration. *)
 let register_effect_decl (ctx : context) (ed : effect_decl) : unit result =
+  Hashtbl.replace ctx.declared_effects ed.ed_name.name ();
   List.iter (fun (op : effect_op_decl) ->
     let param_tys = List.map (fun (p : param) ->
       lower_type_expr ctx p.p_ty
@@ -1671,6 +1699,7 @@ let check_decl (ctx : context) (decl : top_level) : (unit, type_error) Result.t 
 let check_program ?(import_types : (string, scheme) Hashtbl.t option)
     (symbols : Symbol.t) (prog : Ast.program)
     : (context, type_error) Result.t =
+  try
   let ctx = create_context symbols in
   register_builtins ctx;
   Option.iter (fun tbl ->
@@ -1717,3 +1746,4 @@ let check_program ?(import_types : (string, scheme) Hashtbl.t option)
       Error (QuantityError (qerr, span))
     end
   | Error e -> Error e
+  with Effect_validation_error name -> Error (UnknownEffect name)
