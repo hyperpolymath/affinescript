@@ -20,7 +20,8 @@
 //   show(value)             -> String
 //   time_now()              -> Float              (CPU time in seconds)
 
-// Cross-module import (ADR-011: explicit `use module::{...}`)
+// Cross-module imports (ADR-011: explicit `use module::{...}`)
+use prelude::{ Option, Result, Some, None, Ok, Err };
 use string::{ split, join };
 
 // ============================================================================

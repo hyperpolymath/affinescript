@@ -18,6 +18,9 @@
 //   int_to_char(n)        -> Char          (ASCII code point to character)
 //   show(v)               -> String        (any value to debug string)
 
+// Cross-module import (ADR-011: explicit `use module::{...}`)
+use prelude::{ Option, Some, None };
+
 // ============================================================================
 // String inspection
 // ============================================================================

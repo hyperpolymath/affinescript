@@ -88,9 +88,14 @@ let seed_builtins (symbols : Symbol.t) : unit =
   let defc name =
     let _ = Symbol.define symbols name SKConstructor Span.dummy Public in ()
   in
-  defc "Some"; defc "None"; defc "Ok"; defc "Err";
+  (* #138: Some/None/Ok/Err are no longer seeded as flat builtins — the
+     stdlib now reaches them through the proper prelude/module path
+     (`use prelude::{Some, None, Ok, Err}`; prelude.affine itself
+     defines `Option`/`Result`). Removing the b895374 band-aid keeps it
+     from becoming load-bearing. *)
   (* Interpreter builtin exception variant, pattern-matched in try/catch
-     arms by the honest stdlib (testing.affine, result.affine). *)
+     arms by the honest stdlib (testing.affine, result.affine). It has
+     no module home by design, so it remains a genuine builtin. *)
   defc "RuntimeError"
 
 (** Create a new resolution context, pre-seeded with builtins. *)
@@ -554,41 +559,9 @@ let resolve_program (program : program) : (context, resolve_error * Span.t) Resu
   | Ok () -> Ok ctx
   | Error e -> Error e
 
-(** Resolve and type-check a loaded module's symbols *)
-let resolve_and_typecheck_module (loaded_mod : Module_loader.loaded_module)
-    : (Symbol.t * Typecheck.context) result =
-  let prog = Module_loader.get_program loaded_mod in
-  let symbols = Symbol.create () in
-  seed_builtins symbols;
-  let mod_ctx = { symbols; current_module = []; imports = []; references = [] } in
-
-  (* Pass 1: forward-declare every top-level name (#135 slice 11). *)
-  pre_register_program mod_ctx prog;
-  (* Pass 2: resolve all declaration bodies. *)
-  let* () = List.fold_left (fun acc decl ->
-    match acc with
-    | Error e -> Error e
-    | Ok () -> resolve_decl mod_ctx decl
-  ) (Ok ()) prog.prog_decls in
-
-  (* Type-check all declarations. Seed builtin schemes (len, arithmetic,
-     Some/None/…) exactly as Typecheck.check_program does for the top-level
-     program — the manual check_decl fold below otherwise leaves an imported
-     module's use of builtins as "Unbound variable". *)
-  let type_ctx = Typecheck.create_context symbols in
-  Typecheck.register_builtins type_ctx;
-  let type_result = List.fold_left (fun acc decl ->
-    match acc with
-    | Error e -> Error e
-    | Ok () -> Typecheck.check_decl type_ctx decl
-  ) (Ok ()) prog.prog_decls in
-
-  match type_result with
-  | Ok () -> Ok (symbols, type_ctx)
-  | Error type_err ->
-    (* Convert type error to resolve error *)
-    let msg = Typecheck.show_type_error type_err in
-    Error (ImportError ("Type checking failed: " ^ msg), Span.dummy)
+(* [resolve_and_typecheck_module] is defined below, mutually recursive
+   with [resolve_imports_with_loader], so that an imported module's own
+   `use` imports are resolved through the loader (no flat builtin seed). *)
 
 (** Look up a scheme for [sym] in [source_types] (sym_id-keyed) first, then
     fall back to [source_name_types] (name-keyed). The fallback is needed
@@ -664,7 +637,52 @@ let import_specific_items
   ) (Ok ()) items
 
 (** Resolve imports in a program using module loader *)
-let resolve_imports_with_loader
+let rec resolve_and_typecheck_module
+    (loader : Module_loader.t)
+    (loaded_mod : Module_loader.loaded_module)
+    : (Symbol.t * Typecheck.context) result =
+  let prog = Module_loader.get_program loaded_mod in
+  let symbols = Symbol.create () in
+  seed_builtins symbols;
+  let mod_ctx = { symbols; current_module = []; imports = []; references = [] } in
+  (* Type-check context, created up front so this module's own imports
+     can populate its scheme maps before its decls are checked. *)
+  let type_ctx = Typecheck.create_context symbols in
+  Typecheck.register_builtins type_ctx;
+
+  (* Resolve THIS module's own `use` imports first (#138 / #128
+     coherence). A dependency module reaches Some/None/Ok/Err and its
+     sibling modules through its own `use prelude::{...}` /
+     `use string::{...}`, not a flat builtin seed. Mutually recursive
+     with the loader; the stdlib import graph is an acyclic DAG
+     (max depth io -> string -> prelude). *)
+  let* () =
+    resolve_imports_with_loader mod_ctx type_ctx loader prog.prog_imports
+  in
+
+  (* Pass 1: forward-declare every top-level name (#135 slice 11). *)
+  pre_register_program mod_ctx prog;
+  (* Pass 2: resolve all declaration bodies. *)
+  let* () = List.fold_left (fun acc decl ->
+    match acc with
+    | Error e -> Error e
+    | Ok () -> resolve_decl mod_ctx decl
+  ) (Ok ()) prog.prog_decls in
+
+  (* Type-check all declarations. *)
+  let type_result = List.fold_left (fun acc decl ->
+    match acc with
+    | Error e -> Error e
+    | Ok () -> Typecheck.check_decl type_ctx decl
+  ) (Ok ()) prog.prog_decls in
+
+  match type_result with
+  | Ok () -> Ok (symbols, type_ctx)
+  | Error type_err ->
+    let msg = Typecheck.show_type_error type_err in
+    Error (ImportError ("Type checking failed: " ^ msg), Span.dummy)
+
+and resolve_imports_with_loader
     (ctx : context)
     (type_ctx : Typecheck.context)
     (loader : Module_loader.t)
@@ -678,7 +696,7 @@ let resolve_imports_with_loader
       begin match Module_loader.load_module loader path_strs with
         | Ok loaded_mod ->
           (* Resolve and type-check the module *)
-          begin match resolve_and_typecheck_module loaded_mod with
+          begin match resolve_and_typecheck_module loader loaded_mod with
             | Ok (mod_symbols, mod_type_ctx) ->
               let alias_str = Option.map (fun id -> id.name) alias in
               import_resolved_symbols ctx.symbols
@@ -704,7 +722,7 @@ let resolve_imports_with_loader
       begin match Module_loader.load_module loader path_strs with
         | Ok loaded_mod ->
           (* Resolve and type-check the module *)
-          begin match resolve_and_typecheck_module loaded_mod with
+          begin match resolve_and_typecheck_module loader loaded_mod with
             | Ok (mod_symbols, mod_type_ctx) ->
               import_specific_items ctx.symbols
                 type_ctx.Typecheck.var_types
@@ -728,7 +746,7 @@ let resolve_imports_with_loader
       begin match Module_loader.load_module loader path_strs with
         | Ok loaded_mod ->
           (* Resolve and type-check the module *)
-          begin match resolve_and_typecheck_module loaded_mod with
+          begin match resolve_and_typecheck_module loader loaded_mod with
             | Ok (mod_symbols, mod_type_ctx) ->
               (* Import all public symbols *)
               Hashtbl.iter (fun _id sym ->
