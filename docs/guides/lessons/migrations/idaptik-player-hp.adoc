@@ -178,14 +178,14 @@ fn update(p: mut Player, dt_ms: Int) -> Velocity {
   // Knockback decay + velocity emission
   if p.knockback.remaining_ms > 0 {
     p.knockback.remaining_ms = max(0, p.knockback.remaining_ms - dt_ms)
-    let v = Velocity { x: p.knockback.vel_x, y: p.knockback.vel_y }
+    let v = Velocity #{ x: p.knockback.vel_x, y: p.knockback.vel_y }
     if p.knockback.remaining_ms <= 0 {
       p.knockback.vel_x = 0
       p.knockback.vel_y = 0
     }
     v
   } else {
-    Velocity { x: 0, y: 0 }
+    Velocity #{ x: 0, y: 0 }
   }
 }
 ----

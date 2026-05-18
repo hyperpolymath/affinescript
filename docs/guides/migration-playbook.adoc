@@ -252,7 +252,7 @@ type FileBuffer = own {
   open_: mut Bool,
 }
 
-fn make() -> own FileBuffer { FileBuffer { data: [], open_: true } }
+fn make() -> own FileBuffer { FileBuffer #{ data: [], open_: true } }
 
 fn read(b: ref FileBuffer) -> String {
   if b.open_ { String.join(b.data, "") } else { panic("closed") }
@@ -279,7 +279,7 @@ type ClosedBuffer = own { data: Array[String] }
 
 effect IO { fn log(s: String); }
 
-fn make() -> own OpenBuffer { OpenBuffer { data: [] } }
+fn make() -> own OpenBuffer { OpenBuffer #{ data: [] } }
 
 // read takes a borrow — caller keeps the buffer:
 fn read(b: ref OpenBuffer) -> String { String.join(b.data, "") }
@@ -291,7 +291,7 @@ fn write(b: mut OpenBuffer, s: String) -> () / IO {
 }
 
 // close consumes Open and returns Closed — "use after close" becomes a type error:
-fn close(b: own OpenBuffer) -> own ClosedBuffer { ClosedBuffer { data: b.data } }
+fn close(b: own OpenBuffer) -> own ClosedBuffer { ClosedBuffer #{ data: b.data } }
 ----
 
 What changed:

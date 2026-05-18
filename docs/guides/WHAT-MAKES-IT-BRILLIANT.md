@@ -183,9 +183,9 @@ fn updateAge[R](person: {age: Int, ...R}, newAge: Int) -> {age: Int, ...R} {
   {...person, age: newAge}  // Preserves all other fields!
 }
 
-let alice = {name: "Alice", age: 30, city: "NYC"};
+let alice = #{name: "Alice", age: 30, city: "NYC"};
 let older = updateAge(alice, 31);
-// older = {name: "Alice", age: 31, city: "NYC"} ✅
+// older = #{name: "Alice", age: 31, city: "NYC"} ✅
 ```
 
 **Brilliance:** **Flexibility of duck typing** + **safety of static types**.

@@ -401,13 +401,25 @@ primary_expr  = literal
               | '(' expr ')'
               | '(' expr { ',' expr } ')'          (* tuple *)
               | '[' [ expr { ',' expr } ] ']'      (* array *)
-              | '{' [ field_init { ',' field_init } ] [ '..' expr ] '}'  (* record *)
+              | '#{' [ field_init { ',' field_init } ] [ '..' expr ] '}'  (* record *)
               | 'resume' '(' [ expr ] ')' ;        (* effect handler resume *)
 
-field_init    = ident [ ':' expr ] ;               (* shorthand: {x} means {x: x} *)
+field_init    = ident [ ':' expr ] ;               (* shorthand: #{x} means #{x: x} *)
 
 literal       = int_lit | float_lit | char_lit | string_lit | bool_lit | unit_lit ;
 ```
+
+> **Record-literal syntax (`#{ … }`).** In *expression* position a bare
+> `{ … }` is always a **block**; record/struct construction uses the
+> `#{ … }` sigil — both anonymous (`#{ x: 1, y: 2 }`) and typed
+> (`Point #{ x: 1, y: 2 }`). This removes the block-vs-record ambiguity
+> by construction (and the struct-literal-in-`if`/`match`-scrutinee
+> hazard). Note the asymmetry: **type** positions (`fn f(r: {x: Int, ..s})`,
+> `type Box[T] = own { ptr: RawPtr[T] }`), **`struct` declaration bodies**,
+> and **record patterns** (`match r { { x, .. } => … }`) keep the plain
+> `{ … }` — only value construction takes `#{`. Migrating older sources:
+> rewrite each expression-position record literal `{`→`#{`; leave
+> declarations, type annotations, and patterns unchanged.
 
 ## 2.11 Patterns
 
@@ -740,7 +752,7 @@ E ::= []
     | E e                        Function position
     | v E                        Argument position
     | let x = E in e             Let binding
-    | {ℓ₁: v₁, ..., ℓᵢ: E, ...}  Record construction
+    | #{ℓ₁: v₁, ..., ℓᵢ: E, ...}  Record construction
     | E.ℓ                        Field access
     | E[e]                       Array index (array position)
     | v[E]                       Array index (index position)
@@ -870,12 +882,12 @@ fn leakResource(file: own File) -> () / Pure {
 ```affinescript
 fn stackOnly() -> Int / Pure {
   let x = 42;           // Stack
-  let r = {a: 1, b: 2}; // Stack (doesn't escape)
+  let r = #{a: 1, b: 2}; // Stack (doesn't escape)
   r.a + x
 }
 
 fn needsHeap() -> own {x: Int} / Pure {
-  let r = {x: 42};  // Heap - returned (escapes)
+  let r = #{x: 42};  // Heap - returned (escapes)
   r
 }
 ```
@@ -886,7 +898,7 @@ fn needsHeap() -> own {x: Int} / Pure {
 type Box[T] = own { ptr: RawPtr[T] }
 
 fn box[T](value: own T) -> own Box[T] / Pure {
-  Box { ptr: heapAlloc(value) }
+  Box #{ ptr: heapAlloc(value) }
 }
 
 fn unbox[T](b: own Box[T]) -> own T / Pure {
@@ -1128,12 +1140,12 @@ fn getX[..r](record: {x: Int, ..r}) -> Int / Pure {
 
 // Add a field to any record
 fn withY[..r](record: {..r}, y: Int) -> {y: Int, ..r} / Pure {
-  {y: y, ..record}
+  #{y: y, ..record}
 }
 
 // Update a field
 fn mapX[..r](record: {x: Int, ..r}, f: Int -> Int / Pure) -> {x: Int, ..r} / Pure {
-  {x: f(record.x), ..record}
+  #{x: f(record.x), ..record}
 }
 
 // Remove a field
@@ -1305,7 +1317,7 @@ fn Buffer.write[cap: Nat](
   where (self.len + len(data) <= cap)
 {
   copy(data, mut self.data[self.len..]);
-  Ok(Buffer { data: self.data, len: self.len + len(data) })
+  Ok(Buffer #{ data: self.data, len: self.len + len(data) })
 }
 
 fn Buffer.free[cap: Nat](own self: Buffer[cap]) -> () / Pure {
