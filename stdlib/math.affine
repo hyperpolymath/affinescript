@@ -106,7 +106,7 @@ fn cube(x: Int) -> Int {
 
 /// Convert an integer to a float
 fn to_float(n: Int) -> Float {
-  n + 0.0
+  float(n)
 }
 
 /// Fractional part of a float (x - trunc(x))
@@ -213,8 +213,8 @@ fn lerp(a: Float, b: Float, t: Float) -> Float {
 
 /// Greatest common divisor via Euclid's algorithm
 fn gcd(a: Int, b: Int) -> Int {
-  let x = abs(a);
-  let y = abs(b);
+  let mut x = abs(a);
+  let mut y = abs(b);
 
   while y != 0 {
     let temp = y;
@@ -254,7 +254,7 @@ fn is_prime(n: Int) -> Bool {
   if n % 2 == 0 || n % 3 == 0 {
     return false;
   }
-  let i = 5;
+  let mut i = 5;
   while i * i <= n {
     if n % i == 0 || n % (i + 2) == 0 {
       return false;
@@ -302,9 +302,9 @@ fn fibonacci(n: Int) -> Int {
   if n <= 1 {
     n
   } else {
-    let a = 0;
-    let b = 1;
-    let i = 2;
+    let mut a = 0;
+    let mut b = 1;
+    let mut i = 2;
     while i <= n {
       let temp = a + b;
       a = b;
@@ -332,8 +332,8 @@ fn binomial(n: Int, k: Int) -> Int {
   }
   // Use the smaller of k and n-k for efficiency
   let k_eff = if k > n - k { n - k } else { k };
-  let result = 1;
-  let i = 0;
+  let mut result = 1;
+  let mut i = 0;
   while i < k_eff {
     result = result * (n - i) / (i + 1);
     i = i + 1;
