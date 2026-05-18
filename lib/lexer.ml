@@ -165,6 +165,9 @@ let rec token state buf =
   | "->" -> ARROW
   | "=>" -> FAT_ARROW
   | "::" -> COLONCOLON
+  (* Record-literal opener (affinescript#215): `#{` is the unambiguous
+     record/struct-literal sigil; bare `{` is always a block. *)
+  | "#{" -> HASH_LBRACE
   (* Row variable "..name" — must come before ".." so sedlex prefers the longer match *)
   | "..", lower_ident ->
     let s = Sedlexing.Utf8.lexeme buf in
