@@ -4,5 +4,5 @@ fn getX[..r](p: {x: Int, ..r}) -> Int {
 }
 
 fn addY[..r](p: {..r}) -> {y: Int, ..r} {
-  {y: 0, ..p}
+  #{y: 0, ..p}
 }

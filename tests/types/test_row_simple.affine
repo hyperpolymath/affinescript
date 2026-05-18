@@ -8,6 +8,6 @@ fn get_x(r: {x: Int, ..rest}) -> Int {
 }
 
 fn main() -> Int {
-  let r = {x: 42, y: 100};
+  let r = #{x: 42, y: 100};
   return get_x(r);
 }

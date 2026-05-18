@@ -27,13 +27,13 @@ fn test_or_false_false() -> TestResult {
 }
 
 fn test_alib_logical_or() -> TestResult {
-  let suite = {
+  let suite = #{
     name: "aLib logical/or conformance",
     tests: [
-      { name: "or_true_true", test: test_or_true_true },
-      { name: "or_true_false", test: test_or_true_false },
-      { name: "or_false_true", test: test_or_false_true },
-      { name: "or_false_false", test: test_or_false_false }
+      #{ name: "or_true_true", test: test_or_true_true },
+      #{ name: "or_true_false", test: test_or_true_false },
+      #{ name: "or_false_true", test: test_or_false_true },
+      #{ name: "or_false_false", test: test_or_false_false }
     ]
   };
   let (passed, failed) = run_suite(suite);

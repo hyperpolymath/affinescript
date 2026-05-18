@@ -16,9 +16,9 @@ fn add_to_x(r: {x: Int, ..rest}, n: Int) -> Int {
 
 fn main() -> Int {
   // These should all work due to row polymorphism
-  let r1 = {x: 10};
-  let r2 = {x: 20, y: 30};
-  let r3 = {x: 5, y: 10, z: 15};
+  let r1 = #{x: 10};
+  let r2 = #{x: 20, y: 30};
+  let r3 = #{x: 5, y: 10, z: 15};
 
   let a = get_x(r1);          // 10
   let b = get_x(r2);          // 20

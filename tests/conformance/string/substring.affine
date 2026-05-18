@@ -40,14 +40,14 @@ fn test_substring_empty() -> TestResult {
 }
 
 fn test_alib_string_substring() -> TestResult {
-  let suite = {
+  let suite = #{
     name: "aLib string/substring conformance",
     tests: [
-      { name: "substring_entire", test: test_substring_entire },
-      { name: "substring_middle", test: test_substring_middle },
-      { name: "substring_first", test: test_substring_first },
-      { name: "substring_last", test: test_substring_last },
-      { name: "substring_empty", test: test_substring_empty }
+      #{ name: "substring_entire", test: test_substring_entire },
+      #{ name: "substring_middle", test: test_substring_middle },
+      #{ name: "substring_first", test: test_substring_first },
+      #{ name: "substring_last", test: test_substring_last },
+      #{ name: "substring_empty", test: test_substring_empty }
     ]
   };
   let (passed, failed) = run_suite(suite);

@@ -43,14 +43,14 @@ fn test_add_two_negatives() -> TestResult {
 
 /// Run all add conformance tests
 fn test_alib_arithmetic_add() -> TestResult {
-  let suite = {
+  let suite = #{
     name: "aLib arithmetic/add conformance",
     tests: [
-      { name: "add_positive", test: test_add_positive },
-      { name: "add_negative", test: test_add_negative },
-      { name: "add_zeros", test: test_add_zeros },
-      { name: "add_decimal", test: test_add_decimal },
-      { name: "add_two_negatives", test: test_add_two_negatives }
+      #{ name: "add_positive", test: test_add_positive },
+      #{ name: "add_negative", test: test_add_negative },
+      #{ name: "add_zeros", test: test_add_zeros },
+      #{ name: "add_decimal", test: test_add_decimal },
+      #{ name: "add_two_negatives", test: test_add_two_negatives }
     ]
   };
 

@@ -42,16 +42,16 @@ fn test_equal_int_decimal() -> TestResult {
 }
 
 fn test_alib_comparison_equal() -> TestResult {
-  let suite = {
+  let suite = #{
     name: "aLib comparison/equal conformance",
     tests: [
-      { name: "equal_positive", test: test_equal_positive },
-      { name: "equal_unequal", test: test_equal_unequal },
-      { name: "equal_zero", test: test_equal_zero },
-      { name: "equal_negative", test: test_equal_negative },
-      { name: "equal_neg_pos", test: test_equal_neg_pos },
-      { name: "equal_decimal", test: test_equal_decimal },
-      { name: "equal_int_decimal", test: test_equal_int_decimal }
+      #{ name: "equal_positive", test: test_equal_positive },
+      #{ name: "equal_unequal", test: test_equal_unequal },
+      #{ name: "equal_zero", test: test_equal_zero },
+      #{ name: "equal_negative", test: test_equal_negative },
+      #{ name: "equal_neg_pos", test: test_equal_neg_pos },
+      #{ name: "equal_decimal", test: test_equal_decimal },
+      #{ name: "equal_int_decimal", test: test_equal_int_decimal }
     ]
   };
   let (passed, failed) = run_suite(suite);

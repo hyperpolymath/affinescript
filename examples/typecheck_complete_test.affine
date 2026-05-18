@@ -15,11 +15,11 @@ enum Color {
 }
 
 fn make_point(x: Int, y: Int) -> Point {
-  { x: x, y: y }
+  #{ x: x, y: y }
 }
 
 fn origin() -> Point {
-  { x: 0, y: 0 }
+  #{ x: 0, y: 0 }
 }
 
 fn mutate_counter() -> Int {

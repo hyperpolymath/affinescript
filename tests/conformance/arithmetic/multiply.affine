@@ -50,15 +50,15 @@ fn test_multiply_two_negatives() -> TestResult {
 
 /// Run all multiply conformance tests
 fn test_alib_arithmetic_multiply() -> TestResult {
-  let suite = {
+  let suite = #{
     name: "aLib arithmetic/multiply conformance",
     tests: [
-      { name: "multiply_positive", test: test_multiply_positive },
-      { name: "multiply_negative", test: test_multiply_negative },
-      { name: "multiply_zero", test: test_multiply_zero },
-      { name: "multiply_identity", test: test_multiply_identity },
-      { name: "multiply_decimal", test: test_multiply_decimal },
-      { name: "multiply_two_negatives", test: test_multiply_two_negatives }
+      #{ name: "multiply_positive", test: test_multiply_positive },
+      #{ name: "multiply_negative", test: test_multiply_negative },
+      #{ name: "multiply_zero", test: test_multiply_zero },
+      #{ name: "multiply_identity", test: test_multiply_identity },
+      #{ name: "multiply_decimal", test: test_multiply_decimal },
+      #{ name: "multiply_two_negatives", test: test_multiply_two_negatives }
     ]
   };
 

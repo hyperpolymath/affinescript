@@ -43,14 +43,14 @@ fn test_modulo_large() -> TestResult {
 
 /// Run all modulo conformance tests
 fn test_alib_arithmetic_modulo() -> TestResult {
-  let suite = {
+  let suite = #{
     name: "aLib arithmetic/modulo conformance",
     tests: [
-      { name: "modulo_basic", test: test_modulo_basic },
-      { name: "modulo_no_remainder", test: test_modulo_no_remainder },
-      { name: "modulo_nonzero", test: test_modulo_nonzero },
-      { name: "modulo_zero", test: test_modulo_zero },
-      { name: "modulo_large", test: test_modulo_large }
+      #{ name: "modulo_basic", test: test_modulo_basic },
+      #{ name: "modulo_no_remainder", test: test_modulo_no_remainder },
+      #{ name: "modulo_nonzero", test: test_modulo_nonzero },
+      #{ name: "modulo_zero", test: test_modulo_zero },
+      #{ name: "modulo_large", test: test_modulo_large }
     ]
   };
 

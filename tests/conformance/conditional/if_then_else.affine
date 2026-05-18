@@ -43,15 +43,15 @@ fn test_if_then_else_comparison_false() -> TestResult {
 }
 
 fn test_alib_conditional_if_then_else() -> TestResult {
-  let suite = {
+  let suite = #{
     name: "aLib conditional/if_then_else conformance",
     tests: [
-      { name: "if_then_else_true", test: test_if_then_else_true },
-      { name: "if_then_else_false", test: test_if_then_else_false },
-      { name: "if_then_else_string_true", test: test_if_then_else_string_true },
-      { name: "if_then_else_string_false", test: test_if_then_else_string_false },
-      { name: "if_then_else_comparison_true", test: test_if_then_else_comparison_true },
-      { name: "if_then_else_comparison_false", test: test_if_then_else_comparison_false }
+      #{ name: "if_then_else_true", test: test_if_then_else_true },
+      #{ name: "if_then_else_false", test: test_if_then_else_false },
+      #{ name: "if_then_else_string_true", test: test_if_then_else_string_true },
+      #{ name: "if_then_else_string_false", test: test_if_then_else_string_false },
+      #{ name: "if_then_else_comparison_true", test: test_if_then_else_comparison_true },
+      #{ name: "if_then_else_comparison_false", test: test_if_then_else_comparison_false }
     ]
   };
   let (passed, failed) = run_suite(suite);

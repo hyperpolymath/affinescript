@@ -17,11 +17,11 @@ fn test_not_false() -> TestResult {
 }
 
 fn test_alib_logical_not() -> TestResult {
-  let suite = {
+  let suite = #{
     name: "aLib logical/not conformance",
     tests: [
-      { name: "not_true", test: test_not_true },
-      { name: "not_false", test: test_not_false }
+      #{ name: "not_true", test: test_not_true },
+      #{ name: "not_false", test: test_not_false }
     ]
   };
   let (passed, failed) = run_suite(suite);

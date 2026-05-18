@@ -50,15 +50,15 @@ fn test_divide_two_negatives() -> TestResult {
 
 /// Run all divide conformance tests
 fn test_alib_arithmetic_divide() -> TestResult {
-  let suite = {
+  let suite = #{
     name: "aLib arithmetic/divide conformance",
     tests: [
-      { name: "divide_exact", test: test_divide_exact },
-      { name: "divide_fractional", test: test_divide_fractional },
-      { name: "divide_zero", test: test_divide_zero },
-      { name: "divide_negative_dividend", test: test_divide_negative_dividend },
-      { name: "divide_negative_divisor", test: test_divide_negative_divisor },
-      { name: "divide_two_negatives", test: test_divide_two_negatives }
+      #{ name: "divide_exact", test: test_divide_exact },
+      #{ name: "divide_fractional", test: test_divide_fractional },
+      #{ name: "divide_zero", test: test_divide_zero },
+      #{ name: "divide_negative_dividend", test: test_divide_negative_dividend },
+      #{ name: "divide_negative_divisor", test: test_divide_negative_divisor },
+      #{ name: "divide_two_negatives", test: test_divide_two_negatives }
     ]
   };
 

@@ -37,14 +37,14 @@ fn test_length_numeric() -> TestResult {
 }
 
 fn test_alib_string_length() -> TestResult {
-  let suite = {
+  let suite = #{
     name: "aLib string/length conformance",
     tests: [
-      { name: "length_simple", test: test_length_simple },
-      { name: "length_empty", test: test_length_empty },
-      { name: "length_single", test: test_length_single },
-      { name: "length_with_space", test: test_length_with_space },
-      { name: "length_numeric", test: test_length_numeric }
+      #{ name: "length_simple", test: test_length_simple },
+      #{ name: "length_empty", test: test_length_empty },
+      #{ name: "length_single", test: test_length_single },
+      #{ name: "length_with_space", test: test_length_with_space },
+      #{ name: "length_numeric", test: test_length_numeric }
     ]
   };
   let (passed, failed) = run_suite(suite);

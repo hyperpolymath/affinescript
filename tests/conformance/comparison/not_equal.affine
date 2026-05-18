@@ -32,14 +32,14 @@ fn test_not_equal_neg_pos() -> TestResult {
 }
 
 fn test_alib_comparison_not_equal() -> TestResult {
-  let suite = {
+  let suite = #{
     name: "aLib comparison/not_equal conformance",
     tests: [
-      { name: "not_equal_unequal", test: test_not_equal_unequal },
-      { name: "not_equal_equal", test: test_not_equal_equal },
-      { name: "not_equal_zero", test: test_not_equal_zero },
-      { name: "not_equal_negative", test: test_not_equal_negative },
-      { name: "not_equal_neg_pos", test: test_not_equal_neg_pos }
+      #{ name: "not_equal_unequal", test: test_not_equal_unequal },
+      #{ name: "not_equal_equal", test: test_not_equal_equal },
+      #{ name: "not_equal_zero", test: test_not_equal_zero },
+      #{ name: "not_equal_negative", test: test_not_equal_negative },
+      #{ name: "not_equal_neg_pos", test: test_not_equal_neg_pos }
     ]
   };
   let (passed, failed) = run_suite(suite);

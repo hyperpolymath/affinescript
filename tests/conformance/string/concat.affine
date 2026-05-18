@@ -37,14 +37,14 @@ fn test_concat_empty_both() -> TestResult {
 }
 
 fn test_alib_string_concat() -> TestResult {
-  let suite = {
+  let suite = #{
     name: "aLib string/concat conformance",
     tests: [
-      { name: "concat_basic", test: test_concat_basic },
-      { name: "concat_with_space", test: test_concat_with_space },
-      { name: "concat_empty_left", test: test_concat_empty_left },
-      { name: "concat_empty_right", test: test_concat_empty_right },
-      { name: "concat_empty_both", test: test_concat_empty_both }
+      #{ name: "concat_basic", test: test_concat_basic },
+      #{ name: "concat_with_space", test: test_concat_with_space },
+      #{ name: "concat_empty_left", test: test_concat_empty_left },
+      #{ name: "concat_empty_right", test: test_concat_empty_right },
+      #{ name: "concat_empty_both", test: test_concat_empty_both }
     ]
   };
   let (passed, failed) = run_suite(suite);

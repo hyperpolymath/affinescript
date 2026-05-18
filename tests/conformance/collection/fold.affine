@@ -56,15 +56,15 @@ fn test_fold_count() -> TestResult {
 
 /// Run all fold conformance tests
 fn test_alib_collection_fold() -> TestResult {
-  let suite = {
+  let suite = #{
     name: "aLib collection/fold conformance",
     tests: [
-      { name: "fold_sum", test: test_fold_sum },
-      { name: "fold_product", test: test_fold_product },
-      { name: "fold_empty", test: test_fold_empty },
-      { name: "fold_single", test: test_fold_single },
-      { name: "fold_concat", test: test_fold_concat },
-      { name: "fold_count", test: test_fold_count }
+      #{ name: "fold_sum", test: test_fold_sum },
+      #{ name: "fold_product", test: test_fold_product },
+      #{ name: "fold_empty", test: test_fold_empty },
+      #{ name: "fold_single", test: test_fold_single },
+      #{ name: "fold_concat", test: test_fold_concat },
+      #{ name: "fold_count", test: test_fold_count }
     ]
   };
 

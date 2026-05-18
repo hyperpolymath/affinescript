@@ -48,14 +48,14 @@ fn test_filter_empty() -> TestResult {
 
 /// Run all filter conformance tests
 fn test_alib_collection_filter() -> TestResult {
-  let suite = {
+  let suite = #{
     name: "aLib collection/filter conformance",
     tests: [
-      { name: "filter_greater_than", test: test_filter_greater_than },
-      { name: "filter_even", test: test_filter_even },
-      { name: "filter_always_true", test: test_filter_always_true },
-      { name: "filter_always_false", test: test_filter_always_false },
-      { name: "filter_empty", test: test_filter_empty }
+      #{ name: "filter_greater_than", test: test_filter_greater_than },
+      #{ name: "filter_even", test: test_filter_even },
+      #{ name: "filter_always_true", test: test_filter_always_true },
+      #{ name: "filter_always_false", test: test_filter_always_false },
+      #{ name: "filter_empty", test: test_filter_empty }
     ]
   };
 

@@ -48,14 +48,14 @@ fn test_map_string() -> TestResult {
 
 /// Run all map conformance tests
 fn test_alib_collection_map() -> TestResult {
-  let suite = {
+  let suite = #{
     name: "aLib collection/map conformance",
     tests: [
-      { name: "map_double", test: test_map_double },
-      { name: "map_add_ten", test: test_map_add_ten },
-      { name: "map_empty", test: test_map_empty },
-      { name: "map_identity", test: test_map_identity },
-      { name: "map_string", test: test_map_string }
+      #{ name: "map_double", test: test_map_double },
+      #{ name: "map_add_ten", test: test_map_add_ten },
+      #{ name: "map_empty", test: test_map_empty },
+      #{ name: "map_identity", test: test_map_identity },
+      #{ name: "map_string", test: test_map_string }
     ]
   };
 

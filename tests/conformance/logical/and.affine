@@ -27,13 +27,13 @@ fn test_and_false_false() -> TestResult {
 }
 
 fn test_alib_logical_and() -> TestResult {
-  let suite = {
+  let suite = #{
     name: "aLib logical/and conformance",
     tests: [
-      { name: "and_true_true", test: test_and_true_true },
-      { name: "and_true_false", test: test_and_true_false },
-      { name: "and_false_true", test: test_and_false_true },
-      { name: "and_false_false", test: test_and_false_false }
+      #{ name: "and_true_true", test: test_and_true_true },
+      #{ name: "and_true_false", test: test_and_true_false },
+      #{ name: "and_false_true", test: test_and_false_true },
+      #{ name: "and_false_false", test: test_and_false_false }
     ]
   };
   let (passed, failed) = run_suite(suite);

@@ -50,15 +50,15 @@ fn test_subtract_negatives() -> TestResult {
 
 /// Run all subtract conformance tests
 fn test_alib_arithmetic_subtract() -> TestResult {
-  let suite = {
+  let suite = #{
     name: "aLib arithmetic/subtract conformance",
     tests: [
-      { name: "subtract_positive", test: test_subtract_positive },
-      { name: "subtract_negative_result", test: test_subtract_negative_result },
-      { name: "subtract_zeros", test: test_subtract_zeros },
-      { name: "subtract_from_negative", test: test_subtract_from_negative },
-      { name: "subtract_decimal", test: test_subtract_decimal },
-      { name: "subtract_negatives", test: test_subtract_negatives }
+      #{ name: "subtract_positive", test: test_subtract_positive },
+      #{ name: "subtract_negative_result", test: test_subtract_negative_result },
+      #{ name: "subtract_zeros", test: test_subtract_zeros },
+      #{ name: "subtract_from_negative", test: test_subtract_from_negative },
+      #{ name: "subtract_decimal", test: test_subtract_decimal },
+      #{ name: "subtract_negatives", test: test_subtract_negatives }
     ]
   };
 

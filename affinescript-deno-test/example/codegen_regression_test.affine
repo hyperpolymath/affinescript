@@ -40,7 +40,7 @@ fn advance(s: Lifecycle) -> Lifecycle {
 }
 
 fn make_counters() -> Counters {
-  { tag: 1, profile_id: 42, activity_count: 7 }
+  #{ tag: 1, profile_id: 42, activity_count: 7 }
 }
 
 fn read_profile_id(c: Counters) -> Int {

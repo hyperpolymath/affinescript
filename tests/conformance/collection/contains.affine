@@ -56,15 +56,15 @@ fn test_contains_multiple() -> TestResult {
 
 /// Run all contains conformance tests
 fn test_alib_collection_contains() -> TestResult {
-  let suite = {
+  let suite = #{
     name: "aLib collection/contains conformance",
     tests: [
-      { name: "contains_present", test: test_contains_present },
-      { name: "contains_not_present", test: test_contains_not_present },
-      { name: "contains_empty", test: test_contains_empty },
-      { name: "contains_single", test: test_contains_single },
-      { name: "contains_string", test: test_contains_string },
-      { name: "contains_multiple", test: test_contains_multiple }
+      #{ name: "contains_present", test: test_contains_present },
+      #{ name: "contains_not_present", test: test_contains_not_present },
+      #{ name: "contains_empty", test: test_contains_empty },
+      #{ name: "contains_single", test: test_contains_single },
+      #{ name: "contains_string", test: test_contains_string },
+      #{ name: "contains_multiple", test: test_contains_multiple }
     ]
   };
 

@@ -303,7 +303,7 @@ fn bench(f: () -> (), iterations: Int) -> BenchResult {
   }
 
   let tot = time_now() - start;
-  {
+  #{
     iterations: iterations,
     total_time: tot,
     avg_time: tot / float(iterations)
