@@ -181,11 +181,13 @@ let check_file face json path =
       (match Affinescript.Resolve.resolve_program_with_loader prog loader with
       | Error (e, span) ->
         add (Affinescript.Json_output.of_resolve_error e span)
-      | Ok (resolve_ctx, _type_ctx) ->
+      | Ok (resolve_ctx, type_ctx) ->
         (* Phase B+C: capture symbol table and use-site references. *)
         symbols_table := Some resolve_ctx.symbols;
         resolve_refs := List.rev resolve_ctx.references;
-        (match Affinescript.Typecheck.check_program resolve_ctx.symbols prog with
+        (match Affinescript.Typecheck.check_program
+                 ~import_types:type_ctx.Affinescript.Typecheck.name_types
+                 resolve_ctx.symbols prog with
         | Error e ->
           add (Affinescript.Json_output.of_type_error e)
         | Ok _ctx ->
@@ -229,8 +231,10 @@ let check_file face json path =
         Format.eprintf "@[<v>Resolution error: %s@]@."
           (Affinescript.Face.format_resolve_error face e);
         `Error (false, "Resolution error")
-      | Ok (resolve_ctx, _type_ctx) ->
-        (match Affinescript.Typecheck.check_program resolve_ctx.symbols prog with
+      | Ok (resolve_ctx, type_ctx) ->
+        (match Affinescript.Typecheck.check_program
+                 ~import_types:type_ctx.Affinescript.Typecheck.name_types
+                 resolve_ctx.symbols prog with
         | Error e ->
           Format.eprintf "@[<v>%s@]@."
             (Affinescript.Face.format_type_error face e);
