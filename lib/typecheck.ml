@@ -106,6 +106,12 @@ type type_error =
   | UnknownEffect of string
       (** Effect name not in the v1 registry, not a legacy alias, and
           not a user-declared effect (issue #59). *)
+  | EffectNotDeclared of { inferred : string; declared : string }
+      (** The function body performs an effect (v1: `Partial`, from a
+          catch-less `try` / the `?` desugar) that is absent from the
+          function's explicitly declared effect row (issue #59). Only
+          raised when a row is declared; an undeclared row stays
+          permissive under tracking-only v1. *)
 
 (** Format a type error for human consumption. *)
 let show_type_error = function
@@ -143,6 +149,13 @@ let show_type_error = function
       (String.concat ", " Effect.v1_effects)
       (String.concat ", " Effect.reserved_effects)
       name
+  | EffectNotDeclared { inferred; declared } ->
+    Printf.sprintf
+      "Effect mismatch (issue #59): the function body performs %s but its \
+       declared effect row is /{%s}. A catch-less `try` / the `?` operator \
+       performs `Partial` — add it to the row, e.g. /{%s}."
+      inferred declared
+      (if declared = "" then "Partial" else declared ^ ", Partial")
 
 let format_type_error = show_type_error
 
@@ -1080,6 +1093,17 @@ let rec synth (ctx : context) (expr : expr) : ty result =
           let* fin_ty = synth_block ctx blk in
           unify_or_err fin_ty ty_unit
     in
+    (* issue #59: a catch-less `try` — including the `e?` desugar
+       (parser.mly: `expr_postfix QUESTION`) — lets failure
+       short-circuit out of the body, so the enclosing function
+       performs `Partial`. A handled `try` (a catch arm is present)
+       discharges the failure locally and adds no effect. This is the
+       single concrete effect source wired for tracking-only v1; the
+       row is enforced against the declared one in [check_fn_decl]. *)
+    (match et_catch with
+     | None ->
+       ctx.current_eff <- Effect.union_eff ctx.current_eff (ESingleton "Partial")
+     | Some _ -> ());
     Ok result_ty
 
   (* Unsafe *)
@@ -1514,6 +1538,12 @@ let check_fn_decl (ctx : context) (fd : fn_decl) : unit result =
     bind_var ctx p.p_name.name ty;
     (p.p_name.name, old)
   ) fd.fd_params param_tys in
+  (* issue #59 — effect inference spine: infer this body's effect row
+     into a fresh accumulator, then (only if a row was explicitly
+     declared) require the inferred row to be a subset of it. An
+     undeclared row stays permissive under tracking-only v1. *)
+  let saved_eff = ctx.current_eff in
+  ctx.current_eff <- EPure;
   (* Check the body against the return type *)
   let* () = begin match fd.fd_body with
     | FnBlock blk ->
@@ -1528,6 +1558,17 @@ let check_fn_decl (ctx : context) (fd : fn_decl) : unit result =
     | Some sc -> Hashtbl.replace ctx.name_types n sc
     | None -> Hashtbl.remove ctx.name_types n
   ) old;
+  let inferred_eff = ctx.current_eff in
+  ctx.current_eff <- saved_eff;
+  let* () =
+    match fd.fd_eff with
+    | Some _ when not (Effect.eff_subset inferred_eff fn_eff) ->
+      Error (EffectNotDeclared {
+        inferred = Effect.string_of_eff inferred_eff;
+        declared = Effect.string_of_eff fn_eff;
+      })
+    | _ -> Ok ()
+  in
   (* Generalize and rebind the function with its polymorphic type.
      exit_level first so the `<T>` type-param vars (created at the deeper
      level above) are quantified by `generalize` (#135 slice 7). *)
