@@ -20,6 +20,9 @@
 //   show(value)             -> String
 //   time_now()              -> Float              (CPU time in seconds)
 
+// Cross-module import (ADR-011: explicit `use module::{...}`)
+use string::{ split, join };
+
 // ============================================================================
 // Console Output
 // ============================================================================
