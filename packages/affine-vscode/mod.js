@@ -405,6 +405,37 @@ module.exports = function makeVscodeBindings(vscode, lcModule, hostShim) {
         return reg("");
       }
     },
+
+    // `withProgressNotification(title, work)` (issue #212) — wrap a guest
+    // async unit of work in a VS Code progress notification. `work` is the
+    // #199 closure (`fn(Unit) -> Thenable`); invoking it returns the guest's
+    // Thenable *handle*, which we resolve through the shared handle table.
+    // We register the overall progress Thenable so the guest observes
+    // completion with thenableThen / thenableResultJson, identical to
+    // httpPostJson. If the host has no withProgress (non-VS Code / test
+    // runner) the work still runs — only the progress chrome is skipped.
+    // Failures settle as { __error } (the established reject shape).
+    withProgressNotification: (titlePtr, workPtr) => {
+      const title = readString(titlePtr);
+      const work = wrapHandler(workPtr);
+      const runWork = () => {
+        const h = work();
+        const inner = (typeof h === "number") ? get(h) : h;
+        return Promise.resolve(inner);
+      };
+      const canProgress =
+        typeof vscode.window.withProgress === "function" &&
+        vscode.ProgressLocation;
+      const result = canProgress
+        ? vscode.window.withProgress(
+            { location: vscode.ProgressLocation.Notification, title },
+            () => runWork()
+          )
+        : runWork();
+      return reg(
+        Promise.resolve(result).catch((err) => ({ __error: String(err) }))
+      );
+    },
   };
 
   const VscodeLanguageClient = {
