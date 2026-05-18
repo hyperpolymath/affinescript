@@ -85,6 +85,7 @@ let next_token state () =
     | Token.PUB -> Parser.PUB
     | Token.AS -> Parser.AS
     | Token.UNSAFE -> Parser.UNSAFE
+    | Token.EXTERN -> Parser.EXTERN
     | Token.ASSUME -> Parser.ASSUME
     | Token.SELF_KW -> Parser.SELF_KW
     | Token.TRANSMUTE -> Parser.TRANSMUTE
