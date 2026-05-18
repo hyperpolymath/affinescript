@@ -33,6 +33,8 @@ module.exports = function makeVscodeBindings(vscode, lcModule, hostShim) {
   const reg = (obj) => hostShim._registerHandle(obj);
   const get = (h) => hostShim._getHandle(h);
   const getInstance = () => hostShim._instance;
+  // Settled host-Thenable values, keyed by Thenable handle (issue #205).
+  const __thenableResults = new Map();
 
   // ── String marshalling ─────────────────────────────────────────────
   // AffineScript's WASM 1.0 codegen stores string literals at the offset
@@ -332,6 +334,34 @@ module.exports = function makeVscodeBindings(vscode, lcModule, hostShim) {
     extensionAbsolutePath: (ctxHandle, relPtr) => {
       const ctx = get(ctxHandle);
       return reg(ctx ? ctx.asAbsolutePath(readString(relPtr)) : "");
+    },
+
+    // ── Thenable resolution (issue #205) ───────────────────────────
+    // The wasm guest cannot await; these let it observe a settled host
+    // Thenable. thenableThen registers the guest closure (reusing the
+    // #199 closure-pointer marshalling via wrapHandler) and stores the
+    // settled value keyed by the Thenable handle; thenableResultJson
+    // returns it JSON-encoded (same reg(string) return convention as
+    // every other `-> String` extern).
+    thenableThen: (tHandle, onSettlePtr) => {
+      const thenable = get(tHandle);
+      const cb = wrapHandler(onSettlePtr);
+      if (!thenable || typeof thenable.then !== "function") {
+        return reg({ dispose() {} });
+      }
+      Promise.resolve(thenable).then(
+        (val) => { __thenableResults.set(tHandle, val); try { cb(); } catch (_e) {} },
+        (err) => {
+          __thenableResults.set(tHandle, { __error: String(err) });
+          try { cb(); } catch (_e) {}
+        }
+      );
+      return reg({ dispose() {} });
+    },
+    thenableResultJson: (tHandle) => {
+      if (!__thenableResults.has(tHandle)) return reg("");
+      try { return reg(JSON.stringify(__thenableResults.get(tHandle))); }
+      catch (_e) { return reg(""); }
     },
   };
 
