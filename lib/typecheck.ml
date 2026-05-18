@@ -1527,35 +1527,49 @@ let register_type_decl (ctx : context) (td : type_decl) : unit result =
       let* () = check_kind ctx ty KType in
       Ok ty
     | TyEnum variants ->
-      (* Register each variant as a constructor *)
-      let result_ty = match td.td_type_params with
-        | [] -> TCon td.td_name.name
-        | params ->
-          let tparams = List.map (fun tp ->
-            match tp.tp_name.name with
-            | _ ->
-              let tv = fresh_tyvar 0 in
-              (* Note: In a full impl we'd map param name to tv in a local env *)
-              tv
-          ) params in
-          TApp (TCon td.td_name.name, tparams)
+      (* Register each variant as a constructor.
+
+         Bind the declared type-param names (e.g. T, E) to fresh tyvars in
+         the type env so that BOTH the result type and the field types
+         resolve to the *same* variables (previously the result tyvars were
+         anonymous `fresh_tyvar 0` and each field `T` became its own
+         unrelated var via lower_type_expr's TyVar fallback).
+
+         The param tyvars are created one level deeper than the current
+         context so that `generalize` (which quantifies vars with
+         level > ctx.level) actually quantifies them — at level 0 it was a
+         no-op, leaving imported ctor schemes monomorphic with shared vars
+         (the import-path bug behind result.affine's Unify ((_->_), T)). *)
+      let param_names =
+        List.map (fun (tp : type_param) -> tp.tp_name.name) td.td_type_params
       in
-      List.iter (fun (vd : variant_decl) ->
+      enter_level ctx;
+      let param_tvs = List.map (fun n ->
+        let tv = fresh_tyvar ctx.level in
+        Hashtbl.replace ctx.type_env n tv;
+        tv
+      ) param_names in
+      let result_ty = match param_tvs with
+        | [] -> TCon td.td_name.name
+        | tvs -> TApp (TCon td.td_name.name, tvs)
+      in
+      let ctors = List.map (fun (vd : variant_decl) ->
         let ctor_ty = List.fold_right (fun field_te acc ->
           TArrow (lower_type_expr ctx field_te, QOmega, acc, EPure)
         ) vd.vd_fields result_ty in
-        (* If it has type params, we should really bind a TForall scheme *)
-        let sc = match td.td_type_params with
+        (vd.vd_name.name, ctor_ty)
+      ) variants in
+      exit_level ctx;
+      (* Don't let this decl's param names leak into sibling type decls. *)
+      List.iter (fun n -> Hashtbl.remove ctx.type_env n) param_names;
+      List.iter (fun (name, ctor_ty) ->
+        let sc = match param_names with
           | [] -> { sc_tyvars = []; sc_effvars = []; sc_rowvars = []; sc_body = ctor_ty }
           | _ -> generalize ctx ctor_ty
         in
-        Hashtbl.replace ctx.constructor_env vd.vd_name.name ctor_ty;
-        (* Also bind as a variable for ExprVar references *)
-        if vd.vd_fields = [] then
-          bind_scheme ctx vd.vd_name.name sc
-        else
-          bind_scheme ctx vd.vd_name.name sc
-      ) variants;
+        Hashtbl.replace ctx.constructor_env name ctor_ty;
+        bind_scheme ctx name sc
+      ) ctors;
       Ok (TCon td.td_name.name)
     | TyExtern ->
       (* Opaque host-supplied type. Register a TCon so user code can name it
