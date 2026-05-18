@@ -68,7 +68,7 @@ fn counter_subs(model: Int) -> String {
 // Wire up the TEA runtime and hand off to the interpreter loop.
 
 fn main() -> () {
-  tea_run({
+  tea_run(#{
     init:          counter_init,
     update:        counter_update,
     view:          counter_view,
