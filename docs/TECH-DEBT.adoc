@@ -81,12 +81,15 @@ MONITOR enforcement (DOC-08/09): any PR re-introducing backend-breadth,
 |===
 |ID |Item |Sev |Status
 
-|CORE-01 |Complete borrow-checker Phase-3 — borrow-graph validation.
-`lib/borrow.ml` has place/borrow/move infra but graph validation is
-incomplete: `BorrowOutlivesOwner` defined-but-never-emitted;
-shared-XOR-exclusive only enforced at borrow creation, not at use sites;
-medium-severity aliasing bugs uncaught. Add graph validation + regression
-fixtures. |S1 |open — issue #177; *next work unit* (user: soundness-first)
+|CORE-01 |Borrow-checker Phase-3 — borrow-graph validation. *Part 1
+LANDED* (PR #240, Refs #177, gate 263/263): `BorrowOutlivesOwner` emitted;
+shared-XOR-exclusive enforced at use sites
+(`UseWhileExclusivelyBorrowed`); ownership derived from the param *type*
+(`TyOwn/TyRef/TyMut`) — owned/ref/mut discipline now enforced from real
+parsed source (closed a latent hole); call-arg borrows temporary;
+ref-binding graph tracked. *Part 2+ deferred:* NLL/region inference
+(Polonius), flow-sensitive escape via `outer = &x`, tighter quantity
+integration. |S1 |pt1 in PR #240 (open); pt2+ open — issue #177
 |CORE-02 |Effect-handler dispatch on WasmGC (currently `UnsupportedFeature`;
 EH proposal or CPS). The #225 CPS line closes the async slice. |S2 |partial
 (PR3a/b/c merged; #234 generalises the recogniser)
