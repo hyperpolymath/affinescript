@@ -636,7 +636,15 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
     let (ctx_final2, closure_alloc) = gen_heap_alloc ctx_with_lambda closure_size in
     let (ctx_final3, closure_idx) = alloc_local ctx_final2 "__closure" in
 
-    let closure_code = closure_alloc @ [LocalTee closure_idx] @ [
+    (* `LocalSet`, not `LocalTee`: the alloc'd pointer must be consumed
+       into the local, NOT left on the stack — every subsequent use
+       re-fetches it via `LocalGet closure_idx`, and the comments below
+       ("Stack is now [closure_idx, env_ptr]") assume an empty stack
+       here. With `LocalTee` the dangling pointer made `closure_code`
+       leave TWO values; this never failed before only because the #199
+       closure path had never been validated by a real wasm engine
+       end-to-end (static-only until #225 PR2). *)
+    let closure_code = closure_alloc @ [LocalSet closure_idx] @ [
       (* Store function ID at offset 0 *)
       LocalGet closure_idx;
       I32Const (Int32.of_int lambda_id);
@@ -1747,6 +1755,140 @@ and gen_stmt (ctx : context) (stmt : stmt) : (context * instr list) result =
     end
 
 (** Generate code for a function *)
+(* ── #225 PR2: selective CPS transform for the WasmGC Async backend ──
+   ADR-013 (docs/specs/async-on-wasm-cps.adoc). PR2 scope = the base
+   case only: an `Async` function whose body is `let r = <async-call>;
+   <cont>` with NO live-local capture across the split. Live-local
+   capture + Async→Async chaining + the typed Response reader are PR3.
+   Detection is deliberately conservative: any shape it does not
+   recognise falls back to the pre-existing synchronous lowering, so
+   PR2 is strictly additive (no behaviour change for unrecognised
+   Async fns — same as today, where codegen ignores fd_eff entirely). *)
+
+(** ADR-013 obligation 2 (effect-row fidelity): the transform triggers
+    iff `Async ∈ fd_eff`. Pure recursive walk of the effect row. *)
+let rec eff_expr_has_async (e : effect_expr) : bool =
+  match e with
+  (* A bare effect name (`Async`, `Net`, …) parses as [EffVar] — only the
+     parametric form (`Throws[E]`) is [EffCon] (parser.mly effect_term).
+     Both spellings must be checked. *)
+  | EffVar id -> id.name = "Async"
+  | EffCon (id, _) -> id.name = "Async"
+  | EffUnion (a, b) -> eff_expr_has_async a || eff_expr_has_async b
+
+let fn_is_async (fd : fn_decl) : bool =
+  match fd.fd_eff with
+  | None -> false
+  | Some e -> eff_expr_has_async e
+
+(** Single binder name of a trivial `let` pattern, if any. The PR2 base
+    case only recognises `let <var> = <async-call>; <cont>`. *)
+let simple_pat_name (p : pattern) : string option =
+  match p with
+  | PatVar id -> Some id.name
+  | _ -> None
+
+(** PR2 base-case recogniser. Given an `Async` function's parameter
+    names and normalised body, returns [Some (binder, async_call, cont)]
+    iff the body is exactly `let binder = <call-expr>; <cont>` and the
+    only variables [cont] can reference across the async split are
+    [binder] itself or the function parameters (zero live-local
+    capture — ADR-013 PR2 scope; capture is PR3). Otherwise [None] ⇒
+    caller keeps the existing synchronous lowering. Conservative: a
+    [cont] that references a top-level helper/global is also rejected
+    here (its name is free relative to []), which is safe — it merely
+    defers more shapes to PR3 rather than risking an unsound split. *)
+let detect_async_base_case ~(globals : string list) (params : string list)
+    (body : expr) : (string * expr * expr) option =
+  (* Unwrap a trivial single-expression block (`{ e }`) so a block-bodied
+     `Async` fn whose sole content is `let r = <call>; cont` is still
+     recognised; any non-trivial block falls through to [None]. *)
+  let rec unwrap = function
+    | ExprBlock { blk_stmts = []; blk_expr = Some e } -> unwrap e
+    | e -> e
+  in
+  (* Live-local capture check (ADR-013 PR2 scope). A name free in [cont]
+     is a live-local capture unless it is the async result binder, a
+     function parameter (re-supplied, not captured), or a top-level
+     function/const/global (resolved via func_indices, not the closure
+     env). The lone binder capture itself is handled by the proven #199
+     ExprLambda path; any *other* live local ⇒ defer to PR3. *)
+  let accept binder (call : expr) (cont : expr) =
+    match call with
+    | ExprApp _ ->
+      let allowed = binder :: params @ globals in
+      let escaping =
+        List.filter (fun v -> not (List.mem v allowed))
+          (dedup (find_free_vars [] cont))
+      in
+      if escaping = [] then Some (binder, call, cont) else None
+    | _ -> None
+  in
+  match unwrap body with
+  (* Expression-form let: `let r = <call>; cont`. *)
+  | ExprLet lb ->
+    begin match simple_pat_name lb.el_pat, lb.el_body with
+      | Some binder, Some cont -> accept binder lb.el_value cont
+      | _ -> None
+    end
+  (* Block-statement form: `{ let r = <call>; <rest...> }` — the parser's
+     normal desugaring of a block-bodied fn. The continuation is the
+     remainder of the block (trailing stmts + tail expr). *)
+  | ExprBlock { blk_stmts = StmtLet sl :: rest; blk_expr } ->
+    begin match simple_pat_name sl.sl_pat with
+      | Some binder ->
+        let cont = ExprBlock { blk_stmts = rest; blk_expr } in
+        accept binder sl.sl_value cont
+      | None -> None
+    end
+  | _ -> None
+
+(** ADR-013 PR2 transform. Lowers a recognised base-case `Async` fn
+    body `let binder = <async-call>; <cont>` to:
+      1. the async call (yields a `Thenable` handle), bound to [binder];
+      2. [cont] reified as a zero-arg continuation via the EXISTING #199
+         ExprLambda path — [binder] is the sole live local so it is
+         auto-captured into the `[fnId@0,envPtr@4]` env (no new closure
+         code); a once-resumption trap is prepended to its body;
+      3. `thenableThen(handle, <closure>)`; the fn returns the result.
+    Pure/non-recognised fns never reach here (caller gates on
+    [fn_is_async] + [detect_async_base_case]); behaviour is unchanged
+    for them, exactly as before this slice. *)
+let gen_async_base_case (ctx : context) (binder : string)
+    (async_call : expr) (cont : expr) (thenable_then_idx : int)
+    : (context * instr list) result =
+  let* (ctx1, call_code) = gen_expr ctx async_call in
+  let (ctx2, binder_idx) = alloc_local ctx1 binder in
+  (* Once-resumption guard global (ADR-013 obligation 1): a second
+     continuation entry traps. Defence-in-depth over the host's
+     single-fire (`thenableThen` settles a Promise exactly once). *)
+  let fired_gidx = List.length ctx2.globals in
+  let fired_global =
+    { g_type = I32; g_mutable = true; g_init = [I32Const 0l] } in
+  let ctx3 = { ctx2 with globals = ctx2.globals @ [fired_global] } in
+  let cont_lambda =
+    ExprLambda { elam_params = []; elam_ret_ty = None; elam_body = cont } in
+  let* (ctx4, closure_code) = gen_expr ctx3 cont_lambda in
+  let guard =
+    [ GlobalGet fired_gidx;
+      If (BtEmpty, [Unreachable], []);
+      I32Const 1l; GlobalSet fired_gidx ] in
+  let ctx5 =
+    match List.rev ctx4.lambda_funcs with
+    | last :: rest ->
+      let patched = { last with f_body = guard @ last.f_body } in
+      { ctx4 with lambda_funcs = List.rev (patched :: rest) }
+    | [] -> ctx4   (* unreachable: ExprLambda always lifts exactly one *)
+  in
+  let body =
+    call_code
+    @ [ LocalSet binder_idx ]
+    @ [ LocalGet binder_idx ]   (* arg 1: the Thenable handle *)
+    @ closure_code              (* arg 2: [fnId,envPtr] continuation *)
+    @ [ Call thenable_then_idx ]
+  in
+  Ok (ctx5, body)
+
 let gen_function (ctx : context) (fd : fn_decl) : (context * func) result =
   (* Create fresh context for function scope, but preserve lambda_funcs and next_lambda_id *)
   let fn_ctx = { ctx with locals = []; next_local = 0; loop_depth = 0 } in
@@ -1777,7 +1919,32 @@ let gen_function (ctx : context) (fd : fn_decl) : (context * func) result =
     | FnBlock blk -> ExprBlock blk
     | FnExpr e -> e
   in
-  let* (ctx_final, body_code) = gen_expr ctx_with_params body_expr in
+  (* ADR-013 PR2: an `Async` fn whose body is the recognised base-case
+     shape is lowered via the CPS transform; everything else keeps the
+     existing synchronous lowering verbatim (no behaviour change). The
+     transform also requires `thenableThen` to be resolvable as an
+     import; if it is not in scope we fall back rather than fail. *)
+  let async_base =
+    if fn_is_async fd then
+      match detect_async_base_case
+              ~globals:(List.map fst ctx_with_params.func_indices)
+              (List.map (fun p -> p.p_name.name) fd.fd_params)
+              body_expr with
+      | Some (binder, call, cont) ->
+        begin match List.assoc_opt "thenableThen"
+                      ctx_with_params.func_indices with
+          | Some tt -> Some (binder, call, cont, tt)
+          | None -> None
+        end
+      | None -> None
+    else None
+  in
+  let* (ctx_final, body_code) =
+    match async_base with
+    | Some (binder, call, cont, tt_idx) ->
+      gen_async_base_case ctx_with_params binder call cont tt_idx
+    | None -> gen_expr ctx_with_params body_expr
+  in
 
   (* Compute additional locals (beyond parameters) *)
   let local_count = ctx_final.next_local - param_count in
@@ -2105,8 +2272,24 @@ let generate_module ?loader (prog : program) : wasm_module result =
     ([], [])
   in
 
-  (* Add memory export *)
-  let exports_with_mem = { e_name = "memory"; e_desc = ExportMemory 0 } :: ctx'.exports in
+  (* Add memory export, and — when the unit lifts any closure — the
+     function table under the name the #199 host ABI dispatches through
+     (`inst.exports.__indirect_function_table`, see wrapHandler in
+     packages/affine-vscode/mod.js). Before #225 PR2 no end-to-end
+     closure dispatch was ever exercised in wasm (PR1's skeleton was
+     pure pass-through), so this export was missing though the #199
+     marshalling code assumed it; the CPS continuation makes it load-
+     bearing. Guarded on a non-empty table so closure-free modules are
+     byte-for-byte unchanged. *)
+  let table_export =
+    if tables <> [] then
+      [{ e_name = "__indirect_function_table"; e_desc = ExportTable 0 }]
+    else []
+  in
+  let exports_with_mem =
+    ({ e_name = "memory"; e_desc = ExportMemory 0 } :: ctx'.exports)
+    @ table_export
+  in
 
   (* Stage 2: Build [affinescript.ownership] custom section from collected annotations *)
   let ownership_payload = build_ownership_section ctx'.ownership_annots in

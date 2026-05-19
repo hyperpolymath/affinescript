@@ -115,3 +115,16 @@ pub extern type Thenable;
 pub extern fn http_request_thenable(url: String,
                                     method: String,
                                     body: String) -> Thenable / { Net, Async };
+
+/// Register a guest continuation to run once, after `t` settles (issue
+/// #225 ADR-013, mirroring the proven #205 `Vscode.thenableThen` shape
+/// but on the Http wasm-path module). The host invokes `on_settle`
+/// exactly once via the #199 closure-pointer ABI; the returned `Int`
+/// is an opaque disposable token. The transparent CPS transform
+/// (ADR-013) emits calls to this — source authors never write it; they
+/// write `fetch`/`get`/`post` and the WasmGC backend lowers onto this
+/// verified primitive. PR 2 base case: single async boundary, no
+/// live-local capture; the continuation is fired at most once (host
+/// single-fire + a guest-side defensive trap on re-entry).
+pub extern fn thenableThen(t: Thenable,
+                           on_settle: fn(Unit) -> Int) -> Int / { Async };
