@@ -1,0 +1,203 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-FileCopyrightText: 2024-2026 hyperpolymath
+= AffineScript Ecosystem, Spine, and the typed-wasm Contract
+:toc: macro
+:toclevels: 3
+:icons: font
+
+[IMPORTANT]
+====
+This document defines *the spine* (the macro-stage structure of the language
+build-out), *the actual AffineScript ↔ typed-wasm contract*, *the satellite
+registry*, and *the INT-01..12 integration roadmap*. It is authoritative for
+those four things; for per-feature readiness see
+link:CAPABILITY-MATRIX.adoc[CAPABILITY-MATRIX.adoc]. Reconstructed 2026-05-19
+from issues #128/#135, #175–183, #215, #225, #228, #177, #234, #235 and the
+`hyperpolymath/typed-wasm` repo (LEVEL-STATUS v1.5). It *supersedes* any
+informally-referenced prior "Stage A–E ledger" — that ledger was cited by
+multiple issues but was never committed; this is its authoritative
+materialisation.
+====
+
+toc::[]
+
+== The spine
+
+Two distinct things have been called "the spine"; this document keeps them
+separate.
+
+=== The implementation spine (compiler files)
+
+The set of compiler modules that the affine discipline is threaded through,
+end to end. Any change to the affine/borrow/quantity/codegen contract touches
+all of them in lock-step:
+
+`lib/ast.ml`, `lib/parser.mly`, `lib/quantity.ml`, `lib/typecheck.ml`,
+`lib/borrow.ml`, `lib/interp.ml`, `lib/codegen.ml`, `lib/codegen_gc.ml`,
+`lib/tw_interface.ml`, `lib/tw_verify.ml`, `lib/julia_codegen.ml`,
+`lib/formatter.ml`, `lib/json_output.ml`, `lib/linter.ml`,
+`test/e2e/fixtures/`, `docs/spec.md`.
+
+=== The macro-stage spine (A–E)
+
+The language build-out proceeds in five macro stages. *These definitions are
+established by this document* (the prior ledger was never committed).
+
+[cols="1,3,1,3"]
+|===
+|Stage |Scope |Status |Evidence / exit criterion
+
+|*A* |Core affine spine: QTT semiring wired into the CLI pipeline; affine
+types + linear arrows enforced; BUG-001..005 closed (Manhattan/Track-A
+recovery). |*CLOSED* |`affine-types = wired-and-reachable`,
+`linear-arrows = enforced` in STATE.a2ml; BUG-001..005 closed-bug records.
+
+|*B* |Grammar conformance + conflict elimination: ADR-009 conformance, the
+#215 conflict-family workstream, ADR-012 ("grammar changes are correctness
+assertions"). |*near-closed* |Family B (`return`/`resume`, PR #224) merged;
+residual S/R + state-401 R/R families remain (one family per PR).
+
+|*C* |Standard library AOT: every stdlib file compiles
+resolve→typecheck→codegen, gated in CI. |*CLOSED 2026-05-18* |19/19 stdlib
+files; `test/test_stdlib_aot.ml`; issues #128/#135.
+
+|*D* |Base-language soundness + ecosystem connective tissue: CORE-01 borrow
+Phase-3 (#177); the INT-01..12 integration roadmap; the satellite registry
+made real; #228/ADR-014 module-qualified paths (estate port unblocker). |
+*ACTIVE — current frontier* |This stage. Substrate = INT-01..04 + CORE-01.
+
+|*E* |typed-wasm convergence hardening (the transition runway): the
+AffineScript↔typed-wasm contract widened from L7+L10 toward full
+L1–6/L13–16 emitted-wasm enforcement; estate-wide re-validation (#235);
+effect-threaded async-boundary recogniser (#234); the #225/#160 convergence
+ABI matured to "shared with Ephapax". |*planned* |Begins when D's substrate
+(INT-01..04, CORE-01) is closed; ends at a stable, multi-producer
+typed-wasm convergence ABI.
+|===
+
+The transition the mandate refers to — "end of E into typed-wasm" — is *not*
+a hand-off into a different project. It is the point at which AffineScript's
+emitted typed-wasm satisfies enough of the `hyperpolymath/typed-wasm` level
+discipline that the *separate* typed-wasm verifier accepts AffineScript output
+on the same footing as the other producers (ephapax). See the contract below.
+
+== The actual AffineScript ↔ typed-wasm contract
+
+[IMPORTANT]
+====
+typed-wasm is a *separate, language-agnostic compilation target* with its own
+repository (`hyperpolymath/typed-wasm`), its own Idris2 proofs, its own
+ReScript surface, its own Rust verifier crate, and *its own other producers*
+(notably `hyperpolymath/ephapax`). AffineScript compiles to plain WASM,
+typed-wasm, Deno-ESM, and ~22 other targets; typed-wasm is one of them.
+Multiple languages target typed-wasm. These are meaningfully separated and
+must stay so. Do not collapse "AffineScript" and "typed-wasm" in any doc.
+====
+
+The contract is *narrower than older prose claimed* and is exactly this:
+
+. *Carrier.* AffineScript emits ordinary WASM/WASM-GC. The typed-wasm
+  discipline rides on it via the `affinescript.ownership` custom section
+  (per-function param ownership kinds: `0`=Unrestricted, `1`=Linear,
+  `2`=SharedBorrow, `3`=ExclBorrow) plus the `affinescript.tea_layout`
+  section where a TEA bridge is involved.
+. *Producer side (in this repo).* `lib/codegen.ml` (QTT pass) enforces the
+  discipline on the *source*; `lib/tw_interface.ml` performs cross-module
+  boundary verification (`verify-boundary CALLEE CALLER`,
+  `LinearImportCalledMultiple`, `LinearImportDroppedOnSomePath`);
+  `lib/tw_verify.ml` re-checks the *emitted* module post-codegen.
+. *Spec / verifier side (separate repo).* `hyperpolymath/typed-wasm`
+  v1.5 carries the L1–L16 Idris2 proofs and `crates/typed-wasm-verify`
+  (Rust), a faithful port of the OCaml reference here. The OCaml files
+  remain the spec of record until the cross-compat suite is supplemented
+  with real AffineScript-emitted fixtures (typed-wasm "C5.1", deferred).
+. *Coverage today.* Emitted-wasm enforcement is *Level 7 (aliasing) +
+  Level 10 (linearity) only*. L1–6 and L13–16 (module isolation, session
+  protocols, resource capabilities, agent choreography) are proven at the
+  spec level but *not* enforced on AffineScript-emitted wasm. Widening this
+  is Stage E.
+. *Other producers.* `ephapax` (`src/ephapax-wasm`) already emits the same
+  `affinescript.ownership` section and exposes the verifier via
+  `ephapax compile --verify-ownership`. Any change to the section format is
+  a multi-producer ABI change and must be coordinated with typed-wasm
+  (Refs the typed-wasm repo), not made unilaterally here.
+
+== Satellite registry (truthed)
+
+[cols="2,1,3"]
+|===
+|Satellite |Reality |Notes
+
+|`affinescript-dom` |skeleton |`src/dom.as` ~39 lines; `h()`/`mount()` do
+not render. INT-08 (#183) builds the reconciler.
+
+|`affinescript-pixijs` |skeleton |Migration-prerequisite scaffold (#56).
+
+|`affinescript-vite` |scaffold |Build-tool integration shell.
+
+|`affinescript-deno-test` |works |Smoke-test harness used by the Deno-ESM
+target.
+
+|`affinescript-tea` |first slice |Was imaginary until the #175 scaffold;
+a real first slice exists. INT-07 (#182) builds the runtime + run loop.
+
+|`affinescript-dom-loader` |scaffold |Was imaginary until #175. INT-02
+(#179) builds the host-agnostic loader. Blocks INT-05/08/11.
+
+|`affinescript-cadre` |scaffold |Was imaginary until #175. Router/navigation
+satellite (internal `lib/tea_router.ml` contract exists).
+
+|`affinescriptiser`, `road-skate` |adjunct |In-tree tooling/experiments;
+not part of the integration critical path.
+
+|`packages/affine-js` / `-ts` / `-res` / `-vscode` |works (with debt) |
+`affine-js` has a hardcoded path (SAT-02) addressed by INT-02.
+|===
+
+== Integration roadmap — INT-01..12
+
+Critical path: *INT-01..INT-04 are substrate and block most satellites.*
+Filed sub-issues are children of #175; severity/blocked-by also in
+link:TECH-DEBT.adoc[TECH-DEBT.adoc].
+
+[cols="1,3,1,2"]
+|===
+|ID |Item |Issue |Status
+
+|INT-01 |Cross-module WASM import emission (the substrate) |#178 |open, S1
+|INT-02 |Host-agnostic loader bridge (`affinescript-dom-loader`) |#179 |open,
+S1 (blocks INT-05/08/11)
+|INT-03 |WASI preview2 / host I/O beyond stdout |#180 |open, S1
+|INT-04 |Publish compiler + runtime to JSR (then npm) |#181 |open, S2
+(blocked by INT-01)
+|INT-05 |Loader-driven multi-module app bundling |ledger-only |planned
+(blocked by INT-02)
+|INT-06 |Server-side runtime profile (on INT-03 WASI p2) |ledger-only
+|planned (blocked by INT-03)
+|INT-07 |`affinescript-tea` runtime satellite |#182 |open, S2 (blocked by
+INT-01)
+|INT-08 |DOM reconciler in `affinescript-dom` |#183 |open, S2 (blocked by
+INT-02)
+|INT-09 |`affinescript-cadre` router/navigation runtime |ledger-only
+|planned (blocked by INT-07)
+|INT-10 |LSP distribution (`affinescript-lsp`) |ledger-only |planned
+(blocked by INT-04)
+|INT-11 |Browser host parity (DOM loader + reconciler end-to-end) |
+ledger-only |planned (blocked by INT-02/08)
+|INT-12 |typed-wasm convergence: AffineScript-emitted fixtures into the
+typed-wasm cross-compat suite (closes the Stage-E runway) |ledger-only |
+planned (Stage E; coordinates with `hyperpolymath/typed-wasm` C5.1)
+|===
+
+INT-05/06/09/10/11/12 are *ledger-only* (defined here, not yet filed as
+issues) by deliberate choice: they are unblocked only after their substrate
+lands, and filing them now would create stale critical-path noise. They are
+filed when their blocker closes.
+
+== See also
+
+* link:CAPABILITY-MATRIX.adoc[CAPABILITY-MATRIX.adoc] — authoritative
+  per-feature readiness.
+* link:TECH-DEBT.adoc[TECH-DEBT.adoc] — the coordination ledger.
+* `hyperpolymath/typed-wasm` `LEVEL-STATUS.md` — the target spec & proofs.
+* `hyperpolymath/ephapax` — the other typed-wasm producer.

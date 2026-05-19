@@ -1,5 +1,10 @@
 # AffineScript Compiler Capabilities Analysis
 
+> **⚠️ AUTHORITATIVE STATUS:** Superseded by
+> [`docs/CAPABILITY-MATRIX.adoc`](docs/CAPABILITY-MATRIX.adoc) for all
+> feature-readiness claims. This file is retained as analysis history; where
+> it disagrees with the matrix, the matrix wins.
+
 ## 🎯 Current Compiler Targets
 
 ### Primary Target: WebAssembly

@@ -8,11 +8,18 @@ Historical development plan from the January 2026 baseline.
 
 [IMPORTANT]
 ====
-Status sync note (2026-04-12): This file contains historical planning text and
-is not the authoritative source for current feature readiness. Use
-`.machine_readable/6a2/STATE.a2ml` for live status (including affine/QTT
-wiring, borrow-checker gating, effect handling status, row polymorphism, and
-dependent/refinement progress).
+Status sync note (updated 2026-05-19): This file is historical planning text
+and is *not* authoritative for feature readiness. Authoritative sources, in
+order:
+
+* `docs/CAPABILITY-MATRIX.adoc` — per-feature readiness (overrides everything).
+* `docs/ECOSYSTEM.adoc` — the spine, the Stage A–E definitions, the real
+  AffineScript↔typed-wasm contract, the satellite registry, and the
+  *Ecosystem Integration Track* INT-01..12.
+* `docs/TECH-DEBT.adoc` — the coordination ledger (DOC/CORE/STDLIB/INT/SAT).
+
+`.machine_readable/6a2/STATE.a2ml` mirrors these; it does not lead, and is
+currently flagged stale (DOC-05, issue #176).
 ====
 
 toc::[]
