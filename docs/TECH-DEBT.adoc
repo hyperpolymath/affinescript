@@ -194,12 +194,17 @@ valid WASI-0.2 component, ownership section survives,
 |INT-04 |Publish to JSR/npm |S2 |#181 packaging READY (dry-run green,
 manual workflow); JSR publish authorised + dispatched (owner go
 2026-05-19); compiler-binary distribution decided = **ADR-019**
-(#260, Releases + thin Deno/JSR shim, staged S1..S4) — unblocks INT-10
+(#260, Releases + thin Deno/JSR shim, staged S1..S4) — S1/S2/S3
+merged (#283/#284/#285); **S4 done — INT-10 closed (#282)**
 |INT-07 |`affinescript-tea` runtime |S2 |#182 runtime + run loop shipped
 (TeaApp/parseTeaLayout, Linear-msg enforced); INT-01 cleared (#253)
 |INT-08 |DOM reconciler |S2 |#183 implemented + compiles; `.as`→`.affine`
 fixed; runtime blocked by #255 (wasm loop-codegen defect)
-|INT-05/06/09/10/11/12 |ledger-only; filed when blocker closes |— |planned
+|INT-10 |`affinescript-lsp` distribution |S2 |**DONE** (#282, ADR-019
+S4): LSP resolves the compiler via `AFFINESCRIPT_COMPILER` → `affinescript`
+on `PATH` → the `@hyperpolymath/affinescript` shim (`src/compiler.rs`);
+no bespoke bundling; locate/exec smoke + resolution unit tests green
+|INT-05/06/09/11/12 |ledger-only; filed when blocker closes |— |planned
 |===
 
 == Section E — SAT (satellite repos)

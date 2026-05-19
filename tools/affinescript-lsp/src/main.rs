@@ -31,12 +31,21 @@
 //!
 //! This replaces the fragile regex parsing from the pre-Phase-A implementation
 //! and is the foundation for Phases B-D.
+//!
+//! ## Compiler resolution (INT-10 / #282, ADR-019 S4)
+//!
+//! The compiler binary is *not* bundled.  How it is located is owned by
+//! [`compiler::resolve_compiler`]: `AFFINESCRIPT_COMPILER`, else
+//! `affinescript` on `PATH`, else the `@hyperpolymath/affinescript`
+//! shim (which downloads + SHA256-verifies + caches the pinned Release
+//! binary).
 
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 
 mod capabilities;
+mod compiler;
 mod diagnostics;
 mod document;
 mod handlers;
@@ -69,7 +78,6 @@ impl Backend {
     /// text.  Falls back to an internal error diagnostic if the compiler
     /// is not found or returns unparseable output.
     async fn check_document(&self, uri: &Url, text: &str) -> Vec<Diagnostic> {
-        use tokio::process::Command;
         use std::process::Stdio;
 
         // Write source to a temp file so the compiler can read it
@@ -81,11 +89,18 @@ impl Backend {
             return vec![];
         }
 
-        // Run `affinescript check --json <path>`
-        let output = match Command::new("affinescript")
-            .arg("check")
-            .arg("--json")
-            .arg(&temp_path)
+        // Resolve the compiler per ADR-019 (INT-10 / #282 S4): explicit
+        // `AFFINESCRIPT_COMPILER`, else `affinescript` on PATH, else the
+        // `@hyperpolymath/affinescript` shim. No bespoke bundling here.
+        let resolved = compiler::resolve_compiler();
+
+        // Run `<compiler> check --json <path>`
+        let output = match resolved
+            .command([
+                std::ffi::OsStr::new("check"),
+                std::ffi::OsStr::new("--json"),
+                temp_path.as_os_str(),
+            ])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .output()
@@ -96,7 +111,11 @@ impl Backend {
                 self.client
                     .log_message(
                         MessageType::ERROR,
-                        format!("Failed to run affinescript: {}", e),
+                        format!(
+                            "Failed to run the AffineScript compiler via `{}`: {}",
+                            resolved.display(),
+                            e
+                        ),
                     )
                     .await;
                 let _ = tokio::fs::remove_file(&temp_path).await;
