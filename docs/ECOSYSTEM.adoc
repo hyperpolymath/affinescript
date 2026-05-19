@@ -206,9 +206,10 @@ satellite shell is downstream.
 |INT-03 |WASI preview2 / host I/O beyond stdout |#180 |S1, ADR-015
 ACCEPTED (owner-chosen full WASM Component-Model re-target). Staged
 S1..S6; legacy preview1 stdout path is the default until S6
-(reversible-in-progress). S3+ HARD-GATED on S2 toolchain provisioning
-(`wasm-tools`/`wasm-component-ld`, absent). WIT world of record:
-`wit/affinescript.wit`
+(reversible-in-progress). **S2 toolchain provisioned (#251 closed):
+`tools/provision-component-toolchain.sh` — pinned wasm-tools 1.249.0 /
+wasm-component-ld 0.5.22 / wac-cli 0.10.0. S3 (componentize on-ramp)
+now UNBLOCKED.** WIT world of record: `wit/affinescript.wit`
 |INT-04 |Publish compiler + runtime to JSR (then npm) |#181 |runtime
 packaging READY (affine-js + affinescript-tea JSR dry-run green;
 manual-only `publish-jsr.yml`; docs/PACKAGING.adoc). INT-01 dep

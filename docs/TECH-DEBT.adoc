@@ -185,9 +185,10 @@ follow-up
 multi-ns import object, ownership accessor); 14 unit tests via pinned
 `deno task test` + `tests/modules/loader-bridge/` e2e on real
 compiler-emitted xmod wasm (closes INT-01↔INT-02). Unblocks INT-05/08/11
-|INT-03 |WASI preview2 / host I/O |S1 |#180 ADR-015 accepted (full
-Component-Model re-target, staged S1..S6); S3+ hard-gated on S2
-toolchain (`wasm-tools`/`wasm-component-ld`)
+|INT-03 |WASI preview2 / host I/O |S1→S2 |#180 ADR-015 (full
+Component-Model re-target, S1..S6); **S2 toolchain provisioned —
+#251 closed (`tools/provision-component-toolchain.sh`, pinned
+wasm-tools/wasm-component-ld/wac); S3 componentize on-ramp unblocked**
 |INT-04 |Publish to JSR/npm |S2 |#181 packaging READY (dry-run green,
 manual workflow); JSR publish authorised + dispatched (owner go
 2026-05-19); compiler-binary distribution decided = **ADR-019**
