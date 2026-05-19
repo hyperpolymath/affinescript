@@ -198,7 +198,7 @@ let is_copy_expr (expr : expr) : bool =
   | ExprLit (LitBool _) -> true
   | ExprLit (LitChar _) -> true
   | ExprLit (LitUnit _) -> true
-  | ExprUnary (OpRef, _) -> true  (* Reference creation produces a Copy pointer *)
+  | ExprUnary ((OpRef | OpMutRef), _) -> true  (* Reference creation produces a Copy pointer *)
   | _ -> false
 
 (** Walk to the root variable of a place, if any. *)
@@ -469,7 +469,7 @@ let lookup_symbol_by_name (symbols : Symbol.t) (name : string) : Symbol.symbol o
 let rec ref_target (symbols : Symbol.t) (expr : expr) : place option =
   match expr with
   | ExprSpan (e, _) -> ref_target symbols e
-  | ExprUnary (OpRef, e) -> expr_to_place symbols e
+  | ExprUnary ((OpRef | OpMutRef), e) -> expr_to_place symbols e
   | _ -> None
 
 (** Convert an expression to a place (if it's an l-value) *)
@@ -903,12 +903,16 @@ let rec check_expr (ctx : context) (state : state) (symbols : Symbol.t) (expr : 
 
   | ExprUnary (op, e) ->
     begin match op with
-      | OpRef ->
-        (* Taking a reference: &expr - creates a shared borrow *)
+      | OpRef | OpMutRef ->
+        (* `&expr` is a shared borrow; `&mut expr` an *exclusive* one.
+           This is the surface that finally makes an exclusive borrow
+           expressible — shared-XOR-exclusive then enforces it at use
+           sites (CORE-01 pt1 `UseWhileExclusivelyBorrowed`). *)
+        let kind = (match op with OpMutRef -> Exclusive | _ -> Shared) in
         begin match expr_to_place symbols e with
         | Some place ->
           let span = expr_span e in
-          let* _borrow = record_borrow state place Shared span in
+          let* _borrow = record_borrow state place kind span in
           Ok ()
         | None ->
           (* Can't borrow non-place expressions, but check the expression *)
@@ -1179,13 +1183,17 @@ let check_program (symbols : Symbol.t) (program : program) : unit result =
    flagged (probed: `fn ok(x: ref Int) -> ref Int { return x; }` passes).
    Sound + non-over-rejecting (full stdlib AOT + borrow suite green).
 
-   Still deferred to a later CORE-01 part (docs/TECH-DEBT.adoc) — and note
-   these are *parser-gated*: the surface to express them does not parse
-   today (`&mut e`, `-> &T`, `&`-in-literal, bare block-statements), so
-   they are not reachable unsoundnesses until the surface lands:
+   CORE-01 pt2 parser surface (2026-05-19): `&mut e` now parses
+   (ExprUnary OpMutRef; `AMP MUT e`, zero Menhir conflict delta) and is an
+   *Exclusive* borrow here — so shared-XOR-exclusive + return-escape are
+   reachable from real source for the first time. `&`-in-`#{` literals and
+   bare block-statements already parsed; the `-> &T`/`&T` *type* sigil was
+   deliberately not added (`ref T`/`mut T` keyword types already exist).
+
+   Still deferred — now the *analysis*, no longer parser-gated:
    - Non-lexical lifetimes with region inference (Polonius-style).
    - Flow-sensitive escape via assignment to an outer mutable
-     (`outer = &x`) — blocked on assignment-of-borrow + inner-block-stmt
-     surface, not just the analysis.
+     (`outer = &x`) — now *expressible* (`&mut`, assignment, blocks all
+     parse); the remaining work is the dataflow analysis itself.
    - Tighter integration with the quantity checker for captured linears.
 *)

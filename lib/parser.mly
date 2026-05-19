@@ -768,6 +768,7 @@ expr_unary:
   | MINUS e = expr_unary { ExprUnary (OpNeg, e) }
   | BANG e = expr_unary { ExprUnary (OpNot, e) }
   | TILDE e = expr_unary { ExprUnary (OpBitNot, e) }
+  | AMP MUT e = expr_unary { ExprUnary (OpMutRef, e) }
   | AMP e = expr_unary { ExprUnary (OpRef, e) }
   | STAR e = expr_unary { ExprUnary (OpDeref, e) }
   | e = expr_postfix { e }

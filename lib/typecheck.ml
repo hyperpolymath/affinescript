@@ -513,7 +513,9 @@ let type_of_unop (op : unary_op) : ty * ty =
   | OpNeg -> (ty_int, ty_int)
   | OpNot -> (ty_bool, ty_bool)
   | OpBitNot -> (ty_int, ty_int)
-  | OpRef ->
+  | OpRef | OpMutRef ->
+    (* `&mut e` types exactly like `&e` — a reference. Exclusivity is a
+       static borrow-checker property only (CORE-01 pt2 / #177). *)
     let tv = fresh_tyvar 0 in
     (tv, TRef tv)
   | OpDeref ->

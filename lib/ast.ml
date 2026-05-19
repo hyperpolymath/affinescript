@@ -198,7 +198,12 @@ and binary_op =
   | OpBitAnd | OpBitOr | OpBitXor | OpShl | OpShr
 
 and unary_op =
-  | OpNeg | OpNot | OpBitNot | OpRef | OpDeref
+  | OpNeg | OpNot | OpBitNot | OpRef | OpMutRef | OpDeref
+      (** [OpMutRef] is `&mut e` — an *exclusive* borrow expression. `&e`
+          is [OpRef] (shared). Only the borrow checker distinguishes them
+          (shared-XOR-exclusive); every other backend treats `&mut e`
+          exactly like `&e` (a reference is the same runtime pointer —
+          exclusivity is a static property). CORE-01 pt2 / #177. *)
 
 and assign_op =
   | AssignEq | AssignAdd | AssignSub | AssignMul | AssignDiv

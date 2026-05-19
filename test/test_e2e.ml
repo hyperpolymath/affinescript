@@ -3751,9 +3751,41 @@ let test_borrow_return_refparam_ok () =
     Alcotest.fail ("sound `return ref-param` spuriously rejected: "
                    ^ Borrow.format_borrow_error e)
 
+(* CORE-01 pt2 parser surface / #177 — `&mut e` exclusive-borrow surface.
+   These programs were previously *unrepresentable* (no `&mut` expression);
+   the pt1 shared-XOR-exclusive rules were unreachable from source. *)
+let test_borrow_mutref_conflict () =
+  match borrow_result (fixture "borrow_mutref_conflict.affine") with
+  | Error (Borrow.ConflictingBorrow _) -> ()
+  | Error e ->
+    Alcotest.fail ("expected ConflictingBorrow (two &mut of one owner), got: "
+                   ^ Borrow.format_borrow_error e)
+  | Ok () -> Alcotest.fail "two `&mut x` did not conflict"
+
+let test_borrow_mutref_use_while () =
+  match borrow_result (fixture "borrow_mutref_use_while.affine") with
+  | Error (Borrow.UseWhileExclusivelyBorrowed _) -> ()
+  | Error e ->
+    Alcotest.fail ("expected UseWhileExclusivelyBorrowed (read x while &mut x \
+                    live), got: " ^ Borrow.format_borrow_error e)
+  | Ok () -> Alcotest.fail "read while `&mut` live was not rejected"
+
+let test_borrow_mutref_shared_ok () =
+  match borrow_result (fixture "borrow_mutref_shared_ok.affine") with
+  | Ok () -> ()
+  | Error e ->
+    Alcotest.fail ("shared `&x` spuriously rejected after adding `&mut`: "
+                   ^ Borrow.format_borrow_error e)
+
 let borrow_tests = [
   Alcotest.test_case "BorrowOutlivesOwner: &local escapes its block"
     `Quick test_borrow_outlives_owner;
+  Alcotest.test_case "&mut: two exclusive borrows conflict (#177 pt2 surface)"
+    `Quick test_borrow_mutref_conflict;
+  Alcotest.test_case "&mut: read while exclusively borrowed rejected (#177)"
+    `Quick test_borrow_mutref_use_while;
+  Alcotest.test_case "&mut added: shared &x still sound (no regression)"
+    `Quick test_borrow_mutref_shared_ok;
   Alcotest.test_case "UseWhileExclusivelyBorrowed: mut+read in one call"
     `Quick test_borrow_use_while_excl;
   Alcotest.test_case "temporary call-arg borrow released (no over-reject)"

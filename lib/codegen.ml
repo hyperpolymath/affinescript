@@ -419,7 +419,7 @@ let gen_unop (op : unary_op) : instr result =
   | OpNeg -> Ok I32Sub  (* 0 - x *)
   | OpNot -> Ok I32Eqz  (* x == 0 *)
   | OpBitNot -> Ok I32Xor (* -1 ^ x *)
-  | OpRef -> Error (UnsupportedFeature "OpRef handled in ExprUnary")
+  | OpRef | OpMutRef -> Error (UnsupportedFeature "OpRef/OpMutRef handled in ExprUnary")
   | OpDeref -> Error (UnsupportedFeature "OpDeref handled in ExprUnary")
 
 (** ADR-013 #225 PR3c — recursive CPS hook. The async-boundary transform
@@ -528,8 +528,9 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
 
   | ExprUnary (op, operand) ->
     begin match op with
-      | OpRef ->
-        (* Take reference: &expr *)
+      | OpRef | OpMutRef ->
+        (* Take reference: &expr / &mut expr — same pointer representation;
+           exclusivity is a static borrow property (CORE-01 pt2 / #177). *)
         (* Allocate heap memory, store the value, return pointer *)
         let* (ctx', operand_code) = gen_expr ctx operand in
         let (ctx_with_heap, alloc_code) = gen_heap_alloc ctx' 4 in

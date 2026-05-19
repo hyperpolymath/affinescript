@@ -1,0 +1,15 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2026 Jonathan D.A. Jewell
+//
+// CORE-01 pt2 parser surface / #177: `&mut e` is now expressible. Two
+// exclusive borrows of the same owner must conflict — previously this
+// program could not even be written (no `&mut` expression surface).
+
+module BorrowMutRefConflict;
+
+fn bad() -> Int {
+  let mut x = 5;
+  let a = &mut x;
+  let b = &mut x;
+  *a
+}

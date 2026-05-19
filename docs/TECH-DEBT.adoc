@@ -93,13 +93,22 @@ at a *callee-owned* binding (local or by-value/`own` param) is now
 `BorrowOutlivesOwner` (pt1 only saw block tails — `return r` slipped
 through); `ref`/`mut` params are caller-owned and not flagged (no
 over-rejection; full stdlib AOT green). 3 hermetic tests in "E2E Borrow
-Graph". *Part 2 residual — parser-gated (honest finding):* NLL/region
-inference (Polonius); flow-sensitive escape via `outer = &x`; tighter
-quantity integration. These are *not reachable unsoundnesses today* — the
-surface to express them does not parse (`&mut e`, `-> &T`, `&`-in-literal,
-bare block-statements), so the next move is the parser surface, then the
-analysis. |S1 |pt1 #240 + pt2 return-escape DONE (Refs #177); pt2 residual
-parser-gated — issue #177
+Graph". *Part 2 — `&mut e` parser surface LANDED* (Refs #177, gate
+278→281, **zero Menhir conflict delta** — 21 S/R + 1 R/R baseline held;
+`AMP MUT e` is unambiguous): the exclusive-borrow expression is now
+expressible, so the pt1 shared-XOR-exclusive rules
+(`ConflictingBorrow`/`UseWhileExclusivelyBorrowed`) are *reachable from
+source* for the first time (3 hermetic "E2E Borrow Graph" tests; `&mut e`
+typed/codegen'd like `&e` — exclusivity is a static borrow property).
+`&`-in-`#{` literals and bare block-statements already parse on `main`;
+`-> &T`/`&T` *type* sigil deliberately **not** added — `ref T`/`mut T`
+keyword types already express reference types; a `&T` sigil is duplicate
+surface (ADR territory, not a soundness gap). *Part 2 residual — now the
+analysis, not surface:* NLL/region inference (Polonius) + flow-sensitive
+escape via `outer = &x` are now *expressible* (surface unblocked); the
+remaining work is the dataflow analysis itself. |S1 |pt1 #240 + pt2
+return-escape + `&mut` surface DONE (Refs #177); residual = NLL analysis
+— issue #177
 |CORE-02 |Effect-handler dispatch on WasmGC (currently `UnsupportedFeature`;
 EH proposal or CPS). The #225 CPS line closes the async slice. |S2 |partial
 (#225 line CLOSED PR1..PR3d+PR4; #234 generalises the recogniser —
