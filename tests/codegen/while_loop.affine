@@ -1,0 +1,26 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// #255 regression: `while` + a `for`-count length helper + array index.
+// (The reconciler in affinescript-dom/#183 depends on exactly this
+// shape; before the fix it iterated zero times.)
+
+fn vlen(xs: [Int]) -> Int {
+  let mut c = 0;
+  for x in xs {
+    c = c + 1;
+  }
+  c
+}
+
+fn main() -> Int {
+  let xs = [3, 7, 11, 13];
+  let n = vlen(xs);
+  let mut i = 0;
+  let mut acc = 0;
+  while i < n {
+    acc = acc + xs[i];
+    i = i + 1;
+  }
+  acc  // 3 + 7 + 11 + 13 = 34
+}
