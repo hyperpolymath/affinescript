@@ -128,3 +128,44 @@ pub extern fn http_request_thenable(url: String,
 /// single-fire + a guest-side defensive trap on re-entry).
 pub extern fn thenableThen(t: Thenable,
                            on_settle: fn(Unit) -> Int) -> Int / { Async };
+
+// ── Typed Response reader (issue #225 PR3d, ADR-013 §Value-reconstruction) ──
+//
+// After a `Thenable` settles, the continuation needs the full
+// `Response`. `jsonField` (one top-level *scalar* String) cannot decode
+// `headers: [(String, String)]` — a JSON array of pairs. ADR-013
+// §Value-reconstruction calls for a *minimal typed reader for the fixed
+// `Response` shape*, deferring general JSON decode to #161.
+//
+// These host-mediated primitives expose the settled payload as
+// scalars/strings — the same proven extern convention as
+// `thenableResultJson`/`jsonField` (the host reads its own settled
+// record, keyed by the `Thenable` handle; no structured value crosses
+// the i32 boundary). The guest reconstructs the fixed record in
+// `readResponse`; its header loop exercises the #255-fixed `while`
+// codegen.
+
+pub extern fn responseStatus(t: Thenable) -> Int / { Async };
+pub extern fn responseBody(t: Thenable) -> String / { Async };
+pub extern fn responseHeaderCount(t: Thenable) -> Int / { Async };
+pub extern fn responseHeaderName(t: Thenable, index: Int) -> String / { Async };
+pub extern fn responseHeaderValue(t: Thenable, index: Int) -> String / { Async };
+
+/// Reconstruct the fixed `Response` shape from a settled `Thenable`.
+///
+/// The ADR-013 *minimal typed reader*: it performs the structured
+/// `headers` decode `jsonField` cannot, for exactly the fixed
+/// `{ status, headers, body }` shape (no silent lossiness — those are
+/// the only `Response` fields). General JSON decode stays #161's
+/// concern. Call only after `t` has settled (from a `thenableThen`
+/// continuation / the CPS-lowered surface).
+pub fn readResponse(t: Thenable) -> Response {
+  let mut headers = [];
+  let mut i = 0;
+  let n = responseHeaderCount(t);
+  while i < n {
+    headers = headers ++ [(responseHeaderName(t, i), responseHeaderValue(t, i))];
+    i = i + 1;
+  }
+  #{ status: responseStatus(t), headers: headers, body: responseBody(t) }
+}
