@@ -175,7 +175,9 @@ link:TECH-DEBT.adoc[TECH-DEBT.adoc].
 |===
 |ID |Item |Issue |Status
 
-|INT-01 |Cross-module WASM import emission (the substrate) |#178 |open, S1
+|INT-01 |Cross-module WASM import emission (the substrate) |#178 |
+`use Mod::{fn}`/`::*` PROVEN+locked (271 gate + deno link harness);
+`use Mod;`+qualified-value-call resolver gap remains (distinct)
 |INT-02 |Host-agnostic loader bridge (`affinescript-dom-loader`) |#179 |open,
 S1 (blocks INT-05/08/11)
 |INT-03 |WASI preview2 / host I/O beyond stdout |#180 |open, S1
