@@ -81,15 +81,30 @@ INT-01 #178 qualified-value resolver* (see §"Cross-unit gating").
 |`proof-burrower` |3 |
 |`idaptik` |3 |
 |`bofj-kitt` |3 |
-|`panll` |1 |`src/ui/tea/wizard.affine` — `mutable-field`
-|`invariant-path` |1 |`src/ui/tea/invariant_path_gui.affine` — `List(X)` only
-|`git-scripts` |1 |`src/ui/tea/git_scripts_gui.affine` — `List(X)` only
-|`game-server-admin` |1 |`src/ui/tea/gsa_gui.affine` — `List(X)` only
-|*total* |*~84* |over 12 repos
+|`invariant-path` |1 |`src/ui/tea/invariant_path_gui.affine` — `List(X)` +
+record sigil (layered)
+|`git-scripts` |1 |`src/ui/tea/git_scripts_gui.affine` — `List(X)` +
+record sigil (layered)
+|`game-server-admin` |1 |`src/ui/tea/gsa_gui.affine` — `List(X)` + record
+sigil (layered)
+|*total* |*~83* |over 11 repos (panll removed — see note)
 |===
 
-The four `*_gui.affine` single-file repos are pure `List(X)` — Tier-1
-mechanical, no module coupling: the genuine quick wins.
+[WARNING]
+====
+*The text-scan inventory is a lower-bound triage signal, not the true
+per-file inventory.* The oracle stops at the first parse error, so a file's
+deeper RS layers are invisible until earlier ones are removed (e.g. the
+`*_gui.affine` files scan as "`List(X)` only" but in fact also need the
+`#{` record sigil beneath it). And the scanner has false positives:
+`mutable-field` matched a *comment* in `panll/src/ui/tea/wizard.affine`
+("no shared mutable state") — panll carries *no* listed RS construct; its
+real first fault is a trailing comma in an `enum` variant list, which is
+not a #229 named construct. *`panll` is reclassified out of #229 scope.*
+The true per-file inventory only emerges by iterative oracle-peeling
+*during* each port — which is exactly why #229 mandates per-repo,
+oracle-validated, human-gated ports rather than one blind sweep.
+====
 
 === Non-RS DRIFT (NOT #229 scope — recorded so it is not mistaken for it)
 
@@ -116,18 +131,38 @@ Every target form carries its grounding citation. Four tiers.
 |===
 |ReScript |AffineScript |Grounding
 
-|`array<T>` |`[T]` |list/array type is `[T]` — `stdlib/collections.affine`,
-`stdlib/prelude.affine`; `lib/parser.mly:486,394` (type-app is `[ ]`)
-|`option<T>` / `result<T,E>` |`Option[T]` / `Result[T, E]` |
-`stdlib/prelude.affine:19-21` `pub type Option<T> = Some(T) \| None` /
-`Result<T,E> = Ok(T) \| Err(E)`; type-app `[ ]` per `lib/parser.mly:486`,
-`stdlib/traits.affine:89` `Into[T]`
-|generic `name<T>` |`Name[T]` |capitalise + `[ ]`; `lib/parser.mly:486`
-|`List(X)` |`[X]` |list type is `[T]` (the four `*_gui.affine` quick wins)
+|*expression-/pattern-position record literal* `{ f: v }` → `#{ f: v }`;
+typed `T { f: v }` → `T #{ f: v }` |the *record sigil* `#{…}` |*The
+dominant estate blocker — and NOT in #229's named construct set.*
+`docs/spec.md:414-421` prescribes exactly this rewrite ("rewrite each
+expression-position record literal `{`→`#{`; leave struct/type declaration
+bodies"); examples `spec.md:901,1320`. Oracle-verified: bare `{x:1}` /
+`M{x:1}` / `M(x:1)` all parse-error; `Type #{…}` is the form. Applies to
+record *patterns* in `match` too. Position-aware codemod (expr/pattern vs
+decl), *not* naive regex.
+|`List(X)` |`[X]` |list type is `[T]`; oracle-verified `List(Int)`
+parse-errors, `[Int]` passes. `stdlib/collections.affine`,
+`stdlib/prelude.affine`
+|lowercase `array<…>` / `option<…>` / `result<…>` |`[…]` / `Option[…]` /
+`Result[…]` (capitalise the type name) |The RS tell is the *lowercase type
+name*, **not** the angle brackets. Oracle-verified: `Option<Int>` *passes*
+— both `<>` and `[ ]` type-application parse (`lib/parser.mly:486`).
+Capitalising the name is the fix; bracket style is free choice (`[ ]`
+canonical per spec v2.0 / `stdlib/traits.affine:89`)
 |`open Mod` |`use Mod::*;` |`lib/parser.mly:172` `ImportGlob`
 |`type rec t = …` |`type t = …` |AS `type`/`enum` decls are self-referential
 by default (`stdlib/prelude.affine:19-21`); drop `rec`
 |===
+
+[NOTE]
+====
+The record-sigil row was discovered by oracle-peeling the four allegedly
+"quick-win" `*_gui.affine` files: each is a *layered* port (`List(X)` was
+only the first wall; `#{` record literals + record patterns lie beneath).
+This corrects two earlier overclaims: (a) angle-brackets are *not* RS
+surface; (b) there are *no* trivial single-construct quick wins — even
+one-RS-flagged files are multi-layer.
+====
 
 === Tier 2 — Semantic redesign (maps onto the affine model; per-case, NO blind codemod)
 
@@ -180,7 +215,8 @@ qualified-*value* resolution gap (`lib/resolve.ml:719,797`
 
 ⇒ *`idaptik-dlc-vm` (28 files, 33% of #229 scope) is gated on the INT-01 #178
 qualified-value resolver.* `burble` (rs-generic/array/mutable/%%raw-dominated,
-not module-coupled) and the four `List(X)` quick-win repos are not gated and
+not module-coupled) and the three smallest non-coupled repos
+(`git-scripts`, `game-server-admin`, `invariant-path`) are not gated and
 proceed first. This does not reorder the mandate (#229 foundation first, as
 instructed); it is the foundation's own finding that the `idaptik-dlc-vm`
 *slice* of the per-repo work naturally sequences after INT-01 #178.
@@ -195,9 +231,11 @@ hands-off confirm before touching*: policy hands-off is the ReScript
 confirm per repo it is an intended AffineScript target, not a deliberate
 interop artefact (burble's standing caveat), before removal.
 
-. *Quick wins (Tier-1 only, no coupling):* `git-scripts`, `game-server-admin`,
-  `invariant-path` (one `List(X)` file each), then `panll` (`mutable-field`,
-  Tier-2 single file).
+. *Smallest non-coupled (Tier-1, layered — not trivial):* `git-scripts`,
+  `game-server-admin`, `invariant-path` (one file each: `List(X)` *and* the
+  `#{` record sigil in expr + `match` pattern position; iterative
+  oracle-peel). `panll` is *excluded* (no listed RS construct — see the
+  lower-bound-triage warning above).
 . *`burble`* (32): Tier-1 mechanical pass first (re-validated), Tier-2
   `mutable`/labelled per-case, Tier-3 constructs blocked on ESC-01..03.
 . *Small tail:* `standards`, `developer-ecosystem`, `stapeln`,
