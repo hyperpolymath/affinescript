@@ -1,0 +1,11 @@
+{
+  "name": "@hyperpolymath/affinescript-tea",
+  "version": "0.1.0",
+  "exports": {
+    ".": "./mod.js"
+  },
+  "license": "PMPL-1.0-or-later",
+  "tasks": {
+    "test": "deno test --allow-read --allow-write --allow-run mod_test.js"
+  }
+}
