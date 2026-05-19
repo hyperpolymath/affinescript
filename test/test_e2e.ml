@@ -3537,6 +3537,58 @@ let tw_interface_tests = [
 ]
 
 (* ============================================================================
+   Section: Borrow-graph validation (CORE-01 / #177)
+
+   Pins the Phase-3 borrow-graph soundness checks:
+     - BorrowOutlivesOwner is finally emitted (was defined-but-dead);
+     - shared-XOR-exclusive is enforced at use sites, not only at creation;
+     - the temporary call-argument borrow release prevents over-rejection
+       (the anti-regression guard for the whole valid corpus).
+   Runs parse -> resolve -> Borrow.check_program directly so the borrow
+   checker is isolated from typecheck (mirrors the quantity tests).
+   ============================================================================ *)
+
+let borrow_result path =
+  match parse_fixture path with
+  | Error m -> Alcotest.fail ("parse: " ^ m)
+  | Ok prog ->
+    match resolve_program prog with
+    | Error m -> Alcotest.fail ("resolve: " ^ m)
+    | Ok (rc, _) -> Borrow.check_program rc.symbols prog
+
+let test_borrow_outlives_owner () =
+  match borrow_result (fixture "borrow_outlives_owner.affine") with
+  | Error (Borrow.BorrowOutlivesOwner _) -> ()
+  | Error e ->
+    Alcotest.fail ("expected BorrowOutlivesOwner, got: "
+                   ^ Borrow.format_borrow_error e)
+  | Ok () -> Alcotest.fail "expected BorrowOutlivesOwner, got Ok"
+
+let test_borrow_use_while_excl () =
+  match borrow_result (fixture "borrow_use_while_excl.affine") with
+  | Error (Borrow.UseWhileExclusivelyBorrowed _) -> ()
+  | Error e ->
+    Alcotest.fail ("expected UseWhileExclusivelyBorrowed, got: "
+                   ^ Borrow.format_borrow_error e)
+  | Ok () -> Alcotest.fail "expected UseWhileExclusivelyBorrowed, got Ok"
+
+let test_borrow_call_arg_then_use () =
+  match borrow_result (fixture "borrow_call_arg_then_use.affine") with
+  | Ok () -> ()
+  | Error e ->
+    Alcotest.fail ("valid call-arg-then-use spuriously rejected: "
+                   ^ Borrow.format_borrow_error e)
+
+let borrow_tests = [
+  Alcotest.test_case "BorrowOutlivesOwner: &local escapes its block"
+    `Quick test_borrow_outlives_owner;
+  Alcotest.test_case "UseWhileExclusivelyBorrowed: mut+read in one call"
+    `Quick test_borrow_use_while_excl;
+  Alcotest.test_case "temporary call-arg borrow released (no over-reject)"
+    `Quick test_borrow_call_arg_then_use;
+]
+
+(* ============================================================================
    Test Suite Export
    ============================================================================ *)
 
@@ -3546,6 +3598,7 @@ let tests =
     ("E2E Resolve", resolve_tests);
     ("E2E Typecheck", typecheck_tests);
     ("E2E Quantity", quantity_tests);
+    ("E2E Borrow Graph", borrow_tests);
     ("E2E Linear Arrows", linear_arrow_tests);
     ("E2E WASM", wasm_tests);
     ("E2E Ownership Schema", ownership_schema_tests);

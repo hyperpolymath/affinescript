@@ -1,0 +1,13 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// CORE-01 / #177 regression — borrow-graph validation.
+// The block's value is a reference to `local`, which is declared *inside*
+// the block. `local` dies at block exit; the reference escapes upward.
+// This is the canonical "returns a reference to a local" dangling borrow.
+// Expected: Borrow.check_program -> Error (BorrowOutlivesOwner _).
+
+fn dangling_ref() -> ref Int {
+  let local = 0;
+  &local
+}
