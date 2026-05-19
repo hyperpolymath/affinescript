@@ -4,7 +4,13 @@
   "exports": {
     ".": "./mod.js"
   },
+  "imports": {
+    "@hyperpolymath/affine-js/loader": "../packages/affine-js/loader.js"
+  },
   "license": "PMPL-1.0-or-later",
+  "publish": {
+    "exclude": ["mod_test.js"]
+  },
   "tasks": {
     "test": "deno test --allow-read --allow-write --allow-run mod_test.js"
   }

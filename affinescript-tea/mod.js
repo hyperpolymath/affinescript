@@ -25,7 +25,7 @@
 import {
   parseOwnershipSection,
   readBytes,
-} from "../packages/affine-js/loader.js";
+} from "@hyperpolymath/affine-js/loader";
 
 /**
  * One model field, decoded from the `affinescript.tea_layout` section.
@@ -94,14 +94,14 @@ export class TeaApp {
   /** @type {WebAssembly.Instance} */ #instance;
   /** @type {WebAssembly.Memory} */ #memory;
   /** @type {TeaLayout} */ #layout;
-  /** @type {import("../packages/affine-js/loader.js").OwnershipEntry[]} */ #ownership;
+  /** @type {import("@hyperpolymath/affine-js/loader").OwnershipEntry[]} */ #ownership;
   /** Re-entrancy guard enforcing the Linear-msg invariant. */
   #inCycle = false;
 
   /**
    * @param {WebAssembly.Instance} instance
    * @param {TeaLayout} layout
-   * @param {import("../packages/affine-js/loader.js").OwnershipEntry[]} ownership
+   * @param {import("@hyperpolymath/affine-js/loader").OwnershipEntry[]} ownership
    */
   constructor(instance, layout, ownership) {
     this.#instance = instance;
@@ -152,7 +152,7 @@ export class TeaApp {
    * The ownership annotations. `affinescript_update`'s `msg` parameter is
    * Linear (kind `"linear"`) — the host-visible proof that a message is
    * consumed exactly once per update cycle.
-   * @type {import("../packages/affine-js/loader.js").OwnershipEntry[]}
+   * @type {import("@hyperpolymath/affine-js/loader").OwnershipEntry[]}
    */
   get ownership() {
     return this.#ownership;

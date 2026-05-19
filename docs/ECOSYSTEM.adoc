@@ -197,8 +197,11 @@ S1..S6; legacy preview1 stdout path is the default until S6
 (reversible-in-progress). S3+ HARD-GATED on S2 toolchain provisioning
 (`wasm-tools`/`wasm-component-ld`, absent). WIT world of record:
 `wit/affinescript.wit`
-|INT-04 |Publish compiler + runtime to JSR (then npm) |#181 |open, S2
-(blocked by INT-01)
+|INT-04 |Publish compiler + runtime to JSR (then npm) |#181 |runtime
+packaging READY (affine-js + affinescript-tea JSR dry-run green;
+manual-only `publish-jsr.yml`; docs/PACKAGING.adoc). INT-01 dep
+cleared. NOT published (owner-gated: needs explicit go + JSR/npm
+auth). Compiler-binary distribution = design fork #260
 |INT-05 |Loader-driven multi-module app bundling |ledger-only |planned
 (blocked by INT-02)
 |INT-06 |Server-side runtime profile (on INT-03 WASI p2) |ledger-only
