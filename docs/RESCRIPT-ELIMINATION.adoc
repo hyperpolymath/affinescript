@@ -205,8 +205,12 @@ same discipline that produced #228.
 (`lib/parser.mly:185+`) — host-supplied, typed, no arbitrary-source escape.
 Needs a language decision on a raw/FFI form (or an explicit "port every
 `%%raw` to typed `extern`" doctrine).
-|*ESC-02* (#246) |`JSON.t` (7) |No stdlib JSON type (`stdlib/` has `Ajv` but
-no `Json`). Needs a stdlib JSON type.
+|*ESC-02* (#246) — LANDED |`JSON.t` (7) |`stdlib/json.affine`: pure
+recursive `pub type Json = JNull \| JBool \| JInt \| JFloat \| JString \|
+JArray \| JObject([(String,Json)])` + encoders/decoders/`get_field`/
+`stringify`; AOT-gated (#136). `JSON.t` → `json::Json`. String→Json
+*parse* is deliberately the typed `Http` boundary bridge (ADR-018), not a
+hand-rolled stdlib parser. (#161 / STDLIB-02.)
 |*ESC-03* (#247) |`Dict.t` (6) |No stdlib `Map`/`Dict` type
 (`stdlib/collections.affine` is list ops only; `stdlib/Http.affine:16`
 already flags the `Dict` gap, tied to #160/#162). Needs a stdlib `Map` type —

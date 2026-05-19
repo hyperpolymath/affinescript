@@ -1,0 +1,229 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-FileCopyrightText: 2025 hyperpolymath
+//
+// Json - JSON value type, decoders, encoders, and serialisation (echidna#63)
+//
+// Backs the ReScript->AffineScript migration's `Json` requirement
+// (echidna `[migration-roadmap.rescript-to-affinescript]`, Client.res):
+// request bodies are built with the encoders + `stringify`, and backend
+// responses are inspected with the decoders.
+//
+// `Json` is a pure recursive sum type (not the opaque `Deno.Json`
+// host handle): the decoders need an inspectable structure, and a pure
+// ADT keeps the module self-contained and exercised by the #136 AOT
+// gate. Object payloads use the assoc-list shape `[(String, Json)]` —
+// the same representation as `dict.affine` (echidna#64), so a decoded
+// object feeds `dict::get` directly.
+//
+// Scope (echidna#63 "What is needed"): the `Json` type, the decode_*
+// and encode_* combinators, and `stringify`. The String->Json *parse*
+// bridge is deliberately out of scope here — it belongs at the
+// echidna#61 `Http` boundary (`Response.json : Async[Json]`), where the
+// host fetch result crosses in; tracked there, not duplicated as a
+// hand-rolled parser in stdlib.
+
+module json;
+
+use prelude::{ Option, Some, None };
+use string::{ join };
+
+// ============================================================================
+// The JSON value
+// ============================================================================
+
+pub type Json =
+    JNull
+  | JBool(Bool)
+  | JInt(Int)
+  | JFloat(Float)
+  | JString(String)
+  | JArray([Json])
+  | JObject([(String, Json)])
+
+// ============================================================================
+// Encoders (typed value -> Json)
+// ============================================================================
+
+/// JSON `null`.
+pub fn encode_null() -> Json {
+  JNull
+}
+
+pub fn encode_bool(b: Bool) -> Json {
+  JBool(b)
+}
+
+pub fn encode_int(n: Int) -> Json {
+  JInt(n)
+}
+
+pub fn encode_float(f: Float) -> Json {
+  JFloat(f)
+}
+
+pub fn encode_string(s: String) -> Json {
+  JString(s)
+}
+
+pub fn encode_array(xs: [Json]) -> Json {
+  JArray(xs)
+}
+
+/// Build an object from `(key, Json)` pairs (same shape as `dict`).
+pub fn encode_object(fields: [(String, Json)]) -> Json {
+  JObject(fields)
+}
+
+// ============================================================================
+// Decoders (Json -> Option<typed value>)
+//
+// Each returns `None` on a type mismatch so callers can fail softly on
+// malformed backend data (Client.res pattern).
+// ============================================================================
+
+/// `Some(())`-style null check: `true` iff the value is JSON `null`.
+pub fn decode_null(j: Json) -> Bool {
+  match j {
+    JNull => true,
+    _ => false
+  }
+}
+
+pub fn decode_bool(j: Json) -> Option<Bool> {
+  match j {
+    JBool(b) => Some(b),
+    _ => None
+  }
+}
+
+pub fn decode_int(j: Json) -> Option<Int> {
+  match j {
+    JInt(n) => Some(n),
+    _ => None
+  }
+}
+
+pub fn decode_float(j: Json) -> Option<Float> {
+  match j {
+    JFloat(f) => Some(f),
+    _ => None
+  }
+}
+
+pub fn decode_string(j: Json) -> Option<String> {
+  match j {
+    JString(s) => Some(s),
+    _ => None
+  }
+}
+
+pub fn decode_array(j: Json) -> Option<[Json]> {
+  match j {
+    JArray(xs) => Some(xs),
+    _ => None
+  }
+}
+
+/// Decode an object to its `(key, Json)` pairs — feed straight into
+/// `dict::get` for field lookup.
+pub fn decode_object(j: Json) -> Option<[(String, Json)]> {
+  match j {
+    JObject(fields) => Some(fields),
+    _ => None
+  }
+}
+
+/// Look up a single object field by key (`None` if not an object or the
+/// key is absent). Convenience for the common `obj["field"]` pattern.
+pub fn get_field(j: Json, key: String) -> Option<Json> {
+  match j {
+    JObject(fields) => {
+      for (k, v) in fields {
+        if k == key {
+          return Some(v);
+        }
+      }
+      None
+    },
+    _ => None
+  }
+}
+
+// ============================================================================
+// Serialisation (Json -> String)
+// ============================================================================
+
+/// Map a nibble (0-15) to its lowercase hex digit.
+fn hex_digit(n: Int) -> String {
+  let table = "0123456789abcdef";
+  if n >= 0 && n < 16 {
+    string_sub(table, n, 1)
+  } else {
+    "0"
+  }
+}
+
+/// Escape one source character (given by its code point) for inclusion
+/// in a JSON string literal. Handles the JSON-mandatory escapes plus
+/// `\u00XX` for the remaining C0 control characters.
+fn escape_char(s: String, i: Int) -> String {
+  let code = char_to_int(string_get(s, i));
+  if code == 34 {
+    "\""
+  } else if code == 92 {
+    "\\"
+  } else if code == 8 {
+    "\b"
+  } else if code == 12 {
+    "\f"
+  } else if code == 10 {
+    "\n"
+  } else if code == 13 {
+    "\r"
+  } else if code == 9 {
+    "\t"
+  } else if code < 32 {
+    let hi = code / 16;
+    let lo = code - hi * 16;
+    "\\u00" ++ hex_digit(hi) ++ hex_digit(lo)
+  } else {
+    string_sub(s, i, 1)
+  }
+}
+
+/// Quote and escape a string as a JSON string literal.
+fn escape_string(s: String) -> String {
+  let n = len(s);
+  let mut out = "\"";
+  let mut i = 0;
+  while i < n {
+    out = out ++ escape_char(s, i);
+    i = i + 1;
+  }
+  out ++ "\""
+}
+
+/// Serialise a `Json` value to a compact JSON string.
+pub fn stringify(j: Json) -> String {
+  match j {
+    JNull => "null",
+    JBool(b) => if b { "true" } else { "false" },
+    JInt(n) => int_to_string(n),
+    JFloat(f) => float_to_string(f),
+    JString(s) => escape_string(s),
+    JArray(xs) => {
+      let mut parts = [];
+      for x in xs {
+        parts = parts ++ [stringify(x)];
+      }
+      "[" ++ join(parts, ",") ++ "]"
+    },
+    JObject(fields) => {
+      let mut parts = [];
+      for (k, v) in fields {
+        parts = parts ++ [escape_string(k) ++ ":" ++ stringify(v)];
+      }
+      "{" ++ join(parts, ",") ++ "}"
+    }
+  }
+}
