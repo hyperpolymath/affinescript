@@ -189,6 +189,14 @@ type context = {
   declared_effects : (string, unit) Hashtbl.t;
   (** User-declared effect names (`effect <name>;`). Consulted by
       [lower_effect_expr] alongside the v1 registry (issue #59). *)
+  call_effects : (int, eff) Hashtbl.t;
+  (** ADR-016 / #234 S2b: per-call-site effect rows, keyed by the
+      shared [Effect_sites] ordinal. Populated after a successful check
+      pass; the value is the callee's declared effect row (EPure when
+      the callee is not a statically-named function). Built here but
+      NOT yet consulted by codegen — S3 threads & switches the WasmGC
+      CPS boundary predicate onto it (the structural recogniser remains
+      the sound table-miss fallback). *)
 }
 
 type 'a result = ('a, type_error) Result.t
@@ -219,6 +227,7 @@ let create_context (symbols : Symbol.t) : context =
     current_eff = fresh_effvar 0;
     trait_registry = Trait.create_registry ();
     declared_effects = Hashtbl.create 16;
+    call_effects = Hashtbl.create 64;
   }
 
 (** Enter a deeper let-level. *)
@@ -1754,6 +1763,53 @@ let check_decl (ctx : context) (decl : top_level) : (unit, type_error) Result.t 
     [Resolve.resolve_program_with_loader] so that [ExprApp (ExprVar f, ...)]
     can resolve [f] to the imported function's scheme even though [f] does
     not appear in [prog.prog_decls]. *)
+(* ADR-016 / #234 S2b: build the per-call-site effect side-table.
+   Keyed by the shared [Effect_sites] ordinal so the (future) codegen
+   consumer agrees with this producer. A call's effect row is the
+   callee's *declared* row when the callee is a statically-named
+   function (`f(..)`, `m.f(..)`, through `ExprSpan`); otherwise EPure
+   (sound: S3's predicate is "row ⊇ Async ⇒ boundary", and an
+   over-conservative EPure just defers to the structural fallback —
+   exactly today's behaviour). Extern fns parse as [TopFn] with
+   [FnExtern]/[fd_eff] (parser.mly), so this covers the stdlib async
+   primitives and user `Async` fns uniformly. Pure traversal; built,
+   not yet consumed. *)
+let populate_call_effects (ctx : context) (prog : Ast.program) : unit =
+  let fn_eff : (string, eff) Hashtbl.t = Hashtbl.create 64 in
+  List.iter
+    (function
+      | Ast.TopFn fd ->
+        let e =
+          match fd.fd_eff with
+          | Some ee -> (try lower_effect_expr ctx ee with _ -> EPure)
+          | None -> EPure
+        in
+        Hashtbl.replace fn_eff fd.fd_name.name e
+      | _ -> ())
+    prog.prog_decls;
+  let rec callee_name (e : Ast.expr) : string option =
+    match e with
+    | Ast.ExprVar id -> Some id.name
+    | Ast.ExprField (_, id) -> Some id.name
+    | Ast.ExprSpan (e, _) -> callee_name e
+    | _ -> None
+  in
+  Effect_sites.iter
+    (fun ord call ->
+      let row =
+        match call with
+        | Ast.ExprApp (head, _) ->
+          (match callee_name head with
+           | Some n ->
+             (match Hashtbl.find_opt fn_eff n with
+              | Some e -> e
+              | None -> EPure)
+           | None -> EPure)
+        | _ -> EPure
+      in
+      Hashtbl.replace ctx.call_effects ord row)
+    prog
+
 let check_program ?(import_types : (string, scheme) Hashtbl.t option)
     (symbols : Symbol.t) (prog : Ast.program)
     : (context, type_error) Result.t =
@@ -1799,7 +1855,11 @@ let check_program ?(import_types : (string, scheme) Hashtbl.t option)
        This runs after type checking succeeds so that we report type
        errors first (they are more fundamental). *)
     begin match Quantity.check_program_quantities prog with
-    | Ok () -> Ok ctx
+    | Ok () ->
+      (* ADR-016 / #234 S2b: build the per-call-site effect side-table
+         on the fully-checked program. Built, not yet consumed. *)
+      populate_call_effects ctx prog;
+      Ok ctx
     | Error (qerr, span) ->
       Error (QuantityError (qerr, span))
     end
