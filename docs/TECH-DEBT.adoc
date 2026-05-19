@@ -158,7 +158,11 @@ a parse error (`::`-in-value-expr unwired; `::` reserved for
 `Type::Variant`). |S1 |`use ::{}`/`::*` + `use Mod;`/`as`-qualified
 `Mod.fn(x)` DONE (PR Refs #178); `::`-in-expression a separate parser
 follow-up
-|INT-02 |Host-agnostic loader bridge |S1 |open #179 (blocks INT-05/08/11)
+|INT-02 |Host-agnostic loader bridge |S1 |*PROVEN + locked* (Refs #179):
+`packages/affine-js` loader (SAT-02 fixed; Deno/Node/browser parity,
+multi-ns import object, ownership accessor); 14 unit tests via pinned
+`deno task test` + `tests/modules/loader-bridge/` e2e on real
+compiler-emitted xmod wasm (closes INT-01↔INT-02). Unblocks INT-05/08/11
 |INT-03 |WASI preview2 / host I/O |S1 |#180 ADR-015 accepted (full
 Component-Model re-target, staged S1..S6); S3+ hard-gated on S2
 toolchain (`wasm-tools`/`wasm-component-ld`)
@@ -177,8 +181,11 @@ fixed; runtime blocked by #255 (wasm loop-codegen defect)
 |===
 |ID |Item |Sev |Status
 |SAT-01 |`affinescript-dom` reconciler (skeleton → real) |S2 |open (=INT-08)
-|SAT-02 |`packages/affine-js` hardcoded path / env-only imports |S1 |open
-(addressed by INT-02)
+|SAT-02 |`packages/affine-js` hardcoded path / env-only imports |S1
+|*FIXED* by INT-02 (Refs #179): `Deno.readFile(url.pathname)` replaced by
+host-agnostic `readBytes`; `env`-only import shape replaced by
+multi-namespace `buildImportObject`; `mod.js` consumes the loader.
+Proven + locked (see INT-02)
 |SAT-03 |`affinescript-tea` runtime build-out |S2 |open (=INT-07)
 |SAT-04 |`affinescript-cadre` router runtime |S2 |planned (=INT-09)
 |SAT-05 |`affinescript-pixijs` migration prerequisite |S3 |open #56

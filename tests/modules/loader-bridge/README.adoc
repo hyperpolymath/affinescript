@@ -1,0 +1,42 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+= INT-02 loader-bridge acceptance harness (#179)
+
+Proves the host-agnostic loader (`packages/affine-js/loader.js`) on
+*real* compiler-emitted, cross-module wasm — the level above
+`packages/affine-js/loader_test.js` (14 unit tests on synthetic bytes,
+run via `deno task test` in that package).
+
+== What it asserts
+
+`bridge.mjs` uses the **actual loader API** (not a hand-rolled
+`Deno.readFile` + manual import object — that is the SAT-02 anti-pattern
+the loader replaces, still present by hand in the INT-01
+`tests/modules/xmod-link` harness; this closes INT-01 ↔ INT-02):
+
+* `readBytes` loads both compiled fixtures host-agnostically;
+* `buildImportObject` wires the genuine `CrossCallee` cross-module
+  namespace INT-01/#178 emits (multi-namespace, not `env`-only);
+* the linked `caller.main()` returns `42` across the wasm boundary;
+* `parseOwnershipSection` reads a real ownership entry (a Linear param
+  for `consume(own x: Int)`) from compiler-emitted wasm — the typed-wasm
+  contract carrier, exercised on genuine output.
+
+== Run
+
+[source,sh]
+----
+dune build bin/main.exe
+./run.sh                       # deno on PATH, or $AFFINESCRIPT_DENO
+----
+
+Exit 0 + `PASS:` line = INT-02 substrate proven. Reproducible; kept out
+of the hermetic OCaml gate by design (needs a wasm engine + deno),
+exactly like `tests/modules/xmod-link`.
+
+== Note
+
+WASI is host-supplied as a whole catch-all namespace. `buildImportObject`
+*spreads* module members (to merge, not clobber), so a catch-all `Proxy`
+is attached directly as `wasi_snapshot_preview1` rather than via the
+spread — mirroring real usage: the host owns wasi, the loader owns the
+affine runtime + cross-module namespaces.
