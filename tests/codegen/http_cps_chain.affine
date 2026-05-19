@@ -1,0 +1,33 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// issue #225 PR 3c — WasmGC CPS transform, Async->Async chaining.
+//
+// Two sequential async boundaries in one fn: the continuation of the
+// first request is ITSELF an async boundary (the second request), and
+// the final continuation combines a value derived from the first
+// response (`s1`, a prelude local of the inner boundary) with the
+// second. The transform recurses (forward-ref async_transform_hook at
+// the ExprLambda continuation-body site), so each boundary becomes a
+// nested #199 continuation and the Thenables compose up the chain:
+//
+//   launch() -> Thenable(req A)
+//     .then(outerCont):  s1 = status(rA); req B
+//                        -> Thenable(req B)
+//        .then(innerCont): combine(s1, status(rB))
+//
+// `s1` is captured across the SECOND split; `rA` is captured by the
+// outer continuation; both reach the right continuation via the
+// recursively-applied #199 env capture (~extra carries the outer
+// binder/locals into the inner detection). Single source surface —
+// the author writes straight-line code; the backend threads handles.
+
+use Http::{Thenable, http_request_thenable, thenableThen};
+
+extern fn httpThenableStatus(t: Thenable) -> Int;
+extern fn combine(a: Int, b: Int) -> Int;
+
+pub fn launch() -> Int / { Net, Async } {
+  let rA = http_request_thenable("https://example.test/a", "GET", "");
+  let s1 = httpThenableStatus(rA);
+  let rB = http_request_thenable("https://example.test/b", "GET", "");
+  combine(s1, httpThenableStatus(rB))
+}
