@@ -1,0 +1,14 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2026 Jonathan D.A. Jewell
+//
+// CORE-01 pt2 parser surface / #177 non-regression guard: adding `&mut e`
+// must not perturb shared `&e` — multiple shared borrows are still fine.
+
+module BorrowMutRefSharedOk;
+
+fn good() -> Int {
+  let x = 5;
+  let a = &x;
+  let b = &x;
+  *a + *b
+}

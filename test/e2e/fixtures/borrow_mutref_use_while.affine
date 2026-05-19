@@ -1,0 +1,15 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2026 Jonathan D.A. Jewell
+//
+// CORE-01 pt2 parser surface / #177: an exclusive `&mut` borrow held
+// while the owner is read = UseWhileExclusivelyBorrowed. The pt1 rule
+// existed but was unreachable from source until `&mut e` parsed.
+
+module BorrowMutRefUseWhile;
+
+fn bad() -> Int {
+  let mut x = 5;
+  let a = &mut x;
+  let y = x;
+  *a + y
+}
