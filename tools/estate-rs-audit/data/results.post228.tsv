@@ -1,0 +1,1177 @@
+accessibility-everywhere	tools/cli/src/Cli.affine	TYPE-ONLY	Resolution error: (Resolve.UndefinedModule
+accessibility-everywhere	tools/cli/src/Externs.affine	PASS	Type checking passed
+accessibility-everywhere	tools/cli/src/Index.affine	TYPE-ONLY	Resolution error: (Resolve.UndefinedModule
+accessibility-everywhere	tools/github-action/src/Action.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/accessibility-everywhere/tools/github-action/src/Action.affine:114:9: parse error: Syntax error
+accessibility-everywhere	tools/github-action/src/Externs.affine	PASS	Type checking passed
+accessibility-everywhere	tools/github-action/src/Index.affine	TYPE-ONLY	Resolution error: (Resolve.UndefinedModule
+accessibility-everywhere	tools/monitoring-api/src/Externs.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/accessibility-everywhere/tools/monitoring-api/src/Externs.affine:28:51: parse error: Syntax error
+accessibility-everywhere	tools/monitoring-api/src/Server.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/accessibility-everywhere/tools/monitoring-api/src/Server.affine:264:32: parse error: Syntax error
+accessibility-everywhere	tools/stale/packages/core/src/Arangodb.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/accessibility-everywhere/tools/stale/packages/core/src/Arangodb.affine:127:7: parse error: Syntax error
+accessibility-everywhere	tools/stale/packages/core/src/Externs.affine	PASS	Type checking passed
+accessibility-everywhere	tools/stale/packages/core/src/Index.affine	TYPE-ONLY	Resolution error: (Resolve.UndefinedModule
+accessibility-everywhere	tools/stale/packages/scanner/src/Externs.affine	PASS	Type checking passed
+accessibility-everywhere	tools/stale/packages/scanner/src/Index.affine	TYPE-ONLY	Resolution error: (Resolve.UndefinedModule
+accessibility-everywhere	tools/stale/packages/scanner/src/Scanner.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/accessibility-everywhere/tools/stale/packages/scanner/src/Scanner.affine:111:3: parse error: Syntax error
+accessibility-everywhere	tools/stale/packages/stale/components/react/src/Button.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/accessibility-everywhere/tools/stale/packages/stale/components/react/src/Button.affine:42:36: parse error: Syntax error
+accessibility-everywhere	tools/stale/packages/stale/components/react/src/Externs.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/accessibility-everywhere/tools/stale/packages/stale/components/react/src/Externs.affine:41:22: parse error: Syntax error
+accessibility-everywhere	tools/stale/packages/stale/components/react/src/Index.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/accessibility-everywhere/tools/stale/packages/stale/components/react/src/Index.affine:30:1: parse error: Syntax error
+aerie	src/ui/tea/aerie_gui.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/aerie/src/ui/tea/aerie_gui.affine:45:5: parse error: Syntax error
+affinescript	affinescript-deno-test/example/codegen_regression_test.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/affinescript-deno-test/example/codegen_regression_test.affine:43:5: parse error: Syntax error
+affinescript	affinescript-deno-test/example/hello_test.affine	PASS	Type checking passed
+affinescript	conformance/invalid/001_unclosed_brace.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/conformance/invalid/001_unclosed_brace.affine:4:13: parse error: Syntax error
+affinescript	conformance/invalid/002_unclosed_string.affine	TYPE-ONLY	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/conformance/invalid/002_unclosed_string.affine:6:1: lexer error: Unterminated string literal
+affinescript	conformance/invalid/003_bad_number.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/conformance/invalid/003_bad_number.affine:4:11: parse error: Syntax error
+affinescript	conformance/invalid/004_unexpected_token.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/conformance/invalid/004_unexpected_token.affine:4:3: parse error: Syntax error
+affinescript	conformance/invalid/005_missing_arrow.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/conformance/invalid/005_missing_arrow.affine:3:9: parse error: Syntax error
+affinescript	conformance/invalid/006_bad_operator.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/conformance/invalid/006_bad_operator.affine:4:11: parse error: Syntax error
+affinescript	conformance/invalid/007_incomplete_effect.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/conformance/invalid/007_incomplete_effect.affine:4:27: parse error: Syntax error
+affinescript	conformance/invalid/008_mismatched_parens.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/conformance/invalid/008_mismatched_parens.affine:4:16: parse error: Syntax error
+affinescript	conformance/invalid/009_reserved_keyword.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/conformance/invalid/009_reserved_keyword.affine:4:3: parse error: Syntax error
+affinescript	conformance/invalid/010_empty_match.affine	PASS	Type checking passed
+affinescript	conformance/invalid/011_bad_escape.affine	PASS	Type checking passed
+affinescript	conformance/invalid/012_trailing_comma.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/conformance/invalid/012_trailing_comma.affine:3:15: parse error: Syntax error
+affinescript	conformance/valid/001_empty.affine	PASS	Type checking passed
+affinescript	conformance/valid/002_comments.affine	PASS	Type checking passed
+affinescript	conformance/valid/003_let_bindings.affine	PASS	Type checking passed
+affinescript	conformance/valid/004_literals.affine	PASS	Type checking passed
+affinescript	conformance/valid/005_functions.affine	PASS	Type checking passed
+affinescript	conformance/valid/006_type_alias.affine	TYPE-ONLY	Not implemented: Too many arguments for kind
+affinescript	conformance/valid/007_struct_def.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/conformance/valid/007_struct_def.affine:20:3: parse error: Syntax error
+affinescript	conformance/valid/008_enum_def.affine	PASS	Type checking passed
+affinescript	conformance/valid/009_effect_def.affine	PASS	Type checking passed
+affinescript	conformance/valid/010_pattern_match.affine	PASS	Type checking passed
+affinescript	conformance/valid/011_rows.affine	PASS	Type checking passed
+affinescript	conformance/valid/012_ownership.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/conformance/valid/012_ownership.affine:19:3: parse error: Syntax error
+affinescript	docs/guides/warmup/01_basics.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/docs/guides/warmup/01_basics.affine:1:1: parse error: Syntax error
+affinescript	docs/guides/warmup/02_ownership.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/docs/guides/warmup/02_ownership.affine:36:13: parse error: Syntax error
+affinescript	docs/guides/warmup/03_effects.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/docs/guides/warmup/03_effects.affine:37:50: parse error: Syntax error
+affinescript	docs/guides/warmup/04_rows.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/docs/guides/warmup/04_rows.affine:21:39: parse error: Syntax error
+affinescript	editors/vscode/src/extension.affine	PASS	Type checking passed
+affinescript	examples/comprehensive_test.affine	PASS	Type checking passed
+affinescript	examples/effects.affine	PASS	Type checking passed
+affinescript	examples/exception_test.affine	PASS	Type checking passed
+affinescript	examples/faces/hello-cafe.affine	PASS	Type checking passed
+affinescript	examples/faces/hello-canonical.affine	PASS	Type checking passed
+affinescript	examples/faces/hello-jaffa.affine	PASS	Type checking passed
+affinescript	examples/faces/hello-lucid.affine	PASS	Type checking passed
+affinescript	examples/faces/hello-pseudo.affine	PASS	Type checking passed
+affinescript	examples/faces/hello-rattle.affine	PASS	Type checking passed
+affinescript	examples/hello.affine	PASS	Type checking passed
+affinescript	examples/lessons/01_hello.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/examples/lessons/01_hello.affine:1:1: parse error: Syntax error
+affinescript	examples/ownership.affine	PASS	Type checking passed
+affinescript	examples/rows.affine	PASS	Type checking passed
+affinescript	examples/simple_test.affine	PASS	Type checking passed
+affinescript	examples/traits.affine	PASS	Type checking passed
+affinescript	examples/typecheck_complete_test.affine	PASS	Type checking passed
+affinescript	examples/typecheck_features_test.affine	PASS	Type checking passed
+affinescript	examples/vscode_extension_minimal.affine	PASS	Type checking passed
+affinescript	road-skate/hello.affine	PASS	Type checking passed
+affinescript	road-skate/minimal.affine	PASS	Type checking passed
+affinescript	road-skate/physics_example.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/road-skate/physics_example.affine:4:5: parse error: Syntax error
+affinescript	road-skate/road_render.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/road-skate/road_render.affine:4:5: parse error: Syntax error
+affinescript	road-skate/road_render_final.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/road-skate/road_render_final.affine:15:20: parse error: Syntax error
+affinescript	road-skate/road_render_fixed.affine	PASS	Type checking passed
+affinescript	road-skate/road_render_minimal.affine	PASS	Type checking passed
+affinescript	road-skate/road_render_simple.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/road-skate/road_render_simple.affine:19:5: parse error: Syntax error
+affinescript	road-skate/road_render_step1.affine	PASS	Type checking passed
+affinescript	road-skate/road_render_step2.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/road-skate/road_render_step2.affine:15:20: parse error: Syntax error
+affinescript	road-skate/road_render_step2_fixed.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/road-skate/road_render_step2_fixed.affine:15:20: parse error: Syntax error
+affinescript	road-skate/road_render_working.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/road-skate/road_render_working.affine:15:20: parse error: Syntax error
+affinescript	road-skate/simple_test.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/road-skate/simple_test.affine:8:3: parse error: Syntax error
+affinescript	road-skate/test_config.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/road-skate/test_config.affine:8:16: parse error: Syntax error
+affinescript	road-skate/test_exact.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/road-skate/test_exact.affine:8:3: parse error: Syntax error
+affinescript	road-skate/test_minimal.affine	PASS	Type checking passed
+affinescript	road-skate/test_projection.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/road-skate/test_projection.affine:4:5: parse error: Syntax error
+affinescript	stdlib/Ajv.affine	PASS	Type checking passed
+affinescript	stdlib/Core.affine	PASS	Type checking passed
+affinescript	stdlib/Crypto.affine	PASS	Type checking passed
+affinescript	stdlib/Deno.affine	PASS	Type checking passed
+affinescript	stdlib/Grammy.affine	PASS	Type checking passed
+affinescript	stdlib/Http.affine	PASS	Type checking passed
+affinescript	stdlib/Network.affine	PASS	Type checking passed
+affinescript	stdlib/Sqlite.affine	PASS	Type checking passed
+affinescript	stdlib/Vscode.affine	PASS	Type checking passed
+affinescript	stdlib/VscodeLanguageClient.affine	PASS	Type checking passed
+affinescript	stdlib/collections.affine	PASS	Type checking passed
+affinescript	stdlib/effects.affine	PASS	Type checking passed
+affinescript	stdlib/io.affine	PASS	Type checking passed
+affinescript	stdlib/math.affine	PASS	Type checking passed
+affinescript	stdlib/option.affine	PASS	Type checking passed
+affinescript	stdlib/prelude.affine	PASS	Type checking passed
+affinescript	stdlib/result.affine	PASS	Type checking passed
+affinescript	stdlib/string.affine	PASS	Type checking passed
+affinescript	stdlib/testing.affine	PASS	Type checking passed
+affinescript	stdlib/traits.affine	PASS	Type checking passed
+affinescript	test/e2e/fixtures/CrossCallee.affine	PASS	Type checking passed
+affinescript	test/e2e/fixtures/PortNames.affine	PASS	Type checking passed
+affinescript	test/e2e/fixtures/affine_basic.affine	PASS	Type checking passed
+affinescript	test/e2e/fixtures/affine_let_valid.affine	PASS	Type checking passed
+affinescript	test/e2e/fixtures/affine_let_valid_sugar.affine	PASS	Type checking passed
+affinescript	test/e2e/fixtures/affine_violation.affine	PASS	Type checking passed
+affinescript	test/e2e/fixtures/arithmetic.affine	PASS	Type checking passed
+affinescript	test/e2e/fixtures/bitwise.affine	PASS	Type checking passed
+affinescript	test/e2e/fixtures/bug_001_omega_let_smuggles_linear.affine	TYPE-ONLY	Quantity error: @linear binding 'r' must be used exactly once, but was used multiple times
+affinescript	test/e2e/fixtures/bug_001_sugar_form.affine	TYPE-ONLY	Quantity error: @linear binding 'r' must be used exactly once, but was used multiple times
+affinescript	test/e2e/fixtures/cmd_dropped.affine	TYPE-ONLY	Quantity error: @linear binding 'cmd' must be used exactly once, but was never used
+affinescript	test/e2e/fixtures/cmd_linear.affine	PASS	Type checking passed
+affinescript	test/e2e/fixtures/counter.affine	PASS	Type checking passed
+affinescript	test/e2e/fixtures/cross_caller_drop.affine	TYPE-ONLY	Resolution error: (Resolve.UndefinedModule
+affinescript	test/e2e/fixtures/cross_caller_dup.affine	TYPE-ONLY	Resolution error: (Resolve.UndefinedModule
+affinescript	test/e2e/fixtures/cross_caller_ok.affine	TYPE-ONLY	Resolution error: (Resolve.UndefinedModule
+affinescript	test/e2e/fixtures/cross_const_caller.affine	TYPE-ONLY	Resolution error: (Resolve.UndefinedModule
+affinescript	test/e2e/fixtures/dependent_types.affine	PASS	Type checking passed
+affinescript	test/e2e/fixtures/effects.affine	PASS	Type checking passed
+affinescript	test/e2e/fixtures/erased_violation.affine	PASS	Type checking passed
+affinescript	test/e2e/fixtures/full_pipeline.affine	PASS	Type checking passed
+affinescript	test/e2e/fixtures/interp_simple.affine	PASS	Type checking passed
+affinescript	test/e2e/fixtures/julia_simple.affine	PASS	Type checking passed
+affinescript	test/e2e/fixtures/lambda.affine	PASS	Type checking passed
+affinescript	test/e2e/fixtures/linear_arrow.affine	PASS	Type checking passed
+affinescript	test/e2e/fixtures/linear_arrow_violation.affine	TYPE-ONLY	Quantity error: @linear binding 'x' must be used exactly once, but was used multiple times
+affinescript	test/e2e/fixtures/ownership.affine	PASS	Type checking passed
+affinescript	test/e2e/fixtures/ownership_codegen.affine	PASS	Type checking passed
+affinescript	test/e2e/fixtures/pattern_match.affine	TYPE-ONLY	Unification error: (Unify.TypeMismatch (Int, Unit))
+affinescript	test/e2e/fixtures/refinement_types.affine	PASS	Type checking passed
+affinescript	test/e2e/fixtures/row_polymorphism.affine	PASS	Type checking passed
+affinescript	test/e2e/fixtures/titlescreen.affine	PASS	Type checking passed
+affinescript	test/e2e/fixtures/trait_impl_missing_method.affine	TYPE-ONLY	Not implemented: Method 'summary' required by trait 'Describe' is not implemented
+affinescript	test/e2e/fixtures/trait_impl_valid.affine	PASS	Type checking passed
+affinescript	test/e2e/fixtures/traits.affine	PASS	Type checking passed
+affinescript	test/e2e/fixtures/try_body_only.affine	PASS	Type checking passed
+affinescript	test/e2e/fixtures/try_catch_finally.affine	PASS	Type checking passed
+affinescript	test/e2e/fixtures/try_catch_var.affine	PASS	Type checking passed
+affinescript	test/e2e/fixtures/try_catch_wildcard.affine	PASS	Type checking passed
+affinescript	test/e2e/fixtures/try_finally.affine	PASS	Type checking passed
+affinescript	test/e2e/fixtures/type_decls.affine	PASS	Type checking passed
+affinescript	test/e2e/fixtures/verify_ownership_clean.affine	PASS	Type checking passed
+affinescript	test/e2e/fixtures/wasm_simple.affine	PASS	Type checking passed
+affinescript	test/golden/binary_ops.affine	TYPE-ONLY	Resolution error: (Resolve.UndefinedVariable
+affinescript	test/golden/effects.affine	PASS	Type checking passed
+affinescript	test/golden/functions.affine	PASS	Type checking passed
+affinescript	test/golden/hello.affine	PASS	Type checking passed
+affinescript	test/golden/imports.affine	TYPE-ONLY	Resolution error: (Resolve.UndefinedModule
+affinescript	test/golden/lambda.affine	PASS	Type checking passed
+affinescript	test/golden/literals.affine	PASS	Type checking passed
+affinescript	test/golden/ownership.affine	PASS	Type checking passed
+affinescript	test/golden/patterns.affine	TYPE-ONLY	Resolution error: (Resolve.UndefinedVariable
+affinescript	test/golden/rows.affine	PASS	Type checking passed
+affinescript	test/golden/traits.affine	PASS	Type checking passed
+affinescript	test/golden/types.affine	PASS	Type checking passed
+affinescript	tests/borrow/minimal.affine	PASS	Type checking passed
+affinescript	tests/borrow/move_test.affine	PASS	Type checking passed
+affinescript	tests/borrow/simple.affine	PASS	Type checking passed
+affinescript	tests/borrow/simple_move_test.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/tests/borrow/simple_move_test.affine:3:28: parse error: Syntax error
+affinescript	tests/borrow/simple_own.affine	PASS	Type checking passed
+affinescript	tests/borrow/test_immutable_assign_error.affine	TYPE-ONLY	Borrow error: cannot borrow `x` as mutable — it is not declared with `let mut` (at /home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/tests/borrow/test_immutable_ass
+affinescript	tests/borrow/test_move.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/tests/borrow/test_move.affine:47:5: parse error: Syntax error
+affinescript	tests/borrow/test_move_after_use.affine	TYPE-ONLY	Borrow error: use of moved value: `x`
+affinescript	tests/borrow/test_mutable_borrow.affine	PASS	Type checking passed
+affinescript	tests/borrow/test_ref_borrow.affine	PASS	Type checking passed
+affinescript	tests/borrow/use_after_move.affine	TYPE-ONLY	Borrow error: use of moved value: `value`
+affinescript	tests/borrow/valid_move.affine	PASS	Type checking passed
+affinescript	tests/codegen-deno/class_basic.affine	PASS	Type checking passed
+affinescript	tests/codegen-deno/control_flow.affine	PASS	Type checking passed
+affinescript	tests/codegen-deno/http_fetch.affine	PASS	Type checking passed
+affinescript	tests/codegen-deno/match_enum.affine	PASS	Type checking passed
+affinescript	tests/codegen-deno/ref_fields.affine	PASS	Type checking passed
+affinescript	tests/codegen-deno/string_prims.affine	PASS	Type checking passed
+affinescript	tests/codegen/http_thenable_skeleton.affine	PASS	Type checking passed
+affinescript	tests/codegen/simple_arithmetic.affine	PASS	Type checking passed
+affinescript	tests/codegen/test_array_bounds.affine	PASS	Type checking passed
+affinescript	tests/codegen/test_array_empty.affine	PASS	Type checking passed
+affinescript	tests/codegen/test_array_simple.affine	PASS	Type checking passed
+affinescript	tests/codegen/test_array_single.affine	PASS	Type checking passed
+affinescript	tests/codegen/test_array_sum.affine	PASS	Type checking passed
+affinescript	tests/codegen/test_assign_compound.affine	PASS	Type checking passed
+affinescript	tests/codegen/test_assign_simple.affine	PASS	Type checking passed
+affinescript	tests/codegen/test_closure_capture.affine	PASS	Type checking passed
+affinescript	tests/codegen/test_closure_debug.affine	PASS	Type checking passed
+affinescript	tests/codegen/test_closure_multi_capture.affine	PASS	Type checking passed
+affinescript	tests/codegen/test_enum_pattern.affine	PASS	Type checking passed
+affinescript	tests/codegen/test_for_loop.affine	PASS	Type checking passed
+affinescript	tests/codegen/test_function_call.affine	PASS	Type checking passed
+affinescript	tests/codegen/test_lambda_call.affine	PASS	Type checking passed
+affinescript	tests/codegen/test_lambda_multi_param.affine	PASS	Type checking passed
+affinescript	tests/codegen/test_match_literal.affine	PASS	Type checking passed
+affinescript	tests/codegen/test_match_mixed.affine	PASS	Type checking passed
+affinescript	tests/codegen/test_match_simple.affine	PASS	Type checking passed
+affinescript	tests/codegen/test_multiple_calls.affine	PASS	Type checking passed
+affinescript	tests/codegen/test_multiple_lambdas.affine	PASS	Type checking passed
+affinescript	tests/codegen/test_opt_constant_fold.affine	PASS	Type checking passed
+affinescript	tests/codegen/test_opt_if_fold.affine	PASS	Type checking passed
+affinescript	tests/codegen/test_pattern_as.affine	PASS	Type checking passed
+affinescript	tests/codegen/test_pattern_or.affine	PASS	Type checking passed
+affinescript	tests/codegen/test_pattern_record.affine	PASS	Type checking passed
+affinescript	tests/codegen/test_pattern_tuple.affine	PASS	Type checking passed
+affinescript	tests/codegen/test_record_multi_field.affine	PASS	Type checking passed
+affinescript	tests/codegen/test_record_multiple.affine	PASS	Type checking passed
+affinescript	tests/codegen/test_record_simple.affine	PASS	Type checking passed
+affinescript	tests/codegen/test_recursive_call.affine	PASS	Type checking passed
+affinescript	tests/codegen/test_ref_deref_chain.affine	PASS	Type checking passed
+affinescript	tests/codegen/test_ref_deref_simple.affine	PASS	Type checking passed
+affinescript	tests/codegen/test_simple_lambda.affine	PASS	Type checking passed
+affinescript	tests/codegen/test_string_simple.affine	PASS	Type checking passed
+affinescript	tests/codegen/test_tuple_five.affine	PASS	Type checking passed
+affinescript	tests/codegen/test_tuple_nested.affine	PASS	Type checking passed
+affinescript	tests/codegen/test_tuple_pair.affine	PASS	Type checking passed
+affinescript	tests/codegen/test_tuple_record_array.affine	PASS	Type checking passed
+affinescript	tests/codegen/test_tuple_simple.affine	PASS	Type checking passed
+affinescript	tests/codegen/test_variant_as_int.affine	PASS	Type checking passed
+affinescript	tests/codegen/test_variant_match_arg.affine	PASS	Type checking passed
+affinescript	tests/codegen/test_variant_match_none.affine	PASS	Type checking passed
+affinescript	tests/codegen/test_variant_multi_arg.affine	PASS	Type checking passed
+affinescript	tests/codegen/test_variant_with_arg.affine	PASS	Type checking passed
+affinescript	tests/codegen/test_while_loop.affine	PASS	Type checking passed
+affinescript	tests/conformance/arithmetic/add.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/tests/conformance/arithmetic/add.affine:47:5: parse error: Syntax error
+affinescript	tests/conformance/arithmetic/divide.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/tests/conformance/arithmetic/divide.affine:54:5: parse error: Syntax error
+affinescript	tests/conformance/arithmetic/modulo.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/tests/conformance/arithmetic/modulo.affine:47:5: parse error: Syntax error
+affinescript	tests/conformance/arithmetic/multiply.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/tests/conformance/arithmetic/multiply.affine:54:5: parse error: Syntax error
+affinescript	tests/conformance/arithmetic/subtract.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/tests/conformance/arithmetic/subtract.affine:54:5: parse error: Syntax error
+affinescript	tests/conformance/collection/contains.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/tests/conformance/collection/contains.affine:60:5: parse error: Syntax error
+affinescript	tests/conformance/collection/filter.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/tests/conformance/collection/filter.affine:52:5: parse error: Syntax error
+affinescript	tests/conformance/collection/fold.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/tests/conformance/collection/fold.affine:60:5: parse error: Syntax error
+affinescript	tests/conformance/collection/map.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/tests/conformance/collection/map.affine:52:5: parse error: Syntax error
+affinescript	tests/conformance/comparison/equal.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/tests/conformance/comparison/equal.affine:46:5: parse error: Syntax error
+affinescript	tests/conformance/comparison/greater_equal.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/tests/conformance/comparison/greater_equal.affine:36:5: parse error: Syntax error
+affinescript	tests/conformance/comparison/greater_than.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/tests/conformance/comparison/greater_than.affine:36:5: parse error: Syntax error
+affinescript	tests/conformance/comparison/less_equal.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/tests/conformance/comparison/less_equal.affine:36:5: parse error: Syntax error
+affinescript	tests/conformance/comparison/less_than.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/tests/conformance/comparison/less_than.affine:36:5: parse error: Syntax error
+affinescript	tests/conformance/comparison/not_equal.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/tests/conformance/comparison/not_equal.affine:36:5: parse error: Syntax error
+affinescript	tests/conformance/conditional/if_then_else.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/tests/conformance/conditional/if_then_else.affine:47:5: parse error: Syntax error
+affinescript	tests/conformance/logical/and.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/tests/conformance/logical/and.affine:31:5: parse error: Syntax error
+affinescript	tests/conformance/logical/not.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/tests/conformance/logical/not.affine:21:5: parse error: Syntax error
+affinescript	tests/conformance/logical/or.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/tests/conformance/logical/or.affine:31:5: parse error: Syntax error
+affinescript	tests/conformance/run_all.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/tests/conformance/run_all.affine:1:1: parse error: Syntax error
+affinescript	tests/conformance/string/concat.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/tests/conformance/string/concat.affine:41:5: parse error: Syntax error
+affinescript	tests/conformance/string/length.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/tests/conformance/string/length.affine:41:5: parse error: Syntax error
+affinescript	tests/conformance/string/substring.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/tests/conformance/string/substring.affine:44:5: parse error: Syntax error
+affinescript	tests/effects/basic_effect.affine	PASS	Type checking passed
+affinescript	tests/modules/test_const.affine	PASS	Type checking passed
+affinescript	tests/modules/test_import.affine	TYPE-ONLY	Resolution error: (Resolve.UndefinedModule
+affinescript	tests/modules/test_import_only.affine	PASS	Type checking passed
+affinescript	tests/modules/test_math_functions.affine	TYPE-ONLY	Resolution error: (Resolve.UndefinedModule
+affinescript	tests/modules/test_no_import.affine	PASS	Type checking passed
+affinescript	tests/modules/test_simple_import.affine	PASS	Type checking passed
+affinescript	tests/parser/baseline_block.affine	PASS	Type checking passed
+affinescript	tests/parser/baseline_stmt.affine	PASS	Type checking passed
+affinescript	tests/parser/unsafe_all.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/tests/parser/unsafe_all.affine:36:10: parse error: Syntax error
+affinescript	tests/parser/unsafe_empty.affine	PASS	Type checking passed
+affinescript	tests/parser/unsafe_ops.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/tests/parser/unsafe_ops.affine:11:13: parse error: Syntax error
+affinescript	tests/parser/unsafe_read.affine	PASS	Type checking passed
+affinescript	tests/parser/unsafe_simple.affine	PASS	Type checking passed
+affinescript	tests/parser/unsafe_stmt.affine	PASS	Type checking passed
+affinescript	tests/scratch/test_if.affine	PASS	Type checking passed
+affinescript	tests/scratch/test_min.affine	PASS	Type checking passed
+affinescript	tests/scratch/test_simple.affine	PASS	Type checking passed
+affinescript	tests/scratch/test_spread.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/tests/scratch/test_spread.affine:2:13: parse error: Syntax error
+affinescript	tests/scratch/test_spread2.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/tests/scratch/test_spread2.affine:2:13: parse error: Syntax error
+affinescript	tests/scratch/test_spread3.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/tests/scratch/test_spread3.affine:2:16: parse error: Syntax error
+affinescript	tests/types/test_dependent_e2e.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/tests/types/test_dependent_e2e.affine:4:19: parse error: Syntax error
+affinescript	tests/types/test_dependent_parsing.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/tests/types/test_dependent_parsing.affine:4:17: parse error: Syntax error
+affinescript	tests/types/test_effect_inference.affine	PASS	Type checking passed
+affinescript	tests/types/test_effect_lambda.affine	PASS	Type checking passed
+affinescript	tests/types/test_effect_polymorphism.affine	PASS	Type checking passed
+affinescript	tests/types/test_generic_programming.affine	TYPE-ONLY	Not implemented: Too many arguments for kind
+affinescript	tests/types/test_hkt_parsing.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/tests/types/test_hkt_parsing.affine:27:1: parse error: Syntax error
+affinescript	tests/types/test_kind_checking.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/tests/types/test_kind_checking.affine:15:11: parse error: Syntax error
+affinescript	tests/types/test_lambda_scope_fix.affine	PASS	Type checking passed
+affinescript	tests/types/test_lambda_scope_simple.affine	PASS	Type checking passed
+affinescript	tests/types/test_parse_row_type.affine	PASS	Type checking passed
+affinescript	tests/types/test_row_polymorphism.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/tests/types/test_row_polymorphism.affine:19:13: parse error: Syntax error
+affinescript	tests/types/test_row_simple.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/tests/types/test_row_simple.affine:11:12: parse error: Syntax error
+affinescript	tests/types/test_traits.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/affinescript/tests/types/test_traits.affine:5:11: parse error: Syntax error
+airborne-submarine-squadron	archive/src/main_clean.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/airborne-submarine-squadron/archive/src/main_clean.affine:131:12: parse error: Syntax error
+airborne-submarine-squadron	archive/src/main_complete.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/airborne-submarine-squadron/archive/src/main_complete.affine:154:3: parse error: Syntax error
+airborne-submarine-squadron	archive/src/main_complete_temp.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/airborne-submarine-squadron/archive/src/main_complete_temp.affine:183:12: parse error: Syntax error
+airborne-submarine-squadron	archive/src/main_complete_v2.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/airborne-submarine-squadron/archive/src/main_complete_v2.affine:183:12: parse error: Syntax error
+airborne-submarine-squadron	archive/src/main_complete_working.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/airborne-submarine-squadron/archive/src/main_complete_working.affine:136:1: parse error: Syntax error
+airborne-submarine-squadron	archive/src/main_enhanced.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/airborne-submarine-squadron/archive/src/main_enhanced.affine:123:3: parse error: Syntax error
+airborne-submarine-squadron	archive/src/main_final.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/airborne-submarine-squadron/archive/src/main_final.affine:131:12: parse error: Syntax error
+airborne-submarine-squadron	archive/src/main_final_working.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/airborne-submarine-squadron/archive/src/main_final_working.affine:131:12: parse error: Syntax error
+airborne-submarine-squadron	archive/src/main_hybrid.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/airborne-submarine-squadron/archive/src/main_hybrid.affine:131:12: parse error: Syntax error
+airborne-submarine-squadron	archive/src/main_incremental.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/airborne-submarine-squadron/archive/src/main_incremental.affine:112:12: parse error: Syntax error
+airborne-submarine-squadron	archive/src/main_incremental_temp.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/airborne-submarine-squadron/archive/src/main_incremental_temp.affine:112:12: parse error: Syntax error
+airborne-submarine-squadron	archive/src/main_step1.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/airborne-submarine-squadron/archive/src/main_step1.affine:131:12: parse error: Syntax error
+airborne-submarine-squadron	archive/src/main_working.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/airborne-submarine-squadron/archive/src/main_working.affine:55:38: parse error: Syntax error
+airborne-submarine-squadron	src/main.affine	PASS	Type checking passed
+airborne-submarine-squadron	src/test_syntax.affine	PASS	Type checking passed
+airborne-submarine-squadron	test_types.affine	PASS	Type checking passed
+ambientops	gui/src/tea/ambientops_gui.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/ambientops/gui/src/tea/ambientops_gui.affine:45:5: parse error: Syntax error
+ambientops	gui/src/tea/test_simple.affine	PASS	Type checking passed
+bofj-kitt	affinescript/conformance/invalid/001_unclosed_brace.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/conformance/invalid/001_unclosed_brace.affine:4:13: parse error: Syntax error
+bofj-kitt	affinescript/conformance/invalid/002_unclosed_string.affine	TYPE-ONLY	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/conformance/invalid/002_unclosed_string.affine:6:1: lexer error: Unterminated string literal
+bofj-kitt	affinescript/conformance/invalid/003_bad_number.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/conformance/invalid/003_bad_number.affine:4:11: parse error: Syntax error
+bofj-kitt	affinescript/conformance/invalid/004_unexpected_token.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/conformance/invalid/004_unexpected_token.affine:4:3: parse error: Syntax error
+bofj-kitt	affinescript/conformance/invalid/005_missing_arrow.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/conformance/invalid/005_missing_arrow.affine:3:9: parse error: Syntax error
+bofj-kitt	affinescript/conformance/invalid/006_bad_operator.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/conformance/invalid/006_bad_operator.affine:4:11: parse error: Syntax error
+bofj-kitt	affinescript/conformance/invalid/007_incomplete_effect.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/conformance/invalid/007_incomplete_effect.affine:4:27: parse error: Syntax error
+bofj-kitt	affinescript/conformance/invalid/008_mismatched_parens.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/conformance/invalid/008_mismatched_parens.affine:4:16: parse error: Syntax error
+bofj-kitt	affinescript/conformance/invalid/009_reserved_keyword.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/conformance/invalid/009_reserved_keyword.affine:4:3: parse error: Syntax error
+bofj-kitt	affinescript/conformance/invalid/010_empty_match.affine	PASS	Type checking passed
+bofj-kitt	affinescript/conformance/invalid/011_bad_escape.affine	PASS	Type checking passed
+bofj-kitt	affinescript/conformance/invalid/012_trailing_comma.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/conformance/invalid/012_trailing_comma.affine:3:15: parse error: Syntax error
+bofj-kitt	affinescript/conformance/valid/001_empty.affine	PASS	Type checking passed
+bofj-kitt	affinescript/conformance/valid/002_comments.affine	PASS	Type checking passed
+bofj-kitt	affinescript/conformance/valid/003_let_bindings.affine	PASS	Type checking passed
+bofj-kitt	affinescript/conformance/valid/004_literals.affine	PASS	Type checking passed
+bofj-kitt	affinescript/conformance/valid/005_functions.affine	PASS	Type checking passed
+bofj-kitt	affinescript/conformance/valid/006_type_alias.affine	TYPE-ONLY	Not implemented: Too many arguments for kind
+bofj-kitt	affinescript/conformance/valid/007_struct_def.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/conformance/valid/007_struct_def.affine:20:3: parse error: Syntax error
+bofj-kitt	affinescript/conformance/valid/008_enum_def.affine	PASS	Type checking passed
+bofj-kitt	affinescript/conformance/valid/009_effect_def.affine	PASS	Type checking passed
+bofj-kitt	affinescript/conformance/valid/010_pattern_match.affine	PASS	Type checking passed
+bofj-kitt	affinescript/conformance/valid/011_rows.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/conformance/valid/011_rows.affine:12:5: parse error: Syntax error
+bofj-kitt	affinescript/conformance/valid/012_ownership.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/conformance/valid/012_ownership.affine:19:3: parse error: Syntax error
+bofj-kitt	affinescript/docs/guides/warmup/01_basics.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/docs/guides/warmup/01_basics.affine:1:1: parse error: Syntax error
+bofj-kitt	affinescript/docs/guides/warmup/02_ownership.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/docs/guides/warmup/02_ownership.affine:36:13: parse error: Syntax error
+bofj-kitt	affinescript/docs/guides/warmup/03_effects.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/docs/guides/warmup/03_effects.affine:37:50: parse error: Syntax error
+bofj-kitt	affinescript/docs/guides/warmup/04_rows.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/docs/guides/warmup/04_rows.affine:21:39: parse error: Syntax error
+bofj-kitt	affinescript/examples/comprehensive_test.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/examples/comprehensive_test.affine:15:5: parse error: Syntax error
+bofj-kitt	affinescript/examples/effects.affine	PASS	Type checking passed
+bofj-kitt	affinescript/examples/exception_test.affine	PASS	Type checking passed
+bofj-kitt	affinescript/examples/hello.affine	PASS	Type checking passed
+bofj-kitt	affinescript/examples/lessons/01_hello.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/examples/lessons/01_hello.affine:1:1: parse error: Syntax error
+bofj-kitt	affinescript/examples/ownership.affine	PASS	Type checking passed
+bofj-kitt	affinescript/examples/rows.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/examples/rows.affine:18:5: parse error: Syntax error
+bofj-kitt	affinescript/examples/simple_test.affine	PASS	Type checking passed
+bofj-kitt	affinescript/examples/traits.affine	PASS	Type checking passed
+bofj-kitt	affinescript/examples/typecheck_complete_test.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/examples/typecheck_complete_test.affine:18:5: parse error: Syntax error
+bofj-kitt	affinescript/examples/typecheck_features_test.affine	PASS	Type checking passed
+bofj-kitt	affinescript/stdlib/Core.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/stdlib/Core.affine:14:5: parse error: Syntax error
+bofj-kitt	affinescript/stdlib/collections.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/stdlib/collections.affine:40:13: parse error: Syntax error
+bofj-kitt	affinescript/stdlib/effects.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/stdlib/effects.affine:21:8: parse error: Syntax error
+bofj-kitt	affinescript/stdlib/io.affine	TYPE-ONLY	Resolution error: (Resolve.UndefinedVariable
+bofj-kitt	affinescript/stdlib/math.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/stdlib/math.affine:354:3: parse error: Syntax error
+bofj-kitt	affinescript/stdlib/option.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/stdlib/option.affine:313:15: parse error: Syntax error
+bofj-kitt	affinescript/stdlib/prelude.affine	TYPE-ONLY	Borrow error: cannot borrow `result` as mutable — it is not declared with `let mut` (at /home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/stdlib/prelude.a
+bofj-kitt	affinescript/stdlib/result.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/stdlib/result.affine:221:1: parse error: Syntax error
+bofj-kitt	affinescript/stdlib/string.affine	TYPE-ONLY	Resolution error: (Resolve.UndefinedVariable
+bofj-kitt	affinescript/stdlib/testing.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/stdlib/testing.affine:302:3: parse error: Syntax error
+bofj-kitt	affinescript/stdlib/traits.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/stdlib/traits.affine:124:25: parse error: Syntax error
+bofj-kitt	affinescript/test/e2e/fixtures/affine_basic.affine	PASS	Type checking passed
+bofj-kitt	affinescript/test/e2e/fixtures/affine_let_valid.affine	PASS	Type checking passed
+bofj-kitt	affinescript/test/e2e/fixtures/affine_let_valid_sugar.affine	PASS	Type checking passed
+bofj-kitt	affinescript/test/e2e/fixtures/affine_violation.affine	PASS	Type checking passed
+bofj-kitt	affinescript/test/e2e/fixtures/arithmetic.affine	PASS	Type checking passed
+bofj-kitt	affinescript/test/e2e/fixtures/bug_001_omega_let_smuggles_linear.affine	TYPE-ONLY	Quantity error: @linear binding 'r' must be used exactly once, but was used multiple times
+bofj-kitt	affinescript/test/e2e/fixtures/bug_001_sugar_form.affine	TYPE-ONLY	Quantity error: @linear binding 'r' must be used exactly once, but was used multiple times
+bofj-kitt	affinescript/test/e2e/fixtures/cmd_dropped.affine	TYPE-ONLY	Quantity error: @linear binding 'cmd' must be used exactly once, but was never used
+bofj-kitt	affinescript/test/e2e/fixtures/cmd_linear.affine	PASS	Type checking passed
+bofj-kitt	affinescript/test/e2e/fixtures/counter.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/test/e2e/fixtures/counter.affine:72:5: parse error: Syntax error
+bofj-kitt	affinescript/test/e2e/fixtures/dependent_types.affine	PASS	Type checking passed
+bofj-kitt	affinescript/test/e2e/fixtures/effects.affine	PASS	Type checking passed
+bofj-kitt	affinescript/test/e2e/fixtures/erased_violation.affine	PASS	Type checking passed
+bofj-kitt	affinescript/test/e2e/fixtures/full_pipeline.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/test/e2e/fixtures/full_pipeline.affine:16:5: parse error: Syntax error
+bofj-kitt	affinescript/test/e2e/fixtures/interp_simple.affine	PASS	Type checking passed
+bofj-kitt	affinescript/test/e2e/fixtures/julia_simple.affine	PASS	Type checking passed
+bofj-kitt	affinescript/test/e2e/fixtures/lambda.affine	PASS	Type checking passed
+bofj-kitt	affinescript/test/e2e/fixtures/linear_arrow.affine	PASS	Type checking passed
+bofj-kitt	affinescript/test/e2e/fixtures/linear_arrow_violation.affine	TYPE-ONLY	Quantity error: @linear binding 'x' must be used exactly once, but was used multiple times
+bofj-kitt	affinescript/test/e2e/fixtures/ownership.affine	PASS	Type checking passed
+bofj-kitt	affinescript/test/e2e/fixtures/ownership_codegen.affine	PASS	Type checking passed
+bofj-kitt	affinescript/test/e2e/fixtures/pattern_match.affine	TYPE-ONLY	Unification error: (Unify.TypeMismatch (Int, Unit))
+bofj-kitt	affinescript/test/e2e/fixtures/refinement_types.affine	PASS	Type checking passed
+bofj-kitt	affinescript/test/e2e/fixtures/row_polymorphism.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/test/e2e/fixtures/row_polymorphism.affine:19:5: parse error: Syntax error
+bofj-kitt	affinescript/test/e2e/fixtures/titlescreen.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/test/e2e/fixtures/titlescreen.affine:48:5: parse error: Syntax error
+bofj-kitt	affinescript/test/e2e/fixtures/trait_impl_missing_method.affine	TYPE-ONLY	Not implemented: Method 'summary' required by trait 'Describe' is not implemented
+bofj-kitt	affinescript/test/e2e/fixtures/trait_impl_valid.affine	PASS	Type checking passed
+bofj-kitt	affinescript/test/e2e/fixtures/traits.affine	PASS	Type checking passed
+bofj-kitt	affinescript/test/e2e/fixtures/try_body_only.affine	PASS	Type checking passed
+bofj-kitt	affinescript/test/e2e/fixtures/try_catch_finally.affine	PASS	Type checking passed
+bofj-kitt	affinescript/test/e2e/fixtures/try_catch_var.affine	PASS	Type checking passed
+bofj-kitt	affinescript/test/e2e/fixtures/try_catch_wildcard.affine	PASS	Type checking passed
+bofj-kitt	affinescript/test/e2e/fixtures/try_finally.affine	PASS	Type checking passed
+bofj-kitt	affinescript/test/e2e/fixtures/type_decls.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/test/e2e/fixtures/type_decls.affine:30:5: parse error: Syntax error
+bofj-kitt	affinescript/test/e2e/fixtures/verify_ownership_clean.affine	PASS	Type checking passed
+bofj-kitt	affinescript/test/e2e/fixtures/wasm_simple.affine	PASS	Type checking passed
+bofj-kitt	affinescript/test/golden/binary_ops.affine	TYPE-ONLY	Resolution error: (Resolve.UndefinedVariable
+bofj-kitt	affinescript/test/golden/effects.affine	PASS	Type checking passed
+bofj-kitt	affinescript/test/golden/functions.affine	PASS	Type checking passed
+bofj-kitt	affinescript/test/golden/hello.affine	PASS	Type checking passed
+bofj-kitt	affinescript/test/golden/imports.affine	TYPE-ONLY	Resolution error: (Resolve.UndefinedModule
+bofj-kitt	affinescript/test/golden/lambda.affine	PASS	Type checking passed
+bofj-kitt	affinescript/test/golden/literals.affine	PASS	Type checking passed
+bofj-kitt	affinescript/test/golden/ownership.affine	PASS	Type checking passed
+bofj-kitt	affinescript/test/golden/patterns.affine	TYPE-ONLY	Resolution error: (Resolve.UndefinedVariable
+bofj-kitt	affinescript/test/golden/rows.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/test/golden/rows.affine:7:4: parse error: Syntax error
+bofj-kitt	affinescript/test/golden/traits.affine	PASS	Type checking passed
+bofj-kitt	affinescript/test/golden/types.affine	PASS	Type checking passed
+bofj-kitt	affinescript/test_if.affine	PASS	Type checking passed
+bofj-kitt	affinescript/test_min.affine	PASS	Type checking passed
+bofj-kitt	affinescript/test_simple.affine	PASS	Type checking passed
+bofj-kitt	affinescript/test_spread.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/test_spread.affine:2:13: parse error: Syntax error
+bofj-kitt	affinescript/test_spread2.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/test_spread2.affine:2:13: parse error: Syntax error
+bofj-kitt	affinescript/test_spread3.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/test_spread3.affine:2:16: parse error: Syntax error
+bofj-kitt	affinescript/tests/borrow/minimal.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/borrow/move_test.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/borrow/simple.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/borrow/simple_move_test.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/tests/borrow/simple_move_test.affine:3:28: parse error: Syntax error
+bofj-kitt	affinescript/tests/borrow/simple_own.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/borrow/test_immutable_assign_error.affine	TYPE-ONLY	Borrow error: cannot borrow `x` as mutable — it is not declared with `let mut` (at /home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/tests/borrow/test_imm
+bofj-kitt	affinescript/tests/borrow/test_move.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/tests/borrow/test_move.affine:47:5: parse error: Syntax error
+bofj-kitt	affinescript/tests/borrow/test_move_after_use.affine	TYPE-ONLY	Borrow error: use of moved value: `x`
+bofj-kitt	affinescript/tests/borrow/test_mutable_borrow.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/borrow/test_ref_borrow.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/borrow/use_after_move.affine	TYPE-ONLY	Borrow error: use of moved value: `value`
+bofj-kitt	affinescript/tests/borrow/valid_move.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/codegen/simple_arithmetic.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/codegen/test_array_bounds.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/codegen/test_array_empty.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/codegen/test_array_simple.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/codegen/test_array_single.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/codegen/test_array_sum.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/codegen/test_assign_compound.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/codegen/test_assign_simple.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/codegen/test_closure_capture.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/codegen/test_closure_debug.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/codegen/test_closure_multi_capture.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/codegen/test_enum_pattern.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/codegen/test_for_loop.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/codegen/test_function_call.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/codegen/test_lambda_call.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/codegen/test_lambda_multi_param.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/codegen/test_match_literal.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/codegen/test_match_mixed.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/codegen/test_match_simple.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/codegen/test_multiple_calls.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/codegen/test_multiple_lambdas.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/codegen/test_opt_constant_fold.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/codegen/test_opt_if_fold.affine	TYPE-ONLY	Unification error: (Unify.TypeMismatch (Unit, Int))
+bofj-kitt	affinescript/tests/codegen/test_pattern_as.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/codegen/test_pattern_or.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/codegen/test_pattern_record.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/tests/codegen/test_pattern_record.affine:4:12: parse error: Syntax error
+bofj-kitt	affinescript/tests/codegen/test_pattern_tuple.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/codegen/test_record_multi_field.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/tests/codegen/test_record_multi_field.affine:4:12: parse error: Syntax error
+bofj-kitt	affinescript/tests/codegen/test_record_multiple.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/tests/codegen/test_record_multiple.affine:4:13: parse error: Syntax error
+bofj-kitt	affinescript/tests/codegen/test_record_simple.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/tests/codegen/test_record_simple.affine:4:12: parse error: Syntax error
+bofj-kitt	affinescript/tests/codegen/test_recursive_call.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/codegen/test_ref_deref_chain.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/codegen/test_ref_deref_simple.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/codegen/test_simple_lambda.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/codegen/test_string_diff.affine	TYPE-ONLY	Unification error: (Unify.TypeMismatch (String, Int))
+bofj-kitt	affinescript/tests/codegen/test_string_eq.affine	TYPE-ONLY	Unification error: (Unify.TypeMismatch (String, Int))
+bofj-kitt	affinescript/tests/codegen/test_string_multi.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/codegen/test_string_ptr.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/codegen/test_string_simple.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/codegen/test_tuple_five.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/codegen/test_tuple_nested.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/codegen/test_tuple_pair.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/codegen/test_tuple_record_array.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/tests/codegen/test_tuple_record_array.affine:6:13: parse error: Syntax error
+bofj-kitt	affinescript/tests/codegen/test_tuple_simple.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/codegen/test_variant_as_int.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/codegen/test_variant_match_arg.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/codegen/test_variant_match_none.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/codegen/test_variant_multi_arg.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/codegen/test_variant_with_arg.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/codegen/test_while_loop.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/conformance/arithmetic/add.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/tests/conformance/arithmetic/add.affine:47:5: parse error: Syntax error
+bofj-kitt	affinescript/tests/conformance/arithmetic/divide.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/tests/conformance/arithmetic/divide.affine:54:5: parse error: Syntax error
+bofj-kitt	affinescript/tests/conformance/arithmetic/modulo.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/tests/conformance/arithmetic/modulo.affine:47:5: parse error: Syntax error
+bofj-kitt	affinescript/tests/conformance/arithmetic/multiply.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/tests/conformance/arithmetic/multiply.affine:54:5: parse error: Syntax error
+bofj-kitt	affinescript/tests/conformance/arithmetic/subtract.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/tests/conformance/arithmetic/subtract.affine:54:5: parse error: Syntax error
+bofj-kitt	affinescript/tests/conformance/collection/contains.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/tests/conformance/collection/contains.affine:60:5: parse error: Syntax error
+bofj-kitt	affinescript/tests/conformance/collection/filter.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/tests/conformance/collection/filter.affine:52:5: parse error: Syntax error
+bofj-kitt	affinescript/tests/conformance/collection/fold.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/tests/conformance/collection/fold.affine:60:5: parse error: Syntax error
+bofj-kitt	affinescript/tests/conformance/collection/map.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/tests/conformance/collection/map.affine:52:5: parse error: Syntax error
+bofj-kitt	affinescript/tests/conformance/comparison/equal.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/tests/conformance/comparison/equal.affine:46:5: parse error: Syntax error
+bofj-kitt	affinescript/tests/conformance/comparison/greater_equal.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/tests/conformance/comparison/greater_equal.affine:36:5: parse error: Syntax error
+bofj-kitt	affinescript/tests/conformance/comparison/greater_than.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/tests/conformance/comparison/greater_than.affine:36:5: parse error: Syntax error
+bofj-kitt	affinescript/tests/conformance/comparison/less_equal.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/tests/conformance/comparison/less_equal.affine:36:5: parse error: Syntax error
+bofj-kitt	affinescript/tests/conformance/comparison/less_than.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/tests/conformance/comparison/less_than.affine:36:5: parse error: Syntax error
+bofj-kitt	affinescript/tests/conformance/comparison/not_equal.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/tests/conformance/comparison/not_equal.affine:36:5: parse error: Syntax error
+bofj-kitt	affinescript/tests/conformance/conditional/if_then_else.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/tests/conformance/conditional/if_then_else.affine:47:5: parse error: Syntax error
+bofj-kitt	affinescript/tests/conformance/logical/and.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/tests/conformance/logical/and.affine:31:5: parse error: Syntax error
+bofj-kitt	affinescript/tests/conformance/logical/not.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/tests/conformance/logical/not.affine:21:5: parse error: Syntax error
+bofj-kitt	affinescript/tests/conformance/logical/or.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/tests/conformance/logical/or.affine:31:5: parse error: Syntax error
+bofj-kitt	affinescript/tests/conformance/run_all.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/tests/conformance/run_all.affine:1:1: parse error: Syntax error
+bofj-kitt	affinescript/tests/conformance/string/concat.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/tests/conformance/string/concat.affine:41:5: parse error: Syntax error
+bofj-kitt	affinescript/tests/conformance/string/length.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/tests/conformance/string/length.affine:41:5: parse error: Syntax error
+bofj-kitt	affinescript/tests/conformance/string/substring.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/tests/conformance/string/substring.affine:44:5: parse error: Syntax error
+bofj-kitt	affinescript/tests/effects/basic_effect.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/modules/test_const.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/modules/test_import.affine	TYPE-ONLY	Resolution error: (Resolve.UndefinedModule
+bofj-kitt	affinescript/tests/modules/test_import_only.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/modules/test_math_functions.affine	TYPE-ONLY	Resolution error: (Resolve.UndefinedModule
+bofj-kitt	affinescript/tests/modules/test_no_import.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/modules/test_simple_import.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/parser/baseline_block.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/parser/baseline_stmt.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/parser/unsafe_all.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/tests/parser/unsafe_all.affine:36:10: parse error: Syntax error
+bofj-kitt	affinescript/tests/parser/unsafe_empty.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/parser/unsafe_ops.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/tests/parser/unsafe_ops.affine:11:13: parse error: Syntax error
+bofj-kitt	affinescript/tests/parser/unsafe_read.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/parser/unsafe_simple.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/parser/unsafe_stmt.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/types/test_dependent_e2e.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/tests/types/test_dependent_e2e.affine:4:19: parse error: Syntax error
+bofj-kitt	affinescript/tests/types/test_dependent_parsing.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/tests/types/test_dependent_parsing.affine:4:17: parse error: Syntax error
+bofj-kitt	affinescript/tests/types/test_effect_inference.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/types/test_effect_lambda.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/types/test_effect_polymorphism.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/types/test_generic_programming.affine	TYPE-ONLY	Not implemented: Too many arguments for kind
+bofj-kitt	affinescript/tests/types/test_hkt_parsing.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/tests/types/test_hkt_parsing.affine:27:1: parse error: Syntax error
+bofj-kitt	affinescript/tests/types/test_kind_checking.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/tests/types/test_kind_checking.affine:15:11: parse error: Syntax error
+bofj-kitt	affinescript/tests/types/test_lambda_scope_fix.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/types/test_lambda_scope_simple.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/types/test_parse_row_type.affine	PASS	Type checking passed
+bofj-kitt	affinescript/tests/types/test_row_polymorphism.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/tests/types/test_row_polymorphism.affine:19:13: parse error: Syntax error
+bofj-kitt	affinescript/tests/types/test_row_simple.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/tests/types/test_row_simple.affine:11:12: parse error: Syntax error
+bofj-kitt	affinescript/tests/types/test_traits.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/bofj-kitt/affinescript/tests/types/test_traits.affine:5:11: parse error: Syntax error
+burble	admin/src/App.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/burble/admin/src/App.affine:1:1: parse error: Syntax error
+burble	admin/src/BurbleCmd.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/burble/admin/src/BurbleCmd.affine:1:1: parse error: Syntax error
+burble	admin/src/Capabilities.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/burble/admin/src/Capabilities.affine:36:8: parse error: Syntax error
+burble	admin/src/Model.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/burble/admin/src/Model.affine:53:10: parse error: Syntax error
+burble	admin/src/Msg.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/burble/admin/src/Msg.affine:19:18: parse error: Syntax error
+burble	admin/src/RuntimeBridge.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/burble/admin/src/RuntimeBridge.affine:1:1: parse error: Syntax error
+burble	client/lib/src/BurbleClient.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/burble/client/lib/src/BurbleClient.affine:67:25: parse error: Syntax error
+burble	client/lib/src/BurbleLOL.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/burble/client/lib/src/BurbleLOL.affine:7:8: parse error: Syntax error
+burble	client/lib/src/BurbleProfile.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/burble/client/lib/src/BurbleProfile.affine:1:1: parse error: Syntax error
+burble	client/lib/src/BurbleSignaling.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/burble/client/lib/src/BurbleSignaling.affine:9:23: parse error: Syntax error
+burble	client/lib/src/BurbleSpatial.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/burble/client/lib/src/BurbleSpatial.affine:23:3: parse error: Syntax error
+burble	client/lib/src/BurbleVoice.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/burble/client/lib/src/BurbleVoice.affine:24:3: parse error: Syntax error
+burble	client/lib/src/extensions/IDApTIKVoice.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/burble/client/lib/src/extensions/IDApTIKVoice.affine:31:3: parse error: Syntax error
+burble	client/lib/src/extensions/PanLLVoice.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/burble/client/lib/src/extensions/PanLLVoice.affine:17:12: parse error: Syntax error
+burble	client/web/src/Audio.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/burble/client/web/src/Audio.affine:1:1: parse error: Syntax error
+burble	client/web/src/Bindings.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/burble/client/web/src/Bindings.affine:9:6: parse error: Syntax error
+burble	client/web/src/Main.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/burble/client/web/src/Main.affine:1:1: parse error: Syntax error
+burble	client/web/src/Room.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/burble/client/web/src/Room.affine:1:1: parse error: Syntax error
+burble	client/web/src/Signaling.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/burble/client/web/src/Signaling.affine:1:1: parse error: Syntax error
+burble	client/web/src/WebRTC.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/burble/client/web/src/WebRTC.affine:7:8: parse error: Syntax error
+burble	client/web/src/app/App.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/burble/client/web/src/app/App.affine:10:6: parse error: Syntax error
+burble	client/web/src/app/Routes.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/burble/client/web/src/app/Routes.affine:45:3: parse error: Syntax error
+burble	client/web/src/app/auth/AuthState.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/burble/client/web/src/app/auth/AuthState.affine:8:6: parse error: Syntax error
+burble	client/web/src/app/diagnostics/SelfTestPanel.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/burble/client/web/src/app/diagnostics/SelfTestPanel.affine:39:10: parse error: Syntax error
+burble	client/web/src/app/rooms/RoomList.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/burble/client/web/src/app/rooms/RoomList.affine:32:17: parse error: Syntax error
+burble	client/web/src/app/rooms/RoomState.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/burble/client/web/src/app/rooms/RoomState.affine:24:15: parse error: Syntax error
+burble	client/web/src/app/setup/SetupWizard.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/burble/client/web/src/app/setup/SetupWizard.affine:38:6: parse error: Syntax error
+burble	client/web/src/app/text/TextChat.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/burble/client/web/src/app/text/TextChat.affine:14:15: parse error: Syntax error
+burble	client/web/src/app/voice/AudioPipeline.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/burble/client/web/src/app/voice/AudioPipeline.affine:27:6: parse error: Syntax error
+burble	client/web/src/app/voice/E2EE.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/burble/client/web/src/app/voice/E2EE.affine:9:6: parse error: Syntax error
+burble	client/web/src/app/voice/ScreenShare.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/burble/client/web/src/app/voice/ScreenShare.affine:24:1: parse error: Syntax error
+burble	client/web/src/app/voice/VoiceControls.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/burble/client/web/src/app/voice/VoiceControls.affine:27:3: parse error: Syntax error
+burble	client/web/src/app/voice/VoiceEngine.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/burble/client/web/src/app/voice/VoiceEngine.affine:50:6: parse error: Syntax error
+burble	client/web/src/bindings/PhoenixSocket.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/burble/client/web/src/bindings/PhoenixSocket.affine:8:6: parse error: Syntax error
+burble	examples/SafeDOMExample.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/burble/examples/SafeDOMExample.affine:1:1: parse error: Syntax error
+cafescripto	examples/hello.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/affinescript-deno-test/example/codegen_regression_test.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/affinescript-deno-test/example/hello_test.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/conformance/invalid/001_unclosed_brace.affine	TYPE-ONLY	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/conformance/invalid/001_unclosed_brace.affine:4:13: parse er
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/conformance/invalid/002_unclosed_string.affine	TYPE-ONLY	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/conformance/invalid/002_unclosed_string.affine:6:1: lexer er
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/conformance/invalid/003_bad_number.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/conformance/invalid/003_bad_number.affine:4:11: parse error:
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/conformance/invalid/004_unexpected_token.affine	TYPE-ONLY	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/conformance/invalid/004_unexpected_token.affine:4:3: parse e
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/conformance/invalid/005_missing_arrow.affine	TYPE-ONLY	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/conformance/invalid/005_missing_arrow.affine:3:9: parse erro
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/conformance/invalid/006_bad_operator.affine	TYPE-ONLY	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/conformance/invalid/006_bad_operator.affine:4:11: parse erro
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/conformance/invalid/007_incomplete_effect.affine	TYPE-ONLY	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/conformance/invalid/007_incomplete_effect.affine:4:27: parse
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/conformance/invalid/008_mismatched_parens.affine	TYPE-ONLY	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/conformance/invalid/008_mismatched_parens.affine:4:16: parse
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/conformance/invalid/009_reserved_keyword.affine	TYPE-ONLY	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/conformance/invalid/009_reserved_keyword.affine:4:3: parse e
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/conformance/invalid/010_empty_match.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/conformance/invalid/011_bad_escape.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/conformance/invalid/012_trailing_comma.affine	TYPE-ONLY	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/conformance/invalid/012_trailing_comma.affine:3:15: parse er
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/conformance/valid/001_empty.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/conformance/valid/002_comments.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/conformance/valid/003_let_bindings.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/conformance/valid/004_literals.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/conformance/valid/005_functions.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/conformance/valid/006_type_alias.affine	TYPE-ONLY	Not implemented: Too many arguments for kind
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/conformance/valid/007_struct_def.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/conformance/valid/007_struct_def.affine:20:3: parse error: S
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/conformance/valid/008_enum_def.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/conformance/valid/009_effect_def.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/conformance/valid/010_pattern_match.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/conformance/valid/011_rows.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/conformance/valid/011_rows.affine:12:5: parse error: Syntax 
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/conformance/valid/012_ownership.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/conformance/valid/012_ownership.affine:19:3: parse error: Sy
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/docs/guides/warmup/01_basics.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/docs/guides/warmup/01_basics.affine:1:1: parse error: Syntax
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/docs/guides/warmup/02_ownership.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/docs/guides/warmup/02_ownership.affine:36:13: parse error: S
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/docs/guides/warmup/03_effects.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/docs/guides/warmup/03_effects.affine:37:50: parse error: Syn
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/docs/guides/warmup/04_rows.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/docs/guides/warmup/04_rows.affine:21:39: parse error: Syntax
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/examples/comprehensive_test.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/examples/comprehensive_test.affine:34:18: parse error: Synta
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/examples/effects.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/examples/effects.affine:30:40: parse error: Syntax error
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/examples/exception_test.affine	TYPE-ONLY	Unbound variable: IndexOutOfBounds
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/examples/hello.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/examples/lessons/01_hello.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/examples/lessons/01_hello.affine:1:1: parse error: Syntax er
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/examples/ownership.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/examples/ownership.affine:15:58: parse error: Syntax error
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/examples/rows.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/examples/rows.affine:12:4: parse error: Syntax error
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/examples/simple_test.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/examples/traits.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/examples/traits.affine:62:7: parse error: Syntax error
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/examples/typecheck_complete_test.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/examples/typecheck_complete_test.affine:8:10: parse error: S
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/examples/typecheck_features_test.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/examples/typecheck_features_test.affine:31:15: parse error: 
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/stdlib/Core.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/stdlib/Core.affine:14:5: parse error: Syntax error
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/stdlib/Math.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/stdlib/Option.affine	TYPE-ONLY	Resolution error: (Resolve.UndefinedVariable
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/stdlib/Result.affine	TYPE-ONLY	Resolution error: (Resolve.UndefinedVariable
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/stdlib/collections.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/stdlib/collections.affine:40:13: parse error: Syntax error
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/stdlib/effects.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/stdlib/effects.affine:21:8: parse error: Syntax error
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/stdlib/io.affine	TYPE-ONLY	Resolution error: (Resolve.UndefinedVariable
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/stdlib/math.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/stdlib/math.affine:354:3: parse error: Syntax error
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/stdlib/option.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/stdlib/option.affine:313:15: parse error: Syntax error
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/stdlib/prelude.affine	TYPE-ONLY	Borrow error: cannot borrow `result` as mutable — it is not declared with `let mut` (at /home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosys
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/stdlib/result.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/stdlib/result.affine:221:1: parse error: Syntax error
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/stdlib/string.affine	TYPE-ONLY	Resolution error: (Resolve.UndefinedVariable
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/stdlib/testing.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/stdlib/testing.affine:302:3: parse error: Syntax error
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/stdlib/traits.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/stdlib/traits.affine:124:25: parse error: Syntax error
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/test/e2e/fixtures/affine_basic.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/test/e2e/fixtures/affine_let_valid.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/test/e2e/fixtures/affine_let_valid_sugar.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/test/e2e/fixtures/affine_violation.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/test/e2e/fixtures/arithmetic.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/test/e2e/fixtures/bug_001_omega_let_smuggles_linear.affine	TYPE-ONLY	Quantity error: @linear binding 'r' must be used exactly once, but was used multiple times
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/test/e2e/fixtures/bug_001_sugar_form.affine	TYPE-ONLY	Quantity error: @linear binding 'r' must be used exactly once, but was used multiple times
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/test/e2e/fixtures/dependent_types.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/test/e2e/fixtures/effects.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/test/e2e/fixtures/erased_violation.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/test/e2e/fixtures/full_pipeline.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/test/e2e/fixtures/full_pipeline.affine:16:5: parse error: Sy
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/test/e2e/fixtures/interp_simple.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/test/e2e/fixtures/julia_simple.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/test/e2e/fixtures/lambda.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/test/e2e/fixtures/ownership.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/test/e2e/fixtures/pattern_match.affine	TYPE-ONLY	Unification error: (Unify.TypeMismatch (Int, Unit))
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/test/e2e/fixtures/refinement_types.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/test/e2e/fixtures/row_polymorphism.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/test/e2e/fixtures/row_polymorphism.affine:19:5: parse error:
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/test/e2e/fixtures/traits.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/test/e2e/fixtures/type_decls.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/test/e2e/fixtures/type_decls.affine:30:5: parse error: Synta
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/test/e2e/fixtures/wasm_simple.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/test/golden/binary_ops.affine	TYPE-ONLY	Resolution error: (Resolve.UndefinedVariable
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/test/golden/effects.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/test/golden/functions.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/test/golden/hello.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/test/golden/imports.affine	TYPE-ONLY	Resolution error: (Resolve.UndefinedModule
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/test/golden/lambda.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/test/golden/literals.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/test/golden/ownership.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/test/golden/patterns.affine	TYPE-ONLY	Resolution error: (Resolve.UndefinedVariable
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/test/golden/rows.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/test/golden/rows.affine:7:4: parse error: Syntax error
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/test/golden/traits.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/test/golden/types.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/test_if.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/test_min.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/test_simple.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/test_spread.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/test_spread.affine:2:13: parse error: Syntax error
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/test_spread2.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/test_spread2.affine:2:13: parse error: Syntax error
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/test_spread3.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/test_spread3.affine:2:16: parse error: Syntax error
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/borrow/minimal.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/borrow/move_test.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/borrow/simple.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/borrow/simple_move_test.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/tests/borrow/simple_move_test.affine:3:28: parse error: Synt
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/borrow/simple_own.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/borrow/test_immutable_assign_error.affine	TYPE-ONLY	Borrow error: cannot borrow `x` as mutable — it is not declared with `let mut` (at /home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/r
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/borrow/test_move.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/tests/borrow/test_move.affine:47:5: parse error: Syntax erro
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/borrow/test_move_after_use.affine	TYPE-ONLY	Borrow error: use of moved value: `x`
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/borrow/test_mutable_borrow.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/borrow/test_ref_borrow.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/borrow/use_after_move.affine	TYPE-ONLY	Borrow error: use of moved value: `value`
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/borrow/valid_move.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/simple_arithmetic.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_array_bounds.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_array_empty.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_array_simple.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_array_single.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_array_sum.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_assign_compound.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_assign_simple.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_closure_capture.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_closure_debug.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_closure_multi_capture.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_enum_pattern.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_for_loop.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_function_call.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_lambda_call.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_lambda_multi_param.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_match_literal.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_match_mixed.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_match_simple.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_multiple_calls.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_multiple_lambdas.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_opt_constant_fold.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_opt_if_fold.affine	TYPE-ONLY	Unification error: (Unify.TypeMismatch (Unit, Int))
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_pattern_as.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_pattern_or.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_pattern_record.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_pattern_record.affine:4:12: parse error: 
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_pattern_tuple.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_record_multi_field.affine	TYPE-ONLY	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_record_multi_field.affine:4:12: parse err
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_record_multiple.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_record_multiple.affine:4:13: parse error:
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_record_simple.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_record_simple.affine:4:12: parse error: S
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_recursive_call.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_ref_deref_chain.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_ref_deref_simple.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_simple_lambda.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_string_diff.affine	TYPE-ONLY	Unification error: (Unify.TypeMismatch (String, Int))
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_string_eq.affine	TYPE-ONLY	Unification error: (Unify.TypeMismatch (String, Int))
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_string_multi.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_string_ptr.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_string_simple.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_tuple_five.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_tuple_nested.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_tuple_pair.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_tuple_record_array.affine	TYPE-ONLY	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_tuple_record_array.affine:6:13: parse err
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_tuple_simple.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_variant_as_int.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_variant_match_arg.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_variant_match_none.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_variant_multi_arg.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_variant_with_arg.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/codegen/test_while_loop.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/conformance/arithmetic/add.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/tests/conformance/arithmetic/add.affine:47:5: parse error: S
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/conformance/arithmetic/divide.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/tests/conformance/arithmetic/divide.affine:54:5: parse error
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/conformance/arithmetic/modulo.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/tests/conformance/arithmetic/modulo.affine:47:5: parse error
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/conformance/arithmetic/multiply.affine	TYPE-ONLY	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/tests/conformance/arithmetic/multiply.affine:54:5: parse err
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/conformance/arithmetic/subtract.affine	TYPE-ONLY	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/tests/conformance/arithmetic/subtract.affine:54:5: parse err
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/conformance/collection/contains.affine	TYPE-ONLY	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/tests/conformance/collection/contains.affine:60:5: parse err
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/conformance/collection/filter.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/tests/conformance/collection/filter.affine:52:5: parse error
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/conformance/collection/fold.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/tests/conformance/collection/fold.affine:60:5: parse error: 
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/conformance/collection/map.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/tests/conformance/collection/map.affine:52:5: parse error: S
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/conformance/comparison/equal.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/tests/conformance/comparison/equal.affine:46:5: parse error:
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/conformance/comparison/greater_equal.affine	TYPE-ONLY	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/tests/conformance/comparison/greater_equal.affine:36:5: pars
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/conformance/comparison/greater_than.affine	TYPE-ONLY	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/tests/conformance/comparison/greater_than.affine:36:5: parse
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/conformance/comparison/less_equal.affine	TYPE-ONLY	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/tests/conformance/comparison/less_equal.affine:36:5: parse e
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/conformance/comparison/less_than.affine	TYPE-ONLY	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/tests/conformance/comparison/less_than.affine:36:5: parse er
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/conformance/comparison/not_equal.affine	TYPE-ONLY	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/tests/conformance/comparison/not_equal.affine:36:5: parse er
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/conformance/conditional/if_then_else.affine	TYPE-ONLY	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/tests/conformance/conditional/if_then_else.affine:47:5: pars
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/conformance/logical/and.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/tests/conformance/logical/and.affine:31:5: parse error: Synt
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/conformance/logical/not.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/tests/conformance/logical/not.affine:21:5: parse error: Synt
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/conformance/logical/or.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/tests/conformance/logical/or.affine:31:5: parse error: Synta
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/conformance/run_all.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/tests/conformance/run_all.affine:1:1: parse error: Syntax er
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/conformance/string/concat.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/tests/conformance/string/concat.affine:41:5: parse error: Sy
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/conformance/string/length.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/tests/conformance/string/length.affine:41:5: parse error: Sy
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/conformance/string/substring.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/tests/conformance/string/substring.affine:44:5: parse error:
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/effects/basic_effect.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/modules/test_const.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/modules/test_import.affine	TYPE-ONLY	Resolution error: (Resolve.UndefinedModule
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/modules/test_import_only.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/modules/test_math_functions.affine	TYPE-ONLY	Resolution error: (Resolve.UndefinedModule
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/modules/test_no_import.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/modules/test_simple_import.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/parser/baseline_block.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/parser/baseline_stmt.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/parser/unsafe_all.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/tests/parser/unsafe_all.affine:36:10: parse error: Syntax er
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/parser/unsafe_empty.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/parser/unsafe_ops.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/tests/parser/unsafe_ops.affine:11:13: parse error: Syntax er
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/parser/unsafe_read.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/parser/unsafe_simple.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/parser/unsafe_stmt.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/types/test_dependent_e2e.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/tests/types/test_dependent_e2e.affine:4:19: parse error: Syn
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/types/test_dependent_parsing.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/tests/types/test_dependent_parsing.affine:4:17: parse error:
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/types/test_effect_inference.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/types/test_effect_lambda.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/types/test_effect_polymorphism.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/types/test_generic_programming.affine	TYPE-ONLY	Not implemented: Too many arguments for kind
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/types/test_hkt_parsing.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/tests/types/test_hkt_parsing.affine:27:1: parse error: Synta
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/types/test_kind_checking.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/tests/types/test_kind_checking.affine:15:11: parse error: Sy
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/types/test_lambda_scope_fix.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/types/test_lambda_scope_simple.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/types/test_parse_row_type.affine	PASS	Type checking passed
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/types/test_row_polymorphism.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/tests/types/test_row_polymorphism.affine:19:13: parse error:
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/types/test_row_simple.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/tests/types/test_row_simple.affine:11:12: parse error: Synta
+developer-ecosystem	affinescript-ecosystem/rattlescript/affinescript/tests/types/test_traits.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/developer-ecosystem/affinescript-ecosystem/rattlescript/affinescript/tests/types/test_traits.affine:5:11: parse error: Syntax err
+echidna	src/ui/tea/echidna_gui.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/echidna/src/ui/tea/echidna_gui.affine:45:5: parse error: Syntax error
+game-server-admin	src/ui/tea/gsa_gui.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/game-server-admin/src/ui/tea/gsa_gui.affine:42:20: parse error: Syntax error
+git-scripts	src/ui/tea/git_scripts_gui.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/git-scripts/src/ui/tea/git_scripts_gui.affine:34:12: parse error: Syntax error
+idaptik	migration/main/Boot.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/idaptik/migration/main/Boot.affine:20:12: parse error: Syntax error
+idaptik	migration/main/Main.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/idaptik/migration/main/Main.affine:37:12: parse error: Syntax error
+idaptik	migration/main/MultiplayerHandlers.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/idaptik/migration/main/MultiplayerHandlers.affine:24:27: parse error: Syntax error
+idaptik	migration/main/StartupError.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/idaptik/migration/main/StartupError.affine:24:20: parse error: Syntax error
+idaptik	migration/shared/CoopEvent.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/idaptik/migration/shared/CoopEvent.affine:17:18: parse error: Syntax error
+idaptik	migration/shared/DeviceEvent.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/idaptik/migration/shared/DeviceEvent.affine:19:18: parse error: Syntax error
+idaptik	migration/shared/GameEvent.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/idaptik/migration/shared/GameEvent.affine:21:17: parse error: Syntax error
+idaptik	migration/shared/InventoryEvent.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/idaptik/migration/shared/InventoryEvent.affine:17:18: parse error: Syntax error
+idaptik	migration/shared/NetworkEvent.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/idaptik/migration/shared/NetworkEvent.affine:18:18: parse error: Syntax error
+idaptik	migration/shared/PlayerEvent.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/idaptik/migration/shared/PlayerEvent.affine:25:36: parse error: Syntax error
+idaptik	migration/shared/PortNames.affine	PASS	Type checking passed
+idaptik	migration/shared/VMEvent.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/idaptik/migration/shared/VMEvent.affine:11:15: parse error: Syntax error
+idaptik	migration/shared/WiringEvent.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/idaptik/migration/shared/WiringEvent.affine:18:18: parse error: Syntax error
+idaptik	src/app/combat/PlayerHP.affine	PASS	Type checking passed
+idaptik-dlc-vm	src/Instruction.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/idaptik-dlc-vm/src/Instruction.affine:1:1: parse error: Syntax error
+idaptik-dlc-vm	src/State.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/idaptik-dlc-vm/src/State.affine:1:1: parse error: Syntax error
+idaptik-dlc-vm	src/Step.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/idaptik-dlc-vm/src/Step.affine:1:1: parse error: Syntax error
+idaptik-dlc-vm	src/Vm.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/idaptik-dlc-vm/src/Vm.affine:1:1: parse error: Syntax error
+idaptik-dlc-vm	src/instructions/Add.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/idaptik-dlc-vm/src/instructions/Add.affine:1:1: parse error: Syntax error
+idaptik-dlc-vm	src/instructions/And.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/idaptik-dlc-vm/src/instructions/And.affine:1:1: parse error: Syntax error
+idaptik-dlc-vm	src/instructions/Call.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/idaptik-dlc-vm/src/instructions/Call.affine:1:1: parse error: Syntax error
+idaptik-dlc-vm	src/instructions/Div.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/idaptik-dlc-vm/src/instructions/Div.affine:1:1: parse error: Syntax error
+idaptik-dlc-vm	src/instructions/Flip.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/idaptik-dlc-vm/src/instructions/Flip.affine:1:1: parse error: Syntax error
+idaptik-dlc-vm	src/instructions/IfPos.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/idaptik-dlc-vm/src/instructions/IfPos.affine:1:1: parse error: Syntax error
+idaptik-dlc-vm	src/instructions/IfZero.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/idaptik-dlc-vm/src/instructions/IfZero.affine:1:1: parse error: Syntax error
+idaptik-dlc-vm	src/instructions/Load.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/idaptik-dlc-vm/src/instructions/Load.affine:1:1: parse error: Syntax error
+idaptik-dlc-vm	src/instructions/Loop.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/idaptik-dlc-vm/src/instructions/Loop.affine:1:1: parse error: Syntax error
+idaptik-dlc-vm	src/instructions/Mul.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/idaptik-dlc-vm/src/instructions/Mul.affine:1:1: parse error: Syntax error
+idaptik-dlc-vm	src/instructions/Negate.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/idaptik-dlc-vm/src/instructions/Negate.affine:1:1: parse error: Syntax error
+idaptik-dlc-vm	src/instructions/Noop.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/idaptik-dlc-vm/src/instructions/Noop.affine:1:1: parse error: Syntax error
+idaptik-dlc-vm	src/instructions/Or.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/idaptik-dlc-vm/src/instructions/Or.affine:1:1: parse error: Syntax error
+idaptik-dlc-vm	src/instructions/Pop.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/idaptik-dlc-vm/src/instructions/Pop.affine:1:1: parse error: Syntax error
+idaptik-dlc-vm	src/instructions/Push.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/idaptik-dlc-vm/src/instructions/Push.affine:1:1: parse error: Syntax error
+idaptik-dlc-vm	src/instructions/Recv.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/idaptik-dlc-vm/src/instructions/Recv.affine:1:1: parse error: Syntax error
+idaptik-dlc-vm	src/instructions/Rol.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/idaptik-dlc-vm/src/instructions/Rol.affine:1:1: parse error: Syntax error
+idaptik-dlc-vm	src/instructions/Ror.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/idaptik-dlc-vm/src/instructions/Ror.affine:1:1: parse error: Syntax error
+idaptik-dlc-vm	src/instructions/Send.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/idaptik-dlc-vm/src/instructions/Send.affine:1:1: parse error: Syntax error
+idaptik-dlc-vm	src/instructions/Store.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/idaptik-dlc-vm/src/instructions/Store.affine:1:1: parse error: Syntax error
+idaptik-dlc-vm	src/instructions/Sub.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/idaptik-dlc-vm/src/instructions/Sub.affine:1:1: parse error: Syntax error
+idaptik-dlc-vm	src/instructions/Swap.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/idaptik-dlc-vm/src/instructions/Swap.affine:1:1: parse error: Syntax error
+idaptik-dlc-vm	src/instructions/Xor.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/idaptik-dlc-vm/src/instructions/Xor.affine:1:1: parse error: Syntax error
+idaptik-dlc-vm	tests/properties/reversibility.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/idaptik-dlc-vm/tests/properties/reversibility.affine:1:1: parse error: Syntax error
+invariant-path	src/ui/tea/invariant_path_gui.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/invariant-path/src/ui/tea/invariant_path_gui.affine:20:20: parse error: Syntax error
+jaffascript	examples/hello.affine	PASS	Type checking passed
+lucidscript	examples/hello.affine	PASS	Type checking passed
+my-lang	vscode-extension/src/extension.affine	PASS	Type checking passed
+nextgen-language-evangeliser	gui/EvangeliserGui.affine	PASS	Type checking passed
+odds-and-sods-package-manager	src/ui/tea/opsm_gui.affine	TYPE-ONLY	Unification error: (Unify.TypeMismatch (String, Int))
+panll	src/core/provisioner_engine.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/panll/src/core/provisioner_engine.affine:18:24: parse error: Syntax error
+panll	src/ui/tea/panll_gui.affine	PASS	Type checking passed
+panll	src/ui/tea/wizard.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/panll/src/ui/tea/wizard.affine:18:20: parse error: Syntax error
+proof-burrower	affinescript/conformance/invalid/001_unclosed_brace.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/conformance/invalid/001_unclosed_brace.affine:4:13: parse error: Syntax error
+proof-burrower	affinescript/conformance/invalid/002_unclosed_string.affine	TYPE-ONLY	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/conformance/invalid/002_unclosed_string.affine:6:1: lexer error: Unterminated string literal
+proof-burrower	affinescript/conformance/invalid/003_bad_number.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/conformance/invalid/003_bad_number.affine:4:11: parse error: Syntax error
+proof-burrower	affinescript/conformance/invalid/004_unexpected_token.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/conformance/invalid/004_unexpected_token.affine:4:3: parse error: Syntax error
+proof-burrower	affinescript/conformance/invalid/005_missing_arrow.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/conformance/invalid/005_missing_arrow.affine:3:9: parse error: Syntax error
+proof-burrower	affinescript/conformance/invalid/006_bad_operator.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/conformance/invalid/006_bad_operator.affine:4:11: parse error: Syntax error
+proof-burrower	affinescript/conformance/invalid/007_incomplete_effect.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/conformance/invalid/007_incomplete_effect.affine:4:27: parse error: Syntax error
+proof-burrower	affinescript/conformance/invalid/008_mismatched_parens.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/conformance/invalid/008_mismatched_parens.affine:4:16: parse error: Syntax error
+proof-burrower	affinescript/conformance/invalid/009_reserved_keyword.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/conformance/invalid/009_reserved_keyword.affine:4:3: parse error: Syntax error
+proof-burrower	affinescript/conformance/invalid/010_empty_match.affine	PASS	Type checking passed
+proof-burrower	affinescript/conformance/invalid/011_bad_escape.affine	PASS	Type checking passed
+proof-burrower	affinescript/conformance/invalid/012_trailing_comma.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/conformance/invalid/012_trailing_comma.affine:3:15: parse error: Syntax error
+proof-burrower	affinescript/conformance/valid/001_empty.affine	PASS	Type checking passed
+proof-burrower	affinescript/conformance/valid/002_comments.affine	PASS	Type checking passed
+proof-burrower	affinescript/conformance/valid/003_let_bindings.affine	PASS	Type checking passed
+proof-burrower	affinescript/conformance/valid/004_literals.affine	PASS	Type checking passed
+proof-burrower	affinescript/conformance/valid/005_functions.affine	PASS	Type checking passed
+proof-burrower	affinescript/conformance/valid/006_type_alias.affine	TYPE-ONLY	Not implemented: Too many arguments for kind
+proof-burrower	affinescript/conformance/valid/007_struct_def.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/conformance/valid/007_struct_def.affine:20:3: parse error: Syntax error
+proof-burrower	affinescript/conformance/valid/008_enum_def.affine	PASS	Type checking passed
+proof-burrower	affinescript/conformance/valid/009_effect_def.affine	PASS	Type checking passed
+proof-burrower	affinescript/conformance/valid/010_pattern_match.affine	PASS	Type checking passed
+proof-burrower	affinescript/conformance/valid/011_rows.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/conformance/valid/011_rows.affine:12:5: parse error: Syntax error
+proof-burrower	affinescript/conformance/valid/012_ownership.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/conformance/valid/012_ownership.affine:19:3: parse error: Syntax error
+proof-burrower	affinescript/docs/guides/warmup/01_basics.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/docs/guides/warmup/01_basics.affine:1:1: parse error: Syntax error
+proof-burrower	affinescript/docs/guides/warmup/02_ownership.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/docs/guides/warmup/02_ownership.affine:36:13: parse error: Syntax error
+proof-burrower	affinescript/docs/guides/warmup/03_effects.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/docs/guides/warmup/03_effects.affine:37:50: parse error: Syntax error
+proof-burrower	affinescript/docs/guides/warmup/04_rows.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/docs/guides/warmup/04_rows.affine:21:39: parse error: Syntax error
+proof-burrower	affinescript/examples/comprehensive_test.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/examples/comprehensive_test.affine:15:5: parse error: Syntax error
+proof-burrower	affinescript/examples/effects.affine	PASS	Type checking passed
+proof-burrower	affinescript/examples/exception_test.affine	PASS	Type checking passed
+proof-burrower	affinescript/examples/hello.affine	PASS	Type checking passed
+proof-burrower	affinescript/examples/lessons/01_hello.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/examples/lessons/01_hello.affine:1:1: parse error: Syntax error
+proof-burrower	affinescript/examples/ownership.affine	PASS	Type checking passed
+proof-burrower	affinescript/examples/rows.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/examples/rows.affine:18:5: parse error: Syntax error
+proof-burrower	affinescript/examples/simple_test.affine	PASS	Type checking passed
+proof-burrower	affinescript/examples/traits.affine	PASS	Type checking passed
+proof-burrower	affinescript/examples/typecheck_complete_test.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/examples/typecheck_complete_test.affine:18:5: parse error: Syntax error
+proof-burrower	affinescript/examples/typecheck_features_test.affine	PASS	Type checking passed
+proof-burrower	affinescript/stdlib/Core.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/stdlib/Core.affine:14:5: parse error: Syntax error
+proof-burrower	affinescript/stdlib/Math.affine	PASS	Type checking passed
+proof-burrower	affinescript/stdlib/Option.affine	TYPE-ONLY	Resolution error: (Resolve.UndefinedVariable
+proof-burrower	affinescript/stdlib/Result.affine	TYPE-ONLY	Resolution error: (Resolve.UndefinedVariable
+proof-burrower	affinescript/stdlib/collections.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/stdlib/collections.affine:40:13: parse error: Syntax error
+proof-burrower	affinescript/stdlib/effects.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/stdlib/effects.affine:21:8: parse error: Syntax error
+proof-burrower	affinescript/stdlib/io.affine	TYPE-ONLY	Resolution error: (Resolve.UndefinedVariable
+proof-burrower	affinescript/stdlib/math.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/stdlib/math.affine:354:3: parse error: Syntax error
+proof-burrower	affinescript/stdlib/option.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/stdlib/option.affine:313:15: parse error: Syntax error
+proof-burrower	affinescript/stdlib/prelude.affine	TYPE-ONLY	Borrow error: cannot borrow `result` as mutable — it is not declared with `let mut` (at /home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/stdlib/prel
+proof-burrower	affinescript/stdlib/result.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/stdlib/result.affine:221:1: parse error: Syntax error
+proof-burrower	affinescript/stdlib/string.affine	TYPE-ONLY	Resolution error: (Resolve.UndefinedVariable
+proof-burrower	affinescript/stdlib/testing.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/stdlib/testing.affine:302:3: parse error: Syntax error
+proof-burrower	affinescript/stdlib/traits.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/stdlib/traits.affine:124:25: parse error: Syntax error
+proof-burrower	affinescript/test/e2e/fixtures/affine_basic.affine	PASS	Type checking passed
+proof-burrower	affinescript/test/e2e/fixtures/affine_let_valid.affine	PASS	Type checking passed
+proof-burrower	affinescript/test/e2e/fixtures/affine_let_valid_sugar.affine	PASS	Type checking passed
+proof-burrower	affinescript/test/e2e/fixtures/affine_violation.affine	PASS	Type checking passed
+proof-burrower	affinescript/test/e2e/fixtures/arithmetic.affine	PASS	Type checking passed
+proof-burrower	affinescript/test/e2e/fixtures/bug_001_omega_let_smuggles_linear.affine	TYPE-ONLY	Quantity error: @linear binding 'r' must be used exactly once, but was used multiple times
+proof-burrower	affinescript/test/e2e/fixtures/bug_001_sugar_form.affine	TYPE-ONLY	Quantity error: @linear binding 'r' must be used exactly once, but was used multiple times
+proof-burrower	affinescript/test/e2e/fixtures/cmd_dropped.affine	TYPE-ONLY	Quantity error: @linear binding 'cmd' must be used exactly once, but was never used
+proof-burrower	affinescript/test/e2e/fixtures/cmd_linear.affine	PASS	Type checking passed
+proof-burrower	affinescript/test/e2e/fixtures/counter.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/test/e2e/fixtures/counter.affine:72:5: parse error: Syntax error
+proof-burrower	affinescript/test/e2e/fixtures/dependent_types.affine	PASS	Type checking passed
+proof-burrower	affinescript/test/e2e/fixtures/effects.affine	PASS	Type checking passed
+proof-burrower	affinescript/test/e2e/fixtures/erased_violation.affine	PASS	Type checking passed
+proof-burrower	affinescript/test/e2e/fixtures/full_pipeline.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/test/e2e/fixtures/full_pipeline.affine:16:5: parse error: Syntax error
+proof-burrower	affinescript/test/e2e/fixtures/interp_simple.affine	PASS	Type checking passed
+proof-burrower	affinescript/test/e2e/fixtures/julia_simple.affine	PASS	Type checking passed
+proof-burrower	affinescript/test/e2e/fixtures/lambda.affine	PASS	Type checking passed
+proof-burrower	affinescript/test/e2e/fixtures/linear_arrow.affine	PASS	Type checking passed
+proof-burrower	affinescript/test/e2e/fixtures/linear_arrow_violation.affine	TYPE-ONLY	Quantity error: @linear binding 'x' must be used exactly once, but was used multiple times
+proof-burrower	affinescript/test/e2e/fixtures/ownership.affine	PASS	Type checking passed
+proof-burrower	affinescript/test/e2e/fixtures/ownership_codegen.affine	PASS	Type checking passed
+proof-burrower	affinescript/test/e2e/fixtures/pattern_match.affine	TYPE-ONLY	Unification error: (Unify.TypeMismatch (Int, Unit))
+proof-burrower	affinescript/test/e2e/fixtures/refinement_types.affine	PASS	Type checking passed
+proof-burrower	affinescript/test/e2e/fixtures/row_polymorphism.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/test/e2e/fixtures/row_polymorphism.affine:19:5: parse error: Syntax error
+proof-burrower	affinescript/test/e2e/fixtures/titlescreen.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/test/e2e/fixtures/titlescreen.affine:48:5: parse error: Syntax error
+proof-burrower	affinescript/test/e2e/fixtures/trait_impl_missing_method.affine	TYPE-ONLY	Not implemented: Method 'summary' required by trait 'Describe' is not implemented
+proof-burrower	affinescript/test/e2e/fixtures/trait_impl_valid.affine	PASS	Type checking passed
+proof-burrower	affinescript/test/e2e/fixtures/traits.affine	PASS	Type checking passed
+proof-burrower	affinescript/test/e2e/fixtures/try_body_only.affine	PASS	Type checking passed
+proof-burrower	affinescript/test/e2e/fixtures/try_catch_finally.affine	PASS	Type checking passed
+proof-burrower	affinescript/test/e2e/fixtures/try_catch_var.affine	PASS	Type checking passed
+proof-burrower	affinescript/test/e2e/fixtures/try_catch_wildcard.affine	PASS	Type checking passed
+proof-burrower	affinescript/test/e2e/fixtures/try_finally.affine	PASS	Type checking passed
+proof-burrower	affinescript/test/e2e/fixtures/type_decls.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/test/e2e/fixtures/type_decls.affine:30:5: parse error: Syntax error
+proof-burrower	affinescript/test/e2e/fixtures/verify_ownership_clean.affine	PASS	Type checking passed
+proof-burrower	affinescript/test/e2e/fixtures/wasm_simple.affine	PASS	Type checking passed
+proof-burrower	affinescript/test/golden/binary_ops.affine	TYPE-ONLY	Resolution error: (Resolve.UndefinedVariable
+proof-burrower	affinescript/test/golden/effects.affine	PASS	Type checking passed
+proof-burrower	affinescript/test/golden/functions.affine	PASS	Type checking passed
+proof-burrower	affinescript/test/golden/hello.affine	PASS	Type checking passed
+proof-burrower	affinescript/test/golden/imports.affine	TYPE-ONLY	Resolution error: (Resolve.UndefinedModule
+proof-burrower	affinescript/test/golden/lambda.affine	PASS	Type checking passed
+proof-burrower	affinescript/test/golden/literals.affine	PASS	Type checking passed
+proof-burrower	affinescript/test/golden/ownership.affine	PASS	Type checking passed
+proof-burrower	affinescript/test/golden/patterns.affine	TYPE-ONLY	Resolution error: (Resolve.UndefinedVariable
+proof-burrower	affinescript/test/golden/rows.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/test/golden/rows.affine:7:4: parse error: Syntax error
+proof-burrower	affinescript/test/golden/traits.affine	PASS	Type checking passed
+proof-burrower	affinescript/test/golden/types.affine	PASS	Type checking passed
+proof-burrower	affinescript/test_if.affine	PASS	Type checking passed
+proof-burrower	affinescript/test_min.affine	PASS	Type checking passed
+proof-burrower	affinescript/test_simple.affine	PASS	Type checking passed
+proof-burrower	affinescript/test_spread.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/test_spread.affine:2:13: parse error: Syntax error
+proof-burrower	affinescript/test_spread2.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/test_spread2.affine:2:13: parse error: Syntax error
+proof-burrower	affinescript/test_spread3.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/test_spread3.affine:2:16: parse error: Syntax error
+proof-burrower	affinescript/tests/borrow/minimal.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/borrow/move_test.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/borrow/simple.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/borrow/simple_move_test.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/tests/borrow/simple_move_test.affine:3:28: parse error: Syntax error
+proof-burrower	affinescript/tests/borrow/simple_own.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/borrow/test_immutable_assign_error.affine	TYPE-ONLY	Borrow error: cannot borrow `x` as mutable — it is not declared with `let mut` (at /home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/tests/borrow/tes
+proof-burrower	affinescript/tests/borrow/test_move.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/tests/borrow/test_move.affine:47:5: parse error: Syntax error
+proof-burrower	affinescript/tests/borrow/test_move_after_use.affine	TYPE-ONLY	Borrow error: use of moved value: `x`
+proof-burrower	affinescript/tests/borrow/test_mutable_borrow.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/borrow/test_ref_borrow.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/borrow/use_after_move.affine	TYPE-ONLY	Borrow error: use of moved value: `value`
+proof-burrower	affinescript/tests/borrow/valid_move.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/codegen/simple_arithmetic.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/codegen/test_array_bounds.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/codegen/test_array_empty.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/codegen/test_array_simple.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/codegen/test_array_single.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/codegen/test_array_sum.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/codegen/test_assign_compound.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/codegen/test_assign_simple.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/codegen/test_closure_capture.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/codegen/test_closure_debug.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/codegen/test_closure_multi_capture.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/codegen/test_enum_pattern.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/codegen/test_for_loop.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/codegen/test_function_call.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/codegen/test_lambda_call.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/codegen/test_lambda_multi_param.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/codegen/test_match_literal.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/codegen/test_match_mixed.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/codegen/test_match_simple.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/codegen/test_multiple_calls.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/codegen/test_multiple_lambdas.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/codegen/test_opt_constant_fold.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/codegen/test_opt_if_fold.affine	TYPE-ONLY	Unification error: (Unify.TypeMismatch (Unit, Int))
+proof-burrower	affinescript/tests/codegen/test_pattern_as.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/codegen/test_pattern_or.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/codegen/test_pattern_record.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/tests/codegen/test_pattern_record.affine:4:12: parse error: Syntax error
+proof-burrower	affinescript/tests/codegen/test_pattern_tuple.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/codegen/test_record_multi_field.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/tests/codegen/test_record_multi_field.affine:4:12: parse error: Syntax error
+proof-burrower	affinescript/tests/codegen/test_record_multiple.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/tests/codegen/test_record_multiple.affine:4:13: parse error: Syntax error
+proof-burrower	affinescript/tests/codegen/test_record_simple.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/tests/codegen/test_record_simple.affine:4:12: parse error: Syntax error
+proof-burrower	affinescript/tests/codegen/test_recursive_call.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/codegen/test_ref_deref_chain.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/codegen/test_ref_deref_simple.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/codegen/test_simple_lambda.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/codegen/test_string_diff.affine	TYPE-ONLY	Unification error: (Unify.TypeMismatch (String, Int))
+proof-burrower	affinescript/tests/codegen/test_string_eq.affine	TYPE-ONLY	Unification error: (Unify.TypeMismatch (String, Int))
+proof-burrower	affinescript/tests/codegen/test_string_multi.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/codegen/test_string_ptr.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/codegen/test_string_simple.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/codegen/test_tuple_five.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/codegen/test_tuple_nested.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/codegen/test_tuple_pair.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/codegen/test_tuple_record_array.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/tests/codegen/test_tuple_record_array.affine:6:13: parse error: Syntax error
+proof-burrower	affinescript/tests/codegen/test_tuple_simple.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/codegen/test_variant_as_int.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/codegen/test_variant_match_arg.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/codegen/test_variant_match_none.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/codegen/test_variant_multi_arg.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/codegen/test_variant_with_arg.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/codegen/test_while_loop.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/conformance/arithmetic/add.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/tests/conformance/arithmetic/add.affine:47:5: parse error: Syntax error
+proof-burrower	affinescript/tests/conformance/arithmetic/divide.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/tests/conformance/arithmetic/divide.affine:54:5: parse error: Syntax error
+proof-burrower	affinescript/tests/conformance/arithmetic/modulo.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/tests/conformance/arithmetic/modulo.affine:47:5: parse error: Syntax error
+proof-burrower	affinescript/tests/conformance/arithmetic/multiply.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/tests/conformance/arithmetic/multiply.affine:54:5: parse error: Syntax error
+proof-burrower	affinescript/tests/conformance/arithmetic/subtract.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/tests/conformance/arithmetic/subtract.affine:54:5: parse error: Syntax error
+proof-burrower	affinescript/tests/conformance/collection/contains.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/tests/conformance/collection/contains.affine:60:5: parse error: Syntax error
+proof-burrower	affinescript/tests/conformance/collection/filter.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/tests/conformance/collection/filter.affine:52:5: parse error: Syntax error
+proof-burrower	affinescript/tests/conformance/collection/fold.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/tests/conformance/collection/fold.affine:60:5: parse error: Syntax error
+proof-burrower	affinescript/tests/conformance/collection/map.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/tests/conformance/collection/map.affine:52:5: parse error: Syntax error
+proof-burrower	affinescript/tests/conformance/comparison/equal.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/tests/conformance/comparison/equal.affine:46:5: parse error: Syntax error
+proof-burrower	affinescript/tests/conformance/comparison/greater_equal.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/tests/conformance/comparison/greater_equal.affine:36:5: parse error: Syntax error
+proof-burrower	affinescript/tests/conformance/comparison/greater_than.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/tests/conformance/comparison/greater_than.affine:36:5: parse error: Syntax error
+proof-burrower	affinescript/tests/conformance/comparison/less_equal.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/tests/conformance/comparison/less_equal.affine:36:5: parse error: Syntax error
+proof-burrower	affinescript/tests/conformance/comparison/less_than.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/tests/conformance/comparison/less_than.affine:36:5: parse error: Syntax error
+proof-burrower	affinescript/tests/conformance/comparison/not_equal.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/tests/conformance/comparison/not_equal.affine:36:5: parse error: Syntax error
+proof-burrower	affinescript/tests/conformance/conditional/if_then_else.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/tests/conformance/conditional/if_then_else.affine:47:5: parse error: Syntax error
+proof-burrower	affinescript/tests/conformance/logical/and.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/tests/conformance/logical/and.affine:31:5: parse error: Syntax error
+proof-burrower	affinescript/tests/conformance/logical/not.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/tests/conformance/logical/not.affine:21:5: parse error: Syntax error
+proof-burrower	affinescript/tests/conformance/logical/or.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/tests/conformance/logical/or.affine:31:5: parse error: Syntax error
+proof-burrower	affinescript/tests/conformance/run_all.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/tests/conformance/run_all.affine:1:1: parse error: Syntax error
+proof-burrower	affinescript/tests/conformance/string/concat.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/tests/conformance/string/concat.affine:41:5: parse error: Syntax error
+proof-burrower	affinescript/tests/conformance/string/length.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/tests/conformance/string/length.affine:41:5: parse error: Syntax error
+proof-burrower	affinescript/tests/conformance/string/substring.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/tests/conformance/string/substring.affine:44:5: parse error: Syntax error
+proof-burrower	affinescript/tests/effects/basic_effect.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/modules/test_const.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/modules/test_import.affine	TYPE-ONLY	Resolution error: (Resolve.UndefinedModule
+proof-burrower	affinescript/tests/modules/test_import_only.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/modules/test_math_functions.affine	TYPE-ONLY	Resolution error: (Resolve.UndefinedModule
+proof-burrower	affinescript/tests/modules/test_no_import.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/modules/test_simple_import.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/parser/baseline_block.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/parser/baseline_stmt.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/parser/unsafe_all.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/tests/parser/unsafe_all.affine:36:10: parse error: Syntax error
+proof-burrower	affinescript/tests/parser/unsafe_empty.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/parser/unsafe_ops.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/tests/parser/unsafe_ops.affine:11:13: parse error: Syntax error
+proof-burrower	affinescript/tests/parser/unsafe_read.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/parser/unsafe_simple.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/parser/unsafe_stmt.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/types/test_dependent_e2e.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/tests/types/test_dependent_e2e.affine:4:19: parse error: Syntax error
+proof-burrower	affinescript/tests/types/test_dependent_parsing.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/tests/types/test_dependent_parsing.affine:4:17: parse error: Syntax error
+proof-burrower	affinescript/tests/types/test_effect_inference.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/types/test_effect_lambda.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/types/test_effect_polymorphism.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/types/test_generic_programming.affine	TYPE-ONLY	Not implemented: Too many arguments for kind
+proof-burrower	affinescript/tests/types/test_hkt_parsing.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/tests/types/test_hkt_parsing.affine:27:1: parse error: Syntax error
+proof-burrower	affinescript/tests/types/test_kind_checking.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/tests/types/test_kind_checking.affine:15:11: parse error: Syntax error
+proof-burrower	affinescript/tests/types/test_lambda_scope_fix.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/types/test_lambda_scope_simple.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/types/test_parse_row_type.affine	PASS	Type checking passed
+proof-burrower	affinescript/tests/types/test_row_polymorphism.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/tests/types/test_row_polymorphism.affine:19:13: parse error: Syntax error
+proof-burrower	affinescript/tests/types/test_row_simple.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/tests/types/test_row_simple.affine:11:12: parse error: Syntax error
+proof-burrower	affinescript/tests/types/test_traits.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/proof-burrower/affinescript/tests/types/test_traits.affine:5:11: parse error: Syntax error
+pseudoscript	examples/hello.affine	PASS	Type checking passed
+rattlescript	examples/hello.affine	PASS	Type checking passed
+standards	0-ai-gatekeeper-protocol/examples/SafeDOMExample.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/0-ai-gatekeeper-protocol/examples/SafeDOMExample.affine:11:28: parse error: Syntax error
+standards	0-ai-gatekeeper-protocol/mcp-repo-guardian/examples/SafeDOMExample.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/0-ai-gatekeeper-protocol/mcp-repo-guardian/examples/SafeDOMExample.affine:11:28: parse error: Syntax error
+standards	0-ai-gatekeeper-protocol/mcp-repo-guardian/lib/ocaml/Guards.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/0-ai-gatekeeper-protocol/mcp-repo-guardian/lib/ocaml/Guards.affine:9:61: parse error: Syntax error
+standards	0-ai-gatekeeper-protocol/mcp-repo-guardian/lib/ocaml/Index.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/0-ai-gatekeeper-protocol/mcp-repo-guardian/lib/ocaml/Index.affine:9:11: parse error: Syntax error
+standards	0-ai-gatekeeper-protocol/mcp-repo-guardian/lib/ocaml/Manifest.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/0-ai-gatekeeper-protocol/mcp-repo-guardian/lib/ocaml/Manifest.affine:8:65: parse error: Syntax error
+standards	0-ai-gatekeeper-protocol/mcp-repo-guardian/lib/ocaml/Session.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/0-ai-gatekeeper-protocol/mcp-repo-guardian/lib/ocaml/Session.affine:8:28: parse error: Syntax error
+standards	0-ai-gatekeeper-protocol/mcp-repo-guardian/lib/ocaml/Types.affine	PASS	Type checking passed
+standards	0-ai-gatekeeper-protocol/mcp-repo-guardian/src/Guards.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/0-ai-gatekeeper-protocol/mcp-repo-guardian/src/Guards.affine:9:61: parse error: Syntax error
+standards	0-ai-gatekeeper-protocol/mcp-repo-guardian/src/Index.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/0-ai-gatekeeper-protocol/mcp-repo-guardian/src/Index.affine:9:11: parse error: Syntax error
+standards	0-ai-gatekeeper-protocol/mcp-repo-guardian/src/Manifest.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/0-ai-gatekeeper-protocol/mcp-repo-guardian/src/Manifest.affine:8:65: parse error: Syntax error
+standards	0-ai-gatekeeper-protocol/mcp-repo-guardian/src/Session.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/0-ai-gatekeeper-protocol/mcp-repo-guardian/src/Session.affine:8:28: parse error: Syntax error
+standards	0-ai-gatekeeper-protocol/mcp-repo-guardian/src/Types.affine	PASS	Type checking passed
+standards	0-ai-gatekeeper-protocol/repo-guardian-fs/examples/SafeDOMExample.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/0-ai-gatekeeper-protocol/repo-guardian-fs/examples/SafeDOMExample.affine:11:28: parse error: Syntax error
+standards	a2ml/actions/validate/examples/SafeDOMExample.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/a2ml/actions/validate/examples/SafeDOMExample.affine:11:28: parse error: Syntax error
+standards	a2ml/bindings/deno/examples/SafeDOMExample.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/a2ml/bindings/deno/examples/SafeDOMExample.affine:11:28: parse error: Syntax error
+standards	a2ml/bindings/deno/src/A2ML.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/a2ml/bindings/deno/src/A2ML.affine:22:1: parse error: Syntax error
+standards	a2ml/bindings/deno/src/A2ML_Parser.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/a2ml/bindings/deno/src/A2ML_Parser.affine:11:33: parse error: Syntax error
+standards	a2ml/bindings/deno/src/A2ML_Renderer.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/a2ml/bindings/deno/src/A2ML_Renderer.affine:11:54: parse error: Syntax error
+standards	a2ml/bindings/deno/src/A2ML_Types.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/a2ml/bindings/deno/src/A2ML_Types.affine:9:35: parse error: Syntax error
+standards	a2ml/bindings/haskell/examples/SafeDOMExample.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/a2ml/bindings/haskell/examples/SafeDOMExample.affine:11:28: parse error: Syntax error
+standards	a2ml/bindings/rust/examples/SafeDOMExample.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/a2ml/bindings/rust/examples/SafeDOMExample.affine:11:28: parse error: Syntax error
+standards	a2ml/editors/vscode/examples/SafeDOMExample.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/a2ml/editors/vscode/examples/SafeDOMExample.affine:11:28: parse error: Syntax error
+standards	a2ml/examples/SafeDOMExample.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/a2ml/examples/SafeDOMExample.affine:11:28: parse error: Syntax error
+standards	a2ml/pandoc/examples/SafeDOMExample.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/a2ml/pandoc/examples/SafeDOMExample.affine:11:28: parse error: Syntax error
+standards	a2ml/prototype/rescript/src/A2ml.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/a2ml/prototype/rescript/src/A2ml.affine:8:32: parse error: Syntax error
+standards	a2ml/prototype/rescript/src/Cli.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/a2ml/prototype/rescript/src/Cli.affine:10:28: parse error: Syntax error
+standards	a2ml/prototype/rescript/src/Compat.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/a2ml/prototype/rescript/src/Compat.affine:6:32: parse error: Syntax error
+standards	a2ml/prototype/rescript/src/Demo.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/a2ml/prototype/rescript/src/Demo.affine:8:32: parse error: Syntax error
+standards	a2ml/prototype/rescript/src/DumpAst.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/a2ml/prototype/rescript/src/DumpAst.affine:10:56: parse error: Syntax error
+standards	a2ml/prototype/rescript/src/Json.affine	TYPE-ONLY	Resolution error: (Resolve.UndefinedModule
+standards	a2ml/prototype/rescript/src/RunReport.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/a2ml/prototype/rescript/src/RunReport.affine:6:17: parse error: Syntax error
+standards	a2ml/prototype/rescript/src/RunVectors.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/a2ml/prototype/rescript/src/RunVectors.affine:8:41: parse error: Syntax error
+standards	a2ml/prototype/rescript/src/VectorReport.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/a2ml/prototype/rescript/src/VectorReport.affine:9:48: parse error: Syntax error
+standards	a2ml/prototype/rescript/src/VectorRunner.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/a2ml/prototype/rescript/src/VectorRunner.affine:9:48: parse error: Syntax error
+standards	a2ml/prototype/wasm/src/WasmDemo.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/a2ml/prototype/wasm/src/WasmDemo.affine:9:68: parse error: Syntax error
+standards	agentic-a2ml/examples/SafeDOMExample.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/agentic-a2ml/examples/SafeDOMExample.affine:11:28: parse error: Syntax error
+standards	anchor-a2ml/examples/SafeDOMExample.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/anchor-a2ml/examples/SafeDOMExample.affine:11:28: parse error: Syntax error
+standards	avow-protocol/examples/SafeDOMExample.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/avow-protocol/examples/SafeDOMExample.affine:11:28: parse error: Syntax error
+standards	avow-protocol/scripts/CreatePagesProjects.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/avow-protocol/scripts/CreatePagesProjects.affine:11:39: parse error: Syntax error
+standards	avow-protocol/scripts/DeployAllProjects.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/avow-protocol/scripts/DeployAllProjects.affine:11:39: parse error: Syntax error
+standards	avow-protocol/scripts/DeployDeno.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/avow-protocol/scripts/DeployDeno.affine:11:39: parse error: Syntax error
+standards	avow-protocol/scripts/DeployDirect.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/avow-protocol/scripts/DeployDirect.affine:11:39: parse error: Syntax error
+standards	avow-protocol/scripts/GenerateProof.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/avow-protocol/scripts/GenerateProof.affine:11:39: parse error: Syntax error
+standards	avow-protocol/scripts/SetupDomains.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/avow-protocol/scripts/SetupDomains.affine:11:39: parse error: Syntax error
+standards	avow-protocol/src/Mod.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/avow-protocol/src/Mod.affine:7:45: parse error: Syntax error
+standards	avow-protocol/src/Mod_test.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/avow-protocol/src/Mod_test.affine:9:40: parse error: Syntax error
+standards	avow-protocol/src/ProvenResult.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/avow-protocol/src/ProvenResult.affine:15:40: parse error: Syntax error
+standards	avow-protocol/src/ProvenResult_test.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/avow-protocol/src/ProvenResult_test.affine:9:40: parse error: Syntax error
+standards	avow-protocol/src/ProvenSafeUrl.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/avow-protocol/src/ProvenSafeUrl.affine:23:76: parse error: Syntax error
+standards	avow-protocol/src/bindings/Deno_Api.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/avow-protocol/src/bindings/Deno_Api.affine:5:16: parse error: Syntax error
+standards	avow-protocol/src/bindings/Deno_Std_Fs.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/avow-protocol/src/bindings/Deno_Std_Fs.affine:18:78: parse error: Syntax error
+standards	avow-protocol/src/bindings/Deno_Std_Path.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/avow-protocol/src/bindings/Deno_Std_Path.affine:7:49: parse error: Syntax error
+standards	avow-protocol/src/bindings/Fetch_Api.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/avow-protocol/src/bindings/Fetch_Api.affine:23:44: parse error: Syntax error
+standards	avow-protocol/telegram-bot/avow-telegram-bot/examples/SafeDOMExample.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/avow-protocol/telegram-bot/avow-telegram-bot/examples/SafeDOMExample.affine:11:28: parse error: Syntax error
+standards	avow-protocol/telegram-bot/avow-telegram-bot/src/bot.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/avow-protocol/telegram-bot/avow-telegram-bot/src/bot.affine:54:27: parse error: unknown quantity attribute '@handle_sta
+standards	avow-protocol/telegram-bot/avow-telegram-bot/src/database.affine	PASS	Type checking passed
+standards	avow-protocol/telegram-bot/avow-telegram-bot/src/grammy.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/avow-protocol/telegram-bot/avow-telegram-bot/src/grammy.affine:10:16: parse error: Syntax error
+standards	avow-protocol/telegram-bot/avow-telegram-bot/src/sqlite.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/avow-protocol/telegram-bot/avow-telegram-bot/src/sqlite.affine:11:36: parse error: Syntax error
+standards	avow-protocol/telegram-bot/avow-telegram-bot/src/stamp-mock.affine	PASS	Type checking passed
+standards	avow-protocol/telegram-bot/avow-telegram-bot/test-mock.affine	PASS	Type checking passed
+standards	avow-protocol/telegram-bot/examples/SafeDOMExample.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/avow-protocol/telegram-bot/examples/SafeDOMExample.affine:11:28: parse error: Syntax error
+standards	axel-protocol/axel_sts_demo.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/axel-protocol/axel_sts_demo.affine:9:55: parse error: Syntax error
+standards	axel-protocol/examples/SafeDOMExample.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/axel-protocol/examples/SafeDOMExample.affine:11:28: parse error: Syntax error
+standards	axel-protocol/src/AxelApp.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/axel-protocol/src/AxelApp.affine:24:3: parse error: Syntax error
+standards	axel-protocol/src/AxelSts.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/axel-protocol/src/AxelSts.affine:96:5: parse error: Syntax error
+standards	axel-protocol/src/ProvenResult.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/axel-protocol/src/ProvenResult.affine:15:40: parse error: Syntax error
+standards	axel-protocol/src/ProvenSafeUrl.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/axel-protocol/src/ProvenSafeUrl.affine:25:76: parse error: Syntax error
+standards	axel-protocol/src/Tea.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/axel-protocol/src/Tea.affine:5:11: parse error: Syntax error
+standards	axel-protocol/test/axel-sts_test.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/axel-protocol/test/axel-sts_test.affine:86:5: parse error: Syntax error
+standards	axel-protocol/test/validate-policy.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/axel-protocol/test/validate-policy.affine:28:56: parse error: Syntax error
+standards	axel-protocol/test/validate-policy_test.affine	PASS	Type checking passed
+standards	consent-aware-http/examples/SafeDOMExample.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/consent-aware-http/examples/SafeDOMExample.affine:11:28: parse error: Syntax error
+standards	consent-aware-http/src/Aibdp.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/consent-aware-http/src/Aibdp.affine:12:40: parse error: Syntax error
+standards	consent-aware-http/src/Express.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/consent-aware-http/src/Express.affine:13:40: parse error: Syntax error
+standards	consent-aware-http/src/Node.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/consent-aware-http/src/Node.affine:4:12: parse error: Syntax error
+standards	ecosystem-a2ml/examples/SafeDOMExample.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/ecosystem-a2ml/examples/SafeDOMExample.affine:11:28: parse error: Syntax error
+standards	k9-svc/actions/validate/examples/SafeDOMExample.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/k9-svc/actions/validate/examples/SafeDOMExample.affine:11:28: parse error: Syntax error
+standards	k9-svc/bindings/deno/examples/SafeDOMExample.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/k9-svc/bindings/deno/examples/SafeDOMExample.affine:11:28: parse error: Syntax error
+standards	k9-svc/bindings/deno/src/K9.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/k9-svc/bindings/deno/src/K9.affine:25:1: parse error: Syntax error
+standards	k9-svc/bindings/deno/src/K9_Parser.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/k9-svc/bindings/deno/src/K9_Parser.affine:11:34: parse error: Syntax error
+standards	k9-svc/bindings/deno/src/K9_Renderer.affine	TYPE-ONLY	Resolution error: (Resolve.UndefinedModule
+standards	k9-svc/bindings/deno/src/K9_Types.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/k9-svc/bindings/deno/src/K9_Types.affine:9:34: parse error: Syntax error
+standards	k9-svc/bindings/haskell/examples/SafeDOMExample.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/k9-svc/bindings/haskell/examples/SafeDOMExample.affine:11:28: parse error: Syntax error
+standards	k9-svc/bindings/rust/examples/SafeDOMExample.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/k9-svc/bindings/rust/examples/SafeDOMExample.affine:11:28: parse error: Syntax error
+standards	k9-svc/editors/vscode/examples/SafeDOMExample.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/k9-svc/editors/vscode/examples/SafeDOMExample.affine:11:28: parse error: Syntax error
+standards	k9-svc/pandoc/examples/SafeDOMExample.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/k9-svc/pandoc/examples/SafeDOMExample.affine:11:28: parse error: Syntax error
+standards	lol/src/Lang1000.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/lol/src/Lang1000.affine:18:39: parse error: Syntax error
+standards	lol/src/api/DigitalBiblePlatform.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/lol/src/api/DigitalBiblePlatform.affine:11:40: parse error: Syntax error
+standards	lol/src/crawlers/BibleCloud.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/lol/src/crawlers/BibleCloud.affine:12:40: parse error: Syntax error
+standards	lol/src/crawlers/BibleCom.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/lol/src/crawlers/BibleCom.affine:12:40: parse error: Syntax error
+standards	lol/src/crawlers/Crawler.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/lol/src/crawlers/Crawler.affine:8:25: parse error: Syntax error
+standards	lol/src/crawlers/EBible.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/lol/src/crawlers/EBible.affine:12:55: parse error: Syntax error
+standards	lol/src/crawlers/FindBible.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/lol/src/crawlers/FindBible.affine:12:40: parse error: Syntax error
+standards	lol/src/crawlers/PngScriptures.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/lol/src/crawlers/PngScriptures.affine:12:55: parse error: Syntax error
+standards	lol/src/cyc/OpenCyc.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/lol/src/cyc/OpenCyc.affine:11:35: parse error: Syntax error
+standards	lol/src/utils/Http.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/lol/src/utils/Http.affine:9:12: parse error: Syntax error
+standards	lol/src/utils/Iso639.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/lol/src/utils/Iso639.affine:9:50: parse error: Syntax error
+standards	lol/src/utils/Statistics.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/lol/src/utils/Statistics.affine:9:34: parse error: Syntax error
+standards	lol/src/verisimdb/CorpusAnalyzer.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/lol/src/verisimdb/CorpusAnalyzer.affine:13:55: parse error: Syntax error
+standards	lol/src/verisimdb/Export.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/lol/src/verisimdb/Export.affine:10:67: parse error: Syntax error
+standards	lol/src/verisimdb/VeriSimDB.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/lol/src/verisimdb/VeriSimDB.affine:9:29: parse error: Syntax error
+standards	lol/test/Lang1000_test.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/lol/test/Lang1000_test.affine:9:13: parse error: Syntax error
+standards	lol/test/Vitest.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/lol/test/Vitest.affine:9:57: parse error: Syntax error
+standards	lol/test/crawlers/Crawler_test.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/lol/test/crawlers/Crawler_test.affine:9:12: parse error: Syntax error
+standards	lol/test/utils/Iso639_test.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/lol/test/utils/Iso639_test.affine:9:11: parse error: Syntax error
+standards	lol/test/utils/Statistics_test.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/lol/test/utils/Statistics_test.affine:11:33: parse error: Syntax error
+standards	panll-panels/src/ComplianceMonitor.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/panll-panels/src/ComplianceMonitor.affine:9:110: parse error: Syntax error
+standards	panll-panels/src/CrgDashboard.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/panll-panels/src/CrgDashboard.affine:9:110: parse error: Syntax error
+standards	panll-panels/src/ProofHub.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/panll-panels/src/ProofHub.affine:9:110: parse error: Syntax error
+standards	panll-panels/src/VcldbClient.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/panll-panels/src/VcldbClient.affine:6:62: parse error: Syntax error
+standards	rhodium-standard-repositories/satellites/cccp/satellites/nextgen-languages/7-tentacles/agents/BlueAgent.affine	TYPE-ONLY	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/rhodium-standard-repositories/satellites/cccp/satellites/nextgen-languages/7-tentacles/agents/BlueAgent.affine:8:43: pa
+standards	rhodium-standard-repositories/satellites/cccp/satellites/nextgen-languages/7-tentacles/agents/GreenAgent.affine	TYPE-ONLY	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/rhodium-standard-repositories/satellites/cccp/satellites/nextgen-languages/7-tentacles/agents/GreenAgent.affine:8:43: p
+standards	rhodium-standard-repositories/satellites/cccp/satellites/nextgen-languages/7-tentacles/agents/IndigoAgent.affine	TYPE-ONLY	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/rhodium-standard-repositories/satellites/cccp/satellites/nextgen-languages/7-tentacles/agents/IndigoAgent.affine:9:43: 
+standards	rhodium-standard-repositories/satellites/cccp/satellites/nextgen-languages/7-tentacles/agents/OrangeAgent.affine	TYPE-ONLY	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/rhodium-standard-repositories/satellites/cccp/satellites/nextgen-languages/7-tentacles/agents/OrangeAgent.affine:8:43: 
+standards	rhodium-standard-repositories/satellites/cccp/satellites/nextgen-languages/7-tentacles/agents/RedAgent.affine	TYPE-ONLY	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/rhodium-standard-repositories/satellites/cccp/satellites/nextgen-languages/7-tentacles/agents/RedAgent.affine:8:43: par
+standards	rhodium-standard-repositories/satellites/cccp/satellites/nextgen-languages/7-tentacles/agents/Types.affine	PASS	Type checking passed
+standards	rhodium-standard-repositories/satellites/cccp/satellites/nextgen-languages/7-tentacles/agents/VioletAgent.affine	TYPE-ONLY	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/rhodium-standard-repositories/satellites/cccp/satellites/nextgen-languages/7-tentacles/agents/VioletAgent.affine:8:43: 
+standards	rhodium-standard-repositories/satellites/cccp/satellites/nextgen-languages/7-tentacles/agents/YellowAgent.affine	TYPE-ONLY	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/rhodium-standard-repositories/satellites/cccp/satellites/nextgen-languages/7-tentacles/agents/YellowAgent.affine:8:43: 
+standards	rhodium-standard-repositories/satellites/cccp/satellites/nextgen-languages/7-tentacles/tools/RevealSystem.affine	TYPE-ONLY	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/rhodium-standard-repositories/satellites/cccp/satellites/nextgen-languages/7-tentacles/tools/RevealSystem.affine:119:5:
+standards	rhodium-standard-repositories/satellites/consent-aware-http/src/Aibdp.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/rhodium-standard-repositories/satellites/consent-aware-http/src/Aibdp.affine:12:40: parse error: Syntax error
+standards	rhodium-standard-repositories/satellites/consent-aware-http/src/Express.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/rhodium-standard-repositories/satellites/consent-aware-http/src/Express.affine:13:40: parse error: Syntax error
+standards	rhodium-standard-repositories/satellites/consent-aware-http/src/Node.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/rhodium-standard-repositories/satellites/consent-aware-http/src/Node.affine:4:12: parse error: Syntax error
+standards	rhodium-standard-repositories/satellites/rsr-certifier/extensions/vscode/src/extension.affine	PASS	Type checking passed
+standards	session-management-standards/src/ui/tea/system_update_gui.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/standards/session-management-standards/src/ui/tea/system_update_gui.affine:40:10: parse error: Syntax error
+stapeln	container-stack/svalinn/src/Main.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/stapeln/container-stack/svalinn/src/Main.affine:40:7: parse error: Syntax error
+stapeln	container-stack/svalinn/src/auth/AuthTypes.affine	TYPE-ONLY	Resolution error: (Resolve.UndefinedVariable
+stapeln	container-stack/svalinn/src/auth/Authz.affine	TYPE-ONLY	Resolution error: (Resolve.UndefinedModule
+stapeln	container-stack/svalinn/src/gateway/GatewayTypes.affine	TYPE-ONLY	Resolution error: (Resolve.UndefinedVariable
+stapeln	container-stack/svalinn/src/gateway/Metrics.affine	TYPE-ONLY	Unification error: (Unify.TypeMismatch (String, Int))
+stapeln	container-stack/svalinn/src/gateway/RateLimiter.affine	PASS	Type checking passed
+stapeln	container-stack/svalinn/src/gateway/SecurityHeaders.affine	TYPE-ONLY	Resolution error: (Resolve.UndefinedModule
+stapeln	container-stack/svalinn/src/host/Json.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/stapeln/container-stack/svalinn/src/host/Json.affine:16:24: parse error: Syntax error
+stapeln	container-stack/svalinn/src/policy/PolicyEngine.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/stapeln/container-stack/svalinn/src/policy/PolicyEngine.affine:84:23: parse error: Syntax error
+stapeln	container-stack/svalinn/src/vordr/Client.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/stapeln/container-stack/svalinn/src/vordr/Client.affine:47:12: parse error: Syntax error
+stapeln	container-stack/svalinn/src/vordr/VordrTypes.affine	PASS	Type checking passed
+tma-mark2	src/main.affine	TYPE-ONLY	Unbound variable: Engine
+ubicity	src/storage.affine	DRIFT-SYNTAX	/home/hyperpolymath/dev/repos/.affine-audit/clones/ubicity/src/storage.affine:65:3: parse error: Syntax error
+AUDIT-COMPLETE 2026-05-19T15:58:52Z

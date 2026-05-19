@@ -227,5 +227,7 @@ filed when their blocker closes.
 * link:CAPABILITY-MATRIX.adoc[CAPABILITY-MATRIX.adoc] — authoritative
   per-feature readiness.
 * link:TECH-DEBT.adoc[TECH-DEBT.adoc] — the coordination ledger.
+* link:RESCRIPT-ELIMINATION.adoc[RESCRIPT-ELIMINATION.adoc] — the estate
+  ReScript-surface elimination ledger (#229), the spine's estate-port arm.
 * `hyperpolymath/typed-wasm` `LEVEL-STATUS.md` — the target spec & proofs.
 * `hyperpolymath/ephapax` — the other typed-wasm producer.
