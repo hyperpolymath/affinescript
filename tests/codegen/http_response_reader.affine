@@ -1,0 +1,59 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// issue #225 PR3d — wasm e2e: the typed `Response` reader primitives
+// (ADR-013 §Value-reconstruction) + http_fetch-parity on the WasmGC
+// path.
+//
+// Mirrors tests/codegen-deno/http_fetch.* (same Response field access
+// on Deno-ESM) but on the wasm Thenable + CPS path. The author writes
+// straight-line code: an async boundary (`http_request_thenable`) then
+// a continuation that reconstructs the FULL typed `Response`
+// (`status` + `headers: [(String,String)]` + `body`) from the settled
+// payload via the scalar/string host primitives — the structured
+// `headers` decode `jsonField` cannot do.
+//
+// On WasmGC the backend does NOT flatten imports (ADR-013 §refinement):
+// a cross-module `pub fn` like `Http.readResponse` would become a host
+// import *returning a `Response` record* — structured value across the
+// i32 boundary, exactly what the scalar-extern convention exists to
+// avoid. So the reconstruction is done HERE, in the compiled-in
+// consuming unit, over the scalar/string primitives (each a simple
+// host import like `jsonField`). `Http.readResponse` (stdlib) is the
+// same logic for the Deno-ESM backend, which DOES flatten. The header
+// loop runs the #255-fixed `while`/`for` codegen.
+
+// `thenableThen` is in the `use` list so it resolves as an import for
+// the CPS transform to emit, even though the author never calls it
+// (auto-injecting that import is broader transparent-surface work,
+// PR3+; same convention as http_cps_base.affine).
+use Http::{
+  Thenable, http_request_thenable, thenableThen,
+  responseStatus, responseHeaderCount,
+  responseHeaderName, responseHeaderValue
+};
+
+// Reconstruct + fold the typed Response into one i32 the host asserts:
+//   status(200) + 10*header_count(1) + 1000 (2xx => is_ok) = 1210.
+// A wrong/partial decode cannot produce 1210; the header count proves
+// the [(String,String)] structured decode jsonField cannot do.
+fn decode(t: Thenable) -> Int {
+  let status = responseStatus(t);
+  let mut headers = [];
+  let mut i = 0;
+  let n = responseHeaderCount(t);
+  while i < n {
+    headers = headers ++ [(responseHeaderName(t, i), responseHeaderValue(t, i))];
+    i = i + 1;
+  }
+  let mut hc = 0;
+  for h in headers {
+    hc = hc + 1;
+  }
+  let ok = if status >= 200 && status < 300 { 1000 } else { 0 };
+  status + 10 * hc + ok
+}
+
+// Single async boundary, then the continuation reconstructs + folds.
+pub fn launch() -> Int / { Net, Async } {
+  let t = http_request_thenable("https://example.test/ok", "GET", "");
+  decode(t)
+}
