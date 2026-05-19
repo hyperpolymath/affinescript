@@ -1,0 +1,57 @@
+# SPDX-License-Identifier: PMPL-1.0-or-later
+# INT-04 (#181): publish the JS runtime packages to JSR (Deno/JSR-first
+# per CLAUDE.md). Scaffolded by packaging prep — it is **manual-only**
+# (`workflow_dispatch`) and does NOT run on push/merge. The owner
+# dispatches it deliberately, package-by-package, after reviewing the
+# `deno publish --dry-run` output. No secrets are required or committed:
+# JSR uses GitHub OIDC (the `id-token: write` permission below); npm is
+# a separate, later tail (NOT wired here — see docs/PACKAGING.adoc).
+#
+# Publish order is load-bearing: @hyperpolymath/affine-js MUST be
+# published before @hyperpolymath/affinescript-tea (the latter depends
+# on the former via an import map).
+
+name: Publish to JSR (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: "Which package to publish"
+        required: true
+        type: choice
+        options:
+          - affine-js
+          - affinescript-tea
+      dry_run:
+        description: "Dry run only (no publish)"
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  id-token: write # JSR OIDC; no token secret needed
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Resolve package directory
+        id: pkg
+        run: |
+          case "${{ inputs.package }}" in
+            affine-js)        echo "dir=packages/affine-js" >> "$GITHUB_OUTPUT" ;;
+            affinescript-tea) echo "dir=affinescript-tea"   >> "$GITHUB_OUTPUT" ;;
+          esac
+      - name: Dry run
+        working-directory: ${{ steps.pkg.outputs.dir }}
+        run: deno publish --dry-run
+      - name: Publish
+        if: ${{ inputs.dry_run == false }}
+        working-directory: ${{ steps.pkg.outputs.dir }}
+        run: deno publish

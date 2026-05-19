@@ -7,5 +7,8 @@
     "./marshal": "./marshal.js",
     "./runtime": "./runtime.js"
   },
-  "license": "PMPL-1.0-or-later"
+  "license": "PMPL-1.0-or-later",
+  "publish": {
+    "exclude": ["loader_test.js"]
+  }
 }

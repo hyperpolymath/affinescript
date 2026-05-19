@@ -1,0 +1,66 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+= AffineScript Packaging & Distribution (INT-04)
+:toc: macro
+:icons: font
+
+INT-04 (#181). This documents what is publish-ready, the order, and the
+one open design question. *Nothing here publishes anything*: the
+workflow is manual-only and the owner dispatches it after review.
+
+toc::[]
+
+== JSR-publishable units (Deno/JSR-first)
+
+The JS runtime packages are JSR-publishable today. `deno publish
+--dry-run` succeeds for both (verified during INT-04 prep):
+
+[cols="2,2,3"]
+|===
+|Package |Spec |Notes
+
+|`packages/affine-js` |`@hyperpolymath/affine-js` |Loader + marshal +
+runtime + ownership accessor. Tests excluded via `publish.exclude`.
+|`affinescript-tea` |`@hyperpolymath/affinescript-tea` |TEA runtime.
+Depends on `@hyperpolymath/affine-js/loader` (import map) — see order.
+|===
+
+*Publish order is load-bearing*: `affine-js` **must** publish before
+`affinescript-tea` (the latter resolves `@hyperpolymath/affine-js/loader`).
+
+`affinescript-dom` is AffineScript source (`.affine`), not a JS package
+— it is consumed by the compiler, not JSR; out of scope for JSR.
+
+=== Slow types
+
+The JS entrypoints emit JSR's `unsupported-javascript-entrypoint`
+(slow-types) warning — expected for a JS-with-JSDoc package; it
+publishes, only `@hyperpolymath/affine-js`'s fast-check is skipped.
+`types.d.ts` already provides the consumer-facing contract. Converting
+entrypoints is out of scope for INT-04 (tracked separately if desired).
+
+== How to publish (owner, manual)
+
+. Review `deno publish --dry-run` (CI: `Publish to JSR (manual)` with
+  `dry_run: true`, or locally `cd <pkg> && deno publish --dry-run`).
+. Dispatch `.github/workflows/publish-jsr.yml` for `affine-js` with
+  `dry_run: false` (JSR OIDC via `id-token: write` — no token secret).
+. Then dispatch it for `affinescript-tea`.
+
+== npm tail
+
+"then npm" (#181) is a *separate, later* step and is **not** wired by
+this prep. If/when needed it follows the existing owner-sanctioned npm
+pattern (`.github/workflows/affine-vscode-publish.yml`, `NPM_TOKEN`
+scoped automation token) — a deliberate exception to Deno-first.
+
+== Open design question — the compiler itself
+
+#181 says "publish *compiler* + runtime". The runtime is the JS
+packages above. The **compiler is a native OCaml binary** — it is *not*
+a JSR or npm package. "Publishing the compiler" therefore needs a
+release-binary strategy decision (GitHub Releases artifacts, Guix/Nix
+channel, or a thin JSR/npm shim that fetches a pinned binary). This is
+a one-way-door design choice and is filed as a separate issue rather
+than guessed here. `affinescript-lsp` distribution (INT-10) depends on
+that decision.
