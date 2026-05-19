@@ -137,6 +137,29 @@ module_path:
   | id = ident { [id] }
   | path = module_path DOT id = ident { path @ [id] }
 
+/* ADR-014 (#228): module-qualified type/effect path. Separator is `.` or
+   `::` (mixed permitted); `::` is canonical (consistent with ADR-011 value
+   paths). A qualified name is >=2 `upper_ident` segments; it is folded to a
+   single canonical `::`-joined string so downstream (resolve/typecheck/all
+   codegens, formatter) sees one ident and needs no change — the formatter
+   prints the stored `::` form, normalising any `.` input for free.
+   Right-recursive + restricted to `upper_ident` so it only adds
+   `DOT`/`COLONCOLON` lookahead after a type/effect-position `upper_ident`
+   (no prior reduce action there — that void is the `parse error at .`
+   #228 reports), introducing zero new LR conflicts. */
+%inline qsep:
+  | DOT        { () }
+  | COLONCOLON { () }
+
+qualified_type_name:
+  | head = upper_ident qsep rest = qualified_type_name_rest
+    { head ^ "::" ^ rest }
+
+qualified_type_name_rest:
+  | name = upper_ident { name }
+  | name = upper_ident qsep rest = qualified_type_name_rest
+    { name ^ "::" ^ rest }
+
 /* ========== Imports ========== */
 
 import_decl:
@@ -450,6 +473,20 @@ type_expr_primary:
   | MUT ty = type_expr_primary { TyMut ty }
   | name = lower_ident { TyVar (mk_ident name $startpos $endpos) }
   | name = upper_ident { TyCon (mk_ident name $startpos $endpos) }
+  /* ADR-014 (#228): module-qualified type name. `Pkg.Type` and
+     `Pkg::Type` (and deeper, `A.B.C` / `A::B::C`, mixed separators) are
+     accepted; the segments are folded into a single canonical name joined
+     by `::`, so `::` is the canonical form on print with no formatter
+     change and `.` is silently normalised. Conflict-safe: this only adds
+     `DOT`/`COLONCOLON` as lookahead after a type-position `upper_ident`,
+     where no reduce action previously existed (that absence is exactly the
+     `parse error at .` #228 reports), so it introduces no new LR conflict.
+     Resolution treats the `::`-joined name as a qualified reference. */
+  | name = qualified_type_name { TyCon (mk_ident name $startpos $endpos) }
+  | name = qualified_type_name LBRACKET args = separated_nonempty_list(COMMA, type_arg) RBRACKET
+    { TyApp (mk_ident name $startpos $endpos, args) }
+  | name = qualified_type_name LT args = separated_nonempty_list(COMMA, type_arg) GT
+    { TyApp (mk_ident name $startpos $endpos, args) }
   | name = upper_ident LBRACKET args = separated_nonempty_list(COMMA, type_arg) RBRACKET
     { TyApp (mk_ident name $startpos(name) $endpos(name), args) }
   /* Angle-bracket alias for type application: `Option<T>` ≡ `Option[T]`,
@@ -569,6 +606,12 @@ effect_term:
   | name = ident { EffVar name }
   | name = ident LBRACKET args = separated_list(COMMA, type_arg) RBRACKET
     { EffCon (name, args) }
+  /* ADR-014 (#228): module-qualified effect, e.g. `-{Externs.Net}->` /
+     `-{Externs::Net}->`. Same canonical `::`-fold as qualified types. */
+  | name = qualified_type_name
+    { EffVar (mk_ident name $startpos $endpos) }
+  | name = qualified_type_name LBRACKET args = separated_list(COMMA, type_arg) RBRACKET
+    { EffCon (mk_ident name $startpos $endpos, args) }
 
 /* ========== Traits ========== */
 

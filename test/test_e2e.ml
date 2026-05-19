@@ -3262,6 +3262,63 @@ let array_type_tests = [
   Alcotest.test_case "[T] in struct field parses + typechecks" `Quick test_array_type_parses_in_struct_field;
 ]
 
+(* ---- ADR-014 / #228: module-qualified type & effect paths ----
+   The #228 fault is a *parse error at the `.`* — these assert the
+   construct now PARSES (resolution of the qualified name against a real
+   module is a separate concern, deliberately not asserted here). Both the
+   `.` and the canonical `::` separators, in every position the estate
+   corpus uses, plus the #228 evidence-table cases. *)
+
+let parses_ok src : bool =
+  match (try Some (Parse_driver.parse_string ~file:"<test>" src)
+         with _ -> None) with
+  | Some prog -> List.length prog.prog_decls > 0
+  | None -> false
+
+let test_qual_type_param_dot () =
+  Alcotest.(check bool) "fn(x: Bar.Baz) parses" true
+    (parses_ok {|fn f(x: Bar.Baz) -> Int { return 0; }|})
+
+let test_qual_type_param_coloncolon () =
+  Alcotest.(check bool) "fn(x: Bar::Baz) parses" true
+    (parses_ok {|fn f(x: Bar::Baz) -> Int { return 0; }|})
+
+let test_qual_type_struct_field () =
+  Alcotest.(check bool) "struct { a: Bar.Baz } parses" true
+    (parses_ok {|struct R { a: Bar.Baz } fn m() -> Int { return 0; }|})
+
+let test_qual_type_app () =
+  Alcotest.(check bool) "Pkg::Opt[Int] / Pkg.Opt<Int> parse" true
+    (parses_ok {|fn f(x: Pkg::Opt[Int]) -> Int { return 0; }|}
+     && parses_ok {|fn g(x: Pkg.Opt<Int>) -> Int { return 0; }|})
+
+let test_qual_type_deep_mixed () =
+  Alcotest.(check bool) "A.B.C and A::B::C deep paths parse" true
+    (parses_ok {|fn f(x: A.B.C) -> Int { return 0; }|}
+     && parses_ok {|fn g(x: A::B::C) -> Int { return 0; }|})
+
+let test_qual_effect_dot_and_colons () =
+  Alcotest.(check bool) "-{Bar.Baz}-> and -{Bar::Baz}-> parse" true
+    (parses_ok {|fn f() -{Bar.Baz}-> Int { return 0; }|}
+     && parses_ok {|fn g() -{Bar::Baz}-> Int { return 0; }|})
+
+let test_qual_unqualified_still_parses () =
+  (* Guard: the bare (unqualified) forms must be unaffected. *)
+  Alcotest.(check bool) "bare Type / Type[T] / -{Eff}-> still parse" true
+    (parses_ok {|fn f(x: Baz) -> Int { return 0; }|}
+     && parses_ok {|fn g(x: Opt[Int]) -> Int { return 0; }|}
+     && parses_ok {|fn h() -{Net}-> Int { return 0; }|})
+
+let qualified_path_tests = [
+  Alcotest.test_case "qualified type in param (.)"        `Quick test_qual_type_param_dot;
+  Alcotest.test_case "qualified type in param (::)"       `Quick test_qual_type_param_coloncolon;
+  Alcotest.test_case "qualified type in struct field"     `Quick test_qual_type_struct_field;
+  Alcotest.test_case "qualified type application [ ]/< >"  `Quick test_qual_type_app;
+  Alcotest.test_case "deep + mixed-separator paths"       `Quick test_qual_type_deep_mixed;
+  Alcotest.test_case "qualified effect (. and ::)"        `Quick test_qual_effect_dot_and_colons;
+  Alcotest.test_case "bare unqualified forms unaffected"  `Quick test_qual_unqualified_still_parses;
+]
+
 (* ---- Type-syntax sugars: fn(...) -> T, Option<T>, (A, B) -> C ---- *)
 
 let parse_check_passes src : bool =
@@ -3627,6 +3684,7 @@ let tests =
     ("E2E Externs",              extern_tests);
     ("E2E Vscode Bindings",      vscode_bindings_tests);
     ("E2E Array Type Sugar",     array_type_tests);
+    ("E2E Qualified Paths #228",  qualified_path_tests);
     ("E2E WasmGC PatCon Destructure", wasm_gc_patcon_tests);
     ("E2E Type Syntax Sugar",         type_syntax_sugar_tests);
   ]
