@@ -1,4 +1,22 @@
 # SPDX-License-Identifier: PMPL-1.0-or-later
+#
+# Release (ADR-019 / #260 S2). On a `v*` tag: build the AffineScript
+# compiler for each supported platform, attach the raw per-platform
+# binaries plus a single `SHA256SUMS` manifest to the GitHub Release.
+# Releases are the CANONICAL distribution artifact; the thin Deno/JSR
+# shim `@hyperpolymath/affinescript` (#260 S3) downloads + checksum-
+# verifies the binary named for its host triple against SHA256SUMS.
+#
+# Asset contract (ADR-019; do not rename without amending the ADR + the
+# shim): `affinescript-<target>` raw executables + `SHA256SUMS`
+# (sha256sum format: "<hex>  affinescript-<target>"). Targets:
+#   linux-x64, macos-x64, macos-arm64.  windows-x64 is a tracked
+#   follow-up (native OCaml Windows CI is flaky; #260 S2 is bounded to
+#   the three POSIX targets).
+#
+# Asset handling uses the runner-native `gh` CLI (GITHUB_TOKEN), so no
+# third-party action needs SHA-pinning beyond checkout + setup-ocaml.
+
 name: Release
 
 on:
@@ -10,9 +28,35 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  prepare:
     runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Create the release (idempotent)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "release $tag already exists; reusing"
+          else
+            gh release create "$tag" --generate-notes --verify-tag --title "$tag"
+          fi
 
+  build:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux-x64
+          - os: macos-13
+            target: macos-x64
+          - os: macos-14
+            target: macos-arm64
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -23,19 +67,34 @@ jobs:
           ocaml-compiler: "5.1"
 
       - name: Install dependencies
-        run: opam install . --deps-only
+        run: opam install . --deps-only --yes
 
       - name: Build release
         run: opam exec -- dune build --release
 
-      - name: Create release archive
+      - name: Stage the binary
         run: |
-          mkdir -p dist
-          cp _build/default/bin/main.exe dist/affinescript-linux-x64 || true
-          tar -czvf affinescript-linux-x64.tar.gz -C dist .
+          install -m 0755 _build/default/bin/main.exe \
+            "affinescript-${{ matrix.target }}"
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v2
-        with:
-          files: affinescript-linux-x64.tar.gz
-          generate_release_notes: true
+      - name: Upload the binary to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${GITHUB_REF_NAME}" \
+            "affinescript-${{ matrix.target }}" --clobber
+
+  checksums:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Collect binaries and publish SHA256SUMS
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          mkdir -p dl
+          gh release download "$tag" --dir dl --pattern 'affinescript-*'
+          ( cd dl && sha256sum affinescript-* | sort -k2 > SHA256SUMS )
+          cat dl/SHA256SUMS
+          gh release upload "$tag" dl/SHA256SUMS --clobber
