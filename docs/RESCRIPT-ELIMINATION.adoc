@@ -247,11 +247,75 @@ interop artefact (burble's standing caveat), before removal.
   oracle-peeled, not scanner-visible). Each oracle-validated "Type
   checking passed" on `main`. `panll` *excluded* (no listed RS construct
   — scanner FP; see the lower-bound-triage warning).
-. *`burble`* (32): Tier-1 mechanical pass first (re-validated), Tier-2
-  `mutable`/labelled per-case, Tier-3 constructs blocked on ESC-01..03.
-. *Small tail:* `standards`, `developer-ecosystem`, `stapeln`,
-  `proof-burrower`, `idaptik`, `bofj-kitt` (≤4 RS files each).
-. *`idaptik-dlc-vm`* (28): after INT-01 #178 resolver lands (Tier-4 gate).
+. See *§#229 closure status* for the truthed disposition of `burble`,
+  the small tail, and `idaptik-dlc-vm`.
+
+== #229 closure status (post-port truthing, 2026-05-19)
+
+Doing the ports collapsed the apparent scope. The honest end-state:
+
+=== Completable per-file ports — DONE
+
+`git-scripts` #9 · `game-server-admin` #14 · `invariant-path` #4 ·
+`standards/session-management-standards/.../system_update_gui.affine` #142.
+Each oracle-validated "Type checking passed" on `main`. Transform:
+`List(X)`→`[X]`, expr record literals `{`→`#{`, ReScript string `+`→`++`,
+ReScript `import P [as A]`→`use P [as A];`, single block-module
+`module P { body }`→`module P;`-header-first + dedented body.
+
+=== Canonical-map additions (from doing the ports)
+
+* *Structural Tier-1:* ReScript `import P[.Q] [as A]` → `use P.Q [as A];`
+  (`parser.mly:166-169`); *single* block-module `module P { body }` →
+  `module P;` header (hoisted before imports — `parser.mly:130-134`
+  requires the header first), braces dropped, body dedented one level.
+  Oracle-verified to parse.
+* *Tier-3 ESC-04 (#262):* *multi*-block-module per file (e.g.
+  `standards/lol/.../OpenCyc.affine`) has *no clean target* —
+  AffineScript is one-module-per-file. Escalated, not guessed.
+
+=== Reclassified OUT of #229 — permanently (scanner over-scope)
+
+* `developer-ecosystem`, `proof-burrower`, `bofj-kitt`: *every* flagged
+  file is a *vendored copy of the affinescript repo itself*
+  (`affinescript/stdlib/effects.affine`,
+  `affinescript/tests/conformance/run_all.affine`,
+  `…/docs/guides/warmup/02_ownership.affine`); the `mutable` hits are
+  *comments* ("// State effect - mutable references", "// ── mut …"). Same
+  discipline as the affinescript-own-corpus exclusion + the `panll` FP.
+  *0 real #229 files in these three repos.*
+* `standards/a2ml/prototype/rescript/src/{A2ml,Json}.affine`: inside a
+  `rescript/` *ecosystem* folder → policy hands-off (as `.res`), not a
+  port target.
+
+=== Gated remainder — precisely bounded (not open-ended)
+
+[cols="2,1,4"]
+|===
+|Repo |n |Gate
+
+|`idaptik-dlc-vm` |28 |RS surface *mechanically eliminated* (block-module
++ import-as transforms verified to parse), but every file then hits
+`Resolve.UndefinedModule` — the module-path↔file-layout
+(`src/State.affine` declaring `module Vm.State;`) does not match the
+loader. *Cross-module graph coherence = INT-02 loader-bridge*, explicitly
+out of #229's per-file contract. Not a per-file RS issue.
+|`burble` |32 |Tier-3 dominated: `%%raw` (ESC-01 #245), `JSON.t`
+(ESC-02 #246), `Dict.t` (ESC-03 #247), plus block-modules (ESC-04 #262)
+and Tier-2 `mutable`/labelled. Caveat cleared, but not completable until
+the ESCs land.
+|`stapeln` |3 |`module …;` already file-header; not per-file completable —
+`UndefinedVariable` (AuthTypes), `Unify(String,Int)` (Metrics),
+parse-error 84 + `use Json;` (PolicyEngine, ESC-02-adjacent). Cross-module
+/ deeper, not mechanical RS surface.
+|`idaptik` |3 |`%%raw` (Main/StartupError) → ESC-01 #245; `Boot` =
+`mutable` comment-FP.
+|===
+
+The remaining #229 work is now *fully attributed* to ESC-01..04
+(#245/#246/#247/#262) + the INT-02 cross-module loader/layout concern —
+no unbounded "tail". This is the "once and for all" closure: completable
+done, false scope removed, residue precisely gated.
 
 == Reproduce / see also
 
