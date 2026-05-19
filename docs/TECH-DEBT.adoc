@@ -94,9 +94,13 @@ integration. |S1 |pt1 in PR #240 (open); pt2+ open — issue #177
 EH proposal or CPS). The #225 CPS line closes the async slice. |S2 |partial
 (PR3a/b/c merged; #234 generalises the recogniser)
 |CORE-03 |ADR-014: module-qualified type/effect path. Decision settled
-(both `.`/`::` accepted, `Pkg::Type` canonical, `.`→`::` via `fmt`).
-Estate's dominant parse blocker (525/1177 .affine). |S1 |open — issue #228,
-DRAFT PR #231; decision recorded, implementation pending (after CORE-01)
+(both `.`/`::` accepted, `Pkg::Type` canonical, `.`→`::` for free via the
+`::`-fold). Was the estate's dominant parse blocker (525/1177 .affine).
+*Grammar LANDED* (PR #241, Refs #228, gate 267/267, **zero Menhir
+conflict delta** — 21 S/R + 1 R/R unchanged); ADR-014 recorded in
+META.a2ml + SETTLED-DECISIONS.adoc. Supersedes DRAFT #231. |S1 |grammar
+in PR #241 (open); estate `.affine` re-audit + ReScript residue #229
+follow separately
 |CORE-04 |Traits: associated-type substitution, where-clause supertraits,
 coherence checking. |S2 |partial
 |CORE-05 |Dependent/refinement types: predicate reduction / SMT. |S3

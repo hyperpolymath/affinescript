@@ -62,10 +62,11 @@ Gate baseline at reconstruction: **`opam exec --switch=. -- dune runtest
 emitted (QTT numeric surface uses `:1`/`:0`/`:ω` sugar parsed elsewhere).
 
 |Parser |works |Menhir grammar, ADR-009 conformance. Residual grammar
-conflicts tracked as the #215 family workstream (Stage B). *No
-module-qualified type/effect path* — `Pkg.Type` / `Pkg::Type`
-unrepresentable in type/effect position (issue #228 / ADR-014, the dominant
-estate port blocker).
+conflicts tracked as the #215 family workstream (Stage B). *Module-qualified
+type/effect paths now parse* — `Pkg.Type` / `Pkg::Type` (mixed, deep),
+`::` canonical (ADR-014, PR #241, Refs #228; zero Menhir conflict delta).
+Cleared the dominant estate parse blocker (was 525/1177 `.affine`);
+estate re-audit + ReScript residue (#229) follow separately.
 
 |AST |works |All current language constructs represented.
 
