@@ -78,6 +78,48 @@ await mod.runMain();
 
 Effect import names follow the pattern `affine_<EffectName>_<opName>` in snake_case.
 
+== Host-agnostic loading (INT-02)
+
+`fromFile` / `run` work on Deno, Node, and in the browser. Relative
+specifiers resolve against `options.base` (default: the affine-js module
+URL) — pass `import.meta.url` from your own module when the `.wasm` is
+relative to *your* file:
+
+[source,javascript]
+----
+const mod = await AffineModule.fromFile("./app.wasm", {
+  base: import.meta.url,
+});
+----
+
+`http(s):`, `data:`, and `blob:` URLs are fetched; `file:` URLs are read
+via the native filesystem on Deno/Node and via `fetch` in the browser.
+Windows and POSIX absolute paths are both accepted.
+
+== Cross-module imports (INT-01)
+
+`use Mod::{fn}` lowers to a WASM import under the `Mod` namespace, not
+`env`. Supply per-namespace implementations with `options.modules`:
+
+[source,javascript]
+----
+const mod = await AffineModule.fromBytes(bytes, {
+  modules: { Mod: { helper: (x) => x + 1 } },
+});
+----
+
+== Ownership section (typed-wasm contract)
+
+The compiler embeds an `affinescript.ownership` custom section carrying
+per-function parameter/return ownership kinds (the AffineScript ↔
+typed-wasm contract — see `docs/ECOSYSTEM.adoc`). Read it via:
+
+[source,javascript]
+----
+mod.ownership;
+// => [{ funcIdx, paramKinds: ["linear", ...], retKind: "unrestricted" }, ...]
+----
+
 == AffineValue types
 
 All JS ↔ WASM value exchanges use the `AffineValue` tagged-union type:

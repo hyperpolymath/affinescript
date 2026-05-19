@@ -64,6 +64,36 @@ export interface LoadOptions {
    * { imports: { affine_io_println: (ptr: number) => console.log(readString(ptr)) } }
    */
   imports?: Record<string, (...args: number[]) => number | void>;
+
+  /**
+   * Per-namespace imports for cross-module WASM imports (INT-01, #178).
+   * `use Mod::{fn}` lowers to an import in the `Mod` namespace.
+   *
+   * @example
+   * { modules: { Mod: { fn: (x: number) => x + 1 } } }
+   */
+  modules?: Record<string, Record<string, (...args: number[]) => number | void>>;
+
+  /**
+   * Base URL for resolving a relative `fromFile`/`run` specifier.
+   * Defaults to the affine-js module URL; pass `import.meta.url` from the
+   * calling module when loading a `.wasm` relative to *your* file.
+   */
+  base?: string | URL;
+}
+
+// ── Ownership (typed-wasm contract carrier) ───────────────────────────────────
+
+export type OwnershipKind =
+  | "unrestricted"
+  | "linear"
+  | "sharedBorrow"
+  | "exclBorrow";
+
+export interface OwnershipEntry {
+  funcIdx: number;
+  paramKinds: OwnershipKind[];
+  retKind: OwnershipKind;
 }
 
 // ── CallOptions ───────────────────────────────────────────────────────────────
@@ -110,7 +140,41 @@ export declare class AffineModule {
 
   /** Underlying `WebAssembly.Instance`. */
   readonly instance: WebAssembly.Instance;
+
+  /**
+   * Parsed `affinescript.ownership` custom section: per-function
+   * parameter/return ownership kinds carrying the typed-wasm discipline.
+   * Empty when the module was compiled without ownership qualifiers.
+   */
+  readonly ownership: OwnershipEntry[];
 }
+
+// ── Host-agnostic loader (INT-02) ─────────────────────────────────────────────
+
+export type Host = "deno" | "node" | "browser" | "unknown";
+
+/** Detect the current JavaScript host by feature, not by user agent. */
+export declare function detectHost(): Host;
+
+/** Resolve a module specifier (URL, file path, or relative) to a URL. */
+export declare function resolveUrl(spec: string | URL, base?: string | URL): URL;
+
+/** Read a WASM module's bytes from any source, on any host. */
+export declare function readBytes(
+  source: string | URL | Uint8Array | ArrayBuffer,
+  options?: { base?: string | URL },
+): Promise<Uint8Array>;
+
+/** Build the full WebAssembly import object (multi-namespace). */
+export declare function buildImportObject(
+  runtimeImports: Record<string, Function>,
+  options?: Pick<LoadOptions, "imports" | "modules">,
+): WebAssembly.Imports;
+
+/** Parse the `affinescript.ownership` custom section. */
+export declare function parseOwnershipSection(
+  wasmModule: WebAssembly.Module,
+): OwnershipEntry[];
 
 // ── Top-level functions ───────────────────────────────────────────────────────
 
