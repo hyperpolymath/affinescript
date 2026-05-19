@@ -200,11 +200,12 @@ same discipline that produced #228.
 |===
 |Esc |Construct |Finding
 
-|*ESC-01* (#245) |`%%raw("…")` (14) |AffineScript has *no raw-host-expression
-/ FFI escape*. The only host bridge is typed `extern fn` / `extern type`
-(`lib/parser.mly:185+`) — host-supplied, typed, no arbitrary-source escape.
-Needs a language decision on a raw/FFI form (or an explicit "port every
-`%%raw` to typed `extern`" doctrine).
+|*ESC-01* (#245) — SETTLED by ADR-018 |`%%raw("…")` (14) |*Doctrine: no
+raw escape, by design.* Typed `extern fn` / `extern type` is the **sole**
+FFI surface; every `%%raw` ports to a typed `extern` whose signature
+states the host contract, host impl moving to the embedder/runtime shim.
+No untyped `extern raw` will be added (an arbitrary-source hole defeats
+affine/effect tracking — the ADR-012 contortion). No compiler change.
 |*ESC-02* (#246) |`JSON.t` (7) |No stdlib JSON type (`stdlib/` has `Ajv` but
 no `Json`). Needs a stdlib JSON type.
 |*ESC-03* (#247) |`Dict.t` (6) |No stdlib `Map`/`Dict` type
