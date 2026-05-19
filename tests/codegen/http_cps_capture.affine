@@ -1,0 +1,28 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// issue #225 PR 3a — WasmGC CPS transform, multi-var live-local capture.
+//
+// PR2 proved the zero-capture base case. PR3a lifts that: a `let` bound
+// BEFORE the async boundary (`tag`) is a live local the continuation
+// references alongside the async result binder (`r`). The transform
+// runs the prelude synchronously, then reifies the continuation via the
+// existing #199 closure path, which env-captures BOTH `tag` and `r`
+// (the #199 path already marshals N captures — no new closure code).
+//
+// Structural-conservative boundary (owner-chosen, affinescript#234 for
+// the effect-threaded generalisation): the async boundary is the `let`
+// whose RHS calls a recognised async primitive (http_request_thenable).
+// Single boundary only here (Async->Async chaining is PR3c).
+//
+// `addTag(tag, status)` is a minimal host accessor that proves BOTH the
+// captured prelude local AND the settled value reached the continuation.
+
+use Http::{Thenable, http_request_thenable, thenableThen};
+
+extern fn httpThenableStatus(t: Thenable) -> Int;
+extern fn addTag(base: Int, status: Int) -> Int;
+
+pub fn launch() -> Int / { Net, Async } {
+  let tag = 7;
+  let r = http_request_thenable("https://example.test/ok", "GET", "");
+  addTag(tag, httpThenableStatus(r))
+}

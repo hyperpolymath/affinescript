@@ -1788,76 +1788,135 @@ let simple_pat_name (p : pattern) : string option =
   | PatVar id -> Some id.name
   | _ -> None
 
-(** PR2 base-case recogniser. Given an `Async` function's parameter
-    names and normalised body, returns [Some (binder, async_call, cont)]
-    iff the body is exactly `let binder = <call-expr>; <cont>` and the
-    only variables [cont] can reference across the async split are
-    [binder] itself or the function parameters (zero live-local
-    capture — ADR-013 PR2 scope; capture is PR3). Otherwise [None] ⇒
-    caller keeps the existing synchronous lowering. Conservative: a
-    [cont] that references a top-level helper/global is also rejected
-    here (its name is free relative to []), which is safe — it merely
-    defers more shapes to PR3 rather than risking an unsound split. *)
+(** Recognised async-primitive calls (ADR-013 #225 PR3a, owner-chosen
+    structural-conservative async-boundary identification — see
+    affinescript#234 for the effect-threaded generalisation). The async
+    boundary is a `let` whose RHS is a call to one of these names. Extend
+    this list as wasm-path async stdlib primitives are added. *)
+let async_primitives = [ "http_request_thenable" ]
+
+let is_async_prim_call (e : expr) : bool =
+  match e with
+  | ExprApp (ExprVar id, _) -> List.mem id.name async_primitives
+  | _ -> false
+
+(** Any recognised async-primitive name occurring free in [e]. Reuses
+    [find_free_vars] (which traverses call heads), so this catches an
+    async primitive anywhere in a sub-expression — used to enforce the
+    single-boundary rule for PR3a (Async→Async chaining is PR3c). *)
+let mentions_async_prim (e : expr) : bool =
+  let fv = find_free_vars [] e in
+  List.exists (fun p -> List.mem p fv) async_primitives
+
+(** Async-fn body recogniser (ADR-013 #225). Returns
+    [Some (pre, binder, async_call, cont)] iff the body is, after
+    trivial-block unwrapping, a sequence of zero or more simple
+    `let`-bindings ([pre]) followed by `let binder = <async-prim call>`
+    then a continuation [cont] (the remaining stmts + tail expr), where:
+
+    - PR2: [pre] = [] (zero live-local capture).
+    - PR3a: [pre] may bind live locals; [cont] may reference them — they
+      are captured into the continuation env by the proven #199
+      ExprLambda path (which already marshals N captures). [pre] is
+      restricted to simple `let`s so the captured set is well-defined.
+
+    Single boundary only: no recognised async primitive may appear in
+    [pre] values or in [cont] (chaining = PR3c). Capture soundness: every
+    free name in [cont] must be the binder, a param, a top-level
+    func/const/global, or a [pre]-bound local — anything else ⇒ [None]
+    (fall back to the unchanged synchronous lowering, zero regression).
+    The affine/linear single-use obligation (ADR-013 obl. 1) is
+    discharged by composition: borrow-check runs on this straight-line
+    AST before the transform, and the once-resumption trap guarantees
+    [cont] executes exactly once — so no new static machinery here. *)
 let detect_async_base_case ~(globals : string list) (params : string list)
-    (body : expr) : (string * expr * expr) option =
-  (* Unwrap a trivial single-expression block (`{ e }`) so a block-bodied
-     `Async` fn whose sole content is `let r = <call>; cont` is still
-     recognised; any non-trivial block falls through to [None]. *)
+    (body : expr)
+    : (stmt list * string * expr * expr) option =
   let rec unwrap = function
     | ExprBlock { blk_stmts = []; blk_expr = Some e } -> unwrap e
     | e -> e
   in
-  (* Live-local capture check (ADR-013 PR2 scope). A name free in [cont]
-     is a live-local capture unless it is the async result binder, a
-     function parameter (re-supplied, not captured), or a top-level
-     function/const/global (resolved via func_indices, not the closure
-     env). The lone binder capture itself is handled by the proven #199
-     ExprLambda path; any *other* live local ⇒ defer to PR3. *)
-  let accept binder (call : expr) (cont : expr) =
-    match call with
-    | ExprApp _ ->
-      let allowed = binder :: params @ globals in
-      let escaping =
-        List.filter (fun v -> not (List.mem v allowed))
-          (dedup (find_free_vars [] cont))
-      in
-      if escaping = [] then Some (binder, call, cont) else None
+  let pre_bound_name = function
+    | StmtLet sl -> simple_pat_name sl.sl_pat
     | _ -> None
   in
+  let accept pre binder (call : expr) (cont : expr) =
+    if not (is_async_prim_call call) then None
+    else begin
+      (* [pre] must be only simple `let`s (well-defined capture set). *)
+      let pre_names = List.map pre_bound_name pre in
+      if List.exists (fun n -> n = None) pre_names then None
+      else
+        let pre_bound = List.filter_map (fun x -> x) pre_names in
+        (* Single boundary: no async primitive in pre values or cont. *)
+        let pre_vals = List.filter_map
+          (function StmtLet sl -> Some sl.sl_value | _ -> None) pre in
+        if mentions_async_prim cont
+           || List.exists mentions_async_prim pre_vals then None
+        else
+          let allowed = binder :: params @ globals @ pre_bound in
+          let escaping =
+            List.filter (fun v -> not (List.mem v allowed))
+              (dedup (find_free_vars [] cont))
+          in
+          if escaping = [] then Some (pre, binder, call, cont) else None
+    end
+  in
+  (* Split a stmt list at the first `let b = <async-prim call>`. *)
+  let rec split_at_boundary acc = function
+    | StmtLet sl :: rest when is_async_prim_call sl.sl_value ->
+      begin match simple_pat_name sl.sl_pat with
+        | Some binder -> Some (List.rev acc, binder, sl.sl_value, rest)
+        | None -> None
+      end
+    | s :: rest -> split_at_boundary (s :: acc) rest
+    | [] -> None
+  in
   match unwrap body with
-  (* Expression-form let: `let r = <call>; cont`. *)
+  (* Expression-form let: `let r = <async-prim call>; cont` (no pre). *)
   | ExprLet lb ->
     begin match simple_pat_name lb.el_pat, lb.el_body with
-      | Some binder, Some cont -> accept binder lb.el_value cont
+      | Some binder, Some cont -> accept [] binder lb.el_value cont
       | _ -> None
     end
-  (* Block-statement form: `{ let r = <call>; <rest...> }` — the parser's
-     normal desugaring of a block-bodied fn. The continuation is the
-     remainder of the block (trailing stmts + tail expr). *)
-  | ExprBlock { blk_stmts = StmtLet sl :: rest; blk_expr } ->
-    begin match simple_pat_name sl.sl_pat with
-      | Some binder ->
-        let cont = ExprBlock { blk_stmts = rest; blk_expr } in
-        accept binder sl.sl_value cont
+  (* Block form: optional simple `let`s, then the async boundary, then
+     the continuation (remaining stmts + tail expr). *)
+  | ExprBlock { blk_stmts; blk_expr } ->
+    begin match split_at_boundary [] blk_stmts with
+      | Some (pre, binder, call, post) ->
+        let cont = ExprBlock { blk_stmts = post; blk_expr } in
+        accept pre binder call cont
       | None -> None
     end
   | _ -> None
 
-(** ADR-013 PR2 transform. Lowers a recognised base-case `Async` fn
-    body `let binder = <async-call>; <cont>` to:
-      1. the async call (yields a `Thenable` handle), bound to [binder];
-      2. [cont] reified as a zero-arg continuation via the EXISTING #199
-         ExprLambda path — [binder] is the sole live local so it is
-         auto-captured into the `[fnId@0,envPtr@4]` env (no new closure
+(** ADR-013 #225 transform. Lowers a recognised `Async` fn body
+    `<pre simple-lets>; let binder = <async-call>; <cont>` to:
+      1. [pre] generated synchronously (its locals become live locals,
+         in scope for capture);
+      2. the async call (yields a `Thenable` handle), bound to [binder];
+      3. [cont] reified as a zero-arg continuation via the EXISTING #199
+         ExprLambda path — [binder] and every [pre]-bound local that
+         [cont] references are auto-captured into the `[fnId@0,envPtr@4]`
+         env (the #199 path already marshals N captures; no new closure
          code); a once-resumption trap is prepended to its body;
-      3. `thenableThen(handle, <closure>)`; the fn returns the result.
+      4. `thenableThen(handle, <closure>)`; the fn returns the result.
     Pure/non-recognised fns never reach here (caller gates on
     [fn_is_async] + [detect_async_base_case]); behaviour is unchanged
-    for them, exactly as before this slice. *)
-let gen_async_base_case (ctx : context) (binder : string)
+    for them, exactly as before. *)
+let gen_async_base_case (ctx : context) (pre : stmt list) (binder : string)
     (async_call : expr) (cont : expr) (thenable_then_idx : int)
     : (context * instr list) result =
-  let* (ctx1, call_code) = gen_expr ctx async_call in
+  (* [pre] runs synchronously before the async call; folding [gen_stmt]
+     allocates its locals into the context so the continuation's #199
+     capture pass (find_free_vars ∩ ctx.locals) picks them up. Simple
+     `let`s are stack-neutral, so [pre_code] leaves the stack empty. *)
+  let* (ctx_pre, pre_code) =
+    List.fold_left (fun acc st ->
+      let* (c, code) = acc in
+      let* (c', s) = gen_stmt c st in
+      Ok (c', code @ s)) (Ok (ctx, [])) pre in
+  let* (ctx1, call_code) = gen_expr ctx_pre async_call in
   let (ctx2, binder_idx) = alloc_local ctx1 binder in
   (* Once-resumption guard global (ADR-013 obligation 1): a second
      continuation entry traps. Defence-in-depth over the host's
@@ -1881,7 +1940,8 @@ let gen_async_base_case (ctx : context) (binder : string)
     | [] -> ctx4   (* unreachable: ExprLambda always lifts exactly one *)
   in
   let body =
-    call_code
+    pre_code                    (* synchronous prelude; stack-neutral *)
+    @ call_code
     @ [ LocalSet binder_idx ]
     @ [ LocalGet binder_idx ]   (* arg 1: the Thenable handle *)
     @ closure_code              (* arg 2: [fnId,envPtr] continuation *)
@@ -1930,10 +1990,10 @@ let gen_function (ctx : context) (fd : fn_decl) : (context * func) result =
               ~globals:(List.map fst ctx_with_params.func_indices)
               (List.map (fun p -> p.p_name.name) fd.fd_params)
               body_expr with
-      | Some (binder, call, cont) ->
+      | Some (pre, binder, call, cont) ->
         begin match List.assoc_opt "thenableThen"
                       ctx_with_params.func_indices with
-          | Some tt -> Some (binder, call, cont, tt)
+          | Some tt -> Some (pre, binder, call, cont, tt)
           | None -> None
         end
       | None -> None
@@ -1941,8 +2001,8 @@ let gen_function (ctx : context) (fd : fn_decl) : (context * func) result =
   in
   let* (ctx_final, body_code) =
     match async_base with
-    | Some (binder, call, cont, tt_idx) ->
-      gen_async_base_case ctx_with_params binder call cont tt_idx
+    | Some (pre, binder, call, cont, tt_idx) ->
+      gen_async_base_case ctx_with_params pre binder call cont tt_idx
     | None -> gen_expr ctx_with_params body_expr
   in
 
