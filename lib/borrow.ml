@@ -86,6 +86,14 @@ type state = {
       Used to decide whether a borrowed owner is block-local (so a
       reference that escapes the block outlives its owner). *)
   mutable block_local_syms : Symbol.symbol_id list;
+
+  (** Sym-ids of the current function's *callee-owned* parameters: those
+      with effective ownership [None] (by-value) or [Some Own]. A reference
+      rooted at one of these escapes the callee frame if it is *returned*,
+      exactly like a borrow of a block-local. [ref]/[mut] params are
+      *caller-owned* referents and are deliberately absent here — returning
+      a borrow of them is sound. CORE-01 pt2 / #177 (return-escape). *)
+  mutable callee_owned_params : Symbol.symbol_id list;
 }
 
 (** Borrow checker errors *)
@@ -143,6 +151,7 @@ let create () : state =
     mutable_bindings = [];
     ref_bindings = [];
     block_local_syms = [];
+    callee_owned_params = [];
   }
 
 (** Add a function signature to context *)
@@ -509,6 +518,50 @@ let record_ref_binding (state : state) (symbols : Symbol.t)
     end
   | _ -> ()
 
+(** The borrow a *returned* expression denotes, if any: either a direct
+    [&place] / [&mut place], or a reference binder [r] (from [let r = &p])
+    looked up in the live borrow-graph. Returning a *value* (incl. [*r]) is
+    not a borrow and yields [None]. CORE-01 pt2 / #177 (return-escape). *)
+let returned_borrow (state : state) (symbols : Symbol.t)
+    (e : expr) : borrow option =
+  let rec peel = function ExprSpan (x, _) -> peel x | x -> x in
+  match ref_target symbols e with
+  | Some target ->
+    Some (match List.find_opt (fun b ->
+            places_overlap b.b_place target) state.borrows with
+          | Some b -> b
+          | None -> { b_place = target; b_kind = Shared;
+                      b_span = expr_span e; b_id = -1 })
+  | None ->
+    (match peel e with
+     | ExprVar id ->
+       (match lookup_symbol_by_name symbols id.name with
+        | Some sym ->
+          List.assoc_opt sym.Symbol.sym_id state.ref_bindings
+        | None -> None)
+     | _ -> None)
+
+(** Return-escape (CORE-01 pt2 / #177): a [return e] (or fn-tail) whose
+    value is a reference rooted at a *callee-owned* binding — a function
+    local or a by-value/[own] parameter — dangles once the callee frame is
+    gone. Mirrors [BorrowOutlivesOwner]'s block-escape rationale, extended
+    to the return position (the let-only graph in pt1 only saw block tails,
+    so [return r] slipped through). Sound and non-over-rejecting: returning
+    a borrow of a dying callee binding is always wrong; valid code returns
+    the value, or a borrow of a [ref]/[mut] (caller-owned) parameter — the
+    latter has no callee-owned root and is intentionally not flagged. *)
+let check_return_escape (state : state) (symbols : Symbol.t)
+    (e : expr) : unit result =
+  match returned_borrow state symbols e with
+  | None -> Ok ()
+  | Some b ->
+    (match root_var b.b_place with
+     | Some owner
+       when List.mem owner state.callee_owned_params
+            || List.mem owner state.block_local_syms ->
+       Error (BorrowOutlivesOwner (b, owner))
+     | _ -> Ok ())
+
 (** Check borrows in an expression *)
 let rec check_expr (ctx : context) (state : state) (symbols : Symbol.t) (expr : expr) : unit result =
   match expr with
@@ -870,7 +923,13 @@ let rec check_expr (ctx : context) (state : state) (symbols : Symbol.t) (expr : 
 
   | ExprReturn e_opt ->
     begin match e_opt with
-      | Some e -> check_expr ctx state symbols e
+      | Some e ->
+        let* () = check_expr ctx state symbols e in
+        (* CORE-01 pt2 / #177: a returned reference rooted at a callee-owned
+           binding (local or by-value/own param) escapes the frame. The
+           let-graph is live here, so `return r` (r = &local/&byval-param)
+           is caught — the pt1 tail-only check missed it. *)
+        check_return_escape state symbols e
       | None -> Ok ()
     end
 
@@ -1057,16 +1116,33 @@ and check_stmt (ctx : context) (state : state) (symbols : Symbol.t) (stmt : stmt
 let check_function (ctx : context) (symbols : Symbol.t) (fd : fn_decl) : unit result =
   let state = create () in
   List.iter (fun (p : param) ->
-    if param_ownership p = Some Mut then
-      match lookup_symbol_by_name symbols p.p_name.name with
-      | Some sym ->
-        let place = PlaceVar (p.p_name.name, sym.sym_id) in
-        state.mutable_bindings <- place :: state.mutable_bindings
-      | None -> ()
+    let own = param_ownership p in
+    (match lookup_symbol_by_name symbols p.p_name.name with
+     | Some sym ->
+       if own = Some Mut then
+         state.mutable_bindings <-
+           PlaceVar (p.p_name.name, sym.sym_id) :: state.mutable_bindings;
+       (* Callee-owned params (by-value [None] or [Some Own]); [ref]/[mut]
+          are caller-owned referents and stay out. CORE-01 pt2 / #177. *)
+       (match own with
+        | None | Some Own ->
+          state.callee_owned_params <-
+            sym.sym_id :: state.callee_owned_params
+        | Some Ref | Some Mut -> ())
+     | None -> ())
   ) fd.fd_params;
   match fd.fd_body with
-  | FnBlock blk -> check_block ctx state symbols blk
-  | FnExpr e -> check_expr ctx state symbols e
+  | FnBlock blk ->
+    let* () = check_block ctx state symbols blk in
+    (* Implicit-tail return of a *direct* `&param` (no `let`, no `return`):
+       the pt1 block-tail check only knew block-locals, not by-value params.
+       `return`-statement escapes are caught inline in ExprReturn. *)
+    (match blk.blk_expr with
+     | Some tail -> check_return_escape state symbols tail
+     | None -> Ok ())
+  | FnExpr e ->
+    let* () = check_expr ctx state symbols e in
+    check_return_escape state symbols e
   | FnExtern -> Ok ()  (* No body to borrow-check *)
 
 (** Check a program *)
@@ -1094,9 +1170,22 @@ let check_program (symbols : Symbol.t) (program : program) : unit result =
      reference to an owner declared inside that block is a dangling borrow.
    record_move / record_borrow / end_borrow are all live now.
 
-   Deferred to a later CORE-01 part (tracked in docs/TECH-DEBT.adoc):
+   CORE-01 pt2 (2026-05-19): return-escape. A `return e` (or fn-tail)
+   whose value is a reference rooted at a callee-owned binding — a function
+   local or a by-value/[own] parameter — is now [BorrowOutlivesOwner]
+   (check_return_escape, state.callee_owned_params). pt1 only inspected
+   block tails, so `return r` (r = &local/&by-value-param) slipped through.
+   [ref]/[mut] params are caller-owned referents and are intentionally not
+   flagged (probed: `fn ok(x: ref Int) -> ref Int { return x; }` passes).
+   Sound + non-over-rejecting (full stdlib AOT + borrow suite green).
+
+   Still deferred to a later CORE-01 part (docs/TECH-DEBT.adoc) — and note
+   these are *parser-gated*: the surface to express them does not parse
+   today (`&mut e`, `-> &T`, `&`-in-literal, bare block-statements), so
+   they are not reachable unsoundnesses until the surface lands:
    - Non-lexical lifetimes with region inference (Polonius-style).
-   - Dataflow analysis for flow-sensitive reference-escape via assignment
-     to an outer mutable (the let-only graph does not yet cover `outer = &x`).
+   - Flow-sensitive escape via assignment to an outer mutable
+     (`outer = &x`) — blocked on assignment-of-borrow + inner-block-stmt
+     surface, not just the analysis.
    - Tighter integration with the quantity checker for captured linears.
 *)

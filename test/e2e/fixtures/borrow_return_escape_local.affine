@@ -1,0 +1,13 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2026 Jonathan D.A. Jewell
+//
+// CORE-01 pt2 / #177 return-escape: returning a reference rooted at a
+// function-local also dangles. `return`-statement form (not a block tail).
+
+module BorrowRetEscapeLocal;
+
+fn esc() -> ref Int {
+  let x = 5;
+  let r = &x;
+  return r;
+}

@@ -1,0 +1,13 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2026 Jonathan D.A. Jewell
+//
+// CORE-01 pt2 / #177 return-escape: returning a reference rooted at a
+// by-value (callee-owned) parameter dangles once the callee frame is gone.
+// pt1 only saw block tails, so `return r` (r = &x) slipped through.
+
+module BorrowRetEscapeParam;
+
+fn esc(x: Int) -> ref Int {
+  let r = &x;
+  return r;
+}

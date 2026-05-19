@@ -3664,6 +3664,30 @@ let test_borrow_call_arg_then_use () =
     Alcotest.fail ("valid call-arg-then-use spuriously rejected: "
                    ^ Borrow.format_borrow_error e)
 
+(* CORE-01 pt2 / #177 — return-escape. *)
+let test_borrow_return_escape_param () =
+  match borrow_result (fixture "borrow_return_escape_param.affine") with
+  | Error (Borrow.BorrowOutlivesOwner _) -> ()
+  | Error e ->
+    Alcotest.fail ("expected BorrowOutlivesOwner (return &by-value-param), got: "
+                   ^ Borrow.format_borrow_error e)
+  | Ok () -> Alcotest.fail "return &(by-value param) escaped uncaught"
+
+let test_borrow_return_escape_local () =
+  match borrow_result (fixture "borrow_return_escape_local.affine") with
+  | Error (Borrow.BorrowOutlivesOwner _) -> ()
+  | Error e ->
+    Alcotest.fail ("expected BorrowOutlivesOwner (return &local), got: "
+                   ^ Borrow.format_borrow_error e)
+  | Ok () -> Alcotest.fail "return &local escaped uncaught"
+
+let test_borrow_return_refparam_ok () =
+  match borrow_result (fixture "borrow_return_refparam_ok.affine") with
+  | Ok () -> ()
+  | Error e ->
+    Alcotest.fail ("sound `return ref-param` spuriously rejected: "
+                   ^ Borrow.format_borrow_error e)
+
 let borrow_tests = [
   Alcotest.test_case "BorrowOutlivesOwner: &local escapes its block"
     `Quick test_borrow_outlives_owner;
@@ -3671,6 +3695,12 @@ let borrow_tests = [
     `Quick test_borrow_use_while_excl;
   Alcotest.test_case "temporary call-arg borrow released (no over-reject)"
     `Quick test_borrow_call_arg_then_use;
+  Alcotest.test_case "return-escape: return &(by-value param) rejected (#177 pt2)"
+    `Quick test_borrow_return_escape_param;
+  Alcotest.test_case "return-escape: return &(local) rejected (#177 pt2)"
+    `Quick test_borrow_return_escape_local;
+  Alcotest.test_case "return ref-param sound — not over-rejected (#177 pt2)"
+    `Quick test_borrow_return_refparam_ok;
 ]
 
 (* ============================================================================
