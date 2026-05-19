@@ -75,6 +75,63 @@ fn main() -> Int {
   Alcotest.(check int) "ten call sites across positions" 10
     (Effect_sites.count p)
 
+(* ── #234 S2b: typecheck populates the ordinal→effect side-table ── *)
+
+let rec eff_mentions (name : string) (e : Types.eff) : bool =
+  match e with
+  | Types.EPure | Types.EVar _ -> false
+  | Types.ESingleton s -> s = name
+  | Types.EUnion es -> List.exists (eff_mentions name) es
+
+let typecheck_ctx (src : string) : Typecheck.context =
+  let prog = parse src in
+  let loader = Module_loader.create (Module_loader.default_config ()) in
+  match Resolve.resolve_program_with_loader prog loader with
+  | Error (e, _) -> Alcotest.failf "resolve: %s" (Resolve.show_resolve_error e)
+  | Ok (rc, _) ->
+    (match Typecheck.check_program rc.Resolve.symbols prog with
+     | Ok ctx -> ctx
+     | Error e -> Alcotest.failf "typecheck: %s" (Typecheck.format_type_error e))
+
+(* helper(1)=ord0 (pure, no eff), prim(2)=ord1 (declared /{Net,Async}).
+   `a + b` is ExprBinary, not a call. *)
+let s2b_src =
+  {|
+extern fn prim(x: Int) -> Int / { Net, Async };
+
+fn helper(x: Int) -> Int { x }
+
+fn main() -> Int {
+  let a = helper(1);
+  let b = prim(2);
+  a + b
+}
+|}
+
+let test_s2b_table_built () =
+  let ctx = typecheck_ctx s2b_src in
+  Alcotest.(check int) "two table entries" 2
+    (Hashtbl.length ctx.Typecheck.call_effects);
+  let e0 = Hashtbl.find ctx.Typecheck.call_effects 0 in
+  let e1 = Hashtbl.find ctx.Typecheck.call_effects 1 in
+  Alcotest.(check bool) "helper(1) carries no Async" false
+    (eff_mentions "Async" e0);
+  Alcotest.(check bool) "prim(2) carries Async" true
+    (eff_mentions "Async" e1)
+
+let test_s2b_keyed_by_effect_sites_ordinals () =
+  (* Producer/consumer agreement contract: every Effect_sites ordinal
+     has an entry in the table. *)
+  let ctx = typecheck_ctx s2b_src in
+  let p = parse s2b_src in
+  List.iter
+    (fun (ord, _) ->
+      Alcotest.(check bool)
+        (Printf.sprintf "ordinal %d present" ord)
+        true
+        (Hashtbl.mem ctx.Typecheck.call_effects ord))
+    (Effect_sites.to_list p)
+
 let tests =
   [
     Alcotest.test_case "count" `Quick test_count;
@@ -85,4 +142,8 @@ let tests =
     Alcotest.test_case "no calls" `Quick test_no_calls;
     Alcotest.test_case "calls in many positions" `Quick
       test_calls_in_many_positions;
+    Alcotest.test_case "S2b: typecheck builds the effect side-table"
+      `Quick test_s2b_table_built;
+    Alcotest.test_case "S2b: keyed by Effect_sites ordinals" `Quick
+      test_s2b_keyed_by_effect_sites_ordinals;
   ]
