@@ -8,6 +8,9 @@
     "./runtime": "./runtime.js"
   },
   "license": "PMPL-1.0-or-later",
+  "tasks": {
+    "test": "deno test --allow-read --allow-write loader_test.js"
+  },
   "publish": {
     "exclude": ["loader_test.js"]
   }

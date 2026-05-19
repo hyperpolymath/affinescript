@@ -188,9 +188,15 @@ link:TECH-DEBT.adoc[TECH-DEBT.adoc].
 + `Mod.fn(x)` qualified-value path WIRED+locked (parse-boundary lowering;
 4 hermetic tests). Distinct parser follow-up: `Mod::fn(x)` in expr position
 |INT-02 |Host-agnostic loader bridge (`affinescript-dom-loader`) |#179 |loader
-landed in `packages/affine-js` (SAT-02 fixed; Deno/Node/browser parity,
-multi-namespace import object, ownership-section accessor). S1; unblocks
-INT-05/08/11. The `affinescript-dom-loader` satellite shell is downstream.
+in `packages/affine-js` (SAT-02 fixed; Deno/Node/browser parity,
+multi-namespace import object, ownership-section accessor). *PROVEN +
+regression-locked:* 14 unit tests via pinned `deno task test` (was
+flag-fragile — no run task) + `tests/modules/loader-bridge/` drives the
+*real* loader API over genuine compiler-emitted cross-module wasm
+(`readBytes`+`buildImportObject` link `CrossCallee.consume(42)`=42;
+`parseOwnershipSection` reads a real Linear-param entry) — closes
+INT-01 ↔ INT-02. S1; unblocks INT-05/08/11. The `affinescript-dom-loader`
+satellite shell is downstream.
 |INT-03 |WASI preview2 / host I/O beyond stdout |#180 |S1, ADR-015
 ACCEPTED (owner-chosen full WASM Component-Model re-target). Staged
 S1..S6; legacy preview1 stdout path is the default until S6
