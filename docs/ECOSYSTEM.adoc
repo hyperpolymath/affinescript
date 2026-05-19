@@ -152,8 +152,11 @@ wasm loop-codegen defect).
 |`affinescript-deno-test` |works |Smoke-test harness used by the Deno-ESM
 target.
 
-|`affinescript-tea` |first slice |Was imaginary until the #175 scaffold;
-a real first slice exists. INT-07 (#182) builds the runtime + run loop.
+|`affinescript-tea` |runtime |INT-07 (#182): real host-side TEA runtime
++ run loop (`TeaApp`: load/init/dispatch/model/setScreen/run,
+`parseTeaLayout`). Generic over `affinescript.tea_layout`; enforces the
+Linear-msg invariant; reuses the INT-02 loader. 9 Deno tests vs the
+canonical `affinescript tea-bridge` + a re-entrancy fixture.
 
 |`affinescript-dom-loader` |scaffold |Was imaginary until #175. INT-02
 (#179) builds the host-agnostic loader. Blocks INT-05/08/11.
@@ -200,8 +203,9 @@ S1..S6; legacy preview1 stdout path is the default until S6
 (blocked by INT-02)
 |INT-06 |Server-side runtime profile (on INT-03 WASI p2) |ledger-only
 |planned (blocked by INT-03)
-|INT-07 |`affinescript-tea` runtime satellite |#182 |open, S2 (blocked by
-INT-01)
+|INT-07 |`affinescript-tea` runtime satellite |#182 |runtime + run loop
+shipped (`TeaApp`/`parseTeaLayout`, Linear-msg enforced); INT-01 dep
+cleared (#253). Router/nav = separate INT-09
 |INT-08 |DOM reconciler in `affinescript-dom` |#183 |reconciler
 implemented + compiles (resolve→typecheck→codegen→wasm); `.as`→`.affine`
 corrected. INT-02 dep cleared. Runtime BLOCKED by #255 (wasm

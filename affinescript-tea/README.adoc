@@ -1,0 +1,66 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+= affinescript-tea
+:toc: macro
+:icons: font
+
+The host-side *TEA (The Elm Architecture)* runtime + run loop for
+AffineScript modules. INT-07 (issue #182).
+
+toc::[]
+
+== What this is
+
+The compiler-internal `lib/tea_bridge.ml` defines a TEA runtime ABI a
+conforming WASM module exposes: `affinescript_init()`,
+`affinescript_update(msg: i32)` (with `msg` *Linear* — consumed exactly
+once per update cycle), optional `affinescript_get_*` getters /
+`affinescript_set_screen`, an exported `memory`, and two custom
+sections — `affinescript.tea_layout` (model field layout) and
+`affinescript.ownership` (the per-function ownership kinds, including
+the Linear `msg` proof).
+
+This package is the *generic* host runtime for any such module. It
+discovers the model from `affinescript.tea_layout` (it does **not**
+hard-code the bridge's demo `TitleModel`) and reuses the INT-02
+host-agnostic loader (`packages/affine-js/loader.js`) for Deno / Node /
+browser parity.
+
+== Usage
+
+[source,javascript]
+----
+import { TeaApp } from "@hyperpolymath/affinescript-tea";
+
+const app = await TeaApp.load("./app.wasm");
+
+// Low-level: drive cycles yourself.
+app.init();                       // -> initial model object
+app.dispatch(0);                  // one TEA update cycle
+app.model();                      // current model (layout-driven)
+
+// Managed run loop: `messages` is any (async) iterable of i32 msgs
+// (DOM events, a channel, a timer, a test array — all adapt).
+await app.run({
+  messages: eventStream,
+  view: (model) => render(model),
+});
+----
+
+== Linear-msg invariant
+
+`affinescript_update`'s `msg` is annotated `Linear` in
+`affinescript.ownership` — a message is consumed exactly once per
+update cycle. `dispatch()` enforces this host-side: `affinescript_update`
+is invoked exactly once, and the call is non-re-entrant — a message
+source or effect that tries to dispatch again *before the in-flight
+cycle completes* throws (that would consume a second message inside one
+cycle). `app.ownership` exposes the annotations.
+
+== Status
+
+INT-07 first general runtime: `TeaApp` (`load`/`init`/`dispatch`/
+`model`/`setScreen`/`run`) + `parseTeaLayout`. Verified against the
+canonical bridge (`affinescript tea-bridge`) and a hand-built
+re-entrancy fixture — see `mod_test.js` (9 tests). The router/navigation
+runtime is a separate satellite (INT-09, `lib/tea_router.ml`).
