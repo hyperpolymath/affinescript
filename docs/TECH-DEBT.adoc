@@ -87,9 +87,19 @@ shared-XOR-exclusive enforced at use sites
 (`UseWhileExclusivelyBorrowed`); ownership derived from the param *type*
 (`TyOwn/TyRef/TyMut`) — owned/ref/mut discipline now enforced from real
 parsed source (closed a latent hole); call-arg borrows temporary;
-ref-binding graph tracked. *Part 2+ deferred:* NLL/region inference
-(Polonius), flow-sensitive escape via `outer = &x`, tighter quantity
-integration. |S1 |pt1 in PR #240 (open); pt2+ open — issue #177
+ref-binding graph tracked. *Part 2 — return-escape LANDED* (Refs #177,
+gate 271→274): `return e` (or fn-tail) whose value is a reference rooted
+at a *callee-owned* binding (local or by-value/`own` param) is now
+`BorrowOutlivesOwner` (pt1 only saw block tails — `return r` slipped
+through); `ref`/`mut` params are caller-owned and not flagged (no
+over-rejection; full stdlib AOT green). 3 hermetic tests in "E2E Borrow
+Graph". *Part 2 residual — parser-gated (honest finding):* NLL/region
+inference (Polonius); flow-sensitive escape via `outer = &x`; tighter
+quantity integration. These are *not reachable unsoundnesses today* — the
+surface to express them does not parse (`&mut e`, `-> &T`, `&`-in-literal,
+bare block-statements), so the next move is the parser surface, then the
+analysis. |S1 |pt1 #240 + pt2 return-escape DONE (Refs #177); pt2 residual
+parser-gated — issue #177
 |CORE-02 |Effect-handler dispatch on WasmGC (currently `UnsupportedFeature`;
 EH proposal or CPS). The #225 CPS line closes the async slice. |S2 |partial
 (PR3a/b/c merged; #234 generalises the recogniser)

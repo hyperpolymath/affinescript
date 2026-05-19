@@ -1,0 +1,12 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2026 Jonathan D.A. Jewell
+//
+// CORE-01 pt2 / #177 non-over-rejection guard: returning a borrow of a
+// `ref` (caller-owned) parameter is SOUND and must still pass — the
+// returned reference has no callee-owned root.
+
+module BorrowRetRefParamOk;
+
+fn ok(x: ref Int) -> ref Int {
+  return x;
+}
