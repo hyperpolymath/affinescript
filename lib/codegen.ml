@@ -1919,7 +1919,16 @@ let simple_pat_name (p : pattern) : string option =
     this list as wasm-path async stdlib primitives are added. *)
 let async_primitives = [ "http_request_thenable" ]
 
+(* ADR-016 / #234 S3: the async boundary is now ANY call whose effect
+   row ⊇ Async (the typecheck side-table, keyed by the shared
+   Effect_sites ordinal, consulted via [Effect_sites.is_async_call]),
+   generalising the structural-conservative hardcoded set. The
+   structural disjunct is retained as the sound table-miss fallback
+   (empty oracle / count-mismatch ⇒ exactly the pre-#234 behaviour;
+   zero regression). S4 retires [async_primitives]. *)
 let is_async_prim_call (e : expr) : bool =
+  Effect_sites.is_async_call e
+  ||
   match e with
   | ExprApp (ExprVar id, _) -> List.mem id.name async_primitives
   | _ -> false
@@ -2444,6 +2453,13 @@ let gen_imports (loader : Module_loader.t) (imports : import_decl list) (ctx : c
     Defaults to a fresh loader with [Module_loader.default_config ()] so that
     existing call sites keep working without modification. *)
 let generate_module ?loader (prog : program) : wasm_module result =
+  (* ADR-016 / #234 S3: bind the effect-side-table oracle to THIS
+     (post-optimizer) program's nodes. Ordinals are stable across the
+     constant-folding optimizer (it never adds/removes/reorders calls),
+     so the producer's ordinal→has-Async map keys correctly here. A
+     count-mismatch makes [bind_consumer] a no-op ⇒ structural
+     fallback. Safe if the producer never ran (empty ⇒ no-op). *)
+  Effect_sites.bind_consumer prog;
   let loader = match loader with
     | Some l -> l
     | None -> Module_loader.create (Module_loader.default_config ())
