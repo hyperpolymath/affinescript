@@ -1,0 +1,12 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2026 Jonathan D.A. Jewell
+//
+// #178 INT-01: `use Mod;` + qualified *value* call `Mod.fn(x)`. Before the
+// qualified-value lowering this failed with Resolve.UndefinedVariable on the
+// module qualifier (it parsed as field access on an undefined variable).
+
+use CrossCallee;
+
+pub fn main() -> Int {
+  return CrossCallee.consume(42);
+}

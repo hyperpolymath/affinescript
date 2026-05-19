@@ -101,13 +101,20 @@ let resolve_face ?(quiet = false) face path =
 
 (** Parse a file using the requested face. *)
 let parse_with_face (face : Affinescript.Face.face) path =
-  match face with
-  | Affinescript.Face.Canonical   -> Affinescript.Parse_driver.parse_file path
-  | Affinescript.Face.Python      -> Affinescript.Python_face.parse_file_python path
-  | Affinescript.Face.Js          -> Affinescript.Js_face.parse_file_js path
-  | Affinescript.Face.Pseudocode  -> Affinescript.Pseudocode_face.parse_file_pseudocode path
-  | Affinescript.Face.Lucid       -> Affinescript.Lucid_face.parse_file_lucid path
-  | Affinescript.Face.Cafe        -> Affinescript.Cafe_face.parse_file_cafe path
+  let prog =
+    match face with
+    | Affinescript.Face.Canonical   -> Affinescript.Parse_driver.parse_file path
+    | Affinescript.Face.Python      -> Affinescript.Python_face.parse_file_python path
+    | Affinescript.Face.Js          -> Affinescript.Js_face.parse_file_js path
+    | Affinescript.Face.Pseudocode  -> Affinescript.Pseudocode_face.parse_file_pseudocode path
+    | Affinescript.Face.Lucid       -> Affinescript.Lucid_face.parse_file_lucid path
+    | Affinescript.Face.Cafe        -> Affinescript.Cafe_face.parse_file_cafe path
+  in
+  (* #178 INT-01: lower `use Mod;` + qualified value path `Mod.fn` to the
+     flat-imported `fn` so resolve/typecheck/codegen see it uniformly. The
+     formatter uses a separate path (Formatter.format_file) and is unaffected,
+     so source `Mod.fn` is preserved on `fmt`. *)
+  Affinescript.Resolve.lower_qualified_value_paths prog
 
 (** Preview the Python-face text transform (debug tool). *)
 let preview_python_transform path =
