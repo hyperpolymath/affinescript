@@ -1,0 +1,19 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// issue #234 S3 — the payoff: the WasmGC CPS async boundary is now
+// detected from the callee's *effect row* (the typecheck side-table,
+// ADR-016), not a hardcoded name set. `fetchThing` is a USER-defined
+// async primitive — it is NOT `http_request_thenable` and NOT in
+// codegen's `async_primitives` list. The transform fires solely
+// because it is declared `/ { Async }`. Same #205/#199 host scaffold
+// as test_http_cps_base; `thenableThen` is in scope so the transform
+// can emit it.
+
+use Http::{Thenable, thenableThen};
+
+extern fn fetchThing(url: String) -> Thenable / { Async };
+extern fn thingStatus(t: Thenable) -> Int;
+
+pub fn launch() -> Int / { Async } {
+  let t = fetchThing("https://example.test/x");
+  thingStatus(t)
+}

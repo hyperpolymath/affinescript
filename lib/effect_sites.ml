@@ -138,3 +138,62 @@ let to_list (prog : program) : (int * expr) list =
 (** [iter f prog] runs [f ordinal node] for every call site, in order. *)
 let iter (f : int -> expr -> unit) (prog : program) : unit =
   fold_calls (fun () ord e -> f ord e) () prog
+
+(* ── ADR-016 / #234 S3: ordinal-keyed async oracle ─────────────────────
+
+   The producer ([Typecheck.populate_call_effects]) records, per call-site
+   ORDINAL, whether the callee's effect row ⊇ [Async]. The consumer
+   ([Codegen]) runs on the *post-optimizer* AST. The only optimizer is
+   constant folding ([Opt.fold_constants_program]) which folds literal
+   bin/unops to literals but never adds, removes, or reorders a function
+   call ([ExprApp]) — so the pre-order ordinal of every call is STABLE
+   across optimization. Hence the ORDINAL (not physical identity) bridges
+   the producer's pre-opt AST and the consumer's post-opt AST, exactly as
+   ADR-016 specifies.
+
+   Lifecycle (per compilation): the producer fills [async_by_ord];
+   [bind_consumer prog] renumbers the (possibly post-opt) [prog] with the
+   SAME traversal and materialises a physical-identity predicate over
+   *that* prog's own nodes. Default empty ⇒ [is_async_call] is always
+   false ⇒ codegen falls back to the structural recogniser (the exact
+   pre-#234 behaviour; zero regression if the producer never ran or the
+   counts disagree). *)
+
+let async_by_ord : (int, bool) Hashtbl.t = Hashtbl.create 64
+let consumer_async : (expr * bool) list ref = ref []
+
+(** Producer entry: replace the ordinal→has-async map. *)
+let set_async_by_ord (tbl : (int, bool) Hashtbl.t) : unit =
+  Hashtbl.reset async_by_ord;
+  Hashtbl.iter (fun k v -> Hashtbl.replace async_by_ord k v) tbl
+
+(** Reset both sides (defensive; long-lived processes / LSP). *)
+let clear_async () =
+  Hashtbl.reset async_by_ord;
+  consumer_async := []
+
+(** Consumer entry: bind the predicate to [prog]'s own nodes. If the
+    call count disagrees with the producer's map size, the ordinal
+    bridge is not trustworthy (an optimizer changed call structure) ⇒
+    bind nothing, so codegen safely falls back to structural. *)
+let bind_consumer (prog : program) : unit =
+  if Hashtbl.length async_by_ord = 0 || count prog <> Hashtbl.length async_by_ord
+  then consumer_async := []
+  else
+    consumer_async :=
+      fold_calls
+        (fun acc ord node ->
+          let b =
+            match Hashtbl.find_opt async_by_ord ord with
+            | Some b -> b
+            | None -> false
+          in
+          (node, b) :: acc)
+        [] prog
+
+(** [is_async_call node] — does this call's (declared/inferred) effect
+    row include [Async]? Physical-identity lookup over the bound prog. *)
+let is_async_call (node : expr) : bool =
+  match List.assq node !consumer_async with
+  | b -> b
+  | exception Not_found -> false

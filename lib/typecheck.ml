@@ -1808,7 +1808,21 @@ let populate_call_effects (ctx : context) (prog : Ast.program) : unit =
         | _ -> EPure
       in
       Hashtbl.replace ctx.call_effects ord row)
-    prog
+    prog;
+  (* ADR-016 / #234 S3: publish the ordinal→has-Async view for the
+     codegen consumer. `Async` lowers to the canonical `ESingleton
+     "Async"` (or appears in an `EUnion`, e.g. `/{Net,Async}`). *)
+  let rec eff_has_async (e : eff) : bool =
+    match e with
+    | EPure | EVar _ -> false
+    | ESingleton s -> s = "Async"
+    | EUnion es -> List.exists eff_has_async es
+  in
+  let async_tbl : (int, bool) Hashtbl.t = Hashtbl.create 64 in
+  Hashtbl.iter
+    (fun ord e -> Hashtbl.replace async_tbl ord (eff_has_async e))
+    ctx.call_effects;
+  Effect_sites.set_async_by_ord async_tbl
 
 let check_program ?(import_types : (string, scheme) Hashtbl.t option)
     (symbols : Symbol.t) (prog : Ast.program)
