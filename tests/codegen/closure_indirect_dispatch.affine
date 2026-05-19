@@ -1,0 +1,21 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// issue #235 — the #199 closure-pointer ABI exercised in a real wasm
+// engine INDEPENDENT of the async / CPS transform.
+//
+// Until #225 PR2 the #199 ABI ([fnId@0,envPtr@4] dispatched via the
+// exported __indirect_function_table) had only ever been STATICALLY
+// compiled across the estate — the two defects PR2 found had hidden in
+// that blind spot. The async tests now exercise it, but only *through*
+// the CPS transform. tests/codegen/test_closure_capture.affine (and
+// the other test_closure_*.affine) have NO `.mjs` host — they are
+// compile-only. This fixture closes that gap: a captured-closure
+// callback handed to a plain `extern fn`, dispatched by the host via
+// __indirect_function_table, with NO `thenableThen` / Async effect, so
+// the async transform is provably not involved.
+
+extern fn invokeCallback(cb: fn(Unit) -> Int) -> Int;
+
+pub fn launch() -> Int {
+  let base = 7;
+  invokeCallback(fn(u: Unit) => base + 35)   // host-dispatched -> 42
+}
