@@ -1095,3 +1095,49 @@ references = [
   "lib/effect_sites.ml (new; shared call-site numbering)",
   "docs/specs/SETTLED-DECISIONS.adoc (ADR-016 section)",
 ]
+
+[[adr]]
+id = "ADR-018"
+status = "accepted"
+date = "2026-05-19"
+title = "No raw/FFI escape: typed `extern` is the only host bridge"
+context = """
+ReScript `%%raw("<host source>")` / `%raw` injects arbitrary untyped
+host source. AffineScript's only host bridge is `extern fn` / `extern
+type` (parser.mly extern_fn_decl/extern_type_decl, FnExtern body) —
+typed, host-supplied, no body, no arbitrary-source escape. 14 estate
+`%%raw` occurrences (#229 Tier-3, ESC-01 #245) had no clean target.
+Escalated language-side — the bidirectional-evidence discipline of
+ADR-014 / #228 and the affine spirit of explicit, typed boundaries.
+(ADR-017 is the block-module disposition #262; this is ADR-018 because
+main merged ADR-016 = effect-threaded async-boundary, #234.)
+"""
+decision = """
+No raw escape — there is no `%%raw` analogue, by design. Typed `extern
+fn` / `extern type` is the SOLE FFI surface. Every estate `%%raw` ports
+to a typed `extern` whose signature states the host contract the raw
+blob assumed implicitly; the host implementation moves to the
+embedder/runtime shim. AffineScript will NOT gain an untyped
+intrinsic/`extern raw` block: an arbitrary-source hole defeats
+affine/effect tracking at the boundary where the guarantees matter most
+— precisely what the type-and-effect discipline (and ADR-012) exists to
+prevent. Doctrine decision: `extern` already exists, no compiler change;
+it settles the #229 canonical-map target and the FFI stance.
+"""
+consequences = """
+- A `%%raw` encoding genuine logic (not just a host call) is a design
+  smell the port surfaces: re-express as real AffineScript + a typed
+  `extern` for any true host primitive, never smuggled through.
+- `%%raw`-bearing #229 files (idaptik Main/StartupError, parts of
+  burble) port under this doctrine; per-file execution is #229 per-repo.
+- No language/compiler change; no estate consumer churn from this ADR.
+- Settled; do not reopen without amending. ESC-01 #245.
+"""
+references = [
+  "https://github.com/hyperpolymath/affinescript/issues/245",
+  "https://github.com/hyperpolymath/affinescript/issues/229",
+  "lib/parser.mly (extern_fn_decl; extern_type_decl; FnExtern)",
+  "docs/specs/SETTLED-DECISIONS.adoc (ADR-018 section)",
+  "docs/RESCRIPT-ELIMINATION.adoc (#229 canonical map; Tier-3 ESC-01)",
+  "META.a2ml [[adr]] ADR-012 (grammar changes are correctness assertions)",
+]

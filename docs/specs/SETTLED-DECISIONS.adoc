@@ -342,3 +342,36 @@ for table-miss only).
 This decision is settled; do not reopen without amending the ADR. Full
 ADR in `.machine_readable/6a2/META.a2ml` (ADR-016); ledger #234 /
 CORE-02 in `docs/TECH-DEBT.adoc`.
+
+== No Raw/FFI Escape: Typed `extern` Is the Only Host Bridge (ADR-018)
+
+ReScript `%%raw("<host source>")` / `%raw` injects arbitrary untyped host
+source. AffineScript's only host bridge is `extern fn` / `extern type`
+(grammar `parser.mly`: `extern_fn_decl` / `extern_type_decl`, `FnExtern`
+body) — *typed*, host-supplied, no body, no arbitrary-source escape. 14
+estate `%%raw` occurrences (#229 Tier-3, ESC-01 #245) had no clean
+target. Escalated language-side — the bidirectional-evidence discipline
+of ADR-014 / #228, and the affine spirit of explicit, typed boundaries.
+
+Decision: *no raw escape — there is no `%%raw` analogue, by design.* The
+typed `extern fn` / `extern type` declaration is the **sole** FFI
+surface. Every estate `%%raw` ports to a typed `extern` declaration whose
+signature states the host contract the raw blob assumed implicitly; the
+host implementation moves to the embedder/runtime shim. AffineScript will
+*not* gain an untyped intrinsic/`extern raw` block: an arbitrary-source
+hole defeats affine/effect tracking at the very boundary where the
+guarantees matter most — exactly what the type-and-effect discipline (and
+ADR-012) exists to prevent. This is a *doctrine* decision: `extern`
+already exists, so there is no compiler change; it settles the #229
+canonical-map target and the language's FFI stance.
+
+Consequence: a `%%raw` that encodes genuine logic (not just a host call)
+is a design smell surfaced by the port — it must be re-expressed as real
+AffineScript plus a typed `extern` for any true host primitive, not
+smuggled through. `%%raw`-bearing #229 files (idaptik `Main`/`StartupError`,
+parts of `burble`) port under this doctrine; per-file execution is the
+#229 per-repo work.
+
+This decision is settled; do not reopen without amending the ADR. Full
+ADR in `.machine_readable/6a2/META.a2ml` (ADR-018); #229 canonical map in
+`docs/RESCRIPT-ELIMINATION.adoc`; escalation issue #245.
