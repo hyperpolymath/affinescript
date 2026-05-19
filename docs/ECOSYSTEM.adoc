@@ -54,8 +54,19 @@ recovery). |*CLOSED* |`affine-types = wired-and-reachable`,
 
 |*B* |Grammar conformance + conflict elimination: ADR-009 conformance, the
 #215 conflict-family workstream, ADR-012 ("grammar changes are correctness
-assertions"). |*near-closed* |Family B (`return`/`resume`, PR #224) merged;
-residual S/R + state-401 R/R families remain (one family per PR).
+assertions"). |*CLOSED* |#215 closed with an owner-ratified *ADR-012
+disposition*: families A/C/D/F + the EXTERN bug fixed on correctness
+grounds (#216/#217/#219/#222/#223); family B (`return`/`resume`, #224)
+shipped as a *correctness* change, conflict-count-neutral. The residual
+~68 S/R + state-401 R/R are *intentional WON'T-FIX*: Menhir resolves them
+correctly, the full gate proves every accepted parse is the intended one,
+and removing them is the systemic precedence/left-factoring contortion
+(estate-wide blast radius, cosmetic-only payoff) ADR-012 *forbids*.
+Closure is by *disclosure, not surgery*: `just build` masks the benign
+notices but prints the count + correctness proof + ADR pointer; `just
+build-loud` / `dune build` reveal all (policy:
+`docs/specs/SETTLED-DECISIONS.adoc` "Parser-Conflict Disclosure"). Do
+*not* reopen residual-conflict elimination — it is settled won't-fix.
 
 |*C* |Standard library AOT: every stdlib file compiles
 resolve→typecheck→codegen, gated in CI. |*CLOSED 2026-05-18* |19/19 stdlib

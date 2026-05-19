@@ -26,7 +26,7 @@ toc::[]
 [source]
 ----
 Stage A  CLOSED ───────────────────────────────────────────────┐
-Stage B  near-closed (#215 residual families)                   │
+Stage B  CLOSED (#215; residual conflicts = ADR-012 won't-fix)  │
 Stage C  CLOSED 2026-05-18 (#128/#135 stdlib AOT)               │
                                                                  ▼
 Stage D  ACTIVE ── CORE-01 (#177)  ─┐                            (base lang
