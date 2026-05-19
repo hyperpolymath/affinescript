@@ -13,6 +13,65 @@ open Wasm
 let fd_stdout = 1l
 let fd_stderr = 2l
 
+(** WASI clock-id constants (preview1 `wasi_snapshot_preview1`):
+    0 = REALTIME, 1 = MONOTONIC, 2 = PROCESS_CPUTIME, 3 = THREAD_CPUTIME. *)
+let clock_realtime = 0l
+let clock_monotonic = 1l
+
+(** Create the WASI `clock_time_get` import (ADR-015 S4a, #180).
+
+    Signature: `(clockid: i32, precision: i64, time_out: i32) -> errno: i32`.
+    Writes the timestamp (nanoseconds, i64) to `*time_out`. Through the
+    S3 componentize on-ramp the wasmtime preview1->preview2 reactor
+    adapter bridges this to `wasi:clocks/{monotonic,wall}-clock@0.2.*`
+    on a real host. *)
+let create_clock_time_get_import () : import * func_type =
+  let func_type = {
+    ft_params = [I32; I64; I32];  (* clockid, precision, time_out_ptr *)
+    ft_results = [I32];           (* errno *)
+  } in
+  let import = {
+    i_module = "wasi_snapshot_preview1";
+    i_name = "clock_time_get";
+    i_desc = ImportFunc 0;  (* Will be adjusted when added to module *)
+  } in
+  (import, func_type)
+
+(** Emit a `clock_now_ms(clock_id)` sequence. The caller has placed
+    [clock_arg_local] (the `i32` clock id) and allocated
+    [scratch_local] (an `i32` heap-pointer local) and threaded the
+    import [clock_func_idx]. Leaves the i32 monotonic/realtime
+    millisecond count on the stack (= ns / 1_000_000, wrapped to i32 —
+    documented lossy: 32-bit ms wraps after ~24 days, sufficient for
+    typical use; the precise i64 reader is a follow-up).
+
+    Layout: 8 bytes scratch (the i64 time_out the WASI host writes). *)
+let gen_clock_now_ms
+    (heap_ptr_global : int) (clock_arg_local : int)
+    (scratch_local : int) (clock_func_idx : int)
+    : instr list =
+  [
+    (* scratch = heap; heap += 8 *)
+    GlobalGet heap_ptr_global;
+    I32Const 8l; I32Add;
+    GlobalSet heap_ptr_global;
+    GlobalGet heap_ptr_global;
+    I32Const 8l; I32Sub;
+    LocalSet scratch_local;
+    (* clock_time_get(clock_id, 0 /* precision */, scratch); drop errno *)
+    LocalGet clock_arg_local;
+    I64Const 0L;
+    LocalGet scratch_local;
+    Call clock_func_idx;
+    Drop;
+    (* return (i32) (i64_load(scratch) / 1_000_000) *)
+    LocalGet scratch_local;
+    I64Load (3, 0);
+    I64Const 1_000_000L;
+    I64DivU;
+    I32WrapI64;
+  ]
+
 (** Create WASI fd_write import
 
     fd_write signature: (fd: i32, iovs: i32, iovs_len: i32, nwritten: i32) -> i32

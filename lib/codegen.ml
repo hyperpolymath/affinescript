@@ -832,6 +832,27 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
         in
         Ok (ctx_with_heap, print_code)
 
+      | ExprVar id when id.name = "clock_now_ms" && List.length args = 1 ->
+        (* ADR-015 S4a (#180): clock_now_ms(clock_id) — i32 monotonic /
+           realtime milliseconds. Lowers to a `wasi_snapshot_preview1.
+           clock_time_get` call (import idx 1, hardcoded to match the
+           module-assembly ordering). Under the S3 component path the
+           reactor adapter bridges this to wasi:clocks on a real
+           preview2 host. Effect row is `Time` (tracking-only). *)
+        let* (ctx_with_arg, arg_code) = gen_expr ctx (List.hd args) in
+        let (ctx_with_arg2, clock_arg_local) =
+          alloc_local ctx_with_arg "__clock_id" in
+        let (ctx_with_scratch, scratch_local) =
+          alloc_local ctx_with_arg2 "__clock_scratch" in
+        let (ctx_with_heap, heap_idx) = ensure_heap_ptr ctx_with_scratch in
+        let clock_func_idx = 1 in
+        let code =
+          arg_code @ [LocalSet clock_arg_local] @
+          Wasi_runtime.gen_clock_now_ms
+            heap_idx clock_arg_local scratch_local clock_func_idx
+        in
+        Ok (ctx_with_heap, code)
+
       | ExprVar id when List.mem_assoc id.name ctx.variant_tags ->
         (* Enum constructor called as a function: Circle(5), Rect({x:1,y:2}), etc.
            Layout: [tag: i32][field1: i32][field2: i32]...
@@ -2467,11 +2488,39 @@ let generate_module ?loader (prog : program) : wasm_module result =
   let fd_write_type_idx = 0 in  (* Will be first type *)
   let fd_write_import_fixed = { fd_write_import with i_desc = ImportFunc fd_write_type_idx } in
 
-  let ctx_with_wasi = {
-    ctx with
-    types = fd_write_type :: ctx.types;
-    imports = fd_write_import_fixed :: ctx.imports;
-  } in
+  (* ADR-015 S4a (#180): register WASI `clock_time_get` only when the
+     unit actually calls `clock_now_ms` — adding it unconditionally
+     would force every host (incl. every test harness) to stub it,
+     breaking the principle "import what you use". Pre-scan via the
+     shared Effect_sites traversal. When emitted, the clock takes
+     import idx 1 (deterministically after fd_write at 0), which the
+     `clock_now_ms` builtin hardcodes. *)
+  let needs_clock =
+    Effect_sites.fold_calls
+      (fun acc _ord call ->
+        acc ||
+        match call with
+        | ExprApp (ExprVar id, _) -> id.name = "clock_now_ms"
+        | _ -> false)
+      false prog
+  in
+  let ctx_with_wasi =
+    if needs_clock then
+      let (clock_import, clock_type) = Wasi_runtime.create_clock_time_get_import () in
+      let clock_type_idx = 1 in
+      let clock_import_fixed = { clock_import with i_desc = ImportFunc clock_type_idx } in
+      {
+        ctx with
+        types = fd_write_type :: clock_type :: ctx.types;
+        imports = fd_write_import_fixed :: clock_import_fixed :: ctx.imports;
+      }
+    else
+      {
+        ctx with
+        types = fd_write_type :: ctx.types;
+        imports = fd_write_import_fixed :: ctx.imports;
+      }
+  in
 
   let* ctx_with_imports = gen_imports loader prog.prog_imports ctx_with_wasi in
 

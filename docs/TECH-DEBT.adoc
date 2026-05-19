@@ -185,11 +185,14 @@ follow-up
 multi-ns import object, ownership accessor); 14 unit tests via pinned
 `deno task test` + `tests/modules/loader-bridge/` e2e on real
 compiler-emitted xmod wasm (closes INT-01↔INT-02). Unblocks INT-05/08/11
-|INT-03 |WASI preview2 / host I/O |S1→S3 |#180 ADR-015 (full
+|INT-03 |WASI preview2 / host I/O |S1→S4a |#180 ADR-015 (full
 Component-Model re-target, S1..S6); S2 toolchain #251 closed;
-**S3 DONE — `tools/componentize.sh` (pinned reactor adapter) →
-valid WASI-0.2 component, ownership section survives,
-`tests/componentize/smoke.sh` gates it; codegen unchanged. Next S4
+S3 componentize on-ramp done; **S4a (clock) DONE —
+`clock_now_ms(clock_id)` builtin lowers to a preview1
+`clock_time_get` import (Effect_sites pre-scan, on-demand → zero
+regression on non-clock units); component path bridges to
+wasi:clocks. Real-host main-invoke deferred to S6 (WIT export
+lifting). Next S4b
 (native clocks/env/argv)**
 |INT-04 |Publish to JSR/npm |S2 |#181 packaging READY (dry-run green,
 manual workflow); JSR publish authorised + dispatched (owner go
