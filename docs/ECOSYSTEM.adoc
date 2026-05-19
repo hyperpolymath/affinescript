@@ -206,10 +206,15 @@ satellite shell is downstream.
 |INT-03 |WASI preview2 / host I/O beyond stdout |#180 |S1, ADR-015
 ACCEPTED (owner-chosen full WASM Component-Model re-target). Staged
 S1..S6; legacy preview1 stdout path is the default until S6
-(reversible-in-progress). **S2 toolchain provisioned (#251 closed):
-`tools/provision-component-toolchain.sh` — pinned wasm-tools 1.249.0 /
-wasm-component-ld 0.5.22 / wac-cli 0.10.0. S3 (componentize on-ramp)
-now UNBLOCKED.** WIT world of record: `wit/affinescript.wit`
+(reversible-in-progress). S2 toolchain provisioned (#251). **S3
+DONE: `tools/componentize.sh` wraps the emitted core module into a
+valid WASI-0.2 component via the fetch-pinned preview1→preview2
+*reactor* adapter (wasmtime v44.0.1, sha256-verified); the
+`affinescript.ownership` section is proven to SURVIVE the wrap;
+`tests/componentize/smoke.sh` gates it (SKIP-safe without the
+toolchain). Codegen UNCHANGED — core preview1 stays the default
+(reversible).** Next: S4 native clocks/env/argv. WIT world of
+record: `wit/affinescript.wit`
 |INT-04 |Publish compiler + runtime to JSR (then npm) |#181 |runtime
 packaging READY (affine-js + affinescript-tea JSR dry-run green;
 manual-only `publish-jsr.yml`; docs/PACKAGING.adoc). INT-01 dep
