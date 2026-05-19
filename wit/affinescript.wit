@@ -1,0 +1,51 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-FileCopyrightText: 2024-2026 hyperpolymath
+//
+// AffineScript WASM Component-Model target world (ADR-015, INT-03 #180).
+//
+// This is the WIT world of record for the WASI 0.2 (preview2) migration.
+// The wasi:* package dependencies are resolved at build time once the
+// toolchain prerequisite (wasm-tools / wasm-component-ld) lands (ADR-015
+// slice S2). Until then this file is the *contract*, not yet wired into
+// codegen — the legacy wasi_snapshot_preview1 core-wasm path remains the
+// default per ADR-015 (staged, reversible-in-progress).
+
+package affinescript:cli@0.1.0;
+
+/// The command world an AffineScript program compiled to a WASM
+/// component targets. Mirrors `wasi:cli/command` so a compiled program
+/// runs under any conformant WASI 0.2 host (wasmtime, jco, …).
+///
+/// Slice rollout (ADR-015):
+///   S3  wasi:cli/run + the preview1->preview2 adapter on-ramp
+///   S4  wasi:clocks, environment, argv
+///   S5  wasi:filesystem  (unblocks INT-06 server-side profile)
+///   S6  wasi:sockets, then this world becomes the default wasm target
+world run {
+  // Standard input/output/error.
+  import wasi:cli/stdin@0.2.0;
+  import wasi:cli/stdout@0.2.0;
+  import wasi:cli/stderr@0.2.0;
+
+  // Environment and argv (ADR-015 S4).
+  import wasi:cli/environment@0.2.0;
+
+  // Wall-clock and monotonic clocks (ADR-015 S4).
+  import wasi:clocks/wall-clock@0.2.0;
+  import wasi:clocks/monotonic-clock@0.2.0;
+
+  // Filesystem — unblocks the server-side runtime profile, INT-06
+  // (ADR-015 S5).
+  import wasi:filesystem/types@0.2.0;
+  import wasi:filesystem/preopens@0.2.0;
+
+  // Sockets — networking (ADR-015 S6).
+  import wasi:sockets/instance-network@0.2.0;
+  import wasi:sockets/tcp@0.2.0;
+  import wasi:sockets/udp@0.2.0;
+
+  // The command entrypoint: the host invokes `run`, the guest returns
+  // ok | err to become the process exit status. This is what AffineScript
+  // `fn main()` lowers to once codegen re-targets (ADR-015 S3+).
+  export wasi:cli/run@0.2.0;
+}

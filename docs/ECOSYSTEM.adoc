@@ -184,7 +184,12 @@ link:TECH-DEBT.adoc[TECH-DEBT.adoc].
 landed in `packages/affine-js` (SAT-02 fixed; Deno/Node/browser parity,
 multi-namespace import object, ownership-section accessor). S1; unblocks
 INT-05/08/11. The `affinescript-dom-loader` satellite shell is downstream.
-|INT-03 |WASI preview2 / host I/O beyond stdout |#180 |open, S1
+|INT-03 |WASI preview2 / host I/O beyond stdout |#180 |S1, ADR-015
+ACCEPTED (owner-chosen full WASM Component-Model re-target). Staged
+S1..S6; legacy preview1 stdout path is the default until S6
+(reversible-in-progress). S3+ HARD-GATED on S2 toolchain provisioning
+(`wasm-tools`/`wasm-component-ld`, absent). WIT world of record:
+`wit/affinescript.wit`
 |INT-04 |Publish compiler + runtime to JSR (then npm) |#181 |open, S2
 (blocked by INT-01)
 |INT-05 |Loader-driven multi-module app bundling |ledger-only |planned

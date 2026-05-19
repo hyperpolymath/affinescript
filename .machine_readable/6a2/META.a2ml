@@ -938,3 +938,81 @@ references = [
   "META.a2ml [[adr]] ADR-011 (real modules / qualified paths)",
   "META.a2ml [[adr]] ADR-012 (grammar changes are correctness assertions)",
 ]
+
+[[adr]]
+id = "ADR-015"
+status = "accepted"
+date = "2026-05-19"
+title = "WASI Preview2 / WASM Component-Model migration (INT-03)"
+context = """
+lib/wasi_runtime.ml emits only `wasi_snapshot_preview1.fd_write` to
+stdout (fd 1). There is no file, socket, environment, clock, or argv
+access, so there is no server-side runtime profile (INT-06 is blocked)
+and no real host I/O. INT-03 (#180) is the substrate fix. The owner was
+asked (2026-05-19, AskUserQuestion one-way-door fork) to choose between
+(a) expanding the preview1 import surface, (b) preview1 + an external
+preview1->preview2 adapter as the run path, or (c) a full re-target to
+the WebAssembly Component Model with WASI 0.2 (preview2). The owner
+chose (c) — explicitly the largest, one-way, highest-blast-radius path.
+"""
+decision = """
+Re-target the WASM output to the WebAssembly Component Model with WASI
+0.2 (preview2) WIT worlds. Binding constraints:
+
+- STAGED, non-breaking per slice; each slice is its own PR behind the
+  full gate. The legacy core-wasm + preview1 stdout path stays the
+  DEFAULT until the final slice flips it, so the migration is
+  reversible while in progress even though the end-state is one-way.
+- The `affinescript.ownership` custom section is a MULTI-PRODUCER ABI
+  (shared with hyperpolymath/ephapax; the typed-wasm contract carrier,
+  see docs/ECOSYSTEM.adoc). It MUST survive verbatim onto the
+  component's embedded core module. Its format MUST NOT change here;
+  any change is coordinated in hyperpolymath/typed-wasm, never made
+  unilaterally for this migration.
+- Only the `wasm`/`wasm-gc` target re-points. The 22+ source-to-source
+  targets (Deno-ESM, Node-CJS, Julia, …) are unaffected.
+- WIT world of record: `wit/affinescript.wit` — world
+  `affinescript:cli/run` importing the `wasi:cli`, `wasi:clocks`,
+  `wasi:filesystem`, and `wasi:sockets` 0.2 interfaces.
+
+Staged plan (ledger INT-03; each row = one gated PR):
+- S1 (this PR): ADR-015 + WIT world + staged plan + tooling-prerequisite
+  + roadmap truthing. No codegen change.
+- S2: toolchain provisioning — `wasm-tools` + `wasm-component-ld` (and
+  `wac`) into guix.scm/flake.nix. ABSENT in the current toolchain ⇒ a
+  HARD GATE on S3+: a component cannot be built or tested without them.
+- S3: componentize on-ramp — codegen still emits core wasm; a
+  post-codegen step wraps it with the standard preview1->preview2
+  adapter into a component; ownership section survival asserted;
+  wasmtime component-run smoke. Codegen unchanged ⇒ reversible.
+- S4: native `wasi:clocks` + environment + argv via preview2 (wasmtime
+  host-testable), replacing the preview1 shims behind the component path.
+- S5: `wasi:filesystem` (open/read/write/close) — unblocks INT-06.
+- S6: `wasi:sockets`; then flip the default wasm target to component
+  and demote the preview1 stdout path to a named legacy target.
+"""
+consequences = """
+- End-state is one-way (the component model becomes the canonical wasm
+  target) but reversible-in-progress: preview1 retained through S5.
+- S3..S6 are HARD-GATED on S2 (toolchain). Tracked as a follow-up
+  issue; this is disclosed, not hidden.
+- typed-wasm ownership-section ABI is unchanged; the coordination
+  obligation with hyperpolymath/ephapax + hyperpolymath/typed-wasm is
+  recorded and binding.
+- Source-to-source targets are untouched; no estate consumer churn from
+  this migration until S6, and even then only wasm-target consumers.
+- This decision is settled; do not reopen without amending this ADR.
+  Ledger INT-03 in docs/TECH-DEBT.adoc; roadmap in docs/ECOSYSTEM.adoc.
+"""
+references = [
+  "https://github.com/hyperpolymath/affinescript/issues/180",
+  "https://github.com/hyperpolymath/affinescript/issues/160",
+  "https://github.com/hyperpolymath/affinescript/issues/225",
+  "wit/affinescript.wit",
+  "lib/wasi_runtime.ml",
+  "lib/codegen.ml / lib/codegen_node.ml (wasm target)",
+  "docs/specs/SETTLED-DECISIONS.adoc (ADR-015 section)",
+  "docs/ECOSYSTEM.adoc (AffineScript <-> typed-wasm contract; INT-03)",
+  "hyperpolymath/typed-wasm (multi-producer ownership-section ABI)",
+  "WASI 0.2 / WebAssembly Component Model specification",
+]

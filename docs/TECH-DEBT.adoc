@@ -140,7 +140,9 @@ value call `Mod.fn(x)` hits a resolution error (post-#228 qualified-value
 resolution unwired) — own follow-up. |S1 |`use ::{}`/`::*` DONE (PR Refs
 #178); qualified-value-call resolver gap open #178
 |INT-02 |Host-agnostic loader bridge |S1 |open #179 (blocks INT-05/08/11)
-|INT-03 |WASI preview2 / host I/O |S1 |open #180
+|INT-03 |WASI preview2 / host I/O |S1 |#180 ADR-015 accepted (full
+Component-Model re-target, staged S1..S6); S3+ hard-gated on S2
+toolchain (`wasm-tools`/`wasm-component-ld`)
 |INT-04 |Publish to JSR/npm |S2 |open #181 (◄ INT-01)
 |INT-07 |`affinescript-tea` runtime |S2 |open #182 (◄ INT-01)
 |INT-08 |DOM reconciler |S2 |open #183 (◄ INT-02)
