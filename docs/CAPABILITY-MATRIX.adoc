@@ -61,8 +61,12 @@ Gate baseline at reconstruction: **`opam exec --switch=. -- dune runtest
 |Lexer |works |Full Unicode. Quantity-literal `ZERO`/`ONE` tokens are *not*
 emitted (QTT numeric surface uses `:1`/`:0`/`:ω` sugar parsed elsewhere).
 
-|Parser |works |Menhir grammar, ADR-009 conformance. Residual grammar
-conflicts tracked as the #215 family workstream (Stage B). *Module-qualified
+|Parser |works |Menhir grammar, ADR-009 conformance. Stage B *CLOSED*:
+#215 closed with the owner-ratified ADR-012 disposition — the residual
+~68 S/R + state-401 R/R conflicts are an *intentional won't-fix* (Menhir
+resolves them correctly; the gate proves every parse is intended;
+eliminating them is the contortion ADR-012 forbids). `just build` masks
++ proves them, `just build-loud`/`dune build` reveal all. *Module-qualified
 type/effect paths now parse* — `Pkg.Type` / `Pkg::Type` (mixed, deep),
 `::` canonical (ADR-014, PR #241, Refs #228; zero Menhir conflict delta).
 Cleared the dominant estate parse blocker (was 525/1177 `.affine`);
