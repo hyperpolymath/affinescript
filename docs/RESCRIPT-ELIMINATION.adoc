@@ -131,15 +131,24 @@ Every target form carries its grounding citation. Four tiers.
 |===
 |ReScript |AffineScript |Grounding
 
-|*expression-/pattern-position record literal* `{ f: v }` → `#{ f: v }`;
-typed `T { f: v }` → `T #{ f: v }` |the *record sigil* `#{…}` |*The
-dominant estate blocker — and NOT in #229's named construct set.*
-`docs/spec.md:414-421` prescribes exactly this rewrite ("rewrite each
-expression-position record literal `{`→`#{`; leave struct/type declaration
-bodies"); examples `spec.md:901,1320`. Oracle-verified: bare `{x:1}` /
-`M{x:1}` / `M(x:1)` all parse-error; `Type #{…}` is the form. Applies to
-record *patterns* in `match` too. Position-aware codemod (expr/pattern vs
-decl), *not* naive regex.
+|*expression-position* record literal `{ f: v }` → `#{ f: v }` |the
+*record sigil* `#{…}` |*The dominant estate blocker — and NOT in #229's
+named construct set.* `docs/spec.md:414-421` prescribes exactly this
+rewrite ("rewrite each *expression-position* record literal `{`→`#{`;
+leave struct/type declaration bodies"); examples `spec.md:901,1320`.
+Oracle-verified (port-proven): bare `{x:1}` expr-literal parse-errors,
+`#{x:1}` passes. *Strictly expression-literal-only* — record *patterns*
+in `match` (`{ a: x } =>`) and `struct`/`enum`/`type` decl bodies stay
+`{ }` (oracle: `#{`-pattern parse-errors, `{ }`-pattern passes; earlier
+"applies to patterns" claim was wrong, corrected from doing the ports).
+Position-aware codemod (standalone-`{`-then-`field:` → `#{`), *not* naive
+regex; record patterns/decls untouched.
+|ReScript string `+` → `++` |`++` |Concat is `++` (`stdlib/string.affine:98`
+`a ++ b`); `+` is numeric — `"x" + s` left a `Unify(String,Int)` *beneath*
+the parse wall. Oracle-verified: `"a" ++ "b"` passes, `"a" + "b"` →
+`String/Int`. String-literal-adjacent only (numeric `+`/`-` untouched).
+*Another layered RS-ism the text-scanner cannot see* — found by
+oracle-peeling the quick-win ports.
 |`List(X)` |`[X]` |list type is `[T]`; oracle-verified `List(Int)`
 parse-errors, `[Int]` passes. `stdlib/collections.affine`,
 `stdlib/prelude.affine`
@@ -231,11 +240,13 @@ hands-off confirm before touching*: policy hands-off is the ReScript
 confirm per repo it is an intended AffineScript target, not a deliberate
 interop artefact (burble's standing caveat), before removal.
 
-. *Smallest non-coupled (Tier-1, layered — not trivial):* `git-scripts`,
-  `game-server-admin`, `invariant-path` (one file each: `List(X)` *and* the
-  `#{` record sigil in expr + `match` pattern position; iterative
-  oracle-peel). `panll` is *excluded* (no listed RS construct — see the
-  lower-bound-triage warning above).
+. *Smallest non-coupled — DONE 2026-05-19:* `git-scripts`
+  (PR #9), `game-server-admin` (PR #14), `invariant-path` (PR #4). One
+  file each; layered: `List(X)`→`[X]` + expr record literals `{`→`#{`
+  (patterns/decls left `{ }`) + ReScript string `+`→`++` (the latter two
+  oracle-peeled, not scanner-visible). Each oracle-validated "Type
+  checking passed" on `main`. `panll` *excluded* (no listed RS construct
+  — scanner FP; see the lower-bound-triage warning).
 . *`burble`* (32): Tier-1 mechanical pass first (re-validated), Tier-2
   `mutable`/labelled per-case, Tier-3 constructs blocked on ESC-01..03.
 . *Small tail:* `standards`, `developer-ecosystem`, `stapeln`,
