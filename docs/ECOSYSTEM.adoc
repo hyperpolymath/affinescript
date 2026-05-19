@@ -139,8 +139,11 @@ The contract is *narrower than older prose claimed* and is exactly this:
 |===
 |Satellite |Reality |Notes
 
-|`affinescript-dom` |skeleton |`src/dom.as` ~39 lines; `h()`/`mount()` do
-not render. INT-08 (#183) builds the reconciler.
+|`affinescript-dom` |reconciler (compiles) |INT-08 (#183): `src/dom.as`
+(non-parsing 39-line stub) renamed to canonical `src/dom.affine` and
+replaced with a real VDOM + render + mount + minimal-mutation
+reconciler that compiles end-to-end. Runtime gated on #255 (pre-existing
+wasm loop-codegen defect).
 
 |`affinescript-pixijs` |skeleton |Migration-prerequisite scaffold (#56).
 
@@ -198,8 +201,10 @@ S1..S6; legacy preview1 stdout path is the default until S6
 |planned (blocked by INT-03)
 |INT-07 |`affinescript-tea` runtime satellite |#182 |open, S2 (blocked by
 INT-01)
-|INT-08 |DOM reconciler in `affinescript-dom` |#183 |open, S2 (blocked by
-INT-02)
+|INT-08 |DOM reconciler in `affinescript-dom` |#183 |reconciler
+implemented + compiles (resolve→typecheck→codegen→wasm); `.as`→`.affine`
+corrected. INT-02 dep cleared. Runtime BLOCKED by #255 (wasm
+loop-codegen defect, pre-existing)
 |INT-09 |`affinescript-cadre` router/navigation runtime |ledger-only
 |planned (blocked by INT-07)
 |INT-10 |LSP distribution (`affinescript-lsp`) |ledger-only |planned
