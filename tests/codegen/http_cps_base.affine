@@ -1,0 +1,38 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// issue #225 PR 2 — WasmGC CPS transform, base case (ADR-013).
+//
+// This is the FIRST end-to-end exercise of the transparent async
+// transform. The source is the recognised base-case shape — a single
+// async boundary then a continuation with NO live-local capture beyond
+// the async result binder:
+//
+//     let r = <async-call>;
+//     <cont using only r>
+//
+// The author writes no `thenableThen`/closure plumbing. The WasmGC
+// backend detects `Async ∈ fd_eff` + this shape and lowers it to:
+// emit the call (Thenable handle), reify the continuation as a #199
+// closure that captures `r`, and `thenableThen(handle, closure)` with
+// a once-resumption trap on the continuation. The host re-enters the
+// continuation after settlement; it reads the settled value via the
+// MINIMAL scalar accessor below (NOT the typed Response reader — that
+// is PR 3, per ADR-013 §Delivery-plan).
+//
+// `thenableThen` is in the `use` list so it resolves as an import even
+// though the author never calls it directly; auto-injecting that
+// import is part of the broader transparent-surface work (PR 3+). PR 2
+// proves the mechanism.
+
+use Http::{Thenable, http_request_thenable, thenableThen};
+
+// Minimal host accessor: returns the settled HTTP status as a scalar,
+// keyed by the Thenable handle. Deliberately NOT a typed `Response`
+// decoder (ADR-013 defers structured/`headers` decode to #161/PR 3) —
+// just enough to prove the continuation ran and observed the right
+// settled value.
+extern fn httpThenableStatus(t: Thenable) -> Int;
+
+pub fn launch() -> Int / { Net, Async } {
+  let r = http_request_thenable("https://example.test/ok", "GET", "");
+  httpThenableStatus(r)
+}
