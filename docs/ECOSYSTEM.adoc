@@ -161,8 +161,10 @@ satellite (internal `lib/tea_router.ml` contract exists).
 |`affinescriptiser`, `road-skate` |adjunct |In-tree tooling/experiments;
 not part of the integration critical path.
 
-|`packages/affine-js` / `-ts` / `-res` / `-vscode` |works (with debt) |
-`affine-js` has a hardcoded path (SAT-02) addressed by INT-02.
+|`packages/affine-js` / `-ts` / `-res` / `-vscode` |works |
+`affine-js` SAT-02 fixed by INT-02 (#179): host-agnostic loader
+(`loader.js`) — Deno/Node/browser parity, multi-namespace import
+object, `affinescript.ownership` accessor.
 |===
 
 == Integration roadmap — INT-01..12
@@ -178,8 +180,10 @@ link:TECH-DEBT.adoc[TECH-DEBT.adoc].
 |INT-01 |Cross-module WASM import emission (the substrate) |#178 |
 `use Mod::{fn}`/`::*` PROVEN+locked (271 gate + deno link harness);
 `use Mod;`+qualified-value-call resolver gap remains (distinct)
-|INT-02 |Host-agnostic loader bridge (`affinescript-dom-loader`) |#179 |open,
-S1 (blocks INT-05/08/11)
+|INT-02 |Host-agnostic loader bridge (`affinescript-dom-loader`) |#179 |loader
+landed in `packages/affine-js` (SAT-02 fixed; Deno/Node/browser parity,
+multi-namespace import object, ownership-section accessor). S1; unblocks
+INT-05/08/11. The `affinescript-dom-loader` satellite shell is downstream.
 |INT-03 |WASI preview2 / host I/O beyond stdout |#180 |open, S1
 |INT-04 |Publish compiler + runtime to JSR (then npm) |#181 |open, S2
 (blocked by INT-01)

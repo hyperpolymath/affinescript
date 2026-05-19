@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "exports": {
     ".": "./mod.js",
+    "./loader": "./loader.js",
     "./marshal": "./marshal.js",
     "./runtime": "./runtime.js"
   },
