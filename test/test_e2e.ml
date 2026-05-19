@@ -2693,6 +2693,33 @@ let test_xmod_drop_violation () =
          true has_drop)
   | Error e, _ | _, Error e -> Alcotest.fail e
 
+(* ---- INT-01 / #178: cross-module WASM import-emission substrate ----
+
+   The structural half of the substrate guarantee, hermetic (pure OCaml,
+   inspects the emitted Wasm.wasm_module). Regression-locks that a real
+   multi-file `use Mod::{fn}` program emits an actual cross-module import
+   and the callee module exports the imported symbol — i.e. the two
+   separately-compiled `.wasm` modules are link-compatible. The
+   *execution* half (instantiate both, cross-call returns 42) is the
+   committed reproducible harness at tests/modules/xmod-link/ (deno;
+   kept out of the hermetic gate by design). *)
+let test_int01_xmod_import_emission () =
+  match compile_fixture_to_wasm (fixture "CrossCallee.affine"),
+        compile_fixture_to_wasm (fixture "cross_caller_ok.affine") with
+  | Ok callee, Ok caller ->
+    let callee_exports_consume =
+      List.exists (fun (e : Wasm.export) -> e.Wasm.e_name = "consume")
+        callee.Wasm.exports in
+    let caller_imports_consume =
+      List.exists (fun (i : Wasm.import) ->
+        i.Wasm.i_module = "CrossCallee" && i.Wasm.i_name = "consume")
+        caller.Wasm.imports in
+    Alcotest.(check bool)
+      "callee module exports `consume`" true callee_exports_consume;
+    Alcotest.(check bool)
+      "caller emits import (CrossCallee . consume)" true caller_imports_consume
+  | Error e, _ | _, Error e -> Alcotest.fail e
+
 (* ---- WasmGC backend: loud-failure regression markers ----
 
    Lock in the BUG-005-class fixes that replaced silent miscompilation with
@@ -3591,6 +3618,7 @@ let tw_interface_tests = [
   Alcotest.test_case "src-level xmod: ok caller verifies clean"  `Quick test_xmod_clean;
   Alcotest.test_case "src-level xmod: dup caller → LinearImportCalledMultiple" `Quick test_xmod_dup_violation;
   Alcotest.test_case "src-level xmod: drop caller → LinearImportDroppedOnSomePath" `Quick test_xmod_drop_violation;
+  Alcotest.test_case "INT-01 #178: use Mod::{fn} emits real xmod import + callee exports it" `Quick test_int01_xmod_import_emission;
 ]
 
 (* ============================================================================

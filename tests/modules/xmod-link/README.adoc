@@ -1,0 +1,47 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+= INT-01 / #178 — cross-module WASM link+execute acceptance
+
+Reproducible proof that *real multi-file AffineScript libraries are
+shippable*: two separately-compiled `.wasm` modules link and execute
+across the wasm module boundary.
+
+[cols="1,3"]
+|===
+|Module |Source
+
+|callee |`test/e2e/fixtures/CrossCallee.affine` — `module CrossCallee;
+pub fn consume(own x: Int) -> Int { x }`
+|caller |`test/e2e/fixtures/cross_caller_ok.affine` — `use
+CrossCallee::{consume}; pub fn main() -> Int { consume(42) }`
+|===
+
+== Run
+
+[source,sh]
+----
+dune build bin/main.exe
+tests/modules/xmod-link/run.sh        # deno on PATH, or $AFFINESCRIPT_DENO
+----
+
+Exit 0 + `PASS` ⇒ `caller.main()` returned `42` through the
+cross-module call `CrossCallee.consume(42)`, with the caller emitting a
+real `(import "CrossCallee" "consume" (func …))` and the callee
+exporting `consume`.
+
+== Why this lives here, not in `dune runtest`
+
+The OCaml gate is hermetic (no external runtime). The *structural* half
+of the substrate guarantee — caller emits the import, callee exports the
+symbol, indices line up — IS in the gate as
+`E2E Boundary Verify › INT-01 #178 …` (`test/test_e2e.ml`). This
+directory holds the *execution* half, which needs a wasm engine (deno);
+keeping it out of the hermetic gate is deliberate.
+
+== Status (INT-01)
+
+* `use Mod::{fn}` / `use Mod::*` → real cross-module imports: *works,
+  proven here, regression-locked structurally in the gate*.
+* `use Mod;` + qualified value call `Mod.fn(x)` → *resolution error*
+  (post-#228 qualified-value resolution is unwired). This is a distinct
+  follow-up, NOT part of the INT-01 emission substrate. See
+  `docs/TECH-DEBT.adoc` INT-01.
