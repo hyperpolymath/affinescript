@@ -1097,6 +1097,57 @@ references = [
 ]
 
 [[adr]]
+id = "ADR-017"
+status = "accepted"
+date = "2026-05-19"
+title = "ReScript block-module disposition: one module per file (split, do not nest)"
+context = """
+ReScript `module Name { … }` block modules have no AffineScript block
+form: the grammar (parser.mly:130-134) is a single optional `module
+Path;` header, before imports — `module A { }` parse-errors. ADR-011
+settled "real modules": the file IS the module. The estate #229 ports
+carry block modules; a SINGLE one per file is mechanical (hoist header,
+drop braces, dedent — in the #229 canonical map, verified to parse), but
+MULTIPLE block-modules in one file (e.g. standards/lol/.../OpenCyc.affine:
+module Config{} module Concepts{} module Types{}…; 14 estate
+occurrences) had no clean target. Escalated language-side as ESC-04
+(#262) — the bidirectional-evidence discipline of ADR-014 / #228.
+(ADR-016 is effect-threaded async-boundary, #234/#270; ADR-018 is the
+no-raw-escape doctrine, #245 — this is ADR-017, sequential.)
+"""
+decision = """
+One module per file — split, do not nest. Each ReScript `module X {
+body }` becomes its own `X.affine` whose first declaration is `module
+X;`, body dedented, `use` after the header. A file with N block-modules
+is split into N files. The grammar is NOT extended with a block/nested
+module form: that contradicts ADR-011 (file = module) and is a major
+conflict-risky grammar change for cosmetic gain — the contortion ADR-012
+forbids. No compiler change (the file-header form already parses); this
+ADR settles the porting doctrine + the #229 canonical-map structural
+rule. Adjacent and explicitly OUT of scope: a split file still hits
+Resolve.UndefinedModule until the repo module-path<->file-layout matches
+the loader — cross-module graph coherence (INT-02 loader-bridge),
+tracked in RESCRIPT-ELIMINATION.adoc Tier-4, never conflated here.
+"""
+consequences = """
+- The #229 block-module residue (idaptik-dlc-vm, standards/lol, parts of
+  burble) has a defined target: split-per-file. Full validation still
+  needs the per-repo module graph (INT-02), tracked separately.
+- No language/compiler change; no estate consumer churn from this ADR.
+- This decision is settled; do not reopen without amending this ADR.
+  ESC-04 #262; #229 canonical map in docs/RESCRIPT-ELIMINATION.adoc.
+"""
+references = [
+  "https://github.com/hyperpolymath/affinescript/issues/262",
+  "https://github.com/hyperpolymath/affinescript/issues/229",
+  "lib/parser.mly (module_decl; one `module Path;` header per file)",
+  "docs/specs/SETTLED-DECISIONS.adoc (ADR-017 section)",
+  "docs/RESCRIPT-ELIMINATION.adoc (#229 canonical map; Tier-4 INT-02)",
+  "META.a2ml [[adr]] ADR-011 (real modules: file = module)",
+  "META.a2ml [[adr]] ADR-012 (grammar changes are correctness assertions)",
+]
+
+[[adr]]
 id = "ADR-018"
 status = "accepted"
 date = "2026-05-19"

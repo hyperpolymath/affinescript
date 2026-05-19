@@ -343,6 +343,40 @@ This decision is settled; do not reopen without amending the ADR. Full
 ADR in `.machine_readable/6a2/META.a2ml` (ADR-016); ledger #234 /
 CORE-02 in `docs/TECH-DEBT.adoc`.
 
+== ReScript Block-Module Disposition: One Module Per File (ADR-017)
+
+ReScript `module Name { … }` block modules have no AffineScript block
+form: the grammar (`parser.mly:130-134`) is a single optional
+`module Path;` *header*, before imports — `module A { }` parse-errors.
+ADR-011 already settled "real modules": *the file is the module*. The
+estate ReScript→AffineScript ports (#229) carry block modules — a single
+one per file is mechanical (hoist the header, drop the braces, dedent;
+already in the #229 canonical map and verified to parse), but *multiple*
+block-modules in one file (e.g. `standards/lol/.../OpenCyc.affine`:
+`module Config { } module Concepts { } module Types { } …`, 14 estate
+occurrences) had no clean target. Escalated language-side as ESC-04
+(#262), the same bidirectional-evidence discipline as ADR-014 / #228.
+
+Decision: *one module per file — split, do not nest.* Each ReScript
+`module X { body }` becomes its own `X.affine` whose first declaration is
+`module X;`, body dedented, `use` imports after the header. A file with N
+block-modules is split into N files. The grammar is **not** extended with
+a block/nested-module form: that would contradict ADR-011 (file = module)
+and is a major, conflict-risky grammar change for cosmetic gain — exactly
+the contortion ADR-012 forbids. No language/compiler change is needed
+(the file-header form already parses); this ADR settles the *porting
+doctrine* + the #229 canonical-map structural rule.
+
+Adjacent, explicitly NOT in scope here: a split file still hits
+`Resolve.UndefinedModule` until the repo's module-path↔file-layout
+matches the loader — that is cross-module graph coherence (INT-02
+loader-bridge territory), tracked in `RESCRIPT-ELIMINATION.adoc` Tier-4
+and the INT-02 ledger, never conflated with this disposition.
+
+This decision is settled; do not reopen without amending the ADR. Full
+ADR in `.machine_readable/6a2/META.a2ml` (ADR-017); #229 canonical map in
+`docs/RESCRIPT-ELIMINATION.adoc`; escalation issue #262.
+
 == No Raw/FFI Escape: Typed `extern` Is the Only Host Bridge (ADR-018)
 
 ReScript `%%raw("<host source>")` / `%raw` injects arbitrary untyped host
