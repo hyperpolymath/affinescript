@@ -208,10 +208,12 @@ No untyped `extern raw` will be added (an arbitrary-source hole defeats
 affine/effect tracking — the ADR-012 contortion). No compiler change.
 |*ESC-02* (#246) |`JSON.t` (7) |No stdlib JSON type (`stdlib/` has `Ajv` but
 no `Json`). Needs a stdlib JSON type.
-|*ESC-03* (#247) |`Dict.t` (6) |No stdlib `Map`/`Dict` type
-(`stdlib/collections.affine` is list ops only; `stdlib/Http.affine:16`
-already flags the `Dict` gap, tied to #160/#162). Needs a stdlib `Map` type —
-coordinate with #160/#162.
+|*ESC-03* (#247) — LANDED |`Dict.t` (6) |`stdlib/dict.affine`: keyed
+container over the assoc-list shape `[(String, V)]` (the representation
+`json::JObject` already uses) — `empty`/`from_pairs`/`get`/`contains`/
+`size`/`insert`/`set`/`remove`/`keys`/`values`; AOT-gated (#136).
+`Dict.t` → `dict` ops over `[(String, V)]`. (#162 / STDLIB-03; the
+`Http.affine:16` headers upgrade is now unblocked, additive.)
 |===
 
 === Tier 4 — Cross-unit gating (a sequencing finding, language-grounded)

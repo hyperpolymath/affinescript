@@ -146,7 +146,12 @@ complete; convergence ABI shared w/ Ephapax
 (no host dep); String→Json parse is the `Http` typed-boundary bridge
 (ADR-018), not a hand-rolled parser. Closes ESC-02 #246 (the #229
 `JSON.t` target)
-|STDLIB-03 |`Dict`/`Map` keyed container |S2 |open #162
+|STDLIB-03 |`Dict`/`Map` keyed container |S2 |*LANDED* (Refs #162 #247):
+`stdlib/dict.affine` — keyed container over `[(String, V)]` (the
+`json::JObject` representation): empty/from_pairs/get/contains/size/
+insert/set/remove/keys/values; AOT-gated (#136). Closes ESC-03 #247 (the
+#229 `Dict.t` target); unblocks the additive `Http.affine` headers→Dict
+upgrade
 |STDLIB-04 |Residual `extern` builtins → real implementations |S3 |open
 |===
 
