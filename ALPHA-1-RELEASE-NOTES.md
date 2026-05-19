@@ -1,5 +1,10 @@
 # AffineScript Alpha-1 Release Notes
 
+> **⚠️ AUTHORITATIVE STATUS:** Historical release notes. Current readiness is
+> [`docs/CAPABILITY-MATRIX.adoc`](docs/CAPABILITY-MATRIX.adoc) (overrides this
+> file). AffineScript remains alpha with a known soundness gap (CORE-01 /
+> issue #177).
+
 ## 🎮 Game Developer's Edition
 
 **Release Date:** March 31, 2026  

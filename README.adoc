@@ -5,6 +5,16 @@
 :source-highlighter: rouge
 :icons: font
 
+[IMPORTANT]
+====
+*Authoritative status lives in link:docs/CAPABILITY-MATRIX.adoc[docs/CAPABILITY-MATRIX.adoc].*
+Where this README's prose implies broader maturity than that matrix states,
+the matrix wins. AffineScript is *alpha* with one known base-language
+soundness gap (CORE-01 / issue #177). typed-wasm is a *separate*
+language-agnostic target (`hyperpolymath/typed-wasm`), not an AffineScript
+subsystem — see link:docs/ECOSYSTEM.adoc[docs/ECOSYSTEM.adoc].
+====
+
 License: PMPL-1.0-or-later +
 Built alongside Gossamer, typed-wasm, and Burble
 

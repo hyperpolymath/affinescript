@@ -1,0 +1,188 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-FileCopyrightText: 2024-2026 hyperpolymath
+= AffineScript Capability Matrix
+:toc: macro
+:toclevels: 3
+:icons: font
+:reproducible:
+
+[IMPORTANT]
+====
+*This document is the single authoritative source for AffineScript feature
+readiness.* Where any other document (`README.adoc`,
+`BACKEND-IMPLEMENTATION.md`, `COMPILER-CAPABILITIES.md`,
+`ALPHA-1-RELEASE-NOTES.md`, `ROADMAP.adoc`, `.machine_readable/6a2/STATE.a2ml`)
+disagrees with this matrix, *this matrix wins* and the other document is drift
+to be corrected. Reconstructed and verified 2026-05-19 against
+`origin/main`@dc5b817 with the compiler as oracle. Tracks issue
+https://github.com/hyperpolymath/affinescript/issues/175[#175] /
+https://github.com/hyperpolymath/affinescript/issues/176[#176] (DOC-01..09).
+====
+
+toc::[]
+
+== How to read this
+
+Status vocabulary, used precisely:
+
+[cols="1,4"]
+|===
+|Term |Meaning
+
+|*enforced*
+|Wired into the CLI pipeline and gates real user programs today.
+
+|*works*
+|Implemented and exercised by the test gate; not necessarily complete.
+
+|*partial*
+|Implemented for common cases; known gaps documented in the row.
+
+|*declared-but-unwired*
+|Surface syntax and/or an internal module exists, but the feature is not
+ enforced on user programs through the CLI.
+
+|*parse-only*
+|Surface syntax parses; no semantics behind it yet.
+
+|*absent*
+|Does not exist, regardless of what prose elsewhere claims.
+|===
+
+Gate baseline at reconstruction: **`opam exec --switch=. -- dune runtest
+--force` = 260 tests, 0 failures** (2026-05-19).
+
+== Compiler core
+
+[cols="2,1,4"]
+|===
+|Component |Status |Notes (truthed)
+
+|Lexer |works |Full Unicode. Quantity-literal `ZERO`/`ONE` tokens are *not*
+emitted (QTT numeric surface uses `:1`/`:0`/`:ω` sugar parsed elsewhere).
+
+|Parser |works |Menhir grammar, ADR-009 conformance. Residual grammar
+conflicts tracked as the #215 family workstream (Stage B). *No
+module-qualified type/effect path* — `Pkg.Type` / `Pkg::Type`
+unrepresentable in type/effect position (issue #228 / ADR-014, the dominant
+estate port blocker).
+
+|AST |works |All current language constructs represented.
+
+|Name resolution |works |Module loader, `use`/`::` value paths, scope analysis.
+
+|Type checker |works |Bidirectional inference, effect rows, subsumption,
+`Never`/bottom, block divergence. Enforced on every check/compile/eval path.
+
+|Effect system |partial |Pure/impure separation + effect polymorphism
+enforced. Handlers: *interpreter-complete*; WasmGC dispatch is
+`UnsupportedFeature` pending the EH proposal or the CPS transform (the #225
+CPS line is closing the async slice of this).
+
+|Borrow checker |*partial — known soundness gap* |Place/borrow/move infra +
+use-after-move, conflicting-borrow-at-creation, move-while-borrowed,
+lambda-capture. *Borrow-graph validation is incomplete*: `BorrowOutlivesOwner`
+is defined but never emitted; shared-XOR-exclusive is not enforced at plain
+use sites. Some medium-severity aliasing bugs are not caught. This is
+CORE-01 (issue #177) — the one named base-language soundness gap.
+
+|Quantity / affine types |*enforced* |QTT semiring in `lib/quantity.ml`,
+invoked inside the standard CLI pipeline. `@linear`/`@erased`/`@unrestricted`
+(canonical) + `:1`/`:0`/`:ω` sugar. Scaled-Let (ADR-002) closes BUG-001/002.
+Linear arrows enforced.
+
+|Interpreter |works |Pattern matching, control flow, effect handler dispatch,
+`resume`. `let mut` mutation path has known baseline gaps.
+
+|Traits |partial |Registry, `TopTrait`/`TopImpl`, unification-based
+`find_impl`, impl-satisfies-trait. Missing: associated-type substitution in
+method bodies, where-clause supertraits, coherence checking.
+
+|Dependent / refinement types |parse-only |`TRefined` parses; predicates do
+not reduce; no SMT/decision procedure.
+
+|Row polymorphism |partial |Records + effect rows in typecheck/unify; not
+fully exercised end-to-end.
+
+|Formatter / linter |works |AST pretty-printer; 4 lint rules. `affinescript
+fmt` is the canonical-form authority (will own the ADR-014 `.`→`::`
+normalisation once #228 lands).
+
+|LSP |works |Phases A–D: hover, goto-def, completion, JSON-RPC
+`server --stdio`.
+|===
+
+== Backends (truthed — breadth is real but uneven)
+
+The compiler emits to many targets. *Maturity is not uniform; do not claim
+"N production backends".* Order is by enforcement depth.
+
+[cols="2,1,4"]
+|===
+|Target |Status |Notes
+
+|WASM (core) |works |Cross-module imports + `extern fn` → WASM import
+emission. The reference target.
+
+|WASM-GC |partial |Variant-with-args + same-arity `PatCon` destructuring;
+silent-bad-codegen fallbacks eliminated. Mixed-arity matches need uniform
+variant rep; effects/try-catch/`call_ref` deferred (EH/CPS — #225 line).
+
+|typed-wasm |*contract, narrow* |Not a backend flag — a *discipline-bearing
+shape* over the WASM output: the `affinescript.ownership` custom section +
+`lib/tw_interface.ml` / `lib/tw_verify.ml` boundary verifier. Emitted-wasm
+enforcement covers *typed-wasm Level 7 (aliasing) + Level 10 (linearity)
+only*. See `ECOSYSTEM.adoc` for the actual contract. Producer-side; the
+target spec is the separate `hyperpolymath/typed-wasm` repo.
+
+|Deno-ESM |works |Direct AST→ES-module transpiler (`lib/codegen_deno.ml`),
+`--deno-esm` / `.deno.js`. Shipped + consumer-verified (ubicity).
+
+|Node-CJS |works |`lib/codegen_node.ml`; CJS shim, handle table, the
+`.affine` VS Code extension compiles through it.
+
+|Julia, JS, Rust, Lua |works (transpile) |`Module_loader.flatten_imports`
+inlines imported public fns; smoke-tested.
+
+|C, WGSL, Faust, ONNX, OCaml, Bash, Nickel, ReScript, LLVM, Verilog, Gleam,
+CUDA, Metal, OpenCL, MLIR, Why3, Lean, SPIR-V
+|partial / experimental
+|Code-generators exist and build. Coverage varies widely; treat as
+*experimental* unless a row above promotes them. Any non-Wasm backend with
+no `FnExtern` story raises `Match_failure` at runtime by design (correct
+"this target has no host-impl story" signal).
+|===
+
+== Standard library
+
+`stdlib` ~95%; 19/19 stdlib files compile resolve→typecheck→codegen with the
+AOT CI gate (`test/test_stdlib_aot.ml`) since Stage C closed 2026-05-18.
+Portable primitives Http (#160) / Json (#161) / Dict-Map (#162) are the
+current authoring frontier. A few primitives remain `extern` builtins.
+
+== What AffineScript is NOT (anti-over-claim)
+
+* Not "production-ready". Alpha. The borrow checker has a known soundness gap
+  (CORE-01).
+* Not "N production backends". One reference target (WASM), two solid JS-host
+  targets (Deno-ESM, Node-CJS), the rest experimental.
+* typed-wasm is *not* an AffineScript subsystem. It is a separate,
+  language-agnostic target with its own repo, proofs, and other producers
+  (ephapax). AffineScript is one producer among several.
+* The satellite ecosystem is mostly scaffold/skeleton — see the satellite
+  registry in `ECOSYSTEM.adoc`. `affinescript-tea`/`-dom-loader`/`-cadre`
+  were imaginary until the #175 scaffolds; `-dom`/`-pixijs` are skeletons.
+
+== Change control
+
+Any PR that re-introduces backend-breadth, "production-ready", or
+stdlib-percentage over-claims must be rejected (DOC-01..09 / issue #176;
+Hypatia/gitbot `DOC-FORMAT`/`DOC-DEDUP` rules). Update *this file* in the same
+PR as any capability change; `STATE.a2ml` mirrors, it does not lead.
+
+== See also
+
+* link:ECOSYSTEM.adoc[ECOSYSTEM.adoc] — the spine, the real AS↔typed-wasm
+  contract, the satellite registry, the Stage A–E definitions, INT-01..12.
+* link:TECH-DEBT.adoc[TECH-DEBT.adoc] — the coordination ledger.
+* `hyperpolymath/typed-wasm` — the target spec (separate repo).

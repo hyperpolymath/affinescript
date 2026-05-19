@@ -1,5 +1,11 @@
 # AffineScript Backend Implementation
 
+> **⚠️ AUTHORITATIVE STATUS:** Backend maturity is uneven and is defined by
+> [`docs/CAPABILITY-MATRIX.adoc`](docs/CAPABILITY-MATRIX.adoc), which overrides
+> this document. "Complete backends" below means *code-generators exist*, not
+> *production-ready*. One reference target (WASM); Deno-ESM/Node-CJS solid;
+> the rest experimental. Do not cite a backend count.
+
 ## 🎯 Overview
 
 **Complete processor backends with kernel stubs** have been implemented for AffineScript.

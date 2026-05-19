@@ -1,0 +1,173 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-FileCopyrightText: 2024-2026 hyperpolymath
+= AffineScript Coordination Ledger (TECH-DEBT)
+:toc: macro
+:toclevels: 3
+:icons: font
+
+[IMPORTANT]
+====
+This is the durable *coordination index* for the AffineScript doc-truthing +
+ecosystem epic (issue #175). Sub-issues are the work units; this ledger is the
+critical path and the shared state across sessions/bots. ID classes:
+`DOC` (documentation truthing), `CORE` (compiler soundness/completeness),
+`STDLIB`, `INT` (ecosystem integration), `SAT` (satellite repos).
+Severity: `S1` = substrate/blocking, `S2` = important, `S3` = polish.
+Reconstructed and made authoritative 2026-05-19 (it was cited by #175–183 /
+#228 / #177 but never committed). For the spine + contract see
+link:ECOSYSTEM.adoc[ECOSYSTEM.adoc]; for readiness see
+link:CAPABILITY-MATRIX.adoc[CAPABILITY-MATRIX.adoc].
+====
+
+toc::[]
+
+== Critical path (read first)
+
+[source]
+----
+Stage A  CLOSED ───────────────────────────────────────────────┐
+Stage B  near-closed (#215 residual families)                   │
+Stage C  CLOSED 2026-05-18 (#128/#135 stdlib AOT)               │
+                                                                 ▼
+Stage D  ACTIVE ── CORE-01 (#177)  ─┐                            (base lang
+         ├─ INT-01 (#178) ──────────┼─ substrate, S1            complete)
+         ├─ INT-02 (#179) ──┐       │
+         ├─ INT-03 (#180)   │       │
+         └─ INT-04 (#181) ◄─┘ (◄ INT-01)                         │
+            ADR-014 (#228)  ── estate port unblocker, S1         │
+                                                                 ▼
+Stage E  planned ── typed-wasm convergence hardening
+         (#234, #235, #225/#160 line, INT-12) ──► stable multi-producer ABI
+----
+
+The mandate's order of operations: *CORE-01 first* (the one named
+base-language soundness gap; user decision 2026-05-19), then the INT
+substrate, then Stage E.
+
+== Section A — DOC (documentation truthing)
+
+Tracks issue #176. Authoritative status lives in
+link:CAPABILITY-MATRIX.adoc[CAPABILITY-MATRIX.adoc]; this section keeps it
+from re-drifting.
+
+[cols="1,4,1"]
+|===
+|ID |Item |Status
+
+|DOC-01 |`CAPABILITY-MATRIX.adoc` exists and overrides all other status docs |
+*DONE 2026-05-19* (this PR)
+|DOC-02 |`ECOSYSTEM.adoc` — spine + AS↔typed-wasm contract + satellites +
+INT-01..12 |*DONE 2026-05-19* (this PR)
+|DOC-03 |`TECH-DEBT.adoc` — this ledger |*DONE 2026-05-19* (this PR)
+|DOC-04 |Authoritative banners on README/BACKEND-IMPLEMENTATION/
+COMPILER-CAPABILITIES/ALPHA-1-RELEASE-NOTES |open (this PR adds where
+touched; full sweep tracked here)
+|DOC-05 |`STATE.a2ml` drift flagged (it mirrors, does not lead) |open
+|DOC-06 |`ROADMAP.adoc` Ecosystem Integration Track (INT-01..12) cross-links
+this ledger |open
+|DOC-07 |Stage A–E definitions authoritative (were never committed) |
+*DONE 2026-05-19* (ECOSYSTEM.adoc §The spine)
+|DOC-08 |MONITOR rule: reject backend-breadth over-claims |DONE (Hypatia/
+gitbot DOC-FORMAT)
+|DOC-09 |MONITOR rule: reject "production-ready"/stdlib-% over-claims |DONE
+|===
+
+MONITOR enforcement (DOC-08/09): any PR re-introducing backend-breadth,
+"production-ready", or stdlib-percentage over-claims must be rejected.
+
+== Section B — CORE (compiler soundness / completeness)
+
+[cols="1,3,1,2"]
+|===
+|ID |Item |Sev |Status
+
+|CORE-01 |Complete borrow-checker Phase-3 — borrow-graph validation.
+`lib/borrow.ml` has place/borrow/move infra but graph validation is
+incomplete: `BorrowOutlivesOwner` defined-but-never-emitted;
+shared-XOR-exclusive only enforced at borrow creation, not at use sites;
+medium-severity aliasing bugs uncaught. Add graph validation + regression
+fixtures. |S1 |open — issue #177; *next work unit* (user: soundness-first)
+|CORE-02 |Effect-handler dispatch on WasmGC (currently `UnsupportedFeature`;
+EH proposal or CPS). The #225 CPS line closes the async slice. |S2 |partial
+(PR3a/b/c merged; #234 generalises the recogniser)
+|CORE-03 |ADR-014: module-qualified type/effect path. Decision settled
+(both `.`/`::` accepted, `Pkg::Type` canonical, `.`→`::` via `fmt`).
+Estate's dominant parse blocker (525/1177 .affine). |S1 |open — issue #228,
+DRAFT PR #231; decision recorded, implementation pending (after CORE-01)
+|CORE-04 |Traits: associated-type substitution, where-clause supertraits,
+coherence checking. |S2 |partial
+|CORE-05 |Dependent/refinement types: predicate reduction / SMT. |S3
+|parse-only
+|===
+
+== Section C — STDLIB
+
+[cols="1,3,1,2"]
+|===
+|ID |Item |Sev |Status
+|STDLIB-AOT |All stdlib files compile resolve→typecheck→codegen, CI-gated |S1
+|*CLOSED 2026-05-18* (#128/#135; `test/test_stdlib_aot.ml`)
+|STDLIB-01 |Portable `Http.fetch` primitive |S2 |open #160 (#226/#227
+merged: Deno-ESM + typed-wasm Http; convergence ABI shared w/ Ephapax #225)
+|STDLIB-02 |Portable `Json` primitive |S2 |open #161
+|STDLIB-03 |`Dict`/`Map` keyed container |S2 |open #162
+|STDLIB-04 |Residual `extern` builtins → real implementations |S3 |open
+|===
+
+== Section D — INT (ecosystem integration)
+
+Full table with blocked-by in link:ECOSYSTEM.adoc[ECOSYSTEM.adoc §INT-01..12].
+Substrate summary:
+
+[cols="1,3,1,2"]
+|===
+|ID |Item |Sev |Status
+|INT-01 |Cross-module WASM import emission (substrate) |S1 |open #178
+|INT-02 |Host-agnostic loader bridge |S1 |open #179 (blocks INT-05/08/11)
+|INT-03 |WASI preview2 / host I/O |S1 |open #180
+|INT-04 |Publish to JSR/npm |S2 |open #181 (◄ INT-01)
+|INT-07 |`affinescript-tea` runtime |S2 |open #182 (◄ INT-01)
+|INT-08 |DOM reconciler |S2 |open #183 (◄ INT-02)
+|INT-05/06/09/10/11/12 |ledger-only; filed when blocker closes |— |planned
+|===
+
+== Section E — SAT (satellite repos)
+
+[cols="1,3,1,2"]
+|===
+|ID |Item |Sev |Status
+|SAT-01 |`affinescript-dom` reconciler (skeleton → real) |S2 |open (=INT-08)
+|SAT-02 |`packages/affine-js` hardcoded path / env-only imports |S1 |open
+(addressed by INT-02)
+|SAT-03 |`affinescript-tea` runtime build-out |S2 |open (=INT-07)
+|SAT-04 |`affinescript-cadre` router runtime |S2 |planned (=INT-09)
+|SAT-05 |`affinescript-pixijs` migration prerequisite |S3 |open #56
+|===
+
+== Stage E — typed-wasm convergence runway
+
+[cols="1,3,1,2"]
+|===
+|ID |Item |Sev |Status
+|CONV-01 |Estate-wide re-validation of the #199/#205 closure ABI (static →
+real wasm engine) |S2 |open #235
+|CONV-02 |Effect-threaded async-boundary detection (generalise the
+structural-conservative recogniser) |S2 |open #234
+|CONV-03 |#225/#160 convergence ABI matured to "shared with Ephapax" |S1
+|partial (PR3a/b/c merged)
+|CONV-04 |Widen emitted-wasm enforcement beyond L7+L10 toward L1–6/L13–16 |S2
+|planned (Stage E)
+|CONV-05 |INT-12: AffineScript-emitted fixtures into typed-wasm
+`crates/typed-wasm-verify/tests/cross_compat.rs` (typed-wasm "C5.1") |S1
+|planned — coordinate Refs `hyperpolymath/typed-wasm`
+|===
+
+== Update protocol
+
+* One PR per ledger unit; `Refs #N` (never `Closes` on the #175 epic — only
+  the owner closes it).
+* Every capability-affecting PR updates `CAPABILITY-MATRIX.adoc` *and* this
+  ledger in the same change; `STATE.a2ml` mirrors after.
+* `dune runtest --force` must stay green (baseline 260, 2026-05-19).
+* typed-wasm ABI changes are multi-producer: coordinate with
+  `hyperpolymath/typed-wasm` and `hyperpolymath/ephapax`.
