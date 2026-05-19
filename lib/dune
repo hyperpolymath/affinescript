@@ -13,6 +13,7 @@
   codegen_node
   desugar_traits
   effect
+  effect_sites
   error
   error_collector
   error_formatter
