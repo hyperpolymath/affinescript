@@ -1794,6 +1794,32 @@ let populate_call_effects (ctx : context) (prog : Ast.program) : unit =
     | Ast.ExprSpan (e, _) -> callee_name e
     | _ -> None
   in
+  (* The local `fd_eff` map only covers callees declared in *this*
+     unit's `prog_decls`. On WasmGC, imported async primitives
+     (`http_request_thenable`, …) and any cross-module callee are NOT
+     in `prog_decls` (the backend does not flatten imports) — their
+     resolved effect row lives in the callee's scheme in
+     `ctx.name_types` (populated by resolve, incl. imports). Fall back
+     to that: union the effect components along the arrow spine (the
+     declared row is among them; a superset is sound for the
+     boundary predicate "row ⊇ Async"). Without this the side-table
+     was silently empty for imported async primitives — masked by S3's
+     structural disjunct and exposed when S4 retires it. *)
+  let rec eff_of_ty (t : ty) : eff =
+    match t with
+    | TArrow (_, _, b, e) ->
+      (match e with
+       | EPure -> eff_of_ty b
+       | _ -> (match eff_of_ty b with
+               | EPure -> e
+               | e2 -> EUnion [ e; e2 ]))
+    | _ -> EPure
+  in
+  let scheme_eff (n : string) : eff =
+    match Hashtbl.find_opt ctx.name_types n with
+    | Some sc -> (try eff_of_ty (instantiate ctx.level sc) with _ -> EPure)
+    | None -> EPure
+  in
   Effect_sites.iter
     (fun ord call ->
       let row =
@@ -1802,8 +1828,8 @@ let populate_call_effects (ctx : context) (prog : Ast.program) : unit =
           (match callee_name head with
            | Some n ->
              (match Hashtbl.find_opt fn_eff n with
-              | Some e -> e
-              | None -> EPure)
+              | Some e when e <> EPure -> e
+              | _ -> scheme_eff n)
            | None -> EPure)
         | _ -> EPure
       in
