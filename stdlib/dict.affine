@@ -1,0 +1,122 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-FileCopyrightText: 2025 hyperpolymath
+//
+// Dict - String-keyed associative map (echidna#64)
+//
+// Backs the ReScript->AffineScript migration's `Dict` requirement
+// (echidna `[migration-roadmap.rescript-to-affinescript]`, Client.res):
+// JSON object decoding returns `Dict`-shaped values and request-body
+// construction builds a `Dict` imperatively then wraps it for encoding.
+//
+// Representation: an association list `[(String, V)]`. A String-keyed
+// map is the minimum echidna#64 needs (JSON object keys are strings).
+// `insert`/`set` are last-write-wins and keep at most one binding per
+// key, so `get` returns the most recently set value. This mirrors the
+// purely-functional, list-based style of `collections.affine` (whose
+// `[(A, B)]` zip/unzip already compile through the AOT pipeline), so it
+// adds no new compiler primitive, type, or extern.
+
+module dict;
+
+use prelude::{Option, Some, None};
+
+// ============================================================================
+// Construction
+// ============================================================================
+
+/// The empty dict.
+pub fn empty<V>() -> [(String, V)] {
+  []
+}
+
+/// Build a dict from a list of pairs (later pairs win on duplicate keys).
+pub fn from_pairs<V>(pairs: [(String, V)]) -> [(String, V)] {
+  let mut d = [];
+  for (k, v) in pairs {
+    d = insert(d, k, v);
+  }
+  d
+}
+
+// ============================================================================
+// Lookup
+// ============================================================================
+
+/// Look up a key. `None` if absent.
+pub fn get<V>(d: [(String, V)], key: String) -> Option<V> {
+  for (k, v) in d {
+    if k == key {
+      return Some(v);
+    }
+  }
+  None
+}
+
+/// Whether a key is present.
+pub fn contains<V>(d: [(String, V)], key: String) -> Bool {
+  for (k, v) in d {
+    if k == key {
+      return true;
+    }
+  }
+  false
+}
+
+/// Number of bindings.
+pub fn size<V>(d: [(String, V)]) -> Int {
+  len(d)
+}
+
+// ============================================================================
+// Update (immutable; returns a new dict)
+// ============================================================================
+
+/// Insert or replace `key`'s binding (last-write-wins).
+pub fn insert<V>(d: [(String, V)], key: String, value: V) -> [(String, V)] {
+  let mut rest = [];
+  for (k, v) in d {
+    if k != key {
+      rest = rest ++ [(k, v)];
+    }
+  }
+  [(key, value)] ++ rest
+}
+
+/// Alias of `insert`, for the imperative create-then-set-keys builder
+/// pattern used in Client.res (`d = set(d, "field", v)`).
+pub fn set<V>(d: [(String, V)], key: String, value: V) -> [(String, V)] {
+  insert(d, key, value)
+}
+
+/// Remove `key` if present (no-op if absent).
+pub fn remove<V>(d: [(String, V)], key: String) -> [(String, V)] {
+  let mut rest = [];
+  for (k, v) in d {
+    if k != key {
+      rest = rest ++ [(k, v)];
+    }
+  }
+  rest
+}
+
+// ============================================================================
+// Projection
+// ============================================================================
+
+/// All keys, in iteration order.
+pub fn keys<V>(d: [(String, V)]) -> [String] {
+  let mut ks = [];
+  for (k, v) in d {
+    ks = ks ++ [k];
+  }
+  ks
+}
+
+/// All values, in iteration order.
+pub fn values<V>(d: [(String, V)]) -> [V] {
+  let mut vs = [];
+  for (k, v) in d {
+    vs = vs ++ [v];
+  }
+  vs
+}
