@@ -56,6 +56,14 @@ type context = {
   (** Collected ownership annotations: (func_index, param_kinds, return_kind).
       Emitted as the [affinescript.ownership] Wasm custom section for typed-wasm
       Level 7/10 verification. Kind encoding: 0=Unrestricted, 1=Linear, 2=SharedBorrow, 3=ExclBorrow. *)
+  wasi_func_indices : (string * int) list;
+  (** ADR-015 S4 (#180): WASI preview1 import name → wasm func index.
+      Populated at module-assembly time from the optional-imports
+      pre-scan. `fd_write` is always present at 0; other entries
+      (`clock_time_get`, `environ_sizes_get`, `args_sizes_get`, …) are
+      added on-demand in a canonical order, with indices computed by
+      position. WASI builtin special-cases look up their own import
+      index by name from this map. *)
 }
 
 (** Code generation error *)
@@ -100,6 +108,7 @@ let create_context () : context = {
   next_string_offset = 2048;  (* Start strings after heap at offset 2048 *)
   datas = [];
   ownership_annots = [];
+  wasi_func_indices = [];
 }
 
 (** Extract ownership kind from a parameter declaration.
@@ -833,23 +842,55 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
         Ok (ctx_with_heap, print_code)
 
       | ExprVar id when id.name = "clock_now_ms" && List.length args = 1 ->
-        (* ADR-015 S4a (#180): clock_now_ms(clock_id) — i32 monotonic /
-           realtime milliseconds. Lowers to a `wasi_snapshot_preview1.
-           clock_time_get` call (import idx 1, hardcoded to match the
-           module-assembly ordering). Under the S3 component path the
-           reactor adapter bridges this to wasi:clocks on a real
-           preview2 host. Effect row is `Time` (tracking-only). *)
+        (* ADR-015 S4a (#180): clock_now_ms(clock_id) -> Int ms. Lowers
+           to a `wasi_snapshot_preview1.clock_time_get` call; the import
+           is added on-demand at module assembly (S4b refactor), and the
+           index lives in [ctx.wasi_func_indices] (no hardcoded idx).
+           Under the S3 component path the reactor adapter bridges this
+           to wasi:clocks. Effect row is `Time` (tracking-only). *)
         let* (ctx_with_arg, arg_code) = gen_expr ctx (List.hd args) in
         let (ctx_with_arg2, clock_arg_local) =
           alloc_local ctx_with_arg "__clock_id" in
         let (ctx_with_scratch, scratch_local) =
           alloc_local ctx_with_arg2 "__clock_scratch" in
         let (ctx_with_heap, heap_idx) = ensure_heap_ptr ctx_with_scratch in
-        let clock_func_idx = 1 in
+        let clock_func_idx =
+          try List.assoc "clock_time_get" ctx.wasi_func_indices
+          with Not_found -> 1 (* defensive; pre-scan guarantees presence *)
+        in
         let code =
           arg_code @ [LocalSet clock_arg_local] @
           Wasi_runtime.gen_clock_now_ms
             heap_idx clock_arg_local scratch_local clock_func_idx
+        in
+        Ok (ctx_with_heap, code)
+
+      | ExprVar id when (id.name = "env_count" || id.name = "arg_count")
+                        && List.length args = 1 ->
+        (* ADR-015 S4b (#180): env_count(u: Unit) / arg_count(u: Unit)
+           — i32 count returns. Lower to the matching
+           `wasi_snapshot_preview1.{environ,args}_sizes_get` import
+           (added on-demand at module assembly; idx looked up in
+           [ctx.wasi_func_indices]). The Unit arg satisfies the
+           zero-param-fn collapse wart; it is evaluated but its value
+           is unused. String accessors (env_at/arg_at) need byte-level
+           wasm IR ops (currently absent) and are a tracked follow-up. *)
+        let wasi_name =
+          if id.name = "env_count" then "environ_sizes_get"
+          else "args_sizes_get"
+        in
+        let sizes_func_idx =
+          try List.assoc wasi_name ctx.wasi_func_indices
+          with Not_found -> 1
+        in
+        let* (ctx_with_arg, arg_code) = gen_expr ctx (List.hd args) in
+        let (ctx_with_scratch, scratch_local) =
+          alloc_local ctx_with_arg ("__" ^ id.name ^ "_scratch") in
+        let (ctx_with_heap, heap_idx) = ensure_heap_ptr ctx_with_scratch in
+        let code =
+          arg_code @ [Drop] @
+          Wasi_runtime.gen_count_via_sizes_get
+            heap_idx scratch_local sizes_func_idx
         in
         Ok (ctx_with_heap, code)
 
@@ -2488,37 +2529,50 @@ let generate_module ?loader (prog : program) : wasm_module result =
   let fd_write_type_idx = 0 in  (* Will be first type *)
   let fd_write_import_fixed = { fd_write_import with i_desc = ImportFunc fd_write_type_idx } in
 
-  (* ADR-015 S4a (#180): register WASI `clock_time_get` only when the
-     unit actually calls `clock_now_ms` — adding it unconditionally
-     would force every host (incl. every test harness) to stub it,
-     breaking the principle "import what you use". Pre-scan via the
-     shared Effect_sites traversal. When emitted, the clock takes
-     import idx 1 (deterministically after fd_write at 0), which the
-     `clock_now_ms` builtin hardcodes. *)
-  let needs_clock =
+  (* ADR-015 S4 (#180): register WASI preview1 imports ON DEMAND so
+     non-using units stay byte-identical to pre-S4 (the "import what
+     you use" principle — adding unconditionally would force every
+     host stub them and break every test harness). Pre-scan with the
+     shared Effect_sites traversal: each builtin name maps 1:1 to its
+     WASI import; appended after fd_write (idx 0) in a CANONICAL ORDER
+     so the index assignment is deterministic across compilations.
+     Each builtin's gen_expr case looks up its index by name in
+     `ctx.wasi_func_indices` (no hardcoded indices — clean
+     multi-import indexing). *)
+  let uses (builtin : string) : bool =
     Effect_sites.fold_calls
       (fun acc _ord call ->
         acc ||
         match call with
-        | ExprApp (ExprVar id, _) -> id.name = "clock_now_ms"
+        | ExprApp (ExprVar id, _) -> id.name = builtin
         | _ -> false)
       false prog
   in
+  let optional_wasi =
+    (* (guest_builtin_name, wasi_import_name, factory) — canonical order. *)
+    [ ("clock_now_ms", "clock_time_get",     Wasi_runtime.create_clock_time_get_import);
+      ("env_count",    "environ_sizes_get",  Wasi_runtime.create_environ_sizes_get_import);
+      ("arg_count",    "args_sizes_get",     Wasi_runtime.create_args_sizes_get_import);
+    ]
+    |> List.filter_map
+         (fun (b, w, f) -> if uses b then Some (w, f ()) else None)
+    |> List.mapi (fun i (w, (imp, ty)) -> (i + 1, w, imp, ty))
+  in
+  let opt_types = List.map (fun (_, _, _, ty) -> ty) optional_wasi in
+  let opt_imports =
+    List.map (fun (idx, _, imp, _) -> { imp with i_desc = ImportFunc idx })
+      optional_wasi
+  in
+  let wasi_indices =
+    ("fd_write", fd_write_type_idx) ::
+    List.map (fun (idx, name, _, _) -> (name, idx)) optional_wasi
+  in
   let ctx_with_wasi =
-    if needs_clock then
-      let (clock_import, clock_type) = Wasi_runtime.create_clock_time_get_import () in
-      let clock_type_idx = 1 in
-      let clock_import_fixed = { clock_import with i_desc = ImportFunc clock_type_idx } in
       {
         ctx with
-        types = fd_write_type :: clock_type :: ctx.types;
-        imports = fd_write_import_fixed :: clock_import_fixed :: ctx.imports;
-      }
-    else
-      {
-        ctx with
-        types = fd_write_type :: ctx.types;
-        imports = fd_write_import_fixed :: ctx.imports;
+        types = fd_write_type :: opt_types @ ctx.types;
+        imports = fd_write_import_fixed :: opt_imports @ ctx.imports;
+        wasi_func_indices = wasi_indices;
       }
   in
 

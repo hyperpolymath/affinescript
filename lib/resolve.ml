@@ -55,6 +55,8 @@ let seed_builtins (symbols : Symbol.t) : unit =
   def "print"; def "println"; def "eprint"; def "eprintln";
   (* WASI time (ADR-015 S4a, #180) *)
   def "clock_now_ms";
+  (* WASI env / argv counts (ADR-015 S4b, #180) *)
+  def "env_count"; def "arg_count";
   (* String / char builtins *)
   def "len"; def "slice"; def "string_get"; def "string_sub"; def "string_find";
   def "char_to_int"; def "int_to_char"; def "show";

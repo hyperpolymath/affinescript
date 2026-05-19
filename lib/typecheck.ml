@@ -1322,6 +1322,13 @@ let register_builtins (ctx : context) : unit =
      `wasi:clocks`. *)
   bind_var ctx "clock_now_ms"
     (TArrow (ty_int, QOmega, ty_int, ESingleton "Time"));
+  (* ADR-015 S4b (#180): WASI environment / argv COUNTS. The Unit arg
+     satisfies the zero-param-fn collapse wart (`fn()->T` lowers to
+     bare `T`; callable zero-arg builtins take `Unit -> R`). String
+     accessors (env_at/arg_at) need byte-level wasm IR ops — tracked
+     follow-up. Effect row `Time` (reserved). *)
+  bind_var ctx "env_count" (TArrow (ty_unit, QOmega, ty_int, ESingleton "Time"));
+  bind_var ctx "arg_count" (TArrow (ty_unit, QOmega, ty_int, ESingleton "Time"));
   bind_var ctx "eprint" (TArrow (ty_string, QOmega, ty_unit, ESingleton "IO"));
   bind_var ctx "eprintln" (TArrow (ty_string, QOmega, ty_unit, ESingleton "IO"));
   bind_var ctx "read_line"

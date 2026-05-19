@@ -185,14 +185,15 @@ follow-up
 multi-ns import object, ownership accessor); 14 unit tests via pinned
 `deno task test` + `tests/modules/loader-bridge/` e2e on real
 compiler-emitted xmod wasm (closes INT-01↔INT-02). Unblocks INT-05/08/11
-|INT-03 |WASI preview2 / host I/O |S1→S4a |#180 ADR-015 (full
+|INT-03 |WASI preview2 / host I/O |S1→S4b |#180 ADR-015 (full
 Component-Model re-target, S1..S6); S2 toolchain #251 closed;
-S3 componentize on-ramp done; **S4a (clock) DONE —
-`clock_now_ms(clock_id)` builtin lowers to a preview1
-`clock_time_get` import (Effect_sites pre-scan, on-demand → zero
-regression on non-clock units); component path bridges to
-wasi:clocks. Real-host main-invoke deferred to S6 (WIT export
-lifting). Next S4b
+S3 componentize done; **S4a (clock) + S4b (env_count, arg_count)
+DONE — on-demand preview1 imports via Effect_sites pre-scan,
+canonical-order indexing through `ctx.wasi_func_indices`; combo
+regression proves no collision. String accessors (env_at/arg_at)
+gated on byte-level wasm IR (I32Load8U/I32Store8 absent today) —
+tracked next slice. Real-host main-invoke = S6 (WIT export
+lifting). Next S5
 (native clocks/env/argv)**
 |INT-04 |Publish to JSR/npm |S2 |#181 packaging READY (dry-run green,
 manual workflow); JSR publish authorised + dispatched (owner go

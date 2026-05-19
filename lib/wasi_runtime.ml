@@ -354,3 +354,62 @@ let gen_print_str (heap_ptr_global : int) (str_ptr_local : int) (fd_write_idx : 
     Drop;
     I32Const 0l;
   ]
+
+(** Create the WASI `environ_sizes_get` import (ADR-015 S4b, #180).
+    Signature: `(envc_out: i32, envbuf_size_out: i32) -> errno: i32`.
+    Writes the env-var count and the total byte size of the
+    null-terminated `KEY=VAL\0…` buffer the next call would need.
+    String accessor (`env_at`) is gated on byte-level wasm IR ops,
+    deferred to a follow-up slice. *)
+let create_environ_sizes_get_import () : import * func_type =
+  let func_type = {
+    ft_params = [I32; I32];  (* envc_out_ptr, envbuf_size_out_ptr *)
+    ft_results = [I32];      (* errno *)
+  } in
+  let import = {
+    i_module = "wasi_snapshot_preview1";
+    i_name = "environ_sizes_get";
+    i_desc = ImportFunc 0;
+  } in
+  (import, func_type)
+
+(** Create the WASI `args_sizes_get` import (ADR-015 S4b, #180).
+    Signature: `(argc_out: i32, argv_buf_size_out: i32) -> errno: i32`. *)
+let create_args_sizes_get_import () : import * func_type =
+  let func_type = {
+    ft_params = [I32; I32];
+    ft_results = [I32];
+  } in
+  let import = {
+    i_module = "wasi_snapshot_preview1";
+    i_name = "args_sizes_get";
+    i_desc = ImportFunc 0;
+  } in
+  (import, func_type)
+
+(** Emit `env_count`/`arg_count`: call the appropriate `*_sizes_get`
+    import (which writes count + buf_size into two i32 scratch slots),
+    drop errno, return the count as i32. Uniform helper for the two
+    builtins — they differ only in the import index. *)
+let gen_count_via_sizes_get
+    (heap_ptr_global : int)
+    (scratch_local : int)
+    (sizes_func_idx : int)
+    : instr list =
+  [
+    (* scratch = heap; heap += 8 (two i32 slots: count, buf_size) *)
+    GlobalGet heap_ptr_global;
+    I32Const 8l; I32Add;
+    GlobalSet heap_ptr_global;
+    GlobalGet heap_ptr_global;
+    I32Const 8l; I32Sub;
+    LocalSet scratch_local;
+    (* sizes_get(count_ptr, bufsize_ptr); drop errno *)
+    LocalGet scratch_local;                       (* count_ptr *)
+    LocalGet scratch_local; I32Const 4l; I32Add;  (* bufsize_ptr *)
+    Call sizes_func_idx;
+    Drop;
+    (* return *count_ptr *)
+    LocalGet scratch_local;
+    I32Load (2, 0);
+  ]
