@@ -73,6 +73,19 @@ type state = {
 
   (** Mutable bindings - places that were declared with 'let mut' *)
   mutable mutable_bindings : place list;
+
+  (** Borrow-graph edges: a reference binder symbol -> the borrow it holds.
+      Populated when a [let r = &x] / [let r = &mut x] binds a reference to
+      a place.  These borrows are *escaping* (they live as long as the
+      binder's lexical scope), unlike call-argument borrows which are
+      temporary and released when the call expression completes.  This is
+      the graph that borrow-graph validation (CORE-01 / #177) walks. *)
+  mutable ref_bindings : (Symbol.symbol_id * borrow) list;
+
+  (** Symbols bound by a [let] in the current block, innermost first.
+      Used to decide whether a borrowed owner is block-local (so a
+      reference that escapes the block outlives its owner). *)
+  mutable block_local_syms : Symbol.symbol_id list;
 }
 
 (** Borrow checker errors *)
@@ -83,12 +96,37 @@ type borrow_error =
   | MoveWhileBorrowed of place * borrow
   | CannotMoveOutOfBorrow of place * borrow
   | CannotBorrowAsMutable of place * Span.t
+  | UseWhileExclusivelyBorrowed of place * borrow * Span.t
+      (** use of [place] (at the trailing span) while a still-live exclusive
+          borrow holds it — the shared-XOR-exclusive aliasing rule, enforced
+          at use sites, not only at borrow creation. CORE-01 / #177. *)
 [@@deriving show]
 
 type 'a result = ('a, borrow_error) Result.t
 
 (* Result bind - define before use *)
 let ( let* ) = Result.bind
+
+(** Effective ownership of a parameter.
+
+    AffineScript source encodes `own`/`ref`/`mut` on a parameter as the
+    *type* constructors [TyOwn]/[TyRef]/[TyMut] (the same encoding
+    [codegen.ml] reads to derive WASM param kinds), not as the legacy
+    [p_ownership] field — which the parser leaves [None] for surface
+    `a: mut Int`.  Reading only [p_ownership] (the prior behaviour) meant
+    the owned/ref/mut borrow discipline was effectively *unenforced from
+    source*.  Prefer an explicit [p_ownership]; otherwise derive it from
+    the parameter type.  CORE-01 / #177. *)
+let ty_ownership (t : type_expr) : ownership option =
+  match t with
+  | TyOwn _ -> Some Own
+  | TyRef _ -> Some Ref
+  | TyMut _ -> Some Mut
+  | _ -> None
+let param_ownership (p : param) : ownership option =
+  match p.p_ownership with
+  | Some _ as o -> o
+  | None -> ty_ownership p.p_ty
 
 (** Create a new borrow checker context *)
 let create_context () : context =
@@ -103,13 +141,15 @@ let create () : state =
     moved = [];
     next_id = 0;
     mutable_bindings = [];
+    ref_bindings = [];
+    block_local_syms = [];
   }
 
 (** Add a function signature to context *)
 let add_fn_signature (ctx : context) (fd : fn_decl) : unit =
   let sig_ = {
     fn_name = fd.fd_name.name;
-    fn_param_ownerships = List.map (fun p -> p.p_ownership) fd.fd_params;
+    fn_param_ownerships = List.map param_ownership fd.fd_params;
   } in
   Hashtbl.replace ctx.fn_sigs fd.fd_name.name sig_
 
@@ -247,11 +287,27 @@ let record_borrow (state : state) (place : place) (kind : borrow_kind)
 let end_borrow (state : state) (borrow : borrow) : unit =
   state.borrows <- List.filter (fun b -> b.b_id <> borrow.b_id) state.borrows
 
+(** Find a still-live exclusive borrow that aliases [place], if any.
+
+    With call-argument borrows released after their call (see [check_expr]
+    [ExprApp]), a persistent exclusive borrow overlapping [place] is a real
+    escaping `&mut` binding — reading or otherwise using the place while it
+    is exclusively borrowed violates shared-XOR-exclusive. This is the
+    use-site half of the rule that [find_conflicting_borrow] only enforced
+    at borrow *creation*. CORE-01 / #177. *)
+let find_aliasing_exclusive (state : state) (place : place) : borrow option =
+  List.find_opt (fun b ->
+    b.b_kind = Exclusive && places_overlap place b.b_place
+  ) state.borrows
+
 (** Check a use of a place *)
 let check_use (state : state) (place : place) (span : Span.t) : unit result =
   match find_move state place with
   | Some move_site -> Error (UseAfterMove (place, span, move_site))
-  | None -> Ok ()
+  | None ->
+    match find_aliasing_exclusive state place with
+    | Some b -> Error (UseWhileExclusivelyBorrowed (place, b, span))
+    | None -> Ok ()
 
 (** Format a place for display in error messages. *)
 let rec format_place (p : place) : string =
@@ -298,6 +354,12 @@ let format_borrow_error (e : borrow_error) : string =
     Printf.sprintf
       "cannot borrow `%s` as mutable — it is not declared with `let mut` (at %s)"
       (format_place place) (format_span span)
+  | UseWhileExclusivelyBorrowed (place, b, use_span) ->
+    Printf.sprintf
+      "cannot use `%s` at %s while it is exclusively borrowed:\n  \
+       exclusive borrow (id %d) taken at %s is still live"
+      (format_place place) (format_span use_span)
+      b.b_id (format_span b.b_span)
 
 (** Get span from an expression *)
 let rec expr_span (expr : expr) : Span.t =
@@ -392,8 +454,17 @@ let lookup_symbol_by_name (symbols : Symbol.t) (name : string) : Symbol.symbol o
   | sym :: _ -> Some sym
   | [] -> None
 
+(** If [expr] creates a reference to a place ([&p] / [&mut p], optionally
+    wrapped in spans), return that place. Used to build the borrow-graph
+    edge for [let r = &p]. CORE-01 / #177. *)
+let rec ref_target (symbols : Symbol.t) (expr : expr) : place option =
+  match expr with
+  | ExprSpan (e, _) -> ref_target symbols e
+  | ExprUnary (OpRef, e) -> expr_to_place symbols e
+  | _ -> None
+
 (** Convert an expression to a place (if it's an l-value) *)
-let rec expr_to_place (symbols : Symbol.t) (expr : expr) : place option =
+and expr_to_place (symbols : Symbol.t) (expr : expr) : place option =
   match expr with
   | ExprVar id ->
     begin match lookup_symbol_by_name symbols id.name with
@@ -414,6 +485,30 @@ let rec expr_to_place (symbols : Symbol.t) (expr : expr) : place option =
     expr_to_place symbols e
   | _ -> None
 
+(** Record a borrow-graph edge for [let <pat> = &p] (or [&mut p]).
+
+    Call *after* the value expression has been checked, so the borrow it
+    created is already on [state.borrows]. Binds the let-bound symbol to
+    that borrow so block-exit validation can detect a reference outliving
+    a block-local owner. CORE-01 / #177. *)
+let record_ref_binding (state : state) (symbols : Symbol.t)
+    (pat : pattern) (value : expr) : unit =
+  match pat with
+  | PatVar id ->
+    begin match ref_target symbols value with
+    | Some target ->
+      begin match
+        List.find_opt (fun b -> places_overlap b.b_place target) state.borrows,
+        lookup_symbol_by_name symbols id.name
+      with
+      | Some b, Some sym ->
+        state.ref_bindings <- (sym.Symbol.sym_id, b) :: state.ref_bindings
+      | _ -> ()
+      end
+    | None -> ()
+    end
+  | _ -> ()
+
 (** Check borrows in an expression *)
 let rec check_expr (ctx : context) (state : state) (symbols : Symbol.t) (expr : expr) : unit result =
   match expr with
@@ -429,9 +524,17 @@ let rec check_expr (ctx : context) (state : state) (symbols : Symbol.t) (expr : 
 
   | ExprApp (func, args) ->
     let* () = check_expr ctx state symbols func in
-    (* Check if this is a direct function call and get ownership info *)
+    (* Check if this is a direct function call and get ownership info.
+       Peel ExprSpan: the parser wraps the callee in spans, so a bare
+       `ExprVar` match silently skipped ownership for essentially every
+       real (parsed) call — meaning the affine/borrow discipline on
+       owned/ref/mut parameters was not enforced from source. CORE-01. *)
+    let rec unwrap_callee = function
+      | ExprSpan (e, _) -> unwrap_callee e
+      | e -> e
+    in
     let param_ownerships =
-      match func with
+      match unwrap_callee func with
       | ExprVar fn_id ->
         begin match Hashtbl.find_opt ctx.fn_sigs fn_id.name with
         | Some sig_ -> sig_.fn_param_ownerships
@@ -439,43 +542,58 @@ let rec check_expr (ctx : context) (state : state) (symbols : Symbol.t) (expr : 
         end
       | _ -> List.map (fun _ -> None) args  (* Higher-order call, assume no ownership *)
     in
-    (* Check each argument according to parameter ownership *)
-    List.fold_left2 (fun acc arg param_own ->
-      let* () = acc in
-      (* First check the argument expression itself *)
-      let* () = check_expr ctx state symbols arg in
-      (* Then check ownership constraints *)
-      match param_own with
-      | Some Own ->
-        (* Owned parameter - argument must be moved *)
-        begin match expr_to_place symbols arg with
-        | Some place ->
-          let span = expr_span arg in
-          record_move state place span
-        | None -> Ok ()  (* Non-place expressions (literals, etc.) are fine *)
-        end
-      | Some Ref ->
-        (* Borrowed parameter - create a shared borrow *)
-        begin match expr_to_place symbols arg with
-        | Some place ->
-          let span = expr_span arg in
-          let* _borrow = record_borrow state place Shared span in
-          Ok ()
-        | None -> Ok ()
-        end
-      | Some Mut ->
-        (* Mutable borrow - create an exclusive borrow *)
-        begin match expr_to_place symbols arg with
-        | Some place ->
-          let span = expr_span arg in
-          let* _borrow = record_borrow state place Exclusive span in
-          Ok ()
-        | None -> Ok ()
-        end
-      | None ->
-        (* No ownership annotation - just check usage *)
-        Ok ()
-    ) (Ok ()) args param_ownerships
+    (* Check each argument according to parameter ownership.
+
+       Ref/Mut argument borrows are *temporary*: they exist for the duration
+       of the call expression only.  AffineScript's value model does not let
+       a callee retain a borrow past return, so a call-argument borrow must
+       be released once every argument has been checked.  Keeping them live
+       until block exit (the old behaviour) was why shared-XOR-exclusive
+       could not be enforced at use sites without spuriously rejecting the
+       perfectly valid `f(mut x); g(x)`.  We collect the borrows created
+       here and end them after the fold. CORE-01 / #177. *)
+    let* call_borrows =
+      List.fold_left2 (fun acc arg param_own ->
+        let* created = acc in
+        (* First check the argument expression itself *)
+        let* () = check_expr ctx state symbols arg in
+        (* Then check ownership constraints *)
+        match param_own with
+        | Some Own ->
+          (* Owned parameter - argument must be moved *)
+          begin match expr_to_place symbols arg with
+          | Some place ->
+            let span = expr_span arg in
+            let* () = record_move state place span in
+            Ok created
+          | None -> Ok created  (* literals etc. are fine *)
+          end
+        | Some Ref ->
+          (* Borrowed parameter - temporary shared borrow *)
+          begin match expr_to_place symbols arg with
+          | Some place ->
+            let span = expr_span arg in
+            let* b = record_borrow state place Shared span in
+            Ok (b :: created)
+          | None -> Ok created
+          end
+        | Some Mut ->
+          (* Mutable borrow - temporary exclusive borrow *)
+          begin match expr_to_place symbols arg with
+          | Some place ->
+            let span = expr_span arg in
+            let* b = record_borrow state place Exclusive span in
+            Ok (b :: created)
+          | None -> Ok created
+          end
+        | None ->
+          (* No ownership annotation - just check usage *)
+          Ok created
+      ) (Ok []) args param_ownerships
+    in
+    (* Release the temporary call-argument borrows. *)
+    List.iter (fun b -> end_borrow state b) call_borrows;
+    Ok ()
 
   | ExprLambda lam ->
     (* Collect every free variable referenced in the lambda body —
@@ -585,6 +703,16 @@ let rec check_expr (ctx : context) (state : state) (symbols : Symbol.t) (expr : 
 
   | ExprLet lb ->
     let* () = check_expr ctx state symbols lb.el_value in
+    record_ref_binding state symbols lb.el_pat lb.el_value;
+    begin match lb.el_pat with
+    | PatVar id ->
+      begin match lookup_symbol_by_name symbols id.name with
+      | Some sym ->
+        state.block_local_syms <- sym.Symbol.sym_id :: state.block_local_syms
+      | None -> ()
+      end
+    | _ -> ()
+    end;
     begin match lb.el_body with
       | Some body -> check_expr ctx state symbols body
       | None -> Ok ()
@@ -805,6 +933,10 @@ and check_block (ctx : context) (state : state) (symbols : Symbol.t) (blk : bloc
      block-local variables expire at block exit (lexical lifetimes).
      Moves persist — a moved value stays moved after the block. *)
   let borrows_at_entry = state.borrows in
+  (* Snapshot the borrow-graph scope state so block-local symbols and
+     ref-bindings introduced here do not leak past block exit. CORE-01. *)
+  let block_locals_at_entry = state.block_local_syms in
+  let ref_bindings_at_entry = state.ref_bindings in
   let* () = List.fold_left (fun acc stmt ->
     let* () = acc in
     check_stmt ctx state symbols stmt
@@ -813,11 +945,46 @@ and check_block (ctx : context) (state : state) (symbols : Symbol.t) (blk : bloc
     | Some e -> check_expr ctx state symbols e
     | None   -> Ok ()
   in
+  (* Borrow-graph validation (CORE-01 / #177): if the block's value is a
+     reference to a place whose owner was declared *inside* this block, the
+     reference escapes upward while its owner dies at block exit — a dangling
+     borrow.  This is the canonical "returns a reference to a local" bug and
+     the trigger that finally emits the long-dead [BorrowOutlivesOwner].
+     Sound and non-over-rejecting: a block whose value is `&local` is always
+     wrong; valid code returns the value, not a borrow of a dying local. *)
+  let symbols_declared_here sym_id =
+    List.mem sym_id state.block_local_syms
+    && not (List.mem sym_id block_locals_at_entry)
+  in
+  let* () =
+    match blk.blk_expr with
+    | Some tail ->
+      begin match ref_target symbols tail with
+        | Some target ->
+          begin match root_var target with
+            | Some owner when symbols_declared_here owner ->
+              let b =
+                match List.find_opt (fun b ->
+                  places_overlap b.b_place target) state.borrows with
+                | Some b -> b
+                | None ->
+                  { b_place = target; b_kind = Shared;
+                    b_span = expr_span tail; b_id = -1 }
+              in
+              Error (BorrowOutlivesOwner (b, owner))
+            | _ -> Ok ()
+          end
+        | None -> Ok ()
+      end
+    | None -> Ok ()
+  in
   (* End borrows for places bound in this block: restore to pre-block borrows,
      keeping only those that existed before the block (i.e., borrow outer-scope
      variables that the block merely uses — these are unaffected).
      This is a conservative lexical-lifetime approximation. *)
   state.borrows <- borrows_at_entry;
+  state.block_local_syms <- block_locals_at_entry;
+  state.ref_bindings <- ref_bindings_at_entry;
   Ok ()
 
 and check_stmt (ctx : context) (state : state) (symbols : Symbol.t) (stmt : stmt) : unit result =
@@ -834,7 +1001,20 @@ and check_stmt (ctx : context) (state : state) (symbols : Symbol.t) (stmt : stmt
       else ()
     | _ -> ()
     end;
-    check_expr ctx state symbols sl.sl_value
+    let* () = check_expr ctx state symbols sl.sl_value in
+    (* Borrow-graph: bind the let symbol to the borrow if RHS is a ref;
+       and record the symbol as block-local for outlives validation. *)
+    record_ref_binding state symbols sl.sl_pat sl.sl_value;
+    begin match sl.sl_pat with
+    | PatVar id ->
+      begin match lookup_symbol_by_name symbols id.name with
+      | Some sym ->
+        state.block_local_syms <- sym.Symbol.sym_id :: state.block_local_syms
+      | None -> ()
+      end
+    | _ -> ()
+    end;
+    Ok ()
   | StmtExpr e ->
     check_expr ctx state symbols e
   | StmtAssign (lhs, _, rhs) ->
@@ -877,7 +1057,7 @@ and check_stmt (ctx : context) (state : state) (symbols : Symbol.t) (stmt : stmt
 let check_function (ctx : context) (symbols : Symbol.t) (fd : fn_decl) : unit result =
   let state = create () in
   List.iter (fun (p : param) ->
-    if p.p_ownership = Some Mut then
+    if param_ownership p = Some Mut then
       match lookup_symbol_by_name symbols p.p_name.name with
       | Some sym ->
         let place = PlaceVar (p.p_name.name, sym.sym_id) in
@@ -903,13 +1083,20 @@ let check_program (symbols : Symbol.t) (program : program) : unit result =
       | _ -> Ok ()
   ) (Ok ()) program.prog_decls
 
-(* Silence unused warnings for functions that will be used in later phases *)
-let _ = record_move
-let _ = record_borrow
-let _ = end_borrow
+(* CORE-01 / #177 — borrow-graph validation landed (2026-05-19):
+   - call-argument Ref/Mut borrows are now temporary (released after the
+     call), making the lexical model precise instead of over-conservative;
+   - shared-XOR-exclusive is enforced at *use* sites (find_aliasing_exclusive
+     in check_use), not only at borrow creation;
+   - the reference-binding graph (state.ref_bindings) is tracked for
+     [let r = &p] and scoped to its block;
+   - [BorrowOutlivesOwner] is finally emitted: a block whose value is a
+     reference to an owner declared inside that block is a dangling borrow.
+   record_move / record_borrow / end_borrow are all live now.
 
-(* Phase 3 (borrow checking) partially complete. Future enhancements:
-   - Non-lexical lifetimes with region inference (Phase 3)
-   - Dataflow analysis for precise tracking (Phase 3)
-   - Integration with quantity checking (Phase 3)
+   Deferred to a later CORE-01 part (tracked in docs/TECH-DEBT.adoc):
+   - Non-lexical lifetimes with region inference (Polonius-style).
+   - Dataflow analysis for flow-sensitive reference-escape via assignment
+     to an outer mutable (the let-only graph does not yet cover `outer = &x`).
+   - Tighter integration with the quantity checker for captured linears.
 *)

@@ -1,0 +1,18 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// CORE-01 / #177 regression — NEGATIVE / anti-over-rejection guard.
+// A `mut`-parameter call-argument borrow is temporary: it is released when
+// the call completes. Using `x` again afterwards is perfectly valid and
+// MUST still pass. This pins the precision fix that makes use-site
+// shared-XOR-exclusive enforcement sound (it would otherwise spuriously
+// reject the entire valid corpus).
+
+fn just_mut(a: mut Int) -> Int = 0;
+fn read_int(a: Int) -> Int = a;
+
+fn ok_sequential() -> Int {
+  let mut x = 1;
+  just_mut(x);
+  read_int(x)
+}

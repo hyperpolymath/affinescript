@@ -1,0 +1,15 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// CORE-01 / #177 regression — shared-XOR-exclusive enforced at USE sites.
+// `x` is passed to a `mut` parameter (exclusive borrow) and, in the same
+// call, also passed to a plain parameter (a use) while that exclusive
+// borrow is still live. Before #177 this was silently accepted (check_use
+// only checked moves). Expected: Error (UseWhileExclusivelyBorrowed _).
+
+fn mut_then_read(a: mut Int, b: Int) -> Int = 0;
+
+fn bad_alias() -> Int {
+  let mut x = 1;
+  mut_then_read(x, x)
+}
