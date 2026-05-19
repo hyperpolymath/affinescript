@@ -189,7 +189,9 @@ compiler-emitted xmod wasm (closes INT-01↔INT-02). Unblocks INT-05/08/11
 Component-Model re-target, staged S1..S6); S3+ hard-gated on S2
 toolchain (`wasm-tools`/`wasm-component-ld`)
 |INT-04 |Publish to JSR/npm |S2 |#181 packaging READY (dry-run green,
-manual workflow); owner-gated publish; compiler-binary = #260
+manual workflow); JSR publish authorised + dispatched (owner go
+2026-05-19); compiler-binary distribution decided = **ADR-019**
+(#260, Releases + thin Deno/JSR shim, staged S1..S4) — unblocks INT-10
 |INT-07 |`affinescript-tea` runtime |S2 |#182 runtime + run loop shipped
 (TeaApp/parseTeaLayout, Linear-msg enforced); INT-01 cleared (#253)
 |INT-08 |DOM reconciler |S2 |#183 implemented + compiles; `.as`→`.affine`

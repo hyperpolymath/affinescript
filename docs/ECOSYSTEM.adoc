@@ -227,8 +227,9 @@ corrected. INT-02 dep cleared. Runtime BLOCKED by #255 (wasm
 loop-codegen defect, pre-existing)
 |INT-09 |`affinescript-cadre` router/navigation runtime |ledger-only
 |planned (blocked by INT-07)
-|INT-10 |LSP distribution (`affinescript-lsp`) |ledger-only |planned
-(blocked by INT-04)
+|INT-10 |LSP distribution (`affinescript-lsp`) |#282 |unblocked —
+distribution decided (ADR-019: Releases + thin Deno/JSR shim, #260).
+Consumes the shim once #260 S2/S3 land
 |INT-11 |Browser host parity (DOM loader + reconciler end-to-end) |
 ledger-only |planned (blocked by INT-02/08)
 |INT-12 |typed-wasm convergence: AffineScript-emitted fixtures into the
