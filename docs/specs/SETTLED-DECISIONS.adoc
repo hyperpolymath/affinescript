@@ -308,3 +308,37 @@ default wasm target to component and demote preview1 to a legacy target.
 This decision is settled; do not reopen without amending the ADR. Full
 ADR in `.machine_readable/6a2/META.a2ml` (ADR-015); ledger INT-03 in
 `docs/TECH-DEBT.adoc`; roadmap in `docs/ECOSYSTEM.adoc`.
+
+== Effect-Threaded Async-Boundary Detection (ADR-016)
+
+The WasmGC CPS transform (ADR-013) detects the async boundary
+*structurally* — a `let` whose RHS calls a primitive in a hardcoded set
+`async_primitives = ["http_request_thenable"]`. That was the contained
+#225 PR3a scope; it is brittle (every new async primitive needs a
+codegen edit) and blind to user-defined `Async` functions, blocking the
+fully transparent ADR-013 surface for user async code. #234 generalises
+it: the boundary is *any call whose effect row ⊇ `Async`*.
+
+The AST carries no location/node id on `ExprApp`, and the escalated
+one-way-door fork (AskUserQuestion 2026-05-19) was decided in favour of
+a *typecheck→codegen side-table*, not AST annotation.
+
+Decision: thread per-call effect rows via a side-table keyed by a
+deterministic shared call-site numbering (a single traversal in a new
+`lib/effect_sites.ml`, called identically by typecheck and codegen, so
+keys cannot drift; no AST shape change). `Typecheck.check_program`
+populates `ordinal → effect_row` (declared and inferred) and returns
+it; `bin/main.ml` threads it into codegen (source-to-source backends
+ignore it); the CPS boundary predicate becomes a table lookup with the
+existing structural recogniser as the sound table-miss fallback.
+
+Staged (ledger #234): *S1* this ADR + plan (no code); *S2*
+`effect_sites.ml` + typecheck builds/returns the table (built, unused —
+gate-neutral); *S3* pipeline threads it, codegen switches to the table
+with structural fallback, new e2e proving a user-defined `Async` fn
+triggers the transform; *S4* retire the hardcoded set (fallback kept
+for table-miss only).
+
+This decision is settled; do not reopen without amending the ADR. Full
+ADR in `.machine_readable/6a2/META.a2ml` (ADR-016); ledger #234 /
+CORE-02 in `docs/TECH-DEBT.adoc`.

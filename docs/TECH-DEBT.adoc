@@ -102,7 +102,8 @@ analysis. |S1 |pt1 #240 + pt2 return-escape DONE (Refs #177); pt2 residual
 parser-gated — issue #177
 |CORE-02 |Effect-handler dispatch on WasmGC (currently `UnsupportedFeature`;
 EH proposal or CPS). The #225 CPS line closes the async slice. |S2 |partial
-(PR3a/b/c merged; #234 generalises the recogniser)
+(#225 line CLOSED PR1..PR3d+PR4; #234 generalises the recogniser —
+ADR-016 ACCEPTED, side-table typecheck→codegen, staged S1..S4; S1 done)
 |CORE-03 |ADR-014: module-qualified type/effect path. Decision settled
 (both `.`/`::` accepted, `Pkg::Type` canonical, `.`→`::` for free via the
 `::`-fold). Was the estate's dominant parse blocker (525/1177 .affine).
