@@ -54,6 +54,17 @@ type ownership_error =
   | ExclBorrowAliased of { func_idx : int; param_idx : int; count : int }
   (** Level 7: ExclBorrow parameter was loaded [count] times — aliasing violation.
       An exclusive borrow must not have multiple simultaneous references. *)
+  | ModuleNotIsolated of { reason : string }
+  (** Level 13 (module isolation — the typed-wasm contract widening,
+      issue #234/#10). The emitted module owns its own linear memory
+      yet ALSO imports a memory or table: a cross-module shared-state
+      channel outside the declared function-import boundary.
+      AffineScript codegen always emits a private memory and never
+      imports one, so this is the negative L13 property and a violation
+      is a codegen/isolation regression — exactly the class
+      [tw_verify] exists to catch on emitted wasm. Additive: NO
+      ownership-section wire-format change, so the multi-producer ABI
+      (ephapax + typed-wasm) is untouched. *)
 
 (* ============================================================================
    Per-path use-range analysis
@@ -222,6 +233,40 @@ let parse_ownership_section_payload
     (func_idx, param_kinds, ret_kind)
   )
 
+(** Level 13 — module isolation (negative form). A well-isolated
+    module owns its private linear memory and reaches other modules
+    ONLY through the declared function-import boundary. If the module
+    has its own memory yet also imports a memory or a table, that
+    imported entity is a shared-state channel outside the boundary —
+    not isolated. (A module with no own memory that imports one is a
+    pure consumer shim, not in scope here; AffineScript codegen never
+    emits that shape.) Carrier-free: read only the standard wasm
+    import/memory sections, so no multi-producer ABI change. *)
+let verify_module_isolation
+    (wasm_mod : Wasm.wasm_module)
+  : ownership_error list =
+  if wasm_mod.Wasm.mems = [] then []
+  else
+    List.filter_map
+      (fun (im : Wasm.import) ->
+        match im.Wasm.i_desc with
+        | Wasm.ImportMemory ->
+          Some (ModuleNotIsolated {
+            reason =
+              Printf.sprintf
+                "module owns linear memory yet imports memory '%s.%s' \
+                 (cross-module shared memory breaks L13 isolation)"
+                im.Wasm.i_module im.Wasm.i_name })
+        | Wasm.ImportTable ->
+          Some (ModuleNotIsolated {
+            reason =
+              Printf.sprintf
+                "module owns linear memory yet imports table '%s.%s' \
+                 (externally-backed table breaks L13 isolation)"
+                im.Wasm.i_module im.Wasm.i_name })
+        | Wasm.ImportFunc _ -> None)
+      wasm_mod.Wasm.imports
+
 (** Verify a Wasm module using the embedded [affinescript.ownership] custom
     section.  This is the primary entry point for the pipeline and the CLI.
 
@@ -236,7 +281,12 @@ let verify_from_module
     Ok ()
   | Some payload ->
     let annots = parse_ownership_section_payload payload in
-    let errors = verify_module wasm_mod annots in
+    (* L7/L10 (ownership) + L13 (module isolation). The isolation check
+       is gated behind the same ownership-section presence so the
+       "no section ⇒ Ok" contract is preserved. *)
+    let errors =
+      verify_module wasm_mod annots @ verify_module_isolation wasm_mod
+    in
     if errors = [] then Ok () else Error errors
 
 (* ============================================================================
@@ -266,6 +316,8 @@ let pp_error (fmt : Format.formatter) (err : ownership_error) : unit =
       "Level 7 violation: function %d, param %d — ExclBorrow (mut) param \
        aliased (%d simultaneous references; at most 1 permitted)"
       func_idx param_idx count
+  | ModuleNotIsolated { reason } ->
+    Format.fprintf fmt "Level 13 violation: %s" reason
 
 (** Format a full verification report. Prints "OK" if no errors. *)
 let pp_report (fmt : Format.formatter) (errs : ownership_error list) : unit =
