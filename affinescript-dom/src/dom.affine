@@ -1,0 +1,187 @@
+/**
+ * AffineScript High-Assurance DOM Connector — virtual-DOM + reconciler.
+ * (c) 2026 hyperpolymath
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ *
+ * INT-08 (#183). The previous skeleton (`src/dom.as`) did not parse
+ * (`Void`, `->` match arms, `List[T]`, `{id:String}`) and `h()`/`mount()`
+ * did not render. This is a real compiling reconciler; the file is also
+ * renamed to the canonical `.affine` extension (bin/main.ml:67).
+ *
+ * DOM nodes are opaque Int handles (0 = null); the host (affine-js
+ * loader, INT-02 — browser/Deno/Node) maps handles to real nodes.
+ * String comparison is host-mediated (`dom_str_eq`) so the guest needs
+ * no wasm string-equality codegen.
+ *
+ * GATE: this module compiles end-to-end (resolve → typecheck → codegen
+ * → wasm), the same bar as the Stage-C stdlib AOT suite. RUNTIME is
+ * blocked by #255 — a pre-existing wasm-codegen defect where `for-in` /
+ * `while` loop bodies never execute in the compiled module (so
+ * `vnode_len`, the attr loops, and the child reconcile loop iterate
+ * zero times). The reconciler logic here is correct AffineScript; it
+ * will run once #255 lands. No runtime e2e harness is shipped until
+ * then (a harness that cannot pass would be dishonest).
+ *
+ * Codegen note: AffineScript codegen is single-pass in source
+ * declaration order (lib/codegen.ml `func_indices`), so a function may
+ * call only itself or functions declared *above* it. There is no
+ * cross-function mutual recursion; `render` and `reconcile` are made
+ * self-recursive (children handled inline) instead of via mutually
+ * recursive helpers.
+ */
+
+// ── Host FFI (Int handles; 0 = null) ─────────────────────────────────────────
+
+pub extern fn dom_query_selector(selector: String) -> Int;
+pub extern fn dom_create_element(tag: String) -> Int;
+pub extern fn dom_create_text_node(content: String) -> Int;
+pub extern fn dom_append_child(parent: Int, child: Int) -> Unit;
+pub extern fn dom_replace_child(parent: Int, old_child: Int, new_child: Int) -> Unit;
+pub extern fn dom_remove_child(parent: Int, child: Int) -> Unit;
+pub extern fn dom_child_at(parent: Int, index: Int) -> Int;
+pub extern fn dom_set_attribute(el: Int, name: String, value: String) -> Unit;
+pub extern fn dom_remove_attribute(el: Int, name: String) -> Unit;
+pub extern fn dom_set_text(node: Int, content: String) -> Unit;
+pub extern fn dom_str_eq(a: String, b: String) -> Bool;
+
+// ── Virtual DOM ──────────────────────────────────────────────────────────────
+
+pub enum VNode {
+  VText(String),
+  VElem(String, [(String, String)], [VNode])
+}
+
+/// Text node.
+pub fn text(content: String) -> VNode = VText(content);
+
+/// Fluent element builder (replaces the old non-rendering `h`): arbitrary
+/// attributes and children, not the old `{ id: String }`-only stub.
+pub fn h(tag: String, attrs: [(String, String)], children: [VNode]) -> VNode =
+  VElem(tag, attrs, children);
+
+// `len` is not available in the standalone wasm-AOT subset; a `for`-count
+// helper is (proven: tests/codegen/test_for_loop). Monomorphic, not
+// generic, since wasm codegen generic support is not relied on here.
+fn vnode_len(xs: [VNode]) -> Int {
+  let mut c = 0;
+  for x in xs {
+    c = c + 1;
+  }
+  c
+}
+
+// ── Render: VNode -> real DOM subtree (self-recursive) ───────────────────────
+
+pub fn render(vnode: VNode) -> Int {
+  match vnode {
+    VText(content) => dom_create_text_node(content),
+    VElem(tag, attrs, children) => {
+      let el = dom_create_element(tag);
+      for a in attrs {
+        match a {
+          (name, value) => dom_set_attribute(el, name, value)
+        }
+      }
+      for child in children {
+        dom_append_child(el, render(child));
+      }
+      el
+    }
+  }
+}
+
+/// Mount a VNode tree under the first element matching `selector`.
+/// Returns `true` on success, `false` if the selector matched nothing.
+pub fn mount(selector: String, vnode: VNode) -> Bool {
+  let parent = dom_query_selector(selector);
+  if parent == 0 {
+    false
+  } else {
+    dom_append_child(parent, render(vnode));
+    true
+  }
+}
+
+// ── Reconciler: minimal mutation between two VNode trees ─────────────────────
+
+fn attr_has(attrs: [(String, String)], key: String) -> Bool {
+  let mut found = false;
+  for a in attrs {
+    match a {
+      (name, value) =>
+        if dom_str_eq(name, key) { found = true; } else { () }
+    }
+  }
+  found
+}
+
+fn patch_attrs(el: Int, olds: [(String, String)], news: [(String, String)]) -> Unit {
+  for a in news {
+    match a {
+      (name, value) => dom_set_attribute(el, name, value)
+    }
+  }
+  for a in olds {
+    match a {
+      (name, value) =>
+        if attr_has(news, name) { () } else { dom_remove_attribute(el, name) }
+    }
+  }
+  ()
+}
+
+fn replace(parent: Int, old_node: Int, new_v: VNode) -> Int {
+  let new_node = render(new_v);
+  dom_replace_child(parent, old_node, new_node);
+  new_node
+}
+
+/// Reconcile `old_v` (currently mounted as handle `old_node` under
+/// `parent`) towards `new_v`, performing the minimal DOM mutation.
+/// Returns the handle now in place (may differ if the node was replaced).
+/// Children are reconciled inline (self-recursion) — see codegen note.
+pub fn reconcile(parent: Int, old_node: Int, old_v: VNode, new_v: VNode) -> Int {
+  match old_v {
+    VText(old_s) =>
+      match new_v {
+        VText(new_s) =>
+          if dom_str_eq(old_s, new_s) {
+            old_node
+          } else {
+            dom_set_text(old_node, new_s);
+            old_node
+          },
+        VElem(new_tag, new_attrs, new_kids) => replace(parent, old_node, new_v)
+      },
+    VElem(old_tag, old_attrs, old_kids) =>
+      match new_v {
+        VText(new_s) => replace(parent, old_node, new_v),
+        VElem(new_tag, new_attrs, new_kids) =>
+          if dom_str_eq(old_tag, new_tag) {
+            patch_attrs(old_node, old_attrs, new_attrs);
+            let no = vnode_len(old_kids);
+            let nn = vnode_len(new_kids);
+            let max = if no >= nn { no } else { nn };
+            let mut i = 0;
+            while i < max {
+              if i >= no {
+                dom_append_child(old_node, render(new_kids[i]));
+              } else {
+                if i >= nn {
+                  // Surplus old child: removing the node now at index `nn`
+                  // shifts the next surplus into the same slot.
+                  dom_remove_child(old_node, dom_child_at(old_node, nn));
+                } else {
+                  reconcile(old_node, dom_child_at(old_node, i),
+                            old_kids[i], new_kids[i]);
+                }
+              }
+              i = i + 1;
+            }
+            old_node
+          } else {
+            replace(parent, old_node, new_v)
+          }
+      }
+  }
+}

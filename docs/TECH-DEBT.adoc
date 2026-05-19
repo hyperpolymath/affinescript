@@ -145,7 +145,8 @@ Component-Model re-target, staged S1..S6); S3+ hard-gated on S2
 toolchain (`wasm-tools`/`wasm-component-ld`)
 |INT-04 |Publish to JSR/npm |S2 |open #181 (◄ INT-01)
 |INT-07 |`affinescript-tea` runtime |S2 |open #182 (◄ INT-01)
-|INT-08 |DOM reconciler |S2 |open #183 (◄ INT-02)
+|INT-08 |DOM reconciler |S2 |#183 implemented + compiles; `.as`→`.affine`
+fixed; runtime blocked by #255 (wasm loop-codegen defect)
 |INT-05/06/09/10/11/12 |ledger-only; filed when blocker closes |— |planned
 |===
 

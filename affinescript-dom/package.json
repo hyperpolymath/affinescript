@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "description": "High-assurance DOM connector for AffineScript — memory-safe web manipulation.",
   "type": "module",
-  "main": "./src/dom.as",
+  "main": "./src/dom.affine",
   "exports": {
-    ".": "./src/dom.as"
+    ".": "./src/dom.affine"
   },
   "scripts": {
     "dev": "vite",
