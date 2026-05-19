@@ -1,0 +1,64 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-FileCopyrightText: 2024-2026 hyperpolymath
+= Estate ReScript-surface elimination — campaign infrastructure
+:toc: macro
+
+Campaign tooling for issue #229 (total ReScript-surface elimination from every
+estate `.affine`). The authoritative findings, scope, and the canonical
+RS→AffineScript map live in link:../../docs/RESCRIPT-ELIMINATION.adoc[docs/RESCRIPT-ELIMINATION.adoc];
+this directory is the *reproducer*.
+
+toc::[]
+
+== Why this is in-repo
+
+The oracle is the affinescript compiler itself. The audit is only meaningful
+against a specific compiler revision, so the harness, the repo list, and the
+captured results are versioned alongside the compiler that produced them. The
+prior throwaway home (`/tmp`, then `~/dev/repos/.affine-audit`) did not survive
+`/tmp` wipes and was not attributable to a compiler SHA — this is.
+
+== Files
+
+[cols="1,3"]
+|===
+|`audit.sh` |Per-repo: shallow-clone the default branch, run the oracle
+`main.exe check` on every `.affine`, classify on stdout
+(`PASS` / `DRIFT-SYNTAX` / `TYPE-ONLY`). Exit-code-blind by design (the oracle
+always returns 0; classification is on the first line of output).
+|`rs-inventory.sh` |Scans the *text* of every non-`PASS` file for the ReScript
+construct set named in #229. Text-scan, not oracle-classify: the oracle stops
+at the *first* parse error and hides the rest of a file's RS inventory.
+|`affine_repos.txt` |The estate repo list (NWO, one per line).
+|`data/results.post228.tsv` |The authoritative post-#228 (ADR-014 / #241 on
+`main`) re-audit. 552 PASS / 491 DRIFT-SYNTAX / 133 TYPE-ONLY over 1176 files.
+|`data/rs-inventory.tsv` |Per-file RS-construct inventory derived from the
+above. `<no-RS-construct:non-RS-drift>` marks DRIFT that is *not* #229 scope.
+|===
+
+== Reproduce
+
+[source,sh]
+----
+# 1. Build the oracle from the compiler revision under test
+cd <affinescript> && opam exec --switch=. -- dune build bin/main.exe
+
+# 2. Re-audit (clones cached under .affine-audit/clones; same corpus = controlled)
+ORC=<affinescript>/_build/default/bin/main.exe \
+STDL=<affinescript>/stdlib \
+  bash tools/estate-rs-audit/audit.sh
+
+# 3. Rebuild the per-file RS construct inventory
+bash tools/estate-rs-audit/rs-inventory.sh
+----
+
+NOTE: re-run against the *same cached clones* so an oracle change is measured
+in isolation (corpus drift would confound it). Refresh clones only for a
+deliberate new-corpus snapshot.
+
+== Method note (honest scope)
+
+`DRIFT-SYNTAX` is *not* a synonym for "ReScript surface". Most estate DRIFT is
+non-RS syntax drift (out of #229's contract). Only files with a detected RS
+construct in `data/rs-inventory.tsv` are #229 scope — see the ledger for the
+per-repo true-scope breakdown and the canonical map.

@@ -106,11 +106,13 @@ EH proposal or CPS). The #225 CPS line closes the async slice. |S2 |partial
 |CORE-03 |ADR-014: module-qualified type/effect path. Decision settled
 (both `.`/`::` accepted, `Pkg::Type` canonical, `.`→`::` for free via the
 `::`-fold). Was the estate's dominant parse blocker (525/1177 .affine).
-*Grammar LANDED* (PR #241, Refs #228, gate 267/267, **zero Menhir
+*Grammar LANDED + MERGED* (PR #241, Refs #228, **zero Menhir
 conflict delta** — 21 S/R + 1 R/R unchanged); ADR-014 recorded in
 META.a2ml + SETTLED-DECISIONS.adoc. Supersedes DRAFT #231. |S1 |grammar
-in PR #241 (open); estate `.affine` re-audit + ReScript residue #229
-follow separately
+merged (#241). Post-#228 estate re-audit DONE — true #229 scope is
+~84 files/12 repos (not the 491 DRIFT; bulk is non-RS, out of contract);
+authoritative ledger + language-grounded canonical map + ESC-01..03
+escalations: link:RESCRIPT-ELIMINATION.adoc[RESCRIPT-ELIMINATION.adoc]
 |CORE-04 |Traits: associated-type substitution, where-clause supertraits,
 coherence checking. |S2 |partial
 |CORE-05 |Dependent/refinement types: predicate reduction / SMT. |S3

@@ -1,0 +1,250 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-FileCopyrightText: 2024-2026 hyperpolymath
+= Estate ReScript-surface elimination — authoritative ledger (issue #229)
+:toc: macro
+:toclevels: 3
+:icons: font
+
+[IMPORTANT]
+====
+This document is authoritative for issue #229: the post-#228 re-audit numbers,
+the *true* RS-surface scope, the language-grounded canonical RS→AffineScript
+map, the escalation set (constructs with no clean target), and the per-repo
+port plan. It is the #229 analogue of the front-loaded ledger established by
+#239 for the spine. Per-feature readiness remains
+link:CAPABILITY-MATRIX.adoc[CAPABILITY-MATRIX.adoc]; the coordination ledger
+remains link:TECH-DEBT.adoc[TECH-DEBT.adoc]; the spine remains
+link:ECOSYSTEM.adoc[ECOSYSTEM.adoc]. Reproducer:
+`tools/estate-rs-audit/`.
+====
+
+toc::[]
+
+== What #229 is
+
+A subset of estate `.affine` files are unfinished ReScript→AffineScript
+hand-ports: the file declares itself AffineScript (`module …;`) but the body
+still carries ReScript surface syntax. Such a file is neither valid ReScript
+nor valid AffineScript — debt in limbo that cannot be oracle-certified. The
+committed goal is *zero ReScript surface in any estate `.affine`*. #229 was
+blocked on #228 (ADR-014, module-qualified type/effect paths) because the
+oracle stops at the *first* parse error: qualified-path faults masked each
+file's full RS inventory. #228 landed on `main` via #241 — this re-audit is
+the now-unblocked step 2.
+
+== Post-#228 re-audit (authoritative)
+
+Oracle = affinescript `main` with #241/ADR-014 (parse-equivalent to the
+`int01-178-xmod` build: zero `lib/`+`bin/` delta vs `origin/main`). Same
+cached estate corpus as the pre-#228 baseline (controlled: only the oracle
+changed). Harness + raw data: `tools/estate-rs-audit/`.
+
+[cols="2,1,4"]
+|===
+|Class |n |Meaning
+
+|`PASS` |552 |parses + typechecks on the oracle
+|`DRIFT-SYNTAX` |491 |first line is a parse/syntax error
+|`TYPE-ONLY` |133 |parses; fails later (resolution/type) — not a syntax port
+|*total* |*1176* |`.affine` across 28 estate repos
+|===
+
+Zero class-delta vs the superseded #231 postfix — #241 reproduces ADR-014
+parse behaviour exactly; #231 was superseded for *implementation* reasons, not
+behaviour. This table is now the post-#228 baseline of record.
+
+== The honest scope correction
+
+[WARNING]
+====
+`DRIFT-SYNTAX` (491) is *not* the #229 workload. Most estate DRIFT is *non-RS*
+syntax drift — out of #229's contract by design. The true #229 scope is the
+files that carry a detected ReScript construct in
+`tools/estate-rs-audit/data/rs-inventory.tsv`: *~84 files across 12 repos*,
+two of which hold 71%.
+====
+
+=== True RS-surface scope (excludes the affinescript repo's own intentional negative fixtures)
+
+[cols="2,1,4"]
+|===
+|Repo |RS files |Shape
+
+|`burble` |32 |Whole-repo RS port; richest construct mix (e.g.
+`client/lib/src/BurbleClient.affine` carries 7 RS construct families). Not
+module-import-coupled — proceeds first.
+|`idaptik-dlc-vm` |28 |Uniform `import … as` VM dispatch. *Gated on the
+INT-01 #178 qualified-value resolver* (see §"Cross-unit gating").
+|`standards` |4 |
+|`developer-ecosystem` |4 |
+|`stapeln` |3 |
+|`proof-burrower` |3 |
+|`idaptik` |3 |
+|`bofj-kitt` |3 |
+|`invariant-path` |1 |`src/ui/tea/invariant_path_gui.affine` — `List(X)` +
+record sigil (layered)
+|`git-scripts` |1 |`src/ui/tea/git_scripts_gui.affine` — `List(X)` +
+record sigil (layered)
+|`game-server-admin` |1 |`src/ui/tea/gsa_gui.affine` — `List(X)` + record
+sigil (layered)
+|*total* |*~83* |over 11 repos (panll removed — see note)
+|===
+
+[WARNING]
+====
+*The text-scan inventory is a lower-bound triage signal, not the true
+per-file inventory.* The oracle stops at the first parse error, so a file's
+deeper RS layers are invisible until earlier ones are removed (e.g. the
+`*_gui.affine` files scan as "`List(X)` only" but in fact also need the
+`#{` record sigil beneath it). And the scanner has false positives:
+`mutable-field` matched a *comment* in `panll/src/ui/tea/wizard.affine`
+("no shared mutable state") — panll carries *no* listed RS construct; its
+real first fault is a trailing comma in an `enum` variant list, which is
+not a #229 named construct. *`panll` is reclassified out of #229 scope.*
+The true per-file inventory only emerges by iterative oracle-peeling
+*during* each port — which is exactly why #229 mandates per-repo,
+oracle-validated, human-gated ports rather than one blind sweep.
+====
+
+=== Non-RS DRIFT (NOT #229 scope — recorded so it is not mistaken for it)
+
+`standards` 112, `proof-burrower` 98, `developer-ecosystem` 97, `bofj-kitt`
+96, `affinescript` 84 (its own negative fixtures), `airborne-submarine-squadron`
+13, `accessibility-everywhere` 13, `idaptik` 9, `stapeln` 6, `burble` 3,
+singletons elsewhere. These DRIFT for non-ReScript reasons; they belong to
+separate workstreams, not #229.
+
+== Construct frequency (estate, excl. affinescript)
+
+`import-as` 31 · `mutable-field` 29 · `rs-generic<>` 26 · `array<T>` 17 ·
+`%%raw` 14 · `labelled-(~x)` 12 · `List(X)` 7 · `JSON.t` 7 · `Dict.t` 6 ·
+`rs-stdlib` 4 · `open-Mod` 4 · `type-rec` 3.
+
+== The canonical RS→AffineScript map (language-grounded)
+
+Derived from the language side — grammar / spec v2.0 / stdlib — *not guessed*.
+Every target form carries its grounding citation. Four tiers.
+
+=== Tier 1 — Mechanical (clean grammar target; scriptable, oracle-revalidated)
+
+[cols="2,2,3"]
+|===
+|ReScript |AffineScript |Grounding
+
+|*expression-/pattern-position record literal* `{ f: v }` → `#{ f: v }`;
+typed `T { f: v }` → `T #{ f: v }` |the *record sigil* `#{…}` |*The
+dominant estate blocker — and NOT in #229's named construct set.*
+`docs/spec.md:414-421` prescribes exactly this rewrite ("rewrite each
+expression-position record literal `{`→`#{`; leave struct/type declaration
+bodies"); examples `spec.md:901,1320`. Oracle-verified: bare `{x:1}` /
+`M{x:1}` / `M(x:1)` all parse-error; `Type #{…}` is the form. Applies to
+record *patterns* in `match` too. Position-aware codemod (expr/pattern vs
+decl), *not* naive regex.
+|`List(X)` |`[X]` |list type is `[T]`; oracle-verified `List(Int)`
+parse-errors, `[Int]` passes. `stdlib/collections.affine`,
+`stdlib/prelude.affine`
+|lowercase `array<…>` / `option<…>` / `result<…>` |`[…]` / `Option[…]` /
+`Result[…]` (capitalise the type name) |The RS tell is the *lowercase type
+name*, **not** the angle brackets. Oracle-verified: `Option<Int>` *passes*
+— both `<>` and `[ ]` type-application parse (`lib/parser.mly:486`).
+Capitalising the name is the fix; bracket style is free choice (`[ ]`
+canonical per spec v2.0 / `stdlib/traits.affine:89`)
+|`open Mod` |`use Mod::*;` |`lib/parser.mly:172` `ImportGlob`
+|`type rec t = …` |`type t = …` |AS `type`/`enum` decls are self-referential
+by default (`stdlib/prelude.affine:19-21`); drop `rec`
+|===
+
+[NOTE]
+====
+The record-sigil row was discovered by oracle-peeling the four allegedly
+"quick-win" `*_gui.affine` files: each is a *layered* port (`List(X)` was
+only the first wall; `#{` record literals + record patterns lie beneath).
+This corrects two earlier overclaims: (a) angle-brackets are *not* RS
+surface; (b) there are *no* trivial single-construct quick wins — even
+one-RS-flagged files are multi-layer.
+====
+
+=== Tier 2 — Semantic redesign (maps onto the affine model; per-case, NO blind codemod)
+
+[cols="2,3"]
+|===
+|ReScript |Why it is not mechanical
+
+|`mutable` record field |AffineScript is immutable-by-default with *explicit
+mutation via ownership* (`docs/spec.md:38`; `mut τ` `docs/spec.md:563`).
+There is no `mutable` field keyword; each record is re-expressed against the
+ownership model — a redesign, reviewed per record.
+|`(~x) =>` labelled args |No labelled/named-argument syntax in the grammar or
+stdlib (stdlib is uniformly positional, e.g. `stdlib/option.affine`).
+Rewrite to positional — a call-convention change, reviewed per call site.
+|`Belt.*` / `Js.*` / `Rescript.*` |ReScript stdlib; no 1:1 AffineScript
+target. Per-symbol remap to the estate stdlib, semantic.
+|===
+
+=== Tier 3 — Escalate as a language-side issue/ADR (bidirectional evidence — the #228 discipline)
+
+These have *no clean AffineScript target today*. Per #229 step 3 they are
+escalated language-side rather than patched divergently across N repos — the
+same discipline that produced #228.
+
+[cols="1,2,4"]
+|===
+|Esc |Construct |Finding
+
+|*ESC-01* (#245) |`%%raw("…")` (14) |AffineScript has *no raw-host-expression
+/ FFI escape*. The only host bridge is typed `extern fn` / `extern type`
+(`lib/parser.mly:185+`) — host-supplied, typed, no arbitrary-source escape.
+Needs a language decision on a raw/FFI form (or an explicit "port every
+`%%raw` to typed `extern`" doctrine).
+|*ESC-02* (#246) |`JSON.t` (7) |No stdlib JSON type (`stdlib/` has `Ajv` but
+no `Json`). Needs a stdlib JSON type.
+|*ESC-03* (#247) |`Dict.t` (6) |No stdlib `Map`/`Dict` type
+(`stdlib/collections.affine` is list ops only; `stdlib/Http.affine:16`
+already flags the `Dict` gap, tied to #160/#162). Needs a stdlib `Map` type —
+coordinate with #160/#162.
+|===
+
+=== Tier 4 — Cross-unit gating (a sequencing finding, language-grounded)
+
+`import X as Y` ports to `use X as Y;`. That *parses* and the alias *registers*
+(`lib/parser.mly:168` `ImportSimple(path, Some alias)`;
+`lib/resolve.ml:787-797` registers the alias on `lookup_qualified` success).
+*But* qualified-value call sites `Y.fn(x)` hit the post-#228 INT-01 #178
+qualified-*value* resolution gap (`lib/resolve.ml:719,797`
+`UndefinedModule`) — the exact gap recorded as the next spine unit.
+
+⇒ *`idaptik-dlc-vm` (28 files, 33% of #229 scope) is gated on the INT-01 #178
+qualified-value resolver.* `burble` (rs-generic/array/mutable/%%raw-dominated,
+not module-coupled) and the three smallest non-coupled repos
+(`git-scripts`, `game-server-admin`, `invariant-path`) are not gated and
+proceed first. This does not reorder the mandate (#229 foundation first, as
+instructed); it is the foundation's own finding that the `idaptik-dlc-vm`
+*slice* of the per-repo work naturally sequences after INT-01 #178.
+
+== Per-repo port plan
+
+Each repo: oracle-validate locally first (estate CI does not compile
+`.affine`), one branch + squash-merge PR per repo, noreply author,
+`Refs #229` (multi-repo, sequenced, human-gated — never `Closes`). *Per-repo
+hands-off confirm before touching*: policy hands-off is the ReScript
+*ecosystem* (`.res`); `.affine`-with-RS is an in-scope unfinished port — but
+confirm per repo it is an intended AffineScript target, not a deliberate
+interop artefact (burble's standing caveat), before removal.
+
+. *Smallest non-coupled (Tier-1, layered — not trivial):* `git-scripts`,
+  `game-server-admin`, `invariant-path` (one file each: `List(X)` *and* the
+  `#{` record sigil in expr + `match` pattern position; iterative
+  oracle-peel). `panll` is *excluded* (no listed RS construct — see the
+  lower-bound-triage warning above).
+. *`burble`* (32): Tier-1 mechanical pass first (re-validated), Tier-2
+  `mutable`/labelled per-case, Tier-3 constructs blocked on ESC-01..03.
+. *Small tail:* `standards`, `developer-ecosystem`, `stapeln`,
+  `proof-burrower`, `idaptik`, `bofj-kitt` (≤4 RS files each).
+. *`idaptik-dlc-vm`* (28): after INT-01 #178 resolver lands (Tier-4 gate).
+
+== Reproduce / see also
+
+* `tools/estate-rs-audit/` — harness + captured data + how-to.
+* link:ECOSYSTEM.adoc[ECOSYSTEM.adoc] — the spine; #229 is its estate-port arm.
+* link:TECH-DEBT.adoc[TECH-DEBT.adoc] — coordination ledger.
+* #228 / link:specs/SETTLED-DECISIONS.adoc[ADR-014] — the unblocker.
