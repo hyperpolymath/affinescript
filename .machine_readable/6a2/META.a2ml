@@ -1016,3 +1016,82 @@ references = [
   "hyperpolymath/typed-wasm (multi-producer ownership-section ABI)",
   "WASI 0.2 / WebAssembly Component Model specification",
 ]
+
+[[adr]]
+id = "ADR-016"
+status = "accepted"
+date = "2026-05-19"
+title = "Effect-threaded async-boundary detection (side-table; #234)"
+context = """
+The WasmGC CPS transform (ADR-013) detects the async boundary
+*structurally*: a `let` whose RHS calls a primitive in a hardcoded set
+`async_primitives = ["http_request_thenable"]` (lib/codegen.ml). This
+was the deliberately-contained #225 PR3a scope. It is brittle: every
+new async stdlib primitive must be added to the set, and a
+user-defined `Async`-effecting function is invisible to it — blocking
+the fully transparent ADR-013 surface for user async code. #234 asks
+for the principled generalisation: the boundary is any call whose
+effect row ⊇ `Async`. This requires per-call effect information at
+codegen time. The AST (`lib/ast.ml`) carries no location or node id on
+`ExprApp`, and the owner-chosen mechanism (AskUserQuestion
+2026-05-19) is a typecheck→codegen side-table, NOT AST annotation.
+"""
+decision = """
+Thread per-call-site effect rows from typecheck to codegen via a
+*side-table*, keyed by a deterministic shared call-site numbering.
+
+- *Keying.* A single shared traversal (new `lib/effect_sites.ml`)
+  assigns every `ExprApp` an ordinal in a fixed pre-order walk of the
+  program. Both typecheck and codegen obtain ordinals by calling the
+  *same* function, so keys cannot drift. No AST shape change (the
+  pipeline already threads one `prog` value through resolve →
+  typecheck → borrow → quantity → codegen unmodified, but ordinals —
+  not physical identity — are the contract, which is robust to any
+  future node rebuild).
+- *Producer.* `Typecheck.check_program` populates
+  `(int, effect_row) Hashtbl.t` (call-site ordinal → resolved effect
+  row, declared *and* inferred) and returns it in its result context.
+- *Pipeline.* `bin/main.ml` threads the table into the codegen entry
+  alongside `prog` (one extra argument; the existing source-to-source
+  backends ignore it).
+- *Consumer.* The CPS detector's boundary predicate becomes “the
+  `let`-RHS call's effect row ⊇ `Async`” via a table lookup, replacing
+  `is_async_prim_call`/`async_primitives`.
+- *Fallback / safety.* If the table has no entry for a site (e.g. a
+  pre-typecheck embedder path, or a synthesised node), codegen falls
+  back to the structural recogniser. The hardcoded set is retired only
+  once the table path is proven (final slice); over-conservative
+  fallback is always sound (= today's behaviour).
+
+Staged (ledger #234; each a gated PR, full `dune test --force` +
+wasm e2e):
+- S1 (this): ADR-016 + plan. No code change.
+- S2: `lib/effect_sites.ml` shared numbering + typecheck builds &
+  returns the side-table. NO codegen behaviour change (table built,
+  unused) — pure, gate-neutral.
+- S3: pipeline threads the table; codegen boundary predicate switches
+  to the table with structural fallback; new e2e proving a
+  *user-defined* `Async` fn triggers the transform (the payoff). All
+  existing http_cps_* / http_response_reader stay green.
+- S4: retire the hardcoded `async_primitives` set (fallback remains
+  for table-miss only); doc truthing.
+"""
+consequences = """
+- Generalises to user-defined `Async` functions; new async primitives
+  need no codegen edit (closes the brittleness #234 names).
+- One-way-ish: introduces a typecheck→codegen data channel (shared
+  infra). Reversible per-slice (S2/S3 are additive; the structural
+  recogniser stays as the sound fallback throughout).
+- Source-to-source backends unaffected (they ignore the table arg).
+- This decision is settled; do not reopen without amending this ADR.
+  Ledger #234 / CORE-02 in docs/TECH-DEBT.adoc.
+"""
+references = [
+  "https://github.com/hyperpolymath/affinescript/issues/234",
+  "https://github.com/hyperpolymath/affinescript/issues/225",
+  "docs/specs/async-on-wasm-cps.adoc (ADR-013)",
+  "lib/codegen.ml (async_primitives / detect_async_base_case)",
+  "lib/typecheck.ml (check_program)",
+  "lib/effect_sites.ml (new; shared call-site numbering)",
+  "docs/specs/SETTLED-DECISIONS.adoc (ADR-016 section)",
+]
