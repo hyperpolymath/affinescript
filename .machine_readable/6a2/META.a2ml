@@ -1192,3 +1192,71 @@ references = [
   "docs/RESCRIPT-ELIMINATION.adoc (#229 canonical map; Tier-3 ESC-01)",
   "META.a2ml [[adr]] ADR-012 (grammar changes are correctness assertions)",
 ]
+
+[[adr]]
+id = "ADR-019"
+status = "accepted"
+date = "2026-05-19"
+title = "Compiler distribution: GitHub Releases binaries + thin Deno/JSR shim (#260)"
+context = """
+INT-04 (#181) is "publish compiler + runtime". The runtime JS packages
+are JSR-publishable and that path is done (affinescript#261). The
+*compiler* is a native OCaml binary — it is NOT a JSR or npm package,
+so "publish the compiler" needed a distribution strategy. This gates
+INT-10 (`affinescript-lsp` distribution, which "waits on a published
+compiler"). The fork was escalated (issue #260; AskUserQuestion
+2026-05-19) over four options: (1) GitHub Releases binaries, (2)
+Guix/Nix channel, (3) thin JSR/npm shim, (4) Releases + shim. The
+owner chose (4).
+"""
+decision = """
+Dual-channel, Releases-canonical:
+
+- *Canonical artifact.* Extend the existing `release.yml` (`v*` tags)
+  to build per-platform compiler binaries (Linux x86_64 first;
+  macOS/Windows as the build matrix allows) and attach them to the
+  GitHub Release together with a `SHA256SUMS` manifest. Releases are
+  the single source of truth; Guix/Nix and any npm tail become
+  *additive fetch-derivations over the same artifact* later (NOT in
+  this ADR's slices) — no second producer of the binary.
+- *Ergonomic front door.* A thin Deno/JSR package
+  `@hyperpolymath/affinescript` (Deno-first per CLAUDE.md; no OCaml
+  source shipped) whose setup step downloads the host-platform binary
+  from the pinned Release, verifies it against the `SHA256SUMS`
+  checksum *embedded in that shim version*, caches it, and execs it.
+  HTTPS-only; no secrets in the shim; provenance = this repo's own
+  release workflow. Each shim version pins exactly one compiler
+  version+checksum (supply-chain: no floating fetch).
+- *Consumer.* INT-10 `affinescript-lsp` resolves the compiler via the
+  shim (`deno add` ergonomics) — this is what unblocks it.
+- npm tail: only if/when an npm-native consumer needs it, mirroring
+  the owner-sanctioned affine-vscode npm exception; deferred, not in
+  scope here.
+
+Staged (ledger #260 / INT-10; each a gated PR):
+- S1 (this): ADR-019 + plan; file INT-10. No code.
+- S2: `release.yml` per-platform binary + `SHA256SUMS` matrix.
+- S3: the `@hyperpolymath/affinescript` shim package (download +
+  checksum-verify + cache + exec) + its tests; publish is owner-gated
+  via the existing manual JSR workflow (like INT-04).
+- S4: wire INT-10 `affinescript-lsp` onto the shim.
+"""
+consequences = """
+- One-way: fixes the install contract (Releases artifact name/layout +
+  shim package name). Reversible per-slice; Releases-canonical keeps
+  Guix/Nix/npm strictly additive.
+- INT-10 (`affinescript-lsp` distribution) is unblocked once S2+S3
+  land; filed now.
+- Supply chain: every shim release pins one checksummed binary; no
+  floating download.
+- This decision is settled; do not reopen without amending this ADR.
+  Ledger #260 / INT-10 in docs/TECH-DEBT.adoc.
+"""
+references = [
+  "https://github.com/hyperpolymath/affinescript/issues/260",
+  "https://github.com/hyperpolymath/affinescript/issues/181",
+  ".github/workflows/release.yml",
+  ".github/workflows/publish-jsr.yml (INT-04; owner-gated publish)",
+  "docs/PACKAGING.adoc (INT-04; the JS-package half)",
+  "docs/specs/SETTLED-DECISIONS.adoc (ADR-019 section)",
+]

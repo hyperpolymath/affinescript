@@ -409,3 +409,36 @@ parts of `burble`) port under this doctrine; per-file execution is the
 This decision is settled; do not reopen without amending the ADR. Full
 ADR in `.machine_readable/6a2/META.a2ml` (ADR-018); #229 canonical map in
 `docs/RESCRIPT-ELIMINATION.adoc`; escalation issue #245.
+
+== Compiler Distribution: GitHub Releases Binaries + Thin Deno/JSR Shim (ADR-019)
+
+INT-04 (#181) is "publish compiler + runtime". The runtime JS packages
+are JSR-publishable and shipped (#261); the *compiler* is a native
+OCaml binary — not a JSR/npm package — so its distribution was an
+escalated one-way-door fork (issue #260, AskUserQuestion 2026-05-19)
+over Releases-binaries / Guix-Nix / JSR-shim / combination. The owner
+chose the *combination*.
+
+Decision: *Releases-canonical, dual-channel*. The existing
+`release.yml` (`v*` tags) is extended to build per-platform compiler
+binaries + a `SHA256SUMS` manifest attached to the GitHub Release (the
+single source of truth — Guix/Nix and any npm tail are additive
+fetch-derivations over it later, not separate producers). A thin
+Deno/JSR package `@hyperpolymath/affinescript` is the ergonomic front
+door: it downloads the host-platform binary from the pinned Release,
+verifies it against the `SHA256SUMS` checksum embedded in that shim
+version, caches and execs it (HTTPS-only, no secrets, one
+version+checksum pinned per shim release — no floating fetch).
+`affinescript-lsp` (INT-10) consumes the shim, which is what unblocks
+INT-10. An npm tail is deferred (only if an npm-native consumer needs
+it, mirroring the affine-vscode exception).
+
+Staged (ledger #260 / INT-10): *S1* this ADR + plan + file INT-10 (no
+code); *S2* `release.yml` per-platform binary + `SHA256SUMS` matrix;
+*S3* the shim package (download + checksum-verify + cache + exec) +
+tests, publish owner-gated via the existing manual JSR workflow; *S4*
+wire INT-10 `affinescript-lsp` onto the shim.
+
+This decision is settled; do not reopen without amending the ADR. Full
+ADR in `.machine_readable/6a2/META.a2ml` (ADR-019); ledger #260 /
+INT-10 in `docs/TECH-DEBT.adoc`.
