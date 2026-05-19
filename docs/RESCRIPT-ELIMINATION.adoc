@@ -271,9 +271,13 @@ ReScript `import P [as A]`→`use P [as A];`, single block-module
   `module P;` header (hoisted before imports — `parser.mly:130-134`
   requires the header first), braces dropped, body dedented one level.
   Oracle-verified to parse.
-* *Tier-3 ESC-04 (#262):* *multi*-block-module per file (e.g.
-  `standards/lol/.../OpenCyc.affine`) has *no clean target* —
-  AffineScript is one-module-per-file. Escalated, not guessed.
+* *ESC-04 (#262) — SETTLED by ADR-017:* AffineScript is strictly
+  one-module-per-file. Doctrine: *split, do not nest* — each ReScript
+  `module X { body }` (incl. each of N in a multi-block file like
+  `standards/lol/.../OpenCyc.affine`) becomes its own `X.affine` with a
+  `module X;` header. No grammar change (ADR-011 file=module; a
+  block-module form is the ADR-012-forbidden contortion). Full
+  validation still needs the per-repo module graph (INT-02, Tier-4).
 
 === Reclassified OUT of #229 — permanently (scanner over-scope)
 
