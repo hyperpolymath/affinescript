@@ -149,11 +149,17 @@ of* the verified Thenable-surface primitives.
 . *PR 2 — transform base case:* WasmGC `Async` user fn with a single
   async boundary and no live-local capture (`get(u).status`); emits
   the continuation registration; once-resumption assert.
-. *PR 3 — live-local capture + composition:* #199 env ABI capture;
-  affine-capture borrow rule; `Async`→`Async` chaining; `Response`
-  typed reader; full `http_fetch`-parity wasm test. (Gated behind
-  Ephapax ABI review, typed-wasm#31.)
+. *PR 3 — live-local capture + composition:* #199 env ABI capture
+  (PR3a #236); affine-capture borrow rule (PR3b #237); `Async`→`Async`
+  chaining (PR3c #238); `Response` typed reader (PR3d #266); full
+  `http_fetch`-parity wasm test. *DONE.*
 . *PR 4 — joint-close:* both targets green ⇒ close #160 and #225.
+  *DONE* — Deno-ESM (#226) + the typed-wasm CPS line PR1..PR3d all
+  merged; this PR joint-closes #160 + #225. The ADR-013 delivery plan
+  is complete; the transparent `fetch/get -> Response` surface is
+  delivered on both targets. (Two follow-ups, *not* part of this
+  slice, remain tracked: effect-threaded boundary generalisation
+  #234; estate #199/#205 re-validation #235.)
 
 == References
 
