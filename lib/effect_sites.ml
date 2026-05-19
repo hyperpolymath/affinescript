@@ -19,8 +19,10 @@
     source order. [TopFn]/[TopConst]/[TopImpl]/[TopTrait] default
     bodies are walked in [prog_decls] order.
 
-    This module is pure and depends only on [Ast]; it has no notion of
-    effects itself (S2a). S2b/S3 build the table on top of it. *)
+    The traversal core ([visit_*]/[fold_calls]/[exists_call]) is pure
+    and depends only on [Ast]. The S3 ordinal-keyed async oracle
+    (bottom of this file) is the producer/consumer bridge built on that
+    numbering (ADR-016 S2b/S3/S4). *)
 
 open Ast
 
@@ -28,90 +30,96 @@ open Ast
    counter (held in a ref captured by the closures, so the ordinal is a
    pure function of traversal position). *)
 
-let fold_calls (type a) (f : a -> int -> expr -> a) (init : a)
-    (prog : program) : a =
-  let acc = ref init in
-  let next = ref 0 in
-  let rec go_expr (e : expr) : unit =
-    (match e with
-     | ExprApp (fn, args) ->
-       (* Number THIS call site before descending (pre-order). *)
-       let ord = !next in
-       incr next;
-       acc := f !acc ord e;
-       go_expr fn;
-       List.iter go_expr args
-     | ExprLit _ | ExprVar _ | ExprVariant _ -> ()
-     | ExprLet l ->
-       go_expr l.el_value;
-       (match l.el_body with Some b -> go_expr b | None -> ())
-     | ExprIf i ->
-       go_expr i.ei_cond;
-       go_expr i.ei_then;
-       (match i.ei_else with Some e -> go_expr e | None -> ())
-     | ExprMatch m ->
-       go_expr m.em_scrutinee;
-       List.iter go_arm m.em_arms
-     | ExprLambda l -> go_expr l.elam_body
-     | ExprField (e, _) | ExprTupleIndex (e, _) | ExprRowRestrict (e, _)
-     | ExprSpan (e, _) | ExprUnary (_, e) ->
-       go_expr e
-     | ExprIndex (a, b) | ExprBinary (a, _, b) ->
-       go_expr a;
-       go_expr b
-     | ExprTuple es | ExprArray es -> List.iter go_expr es
-     | ExprRecord r ->
-       List.iter
-         (fun (_, eo) -> match eo with Some e -> go_expr e | None -> ())
-         r.er_fields;
-       (match r.er_spread with Some e -> go_expr e | None -> ())
-     | ExprBlock b -> go_block b
-     | ExprReturn eo | ExprResume eo ->
-       (match eo with Some e -> go_expr e | None -> ())
-     | ExprTry t ->
-       go_block t.et_body;
-       (match t.et_catch with Some arms -> List.iter go_arm arms | None -> ());
-       (match t.et_finally with Some b -> go_block b | None -> ())
-     | ExprHandle h ->
-       go_expr h.eh_body;
-       List.iter go_handler h.eh_handlers
-     | ExprUnsafe ops -> List.iter go_unsafe ops)
-  and go_arm (a : match_arm) : unit =
+(* Single source of the traversal: [visit] is called on every
+   [ExprApp] node in strict left-to-right pre-order (the call node
+   *before* its callee/args are descended). [fold_calls] (program) and
+   [exists_call] (expr) both use it, so the numbering and any
+   sub-expression call scan can never diverge. *)
+let rec visit_expr (visit : expr -> unit) (e : expr) : unit =
+  let go_expr = visit_expr visit in
+  let go_arm (a : match_arm) : unit =
     (match a.ma_guard with Some g -> go_expr g | None -> ());
     go_expr a.ma_body
-  and go_handler = function
+  in
+  let go_handler = function
     | HandlerReturn (_, e) -> go_expr e
     | HandlerOp (_, _, e) -> go_expr e
-  and go_unsafe = function
+  in
+  let go_unsafe = function
     | UnsafeRead e | UnsafeForget e -> go_expr e
     | UnsafeWrite (a, b) | UnsafeOffset (a, b) ->
       go_expr a;
       go_expr b
     | UnsafeTransmute (_, _, e) -> go_expr e
-  and go_block (b : block) : unit =
-    List.iter go_stmt b.blk_stmts;
-    (match b.blk_expr with Some e -> go_expr e | None -> ())
-  and go_stmt = function
-    | StmtLet l -> go_expr l.sl_value
-    | StmtExpr e -> go_expr e
-    | StmtAssign (a, _, b) ->
-      go_expr a;
-      go_expr b
-    | StmtWhile (c, b) ->
-      go_expr c;
-      go_block b
-    | StmtFor (_, e, b) ->
-      go_expr e;
-      go_block b
   in
+  match e with
+  | ExprApp (fn, args) ->
+    (* Visit THIS call site before descending (pre-order). *)
+    visit e;
+    go_expr fn;
+    List.iter go_expr args
+  | ExprLit _ | ExprVar _ | ExprVariant _ -> ()
+  | ExprLet l ->
+    go_expr l.el_value;
+    (match l.el_body with Some b -> go_expr b | None -> ())
+  | ExprIf i ->
+    go_expr i.ei_cond;
+    go_expr i.ei_then;
+    (match i.ei_else with Some e -> go_expr e | None -> ())
+  | ExprMatch m ->
+    go_expr m.em_scrutinee;
+    List.iter go_arm m.em_arms
+  | ExprLambda l -> go_expr l.elam_body
+  | ExprField (e, _) | ExprTupleIndex (e, _) | ExprRowRestrict (e, _)
+  | ExprSpan (e, _) | ExprUnary (_, e) ->
+    go_expr e
+  | ExprIndex (a, b) | ExprBinary (a, _, b) ->
+    go_expr a;
+    go_expr b
+  | ExprTuple es | ExprArray es -> List.iter go_expr es
+  | ExprRecord r ->
+    List.iter
+      (fun (_, eo) -> match eo with Some e -> go_expr e | None -> ())
+      r.er_fields;
+    (match r.er_spread with Some e -> go_expr e | None -> ())
+  | ExprBlock b -> visit_block visit b
+  | ExprReturn eo | ExprResume eo ->
+    (match eo with Some e -> go_expr e | None -> ())
+  | ExprTry t ->
+    visit_block visit t.et_body;
+    (match t.et_catch with Some arms -> List.iter go_arm arms | None -> ());
+    (match t.et_finally with Some b -> visit_block visit b | None -> ())
+  | ExprHandle h ->
+    go_expr h.eh_body;
+    List.iter go_handler h.eh_handlers
+  | ExprUnsafe ops -> List.iter go_unsafe ops
+
+and visit_block (visit : expr -> unit) (b : block) : unit =
+  let go_stmt = function
+    | StmtLet l -> visit_expr visit l.sl_value
+    | StmtExpr e -> visit_expr visit e
+    | StmtAssign (a, _, b) ->
+      visit_expr visit a;
+      visit_expr visit b
+    | StmtWhile (c, b) ->
+      visit_expr visit c;
+      visit_block visit b
+    | StmtFor (_, e, b) ->
+      visit_expr visit e;
+      visit_block visit b
+  in
+  List.iter go_stmt b.blk_stmts;
+  (match b.blk_expr with Some e -> visit_expr visit e | None -> ())
+
+let visit_program (visit : expr -> unit) (prog : program) : unit =
   let go_fn_body = function
-    | FnBlock b -> go_block b
-    | FnExpr e -> go_expr e
+    | FnBlock b -> visit_block visit b
+    | FnExpr e -> visit_expr visit e
     | FnExtern -> ()
   in
   let go_top = function
     | TopFn fd -> go_fn_body fd.fd_body
-    | TopConst c -> go_expr c.tc_value
+    | TopConst c -> visit_expr visit c.tc_value
     | TopImpl ib ->
       List.iter
         (function ImplFn fd -> go_fn_body fd.fd_body | ImplType _ -> ())
@@ -124,8 +132,28 @@ let fold_calls (type a) (f : a -> int -> expr -> a) (init : a)
         trd.trd_items
     | TopType _ | TopEffect _ | TopExternType _ | TopExternFn _ -> ()
   in
-  List.iter go_top prog.prog_decls;
+  List.iter go_top prog.prog_decls
+
+let fold_calls (type a) (f : a -> int -> expr -> a) (init : a)
+    (prog : program) : a =
+  let acc = ref init in
+  let next = ref 0 in
+  visit_program
+    (fun call ->
+      let ord = !next in
+      incr next;
+      acc := f !acc ord call)
+    prog;
   !acc
+
+(** [exists_call pred e] — is there a call site within [e] (any depth)
+    for which [pred] holds? Uses the SAME pre-order traversal as
+    [fold_calls], so a sub-expression scan can never miss a call shape
+    the numbering counts. *)
+let exists_call (pred : expr -> bool) (e : expr) : bool =
+  let found = ref false in
+  visit_expr (fun call -> if pred call then found := true) e;
+  !found
 
 (** Total number of call sites ([ExprApp] nodes) in [prog]. *)
 let count (prog : program) : int =

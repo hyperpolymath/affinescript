@@ -1917,29 +1917,25 @@ let simple_pat_name (p : pattern) : string option =
     affinescript#234 for the effect-threaded generalisation). The async
     boundary is a `let` whose RHS is a call to one of these names. Extend
     this list as wasm-path async stdlib primitives are added. *)
-let async_primitives = [ "http_request_thenable" ]
-
-(* ADR-016 / #234 S3: the async boundary is now ANY call whose effect
-   row ⊇ Async (the typecheck side-table, keyed by the shared
-   Effect_sites ordinal, consulted via [Effect_sites.is_async_call]),
-   generalising the structural-conservative hardcoded set. The
-   structural disjunct is retained as the sound table-miss fallback
-   (empty oracle / count-mismatch ⇒ exactly the pre-#234 behaviour;
-   zero regression). S4 retires [async_primitives]. *)
+(* ADR-016 / #234 S4: the hardcoded `async_primitives` name set is
+   RETIRED. The async boundary is exactly "a call whose effect row ⊇
+   Async", decided from the typecheck side-table keyed by the shared
+   [Effect_sites] ordinal ([Effect_sites.is_async_call]). The ADR's
+   "table-miss fallback" is the oracle being empty / count-mismatched
+   (⇒ [is_async_call] is always false ⇒ no transform = exact pre-#234
+   behaviour), NOT a name list — so no structural name disjunct
+   remains. `http_request_thenable` is still detected because
+   stdlib/Http.affine declares it `/ { Net, Async }`. *)
 let is_async_prim_call (e : expr) : bool =
   Effect_sites.is_async_call e
-  ||
-  match e with
-  | ExprApp (ExprVar id, _) -> List.mem id.name async_primitives
-  | _ -> false
 
-(** Any recognised async-primitive name occurring free in [e]. Reuses
-    [find_free_vars] (which traverses call heads), so this catches an
-    async primitive anywhere in a sub-expression — used to enforce the
-    single-boundary rule for PR3a (Async→Async chaining is PR3c). *)
+(** Does [e] contain (at any depth) a call whose effect row ⊇ Async?
+    Enforces the PR3a single-boundary rule (a pre-value must not hide
+    an async call; Async→Async chaining is PR3c). Now effect-driven via
+    the shared [Effect_sites] traversal — same call-site set the
+    numbering uses, so it can never miss a shape the detector counts. *)
 let mentions_async_prim (e : expr) : bool =
-  let fv = find_free_vars [] e in
-  List.exists (fun p -> List.mem p fv) async_primitives
+  Effect_sites.exists_call Effect_sites.is_async_call e
 
 (** Async-fn body recogniser (ADR-013 #225). Returns
     [Some (pre, binder, async_call, cont)] iff the body is, after
