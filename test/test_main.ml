@@ -12,4 +12,5 @@ let () =
       ("Examples", Test_golden.example_tests);
       ("Effects (#59)", Test_effects.tests);
       ("Effect-sites (#234 S2a)", Test_effect_sites.tests);
+      ("TW L13 isolation (#10)", Test_tw_isolation.tests);
     ] @ Test_e2e.tests @ Test_stdlib_aot.tests)

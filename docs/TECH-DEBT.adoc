@@ -225,7 +225,11 @@ structural-conservative recogniser) |S2 |open #234
 |CONV-03 |#225/#160 convergence ABI matured to "shared with Ephapax" |S1
 |partial (PR3a/b/c merged)
 |CONV-04 |Widen emitted-wasm enforcement beyond L7+L10 toward L1–6/L13–16 |S2
-|planned (Stage E)
+|L13 (module isolation, negative form) DONE —
+`Tw_verify.verify_module_isolation` (carrier-free, no ABI change).
+L1–6/L14–16 need a new carrier section = multi-producer ABI proposal
+(filed for typed-wasm; NOT unilateral). Rust-verifier mirror + C5.1 =
+cross-repo follow-ups
 |CONV-05 |INT-12: AffineScript-emitted fixtures into typed-wasm
 `crates/typed-wasm-verify/tests/cross_compat.rs` (typed-wasm "C5.1") |S1
 |planned — coordinate Refs `hyperpolymath/typed-wasm`

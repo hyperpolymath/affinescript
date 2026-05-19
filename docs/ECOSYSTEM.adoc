@@ -123,10 +123,16 @@ The contract is *narrower than older prose claimed* and is exactly this:
   remain the spec of record until the cross-compat suite is supplemented
   with real AffineScript-emitted fixtures (typed-wasm "C5.1", deferred).
 . *Coverage today.* Emitted-wasm enforcement is *Level 7 (aliasing) +
-  Level 10 (linearity) only*. L1–6 and L13–16 (module isolation, session
-  protocols, resource capabilities, agent choreography) are proven at the
-  spec level but *not* enforced on AffineScript-emitted wasm. Widening this
-  is Stage E.
+  Level 10 (linearity)*, plus *Level 13 (module isolation, negative
+  form)* — `Tw_verify.verify_module_isolation` rejects a module that
+  owns linear memory yet also imports a memory/table (carrier-free; no
+  ownership-section ABI change). L1–6, L14–16 (region schema, session
+  protocols, resource capabilities, agent choreography) remain proven
+  at the spec level but *not* enforced on AffineScript-emitted wasm:
+  they require a *new carrier section* (region/type-schema or
+  capability data), which is a multi-producer ABI change coordinated
+  with `hyperpolymath/typed-wasm` + `ephapax` — not made unilaterally
+  here. Further widening + INT-12 is the rest of Stage E.
 . *Other producers.* `ephapax` (`src/ephapax-wasm`) already emits the same
   `affinescript.ownership` section and exposes the verifier via
   `ephapax compile --verify-ownership`. Any change to the section format is
