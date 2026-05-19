@@ -1314,6 +1314,14 @@ let register_builtins (ctx : context) : unit =
   let float_binop = TArrow (ty_float, QOmega, TArrow (ty_float, QOmega, ty_float, EPure), EPure) in
   bind_var ctx "print" (TArrow (ty_string, QOmega, ty_unit, ESingleton "IO"));
   bind_var ctx "println" (TArrow (ty_string, QOmega, ty_unit, ESingleton "IO"));
+  (* ADR-015 S4a (#180): WASI clock primitive. `clock_now_ms(clock_id)`
+     -> Int (monotonic/realtime milliseconds, clock_id 0=realtime/
+     1=monotonic). Tracking effect `Time` (reserved). Lowers to a
+     `wasi_snapshot_preview1.clock_time_get` import on the wasm
+     target; on the S3 component path the reactor adapter bridges to
+     `wasi:clocks`. *)
+  bind_var ctx "clock_now_ms"
+    (TArrow (ty_int, QOmega, ty_int, ESingleton "Time"));
   bind_var ctx "eprint" (TArrow (ty_string, QOmega, ty_unit, ESingleton "IO"));
   bind_var ctx "eprintln" (TArrow (ty_string, QOmega, ty_unit, ESingleton "IO"));
   bind_var ctx "read_line"

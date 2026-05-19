@@ -53,6 +53,8 @@ let seed_builtins (symbols : Symbol.t) : unit =
   let def name = let _ = Symbol.define symbols name SKFunction Span.dummy Public in () in
   (* Console I/O *)
   def "print"; def "println"; def "eprint"; def "eprintln";
+  (* WASI time (ADR-015 S4a, #180) *)
+  def "clock_now_ms";
   (* String / char builtins *)
   def "len"; def "slice"; def "string_get"; def "string_sub"; def "string_find";
   def "char_to_int"; def "int_to_char"; def "show";

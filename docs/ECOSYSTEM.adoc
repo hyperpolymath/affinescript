@@ -213,7 +213,15 @@ valid WASI-0.2 component via the fetch-pinned preview1→preview2
 `affinescript.ownership` section is proven to SURVIVE the wrap;
 `tests/componentize/smoke.sh` gates it (SKIP-safe without the
 toolchain). Codegen UNCHANGED — core preview1 stays the default
-(reversible).** Next: S4 native clocks/env/argv. WIT world of
+(reversible). S4a (clock) DONE: `clock_now_ms(clock_id)` builtin
+lowers to a `wasi_snapshot_preview1.clock_time_get` import (added
+on-demand via Effect_sites pre-scan; idx 1 after fd_write at 0;
+zero impact on units that don't use it). Component-path bridges to
+`wasi:clocks` via the reactor adapter; the component is
+structurally valid + ownership-preserving (real-host invocation
+deferred to S6: requires WIT export-lifting / wasi:cli command
+shape). Next: S4b env+argv (same preview1-import pattern), then
+S5 filesystem, S6 flip default.** WIT world of
 record: `wit/affinescript.wit`
 |INT-04 |Publish compiler + runtime to JSR (then npm) |#181 |runtime
 packaging READY (affine-js + affinescript-tea JSR dry-run green;

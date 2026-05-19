@@ -1,0 +1,15 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// ADR-015 S4a (#180) — wasm-path smoke for `clock_now_ms`, the first
+// WASI clocks primitive. The builtin lowers to a
+// `wasi_snapshot_preview1.clock_time_get` import (added on-demand via
+// the codegen pre-scan; idx 1 right after fd_write); under the S3
+// component path the reactor adapter bridges this to `wasi:clocks`.
+//
+// The harness stubs the import with a known nanosecond value so the
+// guest's `ns / 1_000_000` computation is asserted exactly.
+
+pub fn main() -> Int / { Time } {
+  clock_now_ms(1)  // 1 = CLOCK_MONOTONIC
+}
