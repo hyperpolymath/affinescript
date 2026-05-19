@@ -126,8 +126,10 @@ coherence checking. |S2 |partial
 |ID |Item |Sev |Status
 |STDLIB-AOT |All stdlib files compile resolve→typecheck→codegen, CI-gated |S1
 |*CLOSED 2026-05-18* (#128/#135; `test/test_stdlib_aot.ml`)
-|STDLIB-01 |Portable `Http.fetch` primitive |S2 |open #160 (#226/#227
-merged: Deno-ESM + typed-wasm Http; convergence ABI shared w/ Ephapax #225)
+|STDLIB-01 |Portable `Http.fetch` primitive |S2 |DONE — #160 + #225
+joint-closed. Deno-ESM (#226) + typed-wasm CPS line PR1..PR3d
+(#227/#233/#236/#237/#238/#266) all merged; ADR-013 delivery plan
+complete; convergence ABI shared w/ Ephapax
 |STDLIB-02 |Portable `Json` primitive |S2 |open #161
 |STDLIB-03 |`Dict`/`Map` keyed container |S2 |open #162
 |STDLIB-04 |Residual `extern` builtins → real implementations |S3 |open
