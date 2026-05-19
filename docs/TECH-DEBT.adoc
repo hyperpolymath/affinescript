@@ -131,7 +131,12 @@ coherence checking. |S2 |partial
 joint-closed. Deno-ESM (#226) + typed-wasm CPS line PR1..PR3d
 (#227/#233/#236/#237/#238/#266) all merged; ADR-013 delivery plan
 complete; convergence ABI shared w/ Ephapax
-|STDLIB-02 |Portable `Json` primitive |S2 |open #161
+|STDLIB-02 |Portable `Json` primitive |S2 |*LANDED* (Refs #161 #246):
+`stdlib/json.affine` — pure recursive `Json` ADT + encoders/decoders/
+`get_field`/`stringify`, AOT-gated (#136, gate 278→279). Target-agnostic
+(no host dep); String→Json parse is the `Http` typed-boundary bridge
+(ADR-018), not a hand-rolled parser. Closes ESC-02 #246 (the #229
+`JSON.t` target)
 |STDLIB-03 |`Dict`/`Map` keyed container |S2 |open #162
 |STDLIB-04 |Residual `extern` builtins → real implementations |S3 |open
 |===
