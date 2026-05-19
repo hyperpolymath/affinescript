@@ -54,13 +54,30 @@ this prep. If/when needed it follows the existing owner-sanctioned npm
 pattern (`.github/workflows/affine-vscode-publish.yml`, `NPM_TOKEN`
 scoped automation token) — a deliberate exception to Deno-first.
 
-== Open design question — the compiler itself
+== The compiler itself — decided (ADR-019 / #260)
 
 #181 says "publish *compiler* + runtime". The runtime is the JS
-packages above. The **compiler is a native OCaml binary** — it is *not*
-a JSR or npm package. "Publishing the compiler" therefore needs a
-release-binary strategy decision (GitHub Releases artifacts, Guix/Nix
-channel, or a thin JSR/npm shim that fetches a pinned binary). This is
-a one-way-door design choice and is filed as a separate issue rather
-than guessed here. `affinescript-lsp` distribution (INT-10) depends on
-that decision.
+packages above. The **compiler is a native OCaml binary** — not a
+JSR/npm package. The one-way-door fork (#260) was decided
+(**ADR-019**): *Releases-canonical, dual-channel*.
+
+* *Canonical artifact.* `.github/workflows/release.yml` (#260 S2), on a
+  `v*` tag, builds `affinescript-{linux-x64,macos-x64,macos-arm64}`
+  raw binaries + a `SHA256SUMS` manifest attached to the GitHub
+  Release. (`windows-x64` is a tracked follow-up.) Asset names are the
+  ADR-019 contract — do not rename without amending the ADR + the shim.
+* *Ergonomic front door.* `packages/affinescript-cli`
+  (`@hyperpolymath/affinescript`, #260 S3) — a thin Deno shim that
+  downloads the host-triple binary from the Release pinned in
+  `pins.js`, verifies it against the embedded SHA-256 (fail-closed: an
+  unpinned/mismatched binary is never executed), caches it under
+  `$AFFINESCRIPT_CACHE`/XDG, and execs it with the caller's argv. One
+  compiler version + checksum per shim release (no floating fetch).
+  Publish is owner-gated via `publish-jsr.yml` (the INT-04 manual
+  workflow; choice `affinescript-cli`).
+* *Later, additive over the same Release artifact (not separate
+  producers):* Guix/Nix fetch-derivations; an npm tail only if an
+  npm-native consumer needs it.
+
+`affinescript-lsp` distribution (INT-10, #282) consumes the shim;
+unblocked once a `v*` Release is cut and `pins.js` is finalised.

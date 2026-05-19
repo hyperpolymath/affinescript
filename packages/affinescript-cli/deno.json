@@ -1,0 +1,14 @@
+{
+  "name": "@hyperpolymath/affinescript",
+  "version": "0.1.0",
+  "exports": {
+    ".": "./mod.js"
+  },
+  "license": "PMPL-1.0-or-later",
+  "publish": {
+    "exclude": ["mod_test.js"]
+  },
+  "tasks": {
+    "test": "deno test --allow-read --allow-write --allow-env --allow-run mod_test.js"
+  }
+}
