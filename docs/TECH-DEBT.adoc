@@ -145,10 +145,17 @@ indices line up: *PROVEN end-to-end* (two separately-compiled `.wasm`
 link + execute, cross-call = 42) and regression-locked — hermetic
 structural test in the gate (271/271) + reproducible deno harness
 `tests/modules/xmod-link/`. Multi-file libraries via `use Mod::{…}` are
-shippable. *Remaining (distinct, NOT emission):* `use Mod;` + qualified
-value call `Mod.fn(x)` hits a resolution error (post-#228 qualified-value
-resolution unwired) — own follow-up. |S1 |`use ::{}`/`::*` DONE (PR Refs
-#178); qualified-value-call resolver gap open #178
+shippable. *Qualified-value path now wired:* `use Mod;` (or `use Mod as M;`)
++ `Mod.fn(x)` resolves+typechecks — pure parse-boundary lowering
+`Resolve.lower_qualified_value_paths` (applied in `parse_with_face`;
+embedders bypassing it call it directly — the formatter is unaffected, so
+source `Mod.fn` is preserved on `fmt`); regression-locked (4 hermetic
+tests, "E2E Qualified Value #178"). *Remaining (distinct, NOT this unit —
+a parser gap, not the resolver):* `Mod::fn(x)` in *expression* position is
+a parse error (`::`-in-value-expr unwired; `::` reserved for
+`Type::Variant`). |S1 |`use ::{}`/`::*` + `use Mod;`/`as`-qualified
+`Mod.fn(x)` DONE (PR Refs #178); `::`-in-expression a separate parser
+follow-up
 |INT-02 |Host-agnostic loader bridge |S1 |open #179 (blocks INT-05/08/11)
 |INT-03 |WASI preview2 / host I/O |S1 |#180 ADR-015 accepted (full
 Component-Model re-target, staged S1..S6); S3+ hard-gated on S2

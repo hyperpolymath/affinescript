@@ -3346,6 +3346,69 @@ let qualified_path_tests = [
   Alcotest.test_case "bare unqualified forms unaffected"  `Quick test_qual_unqualified_still_parses;
 ]
 
+(* ---- #178 INT-01: qualified *value* path  use Mod; Mod.fn(x) ----------
+   The companion to #228 (qualified type/effect paths). Mirrors the CLI's
+   parse→lower→resolve→typecheck (the lowering is applied at the parse
+   boundary by `parse_with_face`; embedders bypassing it call the exposed
+   `Resolve.lower_qualified_value_paths` — exactly as here). Hermetic. *)
+let qualval_frontend_ok path : bool =
+  let loader = Module_loader.create {
+    Module_loader.stdlib_path = "stdlib";
+    search_paths = [];
+    current_dir = fixture_dir;
+  } in
+  match parse_fixture path with
+  | Error _ -> false
+  | Ok raw ->
+    let prog = Resolve.lower_qualified_value_paths raw in
+    (match Resolve.resolve_program_with_loader prog loader with
+     | Error _ -> false
+     | Ok (resolve_ctx, import_type_ctx) ->
+       (match Typecheck.check_program
+                ~import_types:import_type_ctx.Typecheck.name_types
+                resolve_ctx.symbols prog with
+        | Error _ -> false
+        | Ok _ -> true))
+
+let test_qualval_dot_call () =
+  Alcotest.(check bool)
+    "use CrossCallee; CrossCallee.consume(42) resolves+typechecks" true
+    (qualval_frontend_ok (fixture "cross_caller_qualified.affine"))
+
+let test_qualval_alias_call () =
+  Alcotest.(check bool)
+    "use CrossCallee as CC; CC.consume(7) resolves+typechecks" true
+    (qualval_frontend_ok (fixture "cross_caller_qualified_alias.affine"))
+
+let test_qualval_item_import_regression () =
+  Alcotest.(check bool)
+    "use CrossCallee::{consume}; consume(42) still works (no regression)" true
+    (qualval_frontend_ok (fixture "cross_caller_ok.affine"))
+
+let test_qualval_record_access_unaffected () =
+  (* Genuine record projection must NOT be rewritten: `p` is a value, not an
+     import qualifier, so `p.x` stays field access. *)
+  let src = {|module RecGuard;
+struct P { x: Int, y: Int }
+fn getx(p: P) -> Int { return p.x; }|} in
+  let prog = Resolve.lower_qualified_value_paths
+      (Parse_driver.parse_string ~file:"<test>" src) in
+  let loader = Module_loader.create (Module_loader.default_config ()) in
+  Alcotest.(check bool) "p.x preserved (not lowered)" true
+    (match Resolve.resolve_program_with_loader prog loader with
+     | Ok (rc, itc) ->
+       (match Typecheck.check_program
+                ~import_types:itc.Typecheck.name_types rc.symbols prog with
+        | Ok _ -> true | Error _ -> false)
+     | Error _ -> false)
+
+let qualified_value_tests = [
+  Alcotest.test_case "use Mod; Mod.fn(x) resolves (#178)"       `Quick test_qualval_dot_call;
+  Alcotest.test_case "use Mod as M; M.fn(x) resolves (#178)"    `Quick test_qualval_alias_call;
+  Alcotest.test_case "use Mod::{fn}; fn(x) no regression"       `Quick test_qualval_item_import_regression;
+  Alcotest.test_case "genuine record access p.x unaffected"     `Quick test_qualval_record_access_unaffected;
+]
+
 (* ---- Type-syntax sugars: fn(...) -> T, Option<T>, (A, B) -> C ---- *)
 
 let parse_check_passes src : bool =
@@ -3743,6 +3806,7 @@ let tests =
     ("E2E Vscode Bindings",      vscode_bindings_tests);
     ("E2E Array Type Sugar",     array_type_tests);
     ("E2E Qualified Paths #228",  qualified_path_tests);
+    ("E2E Qualified Value #178",  qualified_value_tests);
     ("E2E WasmGC PatCon Destructure", wasm_gc_patcon_tests);
     ("E2E Type Syntax Sugar",         type_syntax_sugar_tests);
   ]

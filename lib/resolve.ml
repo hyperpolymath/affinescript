@@ -831,6 +831,133 @@ let resolve_program_with_imports (program : program) : (context, resolve_error *
   | Error e -> Error e
 
 (** Resolve a complete program with module loader support *)
+(* ---- #178 INT-01: lower module-qualified value paths --------------------
+   `use Mod;` (ImportSimple) flat-imports Mod's public symbols (see
+   [import_resolved_symbols]), so a qualified *value* reference `Mod.fn` /
+   `Mod.fn(x)` denotes the same flat symbol `fn`. The parser yields
+   `ExprField (ExprVar Mod, fn)` (optionally ExprSpan-wrapped); rewrite it to
+   `ExprVar fn` when `Mod` is a bound module qualifier from [prog_imports].
+   This is the value-expression analogue of #241/ADR-014 (which handled
+   qualified *type/effect* paths in the grammar). Pure; applied once on the
+   parsed program before resolve/typecheck/codegen so every backend sees the
+   lowered form uniformly. Genuine record access `r.f` is untouched (`r` is
+   not an import qualifier). Only ImportSimple binds a qualifier; ImportList
+   / ImportGlob bring names unqualified and bind no module name. *)
+let import_qualifiers (imports : import_decl list) : (string, unit) Hashtbl.t =
+  let h = Hashtbl.create 8 in
+  List.iter (fun imp -> match imp with
+    | ImportSimple (path, alias) ->
+      let name = match alias with
+        | Some id -> id.name
+        | None -> (match List.rev path with id :: _ -> id.name | [] -> "")
+      in
+      if name <> "" then Hashtbl.replace h name ()
+    | ImportList _ | ImportGlob _ -> ()
+  ) imports;
+  h
+
+let rec strip_span (e : expr) : expr =
+  match e with ExprSpan (e', _) -> strip_span e' | e -> e
+
+let rec lower_expr quals (e : expr) : expr =
+  match e with
+  | ExprField (base, fld) ->
+    (match strip_span base with
+     | ExprVar m when Hashtbl.mem quals m.name -> ExprVar fld
+     | _ -> ExprField (lower_expr quals base, fld))
+  | ExprSpan (e', sp) -> ExprSpan (lower_expr quals e', sp)
+  | ExprLit _ | ExprVar _ | ExprVariant _ -> e
+  | ExprLet r ->
+    ExprLet { r with el_value = lower_expr quals r.el_value;
+                     el_body = Option.map (lower_expr quals) r.el_body }
+  | ExprIf r ->
+    ExprIf { ei_cond = lower_expr quals r.ei_cond;
+             ei_then = lower_expr quals r.ei_then;
+             ei_else = Option.map (lower_expr quals) r.ei_else }
+  | ExprMatch r ->
+    ExprMatch { em_scrutinee = lower_expr quals r.em_scrutinee;
+                em_arms = List.map (lower_arm quals) r.em_arms }
+  | ExprLambda r -> ExprLambda { r with elam_body = lower_expr quals r.elam_body }
+  | ExprApp (f, args) ->
+    ExprApp (lower_expr quals f, List.map (lower_expr quals) args)
+  | ExprTupleIndex (e1, i) -> ExprTupleIndex (lower_expr quals e1, i)
+  | ExprIndex (a, i) -> ExprIndex (lower_expr quals a, lower_expr quals i)
+  | ExprTuple es -> ExprTuple (List.map (lower_expr quals) es)
+  | ExprArray es -> ExprArray (List.map (lower_expr quals) es)
+  | ExprRecord r ->
+    ExprRecord
+      { er_fields =
+          List.map (fun (id, eo) -> (id, Option.map (lower_expr quals) eo))
+            r.er_fields;
+        er_spread = Option.map (lower_expr quals) r.er_spread }
+  | ExprRowRestrict (e1, id) -> ExprRowRestrict (lower_expr quals e1, id)
+  | ExprBinary (l, op, r) -> ExprBinary (lower_expr quals l, op, lower_expr quals r)
+  | ExprUnary (op, e1) -> ExprUnary (op, lower_expr quals e1)
+  | ExprBlock b -> ExprBlock (lower_block quals b)
+  | ExprReturn eo -> ExprReturn (Option.map (lower_expr quals) eo)
+  | ExprTry r ->
+    ExprTry { et_body = lower_block quals r.et_body;
+              et_catch = Option.map (List.map (lower_arm quals)) r.et_catch;
+              et_finally = Option.map (lower_block quals) r.et_finally }
+  | ExprHandle r ->
+    ExprHandle { eh_body = lower_expr quals r.eh_body;
+                 eh_handlers = List.map (lower_handler quals) r.eh_handlers }
+  | ExprResume eo -> ExprResume (Option.map (lower_expr quals) eo)
+  | ExprUnsafe ops -> ExprUnsafe (List.map (lower_unsafe quals) ops)
+
+and lower_arm quals a =
+  { a with ma_guard = Option.map (lower_expr quals) a.ma_guard;
+           ma_body = lower_expr quals a.ma_body }
+
+and lower_handler quals = function
+  | HandlerReturn (p, e) -> HandlerReturn (p, lower_expr quals e)
+  | HandlerOp (id, ps, e) -> HandlerOp (id, ps, lower_expr quals e)
+
+and lower_unsafe quals = function
+  | UnsafeRead e -> UnsafeRead (lower_expr quals e)
+  | UnsafeWrite (a, b) -> UnsafeWrite (lower_expr quals a, lower_expr quals b)
+  | UnsafeOffset (a, b) -> UnsafeOffset (lower_expr quals a, lower_expr quals b)
+  | UnsafeTransmute (t1, t2, e) -> UnsafeTransmute (t1, t2, lower_expr quals e)
+  | UnsafeForget e -> UnsafeForget (lower_expr quals e)
+
+and lower_block quals b =
+  { blk_stmts = List.map (lower_stmt quals) b.blk_stmts;
+    blk_expr = Option.map (lower_expr quals) b.blk_expr }
+
+and lower_stmt quals = function
+  | StmtLet r -> StmtLet { r with sl_value = lower_expr quals r.sl_value }
+  | StmtExpr e -> StmtExpr (lower_expr quals e)
+  | StmtAssign (a, op, b) ->
+    StmtAssign (lower_expr quals a, op, lower_expr quals b)
+  | StmtWhile (e, b) -> StmtWhile (lower_expr quals e, lower_block quals b)
+  | StmtFor (p, e, b) -> StmtFor (p, lower_expr quals e, lower_block quals b)
+
+let lower_fn_body quals = function
+  | FnBlock b -> FnBlock (lower_block quals b)
+  | FnExpr e -> FnExpr (lower_expr quals e)
+  | FnExtern -> FnExtern
+
+let lower_top quals = function
+  | TopFn fd -> TopFn { fd with fd_body = lower_fn_body quals fd.fd_body }
+  | TopConst r -> TopConst { r with tc_value = lower_expr quals r.tc_value }
+  | TopImpl ib ->
+    TopImpl { ib with ib_items = List.map (function
+      | ImplFn fd -> ImplFn { fd with fd_body = lower_fn_body quals fd.fd_body }
+      | ImplType _ as it -> it) ib.ib_items }
+  | TopTrait td ->
+    TopTrait { td with trd_items = List.map (function
+      | TraitFnDefault fd ->
+        TraitFnDefault { fd with fd_body = lower_fn_body quals fd.fd_body }
+      | other -> other) td.trd_items }
+  | (TopType _ | TopEffect _ | TopExternType _ | TopExternFn _) as t -> t
+
+(** #178: lower module-qualified value paths. Idempotent, pure. *)
+let lower_qualified_value_paths (program : program) : program =
+  let quals = import_qualifiers program.prog_imports in
+  if Hashtbl.length quals = 0 then program
+  else { program with
+         prog_decls = List.map (lower_top quals) program.prog_decls }
+
 let resolve_program_with_loader
     (program : program)
     (loader : Module_loader.t) : (context * Typecheck.context) result =
