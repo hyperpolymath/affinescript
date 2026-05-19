@@ -872,3 +872,69 @@ references = [
   "stdlib/Vscode.affine + packages/affine-vscode/mod.js (#205 thenableThen)",
   "typed-wasm ADR-004 (convergence / aggregate library; Ephapax)",
 ]
+
+[[adr]]
+id = "ADR-014"
+status = "accepted"
+date = "2026-05-19"
+title = "Module-qualified type/effect path separator: both `.` and `::`, `::` canonical"
+context = """
+The type/effect grammar had NO module-qualified path production: a
+qualified reference such as `Externs.Res` or `Externs.Net` was
+unrepresentable in any type or effect position and failed with
+`parse error` at the `.` (issue #228). An audit of the estate `.affine`
+corpus (compiler-as-oracle, origin/main) found this the SINGLE dominant
+fault estate-wide: 525 of ~1177 files fail to parse, qualified-path the
+leading cause in every hand-written Frontier-playbook TS-port. ADR-011
+already settled "real modules with qualified paths"; the consequence was
+unspeakable because the grammar could not name a module-qualified
+entity. Per ADR-012 (grammar changes are correctness assertions),
+closing this is asserting a settled truth, not adding sugar. The
+separator was the open, escalated language-design call: `module_path`
+(parser.mly) uses DOT; `use`/value paths use COLONCOLON (ADR-011
+`Result::unwrap`, `use option::{…}`); the estate corpus uses `.` for
+qualified types.
+"""
+decision = """
+Accept BOTH `.` and `::` (mixed permitted) as the module-qualified
+type/effect path separator. `Pkg::Type` is the CANONICAL form
+(consistent with ADR-011 value paths — one canonical separator
+estate-wide long-term). `.` is tolerated and normalised to `::`.
+
+Implementation (parser.mly, conflict-neutral):
+- New `qualified_type_name` (>=2 `upper_ident` segments, right-recursive,
+  `qsep = DOT | COLONCOLON`), folded into a single canonical `::`-joined
+  ident string. Added to `type_expr_primary` (TyCon / TyApp via `[ ]`
+  and `< >`) and `effect_term` (EffVar / EffCon).
+- Because the qualified name is folded to one ident, downstream
+  (resolve/typecheck/all codegens) sees a single ident and needs no
+  change; the formatter prints the stored `::` form, so `.`→`::`
+  normalisation is automatic with NO formatter change.
+- Conflict-neutral by construction: it only adds DOT/COLONCOLON as
+  lookahead after a type/effect-position `upper_ident`, where no reduce
+  action previously existed (that void is precisely the
+  `parse error at .` #228 reports). Measured: Menhir conflict states
+  unchanged at 21 S/R + 1 R/R; item counts unchanged at 68 S/R / 7 R/R.
+- Resolution of the qualified name against a real module is a separate
+  concern (the parse gap is what #228 names); the grammar PR unblocks
+  parsing — most of the 525 estate parse failures clear with zero
+  consumer churn. Genuine ReScript-surface residue (#229) is tracked
+  separately.
+"""
+consequences = """
+- The estate `.affine` corpus parses without rewriting `.`→`::`; the
+  formatter migrates to the `::` canonical form opportunistically.
+- No estate consumer porting was needed for the grammar gap (rejected
+  alternative: rewriting hundreds of files entrenches a workaround
+  against the Frontier playbook).
+- This decision is settled; do not reopen without amending this ADR.
+  CORE-03 in docs/TECH-DEBT.adoc.
+"""
+references = [
+  "https://github.com/hyperpolymath/affinescript/issues/228",
+  "https://github.com/hyperpolymath/affinescript/issues/229",
+  "lib/parser.mly (qualified_type_name; type_expr_primary; effect_term)",
+  "docs/specs/SETTLED-DECISIONS.adoc (ADR-014 section)",
+  "META.a2ml [[adr]] ADR-011 (real modules / qualified paths)",
+  "META.a2ml [[adr]] ADR-012 (grammar changes are correctness assertions)",
+]

@@ -243,3 +243,30 @@ agreed async ABI for the typed-wasm convergence layer; Ephapax is a
 co-stakeholder (typed-wasm ADR-004). Delivered as 4 incremental,
 gated PRs. Full design in `docs/specs/async-on-wasm-cps.adoc`; full ADR
 in `.machine_readable/6a2/META.a2ml` (ADR-013).
+
+== Module-Qualified Type/Effect Path Separator (ADR-014)
+
+The type/effect grammar had no module-qualified path production, so a
+qualified reference like `Externs.Res` was *unrepresentable* in any type
+or effect position (`parse error` at the `.`). An estate audit
+(compiler-as-oracle) found this the single dominant fault: 525 of ~1177
+`.affine` files fail to parse, qualified-path the leading cause. ADR-011
+already settled real modules with qualified paths; this consequence was
+simply unspeakable. The separator was the escalated, owner-decided
+question (`module_path` uses `.`; `use`/value paths use `::`; the corpus
+uses `.` for types).
+
+Decision: accept *both* `.` and `::` (mixed permitted); *`Pkg::Type` is
+canonical* (consistent with ADR-011 value paths); `.` is tolerated and
+normalised to `::`. The parser folds a qualified name into one canonical
+`::`-joined ident, so resolve/typecheck/codegen need no change and the
+formatter prints the canonical form for free. Conflict-neutral by
+construction (it only adds `.`/`::` lookahead where no reduce action
+existed — exactly the parse-error void): measured Menhir conflict states
+unchanged at 21 S/R + 1 R/R, item counts unchanged at 68 S/R / 7 R/R.
+The grammar PR unblocks *parsing*; most estate parse failures clear with
+zero consumer churn (genuine ReScript-surface residue is #229).
+
+This decision is settled; do not reopen without amending the ADR. Full
+ADR in `.machine_readable/6a2/META.a2ml` (ADR-014); ledger CORE-03 in
+`docs/TECH-DEBT.adoc`.
