@@ -23,6 +23,7 @@ on:
         options:
           - affine-js
           - affinescript-tea
+          - affinescript-cli
       dry_run:
         description: "Dry run only (no publish)"
         required: true
@@ -45,8 +46,9 @@ jobs:
         id: pkg
         run: |
           case "${{ inputs.package }}" in
-            affine-js)        echo "dir=packages/affine-js" >> "$GITHUB_OUTPUT" ;;
-            affinescript-tea) echo "dir=affinescript-tea"   >> "$GITHUB_OUTPUT" ;;
+            affine-js)         echo "dir=packages/affine-js"      >> "$GITHUB_OUTPUT" ;;
+            affinescript-tea)  echo "dir=affinescript-tea"        >> "$GITHUB_OUTPUT" ;;
+            affinescript-cli)  echo "dir=packages/affinescript-cli" >> "$GITHUB_OUTPUT" ;;
           esac
       - name: Dry run
         working-directory: ${{ steps.pkg.outputs.dir }}
