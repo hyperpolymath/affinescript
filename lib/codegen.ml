@@ -1713,9 +1713,9 @@ and gen_stmt (ctx : context) (stmt : stmt) : (context * instr list) result =
         Ok (ctx_final, iter_code @ [
           LocalSet arr_ptr;           (* Save array pointer *)
           LocalGet arr_ptr;
-          I32Const (-4l);
-          I32Add;                     (* arr - 4 points to length *)
-          I32Load (2, 0);             (* Load length *)
+          I32Load (2, 0);             (* Load length (canonical layout:
+                                         length @ arr+0, elems @ arr+4+i*4 —
+                                         matches ExprArray / ExprIndex) *)
           LocalSet len_var;           (* Save length *)
           I32Const 0l;
           LocalSet idx_var;           (* index = 0 *)
@@ -1727,13 +1727,14 @@ and gen_stmt (ctx : context) (stmt : stmt) : (context * instr list) result =
               I32GeS;                 (* index >= length? *)
               BrIf 1;                 (* Exit loop if true *)
 
-              (* Load array[index] into item variable *)
+              (* Load array[index] into item variable.
+                 elem i @ arr + 4 + i*4 (offset 4 skips the length word). *)
               LocalGet arr_ptr;
               LocalGet idx_var;
               I32Const 4l;
               I32Mul;                 (* index * 4 *)
               I32Add;                 (* arr + index*4 *)
-              I32Load (2, 0);         (* Load array[index] *)
+              I32Load (2, 4);         (* Load array[index] (+4 = skip len) *)
               LocalSet item_var;      (* item = array[index] *)
             ] @ body_code @ [
               (* Increment index *)
@@ -1750,8 +1751,8 @@ and gen_stmt (ctx : context) (stmt : stmt) : (context * instr list) result =
         let* (ctx_final, body_code) = gen_block ctx_with_idx body in
         Ok (ctx_final, iter_code @ [
           LocalSet arr_ptr;
-          LocalGet arr_ptr; I32Const (-4l); I32Add;
-          I32Load (2, 0); LocalSet len_var;
+          LocalGet arr_ptr;
+          I32Load (2, 0); LocalSet len_var;  (* length @ arr+0 (canonical) *)
           I32Const 0l; LocalSet idx_var;
           Block (BtEmpty, [
             Loop (BtEmpty, [
@@ -1784,15 +1785,15 @@ and gen_stmt (ctx : context) (stmt : stmt) : (context * instr list) result =
         let* (ctx_final, body_code) = gen_block ctx_with_binds body in
         Ok (ctx_final, iter_code @ [
           LocalSet arr_ptr;
-          LocalGet arr_ptr; I32Const (-4l); I32Add;
-          I32Load (2, 0); LocalSet len_var;
+          LocalGet arr_ptr;
+          I32Load (2, 0); LocalSet len_var;  (* length @ arr+0 (canonical) *)
           I32Const 0l; LocalSet idx_var;
           Block (BtEmpty, [
             Loop (BtEmpty, [
               LocalGet idx_var; LocalGet len_var; I32GeS; BrIf 1;
               LocalGet arr_ptr; LocalGet idx_var;
               I32Const 4l; I32Mul; I32Add;
-              I32Load (2, 0); LocalSet elem_var;
+              I32Load (2, 4); LocalSet elem_var;  (* +4 skips length word *)
             ] @ bind_codes @ body_code @ [
               LocalGet idx_var; I32Const 1l; I32Add; LocalSet idx_var;
               Br 0
@@ -1805,15 +1806,15 @@ and gen_stmt (ctx : context) (stmt : stmt) : (context * instr list) result =
         let* (ctx_final, body_code) = gen_block ctx_with_tmp body in
         Ok (ctx_final, iter_code @ [
           LocalSet arr_ptr;
-          LocalGet arr_ptr; I32Const (-4l); I32Add;
-          I32Load (2, 0); LocalSet len_var;
+          LocalGet arr_ptr;
+          I32Load (2, 0); LocalSet len_var;  (* length @ arr+0 (canonical) *)
           I32Const 0l; LocalSet idx_var;
           Block (BtEmpty, [
             Loop (BtEmpty, [
               LocalGet idx_var; LocalGet len_var; I32GeS; BrIf 1;
               LocalGet arr_ptr; LocalGet idx_var;
               I32Const 4l; I32Mul; I32Add;
-              I32Load (2, 0); LocalSet tmp_var;
+              I32Load (2, 4); LocalSet tmp_var;  (* +4 skips length word *)
             ] @ body_code @ [
               LocalGet idx_var; I32Const 1l; I32Add; LocalSet idx_var;
               Br 0

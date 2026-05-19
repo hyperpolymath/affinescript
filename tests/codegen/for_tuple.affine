@@ -1,0 +1,17 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// #255 regression: `for` over a list of tuples with tuple-pattern
+// destructuring (StmtFor PatTuple branch). Before the fix this trapped
+// `memory access out of bounds` (same off-by-one length/elem layout).
+
+fn main() -> Int {
+  let pairs = [(1, 2), (3, 4), (5, 6)];
+  let mut s = 0;
+  for p in pairs {
+    match p {
+      (a, b) => { s = s + a + b; }
+    }
+  }
+  s  // (1+2)+(3+4)+(5+6) = 21
+}
