@@ -466,6 +466,60 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
         end
     end
 
+  | ExprBinary (left, OpConcat, right) ->
+    (* List concatenation `a ++ b`. `OpConcat` was a placeholder `I32Add`
+       (it just summed the two list pointers), so every `++` produced a
+       garbage/zero-length list. Real implementation, in the canonical
+       list layout fixed by #255: `[len@+0][elem i @ +4 + i*4]`.
+       Allocate len(a)+len(b), copy a's then b's elements. *)
+    let* (ctx1, left_code)  = gen_expr ctx  left  in
+    let* (ctx2, right_code) = gen_expr ctx1 right in
+    let (ctx3, heap_idx) = ensure_heap_ptr ctx2 in
+    let (ctx4, a)   = alloc_local ctx3 "__cat_a"   in
+    let (ctx5, b)   = alloc_local ctx4 "__cat_b"   in
+    let (ctx6, la)  = alloc_local ctx5 "__cat_la"  in
+    let (ctx7, lb)  = alloc_local ctx6 "__cat_lb"  in
+    let (ctx8, dst) = alloc_local ctx7 "__cat_dst" in
+    let (ctx9, k)   = alloc_local ctx8 "__cat_k"   in
+    let copy_loop src_ptr count dst_base_off =
+      (* for k in 0..count: dst[dst_base_off + k] = src[k]
+         element addr = ptr + idx*4, value/store via static +4 offset
+         (skips the length word) — exactly the #255 convention. *)
+      [ I32Const 0l; LocalSet k;
+        Block (BtEmpty, [ Loop (BtEmpty, [
+          LocalGet k; LocalGet count; I32GeS; BrIf 1;
+          (* dst slot: dst + (dst_base_off + k)*4 *)
+          LocalGet dst;
+          LocalGet dst_base_off; LocalGet k; I32Add;
+          I32Const 4l; I32Mul; I32Add;
+          (* value: src[k] = *(src + k*4 + 4) *)
+          LocalGet src_ptr; LocalGet k; I32Const 4l; I32Mul; I32Add;
+          I32Load (2, 4);
+          I32Store (2, 4);
+          LocalGet k; I32Const 1l; I32Add; LocalSet k;
+          Br 0 ]) ]) ]
+    in
+    let (ctxA, zero) = alloc_local ctx9 "__cat_zero" in
+    let code =
+      left_code @ [LocalSet a] @ right_code @ [LocalSet b] @
+      [ LocalGet a; I32Load (2, 0); LocalSet la;
+        LocalGet b; I32Load (2, 0); LocalSet lb;
+        I32Const 0l; LocalSet zero;
+        (* dst = heap; heap += 4 + (la+lb)*4 *)
+        GlobalGet heap_idx; LocalSet dst;
+        GlobalGet heap_idx;
+        I32Const 4l;
+        LocalGet la; LocalGet lb; I32Add; I32Const 4l; I32Mul;
+        I32Add; I32Add;
+        GlobalSet heap_idx;
+        (* dst length = la + lb *)
+        LocalGet dst; LocalGet la; LocalGet lb; I32Add; I32Store (2, 0) ]
+      @ copy_loop a la zero   (* dst[0..la)  := a *)
+      @ copy_loop b lb la     (* dst[la..)   := b *)
+      @ [ LocalGet dst ]
+    in
+    Ok (ctxA, code)
+
   | ExprBinary (left, op, right) ->
     let* (ctx', left_code) = gen_expr ctx left in
     let* (ctx'', right_code) = gen_expr ctx' right in

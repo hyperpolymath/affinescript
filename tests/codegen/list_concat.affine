@@ -1,0 +1,37 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// Regression for the `++` list-concat codegen defect. `OpConcat` was a
+// placeholder `I32Add` (it summed the two list *pointers*), so every
+// `a ++ b` produced a garbage/zero-length list. Like #255's loop bug
+// this had ZERO coverage — no asserted fixture exercised `++`. Covers
+// the three real shapes: literal++literal, mut-accumulate append in a
+// loop, and prepend in a loop.
+
+fn sum(xs: [Int]) -> Int {
+  let mut s = 0;
+  for x in xs {
+    s = s + x;
+  }
+  s
+}
+
+fn main() -> Int {
+  let a = [10, 20] ++ [30, 40, 50];      // -> [10,20,30,40,50], sum 150
+
+  let mut b = [];
+  let mut i = 1;
+  while i <= 4 {
+    b = b ++ [i];                        // append: [1,2,3,4], sum 10
+    i = i + 1;
+  }
+
+  let mut c = [];
+  let mut j = 1;
+  while j <= 3 {
+    c = [j] ++ c;                        // prepend: [3,2,1], sum 6
+    j = j + 1;
+  }
+
+  sum(a) + sum(b) + sum(c)               // 150 + 10 + 6 = 166
+}
