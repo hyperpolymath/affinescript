@@ -313,7 +313,7 @@ let handle_initialize (id : Yojson.Basic.t) (_params : Yojson.Basic.t) : unit =
       ]);
       ("serverInfo", `Assoc [
         ("name",    `String "affinescript");
-        ("version", `String "0.1.0");
+        ("version", `String Version.value);
       ]);
     ]
   ))

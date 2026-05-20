@@ -11,8 +11,9 @@
 
 let () = Fmt_tty.setup_std_outputs ()
 
-(** Version string *)
-let version = "0.1.0"
+(** Version string (single source of truth — see lib/version.ml; baked
+    from the release tag by .github/workflows/release.yml). *)
+let version = Affinescript.Version.value
 
 (** Read file contents *)
 let read_file path =

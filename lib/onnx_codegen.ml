@@ -230,7 +230,7 @@ let generate (program : program) (_symbols : Symbol.t) : string =
   let model = {
     Onnx_proto.m_ir_version       = 7;   (* ONNX 1.10+ *)
     m_producer_name    = "affinescript";
-    m_producer_version = "0.1.0";
+    m_producer_version = Version.value;
     m_opset_import     = [{ op_domain = ""; op_version = 13 }];
     m_graph            = graph;
   } in
