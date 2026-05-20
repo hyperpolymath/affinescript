@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // SPDX-FileCopyrightText: 2026 hyperpolymath
 //
 // ADR-015 S4a (#180) — assert the `clock_now_ms` builtin wires its

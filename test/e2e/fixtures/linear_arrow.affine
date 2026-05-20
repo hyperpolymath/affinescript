@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // End-to-end test: linear arrow quantity enforcement in lambda expressions
 // Tests:
 //   - Lambda with @linear param produces T -[1]-> U type (not T -[ω]-> U)

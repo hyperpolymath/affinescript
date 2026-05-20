@@ -1,5 +1,5 @@
 # affinescriptiser manifest — Example: GPU buffer and session token safety
-# SPDX-License-Identifier: PMPL-1.0-or-later
+# SPDX-License-Identifier: MPL-2.0
 
 [project]
 name = "wasm-safe"

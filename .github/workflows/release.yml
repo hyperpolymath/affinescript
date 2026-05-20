@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: PMPL-1.0-or-later
+# SPDX-License-Identifier: MPL-2.0
 #
 # Release (ADR-019 / #260 S2). On a `v*` tag: build the AffineScript
 # compiler for each supported platform, attach the raw per-platform

@@ -7,7 +7,7 @@ description:
   "AffineScript combines Rust-style ownership (affine types), compile-time size verification (dependent types), extensible records (row polymorphism), and trackable side effects (extensible effects). It compiles to WebAssembly for efficient, portable execution."
 maintainer: ["hyperpolymath"]
 authors: ["hyperpolymath"]
-license: "MIT OR AGPL-3.0-or-later"
+license: "MPL-2.0"
 tags: [
   "programming-language"
   "compiler"

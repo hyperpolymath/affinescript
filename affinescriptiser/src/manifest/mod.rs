@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 //
 // Manifest module for affinescriptiser — Parses and validates the affinescriptiser.toml manifest,
@@ -177,7 +177,7 @@ pub fn init_manifest(path: &str) -> Result<()> {
         anyhow::bail!("affinescriptiser.toml already exists at {}", p.display());
     }
     let template = r#"# affinescriptiser manifest — Wrap code in affine + dependent types targeting WASM
-# SPDX-License-Identifier: PMPL-1.0-or-later
+# SPDX-License-Identifier: MPL-2.0
 
 [project]
 name = "wasm-safe"

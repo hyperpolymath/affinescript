@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // ADR-015 S4b (#180) — env_count via WASI preview1 environ_sizes_get.
 // Host stubs the import with a known count + buf_size; asserts the
 // guest returns that count.

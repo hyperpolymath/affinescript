@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // ADR-015 S4b (#180) — arg_count via WASI preview1 args_sizes_get.
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';

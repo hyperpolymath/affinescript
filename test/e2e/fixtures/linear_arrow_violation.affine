@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // Regression: @linear param in a lambda must not be used twice inside the body.
 // The quantity checker must reject this program because `x` is used
 // two times inside the lambda body, violating the @linear (must use once)

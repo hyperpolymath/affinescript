@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: PMPL-1.0-or-later
+# SPDX-License-Identifier: MPL-2.0
 # INT-02 / #179 — compile the INT-01 cross-module fixtures and drive them
 # through the real packages/affine-js loader API. Reproducible acceptance.
 #

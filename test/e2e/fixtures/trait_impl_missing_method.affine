@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // End-to-end test: trait impl with missing required method
 // Verifies that an impl block that fails to provide a non-default
 // trait method is rejected by the type checker.

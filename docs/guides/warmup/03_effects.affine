@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // Warmup 03: Algebraic effects
 //
 // Effects are AffineScript's unified model for anything "impure":

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // End-to-end test: dependent-type surface syntax (parse-only)
 // Tests: type aliases and generic functions with where-clause constraints
 // Note: refinement predicates are parsed but not yet reduced/checked.

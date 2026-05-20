@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // issue #225 PR3d — wasm e2e host for http_response_reader.affine.
 //
 // Same #205 Thenable + #199 closure scaffold as test_http_cps_base.mjs

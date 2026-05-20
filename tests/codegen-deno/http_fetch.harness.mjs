@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // issue #160 — Node-ESM harness for portable Http.fetch (Deno-ESM backend).
 //
 // Stubs `globalThis.fetch` so nothing touches the network: the stub

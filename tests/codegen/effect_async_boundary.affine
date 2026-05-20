@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // issue #234 S3 — the payoff: the WasmGC CPS async boundary is now
 // detected from the callee's *effect row* (the typecheck side-table,
 // ADR-016), not a hardcoded name set. `fetchThing` is a USER-defined

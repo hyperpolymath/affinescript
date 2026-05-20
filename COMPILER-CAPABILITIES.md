@@ -398,5 +398,5 @@ Parallel Operations| N/A            | 2x-4x (cores)   | 1000x (cores)
 
 **Recommendation:** For current development, use WASM deployment targeting browsers. For future-proof design, plan for native and GPU backends coming in later releases.
 
-SPDX-License-Identifier: PMPL-1.0-or-later
+SPDX-License-Identifier: MPL-2.0
 SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell

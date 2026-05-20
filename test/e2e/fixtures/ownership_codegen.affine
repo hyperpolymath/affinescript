@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // Stage 2 round-trip test fixture.
 // Ownership annotations must survive from AffineScript source to the Wasm custom section.
 // Bodies return literals to avoid type unification between own/ref/mut and the plain return type.

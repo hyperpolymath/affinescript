@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // issue #160 — portable Http.fetch end-to-end on the Deno-ESM backend.
 //
 // Exercises the real stdlib/Http.affine (flattened in via `use`): the

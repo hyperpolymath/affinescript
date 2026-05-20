@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: PMPL-1.0-or-later
+# SPDX-License-Identifier: MPL-2.0
 #
 # ADR-015 S3 — the componentize on-ramp. POST-codegen, codegen
 # UNCHANGED: the compiler still emits a core `wasi_snapshot_preview1`

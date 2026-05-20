@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // issue #225 PR 3a — WasmGC CPS transform, multi-var live-local capture.
 //
 // PR2 proved the zero-capture base case. PR3a lifts that: a `let` bound

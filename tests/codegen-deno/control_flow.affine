@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // issue #122 v2.1 regression: statement-position `return` and control
 // flow must lower to real JS statements, not a discarded IIFE.
 // (Inherited js_codegen bug: `return e;` -> `(() => { return e; })();`

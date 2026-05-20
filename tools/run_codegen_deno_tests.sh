@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: PMPL-1.0-or-later
+# SPDX-License-Identifier: MPL-2.0
 # issue #122 — Deno-ESM backend regression runner.
 #
 # Mirrors tools/run_codegen_wasm_tests.sh: for every fixture in

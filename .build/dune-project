@@ -15,7 +15,7 @@
 
 (maintainers "hyperpolymath")
 
-(license "MIT OR AGPL-3.0-or-later")
+(license "MPL-2.0")
 
 (documentation https://github.com/hyperpolymath/affinescript)
 

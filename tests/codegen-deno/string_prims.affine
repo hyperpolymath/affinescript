@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // issue #122 v2.5 regression: the honest string/number primitive layer
 // (len/string_sub/string_find/int_to_string + `++` shape dispatch) that
 // lets stdlib/string.affine — real AffineScript — run under Deno-ESM.

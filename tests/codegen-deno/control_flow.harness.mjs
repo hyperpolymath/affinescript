@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // issue #122 v2.1 — statement-position return / control flow.
 import assert from "node:assert/strict";
 import { sum_to, classify, first_even } from "./control_flow.deno.js";

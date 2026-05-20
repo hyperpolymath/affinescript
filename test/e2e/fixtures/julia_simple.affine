@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // End-to-end test: Julia backend codegen
 // Tests: simple functions that should fully compile to Julia
 

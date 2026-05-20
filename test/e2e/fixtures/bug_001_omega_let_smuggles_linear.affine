@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // BUG-001 regression: ω-let must NOT smuggle a linear value through.
 //
 // `consume` declares its parameter as @linear, so within consume's body

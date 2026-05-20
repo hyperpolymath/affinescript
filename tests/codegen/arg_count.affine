@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // ADR-015 S4b (#180): arg_count() smoke. Lowers to
 // `wasi_snapshot_preview1.args_sizes_get`. Same shape as env_count;
 // proves the multi-WASI-import-on-use indexing handles two optional

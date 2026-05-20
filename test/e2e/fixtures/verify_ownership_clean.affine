@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // Stage 7 verify integration fixture — clean case.
 //
 // This fixture compiles cleanly and the verifier must report OK.

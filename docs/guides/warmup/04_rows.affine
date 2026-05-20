@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // Warmup 04: Row polymorphism
 //
 // Row polymorphism lets you write functions that work on any record with at

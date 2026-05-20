@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: PMPL-1.0-or-later
+# SPDX-License-Identifier: MPL-2.0
 #
 # ADR-015 S3 gated smoke: compile a core module that carries the
 # `affinescript.ownership` section, run it through the componentize

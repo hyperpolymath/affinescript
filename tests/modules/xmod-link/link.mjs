@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // INT-01 / #178 — cross-module WASM link+execute acceptance harness.
 //
 // Proves that two SEPARATELY-compiled AffineScript modules link and run

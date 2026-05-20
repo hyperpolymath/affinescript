@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // ADR-015 S4b (#180): env_count() smoke. Lowers to
 // `wasi_snapshot_preview1.environ_sizes_get`, returns the count
 // the host wrote into *count_ptr. Unit arg = zero-param-fn collapse

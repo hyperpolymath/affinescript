@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // issue #225 PR 2 — WasmGC CPS transform, base case (ADR-013).
 //
 // This is the FIRST end-to-end exercise of the transparent async

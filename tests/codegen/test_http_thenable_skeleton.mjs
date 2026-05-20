@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // issue #225 PR 1 — wasm e2e for the typed-wasm Http skeleton.
 //
 // Inlines the generic Http host adapter (the reusable package is
