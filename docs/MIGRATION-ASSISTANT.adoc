@@ -1,0 +1,127 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell
+= ReScript → AffineScript migration assistant — architectural decision
+:toc: macro
+:toclevels: 2
+
+Tracks issue #57 (parser + metaparser). Companion to
+link:RESCRIPT-ELIMINATION.adoc[RESCRIPT-ELIMINATION.adoc], which is the
+authoritative ledger for the broader estate ReScript-surface retirement.
+
+toc::[]
+
+== Context
+
+Estate language policy retires ReScript in favour of AffineScript →
+typed-wasm. Per the inventories captured in
+link:RESCRIPT-ELIMINATION.adoc[RESCRIPT-ELIMINATION.adoc] and the
+upstream tracker `hyperpolymath/gitbot-fleet#148`, ~5k LOC of ReScript
+remains in `gitbot-fleet/bots/sustainabot/bot-integration/src/` alone;
+the idaptik tail is ~542 `.res` files plus ~80 `.ts`. By-hand
+translation is impractical, *and* a literal transliterator misses the
+point — the AffineScript answer to ReScript's anti-patterns is
+*re-decomposition*, not a token-level rewrite.
+
+Issue #57 proposes a *migration assistant*: a tool that reads `.res`,
+recognises the anti-patterns surfaced by the idaptik Wave 3 pilot, and
+emits a `.affine` *skeleton* that surfaces the work the human migrator
+still owes.
+
+== Decision
+
+* The migration assistant lives at `tools/res-to-affine/` as an OCaml
+  CLI built by the repo's existing `dune` toolchain.
+* The canonical source-of-truth grammar for `.res` parsing is
+  https://github.com/rescript-lang/tree-sitter-rescript[`rescript-lang/tree-sitter-rescript`],
+  vendored manifest-only at `editors/tree-sitter-rescript/` (pinned to
+  commit `990214a83f25801dfe0226bd7e92bb71bba1970f`, version 6.0.0,
+  MIT-licensed and compatible with this repo's MPL-2.0).
+* The tool ships in three phases:
++
+[cols="1,3,2"]
+|===
+| Phase | What it does | Status
+
+| 1
+| Text-scan emitter detecting 4 of the 6 anti-patterns, emitting a
+  `.affine` skeleton with migration markers and the quoted original
+  for reference.
+| this PR
+
+| 2
+| Replaces the text scanner with a tree-sitter AST walker reading the
+  vendored grammar. Adds the two deferred patterns. Same emitter
+  interface.
+| follow-up
+
+| 3
+| Partial *translation* of pure-structural forms (type aliases, sum
+  decls, simple `let` bindings, `switch` → `match`). Effect-laden /
+  exception-bearing / globally-mutating regions remain TODO islands.
+| follow-up
+|===
+* The Phase-1 deliverable is **deliberately small and useful in
+  isolation**. It gates the architectural commitment to tree-sitter
+  behind something that already pays its way against real estate
+  `.res` files.
+
+== Alternatives considered
+
+=== Use the ReScript compiler's own AST (`bs-tools` / `rescript ast`)
+
+The richest signal is in the ReScript compiler's typed AST. Rejected
+because:
+
+* Adding `rescript` as a build-time dependency contradicts the estate
+  language policy (which bans new ReScript code and treats ReScript as
+  the artefact to be retired).
+* The ReScript compiler's AST changes across versions in
+  non-backwards-compatible ways; pinning would create an ongoing
+  compatibility burden in the wrong direction.
+
+=== Write a hand-rolled `.res` lexer/parser in OCaml
+
+We already have `lib/rescript_codegen.ml` going *affinescript → .res*,
+so the grammar is partly understood. Rejected because:
+
+* ReScript's surface syntax is large; recreating it for a one-way
+  migration tool is days-to-weeks of work that the canonical
+  tree-sitter grammar has already done and maintains.
+* The community grammar is MIT-licensed and version-pinned; the cost
+  of consuming it is a one-line manifest plus an install script.
+
+=== Pattern-detector only (no AST in any phase)
+
+Phase 1 *is* this — but committing to it permanently would leave the
+two structural anti-patterns (callback records, oversized functions)
+undetected forever, and would block Phase 3 (partial translation),
+which is what makes the tool earn its keep on idaptik's 542 files.
+
+== Consequences
+
+* `editors/tree-sitter-rescript/` exists for the migration pipeline,
+  not as an editor binding. The editor binding for AffineScript itself
+  remains `editors/tree-sitter-affinescript/`.
+* `tools/res-to-affine/` is the first OCaml tool under `tools/`
+  (existing tools are shell scripts or Rust). The `dune` integration
+  is local to the tool's own `dune` file; no workspace changes.
+* Phase 2 introduces `tree-sitter` CLI as a runtime dependency for the
+  migration assistant. It is *not* a build-time dependency for the
+  AffineScript compiler itself. CI for the migration tool's Phase-2
+  tests will need to install `tree-sitter-cli`.
+* The Phase plan is recorded in
+  link:../tools/res-to-affine/README.md[`tools/res-to-affine/README.md`];
+  this document is the architectural decision, the README is the
+  user/contributor surface.
+
+== References
+
+* `tools/res-to-affine/README.md` — tool usage, Phase plan, design rationale.
+* `editors/tree-sitter-rescript/README.md` — vendoring manifest details.
+* `affinescript#57` — parser + metaparser proposal.
+* `gitbot-fleet#148` — downstream tracker for the consumed ReScript subtree.
+* link:RESCRIPT-ELIMINATION.adoc[`RESCRIPT-ELIMINATION.adoc`] — estate-wide ledger.
+* https://github.com/hyperpolymath/idaptik/blob/main/migration/main/LESSONS.md[idaptik LESSONS.md]
+  — six anti-patterns the assistant targets.
+* https://github.com/hyperpolymath/idaptik/blob/main/migration/main/PILOT.md[idaptik PILOT.md]
+  — original Wave-3 pilot that surfaced the six patterns.

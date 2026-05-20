@@ -1,0 +1,16 @@
+{
+  "name": "@affinescript/tree-sitter-rescript-vendoring",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Manifest-only vendoring of rescript-lang/tree-sitter-rescript for the .res -> .affine migration assistant (affinescript#57).",
+  "license": "MPL-2.0",
+  "dependencies": {
+    "tree-sitter-rescript": "github:rescript-lang/tree-sitter-rescript#990214a83f25801dfe0226bd7e92bb71bba1970f"
+  },
+  "devDependencies": {
+    "tree-sitter-cli": "^0.25.0"
+  },
+  "scripts": {
+    "install-grammar": "./scripts/install.sh"
+  }
+}
