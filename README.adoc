@@ -22,7 +22,7 @@ Write software where the compiler helps enforce resource lifecycles, protocol st
 
 [NOTE]
 ====
-Honest status sync (2026-04-12): affine/QTT and borrow checking are wired into the standard CLI paths today (`check`, `compile`, `eval`) and gate user programs. Dependent/refinement features are still parse-first in places, and some backend features remain incomplete, especially around effect-handler lowering in Wasm targets. See `.machine_readable/6a2/STATE.a2ml` for the authoritative per-feature status.
+Honest status sync (2026-04-12): affine/QTT and borrow checking are wired into the standard CLI paths today (`check`, `compile`, `eval`) and gate user programs. Dependent/refinement features are still parse-first in places, and some backend features remain incomplete, especially around effect-handler lowering in Wasm targets. See link:docs/CAPABILITY-MATRIX.adoc[docs/CAPABILITY-MATRIX.adoc] for the authoritative per-feature status (`.machine_readable/6a2/STATE.a2ml` mirrors that matrix; it does not lead).
 ====
 
 == What AffineScript Is
@@ -611,7 +611,10 @@ ____
 == Documentation
 
 - `docs/` — language and architecture documentation
-- `.machine_readable/6a2/STATE.a2ml` — authoritative feature status
+- `docs/CAPABILITY-MATRIX.adoc` — authoritative per-feature status (overrides everything else)
+- `docs/TECH-DEBT.adoc` — coordination ledger (DOC/CORE/STDLIB/INT/SAT)
+- `docs/ECOSYSTEM.adoc` — spine, AS↔typed-wasm contract, satellite registry, INT-01..12
+- `.machine_readable/6a2/STATE.a2ml` — machine-readable mirror of CAPABILITY-MATRIX (does not lead)
 - `examples/` — example programs
 - `tools/affinescript-lsp/` — language tooling
 - `editors/` — editor integrations
