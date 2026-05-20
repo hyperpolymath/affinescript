@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // issue #234 S3 — proves the effect-threaded async-boundary detection
 // end-to-end: the source uses `fetchThing` (a user-defined `/ {Async}`
 // extern, NOT `http_request_thenable`, NOT in codegen's hardcoded

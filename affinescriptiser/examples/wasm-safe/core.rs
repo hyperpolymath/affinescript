@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // Example source file for affinescriptiser — demonstrates resource allocation patterns
 // that the parser will detect and the affine type system will wrap.
 

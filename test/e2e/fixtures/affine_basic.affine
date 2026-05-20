@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // End-to-end test: basic functions for quantity checking
 // Tests: functions that can be quantity-checked after parsing
 // Note: quantity annotations (0/1/omega) are not yet in the lexer,

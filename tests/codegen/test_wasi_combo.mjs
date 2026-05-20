@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // ADR-015 S4b regression: all three optional WASI imports used in
 // one unit. Each lookup in ctx.wasi_func_indices must return THIS
 // import's idx (no collision, no off-by-one). Stubbed values are

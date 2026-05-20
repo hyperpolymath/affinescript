@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: PMPL-1.0-or-later
+# SPDX-License-Identifier: MPL-2.0
 #
 # INT-03 S2 / issue #251 (ADR-019 unblocker for ADR-015 S3+): provision
 # the WASM Component-Model toolchain the WASI-preview2 migration needs.

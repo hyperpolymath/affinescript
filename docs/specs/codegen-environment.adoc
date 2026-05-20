@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 = Codegen Environment — WebAssembly Realisation of SPEC §8
 :toc: macro
 :toclevels: 3

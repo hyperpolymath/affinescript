@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // INT-02 / #179 — host-agnostic loader bridge, end-to-end acceptance.
 //
 // Proves the *actual* INT-02 loader API (packages/affine-js/loader.js)

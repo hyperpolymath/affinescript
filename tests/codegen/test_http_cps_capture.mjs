@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // issue #225 PR 3a — wasm e2e for multi-var live-local capture.
 //
 // Proves the continuation, when the host re-enters it after settlement,

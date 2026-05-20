@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: PMPL-1.0-or-later
+# SPDX-License-Identifier: MPL-2.0
 # Machine-readable session summary: typed-wasm Level 10 CLI closure +
 # three codegen bug fixes. Bot-primary doc per A2ML standard; see the
 # .adoc companion for human narrative.

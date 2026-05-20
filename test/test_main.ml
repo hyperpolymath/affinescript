@@ -1,4 +1,4 @@
-(* SPDX-License-Identifier: PMPL-1.0-or-later *)
+(* SPDX-License-Identifier: MPL-2.0 *)
 (* Copyright (c) 2024-2026 Jonathan D.A. Jewell <jonathan.jewell@open.ac.uk> *)
 
 (** Main test runner for AffineScript *)

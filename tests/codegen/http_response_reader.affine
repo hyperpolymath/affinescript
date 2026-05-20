@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // issue #225 PR3d — wasm e2e: the typed `Response` reader primitives
 // (ADR-013 §Value-reconstruction) + http_fetch-parity on the WasmGC
 // path.

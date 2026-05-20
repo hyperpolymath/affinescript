@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // issue #225 PR 2 — wasm e2e for the CPS transform base case (ADR-013).
 //
 // Proves the transparent async transform end-to-end on the WasmGC

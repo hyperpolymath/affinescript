@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // issue #122 v2.3 regression: struct field access through ref/own/mut
 // receivers must typecheck (auto-deref before record projection).
 // Previously `fn(c: ref S) = c.field` failed: "Field 'field' not found

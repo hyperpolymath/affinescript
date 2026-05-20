@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // issue #225 PR 1 — typed-wasm Http skeleton.
 //
 // Proves the WasmGC Http boundary + the #205 Thenable convergence

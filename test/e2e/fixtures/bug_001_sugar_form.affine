@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // BUG-001 regression — Option B sugar form. Same program as
 // bug_001_omega_let_smuggles_linear.affine but written with the
 // :1 / :ω numeric quantity sugar instead of @linear / @unrestricted.

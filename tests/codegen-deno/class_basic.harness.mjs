@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // issue #122 Phase 1 — Node-ESM harness for the Deno-ESM backend.
 // Runnable with plain `node` (the generated module only touches the
 // `Deno` global lazily inside unused helpers; nothing here calls them).

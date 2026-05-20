@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // issue #122 v2.3 — field access through ref/own/mut receivers.
 // mk_point returns Point (constructor); sum_ref/get_x_own/get_y_mut
 // take Point first (ref/own/mut) so they synthesise as Point methods —

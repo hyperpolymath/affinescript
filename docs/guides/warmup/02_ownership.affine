@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // Warmup 02: Ownership and affine types
 //
 // AffineScript's key insight: resources can only be used once by default.

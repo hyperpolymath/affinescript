@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // issue #122 v2.4 regression: qualified `Type::Variant` patterns in
 // match arms (nullary + payload), as both `= match {..};` expression
 // bodies and recursive functions. Previously a parse error

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: PMPL-1.0-or-later
+# SPDX-License-Identifier: MPL-2.0
 # Publishes @hyperpolymath/affine-vscode to npm on a scoped tag push.
 #
 # This repo is Deno-first (see CLAUDE.md). The npm publish here is a

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SPDX-License-Identifier: PMPL-1.0-or-later
+# SPDX-License-Identifier: MPL-2.0
 # INT-01 / #178 — compile the two cross-module fixtures and prove they
 # link + execute across the wasm boundary. Reproducible acceptance run.
 #

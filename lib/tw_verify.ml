@@ -1,4 +1,4 @@
-(* SPDX-License-Identifier: PMPL-1.0-or-later *)
+(* SPDX-License-Identifier: MPL-2.0 *)
 (* SPDX-FileCopyrightText: 2024-2026 hyperpolymath *)
 
 (** typed-wasm ownership verifier — Stage 7 (per-path analysis added Stage 9).

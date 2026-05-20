@@ -116,7 +116,7 @@ AffineScript's conformance tests respect affine type constraints:
 
 Example:
 ```affinescript
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // Source: aggregate-library/specs/collection/map.md
 
 fn test_map_double() -> TestResult {

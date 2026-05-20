@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // issue #122 v2.5 — honest string/number primitive lowering + `++` shape
 // dispatch (string concat vs array concat).
 import assert from "node:assert/strict";

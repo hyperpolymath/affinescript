@@ -1,4 +1,4 @@
-; SPDX-License-Identifier: PMPL-1.0-or-later
+; SPDX-License-Identifier: MPL-2.0
 ; MUST.contractile — Hard invariants for AffineScript
 ; These MUST NOT be violated by any AI agent or human contributor.
 
@@ -36,7 +36,7 @@
     (must "regression fixtures must be added when a bug is fixed")
 
     ; === Licenses ===
-    (must "SPDX-License-Identifier: PMPL-1.0-or-later in every source file")
+    (must "SPDX-License-Identifier: MPL-2.0 in every source file")
     (must "MPL-2.0 as legal fallback (lawyer-confirmed) — no re-labelling needed")
 
     ; === IDApTIK integration ===

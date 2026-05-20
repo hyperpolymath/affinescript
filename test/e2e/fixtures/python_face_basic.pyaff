@@ -1,5 +1,5 @@
 # Python-face fixture: basic arithmetic and control flow.
-# SPDX-License-Identifier: PMPL-1.0-or-later
+# SPDX-License-Identifier: MPL-2.0
 
 def add(x: Int, y: Int) -> Int:
     let result = x + y

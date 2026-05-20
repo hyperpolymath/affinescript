@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // ADR-015 S4b regression: a unit that uses ALL THREE optional WASI
 // imports (clock + env + args). Proves the multi-import-on-use
 // indexing assigns each its correct func index without collision —

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // issue #122 v2.4 — qualified Type::Variant patterns + recursive ADTs.
 import assert from "node:assert/strict";
 import { rank, Red, Blue, len, sum, demo_list } from "./match_enum.deno.js";

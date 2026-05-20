@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: PMPL-1.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // issue #225 PR 3c — wasm e2e for Async->Async chaining.
 //
 // Two sequential async boundaries. Proves the recursive transform:

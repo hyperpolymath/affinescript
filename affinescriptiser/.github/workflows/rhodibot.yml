@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: PMPL-1.0-or-later
+# SPDX-License-Identifier: MPL-2.0
 # rhodibot.yml — Automated RSR compliance enforcement
 #
 # Reads root-hygiene rules and auto-fixes what it can:
@@ -95,7 +95,7 @@ jobs:
           # --- 5. Create missing required files ---
           if [ ! -f "SECURITY.md" ]; then
             cat > SECURITY.md << 'SECEOF'
-          <!-- SPDX-License-Identifier: PMPL-1.0-or-later -->
+          <!-- SPDX-License-Identifier: MPL-2.0 -->
           # Security Policy
 
           ## Reporting a Vulnerability
@@ -115,7 +115,7 @@ jobs:
 
           if [ ! -f "CONTRIBUTING.md" ]; then
             cat > CONTRIBUTING.md << 'CONTEOF'
-          <!-- SPDX-License-Identifier: PMPL-1.0-or-later -->
+          <!-- SPDX-License-Identifier: MPL-2.0 -->
           # Contributing
 
           1. Fork the repository
