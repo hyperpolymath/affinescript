@@ -11,7 +11,7 @@ Thumbs.db
 .vscode/
 
 # Build
-/target/
+target/
 /_build/
 /_opam/
 /build/
