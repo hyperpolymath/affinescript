@@ -85,3 +85,37 @@ jobs:
       - name: Lint with odoc
         run: opam exec -- dune build @doc
         continue-on-error: true
+
+  vscode-smoke:
+    # In-editor end-to-end smoke test for the .affine VS Code extension
+    # (issue #139). Loads the compiled out/extension.cjs in a real VS Code
+    # host via @vscode/test-electron and asserts: activation, command
+    # registration + invocation, restartLsp cycling, and deactivate
+    # teardown. The Node-based runner is a documented runtime carve-out
+    # (see CLAUDE.md "Runtime Exemptions") because the VS Code extension
+    # host is npm/Node-native and no Deno/JSR equivalent exists.
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v4
+        with:
+          node-version: "20"
+
+      - name: Install test runner dependencies
+        working-directory: editors/vscode
+        # The compiled out/extension.cjs is checked in (see #35 Phase 3),
+        # so the smoke test does not need the OCaml toolchain — only the
+        # Node-side test runner deps. peerDeps `vscode` is provided by
+        # @vscode/test-electron at launch; the extension's runtime dep on
+        # @hyperpolymath/affine-vscode is satisfied by npm install too.
+        run: npm install --no-audit --no-fund
+
+      - name: Run in-editor smoke (xvfb)
+        working-directory: editors/vscode
+        # Headless display required because @vscode/test-electron launches
+        # the real Electron-based VS Code binary.
+        run: xvfb-run -a npm test
