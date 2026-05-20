@@ -26,8 +26,20 @@ export const VERSION = "v0.1.0";
 export const PINS = {
   version: VERSION,
   targets: {
-    "linux-x64": { url: assetUrl(VERSION, "linux-x64"), sha256: "" },
-    "macos-x64": { url: assetUrl(VERSION, "macos-x64"), sha256: "" },
-    "macos-arm64": { url: assetUrl(VERSION, "macos-arm64"), sha256: "" },
+    "linux-x64": {
+      url: assetUrl(VERSION, "linux-x64"),
+      sha256: "c1ce65308bace96669d2a178732cd5ee180845d85a5775e119a221b98fe2a5da",
+    },
+    "macos-x64": {
+      // v0.1.0 macos-13 build was stuck in the runner queue at tag time;
+      // left fail-closed (empty sha256 ⇒ resolveCompiler refuses) until
+      // a follow-up release re-attempts the macos-x64 leg.
+      url: assetUrl(VERSION, "macos-x64"),
+      sha256: "",
+    },
+    "macos-arm64": {
+      url: assetUrl(VERSION, "macos-arm64"),
+      sha256: "2cac3ba54ae7778d31d1bd780d11b56a5cf78b5d5ee6c1d33edd3f8e753943d5",
+    },
   },
 };
