@@ -75,6 +75,7 @@ The "no new TypeScript" rule has seven approved exemptions in this repo. These p
 | Path | Files | Rationale | Unblock condition |
 |---|---|---|---|
 | `packages/affine-js/types.d.ts` | 1 | TypeScript declaration file — the public API contract by which JS callers consume AffineScript-compiled artefacts. `.d.ts` is TS by definition. | Generate from canonical compiler output (issue: see ROADMAP). |
+| `packages/affinescript-cli/mod.d.ts` | 1 | TypeScript declaration file for the JSR shim's public API. Required by JSR's "fast type-check" — without it, the published package emits a `unsupported-javascript-entrypoint` warning and consumers get no editor types. `.d.ts` is TS by definition. | Same as `affine-js`: generate or rewrite the shim entry once stdlib + bindings exist. |
 | `affinescript-deno-test/*.ts` | 6 | Deno-based test harness for AffineScript itself: `cli.ts`, `mod.ts`, `lib/{compile,discover,runner}.ts`, `example/smoke_driver.ts`. Deno test runner is TS-native. | AffineScript stdlib + Deno bindings (no scheduled issue). |
 
 Adding to this list requires explicit user approval and an unblock condition. New TypeScript files outside this list are still banned per the policy table above.
@@ -84,6 +85,16 @@ Adding to this list requires explicit user approval and an unblock condition. Ne
 - `packages/affine-ts/` — removed 2026-05-11 (issue #66 closed won't-do). TypeScript is not a first-class consumer; TS callers should use `@hyperpolymath/affine-js` directly and supply their own typings.
 
 The 5 external references to `affinescript-deno-test/` (CI workflow, status docs, history docs) and the references to `packages/affine-js/` (status docs, Deno config) are why physical relocation into a `vendor/` subtree was rejected — the relocation cost exceeded the visibility benefit when the directories are already named clearly.
+
+### Runtime Exemptions (Approved)
+
+The "no Node.js / no Bun" rules in the language policy table have one approved exemption in this repo. Adding to this list requires explicit user approval — same gate as the TypeScript exemptions above.
+
+| Path | Banned thing(s) used | Rationale | Unblock condition |
+|---|---|---|---|
+| `packages/affinescript-cli/mod.js` | `process.platform`/`process.arch`/`process.env`, `node:fs/promises`, `node:child_process`, `Bun.spawn`, `Bun.file`, `Bun.write` | The shim is the **compiler-distribution front door**. Its consumers — LSP installers, IDE extensions, CI scripts wiring AffineScript into a build pipeline — overwhelmingly live in Node and Bun ecosystems, not Deno. Forcing them to install Deno solely to fetch+verify+exec a binary defeats the shim's "ergonomic install" purpose. The branches are guarded by single-line runtime detection at module load; nothing else in the repo depends on this pattern. | None — this is the intended steady state. The shim's whole job is to be runtime-agnostic. |
+
+Browsers and Cloudflare Workers are NOT supported and never will be (the shim's purpose — fetch, save to disk, exec a native binary — cannot be done in a sandboxed JS runtime). The JSR runtime-compatibility checkboxes for this package should be: Deno ✅, Bun ✅, Node ✅, Workers ❌, Browsers ❌.
 
 ### Package Management
 
