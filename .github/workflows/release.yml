@@ -69,6 +69,20 @@ jobs:
       - name: Install dependencies
         run: opam install . --deps-only --yes
 
+      - name: Bake release version into source (#297)
+        # Single source of truth for the compiler version string lives
+        # in `lib/version.ml`; `dune-project` mirrors it for opam.  The
+        # release workflow rewrites both from the tag so every emitted
+        # binary self-reports the right number (--version, REPL banner,
+        # LSP serverInfo, ONNX producer_version).
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          sed -i "s/^let value = .*/let value = \"$v\"/" lib/version.ml
+          sed -i "s/^(version .*)/(version $v)/" .build/dune-project
+          echo "Baked version: $v"
+          grep '^let value' lib/version.ml
+          grep '^(version' .build/dune-project
+
       - name: Build release
         run: opam exec -- dune build --release
 

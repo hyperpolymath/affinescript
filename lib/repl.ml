@@ -297,7 +297,7 @@ let print_prompt () =
 
 (** Print the REPL banner *)
 let print_banner () =
-  print_endline "AffineScript REPL v0.1.0";
+  Printf.printf "AffineScript REPL v%s\n" Version.value;
   print_endline "Type :help for help, :quit to exit";
   print_endline ""
 

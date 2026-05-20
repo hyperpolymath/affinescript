@@ -73,6 +73,7 @@
   types
   unify
   value
+  version
   wasm
   wasm_encode
   wasm_gc
