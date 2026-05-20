@@ -60,11 +60,18 @@ from re-drifting.
 INT-01..12 |*DONE 2026-05-19* (this PR)
 |DOC-03 |`TECH-DEBT.adoc` — this ledger |*DONE 2026-05-19* (this PR)
 |DOC-04 |Authoritative banners on README/BACKEND-IMPLEMENTATION/
-COMPILER-CAPABILITIES/ALPHA-1-RELEASE-NOTES |open (this PR adds where
-touched; full sweep tracked here)
-|DOC-05 |`STATE.a2ml` drift flagged (it mirrors, does not lead) |open
+COMPILER-CAPABILITIES/ALPHA-1-RELEASE-NOTES |*DONE in tree*
+2026-05-21 (banners present on all four; README internal drift on
+lines 25/614 also fixed — pointed both at CAPABILITY-MATRIX). MONITOR
+posture stays live via DOC-08/09
+|DOC-05 |`STATE.a2ml` drift flagged (it mirrors, does not lead) |*DONE
+in tree* 2026-05-21 (`authoritative-status-doc` + `drift-flag` keys
+present in `.machine_readable/6a2/STATE.a2ml`; README "Documentation"
+section now also labels STATE.a2ml as the mirror)
 |DOC-06 |`ROADMAP.adoc` Ecosystem Integration Track (INT-01..12) cross-links
-this ledger |open
+this ledger |*DONE in tree* 2026-05-21 (ROADMAP.adoc §"Status &
+contract" cross-links CAPABILITY-MATRIX + TECH-DEBT + ECOSYSTEM and
+names the INT-01..12 track)
 |DOC-07 |Stage A–E definitions authoritative (were never committed) |
 *DONE 2026-05-19* (ECOSYSTEM.adoc §The spine)
 |DOC-08 |MONITOR rule: reject backend-breadth over-claims |DONE (Hypatia/
