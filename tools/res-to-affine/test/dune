@@ -1,0 +1,8 @@
+; SPDX-License-Identifier: MPL-2.0
+
+(test
+ (name test_emit)
+ (libraries res_to_affine alcotest)
+ (deps
+  (glob_files fixtures/*.res)
+  (glob_files expected/*.affine)))

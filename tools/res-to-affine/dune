@@ -1,0 +1,13 @@
+; SPDX-License-Identifier: MPL-2.0
+
+(executable
+ (name main)
+ (modules main)
+ (public_name res-to-affine)
+ (package affinescript)
+ (libraries res_to_affine cmdliner fmt fmt.tty))
+
+(library
+ (name res_to_affine)
+ (modules scanner emitter)
+ (libraries str))
