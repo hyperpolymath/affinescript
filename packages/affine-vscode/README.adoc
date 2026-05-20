@@ -113,6 +113,7 @@ ABI lands.
 
 Phase 2 — bindings landed. The pilot affinescript port (issue #63) and
 external-extension ports (issue #64: my-lang, rsr-certifier) consume
-this adapter; the long-term plan is to publish it to npm so consumers
-do not have to vendor `mod.js`. Phase 4 (rattlescript-face sweep) still
-to do.
+this adapter. npm publish wiring is in place (issue #104:
+`affine-vscode-publish.yml` ships the package on `affine-vscode-v*`
+tag pushes); the first publish + downstream un-vendoring is gated on
+that issue. Phase 4 (rattlescript-face sweep) still to do.
