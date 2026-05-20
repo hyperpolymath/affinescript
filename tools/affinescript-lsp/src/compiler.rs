@@ -28,7 +28,7 @@
 
 /// Pinned ADR-019 shim spec.  Must track `packages/affinescript-cli/deno.json`
 /// `version` (and therefore the `pins.js` `VERSION`).  Do not float this.
-pub const SHIM_SPEC: &str = "jsr:@hyperpolymath/affinescript@0.1.1";
+pub const SHIM_SPEC: &str = "jsr:@hyperpolymath/affinescript@0.1.2";
 
 /// Environment variable naming an explicit compiler binary (precedence 1).
 pub const COMPILER_ENV: &str = "AFFINESCRIPT_COMPILER";
