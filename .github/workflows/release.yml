@@ -94,7 +94,7 @@ jobs:
         run: |
           tag="${GITHUB_REF_NAME}"
           mkdir -p dl
-          gh release download "$tag" --dir dl --pattern 'affinescript-*'
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" --dir dl --pattern 'affinescript-*'
           ( cd dl && sha256sum affinescript-* | sort -k2 > SHA256SUMS )
           cat dl/SHA256SUMS
-          gh release upload "$tag" dl/SHA256SUMS --clobber
+          gh release upload "$tag" --repo "$GITHUB_REPOSITORY" dl/SHA256SUMS --clobber
