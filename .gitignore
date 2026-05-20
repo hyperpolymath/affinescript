@@ -17,6 +17,8 @@ target/
 /build/
 /dist/
 /out/
+# dune-generated package install manifests (sibling to *.opam — regenerated on build)
+*.install
 # Idris2 build artifacts (nested, e.g. under formal-verification dirs)
 **/solo-core/build/
 
