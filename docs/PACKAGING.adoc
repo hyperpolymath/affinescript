@@ -12,21 +12,28 @@ toc::[]
 
 == JSR-publishable units (Deno/JSR-first)
 
-The JS runtime packages are JSR-publishable today. `deno publish
---dry-run` succeeds for both (verified during INT-04 prep):
-
-[cols="2,2,3"]
+[cols="2,2,1,3"]
 |===
-|Package |Spec |Notes
+|Package |Spec |Status |Notes
 
-|`packages/affine-js` |`@hyperpolymath/affine-js` |Loader + marshal +
-runtime + ownership accessor. Tests excluded via `publish.exclude`.
-|`affinescript-tea` |`@hyperpolymath/affinescript-tea` |TEA runtime.
-Depends on `@hyperpolymath/affine-js/loader` (import map) — see order.
+|`packages/affinescript-cli` |`@hyperpolymath/affinescript` |**LIVE
+0.1.2 (2026-05-20)** |The ADR-019 compiler shim. Cross-runtime (Deno
++ Bun + Node — only repo package with a documented runtime carve-out
+from the Deno-only policy). Licensed `MPL-2.0` (SPDX-recognised; the
+only non-PMPL package — see `.claude/CLAUDE.md` Runtime/TS Exemptions
++ #301 for the wider relicense discussion).
+|`packages/affine-js` |`@hyperpolymath/affine-js` |dry-run OK; not
+yet published |Loader + marshal + runtime + ownership accessor.
+Tests excluded via `publish.exclude`.
+|`affinescript-tea` |`@hyperpolymath/affinescript-tea` |dry-run OK;
+not yet published |TEA runtime. Depends on
+`@hyperpolymath/affine-js/loader` (import map) — see order.
 |===
 
-*Publish order is load-bearing*: `affine-js` **must** publish before
-`affinescript-tea` (the latter resolves `@hyperpolymath/affine-js/loader`).
+*Publish order is load-bearing for the JS-runtime pair*: `affine-js`
+**must** publish before `affinescript-tea` (the latter resolves
+`@hyperpolymath/affine-js/loader`). `affinescript-cli` has no JSR-side
+dependencies and publishes independently of either.
 
 `affinescript-dom` is AffineScript source (`.affine`), not a JS package
 — it is consumed by the compiler, not JSR; out of scope for JSR.
@@ -79,5 +86,32 @@ JSR/npm package. The one-way-door fork (#260) was decided
   producers):* Guix/Nix fetch-derivations; an npm tail only if an
   npm-native consumer needs it.
 
-`affinescript-lsp` distribution (INT-10, #282) consumes the shim;
-unblocked once a `v*` Release is cut and `pins.js` is finalised.
+`affinescript-lsp` distribution (INT-10, #282) consumes the shim.
+End-to-end live since 2026-05-20: v0.1.1 Release published (3 binaries
++ SHA256SUMS), `pins.js` finalised, shim 0.1.2 on JSR, LSP `SHIM_SPEC`
+points at `jsr:@hyperpolymath/affinescript@0.1.2`.
+
+=== First-time JSR publish gotchas
+
+The first publish of a new `@hyperpolymath/*` package trips five
+separate gates (in this order, each failing with an unhelpful error
+the next time round):
+
+. Claim the JSR scope (`@hyperpolymath` — one-time per scope, via
+  `https://jsr.io` sign-in).
+. Create the package record on JSR — `deno publish` errors *Following
+  packages don't exist…* until done.
+. Link a trusted GitHub repository at the package or scope level
+  (`https://jsr.io/@<scope>/<package>/settings`) — without it, OIDC
+  is `actorNotAuthorized`.
+. SPDX-recognised licence in `deno.json` — custom licences need the
+  `LicenseRef-*` prefix or a switch to a standard SPDX identifier
+  (the shim went the standard route with `MPL-2.0`).
+. Optional but recommended: add a sibling `mod.d.ts` AND a
+  `/// <reference types="./mod.d.ts" />` triple-slash comment in
+  `mod.js` so JSR fast-check finds the types. The `.d.ts` alone is
+  not enough — JSR doesn't auto-detect.
+
+Dry-run only catches step 4 and step 5; steps 2 and 3 fail at real
+publish time. Subsequent version bumps after the first publish need
+only the version-string change.
