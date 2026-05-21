@@ -112,6 +112,39 @@ fn main() -> Unit / IO {
 
 Contributions welcome! See [CONTRIBUTING.md](https://github.com/hyperpolymath/affinescript/blob/main/CONTRIBUTING.md)
 
+### Smoke testing the compiled extension
+
+The extension source of truth is [`src/extension.affine`](src/extension.affine);
+it compiles to [`out/extension.cjs`](out/extension.cjs) which is what VS Code
+loads. A headless smoke harness verifies the compiled `.cjs` against the
+acceptance criteria in
+[issue #139](https://github.com/hyperpolymath/affinescript/issues/139):
+activation, command registration + invocation, `restartLsp` cycling, and
+`deactivate` teardown.
+
+To run it locally:
+
+```bash
+cd editors/vscode
+npm install              # one-time: fetches @vscode/test-electron, mocha, glob
+xvfb-run npm test        # on Linux servers (or `npm test` on a desktop)
+```
+
+`@vscode/test-electron` downloads a pinned VS Code binary on first run, launches
+it with `--extensionDevelopmentPath` pointing at this directory, and runs the
+Mocha suite at [`test/suite/`](test/suite/) inside the extension host. The
+[`vscode-smoke`](../../.github/workflows/ci.yml) CI job runs the same harness
+under xvfb on every PR.
+
+Notes:
+
+- The harness covers the documented `showWarningMessage` short-circuit when
+  `affinescript-lsp` is not on `PATH`. Set `AFFINESCRIPT_LSP_PATH` to a real
+  binary if you want to exercise the LSP-attach branch end-to-end.
+- The Node-only runner is a documented carve-out from the repo's
+  "no Node.js / no Bun" policy (see `.claude/CLAUDE.md` → Runtime Exemptions).
+  Scope is strictly `editors/vscode/test/`; no production code adopts Node.
+
 ## License
 
 PMPL-1.0-or-later

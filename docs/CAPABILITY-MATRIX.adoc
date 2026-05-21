@@ -148,7 +148,11 @@ target spec is the separate `hyperpolymath/typed-wasm` repo.
 `--deno-esm` / `.deno.js`. Shipped + consumer-verified (ubicity).
 
 |Node-CJS |works |`lib/codegen_node.ml`; CJS shim, handle table, the
-`.affine` VS Code extension compiles through it.
+`.affine` VS Code extension compiles through it. Live-host smoke
+harness for the compiled extension landed via PR #317 / issue #139:
+`@vscode/test-electron` + Mocha under `editors/vscode/test/` runs in
+the `vscode-smoke` CI job, asserting activation, command registration,
+`restartLsp` cycling, and `deactivate` teardown.
 
 |Julia, JS, Rust, Lua |works (transpile) |`Module_loader.flatten_imports`
 inlines imported public fns; smoke-tested.
