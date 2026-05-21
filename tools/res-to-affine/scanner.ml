@@ -36,18 +36,27 @@ type finding = {
   excerpt : string;
 }
 
-(* ---- regexes, compiled once ---- *)
+(* ---- regexes, compiled once ----
+
+   The LESSONS.md anti-patterns these regexes target are *top-level*
+   shapes (module-load side effects, module-scoped mutable globals).
+   The two top-level regexes therefore anchor at column 0 to keep
+   in-function `let _ = X.foo(...)` (a normal "discard the return
+   value of a chained call" idiom) and intra-function `x := ...`
+   (normal local ref mutation) from generating noise. The trade-off
+   is that we miss module-load side effects nested inside a
+   `module X = { ... }` block, which Phase 2's AST walker recovers. *)
 
 let re_side_effect_import =
-  Str.regexp "^[ \t]*let[ \t]+_[ \t]*=[ \t]*[A-Z][a-zA-Z0-9_]*\\."
+  Str.regexp "^let[ \t]+_[ \t]*=[ \t]*[A-Z][a-zA-Z0-9_]*\\."
 
 let re_raw_js = Str.regexp_case_fold "%raw\\|\\[%bs\\.raw"
 
 let re_untyped_exn =
   Str.regexp
-    "Promise\\.catch\\|Js\\.Exn\\|[^a-zA-Z_]raise[ (]\\|[^a-zA-Z_]try[ {]"
+    "Promise\\.catch\\|Js\\.Exn\\|\\(^\\|[^a-zA-Z_]\\)raise[ (]\\|\\(^\\|[^a-zA-Z_]\\)try[ {]"
 
-let re_mutable_global = Str.regexp ":="
+let re_mutable_global = Str.regexp "^[a-zA-Z_][a-zA-Z0-9_]*[ \t]*:="
 
 let trim s =
   let n = String.length s in
