@@ -27,13 +27,30 @@ let write_file path contents =
   output_string oc contents;
   close_out oc
 
-let run input output_opt =
+type engine = Scanner_engine | Walker_engine
+
+let engine_label = function
+  | Scanner_engine -> "scanner"
+  | Walker_engine  -> "walker"
+
+let run engine grammar_dir input output_opt =
   if not (Sys.file_exists input) then begin
     Format.eprintf "res-to-affine: input not found: %s@." input;
     exit 2
   end;
   let source  = read_file input in
-  let findings = Scanner.scan source in
+  let findings =
+    match engine with
+    | Scanner_engine -> Scanner.scan source
+    | Walker_engine  ->
+        (try Walker.scan ~grammar_dir ~path:input ~source with
+         | Failure msg ->
+             Format.eprintf "res-to-affine: %s@." msg;
+             Format.eprintf
+               "res-to-affine: falling back to scanner engine for %s@."
+               input;
+             Scanner.scan source)
+  in
   let module_name = Emitter.module_name_of_path input in
   let out =
     Emitter.emit
@@ -48,9 +65,10 @@ let run input output_opt =
   | Some path ->
       write_file path out;
       Format.printf
-        "res-to-affine: %d finding%s → %s@."
+        "res-to-affine: %d finding%s [%s] → %s@."
         (List.length findings)
         (if List.length findings = 1 then "" else "s")
+        (engine_label engine)
         path
 
 (* ---- cmdliner wiring ---- *)
@@ -67,11 +85,36 @@ let output_arg =
     value & opt (some string) None &
     info ["o"; "output"] ~docv:"FILE" ~doc)
 
+let engine_arg =
+  let doc =
+    "Detection engine: 'scanner' (default, line-regex, Phase 1) or \
+     'walker' (tree-sitter AST, Phase 2). The walker requires the \
+     vendored grammar to be built — see `just install-grammar`. \
+     Falls back to 'scanner' if the grammar is missing or \
+     tree-sitter parse fails."
+  in
+  Cmdliner.Arg.(
+    value & opt
+      (enum ["scanner", Scanner_engine; "walker", Walker_engine])
+      Scanner_engine &
+    info ["engine"] ~docv:"ENGINE" ~doc)
+
+let grammar_dir_arg =
+  let doc =
+    "Path to the generated tree-sitter-rescript grammar directory \
+     (the output of `just install-grammar`). Only consulted when \
+     `--engine=walker`. Defaults to `tools/vendor/tree-sitter-rescript`."
+  in
+  Cmdliner.Arg.(
+    value & opt string Walker.default_grammar_dir &
+    info ["grammar-dir"] ~docv:"DIR" ~doc)
+
 let cmd =
   let doc = "Emit an AffineScript skeleton from a ReScript source file." in
   let info = Cmdliner.Cmd.info "res-to-affine" ~version:"0.1.0" ~doc in
   let term =
-    Cmdliner.Term.(const run $ input_arg $ output_arg)
+    Cmdliner.Term.(
+      const run $ engine_arg $ grammar_dir_arg $ input_arg $ output_arg)
   in
   Cmdliner.Cmd.v info term
 

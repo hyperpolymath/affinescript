@@ -16,11 +16,14 @@ and the broader `idaptik` migration.
 ## Usage
 
 ```sh
-# print skeleton to stdout
+# print skeleton to stdout (default: regex scanner)
 dune exec tools/res-to-affine/main.exe -- path/to/Foo.res
 
 # or write to a file
 dune exec tools/res-to-affine/main.exe -- path/to/Foo.res -o Foo.affine
+
+# opt into the Phase-2 tree-sitter AST walker
+dune exec tools/res-to-affine/main.exe -- --engine=walker path/to/Foo.res
 ```
 
 The output is **not compilable**. It is a starting point for the human:
@@ -28,6 +31,24 @@ a quoted copy of the original sits at the bottom; the top carries a
 migration-considerations block; the middle is a `module` stub with
 `TODO`s. The human picks the decomposition; the tool surfaces what
 needs re-decomposing.
+
+### Detection engines
+
+| `--engine` | Implementation | When to use |
+|---|---|---|
+| `scanner` (default) | Line-anchored regex over the raw source (`scanner.ml`). | Default — no prerequisites, ships with the binary. |
+| `walker` | Shells out to the vendored `tree-sitter` CLI, walks the AST (`walker.ml`). | When the regex's false-positive surface matters — eliminates the `let _ = chained.call()` class of misfire that the column-0 anchor in #319 had to band-aid. |
+
+The walker requires the vendored `tree-sitter-rescript` grammar to be
+built first:
+
+```sh
+just install-grammar
+# or: ./editors/tree-sitter-rescript/scripts/install.sh
+```
+
+If the grammar isn't built or the `tree-sitter` CLI isn't on PATH, the
+walker auto-falls-back to the scanner and prints the reason to stderr.
 
 ## What gets flagged (Phase 1)
 
@@ -47,6 +68,24 @@ Deferred to Phase 2 (need real AST):
 - **inline lambda callback record** — N ≥ 3 `~handler: (...) =>` lambdas
   inside one record literal (collapse to a row-polymorphic record).
 - **oversized function** — function body > ~50 LOC (decompose).
+
+### Walker coverage (Phase 2)
+
+| Anti-pattern | Scanner (regex) | Walker (AST) |
+|---|---|---|
+| `side-effect-import` | ✓ | ✓ — Phase 2b |
+| `raw-js` | ✓ | — Phase 2c |
+| `untyped-exception` | ✓ | — Phase 2c |
+| `mutable-global` | ✓ | — Phase 2c |
+| inline lambda callback record | — | — Phase 2c |
+| oversized function | — | — Phase 2c |
+
+The walker improves on the regex by being structural: it only reports
+`side-effect-import` when `let _ = Mod.value` sits at module top level
+(direct child of `source_file` or a `module_declaration` body), not when
+the same shape appears inside a function body — where it is normally a
+ReScript "discard the return value of a chained call" idiom, not a
+module-load side effect.
 
 ## Why a skeleton and not a transliteration
 
