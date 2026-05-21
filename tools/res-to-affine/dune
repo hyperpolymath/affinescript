@@ -9,5 +9,5 @@
 
 (library
  (name res_to_affine)
- (modules scanner emitter)
- (libraries str))
+ (modules scanner emitter walker)
+ (libraries str unix))
