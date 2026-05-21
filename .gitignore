@@ -98,6 +98,7 @@ htmlcov/
 # Local-only build workaround (see file header); never committed.
 /dune-workspace
 packages/affinescript-cli/deno.lock
+packages/affine-js/deno.lock
 
 # ADR-015 S3: fetch-pinned WASI adapter (provisioned, not committed)
 tools/vendor/
