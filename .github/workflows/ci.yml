@@ -149,7 +149,12 @@ jobs:
         run: npm install -g tree-sitter-cli@^0.25.0
 
       - name: Build pinned tree-sitter-rescript grammar
-        run: just install-grammar
+        # Direct script invocation rather than `just install-grammar` —
+        # GitHub Actions runners do not ship `just` preinstalled, and
+        # there is no other recipe used in this workflow that justifies
+        # adding a setup step for it. The justfile recipe still exists
+        # for local developer ergonomics; both call the same script.
+        run: ./editors/tree-sitter-rescript/scripts/install.sh
 
       - name: Verify generated parser
         # `tree-sitter generate` is supposed to drop src/parser.c into
