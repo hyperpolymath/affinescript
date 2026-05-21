@@ -123,6 +123,16 @@ regen-idaptik-wasm:
     dune exec affinescript -- tea-bridge -o ../../idaptik/public/assets/wasm/titlescreen.wasm
     @echo "[AffineTEA] titlescreen.wasm regenerated"
 
+# ── Tooling (manifest-driven dev deps) ────────────────────────────────────────
+
+# Fetch + build the pinned tree-sitter-rescript grammar used by the
+# `.res → .affine` migration assistant (#57 Phase 2). Output is written
+# to `tools/vendor/tree-sitter-rescript/` (gitignored). Requires the
+# `tree-sitter` CLI on PATH — install via `cargo install tree-sitter-cli`
+# (Rust-native, repo-preferred) or `npm install -g tree-sitter-cli`.
+install-grammar:
+    ./editors/tree-sitter-rescript/scripts/install.sh
+
 # ── Validation ────────────────────────────────────────────────────────────────
 
 # Verify golden path end-to-end

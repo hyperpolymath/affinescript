@@ -15,7 +15,9 @@ BUILD_DIR="${REPO_ROOT}/tools/vendor/tree-sitter-rescript"
 
 if ! command -v tree-sitter >/dev/null 2>&1; then
   echo "error: tree-sitter CLI not found on PATH" >&2
-  echo "       install via: npm install -g tree-sitter-cli" >&2
+  echo "       install via either:" >&2
+  echo "         cargo install tree-sitter-cli   (Rust-native, repo-preferred)" >&2
+  echo "         npm install -g tree-sitter-cli  (Node-based, also fine)" >&2
   exit 2
 fi
 

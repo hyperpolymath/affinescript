@@ -119,3 +119,68 @@ jobs:
         # Headless display required because @vscode/test-electron launches
         # the real Electron-based VS Code binary.
         run: xvfb-run -a npm test
+
+  migration-assistant:
+    # Build pinned tree-sitter-rescript grammar consumed by the
+    # `.res → .affine` migration assistant (#57 Phase 2). The grammar
+    # is manifest-vendored (`editors/tree-sitter-rescript/package.json`)
+    # so this job exists to (a) verify the install script and pinned
+    # commit still build cleanly and (b) gate `tools/res-to-affine/`
+    # walker work that depends on the generated parser.
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v4
+        with:
+          node-version: "20"
+
+      - name: Install tree-sitter CLI
+        # npm install of tree-sitter-cli is the fast CI path (~5 s vs.
+        # ~5 min for `cargo install tree-sitter-cli`). The repo's
+        # preferred local path is cargo (see editors/tree-sitter-rescript/
+        # README.md) — both produce the same `tree-sitter` binary that
+        # the install script invokes via `command -v`. The version
+        # tracks `tree-sitter-rescript`'s package.json devDependency
+        # range.
+        run: npm install -g tree-sitter-cli@^0.25.0
+
+      - name: Build pinned tree-sitter-rescript grammar
+        # Direct script invocation rather than `just install-grammar` —
+        # GitHub Actions runners do not ship `just` preinstalled, and
+        # there is no other recipe used in this workflow that justifies
+        # adding a setup step for it. The justfile recipe still exists
+        # for local developer ergonomics; both call the same script.
+        run: ./editors/tree-sitter-rescript/scripts/install.sh
+
+      - name: Verify generated parser
+        # `tree-sitter generate` is supposed to drop src/parser.c into
+        # the cloned grammar. If it didn't, the install path is broken
+        # and Phase-2 walker work cannot proceed; fail loudly here
+        # rather than at the OCaml link step in a downstream PR.
+        run: |
+          test -f tools/vendor/tree-sitter-rescript/src/parser.c \
+            || { echo "error: parser.c not produced by tree-sitter generate" >&2; exit 1; }
+          echo "parser.c size: $(wc -c < tools/vendor/tree-sitter-rescript/src/parser.c) bytes"
+
+      - name: Smoke-parse a sample .res file
+        # Sanity-check that the grammar actually parses a non-trivial
+        # ReScript source. Picks the existing res-to-affine test fixture
+        # so any drift in the pinned commit's syntactic surface area
+        # surfaces here rather than at walker-rule writing time.
+        run: |
+          shopt -s nullglob
+          fixtures=(tools/res-to-affine/test/fixtures/*.res)
+          if [ ${#fixtures[@]} -eq 0 ]; then
+            echo "no .res fixtures to smoke-parse; skipping"
+            exit 0
+          fi
+          tree-sitter parse \
+            --quiet \
+            "${fixtures[0]}" \
+            --paths tools/vendor/tree-sitter-rescript \
+            > /dev/null
+          echo "smoke-parsed: ${fixtures[0]}"
