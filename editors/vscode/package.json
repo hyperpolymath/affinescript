@@ -139,10 +139,14 @@
     "watch": "echo 'watch mode not implemented for AffineScript source — re-run npm run compile'",
     "guard": "../../tools/check-no-extension-ts.sh",
     "package": "vsce package",
-    "publish": "vsce publish"
+    "publish": "vsce publish",
+    "test": "node ./test/runTest.js"
   },
   "devDependencies": {
     "@types/vscode": "^1.80.0",
+    "@vscode/test-electron": "^2.4.1",
+    "glob": "^10.4.5",
+    "mocha": "^10.7.3",
     "vsce": "^2.15.0"
   },
   "dependencies": {

@@ -88,11 +88,12 @@ The 5 external references to `affinescript-deno-test/` (CI workflow, status docs
 
 ### Runtime Exemptions (Approved)
 
-The "no Node.js / no Bun" rules in the language policy table have one approved exemption in this repo. Adding to this list requires explicit user approval — same gate as the TypeScript exemptions above.
+The "no Node.js / no Bun" rules in the language policy table have two approved exemptions in this repo. Adding to this list requires explicit user approval — same gate as the TypeScript exemptions above.
 
 | Path | Banned thing(s) used | Rationale | Unblock condition |
 |---|---|---|---|
 | `packages/affinescript-cli/mod.js` | `process.platform`/`process.arch`/`process.env`, `node:fs/promises`, `node:child_process`, `Bun.spawn`, `Bun.file`, `Bun.write` | The shim is the **compiler-distribution front door**. Its consumers — LSP installers, IDE extensions, CI scripts wiring AffineScript into a build pipeline — overwhelmingly live in Node and Bun ecosystems, not Deno. Forcing them to install Deno solely to fetch+verify+exec a binary defeats the shim's "ergonomic install" purpose. The branches are guarded by single-line runtime detection at module load; nothing else in the repo depends on this pattern. | None — this is the intended steady state. The shim's whole job is to be runtime-agnostic. |
+| `editors/vscode/test/**/*.js` | `node:*`, Mocha, `@vscode/test-electron` (Electron-based VS Code download + launch) | The **in-editor smoke harness** for issue #139 — loads the compiled `out/extension.cjs` in a real VS Code extension host and asserts activation, command registration, `restartLsp` cycling, and `deactivate` teardown. The VS Code extension host is npm/Node-native; `@vscode/test-electron` (the official runner) downloads a real Electron VS Code and launches it under `xvfb-run`. No Deno equivalent exists, and the test cannot be expressed in any other runtime. Scope is strictly `editors/vscode/test/` — no production code uses Node. | None — this is the intended steady state, paralleling the `affine-vscode-publish.yml` workflow that already uses npm at publish time (#104). |
 
 Browsers and Cloudflare Workers are NOT supported and never will be (the shim's purpose — fetch, save to disk, exec a native binary — cannot be done in a sandboxed JS runtime). The JSR runtime-compatibility checkboxes for this package should be: Deno ✅, Bun ✅, Node ✅, Workers ❌, Browsers ❌.
 
