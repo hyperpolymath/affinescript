@@ -1,0 +1,73 @@
+{
+  "schema_version": 1,
+  "tool": "res-to-affine",
+  "tool_phase": 1,
+  "run_date": "2026-05-21",
+  "issue": "https://github.com/hyperpolymath/affinescript/issues/57",
+  "merged_pr": "https://github.com/hyperpolymath/affinescript/pull/314",
+  "corpus": {
+    "total_files": 491,
+    "by_repo": {
+      "idaptik": 475,
+      "gitbot-fleet": 16
+    },
+    "exclusions": [
+      "**/node_modules/**",
+      "**/_build/**",
+      "**/lib/ocaml/**",
+      "**/lib/bs/**"
+    ]
+  },
+  "before_regex_fix": {
+    "total_markers": 2146,
+    "files_with_markers": 216,
+    "by_kind": {
+      "side-effect-import": 1181,
+      "mutable-global": 653,
+      "raw-js": 198,
+      "untyped-exception": 114
+    }
+  },
+  "after_regex_fix": {
+    "total_markers": 348,
+    "files_with_markers": 94,
+    "noise_reduction_pct": 84,
+    "by_kind": {
+      "raw-js": 198,
+      "untyped-exception": 114,
+      "side-effect-import": 36,
+      "mutable-global": 0
+    }
+  },
+  "regex_changes": {
+    "re_side_effect_import": {
+      "old": "^[ \\t]*let[ \\t]+_[ \\t]*=[ \\t]*[A-Z][a-zA-Z0-9_]*\\.",
+      "new": "^let[ \\t]+_[ \\t]*=[ \\t]*[A-Z][a-zA-Z0-9_]*\\.",
+      "rationale": "Column-0 anchor; in-function `let _ = X.f(...)` is normal ReScript idiom, not the LESSONS.md module-load anti-pattern."
+    },
+    "re_mutable_global": {
+      "old": ":=",
+      "new": "^[a-zA-Z_][a-zA-Z0-9_]*[ \\t]*:=",
+      "rationale": "Column-0 anchor; intra-function `counter := ...` is local mutation, not module-scoped."
+    },
+    "re_untyped_exn": {
+      "old": "Promise\\.catch\\|Js\\.Exn\\|[^a-zA-Z_]raise[ (]\\|[^a-zA-Z_]try[ {]",
+      "new": "Promise\\.catch\\|Js\\.Exn\\|\\(^\\|[^a-zA-Z_]\\)raise[ (]\\|\\(^\\|[^a-zA-Z_]\\)try[ {]",
+      "rationale": "Old form required a char before `raise`/`try`; column-0 occurrences were missed."
+    }
+  },
+  "top_hotspots": [
+    { "markers": 31, "file": "idaptik/.affinescript-src/packages/affine-res/src/AffineScriptValue.res", "dominant_kind": "raw-js" },
+    { "markers": 29, "file": "idaptik/idaptik-ums/src/App.res", "dominant_kind": "raw-js" },
+    { "markers": 24, "file": "idaptik/src/Main.res", "dominant_kind": "side-effect-import" },
+    { "markers": 15, "file": "idaptik/src/app/screens/training/TrainingBase.res", "dominant_kind": "raw-js" },
+    { "markers": 13, "file": "idaptik/src/app/screens/WorldBuilder.res", "dominant_kind": "mixed" }
+  ],
+  "phase_2_followups": [
+    "Block-comment (`/* … */`) awareness in `is_codeish`",
+    "Pair top-level `let x = ref(...)` with `x := ...`",
+    "Nested-module side-effect detection via AST",
+    "Callback-record + oversized-function detection (already scoped)",
+    "String-literal anti-pattern filtering"
+  ]
+}

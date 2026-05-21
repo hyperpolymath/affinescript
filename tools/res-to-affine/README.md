@@ -104,6 +104,14 @@ where re-decomposition is genuinely required.
 
 Phase 3 is when the tool earns its keep on idaptik's 542 files.
 
+## Corpus run
+
+[`CORPUS-RUN.md`](CORPUS-RUN.md) records the first end-to-end run
+against the estate's 491 deduplicated `.res` files. It documents the
+false-positive sources that the corpus surfaced (and the regex fixes
+that landed alongside it) plus the Phase-2 follow-ups it identified.
+A machine-readable sidecar lives at [`CORPUS-RUN.json`](CORPUS-RUN.json).
+
 ## Testing
 
 ```sh
