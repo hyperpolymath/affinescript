@@ -15,7 +15,7 @@ language-agnostic target (`hyperpolymath/typed-wasm`), not an AffineScript
 subsystem — see link:docs/ECOSYSTEM.adoc[docs/ECOSYSTEM.adoc].
 ====
 
-License: PMPL-1.0-or-later +
+License: MPL-2.0 +
 Built alongside Gossamer, typed-wasm, and Burble
 
 Write software where the compiler helps enforce resource lifecycles, protocol states, and effect boundaries before bugs become runtime failures.

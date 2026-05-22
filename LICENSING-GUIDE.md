@@ -27,7 +27,7 @@ This document clarifies the licensing structure for the AffineScript ecosystem, 
 
 ---
 
-### 2. **Core Technology (PMPL-1.0-or-later)**
+### 2. **Core Technology (MPL-2.0)**
 **Applies to:** AffineScript compiler, runtime, and development tools
 
 **Purpose:** Provide permissive licensing for language technology while maintaining ethical use requirements
@@ -69,7 +69,7 @@ This document clarifies the licensing structure for the AffineScript ecosystem, 
 ```mermaid
 graph TD
     A[Game Content] -->|AGPL-3.0-or-later| B[Open Source Game]
-    C[Core Technology] -->|PMPL-1.0-or-later| D[AffineScript Compiler]
+    C[Core Technology] -->|MPL-2.0| D[AffineScript Compiler]
     E[Foundational Tech] -->|PMPL-1.0/MPL-2.0| F[Gossamer/Burble]
     
     B -->|Uses| D
@@ -108,7 +108,7 @@ graph TD
 
 ---
 
-### PMPL-1.0-or-later (Core Technology)
+### MPL-2.0 (Core Technology)
 
 **Full Name:** Palimpsest Mutual Public License 1.0 or later
 
@@ -138,7 +138,7 @@ graph TD
 (* SPDX-FileCopyrightText: 2026 Palimpsest Stewardship Council *)
 (*
  * This file is part of AffineScript Core Technology
- * Licensed under PMPL-1.0-or-later (based on MPL-2.0)
+ * Licensed under MPL-2.0 (based on MPL-2.0)
  *)
 ```
 
@@ -199,7 +199,7 @@ AffineScript: The game developer's secret weapon. AGPL-3.0 game content with PMP
 - Community-driven development
 - Ensured accessibility for all players
 
-💻 **Core Technology** (PMPL-1.0-or-later)
+💻 **Core Technology** (MPL-2.0)
 - Affine-type programming language
 - Compiler-proven correctness
 - WebAssembly compilation
@@ -423,7 +423,7 @@ fn is_terminal() -> bool {
 
 ### License Identification
 - **SPDX AGPL-3.0:** `AGPL-3.0-or-later`
-- **SPDX PMPL-1.0:** `PMPL-1.0-or-later`
+- **SPDX PMPL-1.0:** `MPL-2.0`
 - **SPDX MPL-2.0:** `MPL-2.0`
 
 ### Compliance Tools
@@ -462,5 +462,5 @@ Foundational Tech (PMPL/MPL-2.0) → Ethical infrastructure
 **Version:** Alpha-1
 **Status:** Complete licensing documentation
 
-SPDX-License-Identifier: AGPL-3.0-or-later AND PMPL-1.0-or-later AND MPL-2.0
+SPDX-License-Identifier: AGPL-3.0-or-later AND MPL-2.0 AND MPL-2.0
 SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell and contributors

@@ -21,16 +21,16 @@ Game Distribution
 │   ├── textures/          (AGPL-3.0-or-later)
 │   ├── sounds/            (AGPL-3.0-or-later)
 │   └── scripts/           (AGPL-3.0-or-later)
-├── affinescript/          (PMPL-1.0-or-later - Compiler)
-│   ├── compiler.wasm      (PMPL-1.0-or-later)
-│   ├── stdlib/            (PMPL-1.0-or-later)
-│   └── tools/             (PMPL-1.0-or-later)
-├── gossamer/             (PMPL-1.0-or-later - Runtime)
-│   └── runtime.wasm       (PMPL-1.0-or-later)
-├── burble/               (PMPL-1.0-or-later - Voice)
-│   └── client.wasm        (PMPL-1.0-or-later)
+├── affinescript/          (MPL-2.0 - Compiler)
+│   ├── compiler.wasm      (MPL-2.0)
+│   ├── stdlib/            (MPL-2.0)
+│   └── tools/             (MPL-2.0)
+├── gossamer/             (MPL-2.0 - Runtime)
+│   └── runtime.wasm       (MPL-2.0)
+├── burble/               (MPL-2.0 - Voice)
+│   └── client.wasm        (MPL-2.0)
 ├── LICENSE-GAME          (AGPL-3.0-or-later)
-├── LICENSE-TECH          (PMPL-1.0-or-later)
+├── LICENSE-TECH          (MPL-2.0)
 └── README.md             (Dual licensing explanation)
 ```
 
@@ -86,7 +86,7 @@ All game-specific content including:
 **Purpose:** Ensure game modifications remain open
 **File:** [LICENSE-AGPL-3.0](LICENSE-AGPL-3.0)
 
-### Core Technology (PMPL-1.0-or-later)
+### Core Technology (MPL-2.0)
 All compiler and runtime technology including:
 - AffineScript compiler
 - Gossamer runtime
@@ -142,15 +142,15 @@ Add proper license headers:
   "dependencies": {
     "affinescript-compiler": {
       "version": "0.1.0-alpha.1",
-      "license": "PMPL-1.0-or-later"
+      "license": "MPL-2.0"
     },
     "gossamer-runtime": {
       "version": "0.1.0-alpha.1",
-      "license": "PMPL-1.0-or-later"
+      "license": "MPL-2.0"
     },
     "burble-client": {
       "version": "0.1.0-alpha.1",
-      "license": "PMPL-1.0-or-later"
+      "license": "MPL-2.0"
     }
   }
 }
@@ -165,10 +165,10 @@ Add proper license headers:
 Game-Player-Package.zip
 ├── game.wasm              (AGPL-3.0-or-later)
 ├── assets/                (AGPL-3.0-or-later)
-├── gossamer.wasm          (PMPL-1.0-or-later - Runtime)
-├── burble.wasm            (PMPL-1.0-or-later - Voice)
+├── gossamer.wasm          (MPL-2.0 - Runtime)
+├── burble.wasm            (MPL-2.0 - Voice)
 ├── LICENSE-GAME          (AGPL-3.0-or-later)
-├── LICENSE-TECH          (PMPL-1.0-or-later)
+├── LICENSE-TECH          (MPL-2.0)
 └── README.md             (Licensing explanation)
 ```
 
@@ -178,20 +178,20 @@ Game-Developer-Package.zip
 ├── game/                  (AGPL-3.0-or-later)
 │   ├── game.wasm          (AGPL-3.0-or-later)
 │   └── assets/            (AGPL-3.0-or-later)
-├── tools/                 (PMPL-1.0-or-later)
-│   ├── affinescript/      (PMPL-1.0-or-later)
-│   │   ├── compiler.wasm  (PMPL-1.0-or-later)
-│   │   ├── stdlib/        (PMPL-1.0-or-later)
-│   │   └── tools/         (PMPL-1.0-or-later)
-│   ├── gossamer/         (PMPL-1.0-or-later)
-│   │   └── runtime.wasm   (PMPL-1.0-or-later)
-│   └── burble/           (PMPL-1.0-or-later)
-│       └── client.wasm    (PMPL-1.0-or-later)
+├── tools/                 (MPL-2.0)
+│   ├── affinescript/      (MPL-2.0)
+│   │   ├── compiler.wasm  (MPL-2.0)
+│   │   ├── stdlib/        (MPL-2.0)
+│   │   └── tools/         (MPL-2.0)
+│   ├── gossamer/         (MPL-2.0)
+│   │   └── runtime.wasm   (MPL-2.0)
+│   └── burble/           (MPL-2.0)
+│       └── client.wasm    (MPL-2.0)
 ├── docs/                  (Dual licensed)
 │   ├── game-docs/        (AGPL-3.0-or-later)
-│   └── tech-docs/        (PMPL-1.0-or-later)
+│   └── tech-docs/        (MPL-2.0)
 ├── LICENSE-GAME          (AGPL-3.0-or-later)
-├── LICENSE-TECH          (PMPL-1.0-or-later)
+├── LICENSE-TECH          (MPL-2.0)
 └── README.md             (Complete licensing guide)
 ```
 
@@ -227,7 +227,7 @@ Game-Developer-Package.zip
 
 ### For Game Distribution
 - [ ] ✅ Game content licensed AGPL-3.0-or-later
-- [ ] ✅ Technology licensed PMPL-1.0-or-later
+- [ ] ✅ Technology licensed MPL-2.0
 - [ ] ✅ Separate LICENSE files included
 - [ ] ✅ Source code available (AGPL requirement)
 - [ ] ✅ Modifications tracked (AGPL requirement)
@@ -262,7 +262,7 @@ This game uses a **dual licensing model**:
 - Ensures game modifications remain open source
 - Required for players and developers
 
-**Core Technology:** PMPL-1.0-or-later  
+**Core Technology:** MPL-2.0  
 - AffineScript compiler and runtime
 - Gossamer and Burble systems
 - Development tools and libraries
@@ -299,7 +299,7 @@ AffineScript uses a dual licensing approach to balance open game development wit
 - Network use must provide source
 - License and copyright notices preserved
 
-### PMPL-1.0-or-later (Core Technology)
+### MPL-2.0 (Core Technology)
 
 **Applies to:**
 - AffineScript compiler
@@ -397,7 +397,7 @@ When contributing to AffineScript, please note:
 - Modifications must be shared
 
 **Technology Contributions:**
-- Licensed under PMPL-1.0-or-later
+- Licensed under MPL-2.0
 - Permissive licensing
 - Can be used in proprietary software
 
@@ -439,13 +439,13 @@ game = {
 
 runtime = {
   path = "runtime",
-  license = "PMPL-1.0-or-later",
+  license = "MPL-2.0",
   components = ["gossamer", "burble"]
 }
 
 compiler = {
   path = "compiler",
-  license = "PMPL-1.0-or-later",
+  license = "MPL-2.0",
   optional = true,
   dev_only = true
 }
@@ -549,5 +549,5 @@ Runtime Distribution (PMPL):
 
 **Result:** Clear AGPL licensing for game content with PMPL licensing for core technology, enabling open game development while maintaining permissive tooling licenses.
 
-SPDX-License-Identifier: AGPL-3.0-or-later AND PMPL-1.0-or-later
+SPDX-License-Identifier: AGPL-3.0-or-later AND MPL-2.0
 SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell

@@ -237,5 +237,5 @@ For privacy concerns or consent management:
 
 ## License
 
-Security configuration: PMPL-1.0-or-later
+Security configuration: MPL-2.0
 Documentation: CC-BY-SA-4.0

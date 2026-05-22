@@ -27,8 +27,8 @@ IDE: Zed, Helix, VSCode
 /* REPOSITORY */
 
 Repository: https://github.com/hyperpolymath/affinescript
-License: PMPL-1.0-or-later
-Documentation: PMPL-1.0-or-later preferred; MPL-2.0 where required
+License: MPL-2.0
+Documentation: MPL-2.0 preferred; MPL-2.0 where required
 Issues: https://github.com/hyperpolymath/affinescript/issues
 Security: https://github.com/hyperpolymath/affinescript/security
 

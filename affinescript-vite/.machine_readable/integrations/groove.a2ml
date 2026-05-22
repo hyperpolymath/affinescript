@@ -1,4 +1,4 @@
-; SPDX-License-Identifier: PMPL-1.0-or-later
+; SPDX-License-Identifier: MPL-2.0
 ; Groove Protocol Manifest — declares API surfaces this project exposes.
 ;
 ; Used by V-triple connectors and the Groove bridge for snap-on/snap-off

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: PMPL-1.0-or-later
+# SPDX-License-Identifier: MPL-2.0
 # Copyright (c) {{CURRENT_YEAR}} hyperpolymath (hyperpolymath) <j.d.a.jewell@open.ac.uk>
 #
 # Nix flake for AffineScript-Vite
@@ -160,7 +160,7 @@
           meta = with pkgs.lib; {
             description = "{{PROJECT_DESCRIPTION}}";
             homepage = "https://github.com/hyperpolymath/AffineScript-Vite";
-            license = licenses.mpl20; # PMPL-1.0-or-later extends MPL-2.0
+            license = licenses.mpl20; # MPL-2.0 extends MPL-2.0
             maintainers = [];
             platforms = [ "x86_64-linux" "aarch64-linux" ];
           };

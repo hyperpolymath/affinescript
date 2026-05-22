@@ -30,8 +30,8 @@
 - ✅ **Zero-Cost Abstractions**: Type safety erased at compile time
 
 ### Ecosystem Integration
-- ✅ **Gossamer**: Resource-safe desktop apps (PMPL-1.0-or-later)
-- ✅ **Burble**: Low-latency voice comms (PMPL-1.0-or-later)
+- ✅ **Gossamer**: Resource-safe desktop apps (MPL-2.0)
+- ✅ **Burble**: Low-latency voice comms (MPL-2.0)
 - ✅ **Tree-sitter Grammar**: Advanced syntax highlighting
 - ✅ **Language Server**: IDE integration
 
@@ -59,7 +59,7 @@
 
 ## 📦 What's Included
 
-### Core Technology (PMPL-1.0-or-later)
+### Core Technology (MPL-2.0)
 - AffineScript compiler (OCaml backend)
 - WebAssembly code generator
 - Tree-sitter grammar
@@ -114,7 +114,7 @@ dune exec affinescript -- compile examples/hello.affine -o hello.wasm
 ## 📝 Licensing
 
 ### Core Technology
-**PMPL-1.0-or-later** - Palimpsest Mutual Public License
+**MPL-2.0** - Palimpsest Mutual Public License
 - Covers: Compiler, tooling, standard library
 - Permissive with ethical use requirements
 - Quantum-safe provenance tracking
@@ -209,8 +209,8 @@ fn game_loop() -> () / IO {
 **Discussions**: https://github.com/hyperpolymath/affinescript/discussions
 
 **Related Projects:**
-- Gossamer: https://github.com/hyperpolymath/gossamer (PMPL-1.0-or-later)
-- Burble: https://github.com/hyperpolymath/burble (PMPL-1.0-or-later)
+- Gossamer: https://github.com/hyperpolymath/gossamer (MPL-2.0)
+- Burble: https://github.com/hyperpolymath/burble (MPL-2.0)
 
 ---
 

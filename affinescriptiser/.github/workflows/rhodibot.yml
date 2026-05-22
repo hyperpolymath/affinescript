@@ -86,7 +86,7 @@ jobs:
           # --- 4. Fix SPDX headers in dotfiles ---
           for dotfile in .gitignore .gitattributes .editorconfig; do
             if [ -f "$dotfile" ] && grep -q "AGPL-3.0" "$dotfile" 2>/dev/null; then
-              sed -i 's/AGPL-3.0-or-later/PMPL-1.0-or-later/g; s/AGPL-3.0/PMPL-1.0-or-later/g' "$dotfile"
+              sed -i 's/AGPL-3.0-or-later/MPL-2.0/g; s/AGPL-3.0/MPL-2.0/g' "$dotfile"
               FIXES="$FIXES\n- Fixed SPDX header in \`$dotfile\` (AGPL → PMPL)"
               CHANGED=true
             fi

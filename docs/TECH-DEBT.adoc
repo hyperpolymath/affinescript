@@ -212,7 +212,7 @@ fast-check). `@hyperpolymath/affine-js` + `@hyperpolymath/affinescript-tea`
 remain dry-run-OK / not-yet-dispatched.  Compiler version-string
 drift fixed via #297/#300 (single source of truth `lib/version.ml`
 + release.yml tag-time bake step — v0.1.1 binary now self-reports
-`0.1.1`).  Repo-wide SPDX surface relicensed PMPL-1.0-or-later →
+`0.1.1`).  Repo-wide SPDX surface relicensed MPL-2.0 →
 MPL-2.0 (#301/#304; PMPL preserved as the narrative-preferred
 licence in root `LICENSE`).
 |INT-07 |`affinescript-tea` runtime |S2 |#182 runtime + run loop shipped

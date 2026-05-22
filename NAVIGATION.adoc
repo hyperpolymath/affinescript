@@ -12,7 +12,7 @@ This guide helps you navigate the AffineScript repository structure.
 |File/Directory |Purpose
 
 |**README.adoc** |Project overview and introduction
-|**LICENSE** |PMPL-1.0-or-later license text
+|**LICENSE** |MPL-2.0 license text
 |**STATE.scm** |Current project state and progress
 |===
 

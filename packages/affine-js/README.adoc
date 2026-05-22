@@ -224,5 +224,5 @@ Tag constants are exported from `@hyperpolymath/affine-js/runtime` as `AFFINE_TA
 
 == License
 
-PMPL-1.0-or-later.
+MPL-2.0.
 See link:../../LICENSE[LICENSE] at the repository root.

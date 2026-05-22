@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: PMPL-1.0-or-later
+# SPDX-License-Identifier: MPL-2.0
 # OpenSSF Best Practices compliance gate — blocks PRs and pushes that lack
 # required files or still contain unfilled placeholder tokens.
 name: OpenSSF Compliance

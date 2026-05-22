@@ -6,7 +6,7 @@
     ".": "./mod.ts",
     "./cli": "./cli.ts"
   },
-  "license": "PMPL-1.0-or-later",
+  "license": "MPL-2.0",
   "imports": {
     "@hyperpolymath/affine-js": "../../nextgen-languages/affinescript/packages/affine-js/mod.js"
   },

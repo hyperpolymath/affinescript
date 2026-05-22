@@ -211,6 +211,6 @@ the harness sheds them.
 
 == License
 
-PMPL-1.0-or-later. See the repository root LICENSE file.
+MPL-2.0. See the repository root LICENSE file.
 Legal fallback: MPL-2.0 (automatic, per the hyperpolymath License Policy
 Rule 2 in `~/.claude/CLAUDE.md`).

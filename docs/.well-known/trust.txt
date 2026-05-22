@@ -23,7 +23,7 @@ Consent Management: Consent-Aware HTTP (cookie-based)
 
 # === Transparency ===
 Open Source: Yes
-License: PMPL-1.0-or-later (https://palimpsest.spdx.dev)
+License: MPL-2.0 (https://palimpsest.spdx.dev)
 Source Code: https://github.com/hyperpolymath/affinescript
 Issue Tracker: https://github.com/hyperpolymath/affinescript/issues
 Changelog: https://github.com/hyperpolymath/affinescript/releases
