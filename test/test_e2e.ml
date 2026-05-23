@@ -2763,9 +2763,27 @@ let test_gc_unsafe_loud_fail () =
     ~must_contain:"unsafe"
     ~label:"unsafe"
 
+(* BUG-005 deferred fixture (closed-bug record's
+   regression-test-status = "deferred — fixture needs a known-unknown
+   function name in a WasmGC compile path").  The GC backend's
+   ExprApp arm uses func_indices for direct calls; a name that the
+   parser accepts but no decl registers should hit the explicit
+   UnboundFunction error, not silently emit drop+null.
+
+   The hermetic path: parse a tiny program calling a name that is
+   neither a built-in (`int`/`float`) nor a variant tag.  Codegen_gc
+   visits the call before any resolve check has had a chance to
+   reject it, so the UnboundFunction error is exercised. *)
+let test_gc_unbound_function_loud_fail () =
+  gc_compile_and_expect_unsupported
+    {|fn main() -> Int { return totally_undefined_callee(42); }|}
+    ~must_contain:"totally_undefined_callee"
+    ~label:"unbound-function"
+
 let wasm_gc_loud_fail_tests = [
   Alcotest.test_case "lambda → UnsupportedFeature (no silent RefNull)" `Quick test_gc_lambda_loud_fail;
   Alcotest.test_case "unsafe block → UnsupportedFeature (no silent RefNull)" `Quick test_gc_unsafe_loud_fail;
+  Alcotest.test_case "unknown callee → UnboundFunction (BUG-005 deferred fixture)" `Quick test_gc_unbound_function_loud_fail;
 ]
 
 (* ---- WasmGC variant-with-args construction ----
@@ -3402,11 +3420,27 @@ fn getx(p: P) -> Int { return p.x; }|} in
         | Ok _ -> true | Error _ -> false)
      | Error _ -> false)
 
+(* INT-01 follow-up: `Mod::fn(x)` in value-expression position.
+   Parser emits the same ExprField shape the `.` form produces, so
+   Resolve.lower_qualified_value_paths handles both syntaxes
+   identically. *)
+let test_qualval_coloncolon_call () =
+  Alcotest.(check bool)
+    "use CrossCallee; CrossCallee::consume(42) resolves+typechecks" true
+    (qualval_frontend_ok (fixture "cross_caller_qualified_colon.affine"))
+
+let test_qualval_coloncolon_alias_call () =
+  Alcotest.(check bool)
+    "use CrossCallee as CC; CC::consume(7) resolves+typechecks" true
+    (qualval_frontend_ok (fixture "cross_caller_qualified_colon_alias.affine"))
+
 let qualified_value_tests = [
-  Alcotest.test_case "use Mod; Mod.fn(x) resolves (#178)"       `Quick test_qualval_dot_call;
-  Alcotest.test_case "use Mod as M; M.fn(x) resolves (#178)"    `Quick test_qualval_alias_call;
-  Alcotest.test_case "use Mod::{fn}; fn(x) no regression"       `Quick test_qualval_item_import_regression;
-  Alcotest.test_case "genuine record access p.x unaffected"     `Quick test_qualval_record_access_unaffected;
+  Alcotest.test_case "use Mod; Mod.fn(x) resolves (#178)"             `Quick test_qualval_dot_call;
+  Alcotest.test_case "use Mod as M; M.fn(x) resolves (#178)"          `Quick test_qualval_alias_call;
+  Alcotest.test_case "use Mod::{fn}; fn(x) no regression"             `Quick test_qualval_item_import_regression;
+  Alcotest.test_case "genuine record access p.x unaffected"           `Quick test_qualval_record_access_unaffected;
+  Alcotest.test_case "use Mod; Mod::fn(x) resolves (#178 follow-up)"  `Quick test_qualval_coloncolon_call;
+  Alcotest.test_case "use Mod as M; M::fn(x) resolves (#178 follow-up)" `Quick test_qualval_coloncolon_alias_call;
 ]
 
 (* ---- Type-syntax sugars: fn(...) -> T, Option<T>, (A, B) -> C ---- *)

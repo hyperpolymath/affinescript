@@ -177,7 +177,12 @@ complete; convergence ABI shared w/ Ephapax
 insert/set/remove/keys/values; AOT-gated (#136). Closes ESC-03 #247 (the
 #229 `Dict.t` target); unblocks the additive `Http.affine` headers→Dict
 upgrade
-|STDLIB-04 |Residual `extern` builtins → real implementations |S3 |open
+|STDLIB-04 |Residual `extern` builtins → real implementations.  Triage
++ classification + per-row unblock condition in
+link:STDLIB-EXTERN-AUDIT.adoc[STDLIB-EXTERN-AUDIT.adoc] (135 `extern fn`
++ 24 `extern type` across 11 stdlib files, grouped into 4 classes:
+built-in / typed-boundary-bridge / adapter-Deno / adapter-Node). |S3
+|open — long tail, one row per PR; audit doc landed 2026-05-23
 |===
 
 == Section D — INT (ecosystem integration)
