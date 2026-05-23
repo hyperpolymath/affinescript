@@ -98,6 +98,110 @@ jobs:
         run: opam exec -- dune build @doc
         continue-on-error: true
 
+  bench-visibility:
+    # Visibility-only microbenchmarks per docs/standards/TESTING.adoc
+    # §"Bench standards". Does NOT block merge. Promotion to a
+    # ratcheted gate requires a calibrated baseline first.
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up OCaml
+        uses: ocaml/setup-ocaml@e32b06a3e831ff2fbc6f08cf35be2085e3918014 # v3
+        with:
+          ocaml-compiler: "5.1"
+
+      - name: Install dependencies
+        run: opam install . --deps-only --with-test --with-doc
+
+      - name: Build bench targets
+        run: opam exec -- dune build @bench --force
+        continue-on-error: true
+
+      - name: Run benches
+        id: bench
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          opam exec -- dune runtest @bench --force 2>&1 | tee bench-output.log
+
+      - name: Render bench summary
+        if: always()
+        run: |
+          {
+            echo "# AffineScript microbench output (visibility-only)"
+            echo ""
+            echo "Policy: see [docs/standards/TESTING.adoc](docs/standards/TESTING.adoc)."
+            echo ""
+            if [ -f bench-output.log ]; then
+              echo '```'
+              cat bench-output.log
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload bench log
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: bench-output
+          path: bench-output.log
+          retention-days: 30
+
+  coverage-visibility:
+    # Visibility-only coverage report per
+    # docs/standards/TESTING.adoc §"Coverage (visibility-only)".
+    # No merge-blocking floor today.
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up OCaml
+        uses: ocaml/setup-ocaml@e32b06a3e831ff2fbc6f08cf35be2085e3918014 # v3
+        with:
+          ocaml-compiler: "5.1"
+
+      - name: Install dependencies
+        run: opam install . --deps-only --with-test --with-doc
+
+      - name: Run tests with bisect_ppx instrumentation
+        continue-on-error: true
+        run: |
+          opam exec -- dune runtest --force --instrument-with bisect_ppx
+
+      - name: Generate HTML coverage report
+        continue-on-error: true
+        run: |
+          opam exec -- bisect-ppx-report html -o _coverage --title="AffineScript coverage"
+          opam exec -- bisect-ppx-report summary | tee coverage-summary.txt
+
+      - name: Render coverage summary
+        if: always()
+        run: |
+          {
+            echo "# AffineScript coverage (visibility-only)"
+            echo ""
+            echo "Policy: see [docs/standards/TESTING.adoc](docs/standards/TESTING.adoc)."
+            echo ""
+            if [ -f coverage-summary.txt ]; then
+              echo '```'
+              cat coverage-summary.txt
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage HTML
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: coverage-html
+          path: _coverage
+          retention-days: 30
+
   vscode-smoke:
     # In-editor end-to-end smoke test for the .affine VS Code extension
     # (issue #139). Loads the compiled out/extension.cjs in a real VS Code

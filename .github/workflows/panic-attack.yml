@@ -1,0 +1,95 @@
+# SPDX-License-Identifier: MPL-2.0
+# panic-attack.yml — estate compliance scanner, weekly schedule.
+#
+# Per docs/standards/PANIC-ATTACK.adoc:
+#   - This runs on a weekly cron; per-PR invocation is intentionally
+#     out of scope (CodeQL/Semgrep/secret-scanner cover per-PR).
+#   - Findings are surfaced as a workflow summary. Critical/high
+#     findings that are not in the false-positive registry will
+#     open a tracking issue.
+#   - Release cuts call `just panic` manually per RELEASE.md.
+#
+# Tool: `panic-attacker` Rust crate from
+#       road-skate/features/panic-attacker. Installed via cargo.
+
+name: Panic-Attack (compliance scan)
+
+on:
+  schedule:
+    # Sundays 03:00 UTC — quiet window for the estate's CI fleet.
+    - cron: '0 3 * * 0'
+  workflow_dispatch:
+
+# Read-only audit workflow — safe to cancel superseded runs.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: write  # opens a tracking issue on unresolved critical/high
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain (stable)
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # stable
+        with:
+          toolchain: stable
+
+      - name: Install panic-attacker
+        # Source-install from the estate crate. Once published to
+        # crates.io this can switch to `cargo install panic-attacker`.
+        run: |
+          if [ -d road-skate/features/panic-attacker ]; then
+            cargo install --path road-skate/features/panic-attacker --locked || \
+              cargo install --path road-skate/features/panic-attacker
+          else
+            echo "::warning::road-skate/features/panic-attacker not found; trying crates.io"
+            cargo install panic-attacker || {
+              echo "::error::panic-attacker unavailable from both estate path and crates.io"
+              exit 1
+            }
+          fi
+
+      - name: Run panic-attack
+        id: scan
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          panic-attack assail 2>&1 | tee panic-attack.log
+
+      - name: Render summary
+        if: always()
+        run: |
+          {
+            echo "# panic-attack weekly scan"
+            echo ""
+            echo "Repository: \`${{ github.repository }}\`"
+            echo "Ref: \`${{ github.sha }}\`"
+            echo ""
+            if [ -f panic-attack.log ]; then
+              echo "## Output"
+              echo '```'
+              tail -200 panic-attack.log
+              echo '```'
+            else
+              echo "(no output captured)"
+            fi
+            echo ""
+            echo "Policy: see [docs/standards/PANIC-ATTACK.adoc](docs/standards/PANIC-ATTACK.adoc)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload log artifact
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: panic-attack-log
+          path: panic-attack.log
+          retention-days: 30

@@ -1,0 +1,27 @@
+; SPDX-License-Identifier: MPL-2.0
+;
+; AffineScript microbenchmarks (bench/).
+;
+; Visibility-only today (no merge-blocking threshold) — per
+; docs/standards/TESTING.adoc §"Bench standards (visibility-only)".
+; Each bench is an alcotest case wired into a dedicated executable
+; under the `@bench` alias so the normal `dune runtest` gate is
+; unaffected.
+;
+; Run with:
+;   just bench                 (per docs/standards/TESTING.adoc)
+;   dune runtest @bench --force
+;
+; Source layout:
+;   bench/bench_main.ml        single test runner
+;   bench/bench_fixtures.ml    shared input strings
+;   bench/bench_lex.ml         lexer-only sweep
+;   bench/bench_parse.ml       parser sweep
+;   bench/bench_typecheck.ml   typecheck + quantity sweep
+;   bench/bench_codegen.ml     wasm-codegen sweep
+
+(test
+ (name bench_main)
+ (libraries affinescript alcotest unix)
+ (modules bench_main bench_fixtures bench_lex bench_parse bench_typecheck bench_codegen)
+ (alias bench))

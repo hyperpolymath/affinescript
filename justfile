@@ -152,6 +152,45 @@ golden-path:
 panic:
     panic-attack assail
 
+# ── Benchmarks (visibility-only) ──────────────────────────────────────────────
+# Per docs/standards/TESTING.adoc §"Bench standards":
+# microbenchmarks are wired under the @bench alias. Results print
+# to stdout — no merge-blocking gate today. Promotion to enforcement
+# requires a calibrated baseline + ratchet policy.
+
+# Run microbenchmarks (lex / parse / typecheck / codegen sweeps)
+bench:
+    dune build @bench --force
+    dune runtest @bench --force
+
+# Archive the current bench output to bench-runs/<UTC-timestamp>.log
+bench-record:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p bench-runs
+    ts=$(date -u +"%Y%m%dT%H%M%SZ")
+    out="bench-runs/${ts}.log"
+    echo "Recording bench run to ${out}"
+    dune build @bench --force
+    dune runtest @bench --force 2>&1 | tee "${out}"
+    echo "Saved: ${out}"
+
+# ── Coverage (visibility-only) ────────────────────────────────────────────────
+# Per docs/standards/TESTING.adoc §"Coverage (visibility-only)":
+# instrumentation via bisect_ppx. HTML report only — no enforced
+# floor. CI uploads the directory as an artifact for inspection.
+
+# Run the test suite with bisect_ppx instrumentation and emit HTML
+coverage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    rm -rf _coverage bisect*.coverage
+    dune runtest --force --instrument-with bisect_ppx
+    bisect-ppx-report html -o _coverage --title="AffineScript coverage"
+    bisect-ppx-report summary
+    echo ""
+    echo "HTML report: _coverage/index.html"
+
 # ── Blitz ─────────────────────────────────────────────────────────────────────
 # Full 16-category test + benchmark + security sweep per hyperpolymath blitz standard.
 # Covers: unit, integration, property, snapshot, mutation, regression, contract,
@@ -181,8 +220,8 @@ _blitz-test:
 
 _blitz-bench:
     @echo "── [3/6] Benchmarks ─────────────────────────"
-    @echo "    (OCaml microbenchmarks via dune runtest with bench targets if present)"
-    dune build @bench 2>/dev/null && dune runtest @bench 2>/dev/null || echo "    (no bench stanza — skip)"
+    @echo "    (visibility-only per docs/standards/TESTING.adoc)"
+    dune build @bench --force 2>/dev/null && dune runtest @bench --force 2>/dev/null || echo "    (no bench stanza or build failed — skip)"
 
 _blitz-security:
     @echo "── [4/6] Security (panic-attack) ────────────"
