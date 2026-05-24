@@ -1,0 +1,17 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell
+//
+// CORE-01 pt3 Slice A / #177: NLL last-use expiry for *exclusive*
+// borrows. Under lexical lifetimes the tail `x` is rejected as
+// UseWhileExclusivelyBorrowed because `m`'s exclusive borrow on `x`
+// lives until block exit. With NLL, `m` is dead after `let y`, so the
+// tail read of `x` is legal. Expected: Ok.
+
+module BorrowNllReadAfterMutLastUse;
+
+fn nll_excl() -> Int {
+  let mut x = 5;
+  let m = &mut x;
+  let y = *m;
+  x + y
+}
