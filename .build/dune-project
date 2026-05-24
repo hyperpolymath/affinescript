@@ -39,6 +39,7 @@
   (odoc (and (>= 2.4) :with-doc))
   (js_of_ocaml (>= 5.0))
   (js_of_ocaml-ppx (>= 5.0))
-  (ocamlformat (and (>= 0.26) :with-test)))
+  (ocamlformat (and (>= 0.26) :with-test))
+  (bisect_ppx (and (>= 2.8) :with-test)))
  (tags
   (programming-language compiler webassembly affine-types dependent-types row-polymorphism effects ocaml)))

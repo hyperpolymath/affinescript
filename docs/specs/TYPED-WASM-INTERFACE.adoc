@@ -1,0 +1,349 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+= AffineScript ↔ typed-wasm Interface Specification (v1)
+:toc: macro
+:toclevels: 3
+:icons: font
+
+[IMPORTANT]
+====
+This is the *formal, source-of-truth* specification of the
+AffineScript ↔ typed-wasm interface as it exists in this repository
+today.  Until 2026-05-23 the contract was *referenced* from
+link:../ECOSYSTEM.adoc[ECOSYSTEM.adoc] §"The actual AffineScript ↔
+typed-wasm contract" and from code comments in
+`lib/codegen.ml`, `lib/tw_interface.ml`, `lib/tw_verify.ml` — it had
+no single, dedicated home.  This document is that home.
+
+For the roadmap of what's needed to make typed-wasm a *natural and
+optimal* compilation target (widening enforcement to L1–6/L14–16,
+multi-producer ABI coordination, region inference), see
+link:TYPED-WASM-ROADMAP.adoc[TYPED-WASM-ROADMAP.adoc].
+
+The machine-readable companion is
+link:TYPED-WASM-INTERFACE.a2ml[TYPED-WASM-INTERFACE.a2ml].
+====
+
+toc::[]
+
+== Scope
+
+typed-wasm is a *separate, language-agnostic compilation target* with
+its own repository (`hyperpolymath/typed-wasm`), its own Idris2
+proofs, its own ReScript surface, its own Rust verifier crate, and
+its own other producers (notably `hyperpolymath/ephapax`).
+AffineScript is *one of several producers* targeting it.
+
+This document specifies *the AffineScript-side of the contract*:
+
+* what AffineScript emits (the carrier custom sections),
+* how AffineScript verifies its own emissions (the producer-side
+  verifier),
+* what the cross-module call discipline is (boundary verification),
+* what the CLI surface for these operations looks like,
+* what is *deliberately not* in this contract (the widening
+  roadmap).
+
+What this document does *not* specify: the Idris2 proofs, the
+ReScript surface, the Rust verifier, or the typed-wasm level
+definitions L1..L16 — those live in `hyperpolymath/typed-wasm`.
+Coordinate ABI changes with that repo + `hyperpolymath/ephapax`.
+
+== Contract surface — what is enforced today
+
+The contract is *narrower* than older prose claimed.  The enforced
+surface is exactly *L7 (aliasing) + L10 (linearity) + L13 (module
+isolation, negative form)*.
+
+[cols="1,2,4"]
+|===
+|Level |Name |AffineScript-side enforcement
+
+|*L7*
+|Aliasing
+|`ExclBorrow` (mutable-borrow) parameters used at most once on every
+program path.  Enforced by `lib/tw_verify.ml` per-path
+`count_uses_range`.
+
+|*L10*
+|Linearity
+|`Linear` (owned) parameters used exactly once on every program
+path.  Same enforcement infrastructure as L7.
+
+|*L13*
+|Module isolation (negative form)
+|A module that owns linear memory MUST NOT import a memory or table.
+Enforced by `lib/tw_verify.ml` `verify_module_isolation`.  *Carrier-
+free*: reads only the standard wasm `import` + `memory` sections, so
+no ABI change was required.
+
+|L1–L6
+|Region schema, type discipline, structural typing
+|*Spec-level only.*  Not enforced on AffineScript-emitted wasm.
+Requires a new carrier section.  See
+link:TYPED-WASM-ROADMAP.adoc[TYPED-WASM-ROADMAP.adoc].
+
+|L14–L16
+|Session protocols, resource capabilities, agent choreography
+|*Spec-level only.*  Same reason.
+|===
+
+== Carrier — the `affinescript.ownership` custom section
+
+The L7+L10 discipline rides on a WebAssembly *custom section* named
+`affinescript.ownership`.  AffineScript emits it; AffineScript's own
+verifier consumes it; `hyperpolymath/ephapax` *also* emits it
+(same format); the Rust verifier in `hyperpolymath/typed-wasm`
+consumes it as the cross-compat target.
+
+=== Binary layout (v1, current)
+
+All integers little-endian.
+
+[source]
+----
+section_payload :=
+  u32  entry_count
+  entry*
+
+entry :=
+  u32  func_index           ; module-global function index
+  u8   param_count
+  u8   param_kind[n]        ; n = param_count
+  u8   ret_kind
+
+kind ∈ {
+  0 = Unrestricted,
+  1 = Linear,
+  2 = SharedBorrow,
+  3 = ExclBorrow
+}
+----
+
+There is *no version field* in v1.  The format has been stable since
+typed-wasm Level 10 closure (2026-04-19) and is the format both
+producers (AffineScript + ephapax) emit.
+
+Forward-compatibility is the subject of ADR-020 (proposed); see
+link:TYPED-WASM-ROADMAP.adoc[TYPED-WASM-ROADMAP.adoc] §"Schema
+versioning".  The current contract is: *if the section exists,
+its bytes follow v1*.  Any change to v1 is a multi-producer ABI
+change requiring coordination across AffineScript, ephapax, and the
+typed-wasm verifier.
+
+=== Producer (AffineScript) — emission
+
+The producer machinery lives in `lib/codegen.ml`:
+
+[cols="1,3"]
+|===
+|Element |Location
+
+|`ownership_kind` type (4 cases)
+|`lib/codegen.ml:~110`
+
+|`ownership_kind_byte` encoding (0..3)
+|`lib/codegen.ml:148`
+
+|`ownership_kind_of_param` (extracts from `p_ownership` qualifier or
+falls back to type-shape: `TyOwn` → Linear, `TyRef` → SharedBorrow,
+`TyMut` → ExclBorrow)
+|`lib/codegen.ml:116`
+
+|`ownership_kind_of_ret`
+|`lib/codegen.ml:140`
+
+|`build_ownership_section`
+|`lib/codegen.ml:159`
+
+|`ctx.ownership_annots : (int * ownership_kind list * ownership_kind) list`
+|`lib/codegen.ml:2312` (registration), `:2629` (assembly)
+|===
+
+An *empty* annotation list emits no section (the section is
+omitted, not present-but-empty).  A module with no ownership-
+annotated functions has no custom section at all and is treated as
+*unconstrained* by the verifier (a no-op pass through L7/L10).
+
+The WasmGC backend (`lib/codegen_gc.ml`) reuses the same emission
+path — there is no separate GC-specific format.
+
+=== Consumer (AffineScript) — verification
+
+Two consumers live in this repo, both reading the same v1 layout:
+
+`lib/tw_verify.ml` (332 LOC) — *per-module* verifier.
+
+[cols="1,3"]
+|===
+|Function |Behaviour
+
+|`parse_ownership_section : bytes -> entry list`
+|Decodes v1 bytes to typed entries.  Pre-1.0 callers handed it raw
+binary already extracted from the custom section.
+
+|`count_uses_range`
+|Per-path min/max use count for a parameter, traversing the wasm
+control-flow.  Underpins L7 and L10.
+
+|`verify_module`
+|Walks every annotated function; for each Linear param checks
+exactly-1-use-on-every-path; for each ExclBorrow checks
+≤1-use-on-every-path.  Emits `ownership_error` per violation.
+
+|`verify_module_isolation`
+|L13 check.  Carrier-free.  Rejects modules with own-memory +
+imported memory or table.
+
+|`verify_from_module`
+|The primary CLI entry point.  Combines the two above and returns
+`Ok () | Error errs`.
+|===
+
+`lib/tw_interface.ml` (276 LOC) — *cross-module boundary* verifier.
+
+Extracts a callee module's ownership-annotated export interface and
+verifies a caller's call-counts against it.  Reports:
+
+* `LinearImportCalledMultiple` — caller invokes a Linear-export
+  more than once on some path (would violate L10 at the boundary).
+* `LinearImportDroppedOnSomePath` — caller fails to invoke a
+  Linear-export on at least one path (would also violate L10).
+
+Both errors are *path-sensitive*: the verifier walks the caller's
+control-flow and rejects on the worst case.
+
+== CLI surface
+
+[cols="1,3,2"]
+|===
+|Subcommand |Behaviour |Status
+
+|`affinescript verify FILE`
+|Compile FILE → run `Tw_verify.verify_from_module` on the emitted
+module.  Enforces L7/L10/L13.  Exit 0 on clean, 1 on violation.
+|done
+
+|`affinescript verify-boundary CALLEE CALLER`
+|Compile both, extract CALLEE's export interface, verify CALLER's
+call-counts against it.  Exit 1 mapped to violation count (a bug in
+the pre-2026-04-19 implementation made this silently succeed even
+when violations existed; PR f6089a2 fixed it).
+|done
+
+|`affinescript verify-bridge [--which tea-bridge\|router\|all]`
+|Generates a known-good callee (one of the TEA bridges), synthesises
+a single-call caller, verifies the boundary.  CI smoke shape.
+|done
+
+|`affinescript interface [--which tea-bridge\|router\|all]`
+|Pretty-prints a module's export interface — per-export param kinds
+(own/ref/mut/val) and ret kind.  Used by tooling.
+|done
+|===
+
+The compile pipeline does *not* automatically gate on
+`verify_from_module` today; `verify` is opt-in.  See
+link:TYPED-WASM-ROADMAP.adoc[TYPED-WASM-ROADMAP.adoc] §"Compile-time
+gating" for the proposal to make this a one-shot flag.
+
+== Test coverage
+
+[cols="2,2,3"]
+|===
+|File |What it pins |Notes
+
+|`test/test_tw_isolation.ml` (5 tests)
+|L13 negative-form module isolation
+|Clean module OK; imported memory rejected; imported table
+rejected; consumer (no own memory) out of scope; missing-section
+contract preserved.
+
+|`test/test_e2e.ml` — "E2E Boundary Verify"
+|Cross-module boundary (3 cases)
+|`CrossCallee.affine` × `cross_caller_{ok,dup,drop}.affine`.
+Exercises `LinearImportCalledMultiple` +
+`LinearImportDroppedOnSomePath`.
+
+|`test/test_e2e.ml` — "ownership section" cases
+|v1 layout round-trip
+|`test_ownership_section_present`, `test_ownership_roundtrip`,
+`test_ownership_entry_count`.  TyOwn→1, TyRef→2, TyMut→3, plain→0.
+|===
+
+Cross-compat fixtures into `hyperpolymath/typed-wasm`'s
+`crates/typed-wasm-verify/tests/cross_compat.rs` (typed-wasm
+"C5.1") are *not yet shipped* — that is INT-12, ledger-only,
+planned for Stage E.
+
+== Multi-producer responsibilities
+
+[cols="2,4"]
+|===
+|Producer / consumer |Responsibility
+
+|*AffineScript* (this repo)
+|Reference producer.  Emits v1 layout from `lib/codegen.ml`.
+Producer-side verifier (`lib/tw_verify.ml`) is the *spec of record*
+until the cross-compat suite is supplemented with real AffineScript-
+emitted fixtures.
+
+|*ephapax* (`hyperpolymath/ephapax`)
+|Second producer.  Emits the same `affinescript.ownership` section.
+Exposes the verifier via `ephapax compile --verify-ownership`.
+
+|*typed-wasm* (`hyperpolymath/typed-wasm`)
+|Spec + Rust verifier crate (`crates/typed-wasm-verify`).  Faithful
+port of the OCaml reference.  L1..L16 Idris2 proofs.  Cross-compat
+suite C5.1 will accept AffineScript-emitted fixtures.
+
+|*ABI changes*
+|Multi-producer.  No party makes them unilaterally.  Coordinate via
+ADRs in this repo (proposed ADR-020 for schema versioning, ADR-021
+for the multi-producer model) + matching ADRs in the sister repos.
+|===
+
+== What is intentionally *not* in this contract
+
+The following are *deliberate scope boundaries*, not oversights:
+
+* *L1–L6 enforcement on emitted wasm.*  Requires a new carrier
+  section (region schema / type discipline / structural typing).
+  Multi-producer ABI change.
+* *L14–L16 enforcement on emitted wasm.*  Requires capability /
+  session-protocol / agent-choreography carrier.  Multi-producer
+  ABI change *and* compiler-side region/session-type inference
+  (the latter blocked by CORE-01 Phase-3 NLL/Polonius).
+* *Schema versioning on `affinescript.ownership`.*  Currently
+  unversioned; ADR-020 (proposed) adds a one-byte version prefix
+  in a backward-compatible way.
+* *Automatic compile-time L7/L10 gating.*  Today `verify` is an
+  opt-in subcommand; the compile pipeline does not implicitly run
+  it.  Proposed `--typed-wasm-gate` flag would change this.
+* *Async-boundary enforcement.*  The structural recogniser is in
+  CONV-02 (#234), ADR-016 accepted; widening is staged S1..S4
+  separately.
+
+== Stability promise
+
+The v1 layout described here is *frozen*.  AffineScript will not
+unilaterally emit a different layout.  Any change requires a new
+ADR (proposed ADR-020 numbering) and coordinated landings in
+AffineScript + ephapax + the typed-wasm verifier.
+
+== Cross-references
+
+* link:../ECOSYSTEM.adoc[../ECOSYSTEM.adoc] — A–E spine; the
+  satellite registry; the §"actual AS ↔ typed-wasm contract"
+  paragraph which this document supersedes as the authoritative
+  source.
+* link:../CAPABILITY-MATRIX.adoc[../CAPABILITY-MATRIX.adoc] —
+  per-component readiness; typed-wasm row.
+* link:../TECH-DEBT.adoc[../TECH-DEBT.adoc] — CONV-01..05 ledger
+  units (Stage E runway).
+* link:TYPED-WASM-ROADMAP.adoc[TYPED-WASM-ROADMAP.adoc] — what
+  would make typed-wasm a natural and optimal target.
+* link:TYPED-WASM-INTERFACE.a2ml[TYPED-WASM-INTERFACE.a2ml] —
+  machine-readable companion.
+* link:SETTLED-DECISIONS.adoc[SETTLED-DECISIONS.adoc] — ADR
+  index; see ADR-020/021 (proposed) for the widening proposals.

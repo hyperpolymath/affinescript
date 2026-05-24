@@ -831,6 +831,16 @@ expr_primary:
   | ty = upper_ident COLONCOLON variant = upper_ident
     { ExprVariant (mk_ident ty $startpos(ty) $endpos(ty),
                    mk_ident variant $startpos(variant) $endpos(variant)) }
+  /* INT-01 follow-up (Refs #178): module-qualified value path in
+     value-expression position, e.g. `Mod::fn(x)` or `Mod::CONST`. We
+     emit the same `ExprField (ExprVar Mod, lower_ident)` shape that
+     the `Mod.fn` form already produces, so [Resolve.lower_qualified
+     _value_paths] handles both syntaxes identically (canonical
+     `::`-fold; no resolver change required). Disambiguated from the
+     `Type::Variant` rule above by lower_ident vs upper_ident. */
+  | modu = upper_ident COLONCOLON fname = lower_ident
+    { ExprField (ExprVar (mk_ident modu $startpos(modu) $endpos(modu)),
+                 mk_ident fname $startpos(fname) $endpos(fname)) }
 
   /* Grouping and tuples */
   | LPAREN RPAREN { ExprLit (LitUnit (mk_span $startpos $endpos)) }

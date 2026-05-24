@@ -80,6 +80,11 @@ secrets/
 # Test/Coverage
 /coverage/
 htmlcov/
+/_coverage/
+bisect*.coverage
+
+# Benchmark archives (visibility-only output, see docs/standards/TESTING.adoc)
+/bench-runs/
 
 # Logs
 *.log

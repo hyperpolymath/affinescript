@@ -1,0 +1,272 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+= Stdlib `extern` Audit (STDLIB-04)
+:toc: macro
+:toclevels: 3
+:icons: font
+
+[IMPORTANT]
+====
+STDLIB-04 ("residual `extern` builtins → real implementations") is a
+*long-tail* ledger unit, not a single PR.  The stdlib currently
+declares *135 `extern fn` and 24 `extern type` bindings* across 11
+files.  Treating them as one undifferentiated pile is the failure
+mode this audit prevents.
+
+This document is the *triage*: it groups every `extern` by purpose,
+target-availability, current adapter coverage, and unblock condition.
+Implementation PRs reference this document and close one row at a
+time.
+====
+
+toc::[]
+
+== Counts (live, 2026-05-23)
+
+[cols="2,1,1,3"]
+|===
+|Module |`extern fn` |`extern type` |Class
+
+|`effects.affine` |14 |0 |Built-ins (interpreter)
+|`io.affine` |5 |0 |Built-ins (interpreter)
+|`Crypto.affine` |3 |0 |Built-ins (interpreter)
+|`Http.affine` |8 |1 |Typed-boundary bridge (ADR-018 / #225 CPS line)
+|`Network.affine` |2 |0 |Adapter-side (Deno-ESM target)
+|`Deno.affine` |24 |3 |Adapter-side (Deno-ESM target)
+|`Sqlite.affine` |6 |1 |Adapter-side (Deno-ESM target)
+|`Vscode.affine` |55 |12 |Adapter-side (`packages/affine-vscode`)
+|`VscodeLanguageClient.affine` |4 |2 |Adapter-side (`packages/affine-vscode`)
+|`Grammy.affine` |10 |3 |Adapter-side (Deno-ESM target)
+|`Ajv.affine` |4 |2 |Adapter-side (Deno-ESM target)
+|*Total* |*135* |*24* |
+|===
+
+== Classification (what "real implementation" means per row)
+
+`extern` declarations are *type-only* signatures: they tell the
+compiler the shape of a function/type that exists at the host
+boundary.  "Real implementation" means different things depending on
+which boundary the `extern` rides over.  We recognise *four classes*:
+
+[cols="1,3,2"]
+|===
+|Class |Definition |"Real impl" criterion
+
+|*Built-in (interpreter)*
+|Side-effecting primitive that must be available to interpreter eval
+(`affinescript eval`) — e.g. `println`, `read_file`,
+`random_string`.  Has no AffineScript-side body; the interpreter
+matches the symbol name and dispatches a host-side handler.
+|`Interp.register_builtin` (or equivalent) wires the name to an
+OCaml function.  Today some of these are stubbed or partial; the
+unblock is implementing the OCaml handler.
+
+|*Typed-boundary bridge*
+|Crosses the language boundary with a *contract* (e.g.
+`Http.fetch` returns a typed `Json` after CPS lowering).  Has a
+producer-side type signature here and a verifier-side contract in
+`hyperpolymath/typed-wasm` (or the convergence ABI).
+|Producer-side codegen path + verifier-side type contract +
+runtime adapter all green.  `Http.fetch` is the canonical example
+(landed via the #225 CPS line, PR1..PR3d).
+
+|*Adapter-side (Deno-ESM)*
+|Compiles via the `--deno-esm` backend; the `extern` is realised
+by the emitted ESM importing a JS module.  The "real impl" is the
+adapter shim in `packages/<adapter>/mod.js` (or equivalent).
+|Adapter package exists, the symbol is exported, and a
+cross-runtime smoke test under `affinescript-deno-test/` exercises
+it.
+
+|*Adapter-side (Node / VS Code host)*
+|Compiles via the Node-CJS backend; the emitted `.cjs` calls into
+`packages/affine-vscode/mod.js` (or another Node-side adapter) at
+activate-time.  The "real impl" is the JS-side handle table and
+the per-method wrapper.
+|`packages/affine-vscode` (or sibling) exposes the symbol via the
+shared handle table; in-editor smoke under `editors/vscode/test/`
+exercises it.
+|===
+
+== Per-module triage
+
+=== `effects.affine` (14 fn, 0 type) — Built-in
+
+[cols="2,2,3"]
+|===
+|`extern fn` |Status |Notes
+
+|`print(String)` |adequate |Interpreter + WASI preview1 emit.
+|`println(String)` |adequate |Same.
+|`read_line() -> String` |stub-only |Interpreter has placeholder;
+not yet wired through codegen-deno.
+|`read_file(path)` |adequate |Interpreter + WASI preview1.
+|`write_file(path, content)` |adequate |Same.
+|`make_ref<T>` / `get<T>` / `set<T>` |adequate |Interpreter wires
+to `ref` cells; codegen targets reject (mutable cells are not in
+the GC backend yet — see CORE-02-adjacent gap).
+|`panic(msg)` |adequate |`Throws` effect-row punt; interpreter
+raises; codegen emits `unreachable`.
+|`error<T>(msg)` |adequate |Same shape as `panic`.
+|`int_to_string`/`string_to_int` |partial |Interpreter only; deno
+backend re-exports JS native; wasm-core has no string story.
+|`string_length`/`string_concat` |partial |Same.
+|===
+
+*Per-row unblock*: not a single PR.  `read_line` for the
+non-interpreter targets is the next concrete row; everything else
+is "adequate for the current consumer surface".
+
+=== `io.affine` (5 fn, 0 type) — Built-in
+
+[cols="2,2,3"]
+|===
+|`extern fn` |Status |Notes
+
+|`chdir(path)` |stub-only |Interpreter only.
+|`create_dir(path)` |stub-only |Same.
+|`remove_dir(path)` |stub-only |Same.
+|`list_dir(path)` |stub-only |Same.
+|`setenv(name, value)` |stub-only |Blocked on INT-03 S5 (native
+env/argv) for cross-target parity.
+|===
+
+*Unblock*: INT-03 S5 (native clocks/env/argv) for the WASI path;
+deno backend can ship adapter coverage independently.
+
+=== `Crypto.affine` (3 fn, 0 type) — Built-in
+
+[cols="2,2,3"]
+|===
+|`extern fn` |Status |Notes
+
+|`random_string(n)` |partial |Interpreter wires `Random.string`;
+deno target uses `crypto.randomUUID`-derived bytes; wasm-core
+absent.
+|`random_f64()` |partial |Same.
+|`time_ms()` |partial |Same; deno + interpreter; INT-03 S4a (WASI
+clock) covers WASI emit.
+|===
+
+*Unblock*: noted for completeness; not on the critical path.
+
+=== `Http.affine` (8 fn, 1 type) — Typed-boundary bridge
+
+Status: *DONE — STDLIB-01 closed*.  See `docs/TECH-DEBT.adoc`
+STDLIB-01: ADR-018 delivery plan complete; Deno-ESM (#226) +
+typed-wasm CPS line PR1..PR3d (#227/#233/#236/#237/#238/#266) all
+merged.
+
+=== `Network.affine` (2 fn, 0 type) — Adapter-side (Deno-ESM)
+
+[cols="2,2,3"]
+|===
+|`extern fn` |Status |Notes
+
+|`hostname() -> String` |stub-only |No adapter package; not on a
+known consumer's critical path.
+|`tcp_connect(host, port) -> Socket` |stub-only |Same; gates on
+Tokio-style async ABI which isn't designed yet.
+|===
+
+*Unblock*: lowest-priority class; no consumer requesting it.
+
+=== `Deno.affine` (24 fn, 3 type) — Adapter-side (Deno-ESM)
+
+Largest non-Vscode adapter.  Covers `Deno.readFile`, `Deno.cwd`,
+`Deno.run`, file-system primitives, env access, etc.
+
+[cols="2,1,3"]
+|===
+|Surface area |Status |Notes
+
+|Filesystem reads (`readTextFile`, `readDir`) |partial |
+`packages/affine-js` loader uses some of these; not a full
+adapter shim.
+|Filesystem writes (`writeTextFile`, `mkdir`, `remove`) |
+stub-only |No consumer yet.
+|Process (`run`, `Deno.exit`, env, args) |stub-only |Overlaps
+with INT-03 S5 (WASI env/argv).
+|HTTP server (`Deno.serve`) |stub-only |Overlaps with
+`affinescript-tea` runtime + INT-07.
+|===
+
+*Unblock*: bulk of this should fold into `packages/affine-deno`
+(does not yet exist as a sibling to `affine-vscode`); creation of
+that package is the meta-unblock.
+
+=== `Sqlite.affine` (6 fn, 1 type) — Adapter-side (Deno-ESM)
+
+`open`, `prepare`, `exec`, `query`, `close`, `transaction`.  All
+stub-only.  No adapter package.  Unblocks when a consumer
+(currently none) requests it.
+
+=== `Vscode.affine` (55 fn, 12 type) — Adapter-side (Node/VS Code)
+
+*Largest extern surface in the repo.*  Already has an adapter
+(`packages/affine-vscode/mod.js`) and is *load-bearing* — issue
+#35 Phase 3 (VS Code extension migration from TS to AffineScript)
+is shipping against it.
+
+[cols="2,1,3"]
+|===
+|Surface area |Status |Notes
+
+|`commands.registerCommand` family |done |Live in
+`editors/vscode/src/extension.affine`; smoke-tested via PR
+#317.
+|`window` (show*, activeTextEditor, terminals, ...) |partial |
+Used by extension.affine; not all 55 surface methods exercised.
+|`workspace` (getConfiguration, fileSystemWatcher, ...) |
+partial |Same.
+|`languages` (createDiagnosticCollection, ...) |partial |Same.
+|String marshalling helpers |done |Shared handle table.
+|===
+
+*Unblock*: the *unused* methods get filled in row-by-row when a
+consumer needs them; there is no requirement to implement all 55
+before #35 Phase 4 (rattlescript-face sweep) closes.
+
+=== `VscodeLanguageClient.affine` (4 fn, 2 type) — Adapter-side (Node)
+
+LSP client wrapper.  Already adapter-covered; #317 smoke tests it
+end-to-end.  No outstanding rows.
+
+=== `Grammy.affine` (10 fn, 3 type) — Adapter-side (Deno-ESM)
+
+Telegram bot framework adapter.  Stub-only; no consumer.
+
+=== `Ajv.affine` (4 fn, 2 type) — Adapter-side (Deno-ESM)
+
+JSON-schema validator adapter.  Stub-only; no consumer.
+
+== Implementation policy
+
+Per the testing standards (`docs/standards/TESTING.adoc`):
+
+* Every `extern` implementation PR must add at least one *smoke
+  test* under the matching adapter's test path (or `affinescript-
+  deno-test/` for the Deno-ESM class, `editors/vscode/test/` for
+  the VS Code class, an interpreter alcotest for the built-in
+  class).
+* The `extern` row in this document moves from `stub-only` /
+  `partial` to `done` only when the smoke test lands.
+* No PR may stub a *new* `extern` without recording it here.
+
+== Cross-references
+
+* link:../TECH-DEBT.adoc[TECH-DEBT.adoc] — STDLIB-04 ledger entry
+  (S3, open).
+* link:../ECOSYSTEM.adoc[ECOSYSTEM.adoc] — INT-01..12 integration
+  roadmap that `extern` adapters ride on.
+* link:../standards/TESTING.adoc[standards/TESTING.adoc] —
+  smoke-test requirements per class.
+* `packages/affine-vscode/mod.js` — the canonical
+  Node/VS-Code-host adapter shape.
+
+== Update protocol
+
+Each row's status is in-line with the implementation reality and
+is updated by the PR that lands the implementation.  This is *not*
+a status mirror for STATE.a2ml; STATE.a2ml's drift-flag points
+here for STDLIB-04 specifics.

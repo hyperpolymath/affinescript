@@ -23,10 +23,12 @@ docs/
 │   ├── ROADMAP.md            # Development roadmap
 │   ├── DECISIONS.md          # Architecture decisions
 │   ├── RELEASE.md            # Release procedures
+│   ├── TESTING.adoc          # Test taxonomy + PR-level gates
+│   ├── PANIC-ATTACK.adoc     # Security-scan policy & disposition
 │   └── PALIMPSEST.adoc       # License integration
 └── guides/                   # Testing and guides
-    ├── TESTING-REPORT.adoc   # Test coverage report
-    └── TESTING-REPORT.scm    # Machine-readable test data
+    ├── TESTING-REPORT.adoc   # (RETIRED — redirects to standards/TESTING.adoc)
+    └── TESTING-REPORT.scm    # (RETIRED — redirects to standards/TESTING.adoc)
 ----
 
 == Documentation Categories
@@ -37,6 +39,9 @@ docs/
 
 * link:specs/affinescript-spec.md[AffineScript Specification] - Complete language spec
 * link:specs/SPEC.adoc[Core Specification] - Core language features
+* link:specs/TYPED-WASM-INTERFACE.adoc[Typed-WASM Interface (v1)] - Formal AS↔typed-wasm contract (carrier, levels, CLI, tests, multi-producer model)
+* link:specs/TYPED-WASM-ROADMAP.adoc[Typed-WASM Widening Roadmap] - Tranches A–E for making typed-wasm a natural + optimal target
+* link:specs/SETTLED-DECISIONS.adoc[Settled Decisions] - ADR index
 
 === Governance (`governance/`)
 
@@ -55,13 +60,16 @@ docs/
 * link:standards/DECISIONS.md[Architecture Decisions] - Key design choices
 * link:standards/RELEASE.md[Release Process] - How releases are made
 * link:standards/PALIMPSEST.adoc[Palimpsest Integration] - License integration
+* link:standards/TESTING.adoc[Testing Standards] - Test taxonomy, gate baseline, PR expectations
+* link:standards/PANIC-ATTACK.adoc[Panic-Attack Policy] - Security-scan SOP and finding disposition
 
 === Guides (`guides/`)
 
 **For testing and quality assurance.**
 
-* link:guides/TESTING-REPORT.adoc[Testing Report] - Human-readable test coverage
-* link:guides/TESTING-REPORT.scm[Testing Report (SCM)] - Machine-readable test data
+* link:CAPABILITY-MATRIX.adoc[Capability Matrix] - **Live** per-component readiness (the authoritative status doc)
+* link:standards/TESTING.adoc[Testing Standards] - Test taxonomy, gate baseline, PR expectations
+* link:guides/TESTING-REPORT.adoc[Testing Report] - *RETIRED* (2025-12-29 snapshot; redirects to the two above)
 
 == Quick Links by Role
 
@@ -83,7 +91,7 @@ docs/
 → Review link:standards/ROADMAP.md[Roadmap]
 
 **...see test coverage**
-→ Browse link:guides/TESTING-REPORT.adoc[Testing Report]
+→ Browse link:CAPABILITY-MATRIX.adoc[Capability Matrix] (live) or link:standards/TESTING.adoc[Testing Standards] (taxonomy + gates)
 
 == Contributing to Documentation
 

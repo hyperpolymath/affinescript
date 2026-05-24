@@ -1,0 +1,183 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 hyperpolymath
+#
+# STDLIB-EXTERN-AUDIT.a2ml — machine-readable companion to
+# STDLIB-EXTERN-AUDIT.adoc. Implementation PRs read this file to
+# pick which row to close next; the human .adoc carries rationale.
+#
+# Total surface (live as of 2026-05-23):
+#   extern fn      = 135
+#   extern type    = 24
+#   stdlib files   = 11
+#   classes        = 4
+
+[metadata]
+title = "Stdlib extern Audit (STDLIB-04)"
+human-companion = "docs/STDLIB-EXTERN-AUDIT.adoc"
+ledger-id = "STDLIB-04"
+ledger-source = "docs/TECH-DEBT.adoc"
+status = "open-long-tail"
+last-counted = "2026-05-23"
+
+[totals]
+extern-fn = 135
+extern-type = 24
+stdlib-files = 11
+classes = 4
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Classes
+# ──────────────────────────────────────────────────────────────────────────────
+
+[[class]]
+id = "builtin"
+display = "Built-in (interpreter)"
+real-impl-criterion = "Interp.register_builtin wires the name to an OCaml function"
+
+[[class]]
+id = "typed-boundary-bridge"
+display = "Typed-boundary bridge"
+real-impl-criterion = "producer-side codegen path + verifier-side type contract + runtime adapter all green"
+exemplar = "Http.fetch (via #225 CPS line, PR1..PR3d)"
+
+[[class]]
+id = "adapter-deno"
+display = "Adapter-side (Deno-ESM)"
+real-impl-criterion = "adapter package exists, symbol exported, cross-runtime smoke test under affinescript-deno-test/ exercises it"
+package-pattern = "packages/affine-<adapter>"
+
+[[class]]
+id = "adapter-node"
+display = "Adapter-side (Node / VS Code host)"
+real-impl-criterion = "packages/affine-vscode (or sibling) exposes symbol via shared handle table; in-editor smoke under editors/vscode/test/ exercises it"
+package-pattern = "packages/affine-vscode"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Per-module rows
+# ──────────────────────────────────────────────────────────────────────────────
+
+[[module]]
+file = "stdlib/effects.affine"
+class = "builtin"
+extern-fn = 14
+extern-type = 0
+status = "mixed"
+adequate = ["print", "println", "read_file", "write_file", "make_ref", "get", "set", "panic", "error"]
+partial = ["int_to_string", "string_to_int", "string_length", "string_concat"]
+stub-only = ["read_line"]
+next-row = "read_line on non-interpreter targets (codegen-deno + WASI)"
+
+[[module]]
+file = "stdlib/io.affine"
+class = "builtin"
+extern-fn = 5
+extern-type = 0
+status = "stub-only"
+stub-only = ["chdir", "create_dir", "remove_dir", "list_dir", "setenv"]
+unblock = "INT-03 S5 (native env/argv) for WASI path; deno adapter can ship independently"
+
+[[module]]
+file = "stdlib/Crypto.affine"
+class = "builtin"
+extern-fn = 3
+extern-type = 0
+status = "partial"
+partial = ["random_string", "random_f64", "time_ms"]
+notes = "interpreter + deno-target covered; wasm-core absent"
+priority = "not-critical-path"
+
+[[module]]
+file = "stdlib/Http.affine"
+class = "typed-boundary-bridge"
+extern-fn = 8
+extern-type = 1
+status = "done"
+done-via = "STDLIB-01 closed via ADR-018 + #226 (Deno-ESM) + #225 CPS line PR1..PR3d (#227/#233/#236/#237/#238/#266)"
+ledger-cross-ref = "STDLIB-01"
+
+[[module]]
+file = "stdlib/Network.affine"
+class = "adapter-deno"
+extern-fn = 2
+extern-type = 0
+status = "stub-only"
+stub-only = ["hostname", "tcp_connect"]
+priority = "lowest"
+notes = "no consumer; tcp_connect gates on async ABI which isn't designed"
+
+[[module]]
+file = "stdlib/Deno.affine"
+class = "adapter-deno"
+extern-fn = 24
+extern-type = 3
+status = "mostly-stub"
+partial = ["readTextFile", "readDir"]
+stub-only-categories = ["filesystem-writes", "process", "http-server"]
+meta-unblock = "creation of packages/affine-deno (does not yet exist as sibling to affine-vscode)"
+
+[[module]]
+file = "stdlib/Sqlite.affine"
+class = "adapter-deno"
+extern-fn = 6
+extern-type = 1
+status = "stub-only"
+stub-only = ["open", "prepare", "exec", "query", "close", "transaction"]
+unblock = "no consumer requesting it"
+
+[[module]]
+file = "stdlib/Vscode.affine"
+class = "adapter-node"
+extern-fn = 55
+extern-type = 12
+status = "partial-load-bearing"
+done-categories = ["commands.registerCommand family", "string marshalling"]
+partial-categories = ["window", "workspace", "languages"]
+adapter = "packages/affine-vscode/mod.js"
+smoke-test = "editors/vscode/test/ via @vscode/test-electron (PR #317)"
+unblock-policy = "row-by-row when consumer needs it; no requirement to implement all 55 before #35 Phase 4"
+
+[[module]]
+file = "stdlib/VscodeLanguageClient.affine"
+class = "adapter-node"
+extern-fn = 4
+extern-type = 2
+status = "done"
+done-via = "PR #317 smoke harness exercises end-to-end"
+notes = "no outstanding rows"
+
+[[module]]
+file = "stdlib/Grammy.affine"
+class = "adapter-deno"
+extern-fn = 10
+extern-type = 3
+status = "stub-only"
+notes = "Telegram bot framework adapter; no consumer"
+
+[[module]]
+file = "stdlib/Ajv.affine"
+class = "adapter-deno"
+extern-fn = 4
+extern-type = 2
+status = "stub-only"
+notes = "JSON-schema validator adapter; no consumer"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Implementation policy
+# ──────────────────────────────────────────────────────────────────────────────
+
+[implementation-policy]
+smoke-test-required = true
+test-paths-by-class = { builtin = "test/test_*.ml interp paths", typed-boundary-bridge = "test/test_e2e.ml + adapter package tests", adapter-deno = "affinescript-deno-test/", adapter-node = "editors/vscode/test/" }
+row-promotion-rule = "status moves from stub-only/partial to done only when smoke test lands"
+new-extern-rule = "no PR may stub a new extern without recording it here"
+cross-link-required = "implementation PR Refs STDLIB-04 and updates the matching row"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Cross-references
+# ──────────────────────────────────────────────────────────────────────────────
+
+[cross-references]
+ledger = "docs/TECH-DEBT.adoc"
+ecosystem-int-roadmap = "docs/ECOSYSTEM.adoc"
+testing-standards = "docs/standards/TESTING.adoc"
+canonical-adapter-shape = "packages/affine-vscode/mod.js"

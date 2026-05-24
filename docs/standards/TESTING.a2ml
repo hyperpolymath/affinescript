@@ -1,0 +1,193 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 hyperpolymath
+#
+# TESTING.a2ml — machine-readable companion to TESTING.adoc.
+# Human prose lives in TESTING.adoc; this file is the structured form
+# tools / bots / agents consume to decide what counts as a passing PR.
+
+[metadata]
+title = "AffineScript Testing Standards"
+human-companion = "docs/standards/TESTING.adoc"
+authoritative-readiness = "docs/CAPABILITY-MATRIX.adoc"
+authoritative-ledger = "docs/TECH-DEBT.adoc"
+status = "in-force"
+adopted = "2026-05-23"
+ledger-id = "DOC-10"
+
+[gate]
+# The single authoritative gate. CI runs this; PR is blocked unless it
+# exits 0. Live test count comes from the gate, not from any prose doc.
+command = "opam exec --switch=. -- dune runtest --force"
+ci-workflow = ".github/workflows/ci.yml"
+ci-job = "build"
+ci-step = "Run tests"
+baseline-counted-in = "docs/CAPABILITY-MATRIX.adoc"
+baseline-policy = "do-not-hard-code-in-prose"
+flaky-policy = "fix-or-delete"
+skipped-policy = "forbidden-without-refs-issue"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Test kinds (the taxonomy)
+# ──────────────────────────────────────────────────────────────────────────────
+
+[[kind]]
+id = "alcotest-unit"
+home = "test/test_<module>.ml"
+examples = ["test/test_lexer.ml", "test/test_effect_sites.ml"]
+purpose = "single OCaml module in isolation; hermetic; fast"
+add-when = "new function or non-trivial branch in a single compiler module whose behaviour you want to lock against regression"
+gates = "alcotest"
+
+[[kind]]
+id = "alcotest-e2e"
+home = "test/test_e2e.ml"
+purpose = "full compile pipeline (lex → parse → resolve → typecheck → quantity → codegen) on a small source string or fixture"
+add-when = "any change that crosses module boundaries: new language feature, new diagnostic, new codegen target, soundness gap closure"
+gates = "alcotest"
+
+[[kind]]
+id = "fixture-e2e"
+home = "test/e2e/fixtures/*.affine"
+driver = "test/test_e2e.ml"
+purpose = "user-visible language behaviour pinned as .affine source"
+add-when = "behaviour easier to read as a source file than as a string literal in OCaml"
+gates = "alcotest"
+
+[[kind]]
+id = "fixture-conformance"
+home = "tests/conformance/<category>/*.affine"
+driver = "just conformance"
+purpose = "language-level contract: any conforming compiler must accept these"
+add-when = "user-visible language behaviour that is part of the language contract, not just one compiler's behaviour"
+gates = "dune runtest conformance"
+
+[[kind]]
+id = "golden-snapshot"
+home = "test/golden/"
+driver = "test/test_golden.ml"
+purpose = ".affine input → expected stdout/AST/face-transformed source; pinned via on-disk snapshot file"
+add-when = "any pretty-printer, formatter, face transformer, or AST-dump output whose textual shape is part of the contract"
+gates = "alcotest + tools/run_face_transformer_tests.sh"
+
+[[kind]]
+id = "smoke-cross-runtime"
+home = [
+  "tools/run_codegen_wasm_tests.sh",
+  "tools/run_codegen_deno_tests.sh",
+  "affinescript-deno-test/",
+  "editors/vscode/test/",
+]
+purpose = "real host (Node, Deno, VS Code extension host) compiles + runs the AffineScript output"
+add-when = "change to a codegen target's runtime shape, CLI surface, JSR shim, LSP, or editor binding"
+gates = "shell scripts + @vscode/test-electron"
+
+[[kind]]
+id = "microbench"
+home = "bench/bench_<phase>.ml"
+driver = "just bench"
+dune-alias = "@bench"
+purpose = "per-phase compile time on representative inputs"
+add-when = "change touching a hot path in lex / parse / resolve / typecheck / codegen, or algorithmic change to a phase"
+gates = "visibility-only; no merge block"
+promotion-condition = "calibrated baseline + ratchet policy required first"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# PR-level expectations
+# ──────────────────────────────────────────────────────────────────────────────
+
+[[pr-rule]]
+id = "PR-001"
+rule = "build-green"
+command = "just build"
+notes = "Stage B benign parser-generator notices masked by `just build` per ADR-012 (`docs/specs/SETTLED-DECISIONS.adoc` 'Parser-Conflict Disclosure')"
+
+[[pr-rule]]
+id = "PR-002"
+rule = "full-gate-green"
+command = "just test"
+notes = "No skipped or pending tests without an explicit Refs #N justifying the skip"
+
+[[pr-rule]]
+id = "PR-003"
+rule = "one-test-per-behaviour-change"
+exempt = ["pure refactor"]
+required-for = ["new feature", "bug fix", "soundness change"]
+deferral-protocol = "deferred-regression-test (see below)"
+
+[[pr-rule]]
+id = "PR-004"
+rule = "capability-matrix-updated"
+trigger = "component moves between status tiers (works / partial / parse-only / absent)"
+target-file = "docs/CAPABILITY-MATRIX.adoc"
+
+[[pr-rule]]
+id = "PR-005"
+rule = "tech-debt-updated"
+trigger = "PR opens, closes, or moves a ledger item"
+target-file = "docs/TECH-DEBT.adoc"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Deferred regression tests
+# ──────────────────────────────────────────────────────────────────────────────
+# A bug-fix may ship without a fixture only if recorded here and only with
+# one of the recognised reasons.
+
+[deferred-regression-test]
+recorded-in = ".machine_readable/6a2/STATE.a2ml"
+recorded-field = "[[closed-bug]].regression-test-status"
+unblock-condition-required = true
+
+[[deferred-regression-test.reason]]
+key = "observability"
+meaning = "no side-effecting builtin or harness reaches the bug's failure mode (BUG-003 eval order is the archetype)"
+
+[[deferred-regression-test.reason]]
+key = "adjacent-bug"
+meaning = "the test path itself is broken; reopen when that bug closes"
+
+[[deferred-regression-test.reason]]
+key = "host-primitive"
+meaning = "test would require a wasm primitive (e.g. I32Load8U) the codegen has not yet emitted"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Visibility-only gates (bench + coverage)
+# ──────────────────────────────────────────────────────────────────────────────
+
+[bench]
+status = "visibility-only"
+recipes = ["just bench", "just bench-record"]
+ci-job = "bench-visibility"
+ci-artifact = "bench-output"
+promotion-condition = "calibrated baseline + ratchet policy"
+
+[coverage]
+tool = "bisect_ppx"
+status = "visibility-only"
+recipes = ["just coverage"]
+ci-job = "coverage-visibility"
+ci-artifact = "coverage-html"
+roadmap-aspiration-target = "85% / 90%"
+roadmap-aspiration-source = "docs/standards/ROADMAP.md"
+gating-status = "not-enforced"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Cross-references
+# ──────────────────────────────────────────────────────────────────────────────
+
+[cross-references]
+readiness = "docs/CAPABILITY-MATRIX.adoc"
+ledger = "docs/TECH-DEBT.adoc"
+spine-and-contract = "docs/ECOSYSTEM.adoc"
+panic-attack-sop = "docs/standards/PANIC-ATTACK.adoc"
+release-process = "docs/standards/RELEASE.md"
+retired-snapshot = "docs/guides/TESTING-REPORT.adoc"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Closure on this doc
+# ──────────────────────────────────────────────────────────────────────────────
+
+[closure]
+# This doc is itself in-force as soon as DOC-10 is closed in TECH-DEBT.adoc.
+ledger-status = "DONE 2026-05-23"
+mirrors-only = ["STATE.a2ml hygiene-uplift-2026-05-23"]
+leads = ["this file", "docs/standards/TESTING.adoc", "docs/TECH-DEBT.adoc"]

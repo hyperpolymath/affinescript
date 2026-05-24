@@ -1,0 +1,169 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+= AffineScript Panic-Attack Policy
+:toc: macro
+:toclevels: 3
+:icons: font
+
+[IMPORTANT]
+====
+This is the *authoritative SOP* for `panic-attack`, the estate's
+compliance scanner, in the AffineScript repository.  It describes
+when the scanner runs, how findings are dispositioned, and what the
+finding-disposition vocabulary is.
+
+The estate-wide rule that mandates panic-attack lives in
+`road-skate/docs/governance/MAINTENANCE-CHECKLIST.adoc`
+(Axis 3 — *audit: systems > compliance > effects*).  This file is
+the AffineScript-specific instantiation of that rule.
+====
+
+toc::[]
+
+== What panic-attack is
+
+`panic-attack` is a static security/compliance scanner that flags
+"dangerous patterns" in source code.  In this repo it scans `lib/`,
+`bin/`, and `test/` (per `panic-attack.toml`); the rule set
+currently covers four OCaml-specific hazards:
+
+* *critical* — `Obj.magic` (type-system bypass).
+* *high* — `Bytes.unsafe_from_string` / `String.unsafe_get`
+  (bounds-check bypass).
+* *medium* — `failwith ".*TODO"` / `assert false` (unhandled
+  failure paths that escape the codebase as runtime panics).
+* *low* — `ignore (...)` (a discarded result may hide a Result-typed
+  error that should have been handled).
+
+The full rule list lives in `panic-attack.toml`; this file
+describes the *practice*, not the rules.
+
+== When it runs
+
+[cols="1,2,3"]
+|===
+|Trigger |Workflow |Blocking?
+
+|*Weekly schedule*
+|`.github/workflows/panic-attack.yml` (cron: Sunday 03:00 UTC)
+|No — findings are filed as a workflow summary and opened as a
+GitHub issue if any *critical* or *high* finding appears that is
+not already in the false-positive registry.
+
+|*Pre-release (manual)*
+|Invoked from `docs/standards/RELEASE.md` Step 4 (pre-flight
+checklist).  Run `just panic`.
+|Yes — *critical* and *high* findings block the release cut.
+Medium/low findings are dispositioned but do not block.
+
+|*Ad hoc*
+|`just panic` from any working tree.
+|No — informational.
+|===
+
+Per-PR invocation is *not* in scope today.  panic-attack is a
+slow-moving estate scan, not a per-change linter; per-PR
+correctness gates are dune+ocamlformat+the existing CI workflows
+(`ci.yml`, `codeql.yml`, `semgrep.yml`, `secret-scanner.yml`).
+Adding panic-attack to every PR would increase CI latency without
+catching anything those four don't already cover at finer
+granularity.
+
+== Finding disposition vocabulary
+
+Every finding raised by `panic-attack` is *dispositioned* in one of
+four ways.  Silent ignore is not permitted; if a finding stays
+open, the reason must be written down.
+
+[cols="1,3,2"]
+|===
+|Disposition |Meaning |Recorded in
+
+|*fix*
+|The finding is a real defect.  A PR removes the dangerous
+pattern.  No registry entry needed once the PR merges.
+|The PR itself (commit message + ledger entry if it moves a
+ledger unit).
+
+|*accept*
+|The pattern is intentional and safe in this context (e.g.
+`Obj.magic` inside a documented FFI shim, `assert false` in a
+provably-dead match arm).  The site is annotated *in the source*
+(`(* panic-attack: accept — <one-line rationale> *)`) and listed
+in `[false-positives]` of `panic-attack.toml`.
+|`panic-attack.toml` `[false-positives]` table + an inline
+source-code annotation at the call site.
+
+|*suppress*
+|The pattern is acceptable for now but not forever (e.g. a TODO
+panic for a feature not yet implemented).  Tracked as a
+`SUPPRESS-N` entry in this file's "Standing suppressions" section
+with an unblock condition and the issue number that will close
+it.
+|This file (see "Standing suppressions" below).
+
+|*defer*
+|The pattern is in vendored / generated / out-of-policy code that
+we do not own (e.g. `distributions/rattlescript/target/` build
+output).  Excluded from scanning via `panic-attack.toml`
+`exclude`.
+|`panic-attack.toml` `exclude`.
+|===
+
+A finding that has been open for >30 days without a disposition is
+treated as a critical hygiene gap and surfaced on the weekly
+workflow run.
+
+== Standing suppressions
+
+None at present.  When the first one lands, the format is:
+
+----
+[SUPPRESS-001]
+finding   : <pattern name> at <path>:<line>
+severity  : <medium|low>
+rationale : <one paragraph>
+unblock   : <ledger / issue number that will close this>
+opened    : YYYY-MM-DD
+----
+
+== Session-note history
+
+The most recent ad-hoc panic-attack audit was logged in
+`.machine_readable/6a2/STATE.a2ml`, session-note 2026-04-11
+(end-of-Affinatea-stage-6 batch):
+
+* 1 High — `search.js` `innerHTML` → false positive but
+  hardened to char-replacement.
+* 2 Medium — LSP `unwrap`s and a shell heredoc → both false
+  positives, accepted.
+* 2 Low — TODO markers → informational.
+* 73/73 E2E tests passing, 0 regressions.
+
+That audit predates the SOP described here and was carried out
+manually.  Going forward, the weekly workflow is the steady-state
+mechanism.
+
+== Tool installation
+
+`panic-attack` is the `panic-attacker` Rust crate from the estate
+(`road-skate/features/panic-attacker/`).  Install:
+
+[source,bash]
+----
+cargo install --path road-skate/features/panic-attacker
+# or, from the published crate (when available):
+cargo install panic-attacker
+----
+
+CI installs it during the weekly workflow via the same crate path.
+
+== Cross-references
+
+* link:TESTING.adoc[TESTING.adoc] — testing standards (this doc
+  is referenced from there as the security-scan policy).
+* link:RELEASE.md[RELEASE.md] — release-cut checklist
+  (pre-release panic-attack invocation).
+* `road-skate/docs/governance/MAINTENANCE-CHECKLIST.adoc` —
+  estate-wide maintenance axes that mandate the scanner.
+* `panic-attack.toml` — the rule configuration this SOP enacts.

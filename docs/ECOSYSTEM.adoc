@@ -97,6 +97,17 @@ on the same footing as the other producers (ephapax). See the contract below.
 
 [IMPORTANT]
 ====
+This section is a *summary* of the contract.  The *authoritative*
+formal specification is
+link:specs/TYPED-WASM-INTERFACE.adoc[specs/TYPED-WASM-INTERFACE.adoc]
+(+ machine-readable companion
+link:specs/TYPED-WASM-INTERFACE.a2ml[specs/TYPED-WASM-INTERFACE.a2ml]).
+The roadmap of what would make typed-wasm a *natural and optimal*
+compilation target is
+link:specs/TYPED-WASM-ROADMAP.adoc[specs/TYPED-WASM-ROADMAP.adoc].
+ADR-020 (schema versioning) and ADR-021 (multi-producer model) are
+filed as PROPOSED in `.machine_readable/6a2/META.a2ml`.
+
 typed-wasm is a *separate, language-agnostic compilation target* with its own
 repository (`hyperpolymath/typed-wasm`), its own Idris2 proofs, its own
 ReScript surface, its own Rust verifier crate, and *its own other producers*
