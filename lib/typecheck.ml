@@ -1413,6 +1413,8 @@ let register_builtins (ctx : context) : unit =
   bind_var ctx "to_uppercase" (TArrow (ty_string, QOmega, ty_string, EPure));
   bind_var ctx "trim"         (TArrow (ty_string, QOmega, ty_string, EPure));
   bind_var ctx "parse_int"    (TArrow (ty_string, QOmega, opt ty_int, EPure));
+  (* STDLIB-04e (Refs #332): `string_to_int` typed-alias of `parse_int`. *)
+  bind_var ctx "string_to_int" (TArrow (ty_string, QOmega, opt ty_int, EPure));
   bind_var ctx "parse_float"  (TArrow (ty_string, QOmega, opt ty_float, EPure));
   bind_var ctx "char_to_int"  (TArrow (ty_char, QOmega, ty_int, EPure));
   bind_var ctx "int_to_char"  (TArrow (ty_int, QOmega, ty_char, EPure));

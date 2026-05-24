@@ -269,6 +269,10 @@ let () =
   b "trim"           (fun a -> Printf.sprintf "String(%s).trim()" (arg 0 a));
   b "int_to_string"  (fun a -> Printf.sprintf "String(%s)" (arg 0 a));
   b "float_to_string" (fun a -> Printf.sprintf "String(%s)" (arg 0 a));
+  (* STDLIB-04e (Refs #332): `string_to_int` is the typed-alias of
+     `parse_int` declared in stdlib/effects.affine. Same `__as_parseInt`
+     host shim, returns Option<Int>. *)
+  b "string_to_int"  (fun a -> Printf.sprintf "__as_parseInt(%s)" (arg 0 a));
   b "parse_int"      (fun a -> Printf.sprintf "__as_parseInt(%s)" (arg 0 a));
   b "parse_float"    (fun a -> Printf.sprintf "__as_parseFloat(%s)" (arg 0 a));
   b "char_to_int"    (fun a -> Printf.sprintf "__as_charToInt(%s)" (arg 0 a));
