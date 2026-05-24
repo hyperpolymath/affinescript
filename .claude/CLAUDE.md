@@ -140,3 +140,117 @@ Rule: An issue is closed only by explicit merge of a PR with "Closes #N" OR by e
 Action (Hypatia): When asked to close an issue, confirm via a reply on the issue thread before doing so.
 Action (gitbot): Never use GitHub's "close issue" API directly; only close via PR merge with "Closes #N" keywords.
 
+## Agent operations notes
+
+Practical guidance for agents (Claude / other) operating in this repo,
+captured from parallel-bot session experience. Read once; saves turns.
+
+### CI signal reliability
+
+**"PR merged" does NOT mean "build green".** Auto-merge on this repo
+currently fires even when `build` or `lint` is failing — multiple
+recently-merged PRs (#334, #335, #336, #344) landed with `build` red,
+and the red persisted until PR #346's `FnExtern` interp fix. If you
+inherit a session reasoning about a recently-merged PR, do not assume
+its CI was green; check `mcp__github__pull_request_read` with method
+`get_check_runs` for the actual statuses, and check whether `main`
+itself is currently red before treating a build failure on your own
+PR as something *you* introduced.
+
+### Reading CI logs
+
+`WebFetch` against the GitHub Actions UI returns the React skeleton,
+not the log content. The fast paths for an agent are:
+
+* `mcp__github__pull_request_read` with method `get_check_runs` —
+  per-job status (queued / in_progress / success / failure) with
+  `details_url`. Sufficient for "did the build pass".
+* `mcp__github__pull_request_read` with method `get_status` —
+  combined commit status.
+* For actual log lines on a failed run, hand back to the user with
+  `gh run view --log-failed <run-id>`; do not loop trying to scrape
+  the UI.
+
+### Known-failing baseline checks
+
+These checks currently fail on *every* PR for repo-wide reasons, not
+because of any individual PR's changes. Do not waste turns
+investigating them on a per-PR basis:
+
+* `vscode-smoke` — npm 404 on `@hyperpolymath/affine-vscode` (the
+  in-editor harness depends on a not-yet-published npm package).
+* `migration-assistant` — was fixed by #342, but any branch created
+  from a base older than #342 will still see it red until rebased.
+* `governance / Language / package anti-pattern policy` — flags the
+  approved TypeScript exemptions (`affinescript-deno-test/*.ts`,
+  `editors/vscode/test/*.js`, etc., all documented in this file's
+  exemptions tables); the check has no allowlist for them.
+* The Hypatia security-scan bot comment — 143 findings; the bulk are
+  the same TypeScript exemption hits + pre-existing root files. A
+  real new finding will show as a *delta* in the count; otherwise
+  ignore.
+
+If a check from this list *changes status* on a PR (e.g.
+`vscode-smoke` suddenly passes, or Hypatia surfaces a new class of
+finding), that's signal worth investigating.
+
+### Branching discipline with concurrent merges
+
+When multiple agents are spawned in parallel, branch-creation time
+can lag `main` by hours and a stale base will silently revert other
+agents' work at merge time. **Before pushing any branch, run:**
+
+```
+git fetch origin main
+git rebase origin/main
+```
+
+Not just at branch-creation; immediately before push, after any
+in-session work. This guards against parallel-merge drift. Claude 1's
+STDLIB-04c branch (#337) accidentally reverted #334 and #335 because
+its base was stale; force-rebased to fix. Cheap to prevent, expensive
+to clean up.
+
+### Post-squash-merge branch divergence
+
+When a PR is squash-merged, the squashed commit on `main` gets a
+*new* SHA, distinct from any of the source-branch commits. If you
+then reset your local branch to `main` (or simply re-resolve it),
+`git status` reports N "ahead of origin/branch" — but those N
+commits are just the main-side commits the obsolete remote
+branch-tip never saw, not unpushed work.
+
+Recognising the situation:
+
+* The branch was already merged (PR closed, `merged: true`).
+* The local working tree matches `main`.
+* The remote branch still points at the *pre-merge* tip
+  (`origin/<branch>` is an old SHA, not the squashed one).
+* `git log origin/<branch>..HEAD` lists commits that look like
+  other people's work.
+
+Safe fix — pick the one matching intent:
+
+```
+git push origin --delete <branch>            # done with the branch
+git push --force-with-lease origin <branch>  # align the remote to main
+```
+
+`--force-with-lease` is safe here because nothing on the remote
+branch is unmerged work; force-push without `--lease` only matters
+if someone else pushed concurrently, which is irrelevant for an
+already-merged branch you're cleaning up.
+
+### Test-fixture hygiene for latent bug surfaces
+
+When you add a stdlib `extern fn` (or any other new declaration
+shape), add a test that feeds it to *every* downstream consumer
+(parse, resolve, typecheck, interp, every codegen target that
+shouldn't reject it). The PR #346 `FnExtern` interp bug had survived
+since the interpreter was written because no test had ever fed an
+inline `extern fn` to `Interp.eval_program` — STDLIB-04a's tests
+were the first, and only then did the missing match arm fire.
+
+Treat "first user of an existing-but-untested declaration shape" as a
+class-level surface, not a single test case.
+
