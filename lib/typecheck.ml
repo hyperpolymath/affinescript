@@ -1325,11 +1325,18 @@ let register_builtins (ctx : context) : unit =
     (TArrow (ty_int, QOmega, ty_int, ESingleton "Time"));
   (* ADR-015 S4b (#180): WASI environment / argv COUNTS. The Unit arg
      satisfies the zero-param-fn collapse wart (`fn()->T` lowers to
-     bare `T`; callable zero-arg builtins take `Unit -> R`). String
-     accessors (env_at/arg_at) need byte-level wasm IR ops — tracked
-     follow-up. Effect row `Time` (reserved). *)
+     bare `T`; callable zero-arg builtins take `Unit -> R`).
+     Effect row `Time` (reserved). *)
   bind_var ctx "env_count" (TArrow (ty_unit, QOmega, ty_int, ESingleton "Time"));
   bind_var ctx "arg_count" (TArrow (ty_unit, QOmega, ty_int, ESingleton "Time"));
+  (* ADR-015 S5 (#180): WASI environment / argv STRING ACCESSORS. Returns
+     the i-th entry as a length-prefixed AS string. Lowered via
+     `environ_get`/`args_get` + a byte-level scan + byte-copy, which
+     became expressible once `I32Load8U`/`I32Store8` joined the wasm IR.
+     Index out-of-bounds is UB at this layer — the guest is expected to
+     bound-check against `env_count(())`/`arg_count(())`. *)
+  bind_var ctx "env_at" (TArrow (ty_int, QOmega, ty_string, ESingleton "Time"));
+  bind_var ctx "arg_at" (TArrow (ty_int, QOmega, ty_string, ESingleton "Time"));
   bind_var ctx "eprint" (TArrow (ty_string, QOmega, ty_unit, ESingleton "IO"));
   bind_var ctx "eprintln" (TArrow (ty_string, QOmega, ty_unit, ESingleton "IO"));
   bind_var ctx "read_line"
@@ -1449,6 +1456,13 @@ let register_builtins (ctx : context) : unit =
   bind_var ctx "atan2"
     (TArrow (ty_float, QOmega, TArrow (ty_float, QOmega, ty_float, EPure), EPure));
   bind_var ctx "panic" (TArrow (ty_string, QOmega, ty_never, EPure));
+  (* STDLIB-04b (Refs #329): `error<T>(msg)` is panic's polymorphic sibling
+     — diverges, but unifies with whatever return type the call site
+     expects (`T` is unobservable at runtime because the call doesn't
+     return). Bound as a scheme so each call instantiates a fresh tyvar,
+     same pattern as `len`/`show`/`RuntimeError`. *)
+  bind_scheme ctx "error"
+    (poly1 (fun a -> TArrow (ty_string, QOmega, a, EPure)));
   bind_var ctx "exit" (TArrow (ty_int, QOmega, ty_never, ESingleton "IO"));
   (* TEA runtime — accepts any record, returns unit with IO effect *)
   let tea_tv = fresh_tyvar 0 in
