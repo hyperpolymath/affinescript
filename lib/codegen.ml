@@ -11,12 +11,17 @@ open Ast
 open Wasm
 
 (** Ownership kind for typed-wasm schema annotations.
-    Maps AffineScript ownership qualifiers to typed-wasm Level 7/10 verification. *)
-type ownership_kind =
-  | Unrestricted  (** Plain value, no ownership constraint (Wasm i32/f64 etc.) *)
-  | Linear        (** TyOwn / own — consumed exactly once (typed-wasm Level 10 linearity) *)
-  | SharedBorrow  (** TyRef / ref — read-only aliasing safety (typed-wasm Level 7) *)
-  | ExclBorrow    (** TyMut / mut — exclusive mutable aliasing safety (typed-wasm Level 7) *)
+
+    Re-exported from [Tw_ownership_section] (the dedicated home,
+    extracted 2026-05-24 per A3 of TYPED-WASM-ROADMAP.adoc).  The
+    type equation preserves constructor accessibility so
+    [Codegen.Linear] etc. continue to resolve and [open Codegen]
+    in [Tw_verify] / [Tw_interface] / [Test_e2e] is unaffected. *)
+type ownership_kind = Tw_ownership_section.ownership_kind =
+  | Unrestricted
+  | Linear
+  | SharedBorrow
+  | ExclBorrow
 
 (** Code generation context *)
 type context = {
@@ -111,19 +116,9 @@ let create_context () : context = {
   wasi_func_indices = [];
 }
 
-(** Extract ownership kind from a parameter declaration.
-    Checks p_ownership first; falls back to the shape of p_ty. *)
-let ownership_kind_of_param (p : param) : ownership_kind =
-  match p.p_ownership with
-  | Some Own -> Linear
-  | Some Ref -> SharedBorrow
-  | Some Mut -> ExclBorrow
-  | None ->
-    match p.p_ty with
-    | TyOwn _ -> Linear
-    | TyRef _ -> SharedBorrow
-    | TyMut _ -> ExclBorrow
-    | _ -> Unrestricted
+(** Extract ownership kind from a parameter declaration. Re-exported
+    from [Tw_ownership_section] (A3 refactor, 2026-05-24). *)
+let ownership_kind_of_param = Tw_ownership_section.ownership_kind_of_param
 
 (** If [ty] names a known struct (through any number of own/ref/mut wrappers),
     return that struct's name. Lets us recover a struct's field layout from
@@ -136,45 +131,21 @@ let rec struct_name_of_ty (ty : type_expr) : string option =
   | TyOwn inner | TyRef inner | TyMut inner -> struct_name_of_ty inner
   | _ -> None
 
-(** Extract ownership kind from an optional return type expression *)
-let ownership_kind_of_ret (ret : type_expr option) : ownership_kind =
-  match ret with
-  | Some (TyOwn _) -> Linear
-  | Some (TyRef _) -> SharedBorrow
-  | Some (TyMut _) -> ExclBorrow
-  | _ -> Unrestricted
+(** Extract ownership kind from an optional return type expression.
+    Re-exported from [Tw_ownership_section]. *)
+let ownership_kind_of_ret = Tw_ownership_section.ownership_kind_of_ret
 
-(** Encode an ownership_kind as a single byte (0–3) *)
-let ownership_kind_byte = function
-  | Unrestricted -> 0 | Linear -> 1 | SharedBorrow -> 2 | ExclBorrow -> 3
+(** Encode an ownership_kind as a single byte (0–3).
+    Re-exported from [Tw_ownership_section]. *)
+let ownership_kind_byte = Tw_ownership_section.ownership_kind_byte
 
 (** Build the payload for the [affinescript.ownership] Wasm custom section.
-    Encoding (all little-endian):
-      u32  entry_count
-      per entry:
-        u32  func_index
-        u8   param_count
-        u8*  param_kind  (one per param, see kind encoding above)
-        u8   return_kind *)
-let build_ownership_section (annots : (int * ownership_kind list * ownership_kind) list) : bytes =
-  if annots = [] then Bytes.empty
-  else
-    let buf = Buffer.create 64 in
-    let write_u32_le n =
-      Buffer.add_char buf (Char.chr  (n         land 0xff));
-      Buffer.add_char buf (Char.chr ((n lsr  8) land 0xff));
-      Buffer.add_char buf (Char.chr ((n lsr 16) land 0xff));
-      Buffer.add_char buf (Char.chr ((n lsr 24) land 0xff))
-    in
-    let write_u8 n = Buffer.add_char buf (Char.chr (n land 0xff)) in
-    write_u32_le (List.length annots);
-    List.iter (fun (func_idx, param_kinds, ret_kind) ->
-      write_u32_le func_idx;
-      write_u8 (List.length param_kinds);
-      List.iter (fun k -> write_u8 (ownership_kind_byte k)) param_kinds;
-      write_u8 (ownership_kind_byte ret_kind)
-    ) annots;
-    Buffer.to_bytes buf
+    Re-exported from [Tw_ownership_section.build_section] (A3 refactor,
+    2026-05-24).  The dedicated module is the home for the on-wire format;
+    this alias preserves the [Codegen.build_ownership_section] public
+    API surface that downstream callers (lib/tw_verify.ml,
+    lib/tw_interface.ml, test/test_e2e.ml) rely on. *)
+let build_ownership_section = Tw_ownership_section.build_section
 
 (** Map AffineScript type to WASM value type *)
 let type_to_wasm (ty : type_expr) : value_type result =
