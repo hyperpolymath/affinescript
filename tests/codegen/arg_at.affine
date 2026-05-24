@@ -1,0 +1,8 @@
+// SPDX-License-Identifier: MPL-2.0
+// ADR-015 S5 (#180): arg_at(i) smoke. Same shape as env_at; differs
+// only in the underlying WASI import (`args_sizes_get` + `args_get`).
+// Indexing 1 (not 0) exercises the `n_local * 4` pointer-vector
+// offset path that env_at(0) would short-circuit.
+pub fn main() -> Int / { Time } {
+  string_length(arg_at(1))
+}

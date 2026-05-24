@@ -51,10 +51,25 @@ type instr =
   | I64Load of int * int
   | F32Load of int * int
   | F64Load of int * int
+  | I32Load8S of int * int   (** load 1 byte, sign-extend to i32 *)
+  | I32Load8U of int * int   (** load 1 byte, zero-extend to i32 *)
+  | I32Load16S of int * int  (** load 2 bytes, sign-extend to i32 *)
+  | I32Load16U of int * int  (** load 2 bytes, zero-extend to i32 *)
+  | I64Load8S of int * int
+  | I64Load8U of int * int
+  | I64Load16S of int * int
+  | I64Load16U of int * int
+  | I64Load32S of int * int
+  | I64Load32U of int * int
   | I32Store of int * int
   | I64Store of int * int
   | F32Store of int * int
   | F64Store of int * int
+  | I32Store8 of int * int   (** store low 1 byte of i32 *)
+  | I32Store16 of int * int  (** store low 2 bytes of i32 *)
+  | I64Store8 of int * int
+  | I64Store16 of int * int
+  | I64Store32 of int * int
   | MemorySize
   | MemoryGrow
 
