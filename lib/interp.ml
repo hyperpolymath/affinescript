@@ -1027,14 +1027,25 @@ let create_initial_env () : env =
 let eval_decl (env : env) (decl : top_level) : env result =
   match decl with
   | TopFn fd ->
-    let closure = VClosure {
-      cl_params = fd.fd_params;
-      cl_body = (match fd.fd_body with
-        | FnBlock blk -> ExprBlock blk
-        | FnExpr e -> e);
-      cl_env = env;
-    } in
-    Ok (extend_env fd.fd_name.name closure env)
+    (match fd.fd_body with
+     | FnExtern ->
+       (* Externs have no AST body to evaluate. Their runtime binding is
+          provided by [create_initial_env]'s builtin table (panic, error,
+          make_ref, …). Skip here so an inline `extern fn` declaration in
+          a test source (e.g. the STDLIB-04a Mut round-trip tests) doesn't
+          blow up the [FnBlock|FnExpr] match below.
+          Refs #328 root-cause for the interp pattern-match-failure. *)
+       Ok env
+     | FnBlock _ | FnExpr _ ->
+       let closure = VClosure {
+         cl_params = fd.fd_params;
+         cl_body = (match fd.fd_body with
+           | FnBlock blk -> ExprBlock blk
+           | FnExpr e -> e
+           | FnExtern -> assert false (* unreachable: outer match guards *));
+         cl_env = env;
+       } in
+       Ok (extend_env fd.fd_name.name closure env))
 
   | TopConst tc ->
     let* v = eval env tc.tc_value in
