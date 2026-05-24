@@ -187,8 +187,13 @@ round-trips + Deno codegen __cell-shape assertion) |S3 |DONE
 operator independently lowered. Decide: remove (operator-only) or wire
 to mirror `++` |S3 |open — issue #330
 |STDLIB-04d |IO externs (`print`/`println`/`read_line`/`read_file`/
-`write_file`) — wired on all backends but no dedicated hermetic e2e
-tests; test-debt, not impl-debt |S3 |open — issue #331
+`write_file`) — *DONE* (Refs #331): 5 hermetic tests in "E2E
+STDLIB-04d IO #331" — `write_file` → `read_file` round-trip on a real
+tmpfile, `read_file` on a missing path returns `Err` (not raise),
+`print`/`println` exec without error, Deno codegen wires both into the
+prelude. `read_line` is interactive and intentionally out of scope (the
+TEA-bridge tests already exercise the redirected-stdin path). No impl
+change; was test-debt, not impl-debt. |S3 |DONE 2026-05-24 (Refs #331)
 |STDLIB-04e |Pure externs (`int_to_string`/`string_to_int`/
 `string_length`) — real + tested (`lib/interp.ml:615-633`,
 `lib/codegen_deno.ml:263-272`); bookkeeping to mark DONE |S3 |open —
