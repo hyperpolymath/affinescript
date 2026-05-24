@@ -211,6 +211,36 @@ STDLIB-04c branch (#337) accidentally reverted #334 and #335 because
 its base was stale; force-rebased to fix. Cheap to prevent, expensive
 to clean up.
 
+### Post-squash-merge branch divergence
+
+When a PR is squash-merged, the squashed commit on `main` gets a
+*new* SHA, distinct from any of the source-branch commits. If you
+then reset your local branch to `main` (or simply re-resolve it),
+`git status` reports N "ahead of origin/branch" — but those N
+commits are just the main-side commits the obsolete remote
+branch-tip never saw, not unpushed work.
+
+Recognising the situation:
+
+* The branch was already merged (PR closed, `merged: true`).
+* The local working tree matches `main`.
+* The remote branch still points at the *pre-merge* tip
+  (`origin/<branch>` is an old SHA, not the squashed one).
+* `git log origin/<branch>..HEAD` lists commits that look like
+  other people's work.
+
+Safe fix — pick the one matching intent:
+
+```
+git push origin --delete <branch>            # done with the branch
+git push --force-with-lease origin <branch>  # align the remote to main
+```
+
+`--force-with-lease` is safe here because nothing on the remote
+branch is unmerged work; force-push without `--lease` only matters
+if someone else pushed concurrently, which is irrelevant for an
+already-merged branch you're cleaning up.
+
 ### Test-fixture hygiene for latent bug surfaces
 
 When you add a stdlib `extern fn` (or any other new declaration
