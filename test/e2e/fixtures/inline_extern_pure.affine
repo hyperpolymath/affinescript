@@ -1,0 +1,24 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// Inline-extern fixture (pure): an `extern fn` declaration with no
+// effect row, fed to the full pipeline (parse → resolve → typecheck
+// → interp).  Counterpart to the missing `FnExtern` arm in
+// Interp.eval_decl that PR #346 fixed; this fixture pins the
+// "no-effect inline extern" shape against the gate so a regression
+// to the silent-pattern-match-failure path of the kind that broke
+// main between #334 and #346 would fail loudly here instead.
+//
+// See .claude/CLAUDE.md §"Test-fixture hygiene for latent bug
+// surfaces" and the comment on PR #346 for the rationale.
+
+extern fn host_pure_identity(x: Int) -> Int;
+
+pub fn main() -> Int {
+  // The call itself doesn't have to succeed at runtime — the
+  // interpreter's VBuiltin table doesn't know about
+  // host_pure_identity — but parse + resolve + typecheck + the
+  // eval_decl arm for FnExtern MUST all return Ok.  The check_program
+  // test driver asserts that, not the runtime value.
+  return 0;
+}
