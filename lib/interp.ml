@@ -732,11 +732,44 @@ let create_initial_env () : env =
       | _ -> Error (TypeMismatch "log2 expects Float")
     ));
 
+    (* -- Mut effect builtins (STDLIB-04a, Refs #328) ----------------------
+       Backs the [stdlib/effects.affine] externs `make_ref`/`get`/`set`,
+       declared `/ Mut`. Distinct from the borrow-checker [&]/[&mut]
+       references: these are runtime mutable cells (parameterised type
+       [Ref<T>] in the stdlib). The interp uses [VMut] (an existing
+       mutable-cell variant in [Value]) so [get]/[set] go through the
+       same deref/assign primitives used by the [&mut]-surface. *)
+    ("make_ref", VBuiltin ("make_ref", fun args ->
+      match args with
+      | [v] -> Ok (VMut (ref v))
+      | _ -> Error (TypeMismatch "make_ref expects exactly one argument")
+    ));
+    ("get", VBuiltin ("get", fun args ->
+      match args with
+      | [VMut r] | [VRef r] -> Ok !r
+      | _ -> Error (TypeMismatch "get expects a Ref<T>")
+    ));
+    ("set", VBuiltin ("set", fun args ->
+      match args with
+      | [VMut r; v] -> r := v; Ok VUnit
+      | _ -> Error (TypeMismatch "set expects (Ref<T>, T)")
+    ));
+
     (* -- I/O builtins ------------------------------------------------------ *)
     ("panic", VBuiltin ("panic", fun args ->
       match args with
       | [VString msg] -> Error (RuntimeError msg)
       | _ -> Error (RuntimeError "panic!")
+    ));
+    (* STDLIB-04b (Refs #329): `error<T>(msg)` is panic's polymorphic
+       sibling. Same divergent runtime semantics (RuntimeError); the
+       polymorphic return type is unobservable because the call never
+       returns. Backs the `extern fn error<T>(msg: String) -> T / Throws`
+       in stdlib/effects.affine. *)
+    ("error", VBuiltin ("error", fun args ->
+      match args with
+      | [VString msg] -> Error (RuntimeError msg)
+      | _ -> Error (RuntimeError "error!")
     ));
     ("read_file", VBuiltin ("read_file", fun args ->
       match args with

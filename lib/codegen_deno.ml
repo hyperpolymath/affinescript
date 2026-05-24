@@ -275,6 +275,20 @@ let () =
   b "int_to_char"    (fun a -> Printf.sprintf "__as_intToChar(%s)" (arg 0 a));
   b "show"           (fun a -> Printf.sprintf "__as_show(%s)" (arg 0 a));
   b "panic"          (fun a -> Printf.sprintf "(() => { throw new Error(%s); })()" (arg 0 a));
+  (* STDLIB-04b (Refs #329): `error<T>` is panic's polymorphic sibling.
+     Same divergent runtime semantics (throw); the polymorphic return
+     type is unobservable. *)
+  b "error"          (fun a -> Printf.sprintf "(() => { throw new Error(%s); })()" (arg 0 a));
+  (* Mut effect builtins (STDLIB-04a, Refs #328) — runtime mutable cells.
+     Distinct from borrow-checker [&]/[&mut] references: these back the
+     [stdlib/effects.affine] [Ref<T>] type declared `/ Mut`. Lowered as
+     a single-field object so [get]/[set] are O(1) field access; comma-
+     expression in [set] returns Unit (null) to match the extern's
+     signature `(Ref<T>, T) -> Unit / Mut`. *)
+  b "make_ref"       (fun a -> Printf.sprintf "({__cell: %s})" (arg 0 a));
+  b "get"            (fun a -> Printf.sprintf "((%s).__cell)" (arg 0 a));
+  b "set"            (fun a -> Printf.sprintf "(((%s).__cell = %s), null)"
+                                 (arg 0 a) (arg 1 a));
   (* ---- Http (issue #160) ---- *)
   (* `await` is legal: every caller of `http_request` is declared
      `/ Net, Async` and so is emitted as an `async function`

@@ -1,0 +1,19 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell
+//
+// CORE-01 pt3 Slice A / #177: NLL last-use expiry. Under purely lexical
+// lifetimes this program is rejected: the borrow held by `r` lives until
+// block exit, so the assignment `x = 2` triggers MoveWhileBorrowed. With
+// non-lexical lifetimes, `r` is dead after the `let y` statement (its
+// last mention), so the borrow on `x` has been released by the time the
+// assignment is checked. Expected: Ok.
+
+module BorrowNllAssignAfterLastUse;
+
+fn nll_assign() -> Int {
+  let mut x = 1;
+  let r = &x;
+  let y = *r;
+  x = 2;
+  x + y
+}

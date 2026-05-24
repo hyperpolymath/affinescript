@@ -3181,6 +3181,188 @@ let extern_tests = [
   Alcotest.test_case "extern fn → WASM import in 'env' namespace" `Quick test_extern_fn_codegen_emits_wasm_import;
 ]
 
+(* ---- STDLIB-04a: Mut effect externs (make_ref/get/set) ----
+
+   Hermetic round-trip on the interpreter: `make_ref(7)` allocates a
+   mutable cell, `set(r, 42)` mutates it, `get(r)` reads back the new
+   value. Proves the [Value.VMut] cell wiring (real implementation,
+   not a stub). Issue #328. *)
+
+let test_stdlib_04a_mut_round_trip () =
+  let src = {|
+effect Mut;
+extern fn make_ref<T>(x: T) -> Ref<T> / Mut;
+extern fn get<T>(r: Ref<T>) -> T / Mut;
+extern fn set<T>(r: Ref<T>, x: T) -> Unit / Mut;
+
+fn round_trip() -> Int / Mut {
+  let r = make_ref(7);
+  set(r, 42);
+  get(r)
+}
+
+const result: Int = round_trip();
+|} in
+  let prog = Parse_driver.parse_string ~file:"<test_stdlib_04a>" src in
+  match Interp.eval_program prog with
+  | Error e -> Alcotest.failf "interp failed: %s" (Value.show_eval_error e)
+  | Ok env ->
+    (match Value.lookup_env "result" env with
+     | Ok (Value.VInt 42) -> ()
+     | Ok v -> Alcotest.failf "expected VInt 42, got %s" (Value.show_value v)
+     | Error e -> Alcotest.failf "lookup failed: %s" (Value.show_eval_error e))
+
+(* `make_ref` on a non-Int value: round-trip a String to prove the cell
+   is value-polymorphic at runtime (matches the `<T>` signature). *)
+let test_stdlib_04a_mut_string_cell () =
+  let src = {|
+effect Mut;
+extern fn make_ref<T>(x: T) -> Ref<T> / Mut;
+extern fn get<T>(r: Ref<T>) -> T / Mut;
+extern fn set<T>(r: Ref<T>, x: T) -> Unit / Mut;
+
+fn round_trip() -> String / Mut {
+  let r = make_ref("alpha");
+  set(r, "omega");
+  get(r)
+}
+
+const result: String = round_trip();
+|} in
+  let prog = Parse_driver.parse_string ~file:"<test_stdlib_04a>" src in
+  match Interp.eval_program prog with
+  | Error e -> Alcotest.failf "interp failed: %s" (Value.show_eval_error e)
+  | Ok env ->
+    (match Value.lookup_env "result" env with
+     | Ok (Value.VString "omega") -> ()
+     | Ok v -> Alcotest.failf "expected VString \"omega\", got %s"
+                 (Value.show_value v)
+     | Error e -> Alcotest.failf "lookup failed: %s" (Value.show_eval_error e))
+
+(* Deno codegen lowers make_ref/get/set to the `{__cell: x}` host shape.
+   Proves the codegen_deno builtin table entries fire (was missing pre-
+   #328) — the emitted source must contain `__cell` references. *)
+let test_stdlib_04a_mut_deno_codegen () =
+  let src = {|
+effect Mut;
+extern fn make_ref<T>(x: T) -> Ref<T> / Mut;
+extern fn get<T>(r: Ref<T>) -> T / Mut;
+extern fn set<T>(r: Ref<T>, x: T) -> Unit / Mut;
+
+pub fn round_trip() -> Int {
+  let r = make_ref(0);
+  set(r, 99);
+  get(r)
+}
+|} in
+  let prog = Parse_driver.parse_string ~file:"<test_stdlib_04a>" src in
+  let loader = Module_loader.create (Module_loader.default_config ()) in
+  match Resolve.resolve_program_with_loader prog loader with
+  | Error (e, _) ->
+    Alcotest.failf "resolve failed: %s" (Resolve.show_resolve_error e)
+  | Ok (rctx, _) ->
+    (match Codegen_deno.codegen_deno prog rctx.symbols with
+     | Error e -> Alcotest.failf "deno-codegen failed: %s" e
+     | Ok js ->
+       let contains needle =
+         let nl = String.length needle and sl = String.length js in
+         let rec go i = i + nl <= sl &&
+           (String.sub js i nl = needle || go (i + 1))
+         in nl = 0 || go 0
+       in
+       Alcotest.(check bool) "emitted JS contains __cell shape"
+         true (contains "__cell"))
+
+let stdlib_04a_mut_tests = [
+  Alcotest.test_case "#328 make_ref/set/get round-trip (Int)" `Quick test_stdlib_04a_mut_round_trip;
+  Alcotest.test_case "#328 make_ref/set/get round-trip (String)" `Quick test_stdlib_04a_mut_string_cell;
+  Alcotest.test_case "#328 Deno codegen emits __cell shape" `Quick test_stdlib_04a_mut_deno_codegen;
+]
+
+(* ---- STDLIB-04b: Throws extern `error<T>` (Refs #329) ----
+
+   `error<T>(msg: String) -> T / Throws` was declared in
+   stdlib/effects.affine but missing in every backend. Same divergent
+   semantics as `panic` with a polymorphic return type that unifies
+   with the call-site expectation (unobservable because the call never
+   returns). *)
+
+let test_stdlib_04b_error_diverges_int_call_site () =
+  let src = {|
+fn must_be_positive(n: Int) -> Int {
+  if n > 0 { n } else { error("not positive") }
+}
+fn f() -> Int { must_be_positive(-1) }
+|} in
+  let prog = Parse_driver.parse_string ~file:"<test>" src in
+  match Interp.eval_program prog with
+  | Error e -> Alcotest.failf "program load failed: %s" (Value.show_eval_error e)
+  | Ok env ->
+    (match Value.lookup_env "f" env with
+     | Error _ -> Alcotest.fail "f not bound"
+     | Ok fn ->
+       (match Interp.apply_function fn [] with
+        | Ok _ -> Alcotest.fail "expected error to diverge; got Ok"
+        | Error (Value.RuntimeError msg) ->
+          Alcotest.(check string) "error message" "not positive" msg
+        | Error e ->
+          Alcotest.failf "expected RuntimeError, got: %s"
+            (Value.show_eval_error e)))
+
+(* Polymorphic: `error` in a String-returning context. Proves the
+   `<T>` polymorphism — same call site, different unification. *)
+let test_stdlib_04b_error_diverges_string_call_site () =
+  let src = {|
+fn lookup(k: String) -> String {
+  if string_length(k) > 0 { k } else { error("empty key") }
+}
+fn f() -> String { lookup("") }
+|} in
+  let prog = Parse_driver.parse_string ~file:"<test>" src in
+  match Interp.eval_program prog with
+  | Error e -> Alcotest.failf "program load failed: %s" (Value.show_eval_error e)
+  | Ok env ->
+    (match Value.lookup_env "f" env with
+     | Error _ -> Alcotest.fail "f not bound"
+     | Ok fn ->
+       (match Interp.apply_function fn [] with
+        | Ok _ -> Alcotest.fail "expected error to diverge; got Ok"
+        | Error (Value.RuntimeError msg) ->
+          Alcotest.(check string) "error message" "empty key" msg
+        | Error e ->
+          Alcotest.failf "expected RuntimeError, got: %s"
+            (Value.show_eval_error e)))
+
+let test_stdlib_04b_error_deno_codegen () =
+  let src = {|
+fn must(n: Int) -> Int {
+  if n > 0 { n } else { error("bad") }
+}
+|} in
+  let prog = Parse_driver.parse_string ~file:"<test>" src in
+  let loader = Module_loader.create (Module_loader.default_config ()) in
+  match Resolve.resolve_program_with_loader prog loader with
+  | Error (e, _) ->
+    Alcotest.failf "resolve failed: %s" (Resolve.show_resolve_error e)
+  | Ok (rctx, _) ->
+    (match Codegen_deno.codegen_deno prog rctx.symbols with
+     | Error e -> Alcotest.failf "deno-codegen failed: %s" e
+     | Ok js ->
+       let contains needle =
+         let nl = String.length needle and sl = String.length js in
+         let rec go i = i + nl <= sl &&
+           (String.sub js i nl = needle || go (i + 1))
+         in nl = 0 || go 0
+       in
+       Alcotest.(check bool) "emitted JS throws on error()"
+         true (contains "throw new Error(\"bad\")"))
+
+let stdlib_04b_error_tests = [
+  Alcotest.test_case "#329 error diverges at Int call site" `Quick test_stdlib_04b_error_diverges_int_call_site;
+  Alcotest.test_case "#329 error diverges at String call site" `Quick test_stdlib_04b_error_diverges_string_call_site;
+  Alcotest.test_case "#329 Deno codegen lowers to throw" `Quick test_stdlib_04b_error_deno_codegen;
+]
+
 (* ---- Issue #35 Phase 2 — Vscode bindings ----
 
    Verifies stdlib/Vscode.affine and stdlib/VscodeLanguageClient.affine
@@ -3777,6 +3959,36 @@ let test_borrow_mutref_shared_ok () =
     Alcotest.fail ("shared `&x` spuriously rejected after adding `&mut`: "
                    ^ Borrow.format_borrow_error e)
 
+(* CORE-01 pt3 Slice A / #177 — NLL last-use expiry. Pre-NLL, every
+   ref-binding lived until lexical block exit; under NLL the underlying
+   borrow is released after the binder's last use, so subsequent reads
+   or assignments through the (no-longer-borrowed) owner are legal.
+   The third test pins the anti-regression: a binder still mentioned
+   later in the block must NOT be expired early. *)
+let test_borrow_nll_assign_after_last_use () =
+  match borrow_result (fixture "borrow_nll_assign_after_last_use.affine") with
+  | Ok () -> ()
+  | Error e ->
+    Alcotest.fail ("NLL: assignment after shared borrow's last use \
+                    spuriously rejected: " ^ Borrow.format_borrow_error e)
+
+let test_borrow_nll_read_after_mut_last_use () =
+  match borrow_result (fixture "borrow_nll_read_after_mut_last_use.affine") with
+  | Ok () -> ()
+  | Error e ->
+    Alcotest.fail ("NLL: read after exclusive borrow's last use \
+                    spuriously rejected: " ^ Borrow.format_borrow_error e)
+
+let test_borrow_nll_still_rejects_live_borrow () =
+  match borrow_result (fixture "borrow_nll_still_rejects_live_borrow.affine") with
+  | Error (Borrow.MoveWhileBorrowed _) -> ()
+  | Error e ->
+    Alcotest.fail ("expected MoveWhileBorrowed (NLL must keep live \
+                    borrows alive), got: " ^ Borrow.format_borrow_error e)
+  | Ok () ->
+    Alcotest.fail "NLL over-expired a still-live borrow — assignment \
+                   to a borrowed owner was accepted"
+
 let borrow_tests = [
   Alcotest.test_case "BorrowOutlivesOwner: &local escapes its block"
     `Quick test_borrow_outlives_owner;
@@ -3796,6 +4008,12 @@ let borrow_tests = [
     `Quick test_borrow_return_escape_local;
   Alcotest.test_case "return ref-param sound — not over-rejected (#177 pt2)"
     `Quick test_borrow_return_refparam_ok;
+  Alcotest.test_case "NLL: assign after shared borrow's last use OK (#177 pt3 Slice A)"
+    `Quick test_borrow_nll_assign_after_last_use;
+  Alcotest.test_case "NLL: read after &mut's last use OK (#177 pt3 Slice A)"
+    `Quick test_borrow_nll_read_after_mut_last_use;
+  Alcotest.test_case "NLL anti-regression: still-live borrow blocks assign (#177 pt3 Slice A)"
+    `Quick test_borrow_nll_still_rejects_live_borrow;
 ]
 
 (* ============================================================================
@@ -3835,6 +4053,8 @@ let tests =
     ("E2E Stdlib",           stdlib_tests);
     ("E2E Xmod Other Codegens", cross_module_other_codegens_tests);
     ("E2E Externs",              extern_tests);
+    ("E2E STDLIB-04a Mut #328",  stdlib_04a_mut_tests);
+    ("E2E STDLIB-04b error #329", stdlib_04b_error_tests);
     ("E2E Vscode Bindings",      vscode_bindings_tests);
     ("E2E Array Type Sugar",     array_type_tests);
     ("E2E Qualified Paths #228",  qualified_path_tests);
