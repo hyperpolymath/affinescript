@@ -1,0 +1,18 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell
+//
+// CORE-01 pt3 Slice A / #177 anti-regression: NLL last-use must NOT
+// release a borrow that is *still* used later. Here `r` is mentioned
+// in the tail `*r`, so its last-use index is after the assignment.
+// The assignment to `x` while `r` is alive must still be rejected
+// (MoveWhileBorrowed). This guards against an over-eager expiry that
+// would silently allow real aliasing bugs.
+
+module BorrowNllStillRejectsLiveBorrow;
+
+fn bad() -> Int {
+  let mut x = 1;
+  let r = &x;
+  x = 2;
+  *r
+}

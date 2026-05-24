@@ -287,6 +287,14 @@ jobs:
         # ReScript source. Picks the existing res-to-affine test fixture
         # so any drift in the pinned commit's syntactic surface area
         # surfaces here rather than at walker-rule writing time.
+        #
+        # NOTE: tree-sitter-cli >= 0.25 repurposed `--paths` to mean "a
+        # file listing input source paths", not "a directory containing
+        # a grammar". Grammar lookup is now driven by the current
+        # working directory (the CLI walks up looking for grammar.js /
+        # src/parser.c), so we cd into the vendored grammar tree and
+        # pass an absolute path to the fixture. Without this, the step
+        # fails with `Failed to read paths file ... Is a directory`.
         run: |
           shopt -s nullglob
           fixtures=(tools/res-to-affine/test/fixtures/*.res)
@@ -294,9 +302,7 @@ jobs:
             echo "no .res fixtures to smoke-parse; skipping"
             exit 0
           fi
-          tree-sitter parse \
-            --quiet \
-            "${fixtures[0]}" \
-            --paths tools/vendor/tree-sitter-rescript \
-            > /dev/null
+          fixture_abs="$(realpath "${fixtures[0]}")"
+          ( cd tools/vendor/tree-sitter-rescript \
+              && tree-sitter parse --quiet "${fixture_abs}" > /dev/null )
           echo "smoke-parsed: ${fixtures[0]}"

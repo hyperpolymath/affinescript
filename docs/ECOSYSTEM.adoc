@@ -80,7 +80,8 @@ made real; #228/ADR-014 module-qualified paths (estate port unblocker). |
 |*E* |typed-wasm convergence hardening (the transition runway): the
 AffineScript↔typed-wasm contract widened from L7+L10 toward full
 L1–6/L13–16 emitted-wasm enforcement; estate-wide re-validation (#235);
-effect-threaded async-boundary recogniser (#234); the #225/#160 convergence
+effect-threaded async-boundary recogniser (#234, DELIVERED 2026-05-19 —
+ADR-016, S1..S4 / PRs #270/#275/#276/#277/#278); the #225/#160 convergence
 ABI matured to "shared with Ephapax". |*planned* |Begins when D's substrate
 (INT-01..04, CORE-01) is closed; ends at a stable, multi-producer
 typed-wasm convergence ABI.
@@ -216,25 +217,44 @@ INT-01 ↔ INT-02. S1; unblocks INT-05/08/11. The `affinescript-dom-loader`
 satellite shell is downstream.
 |INT-03 |WASI preview2 / host I/O beyond stdout |#180 |S1, ADR-015
 ACCEPTED (owner-chosen full WASM Component-Model re-target). Staged
-S1..S6; legacy preview1 stdout path is the default until S6
-(reversible-in-progress). S2 toolchain provisioned (#251). **S3
+S1..S6; legacy preview1 stdout path remains the default until S6c
+(reversible-in-progress). S2 toolchain provisioned (#251). S3
 DONE: `tools/componentize.sh` wraps the emitted core module into a
 valid WASI-0.2 component via the fetch-pinned preview1→preview2
 *reactor* adapter (wasmtime v44.0.1, sha256-verified); the
 `affinescript.ownership` section is proven to SURVIVE the wrap;
 `tests/componentize/smoke.sh` gates it (SKIP-safe without the
-toolchain). Codegen UNCHANGED — core preview1 stays the default
-(reversible). S4a (clock) + S4b (env_count, arg_count) DONE:
+toolchain). S4a (clock) + S4b (env_count, arg_count) DONE:
 builtins lower to on-demand `wasi_snapshot_preview1.*` imports
 (Effect_sites pre-scan, canonical-order indexing through
 `ctx.wasi_func_indices`; zero impact on units that don't use them;
 verified with a multi-import combo regression). Component path
+bridges to `wasi:clocks`/`wasi:cli`. **S6a (WIT export lifting)
+DONE: `lib/codegen.ml` auto-emits a `_start : () -> ()` shim that
+calls `main` and drops its i32 result whenever a parameter-less
+`fn main()` is present. `tools/componentize.sh --command` wraps
+with the fetch-pinned preview1→preview2 *command* adapter
+(wasmtime v44.0.1, sha256 8ff2ea78…) — the resulting component
+exports `wasi:cli/run@0.2.x` per `wit/affinescript.wit`. End-to-end
+smoke `tests/componentize/command_smoke.sh` proves the lift, the
+ownership section survives, and `wasmtime run <component>` exits
+0 on real-host invoke. Purely additive: reactor consumers, the
+`__indirect_function_table` export, and game-loop hooks are
+byte-unchanged.** String accessors (env_at/arg_at) gated on a
+byte-level wasm-IR extension (I32Load8U/I32Store8 absent today)
+— tracked as the next slice before/with S5 filesystem. Remaining
+sub-slices: S5 (native clocks/env/argv via preview2), S6b
+(`wasi:sockets`), S6c (flip the default wasm target from preview1
+→ component). WIT world of record: `wit/affinescript.wit`
 bridges to `wasi:clocks`/`wasi:cli`. Real-host main-invoke deferred
-to S6 (WIT export-lifting / wasi:cli/run command shape). String
-accessors (env_at/arg_at) gated on a byte-level wasm-IR extension
-(I32Load8U/I32Store8 absent today) — tracked as the next slice
-before/with S5 filesystem.** WIT world of
-record: `wit/affinescript.wit`
+to S6 (WIT export-lifting / wasi:cli/run command shape).
+**S5 string accessors (env_at/arg_at) DONE: the wasm IR gained
+the byte-level load/store family (I32Load8U/I32Store8 + the full
+WebAssembly 1.0 §5.4.6 row, opcodes 0x2C..0x35 / 0x3A..0x3E);
+accessors lower to on-demand `environ_get`/`args_get` paired with
+the existing `*_sizes_get` import (dedup keeps each WASI import
+once even when both `*_count` and `*_at` are used).** WIT world
+of record: `wit/affinescript.wit`
 |INT-04 |Publish compiler + runtime to JSR (then npm) |#181 |runtime
 packaging READY (affine-js + affinescript-tea JSR dry-run green;
 manual-only `publish-jsr.yml`; docs/PACKAGING.adoc). INT-01 dep
