@@ -1448,6 +1448,13 @@ let register_builtins (ctx : context) : unit =
   bind_var ctx "atan2"
     (TArrow (ty_float, QOmega, TArrow (ty_float, QOmega, ty_float, EPure), EPure));
   bind_var ctx "panic" (TArrow (ty_string, QOmega, ty_never, EPure));
+  (* STDLIB-04b (Refs #329): `error<T>(msg)` is panic's polymorphic sibling
+     — diverges, but unifies with whatever return type the call site
+     expects (`T` is unobservable at runtime because the call doesn't
+     return). Bound as a scheme so each call instantiates a fresh tyvar,
+     same pattern as `len`/`show`/`RuntimeError`. *)
+  bind_scheme ctx "error"
+    (poly1 (fun a -> TArrow (ty_string, QOmega, a, EPure)));
   bind_var ctx "exit" (TArrow (ty_int, QOmega, ty_never, ESingleton "IO"));
   (* TEA runtime — accepts any record, returns unit with IO effect *)
   let tea_tv = fresh_tyvar 0 in
