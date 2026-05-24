@@ -100,17 +100,10 @@ ref-bindings expire at their binder's *last use*, not at block exit
 (`compute_last_use_index` pre-pass + per-statement expiry in
 `check_block`). Patterns like `let r = &x; print(*r); x = 2` and
 `let m = &mut x; let y = *m; x` now type-check, while still-live borrows
-continue to block aliasing assignments. *Part 3 Slice B* (Refs #177):
-flow-sensitive escape via re-assignment — `outer = &y` in `StmtAssign`
-now pre-releases the held borrow and re-binds the
-`(binder -> new_borrow)` ref-graph entry to the freshly-created borrow,
-so the NLL last-use + return-escape analyses see the *current* referent
-after re-assignment, not the stale original (3 hermetic tests: old
-released, new tracked by NLL, anti-regression that new borrow still
-protects). *Deferred (Slices C–D):* origin/region variables (Polonius
-surface) + loan-live-at-point dataflow across CFG joins for
-`ExprHandle`/`ExprTry`/loops; tighter quantity integration for captured
-linears; reborrow through indirection (RHS not a direct `&place`).
+continue to block aliasing assignments. *Deferred (Slices B–D):*
+flow-sensitive escape via `outer = &x`; origin/region variables
+(Polonius surface) + loan-live-at-point dataflow across CFG joins;
+tighter quantity integration for captured linears.
 
 |Quantity / affine types |*enforced* |QTT semiring in `lib/quantity.ml`,
 invoked inside the standard CLI pipeline. `@linear`/`@erased`/`@unrestricted`
