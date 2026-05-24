@@ -77,43 +77,6 @@ names the INT-01..12 track)
 |DOC-08 |MONITOR rule: reject backend-breadth over-claims |DONE (Hypatia/
 gitbot DOC-FORMAT)
 |DOC-09 |MONITOR rule: reject "production-ready"/stdlib-% over-claims |DONE
-|DOC-10 |`docs/standards/TESTING.adoc` — authoritative test taxonomy
-(alcotest unit / alcotest E2E / fixture / golden / smoke / microbench),
-PR-level expectations, deferred-regression-test protocol; replaces stale
-`docs/guides/TESTING-REPORT.adoc` (2025-12-29 snapshot, 47/27 pass rate,
-contradicted by live gate since early 2026 — retired in-place with redirect)
-|*DONE 2026-05-23*
-|DOC-11 |`docs/standards/PANIC-ATTACK.adoc` — SOP for the estate compliance
-scanner (disposition vocabulary fix/accept/suppress/defer; standing-
-suppression record format; weekly cron via
-`.github/workflows/panic-attack.yml`, ad-hoc via `just panic`, pre-release
-per RELEASE.md) |*DONE 2026-05-23*
-|DOC-12 |Bench harness + coverage instrumentation — `bench/` dune stanza
-under `@bench` alias (lex / parse / typecheck+quantity / codegen-wasm
-sweeps); CI jobs `bench-visibility` + `coverage-visibility` upload
-artifacts; `bisect_ppx` added as with-test depend; `just bench` /
-`just bench-record` / `just coverage` recipes. Visibility-only — no
-merge-blocking gate today (ratchet prerequisite: calibrated baseline).
-|*DONE 2026-05-23*
-|DOC-13 |`docs/specs/TYPED-WASM-INTERFACE.adoc` (+ `.a2ml` machine
-companion) — *formal* spec of the AS↔typed-wasm interface v1
-(carrier binary layout, enforced levels L7+L10+L13, producer/
-consumer machinery file pointers, CLI surface, test coverage,
-multi-producer responsibilities, deliberate non-features
-NF-001..NF-005). Supersedes the §"actual AS↔typed-wasm contract"
-paragraph in ECOSYSTEM.adoc as the source of truth. |*DONE 2026-05-23*
-|DOC-14 |`docs/specs/TYPED-WASM-ROADMAP.adoc` (+ `.a2ml`) — widening
-roadmap making typed-wasm a natural and optimal target. Tranches
-A (ergonomics) / B (schema hygiene; ADR-020 proposed) / C
-(compiler-side foundations for L1–6 / L14–16) / D (multi-producer
-ABI; ADR-021 proposed) / E (cross-compat closure). Per-tranche
-work-items, blockers, recommended sequencing. |*DONE 2026-05-23*
-|DOC-15 |ADR-020 (PROPOSED): ownership-section schema versioning
-(0xAF sentinel + u8 version). ADR-021 (PROPOSED): multi-producer
-ABI coordination model (four axes: spec authority / coordinated
-landing / test parity / conflict resolution). Both filed in
-META.a2ml; ADR-020 lands first as the first test of ADR-021's
-protocol. Both require owner ratification. |*PROPOSED 2026-05-23*
 |===
 
 MONITOR enforcement (DOC-08/09): any PR re-introducing backend-breadth,
@@ -147,37 +110,16 @@ typed/codegen'd like `&e` — exclusivity is a static borrow property).
 `&`-in-`#{` literals and bare block-statements already parse on `main`;
 `-> &T`/`&T` *type* sigil deliberately **not** added — `ref T`/`mut T`
 keyword types already express reference types; a `&T` sigil is duplicate
-surface (ADR territory, not a soundness gap). *Part 3 Slice A — NLL
-last-use expiry LANDED* (Refs #177): a forward pre-pass
-(`compute_last_use_index`) maps each symbol to the greatest statement
-index that mentions it; after each statement, `check_block` expires any
-ref-binding introduced in that block whose binder is now dead, releasing
-the underlying borrow. Unblocks the canonical NLL patterns
-(`let r = &x; print(*r); x = 2`; `let m = &mut x; let y = *m; x`) while
-preserving soundness — the anti-aliasing rules still fire against
-statements that *do* use the binder (3 hermetic tests in "E2E Borrow
-Graph", two positive + one anti-regression). *Slices B–D residual:*
-flow-sensitive escape via assignment to an outer mutable
-(`outer = &x`); origin/region variables (Polonius surface) + loan-live-
-at-point dataflow across CFG joins; tighter quantity integration for
-captured linears. |S1 |pt1 #240 + pt2 return-escape + `&mut` surface +
-pt3 Slice A NLL last-use DONE (Refs #177); residual = Slices B–D
-(flow-sensitive escape, origin variables, quantity integration) —
-issue #177
-|CORE-02 |Effect-handler dispatch on WasmGC (was `UnsupportedFeature`;
-the chosen path is CPS over the EH proposal). The #225 CPS line closed
-the async slice; #234 generalised the boundary recogniser from a
-hardcoded name set to "any call whose effect row ⊇ `Async`". |S2
-|*CLOSED 2026-05-19* — #225 line CLOSED PR1..PR3d+PR4; #234 ADR-016
-delivered end-to-end (S1 #270 ADR; S2a #275 shared call-site
-numbering `lib/effect_sites.ml`; S2b #276 typecheck builds the
-ordinal→effect side-table; S3 #277 pipeline threads it + codegen
-boundary predicate switched + user-defined-`Async` e2e
-`tests/codegen/effect_async_boundary.affine`; S4 #278 hardcoded
-`async_primitives` set retired — boundary is now exactly
-`Effect_sites.is_async_call`). Issue #234 closed completed. Table-miss
-fallback (`Effect_sites.is_async_call` = false ⇒ no transform) remains
-as the sound table-empty / count-mismatch path.
+surface (ADR territory, not a soundness gap). *Part 2 residual — now the
+analysis, not surface:* NLL/region inference (Polonius) + flow-sensitive
+escape via `outer = &x` are now *expressible* (surface unblocked); the
+remaining work is the dataflow analysis itself. |S1 |pt1 #240 + pt2
+return-escape + `&mut` surface DONE (Refs #177); residual = NLL analysis
+— issue #177
+|CORE-02 |Effect-handler dispatch on WasmGC (currently `UnsupportedFeature`;
+EH proposal or CPS). The #225 CPS line closes the async slice. |S2 |partial
+(#225 line CLOSED PR1..PR3d+PR4; #234 generalises the recogniser —
+ADR-016 ACCEPTED, side-table typecheck→codegen, staged S1..S4; S1 done)
 |CORE-03 |ADR-014: module-qualified type/effect path. Decision settled
 (both `.`/`::` accepted, `Pkg::Type` canonical, `.`→`::` for free via the
 `::`-fold). Was the estate's dominant parse blocker (525/1177 .affine).
@@ -217,52 +159,7 @@ complete; convergence ABI shared w/ Ephapax
 insert/set/remove/keys/values; AOT-gated (#136). Closes ESC-03 #247 (the
 #229 `Dict.t` target); unblocks the additive `Http.affine` headers→Dict
 upgrade
-|STDLIB-04 |Residual `extern` builtins → real implementations (umbrella;
-split into 04a–04e 2026-05-24 per per-extern audit in
-link:STDLIB-EXTERN-AUDIT.adoc[STDLIB-EXTERN-AUDIT.adoc], one row per PR) |S3
-|open (5 sub-rows)
-|STDLIB-04a |Mut effect externs (`make_ref`/`get`/`set`) — *LANDED*
-(Refs #328): interp uses `VMut` cell (`lib/interp.ml`); Deno codegen
-lowers to `{__cell: x}` single-field object (`lib/codegen_deno.ml`);
-3 hermetic e2e tests in "E2E STDLIB-04a Mut #328" (Int + String
-round-trips + Deno codegen __cell-shape assertion) |S3 |DONE
-2026-05-24 (Refs #328)
-|STDLIB-04b |Throws extern `error<T>` — missing in all backends
-(`lib/interp.ml`, `lib/js_codegen.ml`, `lib/codegen_deno.ml`); sibling
-`panic` is wired and `error` should mirror it (divergent `T`) |S3 |open
-— issue #329
-|STDLIB-04c |`string_concat` extern — *REMOVED* (Refs #330): the
-canonical surface is the `++` operator (lowered in `Value.binop_string`
-and `__as_concat`); the extern was declared but never wired in any
-backend nor called from any stdlib/test/fixture — dead surface. The
-contract is now operator-only and one-source-of-truth. |S3 |DONE
-2026-05-24 (Refs #330)
-|STDLIB-04b |Throws extern `error<T>` — *LANDED* (Refs #329): mirrors
-`panic`'s divergent semantics with a polymorphic return (`<T>` unifies
-with the call-site expectation, unobservable at runtime). Wired in
-interp (`RuntimeError`), Deno codegen (`throw new Error`), resolve
-seed, and typecheck as a scheme (`poly1` so each call instantiates a
-fresh tyvar). 3 hermetic tests in "E2E STDLIB-04b error #329". |S3
-|DONE 2026-05-24 (Refs #329)
-|STDLIB-04c |`string_concat` extern — no direct wiring found; `++`
-operator independently lowered. Decide: remove (operator-only) or wire
-to mirror `++` |S3 |open — issue #330
-|STDLIB-04d |IO externs (`print`/`println`/`read_line`/`read_file`/
-`write_file`) — *DONE* (Refs #331): 5 hermetic tests in "E2E
-STDLIB-04d IO #331" — `write_file` → `read_file` round-trip on a real
-tmpfile, `read_file` on a missing path returns `Err` (not raise),
-`print`/`println` exec without error, Deno codegen wires both into the
-prelude. `read_line` is interactive and intentionally out of scope (the
-TEA-bridge tests already exercise the redirected-stdin path). No impl
-change; was test-debt, not impl-debt. |S3 |DONE 2026-05-24 (Refs #331)
-|STDLIB-04e |Pure externs (`int_to_string`/`string_to_int`/
-`string_length`) — *DONE* (Refs #332): `int_to_string` +
-`string_length` were already real-wired; `string_to_int` was unwired
-dead surface (re-audit caught the gap the initial sweep missed — same
-trap STDLIB-04c removed). Now the typed-alias of `parse_int` in interp
-+ Deno codegen + resolve/typecheck seeds. 4 hermetic tests in "E2E
-STDLIB-04e Pure #332" lock the round-trip semantics. |S3 |DONE
-2026-05-24 (Refs #332)
+|STDLIB-04 |Residual `extern` builtins → real implementations |S3 |open
 |===
 
 == Section D — INT (ecosystem integration)
@@ -295,14 +192,14 @@ follow-up
 multi-ns import object, ownership accessor); 14 unit tests via pinned
 `deno task test` + `tests/modules/loader-bridge/` e2e on real
 compiler-emitted xmod wasm (closes INT-01↔INT-02). Unblocks INT-05/08/11
-|INT-03 |WASI preview2 / host I/O |S1→S6a |#180 ADR-015 (full
+|INT-03 |WASI preview2 / host I/O |S1→S6b |#180 ADR-015 (full
 Component-Model re-target, S1..S6); S2 toolchain #251 closed;
 S3 componentize done; S4a (clock) + S4b (env_count, arg_count)
 DONE — on-demand preview1 imports via Effect_sites pre-scan,
 canonical-order indexing through `ctx.wasi_func_indices`; combo
 regression proves no collision. String accessors (env_at/arg_at)
 gated on byte-level wasm IR (I32Load8U/I32Store8 absent today) —
-tracked next slice. **S6a (WIT export lifting) DONE:
+tracked next slice. S6a (WIT export lifting) DONE:
 `lib/codegen.ml` auto-emits a `_start : () -> ()` shim whenever
 a parameter-less `fn main()` is present (additive, no regression
 on reactor consumers); `tools/componentize.sh --command` wraps
@@ -310,18 +207,28 @@ with the fetch-pinned command adapter (sha256
 8ff2ea78… / wasmtime v44.0.1, provisioned alongside the reactor
 adapter); `tests/componentize/command_smoke.sh` gates the
 contract end-to-end — `wasi:cli/run` lifted, ownership section
-survives, `wasmtime run` exits 0. Real-host main-invoke now
-works via `wasmtime run <component>`.** Remaining S6
-sub-slices: S5 (native clocks/env/argv), S6b (`wasi:sockets`),
-S6c (flip the default wasm target from preview1 → component)
-regression proves no collision. **S5 (env_at/arg_at) DONE — wasm
-IR extended with the byte-level load/store family
-(I32Load8U/I32Store8 and siblings); accessors lower to on-demand
-`environ_get`/`args_get` imports paired with the existing
-`*_sizes_get` (dedup keeps each WASI import exactly once even when
-both `*_count` and `*_at` are used in the same unit); guest
-allocates a length-prefixed AS string and byte-copies from the
-WASI buffer.** Real-host main-invoke = S6 (WIT export lifting)
+survives, `wasmtime run` exits 0. Real-host main-invoke works
+via `wasmtime run <component>`. **S6b (sockets on-ramp) DONE:
+new `net_shutdown(fd, how) -> Int` builtin (Effect `Net`,
+reserved) lowers to `wasi_snapshot_preview1.sock_shutdown` via
+the same on-demand canonical-order pattern as S4a/S4b
+(`optional_wasi` entry 4); the command adapter bridges to
+`wasi:sockets/tcp` internally without surfacing a host-side
+`wasi:sockets/*` requirement; `tests/componentize/sockets_smoke.sh`
+gates the lift + a clock+env+sock combo for canonical-order
+regression; wasmtime real-host invoke exits 0 on
+`net_shutdown(stdin, RDWR)` (returns ENOTSOCK, dropped). Larger
+socket primitives (recv/send/accept) need byte-level wasm IR for
+buffer / network-address marshalling and remain a tracked
+follow-up alongside env_at/arg_at.** Remaining: S5
+(`wasi:filesystem` — open/read/write/close; unblocks INT-06
+server-side runtime), S6c (flip the default wasm target from
+preview1 → component, bundled with the optional native-preview2
+cleanup that replaces the on-demand preview1 shims emitted by
+S4a/S4b/S6b with direct `wasi:clocks` / `wasi:cli` /
+`wasi:sockets` calls — only pays off once preview2 is the
+default, hence the bundling). ADR-015 in META.a2ml is the
+canonical numbering — TECH-DEBT mirrors it.
 |INT-04 |Publish to JSR/npm |S2 |#181 packaging READY (dry-run green,
 manual workflow); compiler-binary distribution decided = **ADR-019**
 (#260, Releases + thin Deno/JSR shim, staged S1..S4) — S1/S2/S3
@@ -368,24 +275,13 @@ Proven + locked (see INT-02)
 
 == Stage E — typed-wasm convergence runway
 
-Formal interface spec:
-link:specs/TYPED-WASM-INTERFACE.adoc[specs/TYPED-WASM-INTERFACE.adoc]
-(+ link:specs/TYPED-WASM-INTERFACE.a2ml[machine companion]).
-Widening roadmap (tranches A..E, recommended sequencing):
-link:specs/TYPED-WASM-ROADMAP.adoc[specs/TYPED-WASM-ROADMAP.adoc].
-Proposed ADRs: ADR-020 (schema versioning), ADR-021 (multi-producer
-coordination model) — both PROPOSED in
-`.machine_readable/6a2/META.a2ml`.
-
 [cols="1,3,1,2"]
 |===
 |ID |Item |Sev |Status
 |CONV-01 |Estate-wide re-validation of the #199/#205 closure ABI (static →
 real wasm engine) |S2 |open #235
 |CONV-02 |Effect-threaded async-boundary detection (generalise the
-structural-conservative recogniser) |S2 |*CLOSED 2026-05-19* — #234
-DELIVERED end-to-end (ADR-016 S1..S4; PRs #270/#275/#276/#277/#278).
-See CORE-02 above for the resolution narrative.
+structural-conservative recogniser) |S2 |open #234
 |CONV-03 |#225/#160 convergence ABI matured to "shared with Ephapax" |S1
 |partial (PR3a/b/c merged)
 |CONV-04 |Widen emitted-wasm enforcement beyond L7+L10 toward L1–6/L13–16 |S2
@@ -393,8 +289,7 @@ See CORE-02 above for the resolution narrative.
 `Tw_verify.verify_module_isolation` (carrier-free, no ABI change).
 L1–6/L14–16 need a new carrier section = multi-producer ABI proposal
 (filed for typed-wasm; NOT unilateral). Rust-verifier mirror + C5.1 =
-cross-repo follow-ups.  Per-tranche detail in
-link:specs/TYPED-WASM-ROADMAP.adoc[TYPED-WASM-ROADMAP] (Tranches B/C/D)
+cross-repo follow-ups
 |CONV-05 |INT-12: AffineScript-emitted fixtures into typed-wasm
 `crates/typed-wasm-verify/tests/cross_compat.rs` (typed-wasm "C5.1") |S1
 |planned — coordinate Refs `hyperpolymath/typed-wasm`

@@ -11,17 +11,12 @@ open Ast
 open Wasm
 
 (** Ownership kind for typed-wasm schema annotations.
-
-    Re-exported from [Tw_ownership_section] (the dedicated home,
-    extracted 2026-05-24 per A3 of TYPED-WASM-ROADMAP.adoc).  The
-    type equation preserves constructor accessibility so
-    [Codegen.Linear] etc. continue to resolve and [open Codegen]
-    in [Tw_verify] / [Tw_interface] / [Test_e2e] is unaffected. *)
-type ownership_kind = Tw_ownership_section.ownership_kind =
-  | Unrestricted
-  | Linear
-  | SharedBorrow
-  | ExclBorrow
+    Maps AffineScript ownership qualifiers to typed-wasm Level 7/10 verification. *)
+type ownership_kind =
+  | Unrestricted  (** Plain value, no ownership constraint (Wasm i32/f64 etc.) *)
+  | Linear        (** TyOwn / own — consumed exactly once (typed-wasm Level 10 linearity) *)
+  | SharedBorrow  (** TyRef / ref — read-only aliasing safety (typed-wasm Level 7) *)
+  | ExclBorrow    (** TyMut / mut — exclusive mutable aliasing safety (typed-wasm Level 7) *)
 
 (** Code generation context *)
 type context = {
@@ -116,9 +111,19 @@ let create_context () : context = {
   wasi_func_indices = [];
 }
 
-(** Extract ownership kind from a parameter declaration. Re-exported
-    from [Tw_ownership_section] (A3 refactor, 2026-05-24). *)
-let ownership_kind_of_param = Tw_ownership_section.ownership_kind_of_param
+(** Extract ownership kind from a parameter declaration.
+    Checks p_ownership first; falls back to the shape of p_ty. *)
+let ownership_kind_of_param (p : param) : ownership_kind =
+  match p.p_ownership with
+  | Some Own -> Linear
+  | Some Ref -> SharedBorrow
+  | Some Mut -> ExclBorrow
+  | None ->
+    match p.p_ty with
+    | TyOwn _ -> Linear
+    | TyRef _ -> SharedBorrow
+    | TyMut _ -> ExclBorrow
+    | _ -> Unrestricted
 
 (** If [ty] names a known struct (through any number of own/ref/mut wrappers),
     return that struct's name. Lets us recover a struct's field layout from
@@ -131,21 +136,45 @@ let rec struct_name_of_ty (ty : type_expr) : string option =
   | TyOwn inner | TyRef inner | TyMut inner -> struct_name_of_ty inner
   | _ -> None
 
-(** Extract ownership kind from an optional return type expression.
-    Re-exported from [Tw_ownership_section]. *)
-let ownership_kind_of_ret = Tw_ownership_section.ownership_kind_of_ret
+(** Extract ownership kind from an optional return type expression *)
+let ownership_kind_of_ret (ret : type_expr option) : ownership_kind =
+  match ret with
+  | Some (TyOwn _) -> Linear
+  | Some (TyRef _) -> SharedBorrow
+  | Some (TyMut _) -> ExclBorrow
+  | _ -> Unrestricted
 
-(** Encode an ownership_kind as a single byte (0–3).
-    Re-exported from [Tw_ownership_section]. *)
-let ownership_kind_byte = Tw_ownership_section.ownership_kind_byte
+(** Encode an ownership_kind as a single byte (0–3) *)
+let ownership_kind_byte = function
+  | Unrestricted -> 0 | Linear -> 1 | SharedBorrow -> 2 | ExclBorrow -> 3
 
 (** Build the payload for the [affinescript.ownership] Wasm custom section.
-    Re-exported from [Tw_ownership_section.build_section] (A3 refactor,
-    2026-05-24).  The dedicated module is the home for the on-wire format;
-    this alias preserves the [Codegen.build_ownership_section] public
-    API surface that downstream callers (lib/tw_verify.ml,
-    lib/tw_interface.ml, test/test_e2e.ml) rely on. *)
-let build_ownership_section = Tw_ownership_section.build_section
+    Encoding (all little-endian):
+      u32  entry_count
+      per entry:
+        u32  func_index
+        u8   param_count
+        u8*  param_kind  (one per param, see kind encoding above)
+        u8   return_kind *)
+let build_ownership_section (annots : (int * ownership_kind list * ownership_kind) list) : bytes =
+  if annots = [] then Bytes.empty
+  else
+    let buf = Buffer.create 64 in
+    let write_u32_le n =
+      Buffer.add_char buf (Char.chr  (n         land 0xff));
+      Buffer.add_char buf (Char.chr ((n lsr  8) land 0xff));
+      Buffer.add_char buf (Char.chr ((n lsr 16) land 0xff));
+      Buffer.add_char buf (Char.chr ((n lsr 24) land 0xff))
+    in
+    let write_u8 n = Buffer.add_char buf (Char.chr (n land 0xff)) in
+    write_u32_le (List.length annots);
+    List.iter (fun (func_idx, param_kinds, ret_kind) ->
+      write_u32_le func_idx;
+      write_u8 (List.length param_kinds);
+      List.iter (fun k -> write_u8 (ownership_kind_byte k)) param_kinds;
+      write_u8 (ownership_kind_byte ret_kind)
+    ) annots;
+    Buffer.to_bytes buf
 
 (** Map AffineScript type to WASM value type *)
 let type_to_wasm (ty : type_expr) : value_type result =
@@ -836,6 +865,21 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
         in
         Ok (ctx_with_heap, code)
 
+      | ExprVar id when id.name = "net_shutdown" && List.length args = 2 ->
+        (* ADR-015 S6b (#180): net_shutdown(fd, how) -> Int errno.
+           Lowers to a `wasi_snapshot_preview1.sock_shutdown` import
+           (on-demand, via the same Effect_sites pre-scan as the S4
+           builtins). The command adapter bridges to `wasi:sockets/tcp`
+           at runtime. Pure pass-through: push both args, call. *)
+        let* (ctx_fd,  fd_code)  = gen_expr ctx     (List.nth args 0) in
+        let* (ctx_how, how_code) = gen_expr ctx_fd  (List.nth args 1) in
+        let sock_func_idx =
+          try List.assoc "sock_shutdown" ctx.wasi_func_indices
+          with Not_found -> 1
+        in
+        let code = fd_code @ how_code @ [Call sock_func_idx] in
+        Ok (ctx_how, code)
+
       | ExprVar id when (id.name = "env_count" || id.name = "arg_count")
                         && List.length args = 1 ->
         (* ADR-015 S4b (#180): env_count(u: Unit) / arg_count(u: Unit)
@@ -844,9 +888,8 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
            (added on-demand at module assembly; idx looked up in
            [ctx.wasi_func_indices]). The Unit arg satisfies the
            zero-param-fn collapse wart; it is evaluated but its value
-           is unused. The companion string accessors `env_at`/`arg_at`
-           landed alongside the byte-level wasm IR extension — see
-           the case below. *)
+           is unused. String accessors (env_at/arg_at) need byte-level
+           wasm IR ops (currently absent) and are a tracked follow-up. *)
         let wasi_name =
           if id.name = "env_count" then "environ_sizes_get"
           else "args_sizes_get"
@@ -863,47 +906,6 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
           arg_code @ [Drop] @
           Wasi_runtime.gen_count_via_sizes_get
             heap_idx scratch_local sizes_func_idx
-        in
-        Ok (ctx_with_heap, code)
-
-      | ExprVar id when (id.name = "env_at" || id.name = "arg_at")
-                        && List.length args = 1 ->
-        (* ADR-015 S5 (#180): env_at(i: Int) / arg_at(i: Int) -> String.
-           Allocates a length-prefixed AS string and byte-copies the
-           i-th null-terminated entry from the WASI environ/argv
-           buffer. Uses [I32Load8U]/[I32Store8] (the byte-level wasm
-           IR extension landed alongside this slice). Pairs the
-           existing on-demand `*_sizes_get` import with the matching
-           `environ_get`/`args_get` import (registered above in the
-           `optional_wasi` table; deduped by wasi name). *)
-        let sizes_name, get_name =
-          if id.name = "env_at" then "environ_sizes_get", "environ_get"
-          else "args_sizes_get", "args_get"
-        in
-        let sizes_func_idx =
-          try List.assoc sizes_name ctx.wasi_func_indices
-          with Not_found -> 1
-        in
-        let get_func_idx =
-          try List.assoc get_name ctx.wasi_func_indices
-          with Not_found -> 2
-        in
-        let* (ctx0, arg_code) = gen_expr ctx (List.hd args) in
-        let (c1, n_local)       = alloc_local ctx0 ("__" ^ id.name ^ "_n") in
-        let (c2, scratch_local) = alloc_local c1  ("__" ^ id.name ^ "_scratch") in
-        let (c3, count_local)   = alloc_local c2  ("__" ^ id.name ^ "_count") in
-        let (c4, bufsize_local) = alloc_local c3  ("__" ^ id.name ^ "_bufsize") in
-        let (c5, ptrvec_local)  = alloc_local c4  ("__" ^ id.name ^ "_ptrvec") in
-        let (c6, src_local)     = alloc_local c5  ("__" ^ id.name ^ "_src") in
-        let (c7, dst_local)     = alloc_local c6  ("__" ^ id.name ^ "_dst") in
-        let (c8, result_local)  = alloc_local c7  ("__" ^ id.name ^ "_result") in
-        let (ctx_with_heap, heap_idx) = ensure_heap_ptr c8 in
-        let code =
-          arg_code @
-          Wasi_runtime.gen_str_at_via_get
-            heap_idx n_local scratch_local count_local bufsize_local
-            ptrvec_local src_local dst_local result_local
-            sizes_func_idx get_func_idx
         in
         Ok (ctx_with_heap, code)
 
@@ -1987,15 +1989,20 @@ let simple_pat_name (p : pattern) : string option =
   | PatVar id -> Some id.name
   | _ -> None
 
-(** Async-boundary predicate (ADR-016 / #234, S4 #278). True iff this
-    call's resolved effect row ⊇ `Async`, looked up via the typecheck
-    side-table keyed by the shared [Effect_sites] ordinal. The legacy
-    hardcoded `async_primitives = ["http_request_thenable"]` name set
-    (ADR-013 #225 PR3a) is retired — `http_request_thenable` is still
-    detected because stdlib/Http.affine declares it `/ { Net, Async }`,
-    and any user-defined `/ { Async }` callee triggers the transform
-    identically. Table-empty / count-mismatch ⇒ [is_async_call] = false
-    ⇒ no transform (the sound miss path). *)
+(** Recognised async-primitive calls (ADR-013 #225 PR3a, owner-chosen
+    structural-conservative async-boundary identification — see
+    affinescript#234 for the effect-threaded generalisation). The async
+    boundary is a `let` whose RHS is a call to one of these names. Extend
+    this list as wasm-path async stdlib primitives are added. *)
+(* ADR-016 / #234 S4: the hardcoded `async_primitives` name set is
+   RETIRED. The async boundary is exactly "a call whose effect row ⊇
+   Async", decided from the typecheck side-table keyed by the shared
+   [Effect_sites] ordinal ([Effect_sites.is_async_call]). The ADR's
+   "table-miss fallback" is the oracle being empty / count-mismatched
+   (⇒ [is_async_call] is always false ⇒ no transform = exact pre-#234
+   behaviour), NOT a name list — so no structural name disjunct
+   remains. `http_request_thenable` is still detected because
+   stdlib/Http.affine declares it `/ { Net, Async }`. *)
 let is_async_prim_call (e : expr) : bool =
   Effect_sites.is_async_call e
 
@@ -2523,9 +2530,8 @@ let generate_module ?loader (prog : program) : wasm_module result =
      (post-optimizer) program's nodes. Ordinals are stable across the
      constant-folding optimizer (it never adds/removes/reorders calls),
      so the producer's ordinal→has-Async map keys correctly here. A
-     count-mismatch makes [bind_consumer] a no-op ⇒ [is_async_call] is
-     always false ⇒ no CPS transform (the sound S4 #278 miss path).
-     Safe if the producer never ran (empty ⇒ no-op). *)
+     count-mismatch makes [bind_consumer] a no-op ⇒ structural
+     fallback. Safe if the producer never ran (empty ⇒ no-op). *)
   Effect_sites.bind_consumer prog;
   let loader = match loader with
     | Some l -> l
@@ -2558,25 +2564,14 @@ let generate_module ?loader (prog : program) : wasm_module result =
       false prog
   in
   let optional_wasi =
-    (* (guest_builtin_name, wasi_import_name, factory) — canonical order.
-       Multiple builtins MAY require the same WASI import (e.g. both
-       `env_count` and `env_at` need `environ_sizes_get`); the dedup
-       pass below keeps the first occurrence so each wasm import shows
-       up exactly once with a stable index. *)
+    (* (guest_builtin_name, wasi_import_name, factory) — canonical order. *)
     [ ("clock_now_ms", "clock_time_get",     Wasi_runtime.create_clock_time_get_import);
       ("env_count",    "environ_sizes_get",  Wasi_runtime.create_environ_sizes_get_import);
       ("arg_count",    "args_sizes_get",     Wasi_runtime.create_args_sizes_get_import);
-      ("env_at",       "environ_sizes_get",  Wasi_runtime.create_environ_sizes_get_import);
-      ("env_at",       "environ_get",        Wasi_runtime.create_environ_get_import);
-      ("arg_at",       "args_sizes_get",     Wasi_runtime.create_args_sizes_get_import);
-      ("arg_at",       "args_get",           Wasi_runtime.create_args_get_import);
+      ("net_shutdown", "sock_shutdown",      Wasi_runtime.create_sock_shutdown_import);
     ]
-    |> List.filter (fun (b, _, _) -> uses b)
-    |> List.fold_left
-         (fun acc (_, w, f) ->
-           if List.exists (fun (w', _) -> w' = w) acc then acc
-           else acc @ [(w, f ())])
-         []
+    |> List.filter_map
+         (fun (b, w, f) -> if uses b then Some (w, f ()) else None)
     |> List.mapi (fun i (w, (imp, ty)) -> (i + 1, w, imp, ty))
   in
   let opt_types = List.map (fun (_, _, _, ty) -> ty) optional_wasi in
