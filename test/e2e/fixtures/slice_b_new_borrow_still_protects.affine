@@ -1,0 +1,22 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell
+//
+// CORE-01 pt3 Slice B / #177 anti-regression: after `r = &y`, the
+// NEW borrow on `y` must still protect `y` while `r` is live. A
+// buggy Slice B that dropped the ref-binding but failed to re-bind
+// to the new borrow would silently accept `y = 10` below — the
+// borrow-graph would lose track of who holds &y. With correct
+// Slice B, `(r, &y)` is in ref_bindings, the borrow on `y` is in
+// state.borrows, and the assignment to `y` is rejected as
+// MoveWhileBorrowed. Expected: Error MoveWhileBorrowed.
+
+module SliceBNewBorrowStillProtects;
+
+fn still_protected() -> Int {
+  let mut x = 1;
+  let mut y = 2;
+  let mut r = &x;
+  r = &y;
+  y = 10;
+  *r
+}
