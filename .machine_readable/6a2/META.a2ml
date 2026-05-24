@@ -988,8 +988,20 @@ Staged plan (ledger INT-03; each row = one gated PR):
 - S4: native `wasi:clocks` + environment + argv via preview2 (wasmtime
   host-testable), replacing the preview1 shims behind the component path.
 - S5: `wasi:filesystem` (open/read/write/close) — unblocks INT-06.
-- S6: `wasi:sockets`; then flip the default wasm target to component
-  and demote the preview1 stdout path to a named legacy target.
+- S6a (WIT export lifting, DONE): codegen emits a `_start : () -> ()`
+  shim that calls `main` and drops its i32 result whenever a
+  parameter-less `fn main()` is present (`lib/codegen.ml`);
+  `tools/componentize.sh --command` wraps with the fetch-pinned
+  preview1->preview2 *command* adapter (wasmtime v44.0.1, sha256
+  8ff2ea78...) producing a component that exports `wasi:cli/run@0.2.x`
+  per `wit/affinescript.wit`. End-to-end gate:
+  `tests/componentize/command_smoke.sh` proves `wasmtime run` invokes
+  the component (exit 0), the ownership section survives, and the
+  lift is asserted. Purely additive: reactor consumers + game-loop
+  hooks are byte-unchanged.
+- S6b: `wasi:sockets`.
+- S6c: flip the default wasm target to component and demote the
+  preview1 stdout path to a named legacy target.
 """
 consequences = """
 - End-state is one-way (the component model becomes the canonical wasm

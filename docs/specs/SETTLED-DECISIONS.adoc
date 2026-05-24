@@ -302,8 +302,12 @@ change; *S2* toolchain provisioning (`wasm-tools`, `wasm-component-ld`,
 (codegen still emits core wasm; post-step wraps it via the standard
 preview1→preview2 adapter; ownership-section survival asserted; wasmtime
 component-run smoke); *S4* native `wasi:clocks`/environment/argv; *S5*
-`wasi:filesystem` (unblocks INT-06); *S6* `wasi:sockets`, then flip the
-default wasm target to component and demote preview1 to a legacy target.
+`wasi:filesystem` (unblocks INT-06); *S6a* (WIT export lifting) codegen
+auto-emits a `_start : () -> ()` shim around a parameter-less `fn main()`
+so `tools/componentize.sh --command` (preview1→preview2 *command*
+adapter) produces a real `wasi:cli/run`-exporting component that any
+WASI 0.2 host can invoke; *S6b* `wasi:sockets`; *S6c* flip the default
+wasm target to component and demote preview1 to a legacy target.
 
 This decision is settled; do not reopen without amending the ADR. Full
 ADR in `.machine_readable/6a2/META.a2ml` (ADR-015); ledger INT-03 in
