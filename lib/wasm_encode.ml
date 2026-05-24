@@ -123,10 +123,25 @@ let rec add_instr buf = function
   | I64Load (align, offset) -> add_u8 buf 0x29; add_memarg buf align offset
   | F32Load (align, offset) -> add_u8 buf 0x2A; add_memarg buf align offset
   | F64Load (align, offset) -> add_u8 buf 0x2B; add_memarg buf align offset
+  | I32Load8S (align, offset) -> add_u8 buf 0x2C; add_memarg buf align offset
+  | I32Load8U (align, offset) -> add_u8 buf 0x2D; add_memarg buf align offset
+  | I32Load16S (align, offset) -> add_u8 buf 0x2E; add_memarg buf align offset
+  | I32Load16U (align, offset) -> add_u8 buf 0x2F; add_memarg buf align offset
+  | I64Load8S (align, offset) -> add_u8 buf 0x30; add_memarg buf align offset
+  | I64Load8U (align, offset) -> add_u8 buf 0x31; add_memarg buf align offset
+  | I64Load16S (align, offset) -> add_u8 buf 0x32; add_memarg buf align offset
+  | I64Load16U (align, offset) -> add_u8 buf 0x33; add_memarg buf align offset
+  | I64Load32S (align, offset) -> add_u8 buf 0x34; add_memarg buf align offset
+  | I64Load32U (align, offset) -> add_u8 buf 0x35; add_memarg buf align offset
   | I32Store (align, offset) -> add_u8 buf 0x36; add_memarg buf align offset
   | I64Store (align, offset) -> add_u8 buf 0x37; add_memarg buf align offset
   | F32Store (align, offset) -> add_u8 buf 0x38; add_memarg buf align offset
   | F64Store (align, offset) -> add_u8 buf 0x39; add_memarg buf align offset
+  | I32Store8 (align, offset) -> add_u8 buf 0x3A; add_memarg buf align offset
+  | I32Store16 (align, offset) -> add_u8 buf 0x3B; add_memarg buf align offset
+  | I64Store8 (align, offset) -> add_u8 buf 0x3C; add_memarg buf align offset
+  | I64Store16 (align, offset) -> add_u8 buf 0x3D; add_memarg buf align offset
+  | I64Store32 (align, offset) -> add_u8 buf 0x3E; add_memarg buf align offset
   | MemorySize -> add_u8 buf 0x3F; add_u8 buf 0x00
   | MemoryGrow -> add_u8 buf 0x40; add_u8 buf 0x00
   | I32Const v -> add_u8 buf 0x41; add_sleb32 buf v

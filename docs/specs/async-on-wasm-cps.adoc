@@ -157,9 +157,12 @@ of* the verified Thenable-surface primitives.
   *DONE* — Deno-ESM (#226) + the typed-wasm CPS line PR1..PR3d all
   merged; this PR joint-closes #160 + #225. The ADR-013 delivery plan
   is complete; the transparent `fetch/get -> Response` surface is
-  delivered on both targets. (Two follow-ups, *not* part of this
-  slice, remain tracked: effect-threaded boundary generalisation
-  #234; estate #199/#205 re-validation #235.)
+  delivered on both targets. Follow-ups: the effect-threaded boundary
+  generalisation (#234, ADR-016) has since landed (S1..S4, PRs
+  #270/#275/#276/#277/#278, closed 2026-05-19 — the boundary is now
+  `Effect_sites.is_async_call` from the typecheck side-table, the
+  hardcoded `async_primitives` name set is retired); estate #199/#205
+  re-validation #235 remains tracked.
 
 == References
 

@@ -127,10 +127,20 @@ captured linears. |S1 |pt1 #240 + pt2 return-escape + `&mut` surface +
 pt3 Slice A NLL last-use DONE (Refs #177); residual = Slices B–D
 (flow-sensitive escape, origin variables, quantity integration) —
 issue #177
-|CORE-02 |Effect-handler dispatch on WasmGC (currently `UnsupportedFeature`;
-EH proposal or CPS). The #225 CPS line closes the async slice. |S2 |partial
-(#225 line CLOSED PR1..PR3d+PR4; #234 generalises the recogniser —
-ADR-016 ACCEPTED, side-table typecheck→codegen, staged S1..S4; S1 done)
+|CORE-02 |Effect-handler dispatch on WasmGC (was `UnsupportedFeature`;
+the chosen path is CPS over the EH proposal). The #225 CPS line closed
+the async slice; #234 generalised the boundary recogniser from a
+hardcoded name set to "any call whose effect row ⊇ `Async`". |S2
+|*CLOSED 2026-05-19* — #225 line CLOSED PR1..PR3d+PR4; #234 ADR-016
+delivered end-to-end (S1 #270 ADR; S2a #275 shared call-site
+numbering `lib/effect_sites.ml`; S2b #276 typecheck builds the
+ordinal→effect side-table; S3 #277 pipeline threads it + codegen
+boundary predicate switched + user-defined-`Async` e2e
+`tests/codegen/effect_async_boundary.affine`; S4 #278 hardcoded
+`async_primitives` set retired — boundary is now exactly
+`Effect_sites.is_async_call`). Issue #234 closed completed. Table-miss
+fallback (`Effect_sites.is_async_call` = false ⇒ no transform) remains
+as the sound table-empty / count-mismatch path.
 |CORE-03 |ADR-014: module-qualified type/effect path. Decision settled
 (both `.`/`::` accepted, `Pkg::Type` canonical, `.`→`::` for free via the
 `::`-fold). Was the estate's dominant parse blocker (525/1177 .affine).
@@ -189,6 +199,16 @@ and `__as_concat`); the extern was declared but never wired in any
 backend nor called from any stdlib/test/fixture — dead surface. The
 contract is now operator-only and one-source-of-truth. |S3 |DONE
 2026-05-24 (Refs #330)
+|STDLIB-04b |Throws extern `error<T>` — *LANDED* (Refs #329): mirrors
+`panic`'s divergent semantics with a polymorphic return (`<T>` unifies
+with the call-site expectation, unobservable at runtime). Wired in
+interp (`RuntimeError`), Deno codegen (`throw new Error`), resolve
+seed, and typecheck as a scheme (`poly1` so each call instantiates a
+fresh tyvar). 3 hermetic tests in "E2E STDLIB-04b error #329". |S3
+|DONE 2026-05-24 (Refs #329)
+|STDLIB-04c |`string_concat` extern — no direct wiring found; `++`
+operator independently lowered. Decide: remove (operator-only) or wire
+to mirror `++` |S3 |open — issue #330
 |STDLIB-04d |IO externs (`print`/`println`/`read_line`/`read_file`/
 `write_file`) — wired on all backends but no dedicated hermetic e2e
 tests; test-debt, not impl-debt |S3 |open — issue #331
@@ -228,16 +248,33 @@ follow-up
 multi-ns import object, ownership accessor); 14 unit tests via pinned
 `deno task test` + `tests/modules/loader-bridge/` e2e on real
 compiler-emitted xmod wasm (closes INT-01↔INT-02). Unblocks INT-05/08/11
-|INT-03 |WASI preview2 / host I/O |S1→S4b |#180 ADR-015 (full
+|INT-03 |WASI preview2 / host I/O |S1→S6a |#180 ADR-015 (full
 Component-Model re-target, S1..S6); S2 toolchain #251 closed;
-S3 componentize done; **S4a (clock) + S4b (env_count, arg_count)
+S3 componentize done; S4a (clock) + S4b (env_count, arg_count)
 DONE — on-demand preview1 imports via Effect_sites pre-scan,
 canonical-order indexing through `ctx.wasi_func_indices`; combo
 regression proves no collision. String accessors (env_at/arg_at)
 gated on byte-level wasm IR (I32Load8U/I32Store8 absent today) —
-tracked next slice. Real-host main-invoke = S6 (WIT export
-lifting). Next S5
-(native clocks/env/argv)**
+tracked next slice. **S6a (WIT export lifting) DONE:
+`lib/codegen.ml` auto-emits a `_start : () -> ()` shim whenever
+a parameter-less `fn main()` is present (additive, no regression
+on reactor consumers); `tools/componentize.sh --command` wraps
+with the fetch-pinned command adapter (sha256
+8ff2ea78… / wasmtime v44.0.1, provisioned alongside the reactor
+adapter); `tests/componentize/command_smoke.sh` gates the
+contract end-to-end — `wasi:cli/run` lifted, ownership section
+survives, `wasmtime run` exits 0. Real-host main-invoke now
+works via `wasmtime run <component>`.** Remaining S6
+sub-slices: S5 (native clocks/env/argv), S6b (`wasi:sockets`),
+S6c (flip the default wasm target from preview1 → component)
+regression proves no collision. **S5 (env_at/arg_at) DONE — wasm
+IR extended with the byte-level load/store family
+(I32Load8U/I32Store8 and siblings); accessors lower to on-demand
+`environ_get`/`args_get` imports paired with the existing
+`*_sizes_get` (dedup keeps each WASI import exactly once even when
+both `*_count` and `*_at` are used in the same unit); guest
+allocates a length-prefixed AS string and byte-copies from the
+WASI buffer.** Real-host main-invoke = S6 (WIT export lifting)
 |INT-04 |Publish to JSR/npm |S2 |#181 packaging READY (dry-run green,
 manual workflow); compiler-binary distribution decided = **ADR-019**
 (#260, Releases + thin Deno/JSR shim, staged S1..S4) — S1/S2/S3
@@ -290,7 +327,9 @@ Proven + locked (see INT-02)
 |CONV-01 |Estate-wide re-validation of the #199/#205 closure ABI (static →
 real wasm engine) |S2 |open #235
 |CONV-02 |Effect-threaded async-boundary detection (generalise the
-structural-conservative recogniser) |S2 |open #234
+structural-conservative recogniser) |S2 |*CLOSED 2026-05-19* — #234
+DELIVERED end-to-end (ADR-016 S1..S4; PRs #270/#275/#276/#277/#278).
+See CORE-02 above for the resolution narrative.
 |CONV-03 |#225/#160 convergence ABI matured to "shared with Ephapax" |S1
 |partial (PR3a/b/c merged)
 |CONV-04 |Widen emitted-wasm enforcement beyond L7+L10 toward L1–6/L13–16 |S2
