@@ -279,6 +279,10 @@ let () =
   b "int_to_char"    (fun a -> Printf.sprintf "__as_intToChar(%s)" (arg 0 a));
   b "show"           (fun a -> Printf.sprintf "__as_show(%s)" (arg 0 a));
   b "panic"          (fun a -> Printf.sprintf "(() => { throw new Error(%s); })()" (arg 0 a));
+  (* STDLIB-04b (Refs #329): `error<T>` is panic's polymorphic sibling.
+     Same divergent runtime semantics (throw); the polymorphic return
+     type is unobservable. *)
+  b "error"          (fun a -> Printf.sprintf "(() => { throw new Error(%s); })()" (arg 0 a));
   (* Mut effect builtins (STDLIB-04a, Refs #328) — runtime mutable cells.
      Distinct from borrow-checker [&]/[&mut] references: these back the
      [stdlib/effects.affine] [Ref<T>] type declared `/ Mut`. Lowered as

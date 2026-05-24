@@ -78,6 +78,8 @@ let seed_builtins (symbols : Symbol.t) : unit =
   def "getenv"; def "setenv"; def "getcwd"; def "chdir";
   def "list_dir"; def "create_dir"; def "remove_file"; def "remove_dir";
   def "panic"; def "exit";
+  (* STDLIB-04b (Refs #329): divergent throw with polymorphic return *)
+  def "error";
   (* Time *)
   def "time_now";
   (* TEA runtime — The Elm Architecture interpreter loop *)

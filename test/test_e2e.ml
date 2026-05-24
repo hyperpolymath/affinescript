@@ -3354,6 +3354,88 @@ let stdlib_04e_pure_tests = [
   Alcotest.test_case "#332 string_to_int(\"123\") == Some(123)" `Quick test_stdlib_04e_string_to_int_some;
   Alcotest.test_case "#332 string_to_int(\"abc\") == None" `Quick test_stdlib_04e_string_to_int_none;
   Alcotest.test_case "#332 string_length(\"hello\") == 5" `Quick test_stdlib_04e_string_length;
+(* ---- STDLIB-04b: Throws extern `error<T>` (Refs #329) ----
+
+   `error<T>(msg: String) -> T / Throws` was declared in
+   stdlib/effects.affine but missing in every backend. Same divergent
+   semantics as `panic` with a polymorphic return type that unifies
+   with the call-site expectation (unobservable because the call never
+   returns). *)
+
+let test_stdlib_04b_error_diverges_int_call_site () =
+  let src = {|
+fn must_be_positive(n: Int) -> Int {
+  if n > 0 { n } else { error("not positive") }
+}
+fn f() -> Int { must_be_positive(-1) }
+|} in
+  let prog = Parse_driver.parse_string ~file:"<test>" src in
+  match Interp.eval_program prog with
+  | Error e -> Alcotest.failf "program load failed: %s" (Value.show_eval_error e)
+  | Ok env ->
+    (match Value.lookup_env "f" env with
+     | Error _ -> Alcotest.fail "f not bound"
+     | Ok fn ->
+       (match Interp.apply_function fn [] with
+        | Ok _ -> Alcotest.fail "expected error to diverge; got Ok"
+        | Error (Value.RuntimeError msg) ->
+          Alcotest.(check string) "error message" "not positive" msg
+        | Error e ->
+          Alcotest.failf "expected RuntimeError, got: %s"
+            (Value.show_eval_error e)))
+
+(* Polymorphic: `error` in a String-returning context. Proves the
+   `<T>` polymorphism — same call site, different unification. *)
+let test_stdlib_04b_error_diverges_string_call_site () =
+  let src = {|
+fn lookup(k: String) -> String {
+  if string_length(k) > 0 { k } else { error("empty key") }
+}
+fn f() -> String { lookup("") }
+|} in
+  let prog = Parse_driver.parse_string ~file:"<test>" src in
+  match Interp.eval_program prog with
+  | Error e -> Alcotest.failf "program load failed: %s" (Value.show_eval_error e)
+  | Ok env ->
+    (match Value.lookup_env "f" env with
+     | Error _ -> Alcotest.fail "f not bound"
+     | Ok fn ->
+       (match Interp.apply_function fn [] with
+        | Ok _ -> Alcotest.fail "expected error to diverge; got Ok"
+        | Error (Value.RuntimeError msg) ->
+          Alcotest.(check string) "error message" "empty key" msg
+        | Error e ->
+          Alcotest.failf "expected RuntimeError, got: %s"
+            (Value.show_eval_error e)))
+
+let test_stdlib_04b_error_deno_codegen () =
+  let src = {|
+fn must(n: Int) -> Int {
+  if n > 0 { n } else { error("bad") }
+}
+|} in
+  let prog = Parse_driver.parse_string ~file:"<test>" src in
+  let loader = Module_loader.create (Module_loader.default_config ()) in
+  match Resolve.resolve_program_with_loader prog loader with
+  | Error (e, _) ->
+    Alcotest.failf "resolve failed: %s" (Resolve.show_resolve_error e)
+  | Ok (rctx, _) ->
+    (match Codegen_deno.codegen_deno prog rctx.symbols with
+     | Error e -> Alcotest.failf "deno-codegen failed: %s" e
+     | Ok js ->
+       let contains needle =
+         let nl = String.length needle and sl = String.length js in
+         let rec go i = i + nl <= sl &&
+           (String.sub js i nl = needle || go (i + 1))
+         in nl = 0 || go 0
+       in
+       Alcotest.(check bool) "emitted JS throws on error()"
+         true (contains "throw new Error(\"bad\")"))
+
+let stdlib_04b_error_tests = [
+  Alcotest.test_case "#329 error diverges at Int call site" `Quick test_stdlib_04b_error_diverges_int_call_site;
+  Alcotest.test_case "#329 error diverges at String call site" `Quick test_stdlib_04b_error_diverges_string_call_site;
+  Alcotest.test_case "#329 Deno codegen lowers to throw" `Quick test_stdlib_04b_error_deno_codegen;
 ]
 
 (* ---- Issue #35 Phase 2 — Vscode bindings ----
@@ -4048,6 +4130,7 @@ let tests =
     ("E2E Externs",              extern_tests);
     ("E2E STDLIB-04a Mut #328",  stdlib_04a_mut_tests);
     ("E2E STDLIB-04e Pure #332", stdlib_04e_pure_tests);
+    ("E2E STDLIB-04b error #329", stdlib_04b_error_tests);
     ("E2E Vscode Bindings",      vscode_bindings_tests);
     ("E2E Array Type Sugar",     array_type_tests);
     ("E2E Qualified Paths #228",  qualified_path_tests);

@@ -193,10 +193,11 @@ type context = {
   (** ADR-016 / #234 S2b: per-call-site effect rows, keyed by the
       shared [Effect_sites] ordinal. Populated after a successful check
       pass; the value is the callee's declared effect row (EPure when
-      the callee is not a statically-named function). Built here but
-      NOT yet consulted by codegen — S3 threads & switches the WasmGC
-      CPS boundary predicate onto it (the structural recogniser remains
-      the sound table-miss fallback). *)
+      the callee is not a statically-named function). Built here and
+      published to [Effect_sites] for the WasmGC CPS boundary predicate
+      (S3, #277); the hardcoded name set is retired (S4, #278). A
+      table-miss / count-mismatch still falls back to "no transform"
+      ([Effect_sites.is_async_call] = false), which is sound. *)
 }
 
 type 'a result = ('a, type_error) Result.t
@@ -1324,11 +1325,18 @@ let register_builtins (ctx : context) : unit =
     (TArrow (ty_int, QOmega, ty_int, ESingleton "Time"));
   (* ADR-015 S4b (#180): WASI environment / argv COUNTS. The Unit arg
      satisfies the zero-param-fn collapse wart (`fn()->T` lowers to
-     bare `T`; callable zero-arg builtins take `Unit -> R`). String
-     accessors (env_at/arg_at) need byte-level wasm IR ops — tracked
-     follow-up. Effect row `Time` (reserved). *)
+     bare `T`; callable zero-arg builtins take `Unit -> R`).
+     Effect row `Time` (reserved). *)
   bind_var ctx "env_count" (TArrow (ty_unit, QOmega, ty_int, ESingleton "Time"));
   bind_var ctx "arg_count" (TArrow (ty_unit, QOmega, ty_int, ESingleton "Time"));
+  (* ADR-015 S5 (#180): WASI environment / argv STRING ACCESSORS. Returns
+     the i-th entry as a length-prefixed AS string. Lowered via
+     `environ_get`/`args_get` + a byte-level scan + byte-copy, which
+     became expressible once `I32Load8U`/`I32Store8` joined the wasm IR.
+     Index out-of-bounds is UB at this layer — the guest is expected to
+     bound-check against `env_count(())`/`arg_count(())`. *)
+  bind_var ctx "env_at" (TArrow (ty_int, QOmega, ty_string, ESingleton "Time"));
+  bind_var ctx "arg_at" (TArrow (ty_int, QOmega, ty_string, ESingleton "Time"));
   bind_var ctx "eprint" (TArrow (ty_string, QOmega, ty_unit, ESingleton "IO"));
   bind_var ctx "eprintln" (TArrow (ty_string, QOmega, ty_unit, ESingleton "IO"));
   bind_var ctx "read_line"
@@ -1450,6 +1458,13 @@ let register_builtins (ctx : context) : unit =
   bind_var ctx "atan2"
     (TArrow (ty_float, QOmega, TArrow (ty_float, QOmega, ty_float, EPure), EPure));
   bind_var ctx "panic" (TArrow (ty_string, QOmega, ty_never, EPure));
+  (* STDLIB-04b (Refs #329): `error<T>(msg)` is panic's polymorphic sibling
+     — diverges, but unifies with whatever return type the call site
+     expects (`T` is unobservable at runtime because the call doesn't
+     return). Bound as a scheme so each call instantiates a fresh tyvar,
+     same pattern as `len`/`show`/`RuntimeError`. *)
+  bind_scheme ctx "error"
+    (poly1 (fun a -> TArrow (ty_string, QOmega, a, EPure)));
   bind_var ctx "exit" (TArrow (ty_int, QOmega, ty_never, ESingleton "IO"));
   (* TEA runtime — accepts any record, returns unit with IO effect *)
   let tea_tv = fresh_tyvar 0 in
@@ -1780,17 +1795,18 @@ let check_decl (ctx : context) (decl : top_level) : (unit, type_error) Result.t 
     [Resolve.resolve_program_with_loader] so that [ExprApp (ExprVar f, ...)]
     can resolve [f] to the imported function's scheme even though [f] does
     not appear in [prog.prog_decls]. *)
-(* ADR-016 / #234 S2b: build the per-call-site effect side-table.
-   Keyed by the shared [Effect_sites] ordinal so the (future) codegen
-   consumer agrees with this producer. A call's effect row is the
-   callee's *declared* row when the callee is a statically-named
-   function (`f(..)`, `m.f(..)`, through `ExprSpan`); otherwise EPure
-   (sound: S3's predicate is "row ⊇ Async ⇒ boundary", and an
-   over-conservative EPure just defers to the structural fallback —
-   exactly today's behaviour). Extern fns parse as [TopFn] with
-   [FnExtern]/[fd_eff] (parser.mly), so this covers the stdlib async
-   primitives and user `Async` fns uniformly. Pure traversal; built,
-   not yet consumed. *)
+(* ADR-016 / #234: build the per-call-site effect side-table. Keyed by
+   the shared [Effect_sites] ordinal so the codegen consumer agrees with
+   this producer. A call's effect row is the callee's *declared* row
+   when the callee is a statically-named function (`f(..)`, `m.f(..)`,
+   through `ExprSpan`); otherwise EPure (sound: the codegen predicate is
+   "row ⊇ Async ⇒ boundary", and an over-conservative EPure just means
+   "no transform" — the same as today's S4 table-miss path). Extern fns
+   parse as [TopFn] with [FnExtern]/[fd_eff] (parser.mly), so this
+   covers the stdlib async primitives and user `Async` fns uniformly.
+   After population the ordinal→has-Async projection is published via
+   [Effect_sites.set_async_by_ord] for the codegen consumer (S3 #277,
+   S4 #278). *)
 let populate_call_effects (ctx : context) (prog : Ast.program) : unit =
   let fn_eff : (string, eff) Hashtbl.t = Hashtbl.create 64 in
   List.iter
@@ -1913,8 +1929,9 @@ let check_program ?(import_types : (string, scheme) Hashtbl.t option)
        errors first (they are more fundamental). *)
     begin match Quantity.check_program_quantities prog with
     | Ok () ->
-      (* ADR-016 / #234 S2b: build the per-call-site effect side-table
-         on the fully-checked program. Built, not yet consumed. *)
+      (* ADR-016 / #234: build the per-call-site effect side-table on
+         the fully-checked program, and publish it to [Effect_sites] for
+         the codegen async-boundary predicate (S3/S4 — consumed). *)
       populate_call_effects ctx prog;
       Ok ctx
     | Error (qerr, span) ->
