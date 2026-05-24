@@ -1260,3 +1260,166 @@ references = [
   "docs/PACKAGING.adoc (INT-04; the JS-package half)",
   "docs/specs/SETTLED-DECISIONS.adoc (ADR-019 section)",
 ]
+
+[[adr]]
+id = "ADR-020"
+status = "proposed"
+date = "2026-05-23"
+title = "Ownership-section schema versioning (0xAF sentinel + u8 version)"
+context = """
+The `affinescript.ownership` Wasm custom section has been frozen at
+v1 since typed-wasm Level 10 closure (2026-04-19) and is emitted in
+identical form by AffineScript (`lib/codegen.ml`) and by ephapax
+(`hyperpolymath/ephapax/src/ephapax-wasm`). The Rust verifier in
+`hyperpolymath/typed-wasm` consumes it as the cross-compat target.
+
+V1 has *no version field*. Today this is fine because both
+producers are at v1 and the verifier expects v1 unconditionally.
+The first multi-producer ABI change — when L1–6 / L14–16 emission
+lands — will need version discrimination. Adding the version field
+*now*, while we are still at v1, is much cheaper than retrofitting
+it under load.
+
+This ADR is filed alongside the broader typed-wasm widening roadmap
+in `docs/specs/TYPED-WASM-ROADMAP.adoc` §"Tranche B".
+"""
+decision = """
+Move from v1 (unversioned) to v2 (versioned, with sentinel):
+
+  v1 payload:
+    u32  entry_count
+    entry*
+
+  v2 payload:
+    u8   version_tag    ; 0xAF — "AffineScript Format"
+    u8   version        ; 0x02 for v2.0
+    u32  entry_count
+    entry*              ; same entry shape as v1; no new entry fields in v2.0
+
+The 0xAF sentinel is byte-distinct from any plausible v1 entry-count
+low byte for a module with ≤ 0xAE entries — i.e. practically every
+module in existence. v1 readers fail cleanly on a v2 section (bad
+entry-count); v2 readers see the sentinel and dispatch.
+
+Coordinated landing protocol:
+  1. Land ADR-020 in `hyperpolymath/affinescript` (this repo).
+  2. Mirror ADR in `hyperpolymath/typed-wasm` (Rust verifier
+     dispatches on sentinel; accepts both v1 and v2 during
+     migration).
+  3. Mirror ADR in `hyperpolymath/ephapax` (second producer emits
+     v2).
+  4. Verifier ships v2-parse FIRST. Producers stay on v1 emit.
+  5. Once verifier is deployed (in both OCaml + Rust paths),
+     producers flip to v2 emit together.
+  6. After a deprecation window, v1-parse path is removed from
+     verifier.
+
+The v2.0 entry shape is identical to v1 — this ADR introduces no
+new ownership kinds, no new per-entry fields. Future widening
+(e.g. v2.1 adding a region-id field per entry) is a separate ADR.
+"""
+consequences = """
+- Forward-compatible: any future widening (L1–6 / L14–16 carriers,
+  per-entry annotations) can negotiate via the version byte without
+  another sentinel-or-no-sentinel war.
+- v1 callers fail cleanly on v2 sections (bad entry-count parse) —
+  no silent corruption.
+- Single coordinated landing across three repos; complexity is in
+  the coordination, not the bytes.
+- This decision is PROPOSED. Land or supersede explicitly; do not
+  silently drift.
+- Cross-references the typed-wasm roadmap in
+  `docs/specs/TYPED-WASM-ROADMAP.adoc` §"B1".
+"""
+references = [
+  "docs/specs/TYPED-WASM-INTERFACE.adoc",
+  "docs/specs/TYPED-WASM-INTERFACE.a2ml",
+  "docs/specs/TYPED-WASM-ROADMAP.adoc",
+  "lib/codegen.ml (build_ownership_section, ~line 159)",
+  "lib/tw_verify.ml (parse_ownership_section)",
+  "hyperpolymath/typed-wasm (Rust verifier crate — coordination target)",
+  "hyperpolymath/ephapax (second producer — coordination target)",
+]
+
+[[adr]]
+id = "ADR-021"
+status = "proposed"
+date = "2026-05-23"
+title = "Multi-producer ABI coordination model for typed-wasm carriers"
+context = """
+typed-wasm is a separate, language-agnostic compilation target with
+its own repository (`hyperpolymath/typed-wasm`) and its own
+producers (today: AffineScript + ephapax; potentially more later).
+The `affinescript.ownership` custom section is the first
+multi-producer ABI we own.
+
+Today coordination happens by `Refs #N` across repositories and
+good intent. As the typed-wasm widening proposals land (ADR-020
+schema versioning, then carriers for L1–6 and L14–16), this
+informal model will break. The session-note record makes clear that
+each ABI conversation has been one-off and ad-hoc; the failure mode
+is two producers landing incompatible changes in parallel because
+nobody owns "the protocol".
+
+This ADR is filed alongside the typed-wasm widening roadmap in
+`docs/specs/TYPED-WASM-ROADMAP.adoc` §"Tranche D" — D1 explicitly.
+The reason to land *this* ADR before any concrete widening proposal
+is that the coordination model is cheap now (no code), expensive
+later (under conflicting pressure from multiple in-flight proposals).
+"""
+decision = """
+Adopt a formal four-axis multi-producer coordination model:
+
+(1) Spec authority — which artefact is the source of record:
+  - Today: `lib/tw_verify.ml` (OCaml) is the spec of record.
+  - On C5.1 closure (INT-12 / CONV-05): authority flips to
+    `hyperpolymath/typed-wasm` Rust verifier crate.
+  - The flip is itself an ADR — does not happen silently.
+  - Until the flip, OCaml binds; on conflict, OCaml wins.
+
+(2) Coordinated landing protocol:
+  - All ABI-touching ADRs live in all three repos (originated in
+    one, mirrored in the other two with `Mirrors hyperpolymath/X#N`
+    cross-references).
+  - Verifier always ships parse-support FIRST.
+  - Producers flip to emit support together, in a coordinated
+    window.
+  - Deprecation: a removed format MUST have a deprecation window
+    of at least the cycle between two coordinated landings.
+
+(3) Test parity protocol:
+  - Every producer maintains a fixture corpus matching the
+    typed-wasm cross-compat suite (INT-12 / C5.1).
+  - Each ABI change requires a new fixture in the cross-compat
+    suite from each producer.
+  - Verifier accepts a producer's emit only if the cross-compat
+    corpus is up-to-date for that producer.
+
+(4) Conflict resolution:
+  - In-flight ABI proposals from different producers MUST be
+    serialised — no parallel ABI ADRs.
+  - The serialisation queue is owned by `hyperpolymath/typed-wasm`
+    (today via issues; future a dedicated coordination ledger).
+  - A proposal blocked behind another in the queue is paused, not
+    refused.
+"""
+consequences = """
+- Single coordination ledger replaces ad-hoc Refs trails.
+- ABI change cost goes up (more paperwork) but predictability goes
+  way up.
+- Compatible with the existing Hypatia / gitbot rules (Hypatia
+  DOC-FORMAT / STACK-SIGNAL apply; ISSUE-CLOSURE applies to the
+  shared ADR mirrors).
+- This decision is PROPOSED. Owner ratification required before any
+  ABI ADR (ADR-020 included) lands; ADR-020 is a "first test" of
+  this model and its own landing exercises the protocol.
+- Cross-references the typed-wasm roadmap in
+  `docs/specs/TYPED-WASM-ROADMAP.adoc` §"D1".
+"""
+references = [
+  "docs/specs/TYPED-WASM-INTERFACE.adoc",
+  "docs/specs/TYPED-WASM-ROADMAP.adoc",
+  ".claude/CLAUDE.md §Hypatia and gitbot-fleet standing rules",
+  "hyperpolymath/typed-wasm (coordination target)",
+  "hyperpolymath/ephapax (second producer — coordination target)",
+]
