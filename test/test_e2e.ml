@@ -3777,6 +3777,36 @@ let test_borrow_mutref_shared_ok () =
     Alcotest.fail ("shared `&x` spuriously rejected after adding `&mut`: "
                    ^ Borrow.format_borrow_error e)
 
+(* CORE-01 pt3 Slice A / #177 — NLL last-use expiry. Pre-NLL, every
+   ref-binding lived until lexical block exit; under NLL the underlying
+   borrow is released after the binder's last use, so subsequent reads
+   or assignments through the (no-longer-borrowed) owner are legal.
+   The third test pins the anti-regression: a binder still mentioned
+   later in the block must NOT be expired early. *)
+let test_borrow_nll_assign_after_last_use () =
+  match borrow_result (fixture "borrow_nll_assign_after_last_use.affine") with
+  | Ok () -> ()
+  | Error e ->
+    Alcotest.fail ("NLL: assignment after shared borrow's last use \
+                    spuriously rejected: " ^ Borrow.format_borrow_error e)
+
+let test_borrow_nll_read_after_mut_last_use () =
+  match borrow_result (fixture "borrow_nll_read_after_mut_last_use.affine") with
+  | Ok () -> ()
+  | Error e ->
+    Alcotest.fail ("NLL: read after exclusive borrow's last use \
+                    spuriously rejected: " ^ Borrow.format_borrow_error e)
+
+let test_borrow_nll_still_rejects_live_borrow () =
+  match borrow_result (fixture "borrow_nll_still_rejects_live_borrow.affine") with
+  | Error (Borrow.MoveWhileBorrowed _) -> ()
+  | Error e ->
+    Alcotest.fail ("expected MoveWhileBorrowed (NLL must keep live \
+                    borrows alive), got: " ^ Borrow.format_borrow_error e)
+  | Ok () ->
+    Alcotest.fail "NLL over-expired a still-live borrow — assignment \
+                   to a borrowed owner was accepted"
+
 let borrow_tests = [
   Alcotest.test_case "BorrowOutlivesOwner: &local escapes its block"
     `Quick test_borrow_outlives_owner;
@@ -3796,6 +3826,12 @@ let borrow_tests = [
     `Quick test_borrow_return_escape_local;
   Alcotest.test_case "return ref-param sound — not over-rejected (#177 pt2)"
     `Quick test_borrow_return_refparam_ok;
+  Alcotest.test_case "NLL: assign after shared borrow's last use OK (#177 pt3 Slice A)"
+    `Quick test_borrow_nll_assign_after_last_use;
+  Alcotest.test_case "NLL: read after &mut's last use OK (#177 pt3 Slice A)"
+    `Quick test_borrow_nll_read_after_mut_last_use;
+  Alcotest.test_case "NLL anti-regression: still-live borrow blocks assign (#177 pt3 Slice A)"
+    `Quick test_borrow_nll_still_rejects_live_borrow;
 ]
 
 (* ============================================================================
