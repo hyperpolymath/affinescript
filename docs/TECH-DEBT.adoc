@@ -110,12 +110,23 @@ typed/codegen'd like `&e` — exclusivity is a static borrow property).
 `&`-in-`#{` literals and bare block-statements already parse on `main`;
 `-> &T`/`&T` *type* sigil deliberately **not** added — `ref T`/`mut T`
 keyword types already express reference types; a `&T` sigil is duplicate
-surface (ADR territory, not a soundness gap). *Part 2 residual — now the
-analysis, not surface:* NLL/region inference (Polonius) + flow-sensitive
-escape via `outer = &x` are now *expressible* (surface unblocked); the
-remaining work is the dataflow analysis itself. |S1 |pt1 #240 + pt2
-return-escape + `&mut` surface DONE (Refs #177); residual = NLL analysis
-— issue #177
+surface (ADR territory, not a soundness gap). *Part 3 Slice A — NLL
+last-use expiry LANDED* (Refs #177): a forward pre-pass
+(`compute_last_use_index`) maps each symbol to the greatest statement
+index that mentions it; after each statement, `check_block` expires any
+ref-binding introduced in that block whose binder is now dead, releasing
+the underlying borrow. Unblocks the canonical NLL patterns
+(`let r = &x; print(*r); x = 2`; `let m = &mut x; let y = *m; x`) while
+preserving soundness — the anti-aliasing rules still fire against
+statements that *do* use the binder (3 hermetic tests in "E2E Borrow
+Graph", two positive + one anti-regression). *Slices B–D residual:*
+flow-sensitive escape via assignment to an outer mutable
+(`outer = &x`); origin/region variables (Polonius surface) + loan-live-
+at-point dataflow across CFG joins; tighter quantity integration for
+captured linears. |S1 |pt1 #240 + pt2 return-escape + `&mut` surface +
+pt3 Slice A NLL last-use DONE (Refs #177); residual = Slices B–D
+(flow-sensitive escape, origin variables, quantity integration) —
+issue #177
 |CORE-02 |Effect-handler dispatch on WasmGC (currently `UnsupportedFeature`;
 EH proposal or CPS). The #225 CPS line closes the async slice. |S2 |partial
 (#225 line CLOSED PR1..PR3d+PR4; #234 generalises the recogniser —
@@ -159,7 +170,29 @@ complete; convergence ABI shared w/ Ephapax
 insert/set/remove/keys/values; AOT-gated (#136). Closes ESC-03 #247 (the
 #229 `Dict.t` target); unblocks the additive `Http.affine` headers→Dict
 upgrade
-|STDLIB-04 |Residual `extern` builtins → real implementations |S3 |open
+|STDLIB-04 |Residual `extern` builtins → real implementations (umbrella;
+split into 04a–04e 2026-05-24 per per-extern audit, one row per PR) |S3
+|open (5 sub-rows)
+|STDLIB-04a |Mut effect externs (`make_ref`/`get`/`set`) — *LANDED*
+(Refs #328): interp uses `VMut` cell (`lib/interp.ml`); Deno codegen
+lowers to `{__cell: x}` single-field object (`lib/codegen_deno.ml`);
+3 hermetic e2e tests in "E2E STDLIB-04a Mut #328" (Int + String
+round-trips + Deno codegen __cell-shape assertion) |S3 |DONE
+2026-05-24 (Refs #328)
+|STDLIB-04b |Throws extern `error<T>` — missing in all backends
+(`lib/interp.ml`, `lib/js_codegen.ml`, `lib/codegen_deno.ml`); sibling
+`panic` is wired and `error` should mirror it (divergent `T`) |S3 |open
+— issue #329
+|STDLIB-04c |`string_concat` extern — no direct wiring found; `++`
+operator independently lowered. Decide: remove (operator-only) or wire
+to mirror `++` |S3 |open — issue #330
+|STDLIB-04d |IO externs (`print`/`println`/`read_line`/`read_file`/
+`write_file`) — wired on all backends but no dedicated hermetic e2e
+tests; test-debt, not impl-debt |S3 |open — issue #331
+|STDLIB-04e |Pure externs (`int_to_string`/`string_to_int`/
+`string_length`) — real + tested (`lib/interp.ml:615-633`,
+`lib/codegen_deno.ml:263-272`); bookkeeping to mark DONE |S3 |open —
+issue #332
 |===
 
 == Section D — INT (ecosystem integration)
