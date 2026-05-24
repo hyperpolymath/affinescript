@@ -1,0 +1,11 @@
+// SPDX-License-Identifier: MPL-2.0
+// ADR-015 S5 dedup regression: a unit that uses BOTH `env_count`
+// and `env_at`. Both lower to a WASI `environ_sizes_get` call —
+// if the optional_wasi table emitted that import twice, the
+// resulting wasm would have two competing imports under the same
+// name and instantiation would fail. The dedup pass (keep first
+// occurrence by wasi import name) must collapse them to one
+// shared idx that both gen_expr cases resolve to.
+pub fn main() -> Int / { Time } {
+  env_count(()) + string_length(env_at(0))
+}
