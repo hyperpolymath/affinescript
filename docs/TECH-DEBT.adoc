@@ -192,16 +192,25 @@ follow-up
 multi-ns import object, ownership accessor); 14 unit tests via pinned
 `deno task test` + `tests/modules/loader-bridge/` e2e on real
 compiler-emitted xmod wasm (closes INT-01↔INT-02). Unblocks INT-05/08/11
-|INT-03 |WASI preview2 / host I/O |S1→S4b |#180 ADR-015 (full
+|INT-03 |WASI preview2 / host I/O |S1→S6a |#180 ADR-015 (full
 Component-Model re-target, S1..S6); S2 toolchain #251 closed;
-S3 componentize done; **S4a (clock) + S4b (env_count, arg_count)
+S3 componentize done; S4a (clock) + S4b (env_count, arg_count)
 DONE — on-demand preview1 imports via Effect_sites pre-scan,
 canonical-order indexing through `ctx.wasi_func_indices`; combo
 regression proves no collision. String accessors (env_at/arg_at)
 gated on byte-level wasm IR (I32Load8U/I32Store8 absent today) —
-tracked next slice. Real-host main-invoke = S6 (WIT export
-lifting). Next S5
-(native clocks/env/argv)**
+tracked next slice. **S6a (WIT export lifting) DONE:
+`lib/codegen.ml` auto-emits a `_start : () -> ()` shim whenever
+a parameter-less `fn main()` is present (additive, no regression
+on reactor consumers); `tools/componentize.sh --command` wraps
+with the fetch-pinned command adapter (sha256
+8ff2ea78… / wasmtime v44.0.1, provisioned alongside the reactor
+adapter); `tests/componentize/command_smoke.sh` gates the
+contract end-to-end — `wasi:cli/run` lifted, ownership section
+survives, `wasmtime run` exits 0. Real-host main-invoke now
+works via `wasmtime run <component>`.** Remaining S6
+sub-slices: S5 (native clocks/env/argv), S6b (`wasi:sockets`),
+S6c (flip the default wasm target from preview1 → component)
 |INT-04 |Publish to JSR/npm |S2 |#181 packaging READY (dry-run green,
 manual workflow); compiler-binary distribution decided = **ADR-019**
 (#260, Releases + thin Deno/JSR shim, staged S1..S4) — S1/S2/S3

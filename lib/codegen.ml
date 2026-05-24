@@ -2626,6 +2626,56 @@ let generate_module ?loader (prog : program) : wasm_module result =
     @ table_export
   in
 
+  (* ADR-015 S6 — WIT export lifting. When the unit exports a parameter-
+     less `main`, also emit a `_start : () -> ()` shim that calls it and
+     drops the i32 result. With `_start` present, tools/componentize.sh
+     --command can wrap the core module with the WASI preview1→preview2
+     *command* adapter, producing a real `wasi:cli/run`-exporting
+     component that any WASI 0.2 host (`wasmtime run`, jco) can invoke.
+     Purely additive: every existing consumer (reactor componentize,
+     game-loop hosts that call `main` directly) sees the same exports
+     plus an extra `_start`; main-with-params and units that already
+     export `_start` are skipped. *)
+  let final_types, final_funcs, final_exports =
+    let has_user_start =
+      List.exists (fun e -> e.e_name = "_start") exports_with_mem
+    in
+    let main_export =
+      List.find_opt (fun e -> e.e_name = "main") exports_with_mem
+    in
+    match main_export, has_user_start with
+    | Some { e_desc = ExportFunc main_idx; _ }, false ->
+      let main_local_idx = main_idx - import_offset in
+      if main_local_idx < 0 || main_local_idx >= List.length all_funcs then
+        (ctx'.types, all_funcs, exports_with_mem)
+      else
+        let main_func = List.nth all_funcs main_local_idx in
+        let main_type = List.nth ctx'.types main_func.f_type in
+        if main_type.ft_params <> [] then
+          (ctx'.types, all_funcs, exports_with_mem)
+        else
+          let void_ft = { ft_params = []; ft_results = [] } in
+          let (void_type_idx, types_after) =
+            intern_func_type ctx'.types void_ft
+          in
+          let drop_instrs =
+            List.map (fun _ -> Drop) main_type.ft_results
+          in
+          let start_func = {
+            f_type = void_type_idx;
+            f_locals = [];
+            f_body = Call main_idx :: drop_instrs;
+          } in
+          let funcs_after = all_funcs @ [start_func] in
+          let start_idx = import_offset + List.length all_funcs in
+          let exports_after =
+            exports_with_mem
+            @ [{ e_name = "_start"; e_desc = ExportFunc start_idx }]
+          in
+          (types_after, funcs_after, exports_after)
+    | _ -> (ctx'.types, all_funcs, exports_with_mem)
+  in
+
   (* Stage 2: Build [affinescript.ownership] custom section from collected annotations *)
   let ownership_payload = build_ownership_section ctx'.ownership_annots in
   let custom_sections = if Bytes.length ownership_payload > 0 then
@@ -2635,12 +2685,12 @@ let generate_module ?loader (prog : program) : wasm_module result =
   in
 
   Ok {
-    types = ctx'.types;
-    funcs = all_funcs;
+    types = final_types;
+    funcs = final_funcs;
     tables = tables;
     mems = [{ mem_type = { lim_min = 1; lim_max = None } }];  (* 1 page default *)
     globals = ctx'.globals;
-    exports = exports_with_mem;
+    exports = final_exports;
     imports = ctx'.imports;
     elems = elems;
     datas = List.rev ctx'.datas;  (* Reverse to get original order *)
