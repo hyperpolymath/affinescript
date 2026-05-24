@@ -183,8 +183,8 @@ let iter (f : int -> expr -> unit) (prog : program) : unit =
    [bind_consumer prog] renumbers the (possibly post-opt) [prog] with the
    SAME traversal and materialises a physical-identity predicate over
    *that* prog's own nodes. Default empty ⇒ [is_async_call] is always
-   false ⇒ codegen falls back to the structural recogniser (the exact
-   pre-#234 behaviour; zero regression if the producer never ran or the
+   false ⇒ codegen emits no CPS transform (the sound table-miss path
+   under S4 #278; zero regression if the producer never ran or the
    counts disagree). *)
 
 let async_by_ord : (int, bool) Hashtbl.t = Hashtbl.create 64
