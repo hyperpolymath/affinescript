@@ -3279,6 +3279,81 @@ let stdlib_04a_mut_tests = [
   Alcotest.test_case "#328 Deno codegen emits __cell shape" `Quick test_stdlib_04a_mut_deno_codegen;
 ]
 
+(* ---- STDLIB-04e: Pure externs (Refs #332) ----
+
+   Three externs declared in stdlib/effects.affine as pure:
+     int_to_string : Int -> String
+     string_to_int : String -> Option<Int>
+     string_length : String -> Int
+
+   `int_to_string` + `string_length` were already wired; `string_to_int`
+   was unwired (dead surface — any caller would compile and fail at run).
+   This row wires `string_to_int` as the typed-alias of `parse_int` and
+   asserts hermetic round-trip semantics for all three. *)
+
+let test_stdlib_04e_int_to_string () =
+  let prog = Parse_driver.parse_string ~file:"<test>"
+    "fn f() -> String { int_to_string(42) }" in
+  match Interp.eval_program prog with
+  | Error e -> Alcotest.failf "interp failed: %s" (Value.show_eval_error e)
+  | Ok env ->
+    (match Value.lookup_env "f" env with
+     | Ok fn ->
+       (match Interp.apply_function fn [] with
+        | Ok (Value.VString "42") -> ()
+        | Ok v -> Alcotest.failf "expected VString \"42\", got %s"
+                    (Value.show_value v)
+        | Error e -> Alcotest.failf "apply failed: %s" (Value.show_eval_error e))
+     | Error e -> Alcotest.failf "lookup f failed: %s" (Value.show_eval_error e))
+
+let test_stdlib_04e_string_to_int_some () =
+  let prog = Parse_driver.parse_string ~file:"<test>"
+    "fn f() -> Option<Int> { string_to_int(\"123\") }" in
+  match Interp.eval_program prog with
+  | Error e -> Alcotest.failf "interp failed: %s" (Value.show_eval_error e)
+  | Ok env ->
+    (match Value.lookup_env "f" env with
+     | Ok fn ->
+       (match Interp.apply_function fn [] with
+        | Ok (Value.VVariant ("Some", Some (Value.VInt 123))) -> ()
+        | Ok v -> Alcotest.failf "expected Some(123), got %s"
+                    (Value.show_value v)
+        | Error e -> Alcotest.failf "apply failed: %s" (Value.show_eval_error e))
+     | Error e -> Alcotest.failf "lookup f failed: %s" (Value.show_eval_error e))
+
+let test_stdlib_04e_string_to_int_none () =
+  let prog = Parse_driver.parse_string ~file:"<test>"
+    "fn f() -> Option<Int> { string_to_int(\"abc\") }" in
+  match Interp.eval_program prog with
+  | Error e -> Alcotest.failf "interp failed: %s" (Value.show_eval_error e)
+  | Ok env ->
+    (match Value.lookup_env "f" env with
+     | Ok fn ->
+       (match Interp.apply_function fn [] with
+        | Ok (Value.VVariant ("None", None)) -> ()
+        | Ok v -> Alcotest.failf "expected None, got %s" (Value.show_value v)
+        | Error e -> Alcotest.failf "apply failed: %s" (Value.show_eval_error e))
+     | Error e -> Alcotest.failf "lookup f failed: %s" (Value.show_eval_error e))
+
+let test_stdlib_04e_string_length () =
+  let prog = Parse_driver.parse_string ~file:"<test>"
+    "fn f() -> Int { string_length(\"hello\") }" in
+  match Interp.eval_program prog with
+  | Error e -> Alcotest.failf "interp failed: %s" (Value.show_eval_error e)
+  | Ok env ->
+    (match Value.lookup_env "f" env with
+     | Ok fn ->
+       (match Interp.apply_function fn [] with
+        | Ok (Value.VInt 5) -> ()
+        | Ok v -> Alcotest.failf "expected VInt 5, got %s" (Value.show_value v)
+        | Error e -> Alcotest.failf "apply failed: %s" (Value.show_eval_error e))
+     | Error e -> Alcotest.failf "lookup f failed: %s" (Value.show_eval_error e))
+
+let stdlib_04e_pure_tests = [
+  Alcotest.test_case "#332 int_to_string(42) == \"42\"" `Quick test_stdlib_04e_int_to_string;
+  Alcotest.test_case "#332 string_to_int(\"123\") == Some(123)" `Quick test_stdlib_04e_string_to_int_some;
+  Alcotest.test_case "#332 string_to_int(\"abc\") == None" `Quick test_stdlib_04e_string_to_int_none;
+  Alcotest.test_case "#332 string_length(\"hello\") == 5" `Quick test_stdlib_04e_string_length;
 (* ---- STDLIB-04b: Throws extern `error<T>` (Refs #329) ----
 
    `error<T>(msg: String) -> T / Throws` was declared in
@@ -4054,6 +4129,7 @@ let tests =
     ("E2E Xmod Other Codegens", cross_module_other_codegens_tests);
     ("E2E Externs",              extern_tests);
     ("E2E STDLIB-04a Mut #328",  stdlib_04a_mut_tests);
+    ("E2E STDLIB-04e Pure #332", stdlib_04e_pure_tests);
     ("E2E STDLIB-04b error #329", stdlib_04b_error_tests);
     ("E2E Vscode Bindings",      vscode_bindings_tests);
     ("E2E Array Type Sugar",     array_type_tests);
