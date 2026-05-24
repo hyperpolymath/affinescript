@@ -159,7 +159,27 @@ complete; convergence ABI shared w/ Ephapax
 insert/set/remove/keys/values; AOT-gated (#136). Closes ESC-03 #247 (the
 #229 `Dict.t` target); unblocks the additive `Http.affine` headers→Dict
 upgrade
-|STDLIB-04 |Residual `extern` builtins → real implementations |S3 |open
+|STDLIB-04 |Residual `extern` builtins → real implementations (umbrella;
+split into 04a–04e 2026-05-24 per per-extern audit, one row per PR) |S3
+|open (5 sub-rows)
+|STDLIB-04a |Mut effect externs (`make_ref`/`get`/`set`) — currently
+stub: surface syntax exists in `lib/js_codegen.ml` (~L144) but no real
+wasm refcell or host-import lowering; round-trip unproven on all
+backends |S3 |open — issue #328
+|STDLIB-04b |Throws extern `error<T>` — missing in all backends
+(`lib/interp.ml`, `lib/js_codegen.ml`, `lib/codegen_deno.ml`); sibling
+`panic` is wired and `error` should mirror it (divergent `T`) |S3 |open
+— issue #329
+|STDLIB-04c |`string_concat` extern — no direct wiring found; `++`
+operator independently lowered. Decide: remove (operator-only) or wire
+to mirror `++` |S3 |open — issue #330
+|STDLIB-04d |IO externs (`print`/`println`/`read_line`/`read_file`/
+`write_file`) — wired on all backends but no dedicated hermetic e2e
+tests; test-debt, not impl-debt |S3 |open — issue #331
+|STDLIB-04e |Pure externs (`int_to_string`/`string_to_int`/
+`string_length`) — real + tested (`lib/interp.ml:615-633`,
+`lib/codegen_deno.ml:263-272`); bookkeeping to mark DONE |S3 |open —
+issue #332
 |===
 
 == Section D — INT (ecosystem integration)
