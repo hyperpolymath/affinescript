@@ -32,4 +32,8 @@ extern fn error<T>(msg: String) -> T / Throws;
 extern fn int_to_string(n: Int) -> String;
 extern fn string_to_int(s: String) -> Option<Int>;
 extern fn string_length(s: String) -> Int;
-extern fn string_concat(s1: String, s2: String) -> String;
+// `string_concat` removed (STDLIB-04c, Refs #330): the canonical surface
+// for string concatenation is the `++` operator, lowered directly in
+// `Value.binop_string` (interp) and `__as_concat` (Deno codegen). The
+// extern was declared but never wired in any backend nor called from
+// any stdlib/test/fixture file — dead surface.

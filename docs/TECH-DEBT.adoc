@@ -183,9 +183,12 @@ round-trips + Deno codegen __cell-shape assertion) |S3 |DONE
 (`lib/interp.ml`, `lib/js_codegen.ml`, `lib/codegen_deno.ml`); sibling
 `panic` is wired and `error` should mirror it (divergent `T`) |S3 |open
 — issue #329
-|STDLIB-04c |`string_concat` extern — no direct wiring found; `++`
-operator independently lowered. Decide: remove (operator-only) or wire
-to mirror `++` |S3 |open — issue #330
+|STDLIB-04c |`string_concat` extern — *REMOVED* (Refs #330): the
+canonical surface is the `++` operator (lowered in `Value.binop_string`
+and `__as_concat`); the extern was declared but never wired in any
+backend nor called from any stdlib/test/fixture — dead surface. The
+contract is now operator-only and one-source-of-truth. |S3 |DONE
+2026-05-24 (Refs #330)
 |STDLIB-04d |IO externs (`print`/`println`/`read_line`/`read_file`/
 `write_file`) — wired on all backends but no dedicated hermetic e2e
 tests; test-debt, not impl-debt |S3 |open — issue #331
