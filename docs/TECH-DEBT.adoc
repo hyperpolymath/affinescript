@@ -127,10 +127,20 @@ captured linears. |S1 |pt1 #240 + pt2 return-escape + `&mut` surface +
 pt3 Slice A NLL last-use DONE (Refs #177); residual = Slices B–D
 (flow-sensitive escape, origin variables, quantity integration) —
 issue #177
-|CORE-02 |Effect-handler dispatch on WasmGC (currently `UnsupportedFeature`;
-EH proposal or CPS). The #225 CPS line closes the async slice. |S2 |partial
-(#225 line CLOSED PR1..PR3d+PR4; #234 generalises the recogniser —
-ADR-016 ACCEPTED, side-table typecheck→codegen, staged S1..S4; S1 done)
+|CORE-02 |Effect-handler dispatch on WasmGC (was `UnsupportedFeature`;
+the chosen path is CPS over the EH proposal). The #225 CPS line closed
+the async slice; #234 generalised the boundary recogniser from a
+hardcoded name set to "any call whose effect row ⊇ `Async`". |S2
+|*CLOSED 2026-05-19* — #225 line CLOSED PR1..PR3d+PR4; #234 ADR-016
+delivered end-to-end (S1 #270 ADR; S2a #275 shared call-site
+numbering `lib/effect_sites.ml`; S2b #276 typecheck builds the
+ordinal→effect side-table; S3 #277 pipeline threads it + codegen
+boundary predicate switched + user-defined-`Async` e2e
+`tests/codegen/effect_async_boundary.affine`; S4 #278 hardcoded
+`async_primitives` set retired — boundary is now exactly
+`Effect_sites.is_async_call`). Issue #234 closed completed. Table-miss
+fallback (`Effect_sites.is_async_call` = false ⇒ no transform) remains
+as the sound table-empty / count-mismatch path.
 |CORE-03 |ADR-014: module-qualified type/effect path. Decision settled
 (both `.`/`::` accepted, `Pkg::Type` canonical, `.`→`::` for free via the
 `::`-fold). Was the estate's dominant parse blocker (525/1177 .affine).
@@ -293,7 +303,9 @@ Proven + locked (see INT-02)
 |CONV-01 |Estate-wide re-validation of the #199/#205 closure ABI (static →
 real wasm engine) |S2 |open #235
 |CONV-02 |Effect-threaded async-boundary detection (generalise the
-structural-conservative recogniser) |S2 |open #234
+structural-conservative recogniser) |S2 |*CLOSED 2026-05-19* — #234
+DELIVERED end-to-end (ADR-016 S1..S4; PRs #270/#275/#276/#277/#278).
+See CORE-02 above for the resolution narrative.
 |CONV-03 |#225/#160 convergence ABI matured to "shared with Ephapax" |S1
 |partial (PR3a/b/c merged)
 |CONV-04 |Widen emitted-wasm enforcement beyond L7+L10 toward L1–6/L13–16 |S2

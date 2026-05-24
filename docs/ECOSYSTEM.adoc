@@ -80,7 +80,8 @@ made real; #228/ADR-014 module-qualified paths (estate port unblocker). |
 |*E* |typed-wasm convergence hardening (the transition runway): the
 AffineScript↔typed-wasm contract widened from L7+L10 toward full
 L1–6/L13–16 emitted-wasm enforcement; estate-wide re-validation (#235);
-effect-threaded async-boundary recogniser (#234); the #225/#160 convergence
+effect-threaded async-boundary recogniser (#234, DELIVERED 2026-05-19 —
+ADR-016, S1..S4 / PRs #270/#275/#276/#277/#278); the #225/#160 convergence
 ABI matured to "shared with Ephapax". |*planned* |Begins when D's substrate
 (INT-01..04, CORE-01) is closed; ends at a stable, multi-producer
 typed-wasm convergence ABI.

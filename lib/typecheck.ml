@@ -193,10 +193,11 @@ type context = {
   (** ADR-016 / #234 S2b: per-call-site effect rows, keyed by the
       shared [Effect_sites] ordinal. Populated after a successful check
       pass; the value is the callee's declared effect row (EPure when
-      the callee is not a statically-named function). Built here but
-      NOT yet consulted by codegen — S3 threads & switches the WasmGC
-      CPS boundary predicate onto it (the structural recogniser remains
-      the sound table-miss fallback). *)
+      the callee is not a statically-named function). Built here and
+      published to [Effect_sites] for the WasmGC CPS boundary predicate
+      (S3, #277); the hardcoded name set is retired (S4, #278). A
+      table-miss / count-mismatch still falls back to "no transform"
+      ([Effect_sites.is_async_call] = false), which is sound. *)
 }
 
 type 'a result = ('a, type_error) Result.t
@@ -1792,17 +1793,18 @@ let check_decl (ctx : context) (decl : top_level) : (unit, type_error) Result.t 
     [Resolve.resolve_program_with_loader] so that [ExprApp (ExprVar f, ...)]
     can resolve [f] to the imported function's scheme even though [f] does
     not appear in [prog.prog_decls]. *)
-(* ADR-016 / #234 S2b: build the per-call-site effect side-table.
-   Keyed by the shared [Effect_sites] ordinal so the (future) codegen
-   consumer agrees with this producer. A call's effect row is the
-   callee's *declared* row when the callee is a statically-named
-   function (`f(..)`, `m.f(..)`, through `ExprSpan`); otherwise EPure
-   (sound: S3's predicate is "row ⊇ Async ⇒ boundary", and an
-   over-conservative EPure just defers to the structural fallback —
-   exactly today's behaviour). Extern fns parse as [TopFn] with
-   [FnExtern]/[fd_eff] (parser.mly), so this covers the stdlib async
-   primitives and user `Async` fns uniformly. Pure traversal; built,
-   not yet consumed. *)
+(* ADR-016 / #234: build the per-call-site effect side-table. Keyed by
+   the shared [Effect_sites] ordinal so the codegen consumer agrees with
+   this producer. A call's effect row is the callee's *declared* row
+   when the callee is a statically-named function (`f(..)`, `m.f(..)`,
+   through `ExprSpan`); otherwise EPure (sound: the codegen predicate is
+   "row ⊇ Async ⇒ boundary", and an over-conservative EPure just means
+   "no transform" — the same as today's S4 table-miss path). Extern fns
+   parse as [TopFn] with [FnExtern]/[fd_eff] (parser.mly), so this
+   covers the stdlib async primitives and user `Async` fns uniformly.
+   After population the ordinal→has-Async projection is published via
+   [Effect_sites.set_async_by_ord] for the codegen consumer (S3 #277,
+   S4 #278). *)
 let populate_call_effects (ctx : context) (prog : Ast.program) : unit =
   let fn_eff : (string, eff) Hashtbl.t = Hashtbl.create 64 in
   List.iter
@@ -1925,8 +1927,9 @@ let check_program ?(import_types : (string, scheme) Hashtbl.t option)
        errors first (they are more fundamental). *)
     begin match Quantity.check_program_quantities prog with
     | Ok () ->
-      (* ADR-016 / #234 S2b: build the per-call-site effect side-table
-         on the fully-checked program. Built, not yet consumed. *)
+      (* ADR-016 / #234: build the per-call-site effect side-table on
+         the fully-checked program, and publish it to [Effect_sites] for
+         the codegen async-boundary predicate (S3/S4 — consumed). *)
       populate_call_effects ctx prog;
       Ok ctx
     | Error (qerr, span) ->

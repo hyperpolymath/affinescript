@@ -2016,20 +2016,15 @@ let simple_pat_name (p : pattern) : string option =
   | PatVar id -> Some id.name
   | _ -> None
 
-(** Recognised async-primitive calls (ADR-013 #225 PR3a, owner-chosen
-    structural-conservative async-boundary identification — see
-    affinescript#234 for the effect-threaded generalisation). The async
-    boundary is a `let` whose RHS is a call to one of these names. Extend
-    this list as wasm-path async stdlib primitives are added. *)
-(* ADR-016 / #234 S4: the hardcoded `async_primitives` name set is
-   RETIRED. The async boundary is exactly "a call whose effect row ⊇
-   Async", decided from the typecheck side-table keyed by the shared
-   [Effect_sites] ordinal ([Effect_sites.is_async_call]). The ADR's
-   "table-miss fallback" is the oracle being empty / count-mismatched
-   (⇒ [is_async_call] is always false ⇒ no transform = exact pre-#234
-   behaviour), NOT a name list — so no structural name disjunct
-   remains. `http_request_thenable` is still detected because
-   stdlib/Http.affine declares it `/ { Net, Async }`. *)
+(** Async-boundary predicate (ADR-016 / #234, S4 #278). True iff this
+    call's resolved effect row ⊇ `Async`, looked up via the typecheck
+    side-table keyed by the shared [Effect_sites] ordinal. The legacy
+    hardcoded `async_primitives = ["http_request_thenable"]` name set
+    (ADR-013 #225 PR3a) is retired — `http_request_thenable` is still
+    detected because stdlib/Http.affine declares it `/ { Net, Async }`,
+    and any user-defined `/ { Async }` callee triggers the transform
+    identically. Table-empty / count-mismatch ⇒ [is_async_call] = false
+    ⇒ no transform (the sound miss path). *)
 let is_async_prim_call (e : expr) : bool =
   Effect_sites.is_async_call e
 
@@ -2557,8 +2552,9 @@ let generate_module ?loader (prog : program) : wasm_module result =
      (post-optimizer) program's nodes. Ordinals are stable across the
      constant-folding optimizer (it never adds/removes/reorders calls),
      so the producer's ordinal→has-Async map keys correctly here. A
-     count-mismatch makes [bind_consumer] a no-op ⇒ structural
-     fallback. Safe if the producer never ran (empty ⇒ no-op). *)
+     count-mismatch makes [bind_consumer] a no-op ⇒ [is_async_call] is
+     always false ⇒ no CPS transform (the sound S4 #278 miss path).
+     Safe if the producer never ran (empty ⇒ no-op). *)
   Effect_sites.bind_consumer prog;
   let loader = match loader with
     | Some l -> l

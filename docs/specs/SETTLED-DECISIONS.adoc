@@ -329,15 +329,23 @@ deterministic shared call-site numbering (a single traversal in a new
 keys cannot drift; no AST shape change). `Typecheck.check_program`
 populates `ordinal → effect_row` (declared and inferred) and returns
 it; `bin/main.ml` threads it into codegen (source-to-source backends
-ignore it); the CPS boundary predicate becomes a table lookup with the
-existing structural recogniser as the sound table-miss fallback.
+ignore it); the CPS boundary predicate becomes a table lookup. The
+pre-S4 plan retained the existing structural recogniser as the
+table-miss fallback; S4 (#278) retired the hardcoded set, so the
+steady-state miss path is "no transform" — over-conservative, always
+sound.
 
-Staged (ledger #234): *S1* this ADR + plan (no code); *S2*
-`effect_sites.ml` + typecheck builds/returns the table (built, unused —
-gate-neutral); *S3* pipeline threads it, codegen switches to the table
-with structural fallback, new e2e proving a user-defined `Async` fn
-triggers the transform; *S4* retire the hardcoded set (fallback kept
-for table-miss only).
+Staged (ledger #234): *S1* this ADR + plan (no code, PR #270); *S2a*
+`effect_sites.ml` shared call-site numbering (PR #275); *S2b* typecheck
+builds/returns the table (PR #276); *S3* pipeline threads it, codegen
+switches to the table with structural fallback, new e2e
+`tests/codegen/effect_async_boundary.affine` proving a user-defined
+`Async` fn triggers the transform (PR #277); *S4* retire the hardcoded
+`async_primitives` name set, the boundary is now exactly
+`Effect_sites.is_async_call` — table-empty / count-mismatch fallback
+([is_async_call] = false ⇒ no transform) is the sound miss path (PR
+#278). *Status:* DELIVERED 2026-05-19 end-to-end; issue #234 closed
+completed.
 
 This decision is settled; do not reopen without amending the ADR. Full
 ADR in `.machine_readable/6a2/META.a2ml` (ADR-016); ledger #234 /
