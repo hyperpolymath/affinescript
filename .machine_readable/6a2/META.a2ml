@@ -999,7 +999,19 @@ Staged plan (ledger INT-03; each row = one gated PR):
   the component (exit 0), the ownership section survives, and the
   lift is asserted. Purely additive: reactor consumers + game-loop
   hooks are byte-unchanged.
-- S6b: `wasi:sockets`.
+- S6b (sockets on-ramp, DONE): new `net_shutdown(fd, how) -> Int`
+  builtin (Effect `Net`, reserved) lowers to
+  `wasi_snapshot_preview1.sock_shutdown` via the same on-demand
+  canonical-order pattern as S4a/S4b (`optional_wasi` entry 4 in
+  `lib/codegen.ml`). The command adapter bridges to
+  `wasi:sockets/tcp` internally without surfacing a host-side
+  `wasi:sockets/*` requirement; `tests/componentize/sockets_smoke.sh`
+  gates the lift + a clock+env+sock combo for canonical-order
+  regression. Real-host invoke under wasmtime exits 0 on
+  `net_shutdown(stdin, RDWR)` (ENOTSOCK dropped). Larger socket
+  primitives (recv/send/accept) need byte-level wasm IR for buffer
+  / network-address marshalling and remain a tracked follow-up
+  alongside env_at/arg_at.
 - S6c: flip the default wasm target to component and demote the
   preview1 stdout path to a named legacy target.
 """

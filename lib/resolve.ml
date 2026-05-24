@@ -57,6 +57,8 @@ let seed_builtins (symbols : Symbol.t) : unit =
   def "clock_now_ms";
   (* WASI env / argv counts (ADR-015 S4b, #180) *)
   def "env_count"; def "arg_count";
+  (* WASI socket primitive (ADR-015 S6b, #180) *)
+  def "net_shutdown";
   (* String / char builtins *)
   def "len"; def "slice"; def "string_get"; def "string_sub"; def "string_find";
   def "char_to_int"; def "int_to_char"; def "show";

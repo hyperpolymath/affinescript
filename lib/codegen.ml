@@ -865,6 +865,21 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
         in
         Ok (ctx_with_heap, code)
 
+      | ExprVar id when id.name = "net_shutdown" && List.length args = 2 ->
+        (* ADR-015 S6b (#180): net_shutdown(fd, how) -> Int errno.
+           Lowers to a `wasi_snapshot_preview1.sock_shutdown` import
+           (on-demand, via the same Effect_sites pre-scan as the S4
+           builtins). The command adapter bridges to `wasi:sockets/tcp`
+           at runtime. Pure pass-through: push both args, call. *)
+        let* (ctx_fd,  fd_code)  = gen_expr ctx     (List.nth args 0) in
+        let* (ctx_how, how_code) = gen_expr ctx_fd  (List.nth args 1) in
+        let sock_func_idx =
+          try List.assoc "sock_shutdown" ctx.wasi_func_indices
+          with Not_found -> 1
+        in
+        let code = fd_code @ how_code @ [Call sock_func_idx] in
+        Ok (ctx_how, code)
+
       | ExprVar id when (id.name = "env_count" || id.name = "arg_count")
                         && List.length args = 1 ->
         (* ADR-015 S4b (#180): env_count(u: Unit) / arg_count(u: Unit)
@@ -2553,6 +2568,7 @@ let generate_module ?loader (prog : program) : wasm_module result =
     [ ("clock_now_ms", "clock_time_get",     Wasi_runtime.create_clock_time_get_import);
       ("env_count",    "environ_sizes_get",  Wasi_runtime.create_environ_sizes_get_import);
       ("arg_count",    "args_sizes_get",     Wasi_runtime.create_args_sizes_get_import);
+      ("net_shutdown", "sock_shutdown",      Wasi_runtime.create_sock_shutdown_import);
     ]
     |> List.filter_map
          (fun (b, w, f) -> if uses b then Some (w, f ()) else None)

@@ -306,8 +306,12 @@ component-run smoke); *S4* native `wasi:clocks`/environment/argv; *S5*
 auto-emits a `_start : () -> ()` shim around a parameter-less `fn main()`
 so `tools/componentize.sh --command` (preview1→preview2 *command*
 adapter) produces a real `wasi:cli/run`-exporting component that any
-WASI 0.2 host can invoke; *S6b* `wasi:sockets`; *S6c* flip the default
-wasm target to component and demote preview1 to a legacy target.
+WASI 0.2 host can invoke; *S6b* (sockets on-ramp) the `net_shutdown`
+builtin lowers to `wasi_snapshot_preview1.sock_shutdown` and the
+command adapter bridges to `wasi:sockets/tcp` internally — recv/send/
+accept gated on the same byte-level wasm-IR follow-up as env_at/arg_at;
+*S6c* flip the default wasm target to component and demote preview1 to
+a legacy target.
 
 This decision is settled; do not reopen without amending the ADR. Full
 ADR in `.machine_readable/6a2/META.a2ml` (ADR-015); ledger INT-03 in

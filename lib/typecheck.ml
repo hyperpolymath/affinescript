@@ -1329,6 +1329,18 @@ let register_builtins (ctx : context) : unit =
      follow-up. Effect row `Time` (reserved). *)
   bind_var ctx "env_count" (TArrow (ty_unit, QOmega, ty_int, ESingleton "Time"));
   bind_var ctx "arg_count" (TArrow (ty_unit, QOmega, ty_int, ESingleton "Time"));
+  (* ADR-015 S6b (#180): WASI socket primitive. `net_shutdown(fd, how)`
+     -> Int errno (0 on success, ENOTSOCK on a non-socket fd, etc.).
+     `how`: 1 = RD, 2 = WR, 3 = RDWR. Lowers to a
+     `wasi_snapshot_preview1.sock_shutdown` import; under the S3+S6a
+     component path the command adapter bridges to `wasi:sockets/tcp`.
+     Larger socket primitives (recv/send/accept) need byte-level wasm
+     IR for buffer / network-address marshalling and remain a tracked
+     follow-up alongside env_at/arg_at. Effect row `Net`. *)
+  bind_var ctx "net_shutdown"
+    (TArrow (ty_int, QOmega,
+             TArrow (ty_int, QOmega, ty_int, ESingleton "Net"),
+             ESingleton "Net"));
   bind_var ctx "eprint" (TArrow (ty_string, QOmega, ty_unit, ESingleton "IO"));
   bind_var ctx "eprintln" (TArrow (ty_string, QOmega, ty_unit, ESingleton "IO"));
   bind_var ctx "read_line"
