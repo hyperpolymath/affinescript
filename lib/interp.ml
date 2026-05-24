@@ -623,6 +623,18 @@ let create_initial_env () : env =
       | [VFloat f] -> Ok (VString (string_of_float f))
       | _ -> Error (TypeMismatch "float_to_string expects Float")
     ));
+    (* STDLIB-04e (Refs #332): `string_to_int` is the typed-alias surface
+       declared in stdlib/effects.affine. Same semantics as `parse_int`
+       (the canonical name) — the alias was unwired before this PR, so
+       any caller of the documented extern would compile and fail at run. *)
+    ("string_to_int", VBuiltin ("string_to_int", fun args ->
+      match args with
+      | [VString s] ->
+        (match int_of_string_opt s with
+         | Some n -> Ok (VVariant ("Some", Some (VInt n)))
+         | None -> Ok (VVariant ("None", None)))
+      | _ -> Error (TypeMismatch "string_to_int expects String")
+    ));
     ("parse_int", VBuiltin ("parse_int", fun args ->
       match args with
       | [VString s] ->
@@ -760,6 +772,16 @@ let create_initial_env () : env =
       match args with
       | [VString msg] -> Error (RuntimeError msg)
       | _ -> Error (RuntimeError "panic!")
+    ));
+    (* STDLIB-04b (Refs #329): `error<T>(msg)` is panic's polymorphic
+       sibling. Same divergent runtime semantics (RuntimeError); the
+       polymorphic return type is unobservable because the call never
+       returns. Backs the `extern fn error<T>(msg: String) -> T / Throws`
+       in stdlib/effects.affine. *)
+    ("error", VBuiltin ("error", fun args ->
+      match args with
+      | [VString msg] -> Error (RuntimeError msg)
+      | _ -> Error (RuntimeError "error!")
     ));
     ("read_file", VBuiltin ("read_file", fun args ->
       match args with

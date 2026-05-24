@@ -873,8 +873,9 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
            (added on-demand at module assembly; idx looked up in
            [ctx.wasi_func_indices]). The Unit arg satisfies the
            zero-param-fn collapse wart; it is evaluated but its value
-           is unused. String accessors (env_at/arg_at) need byte-level
-           wasm IR ops (currently absent) and are a tracked follow-up. *)
+           is unused. The companion string accessors `env_at`/`arg_at`
+           landed alongside the byte-level wasm IR extension — see
+           the case below. *)
         let wasi_name =
           if id.name = "env_count" then "environ_sizes_get"
           else "args_sizes_get"
@@ -891,6 +892,47 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
           arg_code @ [Drop] @
           Wasi_runtime.gen_count_via_sizes_get
             heap_idx scratch_local sizes_func_idx
+        in
+        Ok (ctx_with_heap, code)
+
+      | ExprVar id when (id.name = "env_at" || id.name = "arg_at")
+                        && List.length args = 1 ->
+        (* ADR-015 S5 (#180): env_at(i: Int) / arg_at(i: Int) -> String.
+           Allocates a length-prefixed AS string and byte-copies the
+           i-th null-terminated entry from the WASI environ/argv
+           buffer. Uses [I32Load8U]/[I32Store8] (the byte-level wasm
+           IR extension landed alongside this slice). Pairs the
+           existing on-demand `*_sizes_get` import with the matching
+           `environ_get`/`args_get` import (registered above in the
+           `optional_wasi` table; deduped by wasi name). *)
+        let sizes_name, get_name =
+          if id.name = "env_at" then "environ_sizes_get", "environ_get"
+          else "args_sizes_get", "args_get"
+        in
+        let sizes_func_idx =
+          try List.assoc sizes_name ctx.wasi_func_indices
+          with Not_found -> 1
+        in
+        let get_func_idx =
+          try List.assoc get_name ctx.wasi_func_indices
+          with Not_found -> 2
+        in
+        let* (ctx0, arg_code) = gen_expr ctx (List.hd args) in
+        let (c1, n_local)       = alloc_local ctx0 ("__" ^ id.name ^ "_n") in
+        let (c2, scratch_local) = alloc_local c1  ("__" ^ id.name ^ "_scratch") in
+        let (c3, count_local)   = alloc_local c2  ("__" ^ id.name ^ "_count") in
+        let (c4, bufsize_local) = alloc_local c3  ("__" ^ id.name ^ "_bufsize") in
+        let (c5, ptrvec_local)  = alloc_local c4  ("__" ^ id.name ^ "_ptrvec") in
+        let (c6, src_local)     = alloc_local c5  ("__" ^ id.name ^ "_src") in
+        let (c7, dst_local)     = alloc_local c6  ("__" ^ id.name ^ "_dst") in
+        let (c8, result_local)  = alloc_local c7  ("__" ^ id.name ^ "_result") in
+        let (ctx_with_heap, heap_idx) = ensure_heap_ptr c8 in
+        let code =
+          arg_code @
+          Wasi_runtime.gen_str_at_via_get
+            heap_idx n_local scratch_local count_local bufsize_local
+            ptrvec_local src_local dst_local result_local
+            sizes_func_idx get_func_idx
         in
         Ok (ctx_with_heap, code)
 
@@ -1974,20 +2016,15 @@ let simple_pat_name (p : pattern) : string option =
   | PatVar id -> Some id.name
   | _ -> None
 
-(** Recognised async-primitive calls (ADR-013 #225 PR3a, owner-chosen
-    structural-conservative async-boundary identification — see
-    affinescript#234 for the effect-threaded generalisation). The async
-    boundary is a `let` whose RHS is a call to one of these names. Extend
-    this list as wasm-path async stdlib primitives are added. *)
-(* ADR-016 / #234 S4: the hardcoded `async_primitives` name set is
-   RETIRED. The async boundary is exactly "a call whose effect row ⊇
-   Async", decided from the typecheck side-table keyed by the shared
-   [Effect_sites] ordinal ([Effect_sites.is_async_call]). The ADR's
-   "table-miss fallback" is the oracle being empty / count-mismatched
-   (⇒ [is_async_call] is always false ⇒ no transform = exact pre-#234
-   behaviour), NOT a name list — so no structural name disjunct
-   remains. `http_request_thenable` is still detected because
-   stdlib/Http.affine declares it `/ { Net, Async }`. *)
+(** Async-boundary predicate (ADR-016 / #234, S4 #278). True iff this
+    call's resolved effect row ⊇ `Async`, looked up via the typecheck
+    side-table keyed by the shared [Effect_sites] ordinal. The legacy
+    hardcoded `async_primitives = ["http_request_thenable"]` name set
+    (ADR-013 #225 PR3a) is retired — `http_request_thenable` is still
+    detected because stdlib/Http.affine declares it `/ { Net, Async }`,
+    and any user-defined `/ { Async }` callee triggers the transform
+    identically. Table-empty / count-mismatch ⇒ [is_async_call] = false
+    ⇒ no transform (the sound miss path). *)
 let is_async_prim_call (e : expr) : bool =
   Effect_sites.is_async_call e
 
@@ -2515,8 +2552,9 @@ let generate_module ?loader (prog : program) : wasm_module result =
      (post-optimizer) program's nodes. Ordinals are stable across the
      constant-folding optimizer (it never adds/removes/reorders calls),
      so the producer's ordinal→has-Async map keys correctly here. A
-     count-mismatch makes [bind_consumer] a no-op ⇒ structural
-     fallback. Safe if the producer never ran (empty ⇒ no-op). *)
+     count-mismatch makes [bind_consumer] a no-op ⇒ [is_async_call] is
+     always false ⇒ no CPS transform (the sound S4 #278 miss path).
+     Safe if the producer never ran (empty ⇒ no-op). *)
   Effect_sites.bind_consumer prog;
   let loader = match loader with
     | Some l -> l
@@ -2549,13 +2587,25 @@ let generate_module ?loader (prog : program) : wasm_module result =
       false prog
   in
   let optional_wasi =
-    (* (guest_builtin_name, wasi_import_name, factory) — canonical order. *)
+    (* (guest_builtin_name, wasi_import_name, factory) — canonical order.
+       Multiple builtins MAY require the same WASI import (e.g. both
+       `env_count` and `env_at` need `environ_sizes_get`); the dedup
+       pass below keeps the first occurrence so each wasm import shows
+       up exactly once with a stable index. *)
     [ ("clock_now_ms", "clock_time_get",     Wasi_runtime.create_clock_time_get_import);
       ("env_count",    "environ_sizes_get",  Wasi_runtime.create_environ_sizes_get_import);
       ("arg_count",    "args_sizes_get",     Wasi_runtime.create_args_sizes_get_import);
+      ("env_at",       "environ_sizes_get",  Wasi_runtime.create_environ_sizes_get_import);
+      ("env_at",       "environ_get",        Wasi_runtime.create_environ_get_import);
+      ("arg_at",       "args_sizes_get",     Wasi_runtime.create_args_sizes_get_import);
+      ("arg_at",       "args_get",           Wasi_runtime.create_args_get_import);
     ]
-    |> List.filter_map
-         (fun (b, w, f) -> if uses b then Some (w, f ()) else None)
+    |> List.filter (fun (b, _, _) -> uses b)
+    |> List.fold_left
+         (fun acc (_, w, f) ->
+           if List.exists (fun (w', _) -> w' = w) acc then acc
+           else acc @ [(w, f ())])
+         []
     |> List.mapi (fun i (w, (imp, ty)) -> (i + 1, w, imp, ty))
   in
   let opt_types = List.map (fun (_, _, _, ty) -> ty) optional_wasi in
@@ -2626,6 +2676,56 @@ let generate_module ?loader (prog : program) : wasm_module result =
     @ table_export
   in
 
+  (* ADR-015 S6 — WIT export lifting. When the unit exports a parameter-
+     less `main`, also emit a `_start : () -> ()` shim that calls it and
+     drops the i32 result. With `_start` present, tools/componentize.sh
+     --command can wrap the core module with the WASI preview1→preview2
+     *command* adapter, producing a real `wasi:cli/run`-exporting
+     component that any WASI 0.2 host (`wasmtime run`, jco) can invoke.
+     Purely additive: every existing consumer (reactor componentize,
+     game-loop hosts that call `main` directly) sees the same exports
+     plus an extra `_start`; main-with-params and units that already
+     export `_start` are skipped. *)
+  let final_types, final_funcs, final_exports =
+    let has_user_start =
+      List.exists (fun e -> e.e_name = "_start") exports_with_mem
+    in
+    let main_export =
+      List.find_opt (fun e -> e.e_name = "main") exports_with_mem
+    in
+    match main_export, has_user_start with
+    | Some { e_desc = ExportFunc main_idx; _ }, false ->
+      let main_local_idx = main_idx - import_offset in
+      if main_local_idx < 0 || main_local_idx >= List.length all_funcs then
+        (ctx'.types, all_funcs, exports_with_mem)
+      else
+        let main_func = List.nth all_funcs main_local_idx in
+        let main_type = List.nth ctx'.types main_func.f_type in
+        if main_type.ft_params <> [] then
+          (ctx'.types, all_funcs, exports_with_mem)
+        else
+          let void_ft = { ft_params = []; ft_results = [] } in
+          let (void_type_idx, types_after) =
+            intern_func_type ctx'.types void_ft
+          in
+          let drop_instrs =
+            List.map (fun _ -> Drop) main_type.ft_results
+          in
+          let start_func = {
+            f_type = void_type_idx;
+            f_locals = [];
+            f_body = Call main_idx :: drop_instrs;
+          } in
+          let funcs_after = all_funcs @ [start_func] in
+          let start_idx = import_offset + List.length all_funcs in
+          let exports_after =
+            exports_with_mem
+            @ [{ e_name = "_start"; e_desc = ExportFunc start_idx }]
+          in
+          (types_after, funcs_after, exports_after)
+    | _ -> (ctx'.types, all_funcs, exports_with_mem)
+  in
+
   (* Stage 2: Build [affinescript.ownership] custom section from collected annotations *)
   let ownership_payload = build_ownership_section ctx'.ownership_annots in
   let custom_sections = if Bytes.length ownership_payload > 0 then
@@ -2635,12 +2735,12 @@ let generate_module ?loader (prog : program) : wasm_module result =
   in
 
   Ok {
-    types = ctx'.types;
-    funcs = all_funcs;
+    types = final_types;
+    funcs = final_funcs;
     tables = tables;
     mems = [{ mem_type = { lim_min = 1; lim_max = None } }];  (* 1 page default *)
     globals = ctx'.globals;
-    exports = exports_with_mem;
+    exports = final_exports;
     imports = ctx'.imports;
     elems = elems;
     datas = List.rev ctx'.datas;  (* Reverse to get original order *)

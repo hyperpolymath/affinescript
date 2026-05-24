@@ -359,8 +359,8 @@ let gen_print_str (heap_ptr_global : int) (str_ptr_local : int) (fd_write_idx : 
     Signature: `(envc_out: i32, envbuf_size_out: i32) -> errno: i32`.
     Writes the env-var count and the total byte size of the
     null-terminated `KEY=VAL\0…` buffer the next call would need.
-    String accessor (`env_at`) is gated on byte-level wasm IR ops,
-    deferred to a follow-up slice. *)
+    Paired with `environ_get` (created by
+    {!create_environ_get_import}) for the `env_at` string accessor. *)
 let create_environ_sizes_get_import () : import * func_type =
   let func_type = {
     ft_params = [I32; I32];  (* envc_out_ptr, envbuf_size_out_ptr *)
@@ -412,4 +412,160 @@ let gen_count_via_sizes_get
     (* return *count_ptr *)
     LocalGet scratch_local;
     I32Load (2, 0);
+  ]
+
+(** Create the WASI `environ_get` import (ADR-015 S5, #180).
+    Signature: `(environ_ptr_ptr: i32, environ_buf_ptr: i32) -> errno: i32`.
+    Fills two regions: a vector of pointers (one per env-var, written
+    at `environ_ptr_ptr`) and a contiguous buffer of null-terminated
+    `KEY=VAL` strings (written at `environ_buf_ptr`). The sizes that
+    must be allocated are reported by `environ_sizes_get`. *)
+let create_environ_get_import () : import * func_type =
+  let func_type = {
+    ft_params = [I32; I32];  (* environ_ptr_ptr, environ_buf_ptr *)
+    ft_results = [I32];      (* errno *)
+  } in
+  let import = {
+    i_module = "wasi_snapshot_preview1";
+    i_name = "environ_get";
+    i_desc = ImportFunc 0;
+  } in
+  (import, func_type)
+
+(** Create the WASI `args_get` import (ADR-015 S5, #180).
+    Signature: `(argv_ptr_ptr: i32, argv_buf_ptr: i32) -> errno: i32`.
+    Same shape as `environ_get`. *)
+let create_args_get_import () : import * func_type =
+  let func_type = {
+    ft_params = [I32; I32];
+    ft_results = [I32];
+  } in
+  let import = {
+    i_module = "wasi_snapshot_preview1";
+    i_name = "args_get";
+    i_desc = ImportFunc 0;
+  } in
+  (import, func_type)
+
+(** Emit `env_at(i)` / `arg_at(i)`: fetch the i-th entry from the WASI
+    environ/argv vector and return it as a length-prefixed AffineScript
+    string. Sequence:
+      1. `*_sizes_get(&count, &bufsize)`
+      2. allocate `count*4` bytes for the pointer vector + `bufsize`
+         bytes for the string buffer
+      3. `*_get(ptrvec, ptrvec + count*4)`
+      4. resolve `src = ptrvec[i]`
+      5. scan `src` for the null terminator to compute length
+      6. allocate `(4 + length)` bytes for the result string,
+         store length at +0, byte-copy `src..src+length` to `result+4`
+      7. leave the result pointer on the stack
+
+    The byte loops use `I32Load8U`/`I32Store8` (added with the
+    byte-level wasm IR extension). The caller has placed the index `i`
+    on the stack; this helper consumes it via [LocalSet n_local].
+
+    All locals must be pre-allocated by the caller (8 in total). The
+    helper itself does not modify the type or scope context — it only
+    emits instructions. *)
+let gen_str_at_via_get
+    (heap_ptr_global : int)
+    (n_local : int)
+    (scratch_local : int)
+    (count_local : int)
+    (bufsize_local : int)
+    (ptrvec_local : int)
+    (src_local : int)
+    (dst_local : int)
+    (result_local : int)
+    (sizes_func_idx : int)
+    (get_func_idx : int)
+    : instr list =
+  [
+    (* Index `i` is on the stack from the caller's arg_code. *)
+    LocalSet n_local;
+
+    (* --- Phase 1: sizes_get -> count, bufsize --- *)
+    GlobalGet heap_ptr_global;
+    I32Const 8l; I32Add;
+    GlobalSet heap_ptr_global;
+    GlobalGet heap_ptr_global;
+    I32Const 8l; I32Sub;
+    LocalSet scratch_local;
+    LocalGet scratch_local;                       (* count_ptr *)
+    LocalGet scratch_local; I32Const 4l; I32Add;  (* bufsize_ptr *)
+    Call sizes_func_idx;
+    Drop;
+    LocalGet scratch_local; I32Load (2, 0); LocalSet count_local;
+    LocalGet scratch_local; I32Load (2, 4); LocalSet bufsize_local;
+
+    (* --- Phase 2: allocate ptrvec (count*4) + bytebuf (bufsize) --- *)
+    GlobalGet heap_ptr_global;
+    LocalSet ptrvec_local;
+    GlobalGet heap_ptr_global;
+    LocalGet count_local; I32Const 4l; I32Mul;
+    LocalGet bufsize_local; I32Add;
+    I32Add;
+    GlobalSet heap_ptr_global;
+
+    (* --- Phase 3: get(ptrvec, ptrvec + count*4) --- *)
+    LocalGet ptrvec_local;
+    LocalGet ptrvec_local; LocalGet count_local; I32Const 4l; I32Mul; I32Add;
+    Call get_func_idx;
+    Drop;
+
+    (* --- Phase 4: src = *(ptrvec + i*4) --- *)
+    LocalGet ptrvec_local;
+    LocalGet n_local; I32Const 4l; I32Mul; I32Add;
+    I32Load (2, 0);
+    LocalSet src_local;
+
+    (* --- Phase 5: scan for null terminator. Use scratch as cursor. --- *)
+    LocalGet src_local; LocalSet scratch_local;
+    Block (BtEmpty, [
+      Loop (BtEmpty, [
+        LocalGet scratch_local;
+        I32Load8U (0, 0);
+        I32Eqz; BrIf 1;                           (* exit on 0 byte *)
+        LocalGet scratch_local; I32Const 1l; I32Add;
+        LocalSet scratch_local;
+        Br 0
+      ])
+    ]);
+    (* length = cursor - src (excludes the null terminator).
+       Stash it back into count_local, which we are done with. *)
+    LocalGet scratch_local; LocalGet src_local; I32Sub;
+    LocalSet count_local;
+
+    (* --- Phase 6: allocate (4 + length) for the AS string --- *)
+    GlobalGet heap_ptr_global;
+    LocalSet result_local;
+    GlobalGet heap_ptr_global;
+    I32Const 4l; LocalGet count_local; I32Add;
+    I32Add;
+    GlobalSet heap_ptr_global;
+
+    (* Store length at result+0. *)
+    LocalGet result_local;
+    LocalGet count_local;
+    I32Store (2, 0);
+
+    (* --- Phase 7: byte-copy src..src+length -> result+4 ---
+       Reuses scratch as src cursor and count_local as the loop count. *)
+    LocalGet src_local; LocalSet scratch_local;
+    LocalGet result_local; I32Const 4l; I32Add; LocalSet dst_local;
+    Block (BtEmpty, [
+      Loop (BtEmpty, [
+        LocalGet count_local; I32Eqz; BrIf 1;
+        LocalGet dst_local;
+        LocalGet scratch_local; I32Load8U (0, 0);
+        I32Store8 (0, 0);
+        LocalGet scratch_local; I32Const 1l; I32Add; LocalSet scratch_local;
+        LocalGet dst_local; I32Const 1l; I32Add; LocalSet dst_local;
+        LocalGet count_local; I32Const 1l; I32Sub; LocalSet count_local;
+        Br 0
+      ])
+    ]);
+
+    (* --- Result: leave the string pointer on the stack. --- *)
+    LocalGet result_local;
   ]

@@ -988,8 +988,20 @@ Staged plan (ledger INT-03; each row = one gated PR):
 - S4: native `wasi:clocks` + environment + argv via preview2 (wasmtime
   host-testable), replacing the preview1 shims behind the component path.
 - S5: `wasi:filesystem` (open/read/write/close) — unblocks INT-06.
-- S6: `wasi:sockets`; then flip the default wasm target to component
-  and demote the preview1 stdout path to a named legacy target.
+- S6a (WIT export lifting, DONE): codegen emits a `_start : () -> ()`
+  shim that calls `main` and drops its i32 result whenever a
+  parameter-less `fn main()` is present (`lib/codegen.ml`);
+  `tools/componentize.sh --command` wraps with the fetch-pinned
+  preview1->preview2 *command* adapter (wasmtime v44.0.1, sha256
+  8ff2ea78...) producing a component that exports `wasi:cli/run@0.2.x`
+  per `wit/affinescript.wit`. End-to-end gate:
+  `tests/componentize/command_smoke.sh` proves `wasmtime run` invokes
+  the component (exit 0), the ownership section survives, and the
+  lift is asserted. Purely additive: reactor consumers + game-loop
+  hooks are byte-unchanged.
+- S6b: `wasi:sockets`.
+- S6c: flip the default wasm target to component and demote the
+  preview1 stdout path to a named legacy target.
 """
 consequences = """
 - End-state is one-way (the component model becomes the canonical wasm
@@ -1058,23 +1070,34 @@ Thread per-call-site effect rows from typecheck to codegen via a
   `let`-RHS call's effect row ⊇ `Async`” via a table lookup, replacing
   `is_async_prim_call`/`async_primitives`.
 - *Fallback / safety.* If the table has no entry for a site (e.g. a
-  pre-typecheck embedder path, or a synthesised node), codegen falls
-  back to the structural recogniser. The hardcoded set is retired only
-  once the table path is proven (final slice); over-conservative
-  fallback is always sound (= today's behaviour).
+  pre-typecheck embedder path, or a synthesised node), or the consumer
+  detects a producer/consumer count-mismatch, [Effect_sites.is_async_call]
+  returns false ⇒ the CPS transform simply does not fire for that call.
+  The pre-S4 plan retained the structural recogniser as the fallback
+  *until the table path was proven*; S4 (PR #278) retired the
+  hardcoded `async_primitives` set, so the steady-state fallback is
+  "no transform" — over-conservative, always sound.
 
 Staged (ledger #234; each a gated PR, full `dune test --force` +
 wasm e2e):
-- S1 (this): ADR-016 + plan. No code change.
-- S2: `lib/effect_sites.ml` shared numbering + typecheck builds &
-  returns the side-table. NO codegen behaviour change (table built,
-  unused) — pure, gate-neutral.
-- S3: pipeline threads the table; codegen boundary predicate switches
-  to the table with structural fallback; new e2e proving a
-  *user-defined* `Async` fn triggers the transform (the payoff). All
-  existing http_cps_* / http_response_reader stay green.
-- S4: retire the hardcoded `async_primitives` set (fallback remains
-  for table-miss only); doc truthing.
+- S1 (ADR-016 + plan, PR #270): DONE — no code change.
+- S2a (`lib/effect_sites.ml` shared numbering, PR #275): DONE — pure,
+  gate-neutral.
+- S2b (typecheck builds & returns the side-table, PR #276): DONE — no
+  codegen behaviour change yet.
+- S3 (pipeline threads the table; codegen boundary predicate switches
+  to the table with structural fallback; new e2e
+  `tests/codegen/effect_async_boundary.affine` proving a *user-defined*
+  `Async` fn triggers the transform — PR #277): DONE. All existing
+  http_cps_* / http_response_reader stay green.
+- S4 (retire the hardcoded `async_primitives` set; boundary is now
+  exactly `Effect_sites.is_async_call`; fallback remains for table-
+  empty / count-mismatch only — PR #278): DONE.
+
+*Delivery status:* CLOSED 2026-05-19 end-to-end. Issue #234 closed
+completed (`hyperpolymath/affinescript#234`). The structural name set
+no longer exists; the boundary is single-sourced from the typecheck
+effect side-table via the shared `Effect_sites` ordinal.
 """
 consequences = """
 - Generalises to user-defined `Async` functions; new async primitives
