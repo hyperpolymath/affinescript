@@ -3882,6 +3882,80 @@ let qualified_value_tests = [
   Alcotest.test_case "use Mod as M; M::fn(x) resolves (#178 follow-up)" `Quick test_qualval_coloncolon_alias_call;
 ]
 
+(* ---- Inline `extern fn` / `extern type` shape-coverage fixtures ----
+   Class-level coverage for the "first user of an inline extern shape
+   feeds it to every downstream consumer" surface that produced the
+   PR #346 FnExtern interp bug (eval_decl missing match arm — survived
+   since the interpreter was written, fired the moment STDLIB-04a's
+   tests became the first to hand an inline extern fn to
+   Interp.eval_program).
+
+   See .claude/CLAUDE.md §"Test-fixture hygiene for latent bug
+   surfaces" for the rationale. Each fixture is fed through
+   parse → resolve → typecheck → interp; the assertion is that ALL
+   four return Ok. A regression that re-introduces the silent
+   pattern-match-failure path of the kind that broke main between
+   #334 and #346 would fail loudly here. *)
+
+let inline_extern_pipeline_ok path : bool =
+  let loader = Module_loader.create {
+    Module_loader.stdlib_path = "stdlib";
+    search_paths = [];
+    current_dir = fixture_dir;
+  } in
+  match parse_fixture path with
+  | Error _ -> false
+  | Ok raw ->
+    let prog = Resolve.lower_qualified_value_paths raw in
+    (match Resolve.resolve_program_with_loader prog loader with
+     | Error _ -> false
+     | Ok (resolve_ctx, import_type_ctx) ->
+       (match Typecheck.check_program
+                ~import_types:import_type_ctx.Typecheck.name_types
+                resolve_ctx.symbols prog with
+        | Error _ -> false
+        | Ok _ ->
+          (* The PR #346 root cause was here: Interp.eval_decl's TopFn
+             arm didn't match FnExtern, raising Match_failure. The
+             fixtures don't *call* the extern at runtime (the host
+             impl isn't registered), but eval_program walks every
+             TopFn through eval_decl as part of building the initial
+             env — that's the path that fired the missing arm. *)
+          (match Interp.eval_program prog with
+           | Ok _ -> true
+           | Error _ -> false)))
+
+let test_inline_extern_pure () =
+  Alcotest.(check bool)
+    "inline `extern fn host_pure_identity(x: Int) -> Int;` passes the pipeline"
+    true
+    (inline_extern_pipeline_ok (fixture "inline_extern_pure.affine"))
+
+let test_inline_extern_effectful () =
+  Alcotest.(check bool)
+    "inline `extern fn host_log(msg) -> Unit / IO;` passes the pipeline"
+    true
+    (inline_extern_pipeline_ok (fixture "inline_extern_effectful.affine"))
+
+let test_inline_extern_polymorphic () =
+  Alcotest.(check bool)
+    "inline `extern fn host_identity[T](x: T) -> T;` passes the pipeline"
+    true
+    (inline_extern_pipeline_ok (fixture "inline_extern_polymorphic.affine"))
+
+let test_inline_extern_type_consumed () =
+  Alcotest.(check bool)
+    "inline `extern type Handle; extern fn host_use(h: Handle) -> Int;` passes the pipeline"
+    true
+    (inline_extern_pipeline_ok (fixture "inline_extern_type_consumed.affine"))
+
+let inline_extern_shape_tests = [
+  Alcotest.test_case "pure (no effects)"           `Quick test_inline_extern_pure;
+  Alcotest.test_case "effectful (effect row)"      `Quick test_inline_extern_effectful;
+  Alcotest.test_case "polymorphic (type params)"   `Quick test_inline_extern_polymorphic;
+  Alcotest.test_case "extern type + consuming fn"  `Quick test_inline_extern_type_consumed;
+]
+
 (* ---- Type-syntax sugars: fn(...) -> T, Option<T>, (A, B) -> C ---- *)
 
 let parse_check_passes src : bool =
@@ -4352,6 +4426,7 @@ let tests =
     ("E2E Array Type Sugar",     array_type_tests);
     ("E2E Qualified Paths #228",  qualified_path_tests);
     ("E2E Qualified Value #178",  qualified_value_tests);
+    ("E2E Inline Extern Shapes (Refs #346)", inline_extern_shape_tests);
     ("E2E WasmGC PatCon Destructure", wasm_gc_patcon_tests);
     ("E2E Type Syntax Sugar",         type_syntax_sugar_tests);
   ]
