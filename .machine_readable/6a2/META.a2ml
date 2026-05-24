@@ -985,8 +985,22 @@ Staged plan (ledger INT-03; each row = one gated PR):
   post-codegen step wraps it with the standard preview1->preview2
   adapter into a component; ownership section survival asserted;
   wasmtime component-run smoke. Codegen unchanged ⇒ reversible.
-- S4: native `wasi:clocks` + environment + argv via preview2 (wasmtime
-  host-testable), replacing the preview1 shims behind the component path.
+- S4 (DONE, slices S4a clock + S4b env_count/arg_count): on-demand
+  preview1 imports (`wasi_snapshot_preview1.clock_time_get`,
+  `environ_sizes_get`, `args_sizes_get`) via the Effect_sites
+  pre-scan, canonical-order indexing through
+  `ctx.wasi_func_indices`. NOTE divergence from this ADR's original
+  S4 wording ("native `wasi:clocks` + environment + argv via
+  preview2"): the slice shipped as preview1-shim, NOT native
+  preview2 calls. This is sufficient under the component path
+  because both adapters bridge the preview1 imports to
+  `wasi:clocks` / `wasi:cli` internally; switching the codegen
+  to emit `wasi:clocks/monotonic-clock@0.2.x.now()` directly only
+  pays off once preview2 is the default (deferred into S6c). The
+  ADR is amended here to record what actually shipped rather than
+  pretending S4 fulfilled the original wording. String accessors
+  (env_at/arg_at) need byte-level wasm IR (I32Load8U/I32Store8) for
+  buffer marshalling and remain a tracked follow-up.
 - S5: `wasi:filesystem` (open/read/write/close) — unblocks INT-06.
 - S6a (WIT export lifting, DONE): codegen emits a `_start : () -> ()`
   shim that calls `main` and drops its i32 result whenever a
@@ -999,13 +1013,33 @@ Staged plan (ledger INT-03; each row = one gated PR):
   the component (exit 0), the ownership section survives, and the
   lift is asserted. Purely additive: reactor consumers + game-loop
   hooks are byte-unchanged.
-- S6b: `wasi:sockets`.
+- S6b (sockets on-ramp, DONE): new `net_shutdown(fd, how) -> Int`
+  builtin (Effect `Net`, reserved) lowers to
+  `wasi_snapshot_preview1.sock_shutdown` via the same on-demand
+  canonical-order pattern as S4a/S4b (`optional_wasi` entry 4 in
+  `lib/codegen.ml`). The command adapter bridges to
+  `wasi:sockets/tcp` internally without surfacing a host-side
+  `wasi:sockets/*` requirement; `tests/componentize/sockets_smoke.sh`
+  gates the lift + a clock+env+sock combo for canonical-order
+  regression. Real-host invoke under wasmtime exits 0 on
+  `net_shutdown(stdin, RDWR)` (ENOTSOCK dropped). Larger socket
+  primitives (recv/send/accept) need byte-level wasm IR for buffer
+  / network-address marshalling and remain a tracked follow-up
+  alongside env_at/arg_at.
 - S6c: flip the default wasm target to component and demote the
-  preview1 stdout path to a named legacy target.
+  preview1 stdout path to a named legacy target. Bundled cleanup:
+  replace the on-demand preview1 shims emitted by S4a/S4b/S6b
+  (clock_time_get, environ_sizes_get, args_sizes_get,
+  sock_shutdown) with native preview2 calls
+  (`wasi:clocks/monotonic-clock`, `wasi:cli/environment`,
+  `wasi:sockets/tcp`) — this only pays off once preview2 is the
+  default, hence its placement here rather than as a standalone
+  pre-flip slice.
 """
 consequences = """
 - End-state is one-way (the component model becomes the canonical wasm
-  target) but reversible-in-progress: preview1 retained through S5.
+  target) but reversible-in-progress: preview1 retained as the default
+  through S6b; the flip happens at S6c.
 - S3..S6 are HARD-GATED on S2 (toolchain). Tracked as a follow-up
   issue; this is disclosed, not hidden.
 - typed-wasm ownership-section ABI is unchanged; the coordination
@@ -1070,34 +1104,23 @@ Thread per-call-site effect rows from typecheck to codegen via a
   `let`-RHS call's effect row ⊇ `Async`” via a table lookup, replacing
   `is_async_prim_call`/`async_primitives`.
 - *Fallback / safety.* If the table has no entry for a site (e.g. a
-  pre-typecheck embedder path, or a synthesised node), or the consumer
-  detects a producer/consumer count-mismatch, [Effect_sites.is_async_call]
-  returns false ⇒ the CPS transform simply does not fire for that call.
-  The pre-S4 plan retained the structural recogniser as the fallback
-  *until the table path was proven*; S4 (PR #278) retired the
-  hardcoded `async_primitives` set, so the steady-state fallback is
-  "no transform" — over-conservative, always sound.
+  pre-typecheck embedder path, or a synthesised node), codegen falls
+  back to the structural recogniser. The hardcoded set is retired only
+  once the table path is proven (final slice); over-conservative
+  fallback is always sound (= today's behaviour).
 
 Staged (ledger #234; each a gated PR, full `dune test --force` +
 wasm e2e):
-- S1 (ADR-016 + plan, PR #270): DONE — no code change.
-- S2a (`lib/effect_sites.ml` shared numbering, PR #275): DONE — pure,
-  gate-neutral.
-- S2b (typecheck builds & returns the side-table, PR #276): DONE — no
-  codegen behaviour change yet.
-- S3 (pipeline threads the table; codegen boundary predicate switches
-  to the table with structural fallback; new e2e
-  `tests/codegen/effect_async_boundary.affine` proving a *user-defined*
-  `Async` fn triggers the transform — PR #277): DONE. All existing
-  http_cps_* / http_response_reader stay green.
-- S4 (retire the hardcoded `async_primitives` set; boundary is now
-  exactly `Effect_sites.is_async_call`; fallback remains for table-
-  empty / count-mismatch only — PR #278): DONE.
-
-*Delivery status:* CLOSED 2026-05-19 end-to-end. Issue #234 closed
-completed (`hyperpolymath/affinescript#234`). The structural name set
-no longer exists; the boundary is single-sourced from the typecheck
-effect side-table via the shared `Effect_sites` ordinal.
+- S1 (this): ADR-016 + plan. No code change.
+- S2: `lib/effect_sites.ml` shared numbering + typecheck builds &
+  returns the side-table. NO codegen behaviour change (table built,
+  unused) — pure, gate-neutral.
+- S3: pipeline threads the table; codegen boundary predicate switches
+  to the table with structural fallback; new e2e proving a
+  *user-defined* `Async` fn triggers the transform (the payoff). All
+  existing http_cps_* / http_response_reader stay green.
+- S4: retire the hardcoded `async_primitives` set (fallback remains
+  for table-miss only); doc truthing.
 """
 consequences = """
 - Generalises to user-defined `Async` functions; new async primitives
@@ -1286,8 +1309,9 @@ references = [
 
 [[adr]]
 id = "ADR-020"
-status = "proposed"
+status = "accepted"
 date = "2026-05-23"
+ratified = "2026-05-24"
 title = "Ownership-section schema versioning (0xAF sentinel + u8 version)"
 context = """
 The `affinescript.ownership` Wasm custom section has been frozen at
@@ -1366,8 +1390,9 @@ references = [
 
 [[adr]]
 id = "ADR-021"
-status = "proposed"
+status = "accepted"
 date = "2026-05-23"
+ratified = "2026-05-24"
 title = "Multi-producer ABI coordination model for typed-wasm carriers"
 context = """
 typed-wasm is a separate, language-agnostic compilation target with

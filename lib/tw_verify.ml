@@ -187,13 +187,34 @@ let verify_module
 (** Parse the [affinescript.ownership] custom section payload into structured
     [(func_idx, param_kinds, ret_kind)] annotations.
 
-    Binary encoding (from [Codegen.build_ownership_section]):
+    Supports BOTH v1 (legacy, unversioned) and v2 (ADR-020, accepted
+    + ratified 2026-05-24) on-wire formats; v2 is identified by the
+    [0xAF] sentinel byte followed by a version byte.  v1 readers
+    fail cleanly on v2 sections (the sentinel pollutes the
+    entry-count low byte and yields an implausible count); v2
+    readers see the sentinel and dispatch.
+
+    v1 layout (legacy, unversioned):
       u32le  count
       for each entry:
         u32le  func_idx
         u8     n_params
         u8[n]  param_kinds  (0=Unrestricted, 1=Linear, 2=SharedBorrow, 3=ExclBorrow)
-        u8     ret_kind *)
+        u8     ret_kind
+
+    v2 layout (ADR-020):
+      u8     0xAF         (* "AffineScript Format" sentinel *)
+      u8     version      (* 0x02 for v2.0 *)
+      u32le  count
+      entry*              (* same entry shape as v1 *)
+
+    Per ADR-021's coordinated landing protocol, this verifier ships
+    parse-support FIRST.  AffineScript's emitter ([Codegen.build_ownership_
+    section] / [Tw_ownership_section.build_section]) stays on v1 until
+    [hyperpolymath/typed-wasm]'s Rust verifier + [hyperpolymath/ephapax]'s
+    OCaml verifier also ship parse-support; then all producers flip to v2
+    emit together.  See [docs/specs/TYPED-WASM-COORDINATION-LEDGER.adoc]
+    Q-001 for the current state of the cross-repo rollout. *)
 let parse_ownership_section_payload
     (payload : bytes)
   : (int * ownership_kind list * ownership_kind) list =
@@ -205,33 +226,81 @@ let parse_ownership_section_payload
   in
   let pos = ref 0 in
   let len = Bytes.length payload in
-  let read_u32_le () =
-    if !pos + 4 > len then 0
-    else begin
-      let b0 = Char.code (Bytes.get payload  !pos)      in
-      let b1 = Char.code (Bytes.get payload (!pos + 1)) in
-      let b2 = Char.code (Bytes.get payload (!pos + 2)) in
-      let b3 = Char.code (Bytes.get payload (!pos + 3)) in
-      pos := !pos + 4;
-      b0 lor (b1 lsl 8) lor (b2 lsl 16) lor (b3 lsl 24)
-    end
+  (* v2 sentinel dispatch.  Two bytes minimum: [0xAF, version].  The
+     sentinel is byte-distinct from any v1 entry-count low byte for
+     a module with <= 0xAE entries (i.e. effectively every module);
+     ADR-020 catalogues this trade-off explicitly. *)
+  let v2_detected =
+    len >= 2
+    && Char.code (Bytes.get payload 0) = 0xAF
   in
-  let read_u8 () =
-    if !pos >= len then 0
-    else begin
-      let b = Char.code (Bytes.get payload !pos) in
-      pos := !pos + 1;
-      b
-    end
-  in
-  let count = read_u32_le () in
-  List.init count (fun _ ->
-    let func_idx    = read_u32_le () in
-    let n_params    = read_u8 ()     in
-    let param_kinds = List.init n_params (fun _ -> kind_of_byte (read_u8 ())) in
-    let ret_kind    = kind_of_byte (read_u8 ()) in
-    (func_idx, param_kinds, ret_kind)
-  )
+  if v2_detected then begin
+    let v2_version = Char.code (Bytes.get payload 1) in
+    pos := 2;
+    (* v2.0 is the only known version today.  An unknown v2.X is a
+       future-version section we cannot interpret; per ADR-021
+       conservative-disposition (sound fallback), treat as empty.
+       The verifier therefore enforces nothing on the section —
+       loud-correct rather than silent-wrong. *)
+    if v2_version <> 0x02 then []
+    else
+      let read_u32_le () =
+        if !pos + 4 > len then 0
+        else begin
+          let b0 = Char.code (Bytes.get payload  !pos)      in
+          let b1 = Char.code (Bytes.get payload (!pos + 1)) in
+          let b2 = Char.code (Bytes.get payload (!pos + 2)) in
+          let b3 = Char.code (Bytes.get payload (!pos + 3)) in
+          pos := !pos + 4;
+          b0 lor (b1 lsl 8) lor (b2 lsl 16) lor (b3 lsl 24)
+        end
+      in
+      let read_u8 () =
+        if !pos >= len then 0
+        else begin
+          let b = Char.code (Bytes.get payload !pos) in
+          pos := !pos + 1;
+          b
+        end
+      in
+      let count = read_u32_le () in
+      List.init count (fun _ ->
+        let func_idx    = read_u32_le () in
+        let n_params    = read_u8 ()     in
+        let param_kinds = List.init n_params (fun _ -> kind_of_byte (read_u8 ())) in
+        let ret_kind    = kind_of_byte (read_u8 ()) in
+        (func_idx, param_kinds, ret_kind))
+  end else begin
+    (* v1 (legacy) path.  Identical to the pre-ADR-020 behaviour;
+       preserved verbatim for backward compatibility with already-
+       emitted modules and with the in-tree fixtures. *)
+    let read_u32_le () =
+      if !pos + 4 > len then 0
+      else begin
+        let b0 = Char.code (Bytes.get payload  !pos)      in
+        let b1 = Char.code (Bytes.get payload (!pos + 1)) in
+        let b2 = Char.code (Bytes.get payload (!pos + 2)) in
+        let b3 = Char.code (Bytes.get payload (!pos + 3)) in
+        pos := !pos + 4;
+        b0 lor (b1 lsl 8) lor (b2 lsl 16) lor (b3 lsl 24)
+      end
+    in
+    let read_u8 () =
+      if !pos >= len then 0
+      else begin
+        let b = Char.code (Bytes.get payload !pos) in
+        pos := !pos + 1;
+        b
+      end
+    in
+    let count = read_u32_le () in
+    List.init count (fun _ ->
+      let func_idx    = read_u32_le () in
+      let n_params    = read_u8 ()     in
+      let param_kinds = List.init n_params (fun _ -> kind_of_byte (read_u8 ())) in
+      let ret_kind    = kind_of_byte (read_u8 ()) in
+      (func_idx, param_kinds, ret_kind))
+  end
 
 (** Level 13 — module isolation (negative form). A well-isolated
     module owns its private linear memory and reaches other modules

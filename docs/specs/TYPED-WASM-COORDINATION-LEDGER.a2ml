@@ -1,0 +1,122 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 hyperpolymath
+#
+# TYPED-WASM-COORDINATION-LEDGER.a2ml — machine-readable form of
+# the cross-repo coordination ledger mandated by ADR-021.
+#
+# AffineScript's local copy. Sister repos hold mirrors. If they
+# disagree, the typed-wasm copy is canonical (ADR-021 axis 4).
+
+[metadata]
+title = "Typed-WASM Multi-Producer Coordination Ledger"
+human-companion = "docs/specs/TYPED-WASM-COORDINATION-LEDGER.adoc"
+mandate = "ADR-021 (accepted 2026-05-24)"
+local-copy-for-repo = "hyperpolymath/affinescript"
+canonical-when-disagree = "hyperpolymath/typed-wasm"
+last-updated = "2026-05-24"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# State machine (states a slot may be in)
+# ──────────────────────────────────────────────────────────────────────────────
+
+[[state]]
+id = "queued"
+description = "ADR not yet ratified in all three repos"
+
+[[state]]
+id = "verifier-parse-shipping"
+description = "ADR ratified; verifier-parse PRs in flight"
+
+[[state]]
+id = "producer-emit-flipping"
+description = "all verifiers ship parse; producers flipping emit atomically"
+
+[[state]]
+id = "landed"
+description = "all producers + verifiers on the new version"
+
+[[state]]
+id = "deprecation-window"
+description = "at least one coordinated cycle elapsed; deprecated version still parsable"
+
+[[state]]
+id = "closed"
+description = "deprecated version dropped from verifier-parse"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Rules (mirror ADR-021 + ledger conventions)
+# ──────────────────────────────────────────────────────────────────────────────
+
+[rules]
+parallel-abi-proposals = "forbidden — at most one slot active at a time"
+local-copies-must-agree = true
+canonical-on-disagreement = "hyperpolymath/typed-wasm"
+mirror-discipline-window-days = 1
+verifier-first-rule = "no producer-emit PR in ANY repo before ALL repos ship verifier-parse"
+cross-compat-parity = "no promotion to 'landed' without each producer's fixture corpus updated"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Live queue
+# ──────────────────────────────────────────────────────────────────────────────
+
+[[queue-entry]]
+slot = "Q-001"
+title = "ADR-020 — ownership-section schema versioning"
+state = "verifier-parse-shipping"
+state-since = "2026-05-24"
+owner = "@hyperpolymath"
+
+[queue-entry.adr]
+local = { repo = "hyperpolymath/affinescript", id = "ADR-020", status = "accepted", file = ".machine_readable/6a2/META.a2ml" }
+mirror-typed-wasm = { repo = "hyperpolymath/typed-wasm", status = "to-be-filed" }
+mirror-ephapax = { repo = "hyperpolymath/ephapax", status = "to-be-filed" }
+
+[queue-entry.change]
+summary = "Move affinescript.ownership from v1 (unversioned) to v2 (0xAF sentinel + u8 version + entry_count + entries)"
+v1-format = "u32 entry_count | entry*"
+v2-format = "u8 0xAF | u8 version (0x02) | u32 entry_count | entry*"
+v2-entry-shape = "identical to v1 (no new fields in v2.0)"
+v1-on-v2-section = "fails cleanly (bad entry-count parse)"
+
+[queue-entry.verifier-work]
+local = "lib/tw_verify.ml accepts both v1 and v2 (THIS SESSION, B1)"
+typed-wasm = "Rust verifier accepts both v1 and v2"
+ephapax = "second producer's verifier (if any) accepts both"
+
+[queue-entry.producer-work]
+local = "emitter stays on v1; flip deferred until typed-wasm + ephapax verifier-parse deployed"
+ephapax = "emitter stays on v1; flip together with this repo"
+
+[queue-entry.cross-compat-fixtures]
+local = "tests/typed-wasm-cross-compat/ corpus added THIS SESSION (E1)"
+typed-wasm = "sister-repo PR commits binaries + extends crates/typed-wasm-verify/tests/cross_compat.rs"
+
+[queue-entry.deprecation]
+v1-emit-stays-for = "at least one coordinated cycle after v2 emit lands"
+v1-parse-stays-for = "indefinite (backward compatibility)"
+
+[queue-entry.blocked-on]
+items = ["sister-repo ADR mirrors", "verifier-parse-support PRs in typed-wasm + ephapax"]
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Queued (paused, not refused)
+# ──────────────────────────────────────────────────────────────────────────────
+
+# (none at present)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Closed
+# ──────────────────────────────────────────────────────────────────────────────
+
+# (none at present)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Cross-references
+# ──────────────────────────────────────────────────────────────────────────────
+
+[cross-references]
+adr-020 = ".machine_readable/6a2/META.a2ml [[adr]] id=ADR-020"
+adr-021 = ".machine_readable/6a2/META.a2ml [[adr]] id=ADR-021"
+interface-spec = "docs/specs/TYPED-WASM-INTERFACE.adoc"
+roadmap = "docs/specs/TYPED-WASM-ROADMAP.adoc"
+human-companion = "docs/specs/TYPED-WASM-COORDINATION-LEDGER.adoc"

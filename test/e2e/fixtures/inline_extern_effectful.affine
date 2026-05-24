@@ -1,0 +1,19 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// Inline-extern fixture (effectful): an `extern fn` declaration
+// whose return type carries an effect row.  Exercises the same path
+// as inline_extern_pure plus the effect-row resolution branch in
+// typecheck.  Pinned against the gate so a regression to the
+// pre-#346 silent-failure shape would fail loudly.
+//
+// See .claude/CLAUDE.md §"Test-fixture hygiene for latent bug
+// surfaces".
+
+effect IO;
+
+extern fn host_log(msg: String) -> Unit / IO;
+
+pub fn main() -> Int {
+  return 0;
+}

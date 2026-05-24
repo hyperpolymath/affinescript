@@ -80,8 +80,7 @@ made real; #228/ADR-014 module-qualified paths (estate port unblocker). |
 |*E* |typed-wasm convergence hardening (the transition runway): the
 AffineScript↔typed-wasm contract widened from L7+L10 toward full
 L1–6/L13–16 emitted-wasm enforcement; estate-wide re-validation (#235);
-effect-threaded async-boundary recogniser (#234, DELIVERED 2026-05-19 —
-ADR-016, S1..S4 / PRs #270/#275/#276/#277/#278); the #225/#160 convergence
+effect-threaded async-boundary recogniser (#234); the #225/#160 convergence
 ABI matured to "shared with Ephapax". |*planned* |Begins when D's substrate
 (INT-01..04, CORE-01) is closed; ends at a stable, multi-producer
 typed-wasm convergence ABI.
@@ -97,17 +96,6 @@ on the same footing as the other producers (ephapax). See the contract below.
 
 [IMPORTANT]
 ====
-This section is a *summary* of the contract.  The *authoritative*
-formal specification is
-link:specs/TYPED-WASM-INTERFACE.adoc[specs/TYPED-WASM-INTERFACE.adoc]
-(+ machine-readable companion
-link:specs/TYPED-WASM-INTERFACE.a2ml[specs/TYPED-WASM-INTERFACE.a2ml]).
-The roadmap of what would make typed-wasm a *natural and optimal*
-compilation target is
-link:specs/TYPED-WASM-ROADMAP.adoc[specs/TYPED-WASM-ROADMAP.adoc].
-ADR-020 (schema versioning) and ADR-021 (multi-producer model) are
-filed as PROPOSED in `.machine_readable/6a2/META.a2ml`.
-
 typed-wasm is a *separate, language-agnostic compilation target* with its own
 repository (`hyperpolymath/typed-wasm`), its own Idris2 proofs, its own
 ReScript surface, its own Rust verifier crate, and *its own other producers*
@@ -240,21 +228,30 @@ smoke `tests/componentize/command_smoke.sh` proves the lift, the
 ownership section survives, and `wasmtime run <component>` exits
 0 on real-host invoke. Purely additive: reactor consumers, the
 `__indirect_function_table` export, and game-loop hooks are
-byte-unchanged.** String accessors (env_at/arg_at) gated on a
+byte-unchanged.** **S6b (sockets on-ramp) DONE: new
+`net_shutdown(fd, how) -> Int` builtin (Effect `Net`, reserved)
+lowers to `wasi_snapshot_preview1.sock_shutdown` via the same
+on-demand canonical-order pattern as S4a/S4b (`optional_wasi`
+entry 4); the command adapter bridges to `wasi:sockets/tcp`
+internally without surfacing a host-side `wasi:sockets/*`
+requirement; `tests/componentize/sockets_smoke.sh` gates the
+lift + a clock+env+sock combo for canonical-order regression;
+wasmtime real-host invoke exits 0 on `net_shutdown(stdin, RDWR)`
+(ENOTSOCK errno is dropped). Larger socket primitives
+(recv/send/accept) require byte-level wasm IR for buffer /
+network-address marshalling — tracked alongside env_at/arg_at.**
+String accessors (env_at/arg_at) gated on a
 byte-level wasm-IR extension (I32Load8U/I32Store8 absent today)
-— tracked as the next slice before/with S5 filesystem. Remaining
-sub-slices: S5 (native clocks/env/argv via preview2), S6b
-(`wasi:sockets`), S6c (flip the default wasm target from preview1
-→ component). WIT world of record: `wit/affinescript.wit`
-bridges to `wasi:clocks`/`wasi:cli`. Real-host main-invoke deferred
-to S6 (WIT export-lifting / wasi:cli/run command shape).
-**S5 string accessors (env_at/arg_at) DONE: the wasm IR gained
-the byte-level load/store family (I32Load8U/I32Store8 + the full
-WebAssembly 1.0 §5.4.6 row, opcodes 0x2C..0x35 / 0x3A..0x3E);
-accessors lower to on-demand `environ_get`/`args_get` paired with
-the existing `*_sizes_get` import (dedup keeps each WASI import
-once even when both `*_count` and `*_at` are used).** WIT world
-of record: `wit/affinescript.wit`
+— tracked as the next slice before/with S5. Remaining sub-slices
+(per ADR-015 canonical numbering in META.a2ml): S5 — bring up
+`wasi:filesystem` (open/read/write/close), which unblocks INT-06
+(server-side runtime profile); S6c — flip the default wasm
+target from preview1 → component, bundled with the optional
+native-preview2 cleanup that replaces the on-demand preview1
+shims emitted by S4a/S4b/S6b with direct `wasi:clocks` /
+`wasi:cli` / `wasi:sockets` calls (only pays off once preview2
+is the default, hence the bundling). WIT world of record:
+`wit/affinescript.wit`
 |INT-04 |Publish compiler + runtime to JSR (then npm) |#181 |runtime
 packaging READY (affine-js + affinescript-tea JSR dry-run green;
 manual-only `publish-jsr.yml`; docs/PACKAGING.adoc). INT-01 dep

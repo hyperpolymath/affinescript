@@ -387,6 +387,27 @@ let create_args_sizes_get_import () : import * func_type =
   } in
   (import, func_type)
 
+(** Create the WASI `sock_shutdown` import (ADR-015 S6b, #180).
+    Signature: `(fd: i32, how: i32) -> errno: i32`.
+    [how] bitmask: 1 = RD (read end), 2 = WR (write end), 3 = RDWR.
+    The preview1->preview2 command adapter bridges this through the
+    `wasi:sockets/tcp` resource API at runtime — the guest just sees
+    the i32 errno (0 on success, ENOTSOCK on a non-socket fd, etc.).
+    Larger socket primitives (sock_recv/send/accept) need byte-level
+    wasm IR for buffer marshalling and remain gated alongside the
+    env_at/arg_at follow-up. *)
+let create_sock_shutdown_import () : import * func_type =
+  let func_type = {
+    ft_params = [I32; I32];  (* fd, how *)
+    ft_results = [I32];      (* errno *)
+  } in
+  let import = {
+    i_module = "wasi_snapshot_preview1";
+    i_name = "sock_shutdown";
+    i_desc = ImportFunc 0;
+  } in
+  (import, func_type)
+
 (** Emit `env_count`/`arg_count`: call the appropriate `*_sizes_get`
     import (which writes count + buf_size into two i32 scratch slots),
     drop errno, return the count as i32. Uniform helper for the two

@@ -1112,7 +1112,7 @@ and check_block (ctx : context) (state : state) (symbols : Symbol.t) (blk : bloc
      statement we expire any ref-binding introduced in *this* block whose
      binder's last use has already passed, releasing the underlying
      borrow. This is the non-lexical-lifetimes win — patterns like
-     [let r = &x; print(*r); x = 2] now type-check, while the
+     [let r = &x; print( *r); x = 2] now type-check, while the
      anti-aliasing rules remain sound because the borrow is still live
      across statements that *do* use the binder. *)
   let last_use = compute_last_use_index symbols blk in
@@ -1368,7 +1368,7 @@ let check_program (symbols : Symbol.t) (program : program) : unit result =
    counts as the n-th statement); after each statement, check_block
    releases the underlying borrow of any in-block ref-binding whose
    binder is now dead. Unblocks the canonical NLL patterns
-   ([let r = &x; print(*r); x = 2] and [let m = &mut x; let y = *m; x]),
+   ([let r = &x; print( *r); x = 2] and [let m = &mut x; let y = *m; x]),
    while still rejecting real conflicts (the anti-aliasing rules fire
    against statements that *do* use the binder, before expiry).
    Outer-block ref-bindings are deliberately preserved — they expire
