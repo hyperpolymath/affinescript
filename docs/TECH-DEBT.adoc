@@ -77,6 +77,53 @@ names the INT-01..12 track)
 |DOC-08 |MONITOR rule: reject backend-breadth over-claims |DONE (Hypatia/
 gitbot DOC-FORMAT)
 |DOC-09 |MONITOR rule: reject "production-ready"/stdlib-% over-claims |DONE
+|DOC-10 |`docs/standards/TESTING.adoc` — authoritative test taxonomy
+(alcotest unit / alcotest E2E / fixture / golden / smoke / microbench),
+PR-level expectations, deferred-regression-test protocol; replaces stale
+`docs/guides/TESTING-REPORT.adoc` (2025-12-29 snapshot, 47/27 pass rate,
+contradicted by live gate since early 2026 — retired in-place with redirect)
+|*DONE 2026-05-23*
+|DOC-11 |`docs/standards/PANIC-ATTACK.adoc` — SOP for the estate compliance
+scanner (disposition vocabulary fix/accept/suppress/defer; standing-
+suppression record format; weekly cron via
+`.github/workflows/panic-attack.yml`, ad-hoc via `just panic`, pre-release
+per RELEASE.md) |*DONE 2026-05-23*
+|DOC-12 |Bench harness + coverage instrumentation — `bench/` dune stanza
+under `@bench` alias (lex / parse / typecheck+quantity / codegen-wasm
+sweeps); CI jobs `bench-visibility` + `coverage-visibility` upload
+artifacts; `bisect_ppx` added as with-test depend; `just bench` /
+`just bench-record` / `just coverage` recipes. Visibility-only — no
+merge-blocking gate today (ratchet prerequisite: calibrated baseline).
+|*DONE 2026-05-23*
+|DOC-13 |`docs/specs/TYPED-WASM-INTERFACE.adoc` (+ `.a2ml` machine
+companion) — *formal* spec of the AS↔typed-wasm interface v1
+(carrier binary layout, enforced levels L7+L10+L13, producer/
+consumer machinery file pointers, CLI surface, test coverage,
+multi-producer responsibilities, deliberate non-features
+NF-001..NF-005). Supersedes the §"actual AS↔typed-wasm contract"
+paragraph in ECOSYSTEM.adoc as the source of truth. |*DONE 2026-05-23*
+|DOC-14 |`docs/specs/TYPED-WASM-ROADMAP.adoc` (+ `.a2ml`) — widening
+roadmap making typed-wasm a natural and optimal target. Tranches
+A (ergonomics) / B (schema hygiene; ADR-020) / C
+(compiler-side foundations for L1–6 / L14–16) / D (multi-producer
+ABI; ADR-021) / E (cross-compat closure). Per-tranche
+work-items, blockers, recommended sequencing. |*DONE 2026-05-23*
+|DOC-15 |ADR-020 + ADR-021 — typed-wasm widening foundations.
+ADR-020: ownership-section schema versioning (0xAF sentinel + u8
+version).  ADR-021: multi-producer ABI coordination model (four
+axes — spec authority / coordinated landing / test parity /
+conflict resolution).  Both *ACCEPTED + RATIFIED 2026-05-24*.
+META.a2ml entries were lost in PR #344's squash-merge; restored
+here. |*ACCEPTED 2026-05-24*
+|DOC-16 |`docs/specs/TYPED-WASM-COORDINATION-LEDGER.adoc` + `.a2ml`
+— cross-repo coordination queue mandated by ADR-021.  AffineScript's
+local copy of the serialised queue; sister repos hold mirrors;
+typed-wasm copy is canonical on disagreement.  Q-001 = ADR-020
+v1→v2 schema versioning, in state `verifier-parse-shipping`
+(AffineScript-side parse-support shipped via `claude/tw-verify-v2-
+parse`; awaiting sister-repo PRs for the coordinated emit-flip).
+Files were lost in PR #344's squash-merge; restored here.
+|*DONE 2026-05-24*
 |===
 
 MONITOR enforcement (DOC-08/09): any PR re-introducing backend-breadth,

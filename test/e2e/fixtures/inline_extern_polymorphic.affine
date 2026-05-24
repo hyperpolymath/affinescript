@@ -1,0 +1,16 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// Inline-extern fixture (polymorphic): an `extern fn` declaration
+// with type parameters.  Exercises the polymorphic-scheme registration
+// path that the FnExtern special case in typecheck handles
+// (see lib/typecheck.ml `check_fn_decl` `FnExtern` arm).
+//
+// See .claude/CLAUDE.md §"Test-fixture hygiene for latent bug
+// surfaces".
+
+extern fn host_identity[T](x: T) -> T;
+
+pub fn main() -> Int {
+  return 0;
+}

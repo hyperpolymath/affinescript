@@ -1,0 +1,18 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// Inline-extern fixture (extern type + extern fn together):
+// an opaque host type declared inline and consumed by an extern
+// function in the same unit.  Exercises both TyExtern registration
+// and the FnExtern path that consumes the resulting type.
+//
+// See .claude/CLAUDE.md §"Test-fixture hygiene for latent bug
+// surfaces".
+
+extern type Handle;
+
+extern fn host_use(h: Handle) -> Int;
+
+pub fn main() -> Int {
+  return 0;
+}
