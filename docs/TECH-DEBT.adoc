@@ -179,10 +179,13 @@ lowers to `{__cell: x}` single-field object (`lib/codegen_deno.ml`);
 3 hermetic e2e tests in "E2E STDLIB-04a Mut #328" (Int + String
 round-trips + Deno codegen __cell-shape assertion) |S3 |DONE
 2026-05-24 (Refs #328)
-|STDLIB-04b |Throws extern `error<T>` — missing in all backends
-(`lib/interp.ml`, `lib/js_codegen.ml`, `lib/codegen_deno.ml`); sibling
-`panic` is wired and `error` should mirror it (divergent `T`) |S3 |open
-— issue #329
+|STDLIB-04b |Throws extern `error<T>` — *LANDED* (Refs #329): mirrors
+`panic`'s divergent semantics with a polymorphic return (`<T>` unifies
+with the call-site expectation, unobservable at runtime). Wired in
+interp (`RuntimeError`), Deno codegen (`throw new Error`), resolve
+seed, and typecheck as a scheme (`poly1` so each call instantiates a
+fresh tyvar). 3 hermetic tests in "E2E STDLIB-04b error #329". |S3
+|DONE 2026-05-24 (Refs #329)
 |STDLIB-04c |`string_concat` extern — no direct wiring found; `++`
 operator independently lowered. Decide: remove (operator-only) or wire
 to mirror `++` |S3 |open — issue #330

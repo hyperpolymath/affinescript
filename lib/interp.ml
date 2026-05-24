@@ -761,6 +761,16 @@ let create_initial_env () : env =
       | [VString msg] -> Error (RuntimeError msg)
       | _ -> Error (RuntimeError "panic!")
     ));
+    (* STDLIB-04b (Refs #329): `error<T>(msg)` is panic's polymorphic
+       sibling. Same divergent runtime semantics (RuntimeError); the
+       polymorphic return type is unobservable because the call never
+       returns. Backs the `extern fn error<T>(msg: String) -> T / Throws`
+       in stdlib/effects.affine. *)
+    ("error", VBuiltin ("error", fun args ->
+      match args with
+      | [VString msg] -> Error (RuntimeError msg)
+      | _ -> Error (RuntimeError "error!")
+    ));
     ("read_file", VBuiltin ("read_file", fun args ->
       match args with
       | [VString path] ->
