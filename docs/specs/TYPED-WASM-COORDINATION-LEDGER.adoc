@@ -1,0 +1,165 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+= Typed-WASM Multi-Producer Coordination Ledger
+:toc: macro
+:toclevels: 3
+:icons: font
+
+[IMPORTANT]
+====
+This is the *cross-repo coordination ledger* mandated by ADR-021
+(accepted 2026-05-24).  It is the *single serialised queue* through
+which ABI-touching typed-wasm proposals land.  Without it, parallel
+proposals from different producers would race and the four-axis
+model collapses to ad-hoc Refs trails — exactly the failure mode
+ADR-021 prevents.
+
+This ledger is *AffineScript's local copy* of the coordination
+state.  Sister repos (`hyperpolymath/typed-wasm`,
+`hyperpolymath/ephapax`) hold mirrors.  All three are *expected to
+agree*; if they disagree, the typed-wasm repo's copy is canonical
+(per ADR-021 conflict-resolution axis 4: queue ownership lives with
+the consumer authority).
+
+Machine-readable companion:
+link:TYPED-WASM-COORDINATION-LEDGER.a2ml[TYPED-WASM-COORDINATION-LEDGER.a2ml].
+====
+
+toc::[]
+
+== The four axes (reminder from ADR-021)
+
+. *Spec authority* — `lib/tw_verify.ml` (OCaml) today; flips to
+  `hyperpolymath/typed-wasm` Rust verifier crate on C5.1 closure.
+. *Coordinated landing protocol* — ABI-touching ADRs mirrored
+  across all three repos; verifier ships parse-support FIRST;
+  producers flip emit together; deprecation window ≥ one
+  coordinated cycle.
+. *Test parity protocol* — each ABI change requires fixtures
+  contributed to the cross-compat suite (INT-12 / C5.1) from each
+  producer.
+. *Conflict resolution* — in-flight ABI proposals MUST be
+  serialised; the queue is owned by `hyperpolymath/typed-wasm`.
+
+== Queue conventions
+
+Each queue entry has:
+
+* *Slot* — short ID, e.g. `Q-001`.
+* *ADR pair* — the ADR in this repo and the mirror ADRs in the
+  sister repos.
+* *State* — one of `queued`, `verifier-parse-shipping`,
+  `producer-emit-flipping`, `landed`, `deprecation-window`,
+  `closed`.
+* *Owner* — the human/team driving the landing across repos.
+* *Cross-compat fixtures* — the corpus contribution required for
+  test parity.
+* *Deprecation* — what version(s) the landing supersedes, and the
+  removal date.
+
+A proposal at `queued` is paused, not refused.  Promotion to the
+next state requires explicit movement (not silent drift).
+
+== Live queue (2026-05-24)
+
+=== Q-001 — ADR-020: ownership-section schema versioning
+
+[cols="1,3"]
+|===
+|Field |Value
+
+|*Slot* |`Q-001`
+|*ADR (this repo)* |ADR-020 (accepted 2026-05-24, ratified
+2026-05-24, `META.a2ml`)
+|*ADR mirrors* |`hyperpolymath/typed-wasm`: *to be filed* —
+verifier dispatches on sentinel.  `hyperpolymath/ephapax`: *to be
+filed* — second producer emits v2.
+|*State* |*verifier-parse-shipping* (in this repo, this session)
+|*Owner* |@hyperpolymath
+|*Change* |Move `affinescript.ownership` from v1 (unversioned) to
+v2 (`0xAF` sentinel + `u8` version + entry_count + entries).  v2.0
+entry shape identical to v1.
+|*Verifier work* |*This repo:* `lib/tw_verify.ml` accepts both v1
+and v2 (this session, B1).  *typed-wasm:* Rust verifier accepts
+both v1 and v2.  *ephapax:* second producer's verifier (if any)
+accepts both.
+|*Producer work* |*This repo:* emitter stays on v1; flip deferred
+until typed-wasm + ephapax verifier-parse-support deployed.
+*ephapax:* emitter stays on v1; flip together with this repo.
+|*Cross-compat fixtures (test parity)* |E1 corpus added to
+`tests/typed-wasm-cross-compat/` (this session); typed-wasm
+sister-repo PR commits the binaries + extends
+`crates/typed-wasm-verify/tests/cross_compat.rs`.
+|*Deprecation* |v1 emit-path stays for at least one coordinated
+cycle after v2 emit lands.  Then a future Q-NNN closes the v1
+emit-path (verifier keeps v1 parse for backward-compat).
+|*Blocked-on* |Sister-repo ADR mirrors + verifier-parse-support
+PRs in `hyperpolymath/typed-wasm` and `hyperpolymath/ephapax`.
+|===
+
+== Queued (paused)
+
+(none at present)
+
+== Closed
+
+(none at present)
+
+== State machine
+
+[source]
+----
+queued
+  │
+  │ ADR ratified in all three repos
+  ▼
+verifier-parse-shipping
+  │
+  │ verifier-parse PR merged in this repo + typed-wasm + ephapax
+  ▼
+producer-emit-flipping
+  │
+  │ producer-emit PR merged in this repo + ephapax (atomic window)
+  ▼
+landed
+  │
+  │ ≥ one coordinated cycle elapses
+  ▼
+deprecation-window
+  │
+  │ verifier drops parse-support for the deprecated version
+  ▼
+closed
+----
+
+A slot may regress (e.g. `verifier-parse-shipping` →
+`verifier-parse-shipped-here-pending-elsewhere`) only by *explicit
+ledger entry*, never by silent drift.
+
+== Rules
+
+1. *No parallel ABI proposals.*  At most one slot is in any of the
+   active states (`verifier-parse-shipping`,
+   `producer-emit-flipping`, `landed`,
+   `deprecation-window`) at a time.  Additional proposals enter
+   `queued`.
+2. *Local copies must agree.*  If this ledger disagrees with the
+   typed-wasm-repo mirror, the typed-wasm copy is canonical.
+3. *Mirror discipline.*  Every promotion of state in any repo's
+   copy is mirrored in the other two within one working day.
+4. *Verifier-first rule.*  No producer-emit PR may land in *any*
+   repo before *all* repos have shipped verifier-parse-support.
+5. *Cross-compat parity.*  No promotion to `landed` may occur
+   without the fixture corpus from each producer being updated.
+
+== Cross-references
+
+* link:TYPED-WASM-INTERFACE.adoc[TYPED-WASM-INTERFACE.adoc] —
+  current contract (v1, until B1 lands).
+* link:TYPED-WASM-ROADMAP.adoc[TYPED-WASM-ROADMAP.adoc] — widening
+  tranches; this ledger is the apparatus that makes tranche D land
+  safely.
+* `.machine_readable/6a2/META.a2ml` — ADR-020 (accepted), ADR-021
+  (accepted).
+* link:TYPED-WASM-COORDINATION-LEDGER.a2ml[TYPED-WASM-COORDINATION-LEDGER.a2ml]
+  — machine-readable companion.
