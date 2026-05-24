@@ -1,0 +1,348 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 hyperpolymath
+#
+# TYPED-WASM-INTERFACE.a2ml — machine-readable form of the formal
+# AffineScript ↔ typed-wasm interface specification. Human prose
+# lives in TYPED-WASM-INTERFACE.adoc.
+#
+# This is the *spec of record* for the AffineScript-side of the
+# contract. Sibling repos that consume this spec:
+#   - hyperpolymath/typed-wasm  (Rust verifier crate, Idris2 proofs)
+#   - hyperpolymath/ephapax     (second producer; emits same section)
+
+[metadata]
+title = "AffineScript ↔ typed-wasm Interface Specification"
+version = "v1"
+human-companion = "docs/specs/TYPED-WASM-INTERFACE.adoc"
+roadmap-companion = "docs/specs/TYPED-WASM-ROADMAP.adoc"
+status = "in-force"
+adopted = "2026-04-19"   # Level 10 closure date
+formalised = "2026-05-23" # this document
+spec-of-record = "lib/tw_verify.ml + lib/tw_interface.ml (until C5.1 cross-compat suite supplements)"
+
+[stability]
+v1-layout = "frozen"
+unilateral-changes = "forbidden"
+change-protocol = "ADR in this repo (proposed ADR-020/021) + matching ADRs in hyperpolymath/typed-wasm and hyperpolymath/ephapax"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Enforced surface (what AffineScript-emitted wasm actually proves)
+# ──────────────────────────────────────────────────────────────────────────────
+
+[[level]]
+id = "L7"
+name = "Aliasing"
+enforced = true
+producer-machinery = "lib/codegen.ml emit + lib/tw_verify.ml check"
+check = "ExclBorrow params used ≤ 1 time on every program path"
+
+[[level]]
+id = "L10"
+name = "Linearity"
+enforced = true
+producer-machinery = "lib/codegen.ml emit + lib/tw_verify.ml check"
+check = "Linear params used exactly 1 time on every program path"
+boundary-verifier = "lib/tw_interface.ml (cross-module call-count)"
+
+[[level]]
+id = "L13"
+name = "Module isolation (negative form)"
+enforced = true
+carrier-free = true
+producer-machinery = "lib/tw_verify.ml verify_module_isolation"
+check = "module with own memory MUST NOT import memory or table"
+
+[[level]]
+id = "L1"
+name = "Region schema"
+enforced = false
+status = "spec-level-only"
+blocked-on = ["new carrier section", "multi-producer ABI", "region inference (CORE-01 Phase 3)"]
+
+[[level]]
+id = "L2"
+name = "Type discipline"
+enforced = false
+status = "spec-level-only"
+blocked-on = ["new carrier section", "multi-producer ABI"]
+
+[[level]]
+id = "L3"
+name = "Structural typing"
+enforced = false
+status = "spec-level-only"
+blocked-on = ["new carrier section", "multi-producer ABI"]
+
+[[level]]
+id = "L4"
+name = "(typed-wasm L4)"
+enforced = false
+status = "spec-level-only"
+blocked-on = ["new carrier section", "multi-producer ABI"]
+
+[[level]]
+id = "L5"
+name = "(typed-wasm L5)"
+enforced = false
+status = "spec-level-only"
+blocked-on = ["new carrier section", "multi-producer ABI"]
+
+[[level]]
+id = "L6"
+name = "(typed-wasm L6)"
+enforced = false
+status = "spec-level-only"
+blocked-on = ["new carrier section", "multi-producer ABI"]
+
+[[level]]
+id = "L14"
+name = "Session protocols"
+enforced = false
+status = "spec-level-only"
+blocked-on = ["new carrier section", "session-type codegen", "multi-producer ABI"]
+
+[[level]]
+id = "L15"
+name = "Resource capabilities"
+enforced = false
+status = "spec-level-only"
+blocked-on = ["new carrier section", "capability tracking", "multi-producer ABI"]
+
+[[level]]
+id = "L16"
+name = "Agent choreography"
+enforced = false
+status = "spec-level-only"
+blocked-on = ["new carrier section", "session-type codegen", "capability tracking", "multi-producer ABI"]
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Carrier — affinescript.ownership v1
+# ──────────────────────────────────────────────────────────────────────────────
+
+[carrier]
+custom-section-name = "affinescript.ownership"
+endianness = "little-endian"
+version-field = false   # v1 is unversioned; ADR-020 (proposed) adds one
+omit-when-empty = true
+
+[carrier.layout]
+header = "u32 entry_count"
+entry  = "u32 func_index | u8 param_count | u8[param_count] param_kind | u8 ret_kind"
+
+[[carrier.kind-encoding]]
+byte = 0
+name = "Unrestricted"
+ocaml-ctor = "Unrestricted"
+type-shape-default = "plain"
+
+[[carrier.kind-encoding]]
+byte = 1
+name = "Linear"
+ocaml-ctor = "Linear"
+type-shape-default = "TyOwn"
+discipline = "L10 — exactly 1 use on every path"
+
+[[carrier.kind-encoding]]
+byte = 2
+name = "SharedBorrow"
+ocaml-ctor = "SharedBorrow"
+type-shape-default = "TyRef"
+
+[[carrier.kind-encoding]]
+byte = 3
+name = "ExclBorrow"
+ocaml-ctor = "ExclBorrow"
+type-shape-default = "TyMut"
+discipline = "L7 — ≤ 1 use on every path"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Producer machinery (AffineScript)
+# ──────────────────────────────────────────────────────────────────────────────
+
+[producer]
+emitter = "lib/codegen.ml"
+emitter-also = ["lib/codegen_gc.ml (reuses)"]
+
+[[producer.symbol]]
+ocaml-name = "ownership_kind"
+file = "lib/codegen.ml"
+line-approx = 110
+role = "AST"
+
+[[producer.symbol]]
+ocaml-name = "ownership_kind_of_param"
+file = "lib/codegen.ml"
+line-approx = 116
+role = "extract from p_ownership qualifier or fall back to type shape"
+
+[[producer.symbol]]
+ocaml-name = "ownership_kind_of_ret"
+file = "lib/codegen.ml"
+line-approx = 140
+
+[[producer.symbol]]
+ocaml-name = "ownership_kind_byte"
+file = "lib/codegen.ml"
+line-approx = 148
+role = "encode kind to one byte"
+
+[[producer.symbol]]
+ocaml-name = "build_ownership_section"
+file = "lib/codegen.ml"
+line-approx = 159
+role = "serialise the entry list to v1 binary"
+
+[[producer.symbol]]
+ocaml-name = "ctx.ownership_annots"
+file = "lib/codegen.ml"
+line-approx-registration = 2312
+line-approx-assembly = 2629
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Consumer machinery (AffineScript-side verifier)
+# ──────────────────────────────────────────────────────────────────────────────
+
+[[consumer]]
+file = "lib/tw_verify.ml"
+loc = 332
+role = "per-module verifier"
+checks = ["L7", "L10", "L13"]
+primary-entry = "verify_from_module"
+sub-functions = ["parse_ownership_section", "count_uses_range", "verify_module", "verify_module_isolation"]
+
+[[consumer]]
+file = "lib/tw_interface.ml"
+loc = 276
+role = "cross-module boundary verifier"
+checks = ["L10 at the call boundary"]
+errors = ["LinearImportCalledMultiple", "LinearImportDroppedOnSomePath"]
+
+# ──────────────────────────────────────────────────────────────────────────────
+# CLI surface
+# ──────────────────────────────────────────────────────────────────────────────
+
+[[cli]]
+name = "verify"
+args = "FILE"
+behaviour = "compile + verify L7/L10/L13"
+exit-codes = { "0" = "clean", "1" = "violation" }
+status = "done"
+
+[[cli]]
+name = "verify-boundary"
+args = "CALLEE CALLER"
+behaviour = "extract callee's export interface, verify caller's call-counts"
+exit-codes = { "0" = "clean", "1" = "violation count" }
+status = "done"
+notes = "pre-2026-04-19 silently succeeded on violations; fixed PR f6089a2"
+
+[[cli]]
+name = "verify-bridge"
+args = "[--which tea-bridge|router|all]"
+behaviour = "generate known-good callee + synthetic caller + verify boundary"
+status = "done"
+
+[[cli]]
+name = "interface"
+args = "[--which tea-bridge|router|all]"
+behaviour = "pretty-print module export interface"
+status = "done"
+
+[cli.gating]
+compile-pipeline-runs-verify = false
+proposed = "--typed-wasm-gate flag (see TYPED-WASM-ROADMAP.adoc)"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Test coverage
+# ──────────────────────────────────────────────────────────────────────────────
+
+[[test-suite]]
+file = "test/test_tw_isolation.ml"
+test-count = 5
+pins = "L13 negative-form module isolation"
+
+[[test-suite]]
+file = "test/test_e2e.ml"
+suite-name = "E2E Boundary Verify"
+test-count = 3
+fixtures = ["CrossCallee.affine", "cross_caller_ok.affine", "cross_caller_dup.affine", "cross_caller_drop.affine"]
+pins = "LinearImportCalledMultiple + LinearImportDroppedOnSomePath"
+
+[[test-suite]]
+file = "test/test_e2e.ml"
+suite-name = "ownership section round-trip"
+tests = ["test_ownership_section_present", "test_ownership_roundtrip", "test_ownership_entry_count"]
+pins = "v1 layout encode/decode parity"
+
+[test-coverage.gaps]
+cross-compat-c51 = "AffineScript-emitted fixtures into hyperpolymath/typed-wasm crates/typed-wasm-verify/tests/cross_compat.rs are NOT yet shipped (INT-12 / CONV-05; planned for Stage E)"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Multi-producer responsibilities
+# ──────────────────────────────────────────────────────────────────────────────
+
+[[producer-party]]
+id = "affinescript"
+repo = "hyperpolymath/affinescript"
+role = "reference producer; spec of record (OCaml verifier) until C5.1 supplements"
+emitter = "lib/codegen.ml"
+verifier = "lib/tw_verify.ml + lib/tw_interface.ml"
+
+[[producer-party]]
+id = "ephapax"
+repo = "hyperpolymath/ephapax"
+role = "second producer; same affinescript.ownership format"
+verifier-cli = "ephapax compile --verify-ownership"
+
+[[consumer-party]]
+id = "typed-wasm"
+repo = "hyperpolymath/typed-wasm"
+role = "spec + Rust verifier crate; cross-compat target"
+artefacts = ["crates/typed-wasm-verify (Rust)", "Idris2 proofs", "ReScript surface"]
+cross-compat-suite = "crates/typed-wasm-verify/tests/cross_compat.rs (typed-wasm 'C5.1')"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Scope boundaries (deliberate non-features)
+# ──────────────────────────────────────────────────────────────────────────────
+
+[[non-feature]]
+id = "NF-001"
+description = "L1–L6 enforcement on emitted wasm"
+reason = "requires new carrier section (region schema/type discipline/structural typing); multi-producer ABI"
+roadmap-anchor = "TYPED-WASM-ROADMAP.adoc"
+
+[[non-feature]]
+id = "NF-002"
+description = "L14–L16 enforcement on emitted wasm"
+reason = "requires capability/session/agent carrier + region inference (CORE-01 Phase 3 blocker)"
+roadmap-anchor = "TYPED-WASM-ROADMAP.adoc"
+
+[[non-feature]]
+id = "NF-003"
+description = "Schema versioning on affinescript.ownership"
+reason = "v1 unversioned by accident-of-history; ADR-020 (proposed) adds backward-compat version prefix"
+roadmap-anchor = "ADR-020 (proposed)"
+
+[[non-feature]]
+id = "NF-004"
+description = "Automatic compile-time L7/L10 gating"
+reason = "today `verify` is opt-in; proposed `--typed-wasm-gate` would make it implicit on `compile`"
+roadmap-anchor = "TYPED-WASM-ROADMAP.adoc"
+
+[[non-feature]]
+id = "NF-005"
+description = "Async-boundary enforcement"
+reason = "structural recogniser is CONV-02 (#234); ADR-016 accepted; widening staged S1..S4"
+roadmap-anchor = "ADR-016"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Cross-references
+# ──────────────────────────────────────────────────────────────────────────────
+
+[cross-references]
+ecosystem = "docs/ECOSYSTEM.adoc"
+capability-matrix = "docs/CAPABILITY-MATRIX.adoc"
+ledger = "docs/TECH-DEBT.adoc"
+roadmap = "docs/specs/TYPED-WASM-ROADMAP.adoc"
+settled-decisions = "docs/specs/SETTLED-DECISIONS.adoc"
+human-companion = "docs/specs/TYPED-WASM-INTERFACE.adoc"
