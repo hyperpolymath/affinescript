@@ -873,8 +873,9 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
            (added on-demand at module assembly; idx looked up in
            [ctx.wasi_func_indices]). The Unit arg satisfies the
            zero-param-fn collapse wart; it is evaluated but its value
-           is unused. String accessors (env_at/arg_at) need byte-level
-           wasm IR ops (currently absent) and are a tracked follow-up. *)
+           is unused. The companion string accessors `env_at`/`arg_at`
+           landed alongside the byte-level wasm IR extension — see
+           the case below. *)
         let wasi_name =
           if id.name = "env_count" then "environ_sizes_get"
           else "args_sizes_get"
@@ -891,6 +892,47 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
           arg_code @ [Drop] @
           Wasi_runtime.gen_count_via_sizes_get
             heap_idx scratch_local sizes_func_idx
+        in
+        Ok (ctx_with_heap, code)
+
+      | ExprVar id when (id.name = "env_at" || id.name = "arg_at")
+                        && List.length args = 1 ->
+        (* ADR-015 S5 (#180): env_at(i: Int) / arg_at(i: Int) -> String.
+           Allocates a length-prefixed AS string and byte-copies the
+           i-th null-terminated entry from the WASI environ/argv
+           buffer. Uses [I32Load8U]/[I32Store8] (the byte-level wasm
+           IR extension landed alongside this slice). Pairs the
+           existing on-demand `*_sizes_get` import with the matching
+           `environ_get`/`args_get` import (registered above in the
+           `optional_wasi` table; deduped by wasi name). *)
+        let sizes_name, get_name =
+          if id.name = "env_at" then "environ_sizes_get", "environ_get"
+          else "args_sizes_get", "args_get"
+        in
+        let sizes_func_idx =
+          try List.assoc sizes_name ctx.wasi_func_indices
+          with Not_found -> 1
+        in
+        let get_func_idx =
+          try List.assoc get_name ctx.wasi_func_indices
+          with Not_found -> 2
+        in
+        let* (ctx0, arg_code) = gen_expr ctx (List.hd args) in
+        let (c1, n_local)       = alloc_local ctx0 ("__" ^ id.name ^ "_n") in
+        let (c2, scratch_local) = alloc_local c1  ("__" ^ id.name ^ "_scratch") in
+        let (c3, count_local)   = alloc_local c2  ("__" ^ id.name ^ "_count") in
+        let (c4, bufsize_local) = alloc_local c3  ("__" ^ id.name ^ "_bufsize") in
+        let (c5, ptrvec_local)  = alloc_local c4  ("__" ^ id.name ^ "_ptrvec") in
+        let (c6, src_local)     = alloc_local c5  ("__" ^ id.name ^ "_src") in
+        let (c7, dst_local)     = alloc_local c6  ("__" ^ id.name ^ "_dst") in
+        let (c8, result_local)  = alloc_local c7  ("__" ^ id.name ^ "_result") in
+        let (ctx_with_heap, heap_idx) = ensure_heap_ptr c8 in
+        let code =
+          arg_code @
+          Wasi_runtime.gen_str_at_via_get
+            heap_idx n_local scratch_local count_local bufsize_local
+            ptrvec_local src_local dst_local result_local
+            sizes_func_idx get_func_idx
         in
         Ok (ctx_with_heap, code)
 
@@ -2549,13 +2591,25 @@ let generate_module ?loader (prog : program) : wasm_module result =
       false prog
   in
   let optional_wasi =
-    (* (guest_builtin_name, wasi_import_name, factory) — canonical order. *)
+    (* (guest_builtin_name, wasi_import_name, factory) — canonical order.
+       Multiple builtins MAY require the same WASI import (e.g. both
+       `env_count` and `env_at` need `environ_sizes_get`); the dedup
+       pass below keeps the first occurrence so each wasm import shows
+       up exactly once with a stable index. *)
     [ ("clock_now_ms", "clock_time_get",     Wasi_runtime.create_clock_time_get_import);
       ("env_count",    "environ_sizes_get",  Wasi_runtime.create_environ_sizes_get_import);
       ("arg_count",    "args_sizes_get",     Wasi_runtime.create_args_sizes_get_import);
+      ("env_at",       "environ_sizes_get",  Wasi_runtime.create_environ_sizes_get_import);
+      ("env_at",       "environ_get",        Wasi_runtime.create_environ_get_import);
+      ("arg_at",       "args_sizes_get",     Wasi_runtime.create_args_sizes_get_import);
+      ("arg_at",       "args_get",           Wasi_runtime.create_args_get_import);
     ]
-    |> List.filter_map
-         (fun (b, w, f) -> if uses b then Some (w, f ()) else None)
+    |> List.filter (fun (b, _, _) -> uses b)
+    |> List.fold_left
+         (fun acc (_, w, f) ->
+           if List.exists (fun (w', _) -> w' = w) acc then acc
+           else acc @ [(w, f ())])
+         []
     |> List.mapi (fun i (w, (imp, ty)) -> (i + 1, w, imp, ty))
   in
   let opt_types = List.map (fun (_, _, _, ty) -> ty) optional_wasi in

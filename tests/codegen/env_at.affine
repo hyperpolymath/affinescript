@@ -1,0 +1,9 @@
+// SPDX-License-Identifier: MPL-2.0
+// ADR-015 S5 (#180): env_at(i) smoke. Lowers to a `*_sizes_get` +
+// `environ_get` pair, then byte-scans the i-th entry to compute
+// length and byte-copies it into a length-prefixed AS string.
+// Returning `string_length` proves the scan terminated at the
+// host-written null terminator at the expected offset.
+pub fn main() -> Int / { Time } {
+  string_length(env_at(0))
+}
