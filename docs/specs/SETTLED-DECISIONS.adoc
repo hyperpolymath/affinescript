@@ -301,17 +301,25 @@ change; *S2* toolchain provisioning (`wasm-tools`, `wasm-component-ld`,
 `wac`) — ABSENT today, a hard gate on S3+; *S3* componentize on-ramp
 (codegen still emits core wasm; post-step wraps it via the standard
 preview1→preview2 adapter; ownership-section survival asserted; wasmtime
-component-run smoke); *S4* native `wasi:clocks`/environment/argv; *S5*
-`wasi:filesystem` (unblocks INT-06); *S6a* (WIT export lifting) codegen
-auto-emits a `_start : () -> ()` shim around a parameter-less `fn main()`
-so `tools/componentize.sh --command` (preview1→preview2 *command*
-adapter) produces a real `wasi:cli/run`-exporting component that any
-WASI 0.2 host can invoke; *S6b* (sockets on-ramp) the `net_shutdown`
-builtin lowers to `wasi_snapshot_preview1.sock_shutdown` and the
-command adapter bridges to `wasi:sockets/tcp` internally — recv/send/
-accept gated on the same byte-level wasm-IR follow-up as env_at/arg_at;
-*S6c* flip the default wasm target to component and demote preview1 to
-a legacy target.
+component-run smoke); *S4* (slices S4a clock + S4b env_count/arg_count)
+on-demand preview1 imports for `clock_time_get`, `environ_sizes_get`,
+`args_sizes_get` via the Effect_sites pre-scan — the ADR is amended in
+META.a2ml to record this as preview1-shim (NOT native preview2 as
+originally worded); both adapters bridge to `wasi:clocks`/`wasi:cli`
+internally, native-preview2 codegen is deferred into S6c since it only
+pays off once preview2 is the default; *S5* `wasi:filesystem`
+(open/read/write/close — unblocks INT-06); *S6a* (WIT export lifting)
+codegen auto-emits a `_start : () -> ()` shim around a parameter-less
+`fn main()` so `tools/componentize.sh --command` (preview1→preview2
+*command* adapter) produces a real `wasi:cli/run`-exporting component
+that any WASI 0.2 host can invoke; *S6b* (sockets on-ramp) the
+`net_shutdown` builtin lowers to `wasi_snapshot_preview1.sock_shutdown`
+and the command adapter bridges to `wasi:sockets/tcp` internally —
+recv/send/accept gated on the same byte-level wasm-IR follow-up as
+env_at/arg_at; *S6c* flip the default wasm target to component and
+demote preview1 to a legacy target, bundled with the optional
+native-preview2 cleanup that replaces the on-demand preview1 shims
+emitted by S4a/S4b/S6b with direct `wasi:*` calls.
 
 This decision is settled; do not reopen without amending the ADR. Full
 ADR in `.machine_readable/6a2/META.a2ml` (ADR-015); ledger INT-03 in

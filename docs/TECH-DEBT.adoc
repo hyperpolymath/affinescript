@@ -220,9 +220,15 @@ regression; wasmtime real-host invoke exits 0 on
 `net_shutdown(stdin, RDWR)` (returns ENOTSOCK, dropped). Larger
 socket primitives (recv/send/accept) need byte-level wasm IR for
 buffer / network-address marshalling and remain a tracked
-follow-up alongside env_at/arg_at.** Remaining: S5 (native
-preview2 clocks/env/argv replacing the preview1 shims), S6c
-(flip the default wasm target from preview1 → component)
+follow-up alongside env_at/arg_at.** Remaining: S5
+(`wasi:filesystem` — open/read/write/close; unblocks INT-06
+server-side runtime), S6c (flip the default wasm target from
+preview1 → component, bundled with the optional native-preview2
+cleanup that replaces the on-demand preview1 shims emitted by
+S4a/S4b/S6b with direct `wasi:clocks` / `wasi:cli` /
+`wasi:sockets` calls — only pays off once preview2 is the
+default, hence the bundling). ADR-015 in META.a2ml is the
+canonical numbering — TECH-DEBT mirrors it.
 |INT-04 |Publish to JSR/npm |S2 |#181 packaging READY (dry-run green,
 manual workflow); compiler-binary distribution decided = **ADR-019**
 (#260, Releases + thin Deno/JSR shim, staged S1..S4) — S1/S2/S3

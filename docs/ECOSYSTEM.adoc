@@ -242,10 +242,16 @@ wasmtime real-host invoke exits 0 on `net_shutdown(stdin, RDWR)`
 network-address marshalling — tracked alongside env_at/arg_at.**
 String accessors (env_at/arg_at) gated on a
 byte-level wasm-IR extension (I32Load8U/I32Store8 absent today)
-— tracked as the next slice before/with S5 filesystem. Remaining
-sub-slices: S5 (native clocks/env/argv via preview2), S6c
-(flip the default wasm target from preview1 → component). WIT
-world of record: `wit/affinescript.wit`
+— tracked as the next slice before/with S5. Remaining sub-slices
+(per ADR-015 canonical numbering in META.a2ml): S5 — bring up
+`wasi:filesystem` (open/read/write/close), which unblocks INT-06
+(server-side runtime profile); S6c — flip the default wasm
+target from preview1 → component, bundled with the optional
+native-preview2 cleanup that replaces the on-demand preview1
+shims emitted by S4a/S4b/S6b with direct `wasi:clocks` /
+`wasi:cli` / `wasi:sockets` calls (only pays off once preview2
+is the default, hence the bundling). WIT world of record:
+`wit/affinescript.wit`
 |INT-04 |Publish compiler + runtime to JSR (then npm) |#181 |runtime
 packaging READY (affine-js + affinescript-tea JSR dry-run green;
 manual-only `publish-jsr.yml`; docs/PACKAGING.adoc). INT-01 dep
