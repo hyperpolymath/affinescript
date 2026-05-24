@@ -3279,6 +3279,137 @@ let stdlib_04a_mut_tests = [
   Alcotest.test_case "#328 Deno codegen emits __cell shape" `Quick test_stdlib_04a_mut_deno_codegen;
 ]
 
+(* ---- STDLIB-04d: IO externs hermetic test coverage (Refs #331) ----
+
+   `print`/`println`/`read_line`/`read_file`/`write_file` were already
+   wired in interp + Deno codegen, but had no dedicated hermetic tests
+   asserting the round-trip semantics (test-debt, not impl-debt). This
+   row adds them. `read_line` is interactive and skipped here — that
+   surface is exercised by the TEA-bridge tests with redirected stdin. *)
+
+(* write_file -> read_file round-trip on a real tmpfile *)
+let test_stdlib_04d_write_then_read_file () =
+  let tmp = Filename.temp_file "as_04d_io" ".txt" in
+  Fun.protect ~finally:(fun () -> if Sys.file_exists tmp then Sys.remove tmp)
+    (fun () ->
+       let src = Printf.sprintf {|
+fn writer() -> Result<Unit, String> { write_file("%s", "hello-04d\n") }
+fn reader() -> Result<String, String> { read_file("%s") }
+|} (String.escaped tmp) (String.escaped tmp) in
+       let prog = Parse_driver.parse_string ~file:"<test>" src in
+       match Interp.eval_program prog with
+       | Error e -> Alcotest.failf "interp load failed: %s"
+                      (Value.show_eval_error e)
+       | Ok env ->
+         let call name =
+           match Value.lookup_env name env with
+           | Error e -> Error e
+           | Ok fn -> Interp.apply_function fn []
+         in
+         (match call "writer" with
+          | Ok (Value.VVariant ("Ok", _)) -> ()
+          | Ok v -> Alcotest.failf "writer expected Ok(Unit), got %s"
+                      (Value.show_value v)
+          | Error e -> Alcotest.failf "writer failed: %s"
+                         (Value.show_eval_error e));
+         (match call "reader" with
+          | Ok (Value.VVariant ("Ok", Some (Value.VString s))) ->
+            Alcotest.(check string) "reader returns written content"
+              "hello-04d\n" s
+          | Ok v -> Alcotest.failf "reader expected Ok(String), got %s"
+                      (Value.show_value v)
+          | Error e -> Alcotest.failf "reader failed: %s"
+                         (Value.show_eval_error e)))
+
+(* read_file on a path that does not exist returns Err, not raises. *)
+let test_stdlib_04d_read_file_missing () =
+  let tmp = Filename.temp_file "as_04d_missing" ".txt" in
+  Sys.remove tmp;  (* removed -- guaranteed missing *)
+  let src = Printf.sprintf
+    "fn f() -> Result<String, String> { read_file(\"%s\") }"
+    (String.escaped tmp) in
+  let prog = Parse_driver.parse_string ~file:"<test>" src in
+  match Interp.eval_program prog with
+  | Error e -> Alcotest.failf "interp failed: %s" (Value.show_eval_error e)
+  | Ok env ->
+    (match Value.lookup_env "f" env with
+     | Ok fn ->
+       (match Interp.apply_function fn [] with
+        | Ok (Value.VVariant ("Err", _)) -> ()
+        | Ok v -> Alcotest.failf "expected Err(_), got %s" (Value.show_value v)
+        | Error e -> Alcotest.failf "apply failed: %s"
+                       (Value.show_eval_error e))
+     | Error e -> Alcotest.failf "lookup failed: %s"
+                    (Value.show_eval_error e))
+
+(* `print` and `println` exec without error. Stdout-content capture is
+   intentionally out of scope here (the TEA-bridge tests already
+   exercise the redirect path with full Unix.dup2 plumbing); we just
+   prove the lowering doesn't blow up at runtime. *)
+let test_stdlib_04d_print_no_error () =
+  let src = "fn f() -> Unit { print(\"\") }" in
+  let prog = Parse_driver.parse_string ~file:"<test>" src in
+  match Interp.eval_program prog with
+  | Error e -> Alcotest.failf "interp failed: %s" (Value.show_eval_error e)
+  | Ok env ->
+    (match Value.lookup_env "f" env with
+     | Ok fn ->
+       (match Interp.apply_function fn [] with
+        | Ok _ -> ()
+        | Error e -> Alcotest.failf "print failed: %s"
+                       (Value.show_eval_error e))
+     | Error e -> Alcotest.failf "lookup failed: %s"
+                    (Value.show_eval_error e))
+
+let test_stdlib_04d_println_no_error () =
+  let src = "fn f() -> Unit { println(\"\") }" in
+  let prog = Parse_driver.parse_string ~file:"<test>" src in
+  match Interp.eval_program prog with
+  | Error e -> Alcotest.failf "interp failed: %s" (Value.show_eval_error e)
+  | Ok env ->
+    (match Value.lookup_env "f" env with
+     | Ok fn ->
+       (match Interp.apply_function fn [] with
+        | Ok _ -> ()
+        | Error e -> Alcotest.failf "println failed: %s"
+                       (Value.show_eval_error e))
+     | Error e -> Alcotest.failf "lookup failed: %s"
+                    (Value.show_eval_error e))
+
+(* Deno codegen lowers IO externs to the right host shape. *)
+let test_stdlib_04d_io_deno_codegen () =
+  let src = {|
+fn run() -> Unit {
+  print("a");
+  println("b")
+}
+|} in
+  let prog = Parse_driver.parse_string ~file:"<test>" src in
+  let loader = Module_loader.create (Module_loader.default_config ()) in
+  match Resolve.resolve_program_with_loader prog loader with
+  | Error (e, _) ->
+    Alcotest.failf "resolve failed: %s" (Resolve.show_resolve_error e)
+  | Ok (rctx, _) ->
+    (match Codegen_deno.codegen_deno prog rctx.symbols with
+     | Error e -> Alcotest.failf "deno-codegen failed: %s" e
+     | Ok js ->
+       let contains needle =
+         let nl = String.length needle and sl = String.length js in
+         let rec go i = i + nl <= sl &&
+           (String.sub js i nl = needle || go (i + 1))
+         in nl = 0 || go 0
+       in
+       Alcotest.(check bool) "prelude defines print/println"
+         true (contains "const print" && contains "const println"))
+
+let stdlib_04d_io_tests = [
+  Alcotest.test_case "#331 write_file -> read_file round-trip" `Quick test_stdlib_04d_write_then_read_file;
+  Alcotest.test_case "#331 read_file on missing path returns Err" `Quick test_stdlib_04d_read_file_missing;
+  Alcotest.test_case "#331 print exec without error" `Quick test_stdlib_04d_print_no_error;
+  Alcotest.test_case "#331 println exec without error" `Quick test_stdlib_04d_println_no_error;
+  Alcotest.test_case "#331 Deno codegen wires print/println" `Quick test_stdlib_04d_io_deno_codegen;
+]
+
 (* ---- STDLIB-04e: Pure externs (Refs #332) ----
 
    Three externs declared in stdlib/effects.affine as pure:
@@ -3354,6 +3485,8 @@ let stdlib_04e_pure_tests = [
   Alcotest.test_case "#332 string_to_int(\"123\") == Some(123)" `Quick test_stdlib_04e_string_to_int_some;
   Alcotest.test_case "#332 string_to_int(\"abc\") == None" `Quick test_stdlib_04e_string_to_int_none;
   Alcotest.test_case "#332 string_length(\"hello\") == 5" `Quick test_stdlib_04e_string_length;
+]
+
 (* ---- STDLIB-04b: Throws extern `error<T>` (Refs #329) ----
 
    `error<T>(msg: String) -> T / Throws` was declared in
@@ -3437,6 +3570,7 @@ let stdlib_04b_error_tests = [
   Alcotest.test_case "#329 error diverges at String call site" `Quick test_stdlib_04b_error_diverges_string_call_site;
   Alcotest.test_case "#329 Deno codegen lowers to throw" `Quick test_stdlib_04b_error_deno_codegen;
 ]
+
 
 (* ---- Issue #35 Phase 2 — Vscode bindings ----
 
@@ -4129,6 +4263,7 @@ let tests =
     ("E2E Xmod Other Codegens", cross_module_other_codegens_tests);
     ("E2E Externs",              extern_tests);
     ("E2E STDLIB-04a Mut #328",  stdlib_04a_mut_tests);
+    ("E2E STDLIB-04d IO #331",   stdlib_04d_io_tests);
     ("E2E STDLIB-04e Pure #332", stdlib_04e_pure_tests);
     ("E2E STDLIB-04b error #329", stdlib_04b_error_tests);
     ("E2E Vscode Bindings",      vscode_bindings_tests);
