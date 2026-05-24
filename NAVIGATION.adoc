@@ -65,6 +65,11 @@ This guide helps you navigate the AffineScript repository structure.
 * link:docs/standards/TESTING.adoc[Testing Standards] - Test taxonomy, gate baseline, PR expectations
 * link:docs/standards/PANIC-ATTACK.adoc[Panic-Attack Policy] - Security-scan SOP and finding disposition
 
+**Typed-WASM interface (Stage E runway):**
+
+* link:docs/specs/TYPED-WASM-INTERFACE.adoc[Typed-WASM Interface (v1)] - Formal AS↔typed-wasm contract
+* link:docs/specs/TYPED-WASM-ROADMAP.adoc[Typed-WASM Widening Roadmap] - Tranches A–E for L1–6 / L14–16
+
 **Guides:**
 
 * link:docs/CAPABILITY-MATRIX.adoc[Capability Matrix] - **Live** per-component readiness (authoritative)

@@ -95,6 +95,25 @@ artifacts; `bisect_ppx` added as with-test depend; `just bench` /
 `just bench-record` / `just coverage` recipes. Visibility-only — no
 merge-blocking gate today (ratchet prerequisite: calibrated baseline).
 |*DONE 2026-05-23*
+|DOC-13 |`docs/specs/TYPED-WASM-INTERFACE.adoc` (+ `.a2ml` machine
+companion) — *formal* spec of the AS↔typed-wasm interface v1
+(carrier binary layout, enforced levels L7+L10+L13, producer/
+consumer machinery file pointers, CLI surface, test coverage,
+multi-producer responsibilities, deliberate non-features
+NF-001..NF-005). Supersedes the §"actual AS↔typed-wasm contract"
+paragraph in ECOSYSTEM.adoc as the source of truth. |*DONE 2026-05-23*
+|DOC-14 |`docs/specs/TYPED-WASM-ROADMAP.adoc` (+ `.a2ml`) — widening
+roadmap making typed-wasm a natural and optimal target. Tranches
+A (ergonomics) / B (schema hygiene; ADR-020 proposed) / C
+(compiler-side foundations for L1–6 / L14–16) / D (multi-producer
+ABI; ADR-021 proposed) / E (cross-compat closure). Per-tranche
+work-items, blockers, recommended sequencing. |*DONE 2026-05-23*
+|DOC-15 |ADR-020 (PROPOSED): ownership-section schema versioning
+(0xAF sentinel + u8 version). ADR-021 (PROPOSED): multi-producer
+ABI coordination model (four axes: spec authority / coordinated
+landing / test parity / conflict resolution). Both filed in
+META.a2ml; ADR-020 lands first as the first test of ADR-021's
+protocol. Both require owner ratification. |*PROPOSED 2026-05-23*
 |===
 
 MONITOR enforcement (DOC-08/09): any PR re-introducing backend-breadth,
@@ -271,13 +290,23 @@ Proven + locked (see INT-02)
 
 == Stage E — typed-wasm convergence runway
 
+Formal interface spec:
+link:specs/TYPED-WASM-INTERFACE.adoc[specs/TYPED-WASM-INTERFACE.adoc]
+(+ link:specs/TYPED-WASM-INTERFACE.a2ml[machine companion]).
+Widening roadmap (tranches A..E, recommended sequencing):
+link:specs/TYPED-WASM-ROADMAP.adoc[specs/TYPED-WASM-ROADMAP.adoc].
+Proposed ADRs: ADR-020 (schema versioning), ADR-021 (multi-producer
+coordination model) — both PROPOSED in
+`.machine_readable/6a2/META.a2ml`.
+
 [cols="1,3,1,2"]
 |===
 |ID |Item |Sev |Status
 |CONV-01 |Estate-wide re-validation of the #199/#205 closure ABI (static →
 real wasm engine) |S2 |open #235
 |CONV-02 |Effect-threaded async-boundary detection (generalise the
-structural-conservative recogniser) |S2 |open #234
+structural-conservative recogniser) |S2 |open #234. Composes with
+Tranche C/C3 of TYPED-WASM-ROADMAP
 |CONV-03 |#225/#160 convergence ABI matured to "shared with Ephapax" |S1
 |partial (PR3a/b/c merged)
 |CONV-04 |Widen emitted-wasm enforcement beyond L7+L10 toward L1–6/L13–16 |S2
@@ -285,7 +314,8 @@ structural-conservative recogniser) |S2 |open #234
 `Tw_verify.verify_module_isolation` (carrier-free, no ABI change).
 L1–6/L14–16 need a new carrier section = multi-producer ABI proposal
 (filed for typed-wasm; NOT unilateral). Rust-verifier mirror + C5.1 =
-cross-repo follow-ups
+cross-repo follow-ups.  Per-tranche detail in
+link:specs/TYPED-WASM-ROADMAP.adoc[TYPED-WASM-ROADMAP] (Tranches B/C/D)
 |CONV-05 |INT-12: AffineScript-emitted fixtures into typed-wasm
 `crates/typed-wasm-verify/tests/cross_compat.rs` (typed-wasm "C5.1") |S1
 |planned — coordinate Refs `hyperpolymath/typed-wasm`

@@ -39,6 +39,9 @@ docs/
 
 * link:specs/affinescript-spec.md[AffineScript Specification] - Complete language spec
 * link:specs/SPEC.adoc[Core Specification] - Core language features
+* link:specs/TYPED-WASM-INTERFACE.adoc[Typed-WASM Interface (v1)] - Formal AS↔typed-wasm contract (carrier, levels, CLI, tests, multi-producer model)
+* link:specs/TYPED-WASM-ROADMAP.adoc[Typed-WASM Widening Roadmap] - Tranches A–E for making typed-wasm a natural + optimal target
+* link:specs/SETTLED-DECISIONS.adoc[Settled Decisions] - ADR index
 
 === Governance (`governance/`)
 

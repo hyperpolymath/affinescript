@@ -141,8 +141,11 @@ variant rep; effects/try-catch/`call_ref` deferred (EH/CPS — #225 line).
 shape* over the WASM output: the `affinescript.ownership` custom section +
 `lib/tw_interface.ml` / `lib/tw_verify.ml` boundary verifier. Emitted-wasm
 enforcement covers *typed-wasm Level 7 (aliasing) + Level 10 (linearity)
-only*. See `ECOSYSTEM.adoc` for the actual contract. Producer-side; the
-target spec is the separate `hyperpolymath/typed-wasm` repo.
++ Level 13 (module isolation, negative form)*.
+Formal spec: link:specs/TYPED-WASM-INTERFACE.adoc[specs/TYPED-WASM-INTERFACE.adoc]
+(+ link:specs/TYPED-WASM-INTERFACE.a2ml[machine companion]).
+Widening roadmap (L1–6, L14–16, multi-producer ABI): link:specs/TYPED-WASM-ROADMAP.adoc[specs/TYPED-WASM-ROADMAP.adoc].
+Producer-side; target spec is the separate `hyperpolymath/typed-wasm` repo.
 
 |Deno-ESM |works |Direct AST→ES-module transpiler (`lib/codegen_deno.ml`),
 `--deno-esm` / `.deno.js`. Shipped + consumer-verified (ubicity).
