@@ -64,6 +64,8 @@ let seed_builtins (symbols : Symbol.t) : unit =
   def "char_to_int"; def "int_to_char"; def "show";
   def "to_lowercase"; def "to_uppercase"; def "trim";
   def "int_to_string"; def "float_to_string"; def "string_length";
+  (* STDLIB-04e (Refs #332): `string_to_int` typed-alias for `parse_int` *)
+  def "string_to_int";
   def "parse_int"; def "parse_float";
   (* Numeric coercions and math *)
   def "int"; def "float";
@@ -78,6 +80,8 @@ let seed_builtins (symbols : Symbol.t) : unit =
   def "getenv"; def "setenv"; def "getcwd"; def "chdir";
   def "list_dir"; def "create_dir"; def "remove_file"; def "remove_dir";
   def "panic"; def "exit";
+  (* STDLIB-04b (Refs #329): divergent throw with polymorphic return *)
+  def "error";
   (* Time *)
   def "time_now";
   (* TEA runtime — The Elm Architecture interpreter loop *)

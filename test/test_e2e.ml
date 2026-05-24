@@ -2763,9 +2763,27 @@ let test_gc_unsafe_loud_fail () =
     ~must_contain:"unsafe"
     ~label:"unsafe"
 
+(* BUG-005 deferred fixture (closed-bug record's
+   regression-test-status = "deferred — fixture needs a known-unknown
+   function name in a WasmGC compile path").  The GC backend's
+   ExprApp arm uses func_indices for direct calls; a name that the
+   parser accepts but no decl registers should hit the explicit
+   UnboundFunction error, not silently emit drop+null.
+
+   The hermetic path: parse a tiny program calling a name that is
+   neither a built-in (`int`/`float`) nor a variant tag.  Codegen_gc
+   visits the call before any resolve check has had a chance to
+   reject it, so the UnboundFunction error is exercised. *)
+let test_gc_unbound_function_loud_fail () =
+  gc_compile_and_expect_unsupported
+    {|fn main() -> Int { return totally_undefined_callee(42); }|}
+    ~must_contain:"totally_undefined_callee"
+    ~label:"unbound-function"
+
 let wasm_gc_loud_fail_tests = [
   Alcotest.test_case "lambda → UnsupportedFeature (no silent RefNull)" `Quick test_gc_lambda_loud_fail;
   Alcotest.test_case "unsafe block → UnsupportedFeature (no silent RefNull)" `Quick test_gc_unsafe_loud_fail;
+  Alcotest.test_case "unknown callee → UnboundFunction (BUG-005 deferred fixture)" `Quick test_gc_unbound_function_loud_fail;
 ]
 
 (* ---- WasmGC variant-with-args construction ----
@@ -3181,6 +3199,397 @@ let extern_tests = [
   Alcotest.test_case "extern fn → WASM import in 'env' namespace" `Quick test_extern_fn_codegen_emits_wasm_import;
 ]
 
+(* ---- STDLIB-04a: Mut effect externs (make_ref/get/set) ----
+
+   Hermetic round-trip on the interpreter: `make_ref(7)` allocates a
+   mutable cell, `set(r, 42)` mutates it, `get(r)` reads back the new
+   value. Proves the [Value.VMut] cell wiring (real implementation,
+   not a stub). Issue #328. *)
+
+let test_stdlib_04a_mut_round_trip () =
+  let src = {|
+effect Mut;
+extern fn make_ref<T>(x: T) -> Ref<T> / Mut;
+extern fn get<T>(r: Ref<T>) -> T / Mut;
+extern fn set<T>(r: Ref<T>, x: T) -> Unit / Mut;
+
+fn round_trip() -> Int / Mut {
+  let r = make_ref(7);
+  set(r, 42);
+  get(r)
+}
+
+const result: Int = round_trip();
+|} in
+  let prog = Parse_driver.parse_string ~file:"<test_stdlib_04a>" src in
+  match Interp.eval_program prog with
+  | Error e -> Alcotest.failf "interp failed: %s" (Value.show_eval_error e)
+  | Ok env ->
+    (match Value.lookup_env "result" env with
+     | Ok (Value.VInt 42) -> ()
+     | Ok v -> Alcotest.failf "expected VInt 42, got %s" (Value.show_value v)
+     | Error e -> Alcotest.failf "lookup failed: %s" (Value.show_eval_error e))
+
+(* `make_ref` on a non-Int value: round-trip a String to prove the cell
+   is value-polymorphic at runtime (matches the `<T>` signature). *)
+let test_stdlib_04a_mut_string_cell () =
+  let src = {|
+effect Mut;
+extern fn make_ref<T>(x: T) -> Ref<T> / Mut;
+extern fn get<T>(r: Ref<T>) -> T / Mut;
+extern fn set<T>(r: Ref<T>, x: T) -> Unit / Mut;
+
+fn round_trip() -> String / Mut {
+  let r = make_ref("alpha");
+  set(r, "omega");
+  get(r)
+}
+
+const result: String = round_trip();
+|} in
+  let prog = Parse_driver.parse_string ~file:"<test_stdlib_04a>" src in
+  match Interp.eval_program prog with
+  | Error e -> Alcotest.failf "interp failed: %s" (Value.show_eval_error e)
+  | Ok env ->
+    (match Value.lookup_env "result" env with
+     | Ok (Value.VString "omega") -> ()
+     | Ok v -> Alcotest.failf "expected VString \"omega\", got %s"
+                 (Value.show_value v)
+     | Error e -> Alcotest.failf "lookup failed: %s" (Value.show_eval_error e))
+
+(* Deno codegen lowers make_ref/get/set to the `{__cell: x}` host shape.
+   Proves the codegen_deno builtin table entries fire (was missing pre-
+   #328) — the emitted source must contain `__cell` references. *)
+let test_stdlib_04a_mut_deno_codegen () =
+  let src = {|
+effect Mut;
+extern fn make_ref<T>(x: T) -> Ref<T> / Mut;
+extern fn get<T>(r: Ref<T>) -> T / Mut;
+extern fn set<T>(r: Ref<T>, x: T) -> Unit / Mut;
+
+pub fn round_trip() -> Int {
+  let r = make_ref(0);
+  set(r, 99);
+  get(r)
+}
+|} in
+  let prog = Parse_driver.parse_string ~file:"<test_stdlib_04a>" src in
+  let loader = Module_loader.create (Module_loader.default_config ()) in
+  match Resolve.resolve_program_with_loader prog loader with
+  | Error (e, _) ->
+    Alcotest.failf "resolve failed: %s" (Resolve.show_resolve_error e)
+  | Ok (rctx, _) ->
+    (match Codegen_deno.codegen_deno prog rctx.symbols with
+     | Error e -> Alcotest.failf "deno-codegen failed: %s" e
+     | Ok js ->
+       let contains needle =
+         let nl = String.length needle and sl = String.length js in
+         let rec go i = i + nl <= sl &&
+           (String.sub js i nl = needle || go (i + 1))
+         in nl = 0 || go 0
+       in
+       Alcotest.(check bool) "emitted JS contains __cell shape"
+         true (contains "__cell"))
+
+let stdlib_04a_mut_tests = [
+  Alcotest.test_case "#328 make_ref/set/get round-trip (Int)" `Quick test_stdlib_04a_mut_round_trip;
+  Alcotest.test_case "#328 make_ref/set/get round-trip (String)" `Quick test_stdlib_04a_mut_string_cell;
+  Alcotest.test_case "#328 Deno codegen emits __cell shape" `Quick test_stdlib_04a_mut_deno_codegen;
+]
+
+(* ---- STDLIB-04d: IO externs hermetic test coverage (Refs #331) ----
+
+   `print`/`println`/`read_line`/`read_file`/`write_file` were already
+   wired in interp + Deno codegen, but had no dedicated hermetic tests
+   asserting the round-trip semantics (test-debt, not impl-debt). This
+   row adds them. `read_line` is interactive and skipped here — that
+   surface is exercised by the TEA-bridge tests with redirected stdin. *)
+
+(* write_file -> read_file round-trip on a real tmpfile *)
+let test_stdlib_04d_write_then_read_file () =
+  let tmp = Filename.temp_file "as_04d_io" ".txt" in
+  Fun.protect ~finally:(fun () -> if Sys.file_exists tmp then Sys.remove tmp)
+    (fun () ->
+       let src = Printf.sprintf {|
+fn writer() -> Result<Unit, String> { write_file("%s", "hello-04d\n") }
+fn reader() -> Result<String, String> { read_file("%s") }
+|} (String.escaped tmp) (String.escaped tmp) in
+       let prog = Parse_driver.parse_string ~file:"<test>" src in
+       match Interp.eval_program prog with
+       | Error e -> Alcotest.failf "interp load failed: %s"
+                      (Value.show_eval_error e)
+       | Ok env ->
+         let call name =
+           match Value.lookup_env name env with
+           | Error e -> Error e
+           | Ok fn -> Interp.apply_function fn []
+         in
+         (match call "writer" with
+          | Ok (Value.VVariant ("Ok", _)) -> ()
+          | Ok v -> Alcotest.failf "writer expected Ok(Unit), got %s"
+                      (Value.show_value v)
+          | Error e -> Alcotest.failf "writer failed: %s"
+                         (Value.show_eval_error e));
+         (match call "reader" with
+          | Ok (Value.VVariant ("Ok", Some (Value.VString s))) ->
+            Alcotest.(check string) "reader returns written content"
+              "hello-04d\n" s
+          | Ok v -> Alcotest.failf "reader expected Ok(String), got %s"
+                      (Value.show_value v)
+          | Error e -> Alcotest.failf "reader failed: %s"
+                         (Value.show_eval_error e)))
+
+(* read_file on a path that does not exist returns Err, not raises. *)
+let test_stdlib_04d_read_file_missing () =
+  let tmp = Filename.temp_file "as_04d_missing" ".txt" in
+  Sys.remove tmp;  (* removed -- guaranteed missing *)
+  let src = Printf.sprintf
+    "fn f() -> Result<String, String> { read_file(\"%s\") }"
+    (String.escaped tmp) in
+  let prog = Parse_driver.parse_string ~file:"<test>" src in
+  match Interp.eval_program prog with
+  | Error e -> Alcotest.failf "interp failed: %s" (Value.show_eval_error e)
+  | Ok env ->
+    (match Value.lookup_env "f" env with
+     | Ok fn ->
+       (match Interp.apply_function fn [] with
+        | Ok (Value.VVariant ("Err", _)) -> ()
+        | Ok v -> Alcotest.failf "expected Err(_), got %s" (Value.show_value v)
+        | Error e -> Alcotest.failf "apply failed: %s"
+                       (Value.show_eval_error e))
+     | Error e -> Alcotest.failf "lookup failed: %s"
+                    (Value.show_eval_error e))
+
+(* `print` and `println` exec without error. Stdout-content capture is
+   intentionally out of scope here (the TEA-bridge tests already
+   exercise the redirect path with full Unix.dup2 plumbing); we just
+   prove the lowering doesn't blow up at runtime. *)
+let test_stdlib_04d_print_no_error () =
+  let src = "fn f() -> Unit { print(\"\") }" in
+  let prog = Parse_driver.parse_string ~file:"<test>" src in
+  match Interp.eval_program prog with
+  | Error e -> Alcotest.failf "interp failed: %s" (Value.show_eval_error e)
+  | Ok env ->
+    (match Value.lookup_env "f" env with
+     | Ok fn ->
+       (match Interp.apply_function fn [] with
+        | Ok _ -> ()
+        | Error e -> Alcotest.failf "print failed: %s"
+                       (Value.show_eval_error e))
+     | Error e -> Alcotest.failf "lookup failed: %s"
+                    (Value.show_eval_error e))
+
+let test_stdlib_04d_println_no_error () =
+  let src = "fn f() -> Unit { println(\"\") }" in
+  let prog = Parse_driver.parse_string ~file:"<test>" src in
+  match Interp.eval_program prog with
+  | Error e -> Alcotest.failf "interp failed: %s" (Value.show_eval_error e)
+  | Ok env ->
+    (match Value.lookup_env "f" env with
+     | Ok fn ->
+       (match Interp.apply_function fn [] with
+        | Ok _ -> ()
+        | Error e -> Alcotest.failf "println failed: %s"
+                       (Value.show_eval_error e))
+     | Error e -> Alcotest.failf "lookup failed: %s"
+                    (Value.show_eval_error e))
+
+(* Deno codegen lowers IO externs to the right host shape. *)
+let test_stdlib_04d_io_deno_codegen () =
+  let src = {|
+fn run() -> Unit {
+  print("a");
+  println("b")
+}
+|} in
+  let prog = Parse_driver.parse_string ~file:"<test>" src in
+  let loader = Module_loader.create (Module_loader.default_config ()) in
+  match Resolve.resolve_program_with_loader prog loader with
+  | Error (e, _) ->
+    Alcotest.failf "resolve failed: %s" (Resolve.show_resolve_error e)
+  | Ok (rctx, _) ->
+    (match Codegen_deno.codegen_deno prog rctx.symbols with
+     | Error e -> Alcotest.failf "deno-codegen failed: %s" e
+     | Ok js ->
+       let contains needle =
+         let nl = String.length needle and sl = String.length js in
+         let rec go i = i + nl <= sl &&
+           (String.sub js i nl = needle || go (i + 1))
+         in nl = 0 || go 0
+       in
+       Alcotest.(check bool) "prelude defines print/println"
+         true (contains "const print" && contains "const println"))
+
+let stdlib_04d_io_tests = [
+  Alcotest.test_case "#331 write_file -> read_file round-trip" `Quick test_stdlib_04d_write_then_read_file;
+  Alcotest.test_case "#331 read_file on missing path returns Err" `Quick test_stdlib_04d_read_file_missing;
+  Alcotest.test_case "#331 print exec without error" `Quick test_stdlib_04d_print_no_error;
+  Alcotest.test_case "#331 println exec without error" `Quick test_stdlib_04d_println_no_error;
+  Alcotest.test_case "#331 Deno codegen wires print/println" `Quick test_stdlib_04d_io_deno_codegen;
+]
+
+(* ---- STDLIB-04e: Pure externs (Refs #332) ----
+
+   Three externs declared in stdlib/effects.affine as pure:
+     int_to_string : Int -> String
+     string_to_int : String -> Option<Int>
+     string_length : String -> Int
+
+   `int_to_string` + `string_length` were already wired; `string_to_int`
+   was unwired (dead surface — any caller would compile and fail at run).
+   This row wires `string_to_int` as the typed-alias of `parse_int` and
+   asserts hermetic round-trip semantics for all three. *)
+
+let test_stdlib_04e_int_to_string () =
+  let prog = Parse_driver.parse_string ~file:"<test>"
+    "fn f() -> String { int_to_string(42) }" in
+  match Interp.eval_program prog with
+  | Error e -> Alcotest.failf "interp failed: %s" (Value.show_eval_error e)
+  | Ok env ->
+    (match Value.lookup_env "f" env with
+     | Ok fn ->
+       (match Interp.apply_function fn [] with
+        | Ok (Value.VString "42") -> ()
+        | Ok v -> Alcotest.failf "expected VString \"42\", got %s"
+                    (Value.show_value v)
+        | Error e -> Alcotest.failf "apply failed: %s" (Value.show_eval_error e))
+     | Error e -> Alcotest.failf "lookup f failed: %s" (Value.show_eval_error e))
+
+let test_stdlib_04e_string_to_int_some () =
+  let prog = Parse_driver.parse_string ~file:"<test>"
+    "fn f() -> Option<Int> { string_to_int(\"123\") }" in
+  match Interp.eval_program prog with
+  | Error e -> Alcotest.failf "interp failed: %s" (Value.show_eval_error e)
+  | Ok env ->
+    (match Value.lookup_env "f" env with
+     | Ok fn ->
+       (match Interp.apply_function fn [] with
+        | Ok (Value.VVariant ("Some", Some (Value.VInt 123))) -> ()
+        | Ok v -> Alcotest.failf "expected Some(123), got %s"
+                    (Value.show_value v)
+        | Error e -> Alcotest.failf "apply failed: %s" (Value.show_eval_error e))
+     | Error e -> Alcotest.failf "lookup f failed: %s" (Value.show_eval_error e))
+
+let test_stdlib_04e_string_to_int_none () =
+  let prog = Parse_driver.parse_string ~file:"<test>"
+    "fn f() -> Option<Int> { string_to_int(\"abc\") }" in
+  match Interp.eval_program prog with
+  | Error e -> Alcotest.failf "interp failed: %s" (Value.show_eval_error e)
+  | Ok env ->
+    (match Value.lookup_env "f" env with
+     | Ok fn ->
+       (match Interp.apply_function fn [] with
+        | Ok (Value.VVariant ("None", None)) -> ()
+        | Ok v -> Alcotest.failf "expected None, got %s" (Value.show_value v)
+        | Error e -> Alcotest.failf "apply failed: %s" (Value.show_eval_error e))
+     | Error e -> Alcotest.failf "lookup f failed: %s" (Value.show_eval_error e))
+
+let test_stdlib_04e_string_length () =
+  let prog = Parse_driver.parse_string ~file:"<test>"
+    "fn f() -> Int { string_length(\"hello\") }" in
+  match Interp.eval_program prog with
+  | Error e -> Alcotest.failf "interp failed: %s" (Value.show_eval_error e)
+  | Ok env ->
+    (match Value.lookup_env "f" env with
+     | Ok fn ->
+       (match Interp.apply_function fn [] with
+        | Ok (Value.VInt 5) -> ()
+        | Ok v -> Alcotest.failf "expected VInt 5, got %s" (Value.show_value v)
+        | Error e -> Alcotest.failf "apply failed: %s" (Value.show_eval_error e))
+     | Error e -> Alcotest.failf "lookup f failed: %s" (Value.show_eval_error e))
+
+let stdlib_04e_pure_tests = [
+  Alcotest.test_case "#332 int_to_string(42) == \"42\"" `Quick test_stdlib_04e_int_to_string;
+  Alcotest.test_case "#332 string_to_int(\"123\") == Some(123)" `Quick test_stdlib_04e_string_to_int_some;
+  Alcotest.test_case "#332 string_to_int(\"abc\") == None" `Quick test_stdlib_04e_string_to_int_none;
+  Alcotest.test_case "#332 string_length(\"hello\") == 5" `Quick test_stdlib_04e_string_length;
+]
+
+(* ---- STDLIB-04b: Throws extern `error<T>` (Refs #329) ----
+
+   `error<T>(msg: String) -> T / Throws` was declared in
+   stdlib/effects.affine but missing in every backend. Same divergent
+   semantics as `panic` with a polymorphic return type that unifies
+   with the call-site expectation (unobservable because the call never
+   returns). *)
+
+let test_stdlib_04b_error_diverges_int_call_site () =
+  let src = {|
+fn must_be_positive(n: Int) -> Int {
+  if n > 0 { n } else { error("not positive") }
+}
+fn f() -> Int { must_be_positive(-1) }
+|} in
+  let prog = Parse_driver.parse_string ~file:"<test>" src in
+  match Interp.eval_program prog with
+  | Error e -> Alcotest.failf "program load failed: %s" (Value.show_eval_error e)
+  | Ok env ->
+    (match Value.lookup_env "f" env with
+     | Error _ -> Alcotest.fail "f not bound"
+     | Ok fn ->
+       (match Interp.apply_function fn [] with
+        | Ok _ -> Alcotest.fail "expected error to diverge; got Ok"
+        | Error (Value.RuntimeError msg) ->
+          Alcotest.(check string) "error message" "not positive" msg
+        | Error e ->
+          Alcotest.failf "expected RuntimeError, got: %s"
+            (Value.show_eval_error e)))
+
+(* Polymorphic: `error` in a String-returning context. Proves the
+   `<T>` polymorphism — same call site, different unification. *)
+let test_stdlib_04b_error_diverges_string_call_site () =
+  let src = {|
+fn lookup(k: String) -> String {
+  if string_length(k) > 0 { k } else { error("empty key") }
+}
+fn f() -> String { lookup("") }
+|} in
+  let prog = Parse_driver.parse_string ~file:"<test>" src in
+  match Interp.eval_program prog with
+  | Error e -> Alcotest.failf "program load failed: %s" (Value.show_eval_error e)
+  | Ok env ->
+    (match Value.lookup_env "f" env with
+     | Error _ -> Alcotest.fail "f not bound"
+     | Ok fn ->
+       (match Interp.apply_function fn [] with
+        | Ok _ -> Alcotest.fail "expected error to diverge; got Ok"
+        | Error (Value.RuntimeError msg) ->
+          Alcotest.(check string) "error message" "empty key" msg
+        | Error e ->
+          Alcotest.failf "expected RuntimeError, got: %s"
+            (Value.show_eval_error e)))
+
+let test_stdlib_04b_error_deno_codegen () =
+  let src = {|
+fn must(n: Int) -> Int {
+  if n > 0 { n } else { error("bad") }
+}
+|} in
+  let prog = Parse_driver.parse_string ~file:"<test>" src in
+  let loader = Module_loader.create (Module_loader.default_config ()) in
+  match Resolve.resolve_program_with_loader prog loader with
+  | Error (e, _) ->
+    Alcotest.failf "resolve failed: %s" (Resolve.show_resolve_error e)
+  | Ok (rctx, _) ->
+    (match Codegen_deno.codegen_deno prog rctx.symbols with
+     | Error e -> Alcotest.failf "deno-codegen failed: %s" e
+     | Ok js ->
+       let contains needle =
+         let nl = String.length needle and sl = String.length js in
+         let rec go i = i + nl <= sl &&
+           (String.sub js i nl = needle || go (i + 1))
+         in nl = 0 || go 0
+       in
+       Alcotest.(check bool) "emitted JS throws on error()"
+         true (contains "throw new Error(\"bad\")"))
+
+let stdlib_04b_error_tests = [
+  Alcotest.test_case "#329 error diverges at Int call site" `Quick test_stdlib_04b_error_diverges_int_call_site;
+  Alcotest.test_case "#329 error diverges at String call site" `Quick test_stdlib_04b_error_diverges_string_call_site;
+  Alcotest.test_case "#329 Deno codegen lowers to throw" `Quick test_stdlib_04b_error_deno_codegen;
+]
+
+
 (* ---- Issue #35 Phase 2 — Vscode bindings ----
 
    Verifies stdlib/Vscode.affine and stdlib/VscodeLanguageClient.affine
@@ -3402,11 +3811,27 @@ fn getx(p: P) -> Int { return p.x; }|} in
         | Ok _ -> true | Error _ -> false)
      | Error _ -> false)
 
+(* INT-01 follow-up: `Mod::fn(x)` in value-expression position.
+   Parser emits the same ExprField shape the `.` form produces, so
+   Resolve.lower_qualified_value_paths handles both syntaxes
+   identically. *)
+let test_qualval_coloncolon_call () =
+  Alcotest.(check bool)
+    "use CrossCallee; CrossCallee::consume(42) resolves+typechecks" true
+    (qualval_frontend_ok (fixture "cross_caller_qualified_colon.affine"))
+
+let test_qualval_coloncolon_alias_call () =
+  Alcotest.(check bool)
+    "use CrossCallee as CC; CC::consume(7) resolves+typechecks" true
+    (qualval_frontend_ok (fixture "cross_caller_qualified_colon_alias.affine"))
+
 let qualified_value_tests = [
-  Alcotest.test_case "use Mod; Mod.fn(x) resolves (#178)"       `Quick test_qualval_dot_call;
-  Alcotest.test_case "use Mod as M; M.fn(x) resolves (#178)"    `Quick test_qualval_alias_call;
-  Alcotest.test_case "use Mod::{fn}; fn(x) no regression"       `Quick test_qualval_item_import_regression;
-  Alcotest.test_case "genuine record access p.x unaffected"     `Quick test_qualval_record_access_unaffected;
+  Alcotest.test_case "use Mod; Mod.fn(x) resolves (#178)"             `Quick test_qualval_dot_call;
+  Alcotest.test_case "use Mod as M; M.fn(x) resolves (#178)"          `Quick test_qualval_alias_call;
+  Alcotest.test_case "use Mod::{fn}; fn(x) no regression"             `Quick test_qualval_item_import_regression;
+  Alcotest.test_case "genuine record access p.x unaffected"           `Quick test_qualval_record_access_unaffected;
+  Alcotest.test_case "use Mod; Mod::fn(x) resolves (#178 follow-up)"  `Quick test_qualval_coloncolon_call;
+  Alcotest.test_case "use Mod as M; M::fn(x) resolves (#178 follow-up)" `Quick test_qualval_coloncolon_alias_call;
 ]
 
 (* ---- Type-syntax sugars: fn(...) -> T, Option<T>, (A, B) -> C ---- *)
@@ -3777,6 +4202,36 @@ let test_borrow_mutref_shared_ok () =
     Alcotest.fail ("shared `&x` spuriously rejected after adding `&mut`: "
                    ^ Borrow.format_borrow_error e)
 
+(* CORE-01 pt3 Slice A / #177 — NLL last-use expiry. Pre-NLL, every
+   ref-binding lived until lexical block exit; under NLL the underlying
+   borrow is released after the binder's last use, so subsequent reads
+   or assignments through the (no-longer-borrowed) owner are legal.
+   The third test pins the anti-regression: a binder still mentioned
+   later in the block must NOT be expired early. *)
+let test_borrow_nll_assign_after_last_use () =
+  match borrow_result (fixture "borrow_nll_assign_after_last_use.affine") with
+  | Ok () -> ()
+  | Error e ->
+    Alcotest.fail ("NLL: assignment after shared borrow's last use \
+                    spuriously rejected: " ^ Borrow.format_borrow_error e)
+
+let test_borrow_nll_read_after_mut_last_use () =
+  match borrow_result (fixture "borrow_nll_read_after_mut_last_use.affine") with
+  | Ok () -> ()
+  | Error e ->
+    Alcotest.fail ("NLL: read after exclusive borrow's last use \
+                    spuriously rejected: " ^ Borrow.format_borrow_error e)
+
+let test_borrow_nll_still_rejects_live_borrow () =
+  match borrow_result (fixture "borrow_nll_still_rejects_live_borrow.affine") with
+  | Error (Borrow.MoveWhileBorrowed _) -> ()
+  | Error e ->
+    Alcotest.fail ("expected MoveWhileBorrowed (NLL must keep live \
+                    borrows alive), got: " ^ Borrow.format_borrow_error e)
+  | Ok () ->
+    Alcotest.fail "NLL over-expired a still-live borrow — assignment \
+                   to a borrowed owner was accepted"
+
 let borrow_tests = [
   Alcotest.test_case "BorrowOutlivesOwner: &local escapes its block"
     `Quick test_borrow_outlives_owner;
@@ -3796,6 +4251,12 @@ let borrow_tests = [
     `Quick test_borrow_return_escape_local;
   Alcotest.test_case "return ref-param sound — not over-rejected (#177 pt2)"
     `Quick test_borrow_return_refparam_ok;
+  Alcotest.test_case "NLL: assign after shared borrow's last use OK (#177 pt3 Slice A)"
+    `Quick test_borrow_nll_assign_after_last_use;
+  Alcotest.test_case "NLL: read after &mut's last use OK (#177 pt3 Slice A)"
+    `Quick test_borrow_nll_read_after_mut_last_use;
+  Alcotest.test_case "NLL anti-regression: still-live borrow blocks assign (#177 pt3 Slice A)"
+    `Quick test_borrow_nll_still_rejects_live_borrow;
 ]
 
 (* ============================================================================
@@ -3835,6 +4296,10 @@ let tests =
     ("E2E Stdlib",           stdlib_tests);
     ("E2E Xmod Other Codegens", cross_module_other_codegens_tests);
     ("E2E Externs",              extern_tests);
+    ("E2E STDLIB-04a Mut #328",  stdlib_04a_mut_tests);
+    ("E2E STDLIB-04d IO #331",   stdlib_04d_io_tests);
+    ("E2E STDLIB-04e Pure #332", stdlib_04e_pure_tests);
+    ("E2E STDLIB-04b error #329", stdlib_04b_error_tests);
     ("E2E Vscode Bindings",      vscode_bindings_tests);
     ("E2E Array Type Sugar",     array_type_tests);
     ("E2E Qualified Paths #228",  qualified_path_tests);

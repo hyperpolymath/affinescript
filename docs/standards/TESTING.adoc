@@ -1,0 +1,228 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+= AffineScript Testing Standards
+:toc: macro
+:toclevels: 3
+:icons: font
+
+[IMPORTANT]
+====
+This is the *authoritative* description of how AffineScript is tested:
+what test kinds exist, where they live, what each one is *for*, what
+the PR-level expectations are, and which gates block merge. Live
+test-pass numbers live in link:../CAPABILITY-MATRIX.adoc[CAPABILITY-MATRIX.adoc];
+this document defines the kinds and the gates, not the count.
+
+This replaces the historical `docs/guides/TESTING-REPORT.adoc` (2025-12-29),
+which was a one-off snapshot, drifted out of date within weeks, and was
+contradicted by the live CI gate by mid-2026.  Pointers to that file
+now redirect here.
+====
+
+toc::[]
+
+== Authoritative gate
+
+The single authoritative gate is:
+
+[source,bash]
+----
+opam exec --switch=. -- dune runtest --force
+----
+
+run from the repository root.  CI runs the same command in
+`.github/workflows/ci.yml`.  A PR is blocked from merge unless this
+command exits 0.  No test is "expected to fail"; if a test ever
+becomes flaky, fix it or delete it.
+
+The *current* test count is recorded in
+link:../CAPABILITY-MATRIX.adoc[CAPABILITY-MATRIX.adoc] (§"Gate
+baseline"), refreshed by every PR that adds or removes tests.  Do not
+hard-code the count into prose elsewhere — it will drift and mislead.
+
+== The taxonomy
+
+AffineScript has six kinds of automated test.  Each has a distinct
+purpose; choose the kind that matches the change.
+
+[cols="1,2,3,2"]
+|===
+|Kind |Where it lives |Purpose |When to add one
+
+|*Alcotest unit*
+|`test/test_<module>.ml` (e.g. `test_lexer.ml`,
+`test_effect_sites.ml`)
+|Exercises a single OCaml module in isolation.  Fast, hermetic, no
+filesystem or process spawning.
+|Any new function or non-trivial branch in a single compiler module
+whose behaviour you want to lock against regression.
+
+|*Alcotest E2E*
+|`test/test_e2e.ml` (the big one; alcotest test cases grouped into
+`Alcotest.test_case` lists per language feature)
+|Runs the *full* compile pipeline (lex → parse → resolve →
+typecheck → quantity → codegen) on a small source string or
+fixture, and asserts on the final result or error.
+|Any change that crosses module boundaries: a new language feature,
+a new diagnostic, a new codegen target, a soundness gap closure.
+
+|*Fixture (E2E + conformance)*
+|`test/e2e/fixtures/*.affine` (driven by `test_e2e.ml`) and
+`tests/conformance/<category>/*.affine` (driven by
+`just conformance`)
+|`.affine` source files that the test driver compiles.  Conformance
+tests are the *language-level* contract: any conforming compiler
+must accept these.
+|Any user-visible language behaviour you want pinned, especially
+behaviour that is easier to read as a source file than as a string
+literal in OCaml.
+
+|*Golden snapshot*
+|`test/golden/` (driven by `test_golden.ml`) and
+`tools/run_face_transformer_tests.sh` (face transformers)
+|`.affine` input → expected stdout/AST/face-transformed source.
+Pinned via on-disk snapshot file; mismatch fails the gate.
+|Any pretty-printer, formatter, face transformer, or AST-dump output
+whose textual shape is part of the contract.
+
+|*Smoke (cross-runtime)*
+|`tools/run_codegen_wasm_tests.sh`,
+`tools/run_codegen_deno_tests.sh`,
+`affinescript-deno-test/` (Deno test harness),
+`editors/vscode/test/` (VS Code extension host smoke harness via
+`@vscode/test-electron`)
+|Compiles a small `.affine` source through the actual compiler
+binary and runs the output in a real host (Node, Deno, VS Code
+extension host).  Catches integration regressions the OCaml gate
+cannot see.
+|Any change to: a codegen target's runtime shape, the CLI surface,
+the JSR shim, the LSP, or an editor binding.
+
+|*Microbenchmark*
+|`bench/bench_<phase>.ml` (alcotest cases in the `bench/dune`
+stanza), run via `just bench` or `dune runtest @bench`
+|Measures per-phase compile time on representative inputs.
+*Visibility-only* today: results are printed and may be archived as
+CI artifacts, but a slowdown does *not* block merge yet.  Promotion
+to gating threshold is tracked separately (a calibrated baseline is
+required first).
+|Any change that touches a hot path in lex / parse / resolve /
+typecheck / codegen, or any algorithmic change to a phase whose
+asymptotic class might shift.
+|===
+
+There is intentionally no separate "integration" tier: anything
+larger than a unit but smaller than a smoke test is an *E2E*.
+
+== PR-level expectations
+
+For every PR that lands a code change:
+
+1. *Build green* (`just build` or `just build-loud`).  Stage B's
+   benign parser-generator notices are masked by `just build` per
+   ADR-012 (`docs/specs/SETTLED-DECISIONS.adoc` "Parser-Conflict
+   Disclosure") — this is not a finding to fix, it is the settled
+   policy.
+2. *Full gate green* (`just test`).  No skipped or `pending` tests
+   without an explicit `Refs #N` justifying the skip.
+3. *At least one test per landed behaviour change.*  A pure refactor
+   is exempt; a regression-fix MUST include the fixture that
+   reproduces it (or a written justification — see "deferred
+   regression test" below).
+4. *CAPABILITY-MATRIX.adoc updated* if the change moves a component
+   between status tiers (`works` / `partial` / `parse-only` /
+   `absent`).
+5. *TECH-DEBT.adoc updated* if the change opens, closes, or moves a
+   ledger item.
+
+== Deferred regression tests
+
+Some bug-fixes ship without a fixture because the test is
+genuinely blocked on infrastructure (a missing host primitive, a
+broken adjacent path, an undecidable observability question).
+Recording this honestly is *required*; silently shipping without a
+test is not.
+
+To declare a deferred regression test, add a `regression-test-status
+= "deferred — <reason>"` field to the bug's `[[closed-bug]]` record
+in `.machine_readable/6a2/STATE.a2ml`.  Use one of these reasons:
+
+* `observability` — no side-effecting builtin or harness reaches
+  the bug's failure mode (e.g. BUG-003's eval order requires
+  mutation that the interp baseline lacks).
+* `adjacent-bug` — the test path itself is broken; reopen when
+  that bug closes.
+* `host-primitive` — the test would require a wasm primitive (e.g.
+  `I32Load8U`) the codegen has not yet emitted.
+
+A `deferred` entry MUST cite the unblock condition.  Periodic
+review surfaces ones whose unblock has landed and the fixture can
+finally be written.
+
+== Bench standards (visibility-only)
+
+`bench/` holds OCaml microbenchmarks measured in wall-clock or
+allocations.  The current set covers the major compile-pipeline
+phases on representative fixtures (lex, parse, typecheck+quantity,
+codegen-wasm).  Each bench is a small alcotest case under the
+`@bench` alias.  Run them with:
+
+[source,bash]
+----
+just bench                 # runs all bench targets
+just bench-record          # archives current run as JSON
+----
+
+Today the bench gate is *visibility-only*: results print but do not
+block.  Promotion to enforcement (e.g. ">15% slowdown on any
+microbench blocks merge") requires a calibrated baseline, which
+itself requires several months of stable history.  Until then,
+material regressions are caught by code review.
+
+== Coverage (visibility-only)
+
+`bisect_ppx` is wired into the compiler `dune` stanza behind the
+`--instrument-with bisect_ppx` instrumentation switch.  Generate a
+local coverage report with:
+
+[source,bash]
+----
+just coverage              # builds with instrumentation + emits HTML
+----
+
+Output: `_coverage/` (gitignored).  CI uploads the HTML as an
+artifact on every PR for visual inspection; no merge-blocking
+floor is enforced today.  The ROADMAP's "85% / 90% coverage" goal
+becomes meaningful only when paired with a per-module breakdown
+and a ratchet policy.
+
+== Panic-attack (security scan)
+
+`panic-attack` is the estate's compliance scanner.  Per estate
+practice (`road-skate/docs/governance/MAINTENANCE-CHECKLIST.adoc`
+Axis 3 — *audit: systems > compliance > effects*) it runs:
+
+* On a weekly schedule
+  (`.github/workflows/panic-attack.yml`).  Findings are surfaced
+  but do not block per-PR merges.
+* Before every release cut, manually, per
+  link:RELEASE.md[RELEASE.md].
+* Ad hoc per `just panic`.
+
+Findings disposition lives in
+link:PANIC-ATTACK.adoc[PANIC-ATTACK.adoc].  Each finding is
+*dispositioned* (fix / accept / suppress with justification);
+silent suppression is not permitted.
+
+== Cross-references
+
+* link:../CAPABILITY-MATRIX.adoc[CAPABILITY-MATRIX.adoc] — live
+  status per component (the authoritative readiness doc).
+* link:../TECH-DEBT.adoc[TECH-DEBT.adoc] — ledger of in-flight
+  ledger units; the critical path.
+* link:../ECOSYSTEM.adoc[ECOSYSTEM.adoc] — A–E spine, the
+  AffineScript ↔ typed-wasm contract, the satellite registry.
+* link:PANIC-ATTACK.adoc[PANIC-ATTACK.adoc] — security scan policy
+  and finding-disposition vocabulary.
+* link:RELEASE.md[RELEASE.md] — release-cut checklist (the
+  pre-release panic-attack invocation lives there).

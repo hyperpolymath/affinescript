@@ -1,0 +1,129 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 hyperpolymath
+#
+# PANIC-ATTACK.a2ml — machine-readable companion to PANIC-ATTACK.adoc.
+
+[metadata]
+title = "AffineScript Panic-Attack Policy"
+human-companion = "docs/standards/PANIC-ATTACK.adoc"
+tool = "panic-attacker"
+tool-source = "road-skate/features/panic-attacker"
+tool-config = "panic-attack.toml"
+status = "in-force"
+adopted = "2026-05-23"
+ledger-id = "DOC-11"
+estate-rule-source = "road-skate/docs/governance/MAINTENANCE-CHECKLIST.adoc"
+estate-rule-axis = "Axis 3 — audit: systems > compliance > effects"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Schedule
+# ──────────────────────────────────────────────────────────────────────────────
+
+[[schedule]]
+trigger = "cron"
+cron = "0 3 * * 0"
+timezone = "UTC"
+workflow = ".github/workflows/panic-attack.yml"
+blocks-merge = false
+
+[[schedule]]
+trigger = "pre-release"
+invoked-from = "docs/standards/RELEASE.md"
+command = "just panic"
+blocks-merge = true
+blocking-severities = ["critical", "high"]
+non-blocking-severities = ["medium", "low"]
+
+[[schedule]]
+trigger = "ad-hoc"
+command = "just panic"
+blocks-merge = false
+
+[[schedule]]
+trigger = "per-pr"
+status = "out-of-scope"
+rationale = "CodeQL + Semgrep + secret-scanner cover per-PR at finer granularity; adding panic-attack per-PR would increase latency without new signal"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Finding disposition vocabulary
+# ──────────────────────────────────────────────────────────────────────────────
+
+[[disposition]]
+key = "fix"
+meaning = "finding is a real defect; PR removes the pattern"
+recorded-in = "the PR itself (commit + ledger if applicable)"
+
+[[disposition]]
+key = "accept"
+meaning = "pattern is intentional and safe in context"
+recorded-in = "panic-attack.toml [false-positives] + inline source annotation"
+inline-annotation = "(* panic-attack: accept — <one-line rationale> *)"
+
+[[disposition]]
+key = "suppress"
+meaning = "acceptable now but not forever; must list unblock condition"
+recorded-in = "docs/standards/PANIC-ATTACK.adoc §Standing suppressions"
+record-format = "SUPPRESS-N entry with finding/severity/rationale/unblock/opened"
+
+[[disposition]]
+key = "defer"
+meaning = "pattern in vendored / generated / out-of-policy code"
+recorded-in = "panic-attack.toml `exclude`"
+
+[disposition-policy]
+silent-ignore = "forbidden"
+stale-finding-threshold-days = 30
+stale-finding-treatment = "surface as critical hygiene gap on next weekly run"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Standing suppressions
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Format for entries:
+# [[standing-suppression]]
+# id        = "SUPPRESS-001"
+# finding   = "<pattern name> at <path>:<line>"
+# severity  = "medium" | "low"
+# rationale = "<one paragraph>"
+# unblock   = "<ledger / issue number>"
+# opened    = "YYYY-MM-DD"
+
+# (none at present)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Rule set (mirrors panic-attack.toml)
+# ──────────────────────────────────────────────────────────────────────────────
+
+[[rule]]
+name = "no-obj-magic"
+pattern = "Obj\\.magic"
+severity = "critical"
+rationale = "type-system bypass"
+
+[[rule]]
+name = "no-unsafe-string"
+pattern = "Bytes\\.unsafe_from_string|String\\.unsafe_get"
+severity = "high"
+rationale = "bounds-check bypass"
+
+[[rule]]
+name = "no-todo-panic"
+pattern = "failwith.*TODO|assert false"
+severity = "medium"
+rationale = "unhandled failure escapes as runtime panic"
+
+[[rule]]
+name = "no-raw-ignore"
+pattern = "ignore \\("
+severity = "low"
+rationale = "discarded result may hide a Result-typed error"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Cross-references
+# ──────────────────────────────────────────────────────────────────────────────
+
+[cross-references]
+testing-standards = "docs/standards/TESTING.adoc"
+release-process = "docs/standards/RELEASE.md"
+estate-checklist = "road-skate/docs/governance/MAINTENANCE-CHECKLIST.adoc"
+tool-config = "panic-attack.toml"

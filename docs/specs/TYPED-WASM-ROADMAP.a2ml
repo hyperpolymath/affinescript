@@ -1,0 +1,302 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 hyperpolymath
+#
+# TYPED-WASM-ROADMAP.a2ml — machine-readable companion to
+# TYPED-WASM-ROADMAP.adoc. The roadmap for making typed-wasm a
+# *natural and optimal* compilation target from AffineScript.
+#
+# Not a commitment to any timeline. The ordered list of what would
+# have to be true for "end of Stage E" to become "done".
+
+[metadata]
+title = "Making typed-wasm a Natural and Optimal Compilation Target"
+human-companion = "docs/specs/TYPED-WASM-ROADMAP.adoc"
+interface-companion = "docs/specs/TYPED-WASM-INTERFACE.adoc"
+status = "draft"
+authored = "2026-05-23"
+
+[frame]
+goal-1 = "No friction — idiomatic AffineScript gets typed-wasm guarantees implicitly"
+goal-2 = "Widened proof surface — L1–6 / L14–16 enforced on emitted wasm"
+goal-3 = "Closed multi-producer loop — AffineScript-emitted modules pass typed-wasm C5.1"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Tranche A — Ergonomics (no ABI change, AffineScript-only)
+# ──────────────────────────────────────────────────────────────────────────────
+
+[[tranche]]
+id = "A"
+name = "Ergonomics"
+abi-change = "none"
+sister-repo-coordination = false
+
+[[work-item]]
+id = "A1"
+tranche = "A"
+title = "Compile-time gating (--typed-wasm flag)"
+status = "proposed"
+risk = "low"
+single-session = true
+description = "`affinescript compile --typed-wasm FILE -o OUT` runs Tw_verify.verify_from_module after codegen; default off"
+files-touched = ["bin/main.ml"]
+test = "one E2E case asserting exit-1 + error message on a known L10 violation"
+blocked-on = []
+
+[[work-item]]
+id = "A2"
+tranche = "A"
+title = "JSON interface descriptor (report-typed-wasm)"
+status = "proposed"
+risk = "low"
+single-session = true
+description = "stable JSON shape for per-export {name, func_index, param_kinds, ret_kind} + a level field"
+files-touched = ["bin/main.ml", "lib/json_output.ml"]
+schema-anchor = "docs/specs/TYPED-WASM-INTERFACE.a2ml (mirror)"
+blocked-on = []
+
+[[work-item]]
+id = "A3"
+tranche = "A"
+title = "Extract affinescript.ownership emission to lib/tw_ownership_section.ml"
+status = "proposed"
+risk = "low"
+single-session = true
+description = "pure refactor; ~150 LOC moved verbatim; re-exported via Codegen alias"
+files-touched = ["lib/codegen.ml", "lib/tw_ownership_section.ml (new)"]
+behaviour-change = false
+blocked-on = []
+
+[[work-item]]
+id = "A4"
+tranche = "A"
+title = "Diagnostic span parity for ownership-error"
+status = "proposed"
+risk = "medium"
+single-session = false
+description = "thread Span.t through ownership_error so violations format like type errors"
+files-touched = ["lib/tw_verify.ml", "lib/error_formatter.ml"]
+notes = "may need a side-table keyed by func_index because current verifier operates on raw wasm IR (no span info)"
+blocked-on = []
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Tranche B — Schema hygiene (ABI-touching, additive)
+# ──────────────────────────────────────────────────────────────────────────────
+
+[[tranche]]
+id = "B"
+name = "Schema hygiene"
+abi-change = "additive-single-byte"
+sister-repo-coordination = true
+
+[[work-item]]
+id = "B1"
+tranche = "B"
+title = "ADR-020: ownership-section schema versioning"
+status = "proposed"
+risk = "medium"
+single-session = false
+adr = "ADR-020 (proposed)"
+description = "add 0xAF sentinel + u8 version prefix; lets future widening be discriminable from v1"
+coordinated-with = ["hyperpolymath/typed-wasm", "hyperpolymath/ephapax"]
+landing-protocol = [
+  "land ADR in this repo",
+  "mirror ADR in typed-wasm + ephapax",
+  "verifier ships v2-parse first",
+  "producers flip to v2 emit together"
+]
+blocked-on = ["ADR-020 owner ratification"]
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Tranche C — Compiler-side foundations (for L1–6 / L14–16)
+# ──────────────────────────────────────────────────────────────────────────────
+
+[[tranche]]
+id = "C"
+name = "Compiler-side foundations"
+abi-change = "none-yet"
+sister-repo-coordination = false
+
+[[work-item]]
+id = "C1"
+tranche = "C"
+title = "Region inference (NLL/Polonius) — CORE-01 Phase 3 residual"
+status = "surface-unblocked-analysis-deferred"
+risk = "high"
+single-session = false
+ledger-id = "CORE-01"
+description = "L1 region-schema enforcement requires the compiler to produce regions; surface (`&mut e`) landed; the dataflow itself is days-to-weeks"
+blocks = ["L1", "L2", "indirectly L14"]
+
+[[work-item]]
+id = "C2"
+tranche = "C"
+title = "Session-type and capability tracking"
+status = "not-started"
+risk = "high"
+single-session = false
+description = "L14/L15 require compiler to know which functions consume/produce session endpoints + capability handles; no prior art in repo"
+blocks = ["L14", "L15"]
+
+[[work-item]]
+id = "C3"
+tranche = "C"
+title = "Effect-threaded async-boundary recogniser — CONV-02 / ADR-016"
+status = "S1-done-S2-S4-remaining"
+risk = "medium"
+single-session = false
+ledger-id = "CONV-02"
+adr = "ADR-016"
+description = "generalises today's structural-conservative recogniser; precondition for L14 session-protocol enforcement on emitted wasm"
+blocks = ["L14"]
+
+[[work-item]]
+id = "C4"
+tranche = "C"
+title = "Capability-typed extern annotations"
+status = "not-started"
+risk = "medium"
+single-session = false
+description = "surface capabilities (fs / net / clock / random) so the verifier can check capability-bounded modules"
+files-touched = ["stdlib/effects.affine", "stdlib/io.affine", "stdlib/Network.affine", "stdlib/Crypto.affine"]
+composes-with = "STDLIB-04"
+blocks = ["L15"]
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Tranche D — Multi-producer ABI for widening
+# ──────────────────────────────────────────────────────────────────────────────
+
+[[tranche]]
+id = "D"
+name = "Multi-producer ABI for widening"
+abi-change = "new-carriers"
+sister-repo-coordination = true
+
+[[work-item]]
+id = "D1"
+tranche = "D"
+title = "ADR-021: multi-producer coordination model"
+status = "proposed"
+risk = "low"
+single-session = true
+adr = "ADR-021 (proposed)"
+description = "formalises spec authority + coordinated landing protocol + deprecation policy + test parity protocol"
+recommendation = "land before any L1–6 carrier proposal — cheap now, expensive without later"
+blocked-on = []
+
+[[work-item]]
+id = "D2"
+tranche = "D"
+title = "Region / type-schema carrier — affinescript.regions"
+status = "not-designed"
+risk = "high"
+single-session = false
+description = "the actual L1–L6 carrier proposal; per-function vs per-module schema TBD"
+blocked-on = ["C1"]
+
+[[work-item]]
+id = "D3"
+tranche = "D"
+title = "Capability / session / agent carriers"
+status = "not-designed"
+risk = "high"
+single-session = false
+description = "L14/L15/L16 carriers (affinescript.capabilities, affinescript.session, affinescript.choreography); umbrella ADR + per-level sub-ADRs likely"
+blocked-on = ["C2", "C4"]
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Tranche E — Cross-compat closure
+# ──────────────────────────────────────────────────────────────────────────────
+
+[[tranche]]
+id = "E"
+name = "Cross-compat closure"
+abi-change = "none"
+sister-repo-coordination = true
+
+[[work-item]]
+id = "E1"
+tranche = "E"
+title = "INT-12 / CONV-05: AffineScript fixtures into typed-wasm C5.1"
+status = "planned"
+risk = "low"
+single-session = true
+ledger-id = "INT-12 / CONV-05"
+description = "1 PR here (tools/emit-cross-compat-fixtures.sh) + 1 PR in typed-wasm (commit binaries + extend cross-compat runner)"
+recommendation = "land before Tranche D so the cross-compat loop is closed at v1 before we use it to widen"
+blocked-on = []
+
+[[work-item]]
+id = "E2"
+tranche = "E"
+title = "Rust-verifier parity"
+status = "in-flight-out-of-scope"
+risk = "n/a"
+single-session = false
+description = "when crates/typed-wasm-verify reaches parity with lib/tw_verify.ml, spec of record flips from OCaml to Rust"
+out-of-scope-here = true
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Recommended sequencing
+# ──────────────────────────────────────────────────────────────────────────────
+
+[[sequence]]
+order = 1
+item = "A1"
+rationale = "single flag, single-session, high user-value, no risk"
+
+[[sequence]]
+order = 2
+item = "A3"
+rationale = "refactor with no behaviour change; makes B1 cheaper"
+
+[[sequence]]
+order = 3
+item = "A2"
+rationale = "enables tooling integration with typed-wasm Rust verifier"
+
+[[sequence]]
+order = 4
+item = "E1"
+rationale = "close cross-compat loop at v1 before using it to widen"
+
+[[sequence]]
+order = 5
+item = "B1"
+rationale = "coordinated but mechanically small; lands while C-tranche foundations are still being built"
+
+[[sequence]]
+order = 6
+item = "A4"
+rationale = "diagnostic parity; nice-to-have alongside the above"
+
+[[sequence]]
+order = 7
+item = "D1"
+rationale = "paperwork before the heavy ABI work"
+
+[[sequence]]
+order = 8
+item = "C1..C4"
+rationale = "compiler-side foundations; real multi-month work"
+
+[[sequence]]
+order = 9
+item = "D2..D3"
+rationale = "L1–6 / L14–16 carriers; meaningful only once C-tranche exists"
+
+[[sequence]]
+order = 10
+item = "E2"
+rationale = "Rust-verifier parity is a hyperpolymath/typed-wasm concern"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Cross-references
+# ──────────────────────────────────────────────────────────────────────────────
+
+[cross-references]
+current-spec = "docs/specs/TYPED-WASM-INTERFACE.adoc"
+ledger = "docs/TECH-DEBT.adoc"
+ecosystem = "docs/ECOSYSTEM.adoc"
+settled-decisions = "docs/specs/SETTLED-DECISIONS.adoc"
+adr-store = ".machine_readable/6a2/META.a2ml"
+proposed-adrs = ["ADR-020 (schema versioning)", "ADR-021 (multi-producer coordination model)"]

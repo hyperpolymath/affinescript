@@ -1,0 +1,400 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+= Making typed-wasm a Natural and Optimal Compilation Target
+:toc: macro
+:toclevels: 3
+:icons: font
+
+[IMPORTANT]
+====
+This is the *AffineScript-side roadmap* for typed-wasm.  The
+companion link:TYPED-WASM-INTERFACE.adoc[TYPED-WASM-INTERFACE.adoc]
+specifies the *current* interface (v1).  This document specifies
+what would have to land in this repo (and what would have to be
+coordinated with `hyperpolymath/typed-wasm` and
+`hyperpolymath/ephapax`) for typed-wasm to become a *first-class,
+optimal, natural* compilation target rather than the *narrow,
+correct-but-partial* one it is today.
+
+It is *not* a commitment to do all this work in any particular
+timeframe.  It is the ordered list of what would have to be true
+for the answer to "how close to the end of Stage E" to become
+"done".
+
+Machine-readable companion:
+link:TYPED-WASM-ROADMAP.a2ml[TYPED-WASM-ROADMAP.a2ml].
+====
+
+toc::[]
+
+== Frame
+
+Today (2026-05-23) the AffineScript ↔ typed-wasm contract is *narrow
+but solid*: L7 (aliasing) + L10 (linearity) + L13 (module isolation,
+negative form) are enforced on every AffineScript-emitted module,
+with a producer-side verifier (`lib/tw_verify.ml`) and a cross-
+module boundary verifier (`lib/tw_interface.ml`).  ephapax emits the
+same format.  The `hyperpolymath/typed-wasm` Rust crate consumes it.
+
+"Natural and optimal" means three things, in priority order:
+
+. *No friction* — a compiler user who writes idiomatic AffineScript
+  gets typed-wasm guarantees implicitly, without learning a
+  separate vocabulary.
+. *Widened proof surface* — the spec-level guarantees (L1–L6,
+  L14–L16) become real on emitted wasm, not just on the Idris2
+  proofs.
+. *Closed multi-producer loop* — AffineScript-emitted modules pass
+  the typed-wasm cross-compat suite (C5.1) alongside ephapax-
+  emitted modules.
+
+Each subsequent section is one tranche of work toward these three
+goals, ordered by *what unblocks what*.
+
+== Tranche A — Ergonomics (no ABI change, AffineScript-only)
+
+Closes "no friction" without touching any sister repo.
+
+=== A1.  Compile-time gating (`--typed-wasm` flag)
+
+*Status: proposed.*
+
+Today `affinescript verify FILE` is opt-in.  The compile pipeline
+emits the `affinescript.ownership` section but does not run the
+verifier.  A user who wants the typed-wasm guarantee has to invoke
+two commands.
+
+*Proposal:* add `affinescript compile --typed-wasm FILE -o OUT` as
+a flag.  Runs `Tw_verify.verify_from_module` on the emitted module
+after codegen; on violation, fails the compile (exit 1) and emits
+the violation report in the same shape as `verify`.  No new
+verifier code; just the wiring.
+
+*Risk:* low.  Single new flag.  Default off (no behavioural
+change for existing callers).  Affects only `bin/main.ml`.
+
+*Test:* one E2E case in `test/test_e2e.ml` — compile a fixture
+with a known L10 violation under `--typed-wasm` and assert exit-1
++ correct error message.
+
+=== A2.  JSON interface descriptor (`affinescript report-typed-wasm`)
+
+*Status: proposed.*
+
+`affinescript interface` today pretty-prints to human-readable
+text.  Tooling integration (especially the typed-wasm Rust verifier
+in CI) would benefit from a stable JSON shape: per-export
+`{name, func_index, param_kinds, ret_kind}` array, plus a `level`
+field naming which levels the module proves.
+
+*Proposal:* `affinescript report-typed-wasm FILE` emits one JSON
+document on stdout.  Schema documented inline in the help text and
+mirrored in `docs/specs/TYPED-WASM-INTERFACE.a2ml`.
+
+*Risk:* low.  Reuses `lib/tw_interface.ml` extraction; new
+serialiser in `lib/json_output.ml`.
+
+*Test:* one E2E case asserting JSON shape on a known-good fixture.
+
+=== A3.  Extract `affinescript.ownership` emission to a dedicated module
+
+*Status: proposed (housekeeping).*
+
+Today the v1 emission lives inline in `lib/codegen.ml` (lines
+~110–177).  As we contemplate ADR-020 (schema versioning) and ADR-021
+(multi-producer coordination), keeping the format in a single
+namespace pays off.
+
+*Proposal:* extract to `lib/tw_ownership_section.ml` (~150 LOC
+moved verbatim).  No behaviour change.  Re-exported back into
+`Codegen` via `let build_ownership_section = Tw_ownership_section.build`.
+
+*Risk:* low; pure refactor.
+
+*Test:* the existing `test_ownership_section_present` /
+`test_ownership_roundtrip` / `test_ownership_entry_count` cases
+must continue to pass byte-for-byte.
+
+=== A4.  Diagnostic verbosity parity
+
+*Status: proposed.*
+
+`Tw_verify` violations carry less context (file:line:col) than
+typecheck or borrow diagnostics.  This is a *user-experience* gap
+that makes typed-wasm verification feel like "another tool"
+rather than "part of the compiler".
+
+*Proposal:* thread `Span.t` into `ownership_error` constructors;
+format via the existing `error_formatter.ml` path so violations
+print with the same vocabulary as type errors.
+
+*Risk:* medium.  Requires plumbing spans through the verifier's
+internal `count_uses_range` paths, which currently operate on raw
+wasm IR (no span info).  May need a side-table keyed by
+`func_index`.
+
+== Tranche B — Schema hygiene (ABI-touching, single-byte additive)
+
+Closes the only piece of "no friction" that needs sister-repo
+coordination.
+
+=== B1.  ADR-020: ownership-section schema versioning
+
+*Status: proposed; cross-repo coordination required.*
+
+The v1 layout has no version field.  Today this is fine because
+both producers (AffineScript + ephapax) are at v1 and the verifier
+expects v1 unconditionally.  *The first multi-producer ABI change*
+(when L1–6 / L14–16 emission lands) will need version
+discrimination; adding the version field *now*, while we are still
+at v1, is much cheaper than retrofitting it under load.
+
+*Proposed wire format (v2):*
+
+[source]
+----
+section_payload :=
+  u8   version           ; 0x02 for v2; v1 readers will reject as malformed
+  u32  entry_count       ; same as v1
+  entry*                 ; same as v1 — for v2.0, no new entry fields
+
+# v2 readers fall back to v1 behaviour if first byte ∈ {0x00..0x01}
+# (matches v1 entry-count low byte for small modules) — but no
+# producer should emit ambiguous bytes; v1 producers identify by
+# section absence of a leading 0x02 sentinel, which v2 producers
+# always emit.
+----
+
+Actually the cleaner protocol is *not* to overload v1 byte
+ambiguity.  Recommended *v2 (clean)*:
+
+[source]
+----
+section_payload :=
+  u8   version_tag       ; 0xAF (sentinel: "AffineScript Format")
+  u8   version           ; 0x02
+  u32  entry_count
+  entry*
+----
+
+The `0xAF` sentinel is byte-distinct from any plausible v1
+entry-count low byte for a module with ≤ 0xAE entries — i.e.
+practically every module.  v1 readers fail cleanly (bad
+entry-count); v2 readers see the sentinel and dispatch.
+
+*Coordination required:*
+
+. Land ADR-020 in `hyperpolymath/affinescript` (this repo).
+. Mirror ADR in `hyperpolymath/typed-wasm` (Rust verifier
+  dispatches on the sentinel).
+. Mirror ADR in `hyperpolymath/ephapax` (second producer emits v2).
+. Coordinated landing window: producers stay on v1 emit until the
+  verifier ships v2-parse; then both producers flip to v2.
+
+*Risk:* medium.  Single-byte change is mechanically simple; the
+*coordination* is the work.
+
+== Tranche C — Compiler-side foundations for L1–L6 / L14–L16
+
+Closes the "widened proof surface" goal.  Some of this is genuinely
+multi-session compiler work; all of it precedes the multi-producer
+ABI conversation in Tranche D.
+
+=== C1.  Region inference (NLL/Polonius) — CORE-01 Phase 3 residual
+
+*Status: surface unblocked (`&mut e` parser landed); analysis itself
+deferred.*
+
+Without region inference, AffineScript cannot *say* which region a
+reference belongs to.  L1 (region schema) is enforcement of
+inter-region discipline at module boundary — meaningless without
+producer-side regions.
+
+*Blocker for:* L1, L2 (type discipline keyed on regions),
+indirectly L14 (session-typed channels are region-scoped).
+
+*Effort:* days-to-weeks, algorithmic.  Multi-PR.  Has its own
+ledger unit (CORE-01).
+
+=== C2.  Session-type and capability tracking
+
+*Status: not started.*
+
+L14 (session protocols) and L15 (resource capabilities) require
+the compiler to know which functions consume / produce session
+endpoints + capability handles.  Today no AffineScript syntax
+exists for either — they would compose with the existing affine
+discipline (a session endpoint is naturally Linear) but the type
+system needs explicit support.
+
+*Blocker for:* L14, L15.
+
+*Effort:* multi-month research-grade.  No prior art in the repo.
+
+=== C3.  Effect-threaded async-boundary recogniser — CONV-02 / ADR-016
+
+*Status: ADR-016 accepted; S1 done.  S2..S4 remaining.*
+
+The async-boundary recogniser generalises the structural-conservative
+recogniser used today for the typed-wasm CPS line.  When complete,
+it lets the verifier reason about async/await control flow on
+emitted wasm — a precondition for L14 session protocol enforcement.
+
+*Effort:* staged S1..S4; one PR per stage.  Tracked separately.
+
+=== C4.  Capability-typed `extern` annotations
+
+*Status: not started.*
+
+Today `extern fn` declarations carry types but no *capability* —
+which host primitives the call requires.  For L15 enforcement, the
+compiler must surface capabilities (file-system, network, clock,
+random) so the verifier can check capability-bounded modules
+against a manifest.
+
+*Effort:* additive ADR-shaped change.  Touches `stdlib/effects.affine`,
+`stdlib/io.affine`, `stdlib/Network.affine`, `stdlib/Crypto.affine`.
+Composes with STDLIB-04.
+
+== Tranche D — Multi-producer ABI for widening (L1–6 / L14–16 carrier)
+
+The Big One.  Cannot be undertaken until Tranche C foundations land
+on the compiler side, and not unilaterally regardless.
+
+=== D1.  ADR-021: multi-producer coordination model
+
+*Status: proposed.*
+
+Before landing any new carrier, the multi-producer model itself
+needs a formal ADR.  Today coordination happens by Refs across
+repos and good intent; a formal model would specify:
+
+* the *spec authority* (today: OCaml verifier in this repo;
+  proposed: shared `hyperpolymath/typed-wasm` once C5.1 lands).
+* the *coordinated landing protocol* (who lands first; how
+  version skew is handled mid-rollout).
+* the *deprecation policy* (we have not yet deprecated anything,
+  but we will need to).
+* the *test parity protocol* (each producer's emitted modules
+  must pass the verifier's cross-compat suite — INT-12).
+
+This ADR is *cheap to land*, *expensive to do without* once
+multiple widening proposals land in parallel.  Recommend landing
+*before* the first L1–6 carrier proposal.
+
+=== D2.  Region/type-schema carrier — `affinescript.regions` section
+
+*Status: not designed.*
+
+The actual L1–L6 carrier proposal.  Open questions: per-function
+or per-module schema?  Region IDs flat or nested?  Schema
+embedded or referenced via a separate carrier?  No answers in
+this repo yet.
+
+*Blocker on:* C1 (region inference) — cannot design the schema
+before the compiler can produce it.
+
+=== D3.  Capability / session / agent carrier — `affinescript.capabilities`, `affinescript.session`, `affinescript.choreography`
+
+*Status: not designed.*
+
+The L14/L15/L16 carriers.  Each is its own ADR, its own coordinated
+landing window.  Likely combined under one umbrella ADR + per-level
+sub-ADRs.
+
+*Blocker on:* C2, C4.
+
+== Tranche E — Cross-compat closure
+
+Closes the "closed multi-producer loop" goal.
+
+=== E1.  INT-12 / CONV-05: AffineScript fixtures into typed-wasm C5.1
+
+*Status: planned (Stage E item; ledger CONV-05).*
+
+`hyperpolymath/typed-wasm` ships a Rust cross-compat suite at
+`crates/typed-wasm-verify/tests/cross_compat.rs`.  Today it carries
+only ephapax-emitted fixtures.  INT-12 adds AffineScript-emitted
+fixtures: known-good (verify clean), known-bad (verify rejects with
+the right error class).
+
+*Effort:* ~1 PR in this repo (a `tools/emit-cross-compat-fixtures.sh`
+script that compiles a fixture set and dumps the binaries) + 1 PR
+in `hyperpolymath/typed-wasm` (committing the binaries + extending
+the cross-compat runner).
+
+*Blocker on:* nothing in this repo.  Could be done today against
+the v1 contract.
+
+*Recommendation:* land *before* Tranche D so the cross-compat loop
+is closed at v1, giving us confidence the multi-producer protocol
+itself works before we use it for ABI widening.
+
+=== E2.  Rust-verifier parity
+
+*Status: ongoing in typed-wasm repo (out of scope here).*
+
+When the Rust verifier in `crates/typed-wasm-verify` reaches parity
+with the OCaml reference (`lib/tw_verify.ml`), the *spec of record*
+flips from "the OCaml" to "the Rust crate" (per
+TYPED-WASM-INTERFACE.adoc §"Multi-producer responsibilities").
+This is in-flight on the typed-wasm side; AffineScript-side work is
+limited to maintaining the producer.
+
+== Ordering (the unblock graph)
+
+----
+                              ┌─ A1 (--typed-wasm flag)
+   Tranche A (ergonomics) ────┤
+                              ├─ A2 (JSON report)
+                              ├─ A3 (extract module)
+                              └─ A4 (diagnostic spans)
+                              │
+                              ▼
+   Tranche B  ── B1 (ADR-020 schema versioning) ─┐
+                                                  │
+   Tranche E1 (INT-12 cross-compat) ─────────────┤
+                                                  │
+   Tranche C  ── C1 (region inference)            ▼
+              ── C2 (session/capability)      ┌─ Tranche D (D1..D3)
+              ── C3 (async recogniser S2..S4) │   = L1–6 / L14–16
+              ── C4 (capability externs)   ───┘    enforcement
+                                                  │
+                                                  ▼
+                                              Stage E complete
+----
+
+== Recommended sequencing
+
+Pragmatic order, smallest-blast-radius first:
+
+. *A1* — single flag, single-session, high user-value.
+. *A3* — refactor, no behaviour change, makes B1 cheaper.
+. *A2* — enables tooling integration with the typed-wasm Rust
+  verifier.
+. *E1 (INT-12)* — closes the cross-compat loop at v1 *before* we
+  use it to widen; gives us confidence the multi-producer protocol
+  works.
+. *B1 (ADR-020 schema versioning)* — coordinated, but mechanically
+  small; lands while compiler-side foundations are still being
+  built.
+. *A4* — diagnostic parity; nice-to-have alongside the above.
+. *D1 (ADR-021 multi-producer model)* — paperwork before the heavy
+  ABI work.
+. *C1..C4* — compiler-side foundations.  These are the real
+  multi-month work.
+. *D2/D3* — the L1–6 / L14–16 carriers.  Only meaningful once
+  C-tranche foundations exist.
+. *E2* — Rust-verifier parity (cross-repo).
+
+== Cross-references
+
+* link:TYPED-WASM-INTERFACE.adoc[TYPED-WASM-INTERFACE.adoc] —
+  current contract (v1).
+* link:../TECH-DEBT.adoc[../TECH-DEBT.adoc] — CONV-01..05 ledger
+  units; INT-12 entry.
+* link:../ECOSYSTEM.adoc[../ECOSYSTEM.adoc] — A–E spine.
+* `.machine_readable/6a2/META.a2ml` — ADR-020 / ADR-021 (proposed,
+  pending owner ratification).
+* link:TYPED-WASM-ROADMAP.a2ml[TYPED-WASM-ROADMAP.a2ml] —
+  machine-readable companion.

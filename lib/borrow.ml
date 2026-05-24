@@ -562,6 +562,113 @@ let check_return_escape (state : state) (symbols : Symbol.t)
        Error (BorrowOutlivesOwner (b, owner))
      | _ -> Ok ())
 
+(** NLL last-use pre-pass (CORE-01 pt3 / #177 Slice A).
+
+    Returns a map [sym_id -> max statement index at which the symbol is
+    mentioned anywhere inside [blk] (including nested blocks, lambda
+    bodies, handler arms, etc.)]. Statement indices are 0-based; the
+    block's tail expression, if any, is treated as the [n]-th "statement"
+    (where [n = List.length blk.blk_stmts]).
+
+    Used by [check_block] to expire ref-bindings introduced in this block
+    once their binder is dead, instead of holding them until lexical block
+    exit. The expiry releases the underlying borrow, so subsequent
+    statements may legally read or assign through the (no-longer-borrowed)
+    owner — the canonical Rust-style "non-lexical lifetime" win.
+
+    A symbol that never appears is simply absent from the table; callers
+    treat that as [-1] (last-use precedes the first statement → expire
+    immediately after the declaration). *)
+let compute_last_use_index (symbols : Symbol.t) (blk : block)
+    : (Symbol.symbol_id, int) Hashtbl.t =
+  let tbl : (Symbol.symbol_id, int) Hashtbl.t = Hashtbl.create 8 in
+  let bump (sym : Symbol.symbol_id) (idx : int) : unit =
+    match Hashtbl.find_opt tbl sym with
+    | Some cur when cur >= idx -> ()
+    | _ -> Hashtbl.replace tbl sym idx
+  in
+  let mark_var (idx : int) (id : ident) : unit =
+    match lookup_symbol_by_name symbols id.name with
+    | Some s -> bump s.Symbol.sym_id idx
+    | None -> ()
+  in
+  let rec visit_expr (idx : int) (e : expr) : unit =
+    match e with
+    | ExprVar id -> mark_var idx id
+    | ExprLit _ | ExprVariant _ -> ()
+    | ExprSpan (e, _) -> visit_expr idx e
+    | ExprApp (f, args) ->
+      visit_expr idx f; List.iter (visit_expr idx) args
+    | ExprField (b, _) | ExprTupleIndex (b, _) -> visit_expr idx b
+    | ExprIndex (b, i) -> visit_expr idx b; visit_expr idx i
+    | ExprTuple es | ExprArray es -> List.iter (visit_expr idx) es
+    | ExprRecord r ->
+      List.iter (fun (_, eo) -> match eo with Some e -> visit_expr idx e | None -> ()) r.er_fields;
+      (match r.er_spread with Some e -> visit_expr idx e | None -> ())
+    | ExprRowRestrict (e, _) -> visit_expr idx e
+    | ExprBinary (l, _, r) -> visit_expr idx l; visit_expr idx r
+    | ExprUnary (_, e) -> visit_expr idx e
+    | ExprLet lb ->
+      visit_expr idx lb.el_value;
+      (match lb.el_body with Some b -> visit_expr idx b | None -> ())
+    | ExprIf ei ->
+      visit_expr idx ei.ei_cond; visit_expr idx ei.ei_then;
+      (match ei.ei_else with Some e -> visit_expr idx e | None -> ())
+    | ExprMatch em ->
+      visit_expr idx em.em_scrutinee;
+      List.iter (fun arm ->
+        (match arm.ma_guard with Some g -> visit_expr idx g | None -> ());
+        visit_expr idx arm.ma_body
+      ) em.em_arms
+    | ExprBlock blk -> visit_block idx blk
+    | ExprLambda lam -> visit_expr idx lam.elam_body
+    | ExprReturn (Some e) -> visit_expr idx e
+    | ExprReturn None -> ()
+    | ExprHandle eh ->
+      visit_expr idx eh.eh_body;
+      List.iter (fun arm ->
+        match arm with
+        | HandlerReturn (_, b) -> visit_expr idx b
+        | HandlerOp (_, _, b) -> visit_expr idx b
+      ) eh.eh_handlers
+    | ExprResume (Some e) -> visit_expr idx e
+    | ExprResume None -> ()
+    | ExprTry et ->
+      visit_block idx et.et_body;
+      (match et.et_catch with
+       | Some arms ->
+         List.iter (fun arm ->
+           (match arm.ma_guard with Some g -> visit_expr idx g | None -> ());
+           visit_expr idx arm.ma_body) arms
+       | None -> ());
+      (match et.et_finally with Some b -> visit_block idx b | None -> ())
+    | ExprUnsafe ops ->
+      List.iter (fun op ->
+        match op with
+        | UnsafeRead e -> visit_expr idx e
+        | UnsafeWrite (a, b) -> visit_expr idx a; visit_expr idx b
+        | UnsafeOffset (a, b) -> visit_expr idx a; visit_expr idx b
+        | UnsafeTransmute (_, _, e) -> visit_expr idx e
+        | UnsafeForget e -> visit_expr idx e
+      ) ops
+  and visit_stmt (idx : int) (s : stmt) : unit =
+    match s with
+    | StmtLet sl -> visit_expr idx sl.sl_value
+    | StmtExpr e -> visit_expr idx e
+    | StmtAssign (lhs, _, rhs) -> visit_expr idx lhs; visit_expr idx rhs
+    | StmtWhile (c, b) -> visit_expr idx c; visit_block idx b
+    | StmtFor (_, it, b) -> visit_expr idx it; visit_block idx b
+  and visit_block (idx : int) (b : block) : unit =
+    List.iter (visit_stmt idx) b.blk_stmts;
+    match b.blk_expr with Some e -> visit_expr idx e | None -> ()
+  in
+  List.iteri (fun i s -> visit_stmt i s) blk.blk_stmts;
+  let tail_idx = List.length blk.blk_stmts in
+  (match blk.blk_expr with
+   | Some e -> visit_expr tail_idx e
+   | None -> ());
+  tbl
+
 (** Check borrows in an expression *)
 let rec check_expr (ctx : context) (state : state) (symbols : Symbol.t) (expr : expr) : unit result =
   match expr with
@@ -1000,10 +1107,41 @@ and check_block (ctx : context) (state : state) (symbols : Symbol.t) (blk : bloc
      ref-bindings introduced here do not leak past block exit. CORE-01. *)
   let block_locals_at_entry = state.block_local_syms in
   let ref_bindings_at_entry = state.ref_bindings in
-  let* () = List.fold_left (fun acc stmt ->
-    let* () = acc in
-    check_stmt ctx state symbols stmt
-  ) (Ok ()) blk.blk_stmts in
+  (* NLL last-use pre-pass (CORE-01 pt3 / #177 Slice A): compute the last
+     statement index at which each symbol is mentioned. After each
+     statement we expire any ref-binding introduced in *this* block whose
+     binder's last use has already passed, releasing the underlying
+     borrow. This is the non-lexical-lifetimes win — patterns like
+     [let r = &x; print( *r); x = 2] now type-check, while the
+     anti-aliasing rules remain sound because the borrow is still live
+     across statements that *do* use the binder. *)
+  let last_use = compute_last_use_index symbols blk in
+  let last_use_of (sym : Symbol.symbol_id) : int =
+    match Hashtbl.find_opt last_use sym with
+    | Some i -> i
+    | None -> -1
+  in
+  let is_outer_binding (sym : Symbol.symbol_id) : bool =
+    List.exists (fun (sym', _) -> sym' = sym) ref_bindings_at_entry
+  in
+  let expire_dead_ref_bindings (stmt_idx : int) : unit =
+    let dying, still_live =
+      List.partition (fun (sym, _b) ->
+        (not (is_outer_binding sym)) && last_use_of sym <= stmt_idx
+      ) state.ref_bindings
+    in
+    List.iter (fun (_sym, b) -> end_borrow state b) dying;
+    state.ref_bindings <- still_live
+  in
+  let* () =
+    let indexed = List.mapi (fun i s -> (i, s)) blk.blk_stmts in
+    List.fold_left (fun acc (i, stmt) ->
+      let* () = acc in
+      let* () = check_stmt ctx state symbols stmt in
+      expire_dead_ref_bindings i;
+      Ok ()
+    ) (Ok ()) indexed
+  in
   let* () = match blk.blk_expr with
     | Some e -> check_expr ctx state symbols e
     | None   -> Ok ()
@@ -1190,10 +1328,24 @@ let check_program (symbols : Symbol.t) (program : program) : unit result =
    bare block-statements already parsed; the `-> &T`/`&T` *type* sigil was
    deliberately not added (`ref T`/`mut T` keyword types already exist).
 
-   Still deferred — now the *analysis*, no longer parser-gated:
-   - Non-lexical lifetimes with region inference (Polonius-style).
+   CORE-01 pt3 Slice A (NLL last-use): ref-bindings introduced in a
+   block now expire at the binder's *last use*, not at block exit. A
+   forward pre-pass (compute_last_use_index) maps each symbol to the
+   greatest statement index that mentions it (the tail expression
+   counts as the n-th statement); after each statement, check_block
+   releases the underlying borrow of any in-block ref-binding whose
+   binder is now dead. Unblocks the canonical NLL patterns
+   ([let r = &x; print( *r); x = 2] and [let m = &mut x; let y = *m; x]),
+   while still rejecting real conflicts (the anti-aliasing rules fire
+   against statements that *do* use the binder, before expiry).
+   Outer-block ref-bindings are deliberately preserved — they expire
+   only at their own block's exit.
+
+   Still deferred — region-/flow-sensitive remainder:
    - Flow-sensitive escape via assignment to an outer mutable
-     (`outer = &x`) — now *expressible* (`&mut`, assignment, blocks all
-     parse); the remaining work is the dataflow analysis itself.
+     (`outer = &x`): the assignment must update the borrow graph the
+     way [let r = &x] already does.
+   - Origin/region variables (Polonius surface) + loan-live-at-point
+     dataflow across CFG joins (Slice C).
    - Tighter integration with the quantity checker for captured linears.
 *)

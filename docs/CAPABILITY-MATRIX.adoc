@@ -84,7 +84,8 @@ enforced. Handlers: *interpreter-complete*; WasmGC dispatch is
 `UnsupportedFeature` pending the EH proposal or the CPS transform (the #225
 CPS line is closing the async slice of this).
 
-|Borrow checker |*partial — graph validation landed (CORE-01 pt 1)* |
+|Borrow checker |*partial — graph validation + NLL last-use landed
+(CORE-01 pts 1–3 Slice A)* |
 Place/borrow/move infra + use-after-move, conflicting-borrow,
 move-while-borrowed, lambda-capture. *CORE-01 part 1* (PR #240, Refs #177,
 gate 263/263): borrow-graph validation wired — `BorrowOutlivesOwner` now
@@ -92,8 +93,17 @@ emitted (`&local` escaping its block); shared-XOR-exclusive enforced at
 *use* sites (`UseWhileExclusivelyBorrowed`); ownership now derived from the
 parameter *type* (`TyOwn/TyRef/TyMut`) so the owned/ref/mut discipline is
 actually enforced from real parsed source (closed a latent hole); call-arg
-borrows made temporary. *Deferred (CORE-01 pt 2+):* NLL/region inference,
-flow-sensitive escape via `outer = &x`, tighter quantity integration.
+borrows made temporary. *Part 2* (Refs #177): return-escape +
+`&mut e` parser surface (the exclusive borrow is finally expressible from
+source). *Part 3 Slice A* (Refs #177): non-lexical lifetimes —
+ref-bindings expire at their binder's *last use*, not at block exit
+(`compute_last_use_index` pre-pass + per-statement expiry in
+`check_block`). Patterns like `let r = &x; print(*r); x = 2` and
+`let m = &mut x; let y = *m; x` now type-check, while still-live borrows
+continue to block aliasing assignments. *Deferred (Slices B–D):*
+flow-sensitive escape via `outer = &x`; origin/region variables
+(Polonius surface) + loan-live-at-point dataflow across CFG joins;
+tighter quantity integration for captured linears.
 
 |Quantity / affine types |*enforced* |QTT semiring in `lib/quantity.ml`,
 invoked inside the standard CLI pipeline. `@linear`/`@erased`/`@unrestricted`
@@ -141,8 +151,11 @@ variant rep; effects/try-catch/`call_ref` deferred (EH/CPS — #225 line).
 shape* over the WASM output: the `affinescript.ownership` custom section +
 `lib/tw_interface.ml` / `lib/tw_verify.ml` boundary verifier. Emitted-wasm
 enforcement covers *typed-wasm Level 7 (aliasing) + Level 10 (linearity)
-only*. See `ECOSYSTEM.adoc` for the actual contract. Producer-side; the
-target spec is the separate `hyperpolymath/typed-wasm` repo.
++ Level 13 (module isolation, negative form)*.
+Formal spec: link:specs/TYPED-WASM-INTERFACE.adoc[specs/TYPED-WASM-INTERFACE.adoc]
+(+ link:specs/TYPED-WASM-INTERFACE.a2ml[machine companion]).
+Widening roadmap (L1–6, L14–16, multi-producer ABI): link:specs/TYPED-WASM-ROADMAP.adoc[specs/TYPED-WASM-ROADMAP.adoc].
+Producer-side; target spec is the separate `hyperpolymath/typed-wasm` repo.
 
 |Deno-ESM |works |Direct AST→ES-module transpiler (`lib/codegen_deno.ml`),
 `--deno-esm` / `.deno.js`. Shipped + consumer-verified (ubicity).
