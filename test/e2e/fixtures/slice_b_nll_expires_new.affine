@@ -1,0 +1,24 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell
+//
+// CORE-01 pt3 Slice B / #177: after `r = &y`, the NLL last-use
+// machinery must track the NEW borrow (on `y`), not the stale old
+// one (on `x`). Without Slice B, the ref-binding entry stays
+// `(r, &x)`, so when NLL expires `r` after its last use it ends the
+// wrong borrow — leaving the new borrow on `y` alive and
+// spuriously rejecting the later `y = 10`. With Slice B, the entry
+// is `(r, &y)` post-reassignment, NLL expires the correct borrow,
+// and both `x = 5` and `y = 10` succeed. Expected: Ok.
+
+module SliceBNllExpiresNew;
+
+fn nll_after_reassign() -> Int {
+  let mut x = 1;
+  let mut y = 2;
+  let mut r = &x;
+  r = &y;
+  let z = *r;
+  x = 5;
+  y = 10;
+  x + y + z
+}
