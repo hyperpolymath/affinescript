@@ -1233,8 +1233,41 @@ and check_stmt (ctx : context) (state : state) (symbols : Symbol.t) (stmt : stmt
           (* Can't assign while borrowed *)
           Error (MoveWhileBorrowed (place, borrow))
         | None ->
-          (* Assignment is ok, check the RHS *)
-          check_expr ctx state symbols rhs
+          (* Slice B (CORE-01 pt3 / #177): flow-sensitive escape via
+             `outer = &y`.  If LHS is a ref-binder symbol that already
+             holds a borrow and RHS is a fresh `&y`/`&mut y` reference,
+             the assignment *replaces* the held borrow.  We pre-release
+             the old held borrow before checking the RHS so the same-
+             target reborrow case (`r = &mut x` while `r` already holds
+             `&mut x`) does not trip [ConflictingBorrow] on the
+             about-to-be-replaced exclusive borrow; we then re-bind the
+             ref-graph entry to the freshly-created borrow.  Mirrors
+             [record_ref_binding]'s let-graph contract for the
+             assignment path so the NLL last-use + return-escape
+             analyses see the *current* referent after re-assignment,
+             not the stale original. *)
+          let pre_release =
+            match root_var place, ref_target symbols rhs with
+            | Some binder_sym, Some _
+              when List.mem_assoc binder_sym state.ref_bindings ->
+              let old_borrow = List.assoc binder_sym state.ref_bindings in
+              end_borrow state old_borrow;
+              state.ref_bindings <-
+                List.filter (fun (s, _) -> s <> binder_sym) state.ref_bindings;
+              Some binder_sym
+            | _ -> None
+          in
+          let* () = check_expr ctx state symbols rhs in
+          (match pre_release, ref_target symbols rhs with
+           | Some binder_sym, Some new_target ->
+             (match List.find_opt (fun b ->
+                      places_overlap b.b_place new_target) state.borrows with
+              | Some new_b ->
+                state.ref_bindings <-
+                  (binder_sym, new_b) :: state.ref_bindings
+              | None -> ())
+           | _ -> ());
+          Ok ()
         end
     | None ->
       (* LHS is not a place (e.g., function call result), check both sides *)
@@ -1341,11 +1374,26 @@ let check_program (symbols : Symbol.t) (program : program) : unit result =
    Outer-block ref-bindings are deliberately preserved — they expire
    only at their own block's exit.
 
-   Still deferred — region-/flow-sensitive remainder:
-   - Flow-sensitive escape via assignment to an outer mutable
-     (`outer = &x`): the assignment must update the borrow graph the
-     way [let r = &x] already does.
+   CORE-01 pt3 Slice B (flow-sensitive escape via re-assignment):
+   `outer = &y` now updates the borrow graph the way `let outer = &y`
+   does. In StmtAssign, when LHS is a ref-binder symbol with a held
+   borrow and RHS is a direct `&p`/`&mut p`, the old borrow is
+   pre-released (so a same-target reborrow like `r = &mut x` while
+   `r` already holds `&mut x` does not trip ConflictingBorrow on the
+   about-to-be-replaced exclusive borrow), then after the RHS check
+   the (binder -> new_borrow) ref-graph entry is re-bound to the
+   freshly-created borrow. NLL last-use + return-escape now see the
+   *current* referent after re-assignment, not the stale original.
+
+   Still deferred:
+   - Reborrow through indirection: `r = some_other_ref_var` (RHS not a
+     direct `&place`) does not yet copy the other binder's graph
+     entry — the ref-binding stays stale.  Same limitation as
+     [record_ref_binding] for the let-graph path; would require
+     symmetric let/assign handling for ref-to-ref binding.
    - Origin/region variables (Polonius surface) + loan-live-at-point
-     dataflow across CFG joins (Slice C).
-   - Tighter integration with the quantity checker for captured linears.
+     dataflow across CFG joins for `ExprHandle`/`ExprTry`/loops
+     (Slice C).
+   - Tighter integration with the quantity checker for captured
+     linears (Slice D).
 *)

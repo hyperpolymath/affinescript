@@ -4232,6 +4232,39 @@ let test_borrow_nll_still_rejects_live_borrow () =
     Alcotest.fail "NLL over-expired a still-live borrow — assignment \
                    to a borrowed owner was accepted"
 
+(* CORE-01 pt3 Slice B / #177 — flow-sensitive escape via `outer = &y`.
+   The assignment `r = &y` (where `r` is an existing ref-binder) now
+   releases the old held borrow and re-binds `r` in the ref-graph to
+   the freshly-created borrow. Three tests pin: (1) the old target is
+   freed by the reassignment; (2) NLL last-use then correctly expires
+   the NEW borrow; (3) anti-regression — the new borrow still
+   protects its new target while the binder is live. *)
+let test_slice_b_outer_assign_releases_old () =
+  match borrow_result (fixture "slice_b_outer_assign_releases_old.affine") with
+  | Ok () -> ()
+  | Error e ->
+    Alcotest.fail ("Slice B: `r = &y` did not release the old borrow on \
+                    `x` — `x = …` after the reassignment was spuriously \
+                    rejected: " ^ Borrow.format_borrow_error e)
+
+let test_slice_b_nll_expires_new () =
+  match borrow_result (fixture "slice_b_nll_expires_new.affine") with
+  | Ok () -> ()
+  | Error e ->
+    Alcotest.fail ("Slice B: NLL last-use after `r = &y` did not expire \
+                    the new borrow on `y`: " ^ Borrow.format_borrow_error e)
+
+let test_slice_b_new_borrow_still_protects () =
+  match borrow_result (fixture "slice_b_new_borrow_still_protects.affine") with
+  | Error (Borrow.MoveWhileBorrowed _) -> ()
+  | Error e ->
+    Alcotest.fail ("Slice B anti-regression: expected MoveWhileBorrowed \
+                    on `y = …` (the new borrow must still protect `y`), \
+                    got: " ^ Borrow.format_borrow_error e)
+  | Ok () ->
+    Alcotest.fail "Slice B regressed: the new borrow on `y` was not \
+                   tracked, so the write to `y` was silently accepted"
+
 let borrow_tests = [
   Alcotest.test_case "BorrowOutlivesOwner: &local escapes its block"
     `Quick test_borrow_outlives_owner;
@@ -4257,6 +4290,12 @@ let borrow_tests = [
     `Quick test_borrow_nll_read_after_mut_last_use;
   Alcotest.test_case "NLL anti-regression: still-live borrow blocks assign (#177 pt3 Slice A)"
     `Quick test_borrow_nll_still_rejects_live_borrow;
+  Alcotest.test_case "Slice B: `r = &y` releases old borrow on `x` (#177 pt3 Slice B)"
+    `Quick test_slice_b_outer_assign_releases_old;
+  Alcotest.test_case "Slice B: NLL expires the NEW borrow after `r = &y` (#177 pt3 Slice B)"
+    `Quick test_slice_b_nll_expires_new;
+  Alcotest.test_case "Slice B anti-regression: new borrow still protects `y` (#177 pt3 Slice B)"
+    `Quick test_slice_b_new_borrow_still_protects;
 ]
 
 (* ============================================================================

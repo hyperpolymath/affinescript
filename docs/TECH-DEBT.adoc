@@ -154,16 +154,25 @@ index that mentions it; after each statement, `check_block` expires any
 ref-binding introduced in that block whose binder is now dead, releasing
 the underlying borrow. Unblocks the canonical NLL patterns
 (`let r = &x; print(*r); x = 2`; `let m = &mut x; let y = *m; x`) while
-preserving soundness — the anti-aliasing rules still fire against
-statements that *do* use the binder (3 hermetic tests in "E2E Borrow
-Graph", two positive + one anti-regression). *Slices B–D residual:*
-flow-sensitive escape via assignment to an outer mutable
-(`outer = &x`); origin/region variables (Polonius surface) + loan-live-
-at-point dataflow across CFG joins; tighter quantity integration for
-captured linears. |S1 |pt1 #240 + pt2 return-escape + `&mut` surface +
-pt3 Slice A NLL last-use DONE (Refs #177); residual = Slices B–D
-(flow-sensitive escape, origin variables, quantity integration) —
-issue #177
+preserving soundness. *Part 3 Slice B LANDED* (Refs #177): flow-sensitive
+escape via re-assignment — `outer = &y` in `StmtAssign` now
+pre-releases the held borrow and re-binds the
+`(binder -> new_borrow)` ref-graph entry to the freshly-created borrow,
+so the NLL last-use + return-escape analyses see the *current* referent
+after re-assignment, not the stale original. Pre-release order chosen so
+the same-target reborrow (`r = &mut x` while `r` already holds
+`&mut x`) does not trip `ConflictingBorrow` on the about-to-be-replaced
+exclusive borrow. 3 hermetic tests in "E2E Borrow Graph" (old released,
+new tracked by NLL, anti-regression that new borrow still protects its
+new target). *Slices C–D residual:* origin/region variables (Polonius
+surface) + loan-live-at-point dataflow across CFG joins for
+`ExprHandle`/`ExprTry`/loops; tighter quantity integration for captured
+linears; reborrow through indirection (`r = some_other_ref_var` RHS does
+not yet copy the other binder's graph entry — symmetric let/assign
+limitation, parks with the let-graph's same restriction). |S1 |pt1 #240
++ pt2 return-escape + `&mut` surface + pt3 Slices A+B DONE (Refs #177);
+residual = Slices C–D (origin variables, quantity integration,
+ref-to-ref binding) — issue #177
 |CORE-02 |Effect-handler dispatch on WasmGC (was `UnsupportedFeature`;
 the chosen path is CPS over the EH proposal). The #225 CPS line closed
 the async slice; #234 generalised the boundary recogniser from a

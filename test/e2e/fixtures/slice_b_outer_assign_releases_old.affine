@@ -1,0 +1,22 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell
+//
+// CORE-01 pt3 Slice B / #177: flow-sensitive escape via `outer = &y`.
+// Pre-Slice-B, the borrow held by `r` on `x` was never released when
+// `r` was re-assigned to `&y` — so `x = 10` was rejected as
+// MoveWhileBorrowed even though `r` no longer pointed at `x`. With
+// Slice B, the assignment `r = &y` ends the held borrow on `x` and
+// re-binds `r` in the ref-graph to the freshly-created borrow on `y`,
+// so the subsequent write to `x` is legal. Expected: Ok.
+
+module SliceBOuterAssignReleasesOld;
+
+fn outer_reassign() -> Int {
+  let mut x = 1;
+  let mut y = 2;
+  let mut r = &x;
+  let z = *r;
+  r = &y;
+  x = 10;
+  *r + x + z
+}
