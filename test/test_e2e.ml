@@ -1214,10 +1214,58 @@ let test_ownership_entry_count () =
       Alcotest.(check bool) "at least 4 entries (one per function)" true
         (List.length entries >= 4)
 
+(* ADR-020 (accepted + ratified 2026-05-24): hermetic round-trip on a
+   hand-constructed v2 payload — 0xAF sentinel + u8 version 0x02 +
+   the same entry shape as v1.  Verifier-parse-support is the FIRST
+   leg of the coordinated landing per ADR-021 axis 2; this test
+   pins the v2 parse contract against the gate.  Future v2.X versions
+   that this v2.0 reader does not understand MUST yield an empty
+   annotation list (sound fallback). *)
+let test_ownership_v2_parse_roundtrip () =
+  let buf = Buffer.create 32 in
+  let add_u8 n = Buffer.add_char buf (Char.chr (n land 0xff)) in
+  let add_u32_le n =
+    add_u8 (n land 0xff);
+    add_u8 ((n lsr  8) land 0xff);
+    add_u8 ((n lsr 16) land 0xff);
+    add_u8 ((n lsr 24) land 0xff)
+  in
+  (* v2 header *)
+  add_u8 0xAF;
+  add_u8 0x02;
+  (* one entry: func 7, params [Linear; SharedBorrow], ret Unrestricted *)
+  add_u32_le 1;
+  add_u32_le 7;
+  add_u8 2;
+  add_u8 1;       (* Linear *)
+  add_u8 2;       (* SharedBorrow *)
+  add_u8 0;       (* Unrestricted ret *)
+  let payload = Buffer.to_bytes buf in
+  let entries = Tw_verify.parse_ownership_section_payload payload in
+  match entries with
+  | [(7, [Codegen.Linear; Codegen.SharedBorrow], Codegen.Unrestricted)] -> ()
+  | other ->
+    Alcotest.failf
+      "v2 parse mismatch: got %d entries (expected exactly the one canonical entry)"
+      (List.length other)
+
+let test_ownership_v2_unknown_version_empty () =
+  (* A v2.99 section (unknown future version) must yield [] — sound
+     fallback per ADR-021 conservative-disposition. *)
+  let buf = Buffer.create 4 in
+  Buffer.add_char buf (Char.chr 0xAF);
+  Buffer.add_char buf (Char.chr 0x99);
+  Buffer.add_char buf (Char.chr 0x00);
+  Buffer.add_char buf (Char.chr 0x00);
+  let entries = Tw_verify.parse_ownership_section_payload (Buffer.to_bytes buf) in
+  Alcotest.(check int) "unknown v2.X yields []" 0 (List.length entries)
+
 let ownership_schema_tests = [
-  Alcotest.test_case "section present"   `Quick test_ownership_section_present;
-  Alcotest.test_case "round-trip kinds"  `Quick test_ownership_roundtrip;
-  Alcotest.test_case "entry count"       `Quick test_ownership_entry_count;
+  Alcotest.test_case "section present"           `Quick test_ownership_section_present;
+  Alcotest.test_case "round-trip kinds"          `Quick test_ownership_roundtrip;
+  Alcotest.test_case "entry count"               `Quick test_ownership_entry_count;
+  Alcotest.test_case "v2 parse round-trip (ADR-020)"      `Quick test_ownership_v2_parse_roundtrip;
+  Alcotest.test_case "v2 unknown version -> [] (ADR-021)" `Quick test_ownership_v2_unknown_version_empty;
 ]
 
 (* ============================================================================
