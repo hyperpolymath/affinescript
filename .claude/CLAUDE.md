@@ -15,7 +15,7 @@ The following files in `.machine_readable/` contain structured project metadata:
 
 ## Language Policy (Hyperpolymath Standard)
 
-> **Policy refresh 2026-05-25**: AffineScript is now the primary application language across the estate (this is its home repo). ReScript / TypeScript / meaningfully-migrated JavaScript are banned going forward — write new code in AffineScript. Existing ReScript stays in place as legacy until the `.res → .affine` migration assistant (#57) walks the corpus. MPL-1.0 / MPL-1.0-or-later are banned; rewrite to MPL-2.0 wherever encountered (code + docs).
+> **Policy refresh 2026-05-25**: AffineScript is now the primary application language across the estate (this is its home repo). ReScript / TypeScript / meaningfully-migrated JavaScript are banned going forward — write new code in AffineScript. Existing ReScript stays in place as legacy until the `.res → .affine` migration assistant (#57) walks the corpus. MPL-1.0 / MPL-1.0-or-later are banned; rewrite to MPL-2.0 wherever encountered (code + docs). **Jekyll is banned**; the canonical estate SSG is `hyperpolymath/casket-ssg` (Haskell). This repo already migrated via `.github/workflows/casket-pages.yml`.
 
 ### ALLOWED Languages & Tools
 
@@ -61,6 +61,7 @@ The following files in `.machine_readable/` contain structured project metadata:
 | Flutter/Dart | Tauri / Dioxus |
 | **MPL-1.0** | **MPL-2.0** (rewrite SPDX headers + LICENSE files wherever encountered, code AND docs) |
 | **MPL-1.0-or-later** | **MPL-2.0** (same) |
+| **Jekyll** (`jekyll.yml`, `jekyll-gh-pages.yml`, `_config.yml`, `Gemfile`) | **`hyperpolymath/casket-ssg`** (Haskell SSG, owner's own tool). This repo already migrated — see `.github/workflows/casket-pages.yml` for the canonical pattern. Hypatia flags Jekyll filenames as `jekyll_workflow_detected` / `jekyll_gh_pages_workflow_detected` / `jekyll_config_detected` / `gemfile_detected`. |
 
 ### Mobile Development
 
