@@ -623,6 +623,20 @@ let create_initial_env () : env =
       | [VFloat f] -> Ok (VString (string_of_float f))
       | _ -> Error (TypeMismatch "float_to_string expects Float")
     ));
+    (* STDLIB-04e (Refs #332): `string_length : String -> Int / Pure` is
+       declared in stdlib/effects.affine, resolved by lib/resolve.ml, and
+       typed by lib/typecheck.ml — but the runtime VBuiltin entry was
+       missing here. Programs that call `string_length` would compile
+       cleanly and fail at run with `Unbound variable: string_length`
+       (broke E2E STDLIB-04e #332 + STDLIB-04b #329 — the latter uses
+       `string_length(k) > 0` as a guard, so the missing binding masked
+       the divergence-vs-RuntimeError assertion as an Unbound variable
+       error instead). Wire it as the canonical String.length surface. *)
+    ("string_length", VBuiltin ("string_length", fun args ->
+      match args with
+      | [VString s] -> Ok (VInt (String.length s))
+      | _ -> Error (TypeMismatch "string_length expects String")
+    ));
     (* STDLIB-04e (Refs #332): `string_to_int` is the typed-alias surface
        declared in stdlib/effects.affine. Same semantics as `parse_int`
        (the canonical name) — the alias was unwired before this PR, so
