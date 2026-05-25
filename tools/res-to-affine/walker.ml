@@ -347,11 +347,8 @@ let starts_with prefix s =
 
 let ends_with suffix s =
   let sn = String.length suffix in
-  let n  = String.length s in
+  let n = String.length s in
   n >= sn && String.sub s (n - sn) sn = suffix
-
-let mk_finding ~kind ~line ~excerpt : Scanner.finding =
-  { kind; line; excerpt }
 
 (* ---- side-effect-import (Phase 2b, preserved) ---- *)
 
@@ -363,11 +360,13 @@ let check_let_binding_side_effect ~source acc lb =
       let excerpt =
         truncate (String.trim (slice ~source ~start:lb.start ~stop:lb.stop))
       in
-      mk_finding
-        ~kind:Scanner.Side_effect_import
-        ~line:(lb.start.row + 1)
-        ~excerpt
-      :: acc
+      let finding : Scanner.finding =
+        { kind = Scanner.Side_effect_import
+        ; line = lb.start.row + 1
+        ; excerpt
+        }
+      in
+      finding :: acc
   | _ -> acc
 
 let detect_side_effect_import ~source ancestors acc node =
@@ -380,93 +379,94 @@ let detect_side_effect_import ~source ancestors acc node =
       acc node.children
   else acc
 
-(* ---- raw-js: any extension_expression (covers %raw, %bs.raw, …) ---- *)
+(* ---- raw-js: any extension_expression (covers %raw, %bs.raw, ...) ---- *)
 
 let detect_raw_js ~source acc node =
   if node.ntype = "extension_expression" then
-    mk_finding
-      ~kind:Scanner.Raw_js
-      ~line:(node.start.row + 1)
-      ~excerpt:(truncate (node_text ~source node))
-    :: acc
+    let finding : Scanner.finding =
+      { kind = Scanner.Raw_js
+      ; line = node.start.row + 1
+      ; excerpt = truncate (node_text ~source node)
+      }
+    in
+    finding :: acc
   else acc
 
 (* ---- untyped-exception: try, raise(), Promise.catch, Js.Exn ---- *)
 
 let detect_untyped_exception ~source acc node =
+  let push acc =
+    let finding : Scanner.finding =
+      { kind = Scanner.Untyped_exception
+      ; line = node.start.row + 1
+      ; excerpt = truncate (node_text ~source node)
+      }
+    in
+    finding :: acc
+  in
   match node.ntype with
-  | "try_expression" ->
-      mk_finding
-        ~kind:Scanner.Untyped_exception
-        ~line:(node.start.row + 1)
-        ~excerpt:(truncate (node_text ~source node))
-      :: acc
+  | "try_expression" -> push acc
   | "call_expression" ->
       let fn =
         List.find_opt (fun c -> c.field = Some "function") node.children
       in
       (match fn with
-       | Some f when node_text ~source f = "raise" ->
-           mk_finding
-             ~kind:Scanner.Untyped_exception
-             ~line:(node.start.row + 1)
-             ~excerpt:(truncate (node_text ~source node))
-           :: acc
+       | Some f when node_text ~source f = "raise" -> push acc
        | _ -> acc)
   | "member_expression" | "value_identifier_path" ->
       let text = node_text ~source node in
-      let hits_js_exn         = starts_with "Js.Exn"      text in
-      let hits_promise_catch  =
+      let hits_js_exn = starts_with "Js.Exn" text in
+      let hits_promise_catch =
         text = "Promise.catch" || ends_with "Promise.catch" text
       in
-      if hits_js_exn || hits_promise_catch then
-        mk_finding
-          ~kind:Scanner.Untyped_exception
-          ~line:(node.start.row + 1)
-          ~excerpt:(truncate text)
-        :: acc
+      if hits_js_exn || hits_promise_catch then push acc
       else acc
   | _ -> acc
 
-(* ---- mutable-global: top-level [let x = ref(…)] or top-level [:=] ---- *)
+(* ---- mutable-global: top-level [let x = ref(...)] or top-level [:=] ---- *)
 
 let is_ref_call ~source n =
   if n.ntype <> "call_expression" then false
   else
     match List.find_opt (fun c -> c.field = Some "function") n.children with
     | Some f -> node_text ~source f = "ref"
-    | None   -> false
+    | None -> false
 
 let detect_mutable_global ~source ancestors acc node =
   if not (at_module_toplevel ancestors) then acc
-  else match node.ntype with
+  else
+    match node.ntype with
     | "let_declaration" ->
         List.fold_left
           (fun acc c ->
             if c.ntype <> "let_binding" then acc
-            else match pattern_and_body ~lb:c with
+            else
+              match pattern_and_body ~lb:c with
               | _, Some body when is_ref_call ~source body ->
                   let excerpt =
                     truncate
-                      (String.trim
-                         (slice ~source ~start:c.start ~stop:c.stop))
+                      (String.trim (slice ~source ~start:c.start ~stop:c.stop))
                   in
-                  mk_finding
-                    ~kind:Scanner.Mutable_global
-                    ~line:(c.start.row + 1)
-                    ~excerpt
-                  :: acc
+                  let finding : Scanner.finding =
+                    { kind = Scanner.Mutable_global
+                    ; line = c.start.row + 1
+                    ; excerpt
+                    }
+                  in
+                  finding :: acc
               | _ -> acc)
           acc node.children
     | "mutation_expression" ->
-        mk_finding
-          ~kind:Scanner.Mutable_global
-          ~line:(node.start.row + 1)
-          ~excerpt:(truncate (node_text ~source node))
-        :: acc
+        let finding : Scanner.finding =
+          { kind = Scanner.Mutable_global
+          ; line = node.start.row + 1
+          ; excerpt = truncate (node_text ~source node)
+          }
+        in
+        finding :: acc
     | _ -> acc
 
-(* ---- inline-callback-record: ≥3 inline function values in a single
+(* ---- inline-callback-record: >=3 inline function values in a single
    record literal or a single call's argument list ---- *)
 
 let count_inline_function_values children =
@@ -484,7 +484,7 @@ let count_inline_function_values children =
 let call_argument_children node =
   match List.find_opt (fun c -> c.field = Some "arguments") node.children with
   | Some args -> args.children
-  | None      -> []
+  | None -> []
 
 let inline_callback_threshold = 3
 
@@ -492,19 +492,20 @@ let detect_inline_callback_record ~source acc node =
   let container_children =
     match node.ntype with
     | "call_expression" -> Some (call_argument_children node)
-    | "record"          -> Some node.children
-    | _                 -> None
+    | "record" -> Some node.children
+    | _ -> None
   in
   match container_children with
   | None -> acc
   | Some children ->
-      if count_inline_function_values children >= inline_callback_threshold
-      then
-        mk_finding
-          ~kind:Scanner.Inline_callback_record
-          ~line:(node.start.row + 1)
-          ~excerpt:(truncate (node_text ~source node))
-        :: acc
+      if count_inline_function_values children >= inline_callback_threshold then
+        let finding : Scanner.finding =
+          { kind = Scanner.Inline_callback_record
+          ; line = node.start.row + 1
+          ; excerpt = truncate (node_text ~source node)
+          }
+        in
+        finding :: acc
       else acc
 
 (* ---- oversized-function: row span > 50 ----
@@ -522,11 +523,13 @@ let detect_oversized_function ~source acc node =
   else
     let span = node.stop.row - node.start.row + 1 in
     if span > oversized_row_threshold then
-      mk_finding
-        ~kind:Scanner.Oversized_function
-        ~line:(node.start.row + 1)
-        ~excerpt:(truncate (node_text ~source node))
-      :: acc
+      let finding : Scanner.finding =
+        { kind = Scanner.Oversized_function
+        ; line = node.start.row + 1
+        ; excerpt = truncate (node_text ~source node)
+        }
+      in
+      finding :: acc
     else acc
 
 (* ---- master walker -------------------------------------------------------- *)
@@ -534,12 +537,12 @@ let detect_oversized_function ~source acc node =
 (* Visit every node; dispatch to every detector. [ancestors] is the
    list of ancestor node types from immediate parent outward. *)
 let rec collect ~source ancestors acc node =
-  let acc = detect_side_effect_import     ~source ancestors acc node in
-  let acc = detect_raw_js                 ~source           acc node in
-  let acc = detect_untyped_exception      ~source           acc node in
-  let acc = detect_mutable_global         ~source ancestors acc node in
-  let acc = detect_inline_callback_record ~source           acc node in
-  let acc = detect_oversized_function     ~source           acc node in
+  let acc = detect_side_effect_import ~source ancestors acc node in
+  let acc = detect_raw_js ~source acc node in
+  let acc = detect_untyped_exception ~source acc node in
+  let acc = detect_mutable_global ~source ancestors acc node in
+  let acc = detect_inline_callback_record ~source acc node in
+  let acc = detect_oversized_function ~source acc node in
   List.fold_left
     (fun acc c -> collect ~source (node.ntype :: ancestors) acc c)
     acc node.children
@@ -554,7 +557,10 @@ let dedupe (findings : Scanner.finding list) : Scanner.finding list =
     (fun (f : Scanner.finding) ->
       let key = (f.kind, f.line) in
       if Hashtbl.mem seen key then false
-      else begin Hashtbl.add seen key (); true end)
+      else begin
+        Hashtbl.add seen key ();
+        true
+      end)
     findings
 
 (* ---- public entry point --------------------------------------------------- *)
@@ -564,7 +570,8 @@ let scan ~grammar_dir ~path ~source =
   | Error msg -> failwith ("res-to-affine walker: " ^ msg)
   | Ok output ->
       let root =
-        try parse_sexp output with Parse_error m ->
+        try parse_sexp output
+        with Parse_error m ->
           failwith ("res-to-affine walker: s-exp parse failed — " ^ m)
       in
       let findings = collect ~source [] [] root in
