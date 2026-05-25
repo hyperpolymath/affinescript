@@ -1,26 +1,25 @@
 # SPDX-License-Identifier: MPL-2.0
 #
 # .hypatia-ignore — repo-scoped exemptions for the estate governance
-# bundle's anti-pattern scanner. Each non-comment line is a file path
-# (anchored: matched as `^${path}$` or `^${path}\b`) that the scanner
-# should NOT flag.
+# bundle's anti-pattern scanner. Format (per the bundle's `is_exempt`
+# function): each non-comment line is `${rule}:${path}` matched as a
+# fixed-string whole-line equality (`grep -qxF`).
 #
-# Format documented inline in the governance reusable workflow's
-# `is_exempt` predicate; the first non-comment line below is the
-# pattern, the lines after `#` are the reason / rationale.
+# Comment lines (`#`) and blank lines are tolerated because they never
+# match the `rule:path` shape under -xF.
 #
 # ─── Migration-tool input fixtures ──────────────────────────────────
 #
-# The .res → .affine migration assistant (issue #57) needs a corpus
-# of real `.res` files in its test/fixtures/ directory so the walker
-# can be exercised end-to-end. The banned-language rule
-# (cicd_rules/banned_language_file) correctly flags `.res` files
-# everywhere in the estate — exempt the migration-tool fixture
-# specifically so it stops blocking every PR.
+# The .res → .affine migration assistant (issue #57) needs a corpus of
+# real `.res` files in its test/fixtures/ directory so the walker can
+# be exercised end-to-end. The banned-language rule correctly flags
+# `.res` files everywhere in the estate — exempt the migration-tool
+# fixture specifically.
 #
-# Why a side-channel exemption and not an inline pragma: the migration
-# walker emits line numbers from the fixture into its snapshot output,
-# and an inline pragma in the file header would shift those line
-# numbers and break the snapshot test. Path-based exemption avoids
-# touching the file content.
-tools/res-to-affine/test/fixtures/sample.res
+# Why side-channel exemption (this file) instead of an inline pragma:
+# the migration walker emits source line numbers from the fixture into
+# its snapshot output, and an inline pragma in the file header would
+# shift those line numbers and break the snapshot test. Path-based
+# exemption avoids touching the file content. See feedback memory
+# `feedback_inline_pragma_vs_snapshot_test` for the general principle.
+cicd_rules/banned_language_file:tools/res-to-affine/test/fixtures/sample.res
