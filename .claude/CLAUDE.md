@@ -15,62 +15,76 @@ The following files in `.machine_readable/` contain structured project metadata:
 
 ## Language Policy (Hyperpolymath Standard)
 
+> **Policy refresh 2026-05-25**: AffineScript is now the primary application language across the estate (this is its home repo). ReScript / TypeScript / meaningfully-migrated JavaScript are banned going forward — write new code in AffineScript. Existing ReScript stays in place as legacy until the `.res → .affine` migration assistant (#57) walks the corpus. MPL-1.0 / MPL-1.0-or-later are banned; rewrite to MPL-2.0 wherever encountered (code + docs).
+
 ### ALLOWED Languages & Tools
 
 | Language/Tool | Use Case | Notes |
 |---------------|----------|-------|
-| **ReScript** | Primary application code | Compiles to JS, type-safe |
+| **AffineScript** (`.affine`) | Primary application code | Affine types, dependent types, row polymorphism, extensible effects; compiles to Wasm |
 | **Deno** | Runtime & package management | Replaces Node/npm/bun |
 | **Rust** | Performance-critical, systems, WASM | Preferred for CLI tools |
 | **Tauri 2.0+** | Mobile apps (iOS/Android) | Rust backend + web UI |
 | **Dioxus** | Mobile apps (native UI) | Pure Rust, React-like |
 | **Gleam** | Backend services | Runs on BEAM or compiles to JS |
 | **Bash/POSIX Shell** | Scripts, automation | Keep minimal |
-| **JavaScript** | Only where ReScript cannot | MCP protocol glue, Deno APIs |
 | **Python** | SaltStack only | No other Python permitted |
 | **Nickel** | Configuration language | For complex configs |
 | **A2ML** | State/meta files | .machine_readable/6a2/STATE.a2ml, .machine_readable/6a2/META.a2ml, .machine_readable/6a2/ECOSYSTEM.a2ml |
 | **Julia** | Batch scripts, data processing | Per RSR |
-| **OCaml** | AffineScript compiler | Language-specific |
+| **OCaml** | AffineScript compiler | Language-specific (compiler-host tooling lives here) |
 | **Ada** | Safety-critical systems | Where required |
 
-### BANNED - Do Not Use
+### LEGACY — exists in tree, but write no new occurrences
+
+| Language | Status | Disposition |
+|----------|--------|-------------|
+| **ReScript** (`.res`, `.resi`) | Legacy — pre-2026-05-25 | Migrate via `tools/res-to-affine/` (#57) when touching adjacent code; do not add new `.res` files. |
+| **JavaScript** (`.js`, `.cjs`, `.mjs`) | Legacy / carve-outs only | Approved runtime-exemption carve-outs (see below) remain; net-new JS in a project already migrated to AffineScript is banned. |
+
+### BANNED — Do Not Use (write zero new occurrences)
 
 | Banned | Replacement |
 |--------|-------------|
-| TypeScript | ReScript |
+| TypeScript | **AffineScript** |
+| ReScript (new files) | **AffineScript** (migration via #57) |
+| JavaScript (where the project has been meaningfully migrated to AffineScript) | **AffineScript** |
 | Node.js | Deno |
 | npm | Deno |
 | Bun | Deno |
 | pnpm/yarn | Deno |
 | Go | Rust |
-| Python (general) | ReScript/Rust |
-| Java/Kotlin | Rust/Tauri/Dioxus |
-| Swift | Tauri/Dioxus |
-| React Native | Tauri/Dioxus |
-| Flutter/Dart | Tauri/Dioxus |
+| Python (general) | **AffineScript** / Rust / Julia |
+| Java/Kotlin | Rust / Tauri / Dioxus |
+| Swift | Tauri / Dioxus |
+| React Native | Tauri / Dioxus |
+| Flutter/Dart | Tauri / Dioxus |
+| **MPL-1.0** | **MPL-2.0** (rewrite SPDX headers + LICENSE files wherever encountered, code AND docs) |
+| **MPL-1.0-or-later** | **MPL-2.0** (same) |
 
 ### Mobile Development
 
 **No exceptions for Kotlin/Swift** - use Rust-first approach:
 
-1. **Tauri 2.0+** - Web UI (ReScript) + Rust backend, MIT/Apache-2.0
+1. **Tauri 2.0+** - Web UI (AffineScript) + Rust backend, MIT/Apache-2.0
 2. **Dioxus** - Pure Rust native UI, MIT/Apache-2.0
 
 Both are FOSS with independent governance (no Big Tech).
 
 ### Enforcement Rules
 
-1. **No new TypeScript files** - Convert existing TS to ReScript
-2. **No package.json for runtime deps** - Use deno.json imports
-3. **No node_modules in production** - Deno caches deps automatically
-4. **No Go code** - Use Rust instead
-5. **Python only for SaltStack** - All other Python must be rewritten
-6. **No Kotlin/Swift for mobile** - Use Tauri 2.0+ or Dioxus
+1. **No new TypeScript files** - Write new code in AffineScript (closed exemptions table below covers the residual `.d.ts` / Deno-test cases).
+2. **No new ReScript files** - As of 2026-05-25 policy refresh; AffineScript is the go-forward. Existing `.res` files stay until migrated via #57.
+3. **No package.json for runtime deps** - Use deno.json imports.
+4. **No node_modules in production** - Deno caches deps automatically.
+5. **No Go code** - Use Rust instead.
+6. **Python only for SaltStack** - All other Python must be rewritten.
+7. **No Kotlin/Swift for mobile** - Use Tauri 2.0+ or Dioxus.
+8. **MPL-1.0 / MPL-1.0-or-later are non-conforming** - Rewrite to MPL-2.0 in SPDX headers and LICENSE files when encountered (Hypatia's `validate_license` flags both).
 
-### TypeScript Exemptions (Approved)
+### TypeScript / JavaScript Exemptions (Approved)
 
-The "no new TypeScript" rule has seven approved exemptions in this repo. These paths are *not* policy violations — they are documented carve-outs because the file format or downstream consumer requires TypeScript:
+The "no new TypeScript" / "no new JavaScript" rules have approved exemptions in this repo. These paths are *not* policy violations — they are documented carve-outs because the file format or downstream consumer requires the source language. They are honoured by Hypatia's scanner via path-based exemption + the per-repo CLAUDE.md exemption tables.
 
 | Path | Files | Rationale | Unblock condition |
 |---|---|---|---|
