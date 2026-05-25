@@ -908,6 +908,17 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
         in
         Ok (ctx_with_heap, code)
 
+      | ExprVar id when id.name = "string_length" && List.length args = 1 ->
+        (* STDLIB-04e (#332) wasm-backend lowering. AS string layout is
+           `[len: i32][bytes...]` at the pointer the arg evaluates to —
+           reading the length is one i32.load at offset 0. The interp
+           binding (lib/interp.ml) was wired in #362; this handler is
+           the codegen sibling so tests/codegen/*.affine fixtures that
+           call string_length (env_at / arg_at / env_count_and_at) can
+           compile end-to-end. *)
+        let* (ctx_with_arg, arg_code) = gen_expr ctx (List.hd args) in
+        Ok (ctx_with_arg, arg_code @ [I32Load (2, 0)])
+
       | ExprVar id when (id.name = "env_at" || id.name = "arg_at")
                         && List.length args = 1 ->
         (* ADR-015 S5 (#180): env_at(i) / arg_at(i) — fetch the i-th
