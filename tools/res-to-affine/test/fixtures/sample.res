@@ -1,11 +1,6 @@
 // SPDX-License-Identifier: MIT
-// hypatia:ignore cicd_rules/banned_language_file
 // Synthetic fixture exercising every Phase-1 anti-pattern. Not a real
 // ReScript program; the scanner is line-based so it doesn't care.
-// The .res extension is intentional — this fixture is the input to the
-// `.res → .affine` migration tool (issue #57); exempted from the banned-
-// language policy via the inline pragma above (governance bundle reads
-// the first 8 lines for `hypatia:ignore <rule>`).
 
 open Types
 
