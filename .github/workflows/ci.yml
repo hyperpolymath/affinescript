@@ -210,7 +210,20 @@ jobs:
     # teardown. The Node-based runner is a documented runtime carve-out
     # (see CLAUDE.md "Runtime Exemptions") because the VS Code extension
     # host is npm/Node-native and no Deno/JSR equivalent exists.
+    #
+    # Visibility-only until #104 lands (continue-on-error). The extension's
+    # wasm module imports the `Vscode` / `VscodeLanguageClient` module
+    # objects from the @hyperpolymath/affine-vscode adapter; without the
+    # adapter (gated on owner action — npm org create + NPM_TOKEN +
+    # affine-vscode-v0.1.0 tag push) the wasm cannot instantiate and
+    # activation fails. The defensive `optionalDependencies` move in
+    # editors/vscode/package.json and the try/catch around the adapter
+    # require in editors/vscode/out/extension.cjs already prevent the
+    # `npm install` step from 404ing — activation degradation is the
+    # remaining gap that #104 closes. Remove the `continue-on-error: true`
+    # line when #104 publishes the adapter to npm.
     runs-on: ubuntu-latest
+    continue-on-error: true
 
     steps:
       - name: Checkout code

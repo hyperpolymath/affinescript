@@ -132,8 +132,21 @@ let vscode_extension_wiring ~(adapter : string) ~(no_lc : bool) : string =
 // Inserted by --vscode-extension (issue #105): auto-generated glue so this
 // file is directly loadable as a VS Code extension's `main`. Replaces the
 // previously hand-written index.cjs + vendored adapter boilerplate.
-const _makeVscodeBindings = require("%s");
+//
+// Defensive load (issue #104): the adapter package may not yet be on npm
+// when this .cjs is bundled into a smoke harness or distributed before the
+// `affine-vscode-v*` publish-tag lands. Treat MODULE_NOT_FOUND as a soft
+// failure — extraImports degrades to empty so activate()/deactivate() still
+// resolve. Any other require error (syntax, transitive failure) is rethrown
+// so real bugs are not masked.
+let _makeVscodeBindings = null;
+try {
+  _makeVscodeBindings = require("%s");
+} catch (_e) {
+  if (_e && _e.code !== "MODULE_NOT_FOUND") throw _e;
+}
 exports.extraImports = function() {
+  if (typeof _makeVscodeBindings !== "function") return {};
   return _makeVscodeBindings(
     require("vscode"),
     %s,
