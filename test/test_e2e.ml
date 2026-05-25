@@ -4387,6 +4387,34 @@ let test_slice_b_new_borrow_still_protects () =
     Alcotest.fail "Slice B regressed: the new borrow on `y` was not \
                    tracked, so the write to `y` was silently accepted"
 
+(* CORE-01 pt3 Slice C / #177 — CFG-join semantics. ExprTry catch
+   arms are now isolated (each arm runs against the post-body
+   state, not the polluted state of preceding arms); ExprHandle
+   handler arms are similarly isolated.  Tests pin: (1) two catch
+   arms can independently move the same value (positive — was
+   spuriously rejected); (2) a move performed in the try-body
+   still propagates past the try (anti-regression — conservative
+   correctness preserved). *)
+let test_slice_c_catch_arm_isolation () =
+  match borrow_result (fixture "slice_c_catch_arm_isolation.affine") with
+  | Ok () -> ()
+  | Error e ->
+    Alcotest.fail ("Slice C: catch arms must be isolated — `drop_int(y)` \
+                    in arm 2 spuriously saw arm 1's move: "
+                   ^ Borrow.format_borrow_error e)
+
+let test_slice_c_body_move_persists () =
+  match borrow_result (fixture "slice_c_body_move_persists.affine") with
+  | Error (Borrow.UseAfterMove _) -> ()
+  | Error e ->
+    Alcotest.fail ("Slice C anti-regression: expected UseAfterMove on \
+                    `read_int(y)` after the body moved `y`, got: "
+                   ^ Borrow.format_borrow_error e)
+  | Ok () ->
+    Alcotest.fail "Slice C regressed: body-side move was dropped during \
+                   the catch-arm merge — `read_int(y)` after a moved `y` \
+                   was silently accepted"
+
 let borrow_tests = [
   Alcotest.test_case "BorrowOutlivesOwner: &local escapes its block"
     `Quick test_borrow_outlives_owner;
@@ -4418,6 +4446,10 @@ let borrow_tests = [
     `Quick test_slice_b_nll_expires_new;
   Alcotest.test_case "Slice B anti-regression: new borrow still protects `y` (#177 pt3 Slice B)"
     `Quick test_slice_b_new_borrow_still_protects;
+  Alcotest.test_case "Slice C: catch arms isolated — independent moves OK (#177 pt3 Slice C)"
+    `Quick test_slice_c_catch_arm_isolation;
+  Alcotest.test_case "Slice C anti-regression: body's move persists past try (#177 pt3 Slice C)"
+    `Quick test_slice_c_body_move_persists;
 ]
 
 (* ============================================================================

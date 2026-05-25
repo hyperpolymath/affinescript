@@ -1,0 +1,25 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell
+//
+// CORE-01 pt3 Slice C / #177: try/catch arm isolation. Each catch
+// arm is an alternative continuation — only one runs at runtime —
+// so moves performed in one arm must not pollute the state seen by
+// the next arm. Without Slice C, the second arm's `drop_int(y)`
+// would see `y` as already moved (by the first arm) and error
+// UseAfterMove. With Slice C, each arm snapshots the post-body
+// state and runs independently. Expected: Ok.
+
+module SliceCCatchArmIsolation;
+
+fn drop_int(x: own Int) -> Unit = ();
+
+fn catch_arm_isolation(flag: Int) -> Unit {
+  let y = 100;
+  try {
+    flag
+  } catch {
+    0 => drop_int(y),
+    1 => drop_int(y),
+    _ => ()
+  }
+}

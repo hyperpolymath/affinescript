@@ -107,10 +107,19 @@ now pre-releases the held borrow and re-binds the
 so the NLL last-use + return-escape analyses see the *current* referent
 after re-assignment, not the stale original (3 hermetic tests: old
 released, new tracked by NLL, anti-regression that new borrow still
-protects). *Deferred (Slices C–D):* origin/region variables (Polonius
-surface) + loan-live-at-point dataflow across CFG joins for
-`ExprHandle`/`ExprTry`/loops; tighter quantity integration for captured
-linears; reborrow through indirection (RHS not a direct `&place`).
+protects). *Part 3 Slice C-light* (Refs #177): CFG-join semantics for
+non-match join constructs — `ExprHandle` handler arms and `ExprTry`
+catch arms are now isolated via snapshot-restore-merge (factored
+`merge_arm_results` helper, mirroring `ExprMatch`'s inlined logic).
+Moves/borrows from arm i no longer pollute arm i+1; finally runs
+deterministically against the merged post-catch state. 2 hermetic
+tests (positive + anti-regression). *Deferred (Slices C-full / C' /
+D):* true Polonius origin/region variables on `TyRef`/`TyMut` with
+subset constraints + datalog-style loan-live-at-point solver
+(ADR-gated); loop soundness via 2-iter check on `StmtWhile`/
+`StmtFor` (coupled to a `StmtAssign` clear-on-rewrite fix); reborrow
+through indirection (RHS not a direct `&place`); quantity-checker
+tightening for captured linears.
 
 |Quantity / affine types |*enforced* |QTT semiring in `lib/quantity.ml`,
 invoked inside the standard CLI pipeline. `@linear`/`@erased`/`@unrestricted`
