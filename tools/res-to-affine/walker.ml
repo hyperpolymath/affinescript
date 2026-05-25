@@ -221,25 +221,32 @@ let run_tree_sitter ~grammar_dir ~path : (string, string) result =
         Error "tree-sitter parse stopped"
   end
 
-(* ---- detection: side-effect-import ----------------------------------------
+(* ---- detection ------------------------------------------------------------
 
-   AST shape we look for:
+   Phase 2b (PR #322) ported Side_effect_import alone. Phase 2c
+   extends the walker to the remaining three Phase-1 kinds
+   (Raw_js, Untyped_exception, Mutable_global) plus the two kinds
+   that were explicitly deferred from Phase 1 because they need
+   real AST (Inline_callback_record, Oversized_function), and flips
+   --engine=walker to the default in main.ml.
 
-     (let_declaration ...
-       (let_binding ...
-         pattern: (value_identifier ...)   <- text is exactly "_"
-         body: (...)))                     <- subtree contains a module-
-                                              qualified access (value_-
-                                              identifier_path or
-                                              member_expression with
-                                              uppercase head)
+   Node types used below come from rescript-lang/tree-sitter-rescript
+   at the pinned commit 990214a (v6.0.0). The grammar names:
+   - let_declaration / let_binding (pattern + body fields)
+   - extension_expression                                 (the `%raw` shape)
+   - try_expression                                       (try/catch)
+   - call_expression (function/arguments fields)          (raise(), ref())
+   - member_expression / value_identifier_path            (Js.Exn, Promise.catch)
+   - mutation_expression                                  (x := y)
+   - record / record_field
+   - labeled_argument (label/value fields)
+   - function                                             (arrow + named fns)
 
-   The let_declaration must be at *module top level*: parent is
-   source_file, or parent is a block that is the body of a
-   module_declaration. let _ = X.f() inside a function body is a
-   normal "discard return value" idiom, not the module-load side-
-   effect anti-pattern; the regex band-aid in #319 was specifically
-   to suppress these — the walker eliminates them structurally. *)
+   "Module top level" means: walking ancestors outward from the
+   current node, no [function] or [let_binding] body wrapper
+   appears before [source_file] or [module_declaration]. Anything
+   inside a function body, or inside the body of an outer
+   binding, is by definition not a module-load anti-pattern. *)
 
 (* Slice source text out by [pos] range. *)
 let slice ~source ~start ~stop =
@@ -266,21 +273,6 @@ let slice ~source ~start ~stop =
 let truncate s =
   if String.length s <= 80 then s
   else String.sub s 0 77 ^ "..."
-
-(* ---- finding-emission shared helpers --------------------------------------
-
-   The walker emits its findings sorted by line ascending in the final
-   pass; intermediate emission appends to a head-of-list accumulator
-   for O(1) cons. The [push] helper builds and conses a finding with
-   the standard truncate/trim of the slice around [n]. *)
-let push_finding ~source ~kind acc n =
-  let excerpt =
-    truncate (String.trim (slice ~source ~start:n.start ~stop:n.stop))
-  in
-  let finding : Scanner.finding =
-    { kind; line = n.start.row + 1; excerpt }
-  in
-  finding :: acc
 
 (* Is this node's source text exactly the underscore [_]? *)
 let is_underscore_pattern ~source n =
@@ -335,148 +327,235 @@ let pattern_and_body ~lb =
   in
   pattern, body
 
-(* True when this [let_declaration] sits at module top level:
-   either its immediate parent is [source_file], or its parent is a
-   [block] that's the body of a [module_declaration]. *)
-let let_at_module_toplevel ancestors =
-  match ancestors with
+(* True iff the current node sits at module top level — i.e. no
+   [function] or [let_binding] body intervenes between the current
+   node and the enclosing [source_file] or [module_declaration].
+   [ancestors] is parent-first (head is the immediate parent). *)
+let rec at_module_toplevel = function
+  | [] -> true
+  | ("function" | "let_binding") :: _ -> false
   | "source_file" :: _ -> true
-  | "block" :: "module_declaration" :: _ -> true
-  | _ -> false
+  | "module_declaration" :: _ -> true
+  | _ :: rest -> at_module_toplevel rest
 
-(* Detect side-effect-import findings for one [let_declaration] node
-   that's already known to live at module top level. *)
-let detect_side_effect_import ~source acc let_decl_node =
-  List.fold_left
-    (fun acc lb ->
-      if lb.ntype <> "let_binding" then acc
-      else
-        match pattern_and_body ~lb with
-        | Some pat, Some body
-          when is_underscore_pattern ~source pat
-            && body_has_module_access ~source body ->
-            push_finding ~source ~kind:Scanner.Side_effect_import acc lb
-        | _ -> acc)
-    acc let_decl_node.children
+let node_text ~source n =
+  String.trim (slice ~source ~start:n.start ~stop:n.stop)
 
-(* ---- detection: raw-js ----------------------------------------------------
+let starts_with prefix s =
+  let pn = String.length prefix in
+  String.length s >= pn && String.sub s 0 pn = prefix
 
-   The grammar models `%raw(...)` as
+let ends_with suffix s =
+  let sn = String.length suffix in
+  let n  = String.length s in
+  n >= sn && String.sub s (n - sn) sn = suffix
 
-     (extension_expression
-       (extension_identifier "raw")
-       ...)
+let mk_finding ~kind ~line ~excerpt : Scanner.finding =
+  { kind; line; excerpt }
 
-   `[%bs.raw "..."]` (the older syntax) does not parse cleanly on the
-   pinned grammar — it lands under an `(ERROR ... (extension_expression
-   (extension_identifier "bs.raw")) ...)` subtree. We still detect the
-   inner extension_expression normally because the walker visits every
-   descendant of [source_file], including children of ERROR nodes. *)
-let raw_js_extension_id ~source ext_id_node =
-  let text = String.trim (slice ~source ~start:ext_id_node.start ~stop:ext_id_node.stop) in
-  text = "raw" || text = "bs.raw"
+(* ---- side-effect-import (Phase 2b, preserved) ---- *)
+
+let check_let_binding_side_effect ~source acc lb =
+  match pattern_and_body ~lb with
+  | Some pat, Some body
+    when is_underscore_pattern ~source pat
+      && body_has_module_access ~source body ->
+      let excerpt =
+        truncate (String.trim (slice ~source ~start:lb.start ~stop:lb.stop))
+      in
+      mk_finding
+        ~kind:Scanner.Side_effect_import
+        ~line:(lb.start.row + 1)
+        ~excerpt
+      :: acc
+  | _ -> acc
+
+let detect_side_effect_import ~source ancestors acc node =
+  if node.ntype = "let_declaration" && at_module_toplevel ancestors then
+    List.fold_left
+      (fun acc c ->
+        if c.ntype = "let_binding"
+        then check_let_binding_side_effect ~source acc c
+        else acc)
+      acc node.children
+  else acc
+
+(* ---- raw-js: any extension_expression (covers %raw, %bs.raw, …) ---- *)
 
 let detect_raw_js ~source acc node =
-  if node.ntype <> "extension_expression" then acc
-  else
-    match node.children with
-    | head :: _ when head.ntype = "extension_identifier"
-                  && raw_js_extension_id ~source head ->
-        push_finding ~source ~kind:Scanner.Raw_js acc node
-    | _ -> acc
+  if node.ntype = "extension_expression" then
+    mk_finding
+      ~kind:Scanner.Raw_js
+      ~line:(node.start.row + 1)
+      ~excerpt:(truncate (node_text ~source node))
+    :: acc
+  else acc
 
-(* ---- detection: untyped-exception ----------------------------------------
-
-   Three structural triggers, any one of which emits one finding per
-   occurrence:
-
-   1. [(try_expression ...)] — the literal `try ... catch { ... }`
-      form. ReScript's `try` is exactly the antipattern: an untyped
-      catch that throws away type information.
-
-   2. A [value_identifier_path] whose surface text begins with
-      `Js.Exn` or `Promise.catch`. The grammar represents both shapes
-      as a path with module identifiers + a value identifier; the
-      surface-text check is the cheapest reliable filter.
-
-   3. A [call_expression] whose function child is a bare
-      [value_identifier] with text `raise` — a `raise(MyExn)` call.
-
-   We deduplicate within a single node visit (a [call_expression]
-   that is itself a child of a [try_expression] would otherwise
-   double-count), but the same anti-pattern appearing on different
-   lines is reported separately. *)
-let starts_with prefix s =
-  let lp = String.length prefix in
-  let ls = String.length s in
-  ls >= lp && String.sub s 0 lp = prefix
-
-let path_matches_untyped_exn ~source path_node =
-  let text = String.trim (slice ~source ~start:path_node.start ~stop:path_node.stop) in
-  starts_with "Js.Exn" text || starts_with "Promise.catch" text
-
-let call_is_raise ~source call_node =
-  match List.find_opt (fun c -> c.field = Some "function") call_node.children with
-  | Some fn when fn.ntype = "value_identifier" ->
-      let text = String.trim (slice ~source ~start:fn.start ~stop:fn.stop) in
-      text = "raise"
-  | _ -> false
+(* ---- untyped-exception: try, raise(), Promise.catch, Js.Exn ---- *)
 
 let detect_untyped_exception ~source acc node =
-  if node.ntype = "try_expression" then
-    push_finding ~source ~kind:Scanner.Untyped_exception acc node
-  else if (node.ntype = "value_identifier_path"
-        || node.ntype = "module_identifier_path")
-       && path_matches_untyped_exn ~source node then
-    push_finding ~source ~kind:Scanner.Untyped_exception acc node
-  else if node.ntype = "call_expression" && call_is_raise ~source node then
-    push_finding ~source ~kind:Scanner.Untyped_exception acc node
-  else acc
+  match node.ntype with
+  | "try_expression" ->
+      mk_finding
+        ~kind:Scanner.Untyped_exception
+        ~line:(node.start.row + 1)
+        ~excerpt:(truncate (node_text ~source node))
+      :: acc
+  | "call_expression" ->
+      let fn =
+        List.find_opt (fun c -> c.field = Some "function") node.children
+      in
+      (match fn with
+       | Some f when node_text ~source f = "raise" ->
+           mk_finding
+             ~kind:Scanner.Untyped_exception
+             ~line:(node.start.row + 1)
+             ~excerpt:(truncate (node_text ~source node))
+           :: acc
+       | _ -> acc)
+  | "member_expression" | "value_identifier_path" ->
+      let text = node_text ~source node in
+      let hits_js_exn         = starts_with "Js.Exn"      text in
+      let hits_promise_catch  =
+        text = "Promise.catch" || ends_with "Promise.catch" text
+      in
+      if hits_js_exn || hits_promise_catch then
+        mk_finding
+          ~kind:Scanner.Untyped_exception
+          ~line:(node.start.row + 1)
+          ~excerpt:(truncate text)
+        :: acc
+      else acc
+  | _ -> acc
 
-(* ---- detection: mutable-global -------------------------------------------
+(* ---- mutable-global: top-level [let x = ref(…)] or top-level [:=] ---- *)
 
-   The grammar models a [name := value] statement as
-
-     (expression_statement (mutation_expression ...))
-
-   We flag [mutation_expression] only when an outer
-   [expression_statement] sits at module top level — i.e. its
-   ancestor chain is [expression_statement :: source_file :: _]
-   or [expression_statement :: block :: module_declaration :: _].
-   In-function `x := ...` against a local [ref] is a normal idiom
-   and is not flagged. *)
-let mutation_at_module_toplevel ancestors =
-  match ancestors with
-  | "expression_statement" :: "source_file" :: _ -> true
-  | "expression_statement" :: "block" :: "module_declaration" :: _ -> true
-  | _ -> false
+let is_ref_call ~source n =
+  if n.ntype <> "call_expression" then false
+  else
+    match List.find_opt (fun c -> c.field = Some "function") n.children with
+    | Some f -> node_text ~source f = "ref"
+    | None   -> false
 
 let detect_mutable_global ~source ancestors acc node =
-  if node.ntype = "mutation_expression"
-  && mutation_at_module_toplevel ancestors then
-    push_finding ~source ~kind:Scanner.Mutable_global acc node
-  else acc
+  if not (at_module_toplevel ancestors) then acc
+  else match node.ntype with
+    | "let_declaration" ->
+        List.fold_left
+          (fun acc c ->
+            if c.ntype <> "let_binding" then acc
+            else match pattern_and_body ~lb:c with
+              | _, Some body when is_ref_call ~source body ->
+                  let excerpt =
+                    truncate
+                      (String.trim
+                         (slice ~source ~start:c.start ~stop:c.stop))
+                  in
+                  mk_finding
+                    ~kind:Scanner.Mutable_global
+                    ~line:(c.start.row + 1)
+                    ~excerpt
+                  :: acc
+              | _ -> acc)
+          acc node.children
+    | "mutation_expression" ->
+        mk_finding
+          ~kind:Scanner.Mutable_global
+          ~line:(node.start.row + 1)
+          ~excerpt:(truncate (node_text ~source node))
+        :: acc
+    | _ -> acc
 
-(* ---- unified visitor -----------------------------------------------------
+(* ---- inline-callback-record: ≥3 inline function values in a single
+   record literal or a single call's argument list ---- *)
 
-   One DFS over the AST. Each detector receives only what it needs.
-   The [side-effect-import] detector handles its own [let_binding]
-   recursion under one [let_declaration] node and is gated on
-   module-toplevel ancestors; we keep that compound check together
-   to avoid threading the ancestor list into a separate helper. *)
-let rec collect ~source ancestors acc node =
-  let acc =
-    if node.ntype = "let_declaration"
-    && let_at_module_toplevel ancestors then
-      detect_side_effect_import ~source acc node
-    else acc
+let count_inline_function_values children =
+  List.fold_left
+    (fun n c ->
+      match c.ntype with
+      | "function" -> n + 1
+      | "labeled_argument" | "record_field" | "field" ->
+          if List.exists (fun cc -> cc.ntype = "function") c.children
+          then n + 1
+          else n
+      | _ -> n)
+    0 children
+
+let call_argument_children node =
+  match List.find_opt (fun c -> c.field = Some "arguments") node.children with
+  | Some args -> args.children
+  | None      -> []
+
+let inline_callback_threshold = 3
+
+let detect_inline_callback_record ~source acc node =
+  let container_children =
+    match node.ntype with
+    | "call_expression" -> Some (call_argument_children node)
+    | "record"          -> Some node.children
+    | _                 -> None
   in
-  let acc = detect_raw_js ~source acc node in
-  let acc = detect_untyped_exception ~source acc node in
-  let acc = detect_mutable_global ~source ancestors acc node in
+  match container_children with
+  | None -> acc
+  | Some children ->
+      if count_inline_function_values children >= inline_callback_threshold
+      then
+        mk_finding
+          ~kind:Scanner.Inline_callback_record
+          ~line:(node.start.row + 1)
+          ~excerpt:(truncate (node_text ~source node))
+        :: acc
+      else acc
+
+(* ---- oversized-function: row span > 50 ----
+
+   Source-row span as a proxy for "function body >50 LOC". A direct
+   line count of the body subtree would be more precise but spans
+   are cheap and sufficient for surfacing decomposition candidates;
+   precision belongs to Phase 3 where the tool actually rewrites
+   bodies. The threshold matches LESSONS.md's stated heuristic. *)
+
+let oversized_row_threshold = 50
+
+let detect_oversized_function ~source acc node =
+  if node.ntype <> "function" then acc
+  else
+    let span = node.stop.row - node.start.row + 1 in
+    if span > oversized_row_threshold then
+      mk_finding
+        ~kind:Scanner.Oversized_function
+        ~line:(node.start.row + 1)
+        ~excerpt:(truncate (node_text ~source node))
+      :: acc
+    else acc
+
+(* ---- master walker -------------------------------------------------------- *)
+
+(* Visit every node; dispatch to every detector. [ancestors] is the
+   list of ancestor node types from immediate parent outward. *)
+let rec collect ~source ancestors acc node =
+  let acc = detect_side_effect_import     ~source ancestors acc node in
+  let acc = detect_raw_js                 ~source           acc node in
+  let acc = detect_untyped_exception      ~source           acc node in
+  let acc = detect_mutable_global         ~source ancestors acc node in
+  let acc = detect_inline_callback_record ~source           acc node in
+  let acc = detect_oversized_function     ~source           acc node in
   List.fold_left
     (fun acc c -> collect ~source (node.ntype :: ancestors) acc c)
     acc node.children
+
+(* Dedupe by (kind, line). The walker visits structural overlaps that
+   the line-based scanner would not — e.g. a Js.Exn member expression
+   nested inside a try_expression yields two Untyped_exception
+   findings on the same line; we keep one. *)
+let dedupe (findings : Scanner.finding list) : Scanner.finding list =
+  let seen = Hashtbl.create 16 in
+  List.filter
+    (fun (f : Scanner.finding) ->
+      let key = (f.kind, f.line) in
+      if Hashtbl.mem seen key then false
+      else begin Hashtbl.add seen key (); true end)
+    findings
 
 (* ---- public entry point --------------------------------------------------- *)
 
@@ -489,8 +568,8 @@ let scan ~grammar_dir ~path ~source =
           failwith ("res-to-affine walker: s-exp parse failed — " ^ m)
       in
       let findings = collect ~source [] [] root in
-      (* Findings accumulated in reverse order; emitter expects
-         source order (line ascending). *)
+      let findings = dedupe findings in
       List.sort
-        (fun (a : Scanner.finding) (b : Scanner.finding) -> compare a.line b.line)
+        (fun (a : Scanner.finding) (b : Scanner.finding) ->
+          compare a.line b.line)
         findings

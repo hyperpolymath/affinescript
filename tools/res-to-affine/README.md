@@ -16,14 +16,14 @@ and the broader `idaptik` migration.
 ## Usage
 
 ```sh
-# print skeleton to stdout (default: regex scanner)
+# print skeleton to stdout (default: tree-sitter AST walker, Phase 2c)
 dune exec tools/res-to-affine/main.exe -- path/to/Foo.res
 
 # or write to a file
 dune exec tools/res-to-affine/main.exe -- path/to/Foo.res -o Foo.affine
 
-# opt into the Phase-2 tree-sitter AST walker
-dune exec tools/res-to-affine/main.exe -- --engine=walker path/to/Foo.res
+# opt back into the Phase-1 line-regex scanner (no grammar required)
+dune exec tools/res-to-affine/main.exe -- --engine=scanner path/to/Foo.res
 ```
 
 The output is **not compilable**. It is a starting point for the human:
@@ -36,8 +36,8 @@ needs re-decomposing.
 
 | `--engine` | Implementation | When to use |
 |---|---|---|
-| `scanner` (default) | Line-anchored regex over the raw source (`scanner.ml`). | Default — no prerequisites, ships with the binary. |
-| `walker` | Shells out to the vendored `tree-sitter` CLI, walks the AST (`walker.ml`). | When the regex's false-positive surface matters — eliminates the `let _ = chained.call()` class of misfire that the column-0 anchor in #319 had to band-aid. |
+| `walker` (default) | Shells out to the vendored `tree-sitter` CLI, walks the AST (`walker.ml`). | Default since Phase 2c — covers all six anti-patterns including the two that the scanner cannot see (inline callback records, oversized functions) and eliminates the `let _ = chained.call()` / line-anchored false-positive classes. |
+| `scanner` | Line-anchored regex over the raw source (`scanner.ml`). | Fallback when the vendored grammar is unavailable (no `tree-sitter` CLI, missing `tools/vendor/tree-sitter-rescript/`). Detects four of the six anti-patterns only. |
 
 The walker requires the vendored `tree-sitter-rescript` grammar to be
 built first:
@@ -50,42 +50,37 @@ just install-grammar
 If the grammar isn't built or the `tree-sitter` CLI isn't on PATH, the
 walker auto-falls-back to the scanner and prints the reason to stderr.
 
-## What gets flagged (Phase 1)
+## What gets flagged
 
 The six anti-patterns surfaced in the
-[idaptik Wave 3 pilot](https://github.com/hyperpolymath/idaptik/blob/main/migration/main/LESSONS.md),
-of which the line-based scanner reliably detects four:
+[idaptik Wave 3 pilot](https://github.com/hyperpolymath/idaptik/blob/main/migration/main/LESSONS.md):
 
-| Tag | Detection | AffineScript answer |
+| Tag | Detection (walker, default) | AffineScript answer |
 |---|---|---|
-| `side-effect-import` | `let _ = Mod.foo` at top level | Explicit registration call |
-| `raw-js` | `%raw(...)` or `[%bs.raw ...]` | Typed extern (`docs/reference/ABI-FFI.md`) |
-| `untyped-exception` | `Promise.catch`, `Js.Exn`, `raise`, `try` | `Result[E, A]` / `Validation[E, A]` |
-| `mutable-global` | `:=` operator | Affine record threaded through |
+| `side-effect-import` | `let _ = Mod.foo` at module top level (structural — not nested inside a function body) | Explicit registration call |
+| `raw-js` | `extension_expression` node — any `%name(...)` or `[%bs.name ...]` | Typed extern (`ABI-FFI-README.md`) |
+| `untyped-exception` | `try_expression`, `raise(...)` call, `Js.Exn.*` reference, `Promise.catch` member access | `Result[E, A]` / `Validation[E, A]` |
+| `mutable-global` | Top-level `let x = ref(...)` (call-of-`ref` body) OR top-level `mutation_expression` (`x := y`) | Affine record threaded through |
+| `inline-callback-record` | ≥ 3 inline `function` values in one `record` literal OR one call's `arguments` list (via `labeled_argument` or direct) | Row-polymorphic handler record (LESSONS.md §callback-record) |
+| `oversized-function` | `function` node whose row span exceeds 50 source lines | Re-decompose before porting; do not transliterate |
 
-Deferred to Phase 2 (need real AST):
-
-- **inline lambda callback record** — N ≥ 3 `~handler: (...) =>` lambdas
-  inside one record literal (collapse to a row-polymorphic record).
-- **oversized function** — function body > ~50 LOC (decompose).
-
-### Walker coverage (Phase 2)
+### Walker vs scanner coverage
 
 | Anti-pattern | Scanner (regex) | Walker (AST) |
 |---|---|---|
-| `side-effect-import` | ✓ | ✓ — Phase 2b |
-| `raw-js` | ✓ | — Phase 2c |
-| `untyped-exception` | ✓ | — Phase 2c |
-| `mutable-global` | ✓ | — Phase 2c |
-| inline lambda callback record | — | — Phase 2c |
-| oversized function | — | — Phase 2c |
+| `side-effect-import`  | ✓ | ✓ (since Phase 2b, #322) |
+| `raw-js`              | ✓ | ✓ (since Phase 2c) |
+| `untyped-exception`   | ✓ | ✓ (since Phase 2c) |
+| `mutable-global`      | ✓ | ✓ (since Phase 2c) |
+| `inline-callback-record` | — | ✓ (since Phase 2c, walker-only by construction) |
+| `oversized-function`  | — | ✓ (since Phase 2c, walker-only by construction) |
 
-The walker improves on the regex by being structural: it only reports
-`side-effect-import` when `let _ = Mod.value` sits at module top level
-(direct child of `source_file` or a `module_declaration` body), not when
-the same shape appears inside a function body — where it is normally a
-ReScript "discard the return value of a chained call" idiom, not a
-module-load side effect.
+The walker improves on the regex by being structural: it reports
+`side-effect-import` only when `let _ = Mod.value` sits at module top
+level, distinguishes a `try { ... }` expression from the identifier
+`try`, only flags `Mutable_global` for module-scoped state (not local
+refs inside a function body), and dedupes structurally-overlapping
+findings on the same line.
 
 ## Why a skeleton and not a transliteration
 
@@ -119,18 +114,27 @@ to tree-sitter in Phase 2 behind something that already pays its way.
 
 ### Phase 2 — tree-sitter AST walker
 
-- Install the pinned grammar from
-  `editors/tree-sitter-rescript/` (manifest-only vendoring of
-  `rescript-lang/tree-sitter-rescript@990214a`).
-- Replace `Scanner` with a walker over the s-expression output of
-  `tree-sitter parse --quiet`, parsed by the existing `sexplib0`
-  dependency.
-- Adds the two deferred patterns (callback records, oversized
-  functions) and unlocks **structural** translation of trivial forms
-  (e.g. `option<X>` → `Option[X]`, `result<X, Y>` → `Result[Y, X]`,
-  `switch x { | A => ... }` → `match x { A => ... }`).
-- The `Emitter` interface does not change: same skeleton shape, same
-  marker schema, richer body.
+Vendoring of the pinned grammar
+(`rescript-lang/tree-sitter-rescript@990214a`) lives in
+`editors/tree-sitter-rescript/`; `install.sh` materialises the
+parser into `tools/vendor/tree-sitter-rescript/`.
+
+- **Phase 2a (#321)** — `just install-grammar`, the
+  `migration-assistant` CI job that runs it, dual install path
+  (`cargo install tree-sitter-cli` or `npm install -g
+  tree-sitter-cli`).
+- **Phase 2b (#322)** — the walker itself: subprocess to the
+  `tree-sitter` CLI, hand-rolled s-expression parser over the
+  default `[row, col]`-annotated output, AST-based detection of
+  `side-effect-import` only.
+- **Phase 2c (this revision)** — walker covers all six anti-patterns
+  including the two that the scanner cannot see; `--engine=walker`
+  becomes the CLI default. The `Emitter` interface does not change;
+  the marker schema is the same.
+
+Walker output is deduplicated by `(kind, line)` so structurally-
+overlapping AST matches don't inflate the bullet count above what
+the line-based scanner would produce on the same file.
 
 ### Phase 3 — partial translation
 
@@ -166,9 +170,12 @@ cd tools/res-to-affine/test
 ```
 
 The fixture under `test/fixtures/sample.res` is synthetic and exercises
-every Phase-1 anti-pattern. Real `.res` files from the estate (e.g.
-`gitbot-fleet/bots/sustainabot/bot-integration/src/*.res`) can be run
-ad hoc through the CLI without changes to the test suite.
+every Phase-1 anti-pattern; `test/fixtures/phase2c.res` exercises the
+two anti-patterns that are walker-only by construction
+(`inline-callback-record`, `oversized-function`). Real `.res` files
+from the estate (e.g. `gitbot-fleet/bots/sustainabot/bot-integration/
+src/*.res`) can be run ad hoc through the CLI without changes to the
+test suite.
 
 ## Non-goals
 
