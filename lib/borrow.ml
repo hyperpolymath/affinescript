@@ -669,6 +669,60 @@ let compute_last_use_index (symbols : Symbol.t) (blk : block)
    | None -> ());
   tbl
 
+(** Merge per-arm post-states after a multi-arm CFG-join construct
+    ([ExprHandle], [ExprTry] catch). Each [arm_result] is a triple
+    [(result, post_arm_borrows, post_arm_moved)] captured immediately
+    after running the arm against the snapshotted base state.
+
+    - Errors: propagates the first error seen (left-to-right).
+    - Borrows: intersection across arms — a borrow is alive post-join
+      only if it is alive at the end of every arm. (Branch-local
+      borrows naturally die at arm exit because the arm body is
+      typically a block whose [check_block] clears them; this just
+      formalises that semantics across the join.)
+    - Moves: union — a place is moved post-join if any arm moved it,
+      deduplicated against the base so we don't double-count moves
+      that already existed before the arms.
+
+    Mirrors the inlined logic in [ExprMatch]'s arm-merge so all CFG-
+    join sites share one notion of "what state survives the join".
+    CORE-01 pt3 Slice C / #177 (CFG-join semantics for non-match
+    join constructs). *)
+let merge_arm_results (state : state)
+    (base_borrows : borrow list) (base_moved : move_record list)
+    (arm_results : (unit result * borrow list * move_record list) list)
+    : unit result =
+  let errors = List.filter_map (fun (r, _, _) ->
+    match r with Error e -> Some e | Ok () -> None) arm_results in
+  match errors with
+  | e :: _ -> Error e
+  | [] ->
+    let all_borrows = List.map (fun (_, bs, _) -> bs) arm_results in
+    let merged_borrows = match all_borrows with
+      | [] -> base_borrows
+      | first :: rest ->
+        List.fold_left (fun acc arm_borrows ->
+          List.filter (fun b ->
+            List.exists (fun b' -> b.b_id = b'.b_id) arm_borrows
+          ) acc
+        ) first rest
+    in
+    let all_moves = List.concat_map (fun (_, _, ms) ->
+      List.filter (fun mr ->
+        not (List.exists (fun base_mr ->
+          places_overlap mr.m_place base_mr.m_place
+        ) base_moved)
+      ) ms
+    ) arm_results in
+    let unique_moves = List.fold_left (fun acc mr ->
+      if List.exists (fun mr' -> places_overlap mr.m_place mr'.m_place) acc
+      then acc
+      else mr :: acc
+    ) [] all_moves in
+    state.borrows <- merged_borrows;
+    state.moved <- base_moved @ unique_moves;
+    Ok ()
+
 (** Check borrows in an expression *)
 let rec check_expr (ctx : context) (state : state) (symbols : Symbol.t) (expr : expr) : unit result =
   match expr with
@@ -1046,12 +1100,26 @@ let rec check_expr (ctx : context) (state : state) (symbols : Symbol.t) (expr : 
 
   | ExprHandle eh ->
     let* () = check_expr ctx state symbols eh.eh_body in
-    List.fold_left (fun acc arm ->
-      let* () = acc in
-      match arm with
-      | HandlerReturn (_pat, body) -> check_expr ctx state symbols body
-      | HandlerOp (_op, _pats, body) -> check_expr ctx state symbols body
-    ) (Ok ()) eh.eh_handlers
+    (* CFG-join (CORE-01 pt3 Slice C / #177): handler arms are
+       mutually exclusive continuations dispatched on whether the
+       body returned normally ([HandlerReturn]) or performed an
+       effect-op ([HandlerOp]). Each arm runs against the post-body
+       state independently; moves/borrows from one arm must NOT
+       leak into the next. Mirrors [ExprMatch]'s arm-isolation
+       pattern via [merge_arm_results]. *)
+    let base_borrows = state.borrows in
+    let base_moved = state.moved in
+    let arm_results = List.map (fun arm ->
+      state.borrows <- base_borrows;
+      state.moved <- base_moved;
+      let body = match arm with
+        | HandlerReturn (_pat, b) -> b
+        | HandlerOp (_op, _pats, b) -> b
+      in
+      let r = check_expr ctx state symbols body in
+      (r, state.borrows, state.moved)
+    ) eh.eh_handlers in
+    merge_arm_results state base_borrows base_moved arm_results
 
   | ExprResume e_opt ->
     begin match e_opt with
@@ -1060,18 +1128,32 @@ let rec check_expr (ctx : context) (state : state) (symbols : Symbol.t) (expr : 
     end
 
   | ExprTry et ->
+    (* CFG-join (CORE-01 pt3 Slice C / #177): body runs first, then
+       either succeeds (no-exception path → post-body state
+       propagates) or raises (one catch arm runs).  Catch arms are
+       alternative continuations from the post-body state, so each
+       arm runs against that state independently — moves/borrows
+       must not leak between catch arms.  Finally runs
+       deterministically against the merged post-catch state. *)
     let* () = check_block ctx state symbols et.et_body in
+    let base_borrows = state.borrows in
+    let base_moved = state.moved in
     let* () = match et.et_catch with
-      | Some arms ->
-        List.fold_left (fun acc arm ->
-          let* () = acc in
-          let* () = match arm.ma_guard with
-            | Some g -> check_expr ctx state symbols g
-            | None -> Ok ()
-          in
-          check_expr ctx state symbols arm.ma_body
-        ) (Ok ()) arms
       | None -> Ok ()
+      | Some arms ->
+        let arm_results = List.map (fun arm ->
+          state.borrows <- base_borrows;
+          state.moved <- base_moved;
+          let r =
+            let open Result in
+            bind (match arm.ma_guard with
+              | Some g -> check_expr ctx state symbols g
+              | None -> Ok ())
+              (fun () -> check_expr ctx state symbols arm.ma_body)
+          in
+          (r, state.borrows, state.moved)
+        ) arms in
+        merge_arm_results state base_borrows base_moved arm_results
     in
     begin match et.et_finally with
       | Some blk -> check_block ctx state symbols blk
@@ -1385,15 +1467,35 @@ let check_program (symbols : Symbol.t) (program : program) : unit result =
    freshly-created borrow. NLL last-use + return-escape now see the
    *current* referent after re-assignment, not the stale original.
 
+   CORE-01 pt3 Slice C (CFG-join semantics for non-match join
+   constructs): [ExprHandle] handler arms and [ExprTry] catch arms
+   are mutually exclusive continuations from the post-body state.
+   Previously both were checked sequentially against a shared
+   state, so moves/borrows from arm i polluted arm i+1 — a
+   spurious UseAfterMove on the second of two arms that
+   independently move the same value, etc.  Both now snapshot the
+   post-body state, run each arm independently, and merge via
+   [merge_arm_results] (same intersection-borrows / union-moves
+   semantics already used inline by [ExprMatch], now extracted to
+   one helper so all CFG-join sites agree).  Finally runs after
+   the merge, deterministically, against the merged state.
+
    Still deferred:
    - Reborrow through indirection: `r = some_other_ref_var` (RHS not a
      direct `&place`) does not yet copy the other binder's graph
      entry — the ref-binding stays stale.  Same limitation as
      [record_ref_binding] for the let-graph path; would require
      symmetric let/assign handling for ref-to-ref binding.
-   - Origin/region variables (Polonius surface) + loan-live-at-point
-     dataflow across CFG joins for `ExprHandle`/`ExprTry`/loops
-     (Slice C).
+   - Origin/region variables (true Polonius surface) — a region
+     var on each [TyRef]/[TyMut] with subset constraints and a
+     proper datalog-style loan-live-at-point solver.  Architectural
+     change to the type system; ADR-gated.
+   - Loop soundness (`StmtWhile`/`StmtFor`): a single body pass
+     misses multi-iteration move conflicts.  A 2-iteration check
+     would catch them but requires fixing the assignment-clears-
+     move imprecision first (assignment is currently treated as a
+     read of LHS, so `x = …` after a prior move spuriously fails).
+     Couple Slice C' with the StmtAssign clear-on-rewrite fix.
    - Tighter integration with the quantity checker for captured
      linears (Slice D).
 *)

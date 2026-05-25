@@ -1,0 +1,27 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell
+//
+// CORE-01 pt3 Slice C / #177 anti-regression: a move performed in
+// the try-body must still be visible after the try/catch (this is
+// the conservative-correct path — body might have moved before
+// throwing, so the post-try state must reflect that the move
+// possibly happened). The Slice C arm-isolation refactor must not
+// drop body-side moves. Reading `y` after the try should error
+// UseAfterMove regardless of what the catch arm does.
+// Expected: Error UseAfterMove.
+
+module SliceCBodyMovePersists;
+
+fn drop_int(x: own Int) -> Unit = ();
+fn read_int(x: Int) -> Int = 0;
+
+fn body_move_persists() -> Int {
+  let y = 100;
+  let r = try {
+    drop_int(y);
+    0
+  } catch {
+    _ => 0
+  };
+  read_int(y) + r
+}
