@@ -1,0 +1,243 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2024-2026 hyperpolymath
+= AffineScript State Snapshot — 2026-05-26
+:toc: macro
+:toclevels: 3
+:icons: font
+
+[IMPORTANT]
+====
+This is a *snapshot* of the AffineScript repo state taken at end-of-day
+2026-05-26 (after the day's 28+ PRs landed). Authoritative live status
+still lives in link:CAPABILITY-MATRIX.adoc[`CAPABILITY-MATRIX.adoc`] and
+link:TECH-DEBT.adoc[`TECH-DEBT.adoc`]. This document exists so future
+sessions (human or machine) can read "where the project is" in one place
+without reconstructing it from the per-row matrix.
+
+If this snapshot and either of the live docs disagree, the *live docs win*
+and this snapshot needs a refresh.
+====
+
+toc::[]
+
+== One-paragraph summary
+
+AffineScript is in *Stage D* — the current frontier of its five-stage
+build-out. Stages A (core affine spine), B (grammar), and C (stdlib AOT)
+are *closed*. Stage D — base-language soundness completion (CORE-01) plus
+the INT-01..04 ecosystem substrate — is *active*. Stage E (typed-wasm
+convergence widening) is *planned* and begins when D's substrate closes.
+
+Today's gate baseline: *327 tests, 0 failures* under `dune runtest --force`.
+Up from 260 (the 2026-05-19 reconstruction reference). The +67 tests
+across one week reflect the borrow-checker NLL Slices A/B/C-light, the
+ADR-014 module-qualified-paths grammar, the Phase 2c migration-assistant
+walker, parser improvements (record-spread, trailing comma, fn-type with
+effect arrow, underscore idents), and stdlib wiring (`env_at`/`arg_at`,
+`string_length` builtin).
+
+The single named base-language soundness gap (issue #177 / CORE-01,
+borrow-checker Phase-3) is *substantially complete* — Parts 1 + 2 +
+Slices A + B + C-light have all landed; residual is the ADR-gated
+Slice C-full (Polonius origin/region variables), Slice C′ (loop
+soundness), Slice D (quantity-checker integration for captured linears),
+and ref-to-ref binding.
+
+== Repo state by the numbers
+
+|===
+|Metric |Value
+
+|Test gate (`dune runtest --force`) |327 tests, 0 failures
+|Open issues |21
+|Open PRs |13 (post 2026-05-26 admin-merge of #393 disambiguation hooks)
+|PRs merged 2026-05-24..26 |~28
+|Mechanized proofs in this repo |0 (operational soundness only)
+|Believe_me / sorry / Admitted in this repo |0
+|Soundness story |Borrow-checker (lib/borrow.ml) + CI gate; no `.v` / `.idr` / `.agda` / `.lean`
+|===
+
+== Stage map
+
+[cols="1,3,1,2"]
+|===
+|Stage |Scope |Status |Evidence
+
+|*A* |Core affine spine — QTT semiring wired into the CLI pipeline; affine types + linear arrows enforced; BUG-001..005 closed (Manhattan/Track-A recovery). |*CLOSED* |`affine-types = wired-and-reachable`, `linear-arrows = enforced` in STATE.a2ml.
+
+|*B* |Grammar conformance + conflict elimination — ADR-009 conformance, #215 conflict-family workstream, ADR-012 disposition. |*CLOSED* |#215 closed; residual ~68 S/R + state-401 R/R are intentional won't-fix per ADR-012 (Menhir resolves correctly, gate proves correctness, removing them is contortion). `just build` masks + proves; `just build-loud` reveals.
+
+|*C* |Stdlib AOT — every stdlib file compiles resolve → typecheck → codegen, gated in CI. |*CLOSED 2026-05-18* |19/19 stdlib files; `test/test_stdlib_aot.ml`; issues #128/#135.
+
+|*D* |Base-language soundness + ecosystem connective tissue — CORE-01 (#177), INT-01..12, satellite registry, #228/ADR-014 module-qualified paths. |*ACTIVE — current frontier* |Substrate = INT-01..04 + CORE-01. See sections below.
+
+|*E* |typed-wasm convergence hardening — the AffineScript ↔ typed-wasm contract widened from L7+L10 toward full L1–6 / L13–16 emitted-wasm enforcement; estate-wide re-validation (#235); multi-producer ABI. |*planned* |Begins when D's substrate closes. Cross-repo: `hyperpolymath/typed-wasm` carrier-section ABI proposal pending.
+|===
+
+== Section B (CORE) status — current rows
+
+[cols="1,3,1,2"]
+|===
+|ID |Item |Sev |Status
+
+|*CORE-01* |Borrow-checker Phase-3 — borrow-graph validation, NLL, return-escape, CFG-join, Polonius (residual). |S1 |*Part 1 + Part 2 + Slices A + B + C-light LANDED* (#177 still OPEN for residual). Residual = Slices C-full (Polonius, ADR-gated), C′ (loop soundness 2-iter), D (captured-linears quantity integration), and ref-to-ref binding.
+|*CORE-02* |Effect-handler dispatch on WasmGC — CPS over EH proposal. |S2 |*CLOSED 2026-05-19* — #225 CPS line CLOSED PR1..PR3d+PR4; #234 ADR-016 delivered end-to-end (S1..S4).
+|*CORE-03* |ADR-014: module-qualified type/effect path — `Pkg::Type` / `Pkg.Type`. |S1 |*Grammar MERGED* (PR #241, Refs #228, zero Menhir conflict delta). Estate re-audit DONE — true #229 scope = ~84 files / 12 repos.
+|*CORE-04* |Traits — associated-type substitution, where-clause supertraits, coherence checking. |S2 |partial
+|*CORE-05* |Dependent / refinement types — predicate reduction / SMT. |S3 |parse-only
+|===
+
+=== CORE-01 — landed slice detail
+
+* *Part 1* (PR #240): `BorrowOutlivesOwner` emitted (`&local` escaping its block); shared-XOR-exclusive enforced at *use* sites (`UseWhileExclusivelyBorrowed`); ownership derived from the parameter *type* (`TyOwn`/`TyRef`/`TyMut`); call-arg borrows temporary; ref-binding graph tracked.
+* *Part 2 — return-escape*: `return e` (or fn-tail) whose value is a reference rooted at a *callee-owned* binding is now `BorrowOutlivesOwner` (Part 1 only saw block tails — `return r` slipped through); `ref`/`mut` params are caller-owned and not flagged.
+* *Part 2 — `&mut e` parser surface*: zero Menhir conflict delta; `AMP MUT e` is unambiguous. Part 1's shared-XOR-exclusive rules now reachable from source for the first time.
+* *Part 3 Slice A — NLL last-use expiry*: forward pre-pass `compute_last_use_index` maps each symbol to the greatest statement index that mentions it; `check_block` expires ref-bindings whose binder is now dead. Unblocks canonical NLL patterns.
+* *Part 3 Slice B — flow-sensitive escape via re-assignment*: `outer = &y` in `StmtAssign` now pre-releases the held borrow and re-binds the `(binder → new_borrow)` ref-graph entry; NLL last-use + return-escape see the current referent after re-assignment.
+* *Part 3 Slice C-light — CFG-join for handler/try arms* (PR #358): `ExprHandle` handler arms and `ExprTry` catch arms isolated via snapshot-restore-merge (`merge_arm_results` helper). Moves/borrows from arm `i` no longer pollute arm `i+1`; `finally` runs deterministically against the merged post-catch state.
+
+=== CORE-01 — residual
+
+* *Slice C-full* — true Polonius origin/region variables on `TyRef`/`TyMut` with subset constraints and a datalog-style loan-live-at-point solver. **ADR-gated architectural change** to the type system. Estimated multi-week if Polonius is reimplemented cleanly.
+* *Slice C′* — loop soundness via a 2-iteration check on `StmtWhile`/`StmtFor` (coupled to a `StmtAssign` clear-on-rewrite fix — assignment is currently treated as a read of LHS, so naive 2-iter spuriously fails on legitimate re-assignment loops).
+* *Slice D* — tighter quantity-checker integration for captured linears.
+* Reborrow through indirection — `r = some_other_ref_var` RHS, parks with the let-graph's same restriction.
+
+== Section C (STDLIB) status
+
+|===
+|ID |Item |Sev |Status
+
+|STDLIB-AOT |All stdlib files compile resolve → typecheck → codegen, CI-gated |S1 |*CLOSED* (Stage C)
+|STDLIB-01 |Portable `Http.fetch` primitive |S2 |*DONE* — #160 + #225
+|STDLIB-02 |Portable `Json` primitive |S2 |*LANDED* (Refs #161 #246)
+|STDLIB-03 |`Dict`/`Map` keyed container |S2 |*LANDED* (Refs #162 #247)
+|===
+
+== Section D (INT) status — Stage D ecosystem substrate
+
+|===
+|ID |Item |Sev |Status
+
+|INT-01 |(detail in TECH-DEBT.adoc) | |tracker
+|*INT-02* |Host-agnostic loader bridge — `affinescript-dom-loader` |S1 |*PROVEN + locked* (Refs #179)
+|INT-03 |WASI preview2 / host I/O beyond stdout |S1 → S6a |#180 ADR-015 *OPEN*
+|INT-04 |Publish compiler + runtime to JSR (then npm) |S2 |#181 packaging *READY* (dry-run green)
+|INT-07 |`affinescript-tea` runtime |S2 |#182 runtime + run loop *shipped*
+|INT-08 |DOM reconciler in `affinescript-dom` |S2 |#183 implemented + compiles
+|*INT-10* |`affinescript-lsp` distribution |S2 |*DONE end-to-end live*
+|INT-05/06/09/11/12 |ledger-only — filed when blocker closes | |planned
+|===
+
+== Stage E (typed-wasm convergence) — pre-emptive bookkeeping
+
+|===
+|ID |Item |Sev |Status
+
+|CONV-01 |Estate-wide re-validation of #199/#205 closure ABI under real wasm engine |S2 |*open* (#235)
+|*CONV-02* |Effect-threaded async-boundary detection (generalise structural-conservative recogniser) |S2 |*CLOSED 2026-05-19* — #234 delivered end-to-end (ADR-016 S1..S4)
+|CONV-03 |#225/#160 convergence ABI matured to "shared with Ephapax" |S1 |partial (PR3a/b/c merged)
+|CONV-04 |Widen emitted-wasm enforcement beyond L7+L10 toward L1–6 / L13–16 |S2 |*L13 DONE* (`Tw_verify.verify_module_isolation`, carrier-free); L1–6 / L14–16 need new carrier section = multi-producer ABI proposal (filed for typed-wasm, **NOT unilateral**)
+|CONV-05 |INT-12: AffineScript-emitted fixtures into typed-wasm `crates/typed-wasm-verify/tests/cross_compat.rs` (typed-wasm "C5.1") |S1 |*planned* — coordinate `Refs hyperpolymath/typed-wasm`
+|===
+
+== Proof debt — what AffineScript actually carries
+
+This is important and routinely misunderstood:
+
+* *No mechanized proofs live in this repo.* There are zero `.v` / `.idr` / `.agda` / `.lean` files.
+* The `verification/proofs/` template directories that appear in RSR scaffolding are *not* obligations — they are template residue and are being removed as the embedded `affinescript-*` subtrees are extracted (issue #392 is the umbrella; `road-skate` was the first extraction, PR #391, 2026-05-26).
+* AffineScript's soundness story is *operational*: the borrow checker in `lib/borrow.ml`, regression fixtures in `tests/`, and the CI gate. The OCaml is its own oracle.
+* *"Proof debt" in AffineScript terms* = closing CORE-01 residual + the cross-validation via the typed-wasm contract (Stage E). Mechanized cross-validation flows through `hyperpolymath/typed-wasm` — emitted wasm has to satisfy that repo's verifier rules, and that's where the Idris2 proofs of agreement live. CONV-05 / INT-12 is the bridge from AffineScript fixtures into typed-wasm's `cross_compat.rs`.
+
+== Not to be confused with Ephapax
+
+`hyperpolymath/affinescript` (this repo) and `hyperpolymath/ephapax` are *separate languages*. They share *one* thing — both target `hyperpolymath/typed-wasm` — and otherwise have different ASTs, type checkers, compilers, and proof stories. The lexical overlap of `affine` is substructural-logic-family terminology, not a project relationship. Specifically, Ephapax is *internally dyadic* and contains an `ephapax-affine` *sublanguage* — that sublanguage is **NOT** AffineScript.
+
+Canonical disambiguation:
+https://github.com/hyperpolymath/nextgen-languages/blob/main/docs/disambiguation/ephapax-vs-affinescript.md
+
+Repo-level hooks landed 2026-05-26: README admonitions in affinescript (PR #393), ephapax (ephapax#152), typed-wasm (typed-wasm#73); CLAUDE.md disambiguation sections; `.machine_readable/6a2/AGENTIC.a2ml` `[disambiguation]` blocks; hypatia DR001 advisory rule (hypatia#347).
+
+== Distance to 1.0 (per ROADMAP timeline)
+
+[cols="1,2,1,1"]
+|===
+|Phase |Goal |Target |Status
+
+|*Current* |Core features working |85% |substantially achieved
+|*Phase 1 (Q1 2026)* |Complete core language |90% |Stages A–C closed; D in flight
+|*Phase 2 (Q2 2026)* |Advanced features |95% |requires CORE-01 residual + INT-03/04 closure
+|*Phase 3 (Q3 2026)* |Production ready |*1.0* |requires Stage E (typed-wasm contract widening — cross-repo)
+|===
+
+*Critical-path summary to 1.0:*
+
+. *CORE-01 Slice C-full (Polonius)* — ADR-gated, multi-week architectural change. The dominant single item.
+. *CORE-01 Slices C′ + D + ref-to-ref* — PR-sized each (~3–4 PRs total).
+. *Cross-repo: CONV-04 multi-producer ABI proposal* — filed with typed-wasm; needs owner-coordinated decision before AffineScript can widen enforcement beyond L7 + L10 + L13.
+. *#229 estate-wide ReScript elimination* — 84 files / 12 repos, mechanical-ish but coordination-heavy.
+. *INT-03 (WASI host I/O beyond stdout)* — ADR-015 filed; PR-sized work to land.
+. *INT-04 JSR/npm publish* — READY; needs the version-coordination switch flipped.
+
+*Estimated calendar effort* (rough, single-author, no swarm): CORE-01 Slice C-full alone is ~6–12 weeks if Polonius is reimplemented cleanly. Everything else (#229, INT-03, INT-04, CONV-04 coordination, the smaller CORE-01 slices) is parallel-friendly and adds maybe another 4–8 weeks of wall time *if* the typed-wasm cross-repo decision lands promptly.
+
+*No major hidden risks:* CAPABILITY-MATRIX is reconstructed and authoritative (2026-05-19); TECH-DEBT is the committed coordination index; the gate is real. The known shape of the work matches what's documented.
+
+== Open issues at session close (21)
+
+Major-labelled / S1:
+
+* *#177* — CORE-01: complete borrow checker Phase-3 (borrow-graph validation)
+* *#228* — LANG: type/effect grammar module-qualified path (grammar merged; estate port in flight)
+* *#179* — INT-02: stable host-agnostic loader bridge (tracker)
+* *#180* — INT-03: WASI preview2 / host I/O beyond stdout
+* *#229* — ESTATE: total ReScript-surface elimination from all .affine (blocked-on #228, now unblocked)
+* *#392* — Extract embedded `affinescript-*` subtrees (road-skate done; 5 more)
+
+Other open:
+
+* #175 (doc truthing meta), #176 (DOC-01..09 doc-truthing rules), #181 (INT-04 JSR/npm), #182 (INT-07 tea runtime), #183 (INT-08 DOM reconciler), #235 (closure ABI re-validation), #245 (ESC-01 raw/FFI escape), #249 (`::` value-call form residual), #260 (INT-04 native binary distribution), #262 (ESC-04 ReScript block-module), #378 (panic-attack findings triage), #56 (affinescript-dom + affinescript-pixijs migration prerequisite), #57 (.res → .affine migration assistant — Phase 2c landed 2026-05-26).
+
+== Open PRs at session close (13)
+
+After today's admin-merge sweep, the remaining open PRs are largely:
+
+* Reusable-wrapper CI conversions (#387 secret-scanner, #386 mirror, #390 scorecard, etc.)
+* Ongoing parser/codegen work (#357 Phase 2c walker integration, #385 res-to-affine walker parity, #380 vscode-adapter embed, #388 codegen record-type-alias registry, #389 CHANGELOG seed)
+* The `claude/mpl-2-0-migration` (#384) license sweep (note: target is now AGPL-3.0-or-later — *check this is actually intended*; the standing estate policy in CLAUDE.md says MPL-2.0)
+
+== Recent velocity (2026-05-24..26)
+
+~28 PRs merged in 3 days, including:
+
+* CORE-01 Slice C-light (#358)
+* Phase 2c migration-assistant walker (#357 — six anti-patterns)
+* Parser features (#370 trailing-comma, #371 fn-type with effect arrow, #373 underscore idents, #376 record-update spread, #372 builtin/qualified paths)
+* Stdlib wiring (#362 string_length builtin, #364 env_at/arg_at)
+* Tidy stack T-1..T-7 (#359..#367)
+* CI unblock (#361 bench/dune + adapter-load)
+* road-skate extraction (#391 — first of the embedded-subtree extractions)
+* Disambiguation hooks (#393 — README + CLAUDE.md + AGENTIC.a2ml)
+
+Active and productive — not a stalled project.
+
+== How this document gets refreshed
+
+* On any *Stage-status change* (e.g., when CORE-01 closes, when Stage E starts).
+* On any *issue-count or PR-count change of >5* relative to the snapshot.
+* On any *gate-baseline change* (the 327-tests number).
+* Otherwise: monthly, or whenever someone reads it and finds it stale.
+
+When refreshing, re-derive numbers from live sources — `dune runtest --force`,
+`gh issue list --state open`, `gh pr list --state open` — *not* from this
+file. This file follows; it does not lead.
+
+== See also
+
+* link:CAPABILITY-MATRIX.adoc[`CAPABILITY-MATRIX.adoc`] — authoritative per-feature readiness
+* link:TECH-DEBT.adoc[`TECH-DEBT.adoc`] — the committed coordination index
+* link:ECOSYSTEM.adoc[`ECOSYSTEM.adoc`] — the spine, Stage A–E definitions, typed-wasm contract
+* link:../README.adoc[`README.adoc`] — top-level project overview + disambiguation
+* link:../ROADMAP.adoc[`ROADMAP.adoc`] — phase targets
+* https://github.com/hyperpolymath/nextgen-languages/blob/main/docs/disambiguation/ephapax-vs-affinescript.md[canonical Ephapax ↔ AffineScript disambiguation]
