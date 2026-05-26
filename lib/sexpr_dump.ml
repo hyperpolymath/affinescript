@@ -114,8 +114,8 @@ and type_expr_to_sexpr = function
     in
     Printf.sprintf "(record %s%s)" fields_str rest_str
   | TyOwn ty   -> Printf.sprintf "(own %s)" (type_expr_to_sexpr ty)
-  | TyRef ty   -> Printf.sprintf "(ref %s)" (type_expr_to_sexpr ty)
-  | TyMut ty   -> Printf.sprintf "(mut %s)" (type_expr_to_sexpr ty)
+  | TyRef (_, ty)   -> Printf.sprintf "(ref %s)" (type_expr_to_sexpr ty)
+  | TyMut (_, ty)   -> Printf.sprintf "(mut %s)" (type_expr_to_sexpr ty)
   | TyHole     -> "_"
 
 (** Convert an effect expression to S-expression form. *)

@@ -747,7 +747,7 @@ let gen_function ctx (fd : fn_decl) : unit =
 let rec type_expr_name : type_expr -> string option = function
   | TyCon id | TyVar id -> Some id.name
   | TyApp (id, _)       -> Some id.name
-  | TyOwn t | TyRef t | TyMut t -> type_expr_name t
+  | TyOwn t | TyRef (_, t) | TyMut (_, t) -> type_expr_name t
   | _ -> None
 
 (* The struct (if any, among [known]) that [fd]'s first parameter is typed

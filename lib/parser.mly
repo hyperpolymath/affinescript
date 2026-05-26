@@ -499,8 +499,8 @@ type_expr_primary:
     { TyTuple (ty :: tys) }
   | UNDERSCORE { TyHole }
   | OWN ty = type_expr_primary { TyOwn ty }
-  | REF ty = type_expr_primary { TyRef ty }
-  | MUT ty = type_expr_primary { TyMut ty }
+  | REF ty = type_expr_primary { TyRef (None, ty) }
+  | MUT ty = type_expr_primary { TyMut (None, ty) }
   | name = lower_ident { TyVar (mk_ident name $startpos $endpos) }
   | name = upper_ident { TyCon (mk_ident name $startpos $endpos) }
   /* ADR-014 (#228): module-qualified type name. `Pkg.Type` and

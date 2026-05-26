@@ -33,12 +33,22 @@ let borrow_kind_name (k : borrow_kind) : string =
   | Shared    -> "shared"
   | Exclusive -> "exclusive"
 
+(** Single shared origin used by every borrow during M1 / M2 of the
+    Polonius migration. Until the elaborator emits fresh origins per
+    borrow site (M2), every loan flows into this one origin, which makes
+    the constraint solver semantically equivalent to today's lexical
+    checker. See ADR-022 / docs/decisions/0022-polonius-origin-variables.adoc. *)
+let default_origin : Ast.origin_var = 0
+
 (** A borrow record *)
 type borrow = {
   b_place : place;
   b_kind : borrow_kind;
   b_span : Span.t;
   b_id : int;
+  b_origin : Ast.origin_var;
+    (** Origin variable the loan flows into. M1: always [default_origin].
+        M2: fresh per borrow site. M3+: subset-constrained. See ADR-022. *)
 }
 [@@deriving show]
 
@@ -128,8 +138,8 @@ let ( let* ) = Result.bind
 let ty_ownership (t : type_expr) : ownership option =
   match t with
   | TyOwn _ -> Some Own
-  | TyRef _ -> Some Ref
-  | TyMut _ -> Some Mut
+  | TyRef (_, _) -> Some Ref
+  | TyMut (_, _) -> Some Mut
   | _ -> None
 let param_ownership (p : param) : ownership option =
   match p.p_ownership with
@@ -187,7 +197,7 @@ let rec is_copy_type (ty_opt : type_expr option) : bool =
       | TyCon id when id.name = "Int" || id.name = "Bool" || id.name = "Char" -> true
       | TyCon id when id.name = "Unit" -> true
       | TyTuple tys -> List.for_all (fun t -> is_copy_type (Some t)) tys
-      | TyRef _ -> true  (* Shared references are Copy *)
+      | TyRef (_, _) -> true  (* Shared references are Copy *)
       | _ -> false  (* Records, arrays, owned types, etc. are not Copy *)
     end
 
@@ -285,6 +295,7 @@ let record_borrow (state : state) (place : place) (kind : borrow_kind)
       b_kind = kind;
       b_span = span;
       b_id = fresh_id state;
+      b_origin = default_origin;
     } in
     match find_conflicting_borrow state new_borrow with
     | Some conflict -> Error (ConflictingBorrow (new_borrow, conflict))
@@ -531,7 +542,8 @@ let returned_borrow (state : state) (symbols : Symbol.t)
             places_overlap b.b_place target) state.borrows with
           | Some b -> b
           | None -> { b_place = target; b_kind = Shared;
-                      b_span = expr_span e; b_id = -1 })
+                      b_span = expr_span e; b_id = -1;
+                      b_origin = default_origin })
   | None ->
     (match peel e with
      | ExprVar id ->
@@ -1252,7 +1264,8 @@ and check_block (ctx : context) (state : state) (symbols : Symbol.t) (blk : bloc
                 | Some b -> b
                 | None ->
                   { b_place = target; b_kind = Shared;
-                    b_span = expr_span tail; b_id = -1 }
+                    b_span = expr_span tail; b_id = -1;
+                    b_origin = default_origin }
               in
               Error (BorrowOutlivesOwner (b, owner))
             | _ -> Ok ()

@@ -121,8 +121,8 @@ let ownership_kind_of_param (p : param) : ownership_kind =
   | None ->
     match p.p_ty with
     | TyOwn _ -> Linear
-    | TyRef _ -> SharedBorrow
-    | TyMut _ -> ExclBorrow
+    | TyRef (_, _) -> SharedBorrow
+    | TyMut (_, _) -> ExclBorrow
     | _ -> Unrestricted
 
 (** If [ty] names a known struct (through any number of own/ref/mut wrappers),
@@ -133,15 +133,15 @@ let rec struct_name_of_ty (ty : type_expr) : string option =
   match ty with
   | TyCon id -> Some id.name
   | TyApp (id, _) -> Some id.name
-  | TyOwn inner | TyRef inner | TyMut inner -> struct_name_of_ty inner
+  | TyOwn inner | TyRef (_, inner) | TyMut (_, inner) -> struct_name_of_ty inner
   | _ -> None
 
 (** Extract ownership kind from an optional return type expression *)
 let ownership_kind_of_ret (ret : type_expr option) : ownership_kind =
   match ret with
   | Some (TyOwn _) -> Linear
-  | Some (TyRef _) -> SharedBorrow
-  | Some (TyMut _) -> ExclBorrow
+  | Some (TyRef (_, _)) -> SharedBorrow
+  | Some (TyMut (_, _)) -> ExclBorrow
   | _ -> Unrestricted
 
 (** Encode an ownership_kind as a single byte (0–3) *)

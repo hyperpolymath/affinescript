@@ -43,16 +43,16 @@ let ownership_kind_of_param (p : param) : ownership_kind =
   | None ->
     match p.p_ty with
     | TyOwn _ -> Linear
-    | TyRef _ -> SharedBorrow
-    | TyMut _ -> ExclBorrow
+    | TyRef (_, _) -> SharedBorrow
+    | TyMut (_, _) -> ExclBorrow
     | _ -> Unrestricted
 
 (** Extract ownership kind from an optional return type expression *)
 let ownership_kind_of_ret (ret : type_expr option) : ownership_kind =
   match ret with
   | Some (TyOwn _) -> Linear
-  | Some (TyRef _) -> SharedBorrow
-  | Some (TyMut _) -> ExclBorrow
+  | Some (TyRef (_, _)) -> SharedBorrow
+  | Some (TyMut (_, _)) -> ExclBorrow
   | _ -> Unrestricted
 
 (** Encode an [ownership_kind] as a single byte (0..3). *)

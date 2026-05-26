@@ -49,6 +49,16 @@ type type_param = {
 }
 [@@deriving show, eq]
 
+(** Origin (region) variables — fresh-int identity. Inserted implicitly
+    by the elaborator at borrow creation; not surface-visible in v1.
+    See ADR-022 / docs/decisions/0022-polonius-origin-variables.adoc.
+
+    M1: introduced as [origin_var option] on [TyRef] / [TyMut]. Every
+    construction site plants [None]; pattern sites use [_] wildcard.
+    Semantically equivalent to the pre-M1 lexical checker. *)
+type origin_var = int
+[@@deriving show, eq]
+
 (** Type expressions *)
 type type_expr =
   | TyVar of ident                                   (** Type variable *)
@@ -58,8 +68,8 @@ type type_expr =
   | TyTuple of type_expr list                        (** (T, U, V) *)
   | TyRecord of row_field list * ident option        (** {x: T, ..r} *)
   | TyOwn of type_expr                               (** own T *)
-  | TyRef of type_expr                               (** ref T *)
-  | TyMut of type_expr                               (** mut T *)
+  | TyRef of origin_var option * type_expr           (** ref T (ADR-022) *)
+  | TyMut of origin_var option * type_expr           (** mut T (ADR-022) *)
   | TyHole                                           (** _ - infer *)
 
 and type_arg =

@@ -152,7 +152,7 @@ let rec c_type_of_ty (te : type_expr) : string =
       let elems = List.map c_type_of_ty ts in
       intern_tuple elems
   | TyRecord _                           -> "void *"
-  | TyOwn t | TyRef t | TyMut t          -> c_type_of_ty t
+  | TyOwn t | TyRef (_, t) | TyMut (_, t)          -> c_type_of_ty t
   | TyVar _ | TyHole                     -> "void *"
 
 let c_type_of_ret = function

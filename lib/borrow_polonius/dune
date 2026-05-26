@@ -1,0 +1,8 @@
+; SPDX-License-Identifier: MPL-2.0
+; M1 stub for ADR-022 — see docs/decisions/0022-polonius-origin-variables.adoc
+; Private library; NOT depended on by the main `affinescript` library.
+; M3 wires it into bin/main.ml for parallel-run diffing against the lexical checker.
+(library
+ (name affinescript_borrow_polonius)
+ (wrapped false)
+ (modules types))

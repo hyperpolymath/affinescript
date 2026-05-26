@@ -191,7 +191,7 @@ let rec as_type_to_gc_valtype (ty : type_expr) : gc_valtype =
                || id.name = "Char" || id.name = "Nat"  -> GcPrim I32
   | TyCon id when id.name = "Float"                    -> GcPrim F64
   | TyCon _                                             -> GcAnyref
-  | TyOwn inner | TyRef inner                           -> as_type_to_gc_valtype inner
+  | TyOwn inner | TyRef (_, inner)                           -> as_type_to_gc_valtype inner
   | _                                                   -> GcAnyref
 
 (** Map an AffineScript type annotation to a struct field type.

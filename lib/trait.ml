@@ -99,8 +99,8 @@ let register_trait (registry : trait_registry) (trait_decl : trait_decl) : unit 
             | TyArrow (a, _q, b, _eff) ->
               TArrow (lower_simple a, QOmega, lower_simple b, EPure)
             | TyOwn te' -> TOwn (lower_simple te')
-            | TyRef te' -> TRef (lower_simple te')
-            | TyMut te' -> TMut (lower_simple te')
+            | TyRef (_, te') -> TRef (lower_simple te')
+            | TyMut (_, te') -> TMut (lower_simple te')
             | TyRecord (fields, _) ->
               let row = List.fold_right (fun (rf : row_field) acc ->
                 RExtend (rf.rf_name.name, lower_simple rf.rf_ty, acc)
@@ -144,8 +144,8 @@ let register_trait (registry : trait_registry) (trait_decl : trait_decl) : unit 
             | TyArrow (a, _q, b, _eff) ->
               TArrow (lower_simple a, QOmega, lower_simple b, EPure)
             | TyOwn te' -> TOwn (lower_simple te')
-            | TyRef te' -> TRef (lower_simple te')
-            | TyMut te' -> TMut (lower_simple te')
+            | TyRef (_, te') -> TRef (lower_simple te')
+            | TyMut (_, te') -> TMut (lower_simple te')
             | TyRecord (fields, _) ->
               let row = List.fold_right (fun (rf : row_field) acc ->
                 RExtend (rf.rf_name.name, lower_simple rf.rf_ty, acc)

@@ -7,7 +7,7 @@
           span =
           { Span.start_pos = { Span.line = 2; col = 1; offset = 28 };
             end_pos = { Span.line = 2; col = 4; offset = 31 };
-            file = "test/golden/ownership.affine" }
+            file = "golden/ownership.affine" }
           };
         fd_type_params = [];
         fd_params =
@@ -17,7 +17,7 @@
              span =
              { Span.start_pos = { Span.line = 2; col = 18; offset = 45 };
                end_pos = { Span.line = 2; col = 19; offset = 46 };
-               file = "test/golden/ownership.affine" }
+               file = "golden/ownership.affine" }
              };
            p_ty =
            (Ast.TyOwn
@@ -27,7 +27,7 @@
                    { Span.start_pos =
                      { Span.line = 2; col = 22; offset = 49 };
                      end_pos = { Span.line = 2; col = 26; offset = 53 };
-                     file = "test/golden/ownership.affine" }
+                     file = "golden/ownership.affine" }
                    }))
            };
           { Ast.p_quantity = None; p_ownership = None;
@@ -36,18 +36,19 @@
               span =
               { Span.start_pos = { Span.line = 2; col = 32; offset = 59 };
                 end_pos = { Span.line = 2; col = 34; offset = 61 };
-                file = "test/golden/ownership.affine" }
+                file = "golden/ownership.affine" }
               };
             p_ty =
-            (Ast.TyRef
+            (Ast.TyRef (None,
                (Ast.TyCon
                   { Ast.name = "Int";
                     span =
                     { Span.start_pos =
                       { Span.line = 2; col = 37; offset = 64 };
                       end_pos = { Span.line = 2; col = 41; offset = 68 };
-                      file = "test/golden/ownership.affine" }
-                    }))
+                      file = "golden/ownership.affine" }
+                    })
+               ))
             };
           { Ast.p_quantity = None; p_ownership = None;
             p_name =
@@ -55,18 +56,19 @@
               span =
               { Span.start_pos = { Span.line = 2; col = 44; offset = 71 };
                 end_pos = { Span.line = 2; col = 46; offset = 73 };
-                file = "test/golden/ownership.affine" }
+                file = "golden/ownership.affine" }
               };
             p_ty =
-            (Ast.TyMut
+            (Ast.TyMut (None,
                (Ast.TyCon
                   { Ast.name = "Bool";
                     span =
                     { Span.start_pos =
                       { Span.line = 2; col = 49; offset = 76 };
                       end_pos = { Span.line = 2; col = 53; offset = 80 };
-                      file = "test/golden/ownership.affine" }
-                    }))
+                      file = "golden/ownership.affine" }
+                    })
+               ))
             }
           ];
         fd_ret_ty = (Some (Ast.TyTuple [])); fd_eff = None; fd_where = [];
@@ -79,7 +81,7 @@
                          { Span.start_pos =
                            { Span.line = 2; col = 65; offset = 92 };
                            end_pos = { Span.line = 3; col = 4; offset = 97 };
-                           file = "test/golden/ownership.affine" })))
+                           file = "golden/ownership.affine" })))
              })
         });
     (Ast.TopType
@@ -89,7 +91,7 @@
            span =
            { Span.start_pos = { Span.line = 6; col = 1; offset = 102 };
              end_pos = { Span.line = 6; col = 8; offset = 109 };
-             file = "test/golden/ownership.affine" }
+             file = "golden/ownership.affine" }
            };
          td_type_params = [];
          td_body =
@@ -100,7 +102,7 @@
                  span =
                  { Span.start_pos = { Span.line = 6; col = 13; offset = 114 };
                    end_pos = { Span.line = 7; col = 3; offset = 118 };
-                   file = "test/golden/ownership.affine" }
+                   file = "golden/ownership.affine" }
                  };
                sf_ty =
                (Ast.TyOwn
@@ -110,7 +112,7 @@
                        { Span.start_pos =
                          { Span.line = 7; col = 7; offset = 122 };
                          end_pos = { Span.line = 7; col = 11; offset = 126 };
-                         file = "test/golden/ownership.affine" }
+                         file = "golden/ownership.affine" }
                        }))
                }
               ])
