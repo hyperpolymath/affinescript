@@ -514,6 +514,34 @@ type_expr_primary:
     { match params with
       | [] -> TyArrow (TyTuple [], None, ret, None)
       | _  -> List.fold_right (fun p acc -> TyArrow (p, None, acc, None)) params ret }
+  /* Effect-row variant: `fn(A, B) -{E}-> C`. Mirrors the prefix-row arrow
+     already accepted in `type_expr_arrow` and in `return_type`, and is
+     required by hand-ports such as `fn(Http::Request) -{IO}-> Http::Response`
+     (gitbot-fleet#148 Router.affine). For multi-arg `fn`, the row attaches
+     to the *final* (innermost) arrow — that is where the call actually
+     performs the effect, and it matches the single-arg case where
+     `A -{E}-> R` puts the row on the lone arrow. Lowering:
+     `fn(A, B) -{E}-> R` ≡ `A -> (B -{E}-> R)`. Grammar-cost: the
+     `FN LPAREN ... RPAREN` prefix already disambiguates against every
+     other type-position production, so adding the `MINUS LBRACE eff
+     RBRACE ARROW` continuation here introduces no new lookahead conflict
+     beyond the existing `type_expr_arrow` row-arrow rule it mirrors. */
+  | FN LPAREN params = separated_list(COMMA, type_expr) RPAREN
+    MINUS LBRACE eff = effect_expr RBRACE ARROW
+    ret = type_expr_arrow
+    { match params with
+      | [] -> TyArrow (TyTuple [], None, ret, Some eff)
+      | _ ->
+        (* Attach eff to the innermost arrow (the one whose result is ret). *)
+        let rev_params = List.rev params in
+        (match rev_params with
+         | [] -> assert false
+         | last :: earlier_rev ->
+           let innermost = TyArrow (last, None, ret, Some eff) in
+           List.fold_left
+             (fun acc p -> TyArrow (p, None, acc, None))
+             innermost
+             earlier_rev) }
   /* Row-polymorphic record type.  We use a custom recursive rule rather than
      `separated_list` because Menhir's separated_list greedily consumes the
      COMMA separator and then cannot backtrack when the next token (ROW_VAR)
