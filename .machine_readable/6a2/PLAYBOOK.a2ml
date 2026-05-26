@@ -4,7 +4,7 @@
 # PLAYBOOK.a2ml — Operational playbook
 [metadata]
 version = "0.1.0"
-last-updated = "2026-04-11"
+last-updated = "2026-05-26"
 
 [deployment]
 # method = "gitops"  # gitops | manual | ci-triggered
@@ -24,3 +24,38 @@ last-updated = "2026-04-11"
 [maintenance-operations]
 # Baseline audit: just maint-audit
 # Hard release gate: just maint-hard-pass
+
+[npm-publish]
+# Runbook for publishing a @hyperpolymath/* package to npm (lineage from
+# issue #104, first applied to @hyperpolymath/affine-vscode@0.1.0
+# on 2026-05-26).
+#
+# Prerequisites (one-time per estate, completed 2026-05-26):
+#   * npm org `hyperpolymath` exists on registry.npmjs.org (free public tier)
+#   * Repo secret NPM_TOKEN holds an automation token with read+write
+#     access to the @hyperpolymath/* scope
+#
+# Per-package workflow:
+#   1. packages/<pkg>/package.json
+#        "name": "@hyperpolymath/<pkg>"
+#        "version": "X.Y.Z"
+#        "license": "MPL-2.0"
+#        "publishConfig": { "access": "public" }
+#        "repository": { "type": "git", "url": "...", "directory": "packages/<pkg>" }
+#        "files": [...]   # explicit allowlist; never publish the whole tree
+#   2. .github/workflows/<pkg>-publish.yml
+#        on push tag '<pkg>-v*'
+#        - verify GITHUB_REF_NAME (minus '<pkg>-v') == package.json version
+#        - write ${HOME}/.npmrc from secrets.NPM_TOKEN, then npm publish --access public
+#        - rm -f ${HOME}/.npmrc (always)
+#      Mirror affine-vscode-publish.yml's shape.
+#   3. Tag push (signed, at origin/main):
+#        git tag -s <pkg>-vX.Y.Z origin/main -m "<pkg> X.Y.Z — npm publish (Refs #N)"
+#        git push origin <pkg>-vX.Y.Z
+#   4. Verify: npm view @hyperpolymath/<pkg>@X.Y.Z
+#
+# Tag naming: distinct prefix per package so they never collide with the
+# OCaml compiler's `v*` Release-workflow tags. e.g. affine-vscode-v*.
+#
+# Token rotation: rotate NPM_TOKEN after any wire-up where the token
+# value transited a session transcript.
