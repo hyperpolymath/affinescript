@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MPL-2.0
 #
 # ADR-015 S3 gated smoke: compile a core module that carries the
-# `affinescript.ownership` section, run it through the componentize
+# `typedwasm.ownership` section, run it through the componentize
 # on-ramp, and assert the result is a valid WASI-0.2 component with the
 # ownership section intact (and that wasmtime can load it).
 #
@@ -25,7 +25,7 @@ COMPILER="${AFFINESCRIPT:-$ROOT/_build/default/bin/main.exe}"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
-# Known-good ownership fixture (emits the affinescript.ownership
+# Known-good ownership fixture (emits the typedwasm.ownership
 # section) + a main so the module is non-trivial.
 cp test/e2e/fixtures/verify_ownership_clean.affine "$work/cz.affine"
 printf '\nfn main() -> Int { add(2, 3) }\n' >> "$work/cz.affine"
@@ -33,7 +33,7 @@ printf '\nfn main() -> Int { add(2, 3) }\n' >> "$work/cz.affine"
 # `grep -c | … || true`: read all input (no early-close SIGPIPE that
 # `set -o pipefail` would mis-report — the `grep -q` footgun).
 has_section() {
-  [ "$(wasm-tools print "$1" 2>/dev/null | grep -c 'affinescript.ownership' || true)" -gt 0 ]
+  [ "$(wasm-tools print "$1" 2>/dev/null | grep -c 'typedwasm.ownership' || true)" -gt 0 ]
 }
 
 $COMPILER compile "$work/cz.affine" -o "$work/cz.wasm"

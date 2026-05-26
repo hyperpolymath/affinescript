@@ -110,7 +110,7 @@ const mod = await AffineModule.fromBytes(bytes, {
 
 == Ownership section (typed-wasm contract)
 
-The compiler embeds an `affinescript.ownership` custom section carrying
+The compiler embeds an `typedwasm.ownership` custom section carrying
 per-function parameter/return ownership kinds (the AffineScript ↔
 typed-wasm contract — see `docs/ECOSYSTEM.adoc`). Read it via:
 

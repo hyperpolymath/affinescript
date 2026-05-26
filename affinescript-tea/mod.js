@@ -16,7 +16,7 @@
 //     memory
 //   custom sections:
 //     affinescript.tea_layout    model field layout (parsed here, generically)
-//     affinescript.ownership     per-fn ownership kinds (the Linear-msg proof)
+//     typedwasm.ownership     per-fn ownership kinds (the Linear-msg proof)
 //
 // This runtime is GENERIC: it discovers the model from `tea_layout` rather
 // than hard-coding any one model (the bridge's TitleModel was only a demo).
@@ -182,7 +182,7 @@ export class TeaApp {
    * invoked exactly once, and the call is non-re-entrant — dispatching
    * again from within a view/effect triggered by this cycle throws (that
    * would consume a second message inside one cycle, violating the
-   * linearity the `affinescript.ownership` section asserts).
+   * linearity the `typedwasm.ownership` section asserts).
    *
    * @param {number} msg
    * @returns {Record<string, number>} the model after the update

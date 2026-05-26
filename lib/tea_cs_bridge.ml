@@ -69,7 +69,7 @@
 
     {2 Ownership annotations}
 
-    The [affinescript.ownership] custom section marks [update]'s [msg]
+    The [typedwasm.ownership] custom section marks [update]'s [msg]
     parameter as Linear (kind byte 1) — consumed exactly once per TEA
     update cycle — encoding the AffineScript linearity invariant for
     typed-wasm Level 10 verification.
@@ -207,7 +207,7 @@ let fn_set_screen : func = {
    Custom sections
    ------------------------------------------------------------------------- *)
 
-(** Build the [affinescript.ownership] custom section payload.
+(** Build the [typedwasm.ownership] custom section payload.
 
     Identical encoding to the TitleScreen bridge — only [fn_update]'s msg
     param is Linear; all other params and returns are Unrestricted. *)
@@ -305,7 +305,7 @@ let generate () : wasm_module = {
     { e_name = "memory";                       e_desc = ExportMemory 0 };
   ];
   custom_sections = [
-    ("affinescript.ownership",   build_ownership_section ());
+    ("typedwasm.ownership",   build_ownership_section ());
     ("affinescript.tea_layout",  build_tea_layout_section ());
   ];
 }
