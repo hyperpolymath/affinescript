@@ -98,7 +98,15 @@ let upper = [%sedlex.regexp? 'A'..'Z']
 let alpha = [%sedlex.regexp? lower | upper]
 let alphanum = [%sedlex.regexp? alpha | digit | '_']
 
-let lower_ident = [%sedlex.regexp? lower, Star alphanum]
+(* `lower_ident_start` accepts the conventional Rust-idiom underscore-prefix
+   form `_unused` for parameters and bindings that are intentionally unused.
+   The two-alternative form `lower | ('_', alphanum)` (a lowercase letter, OR
+   underscore-then-at-least-one-alphanum) ensures bare `_` (the wildcard
+   pattern) still lexes as the distinct UNDERSCORE token under sedlex's
+   maximal-munch rule. Added 2026-05-26 (Refs gitbot-fleet#148 sustainabot
+   hand-port: `_key`, `_value` cache stubs in GitHubApp.affine). *)
+let lower_ident_start = [%sedlex.regexp? lower | ('_', alphanum)]
+let lower_ident = [%sedlex.regexp? lower_ident_start, Star alphanum]
 let upper_ident = [%sedlex.regexp? upper, Star alphanum]
 
 let int_lit = [%sedlex.regexp? Opt '-', Plus digit]

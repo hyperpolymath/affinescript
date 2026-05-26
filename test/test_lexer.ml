@@ -23,11 +23,17 @@ let test_keywords () =
     tokens
 
 let test_identifiers () =
-  let tokens = lex_all "foo Bar _test test123" in
+  (* Underscore-prefix policy (Refs 2026-05-26 gitbot-fleet#148 sustainabot
+     hand-port): `_test` (and `_anything`) is the conventional Rust-idiom
+     unused-binding spelling; the lexer treats it as a single LOWER_IDENT.
+     Bare `_` is still tokenised as the distinct UNDERSCORE (wildcard) token
+     — sedlex applies maximal munch and the underscore branch of
+     `lower_ident_start` requires at least one trailing alphanum. *)
+  let tokens = lex_all "foo Bar _test test123 _" in
   Alcotest.(check (list token_testable)) "identifiers"
     [Token.LOWER_IDENT "foo"; Token.UPPER_IDENT "Bar";
-     Token.UNDERSCORE; Token.LOWER_IDENT "test";
-     Token.LOWER_IDENT "test123"; Token.EOF]
+     Token.LOWER_IDENT "_test"; Token.LOWER_IDENT "test123";
+     Token.UNDERSCORE; Token.EOF]
     tokens
 
 let test_literals () =
