@@ -9,8 +9,8 @@
 #     open a tracking issue.
 #   - Release cuts call `just panic` manually per RELEASE.md.
 #
-# Tool: `panic-attacker` Rust crate from
-#       road-skate/features/panic-attacker. Installed via cargo.
+# Tool: `panic-attacker` Rust crate from `hyperpolymath/panic-attack`.
+#       Installed from crates.io.
 
 name: Panic-Attack (compliance scan)
 
@@ -44,19 +44,17 @@ jobs:
           toolchain: stable
 
       - name: Install panic-attacker
-        # Source-install from the estate crate. Once published to
-        # crates.io this can switch to `cargo install panic-attacker`.
+        # Installed from crates.io (the estate crate is published at
+        # `hyperpolymath/panic-attack`). The previous `road-skate/features/
+        # panic-attacker/` local-path fallback was removed when road-skate
+        # was extracted to its own repo on 2026-05-26 — that path was a
+        # 2-file integration manifest with no Cargo.toml, so the fallback
+        # never actually built locally.
         run: |
-          if [ -d road-skate/features/panic-attacker ]; then
-            cargo install --path road-skate/features/panic-attacker --locked || \
-              cargo install --path road-skate/features/panic-attacker
-          else
-            echo "::warning::road-skate/features/panic-attacker not found; trying crates.io"
-            cargo install panic-attacker || {
-              echo "::error::panic-attacker unavailable from both estate path and crates.io"
-              exit 1
-            }
-          fi
+          cargo install panic-attacker || {
+            echo "::error::panic-attacker unavailable from crates.io"
+            exit 1
+          }
 
       - name: Run panic-attack
         id: scan
