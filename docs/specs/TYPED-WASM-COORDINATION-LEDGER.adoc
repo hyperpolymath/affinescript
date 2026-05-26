@@ -76,7 +76,7 @@ verifier dispatches on sentinel.  `hyperpolymath/ephapax`: *to be
 filed* — second producer emits v2.
 |*State* |*verifier-parse-shipping* (in this repo, this session)
 |*Owner* |@hyperpolymath
-|*Change* |Move `affinescript.ownership` from v1 (unversioned) to
+|*Change* |Move `typedwasm.ownership` from v1 (unversioned) to
 v2 (`0xAF` sentinel + `u8` version + entry_count + entries).  v2.0
 entry shape identical to v1.
 |*Verifier work* |*This repo:* `lib/tw_verify.ml` accepts both v1

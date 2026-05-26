@@ -88,10 +88,10 @@ link:TYPED-WASM-ROADMAP.adoc[TYPED-WASM-ROADMAP.adoc].
 |*Spec-level only.*  Same reason.
 |===
 
-== Carrier — the `affinescript.ownership` custom section
+== Carrier — the `typedwasm.ownership` custom section
 
 The L7+L10 discipline rides on a WebAssembly *custom section* named
-`affinescript.ownership`.  AffineScript emits it; AffineScript's own
+`typedwasm.ownership`.  AffineScript emits it; AffineScript's own
 verifier consumes it; `hyperpolymath/ephapax` *also* emits it
 (same format); the Rust verifier in `hyperpolymath/typed-wasm`
 consumes it as the cross-compat target.
@@ -289,7 +289,7 @@ until the cross-compat suite is supplemented with real AffineScript-
 emitted fixtures.
 
 |*ephapax* (`hyperpolymath/ephapax`)
-|Second producer.  Emits the same `affinescript.ownership` section.
+|Second producer.  Emits the same `typedwasm.ownership` section.
 Exposes the verifier via `ephapax compile --verify-ownership`.
 
 |*typed-wasm* (`hyperpolymath/typed-wasm`)
@@ -314,7 +314,7 @@ The following are *deliberate scope boundaries*, not oversights:
   session-protocol / agent-choreography carrier.  Multi-producer
   ABI change *and* compiler-side region/session-type inference
   (the latter blocked by CORE-01 Phase-3 NLL/Polonius).
-* *Schema versioning on `affinescript.ownership`.*  Currently
+* *Schema versioning on `typedwasm.ownership`.*  Currently
   unversioned; ADR-020 (proposed) adds a one-byte version prefix
   in a backward-compatible way.
 * *Automatic compile-time L7/L10 gating.*  Today `verify` is an

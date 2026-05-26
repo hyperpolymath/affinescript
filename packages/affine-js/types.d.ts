@@ -142,7 +142,7 @@ export declare class AffineModule {
   readonly instance: WebAssembly.Instance;
 
   /**
-   * Parsed `affinescript.ownership` custom section: per-function
+   * Parsed `typedwasm.ownership` custom section: per-function
    * parameter/return ownership kinds carrying the typed-wasm discipline.
    * Empty when the module was compiled without ownership qualifiers.
    */
@@ -171,7 +171,7 @@ export declare function buildImportObject(
   options?: Pick<LoadOptions, "imports" | "modules">,
 ): WebAssembly.Imports;
 
-/** Parse the `affinescript.ownership` custom section. */
+/** Parse the `typedwasm.ownership` custom section. */
 export declare function parseOwnershipSection(
   wasmModule: WebAssembly.Module,
 ): OwnershipEntry[];

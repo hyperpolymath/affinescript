@@ -218,7 +218,7 @@ export class AffineModule {
   }
 
   /**
-   * The parsed `affinescript.ownership` custom section: per-function
+   * The parsed `typedwasm.ownership` custom section: per-function
    * parameter/return ownership kinds carrying the typed-wasm discipline
    * (see docs/ECOSYSTEM.adoc — the AffineScript ↔ typed-wasm contract).
    * Empty when the module was compiled without ownership qualifiers.

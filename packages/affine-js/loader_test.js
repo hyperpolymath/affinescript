@@ -7,7 +7,7 @@
 //
 // These cover the SAT-02 fix (no more `url.pathname` path mangling), host
 // detection, byte-reader parity, the multi-namespace import-object builder,
-// and the `affinescript.ownership` custom-section parser (whose binary format
+// and the `typedwasm.ownership` custom-section parser (whose binary format
 // must stay byte-identical to Codegen.build_ownership_section /
 // Tw_verify.parse_ownership_section_payload in the compiler).
 
@@ -157,7 +157,7 @@ Deno.test("parseOwnershipSection: round-trips the compiler's binary format", () 
     3,
     1, // ret_kind
   ];
-  const bytes = wasmWithCustomSection("affinescript.ownership", payload);
+  const bytes = wasmWithCustomSection("typedwasm.ownership", payload);
   const mod = new WebAssembly.Module(bytes);
   assertEquals(parseOwnershipSection(mod), [
     {

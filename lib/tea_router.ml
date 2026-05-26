@@ -49,7 +49,7 @@
 
     Each exported function corresponds to one RouterMsg variant.  The
     payload parameters are annotated Linear (kind byte = 1) in the
-    [affinescript.ownership] custom section, encoding that each message is
+    [typedwasm.ownership] custom section, encoding that each message is
     consumed exactly once per TEA update cycle:
 
     {v
@@ -339,7 +339,7 @@ let fn_get_popup_tag : func = {
    Custom sections
    ------------------------------------------------------------------------- *)
 
-(** Build the [affinescript.ownership] custom section payload.
+(** Build the [typedwasm.ownership] custom section payload.
 
     Encoding (all little-endian):
     {v
@@ -461,7 +461,7 @@ let generate () : wasm_module = {
     { e_name = "memory";                            e_desc = ExportMemory 0 };
   ];
   custom_sections = [
-    ("affinescript.ownership",  build_ownership_section ());
+    ("typedwasm.ownership",  build_ownership_section ());
     ("affinescript.tea_layout", build_tea_layout_section ());
   ];
 }

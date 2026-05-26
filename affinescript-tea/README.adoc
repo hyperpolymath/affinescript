@@ -17,7 +17,7 @@ conforming WASM module exposes: `affinescript_init()`,
 once per update cycle), optional `affinescript_get_*` getters /
 `affinescript_set_screen`, an exported `memory`, and two custom
 sections — `affinescript.tea_layout` (model field layout) and
-`affinescript.ownership` (the per-function ownership kinds, including
+`typedwasm.ownership` (the per-function ownership kinds, including
 the Linear `msg` proof).
 
 This package is the *generic* host runtime for any such module. It
@@ -50,7 +50,7 @@ await app.run({
 == Linear-msg invariant
 
 `affinescript_update`'s `msg` is annotated `Linear` in
-`affinescript.ownership` — a message is consumed exactly once per
+`typedwasm.ownership` — a message is consumed exactly once per
 update cycle. `dispatch()` enforces this host-side: `affinescript_update`
 is invoked exactly once, and the call is non-re-entrant — a message
 source or effect that tries to dispatch again *before the in-flight
