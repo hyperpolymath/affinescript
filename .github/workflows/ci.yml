@@ -211,19 +211,15 @@ jobs:
     # (see CLAUDE.md "Runtime Exemptions") because the VS Code extension
     # host is npm/Node-native and no Deno/JSR equivalent exists.
     #
-    # Visibility-only until #104 lands (continue-on-error). The extension's
-    # wasm module imports the `Vscode` / `VscodeLanguageClient` module
-    # objects from the @hyperpolymath/affine-vscode adapter; without the
-    # adapter (gated on owner action — npm org create + NPM_TOKEN +
-    # affine-vscode-v0.1.0 tag push) the wasm cannot instantiate and
-    # activation fails. The defensive `optionalDependencies` move in
-    # editors/vscode/package.json and the try/catch around the adapter
-    # require in editors/vscode/out/extension.cjs already prevent the
-    # `npm install` step from 404ing — activation degradation is the
-    # remaining gap that #104 closes. Remove the `continue-on-error: true`
-    # line when #104 publishes the adapter to npm.
+    # The extension's wasm module imports the `Vscode` /
+    # `VscodeLanguageClient` modules from the @hyperpolymath/affine-vscode
+    # adapter. Until #104 publishes the adapter to npm, we install the
+    # in-tree source at packages/affine-vscode/ as a file: dependency so
+    # `require("@hyperpolymath/affine-vscode")` in out/extension.cjs
+    # resolves and the WASM instantiates cleanly. Drop the file: step
+    # once the npm publish lands; the optionalDependencies entry will
+    # take over.
     runs-on: ubuntu-latest
-    continue-on-error: true
 
     steps:
       - name: Checkout code
@@ -239,9 +235,17 @@ jobs:
         # The compiled out/extension.cjs is checked in (see #35 Phase 3),
         # so the smoke test does not need the OCaml toolchain — only the
         # Node-side test runner deps. peerDeps `vscode` is provided by
-        # @vscode/test-electron at launch; the extension's runtime dep on
-        # @hyperpolymath/affine-vscode is satisfied by npm install too.
+        # @vscode/test-electron at launch.
         run: npm install --no-audit --no-fund
+
+      - name: Install in-tree affine-vscode adapter (pre-#104)
+        working-directory: editors/vscode
+        # Until @hyperpolymath/affine-vscode is published to npm (#104),
+        # wire the in-tree source as a file: dependency so the wasm's
+        # Vscode / VscodeLanguageClient imports resolve at instantiation.
+        # --no-save keeps editors/vscode/package.json clean; --no-audit /
+        # --no-fund match the previous step's flags for log noise parity.
+        run: npm install --no-audit --no-fund --no-save file:../../packages/affine-vscode
 
       - name: Run in-editor smoke (xvfb)
         working-directory: editors/vscode
