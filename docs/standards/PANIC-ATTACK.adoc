@@ -13,7 +13,7 @@ when the scanner runs, how findings are dispositioned, and what the
 finding-disposition vocabulary is.
 
 The estate-wide rule that mandates panic-attack lives in
-`road-skate/docs/governance/MAINTENANCE-CHECKLIST.adoc`
+`hyperpolymath/road-skate`'s `docs/governance/MAINTENANCE-CHECKLIST.adoc`
 (Axis 3 — *audit: systems > compliance > effects*).  This file is
 the AffineScript-specific instantiation of that rule.
 ====
@@ -147,16 +147,14 @@ mechanism.
 == Tool installation
 
 `panic-attack` is the `panic-attacker` Rust crate from the estate
-(`road-skate/features/panic-attacker/`).  Install:
+(`hyperpolymath/panic-attack`).  Install:
 
 [source,bash]
 ----
-cargo install --path road-skate/features/panic-attacker
-# or, from the published crate (when available):
 cargo install panic-attacker
 ----
 
-CI installs it during the weekly workflow via the same crate path.
+CI installs it during the weekly workflow via the same published crate.
 
 == Cross-references
 
@@ -164,6 +162,6 @@ CI installs it during the weekly workflow via the same crate path.
   is referenced from there as the security-scan policy).
 * link:RELEASE.md[RELEASE.md] — release-cut checklist
   (pre-release panic-attack invocation).
-* `road-skate/docs/governance/MAINTENANCE-CHECKLIST.adoc` —
+* `hyperpolymath/road-skate`'s `docs/governance/MAINTENANCE-CHECKLIST.adoc` —
   estate-wide maintenance axes that mandate the scanner.
 * `panic-attack.toml` — the rule configuration this SOP enacts.
