@@ -1329,6 +1329,12 @@ let register_builtins (ctx : context) : unit =
      follow-up. Effect row `Time` (reserved). *)
   bind_var ctx "env_count" (TArrow (ty_unit, QOmega, ty_int, ESingleton "Time"));
   bind_var ctx "arg_count" (TArrow (ty_unit, QOmega, ty_int, ESingleton "Time"));
+  (* ADR-015 S5 (#180): env_at(i) / arg_at(i) -> String / Time.
+     Lowers via [Wasi_runtime.gen_str_at_via_get] (8-local scratch +
+     byte-scan + heap-allocated AS string). Effect row matches the
+     count siblings since they share the WASI environ/args surface. *)
+  bind_var ctx "env_at" (TArrow (ty_int, QOmega, ty_string, ESingleton "Time"));
+  bind_var ctx "arg_at" (TArrow (ty_int, QOmega, ty_string, ESingleton "Time"));
   (* ADR-015 S6b (#180): WASI socket primitive. `net_shutdown(fd, how)`
      -> Int errno (0 on success, ENOTSOCK on a non-socket fd, etc.).
      `how`: 1 = RD, 2 = WR, 3 = RDWR. Lowers to a

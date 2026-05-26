@@ -888,8 +888,7 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
            (added on-demand at module assembly; idx looked up in
            [ctx.wasi_func_indices]). The Unit arg satisfies the
            zero-param-fn collapse wart; it is evaluated but its value
-           is unused. String accessors (env_at/arg_at) need byte-level
-           wasm IR ops (currently absent) and are a tracked follow-up. *)
+           is unused. String accessors env_at/arg_at are below. *)
         let wasi_name =
           if id.name = "env_count" then "environ_sizes_get"
           else "args_sizes_get"
@@ -906,6 +905,60 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
           arg_code @ [Drop] @
           Wasi_runtime.gen_count_via_sizes_get
             heap_idx scratch_local sizes_func_idx
+        in
+        Ok (ctx_with_heap, code)
+
+      | ExprVar id when id.name = "string_length" && List.length args = 1 ->
+        (* STDLIB-04e (#332) wasm-backend lowering. AS string layout is
+           `[len: i32][bytes...]` at the pointer the arg evaluates to —
+           reading the length is one i32.load at offset 0. The interp
+           binding (lib/interp.ml) was wired in #362; this handler is
+           the codegen sibling so tests/codegen/*.affine fixtures that
+           call string_length (env_at / arg_at / env_count_and_at) can
+           compile end-to-end. *)
+        let* (ctx_with_arg, arg_code) = gen_expr ctx (List.hd args) in
+        Ok (ctx_with_arg, arg_code @ [I32Load (2, 0)])
+
+      | ExprVar id when (id.name = "env_at" || id.name = "arg_at")
+                        && List.length args = 1 ->
+        (* ADR-015 S5 (#180): env_at(i) / arg_at(i) — fetch the i-th
+           entry from the WASI environ/argv vector and return as a
+           length-prefixed AS string. Lowers via [gen_str_at_via_get]
+           which needs 8 fresh locals + two WASI imports (sizes_get
+           paired with get). All locals are pre-allocated here and
+           passed by index; the helper does not modify the type/scope
+           context. The sizes_get import is shared with env_count /
+           arg_count when both are used in the same module; dedup is
+           done in the optional_wasi assembly below. *)
+        let (sizes_name, get_name) =
+          if id.name = "env_at"
+          then ("environ_sizes_get", "environ_get")
+          else ("args_sizes_get", "args_get")
+        in
+        let sizes_func_idx =
+          try List.assoc sizes_name ctx.wasi_func_indices
+          with Not_found -> 1
+        in
+        let get_func_idx =
+          try List.assoc get_name ctx.wasi_func_indices
+          with Not_found -> 1
+        in
+        let* (ctx_with_arg, arg_code) = gen_expr ctx (List.hd args) in
+        let (ctx1, scratch_local)  = alloc_local ctx_with_arg ("__" ^ id.name ^ "_scratch") in
+        let (ctx2, count_local)    = alloc_local ctx1 ("__" ^ id.name ^ "_count") in
+        let (ctx3, bufsize_local)  = alloc_local ctx2 ("__" ^ id.name ^ "_bufsize") in
+        let (ctx4, ptrvec_local)   = alloc_local ctx3 ("__" ^ id.name ^ "_ptrvec") in
+        let (ctx5, src_local)      = alloc_local ctx4 ("__" ^ id.name ^ "_src") in
+        let (ctx6, dst_local)      = alloc_local ctx5 ("__" ^ id.name ^ "_dst") in
+        let (ctx7, result_local)   = alloc_local ctx6 ("__" ^ id.name ^ "_result") in
+        let (ctx8, n_local)        = alloc_local ctx7 ("__" ^ id.name ^ "_n") in
+        let (ctx_with_heap, heap_idx) = ensure_heap_ptr ctx8 in
+        let code =
+          arg_code @
+          Wasi_runtime.gen_str_at_via_get
+            heap_idx n_local scratch_local count_local
+            bufsize_local ptrvec_local src_local dst_local result_local
+            sizes_func_idx get_func_idx
         in
         Ok (ctx_with_heap, code)
 
@@ -2564,14 +2617,34 @@ let generate_module ?loader (prog : program) : wasm_module result =
       false prog
   in
   let optional_wasi =
-    (* (guest_builtin_name, wasi_import_name, factory) — canonical order. *)
+    (* (guest_builtin_name, wasi_import_name, factory) — canonical order.
+       ADR-015 S5 (#180): env_at/arg_at each require TWO WASI imports
+       (sizes_get + get), so they appear as two rows. When env_count
+       and env_at are both used the sizes_get row is requested by
+       both — the dedup pass below collapses duplicates by wasi
+       import name (keep first occurrence) so the resulting module
+       has at most one import per WASI function. *)
     [ ("clock_now_ms", "clock_time_get",     Wasi_runtime.create_clock_time_get_import);
       ("env_count",    "environ_sizes_get",  Wasi_runtime.create_environ_sizes_get_import);
       ("arg_count",    "args_sizes_get",     Wasi_runtime.create_args_sizes_get_import);
+      ("env_at",       "environ_sizes_get",  Wasi_runtime.create_environ_sizes_get_import);
+      ("env_at",       "environ_get",        Wasi_runtime.create_environ_get_import);
+      ("arg_at",       "args_sizes_get",     Wasi_runtime.create_args_sizes_get_import);
+      ("arg_at",       "args_get",           Wasi_runtime.create_args_get_import);
       ("net_shutdown", "sock_shutdown",      Wasi_runtime.create_sock_shutdown_import);
     ]
     |> List.filter_map
          (fun (b, w, f) -> if uses b then Some (w, f ()) else None)
+    (* Dedup by wasi import name, keep first occurrence. Needed because
+       env_at + env_count both request environ_sizes_get; without dedup
+       the wasm would have two imports under the same name and
+       instantiation would fail. *)
+    |> List.fold_left (fun (seen, acc) (w, imp_ty) ->
+         if List.mem w seen then (seen, acc)
+         else (w :: seen, (w, imp_ty) :: acc)
+       ) ([], [])
+    |> snd
+    |> List.rev
     |> List.mapi (fun i (w, (imp, ty)) -> (i + 1, w, imp, ty))
   in
   let opt_types = List.map (fun (_, _, _, ty) -> ty) optional_wasi in

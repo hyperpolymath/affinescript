@@ -150,7 +150,9 @@
     "vsce": "^2.15.0"
   },
   "dependencies": {
-    "@hyperpolymath/affine-vscode": "^0.1.0",
     "vscode-languageclient": "^9.0.0"
+  },
+  "optionalDependencies": {
+    "@hyperpolymath/affine-vscode": "^0.1.0"
   }
 }

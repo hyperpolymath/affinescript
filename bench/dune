@@ -20,8 +20,24 @@
 ;   bench/bench_typecheck.ml   typecheck + quantity sweep
 ;   bench/bench_codegen.ml     wasm-codegen sweep
 
-(test
+; `(test ...)` would auto-register bench_main under @runtest, defeating the
+; visibility-only contract. Use `(executable ...)` + a dedicated `(rule
+; (alias bench) ...)` so the bench is only invoked when explicitly targeted
+; (`dune runtest @bench` / `just bench`). The previous `(alias bench)` field
+; on `(test ...)` was rejected by dune 3.x as Unknown field.
+
+(executable
  (name bench_main)
  (libraries affinescript alcotest unix)
- (modules bench_main bench_fixtures bench_lex bench_parse bench_typecheck bench_codegen)
- (alias bench))
+ (modules
+  bench_main
+  bench_fixtures
+  bench_lex
+  bench_parse
+  bench_typecheck
+  bench_codegen))
+
+(rule
+ (alias bench)
+ (action
+  (run %{exe:bench_main.exe})))

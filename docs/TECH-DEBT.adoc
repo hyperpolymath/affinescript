@@ -164,15 +164,29 @@ the same-target reborrow (`r = &mut x` while `r` already holds
 `&mut x`) does not trip `ConflictingBorrow` on the about-to-be-replaced
 exclusive borrow. 3 hermetic tests in "E2E Borrow Graph" (old released,
 new tracked by NLL, anti-regression that new borrow still protects its
-new target). *Slices C–D residual:* origin/region variables (Polonius
-surface) + loan-live-at-point dataflow across CFG joins for
-`ExprHandle`/`ExprTry`/loops; tighter quantity integration for captured
-linears; reborrow through indirection (`r = some_other_ref_var` RHS does
-not yet copy the other binder's graph entry — symmetric let/assign
-limitation, parks with the let-graph's same restriction). |S1 |pt1 #240
-+ pt2 return-escape + `&mut` surface + pt3 Slices A+B DONE (Refs #177);
-residual = Slices C–D (origin variables, quantity integration,
-ref-to-ref binding) — issue #177
+new target). *Part 3 Slice C-light LANDED* (Refs #177): CFG-join
+semantics for non-match join constructs — `ExprHandle` handler arms
+and `ExprTry` catch arms are now isolated via snapshot-restore-merge,
+extracted into a `merge_arm_results` helper that mirrors `ExprMatch`'s
+inlined logic (intersection on borrows, union on moves, first-error
+propagation). Moves/borrows from arm i no longer pollute arm i+1;
+`finally` runs deterministically against the merged post-catch state.
+2 hermetic tests in "E2E Borrow Graph" (positive: two catch arms can
+independently move the same value; anti-regression: body-side moves
+still propagate past the try, preserving conservative correctness).
+*Residual (Slices C-full / C' / D):* true Polonius origin/region
+variables on `TyRef`/`TyMut` with subset constraints and a datalog-
+style loan-live-at-point solver (architectural change to the type
+system; ADR-gated); loop soundness via a 2-iteration check on
+`StmtWhile`/`StmtFor` (coupled to a `StmtAssign` clear-on-rewrite
+fix — assignment is currently treated as a read of LHS, so the
+naive 2-iter spuriously fails on legitimate re-assignment loops);
+reborrow through indirection (`r = some_other_ref_var` RHS, parks
+with the let-graph's same restriction); tighter quantity-checker
+integration for captured linears. |S1 |pt1 #240 + pt2 return-escape
++ `&mut` surface + pt3 Slices A+B+C-light DONE (Refs #177); residual
+= Slices C-full (origin variables, ADR-gated), C' (loop soundness),
+D (quantity integration), plus ref-to-ref binding — issue #177
 |CORE-02 |Effect-handler dispatch on WasmGC (was `UnsupportedFeature`;
 the chosen path is CPS over the EH proposal). The #225 CPS line closed
 the async slice; #234 generalised the boundary recogniser from a

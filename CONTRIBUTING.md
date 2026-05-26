@@ -43,7 +43,7 @@ affinescript/
 ├── packages/            # Aggregate JS/TS/ReScript binding packages
 ├── editors/             # Editor integrations
 ├── js/                  # `js_of_ocaml` playground (built into `playground.bc.js`)
-├── .machine_readable/   # Machine-readable metadata (`.a2ml`) — see AI.a2ml
+├── .machine_readable/   # Machine-readable metadata (`.a2ml`) — see 0-AI-MANIFEST.a2ml
 ├── .github/             # CI workflows, issue templates
 ├── CODE_OF_CONDUCT.md
 ├── CONTRIBUTING.md      # This file
