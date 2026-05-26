@@ -6,7 +6,7 @@
     Implements two capabilities:
 
     1.  {b Interface extraction}: given any Wasm module that contains an
-        [affinescript.ownership] custom section, extract the
+        [typedwasm.ownership] custom section, extract the
         ownership-annotated signatures of all exported functions.  This is
         the machine-readable boundary contract that callers must honour.
         Printed by [affinescript interface FILE].
@@ -67,12 +67,12 @@ type cross_error =
    ============================================================================ *)
 
 (** Build a [(func_idx → (param_kinds, ret_kind))] lookup table from the
-    [affinescript.ownership] custom section of [wasm_mod].
+    [typedwasm.ownership] custom section of [wasm_mod].
     Returns an empty table if the section is absent. *)
 let ownership_index_of_module (wasm_mod : Wasm.wasm_module)
     : (int, ownership_kind list * ownership_kind) Hashtbl.t =
   let tbl = Hashtbl.create 16 in
-  (match List.assoc_opt "affinescript.ownership" wasm_mod.Wasm.custom_sections with
+  (match List.assoc_opt "typedwasm.ownership" wasm_mod.Wasm.custom_sections with
   | None -> ()
   | Some payload ->
     List.iter (fun (idx, param_kinds, ret_kind) ->

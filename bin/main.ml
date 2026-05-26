@@ -406,7 +406,7 @@ let tea_bridge_cmd_fn output =
   Format.printf "  affinescript_get_screen_w/h() -> i32    — current screen dimensions@.";
   Format.printf "  affinescript_set_screen(w: i32, h: i32) — handle resize events@.";
   Format.printf "  memory                                   — exported linear memory (model at offset 64)@.";
-  Format.printf "Custom sections: affinescript.ownership, affinescript.tea_layout@.";
+  Format.printf "Custom sections: typedwasm.ownership, affinescript.tea_layout@.";
   `Ok ()
 
 (** Generate the Cadre Router Wasm module.
@@ -438,7 +438,7 @@ let router_bridge_cmd_fn output =
   Format.printf "  affinescript_router_get_popup_tag() -> i32          — active popup (−1 if none)@.";
   Format.printf "Screen tags: 0=Title 1=CharacterSelect 2=WorldMap 3=Load 4=Game@.";
   Format.printf "Popup tags:  0=Settings 1=Inventory 2=Hacking@.";
-  Format.printf "Custom sections: affinescript.ownership, affinescript.tea_layout@.";
+  Format.printf "Custom sections: typedwasm.ownership, affinescript.tea_layout@.";
   `Ok ()
 
 (** Generate the CharacterSelect TEA Bridge Wasm module.
@@ -476,7 +476,7 @@ let cs_bridge_cmd_fn output =
   Format.printf "  affinescript_get_screen_w/h() -> i32    — current screen dimensions@.";
   Format.printf "  affinescript_set_screen(w: i32, h: i32) — handle resize events@.";
   Format.printf "  memory                                   — exported linear memory (model at offset 64)@.";
-  Format.printf "Custom sections: affinescript.ownership, affinescript.tea_layout@.";
+  Format.printf "Custom sections: typedwasm.ownership, affinescript.tea_layout@.";
   `Ok ()
 
 (** Start the REPL *)
@@ -1107,7 +1107,7 @@ let compile_to_wasm_module face path
 
     Runs the full frontend pipeline (parse → resolve → typecheck → borrow →
     quantity → codegen) and then passes the resulting Wasm module through
-    [Tw_verify.verify_from_module], which reads the [affinescript.ownership]
+    [Tw_verify.verify_from_module], which reads the [typedwasm.ownership]
     custom section and checks each function body for linearity (Level 10) and
     aliasing-safety (Level 7) violations.
 
@@ -1335,7 +1335,7 @@ let verify_cmd =
 (** Print the ownership-annotated export interface of a generated bridge module.
 
     Generates the selected module ([tea-bridge] or [router]) in-memory, extracts
-    its [affinescript.ownership] section, and prints the per-export ownership
+    its [typedwasm.ownership] section, and prints the per-export ownership
     contract: which parameters are [own] (Linear), [ref] (SharedBorrow), [mut]
     (ExclBorrow), or plain [val] (Unrestricted).
 
@@ -1442,7 +1442,7 @@ let verify_boundary_fn which =
 
     Compiles [callee_path] and [caller_path] through the full frontend
     pipeline, extracts [callee]'s ownership-annotated export interface from
-    its [affinescript.ownership] custom section, then checks that every
+    its [typedwasm.ownership] custom section, then checks that every
     function in [caller] invokes each Linear-param import with consistent
     per-path call counts:
       - max_calls > 1 on any path → LinearImportCalledMultiple
@@ -1491,7 +1491,7 @@ let interface_cmd =
   let doc = "Print the ownership-annotated export interface of a generated bridge module" in
   let man = [
     `S "DESCRIPTION";
-    `P "Extracts the $(b,affinescript.ownership) custom section from the selected \
+    `P "Extracts the $(b,typedwasm.ownership) custom section from the selected \
         generated Wasm module and prints the per-export ownership contract.";
     `P "Parameters are annotated: $(b,own) = Linear (consumed exactly once), \
         $(b,ref) = SharedBorrow (read-only), $(b,mut) = ExclBorrow (exclusive \
@@ -1541,7 +1541,7 @@ let verify_boundary_cmd =
     `S "DESCRIPTION";
     `P "Compiles $(b,CALLEE) and $(b,CALLER) through the full frontend pipeline, \
         extracts $(b,CALLEE)'s ownership-annotated export interface from its \
-        $(b,affinescript.ownership) custom section, and then checks every \
+        $(b,typedwasm.ownership) custom section, and then checks every \
         function body in $(b,CALLER) against that interface.";
     `P "For each import that corresponds to a callee export with at least one \
         $(b,own) (Linear) parameter, the verifier counts per-execution-path \

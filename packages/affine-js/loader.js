@@ -15,7 +15,7 @@
 //   2. a host-agnostic byte reader (Deno / Node / browser parity);
 //   3. a full import-object builder (multi-namespace, for the cross-module
 //      WASM imports INT-01/#178 emits — not `env`-only);
-//   4. an accessor for the `affinescript.ownership` custom section (the
+//   4. an accessor for the `typedwasm.ownership` custom section (the
 //      typed-wasm contract carrier — see docs/ECOSYSTEM.adoc).
 //
 // It has no dependency on `mod.js`; `mod.js` consumes it.
@@ -195,7 +195,7 @@ const OWNERSHIP_KINDS = /** @type {const} */ ([
  */
 
 /**
- * Parse the `affinescript.ownership` custom section.
+ * Parse the `typedwasm.ownership` custom section.
  *
  * Binary encoding (must match `Codegen.build_ownership_section` /
  * `Tw_verify.parse_ownership_section_payload` in the compiler):
@@ -213,7 +213,7 @@ const OWNERSHIP_KINDS = /** @type {const} */ ([
 export function parseOwnershipSection(wasmModule) {
   const sections = WebAssembly.Module.customSections(
     wasmModule,
-    "affinescript.ownership",
+    "typedwasm.ownership",
   );
   if (sections.length === 0) return [];
   const view = new DataView(sections[0]);

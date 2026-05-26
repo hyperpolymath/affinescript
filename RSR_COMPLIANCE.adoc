@@ -1,0 +1,134 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2024-2026 hyperpolymath
+= AffineScript RSR Compliance
+:toc: macro
+:toclevels: 3
+:icons: font
+
+[IMPORTANT]
+====
+This document tracks how the AffineScript repo aligns with the
+*Rhodium Standard Repository* template
+(link:https://github.com/hyperpolymath/RSR-template-repo[RSR-template-repo],
+ledger entry in link:standards/RSR-OUTLINE.adoc[docs/standards/RSR-OUTLINE.adoc]).
+RSR is an estate-wide convention, not a third-party standard; this
+file is the place where deviations from the template are documented
+and justified rather than left silent.
+====
+
+toc::[]
+
+== Status
+
+[cols="3,1,4"]
+|===
+|Requirement |State |Notes
+
+|`.editorconfig` |✅ |Standard editor config (indent / charset).
+|`.gitignore`    |✅ |Repo-specific ignore rules.
+|`justfile`      |✅ |Task runner with all RSR-mandated recipes (`build`, `test`, `quality`, `ci`, `validate`, `docs`).
+|`README.adoc`   |✅ |Project overview + Getting Started.
+|`LICENSE`       |✅ |MPL-2.0 — the legal-fallback bridge until the in-flight Palimpsest license is formally recognised. Full text and SPDX-by-file are tracked under `LICENSES/`.
+|`.well-known/security.txt` |✅ |RFC 9116 disclosure contact.
+|`.well-known/ai.txt`       |✅ |Estate-wide AI agent affordance metadata.
+|`.well-known/humans.txt`   |✅ |Human-readable maintainer / contributor surface.
+|`guix.scm` or `flake.nix`  |⚠️ |Neither file currently committed; the `affinescript.opam` package descriptor + the global `justfile` recipes carry the build contract today. Adding a Guix channel definition is a planned follow-up (estate primary is Guix per RSR-OUTLINE §"Language Tiers"); a Nix fallback would be acceptable for early CI.
+|`0-AI-MANIFEST.a2ml`       |✅ |Adopted 2026-05-25 (PR #359) replacing the older `AI.a2ml` per Hypatia `root_hygiene` rule. Matches sibling-repo convention (`road-skate/`, `affinescript-vite/`, `affinescriptiser/` all carry the same).
+|`STATE.scm`                |❌ |*Documented exemption.* This repo's `.scm` extension is reserved for Guix (`guix.scm`, `.guix-channel`) per the language policy in `0-AI-MANIFEST.a2ml`. Project state lives at `.machine_readable/6a2/STATE.a2ml` in the canonical 6a2 schema (matches sibling repos in the same estate). Substituting `.a2ml` for `.scm` is the cross-repo standard, not an AffineScript outlier — see also `road-skate/.machine_readable/STATE.a2ml`.
+|`RSR_COMPLIANCE.adoc`      |✅ |This file. Added 2026-05-25.
+|===
+
+== Directory layout
+
+The RSR template proposes a deliberately small `docs/` (only
+`generated/`, `man/`, `just-cookbook.adoc`). This repo's `docs/` is
+richer because the compiler's documentation surface is genuinely
+larger (specs + ADRs + architecture + reference + history + tutorial
++ vision). The structure is:
+
+[source]
+----
+docs/
+├── README.adoc / NAVIGATION.adoc        # indices
+├── ROADMAP.adoc / CAPABILITY-MATRIX.adoc / TECH-DEBT.adoc / ECOSYSTEM.adoc
+├── architecture/   # compiler / backend internals
+├── governance/     # licensing, security, community
+├── guides/         # how-tos, programming practices
+├── history/        # session notes, retired specs
+├── reference/      # ABI-FFI, capabilities (technical reference)
+├── reports/        # status snapshots
+├── specs/          # language + typed-wasm specifications
+├── standards/      # decisions, roadmap, testing, RSR-OUTLINE
+├── tutorial/       # user-facing tutorials
+└── vision/         # long-form direction-setting
+----
+
+This is a *superset* of the RSR-template `docs/`, not a contradiction —
+no required RSR file is missing because of the extra subdirs.
+
+== Language tier compliance
+
+RSR-OUTLINE §"Prohibited" lists languages estate-wide policy forbids.
+AffineScript-specific status:
+
+[cols="2,3"]
+|===
+|Prohibition |Status
+
+|No Python outside `salt/`
+|✅ — no Python in this repo.
+
+|No new TypeScript
+|⚠️ — *seven documented exemptions* listed in
+link:../.claude/CLAUDE.md[CLAUDE.md §"TypeScript Exemptions (Approved)"]:
+`packages/affine-js/types.d.ts` (1), `packages/affinescript-cli/mod.d.ts` (1),
+`affinescript-deno-test/*.ts` (6). Each entry carries a per-file rationale and
+an unblock condition. The Hypatia security scan flags them at every PR; the
+policy check has no allowlist, so the resulting CI signal is treated as
+a documented baseline (see CLAUDE.md §"Known-failing baseline checks").
+
+|No CUE
+|✅ — no CUE in this repo.
+
+|No `Dockerfile` (use `Containerfile`)
+|✅ — no `Dockerfile` in this repo.
+
+|Runtime exemptions (Node.js / Bun)
+|⚠️ — *two documented exemptions* in
+link:../.claude/CLAUDE.md[CLAUDE.md §"Runtime Exemptions (Approved)"]:
+`packages/affinescript-cli/mod.js` (the runtime-agnostic JSR shim;
+ecosystem reach into Node/Bun installer pipelines requires it) and
+`editors/vscode/test/**/*.js` (the in-editor smoke harness for issue #139;
+the VS Code extension host is npm/Node-native and `@vscode/test-electron`
+has no Deno equivalent).
+|===
+
+== Validation
+
+[source,sh]
+----
+# Build + test (the CI gate)
+opam exec -- dune build
+opam exec -- dune runtest
+
+# Format check
+opam exec -- dune build @fmt
+
+# Migration-assistant grammar pipeline (PR #321)
+just install-grammar
+----
+
+`just validate-rsr` (the RSR-template recipe name) is *not currently
+wired* in this repo's `justfile` — adding it as an alias for the
+above two-line check is on the follow-up list.
+
+== Cross-references
+
+* link:standards/RSR-OUTLINE.adoc[`docs/standards/RSR-OUTLINE.adoc`] — the upstream RSR template's outline, vendored here so the repo can read it without leaving `main`.
+* link:../.claude/CLAUDE.md[`.claude/CLAUDE.md`] — language policy + exemption tables (the authoritative source for ⚠️ rows above).
+* link:CAPABILITY-MATRIX.adoc[`docs/CAPABILITY-MATRIX.adoc`] — feature-readiness matrix; this RSR-compliance file is about *repo shape*, that one is about *language readiness*.
+* link:TECH-DEBT.adoc[`docs/TECH-DEBT.adoc`] — coordination ledger; long-form follow-up tracking for the ⚠️ rows lives in DOC / CORE / INT ledger entries there.
+
+== History
+
+* 2026-05-25 — Initial file. T-4 of the repo-tidy stack (PR follows). Documented the four ⚠️ rows (`guix.scm`/Nix gap; `STATE.scm` substitution; TypeScript exemptions; runtime exemptions) and the ✅ adoption of `0-AI-MANIFEST.a2ml` from PR #359.

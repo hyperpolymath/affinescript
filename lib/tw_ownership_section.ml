@@ -2,7 +2,7 @@
 (* SPDX-FileCopyrightText: 2026 hyperpolymath *)
 (*
  * tw_ownership_section.ml — the dedicated home for the
- * `affinescript.ownership` Wasm custom section: kind encoding,
+ * `typedwasm.ownership` Wasm custom section: kind encoding,
  * extraction from the AST, and binary serialisation.
  *
  * Extracted from lib/codegen.ml at 2026-05-24 per Tranche A3 of
@@ -62,7 +62,7 @@ let ownership_kind_byte = function
   | SharedBorrow -> 2
   | ExclBorrow -> 3
 
-(** Build the payload for the [affinescript.ownership] Wasm custom section.
+(** Build the payload for the [typedwasm.ownership] Wasm custom section.
 
     v1 encoding (current emit; LE):
       u32  entry_count

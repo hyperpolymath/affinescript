@@ -13,7 +13,7 @@ let imp m n d : Wasm.import = { Wasm.i_module = m; i_name = n; i_desc = d }
 
 (* count=0 ownership payload (u32le 0) — present so verify_from_module
    does not short-circuit on "no ownership section ⇒ Ok". *)
-let own_section = ("affinescript.ownership", Bytes.make 4 '\000')
+let own_section = ("typedwasm.ownership", Bytes.make 4 '\000')
 
 let is_isolation_err = function
   | Tw_verify.ModuleNotIsolated _ -> true

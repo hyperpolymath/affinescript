@@ -164,7 +164,7 @@ silent-bad-codegen fallbacks eliminated. Mixed-arity matches need uniform
 variant rep; effects/try-catch/`call_ref` deferred (EH/CPS — #225 line).
 
 |typed-wasm |*contract, narrow* |Not a backend flag — a *discipline-bearing
-shape* over the WASM output: the `affinescript.ownership` custom section +
+shape* over the WASM output: the `typedwasm.ownership` custom section +
 `lib/tw_interface.ml` / `lib/tw_verify.ml` boundary verifier. Emitted-wasm
 enforcement covers *typed-wasm Level 7 (aliasing) + Level 10 (linearity)
 + Level 13 (module isolation, negative form)*.

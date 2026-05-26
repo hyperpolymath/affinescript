@@ -1121,7 +1121,7 @@ let python_face_tests = [
    ============================================================================
 
    Verify that AffineScript ownership qualifiers (own/ref/mut) survive codegen
-   and appear in the [affinescript.ownership] Wasm custom section.
+   and appear in the [typedwasm.ownership] Wasm custom section.
 
    Kind encoding (matches Codegen.ownership_kind):
      0 = Unrestricted  (plain value)
@@ -1130,9 +1130,9 @@ let python_face_tests = [
      3 = ExclBorrow    (mut / TyMut — typed-wasm Level 7)
 *)
 
-(** Find the [affinescript.ownership] custom section payload, if present *)
+(** Find the [typedwasm.ownership] custom section payload, if present *)
 let find_ownership_section (wasm_mod : Wasm.wasm_module) : bytes option =
-  List.assoc_opt "affinescript.ownership" wasm_mod.Wasm.custom_sections
+  List.assoc_opt "typedwasm.ownership" wasm_mod.Wasm.custom_sections
 
 (** Parse the ownership section payload into structured entries.
     Returns a list of (func_index, param_kinds, return_kind) tuples. *)
@@ -1166,7 +1166,7 @@ let test_ownership_section_present () =
   | Ok wasm_mod ->
     match find_ownership_section wasm_mod with
     | None ->
-      Alcotest.fail "Expected [affinescript.ownership] custom section, none found"
+      Alcotest.fail "Expected [typedwasm.ownership] custom section, none found"
     | Some payload ->
       Alcotest.(check bool) "section payload is non-empty" true
         (Bytes.length payload > 0)
@@ -1183,7 +1183,7 @@ let test_ownership_roundtrip () =
   | Error msg -> Alcotest.fail msg
   | Ok wasm_mod ->
     match find_ownership_section wasm_mod with
-    | None -> Alcotest.fail "No [affinescript.ownership] section in compiled output"
+    | None -> Alcotest.fail "No [typedwasm.ownership] section in compiled output"
     | Some payload ->
       let entries = parse_ownership_section payload in
       (* At least one function must have a Linear (1) param — TyOwn survived *)
@@ -1283,11 +1283,11 @@ let ownership_schema_tests = [
    5. update branchless: selected = msg + 1 after affinescript_update(n).
 *)
 
-(** Parse the [affinescript.ownership] custom section from a Wasm binary
+(** Parse the [typedwasm.ownership] custom section from a Wasm binary
     and return (func_idx, param_kinds, return_kind) entries, or [] on failure. *)
 let parse_ownership_from_bytes (raw : bytes) : (int * int list * int) list =
-  (* Scan for the custom section with name "affinescript.ownership" *)
-  let target = "affinescript.ownership" in
+  (* Scan for the custom section with name "typedwasm.ownership" *)
+  let target = "typedwasm.ownership" in
   let rlen   = Bytes.length raw in
   let found  = ref [] in
   let i = ref 8 in  (* skip magic + version *)
@@ -1382,7 +1382,7 @@ let test_bridge_custom_sections () =
   Alcotest.(check int) "2 custom sections" 2 (List.length m.custom_sections);
   let names = List.map fst m.custom_sections in
   Alcotest.(check bool) "ownership section"   true
-    (List.mem "affinescript.ownership"  names);
+    (List.mem "typedwasm.ownership"  names);
   Alcotest.(check bool) "tea_layout section"  true
     (List.mem "affinescript.tea_layout" names)
 
@@ -1511,7 +1511,7 @@ let test_router_custom_sections () =
   Alcotest.(check int) "2 custom sections" 2 (List.length m.custom_sections);
   let names = List.map fst m.custom_sections in
   Alcotest.(check bool) "ownership section"  true
-    (List.mem "affinescript.ownership"  names);
+    (List.mem "typedwasm.ownership"  names);
   Alcotest.(check bool) "tea_layout section" true
     (List.mem "affinescript.tea_layout" names)
 
@@ -2417,7 +2417,7 @@ let test_cross_call_once_ok () =
     let annots = Codegen.build_ownership_section [(0, [Codegen.Linear], Codegen.Unrestricted)] in
     { m with
       Wasm.exports        = [export];
-      Wasm.custom_sections = [("affinescript.ownership", annots)];
+      Wasm.custom_sections = [("typedwasm.ownership", annots)];
     }
   in
   let iface = Tw_interface.extract_exports callee in
@@ -2447,7 +2447,7 @@ let test_cross_call_twice_violation () =
     let annots = Codegen.build_ownership_section [(0, [Codegen.Linear], Codegen.Unrestricted)] in
     { m with
       Wasm.exports        = [export];
-      Wasm.custom_sections = [("affinescript.ownership", annots)];
+      Wasm.custom_sections = [("typedwasm.ownership", annots)];
     }
   in
   let iface = Tw_interface.extract_exports callee in
@@ -2482,7 +2482,7 @@ let test_cross_call_partial_violation () =
     let annots = Codegen.build_ownership_section [(0, [Codegen.Linear], Codegen.Unrestricted)] in
     { m with
       Wasm.exports        = [export];
-      Wasm.custom_sections = [("affinescript.ownership", annots)];
+      Wasm.custom_sections = [("typedwasm.ownership", annots)];
     }
   in
   let iface = Tw_interface.extract_exports callee in
