@@ -1,3 +1,30 @@
+## 🚨 Disambiguation (read first)
+
+**This repo is `hyperpolymath/affinescript`.** It is **NOT** `hyperpolymath/ephapax`.
+
+| | This repo | NOT this repo |
+|---|---|---|
+| Name | **AffineScript** | Ephapax |
+| Path | `hyperpolymath/affinescript` | `hyperpolymath/ephapax` |
+| File extension | `.affine` (plus face dialects) | `.eph` |
+| Build | `dune-project` at root | `Cargo.toml` at root |
+| Type checker | `lib/borrow.ml` (OCaml) | `ephapax-linear/src/{linear,affine}.rs` (Rust) |
+| Proofs | None mechanized; soundness arguments live in `lib/borrow.ml` + `docs/CAPABILITY-MATRIX.adoc` + issue #177 (CORE-01) | `formal/Semantics.v` (Coq), `src/abi/Ephapax/…` (Idris2) |
+
+**The trap.** Ephapax is internally dyadic — it contains `ephapax-linear` and `ephapax-affine` *sublanguages* inside one Rust crate. **The `ephapax-affine` sublanguage is NOT AffineScript.** The word `affine` is shared because both type systems happen to be substructural-logic-family — that's a logic-family fact, not a project relationship.
+
+**Rule for agents:** before applying any prior-session lesson, memory entry, or snippet, check whether it was about *AffineScript* or about *ephapax*. They share zero AST / typing / borrow-checker / codegen. The only shared surface is the compile target (`hyperpolymath/typed-wasm`) and the shared Rust verifier crate (`crates/typed-wasm-verify/` *in* that repo).
+
+When in doubt: state the context shift explicitly ("switching from ephapax context to AffineScript context") so the user sees the boundary respected.
+
+**Canonical disambiguation doc** (single source of truth):
+https://github.com/hyperpolymath/nextgen-languages/blob/main/docs/disambiguation/ephapax-vs-affinescript.md
+
+**Companion memory entry** (in user auto-memory):
+`feedback_affinescript_ephapax_siblings_not_impl_proof.md`
+
+---
+
 ## Machine-Readable Artefacts
 
 The following files in `.machine_readable/` contain structured project metadata:

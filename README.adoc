@@ -6,6 +6,30 @@
 :icons: font
 
 [IMPORTANT]
+.Not to be confused with Ephapax
+====
+This is **AffineScript**, a successor-to-JS/TS/ReScript application language
+at `hyperpolymath/affinescript`. It is *not*
+https://github.com/hyperpolymath/ephapax[Ephapax], a separate research language
+for WebAssembly memory safety at `hyperpolymath/ephapax`.
+
+The two share **exactly one thing**: both target
+https://github.com/hyperpolymath/typed-wasm[typed-wasm] (and interface with that
+repo's `crates/typed-wasm-verify/`). They have separate ASTs, separate type
+checkers, separate compilers, separate proof stories. The word `affine`
+overlaps in both names because it names a substructural-logic property —
+that's a logic-family fact, not a project relationship.
+
+Also: Ephapax is internally dyadic, containing both `ephapax-linear` and
+`ephapax-affine` sublanguages. **The `ephapax-affine` sublanguage is NOT
+AffineScript.** When ambiguous, write "ephapax-affine sublanguage (of ephapax)"
+vs "AffineScript language (this repo)".
+
+Canonical disambiguation:
+link:https://github.com/hyperpolymath/nextgen-languages/blob/main/docs/disambiguation/ephapax-vs-affinescript.md[nextgen-languages/docs/disambiguation/ephapax-vs-affinescript.md].
+====
+
+[IMPORTANT]
 ====
 *Authoritative status lives in link:docs/CAPABILITY-MATRIX.adoc[docs/CAPABILITY-MATRIX.adoc].*
 Where this README's prose implies broader maturity than that matrix states,
