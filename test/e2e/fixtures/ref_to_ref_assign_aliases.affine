@@ -1,0 +1,22 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell
+//
+// CORE-01 pt3 ref-to-ref / #177: assign-path. `r = r_other`
+// (RHS = another ref-binder, not a direct &place) pre-releases
+// the old borrow held by r and aliases r to r_other's borrow.
+// Mirrors slice_b_outer_assign_releases_old.affine but the new
+// referent is reached through a second ref-binder rather than
+// a direct &y. Expected: Ok.
+
+module RefToRefAssignAliases;
+
+fn assign_through_ref() -> Int {
+  let mut x = 1;
+  let mut y = 2;
+  let mut r = &x;
+  let z = *r;
+  let s = &y;
+  r = s;
+  x = 10;
+  *r + x + z
+}

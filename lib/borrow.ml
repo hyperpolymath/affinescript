@@ -494,27 +494,64 @@ and expr_to_place (symbols : Symbol.t) (expr : expr) : place option =
     expr_to_place symbols e
   | _ -> None
 
-(** Record a borrow-graph edge for [let <pat> = &p] (or [&mut p]).
+(** Look up the live borrow that [expr] denotes, after the expression has
+    been checked. Handles three cases:
+      - [&p] / [&mut p]: find the borrow on [p] in [state.borrows];
+      - [r] where [r] is a ref-binder symbol: return its [state.ref_bindings]
+        entry (the same borrow it already aliases) — this is ref-to-ref
+        binding / reborrow through indirection;
+      - anything else: None.
+    Used by [record_ref_binding] (let path) and [StmtAssign] (assign path)
+    so [let r2 = r] and [r2 = r] both extend the borrow-graph correctly.
+    CORE-01 / #177 ref-to-ref. *)
+let rec ref_source_borrow (state : state) (symbols : Symbol.t)
+    (expr : expr) : borrow option =
+  match expr with
+  | ExprSpan (e, _) -> ref_source_borrow state symbols e
+  | ExprUnary ((OpRef | OpMutRef), _) ->
+    (match ref_target symbols expr with
+     | Some target ->
+       List.find_opt (fun b -> places_overlap b.b_place target) state.borrows
+     | None -> None)
+  | ExprVar id ->
+    (match lookup_symbol_by_name symbols id.name with
+     | Some sym -> List.assoc_opt sym.Symbol.sym_id state.ref_bindings
+     | None -> None)
+  | _ -> None
 
-    Call *after* the value expression has been checked, so the borrow it
-    created is already on [state.borrows]. Binds the let-bound symbol to
-    that borrow so block-exit validation can detect a reference outliving
-    a block-local owner. CORE-01 / #177. *)
+(** Cheap structural test: would [expr] supply a reborrow source on
+    [StmtAssign]? Used *before* the RHS check, so it does not consult
+    live borrow state — only the structural shape of [expr] and the
+    pre-existing [state.ref_bindings] (for the ref-var path). *)
+let rec is_reborrow_source (state : state) (symbols : Symbol.t)
+    (expr : expr) : bool =
+  match expr with
+  | ExprSpan (e, _) -> is_reborrow_source state symbols e
+  | ExprUnary ((OpRef | OpMutRef), _) -> true
+  | ExprVar id ->
+    (match lookup_symbol_by_name symbols id.name with
+     | Some sym -> List.mem_assoc sym.Symbol.sym_id state.ref_bindings
+     | None -> false)
+  | _ -> false
+
+(** Record a borrow-graph edge for [let <pat> = <ref-source>].
+
+    [<ref-source>] is either a direct [&p]/[&mut p] *or* another ref-binder
+    variable [r] (ref-to-ref binding). Call *after* the value expression has
+    been checked, so the underlying borrow is already on [state.borrows]
+    (or already aliased via [state.ref_bindings] for the ref-var path).
+    CORE-01 / #177. *)
 let record_ref_binding (state : state) (symbols : Symbol.t)
     (pat : pattern) (value : expr) : unit =
   match pat with
   | PatVar id ->
-    begin match ref_target symbols value with
-    | Some target ->
-      begin match
-        List.find_opt (fun b -> places_overlap b.b_place target) state.borrows,
-        lookup_symbol_by_name symbols id.name
-      with
-      | Some b, Some sym ->
-        state.ref_bindings <- (sym.Symbol.sym_id, b) :: state.ref_bindings
-      | _ -> ()
-      end
-    | None -> ()
+    begin match
+      ref_source_borrow state symbols value,
+      lookup_symbol_by_name symbols id.name
+    with
+    | Some b, Some sym ->
+      state.ref_bindings <- (sym.Symbol.sym_id, b) :: state.ref_bindings
+    | _ -> ()
     end
   | _ -> ()
 
@@ -1212,7 +1249,15 @@ and check_block (ctx : context) (state : state) (symbols : Symbol.t) (blk : bloc
         (not (is_outer_binding sym)) && last_use_of sym <= stmt_idx
       ) state.ref_bindings
     in
-    List.iter (fun (_sym, b) -> end_borrow state b) dying;
+    (* CORE-01 pt3 ref-to-ref / #177: only end a borrow if no surviving
+       ref-binding still aliases it.  Pre-fix, `let r = &x; let r2 = r;`
+       would end the borrow on x when r died, even though r2 still held
+       it — silently dropping x's protection.  Reference-count the
+       borrow by [b_id] across [still_live] before deciding. *)
+    List.iter (fun (_sym, b) ->
+      if not (List.exists (fun (_, b') -> b'.b_id = b.b_id) still_live)
+      then end_borrow state b
+    ) dying;
     state.ref_bindings <- still_live
   in
   let* () =
@@ -1329,9 +1374,10 @@ and check_stmt (ctx : context) (state : state) (symbols : Symbol.t) (stmt : stmt
              analyses see the *current* referent after re-assignment,
              not the stale original. *)
           let pre_release =
-            match root_var place, ref_target symbols rhs with
-            | Some binder_sym, Some _
-              when List.mem_assoc binder_sym state.ref_bindings ->
+            match root_var place with
+            | Some binder_sym
+              when is_reborrow_source state symbols rhs
+                && List.mem_assoc binder_sym state.ref_bindings ->
               let old_borrow = List.assoc binder_sym state.ref_bindings in
               end_borrow state old_borrow;
               state.ref_bindings <-
@@ -1340,15 +1386,14 @@ and check_stmt (ctx : context) (state : state) (symbols : Symbol.t) (stmt : stmt
             | _ -> None
           in
           let* () = check_expr ctx state symbols rhs in
-          (match pre_release, ref_target symbols rhs with
-           | Some binder_sym, Some new_target ->
-             (match List.find_opt (fun b ->
-                      places_overlap b.b_place new_target) state.borrows with
+          (match pre_release with
+           | Some binder_sym ->
+             (match ref_source_borrow state symbols rhs with
               | Some new_b ->
                 state.ref_bindings <-
                   (binder_sym, new_b) :: state.ref_bindings
               | None -> ())
-           | _ -> ());
+           | None -> ());
           Ok ()
         end
     | None ->
@@ -1480,12 +1525,18 @@ let check_program (symbols : Symbol.t) (program : program) : unit result =
    one helper so all CFG-join sites agree).  Finally runs after
    the merge, deterministically, against the merged state.
 
+   CORE-01 pt3 ref-to-ref binding (2026-05-26): [let r2 = r] and
+   [r2 = r] (where [r] is itself a ref-binder) now extend the
+   borrow-graph by aliasing [r2] to the same borrow [r] holds.  The
+   [ref_source_borrow] helper unifies the &p / &mut p / ref-var cases
+   so [record_ref_binding] (let path) and the [StmtAssign] reborrow
+   block both reach through one extra level of indirection.  Symmetric
+   pre-release on the assign path uses the same shape test
+   ([is_reborrow_source]) so the existing `r = &x` reborrow continues
+   to work; the new path is `r = r_other`.  Closes the
+   reborrow-through-indirection gap in #177 / CORE-01 pt3.
+
    Still deferred:
-   - Reborrow through indirection: `r = some_other_ref_var` (RHS not a
-     direct `&place`) does not yet copy the other binder's graph
-     entry — the ref-binding stays stale.  Same limitation as
-     [record_ref_binding] for the let-graph path; would require
-     symmetric let/assign handling for ref-to-ref binding.
    - Origin/region variables (true Polonius surface) — a region
      var on each [TyRef]/[TyMut] with subset constraints and a
      proper datalog-style loan-live-at-point solver.  Architectural

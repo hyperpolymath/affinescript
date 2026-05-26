@@ -4415,6 +4415,45 @@ let test_slice_c_body_move_persists () =
                    the catch-arm merge — `read_int(y)` after a moved `y` \
                    was silently accepted"
 
+(* CORE-01 pt3 ref-to-ref / #177 — let r2 = r and r = r_other now
+   alias r2 (resp. r) to the same borrow the source binder holds.
+   Pre-fix the alias was never recorded, so the let-graph went stale
+   on reborrow-through-indirection. Three tests pin: (1) let-path
+   positive — both binders dereferenceable; (2) anti-regression —
+   the alias still protects the underlying owner from concurrent
+   writes; (3) assign-path positive — `r = s` releases the old
+   target and aliases r to s's borrow. *)
+let test_ref_to_ref_let_aliases () =
+  match borrow_result (fixture "ref_to_ref_let_aliases.affine") with
+  | Ok () -> ()
+  | Error e ->
+    Alcotest.fail ("ref-to-ref let-path: `let r2 = r` did not alias r2 \
+                    into the borrow-graph — reading through r2 was \
+                    spuriously rejected: " ^ Borrow.format_borrow_error e)
+
+let test_ref_to_ref_protects_owner () =
+  match borrow_result (fixture "ref_to_ref_protects_owner.affine") with
+  | Error (Borrow.ConflictingBorrow _)
+  | Error (Borrow.MoveWhileBorrowed _)
+  | Error (Borrow.UseWhileExclusivelyBorrowed _) -> ()
+  | Error e ->
+    Alcotest.fail ("ref-to-ref anti-regression: expected a borrow-conflict \
+                    error on `x = 9` (r2 must still protect x), got: "
+                   ^ Borrow.format_borrow_error e)
+  | Ok () ->
+    Alcotest.fail "ref-to-ref regressed: the aliased binder r2 did not \
+                   keep x borrowed, so the write to x was silently \
+                   accepted"
+
+let test_ref_to_ref_assign_aliases () =
+  match borrow_result (fixture "ref_to_ref_assign_aliases.affine") with
+  | Ok () -> ()
+  | Error e ->
+    Alcotest.fail ("ref-to-ref assign-path: `r = s` did not release the \
+                    old borrow on `x` and re-alias r to s's borrow — \
+                    the subsequent write to `x` was spuriously \
+                    rejected: " ^ Borrow.format_borrow_error e)
+
 let borrow_tests = [
   Alcotest.test_case "BorrowOutlivesOwner: &local escapes its block"
     `Quick test_borrow_outlives_owner;
@@ -4450,6 +4489,12 @@ let borrow_tests = [
     `Quick test_slice_c_catch_arm_isolation;
   Alcotest.test_case "Slice C anti-regression: body's move persists past try (#177 pt3 Slice C)"
     `Quick test_slice_c_body_move_persists;
+  Alcotest.test_case "ref-to-ref let-path: `let r2 = r` aliases (#177 pt3)"
+    `Quick test_ref_to_ref_let_aliases;
+  Alcotest.test_case "ref-to-ref anti-regression: alias still protects owner (#177 pt3)"
+    `Quick test_ref_to_ref_protects_owner;
+  Alcotest.test_case "ref-to-ref assign-path: `r = s` releases + aliases (#177 pt3)"
+    `Quick test_ref_to_ref_assign_aliases;
 ]
 
 (* ============================================================================
