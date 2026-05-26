@@ -83,7 +83,7 @@ Both are FOSS with independent governance (no Big Tech).
 7. **No Kotlin/Swift for mobile** - Use Tauri 2.0+ or Dioxus.
 8. **MPL-1.0 / MPL-1.0-or-later are non-conforming** - Rewrite to MPL-2.0 in SPDX headers and LICENSE files when encountered (Hypatia's `validate_license` flags both).
 
-### TypeScript / JavaScript Exemptions (Approved)
+### TypeScript Exemptions (Approved)
 
 The "no new TypeScript" / "no new JavaScript" rules have approved exemptions in this repo. These paths are *not* policy violations — they are documented carve-outs because the file format or downstream consumer requires the source language. They are honoured by Hypatia's scanner via path-based exemption + the per-repo CLAUDE.md exemption tables.
 
