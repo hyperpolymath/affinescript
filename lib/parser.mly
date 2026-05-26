@@ -956,6 +956,18 @@ expr_record_body:
   (* spread-only: { ..var } or { ..expr } *)
   | sp = expr_record_spread
     { ([], Some sp) }
+  (* Rust-style record-update: spread first, then comma-separated fields:
+     `Record #{ ..base, field: x, other: y }`. Required by sustainabot
+     hand-port (gitbot-fleet#148) — `Model #{ ..model, totalProcessed: n }`
+     in Oikos.affine and `Router #{ ..router, routes: rs }` in Router.affine.
+     The leading spread captures the source-of-defaults; subsequent fields
+     override. Mirrors the existing trailing-spread form below (`{ f: v,
+     ..s }`) but in the opposite order. LR(1)-safe: after parsing
+     `expr_record_spread`, the lookahead is either RBRACE (existing
+     spread-only rule already reduces) or COMMA (this rule shifts);
+     the choice is unambiguous on one-token lookahead. Added 2026-05-26. *)
+  | sp = expr_record_spread COMMA field = record_field rest = expr_record_rest
+    { (field :: fst rest, Some sp) }
   (* field possibly followed by more: { f: v, ... } *)
   | field = record_field rest = expr_record_rest
     { (field :: fst rest, snd rest) }
