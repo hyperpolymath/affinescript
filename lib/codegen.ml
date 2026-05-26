@@ -2452,6 +2452,15 @@ let gen_decl (ctx : context) (decl : top_level) : context result =
            ExprRecord store path which writes fields in declaration order. *)
         let layout = List.mapi (fun i sf -> (sf.sf_name.name, i * 4)) fields in
         Ok { ctx with struct_layouts = (td.td_name.name, layout) :: ctx.struct_layouts }
+      | TyAlias (TyRecord (rfs, _)) ->
+        (* `type X = { a: T, b: U, ... }` is parsed as an alias to TyRecord.
+           Without this branch, the alias falls through to the catch-all
+           below and never registers a layout, causing every parameter /
+           return of type X to read all fields at offset 0 (silent
+           miscompile, not a crash). Mirrors the TyStruct branch above
+           but unpacks the alias. *)
+        let layout = List.mapi (fun i rf -> (rf.rf_name.name, i * 4)) rfs in
+        Ok { ctx with struct_layouts = (td.td_name.name, layout) :: ctx.struct_layouts }
       | TyAlias _ ->
         Ok ctx
     end
