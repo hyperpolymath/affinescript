@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Manifest-only vendoring of rescript-lang/tree-sitter-rescript for the .res -> .affine migration assistant (affinescript#57).",
-  "license": "MPL-2.0",
+  "license": "AGPL-3.0-or-later",
   "dependencies": {
     "tree-sitter-rescript": "github:rescript-lang/tree-sitter-rescript#990214a83f25801dfe0226bd7e92bb71bba1970f"
   },
