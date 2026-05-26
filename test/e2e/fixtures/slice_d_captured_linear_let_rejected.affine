@@ -1,0 +1,16 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell
+//
+// CORE-01 pt3 Slice D / #177: a closure that captures a @linear
+// let-binding must be rejected by the borrow checker — a closure
+// may be called 0..N times, so capturing a @linear binding lifts
+// its consumption count out of finite-once provability.
+// Expected: Error LinearCapturedByClosure.
+
+module SliceDCapturedLinearLetRejected;
+
+fn capture_linear_let() -> Int {
+  @linear let x = 42;
+  let f = fn() => x + 1;
+  f()
+}
