@@ -108,7 +108,7 @@ must stay so. Do not collapse "AffineScript" and "typed-wasm" in any doc.
 The contract is *narrower than older prose claimed* and is exactly this:
 
 . *Carrier.* AffineScript emits ordinary WASM/WASM-GC. The typed-wasm
-  discipline rides on it via the `affinescript.ownership` custom section
+  discipline rides on it via the `typedwasm.ownership` custom section
   (per-function param ownership kinds: `0`=Unrestricted, `1`=Linear,
   `2`=SharedBorrow, `3`=ExclBorrow) plus the `affinescript.tea_layout`
   section where a TEA bridge is involved.
@@ -134,7 +134,7 @@ The contract is *narrower than older prose claimed* and is exactly this:
   with `hyperpolymath/typed-wasm` + `ephapax` — not made unilaterally
   here. Further widening + INT-12 is the rest of Stage E.
 . *Other producers.* `ephapax` (`src/ephapax-wasm`) already emits the same
-  `affinescript.ownership` section and exposes the verifier via
+  `typedwasm.ownership` section and exposes the verifier via
   `ephapax compile --verify-ownership`. Any change to the section format is
   a multi-producer ABI change and must be coordinated with typed-wasm
   (Refs the typed-wasm repo), not made unilaterally here.
@@ -176,7 +176,7 @@ not part of the integration critical path.
 |`packages/affine-js` / `-ts` / `-res` / `-vscode` |works |
 `affine-js` SAT-02 fixed by INT-02 (#179): host-agnostic loader
 (`loader.js`) — Deno/Node/browser parity, multi-namespace import
-object, `affinescript.ownership` accessor.
+object, `typedwasm.ownership` accessor.
 |===
 
 == Integration roadmap — INT-01..12
@@ -210,7 +210,7 @@ S1..S6; legacy preview1 stdout path remains the default until S6c
 DONE: `tools/componentize.sh` wraps the emitted core module into a
 valid WASI-0.2 component via the fetch-pinned preview1→preview2
 *reactor* adapter (wasmtime v44.0.1, sha256-verified); the
-`affinescript.ownership` section is proven to SURVIVE the wrap;
+`typedwasm.ownership` section is proven to SURVIVE the wrap;
 `tests/componentize/smoke.sh` gates it (SKIP-safe without the
 toolchain). S4a (clock) + S4b (env_count, arg_count) DONE:
 builtins lower to on-demand `wasi_snapshot_preview1.*` imports

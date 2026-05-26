@@ -7,7 +7,7 @@
 #   (a) the resulting component is a valid WASI-0.2 component,
 #   (b) it exports `wasi:cli/run@0.2.x`,
 #   (c) `wasmtime run` can invoke it (exit 0), and
-#   (d) the `affinescript.ownership` custom section survives the wrap.
+#   (d) the `typedwasm.ownership` custom section survives the wrap.
 #
 # SKIPs cleanly (exit 0) when the component toolchain or wasmtime is
 # not provisioned — opt-in, mirroring tests/componentize/smoke.sh.
@@ -38,7 +38,7 @@ cp test/e2e/fixtures/verify_ownership_clean.affine "$work/cmd.affine"
 printf '\nfn main() -> Int { add(2, 3) }\n' >> "$work/cmd.affine"
 
 has_section() {
-  [ "$(wasm-tools print "$1" 2>/dev/null | grep -c 'affinescript.ownership' || true)" -gt 0 ]
+  [ "$(wasm-tools print "$1" 2>/dev/null | grep -c 'typedwasm.ownership' || true)" -gt 0 ]
 }
 
 $COMPILER compile "$work/cmd.affine" -o "$work/cmd.wasm"

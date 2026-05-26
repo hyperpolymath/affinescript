@@ -161,7 +161,7 @@ let verify_function
 
     [wasm_mod] is the compiled module.
     [annots] is the list of [(func_idx, param_kinds, ret_kind)] annotations
-    collected by codegen and stored in the [affinescript.ownership] custom
+    collected by codegen and stored in the [typedwasm.ownership] custom
     section (but here provided in structured form directly from [Codegen]).
 
     Imported functions have no body and are skipped.
@@ -184,7 +184,7 @@ let verify_module
    Pipeline integration — parse ownership section from the module
    ============================================================================ *)
 
-(** Parse the [affinescript.ownership] custom section payload into structured
+(** Parse the [typedwasm.ownership] custom section payload into structured
     [(func_idx, param_kinds, ret_kind)] annotations.
 
     Supports BOTH v1 (legacy, unversioned) and v2 (ADR-020, accepted
@@ -336,14 +336,14 @@ let verify_module_isolation
         | Wasm.ImportFunc _ -> None)
       wasm_mod.Wasm.imports
 
-(** Verify a Wasm module using the embedded [affinescript.ownership] custom
+(** Verify a Wasm module using the embedded [typedwasm.ownership] custom
     section.  This is the primary entry point for the pipeline and the CLI.
 
     Returns [Ok ()] if no violations are found, [Error errs] otherwise. *)
 let verify_from_module
     (wasm_mod : Wasm.wasm_module)
   : (unit, ownership_error list) Result.t =
-  match List.assoc_opt "affinescript.ownership" wasm_mod.Wasm.custom_sections with
+  match List.assoc_opt "typedwasm.ownership" wasm_mod.Wasm.custom_sections with
   | None ->
     (* No ownership section: nothing to verify.  This is not an error —
        modules compiled without ownership qualifiers have no constraints. *)
