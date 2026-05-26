@@ -105,6 +105,80 @@ let test_walker_only_module_toplevel () =
     "walker reports the line-8 import and only that one"
     [8] side_effect_lines
 
+let lines_for_kind ~k findings =
+  List.filter_map
+    (fun (f : Scanner.finding) ->
+      if f.kind = k then Some f.line else None)
+    findings
+
+let test_walker_raw_js () =
+  (* sample.res line 11: `let host = %raw(\`globalThis.location.host\`)` *)
+  skip_unless_ready ();
+  let source = read_file fixture in
+  let path = Filename.concat (Sys.getcwd ()) fixture in
+  let findings =
+    Walker.scan ~grammar_dir:(grammar_dir ()) ~path ~source
+  in
+  Alcotest.(check (list int))
+    "walker reports raw-js at line 11"
+    [11]
+    (lines_for_kind ~k:Scanner.Raw_js findings)
+
+let test_walker_untyped_exception () =
+  (* sample.res:
+       line 19  try { ... }
+       line 22  | Js.Exn.Error(_) => None     (Js.Exn in pattern position)
+       line 28  api->Promise.catch(...)        *)
+  skip_unless_ready ();
+  let source = read_file fixture in
+  let path = Filename.concat (Sys.getcwd ()) fixture in
+  let findings =
+    Walker.scan ~grammar_dir:(grammar_dir ()) ~path ~source
+  in
+  Alcotest.(check (list int))
+    "walker reports untyped-exception at lines 19, 22, 28"
+    [19; 22; 28]
+    (lines_for_kind ~k:Scanner.Untyped_exception findings)
+
+let test_walker_mutable_global () =
+  (* sample.res line 15: `currentUser := Some("alice")` — top-level
+     assignment via the := operator. The declaration on line 14
+     (`let currentUser = ref(None)`) is intentionally not flagged in
+     parity-port scope; it is a Phase-2 follow-up in CORPUS-RUN.md. *)
+  skip_unless_ready ();
+  let source = read_file fixture in
+  let path = Filename.concat (Sys.getcwd ()) fixture in
+  let findings =
+    Walker.scan ~grammar_dir:(grammar_dir ()) ~path ~source
+  in
+  Alcotest.(check (list int))
+    "walker reports mutable-global at line 15"
+    [15]
+    (lines_for_kind ~k:Scanner.Mutable_global findings)
+
+let test_walker_parity_with_scanner () =
+  (* The headline parity property of Phase 2c: walker and scanner
+     produce the same set of (kind, line) pairs on the synthetic
+     fixture. Both are expected to find 6 findings — see CORPUS-RUN.md
+     for the 491-file estate-scale numbers behind this design. *)
+  skip_unless_ready ();
+  let source = read_file fixture in
+  let path = Filename.concat (Sys.getcwd ()) fixture in
+  let walker_findings =
+    Walker.scan ~grammar_dir:(grammar_dir ()) ~path ~source
+  in
+  let scanner_findings = Scanner.scan source in
+  let summarise findings =
+    List.map
+      (fun (f : Scanner.finding) -> (Scanner.kind_to_label f.kind, f.line))
+      findings
+    |> List.sort compare
+  in
+  Alcotest.(check (list (pair string int)))
+    "walker and scanner emit the same (kind, line) pairs on sample.res"
+    (summarise scanner_findings)
+    (summarise walker_findings)
+
 (* ---- s-exp parser sanity (NOT gated; pure OCaml) ---------------------------
 
    The walker subprocess is shelled out in the gated tests above. The
@@ -123,5 +197,13 @@ let () =
             `Quick test_walker_finds_side_effect_import;
           Alcotest.test_case "module-toplevel-only, correct line"
             `Quick test_walker_only_module_toplevel;
+          Alcotest.test_case "raw-js detected on sample.res"
+            `Quick test_walker_raw_js;
+          Alcotest.test_case "untyped-exception detected at all expected lines"
+            `Quick test_walker_untyped_exception;
+          Alcotest.test_case "mutable-global detected at column-0 line"
+            `Quick test_walker_mutable_global;
+          Alcotest.test_case "walker / scanner parity on the synthetic fixture"
+            `Quick test_walker_parity_with_scanner;
         ] );
     ]
