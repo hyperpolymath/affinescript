@@ -12,6 +12,12 @@ on:
 
 permissions: read-all
 
+# Actions concurrency pool. Applied only to read-only check workflows
+# (no publish/mutation), so cancelling a superseded run is always safe.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint-workflows:
     runs-on: ubuntu-latest
