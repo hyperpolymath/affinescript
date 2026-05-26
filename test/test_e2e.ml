@@ -3014,14 +3014,24 @@ let test_vscode_extension_adapter_override () =
       ~vscode_extension_adapter:"../local/adapter.cjs" activate_src in
   Alcotest.(check bool) "uses the overridden adapter specifier"
     true (contains cjs {|require("../local/adapter.cjs")|});
-  Alcotest.(check bool) "does not fall back to the default adapter"
-    false (contains cjs "@hyperpolymath/affine-vscode")
+  (* Match the require wiring, not the bare specifier — the embedded
+     adapter source (packages/affine-vscode/mod.js) carries documentation
+     comments that legitimately mention the default specifier as an
+     example usage; the override semantics is about which require()
+     fires, not which strings appear anywhere in the file. *)
+  Alcotest.(check bool) "does not fall back to the default adapter require"
+    false (contains cjs {|require("@hyperpolymath/affine-vscode")|})
 
 let test_vscode_extension_no_lc () =
   let cjs = cjs_of ~vscode_extension:true ~vscode_extension_no_lc:true
       activate_src in
+  (* Match the require wiring, not the bare specifier — the embedded
+     adapter source includes a `vscode-languageclient/node` section
+     delimiter comment that is harmless because no actual require fires
+     unless the language-client argument is wired in (which `no_lc` skips
+     by passing `null`). *)
   Alcotest.(check bool) "skips the language-client require"
-    false (contains cjs "vscode-languageclient/node");
+    false (contains cjs {|require("vscode-languageclient/node")|});
   Alcotest.(check bool) "passes null in its place"
     true (contains cjs "    null,\n");
   Alcotest.(check bool) "still requires vscode + adapter"
