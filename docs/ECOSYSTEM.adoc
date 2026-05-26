@@ -170,8 +170,14 @@ canonical `affinescript tea-bridge` + a re-entrancy fixture.
 |`affinescript-cadre` |scaffold |Was imaginary until #175. Router/navigation
 satellite (internal `lib/tea_router.ml` contract exists).
 
-|`affinescriptiser`, `road-skate` |adjunct |In-tree tooling/experiments;
+|`affinescriptiser` |adjunct |In-tree tooling/experiments;
 not part of the integration critical path.
+
+|`hyperpolymath/road-skate` (out-of-tree, 2026-05-26) |adjunct |Retro driving
+game written in AffineScript (Test Drive III-inspired). Extracted from this
+repo's `road-skate/` subtree on 2026-05-26 — see commit history of
+`hyperpolymath/road-skate` for pre-extraction lineage. Not part of the
+integration critical path.
 
 |`packages/affine-js` / `-ts` / `-res` / `-vscode` |works |
 `affine-js` SAT-02 fixed by INT-02 (#179): host-agnostic loader

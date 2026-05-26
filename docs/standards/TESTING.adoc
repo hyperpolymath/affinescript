@@ -199,7 +199,7 @@ and a ratchet policy.
 == Panic-attack (security scan)
 
 `panic-attack` is the estate's compliance scanner.  Per estate
-practice (`road-skate/docs/governance/MAINTENANCE-CHECKLIST.adoc`
+practice (`hyperpolymath/road-skate`'s `docs/governance/MAINTENANCE-CHECKLIST.adoc`,
 Axis 3 — *audit: systems > compliance > effects*) it runs:
 
 * On a weekly schedule
