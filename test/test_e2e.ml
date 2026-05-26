@@ -4454,6 +4454,21 @@ let test_ref_to_ref_assign_aliases () =
                     the subsequent write to `x` was spuriously \
                     rejected: " ^ Borrow.format_borrow_error e)
 
+(* CORE-01 pt3 / #177 deferred-items: assignment-clears-move.
+   Whole-place write `x = …` after a prior move on `x` revives the
+   place; the move-record is dropped after the RHS lands so the
+   subsequent read of `x` succeeds.  Anti-regression for the
+   sub-place case is covered by [test_slice_c_body_move_persists]
+   (which still expects UseAfterMove for a read of a moved local
+   that was *not* reassigned). *)
+let test_borrow_assign_clears_move () =
+  match borrow_result (fixture "borrow_assign_clears_move.affine") with
+  | Ok () -> ()
+  | Error e ->
+    Alcotest.fail ("assignment-clears-move: `x = …` after `drop_int(x)` \
+                    spuriously rejected — whole-place write should revive \
+                    the moved place: " ^ Borrow.format_borrow_error e)
+
 let borrow_tests = [
   Alcotest.test_case "BorrowOutlivesOwner: &local escapes its block"
     `Quick test_borrow_outlives_owner;
@@ -4495,6 +4510,8 @@ let borrow_tests = [
     `Quick test_ref_to_ref_protects_owner;
   Alcotest.test_case "ref-to-ref assign-path: `r = s` releases + aliases (#177 pt3)"
     `Quick test_ref_to_ref_assign_aliases;
+  Alcotest.test_case "assignment-clears-move: whole-place write revives moved place (#177)"
+    `Quick test_borrow_assign_clears_move;
 ]
 
 (* ============================================================================
