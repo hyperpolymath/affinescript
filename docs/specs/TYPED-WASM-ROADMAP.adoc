@@ -60,7 +60,7 @@ Closes "no friction" without touching any sister repo.
 *Status: proposed.*
 
 Today `affinescript verify FILE` is opt-in.  The compile pipeline
-emits the `affinescript.ownership` section but does not run the
+emits the `typedwasm.ownership` section but does not run the
 verifier.  A user who wants the typed-wasm guarantee has to invoke
 two commands.
 
@@ -96,7 +96,7 @@ serialiser in `lib/json_output.ml`.
 
 *Test:* one E2E case asserting JSON shape on a known-good fixture.
 
-=== A3.  Extract `affinescript.ownership` emission to a dedicated module
+=== A3.  Extract `typedwasm.ownership` emission to a dedicated module
 
 *Status: proposed (housekeeping).*
 

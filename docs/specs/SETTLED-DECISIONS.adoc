@@ -287,7 +287,7 @@ Component Model with WASI 0.2 WIT worlds (`wit/affinescript.wit`, world
 `affinescript:cli/run`). *Staged and non-breaking per slice*; the legacy
 core-wasm + preview1 stdout path remains the default until the final
 slice, so the migration is reversible while in progress even though the
-end-state is one-way. The `affinescript.ownership` custom section is a
+end-state is one-way. The `typedwasm.ownership` custom section is a
 *multi-producer ABI* (shared with `hyperpolymath/ephapax`; the typed-wasm
 contract carrier) and must survive verbatim onto the component's embedded
 core module — its format must not change here; any change is coordinated

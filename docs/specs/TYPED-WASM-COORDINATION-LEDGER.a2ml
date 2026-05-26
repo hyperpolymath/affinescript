@@ -72,7 +72,7 @@ mirror-typed-wasm = { repo = "hyperpolymath/typed-wasm", status = "to-be-filed" 
 mirror-ephapax = { repo = "hyperpolymath/ephapax", status = "to-be-filed" }
 
 [queue-entry.change]
-summary = "Move affinescript.ownership from v1 (unversioned) to v2 (0xAF sentinel + u8 version + entry_count + entries)"
+summary = "Move typedwasm.ownership from v1 (unversioned) to v2 (0xAF sentinel + u8 version + entry_count + entries)"
 v1-format = "u32 entry_count | entry*"
 v2-format = "u8 0xAF | u8 version (0x02) | u32 entry_count | entry*"
 v2-entry-shape = "identical to v1 (no new fields in v2.0)"

@@ -116,11 +116,11 @@ status = "spec-level-only"
 blocked-on = ["new carrier section", "session-type codegen", "capability tracking", "multi-producer ABI"]
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Carrier — affinescript.ownership v1
+# Carrier — typedwasm.ownership v1
 # ──────────────────────────────────────────────────────────────────────────────
 
 [carrier]
-custom-section-name = "affinescript.ownership"
+custom-section-name = "typedwasm.ownership"
 endianness = "little-endian"
 version-field = false   # v1 is unversioned; ADR-020 (proposed) adds one
 omit-when-empty = true
@@ -291,7 +291,7 @@ verifier = "lib/tw_verify.ml + lib/tw_interface.ml"
 [[producer-party]]
 id = "ephapax"
 repo = "hyperpolymath/ephapax"
-role = "second producer; same affinescript.ownership format"
+role = "second producer; same typedwasm.ownership format"
 verifier-cli = "ephapax compile --verify-ownership"
 
 [[consumer-party]]
@@ -319,7 +319,7 @@ roadmap-anchor = "TYPED-WASM-ROADMAP.adoc"
 
 [[non-feature]]
 id = "NF-003"
-description = "Schema versioning on affinescript.ownership"
+description = "Schema versioning on typedwasm.ownership"
 reason = "v1 unversioned by accident-of-history; ADR-020 (proposed) adds backward-compat version prefix"
 roadmap-anchor = "ADR-020 (proposed)"
 

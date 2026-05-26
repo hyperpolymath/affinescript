@@ -20,7 +20,7 @@
 #   exports a parameter-less `main`. The resulting component exports
 #   `wasi:cli/run@0.2.x` per `wit/affinescript.wit`.
 #
-# The `affinescript.ownership` custom section (the typed-wasm contract
+# The `typedwasm.ownership` custom section (the typed-wasm contract
 # carrier, multi-producer ABI) MUST survive the wrap — asserted here
 # in both modes.
 #
@@ -53,7 +53,7 @@ command -v wasm-tools >/dev/null || { echo "componentize: wasm-tools not on PATH
 # `set -o pipefail` would mis-report as a failure — the `grep -q`
 # footgun). `|| true` neutralises grep's no-match exit 1.
 section_count() {
-  wasm-tools print "$1" 2>/dev/null | grep -c 'affinescript.ownership' || true
+  wasm-tools print "$1" 2>/dev/null | grep -c 'typedwasm.ownership' || true
 }
 
 # Does the core carry the typed-wasm ownership section? (only assert
@@ -78,7 +78,7 @@ wasm-tools validate --features component-model "$out"
 
 if [ "$had_ownership" = 1 ]; then
   if [ "$(section_count "$out")" -eq 0 ]; then
-    echo "FATAL: affinescript.ownership section did NOT survive componentization" >&2
+    echo "FATAL: typedwasm.ownership section did NOT survive componentization" >&2
     rm -f "$out"
     exit 1
   fi

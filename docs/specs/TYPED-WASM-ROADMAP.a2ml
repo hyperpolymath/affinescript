@@ -57,7 +57,7 @@ blocked-on = []
 [[work-item]]
 id = "A3"
 tranche = "A"
-title = "Extract affinescript.ownership emission to lib/tw_ownership_section.ml"
+title = "Extract typedwasm.ownership emission to lib/tw_ownership_section.ml"
 status = "proposed"
 risk = "low"
 single-session = true
