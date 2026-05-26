@@ -54,7 +54,7 @@ type context = {
   datas : data list;                 (** data segments *)
   ownership_annots : (int * ownership_kind list * ownership_kind) list;
   (** Collected ownership annotations: (func_index, param_kinds, return_kind).
-      Emitted as the [affinescript.ownership] Wasm custom section for typed-wasm
+      Emitted as the [typedwasm.ownership] Wasm custom section for typed-wasm
       Level 7/10 verification. Kind encoding: 0=Unrestricted, 1=Linear, 2=SharedBorrow, 3=ExclBorrow. *)
   wasi_func_indices : (string * int) list;
   (** ADR-015 S4 (#180): WASI preview1 import name → wasm func index.
@@ -148,7 +148,7 @@ let ownership_kind_of_ret (ret : type_expr option) : ownership_kind =
 let ownership_kind_byte = function
   | Unrestricted -> 0 | Linear -> 1 | SharedBorrow -> 2 | ExclBorrow -> 3
 
-(** Build the payload for the [affinescript.ownership] Wasm custom section.
+(** Build the payload for the [typedwasm.ownership] Wasm custom section.
     Encoding (all little-endian):
       u32  entry_count
       per entry:
@@ -2377,7 +2377,7 @@ let gen_decl (ctx : context) (decl : top_level) : context result =
     (* Determine function index before generating *)
     let func_idx = import_func_count ctx_with_type + List.length ctx_with_type.funcs in
 
-    (* Stage 2: Extract ownership annotations for typed-wasm [affinescript.ownership] section *)
+    (* Stage 2: Extract ownership annotations for typed-wasm [typedwasm.ownership] section *)
     let param_kinds = List.map ownership_kind_of_param fd.fd_params in
     let ret_kind = ownership_kind_of_ret fd.fd_ret_ty in
 
@@ -2765,10 +2765,10 @@ let generate_module ?loader (prog : program) : wasm_module result =
     | _ -> (ctx'.types, all_funcs, exports_with_mem)
   in
 
-  (* Stage 2: Build [affinescript.ownership] custom section from collected annotations *)
+  (* Stage 2: Build [typedwasm.ownership] custom section from collected annotations *)
   let ownership_payload = build_ownership_section ctx'.ownership_annots in
   let custom_sections = if Bytes.length ownership_payload > 0 then
-    [("affinescript.ownership", ownership_payload)]
+    [("typedwasm.ownership", ownership_payload)]
   else
     []
   in

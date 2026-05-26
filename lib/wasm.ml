@@ -259,7 +259,7 @@ type wasm_module = {
   start : int option;  (** optional start function index *)
   custom_sections : (string * bytes) list;
   (** Named custom sections (Wasm section ID 0).
-      Used for [affinescript.ownership] — carries ownership annotations
+      Used for [typedwasm.ownership] — carries ownership annotations
       (TyOwn/TyRef/TyMut) that survive to the binary for typed-wasm
       Level 7/10 verification. *)
 }

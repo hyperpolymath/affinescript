@@ -194,7 +194,7 @@ top_level:
 extern_fn_decl:
   | vis = visibility? EXTERN FN name = ident
     type_params = type_params?
-    LPAREN params = separated_list(COMMA, param) RPAREN
+    LPAREN params = param_list_trailing_comma RPAREN
     ret = return_type?
     SEMICOLON
     { { fd_vis = Option.value vis ~default:Private;
@@ -226,7 +226,7 @@ const_decl:
 fn_decl:
   | vis = visibility? total = TOTAL? FN name = ident
     type_params = type_params?
-    LPAREN params = separated_list(COMMA, param) RPAREN
+    LPAREN params = param_list_trailing_comma RPAREN
     ret = return_type?
     where_clause = where_clause?
     body = fn_body
@@ -381,6 +381,36 @@ ownership:
   | OWN { Own }
   | REF { Ref }
   | MUT { Mut }
+
+/* `param_list_trailing_comma` — comma-separated param list that also
+   accepts an optional trailing comma before the closing RPAREN, per the
+   Rust-likes estate convention.  Hand-rolled right-recursive form
+   (rather than `separated_list(COMMA, param) COMMA?`) so the trailing
+   COMMA is absorbed inside the recursion: after each `param`, the LR(1)
+   choice on COMMA is unambiguous (shift into the recursive tail, whose
+   body may be empty when RPAREN follows).  Adds no new s/r or r/r
+   conflicts beyond the grammar's existing baseline. */
+param_list_trailing_comma:
+  | /* empty */ { [] }
+  | p = param { [p] }
+  | p = param COMMA rest = param_list_trailing_comma { p :: rest }
+
+/* `expr_list_trailing_comma` — comma-separated expression list that also
+   accepts an optional trailing comma before the closing delimiter. Used by
+   array literals (`[a, b, c,]`) and function-call argument lists
+   (`f(a, b, c,)`). Same right-recursive shape as
+   `param_list_trailing_comma` (above): the COMMA-after-`expr` is absorbed
+   inside the recursive tail, whose body may be empty when the closing
+   token (RBRACKET / RPAREN) follows. Conflict-neutral: the existing rules
+   used `separated_list(COMMA, expr)`, which already inspects COMMA in the
+   same lookahead position; only the post-final-COMMA branch is new and
+   has no other production to compete with. Added 2026-05-26 (Refs
+   hyperpolymath/gitbot-fleet#148: sustainabot hand-port —
+   `json::encode_object([("k", v),])` and `f(..., last_arg,)`). */
+expr_list_trailing_comma:
+  | /* empty */ { [] }
+  | e = expr { [e] }
+  | e = expr COMMA rest = expr_list_trailing_comma { e :: rest }
 
 where_clause:
   | WHERE constraints = separated_nonempty_list(COMMA, constraint_) { constraints }
@@ -621,7 +651,7 @@ effect_decl:
 
 effect_op_decl:
   (* Type parameters on effect operations are allowed: `fn await[T](promise: Promise[T]) -> T;` *)
-  | FN name = ident _type_params = type_params? LPAREN params = separated_list(COMMA, param) RPAREN ret = return_type? SEMICOLON
+  | FN name = ident _type_params = type_params? LPAREN params = param_list_trailing_comma RPAREN ret = return_type? SEMICOLON
     { { eod_name = name;
         eod_params = params;
         eod_ret_ty = fst (Option.value ret ~default:(None, None)) } }
@@ -687,7 +717,7 @@ type_default:
 fn_sig:
   | vis = visibility? FN name = ident
     type_params = type_params?
-    LPAREN params = separated_list(COMMA, param) RPAREN
+    LPAREN params = param_list_trailing_comma RPAREN
     ret = return_type?
     { { fs_vis = Option.value vis ~default:Private;
         fs_name = name;
@@ -824,7 +854,7 @@ expr_postfix:
     { ExprApp (ExprVar (mk_ident "slice" $startpos $endpos),
                [e; ExprLit (LitInt (0, mk_span $startpos $endpos));
                 ExprApp (ExprVar (mk_ident "len" $startpos $endpos), [e])]) }
-  | e = expr_postfix LPAREN args = separated_list(COMMA, expr) RPAREN { ExprApp (e, args) }
+  | e = expr_postfix LPAREN args = expr_list_trailing_comma RPAREN { ExprApp (e, args) }
   | e = expr_postfix BACKSLASH field = field_name { ExprRowRestrict (e, field) }
   | e = expr_postfix QUESTION { ExprTry { et_body = { blk_stmts = []; blk_expr = Some e };
                                           et_catch = None; et_finally = None } }
@@ -877,7 +907,7 @@ expr_primary:
     { ExprTuple (e :: es) }
 
   /* Arrays */
-  | LBRACKET es = separated_list(COMMA, expr) RBRACKET { ExprArray es }
+  | LBRACKET es = expr_list_trailing_comma RBRACKET { ExprArray es }
 
   /* Anonymous record `#{ f: v, ..spread }` (affinescript#215). The `#{`
      sigil removes the entire block-vs-record-literal ambiguity (family
@@ -926,6 +956,22 @@ expr_primary:
   | FN LPAREN params = separated_list(COMMA, lambda_param) RPAREN FAT_ARROW body = expr
     { ExprLambda { elam_params = params; elam_ret_ty = None; elam_body = body } }
   | FN LPAREN params = separated_list(COMMA, lambda_param) RPAREN ARROW ret = type_expr body = block
+    { ExprLambda { elam_params = params; elam_ret_ty = Some ret; elam_body = ExprBlock body } }
+  /* Effect-annotated lambda: `fn(params) -{eff}-> RetTy { body }`.
+     Mirrors the type-position `fn(...) -{E}-> T` form already accepted in
+     `type_expr_primary`. ExprLambda has no effect-row slot (lambda effects
+     are inferred from the body by the typechecker), so the parsed effect
+     row is dropped here. The annotation is a surface affordance for the
+     user (and the AffineScript-aware formatter), matching the symmetric
+     type-position syntax that is already part of the language. The MINUS
+     LBRACE lookahead after RPAREN unambiguously distinguishes this from
+     the unannotated `-> RetTy` form above (no other lambda production
+     has that pair there). Added 2026-05-26 (Refs hyperpolymath/gitbot-
+     fleet#148: sustainabot hand-port — `fn() -{IO}-> Json { payload }`
+     in Oikos.affine, tea/Cmd.affine, tea/Runtime.affine). */
+  | FN LPAREN params = separated_list(COMMA, lambda_param) RPAREN
+    MINUS LBRACE _eff = effect_expr RBRACE ARROW
+    ret = type_expr body = block
     { ExprLambda { elam_params = params; elam_ret_ty = Some ret; elam_body = ExprBlock body } }
 
   /* `return`/`resume` moved to expr_assign (affinescript#215 family B) */
