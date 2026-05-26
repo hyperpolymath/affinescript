@@ -357,8 +357,8 @@ let () =
 ## 📚 Related Documentation
 
 - [BACKEND-ANALYSIS.md](BACKEND-ANALYSIS.md) - Detailed analysis of backend requirements
-- [ALPHA-1-RELEASE-NOTES.md](ALPHA-1-RELEASE-NOTES.md) - Release notes with backend status
-- [ROADMAP.adoc](ROADMAP.adoc) - Future backend development plans
+- [../history/ALPHA-1-RELEASE-NOTES.md](../history/ALPHA-1-RELEASE-NOTES.md) - Release notes with backend status
+- [../ROADMAP.adoc](../ROADMAP.adoc) - Future backend development plans
 
 ---
 

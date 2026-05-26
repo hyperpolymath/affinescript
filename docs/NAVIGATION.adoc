@@ -1,0 +1,224 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2024-2026 Hyperpolymath Contributors
+
+= AffineScript Repository Navigation Guide
+
+This guide helps you navigate the AffineScript repository structure.
+
+== Quick Start Files (Root Level)
+
+[cols="1,3"]
+|===
+|File/Directory |Purpose
+
+|**README.adoc** |Project overview and introduction
+|**LICENSE** |MPL-2.0 license text
+|**STATE.scm** |Current project state and progress
+|===
+
+== Source Code
+
+[cols="1,3"]
+|===
+|Directory |Contents
+
+|**lib/** |OCaml library source code (core compiler)
+|**bin/** |Executable entry points
+|**runtime/** |Runtime system implementation
+|**test/** |Test suites
+|**examples/** |Example AffineScript programs
+|**conformance/** |Conformance test suite
+|**tools/** |Development and build tools
+|===
+
+== Documentation
+
+[cols="1,3"]
+|===
+|Directory |Contents
+
+|**docs/specs/** |Language specifications
+|**docs/governance/** |Community and contribution docs
+|**docs/standards/** |Design decisions, roadmap, releases
+|**docs/guides/** |Testing reports and guides
+|**wiki/** |Extended documentation and wiki content
+|===
+
+**Key specification documents:**
+
+* link:specs/affinescript-spec.md[AffineScript Specification] - Complete language spec
+* link:specs/SPEC.adoc[Core Specification] - Core language features
+
+**Governance documents:**
+
+* link:governance/CONTRIBUTING.adoc[Contributing Guide] - How to contribute
+* link:governance/CODE_OF_CONDUCT.md[Code of Conduct] - Community standards
+* link:governance/SECURITY.md[Security Policy] - Reporting vulnerabilities
+* link:governance/MAINTAINERS.adoc[Maintainers] - Project maintainers
+
+**Standards and planning:**
+
+* link:standards/ROADMAP.md[Roadmap] - Development roadmap
+* link:standards/DECISIONS.md[Decisions] - Architecture decisions
+* link:standards/RELEASE.md[Release Process] - Release procedures
+* link:standards/PALIMPSEST.adoc[Palimpsest Integration] - License integration
+* link:standards/TESTING.adoc[Testing Standards] - Test taxonomy, gate baseline, PR expectations
+* link:standards/PANIC-ATTACK.adoc[Panic-Attack Policy] - Security-scan SOP and finding disposition
+
+**Typed-WASM interface (Stage E runway):**
+
+* link:specs/TYPED-WASM-INTERFACE.adoc[Typed-WASM Interface (v1)] - Formal AS↔typed-wasm contract
+* link:specs/TYPED-WASM-ROADMAP.adoc[Typed-WASM Widening Roadmap] - Tranches A–E for L1–6 / L14–16
+
+**Guides:**
+
+* link:CAPABILITY-MATRIX.adoc[Capability Matrix] - **Live** per-component readiness (authoritative)
+* link:guides/TESTING-REPORT.adoc[Testing Report] - *RETIRED* (redirects to standards/TESTING.adoc + CAPABILITY-MATRIX.adoc)
+
+== Build System
+
+[cols="1,3"]
+|===
+|Directory |Contents
+
+|**.build/** |Build configuration and tooling
+|**.build/justfile** |Task automation (build, test, deploy)
+|**.build/dune-project** |Dune build configuration (OCaml)
+|**.build/affinescript.opam** |OPAM package definition
+|**.build/Mustfile** |Must-use file enforcement
+|**.build/.ocamlformat** |OCaml formatting rules
+|===
+
+== Project Metadata
+
+[cols="1,3"]
+|===
+|File/Directory |Purpose
+
+|**STATE.scm** |Current project state (symlink to .machine_readable/)
+|**.machine_readable/** |Structured metadata for tooling
+|**.claude/** |AI assistant context and instructions
+|**hooks/** |Git hooks for development workflow
+|===
+
+== Hidden Directories
+
+[cols="1,3"]
+|===
+|Directory |Purpose
+
+|**.build/** |Build configuration files
+|**.claude/** |AI assistant instructions
+|**.machine_readable/** |Machine-readable SCM metadata
+|**.github/** |GitHub Actions workflows and templates
+|**_build/** |OCaml/Dune build artifacts (gitignored)
+|===
+
+== Common Tasks
+
+=== Building the Compiler
+
+[source,bash]
+----
+cd .build/
+just build           # Build compiler
+just test            # Run tests
+just install         # Install locally
+----
+
+=== Running Tests
+
+[source,bash]
+----
+cd .build/
+just test            # Run all tests
+just test-conformance # Run conformance tests
+----
+
+=== Development
+
+[source,bash]
+----
+cd .build/
+just dev             # Development mode
+just watch           # Watch mode for auto-rebuild
+just fmt             # Format code
+----
+
+=== Contributing
+
+1. Read link:governance/CONTRIBUTING.adoc[Contributing Guide]
+2. Check link:governance/CODE_OF_CONDUCT.md[Code of Conduct]
+3. Review link:standards/DECISIONS.md[Architecture Decisions]
+4. Follow link:standards/ROADMAP.md[Development Roadmap]
+
+== Directory Tree Overview
+
+[source]
+----
+affinescript/
+├── README.adoc                    # Start here
+├── 0-AI-MANIFEST.a2ml             # AI-agent entry point (read first)
+├── LICENSE / LICENSES/            # Legal terms
+├── CONTRIBUTING.md                # How to contribute
+├── CODE_OF_CONDUCT.md             # Community standards
+├── SECURITY.md                    # Security policy
+├── MAINTAINERS.adoc               # Project maintainers
+├── justfile / dune-project        # Build orchestration
+├── affinescript.opam              # OPAM package descriptor
+│
+├── lib/                           # OCaml compiler source
+├── bin/                           # CLI executables
+├── runtime/                       # Runtime system
+├── stdlib/                        # AffineScript standard library
+├── test/ , tests/                 # Test suites
+├── examples/                      # Example programs
+├── conformance/                   # Conformance tests
+├── tools/                         # Development tools (res-to-affine, ...)
+├── editors/                       # Editor integrations
+├── packages/                      # JS / Bun / Node distribution packages
+├── ffi/ , wit/                    # FFI + WIT contracts
+│
+├── docs/                          # Documentation (this file lives here)
+│   ├── README.adoc                # docs/ index
+│   ├── NAVIGATION.adoc            # This file — repo-level orientation
+│   ├── ROADMAP.adoc               # Project roadmap
+│   ├── CAPABILITY-MATRIX.adoc     # Authoritative feature-readiness matrix
+│   ├── TECH-DEBT.adoc             # Coordination ledger (CORE/STDLIB/INT/DOC)
+│   ├── ECOSYSTEM.adoc             # Spine + AS↔typed-wasm contract
+│   ├── KNOWN-ISSUES.md            # Tracked issues backlog
+│   ├── PROOF-NEEDS.md             # Proof obligations index
+│   ├── EXPLAINME.adoc             # Receipts backing README claims
+│   ├── architecture/              # Compiler / backend internals
+│   ├── governance/                # Licensing, security, community
+│   ├── guides/                    # How-tos, programming practices
+│   ├── history/                   # Session notes, retired specs
+│   ├── reference/                 # ABI-FFI, capabilities, technical refs
+│   ├── reports/                   # Status reports
+│   ├── specs/                     # Language + typed-wasm specs
+│   ├── standards/                 # Decisions, roadmap, testing, RSR
+│   ├── tutorial/                  # User-facing tutorials
+│   └── vision/                    # Long-form direction-setting
+│
+├── wiki/                          # GitHub-wiki mirror (synced separately)
+├── .github/                       # CI workflows, issue templates
+├── .well-known/                   # RFC 9116 metadata
+└── .machine_readable/             # Machine metadata (`.a2ml`, contractiles)
+----
+
+== Getting Help
+
+* **Issues**: https://github.com/hyperpolymath/affinescript/issues
+* **Discussions**: https://github.com/hyperpolymath/affinescript/discussions
+* **Security**: See link:governance/SECURITY.md[Security Policy]
+
+== Document Conventions
+
+* **`.adoc`** - AsciiDoc format (preferred for complex docs)
+* **`.md`** - Markdown format (for GitHub compatibility)
+* **`.scm`** - Guile Scheme (machine-readable metadata)
+* **`.ml`** - OCaml source code
+
+---
+
+**Last updated:** 2026-01-23

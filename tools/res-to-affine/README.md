@@ -59,7 +59,7 @@ of which the line-based scanner reliably detects four:
 | Tag | Detection | AffineScript answer |
 |---|---|---|
 | `side-effect-import` | `let _ = Mod.foo` at top level | Explicit registration call |
-| `raw-js` | `%raw(...)` or `[%bs.raw ...]` | Typed extern (`ABI-FFI-README.md`) |
+| `raw-js` | `%raw(...)` or `[%bs.raw ...]` | Typed extern (`docs/reference/ABI-FFI.md`) |
 | `untyped-exception` | `Promise.catch`, `Js.Exn`, `raise`, `try` | `Result[E, A]` / `Validation[E, A]` |
 | `mutable-global` | `:=` operator | Affine record threaded through |
 

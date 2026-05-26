@@ -10,7 +10,7 @@
 //          answer to consider before porting.
 //   - [side-effect-import] line 8: ReScript module-load side effect. AffineScript modules do not run code at load time — rewrite as an explicit registration call.
 //       let _ = Pixi.Sound.register
-//   - [raw-js] line 11: %raw JS block. AffineScript has no untyped FFI — replace with a typed extern (see ABI-FFI-README.md) or wait for the matching binding.
+//   - [raw-js] line 11: %raw JS block. AffineScript has no untyped FFI — replace with a typed extern (see docs/reference/ABI-FFI.md) or wait for the matching binding.
 //       let host = %raw(`globalThis.location.host`)
 //   - [mutable-global] line 15: Top-level mutable global. AffineScript does not encourage module-scoped mutation; pass state as an affine record or through an effect handler.
 //       currentUser := Some("alice")
