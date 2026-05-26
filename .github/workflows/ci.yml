@@ -245,14 +245,32 @@ jobs:
         # The compiled out/extension.cjs is checked in (see #35 Phase 3),
         # so the smoke test does not need the OCaml toolchain — only the
         # Node-side test runner deps. peerDeps `vscode` is provided by
-        # @vscode/test-electron at launch; the extension's runtime dep on
-        # @hyperpolymath/affine-vscode is satisfied by npm install too.
+        # @vscode/test-electron at launch; the extension's host-bindings
+        # adapter @hyperpolymath/affine-vscode is an `optionalDependency`
+        # — npm install succeeds when it is unpublished (issue #104), and
+        # the smoke suite below detects the missing adapter and reports
+        # SKIPPED rather than failing.
         run: npm install --no-audit --no-fund
+
+      - name: Report adapter availability
+        working-directory: editors/vscode
+        # Surface the @hyperpolymath/affine-vscode publish state in the
+        # workflow log before the smoke runs. Either it resolves (smoke
+        # exercises real activation) or it doesn't (smoke skips cleanly
+        # per the #139 suiteSetup detector). Either case is a green run.
+        run: |
+          if node -e "require.resolve('@hyperpolymath/affine-vscode')" 2>/dev/null; then
+            echo "::notice title=adapter::@hyperpolymath/affine-vscode present — smoke will run"
+          else
+            echo "::notice title=adapter::@hyperpolymath/affine-vscode NOT installed (optional, awaits #104 npm publish) — smoke will skip"
+          fi
 
       - name: Run in-editor smoke (xvfb)
         working-directory: editors/vscode
         # Headless display required because @vscode/test-electron launches
-        # the real Electron-based VS Code binary.
+        # the real Electron-based VS Code binary. When the adapter is not
+        # available the suite calls `this.skip()` in suiteSetup and exits
+        # 0 with all tests marked skipped (mocha's expected behaviour).
         run: xvfb-run -a npm test
 
   migration-assistant:
