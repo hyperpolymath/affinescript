@@ -1444,11 +1444,58 @@ and check_stmt (ctx : context) (state : state) (symbols : Symbol.t) (stmt : stmt
       check_expr ctx state symbols rhs
     end
   | StmtWhile (cond, body) ->
+    (* CORE-01 pt3 Slice C' / #177 — loop soundness via 2-iteration.
+       A single body pass misses multi-iter conflicts: a move at iter
+       1 that the body never restores would, at iter 2, be a
+       UseAfterMove.  We run cond+body twice; iter 2 starts from the
+       post-iter-1 state, so an unrestored move surfaces as
+       UseAfterMove on the second pass.  Pairs with the StmtAssign
+       clear-on-rewrite fix (#399, [is_whole_place_write]) so loops
+       that legitimately re-initialise a moved-out variable per
+       iteration still converge — iter-2's read of the freshly-
+       reassigned place is not a UseAfterMove because iter 1's
+       assignment cleared the move record.  After both passes we
+       restore state to the iter-1-post snapshot so any analysis
+       past the loop sees a single iter's worth of state (the loop
+       may execute 0..N times — using iter-1-post is the sound
+       choice when iter-2 doesn't add new conflicts). *)
     let* () = check_expr ctx state symbols cond in
-    check_block ctx state symbols body
+    let* () = check_block ctx state symbols body in
+    let snap_borrows = state.borrows in
+    let snap_moved = state.moved in
+    let snap_ref_bindings = state.ref_bindings in
+    let snap_block_locals = state.block_local_syms in
+    let snap_mutable = state.mutable_bindings in
+    let r =
+      let* () = check_expr ctx state symbols cond in
+      check_block ctx state symbols body
+    in
+    state.borrows <- snap_borrows;
+    state.moved <- snap_moved;
+    state.ref_bindings <- snap_ref_bindings;
+    state.block_local_syms <- snap_block_locals;
+    state.mutable_bindings <- snap_mutable;
+    r
   | StmtFor (_pat, iter, body) ->
+    (* CORE-01 pt3 Slice C' / #177 — same 2-iteration pass as
+       [StmtWhile]; see comment there for rationale. *)
     let* () = check_expr ctx state symbols iter in
-    check_block ctx state symbols body
+    let* () = check_block ctx state symbols body in
+    let snap_borrows = state.borrows in
+    let snap_moved = state.moved in
+    let snap_ref_bindings = state.ref_bindings in
+    let snap_block_locals = state.block_local_syms in
+    let snap_mutable = state.mutable_bindings in
+    let r =
+      let* () = check_expr ctx state symbols iter in
+      check_block ctx state symbols body
+    in
+    state.borrows <- snap_borrows;
+    state.moved <- snap_moved;
+    state.ref_bindings <- snap_ref_bindings;
+    state.block_local_syms <- snap_block_locals;
+    state.mutable_bindings <- snap_mutable;
+    r
 
 (** Check a function
 
@@ -1578,17 +1625,20 @@ let check_program (symbols : Symbol.t) (program : program) : unit result =
    to work; the new path is `r = r_other`.  Closes the
    reborrow-through-indirection gap in #177 / CORE-01 pt3.
 
+   CORE-01 pt3 Slice C' (2026-05-27): loop soundness via a 2-iteration
+   check on [StmtWhile]/[StmtFor].  The body runs once; then state-
+   fields snapshot; then cond+body run again from the post-iter-1
+   state.  Any move that the body didn't restore (no rebinding
+   assignment) surfaces as UseAfterMove on the 2nd pass.  Pairs with
+   the StmtAssign clear-on-rewrite from #399 ([is_whole_place_write])
+   so legitimate re-init loops still accept while loops with an
+   unrestored body-move reject.
+
    Still deferred:
    - Origin/region variables (true Polonius surface) — a region
      var on each [TyRef]/[TyMut] with subset constraints and a
      proper datalog-style loan-live-at-point solver.  Architectural
      change to the type system; ADR-gated.
-   - Loop soundness (`StmtWhile`/`StmtFor`): a single body pass
-     misses multi-iteration move conflicts.  A 2-iteration check
-     would catch them.  Slice C''s StmtAssign clear-on-rewrite
-     half is now landed (see [StmtAssign] above and the
-     [is_whole_place_write] gate); the loop-soundness half can
-     proceed independently.
    - Tighter integration with the quantity checker for captured
      linears (Slice D).
 *)
