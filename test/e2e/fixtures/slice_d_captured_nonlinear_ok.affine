@@ -1,0 +1,15 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell
+//
+// CORE-01 pt3 Slice D / #177: anti-regression — capturing a
+// non-linear (unannotated → defaults to QOmega) binding by a
+// closure must still pass.  This pins that the new rejection is
+// scoped to @linear captures, not any free-var capture. Expected: Ok.
+
+module SliceDCapturedNonlinearOk;
+
+fn capture_nonlinear() -> Int {
+  let x = 7;
+  let f = fn() => x + 1;
+  f()
+}

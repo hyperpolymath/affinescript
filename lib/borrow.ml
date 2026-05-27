@@ -94,6 +94,19 @@ type state = {
       *caller-owned* referents and are deliberately absent here — returning
       a borrow of them is sound. CORE-01 pt2 / #177 (return-escape). *)
   mutable callee_owned_params : Symbol.symbol_id list;
+
+  (** Sym-ids of bindings declared @linear (`QOne`) in the current
+      function — surfaced as explicit `@linear` annotations on lets/params
+      and as inferred `QOne` from a [Cmd _] type annotation.  Maintained
+      alongside the quantity checker's per-block linear-tracking so the
+      borrow checker can reject *capture* of these bindings by a closure:
+      a closure can be called 0..N times, so capturing a linear binding
+      makes its consumption count unprovable at borrow time.  The quantity
+      checker also catches this via [QOmega] scaling of captures, but the
+      borrow-side error fires earlier in the pipeline and points at the
+      *lambda* span (the capture site) rather than at a downstream "used
+      multiple times" diagnostic.  CORE-01 pt3 Slice D / #177. *)
+  mutable linear_bindings : Symbol.symbol_id list;
 }
 
 (** Borrow checker errors *)
@@ -108,6 +121,11 @@ type borrow_error =
       (** use of [place] (at the trailing span) while a still-live exclusive
           borrow holds it — the shared-XOR-exclusive aliasing rule, enforced
           at use sites, not only at borrow creation. CORE-01 / #177. *)
+  | LinearCapturedByClosure of string * Span.t
+      (** the named @linear binding has been captured as a closure free
+          variable at the lambda's span — capturing extends consumption
+          beyond what the @linear contract can be checked at borrow time
+          (a closure may be called 0..N times). CORE-01 pt3 Slice D / #177. *)
 [@@deriving show]
 
 type 'a result = ('a, borrow_error) Result.t
@@ -152,7 +170,26 @@ let create () : state =
     ref_bindings = [];
     block_local_syms = [];
     callee_owned_params = [];
+    linear_bindings = [];
   }
+
+(** Mirror of [Quantity.quantity_of_ty_annotation]: returns [QOne] when the
+    given type annotation is a [Cmd _] application (linear by construction
+    per ADR-002 / Stage 11), [QOmega] otherwise. Duplicated here so
+    [Borrow] does not depend on [Quantity]; the canonical helper still
+    lives in [quantity.ml]. CORE-01 pt3 Slice D / #177. *)
+let borrow_quantity_of_ty (te_opt : type_expr option) : quantity =
+  match te_opt with
+  | Some (TyApp ({ name = "Cmd"; _ }, _)) -> QOne
+  | _ -> QOmega
+
+(** Returns true if a let-binding declared with the given explicit-quantity
+    annotation and type annotation should be tracked as @linear (QOne) by
+    the borrow checker. CORE-01 pt3 Slice D / #177. *)
+let let_is_linear (q_opt : quantity option) (ty_opt : type_expr option) : bool =
+  match q_opt with
+  | Some q -> q = QOne
+  | None -> borrow_quantity_of_ty ty_opt = QOne
 
 (** Add a function signature to context *)
 let add_fn_signature (ctx : context) (fd : fn_decl) : unit =
@@ -369,6 +406,13 @@ let format_borrow_error (e : borrow_error) : string =
        exclusive borrow (id %d) taken at %s is still live"
       (format_place place) (format_span use_span)
       b.b_id (format_span b.b_span)
+  | LinearCapturedByClosure (name, lam_span) ->
+    Printf.sprintf
+      "cannot capture @linear binding `%s` in a closure (at %s)\n  \
+       a closure may be called zero or many times, so capturing a \
+       @linear binding makes its consumption count unprovable. \
+       Inline the use, or move the binding into the closure body."
+      name (format_span lam_span)
 
 (** Get span from an expression *)
 let rec expr_span (expr : expr) : Span.t =
@@ -937,9 +981,24 @@ let rec check_expr (ctx : context) (state : state) (symbols : Symbol.t) (expr : 
         ) acc ops
     in
     let free_names = collect_free [] lam.elam_body in
+    let borrow_span = expr_span (ExprLambda lam) in
+    (* CORE-01 pt3 Slice D / #177: reject capture of a @linear binding.
+       A closure may be called 0..N times, so capturing a linear
+       binding lifts its consumption count out of what the borrow
+       checker can prove finite-once.  The quantity checker also
+       catches this via [QOmega] scaling, but the borrow-side error
+       (a) fires earlier in the pipeline and (b) names the lambda
+       span — the actual capture site — rather than a downstream
+       "used multiple times" diagnostic. *)
+    let* () = List.fold_left (fun acc name ->
+      let* () = acc in
+      match lookup_symbol_by_name symbols name with
+      | Some sym when List.mem sym.Symbol.sym_id state.linear_bindings ->
+        Error (LinearCapturedByClosure (name, borrow_span))
+      | _ -> Ok ()
+    ) (Ok ()) free_names in
     (* Create a Shared borrow for each captured free variable.  If a borrow
        conflict or use-after-move is detected, fail immediately. *)
-    let borrow_span = expr_span (ExprLambda lam) in
     let* () = List.fold_left (fun acc name ->
       let* () = acc in
       match expr_to_place symbols (ExprVar { name; span = borrow_span }) with
@@ -959,7 +1018,11 @@ let rec check_expr (ctx : context) (state : state) (symbols : Symbol.t) (expr : 
     | PatVar id ->
       begin match lookup_symbol_by_name symbols id.name with
       | Some sym ->
-        state.block_local_syms <- sym.Symbol.sym_id :: state.block_local_syms
+        state.block_local_syms <- sym.Symbol.sym_id :: state.block_local_syms;
+        (* Slice D / #177: record @linear let-bindings for the
+           capture-rejection check on subsequent ExprLambda's. *)
+        if let_is_linear lb.el_quantity lb.el_ty then
+          state.linear_bindings <- sym.Symbol.sym_id :: state.linear_bindings
       | None -> ()
       end
     | _ -> ()
@@ -1337,7 +1400,11 @@ and check_stmt (ctx : context) (state : state) (symbols : Symbol.t) (stmt : stmt
     | PatVar id ->
       begin match lookup_symbol_by_name symbols id.name with
       | Some sym ->
-        state.block_local_syms <- sym.Symbol.sym_id :: state.block_local_syms
+        state.block_local_syms <- sym.Symbol.sym_id :: state.block_local_syms;
+        (* Slice D / #177: track @linear let-bindings for the
+           capture-rejection check on subsequent ExprLambda's. *)
+        if let_is_linear sl.sl_quantity sl.sl_ty then
+          state.linear_bindings <- sym.Symbol.sym_id :: state.linear_bindings
       | None -> ()
       end
     | _ -> ()
@@ -1519,7 +1586,12 @@ let check_function (ctx : context) (symbols : Symbol.t) (fd : fn_decl) : unit re
         | None | Some Own ->
           state.callee_owned_params <-
             sym.sym_id :: state.callee_owned_params
-        | Some Ref | Some Mut -> ())
+        | Some Ref | Some Mut -> ());
+       (* Slice D / #177: track @linear-annotated params for the
+          capture-rejection check on subsequent ExprLambda's. *)
+       if p.p_quantity = Some QOne then
+         state.linear_bindings <-
+           sym.sym_id :: state.linear_bindings
      | None -> ())
   ) fd.fd_params;
   match fd.fd_body with
@@ -1633,6 +1705,20 @@ let check_program (symbols : Symbol.t) (program : program) : unit result =
    the StmtAssign clear-on-rewrite from #399 ([is_whole_place_write])
    so legitimate re-init loops still accept while loops with an
    unrestored body-move reject.
+
+   CORE-01 pt3 Slice D (2026-05-26): borrow-side rejection of
+   @linear-binding capture by a closure.  A closure may be called
+   0..N times, so capturing a [@linear] (`QOne`) binding lifts its
+   consumption count out of what the borrow checker can prove
+   finite-once.  The quantity checker also rejects this via [QOmega]
+   scaling of lambda captures (quantity.ml ExprLambda), but the
+   borrow-side error fires earlier in the pipeline (Typecheck →
+   Borrow → Quantity) and names the *lambda* span as the capture
+   site rather than producing a downstream "used multiple times"
+   diagnostic. [state.linear_bindings] is populated from
+   [@linear] / `Cmd _` annotations on params, `let`-statements, and
+   `let`-expressions; [ExprLambda] then rejects free-vars whose
+   sym-id is in that set with [LinearCapturedByClosure].
 
    Still deferred:
    - Origin/region variables (true Polonius surface) — a region

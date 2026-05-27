@@ -4574,6 +4574,46 @@ let test_slice_c_prime_loop_move_persists () =
                    silently accepted — the 2-iteration pass did not \
                    catch the unrestored move on `x`"
 
+(* CORE-01 pt3 Slice D / #177 — borrow-side rejection of @linear
+   capture by a closure. The quantity checker already rejected
+   these via QOmega scaling, but the borrow-side error fires
+   earlier (Typecheck → Borrow → Quantity) and points at the
+   lambda span. Three tests pin: (1) @linear let captured;
+   (2) @linear param captured; (3) anti-regression — non-linear
+   capture must still pass. *)
+let test_slice_d_captured_linear_let_rejected () =
+  match borrow_result (fixture "slice_d_captured_linear_let_rejected.affine") with
+  | Error (Borrow.LinearCapturedByClosure (name, _)) ->
+    Alcotest.(check string) "captured name surfaced in error" "x" name
+  | Error e ->
+    Alcotest.fail ("Slice D: expected LinearCapturedByClosure on `|| x + 1` \
+                    capture of @linear let x, got: "
+                   ^ Borrow.format_borrow_error e)
+  | Ok () ->
+    Alcotest.fail "Slice D regressed: @linear let-binding was silently \
+                   captured by closure — multi-call would break linear \
+                   contract"
+
+let test_slice_d_captured_linear_param_rejected () =
+  match borrow_result (fixture "slice_d_captured_linear_param_rejected.affine") with
+  | Error (Borrow.LinearCapturedByClosure (name, _)) ->
+    Alcotest.(check string) "captured param name surfaced" "y" name
+  | Error e ->
+    Alcotest.fail ("Slice D: expected LinearCapturedByClosure on `|| y + 1` \
+                    capture of @linear param y, got: "
+                   ^ Borrow.format_borrow_error e)
+  | Ok () ->
+    Alcotest.fail "Slice D regressed: @linear param was silently captured \
+                   by closure"
+
+let test_slice_d_captured_nonlinear_ok () =
+  match borrow_result (fixture "slice_d_captured_nonlinear_ok.affine") with
+  | Ok () -> ()
+  | Error e ->
+    Alcotest.fail ("Slice D anti-regression: non-linear capture was \
+                    spuriously rejected — the new rule must scope to \
+                    @linear only: " ^ Borrow.format_borrow_error e)
+
 let borrow_tests = [
   Alcotest.test_case "BorrowOutlivesOwner: &local escapes its block"
     `Quick test_borrow_outlives_owner;
@@ -4625,6 +4665,12 @@ let borrow_tests = [
     `Quick test_slice_c_prime_loop_reinit_ok;
   Alcotest.test_case "Slice C' anti-regression: multi-iter move rejected (#177 pt3)"
     `Quick test_slice_c_prime_loop_move_persists;
+  Alcotest.test_case "Slice D: @linear let captured by closure rejected (#177 pt3)"
+    `Quick test_slice_d_captured_linear_let_rejected;
+  Alcotest.test_case "Slice D: @linear param captured by closure rejected (#177 pt3)"
+    `Quick test_slice_d_captured_linear_param_rejected;
+  Alcotest.test_case "Slice D anti-regression: non-linear capture still OK (#177 pt3)"
+    `Quick test_slice_d_captured_nonlinear_ok;
 ]
 
 (* ============================================================================
