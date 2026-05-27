@@ -50,7 +50,6 @@ affinescript/
 ├── LICENSE / LICENSES   # MIT OR AGPL-3.0-or-later
 ├── MAINTAINERS.adoc
 ├── README.adoc
-├── ROADMAP.adoc
 ├── SECURITY.md
 ├── dune-project
 └── justfile
@@ -76,7 +75,7 @@ affinescript/
 ### Suggesting Features
 
 **Before suggesting:**
-1. Skim [`ROADMAP.adoc`](ROADMAP.adoc) and `.machine_readable/6a2/STATE.a2ml`.
+1. Skim [`docs/ROADMAP.adoc`](docs/ROADMAP.adoc) and `.machine_readable/6a2/STATE.a2ml`.
 2. Search existing issues and discussions.
 
 **When suggesting:** use the [feature request template](.github/ISSUE_TEMPLATE/feature_request.md) and include:

@@ -10,8 +10,10 @@
 ====
 *This document is the single authoritative source for AffineScript feature
 readiness.* Where any other document (`README.adoc`,
-`BACKEND-IMPLEMENTATION.md`, `COMPILER-CAPABILITIES.md`,
-`ALPHA-1-RELEASE-NOTES.md`, `ROADMAP.adoc`, `.machine_readable/6a2/STATE.a2ml`)
+`docs/architecture/BACKEND-IMPLEMENTATION.md`,
+`docs/reference/COMPILER-CAPABILITIES.md`,
+`docs/history/ALPHA-1-RELEASE-NOTES.md`, `docs/ROADMAP.adoc`,
+`.machine_readable/6a2/STATE.a2ml`)
 disagrees with this matrix, *this matrix wins* and the other document is drift
 to be corrected. Reconstructed and verified 2026-05-19 against
 `origin/main`@dc5b817 with the compiler as oracle. Tracks issue

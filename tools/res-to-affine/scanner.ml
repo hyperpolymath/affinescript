@@ -19,7 +19,7 @@ let kind_to_guidance = function
        code at load time — rewrite as an explicit registration call."
   | Raw_js ->
       "%raw JS block. AffineScript has no untyped FFI — replace with \
-       a typed extern (see ABI-FFI-README.md) or wait for the matching \
+       a typed extern (see docs/reference/ABI-FFI.md) or wait for the matching \
        binding."
   | Untyped_exception ->
       "Untyped exception / Promise.catch. AffineScript prefers \
