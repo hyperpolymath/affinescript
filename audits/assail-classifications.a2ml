@@ -1,0 +1,82 @@
+# SPDX-License-Identifier: MPL-2.0
+# Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+#
+# Classification registry for panic-attack assail findings that are
+# confirmed false positives (pattern-match against local-trust files or
+# vendored subtrees) and should not be treated as actionable weak-points
+# in this repo's tree.
+#
+# Format mirrors panic-attack's user-classification registry protocol
+# (cf. hyperpolymath/echidna/audits/assail-classifications.a2ml).
+#
+# Cross-reference: issue #378 (panic-attack estate sweep, 2026-05-26).
+# Estate tracker: hyperpolymath/panic-attack#32.
+
+[metadata]
+name = "affinescript-assail-classifications"
+project = "affinescript"
+version = "1.0.0"
+schema_version = "1.0.0"
+
+(assail-classifications
+
+  ; ─── UnboundedAllocation (Critical) ────────────────────────────────────
+  ;
+  ; All four flagged sites are `std::fs::read_to_string` calls reading
+  ; local user-authored TOML files (config, manifest, lockfile) or a
+  ; user-supplied source-file path. The trust model for these is
+  ; identical to rustc / cargo / any compiler reading user-supplied
+  ; source: the user is the operator; an attacker who can write a
+  ; multi-GB file into the user's `~/.config/affine/` or pass arbitrary
+  ; paths via the CLI is already past the security boundary. Not an
+  ; attacker-controlled-size allocation in the OWASP sense.
+
+  (classification
+    (file "affinescriptiser/src/codegen/parser.rs")
+    (category "UnboundedAllocation")
+    (rationale "read_to_string(&source.path) — local source file path; rustc/cargo trust model"))
+
+  (classification
+    (file "tools/affine-pkg/src/lockfile.rs")
+    (category "UnboundedAllocation")
+    (rationale "read_to_string(path) — local lockfile; cargo-equivalent trust model"))
+
+  (classification
+    (file "tools/affine-pkg/src/manifest.rs")
+    (category "UnboundedAllocation")
+    (rationale "read_to_string(path) — local Cargo.toml-equivalent manifest; user-authored"))
+
+  (classification
+    (file "tools/affine-pkg/src/config.rs")
+    (category "UnboundedAllocation")
+    (rationale "read_to_string(&path) for global + project-local TOML config; user-authored"))
+
+  ; ─── DynamicCodeExecution (High) ────────────────────────────────────────
+
+  (classification
+    (file "tools/affine-doc/assets/search.js")
+    (category "DynamicCodeExecution")
+    (rationale "Pattern-match against a COMMENT explaining the code avoids innerHTML. Actual render path uses .textContent throughout — search.js line 7-9: 'HTML escape function to prevent XSS. Uses character substitution — no DOM element, no innerHTML write.' No actual innerHTML/document.write writes exist in the file."))
+
+  (classification
+    (file "road-skate/game/main.js")
+    (category "DynamicCodeExecution")
+    (rationale "Vendored from upstream hyperpolymath/road-skate. Fix in upstream repo, not here. (Path-based exclusion for vendored subtree would be cleaner once panic-attack supports it; see panic-attack#32.)"))
+
+  ; ─── SupplyChain (High) — vendored subtrees ─────────────────────────────
+  ;
+  ; The two flake.nix files below live in vendored subtrees with their
+  ; own upstream repos. The affinescriptiser/flake.nix that panic-attack
+  ; ALSO flagged was an unfilled scaffold leftover (had {{PROJECT_NAME}}
+  ; placeholders) — deleted in this PR rather than suppressed.
+
+  (classification
+    (file "road-skate/flake.nix")
+    (category "SupplyChain")
+    (rationale "Vendored from upstream hyperpolymath/road-skate. Input pinning fix belongs upstream."))
+
+  (classification
+    (file "affinescript-vite/flake.nix")
+    (category "SupplyChain")
+    (rationale "Vendored from upstream hyperpolymath/affinescript-vite. Input pinning fix belongs upstream."))
+)
