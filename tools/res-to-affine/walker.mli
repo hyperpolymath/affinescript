@@ -8,17 +8,25 @@
     [editors/tree-sitter-rescript/] grammar. The two pipelines share
     [Scanner.kind] and [Scanner.finding] so the emitter is unchanged.
 
-    Phase 2b (#322) ported [Side_effect_import]. Phase 2c (this file's
-    current state) ports the remaining three — [Raw_js],
-    [Untyped_exception], [Mutable_global] — to AST detection,
-    reaching parity with [Scanner.scan] on the synthetic
-    [test/fixtures/sample.res] corpus.
+    Phase 2b ported a single anti-pattern: [Side_effect_import].
+    Phase 2c (this revision) extends the walker to:
 
-    The walker's discovery of [Side_effect_import] and
-    [Mutable_global] is strictly stronger than the regex's: it
-    requires the anti-pattern to live at *module top level*. The
-    column-0 false-positive class that [#319] band-aided is
-    eliminated structurally rather than by regex anchor. *)
+    - the remaining three Phase-1 kinds — [Raw_js],
+      [Untyped_exception], [Mutable_global] — via AST shapes
+      ([extension_expression], [try_expression]/[call_expression]
+      [raise]/member-expression [Promise.catch]/[Js.Exn],
+      [let_declaration] with [ref] body and [mutation_expression]);
+    - the two kinds that were explicitly deferred from Phase 1
+      because they need real AST — [Inline_callback_record]
+      (≥3 inline function values in a single record or call) and
+      [Oversized_function] (function spans >50 source rows);
+
+    The walker's discovery is strictly stronger than the regex's
+    on the three ported kinds: it requires structural module-top-
+    level placement for [Mutable_global], it tells [try {…}] apart
+    from the identifier [try] in scanner-only false-positive
+    contexts, and it does not double-fire on the same line for
+    structurally-nested matches. *)
 
 val scan :
   grammar_dir:string ->

@@ -6,12 +6,16 @@ type kind =
   | Raw_js
   | Untyped_exception
   | Mutable_global
+  | Inline_callback_record
+  | Oversized_function
 
 let kind_to_label = function
-  | Side_effect_import -> "side-effect-import"
-  | Raw_js             -> "raw-js"
-  | Untyped_exception  -> "untyped-exception"
-  | Mutable_global     -> "mutable-global"
+  | Side_effect_import     -> "side-effect-import"
+  | Raw_js                 -> "raw-js"
+  | Untyped_exception      -> "untyped-exception"
+  | Mutable_global         -> "mutable-global"
+  | Inline_callback_record -> "inline-callback-record"
+  | Oversized_function     -> "oversized-function"
 
 let kind_to_guidance = function
   | Side_effect_import ->
@@ -29,6 +33,14 @@ let kind_to_guidance = function
       "Top-level mutable global. AffineScript does not encourage \
        module-scoped mutation; pass state as an affine record or \
        through an effect handler."
+  | Inline_callback_record ->
+      "3+ inline callbacks in one record/call. Lift to a row-polymorphic \
+       handler record (see LESSONS.md §callback-record) so each handler \
+       is named and individually overridable."
+  | Oversized_function ->
+      "Function spans >50 source lines. Re-decompose before porting; a \
+       direct translation will preserve the size and the implicit \
+       contract it bakes in."
 
 type finding = {
   kind : kind;

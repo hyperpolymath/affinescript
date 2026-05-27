@@ -10,21 +10,24 @@
     using the vendored [editors/tree-sitter-rescript] grammar. The
     [Emitter] interface is stable across the two implementations.
 
-    Patterns detected today:
+    Patterns detected today by the Phase-1 scanner (line/regex):
     - {b side-effect import} : [let _ = Mod.foo] (ReScript module-load hack)
     - {b raw JS} : any line containing [%raw] (typed FFI required)
     - {b untyped exception} : [Promise.catch], [Js.Exn], [raise], [try]
     - {b mutable global} : top-level [ref] or [:=] assignment
 
-    Deferred to Phase 2 (need real AST):
-    - {b inline lambda callback record} : N>=3 [~handler: (...) =>] in a record
-    - {b oversized function} : function body >50 LOC *)
+    Additional kinds detected by the Phase-2 walker only (need real AST):
+    - {b inline callback record} : N>=3 inline function values in a record
+      literal or a single call's labelled-argument list
+    - {b oversized function} : function spans more than 50 source lines *)
 
 type kind =
   | Side_effect_import
   | Raw_js
   | Untyped_exception
   | Mutable_global
+  | Inline_callback_record
+  | Oversized_function
 
 val kind_to_label : kind -> string
 (** Short tag used in emitted comment markers (e.g. ["side-effect-import"]). *)
