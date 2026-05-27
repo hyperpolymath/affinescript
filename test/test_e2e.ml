@@ -4454,6 +4454,23 @@ let test_ref_to_ref_assign_aliases () =
                     the subsequent write to `x` was spuriously \
                     rejected: " ^ Borrow.format_borrow_error e)
 
+(* CORE-01 pt3 ref-to-ref / #177 follow-up: return-escape via
+   indirection.  Pre-fix `let r2 = r1` did not propagate `r1`'s
+   ref-binding, so `returned_borrow` for `return r2` silently
+   returned None — the escape was missed.  Post-fix `r2` inherits
+   `r1`'s borrow on a function-local, and the escape check fires. *)
+let test_ref_to_ref_return_escape () =
+  match borrow_result (fixture "ref_to_ref_return_escape.affine") with
+  | Error (Borrow.BorrowOutlivesOwner _) -> ()
+  | Error e ->
+    Alcotest.fail ("ref-to-ref return-escape: expected \
+                    BorrowOutlivesOwner on `return r2` where r2 = r1 = \
+                    &local, got: " ^ Borrow.format_borrow_error e)
+  | Ok () ->
+    Alcotest.fail "ref-to-ref return-escape regressed: the indirection \
+                   chain was not detected by `returned_borrow`'s \
+                   ref_bindings lookup — escape silently accepted"
+
 (* CORE-01 pt3 / #177 deferred-items: assignment-clears-move.
    Whole-place write `x = …` after a prior move on `x` revives the
    place; the move-record is dropped after the RHS lands so the
@@ -4510,6 +4527,8 @@ let borrow_tests = [
     `Quick test_ref_to_ref_protects_owner;
   Alcotest.test_case "ref-to-ref assign-path: `r = s` releases + aliases (#177 pt3)"
     `Quick test_ref_to_ref_assign_aliases;
+  Alcotest.test_case "ref-to-ref return-escape via indirection (#177 pt3 follow-up)"
+    `Quick test_ref_to_ref_return_escape;
   Alcotest.test_case "assignment-clears-move: whole-place write revives moved place (#177)"
     `Quick test_borrow_assign_clears_move;
 ]
