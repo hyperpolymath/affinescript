@@ -899,6 +899,52 @@ expr_primary:
   | modu = upper_ident COLONCOLON fname = lower_ident
     { ExprField (ExprVar (mk_ident modu $startpos(modu) $endpos(modu)),
                  mk_ident fname $startpos(fname) $endpos(fname)) }
+  /* Builtin-type-qualified value path: `Int::to_string(n)`, `String::len(s)`,
+     etc. The built-in type names are reserved keyword tokens (INT_T, STRING_T,
+     ...) rather than UPPER_IDENT, so the `upper_ident COLONCOLON lower_ident`
+     production above never fires for them. We replicate the same
+     `ExprField (ExprVar TypeName, lower_ident)` shape so [Resolve] sees a
+     uniform qualified-path AST. The lookahead after COLONCOLON (a lower_ident)
+     distinguishes this from any type-position use of the same keyword.
+     Added 2026-05-26 (Refs gitbot-fleet#148 sustainabot hand-port:
+     Int::to_string, Int::from_string, Float::to_string, etc.). */
+  | NAT COLONCOLON fname = lower_ident
+    { ExprField (ExprVar (mk_ident "Nat" $startpos($1) $endpos($1)),
+                 mk_ident fname $startpos(fname) $endpos(fname)) }
+  | INT_T COLONCOLON fname = lower_ident
+    { ExprField (ExprVar (mk_ident "Int" $startpos($1) $endpos($1)),
+                 mk_ident fname $startpos(fname) $endpos(fname)) }
+  | BOOL COLONCOLON fname = lower_ident
+    { ExprField (ExprVar (mk_ident "Bool" $startpos($1) $endpos($1)),
+                 mk_ident fname $startpos(fname) $endpos(fname)) }
+  | FLOAT_T COLONCOLON fname = lower_ident
+    { ExprField (ExprVar (mk_ident "Float" $startpos($1) $endpos($1)),
+                 mk_ident fname $startpos(fname) $endpos(fname)) }
+  | STRING_T COLONCOLON fname = lower_ident
+    { ExprField (ExprVar (mk_ident "String" $startpos($1) $endpos($1)),
+                 mk_ident fname $startpos(fname) $endpos(fname)) }
+  | CHAR_T COLONCOLON fname = lower_ident
+    { ExprField (ExprVar (mk_ident "Char" $startpos($1) $endpos($1)),
+                 mk_ident fname $startpos(fname) $endpos(fname)) }
+  /* Lowercase-module-qualified value path: `json::encode_string(s)`,
+     `string::join(xs, sep)`, etc. The stdlib already defines lowercase
+     modules (`stdlib/json.affine` declares `module json;`,
+     `stdlib/string.affine` declares `module string;`) and `use json::{...}`
+     parses because `module_path` is a list of `ident` (upper or lower).
+     The expression-position qualified path, however, only covered
+     `upper_ident COLONCOLON lower_ident`, leaving every call into a
+     lowercase stdlib module as a parse error. We mirror that rule for
+     lower-module values so [Resolve] sees the same canonical
+     `ExprField (ExprVar Mod, fname)` AST regardless of module casing.
+     LR(1)-safe: the only competing reduction for `lower_ident` at this
+     position is `name = lower_ident { ExprVar ... }`, and on a COLONCOLON
+     lookahead no rule starting from `expr_primary COLONCOLON` exists, so
+     the parser shifts unambiguously into this rule. Added 2026-05-26
+     (Refs gitbot-fleet#148 sustainabot hand-port: json::encode_object,
+     string::join, etc.). */
+  | modu = lower_ident COLONCOLON fname = lower_ident
+    { ExprField (ExprVar (mk_ident modu $startpos(modu) $endpos(modu)),
+                 mk_ident fname $startpos(fname) $endpos(fname)) }
 
   /* Grouping and tuples */
   | LPAREN RPAREN { ExprLit (LitUnit (mk_span $startpos $endpos)) }
@@ -1210,10 +1256,17 @@ ident:
    record field names.  Only keywords that do NOT introduce shift/reduce or
    reduce/reduce conflicts are listed here.  HANDLE is safe because it always
    requires `name COLON ty` in type-record context and `name: expr` in
-   expression-record context; the surrounding COLON disambiguates. *)
+   expression-record context; the surrounding COLON disambiguates.
+   TOTAL is safe by the same reasoning: as a function-decl modifier it always
+   appears between visibility? and FN (never after DOT, never before COLON in
+   a record body), and as a field name it always appears immediately before
+   COLON (record-field decl, record-literal field, dotted field access). The
+   surrounding COLON / DOT disambiguates. Added 2026-05-26 (Refs gitbot-fleet#148
+   sustainabot hand-port: HealthIndex.total, Recommendation.total, etc.). *)
 field_name:
   | id = ident { id }
   | HANDLE { mk_ident "handle" $startpos $endpos }
+  | TOTAL { mk_ident "total" $startpos $endpos }
 
 lower_ident:
   | name = LOWER_IDENT { name }
