@@ -1352,8 +1352,27 @@ and check_stmt (ctx : context) (state : state) (symbols : Symbol.t) (stmt : stmt
       if not (is_mutable state place) then
         Error (CannotBorrowAsMutable (place, expr_span lhs))
       else
-        (* Check that the place is not moved and not borrowed *)
-        let* () = check_use state place (expr_span lhs) in
+        (* CORE-01 pt3 / #177 deferred-items (lib/borrow.ml:1483):
+           assignment-clears-move.  A whole-place write (`x = e`,
+           LHS is [PlaceVar]) REVIVES the place — the LHS is a write,
+           not a read, so a prior move on it must not raise
+           [UseAfterMove], and after the RHS lands the move-record
+           rooted here is dropped so subsequent uses succeed.
+           Sub-place writes (`x.f = e`, `x[i] = e`) keep [check_use]
+           because they navigate through the parent place, which must
+           still be live.  Unblocks Slice C' loop-soundness. *)
+        let is_whole_place_write =
+          match place with PlaceVar _ -> true | _ -> false
+        in
+        let* () =
+          if is_whole_place_write then
+            match find_aliasing_exclusive state place with
+            | Some b ->
+              Error (UseWhileExclusivelyBorrowed (place, b, expr_span lhs))
+            | None -> Ok ()
+          else
+            check_use state place (expr_span lhs)
+        in
         (* Check for any active borrows of this place *)
         begin match List.find_opt (fun b -> places_overlap place b.b_place) state.borrows with
         | Some borrow ->
@@ -1386,6 +1405,10 @@ and check_stmt (ctx : context) (state : state) (symbols : Symbol.t) (stmt : stmt
             | _ -> None
           in
           let* () = check_expr ctx state symbols rhs in
+          if is_whole_place_write then
+            state.moved <-
+              List.filter (fun mr -> not (places_overlap mr.m_place place))
+                state.moved;
           (match pre_release with
            | Some binder_sym ->
              (match ref_source_borrow state symbols rhs with
@@ -1543,10 +1566,10 @@ let check_program (symbols : Symbol.t) (program : program) : unit result =
      change to the type system; ADR-gated.
    - Loop soundness (`StmtWhile`/`StmtFor`): a single body pass
      misses multi-iteration move conflicts.  A 2-iteration check
-     would catch them but requires fixing the assignment-clears-
-     move imprecision first (assignment is currently treated as a
-     read of LHS, so `x = …` after a prior move spuriously fails).
-     Couple Slice C' with the StmtAssign clear-on-rewrite fix.
+     would catch them.  Slice C''s StmtAssign clear-on-rewrite
+     half is now landed (see [StmtAssign] above and the
+     [is_whole_place_write] gate); the loop-soundness half can
+     proceed independently.
    - Tighter integration with the quantity checker for captured
      linears (Slice D).
 *)
