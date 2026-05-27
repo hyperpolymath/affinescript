@@ -206,6 +206,92 @@ const __as_httpFetch = async (url, method, headers, bodyOpt) => {
     body: text,
   };
 };
+// ---- Crypto (stdlib/Crypto.affine — HMAC-SHA256, RS256, base64url) ----
+// All shims go through `globalThis.crypto.subtle` so they run unmodified
+// on Deno, Node 18+, and browser ESM. The hex/base64url helpers are
+// pure JS (no crypto.subtle dependency); harnesses can stub them
+// independently of the SubtleCrypto surface.
+const __as_hexToBytes = (hex) => {
+  if (typeof hex !== "string" || hex.length % 2 !== 0) return null;
+  const out = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < out.length; i++) {
+    const b = parseInt(hex.substr(i * 2, 2), 16);
+    if (Number.isNaN(b)) return null;
+    out[i] = b;
+  }
+  return out;
+};
+const __as_b64uFromBytes = (bytes) => {
+  let s = "";
+  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+  return btoa(s).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+};
+const __as_b64uToBytes = (s) => {
+  const padded = s.replaceAll("-", "+").replaceAll("_", "/") +
+    "==".slice(0, (4 - (s.length % 4)) % 4);
+  const bin = atob(padded);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+};
+const __as_b64uEncodeString = (s) => __as_b64uFromBytes(
+  new TextEncoder().encode(String(s))
+);
+const __as_hmacSha256Verify = async (secret, body, sigHex) => {
+  const sig = __as_hexToBytes(sigHex);
+  if (sig === null) return false;
+  const enc = new TextEncoder();
+  const key = await globalThis.crypto.subtle.importKey(
+    "raw",
+    enc.encode(String(secret)),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["verify"],
+  );
+  return await globalThis.crypto.subtle.verify(
+    "HMAC",
+    key,
+    sig,
+    enc.encode(String(body)),
+  );
+};
+// PEM -> Uint8Array (strip header/footer + base64 body decode). Accepts
+// `-----BEGIN PRIVATE KEY-----` (PKCS#8); a PKCS#1 key (`BEGIN RSA
+// PRIVATE KEY`) is rejected here so the failure is loud at the boundary
+// rather than as an opaque "unsupported key" deep inside subtle.importKey.
+const __as_pkcs8PemToBytes = (pem) => {
+  const s = String(pem);
+  if (!s.includes("-----BEGIN PRIVATE KEY-----")) {
+    throw new Error(
+      "rs256_sign: expected PKCS#8 PEM (-----BEGIN PRIVATE KEY-----). " +
+        "Convert PKCS#1 with `openssl pkcs8 -topk8 -nocrypt`.",
+    );
+  }
+  const body = s
+    .replace(/-----BEGIN PRIVATE KEY-----/g, "")
+    .replace(/-----END PRIVATE KEY-----/g, "")
+    .replace(/\s+/g, "");
+  const bin = atob(body);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+};
+const __as_rs256Sign = async (pkcs8Pem, payload) => {
+  const keyBytes = __as_pkcs8PemToBytes(pkcs8Pem);
+  const key = await globalThis.crypto.subtle.importKey(
+    "pkcs8",
+    keyBytes,
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const sig = await globalThis.crypto.subtle.sign(
+    "RSASSA-PKCS1-v1_5",
+    key,
+    new TextEncoder().encode(String(payload)),
+  );
+  return new Uint8Array(sig);
+};
 // ---- end runtime ----
 
 |}
@@ -299,7 +385,23 @@ let () =
      (see {!fd_is_async}). *)
   b "http_request" (fun a ->
     Printf.sprintf "(await __as_httpFetch(%s, %s, %s, %s))"
-      (arg 0 a) (arg 1 a) (arg 2 a) (arg 3 a))
+      (arg 0 a) (arg 1 a) (arg 2 a) (arg 3 a));
+  (* ---- Crypto (stdlib/Crypto.affine) ----
+     `hmac_sha256_verify` / `rs256_sign` are `/ Async` so the emitted
+     call is wrapped in `await` (same shape as `http_request`). The
+     base64url helpers are pure (no effect) so they lower as plain
+     expressions. *)
+  b "hmac_sha256_verify" (fun a ->
+    Printf.sprintf "(await __as_hmacSha256Verify(%s, %s, %s))"
+      (arg 0 a) (arg 1 a) (arg 2 a));
+  b "rs256_sign" (fun a ->
+    Printf.sprintf "(await __as_rs256Sign(%s, %s))" (arg 0 a) (arg 1 a));
+  b "base64url_encode_string" (fun a ->
+    Printf.sprintf "__as_b64uEncodeString(%s)" (arg 0 a));
+  b "base64url_encode_bytes" (fun a ->
+    Printf.sprintf "__as_b64uFromBytes(%s)" (arg 0 a));
+  b "base64url_decode" (fun a ->
+    Printf.sprintf "__as_b64uToBytes(%s)" (arg 0 a))
 
 (* ============================================================================
    Identifier sanitisation (JS reserved words -> trailing underscore)

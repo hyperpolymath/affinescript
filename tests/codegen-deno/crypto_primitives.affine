@@ -1,0 +1,32 @@
+// SPDX-License-Identifier: MPL-2.0
+// crypto-stdlib-2026-05 — HMAC-SHA256, RS256, base64url end-to-end on the
+// Deno-ESM backend. Exercises stdlib/Crypto.affine + the lowering rules
+// added to lib/codegen_deno.ml.
+//
+// The harness (crypto_primitives.harness.mjs) stubs `globalThis.crypto`
+// so the assertions are deterministic and the test stays offline.
+
+use Crypto::{hmac_sha256_verify, rs256_sign, base64url_encode_string, base64url_encode_bytes, base64url_decode};
+
+// HMAC-SHA256 verify — both the happy path and the fail-closed return.
+pub fn verify_ok(secret: String, body: String, sig: String) -> Bool / Async {
+  hmac_sha256_verify(secret, body, sig)
+}
+
+// RS256 sign returns Bytes; we round-trip through base64url so the harness
+// can assert on a string (Bytes cross the boundary as Uint8Array, but the
+// harness side checks the b64u-encoded shape — easier to read).
+pub fn sign_b64u(pem: String, payload: String) -> String / Async {
+  base64url_encode_bytes(rs256_sign(pem, payload))
+}
+
+// Pure (no Async, no Net) — base64url encode/decode round-trip.
+pub fn b64u_encode(s: String) -> String {
+  base64url_encode_string(s)
+}
+
+pub fn b64u_decode_roundtrip(s: String) -> String / Async {
+  // decode -> bytes -> re-encode through bytes path, to exercise both
+  // string and bytes encoders. The .harness asserts the round-trip.
+  base64url_encode_bytes(base64url_decode(s))
+}

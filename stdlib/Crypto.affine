@@ -1,11 +1,59 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 //
-// Crypto.affine — extern bindings for crypto primitives and wall-clock time.
-// The Node-CJS shim wraps Node's built-in node:crypto and Date.now().
+// Crypto.affine — host bindings for crypto primitives and wall-clock time.
+//
+// Lowered by lib/codegen_deno.ml. The Web Crypto SubtleCrypto surface is
+// async, so the HMAC verify and RS256 sign primitives carry the `Async`
+// effect; callers compile to `async function` and the call site receives
+// an awaited result (mirroring the Http.affine pattern, ADR-013).
+//
+// `hmac_sha256_verify` uses `crypto.subtle.verify`, which is implemented
+// in constant time by spec — do not replace with a `compare(hex_a, hex_b)`
+// shape, as constant-time hex compare is the user's responsibility and is
+// easy to get wrong. The signature input is the lowercase-hex digest as
+// GitHub delivers it in `X-Hub-Signature-256` (after the `sha256=` prefix
+// is stripped by the caller).
+//
+// `rs256_sign` takes a PEM-encoded PKCS#8 private key — the format
+// produced by `openssl pkcs8 -topk8 -nocrypt`. GitHub Apps download keys
+// in PKCS#1; the conversion is documented in
+// `oikos/docs/GITHUB_APP_SETUP.md`. Returns the raw signature bytes;
+// callers typically pass it through `base64url_encode_bytes` for JWT
+// assembly.
 
 module Crypto;
 
+use Deno::{Bytes};
+
+// ── Existing (pre-2026-05) ──────────────────────────────────────────
 pub extern fn random_string(n: Int) -> String;
 pub extern fn random_f64() -> Float;
 pub extern fn time_ms() -> Int;
+
+// ── HMAC-SHA256 ─────────────────────────────────────────────────────
+//
+// Constant-time verification of an HMAC-SHA256 signature.
+// `signature_hex` is the lowercase-hex digest. Returns false on any
+// error (malformed hex, length mismatch, signature mismatch) —
+// fail-closed.
+pub extern fn hmac_sha256_verify(secret: String,
+                                  body: String,
+                                  signature_hex: String) -> Bool / Async;
+
+// ── RS256 / RSASSA-PKCS1-v1_5 over SHA-256 ──────────────────────────
+//
+// Sign `payload` (UTF-8 bytes) with the PKCS#8 RSA private key in
+// `pkcs8_pem`. Returns the raw signature bytes. Throws (via Web
+// Crypto's own surface) on a malformed key — defensible behaviour, the
+// bot should not be running with a broken key.
+pub extern fn rs256_sign(pkcs8_pem: String,
+                          payload: String) -> Bytes / Async;
+
+// ── Base64URL (RFC 4648 §5, no padding) ──────────────────────────────
+//
+// JWT and OAuth2 token formats are base64url, not base64. These match
+// the JOSE base64url-encode (`=` stripped, `+` -> `-`, `/` -> `_`).
+pub extern fn base64url_encode_string(s: String) -> String;
+pub extern fn base64url_encode_bytes(b: Bytes) -> String;
+pub extern fn base64url_decode(s: String) -> Bytes;
