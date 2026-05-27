@@ -1392,10 +1392,29 @@ and check_stmt (ctx : context) (state : state) (symbols : Symbol.t) (stmt : stmt
              assignment path so the NLL last-use + return-escape
              analyses see the *current* referent after re-assignment,
              not the stale original. *)
+          (* Self-assign `r = r` guard (#177 follow-up to #395): without
+             this, [is_reborrow_source] reports true for the ref-binder
+             LHS=RHS case, pre_release ends `r`'s borrow and removes the
+             binding, then post-rebind calls [ref_source_borrow] which
+             now finds `r` unbound and returns None — net effect is `r`
+             silently stripped from the borrow-graph. *)
+          let rhs_is_self_binder =
+            match root_var place with
+            | Some binder_sym ->
+              let rec peel = function ExprSpan (x, _) -> peel x | x -> x in
+              (match peel rhs with
+               | ExprVar id ->
+                 (match lookup_symbol_by_name symbols id.name with
+                  | Some sym -> sym.Symbol.sym_id = binder_sym
+                  | None -> false)
+               | _ -> false)
+            | None -> false
+          in
           let pre_release =
             match root_var place with
             | Some binder_sym
-              when is_reborrow_source state symbols rhs
+              when not rhs_is_self_binder
+                && is_reborrow_source state symbols rhs
                 && List.mem_assoc binder_sym state.ref_bindings ->
               let old_borrow = List.assoc binder_sym state.ref_bindings in
               end_borrow state old_borrow;
