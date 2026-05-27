@@ -1,0 +1,28 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell
+//
+// CORE-01 pt3 Slice C' / #177: positive case demonstrating the
+// interaction between the 2-iteration loop check (this slice) and
+// the clear-on-rewrite half landed in #399 ([is_whole_place_write]).
+// The loop body moves `x` (via `drop_int`'s `own` param) and then
+// *immediately rebinds* `x = 42`.  Without clear-on-rewrite, iter 1's
+// assignment after the move would already fail (Pre-#399 behaviour);
+// without the 2-iter pass, the loop would falsely accept any
+// no-rebind body.  Both halves together: iter 1 moves then rebinds
+// (Ok, move cleared), iter 2 starts from rebound state and repeats.
+// Expected: Ok.
+
+module SliceCPrimeLoopReinitOk;
+
+fn drop_int(x: own Int) -> Unit = ();
+
+fn loop_reinit() -> Int {
+  let mut x = 10;
+  let mut i = 0;
+  while i < 3 {
+    drop_int(x);
+    x = 42;
+    i = i + 1;
+  }
+  x
+}

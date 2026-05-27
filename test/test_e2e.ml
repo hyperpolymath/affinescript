@@ -4486,6 +4486,40 @@ let test_borrow_assign_clears_move () =
                     spuriously rejected — whole-place write should revive \
                     the moved place: " ^ Borrow.format_borrow_error e)
 
+(* CORE-01 pt3 Slice C' / #177 — loop soundness via 2-iteration on
+   [StmtWhile]/[StmtFor].  Three tests pin: (1) sound counted loop
+   converges; (2) interaction with #399's clear-on-rewrite — a
+   move-then-rebind body accepts; (3) anti-regression — a move
+   without rebind raises UseAfterMove on the 2nd pass. *)
+let test_slice_c_prime_loop_sound () =
+  match borrow_result (fixture "slice_c_prime_loop_sound.affine") with
+  | Ok () -> ()
+  | Error e ->
+    Alcotest.fail ("Slice C': counted loop was spuriously rejected — \
+                    iter-2 pass introduced a false positive: "
+                   ^ Borrow.format_borrow_error e)
+
+let test_slice_c_prime_loop_reinit_ok () =
+  match borrow_result (fixture "slice_c_prime_loop_reinit_ok.affine") with
+  | Ok () -> ()
+  | Error e ->
+    Alcotest.fail ("Slice C' × #399 interaction: re-init after move \
+                    was spuriously rejected — `x = 42` after `drop_int(x)` \
+                    should clear the move-record and let iter 2 converge: "
+                   ^ Borrow.format_borrow_error e)
+
+let test_slice_c_prime_loop_move_persists () =
+  match borrow_result (fixture "slice_c_prime_loop_move_persists.affine") with
+  | Error (Borrow.UseAfterMove _) -> ()
+  | Error e ->
+    Alcotest.fail ("Slice C' anti-regression: expected UseAfterMove on \
+                    the iter-2 `drop_int(x)` after iter-1 moved `x`, \
+                    got: " ^ Borrow.format_borrow_error e)
+  | Ok () ->
+    Alcotest.fail "Slice C' regressed: multi-iter move conflict was \
+                   silently accepted — the 2-iteration pass did not \
+                   catch the unrestored move on `x`"
+
 let borrow_tests = [
   Alcotest.test_case "BorrowOutlivesOwner: &local escapes its block"
     `Quick test_borrow_outlives_owner;
@@ -4531,6 +4565,12 @@ let borrow_tests = [
     `Quick test_ref_to_ref_return_escape;
   Alcotest.test_case "assignment-clears-move: whole-place write revives moved place (#177)"
     `Quick test_borrow_assign_clears_move;
+  Alcotest.test_case "Slice C': counted loop converges (#177 pt3)"
+    `Quick test_slice_c_prime_loop_sound;
+  Alcotest.test_case "Slice C' × #399: re-init in loop OK (#177 pt3)"
+    `Quick test_slice_c_prime_loop_reinit_ok;
+  Alcotest.test_case "Slice C' anti-regression: multi-iter move rejected (#177 pt3)"
+    `Quick test_slice_c_prime_loop_move_persists;
 ]
 
 (* ============================================================================

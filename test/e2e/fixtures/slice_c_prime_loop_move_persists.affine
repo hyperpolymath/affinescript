@@ -1,0 +1,26 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell
+//
+// CORE-01 pt3 Slice C' / #177: anti-regression — multi-iteration
+// move conflict. The loop body moves `x` via `drop_int(x)` and
+// then DOES NOT rebind it. Pre-fix, a single-pass body check
+// silently accepted this loop because iter 1 moves x cleanly and
+// no further use is visible *within iter 1*. With the 2-iteration
+// check, iter 2 begins with `x` already moved (moves persist
+// across block exit by design), so the iter-2 read of `x` at
+// `drop_int(x)` surfaces as UseAfterMove. This is the soundness
+// gain. Expected: Error UseAfterMove.
+
+module SliceCPrimeLoopMovePersists;
+
+fn drop_int(x: own Int) -> Unit = ();
+
+fn loop_move_no_rebind() -> Int {
+  let mut x = 10;
+  let mut i = 0;
+  while i < 3 {
+    drop_int(x);
+    i = i + 1;
+  }
+  0
+}
