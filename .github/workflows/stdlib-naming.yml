@@ -20,6 +20,12 @@ on:
 permissions:
   contents: read
 
+# Actions concurrency pool. Applied only to read-only check workflows
+# (no publish/mutation), so cancelling a superseded run is always safe.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   enforce-lowercase-stdlib:
     runs-on: ubuntu-latest
