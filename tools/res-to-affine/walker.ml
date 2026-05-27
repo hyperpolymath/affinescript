@@ -267,6 +267,21 @@ let truncate s =
   if String.length s <= 80 then s
   else String.sub s 0 77 ^ "..."
 
+(* ---- finding-emission shared helpers --------------------------------------
+
+   The walker emits its findings sorted by line ascending in the final
+   pass; intermediate emission appends to a head-of-list accumulator
+   for O(1) cons. The [push] helper builds and conses a finding with
+   the standard truncate/trim of the slice around [n]. *)
+let push_finding ~source ~kind acc n =
+  let excerpt =
+    truncate (String.trim (slice ~source ~start:n.start ~stop:n.stop))
+  in
+  let finding : Scanner.finding =
+    { kind; line = n.start.row + 1; excerpt }
+  in
+  finding :: acc
+
 (* Is this node's source text exactly the underscore [_]? *)
 let is_underscore_pattern ~source n =
   if n.ntype <> "value_identifier" then false
@@ -320,48 +335,148 @@ let pattern_and_body ~lb =
   in
   pattern, body
 
-(* Walk with ancestor context. [ancestors] lists ancestor node types from
-   immediate parent outward; the head is the immediate parent. *)
+(* True when this [let_declaration] sits at module top level:
+   either its immediate parent is [source_file], or its parent is a
+   [block] that's the body of a [module_declaration]. *)
+let let_at_module_toplevel ancestors =
+  match ancestors with
+  | "source_file" :: _ -> true
+  | "block" :: "module_declaration" :: _ -> true
+  | _ -> false
+
+(* Detect side-effect-import findings for one [let_declaration] node
+   that's already known to live at module top level. *)
+let detect_side_effect_import ~source acc let_decl_node =
+  List.fold_left
+    (fun acc lb ->
+      if lb.ntype <> "let_binding" then acc
+      else
+        match pattern_and_body ~lb with
+        | Some pat, Some body
+          when is_underscore_pattern ~source pat
+            && body_has_module_access ~source body ->
+            push_finding ~source ~kind:Scanner.Side_effect_import acc lb
+        | _ -> acc)
+    acc let_decl_node.children
+
+(* ---- detection: raw-js ----------------------------------------------------
+
+   The grammar models `%raw(...)` as
+
+     (extension_expression
+       (extension_identifier "raw")
+       ...)
+
+   `[%bs.raw "..."]` (the older syntax) does not parse cleanly on the
+   pinned grammar — it lands under an `(ERROR ... (extension_expression
+   (extension_identifier "bs.raw")) ...)` subtree. We still detect the
+   inner extension_expression normally because the walker visits every
+   descendant of [source_file], including children of ERROR nodes. *)
+let raw_js_extension_id ~source ext_id_node =
+  let text = String.trim (slice ~source ~start:ext_id_node.start ~stop:ext_id_node.stop) in
+  text = "raw" || text = "bs.raw"
+
+let detect_raw_js ~source acc node =
+  if node.ntype <> "extension_expression" then acc
+  else
+    match node.children with
+    | head :: _ when head.ntype = "extension_identifier"
+                  && raw_js_extension_id ~source head ->
+        push_finding ~source ~kind:Scanner.Raw_js acc node
+    | _ -> acc
+
+(* ---- detection: untyped-exception ----------------------------------------
+
+   Three structural triggers, any one of which emits one finding per
+   occurrence:
+
+   1. [(try_expression ...)] — the literal `try ... catch { ... }`
+      form. ReScript's `try` is exactly the antipattern: an untyped
+      catch that throws away type information.
+
+   2. A [value_identifier_path] whose surface text begins with
+      `Js.Exn` or `Promise.catch`. The grammar represents both shapes
+      as a path with module identifiers + a value identifier; the
+      surface-text check is the cheapest reliable filter.
+
+   3. A [call_expression] whose function child is a bare
+      [value_identifier] with text `raise` — a `raise(MyExn)` call.
+
+   We deduplicate within a single node visit (a [call_expression]
+   that is itself a child of a [try_expression] would otherwise
+   double-count), but the same anti-pattern appearing on different
+   lines is reported separately. *)
+let starts_with prefix s =
+  let lp = String.length prefix in
+  let ls = String.length s in
+  ls >= lp && String.sub s 0 lp = prefix
+
+let path_matches_untyped_exn ~source path_node =
+  let text = String.trim (slice ~source ~start:path_node.start ~stop:path_node.stop) in
+  starts_with "Js.Exn" text || starts_with "Promise.catch" text
+
+let call_is_raise ~source call_node =
+  match List.find_opt (fun c -> c.field = Some "function") call_node.children with
+  | Some fn when fn.ntype = "value_identifier" ->
+      let text = String.trim (slice ~source ~start:fn.start ~stop:fn.stop) in
+      text = "raise"
+  | _ -> false
+
+let detect_untyped_exception ~source acc node =
+  if node.ntype = "try_expression" then
+    push_finding ~source ~kind:Scanner.Untyped_exception acc node
+  else if (node.ntype = "value_identifier_path"
+        || node.ntype = "module_identifier_path")
+       && path_matches_untyped_exn ~source node then
+    push_finding ~source ~kind:Scanner.Untyped_exception acc node
+  else if node.ntype = "call_expression" && call_is_raise ~source node then
+    push_finding ~source ~kind:Scanner.Untyped_exception acc node
+  else acc
+
+(* ---- detection: mutable-global -------------------------------------------
+
+   The grammar models a [name := value] statement as
+
+     (expression_statement (mutation_expression ...))
+
+   We flag [mutation_expression] only when an outer
+   [expression_statement] sits at module top level — i.e. its
+   ancestor chain is [expression_statement :: source_file :: _]
+   or [expression_statement :: block :: module_declaration :: _].
+   In-function `x := ...` against a local [ref] is a normal idiom
+   and is not flagged. *)
+let mutation_at_module_toplevel ancestors =
+  match ancestors with
+  | "expression_statement" :: "source_file" :: _ -> true
+  | "expression_statement" :: "block" :: "module_declaration" :: _ -> true
+  | _ -> false
+
+let detect_mutable_global ~source ancestors acc node =
+  if node.ntype = "mutation_expression"
+  && mutation_at_module_toplevel ancestors then
+    push_finding ~source ~kind:Scanner.Mutable_global acc node
+  else acc
+
+(* ---- unified visitor -----------------------------------------------------
+
+   One DFS over the AST. Each detector receives only what it needs.
+   The [side-effect-import] detector handles its own [let_binding]
+   recursion under one [let_declaration] node and is gated on
+   module-toplevel ancestors; we keep that compound check together
+   to avoid threading the ancestor list into a separate helper. *)
 let rec collect ~source ancestors acc node =
   let acc =
-    if node.ntype = "let_declaration" then
-      let at_module_toplevel =
-        match ancestors with
-        | "source_file" :: _ -> true
-        | "block" :: parent :: _ when parent = "module_declaration" -> true
-        | _ -> false
-      in
-      if at_module_toplevel then
-        List.fold_left
-          (fun acc c ->
-            if c.ntype = "let_binding" then check_binding ~source acc c
-            else acc)
-          acc node.children
-      else acc
+    if node.ntype = "let_declaration"
+    && let_at_module_toplevel ancestors then
+      detect_side_effect_import ~source acc node
     else acc
   in
+  let acc = detect_raw_js ~source acc node in
+  let acc = detect_untyped_exception ~source acc node in
+  let acc = detect_mutable_global ~source ancestors acc node in
   List.fold_left
     (fun acc c -> collect ~source (node.ntype :: ancestors) acc c)
     acc node.children
-
-and check_binding ~source acc lb =
-  match pattern_and_body ~lb with
-  | Some pat, Some body
-    when is_underscore_pattern ~source pat
-      && body_has_module_access ~source body ->
-      let excerpt =
-        truncate
-          (String.trim
-             (slice ~source ~start:lb.start ~stop:lb.stop))
-      in
-      let finding : Scanner.finding =
-        { kind = Scanner.Side_effect_import
-        ; line = lb.start.row + 1
-        ; excerpt
-        }
-      in
-      finding :: acc
-  | _ -> acc
 
 (* ---- public entry point --------------------------------------------------- *)
 

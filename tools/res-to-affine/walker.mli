@@ -8,14 +8,17 @@
     [editors/tree-sitter-rescript/] grammar. The two pipelines share
     [Scanner.kind] and [Scanner.finding] so the emitter is unchanged.
 
-    Phase 2b ports a single anti-pattern: [Side_effect_import]. Phase
-    2c ports the remaining three. The walker's discovery of an
-    anti-pattern is strictly stronger than the regex's: it requires
-    the [let _ = Mod.value] shape to live at *module top level* (the
-    actual anti-pattern's structural shape), not just to match a
-    column-0 prefix on any line. This eliminates the [let _ =
-    chained.call()] false-positive class that the Phase-1 regex
-    band-aided in #319. *)
+    Phase 2b (#322) ported [Side_effect_import]. Phase 2c (this file's
+    current state) ports the remaining three — [Raw_js],
+    [Untyped_exception], [Mutable_global] — to AST detection,
+    reaching parity with [Scanner.scan] on the synthetic
+    [test/fixtures/sample.res] corpus.
+
+    The walker's discovery of [Side_effect_import] and
+    [Mutable_global] is strictly stronger than the regex's: it
+    requires the anti-pattern to live at *module top level*. The
+    column-0 false-positive class that [#319] band-aided is
+    eliminated structurally rather than by regex anchor. *)
 
 val scan :
   grammar_dir:string ->
