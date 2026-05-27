@@ -1,0 +1,202 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+= Session handoff — 2026-05-27 — `lib/borrow.ml` deferred-items roundup
+:toc:
+:toclevels: 2
+
+[NOTE]
+====
+This session worked the four deferred-items entries at `lib/borrow.ml:1483-1505`
+(the comment block beginning "Still deferred:") across multiple parallel Claude
+sessions. The result is **six open PRs** that together cover the entire
+deferred-items surface except origin-variables/Polonius, plus three formal
+review comments documenting overlaps and audit findings. **Nothing is merged
+yet** — everything is owner-gated either on draft-status or on the GitHub
+Actions queue drain.
+====
+
+== What this session actually did
+
+1. Drafted **ADR-022** at `docs/decisions/0022-polonius-origin-variables.adoc`
+   + a structured `[[adr]]` block in `.machine_readable/6a2/META.a2ml`,
+   shipped as draft PR **#398**.
+2. Cut a minimal **M1 sketch** for ADR-022 (`origin_var option` on
+   `TyRef`/`TyMut` + a `lib/borrow_polonius/` sublibrary skeleton) — kept
+   local on branch `core-01/polonius-m1-sketch` (commit `b28757c`), not
+   pushed pending ADR ratification.
+3. Filed two more PRs landing scoped fixes for two of the four deferred-items
+   entries:
+   * **#399** — `fix(borrow): whole-place assignment clears move-record`
+     (the StmtAssign half of Slice C').
+   * **#400** — `fix(borrow): propagate ref-binding through reborrow indirection`
+     (the "reborrow through indirection" item).
+4. Discovered three pre-existing PRs (**#395 / #396 / #397**) from a parallel
+   Claude session covering the same items. Per maintainer direction
+   ("keep both PR sets open"), did not close mine; instead posted formal
+   audit comments on the parallel-Claude PRs documenting deltas and one
+   real soundness gap (see below).
+
+== Parallel-implementation map
+
+[cols="1,1,3,1", options="header"]
+|===
+| Deferred-item entry             | Parallel-Claude PR | My PR | Same scope?
+| Reborrow through indirection    | #395               | #400  | Yes — equivalent
+| Loop soundness + clear-on-rewrite | #396             | #399  | #396 is superset, but has a soundness gap
+| Captured linears (Slice D)      | #397               | _none_ | I had no parallel; only an audit comment
+| Origin/region variables (Polonius) | #398 (mine)     | #398  | ADR-only; M1 sketch local
+|===
+
+== PR state at handoff
+
+[cols="1,1,1,1,3", options="header"]
+|===
+| PR  | Draft? | Auto-merge | Mergeability | Notes
+| #395 | non-draft | SQUASH ON  | BLOCKED on CI | Owner-side; review comment posted
+| #396 | non-draft | SQUASH ON  | BLOCKED on CI | Owner-side; review comment flags one soundness gap
+| #397 | non-draft | SQUASH ON  | BLOCKED on CI | Owner-side; audit comment posted (must-fix flagged)
+| #398 | **draft** | OFF (drafts can't arm) | BLOCKED on CI | Mine; owner-ratify one-liner posted in thread
+| #399 | **draft** | OFF (drafts can't arm) | BLOCKED on CI | Mine; parallel-equivalent of #396
+| #400 | **draft** | OFF (drafts can't arm) | BLOCKED on CI | Mine; parallel-equivalent of #395
+|===
+
+CI for every one of these PRs sat in the GitHub Actions runner queue at
+session close (`QUEUED: 17, IN_PROGRESS: 0`). That is a GitHub-side backlog,
+not a per-PR issue.
+
+== Audit findings (the load-bearing deltas)
+
+These are paraphrased; the full text lives on the GitHub PRs.
+
+=== #395 vs #400 (reborrow through indirection)
+
+Both PRs do the same three things:
+
+* Recognise `let r2 = r1` / `r2 = r1` where the RHS is itself a ref-binder.
+* Multi-binder gate in `expire_dead_ref_bindings` so a shared borrow only
+  ends when no live binder still aliases it — the `b'.b_id = b.b_id`
+  check (**byte-identical between the two PRs**).
+* Symmetric handling on the `StmtAssign` reborrow path.
+
+Two deltas only #400 has:
+
+* Self-assign guard for `r = r`. Without it, the pre_release path ends `r`'s
+  borrow and the post-rebind never re-attaches, silently unbinding `r` from
+  the borrow-graph. Both PRs have the bug; only #400 guards it.
+* `return r2` where `r2 = r1 = &local` is exercised by
+  `borrow_reborrow_indir_escape.affine`. #395's three fixtures (`let_aliases`,
+  `protects_owner`, `assign_aliases`) don't cover the return-escape path,
+  which is historically the most-leaked surface for this class of bug.
+
+=== #396 vs #399 (clear-on-rewrite + loop soundness)
+
+#396 is a **superset of #399 feature-wise** (it also does the 2-iteration
+loop check that #399 doesn't). One real soundness divergence in the
+StmtAssign half:
+
+[source,affine]
+----
+fn unsound() -> Point {
+  let x = Point { ... };
+  drop_point(x);  // move x
+  x.f = 5;        // expected: UseAfterMove
+                  // #399: rejects (is_whole_place_write predicate)
+                  // #396: SILENTLY ACCEPTS — places_overlap is root-coarse,
+                  //       so this clears the move-record on x
+  x
+}
+----
+
+#399 gates both the `find_move` skip and the move-record clearing on an
+`is_whole_place_write` predicate (`place is PlaceVar _`). #396 unconditionally
+skips the check and clears overlapping move-records, which is correct for
+whole-place writes but unsound for sub-place writes (`x.f = …`, `x[i] = …`)
+because the root-coarse `places_overlap` reports a sub-place as overlapping
+its parent's move-record.
+
+None of #396's three fixtures exercise sub-place writes after moves, so CI
+does not catch this.
+
+=== #397 audit (Slice D captured linears)
+
+I had no parallel PR for this item; posted an audit-only review.
+
+**One real bug:** Param-path tracking checks only `p.p_quantity = Some QOne`
+and misses the `Cmd[T]`-typed param (no explicit `@linear`) case that the
+let-statement path correctly catches via the `let_is_linear` helper. So
+`fn f(c: Cmd[Int]) { let g = fn() => use(c); }` silently slips through
+borrow-side rejection, falling back to the downstream quantity-checker
+diagnostic (which is the regression Slice D's existence is meant to fix).
+
+**Hygiene:** `linear_bindings` is not snapshot/restored at block exit (unlike
+`borrows`, `block_local_syms`, `ref_bindings`) and is not unified in
+`merge_arm_results`. Benign in practice (`sym_id`s don't recycle) but
+inconsistent.
+
+**Coverage gap:** The inference helper `borrow_quantity_of_ty` (the
+`Cmd _ → QOne` branch) is unreached by any fixture. All three current
+fixtures use explicit `@linear`. If somebody renames "Cmd", the inference
+silently breaks.
+
+== Safe-to-close conditions
+
+Use this matrix when triaging the open PRs:
+
+#400 (mine, reborrow indirection)::
+**Safe to close once #395 merges**, provided #395 incorporates the two deltas
+from the audit (self-assign guard + return-escape test). If #395 merges
+without them, #400 stays open and is rebased onto main as a follow-up that
+adds just the missing pieces.
+
+#399 (mine, assign-clears-move)::
+**Safe to close once #396 merges with the sub-place fix.** If #396 merges
+without the `is_whole_place_write` predicate, #399 stays open and is rebased
+onto main as a sub-place soundness correction.
+
+#398 (mine, ADR-022 Polonius)::
+Stays open as draft pending owner ratification. The one-liner
+`gh pr ready 398 && gh pr merge 398 --auto --squash --delete-branch` is
+posted in the thread; safe to close in a "won't-do" sense only if the
+owner decides not to pursue origin-variables at all (unlikely — it's the
+only deferred-item that genuinely needs an architectural change).
+
+#395 / #396 / #397::
+Owner-merge gated. Auto-merge SQUASH is armed; once the GH Actions runner
+backlog drains and CI clears, they land. The review comments are
+informational and don't block merge.
+
+This documentation PR::
+**Safe to close once merged.** Once on `main`, this doc serves as the
+canonical handoff for the next session that touches `lib/borrow.ml`
+deferred-items work.
+
+== Cleanup performed this session
+
+* `.git/gc.log` removed; `git prune` run to clear the warning that was
+  attached to every previous git operation.
+* Two local-only branches kept for staged follow-ups:
+  * `core-01/polonius-m1-sketch` (commit `b28757c`) — M1 of ADR-022.
+  * (none others as of handoff time)
+
+== For the next agent reading this
+
+Before doing any more `lib/borrow.ml` work:
+
+1. `gh pr list --state open` and confirm none of #395/#396/#397/#398/#399/#400
+   are already-merged. If they are, the deferred-items comment in
+   `lib/borrow.ml` will reflect which items have been crossed off.
+2. If picking up a new deferred item, **`gh pr view` every open PR's title
+   first** to avoid re-doing parallel work. The previous-session summary
+   listing PRs only by status (MERGEABLE/BLOCKED) without titles was the
+   root cause of this session's duplicate work.
+3. Cross-reference `feedback_affinescript_ephapax_siblings_not_impl_proof.md`
+   in user auto-memory — AffineScript ≠ Ephapax, the two share zero
+   borrow-checker code despite being substructural-logic siblings.
+
+== References
+
+* `lib/borrow.ml:1483-1505` — the canonical deferred-items list, updated
+  in-place by #395/#396/#397 to cross off completed items.
+* `docs/decisions/0022-polonius-origin-variables.adoc` — ADR-022 design.
+* `.machine_readable/sessions/2026-05-27-borrow-deferred-items.a2ml` —
+  machine-readable companion to this handoff.
