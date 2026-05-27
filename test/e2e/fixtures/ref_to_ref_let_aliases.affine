@@ -1,0 +1,19 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell
+//
+// CORE-01 pt3 ref-to-ref / #177: positive case for let-bound
+// ref-to-ref binding. `let r2 = r` (where `r` is itself a
+// ref-binder for `&x`) aliases r2 to the same borrow on x, so
+// later reads through both r and r2 are legal. Pre-fix, r2 had no
+// entry in the borrow-graph and dereferencing it after r's last
+// use would lose the protection that keeps x borrowed.
+// Expected: Ok.
+
+module RefToRefLetAliases;
+
+fn ref_to_ref() -> Int {
+  let x = 7;
+  let r = &x;
+  let r2 = r;
+  *r + *r2
+}

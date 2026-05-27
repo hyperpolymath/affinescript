@@ -1,0 +1,19 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell
+//
+// CORE-01 pt3 ref-to-ref / #177: anti-regression. After
+// `let r = &mut x; let r2 = r;` the aliased ref-binder r2 must
+// still protect x — any write through x while r2 is live is a
+// ConflictingBorrow. Pre-fix the alias was never recorded, so the
+// write to x was silently accepted via the let-graph staleness.
+// Expected: ConflictingBorrow (or MoveWhileBorrowed) on `x = 9`.
+
+module RefToRefProtectsOwner;
+
+fn ref_to_ref_owner_protected() -> Int {
+  let mut x = 1;
+  let r = &mut x;
+  let r2 = r;
+  x = 9;
+  *r2
+}
