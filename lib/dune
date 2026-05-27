@@ -1,8 +1,22 @@
+; AUTO-GENERATED module: `affine_vscode_adapter_source` exposes the
+; in-tree `packages/affine-vscode/mod.js` adapter as an OCaml string
+; constant so `--vscode-extension` codegen can embed it directly into
+; the generated `.cjs` (eliminating the runtime `require()` of
+; @hyperpolymath/affine-vscode, which used to fail when the adapter
+; wasn't installed — see issues #104 / #139).
+(rule
+ (target affine_vscode_adapter_source.ml)
+ (deps (file ../packages/affine-vscode/mod.js))
+ (action
+  (with-stdout-to %{target}
+   (bash "echo '(* AUTO-GENERATED from packages/affine-vscode/mod.js. Do not edit. *)'; echo 'let source = {affine_vscode|'; cat %{dep:../packages/affine-vscode/mod.js}; echo '|affine_vscode}'"))))
+
 (library
  (name affinescript)
  (public_name affinescript)
  (modes byte native)
  (modules
+  affine_vscode_adapter_source
   ast
   borrow
   c_codegen

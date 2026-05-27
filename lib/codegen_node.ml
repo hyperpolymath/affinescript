@@ -119,10 +119,19 @@ let default_vscode_adapter = "@hyperpolymath/affine-vscode"
 
     Returns the JS that installs [exports.extraImports] so the generated
     [.cjs] is directly loadable as a VS Code extension's [main] — no
-    hand-written [index.cjs], no vendored adapter. [adapter] is the
-    require() specifier for the adapter; when [no_lc] is set the extension
-    ships no language client, so the [vscode-languageclient/node] require
-    is skipped and [null] is passed in its place. *)
+    hand-written [index.cjs], no vendored adapter.
+
+    The adapter source (packages/affine-vscode/mod.js) is embedded
+    inline at codegen time via the auto-generated
+    [Affine_vscode_adapter_source] module — eliminating the runtime
+    [require("@hyperpolymath/affine-vscode")] that used to fail when the
+    adapter package wasn't installed (e.g. before #104 publishes to npm
+    or in any smoke harness without the file:-link bridge). The
+    [adapter] parameter is now only a *fallback* require() specifier:
+    if the require succeeds it overrides the embedded adapter (this
+    preserves the upgrade-the-adapter-without-rebuilding-affinescript
+    escape hatch). [no_lc] omits the [vscode-languageclient/node]
+    require for extensions that ship no language client. *)
 let vscode_extension_wiring ~(adapter : string) ~(no_lc : bool) : string =
   let lc_arg =
     if no_lc then "null"
@@ -133,17 +142,26 @@ let vscode_extension_wiring ~(adapter : string) ~(no_lc : bool) : string =
 // file is directly loadable as a VS Code extension's `main`. Replaces the
 // previously hand-written index.cjs + vendored adapter boilerplate.
 //
-// Defensive load (issue #104): the adapter package may not yet be on npm
-// when this .cjs is bundled into a smoke harness or distributed before the
-// `affine-vscode-v*` publish-tag lands. Treat MODULE_NOT_FOUND as a soft
-// failure — extraImports degrades to empty so activate()/deactivate() still
-// resolve. Any other require error (syntax, transitive failure) is rethrown
-// so real bugs are not masked.
+// Self-contained (issue #139 / #104 root-cause fix): the
+// affine-vscode adapter source is *embedded* at codegen time so the
+// generated .cjs needs no npm dependency to instantiate. A
+// require("%s") is still attempted first so an installed package can
+// override the embedded copy; if the require fails for any reason
+// (MODULE_NOT_FOUND, syntax, transitive failure) we fall back to the
+// embedded adapter and the extension activates cleanly anyway.
 let _makeVscodeBindings = null;
 try {
   _makeVscodeBindings = require("%s");
 } catch (_e) {
-  if (_e && _e.code !== "MODULE_NOT_FOUND") throw _e;
+  // Any require failure falls through to the embedded adapter below.
+}
+if (typeof _makeVscodeBindings !== "function") {
+  // Embedded adapter source (CJS-style module wrapper).
+  const _adapterModule = { exports: null };
+  (function (module, exports) {
+%s
+  })(_adapterModule, _adapterModule.exports);
+  _makeVscodeBindings = _adapterModule.exports;
 }
 exports.extraImports = function() {
   if (typeof _makeVscodeBindings !== "function") return {};
@@ -153,7 +171,11 @@ exports.extraImports = function() {
     exports,
   );
 };
-|} (js_string_escape adapter) lc_arg
+|}
+    (js_string_escape adapter)
+    (js_string_escape adapter)
+    Affine_vscode_adapter_source.source
+    lc_arg
 
 (** Wrap [m] in a Node-CJS shim. The shim is a single self-contained
     JavaScript string suitable for writing to a [.cjs] file.

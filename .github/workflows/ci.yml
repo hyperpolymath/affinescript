@@ -211,19 +211,13 @@ jobs:
     # (see CLAUDE.md "Runtime Exemptions") because the VS Code extension
     # host is npm/Node-native and no Deno/JSR equivalent exists.
     #
-    # Visibility-only until #104 lands (continue-on-error). The extension's
-    # wasm module imports the `Vscode` / `VscodeLanguageClient` module
-    # objects from the @hyperpolymath/affine-vscode adapter; without the
-    # adapter (gated on owner action — npm org create + NPM_TOKEN +
-    # affine-vscode-v0.1.0 tag push) the wasm cannot instantiate and
-    # activation fails. The defensive `optionalDependencies` move in
-    # editors/vscode/package.json and the try/catch around the adapter
-    # require in editors/vscode/out/extension.cjs already prevent the
-    # `npm install` step from 404ing — activation degradation is the
-    # remaining gap that #104 closes. Remove the `continue-on-error: true`
-    # line when #104 publishes the adapter to npm.
+    # Self-contained as of the codegen-embed fix: `--vscode-extension`
+    # codegen now inlines the affine-vscode adapter source into the
+    # generated .cjs at compile time, so activation no longer depends on
+    # the @hyperpolymath/affine-vscode npm package being installed
+    # (previously gated on #104's npm publish). A real regression should
+    # turn this job red and gate, so no `continue-on-error`.
     runs-on: ubuntu-latest
-    continue-on-error: true
 
     steps:
       - name: Checkout code
@@ -236,14 +230,12 @@ jobs:
 
       - name: Install test runner dependencies
         working-directory: editors/vscode
-        # The compiled out/extension.cjs is checked in (see #35 Phase 3),
-        # so the smoke test does not need the OCaml toolchain — only the
-        # Node-side test runner deps. peerDeps `vscode` is provided by
-        # @vscode/test-electron at launch; the extension's host-bindings
-        # adapter @hyperpolymath/affine-vscode is an `optionalDependency`
-        # — npm install succeeds when it is unpublished (issue #104), and
-        # the smoke suite below detects the missing adapter and reports
-        # SKIPPED rather than failing.
+        # The compiled out/extension.cjs is checked in (see #35 Phase 3)
+        # and now embeds the affine-vscode adapter inline (codegen-embed),
+        # so the smoke test only needs the @vscode/test-electron runner
+        # deps. `vscode` itself is provided by the test runner at launch.
+        # The #381 SKIP-when-missing guard remains downstream as a safety
+        # net but is now expected to find the adapter present.
         run: npm install --no-audit --no-fund
 
       - name: Report adapter availability
