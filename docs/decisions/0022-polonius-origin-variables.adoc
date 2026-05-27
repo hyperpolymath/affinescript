@@ -1,0 +1,347 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath (Jonathan D.A. Jewell) <j.d.a.jewell@open.ac.uk>
+= ADR-022: Origin (region) variables and a Polonius-style loan solver for the borrow checker
+Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+:toc:
+:toclevels: 2
+:icons: font
+
+Status:: Proposed
+Date:: 2026-05-26
+Issue:: https://github.com/hyperpolymath/affinescript/issues/177[CORE-01 #177]
+Series:: Settled-decisions ledger; companion entry in `.machine_readable/6a2/META.a2ml`.
+
+== Context
+
+`lib/borrow.ml` (OCaml, ~1585 LOC) is the operational borrow checker. Slices
+A, B, C-light, plus the in-flight ref-to-ref / Slice C′ / Slice D PRs
+(#395, #396, #397) close out the lexical / operational fragment of CORE-01.
+The remaining residual, called out in `lib/borrow.ml`'s closing TODO
+comment, is the architectural shift to *origin (region) variables*:
+
+[quote, lib/borrow.ml:1575-1578]
+____
+Origin/region variables (true Polonius surface) — a region var on each
+`TyRef`/`TyMut` with subset constraints and a proper datalog-style
+loan-live-at-point solver. Architectural change to the type system;
+ADR-gated.
+____
+
+The operational checker today is fundamentally **lexical**: each borrow has
+a span where it was created and lives until its containing block exits,
+with NLL-style last-use shortening (`merge_arm_results`, the
+`ref_bindings` graph, block-local sym tracking). Lifetime variables do
+*not* appear in types — `&Int` is `TyRef TyInt`, no `'a` parameter on the
+type. The checker can prove what it sees locally; it cannot reason about:
+
+* Cross-function borrows that outlive a returned struct field. The current
+  return-escape rule (`callee_owned_params`) is a name-set heuristic, not
+  a constraint discharge.
+* True reborrows through indirection (`r2 = r1` where `r1` is itself a
+  ref-binder, RHS is not a direct `&place`) — see the matching residual
+  TODO immediately above the Polonius one (`record_ref_binding` does not
+  copy the other binder's graph entry).
+* CFG-join soundness beyond what `merge_arm_results` handles inline. Each
+  new join point (`ExprHandle`, `ExprTry`, `ExprMatch`) has had to be
+  retro-fitted with snapshot-restore-merge; a constraint solver discharges
+  these uniformly because the merge is over origins, not over an ad-hoc
+  pair of `state` values.
+
+This ADR records the **shape** of the migration to a Polonius-style
+constraint-based loan solver. It is a multi-week, ADR-gated architectural
+change to the type system; the STATE snapshot (2026-05-26) names it as
+*the* dominant single item on the path to 1.0
+(`docs/STATE-2026-05-26.adoc` §"Dominant cost item", ~6–12 weeks).
+
+This ADR's job is to land the design, register the next-free ADR slot, and
+authorise a *staged* implementation. **No code in `bin/main.ml`'s driver
+path changes by this ADR alone.**
+
+== Decision
+
+=== Option survey
+
+(a) **Keep lexical, patch the gaps.** Continue retro-fitting individual
+    soundness holes (each new CFG-join site, each ref-to-ref edge,
+    case-by-case escape rules). Rejected: each patch widens the operational
+    state and the checker is already 1585 LOC of one mutable graph plus
+    snapshot/restore folklore. The next two soundness gains
+    (cross-function reborrow soundness; multi-iteration loop soundness
+    that does *not* spuriously reject re-assignment) cannot be expressed
+    without origin-style constraints.
+
+(b) **Custom origin-based solver in OCaml.** Datalog-style fact base +
+    naive worklist solver in `lib/borrow_polonius/`. Implements the same
+    relations as Polonius's published `dlv_naive` shape (`subset/3`,
+    `loan_live_at/2`, `loan_invalidated_at/2`, `error/1`) but in plain
+    OCaml — no new build-time dependency, no FFI. **Chosen.**
+
+(c) **Embed `polonius-engine` via FFI.** Polonius's reference
+    implementation is a Rust crate. Embedding it would add a Rust↔OCaml
+    FFI surface across the type checker, a Rust toolchain build dep, and
+    a foreign error reporting story. Rejected: the solver is small enough
+    to write in OCaml directly (sub-1k LOC datalog fixpoint), and the
+    estate language policy (`.claude/CLAUDE.md`) reserves Rust for
+    performance-critical *systems* code where there is no native
+    alternative. There is here.
+
+=== Surface syntax
+
+Origins do *not* appear in source syntax for v1.
+
+* `&T` / `&mut T` retain their current spelling; an *implicit* fresh
+  origin variable is introduced at every borrow creation by the elaborator.
+* Function signatures *do* carry origins post-inference, but elision is
+  total: signatures the user writes today (`fn f(x: &T, y: &mut T) -> &T`)
+  remain accepted; the inference rule attaches and constrains origins.
+* A future escape hatch (Rust-style `&'a T`, `where 'a: 'b`) is **not**
+  introduced here. Surface origins are a separate ADR (proposed
+  ADR-Future-A) and require their own grammar work + Menhir conflict
+  audit per ADR-012.
+
+Rationale: cutting over the *solver* without cutting over the *surface
+syntax* keeps every existing `.affine` file in the corpus unchanged. The
+new soundness gain (rejecting programs that lexical accepts) shows up as
+error messages, not as a parse-or-port-the-corpus event.
+
+=== AST changes
+
+`lib/ast.ml`:
+
+[source,ocaml]
+----
+(* New abstract origin variable. Opaque to source; inserted by elaborator. *)
+type origin_var = int  (* fresh-int identity; pretty-printed as 'o0, 'o1, … *)
+
+(* TyRef/TyMut gain an origin. TyOwn is unchanged. *)
+type type_expr =
+  | TyOwn of type_expr                       (* unchanged *)
+  | TyRef of origin_var option * type_expr   (* WAS: TyRef of type_expr *)
+  | TyMut of origin_var option * type_expr   (* WAS: TyMut of type_expr *)
+  | (* ... *)
+----
+
+The `option` is the migration affordance: M1 defaults every site to
+`None`, which the solver treats as "the single global origin" — semantically
+identical to today's lexical checker. The `option` becomes `origin_var` only
+after the elaborator is wired (M2+).
+
+`lib/borrow.ml`:
+
+[source,ocaml]
+----
+type place = (* unchanged *)
+type borrow = {
+  b_place    : place;
+  b_kind     : borrow_kind;
+  b_span     : Span.t;
+  b_id       : int;
+  b_origin   : origin_var;   (* NEW: the origin variable the loan flows into *)
+}
+----
+
+Existing fields (`ref_bindings`, `block_local_syms`, `callee_owned_params`)
+stay during M1-M3; M4 deletes them.
+
+=== Algorithm sketch
+
+Datalog-style relations (Polonius's published shape, OCaml fact tables):
+
+[source,text]
+----
+;; Input facts derived from typing + CFG construction
+borrow_at(L, P)             — loan L is created at program point P
+loan_origin(L, O)           — loan L flows into origin O
+subset(O1, O2, P)           — O1 ⊆ O2 holds at point P
+killed(L, P)                — loan L is killed at point P (move of base / scope end)
+cfg_edge(P1, P2)            — control-flow edge
+
+;; Derived facts
+loan_live_at(L, P)          — least fixed point over cfg_edge + killed
+loan_invalidated_at(L, P)   — access at P conflicts with a live loan
+error(P)                    — there is an invalidated-at error at P
+----
+
+Rules (informal):
+
+. `loan_live_at(L, Q)` if `borrow_at(L, P)` and there is a CFG path
+  `P -> ... -> Q` with no `killed(L, ·)` on it.
+. `loan_invalidated_at(L, Q)` if `loan_live_at(L, Q)` *and* the access at
+  `Q` conflicts with `L`'s kind under shared-XOR-exclusive (the same rule
+  `check_use` enforces today, hoisted out of the imperative graph).
+. `error(Q)` if any `loan_invalidated_at(L, Q)`.
+
+Subset constraints are introduced by:
+
+* `let r = e` where `e : &'a T`, `r : &'b T` ⇒ `subset('a, 'b, P)`.
+* Function call site: actuals' origins flow into formals' origins per the
+  callee's signature (after instantiating fresh callee origins). This is
+  what the operational `callee_owned_params` heuristic is approximating
+  today.
+* Reborrow: `let r2 = *r1; ... &r2` introduces the subset chain through
+  `r1`'s origin.
+
+Solver = naive bottom-up worklist. A worklist seeded with the input facts
+runs each rule until no new fact is derived; complexity is
+`O((P × L) + (E × L))` per iteration where `P` is point count, `L` is loan
+count, `E` is subset-edge count. For the AffineScript corpus today
+(median program ≪ 100 borrows × ≪ 1k points) this is fine without
+optimisation; if a corpus grows pathological we can migrate to Polonius's
+`opt_naive` shape (incremental + difference relations) as a separate
+follow-up.
+
+=== Backwards compatibility
+
+The lexical checker's verdicts must be preserved by-default. The
+migration design enforces this via the "single global origin" degenerate
+case:
+
+* M1 plants `origin_var option = None` everywhere ⇒ all loans share one
+  origin ⇒ the solver's subset/liveness rules reduce to: a loan is live
+  from its creation point until its block-end *or* `killed`, which is
+  exactly what the lexical checker computes.
+* M2 introduces fresh origins per borrow but no subset constraints between
+  them ⇒ each loan is independently live; verdict still equivalent (no
+  new edges to broaden liveness).
+* M3 introduces subset constraints from `let` and call sites and **runs
+  the solver alongside the lexical checker**, diffing verdicts. Any
+  divergence is a bug in either side; the lexical checker is the merge
+  oracle here.
+* M4 cuts over to solver-only. The lexical paths are deleted *only* after
+  the diff in M3 has been zero across the test corpus for one ratification
+  cycle.
+
+The full elision rule (no source origins) means every existing `.affine`
+file in the corpus parses unchanged. The estate impact ledger
+(`docs/ECOSYSTEM.adoc`) records *zero consumer churn* for M1–M3.
+
+=== Migration plan (M1 → M4)
+
+Each milestone is its own PR. Each PR keeps `dune runtest --force` green
+and includes regression fixtures pinning both *positive cases* (programs
+accepted at lexical AND at Polonius) and *negative cases* (programs
+rejected at Polonius that lexical accepted — the *new* soundness gain).
+
+==== M1 — AST: add `origin_var option` field (default `None`); reductive
+
+* `lib/ast.ml`: add `origin_var = int` and `option` field on `TyRef`/`TyMut`.
+* All sites that construct `TyRef _` / `TyMut _` now pass `None`.
+* `lib/borrow.ml`: add `b_origin : origin_var` to `borrow`, all callsites
+  use a single shared `default_origin = 0`.
+* `lib/borrow_polonius/` is *created* but not wired. Contains
+  `types.ml` (the relation types) and a stub `solve.ml` that does nothing.
+* No behaviour change. Test count unchanged.
+* Scope: ~1 PR, ~200 LOC + types.
+
+==== M2 — Introduce fresh origins at borrow creation; still no constraints
+
+* The elaborator (where `expr_to_place` produces a borrow) calls
+  `fresh_origin ()` at each borrow site.
+* `loan_origin(L, O)` facts are emitted into a side-table; nothing yet
+  consumes them.
+* The lexical checker still drives all verdicts.
+* No behaviour change. Test count unchanged.
+* Scope: ~1 PR.
+
+==== M3 — Subset constraints + parallel-run diffing
+
+* Emit `subset(·, ·, P)` from `let r = e`, `r = e`, call sites.
+* `solve.ml`: implement the naive worklist fixpoint.
+* `bin/main.ml`: run *both* checkers; compare verdicts; if Polonius
+  produces an error the lexical checker did not, log it as a *new* warning
+  (not a hard error yet).
+* CI gate: zero divergence across the existing fixture corpus.
+* New negative-case fixtures land here — the first time Polonius surfaces
+  bugs the lexical checker missed.
+* Scope: ~2-3 PRs (constraint extraction; solver; diff harness).
+
+==== M4 — Cut over; delete lexical paths
+
+* `bin/main.ml`: Polonius drives diagnostics; lexical retired.
+* `lib/borrow.ml` shrinks substantially — the imperative graph, the
+  `ref_bindings` map, `block_local_syms`, `callee_owned_params`,
+  `merge_arm_results`, the snapshot-restore plumbing in `ExprHandle` /
+  `ExprTry` are all replaced by the solver.
+* CAPABILITY-MATRIX flips CORE-01 to "fully closed".
+* Scope: ~1 PR. The residual TODO in `lib/borrow.ml`'s closing comment
+  is deleted; the file shrinks by an expected ~30–40%.
+
+== Test surface
+
+At each milestone:
+
+* M1 / M2: regression fixtures asserting *no diagnostic change* on the
+  existing corpus. Sentinel: `dune runtest --force` passes with the same
+  count, no new error/no removed error.
+* M3: ≥5 new negative fixtures showing Polonius rejecting a program
+  lexical accepts. Candidates:
+** Cross-function reborrow that outlives a returned struct.
+** Loop-carried alias that lexical 1-iter / 2-iter both miss.
+** CFG-join where a borrow lives along one arm only.
+** A reborrow through indirection (the matching residual TODO in
+   `lib/borrow.ml` — see ref-to-ref companion).
+* M4: ≥10 new fixtures total across the "Polonius accepts what lexical
+  spuriously rejects" axis *and* the "Polonius catches what lexical
+  missed" axis. The latter is the soundness gain.
+
+== Consequences
+
+=== Positive
+
+* Closes the last named base-language soundness gap (CORE-01 residual
+  Slice C-full) → ROADMAP Phase 2 unblocked, Phase 3 (1.0) unblocked.
+* `lib/borrow.ml` shrinks; each new join construct stops requiring a
+  bespoke retrofit.
+* The reborrow-through-indirection TODO (line 1570-1574 of `borrow.ml`)
+  is *also* discharged by M3 as a side-effect — subset constraints
+  naturally chain reborrows.
+* Future surface origins (Rust-style `&'a T`) become *additive* — the
+  type system already carries the variable, the syntax PR just exposes it.
+
+=== Negative
+
+* Multi-week effort (~6–12 weeks single-author per STATE estimate).
+  Parallel work in CORE-01's smaller slices, INT-03, and CONV-04 can
+  proceed independently and is parallel-friendly.
+* The OCaml solver is ~500–1000 LOC of net-new code; this carries
+  proof-debt of its own (the fixpoint must be *sound* — terminating and
+  producing the correct least fixpoint). M3's parallel-run diffing is the
+  empirical correctness gate; no mechanised proof of the solver is
+  attempted in this ADR.
+* `lib/ast.ml` shape change ripples through every pass that destructures
+  `TyRef` / `TyMut`. Mitigation: M1's `option` keeps the case-pattern
+  surface compatible with a one-liner `_ ->` wildcard for passes that do
+  not yet care.
+
+=== Neutral
+
+* No new build-time dependency (per Option (b)). `lib/borrow_polonius/`
+  is a new directory under the existing `dune-project`.
+* No new surface syntax. The estate corpus is unaffected until ADR-Future-A
+  (surface origins) lands separately, if ever.
+* The typed-wasm contract carrier (the
+  `affinescript.ownership` custom section) is unaffected — origins are an
+  internal-to-borrow-checker abstraction, never serialised.
+
+== References
+
+* Issue: https://github.com/hyperpolymath/affinescript/issues/177 (CORE-01,
+  base-language soundness completion).
+* Residual TODO source: `lib/borrow.ml:1569-1584` (the closing comment).
+* Companion sub-issues (PR-sized, parallel-friendly): #395 (ref-to-ref
+  binding), #396 (Slice C′ loop soundness), #397 (Slice D captured-linears).
+* `docs/STATE-2026-05-26.adoc` §"Dominant cost item" / §"Critical path".
+* `docs/CAPABILITY-MATRIX.adoc` CORE-01 row.
+* `.machine_readable/6a2/META.a2ml [[adr]] id="ADR-022"`.
+* `docs/specs/SETTLED-DECISIONS.adoc` (section to be added on ratification).
+* Polonius reference: Niko Matsakis, "An alias-based formulation of the
+  borrow checker", 2018 (the `subset/3` + `loan_live_at/2` shape, naive
+  datalog).
+
+== Standing rule
+
+This ADR records the *shape*. The decision to migrate is gated on owner
+ratification (this PR is opened as **Draft**, awaiting review of the
+shape before any code-changing PR follows). Once ratified, M1–M4 land as
+separate PRs, each behind the full test gate. **This ADR is settled on
+ratification; do not reopen without amending it.**
