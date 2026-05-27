@@ -1724,7 +1724,10 @@ let check_program (symbols : Symbol.t) (program : program) : unit result =
    - Origin/region variables (true Polonius surface) — a region
      var on each [TyRef]/[TyMut] with subset constraints and a
      proper datalog-style loan-live-at-point solver.  Architectural
-     change to the type system; ADR-gated.
+     change to the type system; ADR-gated.  See ADR-022
+     (docs/decisions/0022-polonius-origin-variables.adoc) for the
+     M1-M4 migration plan; lexical checker is the merge oracle
+     through M3.
    - Tighter integration with the quantity checker for captured
      linears (Slice D).
 *)
