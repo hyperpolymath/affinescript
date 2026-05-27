@@ -644,6 +644,46 @@ let test_wasm_lambda () =
   | Error msg -> Alcotest.fail msg
   | Ok _wasm_mod -> ()
 
+(* ----------------------------------------------------------------------------
+   Regression: `type X = { ... }` (a TyAlias wrapping a TyRecord) must
+   register a struct_layouts entry just like `struct X { ... }` (TyStruct).
+   Without that, every parameter / return of type X reads all fields at
+   offset 0 — a silent miscompile, not a crash. See lib/codegen.ml
+   `gen_decl` TopType branch. *)
+
+let codegen_decl_for src =
+  let prog = Parse_driver.parse_string ~file:"<regression>" src in
+  match prog.prog_decls with
+  | decl :: _ -> decl
+  | [] -> Alcotest.fail "expected at least one top-level decl"
+
+let test_codegen_record_alias_registers_struct_layout () =
+  let decl = codegen_decl_for "type State = { health: Int, score: Int };" in
+  match Codegen.gen_decl (Codegen.create_context ()) decl with
+  | Error e ->
+    Alcotest.fail (Printf.sprintf "gen_decl errored: %s"
+                     (Codegen.show_codegen_error e))
+  | Ok ctx ->
+    let layout = List.assoc_opt "State" ctx.struct_layouts in
+    Alcotest.(check (option (list (pair string int))))
+      "State alias registers field layout"
+      (Some [("health", 0); ("score", 4)])
+      layout
+
+let test_codegen_plain_alias_does_not_register_layout () =
+  (* Sanity: the new pattern must not over-broaden — `type X = Int`
+     should still hit the catch-all and leave struct_layouts empty. *)
+  let decl = codegen_decl_for "type Plain = Int;" in
+  match Codegen.gen_decl (Codegen.create_context ()) decl with
+  | Error e ->
+    Alcotest.fail (Printf.sprintf "gen_decl errored: %s"
+                     (Codegen.show_codegen_error e))
+  | Ok ctx ->
+    Alcotest.(check (option (list (pair string int))))
+      "non-record alias registers no layout"
+      None
+      (List.assoc_opt "Plain" ctx.struct_layouts)
+
 let wasm_tests = [
   Alcotest.test_case "bitwise codegen"    `Quick test_wasm_bitwise;
   Alcotest.test_case "arithmetic codegen" `Quick test_wasm_arithmetic;
@@ -651,6 +691,10 @@ let wasm_tests = [
   Alcotest.test_case "write binary" `Quick test_wasm_write_binary;
   Alcotest.test_case "full pipeline" `Quick test_wasm_full_pipeline;
   Alcotest.test_case "lambda codegen" `Quick test_wasm_lambda;
+  Alcotest.test_case "record-alias registers struct_layouts" `Quick
+    test_codegen_record_alias_registers_struct_layout;
+  Alcotest.test_case "non-record alias leaves struct_layouts alone" `Quick
+    test_codegen_plain_alias_does_not_register_layout;
 ]
 
 (* ============================================================================
