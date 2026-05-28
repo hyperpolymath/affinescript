@@ -24,6 +24,34 @@ currently flagged stale (DOC-05, issue #176).
 
 toc::[]
 
+== Satellite roadmaps
+
+This main ROADMAP focuses on *compiler / language* progress. Three
+satellite roadmaps split out adjacent surfaces so each can evolve at
+its own cadence without crowding this document.
+
+[cols="1,3,3"]
+|===
+|Scope |Doc |Shape
+
+|*Framework bindings* (host-runtime FFI surfaces — Pixi, DOM, Tauri, GitHub, etc.)
+|link:bindings-roadmap.adoc[bindings-roadmap.adoc]
+|50 items / 5 tiers, idaptik → estate → universal
+
+|*Standard library* (the `.affine` files in `stdlib/`)
+|link:stdlib-roadmap.adoc[stdlib-roadmap.adoc]
+|50 items / 5 tiers, runtime gaps → RSR rewires → universals
+
+|*aLib conformance & contributions* (`hyperpolymath/aggregate-library` methods)
+|link:alib-roadmap.adoc[alib-roadmap.adoc]
+|25 items / 3 tracks, implementation → runner/CI → upstream affine extensions
+|===
+
+The three satellites + this main ROADMAP + link:ECOSYSTEM.adoc[ECOSYSTEM.adoc]
++ link:CAPABILITY-MATRIX.adoc[CAPABILITY-MATRIX.adoc] +
+link:TECH-DEBT.adoc[TECH-DEBT.adoc] together cover the full surface;
+where any two disagree, CAPABILITY-MATRIX wins.
+
 == Current Status (January 2026 Baseline)
 
 **Overall Completion (historical baseline): 85%**
@@ -326,4 +354,7 @@ SPDX-License-Identifier: MPL-2.0
 * link:README.adoc[Project Overview]
 * link:affinescript-spec.md[Language Specification]
 * link:STATE.scm[Current Project State]
+* link:bindings-roadmap.adoc[Framework Bindings Roadmap] — host-runtime FFI surfaces
+* link:stdlib-roadmap.adoc[Standard Library Roadmap] — `stdlib/` items
+* link:alib-roadmap.adoc[aLib Conformance Roadmap] — aggregate-library methods
 # AffineScript v2 Grammar Phase 1
