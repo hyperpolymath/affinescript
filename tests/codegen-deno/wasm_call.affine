@@ -1,0 +1,12 @@
+// SPDX-License-Identifier: MPL-2.0
+// bindings #5 (closes #414): wasmCall extern exercises the
+// `exports[name](...args)` lowering path on the Deno-ESM backend.
+//
+// Pure logic — the harness instantiates a tiny inline wasm module
+// exporting `add(i32, i32) -> i32` and passes the WasmExports value
+// into addViaWasm; nothing here touches the `Deno` global or FS.
+
+use Deno::{WasmExports, wasmCall};
+
+pub fn addViaWasm(exports: WasmExports, a: Float, b: Float) -> Float =
+  wasmCall(exports, "add", [a, b]);

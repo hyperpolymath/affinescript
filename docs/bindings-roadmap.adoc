@@ -73,9 +73,9 @@ no further significant ReScript → AffineScript work is tractable.
 
 |5
 |*WASM-exports calling pattern* — invoke individual `exports.fn_name(args)` from a `WasmExports` value
-|`◐` host-side; AS-side `○`
-|`stdlib/Deno.affine` extension or new `stdlib/wasm.affine`
-|`stdlib/Deno.affine` already exposes `wasmInstance(bytes) -> WasmExports` + the type, but no surface to *call* exports. idaptik `vm/wasm` is blocked here; ~30 per-Zig-fn extern fns needed, or one generic `wasm_call(exports, name, args) -> Float`. *Smallest scope, highest leverage — recommended kickoff.*
+|`●` usable (Option A landed)
+|`stdlib/Deno.affine`
+|`wasmCall(exports: WasmExports, name: String, args: [Float]) -> Float` lowers to `exports[name](...args)` with `Number` coercion. Round-trip exercised by `tests/codegen-deno/wasm_call.{affine,harness.mjs}`. *Option A (generic) — typed per-Zig-fn shims can layer on top per-consumer if needed.* Closes #414.
 
 |6
 |*Phoenix Channels / WebSocket* (Socket connect/disconnect, Channel join/leave/push, presence)

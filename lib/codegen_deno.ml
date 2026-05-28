@@ -157,6 +157,7 @@ const __as_readDirNames = (p) => {
 const __as_isNotFound = (e) => (e instanceof Deno.errors.NotFound);
 const __as_wasmInstance = (bytes) =>
   new WebAssembly.Instance(new WebAssembly.Module(bytes)).exports;
+const __as_wasmCall = (exports, name, args) => Number(exports[name](...(args || [])));
 // `++` is overloaded (string concat / array concat); `a + b` would
 // stringify arrays. Dispatch on shape so stdlib/string.affine's
 // `result ++ [x]` and `a ++ b` are both correct.
@@ -250,6 +251,7 @@ let () =
   (* ---- misc host ---- *)
   b "dateNow"     (fun _ -> "Date.now()");
   b "wasmInstance" (fun a -> Printf.sprintf "__as_wasmInstance(%s)" (arg 0 a));
+  b "wasmCall"     (fun a -> Printf.sprintf "__as_wasmCall(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
   (* Generic JS array push helper (returns the array, fluent). *)
   b "arrayPush" (fun a -> Printf.sprintf "(%s.push(%s), %s)" (arg 0 a) (arg 1 a) (arg 0 a));
   (* ---- honest string/number primitives underpinning the
