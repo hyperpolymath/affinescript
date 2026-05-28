@@ -1,0 +1,226 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+
+= TRG-PROFILE — AffineScript
+:toc: left
+:toclevels: 2
+
+[cols="1,3"]
+|===
+| Field | Value
+
+| Language | AffineScript
+| Repository | https://github.com/hyperpolymath/affinescript
+| Current TRG Grade | *E*  (X \| F \| E \| D \| C \| B \| A)
+| Assessed | 2026-05-28
+| Assessor | Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+| TRG Spec Version | 1.0
+| ARG Profile | spec/ARG-PROFILE.adoc
+| FRG Profile | spec/FRG-PROFILE.adoc
+| CRG Profile | spec/CRG-PROFILE.adoc
+|===
+
+== About this profile
+
+This profile applies the *TRG v1.0* baseline to AffineScript. The
+working toolchain is substantial — OCaml/Menhir compiler with ~23
+backends, REPL, LSP subset, ~309 end-to-end test cases, sublanguage
+toolchain `affinescriptiser`, integration crates (`affinescript-runtime`,
+`affinescript-vite`, `@affinescript/pixijs`) — but several MUST
+components per TRG §3 are *absent or undocumented as canonical
+artefacts*, which gates the overall grade at *E*. Specifically:
+
+* M5 *operational/denotational semantics document* is scattered across
+  TECH-DEBT.adoc + CAPABILITY-MATRIX.adoc with no canonical file.
+* B1 *intermediate representation* is implicit (AST lowering to WASM
+  bytecode); no documented IR-format SoT with invariants.
+* T4 *formatter* exists as a stubbed `formatter.ml` with the `.mli`
+  disabled — not production-ready.
+* T9 *pipeline orchestrator* runs implicitly through dune build rules;
+  no discrete orchestrator artefact.
+
+The chain of axes:
+
+* ARG: *D* (pragmatic — working compiler, narrow adopter base)
+* TRG: *E* (this profile)
+* FRG: *E* (no mechanised proofs; design rationale documented)
+* CRG: *D* (per spec/CRG-PROFILE.adoc; no released v1.0 components)
+* RSR: assessed elsewhere
+
+Cross-axis rule: ARG ≤ TRG holds (TRG = E ⇒ ARG ≤ E; current ARG-D
+is *over* the floor and is sustainable until grade C is sought —
+ARG-C would require TRG ≥ C per ARG §1.1).
+
+== Component grades
+
+The toolchain decomposes into components drawn from TRG §3. Each
+component is graded independently against the four-tier audit format
+of TRG §4 (Must / Should / Could / Aspirational → grades E / D / C / B).
+The overall TRG grade is the *worst* of any MUST component.
+
+=== Front-end (TRG §3.1)
+
+[cols="1,3,1,4", options="header"]
+|===
+| # | Component | Grade | Evidence
+
+| F1 | Grammar / Syntax        | *D*  | `lib/parser.mly` (Menhir grammar, functional SoT). No standalone `.ebnf` / `.pest` / `.peg` artefact — Menhir is itself the SoT; gating to grade C requires extracting an audit-friendly `.ebnf` view.
+| F2 | Lexer / Tokeniser       | *C*  | `lib/lexer.ml` (sedlex). `test/test_lexer.ml` — 17 dedicated lexer tests.
+| F3 | Parser                  | *C*  | Menhir-generated from `parser.mly`. `test/test_e2e.ml` — 309+ end-to-end cases across 80 fixtures.
+| F4 | AST                     | *C*  | `lib/ast.ml` (~10.7K lines, comprehensive variant types). Invariants ad-hoc in comments; no separate invariants doc.
+| F5 | Macro expander          | N/A  | AffineScript has no macros.
+| F6 | Import resolver / Modules | *D* | `lib/module_loader.ml`. No explicit cycle-detection regression suite.
+| F7 | Diagnostics / Errors    | *C*  | `lib/error.ml`, `lib/error_formatter.ml`. Structured JSON-output mode supported.
+|===
+
+=== Middle-end (TRG §3.2)
+
+[cols="1,3,1,4", options="header"]
+|===
+| # | Component | Grade | Evidence
+
+| M1 | Semantic analyser       | *C*  | `lib/resolve.ml`. Name resolution + scoping. Covered by `test_e2e.ml`.
+| M2 | Type checker            | *C*  | `lib/typecheck.ml` (~76.5K lines, bidirectional H-M-style with unification). Covered by extensive e2e suite.
+| M3 | Type-checker oracle     | N/A  | AffineScript is not a verified language (no proof obligations bound to a prover); see FRG-PROFILE.adoc.
+| M4 | Proof dispatcher        | N/A  | Same reason as M3.
+| M5 | Semantics document      | *E*  | Scattered across TECH-DEBT.adoc + CAPABILITY-MATRIX.adoc; *no canonical semantics document*. This is the load-bearing TRG-baseline gap.
+|===
+
+=== Back-end (TRG §3.3)
+
+[cols="1,3,1,4", options="header"]
+|===
+| # | Component | Grade | Evidence
+
+| B1 | Intermediate representation | *E*  | Implicit lowering: AST → backend-specific output. *No explicit IR with documented invariants*. Gates the overall grade.
+| B2 | Code generator (per backend) | *D*  | `lib/codegen.ml` (~120K lines, primary WASM target); plus per-backend modules: C, CUDA, FAUST, Gleam, Julia, Lean, LLVM, Lua, Metal, MLIR, Nickel, OCaml, ONNX, OpenCL, Protobuf, ReScript, Rust, SPIR-V, Verilog, WGSL, Why3, Bash, Deno, Node, GC. WASM is well-tested; the 22+ minor targets vary widely in coverage.
+| B3 | Backend registry        | *D*  | `lib/backends.ml`. Registry exists; backend-conformance test corpus is partial.
+| B4 | Linker / JIT / eval     | *C*  | `lib/wasm_encode.ml`, `lib/wasm_gc_encode.ml`. WASM binary encoding well-exercised by e2e suite.
+| B5 | ABI / FFI surface       | *D*  | Multiple FFI modules: `cafe_face.ml`, `js_face.ml`, `python_face.ml`, etc. Sub-projects `affinescript-pixijs`, `affinescript-vite` (with Zig FFI in `ffi/zig/src/`). Idris2 ABI surface not yet declared.
+| B6 | Runtime                 | *D*  | `lib/wasi_runtime.ml` + Rust crate `affinescript-runtime` (`runtime/Cargo.toml`, v0.1.0).
+|===
+
+=== Tool surface (TRG §3.4)
+
+[cols="1,3,1,4", options="header"]
+|===
+| # | Component | Grade | Evidence
+
+| T1 | Compiler driver         | *C*  | `bin/main.ml` (~86.8K lines). Subcommands: `lex`, `parse`, `check`, `eval`, `verify`, `interface`, `verify-boundary`, `repl`, `tea-bridge`, `router-bridge`, `cs-bridge`.
+| T2 | Interpreter             | *C*  | `lib/interp.ml` (~42.6K lines). Tree-walk interpreter, exercised by `test_e2e.ml`.
+| T3 | REPL                    | *D*  | `lib/repl.ml`. Smoke-test coverage exists; no LSP-grade integration tests.
+| T4 | Formatter               | *X*  | `lib/formatter.ml` is a stub; `.mli.disabled` excludes it from the public interface. Not production-ready.
+| T5 | LSP server              | *D*  | `lib/lsp_server.ml`. LSP 3.17 subset (hover, definition, completion, diagnostics). Invoked as `affinescript server --stdio`.
+| T6 | Debugger                | N/A  | Absent. SHOULD per TRG §3.4; not blocking grade E.
+| T7 | Package manager         | *D*  | No bespoke package manager; relies on opam (OCaml), npm (`affinescript-vite`, `@affinescript/pixijs`), Cargo (`affinescript-runtime`, `affinescriptiser`).
+| T8 | Standard library        | *C*  | `stdlib/` — 24 modules: Core, Result, Collections, Dict, Effects, Grammar, Http, IO, JSON, Math, Network, Option, Prelude, String, Testing, Traits, plus external bindings (Ajv, Crypto, Deno, Sqlite, Vscode).
+| T9 | Pipeline orchestrator   | *D*  | Implicit via dune + Justfile recipes; no discrete pipeline-orchestrator artefact.
+|===
+
+== Language-specific tightening (this profile only)
+
+TRG §1.1 permits per-language tightening. For AffineScript, the
+following additional obligations apply at the stated grades:
+
+* *Grade D tightening:* Type checker MUST reject every test case in
+  the borrow-check + affinity test fixtures (currently in
+  `test/test_e2e.ml`); regression on any rejection is a MUST-row
+  failure.
+* *Grade C tightening:* The 23-backend matrix MUST have a published
+  conformance report listing pass/fail per backend per fixture; today
+  only WASM has full coverage, with the others ranging D-X.
+* *Grade B tightening:* AffineScript MUST publish a paradigm
+  conformance document showing borrow-check coverage of at least
+  one canonical type-system surface (e.g. Rust's NLL test corpus or
+  equivalent).
+
+These tightenings are *additional* to the baseline — none of the
+baseline evidence is waived.
+
+== Canonical Proof Suite extension
+
+N/A. AffineScript is not a verified language at the TRG-baseline level
+(see M3/M4 above). FRG = E reflects the same status. A future verified
+profile (e.g. AffineScript-Verified) would extend this section.
+
+== What is NOT yet met (honest gaps)
+
+Gating gaps for grade *D*:
+
+* *M5 canonical semantics document* — operational and denotational
+  semantics scattered across TECH-DEBT + CAPABILITY-MATRIX; no
+  `docs/semantics.adoc`. Required at baseline grade E.
+* *B1 explicit IR* — no documented IR format with invariants. Implicit
+  AST-direct-to-backend lowering. Required at baseline grade E.
+* *T4 formatter* — `formatter.ml` stubbed; either complete the
+  formatter or formally drop the SHOULD by declaring T4 absent with
+  justification per TRG §3.
+
+Gating gaps for grade *C* (assuming D is reached):
+
+* Backend conformance matrix not published.
+* No per-backend audit documents under `audits/audit-codegen-*.md`.
+* AST invariants not extracted into a separate doc.
+* No published proof-suite extension.
+
+== Path to next grade (*D*)
+
+* Write `docs/semantics.adoc` consolidating the scattered semantics
+  prose into one canonical operational + denotational document.
+  (~1-2 weeks)
+* Extract or document the implicit IR: name it (`AscIr`?), describe
+  its invariants, ship a `docs/ir.adoc`. (~1-2 weeks)
+* Decide T4: either ship the formatter (~3-4 weeks) or document the
+  absence per TRG §3.
+
+*Realistic timeline estimate:* 4-6 weeks once prioritised.
+
+== Path to grade beyond that (*C*)
+
+* Publish per-backend conformance report covering all 22+ codegen
+  targets.
+* Author per-component audit documents under `audits/`.
+* Lift `test_e2e.ml` from a monolithic test file into per-component
+  audit-aligned test buckets.
+* Achieve dogfooding: AffineScript MUST be used as the primary
+  language for at least one downstream artefact (the existing
+  `affinescript-vite` + `affinescript-pixijs` qualifies, but needs
+  AUDIT.adoc updates).
+
+*Realistic timeline estimate:* 3-6 months from D.
+
+== Demotion risk
+
+* *Lowest:* WASM backend regression flag flips to red, dropping B2 to
+  X for the load-bearing backend.
+* *Medium:* Type-checker unsoundness found that the 309 e2e cases
+  don't catch, dropping M2 to D.
+* *Catastrophic:* Bidirectional H-M unification found to be unsound,
+  dropping M2 to X and the toolchain to X.
+
+== Iteration history
+
+[cols="1,1,4", options="header"]
+|===
+| Date | Grade | Notes
+
+| 2026-05-28 | E | Initial TRG assessment per TRG v1.0. Gating items: M5 absent, B1 implicit, T4 stubbed.
+|===
+
+== Review cycle
+
+* *Routine:* Reassess on every release cycle (per TRG §8).
+* *Immediate:* Reassess within 7 days of any MUST-component
+  regression.
+* *VeriSimDB drift alert:* Reassess within 24 hours of any drift
+  alert from VeriSimDB on this toolchain's attestations.
+
+== Footer
+
+Run `just trg-badge` in this repo to generate the shields.io badge for
+the README.
+
+This profile is itself a VCL-total proposition. Its content is
+`DECLARE`'d to VeriSimDB on each commit. Drift between the claimed
+grade above and the underlying evidence surfaces as a grade-stale
+alert.
