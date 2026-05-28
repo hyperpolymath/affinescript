@@ -135,7 +135,7 @@ Surface that other estate repos are actively wanting.
 |`http-capability-gateway` shipped Zig server (PR#23); AffineScript-side server bindings would let `.affine` programs serve HTTP without Zig.
 
 |14
-|*WebSocket client + server* (raw `ws://`, separate from Phoenix)
+|*WebSocket client + server* (encrypted `wss://`, separate from Phoenix)
 |`○`
 |`affinescript-websocket`
 |Generalisation of #6; multiplayer + dev-tooling.
