@@ -61,9 +61,9 @@ no further significant ReScript → AffineScript work is tractable.
 
 |3
 |*@pixi/ui* (Button, FancyButton, Switch, Slider, Input, ScrollBox)
-|`○`
-|`affinescript-pixijs` sub-module
-|idaptik `src/bindings/PixiUI.res`; all HUD / menu code.
+|`◐` scaffold
+|`stdlib/PixiUI.affine` (eventual home: `affinescript-pixijs` sub-module)
+|idaptik `src/bindings/PixiUI.res`; all HUD / menu code. MVP surface (Button / FancyButton / Slider / Switch — `new` + primary callback + `AsContainer` upcast) lives in `stdlib/` alongside Pixi / PixiSound; consumer provides `globalThis.__as_pixi_ui` at module-init time. Test fixture: `tests/codegen-deno/pixiui_smoke.{affine,harness.mjs}`. Deferred follow-ups: Input (text-entry + focus + value), ScrollBox (scroll position + viewport), full event surface (onHover / onOut / onDown / onUp), FancyButton textures-per-state accessors, Slider min/max/step accessors.
 
 |4
 |*motion* (animate, animateMini, tween, ease, spring)
