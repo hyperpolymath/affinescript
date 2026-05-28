@@ -173,6 +173,41 @@ const __as_motionCancel = (controls) => {
   if (controls && typeof controls.cancel === "function") controls.cancel();
   return 0;
 };
+// ---- pixi.js (bindings #1): consumer-provided import ----
+// Host JS environment exposes globalThis.__as_pixi (the PIXI namespace
+// from `import * as PIXI from "pixi.js"`). Tests set it in the harness
+// before importing the generated module.
+const __as_pixiAppInit = async (options) => {
+  const app = new globalThis.__as_pixi.Application();
+  await app.init(options);
+  return app;
+};
+const __as_pixiAppCanvas = (app) => app.canvas;
+const __as_pixiAppStage = (app) => app.stage;
+const __as_pixiAppTicker = (app) => app.ticker;
+const __as_pixiAppDestroy = (app) => { app.destroy(); return 0; };
+const __as_pixiContainerNew = () => new globalThis.__as_pixi.Container();
+const __as_pixiContainerAddChild = (p, c) => { p.addChild(c); return 0; };
+const __as_pixiContainerRemoveChild = (p, c) => { p.removeChild(c); return 0; };
+const __as_pixiContainerSetPosition = (c, x, y) => { c.x = x; c.y = y; return 0; };
+const __as_pixiContainerSetVisible = (c, v) => { c.visible = v; return 0; };
+const __as_pixiContainerDestroy = (c) => { c.destroy(); return 0; };
+const __as_pixiSpriteFrom = (t) => new globalThis.__as_pixi.Sprite(t);
+// Upcasts are identity — PIXI's class hierarchy makes Sprite/Graphics/
+// Text actual Container subclasses, so the JS object is the same.
+const __as_pixiSpriteAsContainer = (s) => s;
+const __as_pixiTextureFromUrl = (url) => globalThis.__as_pixi.Texture.from(url);
+const __as_pixiGraphicsNew = () => new globalThis.__as_pixi.Graphics();
+const __as_pixiGraphicsRect = (g, x, y, w, h) => { g.rect(x, y, w, h); return 0; };
+const __as_pixiGraphicsFill = (g, color) => { g.fill({ color }); return 0; };
+const __as_pixiGraphicsClear = (g) => { g.clear(); return 0; };
+const __as_pixiGraphicsAsContainer = (g) => g;
+const __as_pixiTextNew = (options) => new globalThis.__as_pixi.Text(options);
+const __as_pixiTextSetText = (t, content) => { t.text = content; return 0; };
+const __as_pixiTextAsContainer = (t) => t;
+const __as_pixiTickerAdd = (t, cb) => { t.add(cb); return 0; };
+const __as_pixiTickerStart = (t) => { t.start(); return 0; };
+const __as_pixiTickerStop = (t) => { t.stop(); return 0; };
 // `++` is overloaded (string concat / array concat); `a + b` would
 // stringify arrays. Dispatch on shape so stdlib/string.affine's
 // `result ++ [x]` and `a ++ b` are both correct.
@@ -322,6 +357,32 @@ let () =
   b "motionAnimate" (fun a -> Printf.sprintf "__as_motionAnimate(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
   b "motionAwait"   (fun a -> Printf.sprintf "(await __as_motionAwait(%s))" (arg 0 a));
   b "motionCancel"  (fun a -> Printf.sprintf "__as_motionCancel(%s)" (arg 0 a));
+  (* ---- pixi.js (bindings #1) ---- *)
+  b "pixiAppInit"              (fun a -> Printf.sprintf "(await __as_pixiAppInit(%s))" (arg 0 a));
+  b "pixiAppCanvas"            (fun a -> Printf.sprintf "__as_pixiAppCanvas(%s)" (arg 0 a));
+  b "pixiAppStage"             (fun a -> Printf.sprintf "__as_pixiAppStage(%s)" (arg 0 a));
+  b "pixiAppTicker"            (fun a -> Printf.sprintf "__as_pixiAppTicker(%s)" (arg 0 a));
+  b "pixiAppDestroy"           (fun a -> Printf.sprintf "__as_pixiAppDestroy(%s)" (arg 0 a));
+  b "pixiContainerNew"         (fun _ -> "__as_pixiContainerNew()");
+  b "pixiContainerAddChild"    (fun a -> Printf.sprintf "__as_pixiContainerAddChild(%s, %s)" (arg 0 a) (arg 1 a));
+  b "pixiContainerRemoveChild" (fun a -> Printf.sprintf "__as_pixiContainerRemoveChild(%s, %s)" (arg 0 a) (arg 1 a));
+  b "pixiContainerSetPosition" (fun a -> Printf.sprintf "__as_pixiContainerSetPosition(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
+  b "pixiContainerSetVisible"  (fun a -> Printf.sprintf "__as_pixiContainerSetVisible(%s, %s)" (arg 0 a) (arg 1 a));
+  b "pixiContainerDestroy"     (fun a -> Printf.sprintf "__as_pixiContainerDestroy(%s)" (arg 0 a));
+  b "pixiSpriteFrom"           (fun a -> Printf.sprintf "__as_pixiSpriteFrom(%s)" (arg 0 a));
+  b "pixiSpriteAsContainer"    (fun a -> Printf.sprintf "__as_pixiSpriteAsContainer(%s)" (arg 0 a));
+  b "pixiTextureFromUrl"       (fun a -> Printf.sprintf "__as_pixiTextureFromUrl(%s)" (arg 0 a));
+  b "pixiGraphicsNew"          (fun _ -> "__as_pixiGraphicsNew()");
+  b "pixiGraphicsRect"         (fun a -> Printf.sprintf "__as_pixiGraphicsRect(%s, %s, %s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a) (arg 3 a) (arg 4 a));
+  b "pixiGraphicsFill"         (fun a -> Printf.sprintf "__as_pixiGraphicsFill(%s, %s)" (arg 0 a) (arg 1 a));
+  b "pixiGraphicsClear"        (fun a -> Printf.sprintf "__as_pixiGraphicsClear(%s)" (arg 0 a));
+  b "pixiGraphicsAsContainer"  (fun a -> Printf.sprintf "__as_pixiGraphicsAsContainer(%s)" (arg 0 a));
+  b "pixiTextNew"              (fun a -> Printf.sprintf "__as_pixiTextNew(%s)" (arg 0 a));
+  b "pixiTextSetText"          (fun a -> Printf.sprintf "__as_pixiTextSetText(%s, %s)" (arg 0 a) (arg 1 a));
+  b "pixiTextAsContainer"      (fun a -> Printf.sprintf "__as_pixiTextAsContainer(%s)" (arg 0 a));
+  b "pixiTickerAdd"            (fun a -> Printf.sprintf "__as_pixiTickerAdd(%s, %s)" (arg 0 a) (arg 1 a));
+  b "pixiTickerStart"          (fun a -> Printf.sprintf "__as_pixiTickerStart(%s)" (arg 0 a));
+  b "pixiTickerStop"           (fun a -> Printf.sprintf "__as_pixiTickerStop(%s)" (arg 0 a));
   (* Generic JS array push helper (returns the array, fluent). *)
   b "arrayPush" (fun a -> Printf.sprintf "(%s.push(%s), %s)" (arg 0 a) (arg 1 a) (arg 0 a));
   (* ---- honest string/number primitives underpinning the
