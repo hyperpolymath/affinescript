@@ -13,11 +13,17 @@ on:
 permissions:
   contents: read
 
-# Actions concurrency pool. Applied only to read-only check workflows
-# (no publish/mutation), so cancelling a superseded run is always safe.
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+# Note: NO workflow-level `concurrency:` block here. The reusable
+# workflow in standards already declares concurrency on the same key
+# (`${{ github.workflow }}-${{ github.ref }}` — which resolves to the
+# CALLER'S workflow name in reusables). Stacking both blocks causes
+# GitHub to reject the workflow at run-creation time with a
+# `startup_failure`, so no `check_run` is ever emitted and every PR's
+# required `spark-theatre-gate / SPARK Theatre Gate` context stays
+# unsatisfied. Empirically: PR #379 (2026-05-27) added this block; all
+# 410+ runs since have been `startup_failure`, blocking auto-merge
+# across the repo and forcing a 14-PR admin-merge sweep on
+# 2026-05-28. See hypatia#376 BP008 for the class-level detector.
 
 jobs:
   spark-theatre-gate:
