@@ -423,19 +423,20 @@ let detect_untyped_exception ~source acc node =
       else acc
   | _ ->
       (* Tree-sitter labels module paths differently depending on syntactic
-         position — `Js.Exn.Error(_)` in a catch-arm pattern is not a
-         [member_expression]/[value_identifier_path], so the typed branches
-         above miss it. Fall back to a tight leaf-only text match so the
-         pattern still flags. The master walker's [dedupe] collapses any
-         same-line duplicate against the [try_expression] hit. *)
-      if node.children = [] then
-        let text = node_text ~source node in
-        if String.length text <= 32
-           && (starts_with "Js.Exn" text
-               || text = "Promise.catch"
-               || ends_with ".Promise.catch" text)
-        then push acc
-        else acc
+         position — `Js.Exn.Error(_)` in a catch-arm pattern is a compound
+         node (constructor pattern with the `(_)` payload as a child), so
+         the typed branches above miss it AND the previous leaf-only
+         fallback (`node.children = []`) skipped it too. Fall back to a
+         text-based match capped at 32 chars; the cap prevents matching
+         the enclosing match/try expression text. The master walker's
+         [dedupe] collapses any same-line duplicate against the
+         [try_expression] hit. *)
+      let text = node_text ~source node in
+      if String.length text <= 32
+         && (starts_with "Js.Exn" text
+             || text = "Promise.catch"
+             || ends_with ".Promise.catch" text)
+      then push acc
       else acc
 
 (* ---- mutable-global: top-level [let x = ref(...)] or top-level [:=] ---- *)
