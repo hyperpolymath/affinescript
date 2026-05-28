@@ -242,6 +242,21 @@ const __as_pixiUiSliderAsContainer = (s)       => s;
 const __as_pixiUiSwitchNew         = (options) => new globalThis.__as_pixi_ui.Switch(options);
 const __as_pixiUiSwitchOnChange    = (sw, cb)  => { sw.onChange.connect(cb); return 0; };
 const __as_pixiUiSwitchAsContainer = (sw)      => sw;
+// ---- @pixi/sound (bindings #2): consumer-provided import ----
+// Host JS environment exposes globalThis.__as_pixi_sound (the `Sound`
+// named export from `@pixi/sound`). Tests set it in the harness before
+// importing the generated module; production consumers typically do
+// `import { Sound } from "@pixi/sound"; globalThis.__as_pixi_sound = Sound;`
+// once at module-init time. The AffineScript-side externs
+// (stdlib/PixiSound.affine) don't see this indirection — they call
+// __as_pixiSound* helpers directly.
+const __as_pixiSoundFrom = (url) => globalThis.__as_pixi_sound.from(url);
+const __as_pixiSoundPlay = (s) => { s.play(); return 0; };
+const __as_pixiSoundStop = (s) => { s.stop(); return 0; };
+const __as_pixiSoundPause = (s) => { s.pause(); return 0; };
+const __as_pixiSoundResume = (s) => { s.resume(); return 0; };
+const __as_pixiSoundSetVolume = (s, vol) => { s.volume = vol; return 0; };
+const __as_pixiSoundSetLoop = (s, loop) => { s.loop = loop; return 0; };
 // `++` is overloaded (string concat / array concat); `a + b` would
 // stringify arrays. Dispatch on shape so stdlib/string.affine's
 // `result ++ [x]` and `a ++ b` are both correct.
@@ -434,6 +449,14 @@ let () =
   b "motionTween"   (fun a -> Printf.sprintf "__as_motionTween(%s, %s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a) (arg 3 a));
   b "motionSpring"  (fun a -> Printf.sprintf "__as_motionSpring(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
   b "motionEase"    (fun a -> Printf.sprintf "__as_motionEase(%s)" (arg 0 a));
+  (* ---- @pixi/sound (bindings #2) ---- *)
+  b "pixiSoundFrom"      (fun a -> Printf.sprintf "__as_pixiSoundFrom(%s)" (arg 0 a));
+  b "pixiSoundPlay"      (fun a -> Printf.sprintf "__as_pixiSoundPlay(%s)" (arg 0 a));
+  b "pixiSoundStop"      (fun a -> Printf.sprintf "__as_pixiSoundStop(%s)" (arg 0 a));
+  b "pixiSoundPause"     (fun a -> Printf.sprintf "__as_pixiSoundPause(%s)" (arg 0 a));
+  b "pixiSoundResume"    (fun a -> Printf.sprintf "__as_pixiSoundResume(%s)" (arg 0 a));
+  b "pixiSoundSetVolume" (fun a -> Printf.sprintf "__as_pixiSoundSetVolume(%s, %s)" (arg 0 a) (arg 1 a));
+  b "pixiSoundSetLoop"   (fun a -> Printf.sprintf "__as_pixiSoundSetLoop(%s, %s)" (arg 0 a) (arg 1 a));
   (* Generic JS array push helper (returns the array, fluent). *)
   b "arrayPush" (fun a -> Printf.sprintf "(%s.push(%s), %s)" (arg 0 a) (arg 1 a) (arg 0 a));
   (* ---- honest string/number primitives underpinning the
