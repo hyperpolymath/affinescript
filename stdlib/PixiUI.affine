@@ -1,0 +1,117 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// PixiUI.affine — bindings for the `@pixi/ui` v2.x npm library
+// (bindings #3 in docs/bindings-roadmap.adoc).
+//
+// `@pixi/ui` provides interactive UI components built on top of
+// PixiJS — Button, FancyButton, Switch, Slider, Input, ScrollBox.
+// Reference consumer: idaptik's `src/bindings/PixiUI.res`, the
+// HUD + menu layer over the core PixiJS scene graph.
+//
+// MVP coverage (this version): Button, FancyButton, Slider, Switch
+// constructors + their typical event callback + the upcast to
+// `Container` (so a UI component can be added to the PixiJS scene
+// graph via `Pixi::pixiContainerAddChild`).
+//
+// Deferred (follow-ups):
+//   - Input  — text-entry, focus, blur, value accessor
+//   - ScrollBox — scroll position, content add/remove, viewport
+//   - Full event surface (onHover / onOut / onDown / onUp)
+//   - FancyButton style accessors (textures per state)
+//   - Slider min/max/step accessors
+//
+// Targets the Deno-ESM backend. Consumer (or its host wrapper) sets
+// `globalThis.__as_pixi_ui` to the `@pixi/ui` namespace at module-
+// init time:
+//
+//   import * as PixiUI from "@pixi/ui";
+//   globalThis.__as_pixi_ui = PixiUI;
+//
+// Tests mock the same shape — see `tests/codegen-deno/pixiui_smoke.*`.
+//
+// @pixi/ui type hierarchy: Button, FancyButton, Slider, Switch are
+// all `Container` subclasses (via PixiJS). AffineScript has no
+// subtype polymorphism, so the binding exposes explicit upcast
+// functions (`pixiUiButtonAsContainer`, etc.). These are zero-cost
+// identity lowerings; the underlying JS value is the same object.
+// The `Container` type is re-declared as an opaque extern here for
+// parity with `stdlib/Pixi.affine` — the JS-side handle for the two
+// is identical (a PIXI.Container instance).
+
+module PixiUI;
+
+use Deno::{Json};
+
+// ── Opaque host types ──────────────────────────────────────────────
+//
+// Each maps to its same-named `@pixi/ui` class. They're treated
+// opaquely at the AS boundary; the only consumer-visible operations
+// are construction, callback registration, and upcast to Container.
+
+pub extern type Button;
+pub extern type FancyButton;
+pub extern type Slider;
+pub extern type Switch;
+
+/// `PIXI.Container` — re-declared as opaque extern so this module can
+/// be consumed without a hard dependency on `stdlib/Pixi.affine`.
+/// When both modules are imported, the underlying JS values coincide
+/// (both resolve to the same `PIXI.Container` host class), so a
+/// container produced here can be added as a child of an
+/// `Application.stage` from `Pixi.affine` with no further marshalling.
+pub extern type Container;
+
+// ── Button ─────────────────────────────────────────────────────────
+
+/// `new PixiUI.Button(options)`.
+/// `options` is the @pixi/ui Button-options JSON (typically `{ view }`
+/// where `view` is a PIXI display object).
+pub extern fn pixiUiButtonNew(options: Json) -> Button;
+
+/// `button.onPress.connect(callback)` — register a press-event
+/// handler. `callback` crosses the boundary as opaque `Json` (the
+/// host-side JS function value). Returns 0.
+pub extern fn pixiUiButtonOnPress(b: Button, callback: Json) -> Int;
+
+/// Upcast a Button to its Container superclass. Zero-cost identity
+/// lowering — the underlying JS value is the same object.
+pub extern fn pixiUiButtonAsContainer(b: Button) -> Container;
+
+// ── FancyButton ────────────────────────────────────────────────────
+
+/// `new PixiUI.FancyButton(options)`. `options` is the @pixi/ui
+/// FancyButton-options JSON (text + textures-per-state + padding).
+pub extern fn pixiUiFancyButtonNew(options: Json) -> FancyButton;
+
+/// Upcast a FancyButton to its Container superclass. Zero-cost
+/// identity lowering.
+pub extern fn pixiUiFancyButtonAsContainer(b: FancyButton) -> Container;
+
+// ── Slider ─────────────────────────────────────────────────────────
+
+/// `new PixiUI.Slider(options)`. `options` is the @pixi/ui
+/// Slider-options JSON (min/max/value/bg/fill/slider textures).
+pub extern fn pixiUiSliderNew(options: Json) -> Slider;
+
+/// `slider.onUpdate.connect(callback)` — register a value-change
+/// handler. Callback receives the new value (number). Returns 0.
+pub extern fn pixiUiSliderOnUpdate(s: Slider, callback: Json) -> Int;
+
+/// Upcast a Slider to its Container superclass. Zero-cost identity
+/// lowering.
+pub extern fn pixiUiSliderAsContainer(s: Slider) -> Container;
+
+// ── Switch ─────────────────────────────────────────────────────────
+
+/// `new PixiUI.Switch(options)`. `options` is the @pixi/ui
+/// Switch-options JSON (textures + value).
+pub extern fn pixiUiSwitchNew(options: Json) -> Switch;
+
+/// `switch.onChange.connect(callback)` — register a state-change
+/// handler. Returns 0.
+pub extern fn pixiUiSwitchOnChange(sw: Switch, callback: Json) -> Int;
+
+/// Upcast a Switch to its Container superclass. Zero-cost identity
+/// lowering.
+pub extern fn pixiUiSwitchAsContainer(sw: Switch) -> Container;

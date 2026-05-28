@@ -208,6 +208,28 @@ const __as_pixiTextAsContainer = (t) => t;
 const __as_pixiTickerAdd = (t, cb) => { t.add(cb); return 0; };
 const __as_pixiTickerStart = (t) => { t.start(); return 0; };
 const __as_pixiTickerStop = (t) => { t.stop(); return 0; };
+// ---- @pixi/ui (bindings #3): consumer-provided import ----
+// Host JS environment exposes globalThis.__as_pixi_ui (the namespace
+// from `import * as PixiUI from "@pixi/ui"`). Tests set it in the
+// harness before importing the generated module; production
+// consumers typically do once at module-init time. The
+// AffineScript-side externs (stdlib/PixiUI.affine) don't see this
+// indirection — they call __as_pixiUi* helpers directly.
+//
+// Upcasts to Container are identity — @pixi/ui's Button /
+// FancyButton / Slider / Switch are all real PIXI.Container
+// subclasses, so the JS object is the same.
+const __as_pixiUiButtonNew         = (options) => new globalThis.__as_pixi_ui.Button(options);
+const __as_pixiUiButtonOnPress     = (b, cb)   => { b.onPress.connect(cb); return 0; };
+const __as_pixiUiButtonAsContainer = (b)       => b;
+const __as_pixiUiFancyButtonNew         = (options) => new globalThis.__as_pixi_ui.FancyButton(options);
+const __as_pixiUiFancyButtonAsContainer = (b)       => b;
+const __as_pixiUiSliderNew         = (options) => new globalThis.__as_pixi_ui.Slider(options);
+const __as_pixiUiSliderOnUpdate    = (s, cb)   => { s.onUpdate.connect(cb); return 0; };
+const __as_pixiUiSliderAsContainer = (s)       => s;
+const __as_pixiUiSwitchNew         = (options) => new globalThis.__as_pixi_ui.Switch(options);
+const __as_pixiUiSwitchOnChange    = (sw, cb)  => { sw.onChange.connect(cb); return 0; };
+const __as_pixiUiSwitchAsContainer = (sw)      => sw;
 // `++` is overloaded (string concat / array concat); `a + b` would
 // stringify arrays. Dispatch on shape so stdlib/string.affine's
 // `result ++ [x]` and `a ++ b` are both correct.
@@ -383,6 +405,18 @@ let () =
   b "pixiTickerAdd"            (fun a -> Printf.sprintf "__as_pixiTickerAdd(%s, %s)" (arg 0 a) (arg 1 a));
   b "pixiTickerStart"          (fun a -> Printf.sprintf "__as_pixiTickerStart(%s)" (arg 0 a));
   b "pixiTickerStop"           (fun a -> Printf.sprintf "__as_pixiTickerStop(%s)" (arg 0 a));
+  (* ---- @pixi/ui (bindings #3) ---- *)
+  b "pixiUiButtonNew"              (fun a -> Printf.sprintf "__as_pixiUiButtonNew(%s)" (arg 0 a));
+  b "pixiUiButtonOnPress"          (fun a -> Printf.sprintf "__as_pixiUiButtonOnPress(%s, %s)" (arg 0 a) (arg 1 a));
+  b "pixiUiButtonAsContainer"      (fun a -> Printf.sprintf "__as_pixiUiButtonAsContainer(%s)" (arg 0 a));
+  b "pixiUiFancyButtonNew"         (fun a -> Printf.sprintf "__as_pixiUiFancyButtonNew(%s)" (arg 0 a));
+  b "pixiUiFancyButtonAsContainer" (fun a -> Printf.sprintf "__as_pixiUiFancyButtonAsContainer(%s)" (arg 0 a));
+  b "pixiUiSliderNew"              (fun a -> Printf.sprintf "__as_pixiUiSliderNew(%s)" (arg 0 a));
+  b "pixiUiSliderOnUpdate"         (fun a -> Printf.sprintf "__as_pixiUiSliderOnUpdate(%s, %s)" (arg 0 a) (arg 1 a));
+  b "pixiUiSliderAsContainer"      (fun a -> Printf.sprintf "__as_pixiUiSliderAsContainer(%s)" (arg 0 a));
+  b "pixiUiSwitchNew"              (fun a -> Printf.sprintf "__as_pixiUiSwitchNew(%s)" (arg 0 a));
+  b "pixiUiSwitchOnChange"         (fun a -> Printf.sprintf "__as_pixiUiSwitchOnChange(%s, %s)" (arg 0 a) (arg 1 a));
+  b "pixiUiSwitchAsContainer"      (fun a -> Printf.sprintf "__as_pixiUiSwitchAsContainer(%s)" (arg 0 a));
   (* Generic JS array push helper (returns the array, fluent). *)
   b "arrayPush" (fun a -> Printf.sprintf "(%s.push(%s), %s)" (arg 0 a) (arg 1 a) (arg 0 a));
   (* ---- honest string/number primitives underpinning the
