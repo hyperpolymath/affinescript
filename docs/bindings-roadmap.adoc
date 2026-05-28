@@ -73,9 +73,9 @@ no further significant ReScript → AffineScript work is tractable.
 
 |5
 |*WASM-exports calling pattern* — invoke individual `exports.fn_name(args)` from a `WasmExports` value
-|`◐` host-side; AS-side `○`
-|`stdlib/Deno.affine` extension or new `stdlib/wasm.affine`
-|`stdlib/Deno.affine` already exposes `wasmInstance(bytes) -> WasmExports` + the type, but no surface to *call* exports. idaptik `vm/wasm` is blocked here; ~30 per-Zig-fn extern fns needed, or one generic `wasm_call(exports, name, args) -> Float`. *Smallest scope, highest leverage — recommended kickoff.*
+|`●` usable (Option A landed)
+|`stdlib/Deno.affine`
+|`wasmCall(exports: WasmExports, name: String, args: [Float]) -> Float` lowers to `Number(exports[name](...args))` on `--deno-esm`. AS-side surface + docstring example landed in `stdlib/Deno.affine`; round-trip exercised by `tests/codegen-deno/wasm_call.{affine,harness.mjs}` against a hand-built 41-byte wasm module exporting `add(i32, i32) -> i32`. *Option A (generic) — typed per-Zig-fn shims can layer on top per-consumer if needed.* Closes #414 via host-side #422 + AS-side this PR.
 
 |6
 |*Phoenix Channels / WebSocket* (Socket connect/disconnect, Channel join/leave/push, presence)
@@ -390,10 +390,12 @@ Build, test, and cross-language surface.
   bindings, four (#1, #2, #3, and #4 by extension) are PixiJS-ecosystem.
   Investing in `affinescript-pixijs` unblocks the largest single chunk
   of idaptik's 215-file `src/app/` tree.
-. *WASM-exports calling is a one-day fix with high leverage.* Item #5
-  — adding `extern fn wasm_export_call(exports: WasmExports, name: String, args: [Float]) -> Float`
-  to `stdlib/Deno.affine` (or 30 per-Zig-fn externs) unblocks idaptik
-  `vm/wasm` *and* every future WASM-host consumer in the estate.
+. *WASM-exports calling LANDED.* Item #5 — `wasmCall(exports, name, args) -> Float`
+  in `stdlib/Deno.affine` ships the generic Option A surface; idaptik
+  `vm/wasm` and every future WASM-host consumer in the estate can now
+  call individual exports without a per-fn extern. Typed per-Zig-fn
+  shims can layer on top per-consumer where the discipline is worth
+  the brittleness.
 . *DOM is closest to done* — issue #255 (for-in / while wasm codegen)
   is the blocker, not the binding surface itself. That's a codegen bug,
   not a binding gap; classified separately so it doesn't get re-scoped
