@@ -55,9 +55,9 @@ no further significant ReScript → AffineScript work is tractable.
 
 |2
 |*@pixi/sound* (`Sound.from`, play, stop, volume, setVolume, loop)
-|`○`
-|`affinescript-pixijs` sub-module, or `affinescript-pixi-sound`
-|idaptik `src/bindings/PixiSound.res`; BGM + SFX.
+|`◐` scaffold (from / play / stop / pause / resume / setVolume / setLoop landed)
+|`stdlib/PixiSound.affine` (eventual home: `affinescript-pixijs` sub-module, or `affinescript-pixi-sound`)
+|idaptik `src/bindings/PixiSound.res`; BGM + SFX. Initial surface (`pixiSoundFrom` / `pixiSoundPlay` / `pixiSoundStop` / `pixiSoundPause` / `pixiSoundResume` / `pixiSoundSetVolume` / `pixiSoundSetLoop`) lands in `stdlib/` parallel to Motion / Http / Sqlite / Crypto; consumer provides `globalThis.__as_pixi_sound` (the `Sound` named export from `@pixi/sound`) at module-init time. Test fixture: `tests/codegen-deno/pixisound_smoke.{affine,harness.mjs}`. Follow-ups: `Sound.add` (multi-source registry), sprite atlases, async load (await + onload), `pauseAll` / `stopAll` / `resumeAll`, the `sound` singleton's filter pipeline.
 
 |3
 |*@pixi/ui* (Button, FancyButton, Switch, Slider, Input, ScrollBox)

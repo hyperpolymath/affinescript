@@ -1,0 +1,29 @@
+// SPDX-License-Identifier: MPL-2.0
+// bindings #2 — @pixi/sound smoke test.
+//
+// The harness installs a mock at globalThis.__as_pixi_sound before
+// importing the generated module; we re-export thin wrappers so the
+// harness can drive each extern via stable names.
+
+use PixiSound::{Sound, pixiSoundFrom, pixiSoundPlay, pixiSoundStop, pixiSoundPause, pixiSoundResume, pixiSoundSetVolume, pixiSoundSetLoop};
+
+pub fn smokeFrom(url: String) -> Sound =
+  pixiSoundFrom(url);
+
+pub fn smokePlay(s: Sound) -> Int =
+  pixiSoundPlay(s);
+
+pub fn smokeStop(s: Sound) -> Int =
+  pixiSoundStop(s);
+
+pub fn smokePause(s: Sound) -> Int =
+  pixiSoundPause(s);
+
+pub fn smokeResume(s: Sound) -> Int =
+  pixiSoundResume(s);
+
+pub fn smokeSetVolume(s: Sound, vol: Float) -> Int =
+  pixiSoundSetVolume(s, vol);
+
+pub fn smokeSetLoop(s: Sound, loop: Bool) -> Int =
+  pixiSoundSetLoop(s, loop);
