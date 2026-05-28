@@ -49,9 +49,9 @@ no further significant ReScript → AffineScript work is tractable.
 
 |1
 |*PixiJS core* (Application, Container, Sprite, Graphics, Text, Ticker, FederatedEvent)
-|`◐` scaffold
-|`affinescript-pixijs`
-|idaptik `src/bindings/Pixi.res`; all 215 `src/app/*.res` files depend on this. Currently 1 `.as` stub + 1 Idris2 ABI + 1 Zig FFI; needs full PixiJS 8.x surface.
+|`◑` partial (Application / Container / Sprite / Graphics / Text / Texture / Ticker landed; FederatedEvent + extensive accessor coverage deferred)
+|`stdlib/Pixi.affine` (eventual home: `affinescript-pixijs` as a separate repo per the SNIFs/typed-wasm precedent)
+|idaptik `src/bindings/Pixi.res`; all 215 `src/app/*.res` files depend on this. Restarted 2026-05-28 — the prior `affinescript-pixijs/` directory used the obsolete `.as` extension + AGPL-3.0-or-later headers + a Zig→C→WASM-import architecture incompatible with the Deno-ESM emitter; it was deleted and the surface rebuilt in `stdlib/Pixi.affine` matching the wasmCall / motion pattern. Test fixture: `tests/codegen-deno/pixi_smoke.{affine,harness.mjs}`. Follow-ups: extensive Container accessors (anchor, scale, pivot, parent, zIndex, eventMode, filters, hitArea); FederatedEvent + on/off pointer-event surface; Point/Rectangle/Circle helper types; sprite atlases.
 
 |2
 |*@pixi/sound* (`Sound.from`, play, stop, volume, setVolume, loop)
