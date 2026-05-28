@@ -169,3 +169,85 @@ pub fn readResponse(t: Thenable) -> Response {
   }
   #{ status: responseStatus(t), headers: headers, body: responseBody(t) }
 }
+
+// ── HTTP server primitives (hpm-http-rsr Zig FFI surface) ────────────────────
+//
+// The server-side counterpart to `http_request`. Backed by the 10
+// `hpm_http_*` exports at
+// `hyperpolymath/http-capability-gateway/ffi/zig/src/main.zig`.
+//
+// Designed for the OikosBot webhook receiver path: bind once, accept in a
+// loop, inspect the request, reply, free. No keep-alive (every response
+// closes the connection). No TLS — designed to sit behind a reverse proxy
+// (Caddy / nginx).
+//
+// **Native-only.** These externs have no Deno-ESM lowering and will fail
+// at runtime there (consistent with the existing `http_request_thenable`
+// + `response*` wasm-path externs above). The natural deployment is the
+// WasmGC / native-C path linking libhttp_capability_gateway alongside
+// libhpm_crypto.
+//
+// Native lowering adapts the Zig size-query convention (`isize`, NULL/0
+// → required size, then re-call to write into a caller-provided buffer)
+// into AS-friendly `String` / `Option<String>` returns; AS callers never
+// see the two-step protocol.
+
+pub extern type HpmHttpServer;
+pub extern type HpmHttpRequest;
+
+/// Bind a TCP listener on `host:port`. Host is an IPv4/IPv6 string
+/// (e.g. `"0.0.0.0"`, `"127.0.0.1"`, `"::1"`). Pass `port = 0` to let
+/// the kernel pick a free port (then read it back with
+/// `hpm_http_server_port`). Returns `None` on host-parse / bind /
+/// allocator failure. Pair every `Some(s)` with `hpm_http_server_free(s)`.
+pub extern fn hpm_http_server_listen(host: String, port: Int) -> Option<HpmHttpServer> / { Net };
+
+/// The bound port (useful when `listen` was called with `port: 0`).
+/// Returns 0 on a null handle.
+pub extern fn hpm_http_server_port(server: HpmHttpServer) -> Int / { Net };
+
+/// Close the listener and free the handle. Does NOT affect requests
+/// already returned by `accept` — those must be freed independently
+/// with `hpm_http_request_free`. Returns 0.
+pub extern fn hpm_http_server_free(server: HpmHttpServer) -> Int / { Net };
+
+/// Block until a request arrives, parse its head, return a request
+/// handle. Returns `None` if accept failed, the client sent a
+/// malformed head, or the allocator failed. The TCP connection is
+/// closed automatically on failure. Pair every `Some(r)` with
+/// `hpm_http_request_free(r)`.
+pub extern fn hpm_http_server_accept(server: HpmHttpServer) -> Option<HpmHttpRequest> / { Net, Async };
+
+/// Request method ordinal, matching `std.http.Method`:
+/// `0=GET 1=HEAD 2=POST 3=PUT 4=DELETE 5=CONNECT 6=OPTIONS 7=TRACE 8=PATCH`.
+/// Returns -1 on a null handle.
+pub extern fn hpm_http_request_method(req: HpmHttpRequest) -> Int / { Net };
+
+/// Request target (URI path + query). Returns the empty string on a
+/// null handle.
+pub extern fn hpm_http_request_path(req: HpmHttpRequest) -> String / { Net };
+
+/// Look up a request header by case-insensitive name. Returns `None`
+/// if the header is absent. The native lowering hides the Zig
+/// size-query convention — AS callers see the decoded value
+/// directly.
+pub extern fn hpm_http_request_header(req: HpmHttpRequest, name: String) -> Option<String> / { Net };
+
+/// Read the entire request body. May only be called once per request
+/// — subsequent calls return the empty string. Native lowering caps
+/// the body at the Zig-side `HTTP_MAX_BODY_BYTES` (1 MiB); over-cap
+/// requests return the empty string.
+pub extern fn hpm_http_request_body(req: HpmHttpRequest) -> String / { Net };
+
+/// Send a complete HTTP response. `status` is the numeric status
+/// code (e.g. `200`, `404`, `500`). `headers` is a
+/// `"Name: Value\r\nName: Value"`-formatted extra-headers buffer
+/// (max 16 entries; pass the empty string for none). Connection is
+/// always closed after (no keep-alive). Returns 0 on success, -1 on
+/// error (already-responded / over-16-headers / IO failure).
+pub extern fn hpm_http_request_respond(req: HpmHttpRequest, status: Int, headers: String, body: String) -> Int / { Net };
+
+/// Close the TCP connection and free the request handle. Must be
+/// called exactly once for every `Some(r)` returned by
+/// `hpm_http_server_accept`. Returns 0.
+pub extern fn hpm_http_request_free(req: HpmHttpRequest) -> Int / { Net };
