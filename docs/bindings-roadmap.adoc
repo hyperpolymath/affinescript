@@ -67,9 +67,9 @@ no further significant ReScript → AffineScript work is tractable.
 
 |4
 |*motion* (animate, animateMini, tween, ease, spring)
-|`◐` scaffold (animate / await / cancel landed)
+|`●` usable
 |`stdlib/Motion.affine` (eventual home: `affinescript-motion`)
-|idaptik `src/bindings/Motion.res`; player + UI transitions. Initial surface (`motionAnimate` / `motionAwait` / `motionCancel`) lands in `stdlib/` parallel to Http / Sqlite / Crypto; consumer provides `globalThis.__as_motion` at module-init time. Test fixture: `tests/codegen-deno/motion_smoke.{affine,harness.mjs}`. Follow-ups: `animateMini`, `tween`, `ease`, `spring`, typed keyframe shapes.
+|idaptik `src/bindings/Motion.res`; player + UI transitions. Full surface (`motionAnimate` / `motionAwait` / `motionCancel` / `motionAnimateMini` / `motionTween` / `motionSpring` / `motionEase`) lives in `stdlib/` parallel to Http / Sqlite / Crypto; consumer provides `globalThis.__as_motion` at module-init time. Test fixture: `tests/codegen-deno/motion_smoke.{affine,harness.mjs}` exercises every extern. Remaining follow-ups (out of scope for `●`): typed keyframe shapes, typed transform-property surface, migration to a dedicated `affinescript-motion` package.
 
 |5
 |*WASM-exports calling pattern* — invoke individual `exports.fn_name(args)` from a `WasmExports` value

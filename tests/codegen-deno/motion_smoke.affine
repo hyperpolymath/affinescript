@@ -3,13 +3,28 @@
 //
 // The harness installs a mock at globalThis.__as_motion before
 // importing the generated module; we re-export thin wrappers so the
-// harness can drive `motionAnimate` / `motionCancel` via stable names.
+// harness can drive every motion extern via stable names.
+//
+// Coverage: animate / cancel (original) + animateMini / tween /
+// spring / ease (bindings #4 → ● promotion).
 
 use Deno::{Json};
-use Motion::{AnimationControls, motionAnimate, motionCancel};
+use Motion::{AnimationControls, Easing, motionAnimate, motionAnimateMini, motionCancel, motionEase, motionSpring, motionTween};
 
 pub fn smokeAnimate(target: Json, keyframes: Json, options: Json) -> AnimationControls =
   motionAnimate(target, keyframes, options);
 
 pub fn smokeCancel(controls: AnimationControls) -> Int =
   motionCancel(controls);
+
+pub fn smokeAnimateMini(target: Json, keyframes: Json, options: Json) -> AnimationControls =
+  motionAnimateMini(target, keyframes, options);
+
+pub fn smokeTween(target: Json, from: Json, to: Json, options: Json) -> AnimationControls =
+  motionTween(target, from, to, options);
+
+pub fn smokeSpring(target: Json, keyframes: Json, springConfig: Json) -> AnimationControls =
+  motionSpring(target, keyframes, springConfig);
+
+pub fn smokeEase(name: String) -> Easing =
+  motionEase(name);

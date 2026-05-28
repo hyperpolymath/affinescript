@@ -173,6 +173,18 @@ const __as_motionCancel = (controls) => {
   if (controls && typeof controls.cancel === "function") controls.cancel();
   return 0;
 };
+// `animateMini` / `tween` / `spring` / `ease` — bindings #4 follow-up
+// surface. Each helper resolves the host method on globalThis.__as_motion
+// at call time so a mock that only stubs a subset still works for the
+// rest (the smoke harness exercises every variant).
+const __as_motionAnimateMini = (target, keyframes, options) =>
+  globalThis.__as_motion.animateMini(target, keyframes, options);
+const __as_motionTween = (target, from, to, options) =>
+  globalThis.__as_motion.tween(target, from, to, options);
+const __as_motionSpring = (target, keyframes, springConfig) =>
+  globalThis.__as_motion.spring(target, keyframes, springConfig);
+const __as_motionEase = (name) =>
+  globalThis.__as_motion.ease(name);
 // ---- pixi.js (bindings #1): consumer-provided import ----
 // Host JS environment exposes globalThis.__as_pixi (the PIXI namespace
 // from `import * as PIXI from "pixi.js"`). Tests set it in the harness
@@ -417,6 +429,11 @@ let () =
   b "pixiUiSwitchNew"              (fun a -> Printf.sprintf "__as_pixiUiSwitchNew(%s)" (arg 0 a));
   b "pixiUiSwitchOnChange"         (fun a -> Printf.sprintf "__as_pixiUiSwitchOnChange(%s, %s)" (arg 0 a) (arg 1 a));
   b "pixiUiSwitchAsContainer"      (fun a -> Printf.sprintf "__as_pixiUiSwitchAsContainer(%s)" (arg 0 a));
+  (* ---- motion extras (bindings #4 follow-up) ---- *)
+  b "motionAnimateMini" (fun a -> Printf.sprintf "__as_motionAnimateMini(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
+  b "motionTween"   (fun a -> Printf.sprintf "__as_motionTween(%s, %s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a) (arg 3 a));
+  b "motionSpring"  (fun a -> Printf.sprintf "__as_motionSpring(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
+  b "motionEase"    (fun a -> Printf.sprintf "__as_motionEase(%s)" (arg 0 a));
   (* Generic JS array push helper (returns the array, fluent). *)
   b "arrayPush" (fun a -> Printf.sprintf "(%s.push(%s), %s)" (arg 0 a) (arg 1 a) (arg 0 a));
   (* ---- honest string/number primitives underpinning the
