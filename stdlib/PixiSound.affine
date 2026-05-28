@@ -1,0 +1,73 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// PixiSound.affine — bindings for the `@pixi/sound` npm library
+// (bindings #2 in docs/bindings-roadmap.adoc).
+//
+// Provides a typed surface over `@pixi/sound`'s `Sound.from()` factory
+// plus the basic transport operations (play / stop / pause / resume,
+// volume + loop control). Targets the Deno-ESM backend; the consumer
+// (or its host wrapper) is responsible for putting the `Sound` class
+// from `@pixi/sound` at `globalThis.__as_pixi_sound` before any
+// generated module that uses these externs runs. The test harness
+// pattern is in `tests/codegen-deno/pixisound_smoke.harness.mjs`.
+//
+// This file lives in `stdlib/` for parity with Motion / Http / Sqlite
+// / Crypto. The dedicated `affinescript-pixijs` sub-module / standalone
+// `affinescript-pixi-sound` package home flagged in the bindings
+// roadmap is the long-term destination; the migration from here to
+// there is additive and source-compatible.
+//
+// Surface coverage in this version: `Sound.from`, play, stop, pause,
+// resume, setVolume, setLoop — the same surface idaptik's
+// `src/bindings/PixiSound.res` consumes.
+// Follow-ups (deferred): `Sound.add` (multi-source registry), sprite
+// atlases (multi-segment audio with named ranges), async load
+// (`await Sound.from(...)` with onload Promise), `pauseAll` /
+// `stopAll` / `resumeAll`, the `sound` singleton's filter pipeline.
+// Status row in `docs/bindings-roadmap.adoc` (#2) updates with each
+// coverage tranche.
+
+module PixiSound;
+
+// Opaque handle to a `@pixi/sound` `Sound` instance. The underlying
+// value is the `Sound` object produced by `Sound.from(url)`; treated
+// opaquely at the AS boundary.
+pub extern type Sound;
+
+/// `Sound.from(url) -> Sound`. The argument is a URL or path; the
+/// host library is responsible for resolving + decoding it. Returns
+/// the constructed `Sound` handle synchronously; the underlying load
+/// may be in-flight (a `.play()` queued before the asset is ready is
+/// a documented `@pixi/sound` use-case — it autoplays on completion).
+pub extern fn pixiSoundFrom(url: String) -> Sound;
+
+/// `sound.play()` — start (or resume) playback from the beginning.
+/// Returns 0. `@pixi/sound`'s real `play` accepts an options object
+/// (volume / loop / sprite / completion callback); this minimal
+/// surface ignores it. Use `pixiSoundSetVolume` / `pixiSoundSetLoop`
+/// beforehand for the common cases.
+pub extern fn pixiSoundPlay(s: Sound) -> Int;
+
+/// `sound.stop()` — stop playback and reset the play head.
+/// Returns 0.
+pub extern fn pixiSoundStop(s: Sound) -> Int;
+
+/// `sound.pause()` — pause playback at the current position.
+/// Returns 0. Use `pixiSoundResume` to continue from the same point.
+pub extern fn pixiSoundPause(s: Sound) -> Int;
+
+/// `sound.resume()` — resume playback from a paused position.
+/// Returns 0. A `resume` on a non-paused sound is a no-op.
+pub extern fn pixiSoundResume(s: Sound) -> Int;
+
+/// `sound.volume = vol` — set playback volume in the conventional
+/// `[0.0, 1.0]` range (1.0 = full, 0.0 = silent). Values outside the
+/// range are accepted by `@pixi/sound` (the underlying Web Audio API
+/// gain node will clip), but consumers should treat that as out-of-
+/// contract. Returns 0.
+pub extern fn pixiSoundSetVolume(s: Sound, vol: Float) -> Int;
+
+/// `sound.loop = loop` — enable or disable looping. When `true`,
+/// playback restarts from the beginning on completion. Returns 0.
+pub extern fn pixiSoundSetLoop(s: Sound, loop: Bool) -> Int;

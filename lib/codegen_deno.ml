@@ -157,6 +157,106 @@ const __as_readDirNames = (p) => {
 const __as_isNotFound = (e) => (e instanceof Deno.errors.NotFound);
 const __as_wasmInstance = (bytes) =>
   new WebAssembly.Instance(new WebAssembly.Module(bytes)).exports;
+const __as_wasmCall = (exports, name, args) => Number(exports[name](...(args || [])));
+// ---- motion (bindings #4): consumer-provided import ----
+// Host JS environment must expose globalThis.__as_motion (the motion
+// library or a compatible mock). Tests set it in the harness before
+// importing the generated module; production consumers typically do
+// `import * as m from "motion"; globalThis.__as_motion = m;` once at
+// module-init time. The AffineScript-side externs (stdlib/Motion.affine)
+// don't see this indirection — they call __as_motion* helpers directly.
+const __as_motionAnimate = (target, keyframes, options) =>
+  globalThis.__as_motion.animate(target, keyframes, options);
+const __as_motionAwait = (controls) =>
+  Promise.resolve(controls).then(() => 0);
+const __as_motionCancel = (controls) => {
+  if (controls && typeof controls.cancel === "function") controls.cancel();
+  return 0;
+};
+// `animateMini` / `tween` / `spring` / `ease` — bindings #4 follow-up
+// surface. Each helper resolves the host method on globalThis.__as_motion
+// at call time so a mock that only stubs a subset still works for the
+// rest (the smoke harness exercises every variant).
+const __as_motionAnimateMini = (target, keyframes, options) =>
+  globalThis.__as_motion.animateMini(target, keyframes, options);
+const __as_motionTween = (target, from, to, options) =>
+  globalThis.__as_motion.tween(target, from, to, options);
+const __as_motionSpring = (target, keyframes, springConfig) =>
+  globalThis.__as_motion.spring(target, keyframes, springConfig);
+const __as_motionEase = (name) =>
+  globalThis.__as_motion.ease(name);
+// ---- pixi.js (bindings #1): consumer-provided import ----
+// Host JS environment exposes globalThis.__as_pixi (the PIXI namespace
+// from `import * as PIXI from "pixi.js"`). Tests set it in the harness
+// before importing the generated module.
+const __as_pixiAppInit = async (options) => {
+  const app = new globalThis.__as_pixi.Application();
+  await app.init(options);
+  return app;
+};
+const __as_pixiAppCanvas = (app) => app.canvas;
+const __as_pixiAppStage = (app) => app.stage;
+const __as_pixiAppTicker = (app) => app.ticker;
+const __as_pixiAppDestroy = (app) => { app.destroy(); return 0; };
+const __as_pixiContainerNew = () => new globalThis.__as_pixi.Container();
+const __as_pixiContainerAddChild = (p, c) => { p.addChild(c); return 0; };
+const __as_pixiContainerRemoveChild = (p, c) => { p.removeChild(c); return 0; };
+const __as_pixiContainerSetPosition = (c, x, y) => { c.x = x; c.y = y; return 0; };
+const __as_pixiContainerSetVisible = (c, v) => { c.visible = v; return 0; };
+const __as_pixiContainerDestroy = (c) => { c.destroy(); return 0; };
+const __as_pixiSpriteFrom = (t) => new globalThis.__as_pixi.Sprite(t);
+// Upcasts are identity — PIXI's class hierarchy makes Sprite/Graphics/
+// Text actual Container subclasses, so the JS object is the same.
+const __as_pixiSpriteAsContainer = (s) => s;
+const __as_pixiTextureFromUrl = (url) => globalThis.__as_pixi.Texture.from(url);
+const __as_pixiGraphicsNew = () => new globalThis.__as_pixi.Graphics();
+const __as_pixiGraphicsRect = (g, x, y, w, h) => { g.rect(x, y, w, h); return 0; };
+const __as_pixiGraphicsFill = (g, color) => { g.fill({ color }); return 0; };
+const __as_pixiGraphicsClear = (g) => { g.clear(); return 0; };
+const __as_pixiGraphicsAsContainer = (g) => g;
+const __as_pixiTextNew = (options) => new globalThis.__as_pixi.Text(options);
+const __as_pixiTextSetText = (t, content) => { t.text = content; return 0; };
+const __as_pixiTextAsContainer = (t) => t;
+const __as_pixiTickerAdd = (t, cb) => { t.add(cb); return 0; };
+const __as_pixiTickerStart = (t) => { t.start(); return 0; };
+const __as_pixiTickerStop = (t) => { t.stop(); return 0; };
+// ---- @pixi/ui (bindings #3): consumer-provided import ----
+// Host JS environment exposes globalThis.__as_pixi_ui (the namespace
+// from `import * as PixiUI from "@pixi/ui"`). Tests set it in the
+// harness before importing the generated module; production
+// consumers typically do once at module-init time. The
+// AffineScript-side externs (stdlib/PixiUI.affine) don't see this
+// indirection — they call __as_pixiUi* helpers directly.
+//
+// Upcasts to Container are identity — @pixi/ui's Button /
+// FancyButton / Slider / Switch are all real PIXI.Container
+// subclasses, so the JS object is the same.
+const __as_pixiUiButtonNew         = (options) => new globalThis.__as_pixi_ui.Button(options);
+const __as_pixiUiButtonOnPress     = (b, cb)   => { b.onPress.connect(cb); return 0; };
+const __as_pixiUiButtonAsContainer = (b)       => b;
+const __as_pixiUiFancyButtonNew         = (options) => new globalThis.__as_pixi_ui.FancyButton(options);
+const __as_pixiUiFancyButtonAsContainer = (b)       => b;
+const __as_pixiUiSliderNew         = (options) => new globalThis.__as_pixi_ui.Slider(options);
+const __as_pixiUiSliderOnUpdate    = (s, cb)   => { s.onUpdate.connect(cb); return 0; };
+const __as_pixiUiSliderAsContainer = (s)       => s;
+const __as_pixiUiSwitchNew         = (options) => new globalThis.__as_pixi_ui.Switch(options);
+const __as_pixiUiSwitchOnChange    = (sw, cb)  => { sw.onChange.connect(cb); return 0; };
+const __as_pixiUiSwitchAsContainer = (sw)      => sw;
+// ---- @pixi/sound (bindings #2): consumer-provided import ----
+// Host JS environment exposes globalThis.__as_pixi_sound (the `Sound`
+// named export from `@pixi/sound`). Tests set it in the harness before
+// importing the generated module; production consumers typically do
+// `import { Sound } from "@pixi/sound"; globalThis.__as_pixi_sound = Sound;`
+// once at module-init time. The AffineScript-side externs
+// (stdlib/PixiSound.affine) don't see this indirection — they call
+// __as_pixiSound* helpers directly.
+const __as_pixiSoundFrom = (url) => globalThis.__as_pixi_sound.from(url);
+const __as_pixiSoundPlay = (s) => { s.play(); return 0; };
+const __as_pixiSoundStop = (s) => { s.stop(); return 0; };
+const __as_pixiSoundPause = (s) => { s.pause(); return 0; };
+const __as_pixiSoundResume = (s) => { s.resume(); return 0; };
+const __as_pixiSoundSetVolume = (s, vol) => { s.volume = vol; return 0; };
+const __as_pixiSoundSetLoop = (s, loop) => { s.loop = loop; return 0; };
 // `++` is overloaded (string concat / array concat); `a + b` would
 // stringify arrays. Dispatch on shape so stdlib/string.affine's
 // `result ++ [x]` and `a ++ b` are both correct.
@@ -191,6 +291,57 @@ const __as_httpHeadersToObject = (pairs) => {
 const __as_httpHeadersFromResponse = (res) => {
   const out = [];
   res.headers.forEach((value, key) => out.push([key, value]));
+  return out;
+};
+// ---- hpm-json-rsr Zig FFI shims (stdlib/json.affine v0.3) ----
+// `HpmJsonValue` is opaque to AffineScript; on Deno-ESM it's just the
+// underlying JS value from JSON.parse. The shims mirror the sentinel
+// conventions of the Zig exports so the AffineScript-side wrappers
+// (`to_json`, `parse`) behave identically across backends.
+const __as_hpmJsonParse = (s) => {
+  try { return Some(JSON.parse(String(s))); } catch (_e) { return None; }
+};
+const __as_hpmJsonFree = (_v) => 0;
+const __as_hpmJsonType = (v) => {
+  if (v === null || v === undefined) return 0;
+  if (typeof v === "boolean") return 1;
+  if (typeof v === "number")  return Number.isInteger(v) ? 2 : 3;
+  if (typeof v === "string")  return 4;
+  if (Array.isArray(v))       return 5;
+  if (typeof v === "object")  return 6;
+  return -1;
+};
+const __as_hpmJsonBool = (v) => (typeof v === "boolean" ? (v ? 1 : 0) : -1);
+const __as_hpmJsonInt = (v) =>
+  (typeof v === "number" ? Math.trunc(v) : Number.MIN_SAFE_INTEGER);
+const __as_hpmJsonFloat = (v) => (typeof v === "number" ? v : NaN);
+const __as_hpmJsonString = (v) => (typeof v === "string" ? v : "");
+const __as_hpmJsonObjectGet = (v, k) => {
+  if (v === null || typeof v !== "object" || Array.isArray(v)) return None;
+  return Object.prototype.hasOwnProperty.call(v, String(k))
+    ? Some(v[String(k)]) : None;
+};
+const __as_hpmJsonArrayLen = (v) => (Array.isArray(v) ? v.length : 0);
+const __as_hpmJsonArrayGet = (v, i) => {
+  if (!Array.isArray(v)) return None;
+  const idx = Number(i);
+  return (idx >= 0 && idx < v.length) ? Some(v[idx]) : None;
+};
+const __as_hpmJsonEscapeString = (s) => {
+  let out = "";
+  const src = String(s);
+  for (let i = 0; i < src.length; i++) {
+    const c = src.charCodeAt(i);
+    if (c === 0x22) out += "\\\"";
+    else if (c === 0x5c) out += "\\\\";
+    else if (c === 0x0a) out += "\\n";
+    else if (c === 0x0d) out += "\\r";
+    else if (c === 0x09) out += "\\t";
+    else if (c === 0x08) out += "\\b";
+    else if (c === 0x0c) out += "\\f";
+    else if (c < 0x20) out += "\\u00" + c.toString(16).padStart(2, "0");
+    else out += src[i];
+  }
   return out;
 };
 const __as_httpFetch = async (url, method, headers, bodyOpt) => {
@@ -250,6 +401,62 @@ let () =
   (* ---- misc host ---- *)
   b "dateNow"     (fun _ -> "Date.now()");
   b "wasmInstance" (fun a -> Printf.sprintf "__as_wasmInstance(%s)" (arg 0 a));
+  b "wasmCall"     (fun a -> Printf.sprintf "__as_wasmCall(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
+  (* ---- motion (bindings #4) ---- *)
+  b "motionAnimate" (fun a -> Printf.sprintf "__as_motionAnimate(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
+  b "motionAwait"   (fun a -> Printf.sprintf "(await __as_motionAwait(%s))" (arg 0 a));
+  b "motionCancel"  (fun a -> Printf.sprintf "__as_motionCancel(%s)" (arg 0 a));
+  (* ---- pixi.js (bindings #1) ---- *)
+  b "pixiAppInit"              (fun a -> Printf.sprintf "(await __as_pixiAppInit(%s))" (arg 0 a));
+  b "pixiAppCanvas"            (fun a -> Printf.sprintf "__as_pixiAppCanvas(%s)" (arg 0 a));
+  b "pixiAppStage"             (fun a -> Printf.sprintf "__as_pixiAppStage(%s)" (arg 0 a));
+  b "pixiAppTicker"            (fun a -> Printf.sprintf "__as_pixiAppTicker(%s)" (arg 0 a));
+  b "pixiAppDestroy"           (fun a -> Printf.sprintf "__as_pixiAppDestroy(%s)" (arg 0 a));
+  b "pixiContainerNew"         (fun _ -> "__as_pixiContainerNew()");
+  b "pixiContainerAddChild"    (fun a -> Printf.sprintf "__as_pixiContainerAddChild(%s, %s)" (arg 0 a) (arg 1 a));
+  b "pixiContainerRemoveChild" (fun a -> Printf.sprintf "__as_pixiContainerRemoveChild(%s, %s)" (arg 0 a) (arg 1 a));
+  b "pixiContainerSetPosition" (fun a -> Printf.sprintf "__as_pixiContainerSetPosition(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
+  b "pixiContainerSetVisible"  (fun a -> Printf.sprintf "__as_pixiContainerSetVisible(%s, %s)" (arg 0 a) (arg 1 a));
+  b "pixiContainerDestroy"     (fun a -> Printf.sprintf "__as_pixiContainerDestroy(%s)" (arg 0 a));
+  b "pixiSpriteFrom"           (fun a -> Printf.sprintf "__as_pixiSpriteFrom(%s)" (arg 0 a));
+  b "pixiSpriteAsContainer"    (fun a -> Printf.sprintf "__as_pixiSpriteAsContainer(%s)" (arg 0 a));
+  b "pixiTextureFromUrl"       (fun a -> Printf.sprintf "__as_pixiTextureFromUrl(%s)" (arg 0 a));
+  b "pixiGraphicsNew"          (fun _ -> "__as_pixiGraphicsNew()");
+  b "pixiGraphicsRect"         (fun a -> Printf.sprintf "__as_pixiGraphicsRect(%s, %s, %s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a) (arg 3 a) (arg 4 a));
+  b "pixiGraphicsFill"         (fun a -> Printf.sprintf "__as_pixiGraphicsFill(%s, %s)" (arg 0 a) (arg 1 a));
+  b "pixiGraphicsClear"        (fun a -> Printf.sprintf "__as_pixiGraphicsClear(%s)" (arg 0 a));
+  b "pixiGraphicsAsContainer"  (fun a -> Printf.sprintf "__as_pixiGraphicsAsContainer(%s)" (arg 0 a));
+  b "pixiTextNew"              (fun a -> Printf.sprintf "__as_pixiTextNew(%s)" (arg 0 a));
+  b "pixiTextSetText"          (fun a -> Printf.sprintf "__as_pixiTextSetText(%s, %s)" (arg 0 a) (arg 1 a));
+  b "pixiTextAsContainer"      (fun a -> Printf.sprintf "__as_pixiTextAsContainer(%s)" (arg 0 a));
+  b "pixiTickerAdd"            (fun a -> Printf.sprintf "__as_pixiTickerAdd(%s, %s)" (arg 0 a) (arg 1 a));
+  b "pixiTickerStart"          (fun a -> Printf.sprintf "__as_pixiTickerStart(%s)" (arg 0 a));
+  b "pixiTickerStop"           (fun a -> Printf.sprintf "__as_pixiTickerStop(%s)" (arg 0 a));
+  (* ---- @pixi/ui (bindings #3) ---- *)
+  b "pixiUiButtonNew"              (fun a -> Printf.sprintf "__as_pixiUiButtonNew(%s)" (arg 0 a));
+  b "pixiUiButtonOnPress"          (fun a -> Printf.sprintf "__as_pixiUiButtonOnPress(%s, %s)" (arg 0 a) (arg 1 a));
+  b "pixiUiButtonAsContainer"      (fun a -> Printf.sprintf "__as_pixiUiButtonAsContainer(%s)" (arg 0 a));
+  b "pixiUiFancyButtonNew"         (fun a -> Printf.sprintf "__as_pixiUiFancyButtonNew(%s)" (arg 0 a));
+  b "pixiUiFancyButtonAsContainer" (fun a -> Printf.sprintf "__as_pixiUiFancyButtonAsContainer(%s)" (arg 0 a));
+  b "pixiUiSliderNew"              (fun a -> Printf.sprintf "__as_pixiUiSliderNew(%s)" (arg 0 a));
+  b "pixiUiSliderOnUpdate"         (fun a -> Printf.sprintf "__as_pixiUiSliderOnUpdate(%s, %s)" (arg 0 a) (arg 1 a));
+  b "pixiUiSliderAsContainer"      (fun a -> Printf.sprintf "__as_pixiUiSliderAsContainer(%s)" (arg 0 a));
+  b "pixiUiSwitchNew"              (fun a -> Printf.sprintf "__as_pixiUiSwitchNew(%s)" (arg 0 a));
+  b "pixiUiSwitchOnChange"         (fun a -> Printf.sprintf "__as_pixiUiSwitchOnChange(%s, %s)" (arg 0 a) (arg 1 a));
+  b "pixiUiSwitchAsContainer"      (fun a -> Printf.sprintf "__as_pixiUiSwitchAsContainer(%s)" (arg 0 a));
+  (* ---- motion extras (bindings #4 follow-up) ---- *)
+  b "motionAnimateMini" (fun a -> Printf.sprintf "__as_motionAnimateMini(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
+  b "motionTween"   (fun a -> Printf.sprintf "__as_motionTween(%s, %s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a) (arg 3 a));
+  b "motionSpring"  (fun a -> Printf.sprintf "__as_motionSpring(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
+  b "motionEase"    (fun a -> Printf.sprintf "__as_motionEase(%s)" (arg 0 a));
+  (* ---- @pixi/sound (bindings #2) ---- *)
+  b "pixiSoundFrom"      (fun a -> Printf.sprintf "__as_pixiSoundFrom(%s)" (arg 0 a));
+  b "pixiSoundPlay"      (fun a -> Printf.sprintf "__as_pixiSoundPlay(%s)" (arg 0 a));
+  b "pixiSoundStop"      (fun a -> Printf.sprintf "__as_pixiSoundStop(%s)" (arg 0 a));
+  b "pixiSoundPause"     (fun a -> Printf.sprintf "__as_pixiSoundPause(%s)" (arg 0 a));
+  b "pixiSoundResume"    (fun a -> Printf.sprintf "__as_pixiSoundResume(%s)" (arg 0 a));
+  b "pixiSoundSetVolume" (fun a -> Printf.sprintf "__as_pixiSoundSetVolume(%s, %s)" (arg 0 a) (arg 1 a));
+  b "pixiSoundSetLoop"   (fun a -> Printf.sprintf "__as_pixiSoundSetLoop(%s, %s)" (arg 0 a) (arg 1 a));
   (* Generic JS array push helper (returns the array, fluent). *)
   b "arrayPush" (fun a -> Printf.sprintf "(%s.push(%s), %s)" (arg 0 a) (arg 1 a) (arg 0 a));
   (* ---- honest string/number primitives underpinning the
@@ -299,7 +506,19 @@ let () =
      (see {!fd_is_async}). *)
   b "http_request" (fun a ->
     Printf.sprintf "(await __as_httpFetch(%s, %s, %s, %s))"
-      (arg 0 a) (arg 1 a) (arg 2 a) (arg 3 a))
+      (arg 0 a) (arg 1 a) (arg 2 a) (arg 3 a));
+  (* ---- hpm-json-rsr Zig FFI surface (stdlib/json.affine v0.3) ---- *)
+  b "hpm_json_parse"         (fun a -> Printf.sprintf "__as_hpmJsonParse(%s)" (arg 0 a));
+  b "hpm_json_free"          (fun a -> Printf.sprintf "__as_hpmJsonFree(%s)" (arg 0 a));
+  b "hpm_json_type"          (fun a -> Printf.sprintf "__as_hpmJsonType(%s)" (arg 0 a));
+  b "hpm_json_bool"          (fun a -> Printf.sprintf "__as_hpmJsonBool(%s)" (arg 0 a));
+  b "hpm_json_int"           (fun a -> Printf.sprintf "__as_hpmJsonInt(%s)" (arg 0 a));
+  b "hpm_json_float"         (fun a -> Printf.sprintf "__as_hpmJsonFloat(%s)" (arg 0 a));
+  b "hpm_json_string"        (fun a -> Printf.sprintf "__as_hpmJsonString(%s)" (arg 0 a));
+  b "hpm_json_object_get"    (fun a -> Printf.sprintf "__as_hpmJsonObjectGet(%s, %s)" (arg 0 a) (arg 1 a));
+  b "hpm_json_array_len"     (fun a -> Printf.sprintf "__as_hpmJsonArrayLen(%s)" (arg 0 a));
+  b "hpm_json_array_get"     (fun a -> Printf.sprintf "__as_hpmJsonArrayGet(%s, %s)" (arg 0 a) (arg 1 a));
+  b "hpm_json_escape_string" (fun a -> Printf.sprintf "__as_hpmJsonEscapeString(%s)" (arg 0 a))
 
 (* ============================================================================
    Identifier sanitisation (JS reserved words -> trailing underscore)

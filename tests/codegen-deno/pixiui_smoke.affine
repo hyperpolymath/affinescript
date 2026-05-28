@@ -1,0 +1,32 @@
+// SPDX-License-Identifier: MPL-2.0
+// bindings #3 — @pixi/ui smoke test.
+//
+// The harness mocks globalThis.__as_pixi_ui before importing the
+// generated module; this fixture exercises construction, callback
+// registration, and upcast → Container for each MVP component.
+
+use Deno::{Json};
+use PixiUI::{Button, FancyButton, Slider, Switch, Container, pixiUiButtonNew, pixiUiButtonOnPress, pixiUiButtonAsContainer, pixiUiFancyButtonNew, pixiUiFancyButtonAsContainer, pixiUiSliderNew, pixiUiSliderOnUpdate, pixiUiSliderAsContainer, pixiUiSwitchNew, pixiUiSwitchOnChange, pixiUiSwitchAsContainer};
+
+pub fn smokeButton(options: Json, callback: Json) -> Container {
+  let b = pixiUiButtonNew(options);
+  pixiUiButtonOnPress(b, callback);
+  pixiUiButtonAsContainer(b)
+}
+
+pub fn smokeFancyButton(options: Json) -> Container {
+  let fb = pixiUiFancyButtonNew(options);
+  pixiUiFancyButtonAsContainer(fb)
+}
+
+pub fn smokeSlider(options: Json, callback: Json) -> Container {
+  let s = pixiUiSliderNew(options);
+  pixiUiSliderOnUpdate(s, callback);
+  pixiUiSliderAsContainer(s)
+}
+
+pub fn smokeSwitch(options: Json, callback: Json) -> Container {
+  let sw = pixiUiSwitchNew(options);
+  pixiUiSwitchOnChange(sw, callback);
+  pixiUiSwitchAsContainer(sw)
+}

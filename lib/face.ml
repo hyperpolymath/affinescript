@@ -549,10 +549,49 @@ let format_borrow_error (face : face) (err : Borrow.borrow_error) : string =
 
 (* ─── Resolve errors ─────────────────────────────────────────────────── *)
 
+(* Known exports of stdlib/prelude.affine. When an UndefinedVariable /
+   UndefinedType fires with one of these names, the error formatter
+   suggests `use prelude::{...}` — the discoverability gap that issue
+   #138's "no flat builtin seeding" + stdlib roadmap #5 surfaced.
+   Keep this list in sync with stdlib/prelude.affine; a missing name
+   here means a worse error message, not incorrect behaviour. *)
+let prelude_exports = [
+  (* Types *)
+  "Option"; "Result";
+  (* Constructors *)
+  "Some"; "None"; "Ok"; "Err";
+  (* Functions *)
+  "map"; "filter"; "fold"; "contains";
+  "sum"; "product"; "min"; "max"; "clamp";
+  "not"; "all"; "any"; "range"; "repeat";
+]
+
+let prelude_hint (name : string) : string =
+  if List.mem name prelude_exports then
+    Printf.sprintf "\n  hint: `%s` is defined in `stdlib/prelude.affine` — add `use prelude::{%s};` (or `use prelude::*;`) at the top of the file."
+      name name
+  else ""
+
 (** Format a name-resolution error for the given face. *)
 let format_resolve_error (face : face) (err : Resolve.resolve_error) : string =
   match face with
-  | Canonical -> Resolve.show_resolve_error err
+  | Canonical ->
+    (match err with
+     | Resolve.UndefinedVariable id ->
+       Printf.sprintf "undefined value: `%s`%s" id.name (prelude_hint id.name)
+     | Resolve.UndefinedType id ->
+       Printf.sprintf "undefined type: `%s`%s" id.name (prelude_hint id.name)
+     | Resolve.UndefinedEffect id ->
+       Printf.sprintf "undefined effect: `%s`" id.name
+     | Resolve.UndefinedModule id ->
+       Printf.sprintf "undefined module: `%s`\n  hint: add `use %s::{...};` at the top of the file."
+         id.name id.name
+     | Resolve.DuplicateDefinition id ->
+       Printf.sprintf "duplicate definition of `%s`" id.name
+     | Resolve.VisibilityError (id, msg) ->
+       Printf.sprintf "`%s` is not accessible here: %s" id.name msg
+     | Resolve.ImportError msg ->
+       Printf.sprintf "import error: %s" msg)
   | Python ->
     (match err with
     | Resolve.UndefinedVariable id ->

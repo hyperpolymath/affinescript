@@ -1,0 +1,29 @@
+// SPDX-License-Identifier: MPL-2.0
+// bindings #1 — PixiJS smoke test.
+//
+// The harness mocks globalThis.__as_pixi before importing the
+// generated module; this fixture exercises the round-trip of each
+// extern shape (constructor, mutator, async init, upcast).
+
+use Deno::{Json};
+use Pixi::{Application, Container, Sprite, Graphics, Text, Texture, pixiAppInit, pixiAppStage, pixiContainerNew, pixiContainerAddChild, pixiContainerSetPosition, pixiContainerSetVisible, pixiSpriteFrom, pixiSpriteAsContainer, pixiTextureFromUrl, pixiGraphicsNew, pixiGraphicsRect, pixiGraphicsFill, pixiGraphicsAsContainer};
+
+pub fn smokeInit(options: Json) -> Application / { Async } = pixiAppInit(options);
+
+pub fn smokeSpriteFlow(app: Application, url: String) -> Int {
+  let texture = pixiTextureFromUrl(url);
+  let sprite = pixiSpriteFrom(texture);
+  let stage = pixiAppStage(app);
+  pixiContainerAddChild(stage, pixiSpriteAsContainer(sprite));
+  pixiContainerSetPosition(pixiSpriteAsContainer(sprite), 100.0, 200.0);
+  pixiContainerSetVisible(pixiSpriteAsContainer(sprite), true);
+  0
+}
+
+pub fn smokeGraphicsFlow(app: Application, color: Int) -> Int {
+  let g = pixiGraphicsNew();
+  pixiGraphicsRect(g, 0.0, 0.0, 50.0, 50.0);
+  pixiGraphicsFill(g, color);
+  pixiContainerAddChild(pixiAppStage(app), pixiGraphicsAsContainer(g));
+  0
+}

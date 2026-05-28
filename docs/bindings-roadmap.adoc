@@ -49,33 +49,33 @@ no further significant ReScript → AffineScript work is tractable.
 
 |1
 |*PixiJS core* (Application, Container, Sprite, Graphics, Text, Ticker, FederatedEvent)
-|`◐` scaffold
-|`affinescript-pixijs`
-|idaptik `src/bindings/Pixi.res`; all 215 `src/app/*.res` files depend on this. Currently 1 `.as` stub + 1 Idris2 ABI + 1 Zig FFI; needs full PixiJS 8.x surface.
+|`◑` partial (Application / Container / Sprite / Graphics / Text / Texture / Ticker landed; FederatedEvent + extensive accessor coverage deferred)
+|`stdlib/Pixi.affine` (eventual home: `affinescript-pixijs` as a separate repo per the SNIFs/typed-wasm precedent)
+|idaptik `src/bindings/Pixi.res`; all 215 `src/app/*.res` files depend on this. Restarted 2026-05-28 — the prior `affinescript-pixijs/` directory used the obsolete `.as` extension + AGPL-3.0-or-later headers + a Zig→C→WASM-import architecture incompatible with the Deno-ESM emitter; it was deleted and the surface rebuilt in `stdlib/Pixi.affine` matching the wasmCall / motion pattern. Test fixture: `tests/codegen-deno/pixi_smoke.{affine,harness.mjs}`. Follow-ups: extensive Container accessors (anchor, scale, pivot, parent, zIndex, eventMode, filters, hitArea); FederatedEvent + on/off pointer-event surface; Point/Rectangle/Circle helper types; sprite atlases.
 
 |2
 |*@pixi/sound* (`Sound.from`, play, stop, volume, setVolume, loop)
-|`○`
-|`affinescript-pixijs` sub-module, or `affinescript-pixi-sound`
-|idaptik `src/bindings/PixiSound.res`; BGM + SFX.
+|`◐` scaffold (from / play / stop / pause / resume / setVolume / setLoop landed)
+|`stdlib/PixiSound.affine` (eventual home: `affinescript-pixijs` sub-module, or `affinescript-pixi-sound`)
+|idaptik `src/bindings/PixiSound.res`; BGM + SFX. Initial surface (`pixiSoundFrom` / `pixiSoundPlay` / `pixiSoundStop` / `pixiSoundPause` / `pixiSoundResume` / `pixiSoundSetVolume` / `pixiSoundSetLoop`) lands in `stdlib/` parallel to Motion / Http / Sqlite / Crypto; consumer provides `globalThis.__as_pixi_sound` (the `Sound` named export from `@pixi/sound`) at module-init time. Test fixture: `tests/codegen-deno/pixisound_smoke.{affine,harness.mjs}`. Follow-ups: `Sound.add` (multi-source registry), sprite atlases, async load (await + onload), `pauseAll` / `stopAll` / `resumeAll`, the `sound` singleton's filter pipeline.
 
 |3
 |*@pixi/ui* (Button, FancyButton, Switch, Slider, Input, ScrollBox)
-|`○`
-|`affinescript-pixijs` sub-module
-|idaptik `src/bindings/PixiUI.res`; all HUD / menu code.
+|`◐` scaffold
+|`stdlib/PixiUI.affine` (eventual home: `affinescript-pixijs` sub-module)
+|idaptik `src/bindings/PixiUI.res`; all HUD / menu code. MVP surface (Button / FancyButton / Slider / Switch — `new` + primary callback + `AsContainer` upcast) lives in `stdlib/` alongside Pixi / PixiSound; consumer provides `globalThis.__as_pixi_ui` at module-init time. Test fixture: `tests/codegen-deno/pixiui_smoke.{affine,harness.mjs}`. Deferred follow-ups: Input (text-entry + focus + value), ScrollBox (scroll position + viewport), full event surface (onHover / onOut / onDown / onUp), FancyButton textures-per-state accessors, Slider min/max/step accessors.
 
 |4
 |*motion* (animate, animateMini, tween, ease, spring)
-|`○`
-|`affinescript-motion`
-|idaptik `src/bindings/Motion.res`; player + UI transitions.
+|`●` usable
+|`stdlib/Motion.affine` (eventual home: `affinescript-motion`)
+|idaptik `src/bindings/Motion.res`; player + UI transitions. Full surface (`motionAnimate` / `motionAwait` / `motionCancel` / `motionAnimateMini` / `motionTween` / `motionSpring` / `motionEase`) lives in `stdlib/` parallel to Http / Sqlite / Crypto; consumer provides `globalThis.__as_motion` at module-init time. Test fixture: `tests/codegen-deno/motion_smoke.{affine,harness.mjs}` exercises every extern. Remaining follow-ups (out of scope for `●`): typed keyframe shapes, typed transform-property surface, migration to a dedicated `affinescript-motion` package.
 
 |5
 |*WASM-exports calling pattern* — invoke individual `exports.fn_name(args)` from a `WasmExports` value
-|`◐` host-side; AS-side `○`
-|`stdlib/Deno.affine` extension or new `stdlib/wasm.affine`
-|`stdlib/Deno.affine` already exposes `wasmInstance(bytes) -> WasmExports` + the type, but no surface to *call* exports. idaptik `vm/wasm` is blocked here; ~30 per-Zig-fn extern fns needed, or one generic `wasm_call(exports, name, args) -> Float`. *Smallest scope, highest leverage — recommended kickoff.*
+|`●` usable (Option A landed)
+|`stdlib/Deno.affine`
+|`wasmCall(exports: WasmExports, name: String, args: [Float]) -> Float` lowers to `Number(exports[name](...args))` on `--deno-esm`. AS-side surface + docstring example landed in `stdlib/Deno.affine`; round-trip exercised by `tests/codegen-deno/wasm_call.{affine,harness.mjs}` against a hand-built 41-byte wasm module exporting `add(i32, i32) -> i32`. *Option A (generic) — typed per-Zig-fn shims can layer on top per-consumer if needed.* Closes #414 via host-side #422 + AS-side this PR.
 
 |6
 |*Phoenix Channels / WebSocket* (Socket connect/disconnect, Channel join/leave/push, presence)
@@ -390,10 +390,12 @@ Build, test, and cross-language surface.
   bindings, four (#1, #2, #3, and #4 by extension) are PixiJS-ecosystem.
   Investing in `affinescript-pixijs` unblocks the largest single chunk
   of idaptik's 215-file `src/app/` tree.
-. *WASM-exports calling is a one-day fix with high leverage.* Item #5
-  — adding `extern fn wasm_export_call(exports: WasmExports, name: String, args: [Float]) -> Float`
-  to `stdlib/Deno.affine` (or 30 per-Zig-fn externs) unblocks idaptik
-  `vm/wasm` *and* every future WASM-host consumer in the estate.
+. *WASM-exports calling LANDED.* Item #5 — `wasmCall(exports, name, args) -> Float`
+  in `stdlib/Deno.affine` ships the generic Option A surface; idaptik
+  `vm/wasm` and every future WASM-host consumer in the estate can now
+  call individual exports without a per-fn extern. Typed per-Zig-fn
+  shims can layer on top per-consumer where the discipline is worth
+  the brittleness.
 . *DOM is closest to done* — issue #255 (for-in / while wasm codegen)
   is the blocker, not the binding surface itself. That's a codegen bug,
   not a binding gap; classified separately so it doesn't get re-scoped

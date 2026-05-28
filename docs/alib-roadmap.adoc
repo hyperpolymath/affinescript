@@ -135,10 +135,10 @@ edge-case requirements.
 |Mechanical comparison; ensures cross-language portability of code written against the aLib surface.
 
 |10
-|*Conformance module* — `stdlib/alib.affine` re-exporting the 20 ops under their aLib names
-|`○`
+|*Conformance module* — `stdlib/alib.affine` re-exporting the 22 ops under their aLib names (was "20"; current aggregate.json v0.1.0 has 22 across 6 categories: 5 arithmetic, 6 comparison, 3 logical, 3 string, 4 collection, 1 conditional)
+|`●`
 |T1
-|Single import point for consumers wanting the *aLib surface* rather than the *AffineScript-idiomatic surface*.
+|Single import point for consumers wanting the *aLib surface* rather than the *AffineScript-idiomatic surface*. Landed 2026-05-28.
 |===
 
 == Tier 2 — Conformance runner & infrastructure
@@ -153,9 +153,9 @@ aLib's "method" actually testable for our language.
 
 |11
 |*`aggregate.json` schema loader* — parse aLib's v1.1.0 schema in AffineScript (or via build tool)
-|`○`
+|`●`
 |T2
-|First step; feeds every later runner item.
+|First step; feeds every later runner item. Landed 2026-05-28 as `stdlib/AlibSchema.affine` (Approach A — AffineScript-side parser over the `hpm_json_*` lazy-handle FFI from `stdlib/json.affine`). Public entry points: `parse_schema(src) -> Result<AlibSchema, String>`, `load_schema(path)`, `load_estate_schema()`. Captures `name` / `category` / `signature_string` / `semantics.purpose` / `test_cases[]` (with `description` + `input_count`) per op — sufficient for the #12 dispatch loop.
 
 |12
 |*Test-vector executor* — iterate `operations[].test_cases[]`, dispatch to the corresponding `alib.affine` op, compare output
