@@ -1,0 +1,229 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+
+= FRG-PROFILE — AffineScript
+:toc: left
+:toclevels: 2
+
+[cols="1,3"]
+|===
+| Field | Value
+
+| Language | AffineScript (`.affine`)
+| Repository | https://github.com/hyperpolymath/affinescript
+| Current FRG Grade | *E*  (well-formedness only; QTT-affine discipline embedded in implementation; no qualifying-prover formalisation of the calculus yet)
+| Assessed | 2026-05-28
+| Assessor | Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+| FRG Spec Version | 1.0
+| ARG Profile | spec/ARG-PROFILE.adoc
+| TRG Profile | spec/TRG-PROFILE.adoc (TBD)
+| Formalisation Directory | (none — `formal/` does not exist)
+| Qualifying Prover(s) | (none mechanised)
+|===
+
+== About this profile
+
+AffineScript carries a strong implementation-level QTT-affine
+discipline: CLI `check`, `compile`, `eval` gate user programs on
+borrow-check + usage-tracking violations. The conformance corpus
+(`conformance/valid/`, `conformance/invalid/`) exercises the
+typing discipline empirically. However, the *calculus itself* is
+not yet formalised in a qualifying prover. There is no `formal/`
+directory; no Coq/Lean/Idris2/Agda mechanisation; no preservation
+statement.
+
+FRG = E is the honest reading: the language has well-formedness
+*operationally* (via the implementation) and a structured
+conformance corpus, but not a *mechanised* typing judgment in the
+sense FRG §3.1 M2 requires. To move past E, the QTT-affine
+fragment needs to be encoded in a qualifying prover.
+
+FRG = E. The full chain of axes:
+
+* FRG: E
+* ARG: D (see `spec/ARG-PROFILE.adoc`)
+* TRG: TBD (likely D)
+* CRG: TBD
+* RSR: Compliant at TRG-D level
+
+Cross-axis rule: ARG-A requires FRG ≥ B (AffineScript does not
+currently target ARG-A; the FRG floor is currently the binding
+constraint for ARG progression past B).
+
+== Declared TypeLL level
+
+* *TypeLL level claimed:* L7 (Linear / QTT-affine) *operationally*,
+  not L4 with linear-aspirations
+* *Caveat:* FRG §3.4 says claiming L7 without a *soundness proof*
+  is not L7. By that strict reading, AffineScript is L4 with L7
+  aspirations. The current claim is justified by the implementation
+  gating user programs on borrow-check violations, which is
+  *operational* enforcement, not mechanised proof.
+* *Honest level for FRG:* L4 (Type compatibility) — implementation
+  enforces, but no formal soundness claim is mechanised. The README
+  "QTT-style usage tracking" wording is correct for the
+  implementation but not yet for FRG.
+
+== Grade rationale (evidence for E)
+
+[cols="2,1,4", options="header"]
+|===
+| Criterion | Met? | Evidence
+
+| *M1 — Abstract syntax formalised*
+| NO
+| No `formal/` directory; AST exists only in Rust implementation
+  source
+
+| *M2 — Typing judgment formalised*
+| NO
+| Typing judgment exists only in Rust implementation (typechecker
+  module)
+
+| *M3 — Operational semantics formalised*
+| NO
+| Semantics exists only in implementation interpreter / codegen
+
+| *M4 — Preservation theorem stated*
+| NO
+| Not stated in any qualifying prover
+
+| *M5 — Progress theorem stated*
+| NO
+| Not stated
+
+| *P1-P4 — Proof landings*
+| NO (E-permissive; required from C/B)
+|
+
+| *V1 — Single qualifying prover*
+| NO
+| Required for E; currently NOT satisfied. *This is the binding
+  constraint for E — without mechanisation, the language is FRG-X.*
+
+| *TypeLL L1-L4*
+| YES (operationally)
+| Parser accepts (L1), structure-matches-grammar (L2), references
+  resolve (L3), types align (L4 via Rust typechecker)
+
+| *B0 — Zero banned constructs in proof tree*
+| YES (vacuously)
+| No proof tree exists yet
+
+| *B1 — CI banned-construct lint*
+| N/A
+| No proof tree to lint
+
+| *VeriSimDB attestation*
+| NO (E-permissive)
+|
+|===
+
+== Strict reading
+
+By the strict reading of FRG §4.3, grade E requires:
+
+. *V1 — Single qualifying prover used for M1-M5*. AffineScript does
+  NOT meet this. The implementation-level QTT-affine discipline is
+  not equivalent to mechanised formalisation in Coq/Lean/Idris2/Agda.
+
+. *M1 + M2 in a qualifying prover*. NOT met.
+
+Under the strict reading, AffineScript is *FRG-X* (no formal
+artefact in a qualifying prover).
+
+== Pragmatic reading
+
+The pragmatic argument for *FRG-E* rather than X:
+
+* The conformance corpus (`conformance/`) provides positive and
+  negative type-checking examples that serve as a *test-based*
+  surrogate for well-formedness.
+* The implementation typechecker gates user programs, which
+  operationally enforces M2.
+* The README's "Honest status sync" block dated 2026-04-12
+  explicitly acknowledges what is and isn't done (good FRG-discipline
+  hygiene even without a `formal/` dir).
+
+*This profile claims FRG-E on the pragmatic reading, with the
+strict reading recorded above for honesty.* A future FRG-PROFILE
+revision SHOULD adopt the strict reading (FRG-X) until a
+qualifying-prover formalisation lands.
+
+== Language-specific tightening
+
+For AffineScript, the following FRG tightening applies:
+
+* *Grade D tightening:* The formalisation MUST encode the
+  QTT-affine fragment specifically (not just an unrestricted
+  type system) and the preservation theorem stated MUST be the
+  affine-fragment preservation, not a generic one.
+* *Grade C tightening:* The formalisation MUST be closed under
+  the affine restriction (no q=ω escape via the affine rule
+  weakening). This is the affinescript-specific soundness claim.
+* *Grade B tightening:* The implementation typechecker MUST be
+  differentially tested against the formal judgment for ≥ 10000
+  generated programs (O1 baseline raised from 1000).
+
+== What is NOT yet met (honest gaps)
+
+* No formalisation directory.
+* No qualifying-prover encoding of the AST or typing judgment.
+* No preservation or progress statement.
+* No PROOF-NEEDS.md (this is a real gap — TRG and FRG conventions
+  expect this even at low grades to enumerate what's open).
+* No banned-construct lint (there's nothing to lint, but the lint
+  config should be added to CI in anticipation).
+
+== Path to next grade (D — preservation stated)
+
+* Create `formal/` directory.
+* Encode AST in a qualifying prover (Rocq is the natural choice
+  for compatibility with ephapax / typed-wasm).
+* Encode typing judgment.
+* Encode operational semantics.
+* State preservation and progress theorems (no closure yet).
+* Author PROOF-NEEDS.md listing the open obligations.
+* Wire CI to build the formalisation.
+
+*Realistic timeline estimate:* 2-4 months given that affinescript's
+calculus is more complex than ephapax-linear's (QTT + affine +
+dependent/refinement aspirations).
+
+== Path to grade beyond that (C — preservation closed)
+
+* Close preservation under the affine restriction.
+* Close progress.
+* Reach TypeLL L6 honestly (with mechanised soundness for the L4
+  fragment and L5 nullability — affinescript inherits ReScript's
+  null-discipline).
+* Stand up PROOF-STATUS.a2ml.
+
+== Demotion risk
+
+* *Lowest:* If FRG strict reading is adopted, drops to X immediately.
+* *Medium:* If the README "Honest status sync" block is replaced
+  with claims that overstate formal-foundations work — risks F.
+* *Catastrophic:* Implementation typechecker silently accepts
+  programs the (future) formal judgment rejects, without
+  PROOF-NEEDS.md tracking the gap — would risk F if maintained.
+
+== Iteration history
+
+[cols="1,1,4", options="header"]
+|===
+| Date | Grade | Notes
+
+| 2026-05-28 | E (pragmatic) | Initial FRG assessment. Strict reading = X (no formal/). Pragmatic E based on conformance corpus + operational typechecker + honest README status block. Recommend adopting strict X until qualifying-prover mechanisation lands.
+|===
+
+== Review cycle
+
+* *Routine:* Reassess on every release cycle.
+* *Immediate:* Reassess within 7 days of any demotion trigger.
+* *New formalisation arrival:* Reassess when `formal/` is created.
+
+== Footer
+
+This profile is itself a VCL-total proposition. `DECLARE`'d to
+VeriSimDB on each commit (once ingestion wired).

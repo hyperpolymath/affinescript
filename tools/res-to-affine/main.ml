@@ -87,8 +87,8 @@ let output_arg =
 
 let engine_arg =
   let doc =
-    "Detection engine: 'scanner' (default, line-regex, Phase 1) or \
-     'walker' (tree-sitter AST, Phase 2). The walker requires the \
+    "Detection engine: 'walker' (default, tree-sitter AST, Phase 2c) \
+     or 'scanner' (line-regex, Phase 1). The walker requires the \
      vendored grammar to be built — see `just install-grammar`. \
      Falls back to 'scanner' if the grammar is missing or \
      tree-sitter parse fails."
@@ -96,7 +96,7 @@ let engine_arg =
   Cmdliner.Arg.(
     value & opt
       (enum ["scanner", Scanner_engine; "walker", Walker_engine])
-      Scanner_engine &
+      Walker_engine &
     info ["engine"] ~docv:"ENGINE" ~doc)
 
 let grammar_dir_arg =

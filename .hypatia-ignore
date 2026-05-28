@@ -23,3 +23,4 @@
 # exemption avoids touching the file content. See feedback memory
 # `feedback_inline_pragma_vs_snapshot_test` for the general principle.
 cicd_rules/banned_language_file:tools/res-to-affine/test/fixtures/sample.res
+cicd_rules/banned_language_file:tools/res-to-affine/test/fixtures/phase2c.res

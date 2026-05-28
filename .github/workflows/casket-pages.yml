@@ -80,6 +80,15 @@ jobs:
 
       - name: Setup Pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+        with:
+          # Self-provision Pages on first run instead of failing with
+          # 404 ("Get Pages site failed"). The repo had Pages disabled
+          # at the GitHub level since the workflow was added; rather
+          # than maintain that as out-of-band state, let the workflow
+          # enable it. Idempotent on subsequent runs. The workflow's
+          # own permissions (pages: write, id-token: write) authorise
+          # this.
+          enablement: true
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0

@@ -48,14 +48,69 @@ let create (config : config) : t =
     loading = Hashtbl.create 16;
   }
 
+(** Test whether a candidate stdlib directory contains the prelude. *)
+let stdlib_dir_valid path =
+  Sys.file_exists (Filename.concat path "prelude.affine")
+
+(** Walk up from [start_dir] looking for an ancestor whose [stdlib/]
+    sub-directory contains the prelude. Returns [Some path] on hit, [None]
+    after exhausting the parent chain. Used by [default_config] to find
+    the stdlib when [affinescript check] is invoked from a sub-directory
+    of an affinescript repo (issue #415). *)
+let find_stdlib_walking_up start_dir =
+  let rec walk dir =
+    let candidate = Filename.concat dir "stdlib" in
+    if stdlib_dir_valid candidate then Some candidate
+    else
+      let parent = Filename.dirname dir in
+      if parent = dir then None
+      else walk parent
+  in
+  walk start_dir
+
+(** Discover the stdlib directory by trying, in order:
+    1. [$AFFINESCRIPT_STDLIB] — explicit operator override
+    2. [./stdlib] — current behaviour, for in-repo dev
+    3. Walk up from CWD looking for [stdlib/prelude.affine] — catches
+       sub-directory invocations of [affinescript check]
+    4. [<binary_dir>/../share/affinescript/stdlib/] — XDG-style installed
+       location alongside an installed binary
+    5. [$HOME/.local/share/affinescript/stdlib/] — user-local install
+    Falls back to ["./stdlib"] (and lets the loader's own
+    [ModuleNotFound] surface for a clean error) if nothing matches.
+    Issue #415. *)
+let discover_stdlib () =
+  match Sys.getenv_opt "AFFINESCRIPT_STDLIB" with
+  | Some p -> p
+  | None ->
+    let cwd = Sys.getcwd () in
+    let cwd_local = Filename.concat cwd "stdlib" in
+    if stdlib_dir_valid cwd_local then cwd_local
+    else match find_stdlib_walking_up cwd with
+    | Some p -> p
+    | None ->
+      let binary_share =
+        let bin = Sys.executable_name in
+        if bin <> "" then
+          Filename.concat
+            (Filename.dirname (Filename.dirname bin))
+            "share/affinescript/stdlib"
+        else ""
+      in
+      if binary_share <> "" && stdlib_dir_valid binary_share then binary_share
+      else
+        let user_share =
+          match Sys.getenv_opt "HOME" with
+          | Some h -> Filename.concat h ".local/share/affinescript/stdlib"
+          | None -> ""
+        in
+        if user_share <> "" && stdlib_dir_valid user_share then user_share
+        else "./stdlib"  (* preserves the historical default error path *)
+
 (** Create default configuration *)
 let default_config () : config =
-  let stdlib_path =
-    try Sys.getenv "AFFINESCRIPT_STDLIB"
-    with Not_found -> "./stdlib"
-  in
   {
-    stdlib_path;
+    stdlib_path = discover_stdlib ();
     search_paths = [];
     current_dir = Sys.getcwd ();
   }

@@ -1,0 +1,21 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell
+//
+// CORE-01 pt3 / #177 deferred-items: assignment-clears-move.
+// Pre-fix, `x = …` after a prior move of `x` was rejected with
+// UseAfterMove because StmtAssign treated the LHS as a read.  A
+// whole-place write must REVIVE the place: the assignment must
+// not fail, and subsequent reads of `x` must succeed.
+// Expected: Ok.
+
+module BorrowAssignClearsMove;
+
+fn drop_int(x: own Int) -> Unit = ();
+fn read_int(x: Int) -> Int = 0;
+
+fn revive_after_move() -> Int {
+  let mut x = 1;
+  drop_int(x);
+  x = 2;
+  read_int(x)
+}

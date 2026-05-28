@@ -4,7 +4,7 @@
   "exports": {
     ".": "./mod.js"
   },
-  "license": "MPL-2.0",
+  "license": "AGPL-3.0-or-later",
   "publish": {
     "exclude": ["mod_test.js"]
   },

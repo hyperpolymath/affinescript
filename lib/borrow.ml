@@ -94,6 +94,19 @@ type state = {
       *caller-owned* referents and are deliberately absent here — returning
       a borrow of them is sound. CORE-01 pt2 / #177 (return-escape). *)
   mutable callee_owned_params : Symbol.symbol_id list;
+
+  (** Sym-ids of bindings declared @linear (`QOne`) in the current
+      function — surfaced as explicit `@linear` annotations on lets/params
+      and as inferred `QOne` from a [Cmd _] type annotation.  Maintained
+      alongside the quantity checker's per-block linear-tracking so the
+      borrow checker can reject *capture* of these bindings by a closure:
+      a closure can be called 0..N times, so capturing a linear binding
+      makes its consumption count unprovable at borrow time.  The quantity
+      checker also catches this via [QOmega] scaling of captures, but the
+      borrow-side error fires earlier in the pipeline and points at the
+      *lambda* span (the capture site) rather than at a downstream "used
+      multiple times" diagnostic.  CORE-01 pt3 Slice D / #177. *)
+  mutable linear_bindings : Symbol.symbol_id list;
 }
 
 (** Borrow checker errors *)
@@ -108,6 +121,11 @@ type borrow_error =
       (** use of [place] (at the trailing span) while a still-live exclusive
           borrow holds it — the shared-XOR-exclusive aliasing rule, enforced
           at use sites, not only at borrow creation. CORE-01 / #177. *)
+  | LinearCapturedByClosure of string * Span.t
+      (** the named @linear binding has been captured as a closure free
+          variable at the lambda's span — capturing extends consumption
+          beyond what the @linear contract can be checked at borrow time
+          (a closure may be called 0..N times). CORE-01 pt3 Slice D / #177. *)
 [@@deriving show]
 
 type 'a result = ('a, borrow_error) Result.t
@@ -152,7 +170,26 @@ let create () : state =
     ref_bindings = [];
     block_local_syms = [];
     callee_owned_params = [];
+    linear_bindings = [];
   }
+
+(** Mirror of [Quantity.quantity_of_ty_annotation]: returns [QOne] when the
+    given type annotation is a [Cmd _] application (linear by construction
+    per ADR-002 / Stage 11), [QOmega] otherwise. Duplicated here so
+    [Borrow] does not depend on [Quantity]; the canonical helper still
+    lives in [quantity.ml]. CORE-01 pt3 Slice D / #177. *)
+let borrow_quantity_of_ty (te_opt : type_expr option) : quantity =
+  match te_opt with
+  | Some (TyApp ({ name = "Cmd"; _ }, _)) -> QOne
+  | _ -> QOmega
+
+(** Returns true if a let-binding declared with the given explicit-quantity
+    annotation and type annotation should be tracked as @linear (QOne) by
+    the borrow checker. CORE-01 pt3 Slice D / #177. *)
+let let_is_linear (q_opt : quantity option) (ty_opt : type_expr option) : bool =
+  match q_opt with
+  | Some q -> q = QOne
+  | None -> borrow_quantity_of_ty ty_opt = QOne
 
 (** Add a function signature to context *)
 let add_fn_signature (ctx : context) (fd : fn_decl) : unit =
@@ -369,6 +406,13 @@ let format_borrow_error (e : borrow_error) : string =
        exclusive borrow (id %d) taken at %s is still live"
       (format_place place) (format_span use_span)
       b.b_id (format_span b.b_span)
+  | LinearCapturedByClosure (name, lam_span) ->
+    Printf.sprintf
+      "cannot capture @linear binding `%s` in a closure (at %s)\n  \
+       a closure may be called zero or many times, so capturing a \
+       @linear binding makes its consumption count unprovable. \
+       Inline the use, or move the binding into the closure body."
+      name (format_span lam_span)
 
 (** Get span from an expression *)
 let rec expr_span (expr : expr) : Span.t =
@@ -494,27 +538,64 @@ and expr_to_place (symbols : Symbol.t) (expr : expr) : place option =
     expr_to_place symbols e
   | _ -> None
 
-(** Record a borrow-graph edge for [let <pat> = &p] (or [&mut p]).
+(** Look up the live borrow that [expr] denotes, after the expression has
+    been checked. Handles three cases:
+      - [&p] / [&mut p]: find the borrow on [p] in [state.borrows];
+      - [r] where [r] is a ref-binder symbol: return its [state.ref_bindings]
+        entry (the same borrow it already aliases) — this is ref-to-ref
+        binding / reborrow through indirection;
+      - anything else: None.
+    Used by [record_ref_binding] (let path) and [StmtAssign] (assign path)
+    so [let r2 = r] and [r2 = r] both extend the borrow-graph correctly.
+    CORE-01 / #177 ref-to-ref. *)
+let rec ref_source_borrow (state : state) (symbols : Symbol.t)
+    (expr : expr) : borrow option =
+  match expr with
+  | ExprSpan (e, _) -> ref_source_borrow state symbols e
+  | ExprUnary ((OpRef | OpMutRef), _) ->
+    (match ref_target symbols expr with
+     | Some target ->
+       List.find_opt (fun b -> places_overlap b.b_place target) state.borrows
+     | None -> None)
+  | ExprVar id ->
+    (match lookup_symbol_by_name symbols id.name with
+     | Some sym -> List.assoc_opt sym.Symbol.sym_id state.ref_bindings
+     | None -> None)
+  | _ -> None
 
-    Call *after* the value expression has been checked, so the borrow it
-    created is already on [state.borrows]. Binds the let-bound symbol to
-    that borrow so block-exit validation can detect a reference outliving
-    a block-local owner. CORE-01 / #177. *)
+(** Cheap structural test: would [expr] supply a reborrow source on
+    [StmtAssign]? Used *before* the RHS check, so it does not consult
+    live borrow state — only the structural shape of [expr] and the
+    pre-existing [state.ref_bindings] (for the ref-var path). *)
+let rec is_reborrow_source (state : state) (symbols : Symbol.t)
+    (expr : expr) : bool =
+  match expr with
+  | ExprSpan (e, _) -> is_reborrow_source state symbols e
+  | ExprUnary ((OpRef | OpMutRef), _) -> true
+  | ExprVar id ->
+    (match lookup_symbol_by_name symbols id.name with
+     | Some sym -> List.mem_assoc sym.Symbol.sym_id state.ref_bindings
+     | None -> false)
+  | _ -> false
+
+(** Record a borrow-graph edge for [let <pat> = <ref-source>].
+
+    [<ref-source>] is either a direct [&p]/[&mut p] *or* another ref-binder
+    variable [r] (ref-to-ref binding). Call *after* the value expression has
+    been checked, so the underlying borrow is already on [state.borrows]
+    (or already aliased via [state.ref_bindings] for the ref-var path).
+    CORE-01 / #177. *)
 let record_ref_binding (state : state) (symbols : Symbol.t)
     (pat : pattern) (value : expr) : unit =
   match pat with
   | PatVar id ->
-    begin match ref_target symbols value with
-    | Some target ->
-      begin match
-        List.find_opt (fun b -> places_overlap b.b_place target) state.borrows,
-        lookup_symbol_by_name symbols id.name
-      with
-      | Some b, Some sym ->
-        state.ref_bindings <- (sym.Symbol.sym_id, b) :: state.ref_bindings
-      | _ -> ()
-      end
-    | None -> ()
+    begin match
+      ref_source_borrow state symbols value,
+      lookup_symbol_by_name symbols id.name
+    with
+    | Some b, Some sym ->
+      state.ref_bindings <- (sym.Symbol.sym_id, b) :: state.ref_bindings
+    | _ -> ()
     end
   | _ -> ()
 
@@ -900,9 +981,24 @@ let rec check_expr (ctx : context) (state : state) (symbols : Symbol.t) (expr : 
         ) acc ops
     in
     let free_names = collect_free [] lam.elam_body in
+    let borrow_span = expr_span (ExprLambda lam) in
+    (* CORE-01 pt3 Slice D / #177: reject capture of a @linear binding.
+       A closure may be called 0..N times, so capturing a linear
+       binding lifts its consumption count out of what the borrow
+       checker can prove finite-once.  The quantity checker also
+       catches this via [QOmega] scaling, but the borrow-side error
+       (a) fires earlier in the pipeline and (b) names the lambda
+       span — the actual capture site — rather than a downstream
+       "used multiple times" diagnostic. *)
+    let* () = List.fold_left (fun acc name ->
+      let* () = acc in
+      match lookup_symbol_by_name symbols name with
+      | Some sym when List.mem sym.Symbol.sym_id state.linear_bindings ->
+        Error (LinearCapturedByClosure (name, borrow_span))
+      | _ -> Ok ()
+    ) (Ok ()) free_names in
     (* Create a Shared borrow for each captured free variable.  If a borrow
        conflict or use-after-move is detected, fail immediately. *)
-    let borrow_span = expr_span (ExprLambda lam) in
     let* () = List.fold_left (fun acc name ->
       let* () = acc in
       match expr_to_place symbols (ExprVar { name; span = borrow_span }) with
@@ -922,7 +1018,11 @@ let rec check_expr (ctx : context) (state : state) (symbols : Symbol.t) (expr : 
     | PatVar id ->
       begin match lookup_symbol_by_name symbols id.name with
       | Some sym ->
-        state.block_local_syms <- sym.Symbol.sym_id :: state.block_local_syms
+        state.block_local_syms <- sym.Symbol.sym_id :: state.block_local_syms;
+        (* Slice D / #177: record @linear let-bindings for the
+           capture-rejection check on subsequent ExprLambda's. *)
+        if let_is_linear lb.el_quantity lb.el_ty then
+          state.linear_bindings <- sym.Symbol.sym_id :: state.linear_bindings
       | None -> ()
       end
     | _ -> ()
@@ -1212,7 +1312,15 @@ and check_block (ctx : context) (state : state) (symbols : Symbol.t) (blk : bloc
         (not (is_outer_binding sym)) && last_use_of sym <= stmt_idx
       ) state.ref_bindings
     in
-    List.iter (fun (_sym, b) -> end_borrow state b) dying;
+    (* CORE-01 pt3 ref-to-ref / #177: only end a borrow if no surviving
+       ref-binding still aliases it.  Pre-fix, `let r = &x; let r2 = r;`
+       would end the borrow on x when r died, even though r2 still held
+       it — silently dropping x's protection.  Reference-count the
+       borrow by [b_id] across [still_live] before deciding. *)
+    List.iter (fun (_sym, b) ->
+      if not (List.exists (fun (_, b') -> b'.b_id = b.b_id) still_live)
+      then end_borrow state b
+    ) dying;
     state.ref_bindings <- still_live
   in
   let* () =
@@ -1292,7 +1400,11 @@ and check_stmt (ctx : context) (state : state) (symbols : Symbol.t) (stmt : stmt
     | PatVar id ->
       begin match lookup_symbol_by_name symbols id.name with
       | Some sym ->
-        state.block_local_syms <- sym.Symbol.sym_id :: state.block_local_syms
+        state.block_local_syms <- sym.Symbol.sym_id :: state.block_local_syms;
+        (* Slice D / #177: track @linear let-bindings for the
+           capture-rejection check on subsequent ExprLambda's. *)
+        if let_is_linear sl.sl_quantity sl.sl_ty then
+          state.linear_bindings <- sym.Symbol.sym_id :: state.linear_bindings
       | None -> ()
       end
     | _ -> ()
@@ -1307,8 +1419,27 @@ and check_stmt (ctx : context) (state : state) (symbols : Symbol.t) (stmt : stmt
       if not (is_mutable state place) then
         Error (CannotBorrowAsMutable (place, expr_span lhs))
       else
-        (* Check that the place is not moved and not borrowed *)
-        let* () = check_use state place (expr_span lhs) in
+        (* CORE-01 pt3 / #177 deferred-items (lib/borrow.ml:1483):
+           assignment-clears-move.  A whole-place write (`x = e`,
+           LHS is [PlaceVar]) REVIVES the place — the LHS is a write,
+           not a read, so a prior move on it must not raise
+           [UseAfterMove], and after the RHS lands the move-record
+           rooted here is dropped so subsequent uses succeed.
+           Sub-place writes (`x.f = e`, `x[i] = e`) keep [check_use]
+           because they navigate through the parent place, which must
+           still be live.  Unblocks Slice C' loop-soundness. *)
+        let is_whole_place_write =
+          match place with PlaceVar _ -> true | _ -> false
+        in
+        let* () =
+          if is_whole_place_write then
+            match find_aliasing_exclusive state place with
+            | Some b ->
+              Error (UseWhileExclusivelyBorrowed (place, b, expr_span lhs))
+            | None -> Ok ()
+          else
+            check_use state place (expr_span lhs)
+        in
         (* Check for any active borrows of this place *)
         begin match List.find_opt (fun b -> places_overlap place b.b_place) state.borrows with
         | Some borrow ->
@@ -1328,10 +1459,30 @@ and check_stmt (ctx : context) (state : state) (symbols : Symbol.t) (stmt : stmt
              assignment path so the NLL last-use + return-escape
              analyses see the *current* referent after re-assignment,
              not the stale original. *)
+          (* Self-assign `r = r` guard (#177 follow-up to #395): without
+             this, [is_reborrow_source] reports true for the ref-binder
+             LHS=RHS case, pre_release ends `r`'s borrow and removes the
+             binding, then post-rebind calls [ref_source_borrow] which
+             now finds `r` unbound and returns None — net effect is `r`
+             silently stripped from the borrow-graph. *)
+          let rhs_is_self_binder =
+            match root_var place with
+            | Some binder_sym ->
+              let rec peel = function ExprSpan (x, _) -> peel x | x -> x in
+              (match peel rhs with
+               | ExprVar id ->
+                 (match lookup_symbol_by_name symbols id.name with
+                  | Some sym -> sym.Symbol.sym_id = binder_sym
+                  | None -> false)
+               | _ -> false)
+            | None -> false
+          in
           let pre_release =
-            match root_var place, ref_target symbols rhs with
-            | Some binder_sym, Some _
-              when List.mem_assoc binder_sym state.ref_bindings ->
+            match root_var place with
+            | Some binder_sym
+              when not rhs_is_self_binder
+                && is_reborrow_source state symbols rhs
+                && List.mem_assoc binder_sym state.ref_bindings ->
               let old_borrow = List.assoc binder_sym state.ref_bindings in
               end_borrow state old_borrow;
               state.ref_bindings <-
@@ -1340,15 +1491,18 @@ and check_stmt (ctx : context) (state : state) (symbols : Symbol.t) (stmt : stmt
             | _ -> None
           in
           let* () = check_expr ctx state symbols rhs in
-          (match pre_release, ref_target symbols rhs with
-           | Some binder_sym, Some new_target ->
-             (match List.find_opt (fun b ->
-                      places_overlap b.b_place new_target) state.borrows with
+          if is_whole_place_write then
+            state.moved <-
+              List.filter (fun mr -> not (places_overlap mr.m_place place))
+                state.moved;
+          (match pre_release with
+           | Some binder_sym ->
+             (match ref_source_borrow state symbols rhs with
               | Some new_b ->
                 state.ref_bindings <-
                   (binder_sym, new_b) :: state.ref_bindings
               | None -> ())
-           | _ -> ());
+           | None -> ());
           Ok ()
         end
     | None ->
@@ -1357,11 +1511,58 @@ and check_stmt (ctx : context) (state : state) (symbols : Symbol.t) (stmt : stmt
       check_expr ctx state symbols rhs
     end
   | StmtWhile (cond, body) ->
+    (* CORE-01 pt3 Slice C' / #177 — loop soundness via 2-iteration.
+       A single body pass misses multi-iter conflicts: a move at iter
+       1 that the body never restores would, at iter 2, be a
+       UseAfterMove.  We run cond+body twice; iter 2 starts from the
+       post-iter-1 state, so an unrestored move surfaces as
+       UseAfterMove on the second pass.  Pairs with the StmtAssign
+       clear-on-rewrite fix (#399, [is_whole_place_write]) so loops
+       that legitimately re-initialise a moved-out variable per
+       iteration still converge — iter-2's read of the freshly-
+       reassigned place is not a UseAfterMove because iter 1's
+       assignment cleared the move record.  After both passes we
+       restore state to the iter-1-post snapshot so any analysis
+       past the loop sees a single iter's worth of state (the loop
+       may execute 0..N times — using iter-1-post is the sound
+       choice when iter-2 doesn't add new conflicts). *)
     let* () = check_expr ctx state symbols cond in
-    check_block ctx state symbols body
+    let* () = check_block ctx state symbols body in
+    let snap_borrows = state.borrows in
+    let snap_moved = state.moved in
+    let snap_ref_bindings = state.ref_bindings in
+    let snap_block_locals = state.block_local_syms in
+    let snap_mutable = state.mutable_bindings in
+    let r =
+      let* () = check_expr ctx state symbols cond in
+      check_block ctx state symbols body
+    in
+    state.borrows <- snap_borrows;
+    state.moved <- snap_moved;
+    state.ref_bindings <- snap_ref_bindings;
+    state.block_local_syms <- snap_block_locals;
+    state.mutable_bindings <- snap_mutable;
+    r
   | StmtFor (_pat, iter, body) ->
+    (* CORE-01 pt3 Slice C' / #177 — same 2-iteration pass as
+       [StmtWhile]; see comment there for rationale. *)
     let* () = check_expr ctx state symbols iter in
-    check_block ctx state symbols body
+    let* () = check_block ctx state symbols body in
+    let snap_borrows = state.borrows in
+    let snap_moved = state.moved in
+    let snap_ref_bindings = state.ref_bindings in
+    let snap_block_locals = state.block_local_syms in
+    let snap_mutable = state.mutable_bindings in
+    let r =
+      let* () = check_expr ctx state symbols iter in
+      check_block ctx state symbols body
+    in
+    state.borrows <- snap_borrows;
+    state.moved <- snap_moved;
+    state.ref_bindings <- snap_ref_bindings;
+    state.block_local_syms <- snap_block_locals;
+    state.mutable_bindings <- snap_mutable;
+    r
 
 (** Check a function
 
@@ -1385,7 +1586,12 @@ let check_function (ctx : context) (symbols : Symbol.t) (fd : fn_decl) : unit re
         | None | Some Own ->
           state.callee_owned_params <-
             sym.sym_id :: state.callee_owned_params
-        | Some Ref | Some Mut -> ())
+        | Some Ref | Some Mut -> ());
+       (* Slice D / #177: track @linear-annotated params for the
+          capture-rejection check on subsequent ExprLambda's. *)
+       if p.p_quantity = Some QOne then
+         state.linear_bindings <-
+           sym.sym_id :: state.linear_bindings
      | None -> ())
   ) fd.fd_params;
   match fd.fd_body with
@@ -1480,22 +1686,48 @@ let check_program (symbols : Symbol.t) (program : program) : unit result =
    one helper so all CFG-join sites agree).  Finally runs after
    the merge, deterministically, against the merged state.
 
+   CORE-01 pt3 ref-to-ref binding (2026-05-26): [let r2 = r] and
+   [r2 = r] (where [r] is itself a ref-binder) now extend the
+   borrow-graph by aliasing [r2] to the same borrow [r] holds.  The
+   [ref_source_borrow] helper unifies the &p / &mut p / ref-var cases
+   so [record_ref_binding] (let path) and the [StmtAssign] reborrow
+   block both reach through one extra level of indirection.  Symmetric
+   pre-release on the assign path uses the same shape test
+   ([is_reborrow_source]) so the existing `r = &x` reborrow continues
+   to work; the new path is `r = r_other`.  Closes the
+   reborrow-through-indirection gap in #177 / CORE-01 pt3.
+
+   CORE-01 pt3 Slice C' (2026-05-27): loop soundness via a 2-iteration
+   check on [StmtWhile]/[StmtFor].  The body runs once; then state-
+   fields snapshot; then cond+body run again from the post-iter-1
+   state.  Any move that the body didn't restore (no rebinding
+   assignment) surfaces as UseAfterMove on the 2nd pass.  Pairs with
+   the StmtAssign clear-on-rewrite from #399 ([is_whole_place_write])
+   so legitimate re-init loops still accept while loops with an
+   unrestored body-move reject.
+
+   CORE-01 pt3 Slice D (2026-05-26): borrow-side rejection of
+   @linear-binding capture by a closure.  A closure may be called
+   0..N times, so capturing a [@linear] (`QOne`) binding lifts its
+   consumption count out of what the borrow checker can prove
+   finite-once.  The quantity checker also rejects this via [QOmega]
+   scaling of lambda captures (quantity.ml ExprLambda), but the
+   borrow-side error fires earlier in the pipeline (Typecheck →
+   Borrow → Quantity) and names the *lambda* span as the capture
+   site rather than producing a downstream "used multiple times"
+   diagnostic. [state.linear_bindings] is populated from
+   [@linear] / `Cmd _` annotations on params, `let`-statements, and
+   `let`-expressions; [ExprLambda] then rejects free-vars whose
+   sym-id is in that set with [LinearCapturedByClosure].
+
    Still deferred:
-   - Reborrow through indirection: `r = some_other_ref_var` (RHS not a
-     direct `&place`) does not yet copy the other binder's graph
-     entry — the ref-binding stays stale.  Same limitation as
-     [record_ref_binding] for the let-graph path; would require
-     symmetric let/assign handling for ref-to-ref binding.
    - Origin/region variables (true Polonius surface) — a region
      var on each [TyRef]/[TyMut] with subset constraints and a
      proper datalog-style loan-live-at-point solver.  Architectural
-     change to the type system; ADR-gated.
-   - Loop soundness (`StmtWhile`/`StmtFor`): a single body pass
-     misses multi-iteration move conflicts.  A 2-iteration check
-     would catch them but requires fixing the assignment-clears-
-     move imprecision first (assignment is currently treated as a
-     read of LHS, so `x = …` after a prior move spuriously fails).
-     Couple Slice C' with the StmtAssign clear-on-rewrite fix.
+     change to the type system; ADR-gated.  See ADR-022
+     (docs/decisions/0022-polonius-origin-variables.adoc) for the
+     M1-M4 migration plan; lexical checker is the merge oracle
+     through M3.
    - Tighter integration with the quantity checker for captured
      linears (Slice D).
 *)

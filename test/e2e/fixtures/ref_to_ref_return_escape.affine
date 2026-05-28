@@ -1,0 +1,20 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell
+//
+// CORE-01 pt3 ref-to-ref / #177 (follow-up to #395): the strongest
+// proof that the let-graph propagation works is `return r2` where
+// `r2 = r1 = &local` — pre-fix this slipped past `returned_borrow`'s
+// `ref_bindings` lookup. With the let-graph alias landed by #395
+// (`record_ref_binding` delegating to `ref_source_borrow`), `r2`
+// inherits `r1`'s borrow on the function-local `x` and the
+// return-escape check sees `root_var = x` is block-local.
+// Expected: BorrowOutlivesOwner.
+
+module RefToRefReturnEscape;
+
+fn esc_via_indir() -> ref Int {
+  let x = 5;
+  let r1 = &x;
+  let r2 = r1;
+  return r2;
+}

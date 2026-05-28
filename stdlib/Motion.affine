@@ -1,0 +1,103 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// Motion.affine — bindings for the `motion` npm library (bindings #4
+// in docs/bindings-roadmap.adoc).
+//
+// Provides a typed surface over motion's `animate()` for tween / spring
+// animations. Targets the Deno-ESM backend; the consumer (or its host
+// wrapper) is responsible for putting the motion library at
+// `globalThis.__as_motion` before any generated module that uses these
+// externs runs. The test harness pattern is in
+// `tests/codegen-deno/motion_smoke.harness.mjs`.
+//
+// This file lives in `stdlib/` for parity with Http / Sqlite / Crypto.
+// The dedicated `affinescript-motion` package home flagged in the
+// bindings roadmap is the long-term destination; the migration from
+// here to there is additive and source-compatible.
+//
+// Surface coverage in this version: `animate` (with await + cancel),
+// `animateMini`, `tween`, `spring`, `ease`. Remaining follow-ups:
+// keyframe-typing, transform-property typing. Status row in
+// `docs/bindings-roadmap.adoc` (#4) updates with each coverage tranche.
+
+module Motion;
+
+// `Json` from stdlib/Deno.affine is the estate's opaque-host-value
+// type. We reuse it rather than declaring a parallel hierarchy of
+// Element / Keyframes / AnimationOptions — typed shapes for those
+// are tracked separately under the `affinescript-motion` follow-up.
+use Deno::{Json};
+
+// Opaque handle to an in-flight motion animation. Underlying value is
+// a motion `AnimationPlaybackControls` — thenable + `.cancel()`.
+// Treated opaquely at the AS boundary.
+pub extern type AnimationControls;
+
+/// `motion.animate(target, keyframes, options) -> AnimationPlaybackControls`.
+///
+/// `target`, `keyframes`, and `options` cross the boundary as opaque
+/// `Json`. The runtime helper forwards them unchanged to the
+/// host-provided motion library.
+pub extern fn motionAnimate(
+  target: Json,
+  keyframes: Json,
+  options: Json
+) -> AnimationControls;
+
+/// Wait for an animation to finish (or be cancelled). Returns 0 on
+/// completion. Lowers to `await Promise.resolve(controls).then(...)`,
+/// so a controls value whose underlying promise rejects will surface
+/// here as a JS exception — consumers wanting Result semantics should
+/// wrap in `try`/`catch` at the call site.
+pub extern fn motionAwait(controls: AnimationControls) -> Int / { Async };
+
+/// `controls.cancel()` — force-cancel an in-flight animation.
+/// Returns 0. A controls value without a `.cancel` method (e.g. a
+/// mock) is treated as already-cancelled; this is a no-op return 0.
+pub extern fn motionCancel(controls: AnimationControls) -> Int;
+
+/// `motion.animateMini(target, keyframes, options)` — lightweight
+/// variant of animate (no autoplay, no built-in promise behaviour).
+/// Returns an AnimationControls handle. Used when the caller wants
+/// to drive playback explicitly rather than relying on motion's
+/// default autoplay + thenable semantics.
+pub extern fn motionAnimateMini(
+  target: Json,
+  keyframes: Json,
+  options: Json
+) -> AnimationControls;
+
+/// `motion.tween(target, from, to, options)` — one-shot interpolation
+/// between explicit `from` and `to` values. Distinct from `animate`
+/// in that `from` is required rather than inferred from the current
+/// state of `target`.
+pub extern fn motionTween(
+  target: Json,
+  from: Json,
+  to: Json,
+  options: Json
+) -> AnimationControls;
+
+/// `motion.spring(target, keyframes, springConfig)` — physics-based
+/// spring animation. `springConfig` is an opaque record carrying at
+/// minimum `stiffness`, `damping`, and `mass`. Returns an
+/// AnimationControls handle behaving identically to `animate`'s.
+pub extern fn motionSpring(
+  target: Json,
+  keyframes: Json,
+  springConfig: Json
+) -> AnimationControls;
+
+/// Opaque easing-function value. Underlying value is whatever the
+/// motion library hands back from its easing constructor — typically
+/// a JS function or named token. Goes into the `ease` field of an
+/// options record.
+pub extern type Easing;
+
+/// `motion.ease(name)` — construct an easing function by its canonical
+/// motion-library name (`"linear"`, `"easeIn"`, `"easeOut"`,
+/// `"backOut"`, etc.). The result is an opaque `Easing` value that the
+/// consumer threads into an options record consumed by `motionAnimate`
+/// / `motionTween` / `motionAnimateMini`.
+pub extern fn motionEase(name: String) -> Easing;

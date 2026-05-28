@@ -124,6 +124,24 @@ pub extern fn stripSuffix(s: String, suffix: String) -> String;
 /// `new WebAssembly.Instance(new WebAssembly.Module(bytes)).exports`.
 pub extern fn wasmInstance(bytes: Bytes) -> WasmExports;
 
+/// `exports[name](...args)` — invoke a named export with a list of
+/// Float arguments. WebAssembly's i32/i64/f32/f64 scalar types all
+/// coerce to JS Number, so a single Float-typed surface covers the
+/// common case (multi-value / void returns are out of scope here —
+/// add a specialised extern when needed). Caller is responsible for
+/// the export existing and having a compatible arity; absent exports
+/// throw `TypeError: ... is not a function` at the host boundary.
+///
+/// Example:
+///
+///     use Deno::{Bytes, WasmExports, wasmInstance, wasmCall};
+///
+///     pub fn addViaWasm(bytes: Bytes, a: Float, b: Float) -> Float = {
+///       let exports = wasmInstance(bytes);
+///       wasmCall(exports, "add", [a, b])
+///     };
+pub extern fn wasmCall(exports: WasmExports, name: String, args: [Float]) -> Float;
+
 // ── Array helper ───────────────────────────────────────────────────
 //
 // AffineScript has no mutable-array push primitive in this subset;

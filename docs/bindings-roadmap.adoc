@@ -1,0 +1,454 @@
+= AffineScript Framework Bindings Roadmap
+:toc: macro
+:toclevels: 3
+:icons: font
+
+Top 50 framework bindings, sequenced by current need.
+
+[IMPORTANT]
+====
+This document complements link:ROADMAP.adoc[ROADMAP.adoc] (language /
+compiler progress) and link:ECOSYSTEM.adoc[ECOSYSTEM.adoc] (Stage A–E
+contracts, INT-01..12). Where this file disagrees with either of those,
+those documents win — this is the *bindings-side* view.
+
+Compiled 2026-05-28 from the idaptik PR #107 pilot
+(link:https://github.com/hyperpolymath/idaptik/pull/107[hyperpolymath/idaptik#107])
++ estate-wide binding-need inventory + general-purpose modern-language
+binding patterns.
+====
+
+toc::[]
+
+== Reading guide
+
+Each entry carries:
+
+* *Status* — one of:
+** `○` — nothing built
+** `◐` — scaffold or stub only
+** `◑` — partial; coverage audit needed
+** `●` — usable today
+** `◯` — blocked by a non-binding issue (codegen, runtime, etc.)
+* *Package home* — where the binding lives or should live.
+* *Rationale* — what motivates this entry. Where applicable, the
+  concrete consumer that needs it (e.g. an idaptik file path).
+
+Item numbers are stable across revisions of this document; do not
+renumber when promoting or deferring items.
+
+== Tier 1 — Required for the current idaptik migration
+
+These ten bindings *block* the bulk of the 509 remaining `.res` files
+in idaptik (see idaptik PR #107 for the pilot pattern). Without them,
+no further significant ReScript → AffineScript work is tractable.
+
+[cols="1,3,1,2,5"]
+|===
+|# |Binding |Status |Package home |Rationale
+
+|1
+|*PixiJS core* (Application, Container, Sprite, Graphics, Text, Ticker, FederatedEvent)
+|`◑` partial (Application / Container / Sprite / Graphics / Text / Texture / Ticker landed; FederatedEvent + extensive accessor coverage deferred)
+|`stdlib/Pixi.affine` (eventual home: `affinescript-pixijs` as a separate repo per the SNIFs/typed-wasm precedent)
+|idaptik `src/bindings/Pixi.res`; all 215 `src/app/*.res` files depend on this. Restarted 2026-05-28 — the prior `affinescript-pixijs/` directory used the obsolete `.as` extension + AGPL-3.0-or-later headers + a Zig→C→WASM-import architecture incompatible with the Deno-ESM emitter; it was deleted and the surface rebuilt in `stdlib/Pixi.affine` matching the wasmCall / motion pattern. Test fixture: `tests/codegen-deno/pixi_smoke.{affine,harness.mjs}`. Follow-ups: extensive Container accessors (anchor, scale, pivot, parent, zIndex, eventMode, filters, hitArea); FederatedEvent + on/off pointer-event surface; Point/Rectangle/Circle helper types; sprite atlases.
+
+|2
+|*@pixi/sound* (`Sound.from`, play, stop, volume, setVolume, loop)
+|`◐` scaffold (from / play / stop / pause / resume / setVolume / setLoop landed)
+|`stdlib/PixiSound.affine` (eventual home: `affinescript-pixijs` sub-module, or `affinescript-pixi-sound`)
+|idaptik `src/bindings/PixiSound.res`; BGM + SFX. Initial surface (`pixiSoundFrom` / `pixiSoundPlay` / `pixiSoundStop` / `pixiSoundPause` / `pixiSoundResume` / `pixiSoundSetVolume` / `pixiSoundSetLoop`) lands in `stdlib/` parallel to Motion / Http / Sqlite / Crypto; consumer provides `globalThis.__as_pixi_sound` (the `Sound` named export from `@pixi/sound`) at module-init time. Test fixture: `tests/codegen-deno/pixisound_smoke.{affine,harness.mjs}`. Follow-ups: `Sound.add` (multi-source registry), sprite atlases, async load (await + onload), `pauseAll` / `stopAll` / `resumeAll`, the `sound` singleton's filter pipeline.
+
+|3
+|*@pixi/ui* (Button, FancyButton, Switch, Slider, Input, ScrollBox)
+|`◐` scaffold
+|`stdlib/PixiUI.affine` (eventual home: `affinescript-pixijs` sub-module)
+|idaptik `src/bindings/PixiUI.res`; all HUD / menu code. MVP surface (Button / FancyButton / Slider / Switch — `new` + primary callback + `AsContainer` upcast) lives in `stdlib/` alongside Pixi / PixiSound; consumer provides `globalThis.__as_pixi_ui` at module-init time. Test fixture: `tests/codegen-deno/pixiui_smoke.{affine,harness.mjs}`. Deferred follow-ups: Input (text-entry + focus + value), ScrollBox (scroll position + viewport), full event surface (onHover / onOut / onDown / onUp), FancyButton textures-per-state accessors, Slider min/max/step accessors.
+
+|4
+|*motion* (animate, animateMini, tween, ease, spring)
+|`●` usable
+|`stdlib/Motion.affine` (eventual home: `affinescript-motion`)
+|idaptik `src/bindings/Motion.res`; player + UI transitions. Full surface (`motionAnimate` / `motionAwait` / `motionCancel` / `motionAnimateMini` / `motionTween` / `motionSpring` / `motionEase`) lives in `stdlib/` parallel to Http / Sqlite / Crypto; consumer provides `globalThis.__as_motion` at module-init time. Test fixture: `tests/codegen-deno/motion_smoke.{affine,harness.mjs}` exercises every extern. Remaining follow-ups (out of scope for `●`): typed keyframe shapes, typed transform-property surface, migration to a dedicated `affinescript-motion` package.
+
+|5
+|*WASM-exports calling pattern* — invoke individual `exports.fn_name(args)` from a `WasmExports` value
+|`●` usable (Option A landed)
+|`stdlib/Deno.affine`
+|`wasmCall(exports: WasmExports, name: String, args: [Float]) -> Float` lowers to `Number(exports[name](...args))` on `--deno-esm`. AS-side surface + docstring example landed in `stdlib/Deno.affine`; round-trip exercised by `tests/codegen-deno/wasm_call.{affine,harness.mjs}` against a hand-built 41-byte wasm module exporting `add(i32, i32) -> i32`. *Option A (generic) — typed per-Zig-fn shims can layer on top per-consumer if needed.* Closes #414 via host-side #422 + AS-side this PR.
+
+|6
+|*Phoenix Channels / WebSocket* (Socket connect/disconnect, Channel join/leave/push, presence)
+|`○`
+|`affinescript-phoenix`
+|idaptik `src/app/multiplayer/PhoenixSocket.res` + LobbyManager; needed for any multiplayer / sync-server feature.
+
+|7
+|*DOM* — fill the `for-in` / `while` codegen gap (issue #255) so the existing reconciler runs
+|`●` / `◯` blocked-by-#255
+|`affinescript-dom`
+|187-line virtual-DOM + reconciler exists; blocked on a wasm-codegen defect. Unblocking #255 turns this from compile-only to runtime-usable. *Not a binding gap — a codegen bug.*
+
+|8
+|*WebGL / Canvas2D context* (HTMLCanvasElement, getContext, drawImage, fillRect, transform stack)
+|`○`
+|`affinescript-canvas`, or extension to `affinescript-dom`
+|idaptik-ums uses raw Canvas2D (App.res: 1178 LoC of DOM + canvas); also needed for any non-Pixi-based UI.
+
+|9
+|*IPC / structuredClone* for host↔guest message passing (postMessage, MessageChannel, transfer ownership)
+|`○`
+|`affinescript-ipc`, or under `Deno`
+|idaptik-ums uses Gossamer IPC for level I/O; pattern is broad — any embedded-engine binding needs it.
+
+|10
+|*JSON Schema validation (Ajv)* — already exists as `stdlib/Ajv.affine`
+|`◑` partial
+|`stdlib/Ajv.affine`
+|idaptik UMS pipeline validates level configs; broader use across the estate's a2ml + schema work. Surface-coverage audit needed.
+|===
+
+== Tier 2 — Estate-wide near-term needs
+
+Surface that other estate repos are actively wanting.
+
+[cols="1,3,1,2,5"]
+|===
+|# |Binding |Status |Package home |Rationale
+
+|11
+|*GitHub API* (repos, issues, PRs, releases, checks, search, GraphQL) via the existing Zig C-ABI
+|`◐` via `hpm-github-api-rsr`
+|`affinescript-github`, consumes hpm-github-api-rsr
+|OikosBot AffineScript port (RSR-stack Phase 5) needs this.
+
+|12
+|*Anthropic API* (`messages.create`, tool_use, streaming, prompt caching)
+|`○`
+|`affinescript-anthropic`
+|`ai-cli-crash-capture` already lives under affinescript; the claude-api skill flags this as a common need.
+
+|13
+|*HTTP client + server* — already `stdlib/Http.affine` (client-side)
+|`◑` partial
+|`stdlib/Http.affine`
+|`http-capability-gateway` shipped Zig server (PR#23); AffineScript-side server bindings would let `.affine` programs serve HTTP without Zig.
+
+|14
+|*WebSocket client + server* (encrypted `wss://`, separate from Phoenix)
+|`○`
+|`affinescript-websocket`
+|Generalisation of #6; multiplayer + dev-tooling.
+
+|15
+|*SQLite* — already `stdlib/Sqlite.affine`
+|`◑` partial
+|`stdlib/Sqlite.affine`
+|Coverage audit needed; SQLite is the estate's default persistence layer.
+
+|16
+|*Crypto* — already `stdlib/Crypto.affine` (signs / hashes)
+|`◑` partial
+|`stdlib/Crypto.affine`
+|`hpm-crypto-rsr` already shipped; rewire AffineScript stdlib to consume the RSR C-ABI per the RSR-stack pending work.
+
+|17
+|*Tauri 2.0* (invoke, listen, emit, window, dialog, fs, shell)
+|`○`
+|`affinescript-tauri`
+|Estate-wide mobile policy: "Tauri 2.0+ for mobile". Highest-leverage mobile binding.
+
+|18
+|*Dioxus* (rsx!, signal, use_resource, server fns)
+|`○`
+|`affinescript-dioxus`
+|Estate-wide mobile policy alternative; pure-Rust native UI.
+
+|19
+|*Zig FFI canonical patterns* — `extern fn` shape for calling Zig C-ABI exports from AffineScript
+|`◐` idiomatic patterns exist
+|`stdlib` + ADR-style doc
+|"Zig = APIs + FFIs" estate directive. Each `hpm-*-rsr` lib exposes Zig exports; AffineScript needs canonical patterns for binding them.
+
+|20
+|*Telegram (Grammy)* — already `stdlib/Grammy.affine`
+|`◑` partial
+|`stdlib/Grammy.affine`
+|Coverage check; Grammy bots are an estate pattern.
+|===
+
+== Tier 3 — Broadly useful (web universals)
+
+Standard surface any serious language ships with within a few years.
+
+[cols="1,3,1,2,5"]
+|===
+|# |Binding |Status |Package home |Rationale
+
+|21
+|*Web Audio API* (AudioContext, GainNode, BufferSource, AnalyserNode)
+|`○`
+|`affinescript-web-audio`
+|Beyond @pixi/sound: signal processing, synthesis; the Faust compile target's runtime peer.
+
+|22
+|*Gamepad API* (`navigator.getGamepads`, axes, buttons, haptics)
+|`○`
+|`affinescript-gamepad`, or in `affinescript-dom`
+|Games — idaptik-grade input needs this; also broadly useful.
+
+|23
+|*Pointer / Touch / Keyboard / IME* (PointerEvent, TouchEvent, KeyboardEvent, compositionstart/end)
+|`○`
+|`affinescript-dom` extension
+|Input handling beyond simple click.
+
+|24
+|*IndexedDB* (database, transaction, objectStore, cursor)
+|`○`
+|`affinescript-indexeddb`
+|Client-side persistent storage; pairs with SQLite for browser-side cases.
+
+|25
+|*Web Workers / Service Workers* (postMessage between threads, SharedArrayBuffer, lifecycle)
+|`○`
+|`affinescript-worker`
+|Parallelism on the web; offline-first patterns.
+
+|26
+|*Fetch / Streams* (ReadableStream, WritableStream, TransformStream, AbortSignal)
+|`◑` partial via Http
+|`stdlib/Http.affine` extension
+|Modern HTTP / streaming surface beyond simple GET.
+
+|27
+|*Cache API + Storage* (localStorage, sessionStorage, CacheStorage, Storage Foundation)
+|`○`
+|`affinescript-storage`
+|Web persistence.
+
+|28
+|*Notifications + Permissions* (Notification API, `navigator.permissions`)
+|`○`
+|`affinescript-notifications`
+|PWA patterns.
+
+|29
+|*Geolocation + Sensors* (Geolocation, DeviceMotion, DeviceOrientation)
+|`○`
+|`affinescript-sensors`
+|Mobile / device-aware apps.
+
+|30
+|*MediaDevices* (`getUserMedia`, MediaStream, MediaRecorder)
+|`○`
+|`affinescript-media`
+|Audio / video capture; voice + video features.
+|===
+
+== Tier 4 — Backend / cloud / data
+
+Server-side and external-service integrations.
+
+[cols="1,3,1,2,5"]
+|===
+|# |Binding |Status |Package home |Rationale
+
+|31
+|*Postgres* (libpq via FFI, or `postgres.js`)
+|`○`
+|`affinescript-postgres`
+|Production backend default; pairs with SQLite for dev.
+
+|32
+|*Redis* (commands, pub/sub, streams)
+|`○`
+|`affinescript-redis`
+|Caching, pub/sub, queues.
+
+|33
+|*S3 / object storage* (PutObject, GetObject, presigned URLs, multipart)
+|`○`
+|`affinescript-s3`
+|Universal blob storage.
+
+|34
+|*GraphQL client* (query / mutation / subscription, fragments, cache)
+|`○`
+|`affinescript-graphql`
+|Many estate-relevant APIs expose GraphQL.
+
+|35
+|*OpenTelemetry* (tracer, span, exporter, OTLP)
+|`○`
+|`affinescript-otel`
+|Observability surface; required for any production deployment.
+
+|36
+|*OpenAI API* (chat.completions, tool calls, streaming)
+|`○`
+|`affinescript-openai`
+|Even though Anthropic is preferred, OpenAI surface is broadly compatible (LiteLLM, Ollama).
+
+|37
+|*Cloudflare API* (DNS, certs, Pages — *not* Workers, which is estate-banned)
+|`○`
+|`affinescript-cloudflare`
+|CF management plane only; Workers runtime is excluded by policy.
+
+|38
+|*Stripe* (PaymentIntent, Customer, Subscription, webhooks)
+|`○`
+|`affinescript-stripe`
+|Payments.
+
+|39
+|*Supabase* (auth, postgrest, realtime, storage)
+|`○`
+|`affinescript-supabase`
+|If the estate accepts a BaaS, this is the FOSS-leaning default.
+
+|40
+|*Slack + Discord APIs* (REST + webhooks + slash commands)
+|`○`
+|`affinescript-slack`, `affinescript-discord`
+|Bots + estate ops notifications.
+|===
+
+== Tier 5 — Tooling / FFI / language interop
+
+Build, test, and cross-language surface.
+
+[cols="1,3,1,2,5"]
+|===
+|# |Binding |Status |Package home |Rationale
+
+|41
+|*Idris2 ABI surface* (proof carriers, Cexp, formal-verification linkage)
+|`◑` partial via existing `ipkg` work
+|upstream estate convention
+|"Idris2 = ABIs" directive. The estate uses Idris2 for proof carriers on FFI boundaries.
+
+|42
+|*Rust FFI* (cbindgen-style C-ABI calling)
+|`◐` pattern emerging
+|doc + stdlib
+|Adjacent to Zig FFI; needed for Tauri / Dioxus consumers.
+
+|43
+|*OCaml interop* (host-compiler dialogues — minimal; affinescript itself is OCaml)
+|`◐` implicit via host
+|meta-binding
+|Mostly a build-time concern, but worth documenting.
+
+|44
+|*Just / task-runner integration* (recipe discovery, dependency graph)
+|`○`
+|doc
+|Estate-wide Just usage; affinescript projects auto-emit Justfile shape.
+
+|45
+|*Vite plugin / HMR* — already `affinescript-vite`
+|`◑` partial
+|`affinescript-vite`
+|Build-tool side (*not* a binding TO Vite); pattern for other bundler plugins (Webpack, Rollup, esbuild) should follow this shape.
+
+|46
+|*esbuild / Rollup plugin*
+|`○`
+|`affinescript-esbuild`, `affinescript-rollup`
+|Alternative bundlers. Lower priority than Vite.
+
+|47
+|*Playwright / browser automation* (page, locator, expect, fixtures)
+|`○`
+|`affinescript-playwright`
+|E2E test estate convention (idaptik has 5 Playwright suites).
+
+|48
+|*Test framework* — already `stdlib/testing.affine`
+|`◑` partial
+|`stdlib/testing.affine`
+|Coverage check; test surface is the gate for everything else.
+
+|49
+|*VS Code extension API* — already `stdlib/Vscode.affine` + `VscodeLanguageClient.affine`
+|`●` usable
+|`stdlib/Vscode.affine`
+|The `.affine` VSCode extension itself uses this (issue #35 Phase 3). Coverage audit.
+
+|50
+|*Language Server Protocol (LSP)* — generic, not tied to VS Code
+|`◑` partial via VscodeLanguageClient
+|`stdlib/lsp.affine`
+|Editor-agnostic LSP surface; affinescript's own LSP can dogfood.
+|===
+
+== Cross-cutting observations
+
+. *PixiJS + sub-packages dominate Tier 1.* Of the 10 critical-for-idaptik
+  bindings, four (#1, #2, #3, and #4 by extension) are PixiJS-ecosystem.
+  Investing in `affinescript-pixijs` unblocks the largest single chunk
+  of idaptik's 215-file `src/app/` tree.
+. *WASM-exports calling LANDED.* Item #5 — `wasmCall(exports, name, args) -> Float`
+  in `stdlib/Deno.affine` ships the generic Option A surface; idaptik
+  `vm/wasm` and every future WASM-host consumer in the estate can now
+  call individual exports without a per-fn extern. Typed per-Zig-fn
+  shims can layer on top per-consumer where the discipline is worth
+  the brittleness.
+. *DOM is closest to done* — issue #255 (for-in / while wasm codegen)
+  is the blocker, not the binding surface itself. That's a codegen bug,
+  not a binding gap; classified separately so it doesn't get re-scoped
+  as a binding task.
+. *Many "stdlib bindings" need coverage audits, not new code* (#7, #10,
+  #13, #15, #16, #20, #48, #49) — the file exists; verifying it covers
+  the consumer's full surface is cheaper than writing new bindings.
+. *Banned by policy, excluded from this list:*
+* Cloudflare Workers runtime (estate-banned).
+* React Native, Flutter (estate-banned).
+* Node.js-native binding patterns where Deno-equivalent exists.
+* Python interop except for SaltStack (estate policy).
+. *Connections / cross-cutting:* Tauri (#17) + Dioxus (#18) consume some
+  of the lower-level bindings (Notification, MediaDevices, etc.). When
+  sequencing, do the leaf bindings first so the framework bindings have
+  things to compose.
+
+== Suggested sequencing
+
+[cols="1,2,5"]
+|===
+|Phase |Goal |Items
+
+|*A*
+|Unblock current idaptik pilot
+|#5 (WASM exports) → #1 (PixiJS core) → #4 (motion) → #2 (sound) → #3 (UI)
+
+|*B*
+|Estate fan-out
+|#11 (GitHub API rewire) → #19 (Zig FFI doc) → #6 (Phoenix Channels) → #16 (Crypto rewire)
+
+|*C*
+|Demand-driven
+|Everything else; pick when a concrete consumer asks.
+|===
+
+== Tracking
+
+* Umbrella tracker: (TBD — opened alongside this PR)
+* Per-tier child issues: (TBD — opened alongside this PR)
+
+When a binding's status changes, update its row in this file in the
+*same* PR that lands the change; do not let the table drift.
+
+== See also
+
+* link:ROADMAP.adoc[ROADMAP.adoc] — language / compiler progress (this
+  doc complements it).
+* link:ECOSYSTEM.adoc[ECOSYSTEM.adoc] — Stage A–E contracts, INT-01..12.
+* link:CAPABILITY-MATRIX.adoc[CAPABILITY-MATRIX.adoc] — per-feature
+  readiness (overrides everything).
+* idaptik PR #107 — the pilot that surfaced the binding-need shape.
+
+== License
+
+SPDX-License-Identifier: MPL-2.0

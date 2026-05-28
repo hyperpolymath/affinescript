@@ -1,0 +1,17 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell
+//
+// CORE-01 pt3 Slice D / #177: a closure that captures a @linear
+// function parameter is rejected at the borrow checker for the
+// same reason as the let-binding case — a closure may be called
+// 0..N times. Pre-Slice-D this would have surfaced only at the
+// quantity checker (as "used multiple times via QOmega scaling");
+// now it surfaces at borrow check with a span pointing at the
+// closure. Expected: Error LinearCapturedByClosure.
+
+module SliceDCapturedLinearParamRejected;
+
+fn capture_linear_param(@linear y: Int) -> Int {
+  let f = fn() => y + 1;
+  f()
+}

@@ -1,0 +1,331 @@
+= AffineScript ↔ aLib Conformance & Contribution Roadmap
+:toc: macro
+:toclevels: 3
+:icons: font
+
+25 items across three tiers, structuring AffineScript's relationship
+with `hyperpolymath/aggregate-library` (aLib): conformance
+*implementation* (passing aLib's test vectors), conformance
+*infrastructure* (runner, reporting, CI), and *contributions* of
+affine-aware semantics back to aLib upstream.
+
+[IMPORTANT]
+====
+This document complements link:ROADMAP.adoc[ROADMAP.adoc] (language /
+compiler progress), link:bindings-roadmap.adoc[bindings-roadmap.adoc]
+(framework bindings), and link:stdlib-roadmap.adoc[stdlib-roadmap.adoc]
+(standard library). Where this file disagrees with
+link:CAPABILITY-MATRIX.adoc[CAPABILITY-MATRIX.adoc] or
+link:ECOSYSTEM.adoc[ECOSYSTEM.adoc], those documents win.
+
+Compiled 2026-05-28 from a fresh read of
+link:https://github.com/hyperpolymath/aggregate-library[hyperpolymath/aggregate-library]
+v0.1.0 + estate-wide use of the aLib methodology.
+====
+
+toc::[]
+
+== What aLib is — and is not
+
+`hyperpolymath/aggregate-library` is a *methods repository*, not a
+stdlib replacement. It demonstrates how to:
+
+* identify a minimal overlap between systems with very different
+  constraints,
+* express that overlap as a stable spec surface + semantics notes +
+  conformance test suite,
+* enforce reversibility through disciplined boundaries and test
+  vectors.
+
+The current overlap is intentionally small — 20 operations across 6
+categories — chosen to *stress-test the method*, not to be a "shared
+stdlib".
+
+[cols="1,3"]
+|===
+|Category |Operations
+
+|arithmetic   |add, subtract, multiply, divide, modulo, negate, absolute, max, min
+|comparison   |(per `aggregate.json` — 1+ ops; coverage spec)
+|logical      |(per `aggregate.json`)
+|string       |concat, length, reverse, substring
+|collection   |contains, empty, filter, fold, length, map
+|conditional  |(per `aggregate.json`)
+|===
+
+NOTE: Counts above are from `data/aggregate.json` v1.1.0 (generated
+2025-12-27, 20 total operations). When aLib publishes a new version,
+this table updates here in the same PR that bumps the consumed
+version.
+
+== Reading guide
+
+Each entry carries:
+
+* *Status* — `○` nothing built, `◐` scaffold, `◑` partial, `●` usable.
+* *Track* — `T1` implementation, `T2` runner/infra, `T3` contributions.
+* *Rationale* — what the item delivers, and which downstream consumer
+  benefits.
+
+Item numbers are stable across revisions.
+
+== Tier 1 — Conformance implementation
+
+Implement the 20 operations in AffineScript such that aLib's test
+vectors pass. Most ops *already* exist in `stdlib/` partially; the
+work here is alignment with aLib's `signature_string`, semantics, and
+edge-case requirements.
+
+[cols="1,3,1,2,5"]
+|===
+|# |Item |Status |Track |Rationale
+
+|1
+|*Arithmetic-9 implementation* — `add`, `subtract`, `multiply`, `divide`, `modulo`, `negate`, `absolute`, `max`, `min` aligned with `specs/arithmetic/*.md`
+|`◑` partial
+|T1
+|`stdlib/math.affine` covers most; verify signatures match aLib + properties (commutative, associative, identity) hold.
+
+|2
+|*Comparison ops* — `eq`, `ne`, `lt`, `le`, `gt`, `ge` per `specs/comparison/`
+|`◑` partial
+|T1
+|Trait surface; pairs with `traits.affine` (stdlib #18).
+
+|3
+|*Logical ops* — `and`, `or`, `not`, `xor` per `specs/logical/`
+|`◑` partial
+|T1
+|Mostly built-in operators; conformance is verifying short-circuit + truth-table behaviour matches aLib semantics.
+
+|4
+|*String-4 implementation* — `concat`, `length`, `reverse`, `substring` per `specs/string/*.md`
+|`◑` partial
+|T1
+|`stdlib/string.affine` exists; runtime gaps (stdlib roadmap #8, #9) are upstream blockers.
+
+|5
+|*Collection-6 implementation* — `contains`, `empty`, `filter`, `fold`, `length`, `map` per `specs/collection/*.md`
+|`◑` partial
+|T1
+|`stdlib/collections.affine` exists; runtime gaps (stdlib roadmap #1, #2) are upstream blockers. Generic over list at minimum; ideally generic over `Foldable`.
+
+|6
+|*Conditional op* — `if-then-else` as expression per `specs/conditional/`
+|`●` usable
+|T1
+|Language built-in; verify spec semantics match.
+
+|7
+|*Edge-case coverage* — implement and test NaN, infinity, overflow, empty-string, empty-list edge cases per each op's `edge_cases` field
+|`○`
+|T1
+|aLib specs intentionally leave overflow / NaN "implementation-defined" but require *documented* behaviour. AffineScript declares its choice here.
+
+|8
+|*Properties verification* — `add` is commutative, `multiply` is associative, `abs` is idempotent, etc.
+|`○`
+|T1
+|aLib `semantics.properties` is the contract; AffineScript proves (or property-tests) each.
+
+|9
+|*Signature alignment audit* — every AffineScript op's signature matches the aLib `signature_string`
+|`○`
+|T1
+|Mechanical comparison; ensures cross-language portability of code written against the aLib surface.
+
+|10
+|*Conformance module* — `stdlib/alib.affine` re-exporting the 22 ops under their aLib names (was "20"; current aggregate.json v0.1.0 has 22 across 6 categories: 5 arithmetic, 6 comparison, 3 logical, 3 string, 4 collection, 1 conditional)
+|`●`
+|T1
+|Single import point for consumers wanting the *aLib surface* rather than the *AffineScript-idiomatic surface*. Landed 2026-05-28.
+|===
+
+== Tier 2 — Conformance runner & infrastructure
+
+Build the machinery that *runs* aLib's test vectors against
+AffineScript implementations and reports results. This is what makes
+aLib's "method" actually testable for our language.
+
+[cols="1,3,1,2,5"]
+|===
+|# |Item |Status |Track |Rationale
+
+|11
+|*`aggregate.json` schema loader* — parse aLib's v1.1.0 schema in AffineScript (or via build tool)
+|`●`
+|T2
+|First step; feeds every later runner item. Landed 2026-05-28 as `stdlib/AlibSchema.affine` (Approach A — AffineScript-side parser over the `hpm_json_*` lazy-handle FFI from `stdlib/json.affine`). Public entry points: `parse_schema(src) -> Result<AlibSchema, String>`, `load_schema(path)`, `load_estate_schema()`. Captures `name` / `category` / `signature_string` / `semantics.purpose` / `test_cases[]` (with `description` + `input_count`) per op — sufficient for the #12 dispatch loop.
+
+|12
+|*Test-vector executor* — iterate `operations[].test_cases[]`, dispatch to the corresponding `alib.affine` op, compare output
+|`○`
+|T2
+|Core conformance loop.
+
+|13
+|*Properties auto-checker* — for each declared property (e.g. commutative), run randomized inputs and assert
+|`○`
+|T2
+|Pairs with item #8; property-based testing under the hood.
+
+|14
+|*Conformance report emitter* — JSON + a2ml output: per-op pass/fail, properties verified, edge cases covered
+|`○`
+|T2
+|Estate convention: a2ml machine-readable; JSON for human / CI.
+
+|15
+|*CI workflow* — `.github/workflows/alib-conformance.yml` runs the suite on every PR, posts a status check
+|`○`
+|T2
+|Stops drift; visible signal.
+
+|16
+|*Conformance badge* — README badge + `docs/CAPABILITY-MATRIX.adoc` row showing "aLib conformance: 18/20"
+|`○`
+|T2
+|Pairs with #15.
+
+|17
+|*Multi-target harness* — run conformance against the native interp *and* the wasm codegen target, separately
+|`○`
+|T2
+|Verifies that "type-checks" and "executes" are both green at the aLib surface — directly mitigates the PR #107 class of issue (check PASS / eval FAIL).
+
+|18
+|*Conformance-comparison view* — side-by-side AffineScript vs reference implementations (phronesis, Rust, Haskell) where available
+|`○`
+|T2
+|Pairs with `COMPOSITION-GUIDE.md` in aLib; useful for "did we break parity" diagnosis.
+|===
+
+== Tier 3 — Contributions back to aLib upstream
+
+AffineScript's distinctive properties (affine resource types,
+row-polymorphic effects, dependent types, reversibility) suggest spec
+extensions that aLib doesn't currently capture. These items propose
+*upstream PRs* to `hyperpolymath/aggregate-library`.
+
+[cols="1,3,1,2,5"]
+|===
+|# |Item |Status |Track |Rationale
+
+|19
+|*Affine-witness column* — `semantics.affine_consumes: [inputIndices]` in `aggregate.json` schema
+|`○`
+|T3
+|For each op, declare which inputs are *consumed* vs *borrowed*. Trivially `[]` for current ops (all pure), but the schema extension lands now so future op contributions can use it. Upstream PR to aLib repo.
+
+|20
+|*Linearity / reversibility tagging* — `semantics.reversible: bool` + `semantics.inverse_op: string` (e.g. `subtract` is inverse of `add`)
+|`○`
+|T3
+|aLib already mentions "Reversibility" in its design principles but doesn't formalise per-op. Upstream PR; idaptik DLC use case is the motivating consumer.
+
+|21
+|*Effect-row metadata* — `semantics.effect_row: [labels]` (`Net`, `Fs`, `Random`, `Time`, `IO`)
+|`○`
+|T3
+|All current 20 ops are pure (`[]`); extension lands the schema field for future capability-aware contributions. Pairs with stdlib roadmap #42, #43.
+
+|22
+|*Idempotency property* — formalise `semantics.properties[Idempotent]` (`abs(abs(x)) = abs(x)`)
+|`○`
+|T3
+|aLib semantics.properties has `Commutative`, `Associative`, `Identity element`; idempotency is missing. Upstream PR.
+
+|23
+|*Monotonicity property* — `semantics.properties[Monotonic]` for `max` / `min` / `length` / `absolute`
+|`○`
+|T3
+|Same family as #22; missing property class.
+
+|24
+|*Affine-friendly op proposals* — propose `take` / `drop` / `split` / `join` as collection ops that consume their input (affine-friendly)
+|`○`
+|T3
+|Current `filter` / `map` / `fold` are all *borrow* shapes; AffineScript's affine surface would benefit from explicit-consume variants. Upstream proposal.
+
+|25
+|*ADR for affine extension* — single ADR in aLib documenting the schema extensions in #19/#20/#21/#22/#23 + the rationale
+|`○`
+|T3
+|Bundle the schema-extension items into one upstream PR with proper rationale, so aLib maintainers can review the *whole shape* rather than five disconnected fields.
+|===
+
+== Cross-cutting observations
+
+. *aLib is small by design.* 20 ops is the entire surface today. The
+  conformance work (T1 + T2) is therefore *bounded* — completable in
+  a handful of PRs, not a multi-quarter epic.
+. *T3 contributions are the higher-leverage half.* AffineScript's
+  affine + effect + dependent type system suggests spec features aLib
+  doesn't yet have. Contributing the *method extensions* upstream is
+  where AffineScript adds value back, not just consumes.
+. *T1 items #4 and #5 are upstream-blocked* on stdlib roadmap #1, #2,
+  #8, #9 (runtime gaps for `List.++`, `List.len`, `String.concat`,
+  `String.length`). Don't try to do T1 collection/string conformance
+  before those runtime gaps close.
+. *Multi-target harness (T2 #17) is the antidote to the
+  PR #107 problem.* Currently `affinescript check` and `affinescript
+  eval` can diverge; running conformance against *both* targets
+  catches the gap automatically.
+. *aLib license is `MIT OR Palimpsest-0.8`*; AffineScript is MPL-2.0.
+  Contributions upstream are spec-level (no code transfer); no
+  license-compat issue.
+
+== Suggested sequencing
+
+[cols="1,2,5"]
+|===
+|Phase |Goal |Items
+
+|*A*
+|Conformance scaffolding
+|#10 (`alib.affine` module) → #11 (schema loader) → #12 (test-vector executor)
+
+|*B*
+|Pure ops first
+|#1 (arithmetic-9) → #6 (conditional) → #2 (comparison) → #3 (logical) — these don't need runtime list/string fixes
+
+|*C*
+|Collection + string ops
+|*Gated on stdlib roadmap A* (List/String runtime). Then #4 + #5 + #7 + #8 + #9.
+
+|*D*
+|CI + visibility
+|#15 (workflow) → #16 (badge) → #17 (multi-target) → #14 (reports) → #18 (comparison view)
+
+|*E*
+|Upstream contributions
+|#25 (ADR draft) → #19/#20/#21/#22/#23 as one upstream PR → #24 (affine-op proposals as a follow-up)
+|===
+
+== Tracking
+
+* Umbrella tracker: (TBD — opened alongside this PR)
+* Per-tier child issues: (TBD — opened alongside this PR)
+* Upstream tracking: `hyperpolymath/aggregate-library` (T3 items
+  result in PRs there, not in this repo)
+
+When an item's status changes, update its row in this file in the
+*same* PR that lands the change; do not let the table drift.
+
+== See also
+
+* link:ROADMAP.adoc[ROADMAP.adoc] — language / compiler progress.
+* link:bindings-roadmap.adoc[bindings-roadmap.adoc] — framework
+  bindings (host-runtime FFI surfaces).
+* link:stdlib-roadmap.adoc[stdlib-roadmap.adoc] — standard library
+  items (runtime, RSR rewires, universals).
+* link:CAPABILITY-MATRIX.adoc[CAPABILITY-MATRIX.adoc] — per-feature
+  readiness (overrides everything).
+* link:https://github.com/hyperpolymath/aggregate-library[aggregate-library]
+  — upstream methodology repo.
+* link:https://github.com/hyperpolymath/aggregate-library/blob/main/COMPOSITION-GUIDE.md[aLib COMPOSITION-GUIDE]
+  — the method of aggregation across phronesis/Rust/Haskell.
+
+== License
+
+SPDX-License-Identifier: MPL-2.0

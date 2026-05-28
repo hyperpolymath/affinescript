@@ -1,5 +1,15 @@
 # Dependent Types
 
+> **⚠️ Current state: `parse-only`.**
+> The surface syntax described in this page parses, but the typechecker
+> **does not reduce predicates** and there is **no SMT / decision
+> procedure** wired in today. `TRefined` constructors exist in the AST.
+> Predicates and refinements are not enforced at runtime.
+> Authoritative source: [`docs/CAPABILITY-MATRIX.adoc`](../../docs/CAPABILITY-MATRIX.adoc)
+> row "Dependent / refinement types". The ledger entry CORE-05 in
+> [`docs/TECH-DEBT.adoc`](../../docs/TECH-DEBT.adoc) tracks the work
+> needed to lift this from parse-only to enforced.
+
 Dependent types allow types to depend on values, enabling compile-time verification of invariants.
 
 ## Table of Contents

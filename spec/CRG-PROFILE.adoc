@@ -1,0 +1,244 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+
+= CRG-PROFILE — AffineScript
+:toc: left
+:toclevels: 2
+
+[cols="1,3"]
+|===
+| Field | Value
+
+| Language | AffineScript
+| Repository | https://github.com/hyperpolymath/affinescript
+| Current CRG Grade | *D*  (X \| F \| E \| D \| C \| B \| A)
+| Assessed | 2026-05-28
+| Assessor | Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+| CRG Spec Version | 2.2
+| ARG Profile | spec/ARG-PROFILE.adoc
+| TRG Profile | spec/TRG-PROFILE.adoc
+| FRG Profile | spec/FRG-PROFILE.adoc
+|===
+
+== About this profile
+
+This profile applies the *CRG v2.2 (STRICT)* baseline to AffineScript
+released components. AffineScript ships its primary compiler binary
+plus four named sub-components with their own package surfaces and
+versioning. None has yet reached v1.0 or independent external-target
+validation, so the worst-of-released grade is *D*.
+
+CRG = *D*. The full chain of axes:
+
+* ARG: *D*
+* TRG: *E* (this is the gating axis at present; see TRG-PROFILE)
+* FRG: *E*
+* CRG: *D* (this profile)
+* RSR: assessed elsewhere
+
+== Released components
+
+A *released component* is any unit of work this repository publishes
+under its own name + version: crate, library, binary, plugin, schema,
+or vendored artefact. Each is graded independently against CRG.
+
+The list below is the complete published surface as of 2026-05-28.
+
+[cols="2,1,3,4", options="header"]
+|===
+| Component | Grade | Release stage | Evidence
+
+| `affinescript` (opam, OCaml) v0.1.1
+| *D*
+| Pre-alpha
+| Primary compiler driver + library. `bin/main.ml`, `lib/*.ml`. 309 e2e cases + 17 lexer cases passing. Dune build + opam package. No external-target validation.
+
+| `affinescript-runtime` (Rust crate) v0.1.0
+| *D*
+| Pre-alpha
+| `runtime/Cargo.toml`. Unpublished on crates.io. Used by `affinescript-vite` consumers.
+
+| `affinescript-vite` (npm) v0.1.0
+| *D*
+| Pre-alpha
+| `affinescript-vite/package.json`. Vite plugin for browser builds. Self-declared CRG-C at `affinescript-vite/docs/governance/CRG-CRITERIA.adoc`; this profile downgrades to D pending the v2.2 STRICT deep-annotation evidence.
+
+| `@affinescript/pixijs` (npm) v0.1.0
+| *D*
+| Pre-alpha
+| `affinescript-pixijs/package.json`. PixiJS FFI binding. No published v1.0; idaptik pilot at `idaptik` is the only known consumer.
+
+| `affinescriptiser` (Rust crate) v0.1.0
+| *D*
+| Pre-alpha
+| `affinescriptiser/Cargo.toml`. Self-declared CRG-C at `affinescriptiser/docs/governance/CRG-CRITERIA.adoc`; same downgrade rationale as `affinescript-vite`.
+
+| `affinescript-dom`, `affinescript-tea`, `affinescript-deno-test`
+| *E*
+| Pre-alpha
+| Sub-projects with their own infrastructure but no own version + release semantics yet. Listed here for completeness, not graded at D.
+|===
+
+== Per-component evidence (deep)
+
+CRG §4.5+ (grade C onward) requires *deep per-file + per-directory
+annotation*. The current self-claims at C for `affinescript-vite` and
+`affinescriptiser` do not yet meet this clause under v2.2 STRICT.
+References:
+
+* `affinescript-vite/docs/governance/CRG-CRITERIA.adoc` — claimed C
+  under earlier CRG version; needs re-audit under v2.2 STRICT
+* `affinescriptiser/docs/governance/CRG-CRITERIA.adoc` — same status
+* `affinescript-vite/AUDIT.adoc` — hard audit posture declaration
+
+For the primary `affinescript` compiler, no deep CRG audit exists yet.
+
+== Grade rationale
+
+[cols="2,1,4", options="header"]
+|===
+| Grade clause (CRG §4) | Met? | Evidence
+
+| *E1 — At least one test exists*
+| YES
+| `test/test_lexer.ml` (17 cases), `test/test_e2e.ml` (309 cases over 80 fixtures), `alcotest` framework.
+
+| *E2 — Failures documented*
+| YES
+| Failures surface via `alcotest` reports; per-fixture failure modes documented in `TECH-DEBT.adoc`.
+
+| *D1 — Test matrix documented*
+| YES
+| `CAPABILITY-MATRIX.adoc` documents the per-feature × per-backend matrix surface.
+
+| *D2 — Scope documented*
+| YES
+| `README.md` + `EXPLAINME.adoc` + `TOPOLOGY.adoc` describe the project scope.
+
+| *D3 — RSR compliance*
+| PARTIAL
+| RSR baseline is present (LICENSE, CONTRIBUTING, CoC, SECURITY); RSR audit cadence + per-RSR-level evidence not yet stated.
+
+| *C1 — Dogfooded*
+| PARTIAL
+| AffineScript builds the `affinescript-vite` + `affinescript-pixijs` consumer tooling; the `idaptik` pilot uses `@affinescript/pixijs`. The compiler itself is OCaml, not AffineScript — so the project is *not yet self-hosting*.
+
+| *C2 — CI green*
+| YES
+| CI per `.github/workflows/`; greens visible at https://github.com/hyperpolymath/affinescript/actions.
+
+| *C3 — Deep annotation (per-file + per-dir)*
+| NO
+| No `audits/audit-<component>.md` per CRG §4.5 + TRG §3. This is the gating gap.
+
+| *B1 — ≥6 diverse external targets*
+| NO
+| External target list: `idaptik` (pixijs binding) is the only known live consumer; `affinescript-vite` consumers are self-developed; no third-party adoption.
+
+| *B2 — Issues fed back from external use*
+| NO
+| Closed-issue trail has internal-reporter labels only.
+
+| *A1 — Confirmed real-world value, no harm*
+| NO
+| No external feedback corpus.
+
+| *VeriSimDB attestation (grade C+)*
+| NO
+| AffineScript is not yet `DECLARE`'d to VeriSimDB.
+|===
+
+== Language-specific tightening (this profile only)
+
+For AffineScript, the following additional CRG obligations apply at
+the stated grades:
+
+* *Grade C tightening:* The stdlib `stdlib/` (24 modules) MUST have a
+  per-module audit document, *and* every released wrapper module
+  (`affinescript-vite`, `affinescript-pixijs`) MUST have a borrow-check
+  fixture suite covering the typical use cases.
+* *Grade B tightening:* `affinescript` MUST be self-hosting (the
+  compiler driver MUST be written in AffineScript), OR a published
+  rationale MUST explain why OCaml is the strategic implementation
+  language indefinitely.
+* *Grade A tightening:* Registered VeriSimDB instance + public health
+  check + at least one third-party-maintained release of an
+  AffineScript library.
+
+These tightenings are *additional* to the baseline — none of the
+baseline evidence is waived.
+
+== What is NOT yet met (honest gaps)
+
+* *No deep per-component CRG audit*. Each released component needs
+  its own `audits/audit-<component>.md`.
+* *Self-hosting status undecided*. AffineScript is implemented in
+  OCaml + Rust; this is fine for grade D but blocks the language-
+  specific B tightening above.
+* *No published downstream consumers* beyond first-party tooling.
+  ARG-C and CRG-C both stall on this clause without a credible
+  external adoption story.
+* *VeriSimDB attestation absent*. Needed for grade C onward.
+
+== Path to next grade (*C*)
+
+* Write `audits/audit-affinescript.md` covering the compiler driver,
+  with per-file CRG v2.2 STRICT annotations. (~2-3 weeks)
+* Write per-sub-component audits for `affinescript-runtime`,
+  `affinescript-vite`, `@affinescript/pixijs`, `affinescriptiser`.
+  Re-audit the existing C-claims under v2.2 STRICT — either
+  promote to C with the new evidence or document the residual gaps.
+  (~3-4 weeks)
+* Land VeriSimDB attestation for AffineScript. (~1 week given
+  VeriSimDB infrastructure is in place)
+* Land RSR-level statement (gate for D3 hardening).
+
+*Realistic timeline estimate:* 6-8 weeks from current state.
+
+== Path to grade beyond that (*B*)
+
+* Sustain ≥6 diverse external targets (third-party libraries,
+  applications, or bindings). The `idaptik` pilot is one; the
+  AffineScript bindings roadmap (`docs/bindings-roadmap.adoc`)
+  enumerates the candidate surfaces.
+* Establish issue-feedback pipeline with external reporters.
+* Either become self-hosting (B-tightening above) or publish the
+  rationale for OCaml strategic implementation.
+
+*Realistic timeline estimate:* 6-12 months from C.
+
+== Demotion risk
+
+* *Lowest:* A single released sub-component (e.g. `affinescript-vite`)
+  CI flips to red and stays red across a release window.
+* *Medium:* Test corpus regresses (e.g. `test_e2e.ml` pass-count
+  drops below historical floor without compensating new coverage).
+* *Catastrophic:* A released component found to cause harm in a
+  consumer project — would force F.
+
+== Iteration history
+
+[cols="1,1,4", options="header"]
+|===
+| Date | Grade | Notes
+
+| 2026-05-28 | D | Initial CRG-PROFILE per CRG v2.2 STRICT. Two sub-components (`affinescript-vite`, `affinescriptiser`) have prior self-declared C; this profile downgrades to D pending v2.2 STRICT deep-annotation evidence.
+|===
+
+== Review cycle
+
+* *Routine:* Reassess on every release cycle (per CRG §6.3).
+* *Immediate:* Reassess within 7 days of any released-component
+  regression.
+* *VeriSimDB drift alert:* Reassess within 24 hours of any drift
+  alert from VeriSimDB on this language's released components.
+
+== Footer
+
+Run `just crg-badge` in this repo to generate the shields.io badge
+for the README.
+
+This profile is itself a VCL-total proposition. Its content is
+`DECLARE`'d to VeriSimDB on each commit. Drift between the claimed
+grade above and the underlying evidence surfaces as a grade-stale
+alert.

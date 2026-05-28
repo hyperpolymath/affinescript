@@ -16,11 +16,17 @@
 // object feeds `dict::get` directly.
 //
 // Scope (echidna#63 "What is needed"): the `Json` type, the decode_*
-// and encode_* combinators, and `stringify`. The String->Json *parse*
-// bridge is deliberately out of scope here — it belongs at the
-// echidna#61 `Http` boundary (`Response.json : Async[Json]`), where the
-// host fetch result crosses in; tracked there, not duplicated as a
-// hand-rolled parser in stdlib.
+// and encode_* combinators, and `stringify`.
+//
+// v0.3 (this revision) — adds the `parse` bridge as a thin wrapper
+// over the `hyperpolymath/hpm-json-rsr` Zig FFI surface (11 exports).
+// The wrapper does NOT hand-roll a JSON parser: `hpm_json_parse`
+// owns parsing + arena allocation, and AffineScript-side functions
+// tree-walk the resulting opaque `HpmJsonValue` handle into the AS
+// `Json` sum type for leaves + arrays. Object-key enumeration is
+// not yet exposed by the Zig FFI — see `to_json` for the gap, and
+// prefer the lazy `hpm_json_object_get` + leaf-extract pattern for
+// object payloads (e.g. GitHub webhook JSON).
 
 module json;
 
@@ -201,6 +207,106 @@ fn escape_string(s: String) -> String {
     i = i + 1;
   }
   out ++ "\""
+}
+
+// ============================================================================
+// RSR rewire (v0.3) — hpm-json-rsr Zig FFI bindings
+//
+// The 11 `hpm_json_*` externs faithfully mirror the Zig exports at
+// `hyperpolymath/hpm-json-rsr/ffi/zig/src/main.zig`. They lower on the
+// Deno-ESM backend (lib/codegen_deno.ml) to `JSON.parse` + JS-native
+// walks (a handle is just the underlying JS value); on native targets
+// they map to FFI into the hpm-json-rsr cdylib.
+//
+// HpmJsonValue is an opaque, host-managed handle. Pair every Some(h)
+// from `parse` / `hpm_json_object_get` / `hpm_json_array_get` with a
+// matching `hpm_json_free(h)` to release the arena (no-op on JS, real
+// free on native).
+//
+// Sentinel conventions (faithful to the Zig surface):
+//   hpm_json_type   -> 0=null 1=bool 2=int 3=float 4=string 5=array 6=object; -1 on null val
+//   hpm_json_bool   -> 0/1; -1 on type mismatch
+//   hpm_json_int    -> INT64_MIN on type mismatch
+//   hpm_json_float  -> NaN on type mismatch
+//
+// Object-key enumeration is NOT yet a Zig export; consequently `to_json`
+// returns None for HpmJsonValue roots whose type tag is 6 (object). For
+// object payloads, descend lazily via `hpm_json_object_get`.
+// ============================================================================
+
+pub extern type HpmJsonValue;
+
+pub extern fn hpm_json_parse(src: String) -> Option<HpmJsonValue>;
+pub extern fn hpm_json_free(val: HpmJsonValue) -> Int;
+pub extern fn hpm_json_type(val: HpmJsonValue) -> Int;
+pub extern fn hpm_json_bool(val: HpmJsonValue) -> Int;
+pub extern fn hpm_json_int(val: HpmJsonValue) -> Int;
+pub extern fn hpm_json_float(val: HpmJsonValue) -> Float;
+pub extern fn hpm_json_string(val: HpmJsonValue) -> String;
+pub extern fn hpm_json_object_get(val: HpmJsonValue, key: String) -> Option<HpmJsonValue>;
+pub extern fn hpm_json_array_len(val: HpmJsonValue) -> Int;
+pub extern fn hpm_json_array_get(val: HpmJsonValue, idx: Int) -> Option<HpmJsonValue>;
+pub extern fn hpm_json_escape_string(src: String) -> String;
+
+/// Parse `src` into an owning RSR handle, or `None` on malformed JSON.
+/// Caller MUST pair every returned `Some(h)` with `hpm_json_free(h)`
+/// to release the underlying parsed arena. (No-op on Deno-ESM, real
+/// arena-free on native.)
+pub fn parse(src: String) -> Option<HpmJsonValue> {
+  hpm_json_parse(src)
+}
+
+/// Tree-walk a non-object `HpmJsonValue` into the AS `Json` sum.
+///
+/// Returns `None` if the value's root is an object (tag 6) — see the
+/// module preamble: object-key enumeration is not yet exported by the
+/// Zig FFI. Leaves + arrays of leaves/arrays materialise fully.
+///
+/// Recursively `hpm_json_free`s every child handle the walk allocates;
+/// the root handle is the caller's responsibility (matches the parse
+/// ownership contract).
+pub fn to_json(val: HpmJsonValue) -> Option<Json> {
+  let t = hpm_json_type(val);
+  if t == 0 {
+    Some(JNull)
+  } else if t == 1 {
+    Some(JBool(hpm_json_bool(val) == 1))
+  } else if t == 2 {
+    Some(JInt(hpm_json_int(val)))
+  } else if t == 3 {
+    Some(JFloat(hpm_json_float(val)))
+  } else if t == 4 {
+    Some(JString(hpm_json_string(val)))
+  } else if t == 5 {
+    let n = hpm_json_array_len(val);
+    let mut acc = [];
+    let mut i = 0;
+    while i < n {
+      match hpm_json_array_get(val, i) {
+        Some(child) => {
+          match to_json(child) {
+            Some(j) => {
+              acc = acc ++ [j];
+              hpm_json_free(child);
+            },
+            None => {
+              hpm_json_free(child);
+              return None;
+            }
+          }
+        },
+        None => {
+          return None;
+        }
+      };
+      i = i + 1;
+    }
+    Some(JArray(acc))
+  } else {
+    // tag 6 (object) — no key-enumeration in the Zig FFI yet;
+    // tag -1 (null val) — defensive: shouldn't reach here.
+    None
+  }
 }
 
 /// Serialise a `Json` value to a compact JSON string.

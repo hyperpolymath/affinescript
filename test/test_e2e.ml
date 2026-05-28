@@ -644,6 +644,46 @@ let test_wasm_lambda () =
   | Error msg -> Alcotest.fail msg
   | Ok _wasm_mod -> ()
 
+(* ----------------------------------------------------------------------------
+   Regression: `type X = { ... }` (a TyAlias wrapping a TyRecord) must
+   register a struct_layouts entry just like `struct X { ... }` (TyStruct).
+   Without that, every parameter / return of type X reads all fields at
+   offset 0 — a silent miscompile, not a crash. See lib/codegen.ml
+   `gen_decl` TopType branch. *)
+
+let codegen_decl_for src =
+  let prog = Parse_driver.parse_string ~file:"<regression>" src in
+  match prog.prog_decls with
+  | decl :: _ -> decl
+  | [] -> Alcotest.fail "expected at least one top-level decl"
+
+let test_codegen_record_alias_registers_struct_layout () =
+  let decl = codegen_decl_for "type State = { health: Int, score: Int };" in
+  match Codegen.gen_decl (Codegen.create_context ()) decl with
+  | Error e ->
+    Alcotest.fail (Printf.sprintf "gen_decl errored: %s"
+                     (Codegen.show_codegen_error e))
+  | Ok ctx ->
+    let layout = List.assoc_opt "State" ctx.struct_layouts in
+    Alcotest.(check (option (list (pair string int))))
+      "State alias registers field layout"
+      (Some [("health", 0); ("score", 4)])
+      layout
+
+let test_codegen_plain_alias_does_not_register_layout () =
+  (* Sanity: the new pattern must not over-broaden — `type X = Int`
+     should still hit the catch-all and leave struct_layouts empty. *)
+  let decl = codegen_decl_for "type Plain = Int;" in
+  match Codegen.gen_decl (Codegen.create_context ()) decl with
+  | Error e ->
+    Alcotest.fail (Printf.sprintf "gen_decl errored: %s"
+                     (Codegen.show_codegen_error e))
+  | Ok ctx ->
+    Alcotest.(check (option (list (pair string int))))
+      "non-record alias registers no layout"
+      None
+      (List.assoc_opt "Plain" ctx.struct_layouts)
+
 let wasm_tests = [
   Alcotest.test_case "bitwise codegen"    `Quick test_wasm_bitwise;
   Alcotest.test_case "arithmetic codegen" `Quick test_wasm_arithmetic;
@@ -651,6 +691,10 @@ let wasm_tests = [
   Alcotest.test_case "write binary" `Quick test_wasm_write_binary;
   Alcotest.test_case "full pipeline" `Quick test_wasm_full_pipeline;
   Alcotest.test_case "lambda codegen" `Quick test_wasm_lambda;
+  Alcotest.test_case "record-alias registers struct_layouts" `Quick
+    test_codegen_record_alias_registers_struct_layout;
+  Alcotest.test_case "non-record alias leaves struct_layouts alone" `Quick
+    test_codegen_plain_alias_does_not_register_layout;
 ]
 
 (* ============================================================================
@@ -3014,14 +3058,24 @@ let test_vscode_extension_adapter_override () =
       ~vscode_extension_adapter:"../local/adapter.cjs" activate_src in
   Alcotest.(check bool) "uses the overridden adapter specifier"
     true (contains cjs {|require("../local/adapter.cjs")|});
-  Alcotest.(check bool) "does not fall back to the default adapter"
-    false (contains cjs "@hyperpolymath/affine-vscode")
+  (* Match the require wiring, not the bare specifier — the embedded
+     adapter source (packages/affine-vscode/mod.js) carries documentation
+     comments that legitimately mention the default specifier as an
+     example usage; the override semantics is about which require()
+     fires, not which strings appear anywhere in the file. *)
+  Alcotest.(check bool) "does not fall back to the default adapter require"
+    false (contains cjs {|require("@hyperpolymath/affine-vscode")|})
 
 let test_vscode_extension_no_lc () =
   let cjs = cjs_of ~vscode_extension:true ~vscode_extension_no_lc:true
       activate_src in
+  (* Match the require wiring, not the bare specifier — the embedded
+     adapter source includes a `vscode-languageclient/node` section
+     delimiter comment that is harmless because no actual require fires
+     unless the language-client argument is wired in (which `no_lc` skips
+     by passing `null`). *)
   Alcotest.(check bool) "skips the language-client require"
-    false (contains cjs "vscode-languageclient/node");
+    false (contains cjs {|require("vscode-languageclient/node")|});
   Alcotest.(check bool) "passes null in its place"
     true (contains cjs "    null,\n");
   Alcotest.(check bool) "still requires vscode + adapter"
@@ -4415,6 +4469,151 @@ let test_slice_c_body_move_persists () =
                    the catch-arm merge — `read_int(y)` after a moved `y` \
                    was silently accepted"
 
+(* CORE-01 pt3 ref-to-ref / #177 — let r2 = r and r = r_other now
+   alias r2 (resp. r) to the same borrow the source binder holds.
+   Pre-fix the alias was never recorded, so the let-graph went stale
+   on reborrow-through-indirection. Three tests pin: (1) let-path
+   positive — both binders dereferenceable; (2) anti-regression —
+   the alias still protects the underlying owner from concurrent
+   writes; (3) assign-path positive — `r = s` releases the old
+   target and aliases r to s's borrow. *)
+let test_ref_to_ref_let_aliases () =
+  match borrow_result (fixture "ref_to_ref_let_aliases.affine") with
+  | Ok () -> ()
+  | Error e ->
+    Alcotest.fail ("ref-to-ref let-path: `let r2 = r` did not alias r2 \
+                    into the borrow-graph — reading through r2 was \
+                    spuriously rejected: " ^ Borrow.format_borrow_error e)
+
+let test_ref_to_ref_protects_owner () =
+  match borrow_result (fixture "ref_to_ref_protects_owner.affine") with
+  | Error (Borrow.ConflictingBorrow _)
+  | Error (Borrow.MoveWhileBorrowed _)
+  | Error (Borrow.UseWhileExclusivelyBorrowed _) -> ()
+  | Error e ->
+    Alcotest.fail ("ref-to-ref anti-regression: expected a borrow-conflict \
+                    error on `x = 9` (r2 must still protect x), got: "
+                   ^ Borrow.format_borrow_error e)
+  | Ok () ->
+    Alcotest.fail "ref-to-ref regressed: the aliased binder r2 did not \
+                   keep x borrowed, so the write to x was silently \
+                   accepted"
+
+let test_ref_to_ref_assign_aliases () =
+  match borrow_result (fixture "ref_to_ref_assign_aliases.affine") with
+  | Ok () -> ()
+  | Error e ->
+    Alcotest.fail ("ref-to-ref assign-path: `r = s` did not release the \
+                    old borrow on `x` and re-alias r to s's borrow — \
+                    the subsequent write to `x` was spuriously \
+                    rejected: " ^ Borrow.format_borrow_error e)
+
+(* CORE-01 pt3 ref-to-ref / #177 follow-up: return-escape via
+   indirection.  Pre-fix `let r2 = r1` did not propagate `r1`'s
+   ref-binding, so `returned_borrow` for `return r2` silently
+   returned None — the escape was missed.  Post-fix `r2` inherits
+   `r1`'s borrow on a function-local, and the escape check fires. *)
+let test_ref_to_ref_return_escape () =
+  match borrow_result (fixture "ref_to_ref_return_escape.affine") with
+  | Error (Borrow.BorrowOutlivesOwner _) -> ()
+  | Error e ->
+    Alcotest.fail ("ref-to-ref return-escape: expected \
+                    BorrowOutlivesOwner on `return r2` where r2 = r1 = \
+                    &local, got: " ^ Borrow.format_borrow_error e)
+  | Ok () ->
+    Alcotest.fail "ref-to-ref return-escape regressed: the indirection \
+                   chain was not detected by `returned_borrow`'s \
+                   ref_bindings lookup — escape silently accepted"
+
+(* CORE-01 pt3 / #177 deferred-items: assignment-clears-move.
+   Whole-place write `x = …` after a prior move on `x` revives the
+   place; the move-record is dropped after the RHS lands so the
+   subsequent read of `x` succeeds.  Anti-regression for the
+   sub-place case is covered by [test_slice_c_body_move_persists]
+   (which still expects UseAfterMove for a read of a moved local
+   that was *not* reassigned). *)
+let test_borrow_assign_clears_move () =
+  match borrow_result (fixture "borrow_assign_clears_move.affine") with
+  | Ok () -> ()
+  | Error e ->
+    Alcotest.fail ("assignment-clears-move: `x = …` after `drop_int(x)` \
+                    spuriously rejected — whole-place write should revive \
+                    the moved place: " ^ Borrow.format_borrow_error e)
+
+(* CORE-01 pt3 Slice C' / #177 — loop soundness via 2-iteration on
+   [StmtWhile]/[StmtFor].  Three tests pin: (1) sound counted loop
+   converges; (2) interaction with #399's clear-on-rewrite — a
+   move-then-rebind body accepts; (3) anti-regression — a move
+   without rebind raises UseAfterMove on the 2nd pass. *)
+let test_slice_c_prime_loop_sound () =
+  match borrow_result (fixture "slice_c_prime_loop_sound.affine") with
+  | Ok () -> ()
+  | Error e ->
+    Alcotest.fail ("Slice C': counted loop was spuriously rejected — \
+                    iter-2 pass introduced a false positive: "
+                   ^ Borrow.format_borrow_error e)
+
+let test_slice_c_prime_loop_reinit_ok () =
+  match borrow_result (fixture "slice_c_prime_loop_reinit_ok.affine") with
+  | Ok () -> ()
+  | Error e ->
+    Alcotest.fail ("Slice C' × #399 interaction: re-init after move \
+                    was spuriously rejected — `x = 42` after `drop_int(x)` \
+                    should clear the move-record and let iter 2 converge: "
+                   ^ Borrow.format_borrow_error e)
+
+let test_slice_c_prime_loop_move_persists () =
+  match borrow_result (fixture "slice_c_prime_loop_move_persists.affine") with
+  | Error (Borrow.UseAfterMove _) -> ()
+  | Error e ->
+    Alcotest.fail ("Slice C' anti-regression: expected UseAfterMove on \
+                    the iter-2 `drop_int(x)` after iter-1 moved `x`, \
+                    got: " ^ Borrow.format_borrow_error e)
+  | Ok () ->
+    Alcotest.fail "Slice C' regressed: multi-iter move conflict was \
+                   silently accepted — the 2-iteration pass did not \
+                   catch the unrestored move on `x`"
+
+(* CORE-01 pt3 Slice D / #177 — borrow-side rejection of @linear
+   capture by a closure. The quantity checker already rejected
+   these via QOmega scaling, but the borrow-side error fires
+   earlier (Typecheck → Borrow → Quantity) and points at the
+   lambda span. Three tests pin: (1) @linear let captured;
+   (2) @linear param captured; (3) anti-regression — non-linear
+   capture must still pass. *)
+let test_slice_d_captured_linear_let_rejected () =
+  match borrow_result (fixture "slice_d_captured_linear_let_rejected.affine") with
+  | Error (Borrow.LinearCapturedByClosure (name, _)) ->
+    Alcotest.(check string) "captured name surfaced in error" "x" name
+  | Error e ->
+    Alcotest.fail ("Slice D: expected LinearCapturedByClosure on `|| x + 1` \
+                    capture of @linear let x, got: "
+                   ^ Borrow.format_borrow_error e)
+  | Ok () ->
+    Alcotest.fail "Slice D regressed: @linear let-binding was silently \
+                   captured by closure — multi-call would break linear \
+                   contract"
+
+let test_slice_d_captured_linear_param_rejected () =
+  match borrow_result (fixture "slice_d_captured_linear_param_rejected.affine") with
+  | Error (Borrow.LinearCapturedByClosure (name, _)) ->
+    Alcotest.(check string) "captured param name surfaced" "y" name
+  | Error e ->
+    Alcotest.fail ("Slice D: expected LinearCapturedByClosure on `|| y + 1` \
+                    capture of @linear param y, got: "
+                   ^ Borrow.format_borrow_error e)
+  | Ok () ->
+    Alcotest.fail "Slice D regressed: @linear param was silently captured \
+                   by closure"
+
+let test_slice_d_captured_nonlinear_ok () =
+  match borrow_result (fixture "slice_d_captured_nonlinear_ok.affine") with
+  | Ok () -> ()
+  | Error e ->
+    Alcotest.fail ("Slice D anti-regression: non-linear capture was \
+                    spuriously rejected — the new rule must scope to \
+                    @linear only: " ^ Borrow.format_borrow_error e)
+
 let borrow_tests = [
   Alcotest.test_case "BorrowOutlivesOwner: &local escapes its block"
     `Quick test_borrow_outlives_owner;
@@ -4450,6 +4649,28 @@ let borrow_tests = [
     `Quick test_slice_c_catch_arm_isolation;
   Alcotest.test_case "Slice C anti-regression: body's move persists past try (#177 pt3 Slice C)"
     `Quick test_slice_c_body_move_persists;
+  Alcotest.test_case "ref-to-ref let-path: `let r2 = r` aliases (#177 pt3)"
+    `Quick test_ref_to_ref_let_aliases;
+  Alcotest.test_case "ref-to-ref anti-regression: alias still protects owner (#177 pt3)"
+    `Quick test_ref_to_ref_protects_owner;
+  Alcotest.test_case "ref-to-ref assign-path: `r = s` releases + aliases (#177 pt3)"
+    `Quick test_ref_to_ref_assign_aliases;
+  Alcotest.test_case "ref-to-ref return-escape via indirection (#177 pt3 follow-up)"
+    `Quick test_ref_to_ref_return_escape;
+  Alcotest.test_case "assignment-clears-move: whole-place write revives moved place (#177)"
+    `Quick test_borrow_assign_clears_move;
+  Alcotest.test_case "Slice C': counted loop converges (#177 pt3)"
+    `Quick test_slice_c_prime_loop_sound;
+  Alcotest.test_case "Slice C' × #399: re-init in loop OK (#177 pt3)"
+    `Quick test_slice_c_prime_loop_reinit_ok;
+  Alcotest.test_case "Slice C' anti-regression: multi-iter move rejected (#177 pt3)"
+    `Quick test_slice_c_prime_loop_move_persists;
+  Alcotest.test_case "Slice D: @linear let captured by closure rejected (#177 pt3)"
+    `Quick test_slice_d_captured_linear_let_rejected;
+  Alcotest.test_case "Slice D: @linear param captured by closure rejected (#177 pt3)"
+    `Quick test_slice_d_captured_linear_param_rejected;
+  Alcotest.test_case "Slice D anti-regression: non-linear capture still OK (#177 pt3)"
+    `Quick test_slice_d_captured_nonlinear_ok;
 ]
 
 (* ============================================================================

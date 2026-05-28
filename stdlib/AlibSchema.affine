@@ -1,0 +1,283 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// AlibSchema — aggregate.json schema loader (alib-roadmap.adoc item #11).
+//
+// Parses the upstream `hyperpolymath/aggregate-library` v1.1.0
+// `data/aggregate.json` into AffineScript types so the Tier-2
+// conformance runner (item #12) can iterate `operations[].test_cases[]`
+// and dispatch to the corresponding `stdlib/alib.affine` operation.
+//
+// Approach: descend the lazy `HpmJsonValue` handle exposed by
+// `stdlib/json.affine` (the Zig `hpm_json_*` FFI surface) rather than
+// materialising the whole tree to `Json` — `to_json` returns `None`
+// for object roots (object-key enumeration is not yet a Zig export),
+// so a hand-rolled tree-walk is the only Approach-A path.
+//
+// Ownership: every `Some(h)` returned by `parse` / `hpm_json_object_get`
+// / `hpm_json_array_get` is paired with a matching `hpm_json_free(h)`.
+// The root handle ownership is the caller's; `load_schema` frees it
+// internally.
+//
+// Captured fields (sufficient for item #12 dispatch):
+//   AlibSchema {
+//     schema_version: String,
+//     total_operations: Int,
+//     operations: [AlibOp],
+//   }
+//   AlibOp {
+//     name: String,             // dispatch key into stdlib::alib
+//     category: String,         // arithmetic / comparison / ...
+//     signature_string: String, // for the #9 signature-alignment audit
+//     purpose: String,          // semantics.purpose (human-readable)
+//     test_cases: [TestCase],
+//   }
+//   TestCase {
+//     description: String,
+//     input_count: Int,         // length of `input` array (or -1 if `input` is an object — conditional ops)
+//   }
+//
+// Test-case `input` and `output` are deliberately NOT decoded to a
+// concrete sum type here: aggregate.json mixes Int / Float / String /
+// Bool / arrays / per-op-named-fields objects (conditional has
+// `{condition, then_value, else_value}`). The #12 executor will
+// re-descend per-op with a known shape.
+
+module AlibSchema;
+
+use prelude::{ Option, Result, Some, None, Ok, Err };
+use json::{
+  HpmJsonValue,
+  hpm_json_parse,
+  hpm_json_free,
+  hpm_json_type,
+  hpm_json_int,
+  hpm_json_string,
+  hpm_json_object_get,
+  hpm_json_array_len,
+  hpm_json_array_get
+};
+
+// ============================================================================
+// Types
+// ============================================================================
+
+pub type TestCase = {
+  description: String,
+  input_count: Int,
+}
+
+pub type AlibOp = {
+  name: String,
+  category: String,
+  signature_string: String,
+  purpose: String,
+  test_cases: [TestCase],
+}
+
+pub type AlibSchema = {
+  schema_version: String,
+  total_operations: Int,
+  operations: [AlibOp],
+}
+
+// ============================================================================
+// Tree-walk helpers — every `Some(h)` is freed by the caller of the
+// helper, never by the helper itself, unless the helper's contract
+// explicitly says so (so ownership is one-sided per call site).
+// ============================================================================
+
+/// Fetch a string-valued field from an object handle, defaulting to ""
+/// on absent / wrong-type. Frees the intermediate handle on success.
+fn get_string_field(obj: HpmJsonValue, key: String) -> String {
+  match hpm_json_object_get(obj, key) {
+    Some(h) => {
+      let t = hpm_json_type(h);
+      if t == 4 {
+        let s = hpm_json_string(h);
+        hpm_json_free(h);
+        s
+      } else {
+        hpm_json_free(h);
+        ""
+      }
+    },
+    None => ""
+  }
+}
+
+/// Fetch an int-valued field from an object handle, defaulting to 0
+/// on absent / wrong-type. Frees the intermediate handle on success.
+fn get_int_field(obj: HpmJsonValue, key: String) -> Int {
+  match hpm_json_object_get(obj, key) {
+    Some(h) => {
+      let t = hpm_json_type(h);
+      if t == 2 {
+        let n = hpm_json_int(h);
+        hpm_json_free(h);
+        n
+      } else {
+        hpm_json_free(h);
+        0
+      }
+    },
+    None => 0
+  }
+}
+
+/// Decode a single test-case object handle. `input` may be an array
+/// (e.g. arithmetic: `[2, 3]`) or an object (e.g. conditional:
+/// `{condition: true, then_value: 10, else_value: 20}`). We capture
+/// `input_count` = array length, or `-1` for object inputs.
+fn decode_test_case(tc: HpmJsonValue) -> TestCase {
+  let description = get_string_field(tc, "description");
+  let input_count = match hpm_json_object_get(tc, "input") {
+    Some(h) => {
+      let t = hpm_json_type(h);
+      let n = if t == 5 {
+        hpm_json_array_len(h)
+      } else if t == 6 {
+        -1
+      } else {
+        0
+      };
+      hpm_json_free(h);
+      n
+    },
+    None => 0
+  };
+  #{ description: description, input_count: input_count }
+}
+
+/// Decode the `test_cases` array of a single operation. Returns the
+/// empty list if the field is absent or malformed.
+fn decode_test_cases(op: HpmJsonValue) -> [TestCase] {
+  match hpm_json_object_get(op, "test_cases") {
+    Some(arr) => {
+      let n = hpm_json_array_len(arr);
+      let mut acc = [];
+      let mut i = 0;
+      while i < n {
+        match hpm_json_array_get(arr, i) {
+          Some(tc) => {
+            acc = acc ++ [decode_test_case(tc)];
+            hpm_json_free(tc);
+          },
+          None => {
+            // Skip; the next iteration will still bump i.
+          }
+        };
+        i = i + 1;
+      }
+      hpm_json_free(arr);
+      acc
+    },
+    None => []
+  }
+}
+
+/// Extract `semantics.purpose` from an operation object. Two-level
+/// descent — `semantics` is itself an object with a `purpose` string.
+fn decode_purpose(op: HpmJsonValue) -> String {
+  match hpm_json_object_get(op, "semantics") {
+    Some(sem) => {
+      let p = get_string_field(sem, "purpose");
+      hpm_json_free(sem);
+      p
+    },
+    None => ""
+  }
+}
+
+/// Decode a single operation object.
+fn decode_op(op: HpmJsonValue) -> AlibOp {
+  #{
+    name: get_string_field(op, "name"),
+    category: get_string_field(op, "category"),
+    signature_string: get_string_field(op, "signature_string"),
+    purpose: decode_purpose(op),
+    test_cases: decode_test_cases(op),
+  }
+}
+
+/// Decode the top-level `operations` array. Returns `[]` if absent.
+fn decode_operations(root: HpmJsonValue) -> [AlibOp] {
+  match hpm_json_object_get(root, "operations") {
+    Some(arr) => {
+      let n = hpm_json_array_len(arr);
+      let mut acc = [];
+      let mut i = 0;
+      while i < n {
+        match hpm_json_array_get(arr, i) {
+          Some(op) => {
+            acc = acc ++ [decode_op(op)];
+            hpm_json_free(op);
+          },
+          None => {
+            // Skip.
+          }
+        };
+        i = i + 1;
+      }
+      hpm_json_free(arr);
+      acc
+    },
+    None => []
+  }
+}
+
+/// Decode the `metadata.total_operations` field. `metadata` is a
+/// sibling object of `operations` at the root; `total_operations` is
+/// an int within it. Defaults to 0 if either level is absent.
+fn decode_total(root: HpmJsonValue) -> Int {
+  match hpm_json_object_get(root, "metadata") {
+    Some(meta) => {
+      let n = get_int_field(meta, "total_operations");
+      hpm_json_free(meta);
+      n
+    },
+    None => 0
+  }
+}
+
+// ============================================================================
+// Public entry points
+// ============================================================================
+
+/// Parse a JSON source string into an `AlibSchema`. Returns `Err` if
+/// the JSON is malformed. The walk is defensive — missing or
+/// wrong-typed fields default to empty values rather than failing.
+pub fn parse_schema(src: String) -> Result<AlibSchema, String> {
+  match hpm_json_parse(src) {
+    None => Err("aggregate.json: malformed JSON"),
+    Some(root) => {
+      let schema = #{
+        schema_version: get_string_field(root, "schema_version"),
+        total_operations: decode_total(root),
+        operations: decode_operations(root),
+      };
+      hpm_json_free(root);
+      Ok(schema)
+    }
+  }
+}
+
+/// Read `aggregate.json` from `path` and parse it. Returns the I/O or
+/// parse error verbatim.
+pub fn load_schema(path: String) -> Result<AlibSchema, String> {
+  match read_file(path) {
+    Err(msg) => Err("aggregate.json: read failed: " ++ msg),
+    Ok(src) => parse_schema(src)
+  }
+}
+
+/// Convenience: the canonical estate path to the upstream aLib
+/// `aggregate.json`. Keep in sync with the path consumed by item #12.
+pub fn estate_path() -> String {
+  "/home/hyperpolymath/developer/repos/developer-ecosystem/aggregate-library/data/aggregate.json"
+}
+
+/// Load from the estate-canonical path.
+pub fn load_estate_schema() -> Result<AlibSchema, String> {
+  load_schema(estate_path())
+}

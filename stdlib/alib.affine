@@ -1,0 +1,188 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// AffineScript Standard Library — aLib Conformance Module
+//
+// Re-exports the 22 aLib v0.1.0 operations under their aLib-canonical
+// names, so consumers wanting the *aLib surface* can write:
+//
+//   use stdlib::alib::{add, multiply, fold, contains};
+//
+// rather than reaching for the AffineScript-idiomatic operators and
+// prelude functions directly. This is the Phase-A scaffolding step
+// per docs/alib-roadmap.adoc item #10; downstream items #11 (schema
+// loader) and #12 (test-vector executor) depend on this module
+// existing.
+//
+// Number ↦ Int. aLib's abstract `Number` type maps to AffineScript's
+// `Int` in this module. A parallel `alib_float` set could be added
+// when Float-typed test vectors land in aggregate.json; currently
+// (v0.1.0) test vectors use integer arithmetic.
+//
+// Each operation's signature in this file MUST match aLib's
+// `signature_string` field in
+// `developer-ecosystem/aggregate-library/data/aggregate.json`. The
+// future `alib #9` signature-alignment audit checks that property.
+
+module alib;
+
+use prelude::{ fold as prelude_fold, contains as prelude_contains };
+
+// ============================================================================
+// Arithmetic (5 ops) — aLib category: "arithmetic"
+// ============================================================================
+
+/// add :: Number, Number -> Number
+pub fn add(a: Int, b: Int) -> Int {
+  a + b
+}
+
+/// subtract :: Number, Number -> Number
+pub fn subtract(a: Int, b: Int) -> Int {
+  a - b
+}
+
+/// multiply :: Number, Number -> Number
+pub fn multiply(a: Int, b: Int) -> Int {
+  a * b
+}
+
+/// divide :: Number, Number -> Number
+///
+/// Integer division. Division by zero is the consumer's responsibility;
+/// aLib v0.1.0 does not specify the zero-divisor behaviour, so this
+/// surfaces the underlying interpreter's response.
+pub fn divide(a: Int, b: Int) -> Int {
+  a / b
+}
+
+/// modulo :: Number, Number -> Number
+pub fn modulo(a: Int, b: Int) -> Int {
+  a % b
+}
+
+// ============================================================================
+// Comparison (6 ops) — aLib category: "comparison"
+// ============================================================================
+
+/// less_than :: Number, Number -> Boolean
+pub fn less_than(a: Int, b: Int) -> Bool {
+  a < b
+}
+
+/// greater_than :: Number, Number -> Boolean
+pub fn greater_than(a: Int, b: Int) -> Bool {
+  a > b
+}
+
+/// equal :: Number, Number -> Boolean
+pub fn equal(a: Int, b: Int) -> Bool {
+  a == b
+}
+
+/// not_equal :: Number, Number -> Boolean
+pub fn not_equal(a: Int, b: Int) -> Bool {
+  a != b
+}
+
+/// less_equal :: Number, Number -> Boolean
+pub fn less_equal(a: Int, b: Int) -> Bool {
+  a <= b
+}
+
+/// greater_equal :: Number, Number -> Boolean
+pub fn greater_equal(a: Int, b: Int) -> Bool {
+  a >= b
+}
+
+// ============================================================================
+// Logical (3 ops) — aLib category: "logical"
+// ============================================================================
+
+/// and :: Boolean, Boolean -> Boolean
+pub fn and(a: Bool, b: Bool) -> Bool {
+  a && b
+}
+
+/// or :: Boolean, Boolean -> Boolean
+pub fn or(a: Bool, b: Bool) -> Bool {
+  a || b
+}
+
+/// not :: Boolean -> Boolean
+pub fn not(a: Bool) -> Bool {
+  !a
+}
+
+// ============================================================================
+// String (3 ops) — aLib category: "string"
+// ============================================================================
+
+/// concat :: String, String -> String
+pub fn concat(a: String, b: String) -> String {
+  a ++ b
+}
+
+/// length :: String -> Number
+pub fn length(s: String) -> Int {
+  len(s)
+}
+
+/// substring :: String, Number, Number -> String
+///
+/// aLib's substring is `(s, start, length)`. The interpreter builtin
+/// `string_sub(s, start, length)` matches that contract directly.
+pub fn substring(s: String, start: Int, n: Int) -> String {
+  string_sub(s, start, n)
+}
+
+// ============================================================================
+// Collection (4 ops) — aLib category: "collection"
+// ============================================================================
+
+/// map :: Collection[A], Function[A -> B] -> Collection[B]
+pub fn map<A, B>(coll: [A], f: A -> B) -> [B] {
+  let mut result = [];
+  for x in coll {
+    result = result ++ [f(x)];
+  }
+  result
+}
+
+/// filter :: Collection[A], Function[A -> Boolean] -> Collection[A]
+pub fn filter<A>(coll: [A], predicate: A -> Bool) -> [A] {
+  let mut result = [];
+  for x in coll {
+    if predicate(x) {
+      result = result ++ [x];
+    }
+  }
+  result
+}
+
+/// fold :: Collection[A], B, Function[B, A -> B] -> B
+pub fn fold<A, B>(coll: [A], init: B, f: (B, A) -> B) -> B {
+  prelude_fold(coll, init, f)
+}
+
+/// contains :: Collection[A], A -> Boolean
+pub fn contains<A>(coll: [A], element: A) -> Bool {
+  prelude_contains(coll, element)
+}
+
+// ============================================================================
+// Conditional (1 op) — aLib category: "conditional"
+// ============================================================================
+
+/// if_then_else :: Boolean, A, A -> A
+///
+/// Eager evaluation of both branches per the aLib spec. Consumers
+/// requiring lazy evaluation should use the language `if … else …`
+/// expression directly.
+pub fn if_then_else<A>(cond: Bool, then_val: A, else_val: A) -> A {
+  if cond {
+    then_val
+  } else {
+    else_val
+  }
+}

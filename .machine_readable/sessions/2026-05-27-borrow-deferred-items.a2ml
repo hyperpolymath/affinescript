@@ -1,0 +1,180 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 hyperpolymath
+#
+# Session record — 2026-05-27 — lib/borrow.ml deferred-items roundup
+#
+# Human-readable companion: docs/history/SESSION-HANDOFF-2026-05-27.adoc
+# Canonical comment in code: lib/borrow.ml:1483-1505
+
+[metadata]
+schema = "a2ml/session-record/v1"
+session-date = "2026-05-27"
+session-topic = "lib/borrow.ml CORE-01 #177 deferred-items roundup"
+repo = "hyperpolymath/affinescript"
+canonical-code-anchor = "lib/borrow.ml:1483-1505"
+human-companion = "docs/history/SESSION-HANDOFF-2026-05-27.adoc"
+parallel-sessions-detected = true
+parallel-detection-method = "PR title cross-reference after PR creation"
+
+# ── The four deferred-items entries ────────────────────────────────────
+# Each entry tracks: which PR(s) address it, parallel-implementation
+# overlap, and any audit findings.
+
+[[deferred-item]]
+id              = "reborrow-through-indirection"
+description     = "let r2 = r1 / r2 = r1 where RHS is itself a ref-binder"
+parallel-claude-pr = 395
+my-pr           = 400
+overlap         = "equivalent"
+multi-binder-gate-byte-identical = true
+my-pr-extra-coverage = ["self-assign-guard", "return-escape-fixture"]
+audit-comment   = "https://github.com/hyperpolymath/affinescript/pull/395#issuecomment-4550230871"
+
+[[deferred-item]]
+id              = "loop-soundness-and-clear-on-rewrite"
+description     = "StmtAssign treats LHS as a use; loops need 2-iter convergence"
+parallel-claude-pr = 396
+my-pr           = 399
+overlap         = "parallel-pr-is-superset"
+parallel-pr-extra = ["loop-soundness-2-iteration"]
+my-pr-extra     = ["sub-place-write-soundness-fix"]
+audit-finding-severity = "real-bug"
+audit-finding-summary  = "places_overlap is root-coarse, so x.f = e after move x silently clears the move-record on x"
+audit-comment   = "https://github.com/hyperpolymath/affinescript/pull/396#issuecomment-4550232584"
+recommended-fix = "rebase #396 to incorporate is_whole_place_write predicate from #399"
+
+[[deferred-item]]
+id              = "captured-linears-slice-d"
+description     = "reject @linear bindings captured by closures at borrow check"
+parallel-claude-pr = 397
+my-pr           = ""
+overlap         = "none — I had no parallel PR"
+audit-finding-severity = "real-bug"
+audit-finding-summary  = "param-path tracks only explicit @linear; misses Cmd[T]-typed params that let_is_linear would catch"
+audit-hygiene-findings = [
+  "linear_bindings not snapshot/restored at block exit",
+  "linear_bindings not unified in merge_arm_results",
+  "borrow_quantity_of_ty's Cmd-inference branch unreached by any fixture"
+]
+audit-comment   = "https://github.com/hyperpolymath/affinescript/pull/397#issuecomment-4550278071"
+
+[[deferred-item]]
+id              = "origin-variables-polonius"
+description     = "true Polonius surface — region vars on TyRef/TyMut with datalog loan solver"
+parallel-claude-pr = ""
+my-pr           = 398
+overlap         = "ADR-only — architectural; multi-week"
+adr             = "ADR-022"
+adr-doc         = "docs/decisions/0022-polonius-origin-variables.adoc"
+m1-sketch-branch = "core-01/polonius-m1-sketch"
+m1-sketch-commit = "b28757c"
+m1-pushed       = false
+owner-ratify-one-liner = "gh pr ready 398 && gh pr merge 398 --auto --squash --delete-branch"
+
+# ── Open-PR state at handoff ───────────────────────────────────────────
+
+[[open-pr]]
+number          = 395
+title           = "feat(borrow): CORE-01 ref-to-ref binding (#177 pt3) — let r2 = r / r = s alias the borrow-graph"
+draft           = false
+auto-merge      = "SQUASH"
+state           = "BLOCKED on CI queue"
+owner           = "hyperpolymath"
+parallel-pair-mine = 400
+my-review       = "https://github.com/hyperpolymath/affinescript/pull/395#issuecomment-4550230871"
+
+[[open-pr]]
+number          = 396
+title           = "feat(borrow): CORE-01 Slice C' (#177 pt3) — loop soundness via 2-iteration + StmtAssign clear-on-rewrite"
+draft           = false
+auto-merge      = "SQUASH"
+state           = "BLOCKED on CI queue"
+owner           = "hyperpolymath"
+parallel-pair-mine = 399
+my-review       = "https://github.com/hyperpolymath/affinescript/pull/396#issuecomment-4550232584"
+
+[[open-pr]]
+number          = 397
+title           = "feat(borrow): CORE-01 Slice D (#177 pt3) — reject @linear capture by closure at borrow check"
+draft           = false
+auto-merge      = "SQUASH"
+state           = "BLOCKED on CI queue"
+owner           = "hyperpolymath"
+parallel-pair-mine = ""
+my-review       = "https://github.com/hyperpolymath/affinescript/pull/397#issuecomment-4550278071"
+
+[[open-pr]]
+number          = 398
+title           = "docs(adr): ADR-022 — origin variables + Polonius-style loan solver (Refs #177)"
+draft           = true
+auto-merge      = "OFF (drafts cannot arm)"
+state           = "BLOCKED on CI queue"
+owner           = "hyperpolymath"
+ratify-one-liner = "gh pr ready 398 && gh pr merge 398 --auto --squash --delete-branch"
+
+[[open-pr]]
+number          = 399
+title           = "fix(borrow): whole-place assignment clears move-record (Refs #177)"
+draft           = true
+auto-merge      = "OFF (drafts cannot arm)"
+state           = "BLOCKED on CI queue"
+owner           = "hyperpolymath"
+parallel-pair-theirs = 396
+close-condition = "#396 merges with sub-place soundness fix incorporated"
+
+[[open-pr]]
+number          = 400
+title           = "fix(borrow): propagate ref-binding through reborrow indirection (Refs #177)"
+draft           = true
+auto-merge      = "OFF (drafts cannot arm)"
+state           = "BLOCKED on CI queue"
+owner           = "hyperpolymath"
+parallel-pair-theirs = 395
+close-condition = "#395 merges with self-assign-guard + return-escape-test incorporated"
+
+# ── Safe-to-close ledger ──────────────────────────────────────────────
+
+[[close-condition]]
+pr              = 400
+condition       = "#395 merges with self-assign-guard + return-escape-test"
+fallback        = "rebase onto main as follow-up adding the two missing pieces"
+
+[[close-condition]]
+pr              = 399
+condition       = "#396 merges with sub-place soundness fix (is_whole_place_write predicate)"
+fallback        = "rebase onto main as sub-place soundness correction"
+
+[[close-condition]]
+pr              = 398
+condition       = "owner ratifies ADR-022 via posted one-liner"
+fallback        = "do-not-close — only deferred-item that needs an architectural change"
+
+[[close-condition]]
+pr              = 395
+condition       = "auto-merge fires once CI clears"
+note            = "owner-side; review comment is informational, not blocking"
+
+[[close-condition]]
+pr              = 396
+condition       = "auto-merge fires once CI clears (with or without sub-place fix)"
+followup-needed = "if-merges-without-fix"
+followup-pr     = 399
+
+[[close-condition]]
+pr              = 397
+condition       = "auto-merge fires once CI clears"
+note            = "audit posted real-bug for Cmd-typed params; owner can incorporate or file follow-up"
+
+# ── Cleanup performed this session ────────────────────────────────────
+
+[cleanup]
+git-gc-log-removed = true
+git-prune-run = true
+local-branches-kept = ["core-01/polonius-m1-sketch (b28757c, M1 sketch for ADR-022)"]
+
+# ── Lessons for the next agent ────────────────────────────────────────
+
+[lessons]
+root-cause-of-duplicate-work = "previous-session-summary listed PRs only by status (MERGEABLE/BLOCKED), not by title; treated them as opaque siblings and re-did work"
+mitigation = "before starting work on any open issue/area, gh pr list --state open and gh pr view <n> on every open PR in the touched area"
+disambiguation-reminder = "AffineScript ≠ Ephapax; see feedback_affinescript_ephapax_siblings_not_impl_proof.md in user auto-memory"

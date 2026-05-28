@@ -1,0 +1,504 @@
+= AffineScript Standard Library Roadmap
+:toc: macro
+:toclevels: 3
+:icons: font
+
+Top 50 standard-library items, sequenced by current need.
+
+[IMPORTANT]
+====
+This document complements link:ROADMAP.adoc[ROADMAP.adoc] (language /
+compiler progress), link:bindings-roadmap.adoc[bindings-roadmap.adoc]
+(framework bindings), and link:alib-roadmap.adoc[alib-roadmap.adoc]
+(aLib conformance + affine contributions). Where this file disagrees
+with link:CAPABILITY-MATRIX.adoc[CAPABILITY-MATRIX.adoc] or
+link:ECOSYSTEM.adoc[ECOSYSTEM.adoc], those documents win.
+
+Compiled 2026-05-28 from the idaptik PR #107 pilot
+(link:https://github.com/hyperpolymath/idaptik/pull/107[hyperpolymath/idaptik#107])
++ estate-wide stdlib-need inventory.
+====
+
+toc::[]
+
+== Reading guide
+
+Each entry carries:
+
+* *Status* — one of:
+** `○` — nothing built
+** `◐` — scaffold or stub only
+** `◑` — partial; coverage / runtime gap
+** `●` — usable today
+** `◯` — blocked by a non-stdlib issue (codegen, runtime, etc.)
+* *File* — the stdlib path the item lives in or should live in.
+* *Rationale* — what motivates this entry. Where applicable, the
+  concrete consumer that needs it (e.g. an idaptik file path,
+  an RSR-stack hook).
+
+Item numbers are stable across revisions of this document; do not
+renumber when promoting or deferring items.
+
+[NOTE]
+====
+*Scope of this roadmap*: stdlib items only. Where an item overlaps
+with a language-level feature (e.g. async/await, capability types),
+the surface here is the *stdlib-side* API; the language-level work is
+tracked in the main ROADMAP. Such items are flagged `tracked-by-main`.
+====
+
+== Inventory snapshot (2026-05-28)
+
+[cols="1,1,3"]
+|===
+|File |State |Notes
+
+|`prelude.affine`     |`◑` partial |Imports + re-exports; cross-file `use` from standalone check is unreliable.
+|`option.affine`      |`◑` partial |Type exists; helpers thin; *not reachable* from standalone single-file check.
+|`result.affine`      |`◑` partial |Type exists; helpers thin.
+|`collections.affine` |`◑` partial |`list` operations; `len` / `++` parse-clean but fail at `affinescript eval`.
+|`dict.affine`        |`◑` partial |Type exists; runtime coverage incomplete.
+|`string.affine`      |`◑` partial |Surface present; runtime ops sparse.
+|`math.affine`        |`◑` partial |Arithmetic only; no trig / log / exp.
+|`io.affine`          |`◑` partial |Print / read; no path / env / exit-code helpers.
+|`json.affine`        |`◑` partial |Should consume `hpm-json-rsr` C-ABI.
+|`Crypto.affine`      |`◑` partial |Should consume `hpm-crypto-rsr` C-ABI.
+|`Http.affine`        |`◑` partial |Client-side; rewire to `hpm-http-client-rsr`.
+|`Network.affine`     |`◐` scaffold|Sockets / DNS coverage unclear.
+|`Sqlite.affine`      |`◑` partial |Coverage audit needed.
+|`Grammy.affine`      |`◑` partial |Telegram bot coverage.
+|`Ajv.affine`         |`◑` partial |Schema validation; estate-wide a2ml use.
+|`Deno.affine`        |`●` usable  |`WasmExports` + `wasmInstance` + `readFile`; calling individual exports is a binding gap (see bindings #5).
+|`Vscode.affine` + `VscodeLanguageClient.affine` |`●` usable |Issue #35 Phase 3 closed.
+|`effects.affine`     |`◐` scaffold|Effect-row helpers; tracked-by-main.
+|`traits.affine`      |`◐` scaffold|Trait helpers; sparse.
+|`Core.affine`        |`◐` scaffold|Foundational re-exports.
+|`testing.affine`     |`◑` partial |Test framework; coverage audit.
+|===
+
+== Tier 1 — Idaptik blockers (runtime + reach)
+
+These ten items are the stdlib gaps surfaced directly by the idaptik
+PR #107 pilot. Without them, the next migration tranche stalls at
+`affinescript check` PASS / `affinescript eval` FAIL — i.e. the type
+checker accepts code that the runtime can't execute.
+
+[cols="1,3,1,2,5"]
+|===
+|# |Item |Status |File |Rationale
+
+|1
+|*`List.len` runtime* — `len([1,2,3])` returns 3 at `eval`
+|`◑` partial
+|`collections.affine`
+|idaptik `Reversible.affine` works around this; every list-heavy port needs it.
+
+|2
+|*`List.++` runtime* — `[1] ++ [2,3]` returns `[1,2,3]` at `eval`
+|`◑` partial
+|`collections.affine`
+|Same site as #1; the pilot reverted from `++` to `Cons` calls.
+
+|3
+|*`for x in xs` codegen* — wasm codegen for `for-in` (closed as #257)
+|`●`
+|N/A (codegen)
+|Stdlib-adjacent: any iteration over a `list` triggers this. *Not a stdlib gap — a codegen bug.* Closed by PR #257 (2026-05-19).
+
+|4
+|*`while` + `mut` codegen* — same codegen surface as #3
+|`●`
+|N/A (codegen)
+|Same disposition as #3 — closed by PR #257.
+
+|5
+|*Cross-file `use` resolvability* — `use stdlib::Option` works from a single-file standalone check
+|`◑` partial
+|`prelude.affine` + name-resolver
+|idaptik pilot had to define a local `enum UndoResult { ... }` because prelude `Option`/`Some`/`None` weren't reachable. Every multi-file consumer hits this. *Partially a name-resolver bug, partially a stdlib organisation choice.*
+
+|6
+|*Prelude `Option` / `Some` / `None`* — usable from any check mode (not just project build)
+|`◑` partial
+|`option.affine` + `prelude.affine`
+|See #5; specific to the `Option` type which is the most-used stdlib enum.
+
+|7
+|*Dict runtime* — `Dict.get` / `Dict.set` / `Dict.iter` work at `eval`
+|`◑` partial
+|`dict.affine`
+|idaptik VM state uses a register map; without runtime dict the VM can't execute.
+
+|8
+|*`String.length`* runtime
+|`◑` partial
+|`string.affine`
+|Per-character cost calculations; idaptik UI code (post-pilot) will need this.
+
+|9
+|*`String.concat` / `++`* runtime
+|`◑` partial
+|`string.affine`
+|Match arms and debug-print sites in idaptik used inline concat throughout.
+
+|10
+|*Exhaustive match over imported enums* — pattern compiler resolves `Option::Some(x)` and `Option::None` even when imported via `use`
+|`◑` partial
+|pattern compiler + `option.affine`
+|Same family as #5/#6; causes the local-`enum` workaround pattern.
+|===
+
+== Tier 2 — Estate convergence (RSR rewires + coverage)
+
+Estate-wide hooks. The RSR (Rhodium Standard Repository) stack has
+shipped 5 libraries with stable Zig C-ABIs; the stdlib should be the
+AffineScript-side consumer for each.
+
+[cols="1,3,1,2,5"]
+|===
+|# |Item |Status |File |Rationale
+
+|11
+|*Crypto rewire to `hpm-crypto-rsr`* — sha256, sha512, blake3, ed25519, x25519
+|`◑` partial
+|`Crypto.affine`
+|RSR-stack convention; supersedes hand-rolled crypto in `Crypto.affine`.
+
+|12
+|*Http rewire to `hpm-http-client-rsr`* — verb coverage, headers, timeout, redirects
+|`◑` partial
+|`Http.affine`
+|RSR-stack convention; consumed by OikosBot AffineScript port (Phase 5).
+
+|13
+|*Json rewire to `hpm-json-rsr`* — parse / stringify / schema-aware
+|`◑` partial
+|`json.affine`
+|RSR-stack convention; needed for HTTP-server accept-loop payload extraction (RSR-stack pending work).
+
+|14
+|*GitHub API surface* via `hpm-github-api-rsr`'s 12 `hpm_github_*` exports
+|`○`
+|new `github.affine`, or extension to `Network.affine`
+|OikosBot pattern; Externs convention per Q4 shim.
+
+|15
+|*`Result` helpers* — `map` / `and_then` / `or_else` / `unwrap_or` / `map_err`
+|`◑` partial
+|`result.affine`
+|Used everywhere; idaptik pilot wanted `Result.map` and fell back to nested matches.
+
+|16
+|*`Option` helpers* — `map` / `and_then` / `unwrap_or` / `ok_or` / `is_some` / `is_none`
+|`◑` partial
+|`option.affine`
+|Same as #15. Closes the local-`enum UndoResult` workaround pattern.
+
+|17
+|*Collections trait surface* — `Iter`, `Into`, `From`, `IntoIterator` (or AS-equivalent)
+|`◐` scaffold
+|`collections.affine` + `traits.affine`
+|Required for any non-trivial functional pipeline; tracked-by-main on the *language* side.
+
+|18
+|*Traits coverage* — `Eq` / `Ord` / `Show` / `Debug` core traits, derive-style
+|`◐` scaffold
+|`traits.affine`
+|Auto-derive lands as language feature; the *trait surface* is stdlib.
+
+|19
+|*Math expanded* — trig (sin/cos/tan/asin/...), log/exp, pow, sqrt, floor/ceil/round
+|`◑` partial
+|`math.affine`
+|idaptik motion + physics; broadly useful.
+
+|20
+|*Io expanded* — `Path`, `Env::get`, `Env::set`, `stderr`, `Process::exit(code)`, `args`
+|`◑` partial
+|`io.affine`
+|CLI surface for every `affinescript`-compiled binary; idaptik justfile-replaceable scripts depend on it.
+|===
+
+== Tier 3 — Broadly useful (universals)
+
+Standard surface that any serious language ships within a few years.
+Not blocking specific consumers today; included so they're discoverable.
+
+[cols="1,3,1,2,5"]
+|===
+|# |Item |Status |File |Rationale
+
+|21
+|*Time / Duration / Instant* — monotonic + wall-clock, formatting, parsing
+|`○`
+|new `time.affine`
+|Universal; everything benchmarked or scheduled needs it.
+
+|22
+|*UUID / Random* — `Uuid::v4`, `Random::next`, seeded PRNG
+|`○`
+|new `uuid.affine` + `random.affine`
+|Random is in `Math` in many languages; UUIDs are universal.
+
+|23
+|*Regex* — pattern, match, replace, capture groups
+|`○`
+|new `regex.affine`
+|Estate-wide need; backed by a Zig FFI (PCRE2 or RE2 wrapper).
+
+|24
+|*URL parser* — `Url::parse`, `Url::join`, query parsing, encoding
+|`○`
+|new `url.affine`
+|Pairs with `Http`; universal client surface.
+
+|25
+|*Base64 / Hex encoding* — encode / decode, URL-safe variant
+|`○`
+|new `encoding.affine`
+|Universal; needed for JWT, image data URIs, etc.
+
+|26
+|*Logging surface* — `Logger`, levels, structured fields, JSON sink
+|`○`
+|new `logging.affine`
+|Estate observability requirement; pairs with OTel binding (Tier 4 in bindings roadmap).
+
+|27
+|*Date / calendar* — `Date`, `DateTime`, `TimeZone`, ISO-8601, RFC-3339
+|`○`
+|new `date.affine` (sibling to `time.affine`)
+|Distinct from #21; calendars are gnarly enough to deserve their own file.
+
+|28
+|*Number formatting* — fixed-precision, exponent, locale-aware
+|`○`
+|extension to `math.affine` or new `format.affine`
+|Output side of #19.
+
+|29
+|*Float utilities* — `NaN`, `infinity`, `is_finite`, total-ordering helpers
+|`○`
+|extension to `math.affine`
+|Floating-point edge cases that idiomatic code routinely gets wrong.
+
+|30
+|*Buffer / Bytes type* — fixed-length byte buffer with view / slice / read / write
+|`○`
+|new `bytes.affine`
+|Universal; required for crypto, binary protocols, wasm interop.
+|===
+
+== Tier 4 — Concurrency / async / effects
+
+The next layer of language maturity. Most items here are
+*tracked-by-main* — the language work lives in the main ROADMAP; the
+stdlib surface is what consumers see.
+
+[cols="1,3,1,2,5"]
+|===
+|# |Item |Status |File |Rationale
+
+|31
+|*Async / await canonicalisation* — public surface for `async fn` + `await`
+|`○`
+|`effects.affine` extension
+|Tracked-by-main; row-polymorphic effects mean the surface needs careful design.
+
+|32
+|*Promise / Task type* — `Task<T, E>`, spawn, join, race
+|`○`
+|new `task.affine`
+|Companion to #31; concrete handle type.
+
+|33
+|*Channel / mpsc* — bounded + unbounded, sender / receiver halves (affine fits naturally)
+|`○`
+|new `channel.affine`
+|First-class affine resource; AffineScript should make these *better* than other langs.
+
+|34
+|*Mutex / RwLock* — guard types, poison handling
+|`○`
+|new `sync.affine`
+|Pairs with #33; affine guard makes RAII trivial.
+
+|35
+|*Atomic types* — `AtomicI32`, `AtomicU64`, ordering enum
+|`○`
+|new `atomic.affine`
+|Low-level concurrency primitives.
+
+|36
+|*Cancellation tokens* — cooperative cancellation, parent / child propagation
+|`○`
+|`task.affine` extension
+|Idiomatic structured concurrency.
+
+|37
+|*Timer / sleep* — `sleep(duration)`, `interval`, oneshot timer
+|`○`
+|`time.affine` extension
+|Pairs with #21; common in idaptik gameplay loops.
+
+|38
+|*Select / race* — `select!`-style over multiple awaitables
+|`○`
+|`task.affine` extension
+|Required for any non-trivial concurrent flow.
+
+|39
+|*Stream / observable* — pull-based stream of `T`, map / filter / take
+|`○`
+|new `stream.affine`
+|Pairs with channel (#33) and Fetch/Streams (bindings #26).
+
+|40
+|*Actor / mailbox* — message-passing actors, supervised
+|`○`
+|new `actor.affine`
+|Gleam / BEAM-style; lower priority but valuable for distributed estate use.
+|===
+
+== Tier 5 — Conformance / introspection / advanced
+
+Items that earn their place once the basics are solid.
+
+[cols="1,3,1,2,5"]
+|===
+|# |Item |Status |File |Rationale
+
+|41
+|*aLib conformance vectors* — implement `aggregate.json`'s 20 ops + run its test vectors
+|`○`
+|new `alib.affine` + conformance runner
+|See link:alib-roadmap.adoc[alib-roadmap.adoc] for the full track; this is the stdlib-side hook.
+
+|42
+|*Effects calculus expansion* — capability rows, IO / Net / Async / Random / Time as effect labels
+|`○`
+|`effects.affine`
+|Tracked-by-main on the type-system side; stdlib provides the standard labels.
+
+|43
+|*Capability / permission types* — `Capability<Net>`, `Capability<Fs>`, scoped grant
+|`○`
+|new `capability.affine`
+|Pairs with #42; security-relevant surface.
+
+|44
+|*Borrow / move helpers* — `Move`, `Borrow`, `BorrowMut`, explicit move points
+|`○`
+|`Core.affine` extension
+|Tracked-by-main on the borrow-checker side.
+
+|45
+|*Diagnostics / pretty errors* — `Diagnostic` type, span attachment, rendered output
+|`◐` scaffold
+|new `diagnostics.affine`
+|Compiler dogfoods this; library code can emit `Diagnostic` results.
+
+|46
+|*Reflection / type-info* — runtime `TypeId`, `type_name`, derive-`Debug`-like introspection
+|`○`
+|new `reflect.affine`
+|Universal escape hatch; needed by serialisation (#47), testing (#48).
+
+|47
+|*Serialisation (binary)* — `Serialise` / `Deserialise` traits, compact binary format
+|`○`
+|new `serde.affine`
+|Pairs with `json.affine` (#13); binary side for protocols, sqlite blobs, wasm IPC.
+
+|48
+|*Testing expansion* — property-based, snapshot, async tests, fixtures
+|`◑` partial
+|`testing.affine`
+|Pairs with bindings #48 (test framework binding); coverage audit needed.
+
+|49
+|*Bench harness* — `Benchmark`, statistical reporting, CI-friendly output
+|`○`
+|new `bench.affine`
+|Companion to #48; estate has Hypatia perf rules.
+
+|50
+|*Doc-comment metadata access* — runtime + compile-time access to `///` doc comments
+|`○`
+|`reflect.affine` extension
+|Powers `affinescript doc`, IDE hovers, JSR-style package docs.
+|===
+
+== Cross-cutting observations
+
+. *Tier 1 is mostly runtime, not surface.* Items 1-4, 7-10 all exist
+  at the type-checker level; the gap is `eval` / wasm-codegen
+  execution. This means Tier 1 work is mostly in the *compiler*
+  (interp + codegen), not in the `.affine` stdlib files themselves.
+. *Cross-file `use` (#5/#6/#10) is a name-resolver bug, not a stdlib
+  surface gap.* The fix is in `lib/name_res.ml` (or equivalent); the
+  stdlib organisation may also need to change (e.g. `Option` /
+  `Result` always-imported even without explicit `use`).
+. *Tier 2 RSR rewires are mechanical* once the calling convention
+  exists (bindings #19). Doing bindings #19 first unblocks #11/#12/
+  #13/#14 in parallel.
+. *Tier 4 is mostly tracked-by-main.* The stdlib roadmap captures the
+  *surface*; the compiler ROADMAP captures the *machinery*. Don't
+  duplicate-track.
+. *No item in this roadmap is a binding* — every binding lives in
+  link:bindings-roadmap.adoc[bindings-roadmap.adoc]. The line: if
+  it's calling into a host runtime via `extern fn`, it's a binding;
+  if it's pure-AffineScript code that organises types and functions,
+  it's stdlib. Tier 2 RSR rewires straddle this line — they're
+  stdlib *modules* whose implementation calls bindings.
+
+== Suggested sequencing
+
+[cols="1,2,5"]
+|===
+|Phase |Goal |Items
+
+|*A*
+|Unblock idaptik PR #107 successor
+|#5 (cross-file `use`) → #6 (Option reach) → #1 (List.len runtime) → #2 (List.++ runtime) → #7 (Dict runtime)
+
+|*B*
+|RSR convergence
+|bindings #19 (Zig FFI doc) → #11 (Crypto) → #12 (Http) → #13 (Json) → #14 (GitHub)
+
+|*C*
+|Helper coverage
+|#15 (Result helpers) → #16 (Option helpers) → #19 (Math expanded) → #20 (Io expanded)
+
+|*D*
+|Universals
+|#21 (Time) → #23 (Regex) → #24 (URL) → #25 (Encoding) → #26 (Logging)
+
+|*E*
+|Demand-driven
+|Tier 4 + Tier 5; pick when a concrete consumer asks.
+|===
+
+== Tracking
+
+* Umbrella tracker: (TBD — opened alongside this PR)
+* Per-tier child issues: (TBD — opened alongside this PR)
+
+When a stdlib item's status changes, update its row in this file in
+the *same* PR that lands the change; do not let the table drift.
+
+== See also
+
+* link:ROADMAP.adoc[ROADMAP.adoc] — language / compiler progress.
+* link:bindings-roadmap.adoc[bindings-roadmap.adoc] — framework
+  bindings (host-runtime FFI surfaces).
+* link:alib-roadmap.adoc[alib-roadmap.adoc] — aLib conformance +
+  affine-aware contributions back upstream.
+* link:CAPABILITY-MATRIX.adoc[CAPABILITY-MATRIX.adoc] — per-feature
+  readiness (overrides everything).
+* link:ECOSYSTEM.adoc[ECOSYSTEM.adoc] — Stage A–E contracts.
+* idaptik PR #107 — the pilot that surfaced Tier 1 gaps.
+
+== License
+
+SPDX-License-Identifier: MPL-2.0

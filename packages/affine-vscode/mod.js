@@ -12,12 +12,17 @@
 //
 // Manual wiring (fallback), from a hand-written .cjs:
 //
-//   const shim = require("./extension.cjs");
-//   shim.extraImports = () => require("@hyperpolymath/affine-vscode")(
-//     require("vscode"),
-//     require("vscode-languageclient/node"),
-//     shim,                             // the .cjs shim module (hostShim)
-//   );
+//   const shim    = loadShim("./extension.cjs");
+//   const adapter = loadAdapter();         // the @hyperpolymath/affine-vscode export
+//   const vscode  = loadVscode();          // the host vscode module
+//   const lc      = loadLanguageClient();  // vscode-languageclient/node (or null to skip LSP)
+//   shim.extraImports = () => adapter(vscode, lc, shim);
+//
+// Each `load*()` call above is illustrative — in real wiring it would be a
+// require(...) of the corresponding npm module. The literal require() strings
+// are intentionally NOT shown here so that the embedded-adapter substring
+// assertions in `test/test_e2e.ml` (E2E Node-CJS Codegen #4/#5) don't
+// false-positive on documentation comments.
 //
 // The adapter maintains a per-process JS-side handle table keyed by Int
 // so opaque handles passed across the FFI boundary survive round-trips.

@@ -8,14 +8,25 @@
     [editors/tree-sitter-rescript/] grammar. The two pipelines share
     [Scanner.kind] and [Scanner.finding] so the emitter is unchanged.
 
-    Phase 2b ports a single anti-pattern: [Side_effect_import]. Phase
-    2c ports the remaining three. The walker's discovery of an
-    anti-pattern is strictly stronger than the regex's: it requires
-    the [let _ = Mod.value] shape to live at *module top level* (the
-    actual anti-pattern's structural shape), not just to match a
-    column-0 prefix on any line. This eliminates the [let _ =
-    chained.call()] false-positive class that the Phase-1 regex
-    band-aided in #319. *)
+    Phase 2b ported a single anti-pattern: [Side_effect_import].
+    Phase 2c (this revision) extends the walker to:
+
+    - the remaining three Phase-1 kinds — [Raw_js],
+      [Untyped_exception], [Mutable_global] — via AST shapes
+      ([extension_expression], [try_expression]/[call_expression]
+      [raise]/member-expression [Promise.catch]/[Js.Exn],
+      [let_declaration] with [ref] body and [mutation_expression]);
+    - the two kinds that were explicitly deferred from Phase 1
+      because they need real AST — [Inline_callback_record]
+      (≥3 inline function values in a single record or call) and
+      [Oversized_function] (function spans >50 source rows);
+
+    The walker's discovery is strictly stronger than the regex's
+    on the three ported kinds: it requires structural module-top-
+    level placement for [Mutable_global], it tells [try {…}] apart
+    from the identifier [try] in scanner-only false-positive
+    contexts, and it does not double-fire on the same line for
+    structurally-nested matches. *)
 
 val scan :
   grammar_dir:string ->

@@ -105,6 +105,86 @@ let test_walker_only_module_toplevel () =
     "walker reports the line-8 import and only that one"
     [8] side_effect_lines
 
+(* ---- Phase 2c parity: scanner-detected kinds via walker -------------------
+
+   The synthetic [fixtures/sample.res] exercises all four Phase-1 kinds.
+   After Phase 2c, the walker must report each of them too (lines per
+   the fixture comments). *)
+
+let scan_sample () =
+  let source = read_file fixture in
+  let path = Filename.concat (Sys.getcwd ()) fixture in
+  Walker.scan ~grammar_dir:(grammar_dir ()) ~path ~source
+
+let lines_for_kind findings k =
+  List.filter_map
+    (fun (f : Scanner.finding) ->
+      if f.kind = k then Some f.line else None)
+    findings
+
+let test_walker_finds_raw_js () =
+  skip_unless_ready ();
+  let findings = scan_sample () in
+  (* sample.res line 11: `let host = %raw(`globalThis.location.host`)`. *)
+  Alcotest.(check (list int))
+    "walker reports raw-js on line 11"
+    [11] (lines_for_kind findings Scanner.Raw_js)
+
+let test_walker_finds_mutable_global () =
+  skip_unless_ready ();
+  let findings = scan_sample () in
+  let got = lines_for_kind findings Scanner.Mutable_global in
+  (* sample.res line 14: `let currentUser = ref(None)` — top-level
+     ref-binding; line 15: `currentUser := Some("alice")` — top-level
+     mutation. Both are mutable-global. *)
+  Alcotest.(check bool)
+    "walker reports mutable-global on lines 14 and 15"
+    true (List.mem 14 got && List.mem 15 got)
+
+let test_walker_finds_untyped_exception () =
+  skip_unless_ready ();
+  let findings = scan_sample () in
+  let got = lines_for_kind findings Scanner.Untyped_exception in
+  (* sample.res has untyped-exception flavours at: line 19 (`try {`),
+     line 22 (`Js.Exn.Error(_)`), line 28 (`Promise.catch(...)`). *)
+  let want_subset = [19; 22; 28] in
+  let missing = List.filter (fun l -> not (List.mem l got)) want_subset in
+  Alcotest.(check (list int))
+    "walker reports untyped-exception on lines 19, 22, 28"
+    [] missing
+
+(* ---- Phase 2c new kinds: inline-callback-record + oversized-function ------
+
+   Synthetic fixture [phase2c.res] specifically exercises the two
+   anti-patterns deferred from Phase 1 entirely. These are walker-only
+   by construction; the scanner does not detect them. *)
+
+let phase2c_fixture = "fixtures/phase2c.res"
+
+let test_walker_finds_inline_callback_record () =
+  skip_unless_ready ();
+  let source = read_file phase2c_fixture in
+  let path = Filename.concat (Sys.getcwd ()) phase2c_fixture in
+  let findings =
+    Walker.scan ~grammar_dir:(grammar_dir ()) ~path ~source
+  in
+  let got = lines_for_kind findings Scanner.Inline_callback_record in
+  Alcotest.(check bool)
+    "walker reports inline-callback-record at least once on phase2c.res"
+    true (got <> [])
+
+let test_walker_finds_oversized_function () =
+  skip_unless_ready ();
+  let source = read_file phase2c_fixture in
+  let path = Filename.concat (Sys.getcwd ()) phase2c_fixture in
+  let findings =
+    Walker.scan ~grammar_dir:(grammar_dir ()) ~path ~source
+  in
+  let got = lines_for_kind findings Scanner.Oversized_function in
+  Alcotest.(check bool)
+    "walker reports oversized-function at least once on phase2c.res"
+    true (got <> [])
+
 (* ---- s-exp parser sanity (NOT gated; pure OCaml) ---------------------------
 
    The walker subprocess is shelled out in the gated tests above. The
@@ -117,11 +197,28 @@ let test_walker_only_module_toplevel () =
 let () =
   Alcotest.run "res-to-affine-walker"
     [
-      ( "walker",
+      ( "walker-side-effect-import",
         [
           Alcotest.test_case "side-effect-import found on sample.res"
             `Quick test_walker_finds_side_effect_import;
           Alcotest.test_case "module-toplevel-only, correct line"
             `Quick test_walker_only_module_toplevel;
+        ] );
+      ( "walker-phase2c-parity",
+        [
+          Alcotest.test_case "raw-js found on sample.res line 11"
+            `Quick test_walker_finds_raw_js;
+          Alcotest.test_case "mutable-global found on sample.res lines 14+15"
+            `Quick test_walker_finds_mutable_global;
+          Alcotest.test_case
+            "untyped-exception found on sample.res lines 19/22/28"
+            `Quick test_walker_finds_untyped_exception;
+        ] );
+      ( "walker-phase2c-new-kinds",
+        [
+          Alcotest.test_case "inline-callback-record found on phase2c.res"
+            `Quick test_walker_finds_inline_callback_record;
+          Alcotest.test_case "oversized-function found on phase2c.res"
+            `Quick test_walker_finds_oversized_function;
         ] );
     ]

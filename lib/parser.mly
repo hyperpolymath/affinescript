@@ -544,6 +544,34 @@ type_expr_primary:
     { match params with
       | [] -> TyArrow (TyTuple [], None, ret, None)
       | _  -> List.fold_right (fun p acc -> TyArrow (p, None, acc, None)) params ret }
+  /* Effect-row variant: `fn(A, B) -{E}-> C`. Mirrors the prefix-row arrow
+     already accepted in `type_expr_arrow` and in `return_type`, and is
+     required by hand-ports such as `fn(Http::Request) -{IO}-> Http::Response`
+     (gitbot-fleet#148 Router.affine). For multi-arg `fn`, the row attaches
+     to the *final* (innermost) arrow — that is where the call actually
+     performs the effect, and it matches the single-arg case where
+     `A -{E}-> R` puts the row on the lone arrow. Lowering:
+     `fn(A, B) -{E}-> R` ≡ `A -> (B -{E}-> R)`. Grammar-cost: the
+     `FN LPAREN ... RPAREN` prefix already disambiguates against every
+     other type-position production, so adding the `MINUS LBRACE eff
+     RBRACE ARROW` continuation here introduces no new lookahead conflict
+     beyond the existing `type_expr_arrow` row-arrow rule it mirrors. */
+  | FN LPAREN params = separated_list(COMMA, type_expr) RPAREN
+    MINUS LBRACE eff = effect_expr RBRACE ARROW
+    ret = type_expr_arrow
+    { match params with
+      | [] -> TyArrow (TyTuple [], None, ret, Some eff)
+      | _ ->
+        (* Attach eff to the innermost arrow (the one whose result is ret). *)
+        let rev_params = List.rev params in
+        (match rev_params with
+         | [] -> assert false
+         | last :: earlier_rev ->
+           let innermost = TyArrow (last, None, ret, Some eff) in
+           List.fold_left
+             (fun acc p -> TyArrow (p, None, acc, None))
+             innermost
+             earlier_rev) }
   /* Row-polymorphic record type.  We use a custom recursive rule rather than
      `separated_list` because Menhir's separated_list greedily consumes the
      COMMA separator and then cannot backtrack when the next token (ROW_VAR)
@@ -871,6 +899,52 @@ expr_primary:
   | modu = upper_ident COLONCOLON fname = lower_ident
     { ExprField (ExprVar (mk_ident modu $startpos(modu) $endpos(modu)),
                  mk_ident fname $startpos(fname) $endpos(fname)) }
+  /* Builtin-type-qualified value path: `Int::to_string(n)`, `String::len(s)`,
+     etc. The built-in type names are reserved keyword tokens (INT_T, STRING_T,
+     ...) rather than UPPER_IDENT, so the `upper_ident COLONCOLON lower_ident`
+     production above never fires for them. We replicate the same
+     `ExprField (ExprVar TypeName, lower_ident)` shape so [Resolve] sees a
+     uniform qualified-path AST. The lookahead after COLONCOLON (a lower_ident)
+     distinguishes this from any type-position use of the same keyword.
+     Added 2026-05-26 (Refs gitbot-fleet#148 sustainabot hand-port:
+     Int::to_string, Int::from_string, Float::to_string, etc.). */
+  | NAT COLONCOLON fname = lower_ident
+    { ExprField (ExprVar (mk_ident "Nat" $startpos($1) $endpos($1)),
+                 mk_ident fname $startpos(fname) $endpos(fname)) }
+  | INT_T COLONCOLON fname = lower_ident
+    { ExprField (ExprVar (mk_ident "Int" $startpos($1) $endpos($1)),
+                 mk_ident fname $startpos(fname) $endpos(fname)) }
+  | BOOL COLONCOLON fname = lower_ident
+    { ExprField (ExprVar (mk_ident "Bool" $startpos($1) $endpos($1)),
+                 mk_ident fname $startpos(fname) $endpos(fname)) }
+  | FLOAT_T COLONCOLON fname = lower_ident
+    { ExprField (ExprVar (mk_ident "Float" $startpos($1) $endpos($1)),
+                 mk_ident fname $startpos(fname) $endpos(fname)) }
+  | STRING_T COLONCOLON fname = lower_ident
+    { ExprField (ExprVar (mk_ident "String" $startpos($1) $endpos($1)),
+                 mk_ident fname $startpos(fname) $endpos(fname)) }
+  | CHAR_T COLONCOLON fname = lower_ident
+    { ExprField (ExprVar (mk_ident "Char" $startpos($1) $endpos($1)),
+                 mk_ident fname $startpos(fname) $endpos(fname)) }
+  /* Lowercase-module-qualified value path: `json::encode_string(s)`,
+     `string::join(xs, sep)`, etc. The stdlib already defines lowercase
+     modules (`stdlib/json.affine` declares `module json;`,
+     `stdlib/string.affine` declares `module string;`) and `use json::{...}`
+     parses because `module_path` is a list of `ident` (upper or lower).
+     The expression-position qualified path, however, only covered
+     `upper_ident COLONCOLON lower_ident`, leaving every call into a
+     lowercase stdlib module as a parse error. We mirror that rule for
+     lower-module values so [Resolve] sees the same canonical
+     `ExprField (ExprVar Mod, fname)` AST regardless of module casing.
+     LR(1)-safe: the only competing reduction for `lower_ident` at this
+     position is `name = lower_ident { ExprVar ... }`, and on a COLONCOLON
+     lookahead no rule starting from `expr_primary COLONCOLON` exists, so
+     the parser shifts unambiguously into this rule. Added 2026-05-26
+     (Refs gitbot-fleet#148 sustainabot hand-port: json::encode_object,
+     string::join, etc.). */
+  | modu = lower_ident COLONCOLON fname = lower_ident
+    { ExprField (ExprVar (mk_ident modu $startpos(modu) $endpos(modu)),
+                 mk_ident fname $startpos(fname) $endpos(fname)) }
 
   /* Grouping and tuples */
   | LPAREN RPAREN { ExprLit (LitUnit (mk_span $startpos $endpos)) }
@@ -1182,10 +1256,17 @@ ident:
    record field names.  Only keywords that do NOT introduce shift/reduce or
    reduce/reduce conflicts are listed here.  HANDLE is safe because it always
    requires `name COLON ty` in type-record context and `name: expr` in
-   expression-record context; the surrounding COLON disambiguates. *)
+   expression-record context; the surrounding COLON disambiguates.
+   TOTAL is safe by the same reasoning: as a function-decl modifier it always
+   appears between visibility? and FN (never after DOT, never before COLON in
+   a record body), and as a field name it always appears immediately before
+   COLON (record-field decl, record-literal field, dotted field access). The
+   surrounding COLON / DOT disambiguates. Added 2026-05-26 (Refs gitbot-fleet#148
+   sustainabot hand-port: HealthIndex.total, Recommendation.total, etc.). *)
 field_name:
   | id = ident { id }
   | HANDLE { mk_ident "handle" $startpos $endpos }
+  | TOTAL { mk_ident "total" $startpos $endpos }
 
 lower_ident:
   | name = LOWER_IDENT { name }
