@@ -20,6 +20,7 @@ this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- feat(stdlib/Http): RSR rewire — surface `hpm-http-rsr` Zig FFI (10 server-side externs: listen / port / free / accept / method / path / header / body / respond / request-free) + opaque `HpmHttpServer` + `HpmHttpRequest` types; native-only (#425)
 - feat(stdlib/json): v0.3 — RSR rewire to `hpm-json-rsr` Zig FFI (11 externs + opaque `HpmJsonValue` + `parse` / `to_json`), Deno-ESM lowering via `__as_hpmJson*` shims (#421)
 - feat(parser): trailing-comma in fn params and expr lists (Refs gitbot-fleet#148) (#370)
 - feat(lexer): underscore-prefix idents `_key`/`_unused` (Refs gitbot-fleet#148) (#373)
