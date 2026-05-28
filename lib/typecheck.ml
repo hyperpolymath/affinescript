@@ -113,9 +113,29 @@ type type_error =
           raised when a row is declared; an undeclared row stays
           permissive under tracking-only v1. *)
 
+(* Known exports of stdlib/prelude.affine. Mirrors the same list in
+   lib/face.ml — when an UnboundVariable fires at type-check time with
+   one of these names, the formatter suggests `use prelude::{...}`.
+   Same discoverability fix as the resolver path; the typechecker has
+   its own miss path (e.g. match arms reference unbound constructors
+   that the resolver missed). Keep in sync with stdlib/prelude.affine. *)
+let prelude_exports = [
+  "Option"; "Result";
+  "Some"; "None"; "Ok"; "Err";
+  "map"; "filter"; "fold"; "contains";
+  "sum"; "product"; "min"; "max"; "clamp";
+  "not"; "all"; "any"; "range"; "repeat";
+]
+
+let prelude_hint (name : string) : string =
+  if List.mem name prelude_exports then
+    Printf.sprintf "\n  hint: `%s` is defined in `stdlib/prelude.affine` — add `use prelude::{%s};` (or `use prelude::*;`) at the top of the file."
+      name name
+  else ""
+
 (** Format a type error for human consumption. *)
 let show_type_error = function
-  | UnboundVariable v -> "Unbound variable: " ^ v
+  | UnboundVariable v -> "Unbound variable: " ^ v ^ prelude_hint v
   | TypeMismatch { expected; got } ->
     Printf.sprintf "Type mismatch: expected %s, got %s"
       (ty_to_string expected) (ty_to_string got)
