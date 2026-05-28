@@ -1,0 +1,231 @@
+// SPDX-License-Identifier: PMPL-1.0-or-later
+// Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+
+= ARG-PROFILE — AffineScript
+:toc: left
+:toclevels: 2
+
+[cols="1,3"]
+|===
+| Field | Value
+
+| Language | AffineScript (`.affine`)
+| Repository | https://github.com/hyperpolymath/affinescript
+| Current ARG Grade | *D*  (toy-project usable; CLI gates user programs; vscode extension; conformance corpus)
+| Assessed | 2026-05-28
+| Assessor | Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+| ARG Spec Version | 1.0
+| FRG Profile | spec/FRG-PROFILE.adoc
+| TRG Profile | spec/TRG-PROFILE.adoc (TBD)
+|===
+
+== About this profile
+
+AffineScript is the estate's general-purpose affine-typed JS/TS/ReScript
+successor, targeting typed-wasm. It is the most adoption-ready of the
+three audit-cohort languages by ARG criteria: CLI `check`/`compile`/`eval`
+gate user programs with QTT-style usage tracking, a conformance corpus
+exists, the vscode extension was packaged and published (workflow run
+26463510992 queued 2026-05-26), and the language has a per-repo
+ECOSYSTEM.adoc engineering spine (the *A-E engineering critical path*,
+distinct from the ARG adoption spine — see disambiguation in §11 of
+the ARG spec).
+
+ARG = D. The full chain of axes:
+
+* ARG: D
+* TRG: TBD (likely D)
+* FRG: E (see `spec/FRG-PROFILE.adoc` — informal QTT discipline
+  embedded in implementation; no qualifying-prover formalisation
+  *of the calculus* yet)
+* CRG: TBD
+* RSR: Compliant at TRG-D level
+
+Cross-axis rule: ARG ≤ TRG holds (TRG ≥ D required, currently
+satisfied per implementation activity).
+
+== Grade rationale (evidence for D)
+
+[cols="2,1,4", options="header"]
+|===
+| Criterion | Met? | Evidence
+
+| *D1 — Landing page / README*
+| YES
+| `README.adoc` (675 lines, comprehensive; "Honest status sync"
+  block dated 2026-04-12)
+
+| *D2 — Elevator pitch*
+| YES
+| README §1 — affine-typed JS/TS/ReScript successor, compiles to
+  typed-wasm
+
+| *D3 — Provenance*
+| YES
+| Maintainer + start date + current version in README
+
+| *TRG ≥ D estate-wide*
+| YES (assumed)
+| CLI commands `check`, `compile`, `eval` gate user programs
+
+| *RSR-compliant at TRG-D*
+| YES
+| SPDX headers, CONTRIBUTING, CODE_OF_CONDUCT, recent estate sweep
+  complete (114 PRs filed 2026-05-26)
+
+| *O1 — 5-minute hello-world*
+| PARTIAL
+| `examples/` dir exists; not explicitly time-measured
+
+| *O2 — Tutorial covering distinctive features*
+| PARTIAL
+| `docs/CAPABILITY-MATRIX.adoc` provides feature coverage; tutorial
+  form weak
+
+| *O4 — Cookbook ≥ 3 worked examples ≥ 100 LoC each*
+| PARTIAL
+| Examples present; LoC threshold not explicitly verified
+
+| *R1 — Reference manual*
+| PARTIAL
+| `docs/` contains coverage; not "reference manual" complete
+
+| *R3 — Formal grammar*
+| YES
+| Grammar covered by parser implementation; tree-sitter migration in
+  progress (#57 Phase 2)
+
+| *Δ1 — Stable release artefacts*
+| YES
+| Tagged releases; vscode extension published (#104, 2026-05-26)
+
+| *External programs ≥ 100 LoC each parse/typecheck/run*
+| PARTIAL
+| Conformance corpus (`conformance/valid/`, `conformance/invalid/`)
+  but external (non-maintainer) programs limited
+
+| *Diversity metrics: ≥ 2 distinct external authors*
+| NO
+| Founder is sole non-bot author
+
+| *Onboarding O3 — Playground*
+| NO (D-permissive; required from C)
+|
+
+| *R2 — Stdlib reference*
+| NO (D-permissive; required from C)
+|
+
+| *R4 — Operational/denotational semantics*
+| NO (D-permissive; required from C)
+| Implementation embeds the semantics; no formal-doc form yet
+
+| *R5 — Stable error-code index*
+| NO (D-permissive; required from C)
+|
+
+| *C1-C5 community surface*
+| PARTIAL (D-permissive)
+| Issue tracker active, CONTRIBUTING, CoC; no public forum
+
+| *Δ2-Δ5 distribution surface*
+| PARTIAL (D-permissive)
+| npm publish landed; versioning informal; SECURITY.md present
+
+| *E1-E4 education*
+| NO
+|
+
+| *X1-X4 ecosystem*
+| NO
+|
+
+| *VeriSimDB attestation*
+| NO (D-permissive; required from C)
+|
+|===
+
+== Language-specific tightening
+
+For AffineScript, the following ARG tightening applies:
+
+* *Grade C tightening:* The playground (O3) MUST let a user write
+  an affine-typed program and observe borrow-check feedback
+  inline.
+* *Grade B tightening:* MUST have at least 3 external libraries
+  published against AffineScript (via npm or estate-equivalent
+  registry) that exercise the QTT-affine fragment, not just the
+  unrestricted subset.
+* *Grade A tightening:* The vscode extension (E4 evidence) MUST be
+  used in a multi-week curriculum by at least one external educator.
+
+== What is NOT yet met (honest gaps)
+
+* No browser/local playground.
+* No stdlib reference (one entry per public symbol).
+* No operational-semantics document (separate from implementation).
+* No stable error-code index.
+* No external dogfood cohort.
+* No 2 distinct external program authors meeting diversity-metrics
+  for ARG-D (this is the gap that blocks honest D — currently
+  closest to D-with-caveat).
+
+The honest reading is *ARG-D-leaning*: most D criteria hold but the
+diversity-metrics floor on external authors is the weakest pinning.
+A second external author meeting the diversity criterion would lock
+in D unambiguously.
+
+== Path to next grade (C — alpha gate)
+
+* Stand up playground (browser-runnable, single-page-app with WASM
+  execution).
+* Author stdlib reference (one entry per public symbol).
+* Operational semantics document at R4.
+* Stable error-code index at R5.
+* Public discussion venue (forum / Discord / Zulip).
+* RFC/ADR process activated (3 RFCs minimum).
+* Package registry presence (npm publish is wired; needs versioning
+  policy document).
+* Slide deck (E1) — proves language can be presented externally.
+* 10 dogfood users meeting diversity-metrics.
+* 2 substantive domains, ≥ 3 cookbook examples each.
+* VeriSimDB ingestion of per-commit ARG-PROFILE attestation.
+* Continuous fuzzing 14 days minimum per TRG floor.
+
+*Realistic timeline estimate:* 4-6 months.
+
+== Path to grade beyond that (B — broadly adopted)
+
+* ≥ 100 distinct external users.
+* ≥ 6 diverse external projects.
+* ≥ 12 third-party libraries.
+* ≥ 3 third-party tools.
+* ≥ 2 maintainers beyond founder.
+* External security/correctness audit.
+
+== Demotion risk
+
+* *Lowest:* npm extension unpublished without replacement — drops to E.
+* *Medium:* `check`/`compile`/`eval` regress and stop gating user
+  programs — drops to E.
+* *Catastrophic:* README "Honest status sync" becomes misleading
+  (claims feature coverage that no longer holds) — risks F.
+
+== Iteration history
+
+[cols="1,1,4", options="header"]
+|===
+| Date | Grade | Notes
+
+| 2026-05-28 | D | Initial ARG assessment. CLI gates programs; vscode extension published; conformance corpus exists. Diversity-metrics floor is the weakest pinning.
+|===
+
+== Review cycle
+
+* *Routine:* Reassess on every release cycle.
+* *Immediate:* Reassess within 7 days of any demotion trigger.
+
+== Footer
+
+This profile is itself a VCL-total proposition. `DECLARE`'d to
+VeriSimDB on each commit (once ingestion wired).
