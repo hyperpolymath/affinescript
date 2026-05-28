@@ -100,16 +100,16 @@ checker accepts code that the runtime can't execute.
 |Same site as #1; the pilot reverted from `++` to `Cons` calls.
 
 |3
-|*`for x in xs` codegen* — wasm codegen for `for-in` (issue #255)
-|`◯` blocked-by-#255
+|*`for x in xs` codegen* — wasm codegen for `for-in` (closed as #257)
+|`●`
 |N/A (codegen)
-|Stdlib-adjacent: any iteration over a `list` triggers this. *Not a stdlib gap — a codegen bug.* Listed so it doesn't get re-scoped as stdlib work.
+|Stdlib-adjacent: any iteration over a `list` triggers this. *Not a stdlib gap — a codegen bug.* Closed by PR #257 (2026-05-19).
 
 |4
 |*`while` + `mut` codegen* — same codegen surface as #3
-|`◯` blocked-by-#255-adjacent
+|`●`
 |N/A (codegen)
-|Same disposition as #3.
+|Same disposition as #3 — closed by PR #257.
 
 |5
 |*Cross-file `use` resolvability* — `use stdlib::Option` works from a single-file standalone check

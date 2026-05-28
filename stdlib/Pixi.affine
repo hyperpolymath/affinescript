@@ -1,0 +1,149 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// Pixi.affine — bindings for the `pixi.js` v8.x npm library (bindings
+// #1 in docs/bindings-roadmap.adoc).
+//
+// Initial typed surface covering Application init, Container hierarchy,
+// Sprite + Texture, Graphics + Text — the minimum needed to start
+// replacing idaptik's src/bindings/Pixi.res (the largest binding
+// surface in idaptik's 215-file src/app/ tree).
+//
+// Targets the Deno-ESM backend. Consumer (or its host wrapper) sets
+// `globalThis.__as_pixi` to the PIXI namespace at module-init time:
+//
+//   import * as PIXI from "pixi.js";
+//   globalThis.__as_pixi = PIXI;
+//
+// Tests mock the same shape — see `tests/codegen-deno/pixi_smoke.*`.
+//
+// History: replaces the broken `affinescript-pixijs/` scaffold that
+// used the obsolete `.as` extension, AGPL-3.0-or-later headers, and a
+// Zig→C→WASM-import architecture incompatible with the Deno-ESM
+// emitter. Restart, not revival. The eventual separate-repo home
+// (`hyperpolymath/affinescript-pixijs`) is a follow-up — the binding
+// is operational from here today.
+//
+// PixiJS 8.x type hierarchy: Sprite, Graphics, and Text are all
+// subclasses of Container. AffineScript has no subtype polymorphism,
+// so the binding exposes explicit upcast functions
+// (`pixiSpriteAsContainer`, etc.) — these are zero-cost identity
+// lowerings; the underlying JS value is the same object.
+
+module Pixi;
+
+use Deno::{Json};
+
+// ── Opaque host types ──────────────────────────────────────────────
+//
+// Each maps to its same-named PIXI class. They're treated opaquely at
+// the AS boundary; field access goes through extern fns.
+
+pub extern type Application;
+pub extern type Container;
+pub extern type Sprite;
+pub extern type Graphics;
+pub extern type Text;
+pub extern type Texture;
+pub extern type Ticker;
+
+// ── Application ────────────────────────────────────────────────────
+
+/// `new PIXI.Application(); await app.init(options)`.
+/// `options` is a JSON object: `{ width, height, backgroundColor, ... }`.
+/// PIXI 8 split construction from initialisation, so this is async.
+pub extern fn pixiAppInit(options: Json) -> Application / { Async };
+
+/// `app.canvas` — the underlying `HTMLCanvasElement` (opaque Json).
+pub extern fn pixiAppCanvas(app: Application) -> Json;
+
+/// `app.stage` — the root `Container`. Children added here are
+/// rendered on the next ticker frame.
+pub extern fn pixiAppStage(app: Application) -> Container;
+
+/// `app.ticker` — the render-loop driver.
+pub extern fn pixiAppTicker(app: Application) -> Ticker;
+
+/// `app.destroy()` — tear down rendering + free resources. Returns 0.
+pub extern fn pixiAppDestroy(app: Application) -> Int;
+
+// ── Container ──────────────────────────────────────────────────────
+
+/// `new PIXI.Container()`.
+pub extern fn pixiContainerNew() -> Container;
+
+/// `parent.addChild(child)`. Returns 0 (the JS-side return value is
+/// discarded — call the child accessor on the parent for the typed
+/// handle if needed).
+pub extern fn pixiContainerAddChild(parent: Container, child: Container) -> Int;
+
+/// `parent.removeChild(child)`. Returns 0.
+pub extern fn pixiContainerRemoveChild(parent: Container, child: Container) -> Int;
+
+/// Set `c.x` and `c.y` in one call. Returns 0.
+pub extern fn pixiContainerSetPosition(c: Container, x: Float, y: Float) -> Int;
+
+/// Set `c.visible`. Returns 0.
+pub extern fn pixiContainerSetVisible(c: Container, v: Bool) -> Int;
+
+/// `c.destroy()` — recursively free this container and its children.
+/// Returns 0.
+pub extern fn pixiContainerDestroy(c: Container) -> Int;
+
+// ── Sprite ─────────────────────────────────────────────────────────
+
+/// `new PIXI.Sprite(texture)`.
+pub extern fn pixiSpriteFrom(texture: Texture) -> Sprite;
+
+/// Upcast a Sprite to its Container superclass. Zero-cost identity
+/// lowering — the underlying JS value is the same object.
+pub extern fn pixiSpriteAsContainer(s: Sprite) -> Container;
+
+// ── Texture ────────────────────────────────────────────────────────
+
+/// `PIXI.Texture.from(url)` — async load of an image URL. PIXI 8
+/// returns a synchronous handle whose internal load completes lazily
+/// at the first draw.
+pub extern fn pixiTextureFromUrl(url: String) -> Texture;
+
+// ── Graphics ───────────────────────────────────────────────────────
+
+/// `new PIXI.Graphics()`.
+pub extern fn pixiGraphicsNew() -> Graphics;
+
+/// `g.rect(x, y, w, h)` — record a rectangle path. Returns 0.
+pub extern fn pixiGraphicsRect(g: Graphics, x: Float, y: Float, w: Float, h: Float) -> Int;
+
+/// `g.fill({ color })` — paint the recorded path. Returns 0.
+pub extern fn pixiGraphicsFill(g: Graphics, color: Int) -> Int;
+
+/// `g.clear()` — drop all recorded paths. Returns 0.
+pub extern fn pixiGraphicsClear(g: Graphics) -> Int;
+
+/// Upcast Graphics → Container. Zero-cost identity lowering.
+pub extern fn pixiGraphicsAsContainer(g: Graphics) -> Container;
+
+// ── Text ───────────────────────────────────────────────────────────
+
+/// `new PIXI.Text({ text, style })`. `options` is a JSON object
+/// matching the PIXI 8 TextOptions shape.
+pub extern fn pixiTextNew(options: Json) -> Text;
+
+/// `t.text = content`. Returns 0.
+pub extern fn pixiTextSetText(t: Text, content: String) -> Int;
+
+/// Upcast Text → Container. Zero-cost identity lowering.
+pub extern fn pixiTextAsContainer(t: Text) -> Container;
+
+// ── Ticker ─────────────────────────────────────────────────────────
+
+/// `ticker.add(callback)`. `callback` is an opaque JS function (PIXI's
+/// ticker passes a `delta: Ticker` arg the callback can ignore).
+/// Returns 0.
+pub extern fn pixiTickerAdd(t: Ticker, callback: Json) -> Int;
+
+/// `ticker.start()`. Returns 0.
+pub extern fn pixiTickerStart(t: Ticker) -> Int;
+
+/// `ticker.stop()`. Returns 0.
+pub extern fn pixiTickerStop(t: Ticker) -> Int;

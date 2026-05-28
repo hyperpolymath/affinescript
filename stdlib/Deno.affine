@@ -131,6 +131,15 @@ pub extern fn wasmInstance(bytes: Bytes) -> WasmExports;
 /// add a specialised extern when needed). Caller is responsible for
 /// the export existing and having a compatible arity; absent exports
 /// throw `TypeError: ... is not a function` at the host boundary.
+///
+/// Example:
+///
+///     use Deno::{Bytes, WasmExports, wasmInstance, wasmCall};
+///
+///     pub fn addViaWasm(bytes: Bytes, a: Float, b: Float) -> Float = {
+///       let exports = wasmInstance(bytes);
+///       wasmCall(exports, "add", [a, b])
+///     };
 pub extern fn wasmCall(exports: WasmExports, name: String, args: [Float]) -> Float;
 
 // ── Array helper ───────────────────────────────────────────────────
