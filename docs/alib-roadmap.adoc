@@ -135,10 +135,10 @@ edge-case requirements.
 |Mechanical comparison; ensures cross-language portability of code written against the aLib surface.
 
 |10
-|*Conformance module* — `stdlib/alib.affine` re-exporting the 20 ops under their aLib names
-|`○`
+|*Conformance module* — `stdlib/alib.affine` re-exporting the 22 ops under their aLib names (was "20"; current aggregate.json v0.1.0 has 22 across 6 categories: 5 arithmetic, 6 comparison, 3 logical, 3 string, 4 collection, 1 conditional)
+|`●`
 |T1
-|Single import point for consumers wanting the *aLib surface* rather than the *AffineScript-idiomatic surface*.
+|Single import point for consumers wanting the *aLib surface* rather than the *AffineScript-idiomatic surface*. Landed 2026-05-28.
 |===
 
 == Tier 2 — Conformance runner & infrastructure
