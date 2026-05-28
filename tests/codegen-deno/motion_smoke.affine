@@ -1,0 +1,15 @@
+// SPDX-License-Identifier: MPL-2.0
+// bindings #4 — Motion library smoke test.
+//
+// The harness installs a mock at globalThis.__as_motion before
+// importing the generated module; we re-export thin wrappers so the
+// harness can drive `motionAnimate` / `motionCancel` via stable names.
+
+use Deno::{Json};
+use Motion::{AnimationControls, motionAnimate, motionCancel};
+
+pub fn smokeAnimate(target: Json, keyframes: Json, options: Json) -> AnimationControls =
+  motionAnimate(target, keyframes, options);
+
+pub fn smokeCancel(controls: AnimationControls) -> Int =
+  motionCancel(controls);
