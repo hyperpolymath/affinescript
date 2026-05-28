@@ -193,6 +193,57 @@ const __as_httpHeadersFromResponse = (res) => {
   res.headers.forEach((value, key) => out.push([key, value]));
   return out;
 };
+// ---- hpm-json-rsr Zig FFI shims (stdlib/json.affine v0.3) ----
+// `HpmJsonValue` is opaque to AffineScript; on Deno-ESM it's just the
+// underlying JS value from JSON.parse. The shims mirror the sentinel
+// conventions of the Zig exports so the AffineScript-side wrappers
+// (`to_json`, `parse`) behave identically across backends.
+const __as_hpmJsonParse = (s) => {
+  try { return Some(JSON.parse(String(s))); } catch (_e) { return None; }
+};
+const __as_hpmJsonFree = (_v) => 0;
+const __as_hpmJsonType = (v) => {
+  if (v === null || v === undefined) return 0;
+  if (typeof v === "boolean") return 1;
+  if (typeof v === "number")  return Number.isInteger(v) ? 2 : 3;
+  if (typeof v === "string")  return 4;
+  if (Array.isArray(v))       return 5;
+  if (typeof v === "object")  return 6;
+  return -1;
+};
+const __as_hpmJsonBool = (v) => (typeof v === "boolean" ? (v ? 1 : 0) : -1);
+const __as_hpmJsonInt = (v) =>
+  (typeof v === "number" ? Math.trunc(v) : Number.MIN_SAFE_INTEGER);
+const __as_hpmJsonFloat = (v) => (typeof v === "number" ? v : NaN);
+const __as_hpmJsonString = (v) => (typeof v === "string" ? v : "");
+const __as_hpmJsonObjectGet = (v, k) => {
+  if (v === null || typeof v !== "object" || Array.isArray(v)) return None;
+  return Object.prototype.hasOwnProperty.call(v, String(k))
+    ? Some(v[String(k)]) : None;
+};
+const __as_hpmJsonArrayLen = (v) => (Array.isArray(v) ? v.length : 0);
+const __as_hpmJsonArrayGet = (v, i) => {
+  if (!Array.isArray(v)) return None;
+  const idx = Number(i);
+  return (idx >= 0 && idx < v.length) ? Some(v[idx]) : None;
+};
+const __as_hpmJsonEscapeString = (s) => {
+  let out = "";
+  const src = String(s);
+  for (let i = 0; i < src.length; i++) {
+    const c = src.charCodeAt(i);
+    if (c === 0x22) out += "\\\"";
+    else if (c === 0x5c) out += "\\\\";
+    else if (c === 0x0a) out += "\\n";
+    else if (c === 0x0d) out += "\\r";
+    else if (c === 0x09) out += "\\t";
+    else if (c === 0x08) out += "\\b";
+    else if (c === 0x0c) out += "\\f";
+    else if (c < 0x20) out += "\\u00" + c.toString(16).padStart(2, "0");
+    else out += src[i];
+  }
+  return out;
+};
 const __as_httpFetch = async (url, method, headers, bodyOpt) => {
   const init = { method, headers: __as_httpHeadersToObject(headers) };
   if (bodyOpt && bodyOpt.tag === "Some") init.body = bodyOpt.value;
@@ -299,7 +350,19 @@ let () =
      (see {!fd_is_async}). *)
   b "http_request" (fun a ->
     Printf.sprintf "(await __as_httpFetch(%s, %s, %s, %s))"
-      (arg 0 a) (arg 1 a) (arg 2 a) (arg 3 a))
+      (arg 0 a) (arg 1 a) (arg 2 a) (arg 3 a));
+  (* ---- hpm-json-rsr Zig FFI surface (stdlib/json.affine v0.3) ---- *)
+  b "hpm_json_parse"         (fun a -> Printf.sprintf "__as_hpmJsonParse(%s)" (arg 0 a));
+  b "hpm_json_free"          (fun a -> Printf.sprintf "__as_hpmJsonFree(%s)" (arg 0 a));
+  b "hpm_json_type"          (fun a -> Printf.sprintf "__as_hpmJsonType(%s)" (arg 0 a));
+  b "hpm_json_bool"          (fun a -> Printf.sprintf "__as_hpmJsonBool(%s)" (arg 0 a));
+  b "hpm_json_int"           (fun a -> Printf.sprintf "__as_hpmJsonInt(%s)" (arg 0 a));
+  b "hpm_json_float"         (fun a -> Printf.sprintf "__as_hpmJsonFloat(%s)" (arg 0 a));
+  b "hpm_json_string"        (fun a -> Printf.sprintf "__as_hpmJsonString(%s)" (arg 0 a));
+  b "hpm_json_object_get"    (fun a -> Printf.sprintf "__as_hpmJsonObjectGet(%s, %s)" (arg 0 a) (arg 1 a));
+  b "hpm_json_array_len"     (fun a -> Printf.sprintf "__as_hpmJsonArrayLen(%s)" (arg 0 a));
+  b "hpm_json_array_get"     (fun a -> Printf.sprintf "__as_hpmJsonArrayGet(%s, %s)" (arg 0 a) (arg 1 a));
+  b "hpm_json_escape_string" (fun a -> Printf.sprintf "__as_hpmJsonEscapeString(%s)" (arg 0 a))
 
 (* ============================================================================
    Identifier sanitisation (JS reserved words -> trailing underscore)
