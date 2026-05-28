@@ -20,7 +20,6 @@ this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- feat(stdlib/json): v0.3 — RSR rewire to `hpm-json-rsr` Zig FFI (11 externs + opaque `HpmJsonValue` + `parse`/`to_json`), Deno-ESM lowering via `__as_hpmJson*` shims (#421)
 - feat(parser): trailing-comma in fn params and expr lists (Refs gitbot-fleet#148) (#370)
 - feat(lexer): underscore-prefix idents `_key`/`_unused` (Refs gitbot-fleet#148) (#373)
 - feat(parser): record-update spread at start `#{ ..base, f: v }` (Refs gitbot-fleet#148) (#376)
