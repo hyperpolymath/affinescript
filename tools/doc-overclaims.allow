@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: MPL-2.0
 # SPDX-FileCopyrightText: 2024-2026 hyperpolymath
-# Over-claim baseline (issue #176, DOC-08/09 / ledger DOC-17) — the
-# frozen set of accepted over-claim-phrase occurrences. Regenerate with
-# `./tools/check-doc-overclaims.sh --update`. Each line is a
+# Over-claim baseline (issue #176, DOC-08/09) — the frozen set of
+# accepted over-claim-phrase occurrences guarded by
+# tools/check-doc-truthing.sh. Regenerate with
+# `./tools/check-doc-truthing.sh --update`. Each line is a
 # "relpath<TAB>normalised-line" signature. A new signature not listed
 # here fails CI; adding one is a deliberate, reviewable act. Current
 # entries are future-tense roadmap milestones, dated history snapshots,
