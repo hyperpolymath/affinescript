@@ -87,10 +87,14 @@ fmt:
 # Run all checks (lint + test + regression guards)
 check: lint test guard
 
-# Issue #35 Phase 3 regression guard — fails if extension.ts reappears
-# under editors/vscode/src or any face's vscode extension dir
+# Regression guards:
+#  - Issue #35 Phase 3: fails if extension.ts reappears under
+#    editors/vscode/src or any face's vscode extension dir.
+#  - Issue #176 (DOC-01..09): fails if the status-doc truthing banners
+#    re-drift (authoritative matrix pointers + STATE.a2ml mirror keys).
 guard:
     ./tools/check-no-extension-ts.sh
+    ./tools/check-doc-truthing.sh
 
 # ── Compiler subcommands ──────────────────────────────────────────────────────
 

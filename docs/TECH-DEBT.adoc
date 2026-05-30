@@ -114,10 +114,21 @@ ABI coordination model (four axes: spec authority / coordinated
 landing / test parity / conflict resolution). Both filed in
 META.a2ml; ADR-020 lands first as the first test of ADR-021's
 protocol. Both require owner ratification. |*PROPOSED 2026-05-23*
+|DOC-16 |In-repo enforcement of the DOC-04/05 truthing invariant —
+`tools/check-doc-truthing.sh` (toolchain-free bash) fails if any
+over-claiming doc loses its `CAPABILITY-MATRIX.adoc` banner, if the
+matrix stops self-declaring primacy or loses its "What AffineScript is
+NOT" section, or if `STATE.a2ml` drops its mirror keys. Wired into
+`just check` (the `guard` recipe) and CI (`ci.yml` build job). Converts
+the DOC-08/09 MONITOR posture from external-bot-only to a first-class
+in-repo gate. |*DONE 2026-05-30*
 |===
 
 MONITOR enforcement (DOC-08/09): any PR re-introducing backend-breadth,
 "production-ready", or stdlib-percentage over-claims must be rejected.
+As of DOC-16 (2026-05-30) the banner/mirror half of this is enforced
+in-repo by `tools/check-doc-truthing.sh`; the external Hypatia/gitbot
+DOC rules remain the catch-all for novel over-claim phrasings.
 
 == Section B — CORE (compiler soundness / completeness)
 
@@ -347,8 +358,9 @@ allocates a length-prefixed AS string and byte-copies from the
 WASI buffer.** Real-host main-invoke = S6 (WIT export lifting)
 |INT-04 |Publish to JSR/npm |S2 |#181 packaging READY (dry-run green,
 manual workflow); compiler-binary distribution decided = **ADR-019**
-(#260, Releases + thin Deno/JSR shim, staged S1..S4) — S1/S2/S3
-merged (#283/#284/#285); S4 done — INT-10 closed (#282).
+(#260, Releases + thin Deno/JSR shim, staged S1..S4; per-file record
+link:decisions/0019-compiler-distribution.adoc[decisions/0019-compiler-distribution.adoc])
+— S1/S2/S3 merged (#283/#284/#285); S4 done — INT-10 closed (#282).
 **First JSR publish landed 2026-05-20: `@hyperpolymath/affinescript@0.1.2`
 LIVE** (cross-runtime Deno+Bun+Node, MPL-2.0, sibling .d.ts for
 fast-check). `@hyperpolymath/affine-js` + `@hyperpolymath/affinescript-tea`

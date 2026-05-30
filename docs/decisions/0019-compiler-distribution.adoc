@@ -1,0 +1,136 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath (Jonathan D.A. Jewell) <j.d.a.jewell@open.ac.uk>
+= ADR-019: Compiler distribution — GitHub Releases binaries + thin Deno/JSR shim
+Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+:toc:
+:toclevels: 2
+:icons: font
+
+Status:: Accepted
+Date:: 2026-05-19 (accepted); implementation S1–S4 landed 2026-05-20
+Issue:: https://github.com/hyperpolymath/affinescript/issues/260[INT-04 #260] (split from https://github.com/hyperpolymath/affinescript/issues/181[#181])
+Series:: Settled-decisions ledger; companion entry in `.machine_readable/6a2/META.a2ml [[adr]] id="ADR-019"`; narrative in `docs/specs/SETTLED-DECISIONS.adoc` §"Compiler Distribution".
+
+== Context
+
+INT-04 (#181) is "publish compiler + runtime". The two halves have very
+different shapes:
+
+* The *runtime* JS packages (`@hyperpolymath/affine-js`,
+  `@hyperpolymath/affinescript-tea`) are ordinary JSR/npm packages — their
+  publish path is bounded packaging-prep (`docs/PACKAGING.adoc`) and was
+  already ready/independent of this decision.
+* The *compiler* is a native OCaml binary. It is **not** a JSR/npm package,
+  so "publish the compiler" has no off-the-shelf answer. How consumers — and
+  in particular `affinescript-lsp` (INT-10) — install it is a one-way-door
+  contract: it sets the install surface, the checksum/trust story, and the
+  LSP's compiler-resolution path.
+
+This was escalated as a design fork (issue #260, AskUserQuestion 2026-05-19)
+rather than guessed, because it is irreversible-ish and outside the
+packaging-prep scope.
+
+== Decision
+
+=== Option survey
+
+The fork presented four options:
+
+(1) **GitHub Releases binaries.** Per-platform artifacts via the existing
+    `release.yml` (`v*` tags) + an install script / fetch-pin.
+
+(2) **Guix/Nix channel.** Aligns with the repo's primary packaging
+    (`guix.scm` / `flake.nix`); reproducible, but a narrower audience and no
+    `deno`/`npm` ergonomics for the LSP-installer consumers.
+
+(3) **Thin JSR/npm shim.** A small package that, on first run, downloads a
+    pinned, checksummed prebuilt binary and execs it — `deno`/`npm`
+    ergonomics without shipping OCaml source.
+
+(4) **Combination** of the above.
+
+=== Chosen: (4) — *Releases-canonical, dual-channel*
+
+The owner chose the combination, with GitHub Releases as the **single
+canonical artifact source** and a thin Deno/JSR shim as the ergonomic front
+door:
+
+* *Canonical artifact.* `.github/workflows/release.yml`, on a `v*` tag,
+  builds per-platform compiler binaries and a `SHA256SUMS` manifest, both
+  attached to the GitHub Release. The Release is the one source of truth;
+  Guix/Nix and any later npm tail are **additive fetch-derivations over it**,
+  not separate producers.
+
+* *Ergonomic front door.* A thin Deno/JSR package
+  `@hyperpolymath/affinescript` downloads the host-platform binary from the
+  pinned Release, verifies it against the `SHA256SUMS` checksum embedded in
+  that shim version, then caches and execs it. HTTPS-only, no secrets, one
+  version+checksum pinned per shim release (no floating fetch).
+
+* *LSP path.* `affinescript-lsp` (INT-10) resolves the compiler via
+  `AFFINESCRIPT_COMPILER` → `affinescript` on `PATH` → the
+  `@hyperpolymath/affinescript` shim. Consuming the shim is what unblocks
+  INT-10; the LSP does no bespoke bundling.
+
+* *npm tail deferred.* An npm publish is added only if an npm-native consumer
+  needs it, mirroring the `affine-vscode` runtime exception. It is **not**
+  wired by this ADR.
+
+== Staging
+
+Tracked in `docs/TECH-DEBT.adoc` (INT-04 / INT-10); all four stages have
+landed:
+
+[cols="1,4,1"]
+|===
+|Stage |Content |Status
+
+|S1 |This ADR + plan; file INT-10. No code. |DONE
+|S2 |`release.yml` per-platform binary build + `SHA256SUMS` matrix |DONE (#283/#284/#285)
+|S3 |The shim package — download + checksum-verify + cache + exec + tests; publish owner-gated via the existing manual JSR workflow |DONE
+|S4 |Wire INT-10 `affinescript-lsp` onto the shim |DONE (#282)
+|===
+
+First JSR publish landed 2026-05-20: `@hyperpolymath/affinescript@0.1.2`
+LIVE (cross-runtime Deno + Bun + Node, MPL-2.0, sibling `.d.ts` for
+JSR fast-check). The shim pins all three v0.1.1 binaries by SHA256, so the
+resolution path executes end-to-end. Compiler version-string drift was fixed
+in lock-step via `lib/version.ml` (single source of truth) + a release.yml
+tag-time bake step (#297/#300).
+
+== Consequences
+
+* The install contract is *Releases-first*. Renaming the `SHA256SUMS`
+  manifest or the per-platform asset names is an ABI change for every shim
+  version and for Guix/Nix derivations downstream — do not rename without
+  amending this ADR and the shim's pinned spec.
+* Browsers and Cloudflare Workers are out of scope for the shim by
+  construction (fetch → save to disk → exec a native binary cannot run in a
+  sandboxed JS runtime). The shim's runtime-compatibility matrix is therefore
+  Deno ✅ / Bun ✅ / Node ✅ / Workers ❌ / Browsers ❌ (see `.claude/CLAUDE.md`
+  Runtime Exemptions).
+* Reproducible-build consumers are served by the additive Guix/Nix
+  derivations layered over the same Release artifact, not by a competing
+  artifact source.
+
+== References
+
+* Issue: https://github.com/hyperpolymath/affinescript/issues/260 (INT-04
+  compiler distribution), split from
+  https://github.com/hyperpolymath/affinescript/issues/181[#181].
+* Unblocks: https://github.com/hyperpolymath/affinescript/issues/282[INT-10
+  #282] (`affinescript-lsp` distribution).
+* `docs/specs/SETTLED-DECISIONS.adoc` §"Compiler Distribution: GitHub
+  Releases Binaries + Thin Deno/JSR Shim (ADR-019)" — the narrative twin of
+  this record.
+* `docs/PACKAGING.adoc` §"The compiler itself — decided (ADR-019 / #260)".
+* `docs/TECH-DEBT.adoc` INT-04 / INT-10 rows.
+* `.machine_readable/6a2/META.a2ml [[adr]] id="ADR-019"` — the machine record.
+* `.github/workflows/release.yml` (S2 producer), `.github/workflows/publish-jsr.yml`
+  (owner-gated shim publish), `packages/affinescript-cli/` (the shim).
+
+== Standing rule
+
+This decision is *settled and implemented*. Do not reopen without amending
+this ADR. The companion `SETTLED-DECISIONS.adoc` section and the `META.a2ml`
+ADR-019 record must move in lock-step with any amendment.
