@@ -1,0 +1,52 @@
+// SPDX-License-Identifier: MPL-2.0
+// issue #459 — `break` and `continue` inside `while` / `for` loops.
+// Pre-fix the lexer reserved BREAK/CONTINUE tokens but no production
+// rule consumed them, so any use was a syntax error. Downstream TS
+// ports (standards#284) had to restructure into combined-guard or
+// sentinel-boolean forms. Now they parse, type-check (rejected
+// outside a loop with NotInLoop), and lower to JS `break;`/`continue;`.
+
+// `break` exits a `while` early.
+pub fn sum_until(limit: Int) -> Int {
+  let mut acc = 0;
+  let mut i = 0;
+  while i < 100 {
+    if acc >= limit { break; }
+    acc = acc + i;
+    i = i + 1;
+  }
+  return acc;
+}
+
+// `continue` skips the rest of the body.
+pub fn sum_odd(n: Int) -> Int {
+  let mut acc = 0;
+  let mut i = 0;
+  while i < n {
+    i = i + 1;
+    if i % 2 == 0 { continue; }
+    acc = acc + i;
+  }
+  return acc;
+}
+
+// `break` inside `for`.
+pub fn find_first(arr: [Int], target: Int) -> Int {
+  let mut found = -1;
+  let mut idx = 0;
+  for x in arr {
+    if x == target { found = idx; break; }
+    idx = idx + 1;
+  }
+  return found;
+}
+
+// `continue` inside `for`.
+pub fn count_positive(arr: [Int]) -> Int {
+  let mut n = 0;
+  for x in arr {
+    if x <= 0 { continue; }
+    n = n + 1;
+  }
+  return n;
+}

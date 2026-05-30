@@ -524,6 +524,8 @@ let rec infer_usage_expr (env : env) (expr : expr) : unit =
   | ExprReturn e_opt ->
     Option.iter (infer_usage_expr env) e_opt
 
+  | ExprBreak _ | ExprContinue _ -> ()
+
   | ExprTry et ->
     infer_usage_block env et.et_body;
     Option.iter (fun arms ->

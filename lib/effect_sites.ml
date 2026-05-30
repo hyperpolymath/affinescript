@@ -85,6 +85,7 @@ let rec visit_expr (visit : expr -> unit) (e : expr) : unit =
   | ExprBlock b -> visit_block visit b
   | ExprReturn eo | ExprResume eo ->
     (match eo with Some e -> go_expr e | None -> ())
+  | ExprBreak _ | ExprContinue _ -> ()
   | ExprTry t ->
     visit_block visit t.et_body;
     (match t.et_catch with Some arms -> List.iter go_arm arms | None -> ());

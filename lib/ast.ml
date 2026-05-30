@@ -146,6 +146,8 @@ type expr =
   | ExprUnary of unary_op * expr
   | ExprBlock of block
   | ExprReturn of expr option
+  | ExprBreak of Span.t                              (** break (in loop) — #459 *)
+  | ExprContinue of Span.t                           (** continue (in loop) — #459 *)
   | ExprTry of {
       et_body : block;
       et_catch : match_arm list option;
