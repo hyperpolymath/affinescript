@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-// Deno-ESM codegen regression for stdlib/encoding.affine (stdlib #25, hex).
+// Deno-ESM codegen regression for stdlib/encoding.affine (stdlib #25, hex + base64).
 //
 // Self-contained mirror of stdlib/encoding.affine — the codegen-deno
 // runner compiles each fixture standalone (no stdlib resolution), so the
@@ -53,3 +53,92 @@ pub fn from_hex(s: String) -> Int {
   }
   acc
 }
+
+// --- base64 (mirrors the base64 half of stdlib/encoding.affine) ---
+// Exercises the byte-oriented string_char_code_at / string_from_char_code
+// primitive lowering on the Deno-ESM backend.
+
+fn b64_alphabet() -> String =
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+fn b64_url_alphabet() -> String =
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
+fn b64_digit(alphabet: String, sextet: Int) -> String =
+  string_sub(alphabet, sextet & 63, 1);
+
+fn b64_value(alphabet: String, digit: String) -> Int =
+  string_find(alphabet, digit);
+
+fn b64_encode_with(alphabet: String, pad: Bool, input: String) -> String {
+  let n = len(input);
+  let mut out = "";
+  let mut i = 0;
+  while i + 3 <= n {
+    let b0 = string_char_code_at(input, i);
+    let b1 = string_char_code_at(input, i + 1);
+    let b2 = string_char_code_at(input, i + 2);
+    out = out
+      ++ b64_digit(alphabet, b0 >> 2)
+      ++ b64_digit(alphabet, ((b0 & 3) << 4) | (b1 >> 4))
+      ++ b64_digit(alphabet, ((b1 & 15) << 2) | (b2 >> 6))
+      ++ b64_digit(alphabet, b2 & 63);
+    i = i + 3;
+  }
+  let rem = n - i;
+  if rem == 1 {
+    let b0 = string_char_code_at(input, i);
+    out = out
+      ++ b64_digit(alphabet, b0 >> 2)
+      ++ b64_digit(alphabet, (b0 & 3) << 4);
+    if pad {
+      out = out ++ "==";
+    }
+  } else {
+    if rem == 2 {
+      let b0 = string_char_code_at(input, i);
+      let b1 = string_char_code_at(input, i + 1);
+      out = out
+        ++ b64_digit(alphabet, b0 >> 2)
+        ++ b64_digit(alphabet, ((b0 & 3) << 4) | (b1 >> 4))
+        ++ b64_digit(alphabet, (b1 & 15) << 2);
+      if pad {
+        out = out ++ "=";
+      }
+    }
+  }
+  out
+}
+
+pub fn to_base64(input: String) -> String =
+  b64_encode_with(b64_alphabet(), true, input);
+
+pub fn to_base64_url(input: String) -> String =
+  b64_encode_with(b64_url_alphabet(), false, input);
+
+fn b64_decode_with(alphabet: String, s: String) -> String {
+  let n = len(s);
+  let mut out = "";
+  let mut buf = 0;
+  let mut bits = 0;
+  let mut i = 0;
+  while i < n {
+    let v = b64_value(alphabet, string_sub(s, i, 1));
+    if v >= 0 {
+      buf = (buf << 6) | v;
+      bits = bits + 6;
+      if bits >= 8 {
+        bits = bits - 8;
+        out = out ++ string_from_char_code((buf >> bits) & 255);
+      }
+    }
+    i = i + 1;
+  }
+  out
+}
+
+pub fn from_base64(s: String) -> String =
+  b64_decode_with(b64_alphabet(), s);
+
+pub fn from_base64_url(s: String) -> String =
+  b64_decode_with(b64_url_alphabet(), s);

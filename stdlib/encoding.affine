@@ -75,3 +75,133 @@ pub fn from_hex(s: String) -> Int {
   }
   acc
 }
+
+// ---------------------------------------------------------------------------
+// Base64 (RFC 4648)
+//
+// Unlike hex, base64 is byte-oriented: it groups the *bytes* of its input
+// three at a time and re-packs them as four 6-bit code points. AffineScript
+// has no `Bytes` type yet (stdlib #30), but the compiler exposes the byte
+// view of a `String` directly — `string_char_code_at(s, i)` returns the
+// 0..255 code of the i-th byte and `string_from_char_code(c)` builds a
+// one-byte string from `c & 0xff` (both on the interpreter and Deno-ESM
+// backends; see the implementations in lib/interp.ml / lib/codegen_deno.ml).
+// So `to_base64` / `from_base64` operate on a String whose characters are
+// Latin-1 bytes (0..255) — the natural representation for ASCII text and for
+// the byte buffers a `Bytes` type would later wrap. When stdlib #30 lands,
+// these gain `Bytes` overloads; the String forms stay as the text path.
+//
+// As in the hex half, integer `/` and `%` are avoided (they lower to
+// floating-point division on the Deno-ESM backend); all group/remainder
+// math uses `&`, `<<`, `>>`, `|`.
+
+/// Standard base64 alphabet (RFC 4648 §4). Index `v` (0..63) is the digit
+/// for sextet value `v`.
+fn b64_alphabet() -> String =
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+/// URL- and filename-safe base64 alphabet (RFC 4648 §5): `+` and `/`
+/// replaced by `-` and `_`.
+fn b64_url_alphabet() -> String =
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
+/// Map a sextet (0..63) to its base64 digit under `alphabet`.
+fn b64_digit(alphabet: String, sextet: Int) -> String =
+  string_sub(alphabet, sextet & 63, 1);
+
+/// Value (0..63) of a single base64 digit under `alphabet`, or `-1` for a
+/// character not in the alphabet (e.g. the `=` pad or whitespace).
+fn b64_value(alphabet: String, digit: String) -> Int =
+  string_find(alphabet, digit);
+
+/// Encode the bytes of `input` as base64 using `alphabet`, appending `=`
+/// padding when `pad` is true. Shared core for the standard and URL-safe
+/// front doors below.
+fn b64_encode_with(alphabet: String, pad: Bool, input: String) -> String {
+  let n = len(input);
+  let mut out = "";
+  let mut i = 0;
+  // Whole 3-byte groups -> 4 sextets, no padding.
+  while i + 3 <= n {
+    let b0 = string_char_code_at(input, i);
+    let b1 = string_char_code_at(input, i + 1);
+    let b2 = string_char_code_at(input, i + 2);
+    out = out
+      ++ b64_digit(alphabet, b0 >> 2)
+      ++ b64_digit(alphabet, ((b0 & 3) << 4) | (b1 >> 4))
+      ++ b64_digit(alphabet, ((b1 & 15) << 2) | (b2 >> 6))
+      ++ b64_digit(alphabet, b2 & 63);
+    i = i + 3;
+  }
+  // Tail: either 1 or 2 leftover bytes.
+  let rem = n - i;
+  if rem == 1 {
+    let b0 = string_char_code_at(input, i);
+    out = out
+      ++ b64_digit(alphabet, b0 >> 2)
+      ++ b64_digit(alphabet, (b0 & 3) << 4);
+    if pad {
+      out = out ++ "==";
+    }
+  } else {
+    if rem == 2 {
+      let b0 = string_char_code_at(input, i);
+      let b1 = string_char_code_at(input, i + 1);
+      out = out
+        ++ b64_digit(alphabet, b0 >> 2)
+        ++ b64_digit(alphabet, ((b0 & 3) << 4) | (b1 >> 4))
+        ++ b64_digit(alphabet, (b1 & 15) << 2);
+      if pad {
+        out = out ++ "=";
+      }
+    }
+  }
+  out
+}
+
+/// Standard base64 (RFC 4648 §4) with `=` padding.
+/// `to_base64("") == ""`, `to_base64("f") == "Zg=="`,
+/// `to_base64("foobar") == "Zm9vYmFy"`.
+pub fn to_base64(input: String) -> String =
+  b64_encode_with(b64_alphabet(), true, input);
+
+/// URL- and filename-safe base64 (RFC 4648 §5) without padding — the form
+/// used by JWT segments. `to_base64_url("f") == "Zg"`.
+pub fn to_base64_url(input: String) -> String =
+  b64_encode_with(b64_url_alphabet(), false, input);
+
+/// Decode base64 text under `alphabet` to the original bytes. Characters
+/// not in `alphabet` (the `=` pad, newlines, whitespace) are skipped, so a
+/// single decoder handles padded and unpadded input and tolerates wrapped
+/// lines. Shared core for the standard and URL-safe front doors below.
+fn b64_decode_with(alphabet: String, s: String) -> String {
+  let n = len(s);
+  let mut out = "";
+  // Accumulate sextets into a bit buffer; emit a byte per 8 bits.
+  let mut buf = 0;
+  let mut bits = 0;
+  let mut i = 0;
+  while i < n {
+    let v = b64_value(alphabet, string_sub(s, i, 1));
+    if v >= 0 {
+      buf = (buf << 6) | v;
+      bits = bits + 6;
+      if bits >= 8 {
+        bits = bits - 8;
+        out = out ++ string_from_char_code((buf >> bits) & 255);
+      }
+    }
+    i = i + 1;
+  }
+  out
+}
+
+/// Decode standard base64 (RFC 4648 §4) to the original bytes. Accepts
+/// padded or unpadded input. `from_base64("Zm9vYmFy") == "foobar"`.
+pub fn from_base64(s: String) -> String =
+  b64_decode_with(b64_alphabet(), s);
+
+/// Decode URL-safe base64 (RFC 4648 §5) to the original bytes. Accepts
+/// padded or unpadded input. `from_base64_url("Zg") == "f"`.
+pub fn from_base64_url(s: String) -> String =
+  b64_decode_with(b64_url_alphabet(), s);
