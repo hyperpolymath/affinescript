@@ -1024,6 +1024,12 @@ let rec synth (ctx : context) (expr : expr) : ty result =
       | TCon "Float" ->
         let* () = check ctx rhs ty_float in
         Ok ty_bool
+      | TCon "String" ->
+        (* String relational ops are byte-wise lexicographic, matching
+           JS / Lua / Rust convention. Surfaced by #458 (was the
+           rate-limiter for several TS→AS ports). *)
+        let* () = check ctx rhs ty_string in
+        Ok ty_bool
       | _ ->
         let (lhs_ty', rhs_ty, result_ty) = type_of_binop op in
         let* () = unify_or_err lhs_ty lhs_ty' in

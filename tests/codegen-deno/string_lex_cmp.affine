@@ -1,0 +1,22 @@
+// SPDX-License-Identifier: MPL-2.0
+// issue #458 — String relational ops (<, >, <=, >=) must be built-in
+// for lexicographic comparison. Pre-fix, `a < b` for `String` raised
+// `TypeMismatch (String, Int)` because the comparison branch in
+// Typecheck dispatched only on Float / Int. Now String dispatches
+// alongside, lowering to JS `<` (which already does lex compare).
+
+pub fn lt(a: String, b: String) -> Bool { return a < b; }
+pub fn gt(a: String, b: String) -> Bool { return a > b; }
+pub fn le(a: String, b: String) -> Bool { return a <= b; }
+pub fn ge(a: String, b: String) -> Bool { return a >= b; }
+
+// Common derived: equal-length lex compare, single-character pivot,
+// empty-string handling.
+pub fn first_lt() -> Bool { return "abc" < "abd"; }
+pub fn first_gt() -> Bool { return "z" > "a"; }
+pub fn equal_strings_le() -> Bool { return "x" <= "x"; }
+pub fn equal_strings_ge() -> Bool { return "x" >= "x"; }
+pub fn equal_strings_lt() -> Bool { return "x" < "x"; }
+pub fn empty_lt() -> Bool { return "" < "a"; }
+pub fn empty_le() -> Bool { return "" <= ""; }
+pub fn prefix_lt() -> Bool { return "abc" < "abcd"; }
