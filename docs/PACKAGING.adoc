@@ -66,7 +66,8 @@ scoped automation token) — a deliberate exception to Deno-first.
 #181 says "publish *compiler* + runtime". The runtime is the JS
 packages above. The **compiler is a native OCaml binary** — not a
 JSR/npm package. The one-way-door fork (#260) was decided
-(**ADR-019**): *Releases-canonical, dual-channel*.
+(**ADR-019**): *Releases-canonical, dual-channel*. Full decision record:
+link:decisions/0019-compiler-distribution.adoc[docs/decisions/0019-compiler-distribution.adoc].
 
 * *Canonical artifact.* `.github/workflows/release.yml` (#260 S2), on a
   `v*` tag, builds `affinescript-{linux-x64,macos-x64,macos-arm64}`

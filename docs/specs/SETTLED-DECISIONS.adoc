@@ -456,5 +456,6 @@ tests, publish owner-gated via the existing manual JSR workflow; *S4*
 wire INT-10 `affinescript-lsp` onto the shim.
 
 This decision is settled; do not reopen without amending the ADR. Full
-ADR in `.machine_readable/6a2/META.a2ml` (ADR-019); ledger #260 /
-INT-10 in `docs/TECH-DEBT.adoc`.
+ADR in `.machine_readable/6a2/META.a2ml` (ADR-019) and the per-file
+decision record link:../decisions/0019-compiler-distribution.adoc[docs/decisions/0019-compiler-distribution.adoc];
+ledger #260 / INT-10 in `docs/TECH-DEBT.adoc`.

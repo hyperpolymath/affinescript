@@ -75,6 +75,14 @@ jobs:
         # rationale + recovery instructions.
         run: ./tools/check-no-extension-ts.sh
 
+      - name: Issue #176 — block status-doc truthing re-drift
+        # docs/CAPABILITY-MATRIX.adoc is the single authoritative status
+        # doc. This guard fails if the over-claiming docs lose their
+        # banners pointing back at it, if the matrix stops self-declaring
+        # primacy / loses its anti-over-claim section, or if STATE.a2ml
+        # stops flagging itself as a mirror (DOC-01..09). Toolchain-free.
+        run: ./tools/check-doc-truthing.sh
+
       - name: Check formatting
         run: opam exec -- dune build @fmt
 
