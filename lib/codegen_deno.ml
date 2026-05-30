@@ -171,6 +171,44 @@ const __as_regexMatch = (s, pat) => new RegExp(pat).test(String(s));
 const __as_wasmInstance = (bytes) =>
   new WebAssembly.Instance(new WebAssembly.Module(bytes)).exports;
 const __as_wasmCall = (exports, name, args) => Number(exports[name](...(args || [])));
+// ---- WasmValue (Deno.affine #455 — Tier 1 #5, Option B) ----
+// Opaque tagged value crossing the AS/JS boundary as `{ kind, v }`.
+// `kind` is one of "i32" | "i64" | "f32" | "f64". The `v` payload is
+// `BigInt` for i64 (preserves precision beyond 2^53), `Number` otherwise.
+const __as_wv_i32 = (n) => ({ kind: "i32", v: (Number(n) | 0) });
+const __as_wv_i64 = (n) => ({ kind: "i64", v: BigInt(n) });
+const __as_wv_f32 = (f) => ({ kind: "f32", v: Math.fround(Number(f)) });
+const __as_wv_f64 = (f) => ({ kind: "f64", v: Number(f) });
+const __as_wv_as_int = (v) => {
+  if (v == null) return 0;
+  if (typeof v.v === "bigint") {
+    // i64: truncate to safe-integer Number; caller's responsibility for
+    // precision-sensitive paths (use wv_kind to detect).
+    return Number(v.v);
+  }
+  // i32 / f32 / f64: truncate toward zero per AS Int semantics.
+  return (Number(v.v) | 0);
+};
+const __as_wv_as_float = (v) => {
+  if (v == null) return 0;
+  return typeof v.v === "bigint" ? Number(v.v) : Number(v.v);
+};
+const __as_wv_kind = (v) => (v && typeof v.kind === "string") ? v.kind : "";
+const __as_wasm_export_call = (exports, name, args) => {
+  // Unmarshal AS-side [WasmValue] to raw JS scalars for the wasm call.
+  const rawArgs = (args || []).map((wv) => {
+    if (wv == null) return 0;
+    // i64 payload is BigInt; wasm i64 imports accept BigInt directly.
+    return wv.v;
+  });
+  const result = exports[name](...rawArgs);
+  // Wrap return as f64 (lossless for any numeric; callers expecting i32/i64
+  // can rebuild via wv_i32(wv_as_int(result)) or inspect wv_kind).
+  if (typeof result === "bigint") {
+    return { kind: "i64", v: result };
+  }
+  return { kind: "f64", v: Number(result) };
+};
 // ---- motion (bindings #4): consumer-provided import ----
 // Host JS environment must expose globalThis.__as_motion (the motion
 // library or a compatible mock). Tests set it in the harness before
@@ -431,6 +469,15 @@ let () =
   b "regexMatch"   (fun a -> Printf.sprintf "__as_regexMatch(%s, %s)" (arg 0 a) (arg 1 a));
   b "wasmInstance" (fun a -> Printf.sprintf "__as_wasmInstance(%s)" (arg 0 a));
   b "wasmCall"     (fun a -> Printf.sprintf "__as_wasmCall(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
+  (* WasmValue constructors / accessors / typed export call — #455. *)
+  b "wv_i32"           (fun a -> Printf.sprintf "__as_wv_i32(%s)" (arg 0 a));
+  b "wv_i64"           (fun a -> Printf.sprintf "__as_wv_i64(%s)" (arg 0 a));
+  b "wv_f32"           (fun a -> Printf.sprintf "__as_wv_f32(%s)" (arg 0 a));
+  b "wv_f64"           (fun a -> Printf.sprintf "__as_wv_f64(%s)" (arg 0 a));
+  b "wv_as_int"        (fun a -> Printf.sprintf "__as_wv_as_int(%s)" (arg 0 a));
+  b "wv_as_float"      (fun a -> Printf.sprintf "__as_wv_as_float(%s)" (arg 0 a));
+  b "wv_kind"          (fun a -> Printf.sprintf "__as_wv_kind(%s)" (arg 0 a));
+  b "wasm_export_call" (fun a -> Printf.sprintf "__as_wasm_export_call(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
   (* ---- motion (bindings #4) ---- *)
   b "motionAnimate" (fun a -> Printf.sprintf "__as_motionAnimate(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
   b "motionAwait"   (fun a -> Printf.sprintf "(await __as_motionAwait(%s))" (arg 0 a));
