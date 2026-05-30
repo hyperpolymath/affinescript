@@ -1,0 +1,48 @@
+// SPDX-License-Identifier: MPL-2.0
+// issue #122 follow-up — Deno-scripting surface (campaign #239 STEP 3 first-cut).
+//
+// Exercises the new externs added to stdlib/Deno.affine to unblock
+// estate TS-script ports: recursive walk, args, exit, ISO timestamp,
+// stderr, and minimal regex. The harness stubs `Deno.readDirSync` (for
+// walkRecursive), `Deno.args`, `Deno.exit`, and captures `console.error`
+// so nothing touches the real process or filesystem.
+//
+// Signatures stay in primitives (String/[String]/Int/Bool) so the
+// fixture is self-contained and consumes only the new lowerings.
+
+use Deno::{ walkRecursive, args, exit, dateNowIso, consoleError, regexMatch };
+
+pub fn count_walked(root: String) -> Int {
+  let entries = walkRecursive(root);
+  len(entries)
+}
+
+pub fn first_walked(root: String) -> String {
+  let entries = walkRecursive(root);
+  if len(entries) == 0 {
+    return "";
+  }
+  return entries[0];
+}
+
+pub fn arg_count() -> Int {
+  let av = args();
+  len(av)
+}
+
+pub fn iso_starts_with_year() -> Bool {
+  let s = dateNowIso();
+  // ISO-8601 timestamps lead with a four-digit year, then `-`.
+  regexMatch(s, "^[0-9]{4}-")
+}
+
+pub fn is_pa_code(cat: String) -> Bool {
+  regexMatch(cat, "^PA[0-9]{3}")
+}
+
+pub fn warn_then_zero(msg: String) -> Int {
+  let _ = consoleError(msg);
+  return 0;
+}
+
+pub fn exit_with(code: Int) -> Int = exit(code);

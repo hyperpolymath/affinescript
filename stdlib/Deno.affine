@@ -68,6 +68,11 @@ pub extern fn readDirNames(path: String) -> [String];
 /// `Deno.statSync(path).size` in bytes.
 pub extern fn statSize(path: String) -> Int;
 
+/// Recursive walk under `root` — every file path beneath it, depth-first.
+/// Mirrors `std/fs/walk` for the common case (no glob filter; callers
+/// filter by extension). Throws on a missing root via `Deno.readDirSync`.
+pub extern fn walkRecursive(root: String) -> [String];
+
 // ── Path ───────────────────────────────────────────────────────────
 
 /// Single-segment join with a `/` separator (idempotent on a trailing
@@ -110,6 +115,34 @@ pub extern fn kbString(bytes: Int) -> String;
 
 /// `Date.now()` — epoch millis (used for timestamped report names).
 pub extern fn dateNow() -> Int;
+
+/// `new Date().toISOString()` — UTC ISO-8601 timestamp string
+/// (e.g. `"2026-05-30T12:34:56.789Z"`). Distinct from `dateNow()` which
+/// returns epoch millis as `Int`.
+pub extern fn dateNowIso() -> String;
+
+// ── CLI ────────────────────────────────────────────────────────────
+
+/// `Deno.args` — command-line arguments (excludes argv[0]).
+pub extern fn args() -> [String];
+
+/// `Deno.exit(code)` — terminate the process with `code`. Never returns;
+/// the `Int` return type is for type-level compatibility with `if/else`
+/// arms that flow through `exit` in their non-returning branch.
+pub extern fn exit(code: Int) -> Int;
+
+// ── Diagnostics ────────────────────────────────────────────────────
+
+/// `console.error(s)` — write to stderr. (Use `print`/`println` for
+/// stdout.) Returns 0 for chaining.
+pub extern fn consoleError(s: String) -> Int;
+
+// ── Regex ──────────────────────────────────────────────────────────
+
+/// `new RegExp(pat).test(s)` — true iff `s` matches the JS regex source
+/// `pat`. Minimal regex surface; for extraction or replace, add a
+/// specialised extern. Invalid `pat` throws at call time.
+pub extern fn regexMatch(s: String, pat: String) -> Bool;
 
 /// `(Number(bytes) / 1024).toFixed(2)` — kilobyte display string.
 pub extern fn numToFixed2(bytes: Int) -> String;

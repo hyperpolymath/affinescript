@@ -155,6 +155,19 @@ const __as_readDirNames = (p) => {
   return names;
 };
 const __as_isNotFound = (e) => (e instanceof Deno.errors.NotFound);
+const __as_walkRecursive = (root) => {
+  const out = [];
+  const rec = (dir) => {
+    for (const entry of Deno.readDirSync(dir)) {
+      const full = (dir.endsWith("/") ? dir : dir + "/") + entry.name;
+      if (entry.isFile) out.push(full);
+      else if (entry.isDirectory) rec(full);
+    }
+  };
+  rec(root);
+  return out;
+};
+const __as_regexMatch = (s, pat) => new RegExp(pat).test(String(s));
 const __as_wasmInstance = (bytes) =>
   new WebAssembly.Instance(new WebAssembly.Module(bytes)).exports;
 const __as_wasmCall = (exports, name, args) => Number(exports[name](...(args || [])));
@@ -400,6 +413,22 @@ let () =
   b "kbString"    (fun a -> Printf.sprintf "(Number(%s) / 1024).toFixed(2)" (arg 0 a));
   (* ---- misc host ---- *)
   b "dateNow"     (fun _ -> "Date.now()");
+  (* `new Date().toISOString()` — UTC ISO-8601 timestamp string. Distinct
+     from `dateNow()` which returns epoch millis as Int. *)
+  b "dateNowIso"  (fun _ -> "(new Date().toISOString())");
+  (* `Deno.args` — CLI argument vector (excludes argv[0]). *)
+  b "args"        (fun _ -> "Deno.args");
+  (* `Deno.exit(code)` — terminate process. Never returns. *)
+  b "exit"        (fun a -> Printf.sprintf "Deno.exit(%s)" (arg 0 a));
+  (* `console.error(s)` — stderr write. Returns 0 for chaining; the
+     comma-expression preserves the AffineScript Int contract. *)
+  b "consoleError" (fun a -> Printf.sprintf "(console.error(%s), 0)" (arg 0 a));
+  (* Recursive file walk — depth-first, returns every file path under
+     `root`. Filtering by extension is the caller's responsibility. *)
+  b "walkRecursive" (fun a -> Printf.sprintf "__as_walkRecursive(%s)" (arg 0 a));
+  (* `new RegExp(pat).test(s)` — minimal regex surface. Invalid `pat`
+     throws at call time (RegExp constructor error). *)
+  b "regexMatch"   (fun a -> Printf.sprintf "__as_regexMatch(%s, %s)" (arg 0 a) (arg 1 a));
   b "wasmInstance" (fun a -> Printf.sprintf "__as_wasmInstance(%s)" (arg 0 a));
   b "wasmCall"     (fun a -> Printf.sprintf "__as_wasmCall(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
   (* ---- motion (bindings #4) ---- *)
