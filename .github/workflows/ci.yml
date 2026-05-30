@@ -75,21 +75,14 @@ jobs:
         # rationale + recovery instructions.
         run: ./tools/check-no-extension-ts.sh
 
-      - name: Issue #176 — block status-doc truthing re-drift
-        # docs/CAPABILITY-MATRIX.adoc is the single authoritative status
-        # doc. This guard fails if the over-claiming docs lose their
-        # banners pointing back at it, if the matrix stops self-declaring
-        # primacy / loses its anti-over-claim section, or if STATE.a2ml
-        # stops flagging itself as a mirror (DOC-01..09). Toolchain-free.
+      - name: Issue #176 — doc-truthing re-drift guard (DOC-01..09)
+        # Single toolchain-free gate enforcing both halves of the doc-truthing
+        # MONITOR: the presence invariants (DOC-04/05 — banner pointers, matrix
+        # primacy + anti-over-claim section, STATE.a2ml mirror keys) AND the
+        # over-claim ratchet (DOC-08/09 — fails any NEW backend-breadth /
+        # "production-ready" / stdlib-% phrase beyond tools/doc-overclaims.allow).
+        # See tools/check-doc-truthing.sh.
         run: ./tools/check-doc-truthing.sh
-
-      - name: Issue #176 — over-claim ratchet (DOC-08/09)
-        # Companion to the banner guard above (DOC-16): a frozen-baseline
-        # ratchet that fails any *new* backend-breadth / "production-ready"
-        # / stdlib-% phrase beyond tools/doc-overclaims.allow — the
-        # DOC-08/09 detection the banner guard deliberately leaves to bots.
-        # Toolchain-free. See tools/check-doc-overclaims.sh (DOC-17).
-        run: ./tools/check-doc-overclaims.sh
 
       - name: Check formatting
         run: opam exec -- dune build @fmt

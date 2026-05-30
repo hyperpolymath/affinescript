@@ -114,35 +114,37 @@ ABI coordination model (four axes: spec authority / coordinated
 landing / test parity / conflict resolution). Both filed in
 META.a2ml; ADR-020 lands first as the first test of ADR-021's
 protocol. Both require owner ratification. |*PROPOSED 2026-05-23*
-|DOC-16 |In-repo enforcement of the DOC-04/05 truthing invariant —
-`tools/check-doc-truthing.sh` (toolchain-free bash) fails if any
-over-claiming doc loses its `CAPABILITY-MATRIX.adoc` banner, if the
-matrix stops self-declaring primacy or loses its "What AffineScript is
-NOT" section, or if `STATE.a2ml` drops its mirror keys. Wired into
-`just check` (the `guard` recipe) and CI (`ci.yml` build job). Converts
-the DOC-08/09 MONITOR posture from external-bot-only to a first-class
-in-repo gate. |*DONE 2026-05-30*
-|DOC-17 |Over-claim ratchet — the *phrase-detection* complement to DOC-16.
-`tools/check-doc-overclaims.sh` + `tools/doc-overclaims.allow` baseline:
-a frozen-signature ratchet over README + `docs/**` (excluding the two
-governance docs that quote the rule — CAPABILITY-MATRIX + this ledger)
-fails any *new* backend-breadth / "production-ready" / stdlib-% phrase
-beyond the 13-line baseline (future-tense roadmap milestones, dated
-history snapshots, the corrective banners — none a live over-claim).
-DOC-16 deliberately checks banner *presence* not phrasing (a naive grep
-false-positives); the ratchet closes that gap without false positives
-because the legitimate set is frozen and only *new* phrases fail.
-Re-baseline via `--update` / `just doc-overclaims-bless`; the diff is
-the audit trail. Wired into `just check` + CI (toolchain-free bash).
-|*DONE 2026-05-30*
+|DOC-16 |In-repo doc-truthing re-drift guard — `tools/check-doc-truthing.sh`
+(toolchain-free bash), the single gate enforcing *both* halves of the
+MONITOR. *Presence invariants (DOC-04/05):* fails if any over-claiming doc
+loses its `CAPABILITY-MATRIX.adoc` banner, if the matrix stops
+self-declaring primacy or loses its "What AffineScript is NOT" section, or
+if `STATE.a2ml` drops its mirror keys. *Over-claim ratchet (DOC-08/09):*
+a frozen-signature baseline (`tools/doc-overclaims.allow`) over README +
+`docs/**` (excluding the two governance docs that quote the rule —
+CAPABILITY-MATRIX + this ledger) fails any *new* backend-breadth /
+"production-ready" / stdlib-% phrase beyond the 13-line accepted set
+(future-tense roadmap milestones, dated history snapshots, the corrective
+banners — none a live over-claim). Presence-checking handles the banners
+(where "production-ready" legitimately appears); the frozen baseline adds
+phrase detection without false positives. Re-baseline via `--update` /
+`just doc-truth-bless`; the diff is the audit trail. Wired into
+`just check` (the `guard` recipe) and CI (`ci.yml` build job). Converts the
+DOC-08/09 MONITOR posture from external-bot-only to a first-class in-repo
+gate. |*DONE 2026-05-30*
+|DOC-17 |Over-claim ratchet — *folded into DOC-16.* Briefly shipped as a
+separate `tools/check-doc-overclaims.sh` (PR #475) alongside #476's banner
+guard; consolidated into the single `tools/check-doc-truthing.sh` so the
+two near-identically-named guards do not linger. The ratchet behaviour +
+`tools/doc-overclaims.allow` baseline are unchanged — see DOC-16.
+|*DONE 2026-05-30 (consolidated)*
 |===
 
 MONITOR enforcement (DOC-08/09): any PR re-introducing backend-breadth,
-"production-ready", or stdlib-percentage over-claims must be rejected.
-As of 2026-05-30 this is enforced in-repo on *both* halves: DOC-16
-(`tools/check-doc-truthing.sh`) holds the banner/primacy/mirror presence
-invariant, and DOC-17 (`tools/check-doc-overclaims.sh`) ratchets against
-new over-claim *phrasings*. The external Hypatia/gitbot DOC rules remain
+"production-ready", or stdlib-percentage over-claims must be rejected. As of
+2026-05-30 this is enforced in-repo by the single unified guard
+`tools/check-doc-truthing.sh` (DOC-16) — presence invariants *and* the
+over-claim ratchet in one run. The external Hypatia/gitbot DOC rules remain
 the estate-level backstop for anything outside both nets.
 
 == Section B — CORE (compiler soundness / completeness)

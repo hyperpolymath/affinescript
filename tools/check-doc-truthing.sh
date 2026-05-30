@@ -2,25 +2,43 @@
 # SPDX-License-Identifier: MPL-2.0
 # Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 #
-# Doc-truthing re-drift guard for issue #176 (DOC-01..09).
+# Unified doc-truthing re-drift guard for issue #176 (DOC-01..09).
 #
 # Authoritative feature-readiness status lives in docs/CAPABILITY-MATRIX.adoc.
 # Several historical/architectural docs are known to over-claim (backend
 # breadth, "production-ready", stdlib percentage). DOC-04/05 neutralised them
 # with an *authoritative banner* that points every reader back at the matrix,
 # and made the matrix self-declare its primacy + carry an anti-over-claim
-# section.
+# section. Until now those invariants were enforced only by the external
+# Hypatia/gitbot review bots (the MONITOR posture in issue #176).
 #
-# Until now that invariant was enforced only by the external Hypatia/gitbot
-# review bots (the MONITOR posture in issue #176). This guard makes it a
-# first-class, in-repo, toolchain-free gate: it fails if any of the banner
-# pointers, the matrix's self-declaration, the anti-over-claim section, or the
-# STATE.a2ml mirror keys are removed — i.e. if the docs start to re-drift.
+# This is a first-class, in-repo, toolchain-free gate that enforces *both*
+# halves of the MONITOR in a single run (consolidated from the two guards that
+# briefly co-existed as DOC-16 + DOC-17 — check-doc-truthing.sh and
+# check-doc-overclaims.sh — into one script with no overlap):
 #
-# It deliberately checks *banner presence*, not phrase blocklists: the word
-# "production-ready" legitimately appears inside the negating banners and in
-# clearly-marked future-roadmap sections, so a naive phrase grep would
-# false-positive. Presence-of-the-correction is the durable invariant.
+#   Presence invariants (DOC-04/05) — fails if any banner pointer, the matrix's
+#   self-declaration, the anti-over-claim section, or the STATE.a2ml mirror keys
+#   are removed. This deliberately checks *presence of the correction*, not a
+#   phrase blocklist: "production-ready" legitimately appears inside the
+#   negating banners and future-roadmap sections, so a naive grep over the
+#   whole doc would false-positive.
+#
+#   Over-claim ratchet (DOC-08/09) — closes exactly that phrase-detection gap
+#   without the false positives, via a frozen baseline (tools/doc-overclaims.allow):
+#   the current accepted set of over-claim-phrase occurrences (every one
+#   legitimate today — future-tense roadmap milestones, dated history snapshots,
+#   the corrective banners) is frozen, and any *new* occurrence fails the build.
+#   The two governance docs that quote the rule itself (CAPABILITY-MATRIX +
+#   TECH-DEBT) are excluded so editing the rule-text never churns the baseline.
+#   Signatures are path + normalised-line, robust to line moves; the baseline's
+#   growth is a reviewable diff — the human-review signal the DOC rules describe.
+#
+# Usage:
+#   check-doc-truthing.sh            run all checks (CI / `just check`)
+#   check-doc-truthing.sh --update   re-baseline the over-claim ratchet, e.g.
+#                                    after a new dated roadmap milestone, then
+#                                    commit the tools/doc-overclaims.allow diff
 #
 # Wired into:
 #   - just check  (via the `guard` recipe in justfile)
@@ -51,6 +69,53 @@ STATE_KEYS=(
   "authoritative-status-doc"
   "drift-flag"
 )
+
+# Over-claim ratchet (DOC-08/09): the frozen baseline + the phrase families it
+# guards. Patterns are intentionally broad — the frozen baseline gives zero
+# false positives on existing content, so breadth only raises recall on new
+# occurrences.
+ALLOW="tools/doc-overclaims.allow"
+PATTERN='production[- ]ready|production backends?|[0-9]+[[:space:]]+(production|complete)[[:space:]]+backends?|stdlib[^|]*100%|100%[^|]*stdlib|N production backend'
+
+# Emit one normalised signature per over-claim hit: "relpath<TAB>line", with the
+# line's internal whitespace collapsed + trimmed (robust to re-indent / re-flow;
+# sensitive to the claim text itself). CAPABILITY-MATRIX + TECH-DEBT are excluded
+# (they define/quote the rule itself; their banner/primacy presence is checked
+# above instead). Sorted + de-duplicated.
+scan_overclaims() {
+  grep -rniE "$PATTERN" README.adoc docs/ 2>/dev/null \
+    --exclude="CAPABILITY-MATRIX.adoc" \
+    --exclude="TECH-DEBT.adoc" \
+    | sed -E 's/^([^:]+):[0-9]+:/\1\t/' \
+    | awk -F'\t' 'BEGIN { OFS = "\t" }
+        {
+          line = $2
+          gsub(/[[:space:]]+/, " ", line)
+          sub(/^ /, "", line)
+          sub(/ $/, "", line)
+          print $1, line
+        }' \
+    | LC_ALL=C sort -u
+}
+
+# --- --update / --bless mode: regenerate the ratchet baseline ---------------
+if [ "${1:-}" = "--update" ] || [ "${1:-}" = "--bless" ]; then
+  {
+    echo "# SPDX-License-Identifier: MPL-2.0"
+    echo "# SPDX-FileCopyrightText: 2024-2026 hyperpolymath"
+    echo "# Over-claim baseline (issue #176, DOC-08/09) — the frozen set of"
+    echo "# accepted over-claim-phrase occurrences guarded by"
+    echo "# tools/check-doc-truthing.sh. Regenerate with"
+    echo "# \`./tools/check-doc-truthing.sh --update\`. Each line is a"
+    echo "# \"relpath<TAB>normalised-line\" signature. A new signature not listed"
+    echo "# here fails CI; adding one is a deliberate, reviewable act. Current"
+    echo "# entries are future-tense roadmap milestones, dated history snapshots,"
+    echo "# and the corrective banners — none is a live over-claim."
+    scan_overclaims
+  } > "$ALLOW"
+  echo "OK: regenerated $ALLOW ($(grep -cvE '^#' "$ALLOW") signatures)."
+  exit 0
+fi
 
 fail=0
 note() { printf '%s\n' "$*" >&2; }
@@ -109,6 +174,32 @@ else
   done
 fi
 
+# --- 4. No NEW over-claim phrasing beyond the frozen baseline (DOC-08/09) ----
+if [ ! -f "$ALLOW" ]; then
+  note "ERROR: over-claim baseline is missing: $ALLOW"
+  note "       Run ./tools/check-doc-truthing.sh --update to create it."
+  fail=1
+else
+  current="$(scan_overclaims)"
+  allowed="$(grep -vE '^#' "$ALLOW" | LC_ALL=C sort -u || true)"
+  new_hits="$(LC_ALL=C comm -13 <(printf '%s\n' "$allowed") <(printf '%s\n' "$current") | sed '/^$/d')"
+  if [ -n "$new_hits" ]; then
+    note "ERROR: new over-claim(s) detected in status docs (DOC-08/09)."
+    note "       The authoritative readiness source is $MATRIX, which forbids"
+    note "       re-introducing backend-breadth / \"production-ready\" /"
+    note "       stdlib-percentage over-claims. Not in the frozen baseline"
+    note "       ($ALLOW):"
+    note ""
+    printf '%s\n' "$new_hits" | sed 's/\t/  ::  /; s/^/         /' >&2
+    note ""
+    note "       Fix the over-claim (preferred), or — if it is genuinely"
+    note "       legitimate (e.g. a new dated roadmap milestone) — re-baseline"
+    note "       with: ./tools/check-doc-truthing.sh --update  (just doc-truth-bless)"
+    note "       and commit the $ALLOW diff in the same PR."
+    fail=1
+  fi
+fi
+
 if [ "$fail" -ne 0 ]; then
   note ""
   note "Doc-truthing guard failed. The status docs are drifting back toward"
@@ -117,4 +208,4 @@ if [ "$fail" -ne 0 ]; then
   exit 1
 fi
 
-echo "OK: doc-truthing banners intact (matrix primacy + DOC-04 banners + DOC-05 mirror keys)."
+echo "OK: doc-truthing intact — presence invariants + over-claim ratchet (DOC-04/05/08/09)."
