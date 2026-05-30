@@ -221,8 +221,13 @@ current authoring frontier. A few primitives remain `extern` builtins.
 
 Any PR that re-introduces backend-breadth, "production-ready", or
 stdlib-percentage over-claims must be rejected (DOC-01..09 / issue #176;
-Hypatia/gitbot `DOC-FORMAT`/`DOC-DEDUP` rules). Update *this file* in the same
-PR as any capability change; `STATE.a2ml` mirrors, it does not lead.
+Hypatia/gitbot `DOC-FORMAT`/`DOC-DEDUP` rules). This is enforced
+*mechanically* in-repo (wired into `just check` + CI): `tools/check-doc-truthing.sh`
+(DOC-16) holds the banner/primacy/mirror invariant, and
+`tools/check-doc-overclaims.sh` (DOC-17) ratchets against new over-claim
+phrasings beyond the frozen `tools/doc-overclaims.allow` baseline. Update
+*this file* in the same PR as any capability change; `STATE.a2ml` mirrors,
+it does not lead.
 
 == See also
 

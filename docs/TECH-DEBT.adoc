@@ -122,13 +122,28 @@ NOT" section, or if `STATE.a2ml` drops its mirror keys. Wired into
 `just check` (the `guard` recipe) and CI (`ci.yml` build job). Converts
 the DOC-08/09 MONITOR posture from external-bot-only to a first-class
 in-repo gate. |*DONE 2026-05-30*
+|DOC-17 |Over-claim ratchet — the *phrase-detection* complement to DOC-16.
+`tools/check-doc-overclaims.sh` + `tools/doc-overclaims.allow` baseline:
+a frozen-signature ratchet over README + `docs/**` (excluding the two
+governance docs that quote the rule — CAPABILITY-MATRIX + this ledger)
+fails any *new* backend-breadth / "production-ready" / stdlib-% phrase
+beyond the 13-line baseline (future-tense roadmap milestones, dated
+history snapshots, the corrective banners — none a live over-claim).
+DOC-16 deliberately checks banner *presence* not phrasing (a naive grep
+false-positives); the ratchet closes that gap without false positives
+because the legitimate set is frozen and only *new* phrases fail.
+Re-baseline via `--update` / `just doc-overclaims-bless`; the diff is
+the audit trail. Wired into `just check` + CI (toolchain-free bash).
+|*DONE 2026-05-30*
 |===
 
 MONITOR enforcement (DOC-08/09): any PR re-introducing backend-breadth,
 "production-ready", or stdlib-percentage over-claims must be rejected.
-As of DOC-16 (2026-05-30) the banner/mirror half of this is enforced
-in-repo by `tools/check-doc-truthing.sh`; the external Hypatia/gitbot
-DOC rules remain the catch-all for novel over-claim phrasings.
+As of 2026-05-30 this is enforced in-repo on *both* halves: DOC-16
+(`tools/check-doc-truthing.sh`) holds the banner/primacy/mirror presence
+invariant, and DOC-17 (`tools/check-doc-overclaims.sh`) ratchets against
+new over-claim *phrasings*. The external Hypatia/gitbot DOC rules remain
+the estate-level backstop for anything outside both nets.
 
 == Section B — CORE (compiler soundness / completeness)
 

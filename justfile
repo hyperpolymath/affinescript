@@ -90,11 +90,19 @@ check: lint test guard
 # Regression guards:
 #  - Issue #35 Phase 3: fails if extension.ts reappears under
 #    editors/vscode/src or any face's vscode extension dir.
-#  - Issue #176 (DOC-01..09): fails if the status-doc truthing banners
+#  - Issue #176 (DOC-16): fails if the status-doc truthing banners
 #    re-drift (authoritative matrix pointers + STATE.a2ml mirror keys).
+#  - Issue #176 (DOC-17): fails if a NEW backend-breadth / "production-
+#    ready" / stdlib-% over-claim appears beyond the frozen baseline.
 guard:
     ./tools/check-no-extension-ts.sh
     ./tools/check-doc-truthing.sh
+    ./tools/check-doc-overclaims.sh
+
+# Re-baseline the over-claim ledger (DOC-17) after a deliberate, legitimate
+# change (e.g. a new dated roadmap milestone). Commit the .allow diff.
+doc-overclaims-bless:
+    ./tools/check-doc-overclaims.sh --update
 
 # ── Compiler subcommands ──────────────────────────────────────────────────────
 
