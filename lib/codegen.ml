@@ -157,24 +157,12 @@ let ownership_kind_byte = function
         u8*  param_kind  (one per param, see kind encoding above)
         u8   return_kind *)
 let build_ownership_section (annots : (int * ownership_kind list * ownership_kind) list) : bytes =
-  if annots = [] then Bytes.empty
-  else
-    let buf = Buffer.create 64 in
-    let write_u32_le n =
-      Buffer.add_char buf (Char.chr  (n         land 0xff));
-      Buffer.add_char buf (Char.chr ((n lsr  8) land 0xff));
-      Buffer.add_char buf (Char.chr ((n lsr 16) land 0xff));
-      Buffer.add_char buf (Char.chr ((n lsr 24) land 0xff))
-    in
-    let write_u8 n = Buffer.add_char buf (Char.chr (n land 0xff)) in
-    write_u32_le (List.length annots);
-    List.iter (fun (func_idx, param_kinds, ret_kind) ->
-      write_u32_le func_idx;
-      write_u8 (List.length param_kinds);
-      List.iter (fun k -> write_u8 (ownership_kind_byte k)) param_kinds;
-      write_u8 (ownership_kind_byte ret_kind)
-    ) annots;
-    Buffer.to_bytes buf
+  Tw_section.Encode.ownership
+    (List.map (fun (func_idx, param_kinds, ret_kind) ->
+       (func_idx,
+        List.map ownership_kind_byte param_kinds,
+        ownership_kind_byte ret_kind))
+       annots)
 
 (** Map AffineScript type to WASM value type *)
 let type_to_wasm (ty : type_expr) : value_type result =

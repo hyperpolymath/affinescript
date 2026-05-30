@@ -210,7 +210,7 @@ let verify_module
 
     Per ADR-021's coordinated landing protocol, this verifier ships
     parse-support FIRST.  AffineScript's emitter ([Codegen.build_ownership_
-    section] / [Tw_ownership_section.build_section]) stays on v1 until
+    section] / [Tw_section.Encode.ownership]) stays on v1 until
     [hyperpolymath/typed-wasm]'s Rust verifier + [hyperpolymath/ephapax]'s
     OCaml verifier also ship parse-support; then all producers flip to v2
     emit together.  See [docs/specs/TYPED-WASM-COORDINATION-LEDGER.adoc]
