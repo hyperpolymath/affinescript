@@ -82,6 +82,7 @@
   token
   trait
   tw_interface
+  tw_section
   tw_verify
   typecheck
   types
