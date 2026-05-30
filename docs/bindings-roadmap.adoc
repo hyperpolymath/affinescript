@@ -166,9 +166,9 @@ Surface that other estate repos are actively wanting.
 
 |19
 |*Zig FFI canonical patterns* — `extern fn` shape for calling Zig C-ABI exports from AffineScript
-|`◐` idiomatic patterns exist
-|`stdlib` + ADR-style doc
-|"Zig = APIs + FFIs" estate directive. Each `hpm-*-rsr` lib exposes Zig exports; AffineScript needs canonical patterns for binding them.
+|`●` usable
+|`docs/specs/zig-ffi-patterns.adoc`
+|"Zig = APIs + FFIs" estate directive. Each `hpm-*-rsr` lib exposes Zig exports; AffineScript needs canonical patterns for binding them. Canonical authoring recipe + per-backend host contract (wasm `env` import vs Deno-ESM same-named host symbol) landed in `docs/specs/zig-ffi-patterns.adoc` — companion to STDLIB-EXTERN-AUDIT + SPEC §2.10; unblocks the RSR rewires #11 / #12 / #16.
 
 |20
 |*Telegram (Grammy)* — already `stdlib/Grammy.affine`
