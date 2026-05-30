@@ -1,0 +1,77 @@
+// SPDX-License-Identifier: MPL-2.0
+// Deno-ESM codegen regression for issue #478: integer `/` must truncate
+// toward zero (not lower to JS float division), while `Float / Float`
+// must stay floating-point. Exercises the provably-Int operand classifier
+// in lib/codegen_deno.ml across params, let-bindings, mutable
+// reassignment in a loop, and Int-returning calls.
+
+// Int params -> truncating divide.
+pub fn idiv(a: Int, b: Int) -> Int = a / b;
+
+// Float params -> must stay float (no truncation).
+pub fn fdiv(a: Float, b: Float) -> Float = a / b;
+
+// Int param / literal.
+pub fn half(n: Int) -> Int = n / 2;
+
+// Int arithmetic in the numerator, literal denominator.
+pub fn sum_naturals(n: Int) -> Int = n * (n + 1) / 2;
+
+// Int-returning call as an operand (exercises int_fns tracking).
+pub fn abs_i(x: Int) -> Int = if x < 0 { -x } else { x };
+pub fn lcm_like(a: Int, b: Int) -> Int = abs_i(a * b) / 4;
+
+// let-bound + loop-mutated locals must stay Int across reassignment.
+pub fn binom(n: Int, k: Int) -> Int {
+  let mut result = 1;
+  let mut i = 0;
+  while i < k {
+    result = result * (n - i) / (i + 1);
+    i = i + 1;
+  }
+  result
+}
+
+// `/=` over integers truncates too.
+pub fn div_assign(a: Int, b: Int) -> Int {
+  let mut x = a;
+  x /= b;
+  x
+}
+
+// A float let-binding divided by an int literal must stay float.
+pub fn float_let() -> Float {
+  let x = 7.0;
+  x / 2.0
+}
+
+// #478 finding 1: a `for x in xs` loop variable over an Array<Int> param
+// must truncate `x / k`.
+pub fn for_sum_halves(xs: [Int]) -> Int {
+  let mut t = 0;
+  for x in xs {
+    t = x / 2;
+  }
+  t
+}
+
+// for-loop over an int array literal truncates too.
+pub fn for_lit() -> Int {
+  let mut t = 0;
+  for x in [5, 9, 7] {
+    t = x / 2;
+  }
+  t
+}
+
+// #478 finding 2: an indexed element read from an Array<Int> is an Int.
+pub fn idx_half(xs: [Int]) -> Int = xs[0] / 2;
+
+// A `for x in xs` over an Array<Float> must NOT truncate (no regression).
+pub fn for_float(xs: [Float]) -> Float {
+  let mut t = 0.0;
+  for x in xs {
+    t = x / 2.0;
+  }
+  t
+}
