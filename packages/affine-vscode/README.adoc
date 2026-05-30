@@ -111,9 +111,11 @@ ABI lands.
 
 == Status
 
-Phase 2 — bindings landed. The pilot affinescript port (issue #63) and
-external-extension ports (issue #64: my-lang, rsr-certifier) consume
-this adapter. npm publish wiring is in place (issue #104:
-`affine-vscode-publish.yml` ships the package on `affine-vscode-v*`
-tag pushes); the first publish + downstream un-vendoring is gated on
-that issue. Phase 4 (rattlescript-face sweep) still to do.
+Phase 2 — bindings landed; package published on npm as
+`@hyperpolymath/affine-vscode@0.1.0` (2026-05-26, issue #104). The
+pilot affinescript port (issue #63), `hyperpolymath/my-lang/vscode-extension/`
+and `hyperpolymath/standards/rhodium-standard-repositories/satellites/rsr-certifier/extensions/vscode/`
+(issue #64) all consume this adapter from the registry. The publish
+workflow `affine-vscode-publish.yml` ships subsequent versions on
+`affine-vscode-v*` tag pushes. Phase 4 (rattlescript-face sweep) still
+to do.
