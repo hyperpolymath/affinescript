@@ -175,6 +175,93 @@ pub extern fn wasmInstance(bytes: Bytes) -> WasmExports;
 ///     };
 pub extern fn wasmCall(exports: WasmExports, name: String, args: [Float]) -> Float;
 
+// ── WebAssembly typed export call (#455 — Tier 1 #5, Option B) ────
+//
+// Generic `wasm_export_call` covering any wasm signature including i64,
+// multi-typed args, future spec additions. Future-proof: no binding
+// change required as wasm evolves. Tiny addition vs Option A's ~30
+// per-signature variants. Typed wrappers can be layered on top of this
+// generic as ergonomic helpers in a follow-up sub-issue.
+//
+// Trade-off: weaker static safety at the call site — user marshals
+// manually via the `wv_*` constructors and reads via `wv_as_*`. Errors
+// (wrong arity, missing export, type mismatch) deferred to runtime per
+// owner's accepted trade-off in #455 comment.
+//
+// **Encoding decision (2026-05-30):** `WasmValue` lands as an OPAQUE
+// extern type rather than a true AffineScript sum type. Rationale:
+// the JS interop boundary needs a hand-written marshaller that pairs
+// `wv_i32(42) -> { tag: "i32", v: 42 }` with the export-call dispatch
+// `__as_wasm_export_call(exports, name, args)`. Mirrors the existing
+// `WasmExports` opaque pattern. A true sum-type variant on top of this
+// opaque base ships in a follow-up once `json.affine`-style tagged-
+// variant codegen lands for the Deno-ESM backend.
+
+/// Opaque wasm scalar value. Constructed via `wv_i32` / `wv_i64` /
+/// `wv_f32` / `wv_f64`. Read via `wv_as_int` (i32/i64 → Int) or
+/// `wv_as_float` (f32/f64 → Float). The kind tag is opaque to AS code
+/// but inspectable host-side via `wv_kind` for diagnostics.
+pub extern type WasmValue;
+
+/// Wrap an `Int` as a wasm i32. Truncates to the low 32 bits at the
+/// host boundary if `n` exceeds the i32 range.
+pub extern fn wv_i32(n: Int) -> WasmValue;
+
+/// Wrap an `Int` as a wasm i64. Crosses the boundary as a `BigInt`
+/// host-side. Values outside the safe-integer range (>= 2^53) are
+/// preserved as BigInt; arithmetic on the AS side that goes through
+/// `wv_as_int` truncates to the safe-integer range.
+pub extern fn wv_i64(n: Int) -> WasmValue;
+
+/// Wrap a `Float` as a wasm f32. Rounded to f32 precision via
+/// `Math.fround` at the host boundary.
+pub extern fn wv_f32(f: Float) -> WasmValue;
+
+/// Wrap a `Float` as a wasm f64. Preserved at full f64 precision.
+pub extern fn wv_f64(f: Float) -> WasmValue;
+
+/// Read a wasm scalar back as `Int`. Defined for both i32 and i64
+/// variants. For f32/f64, truncates toward zero. Caller is responsible
+/// for knowing the variant — there is no runtime check; reading the
+/// wrong kind silently coerces.
+pub extern fn wv_as_int(v: WasmValue) -> Int;
+
+/// Read a wasm scalar back as `Float`. Defined for both f32 and f64
+/// variants. For i32/i64, converts via JS `Number()` — i64 values
+/// beyond 2^53 lose precision; caller can detect via `wv_kind`.
+pub extern fn wv_as_float(v: WasmValue) -> Float;
+
+/// Return the kind tag ("i32" / "i64" / "f32" / "f64") for runtime
+/// dispatch when the AS-side caller doesn't statically know the
+/// variant. Use sparingly — the typed `wv_as_*` accessors should be
+/// the default path.
+pub extern fn wv_kind(v: WasmValue) -> String;
+
+/// `exports[name](...args)` with typed `WasmValue` marshalling.
+/// Returns a `WasmValue` wrapping the export's return — kind is `f64`
+/// by default (the lossless choice for any numeric return); callers
+/// expecting i32/i64 should rebuild via `wv_i32(wv_as_int(result))`
+/// or inspect `wv_kind` host-side. Multi-value returns are out of
+/// scope at this binding — add a `wasm_export_call_multi` extern when
+/// needed.
+///
+/// Example:
+///
+///     use Deno::{
+///       Bytes, WasmExports, wasmInstance, wasm_export_call,
+///       wv_i32, wv_as_int,
+///     };
+///
+///     pub fn addI32ViaWasm(bytes: Bytes, a: Int, b: Int) -> Int {
+///       let exports = wasmInstance(bytes);
+///       let result = wasm_export_call(
+///         exports, "add", [wv_i32(a), wv_i32(b)]);
+///       wv_as_int(result)
+///     }
+pub extern fn wasm_export_call(
+  exports: WasmExports, name: String, args: [WasmValue]
+) -> WasmValue;
+
 // ── Array helper ───────────────────────────────────────────────────
 //
 // AffineScript has no mutable-array push primitive in this subset;
