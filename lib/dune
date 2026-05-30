@@ -4,12 +4,16 @@
 ; the generated `.cjs` (eliminating the runtime `require()` of
 ; @hyperpolymath/affine-vscode, which used to fail when the adapter
 ; wasn't installed — see issues #104 / #139).
+
 (rule
  (target affine_vscode_adapter_source.ml)
- (deps (file ../packages/affine-vscode/mod.js))
+ (deps
+  (file ../packages/affine-vscode/mod.js))
  (action
-  (with-stdout-to %{target}
-   (bash "echo '(* AUTO-GENERATED from packages/affine-vscode/mod.js. Do not edit. *)'; echo 'let source = {affine_vscode|'; cat %{dep:../packages/affine-vscode/mod.js}; echo '|affine_vscode}'"))))
+  (with-stdout-to
+   %{target}
+   (bash
+    "echo '(* AUTO-GENERATED from packages/affine-vscode/mod.js. Do not edit. *)'; echo 'let source = {affine_vscode|'; cat %{dep:../packages/affine-vscode/mod.js}; echo '|affine_vscode}'"))))
 
 (library
  (name affinescript)
