@@ -8,10 +8,12 @@
     migration markers. The original source is quoted at the bottom of
     the output so the human migrating the file has it side-by-side.
 
-    Phase 1 (this binary) uses a text scanner. Phase 2 swaps the
-    [Scanner] implementation for a tree-sitter AST walker reading the
-    vendored grammar at [editors/tree-sitter-rescript/]. See the
-    tool README for the full plan. *)
+    Detection defaults to the Phase-2c tree-sitter AST [Walker] (the
+    vendored grammar at [editors/tree-sitter-rescript/]); [--engine=scanner]
+    falls back to the Phase-1 line [Scanner]. With [--translate], the
+    Phase-3 slice additionally renders fully-structural type declarations
+    into compilable AffineScript inline in the skeleton. See the tool
+    README for the full plan. *)
 
 open Res_to_affine
 
@@ -33,7 +35,7 @@ let engine_label = function
   | Scanner_engine -> "scanner"
   | Walker_engine  -> "walker"
 
-let run engine grammar_dir input output_opt =
+let run engine grammar_dir do_translate input output_opt =
   if not (Sys.file_exists input) then begin
     Format.eprintf "res-to-affine: input not found: %s@." input;
     exit 2
@@ -51,13 +53,33 @@ let run engine grammar_dir input output_opt =
                input;
              Scanner.scan source)
   in
+  (* Phase 3: translation needs the AST, so it is walker-only. With the
+     scanner (or a walker that failed and would fall back), no translation
+     is emitted — the marker block + quoted original still carry the file. *)
+  let translated =
+    if not do_translate then []
+    else
+      match engine with
+      | Scanner_engine ->
+          Format.eprintf
+            "res-to-affine: --translate needs the walker engine; \
+             no translation emitted for %s@." input;
+          []
+      | Walker_engine ->
+          (try Walker.translate ~grammar_dir ~path:input ~source with
+           | Failure msg ->
+               Format.eprintf "res-to-affine: %s@." msg;
+               Format.eprintf
+                 "res-to-affine: no translation emitted for %s@." input;
+               [])
+  in
   let module_name = Emitter.module_name_of_path input in
   let out =
-    Emitter.emit
-      ~module_name
-      ~source_path:input
-      ~source
-      ~findings
+    if do_translate then
+      Emitter.emit_translation
+        ~module_name ~source_path:input ~source ~findings ~translated
+    else
+      Emitter.emit ~module_name ~source_path:input ~source ~findings
   in
   match output_opt with
   | None ->
@@ -65,9 +87,10 @@ let run engine grammar_dir input output_opt =
   | Some path ->
       write_file path out;
       Format.printf
-        "res-to-affine: %d finding%s [%s] → %s@."
+        "res-to-affine: %d finding%s, %d translated [%s] → %s@."
         (List.length findings)
         (if List.length findings = 1 then "" else "s")
+        (List.length translated)
         (engine_label engine)
         path
 
@@ -109,12 +132,23 @@ let grammar_dir_arg =
     value & opt string Walker.default_grammar_dir &
     info ["grammar-dir"] ~docv:"DIR" ~doc)
 
+let translate_arg =
+  let doc =
+    "Phase 3 (slice 1): additionally translate fully-structural type \
+     declarations — primitive aliases and simple sum types — into \
+     compilable AffineScript, inline in the skeleton. Every other form \
+     stays a TODO island. Needs `--engine=walker` (the default); with the \
+     scanner engine it is a no-op."
+  in
+  Cmdliner.Arg.(value & flag & info ["translate"] ~doc)
+
 let cmd =
   let doc = "Emit an AffineScript skeleton from a ReScript source file." in
   let info = Cmdliner.Cmd.info "res-to-affine" ~version:"0.1.0" ~doc in
   let term =
     Cmdliner.Term.(
-      const run $ engine_arg $ grammar_dir_arg $ input_arg $ output_arg)
+      const run $ engine_arg $ grammar_dir_arg $ translate_arg
+      $ input_arg $ output_arg)
   in
   Cmdliner.Cmd.v info term
 

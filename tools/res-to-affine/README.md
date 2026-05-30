@@ -22,6 +22,10 @@ dune exec tools/res-to-affine/main.exe -- path/to/Foo.res
 # or write to a file
 dune exec tools/res-to-affine/main.exe -- path/to/Foo.res -o Foo.affine
 
+# Phase 3 (slice 1): also translate fully-structural type declarations
+# (primitive aliases + simple sum types) into compilable AffineScript
+dune exec tools/res-to-affine/main.exe -- --translate path/to/Foo.res
+
 # opt back into the Phase-1 line-regex scanner (no grammar required)
 dune exec tools/res-to-affine/main.exe -- --engine=scanner path/to/Foo.res
 ```
@@ -147,6 +151,32 @@ where re-decomposition is genuinely required.
 
 Phase 3 is when the tool earns its keep on idaptik's 542 files.
 
+**Phase 3 slice 1 (`--translate`, landed).** The first translation slice
+renders the two most mechanical, **module-qualified-path-independent**
+shapes into compilable AffineScript:
+
+| ReScript | AffineScript |
+|---|---|
+| `type userId = int` | `type UserId = Int` |
+| `type color = Red \| Green \| Blue` | `type Color =`<br>`  \| Red`<br>`  \| Green`<br>`  \| Blue` |
+| `type shape = Circle(float) \| Rect(int, int)` | `type Shape =`<br>`  \| Circle(Float)`<br>`  \| Rect(Int, Int)` |
+
+It is **conservative by construction**: a declaration that uses type
+parameters/generics, a qualified path (`Belt.Map.t`), a record body,
+non-primitive references, a GADT return annotation, or a variant spread
+is *skipped* — it stays in the marker block + quoted original, never
+mis-translated. Lower-case ReScript type names are capitalised so they
+are referenceable AffineScript type constructors (`lib/parser.mly` reads
+a lower-case name in type position as a type *variable*, not a
+constructor). Translation is walker-only (it needs the AST); with
+`--engine=scanner` the flag is a no-op.
+
+Deliberately **deferred to later Phase-3 slices**: record types, generic
+type declarations, module-qualified references (now that the
+[#228](https://github.com/hyperpolymath/affinescript/issues/228) grammar
+gap is closed), `let`-to-`const` for literal bindings, and the
+`switch`→`match` expression rewrite (which needs body translation).
+
 ## Corpus run
 
 [`CORPUS-RUN.md`](CORPUS-RUN.md) records the first end-to-end run
@@ -172,7 +202,10 @@ cd tools/res-to-affine/test
 The fixture under `test/fixtures/sample.res` is synthetic and exercises
 every Phase-1 anti-pattern; `test/fixtures/phase2c.res` exercises the
 two anti-patterns that are walker-only by construction
-(`inline-callback-record`, `oversized-function`). Real `.res` files
+(`inline-callback-record`, `oversized-function`); `test/fixtures/phase3.res`
+exercises the Phase-3 `--translate` slice (structural type-declaration
+translation, plus the generic/qualified/non-type forms it must skip).
+Real `.res` files
 from the estate (e.g. `gitbot-fleet/bots/sustainabot/bot-integration/
 src/*.res`) can be run ad hoc through the CLI without changes to the
 test suite.

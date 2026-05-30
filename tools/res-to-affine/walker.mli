@@ -46,6 +46,23 @@ val scan :
     [source] is used only to slice excerpt strings out for findings;
     it must be the same content the file at [path] holds. *)
 
+val translate :
+  grammar_dir:string ->
+  path:string ->
+  source:string ->
+  (int * string) list
+(** [translate ~grammar_dir ~path ~source] parses [path] and returns the
+    Phase-3 (slice 1) translations of its module-top-level, fully-structural
+    type declarations — primitive aliases and simple sum types — as
+    [(source_line, affinescript)] pairs in source order.
+
+    Conservative by construction: declarations that use type parameters,
+    qualified paths, record bodies, non-primitive references, GADT return
+    annotations, or variant spreads are skipped (absent from the result),
+    never guessed — so the result is always compilable AffineScript and a
+    skipped form is recovered from the marker block / quoted source the
+    emitter prints. Raises [Failure] under the same conditions as {!scan}. *)
+
 val default_grammar_dir : string
 (** Default location of the generated grammar relative to the current
     working directory: ["tools/vendor/tree-sitter-rescript"]. Matches
