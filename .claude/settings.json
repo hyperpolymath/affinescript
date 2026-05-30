@@ -29,6 +29,12 @@
       "Bash(./tools/check-no-extension-ts.sh)",
       "Bash(./tools/check-doc-truthing.sh)",
 
+      "Bash(dune build:*)",
+      "Bash(dune runtest:*)",
+      "Bash(dune exec:*)",
+      "Bash(dune test:*)",
+      "Bash(tree-sitter:*)",
+
       "mcp__github__get_me",
       "mcp__github__get_commit",
       "mcp__github__get_file_contents",
@@ -54,6 +60,18 @@
       "mcp__github__search_pull_requests",
       "mcp__github__search_repositories",
       "mcp__github__search_users"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/session-start.sh"
+          }
+        ]
+      }
     ]
   }
 }
