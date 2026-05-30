@@ -6,10 +6,10 @@
 //   type userId = int          -> type UserId = Int
 //   type color  = Red | ...    -> type Color = | Red | Green | Blue
 //   type shape  = Circle(...)  -> type Shape = | Circle(Float) | Rect(Int, Int)
-// The trailing `let`/`switch` is NOT a type declaration and must remain a
-// TODO island (absent from the translation list). The generic and
-// qualified type decls below must also be skipped (slice 1 is monomorphic
-// and unqualified).
+// The trailing `let`/`switch` is NOT a type declaration and stays a TODO
+// island (absent from the translation list). The generic `box` below now
+// translates too (slice 2: type parameters); the qualified-path decl stays
+// skipped (qualified-path RHS is deferred — it would parse but not resolve).
 
 type userId = int
 
@@ -22,10 +22,10 @@ type shape =
   | Circle(float)
   | Rect(int, int)
 
-// Skipped in slice 1: type parameters (generic).
+// Slice 2: type parameters now translate -> type Box[A] = | Box(A)
 type box<'a> = Box('a)
 
-// Skipped in slice 1: qualified-path RHS.
+// Skipped: qualified-path RHS (deferred).
 type theirMap = Belt.Map.t
 
 // Not a type declaration: stays a TODO island.
