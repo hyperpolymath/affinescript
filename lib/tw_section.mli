@@ -8,12 +8,15 @@
     (avoiding a cycle with [Codegen]). Callers map their domain
     types to bytes before invoking.
 
-    Forward-compatibility slot for typed-wasm proposal 0001 (issue
-    hyperpolymath/typed-wasm#34): [Encode.regions] and
-    [Encode.capabilities] land here when the proposal promotes to
-    [accepted]. Sharing the internal LE writers (u8 / u32le / leb128)
-    inside this module prevents the 3-sections × 2-copies = 6-encoder
-    fan-out flagged by hyperpolymath/affinescript#444. *)
+    Forward-compatibility slot for typed-wasm proposals 0001 + 0002
+    (now [accepted] 2026-05-30; promoted to typed-wasm ADR-0002
+    [multi-producer carrier sections] and ADR-0003 [access-site
+    carrier]). [Encode.regions], [Encode.capabilities], and
+    [Encode.access_sites] land here as codegen produces them — see
+    hyperpolymath/affinescript#462 (typed access-sites emission).
+    Sharing the internal LE writers (u8 / u32le / leb128) inside this
+    module prevents the 3-sections × 2-copies = 6-encoder fan-out
+    flagged by hyperpolymath/affinescript#444. *)
 
 module Encode : sig
   (** v1 wire format for [typedwasm.ownership]:
