@@ -641,16 +641,22 @@ let child_with_field name n =
 
 let has_child_type ty n = List.exists (fun c -> c.ntype = ty) n.children
 
-(* A type node usable as an alias RHS or a variant payload. Slice 1 only
-   knows primitive type_identifiers; anything else yields [None]. *)
-let translate_prim_type ~source n =
-  if n.ntype = "type_identifier"
-  then rescript_prim_to_affine (node_text ~source n)
-  else None
+(* A type node usable as an alias RHS, a variant payload, or a record-field
+   type. Translates primitive type_identifiers and in-scope type parameters
+   ([params] maps a ReScript type-var like ['a] to its AffineScript name like
+   [A]); anything else — generics, qualified paths, tuples, nested records —
+   yields [None], so the whole declaration is skipped. *)
+let translate_type_ref ~params ~source n =
+  if n.ntype <> "type_identifier" then None
+  else
+    let t = node_text ~source n in
+    match List.assoc_opt t params with
+    | Some affine -> Some affine
+    | None -> rescript_prim_to_affine t
 
-(* Render one variant_declaration, or [None] if it carries a non-primitive
+(* Render one variant_declaration, or [None] if it carries a non-translatable
    payload or a GADT return annotation. *)
-let translate_variant ~source vd =
+let translate_variant ~params ~source vd =
   if has_child_type "type_annotation" vd then None
   else
     match
@@ -667,7 +673,7 @@ let translate_variant ~source vd =
              let rec go acc = function
                | [] -> Some (List.rev acc)
                | t :: rest ->
-                   (match translate_prim_type ~source t with
+                   (match translate_type_ref ~params ~source t with
                     | Some s -> go (s :: acc) rest
                     | None -> None)
              in
@@ -676,56 +682,149 @@ let translate_variant ~source vd =
               | Some ss ->
                   Some (Printf.sprintf "%s(%s)" cname (String.concat ", " ss))))
 
+(* AffineScript type-parameter name for a ReScript one: strip the leading
+   apostrophe and capitalise, so ['a] -> [A] (a referenceable TyCon in the
+   body). [None] if the result isn't a usable upper_ident. *)
+let affine_type_param rescript_tp =
+  let s =
+    if String.length rescript_tp > 0 && rescript_tp.[0] = '\''
+    then String.sub rescript_tp 1 (String.length rescript_tp - 1)
+    else rescript_tp
+  in
+  to_type_con s
+
+(* Extract the decl's type parameters as a [(rescript_name, affine_name)] map
+   plus the ["[A, B]"] suffix to print after the type name. [None] if a
+   parameter can't be represented (whole decl skipped). With no type
+   parameters, returns [Some ([], "")]. *)
+let extract_type_params ~source tb =
+  match List.find_opt (fun c -> c.ntype = "type_parameters") tb.children with
+  | None -> Some ([], "")
+  | Some tps ->
+      let rescript_names =
+        List.filter_map
+          (fun c ->
+            if c.ntype = "type_identifier" then Some (node_text ~source c)
+            else None)
+          tps.children
+      in
+      let rec go assoc affines = function
+        | [] -> Some (List.rev assoc, List.rev affines)
+        | rs :: rest ->
+            (match affine_type_param rs with
+             | Some aff -> go ((rs, aff) :: assoc) (aff :: affines) rest
+             | None -> None)
+      in
+      (match go [] [] rescript_names with
+       | None | Some (_, []) -> None
+       | Some (assoc, affines) ->
+           Some (assoc, "[" ^ String.concat ", " affines ^ "]"))
+
+(* Render a record_type as AffineScript struct fields, or [None]. ReScript
+   [mutable] and optional-[?] fields are anonymous tokens (absent from the
+   parse tree), so we detect them in the field's source text and refuse the
+   whole record rather than silently drop the semantics. *)
+let translate_record_fields ~params ~source rt =
+  let members = rt.children in
+  if members = [] then None
+  (* anything that isn't a plain record field (spreads, object members) *)
+  else if List.exists (fun c -> c.ntype <> "record_type_field") members then None
+  else
+    let rec go acc = function
+      | [] -> Some (List.rev acc)
+      | f :: rest ->
+          let ftext = String.trim (node_text ~source f) in
+          if starts_with "mutable" ftext || String.contains ftext '?' then None
+          else
+            (match
+               ( List.find_opt
+                   (fun c -> c.ntype = "property_identifier") f.children,
+                 List.find_opt (fun c -> c.ntype = "type_annotation") f.children )
+             with
+             | Some name_node, Some ann ->
+                 (match ann.children with
+                  | ty :: _ ->
+                      (match translate_type_ref ~params ~source ty with
+                       | Some t ->
+                           go
+                             ((node_text ~source name_node ^ ": " ^ t) :: acc)
+                             rest
+                       | None -> None)
+                  | [] -> None)
+             | _ -> None)
+    in
+    go [] members
+
 (* Translate one type_binding into an AffineScript declaration, or [None]. *)
 let translate_type_binding ~source tb =
-  if has_child_type "type_parameters" tb then None
-  else
-    match child_with_field "name" tb with
-    | None -> None
-    | Some nn when nn.ntype <> "type_identifier" -> None  (* qualified path *)
-    | Some nn ->
-        (match to_type_con (node_text ~source nn) with
-         | None -> None
-         | Some tycon ->
-             (match
-                List.find_opt (fun c -> c.ntype = "variant_type") tb.children
-              with
-              | Some vt ->
-                  if has_child_type "variant_type_spread" vt then None
-                  else
-                    let vds =
-                      List.filter
-                        (fun c -> c.ntype = "variant_declaration") vt.children
-                    in
-                    let rec go acc = function
-                      | [] -> Some (List.rev acc)
-                      | vd :: rest ->
-                          (match translate_variant ~source vd with
-                           | Some s -> go (s :: acc) rest
-                           | None -> None)
-                    in
-                    (match go [] vds with
-                     | None | Some [] -> None
-                     | Some arms ->
-                         let body =
-                           String.concat "\n"
-                             (List.map (fun a -> "  | " ^ a) arms)
-                         in
-                         Some (Printf.sprintf "type %s =\n%s" tycon body))
-              | None ->
-                  (* alias: the non-name RHS type node *)
-                  (match
-                     List.find_opt
-                       (fun c ->
-                         c.field <> Some "name" && c.ntype = "type_identifier")
-                       tb.children
-                   with
-                   | None -> None
-                   | Some r ->
-                       (match translate_prim_type ~source r with
-                        | None -> None
-                        | Some prim ->
-                            Some (Printf.sprintf "type %s = %s" tycon prim)))))
+  match child_with_field "name" tb with
+  | None -> None
+  | Some nn when nn.ntype <> "type_identifier" -> None  (* qualified name *)
+  | Some nn ->
+      (match to_type_con (node_text ~source nn) with
+       | None -> None
+       | Some tycon ->
+           (match extract_type_params ~source tb with
+            | None -> None
+            | Some (params, suffix) ->
+                let header = tycon ^ suffix in
+                (match
+                   List.find_opt (fun c -> c.ntype = "variant_type") tb.children
+                 with
+                 | Some vt ->
+                     if has_child_type "variant_type_spread" vt then None
+                     else
+                       let vds =
+                         List.filter
+                           (fun c -> c.ntype = "variant_declaration")
+                           vt.children
+                       in
+                       let rec go acc = function
+                         | [] -> Some (List.rev acc)
+                         | vd :: rest ->
+                             (match translate_variant ~params ~source vd with
+                              | Some s -> go (s :: acc) rest
+                              | None -> None)
+                       in
+                       (match go [] vds with
+                        | None | Some [] -> None
+                        | Some arms ->
+                            let body =
+                              String.concat "\n"
+                                (List.map (fun a -> "  | " ^ a) arms)
+                            in
+                            Some (Printf.sprintf "type %s =\n%s" header body))
+                 | None ->
+                     (match
+                        List.find_opt
+                          (fun c -> c.ntype = "record_type") tb.children
+                      with
+                      | Some rt ->
+                          (match translate_record_fields ~params ~source rt with
+                           | None -> None
+                           | Some fields ->
+                               let body =
+                                 String.concat ",\n"
+                                   (List.map (fun f -> "  " ^ f) fields)
+                               in
+                               Some
+                                 (Printf.sprintf "struct %s {\n%s\n}" header body))
+                      | None ->
+                          (* alias: the non-name RHS type node *)
+                          (match
+                             List.find_opt
+                               (fun c ->
+                                 c.field <> Some "name"
+                                 && c.ntype = "type_identifier")
+                               tb.children
+                           with
+                           | None -> None
+                           | Some r ->
+                               (match translate_type_ref ~params ~source r with
+                                | None -> None
+                                | Some rhs ->
+                                    Some
+                                      (Printf.sprintf "type %s = %s" header rhs)))))))
 
 (* Walk the tree; translate every module-top-level type_declaration's
    bindings. Returns [(source_line, affinescript)] in tree order. *)

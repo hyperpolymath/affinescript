@@ -225,9 +225,18 @@ let translate_phase3_blob () =
 
 let test_translate_count () =
   skip_unless_ready ();
+  (* userId, color, shape, and (slice 2) the generic box — 4. theirMap
+     (qualified) and the let/switch stay skipped. *)
   Alcotest.(check int)
-    "exactly the three structural type decls are translated"
-    3 (List.length (translate_phase3 ()))
+    "four structural type decls are translated"
+    4 (List.length (translate_phase3 ()))
+
+let test_translate_generic_sum () =
+  skip_unless_ready ();
+  let blob = translate_phase3_blob () in
+  Alcotest.(check bool)
+    "generic sum -> type Box[A] = | Box(A)"
+    true (contains blob "type Box[A] =" && contains blob "| Box(A)")
 
 let test_translate_alias () =
   skip_unless_ready ();
@@ -256,14 +265,68 @@ let test_translate_payload_sum () =
 let test_translate_skips_non_structural () =
   skip_unless_ready ();
   let blob = translate_phase3_blob () in
-  (* the generic Box, qualified Belt.Map.t, and the let/switch must all be
-     absent from the translation — slice 1 never guesses them. *)
+  (* the qualified Belt.Map.t and the let/switch must stay absent — the tool
+     never guesses them; and no raw ReScript type-var ['a] leaks through. *)
   let leaked =
-    contains blob "switch" || contains blob "area" || contains blob "Box"
+    contains blob "switch" || contains blob "area"
     || contains blob "Belt" || contains blob "'a"
   in
-  Alcotest.(check bool) "non-structural / generic / qualified forms skipped"
+  Alcotest.(check bool) "qualified / non-type forms skipped, no raw type-var"
     false leaked
+
+(* ---- Phase 3 slice 2: records (-> struct) and generics --------------------
+
+   [fixtures/phase3b.res] holds a record (-> struct), a generic record
+   (-> struct with type params), a generic alias, and two records that must
+   be skipped (mutable + optional fields). *)
+
+let phase3b_fixture = "fixtures/phase3b.res"
+
+let translate_phase3b () =
+  let source = read_file phase3b_fixture in
+  let path = Filename.concat (Sys.getcwd ()) phase3b_fixture in
+  Walker.translate ~grammar_dir:(grammar_dir ()) ~path ~source
+
+let translate_phase3b_blob () =
+  String.concat "\n" (List.map snd (translate_phase3b ()))
+
+let test_translate_b_count () =
+  skip_unless_ready ();
+  (* point, box, id translate; counter (mutable) and config (optional) skip. *)
+  Alcotest.(check int)
+    "three of five record/generic decls translate"
+    3 (List.length (translate_phase3b ()))
+
+let test_translate_record () =
+  skip_unless_ready ();
+  let blob = translate_phase3b_blob () in
+  let ok =
+    contains blob "struct Point {" && contains blob "x: Int"
+    && contains blob "y: Int"
+  in
+  Alcotest.(check bool) "record -> struct with mapped field types" true ok
+
+let test_translate_generic_record () =
+  skip_unless_ready ();
+  let blob = translate_phase3b_blob () in
+  let ok = contains blob "struct Box[A] {" && contains blob "value: A" in
+  Alcotest.(check bool) "generic record -> struct with type params" true ok
+
+let test_translate_generic_alias () =
+  skip_unless_ready ();
+  Alcotest.(check bool)
+    "generic alias -> type Id[A] = A"
+    true (contains (translate_phase3b_blob ()) "type Id[A] = A")
+
+let test_translate_b_skips () =
+  skip_unless_ready ();
+  let blob = translate_phase3b_blob () in
+  (* mutable + optional records must be skipped, never silently flattened. *)
+  let leaked =
+    contains blob "mutable" || contains blob "count"
+    || contains blob "verbose" || contains blob "?"
+  in
+  Alcotest.(check bool) "mutable / optional records skipped" false leaked
 
 let () =
   Alcotest.run "res-to-affine-walker"
@@ -294,7 +357,7 @@ let () =
         ] );
       ( "walker-phase3-translate",
         [
-          Alcotest.test_case "three structural type decls translated"
+          Alcotest.test_case "four structural type decls translated"
             `Quick test_translate_count;
           Alcotest.test_case "primitive alias -> type UserId = Int"
             `Quick test_translate_alias;
@@ -302,7 +365,22 @@ let () =
             `Quick test_translate_nullary_sum;
           Alcotest.test_case "primitive-payload sum -> mapped params"
             `Quick test_translate_payload_sum;
-          Alcotest.test_case "generic / qualified / non-type forms skipped"
+          Alcotest.test_case "generic sum -> type Box[A] = | Box(A)"
+            `Quick test_translate_generic_sum;
+          Alcotest.test_case "qualified / non-type forms skipped"
             `Quick test_translate_skips_non_structural;
+        ] );
+      ( "walker-phase3b-records-generics",
+        [
+          Alcotest.test_case "three of five record/generic decls translate"
+            `Quick test_translate_b_count;
+          Alcotest.test_case "record -> struct"
+            `Quick test_translate_record;
+          Alcotest.test_case "generic record -> struct[A]"
+            `Quick test_translate_generic_record;
+          Alcotest.test_case "generic alias -> type Id[A] = A"
+            `Quick test_translate_generic_alias;
+          Alcotest.test_case "mutable / optional records skipped"
+            `Quick test_translate_b_skips;
         ] );
     ]
