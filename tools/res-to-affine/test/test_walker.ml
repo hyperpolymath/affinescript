@@ -21,6 +21,18 @@ let read_file path =
   close_in ic;
   s
 
+(* Substring search — OCaml's [String] only has char membership. *)
+let contains haystack needle =
+  let hn = String.length haystack and nn = String.length needle in
+  if nn = 0 then true
+  else
+    let rec loop i =
+      if i + nn > hn then false
+      else if String.sub haystack i nn = needle then true
+      else loop (i + 1)
+    in
+    loop 0
+
 let tree_sitter_available () =
   Sys.command "command -v tree-sitter > /dev/null 2>&1" = 0
 
@@ -194,6 +206,65 @@ let test_walker_finds_oversized_function () =
    gated end-to-end tests above exercise it through real
    tree-sitter output. *)
 
+(* ---- Phase 3 slice 1: structural type-declaration translation -------------
+
+   [fixtures/phase3.res] holds three translatable structural type decls
+   (a primitive alias and two simple sum types) plus forms that slice 1
+   must skip (a generic, a qualified-path alias, and a let/switch). These
+   gated tests assert the translator's output structurally. *)
+
+let phase3_fixture = "fixtures/phase3.res"
+
+let translate_phase3 () =
+  let source = read_file phase3_fixture in
+  let path = Filename.concat (Sys.getcwd ()) phase3_fixture in
+  Walker.translate ~grammar_dir:(grammar_dir ()) ~path ~source
+
+let translate_phase3_blob () =
+  String.concat "\n" (List.map snd (translate_phase3 ()))
+
+let test_translate_count () =
+  skip_unless_ready ();
+  Alcotest.(check int)
+    "exactly the three structural type decls are translated"
+    3 (List.length (translate_phase3 ()))
+
+let test_translate_alias () =
+  skip_unless_ready ();
+  Alcotest.(check bool)
+    "primitive alias -> capitalised TyCon + Int"
+    true (contains (translate_phase3_blob ()) "type UserId = Int")
+
+let test_translate_nullary_sum () =
+  skip_unless_ready ();
+  let blob = translate_phase3_blob () in
+  let ok =
+    contains blob "type Color =" && contains blob "| Red"
+    && contains blob "| Green" && contains blob "| Blue"
+  in
+  Alcotest.(check bool) "nullary sum -> leading-pipe variant form" true ok
+
+let test_translate_payload_sum () =
+  skip_unless_ready ();
+  let blob = translate_phase3_blob () in
+  let ok =
+    contains blob "type Shape =" && contains blob "| Circle(Float)"
+    && contains blob "| Rect(Int, Int)"
+  in
+  Alcotest.(check bool) "primitive-payload sum -> mapped param types" true ok
+
+let test_translate_skips_non_structural () =
+  skip_unless_ready ();
+  let blob = translate_phase3_blob () in
+  (* the generic Box, qualified Belt.Map.t, and the let/switch must all be
+     absent from the translation — slice 1 never guesses them. *)
+  let leaked =
+    contains blob "switch" || contains blob "area" || contains blob "Box"
+    || contains blob "Belt" || contains blob "'a"
+  in
+  Alcotest.(check bool) "non-structural / generic / qualified forms skipped"
+    false leaked
+
 let () =
   Alcotest.run "res-to-affine-walker"
     [
@@ -220,5 +291,18 @@ let () =
             `Quick test_walker_finds_inline_callback_record;
           Alcotest.test_case "oversized-function found on phase2c.res"
             `Quick test_walker_finds_oversized_function;
+        ] );
+      ( "walker-phase3-translate",
+        [
+          Alcotest.test_case "three structural type decls translated"
+            `Quick test_translate_count;
+          Alcotest.test_case "primitive alias -> type UserId = Int"
+            `Quick test_translate_alias;
+          Alcotest.test_case "nullary sum -> leading-pipe variants"
+            `Quick test_translate_nullary_sum;
+          Alcotest.test_case "primitive-payload sum -> mapped params"
+            `Quick test_translate_payload_sum;
+          Alcotest.test_case "generic / qualified / non-type forms skipped"
+            `Quick test_translate_skips_non_structural;
         ] );
     ]

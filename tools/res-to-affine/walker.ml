@@ -579,20 +579,192 @@ let dedupe (findings : Scanner.finding list) : Scanner.finding list =
       end)
     findings
 
+(* ---- Phase 3 (slice 1): structural type-declaration translation -----------
+
+   Phase 1/2 only *mark* anti-patterns. Phase 3 begins *translating* the
+   pure-structural forms into compilable AffineScript. Slice 1 covers the
+   two most mechanical, #228-independent shapes — primitive type aliases
+   and simple sum types — and is deliberately conservative: any shape we
+   are not certain about (type parameters / generics, qualified paths,
+   record bodies, non-primitive references, GADT return annotations,
+   variant spreads) is skipped rather than guessed. A skipped form simply
+   does not appear in the translation list; the emitter still prints the
+   markers and the quoted original for it, so nothing is lost and the tool
+   never emits a wrong translation. (This same property makes the walker
+   side fail-safe: if a node name below is ever off, matching just falls
+   through to "skip", never to a bad rewrite.)
+
+   Node names are from rescript-lang/tree-sitter-rescript @990214a:
+     type_declaration   -> type_binding (one per `and`)
+     type_binding: field "name" (type_identifier | type_identifier_path),
+        optional type_parameters, then either an inline alias type or a
+        variant_type body
+     variant_type        -> variant_declaration (bar-separated)
+     variant_declaration : variant_identifier + optional variant_parameters
+                           (+ optional type_annotation, which we refuse)
+     variant_parameters  : ( _type , ... )
+     type_identifier      /[a-z_'][..]/   (primitive or user lower type)
+     variant_identifier   /[A-Z][..]/     (constructor)
+     type_identifier_path  qualified (Mod.t)  — skipped in slice 1
+     generic_type / tuple_type / record_type  — skipped in slice 1
+
+   A ReScript lower-case type name (`color`) is capitalised (`Color`) so
+   it is a referenceable AffineScript type *constructor*: in type position
+   lib/parser.mly reads a lower_ident as a type *variable* (TyVar) and only
+   an upper_ident as a TyCon. *)
+
+(* ReScript primitive type name -> AffineScript spelling. Only these are
+   translated; any other type_identifier text is a user/opaque type we do
+   not rewrite in slice 1. *)
+let rescript_prim_to_affine = function
+  | "int"    -> Some "Int"
+  | "float"  -> Some "Float"
+  | "string" -> Some "String"
+  | "bool"   -> Some "Bool"
+  | "char"   -> Some "Char"
+  | "unit"   -> Some "()"
+  | _        -> None
+
+(* Capitalise the first character, or [None] if the result would not start
+   with an ASCII upper-case letter (so we never emit an unreferenceable
+   type name). *)
+let to_type_con name =
+  if String.length name = 0 then None
+  else
+    let c0 = Char.uppercase_ascii name.[0] in
+    if c0 >= 'A' && c0 <= 'Z' then
+      Some (String.make 1 c0 ^ String.sub name 1 (String.length name - 1))
+    else None
+
+let child_with_field name n =
+  List.find_opt (fun c -> c.field = Some name) n.children
+
+let has_child_type ty n = List.exists (fun c -> c.ntype = ty) n.children
+
+(* A type node usable as an alias RHS or a variant payload. Slice 1 only
+   knows primitive type_identifiers; anything else yields [None]. *)
+let translate_prim_type ~source n =
+  if n.ntype = "type_identifier"
+  then rescript_prim_to_affine (node_text ~source n)
+  else None
+
+(* Render one variant_declaration, or [None] if it carries a non-primitive
+   payload or a GADT return annotation. *)
+let translate_variant ~source vd =
+  if has_child_type "type_annotation" vd then None
+  else
+    match
+      List.find_opt (fun c -> c.ntype = "variant_identifier") vd.children
+    with
+    | None -> None
+    | Some nn ->
+        let cname = node_text ~source nn in
+        (match
+           List.find_opt (fun c -> c.ntype = "variant_parameters") vd.children
+         with
+         | None -> Some cname                       (* nullary constructor *)
+         | Some p ->
+             let rec go acc = function
+               | [] -> Some (List.rev acc)
+               | t :: rest ->
+                   (match translate_prim_type ~source t with
+                    | Some s -> go (s :: acc) rest
+                    | None -> None)
+             in
+             (match go [] p.children with
+              | None | Some [] -> None
+              | Some ss ->
+                  Some (Printf.sprintf "%s(%s)" cname (String.concat ", " ss))))
+
+(* Translate one type_binding into an AffineScript declaration, or [None]. *)
+let translate_type_binding ~source tb =
+  if has_child_type "type_parameters" tb then None
+  else
+    match child_with_field "name" tb with
+    | None -> None
+    | Some nn when nn.ntype <> "type_identifier" -> None  (* qualified path *)
+    | Some nn ->
+        (match to_type_con (node_text ~source nn) with
+         | None -> None
+         | Some tycon ->
+             (match
+                List.find_opt (fun c -> c.ntype = "variant_type") tb.children
+              with
+              | Some vt ->
+                  if has_child_type "variant_type_spread" vt then None
+                  else
+                    let vds =
+                      List.filter
+                        (fun c -> c.ntype = "variant_declaration") vt.children
+                    in
+                    let rec go acc = function
+                      | [] -> Some (List.rev acc)
+                      | vd :: rest ->
+                          (match translate_variant ~source vd with
+                           | Some s -> go (s :: acc) rest
+                           | None -> None)
+                    in
+                    (match go [] vds with
+                     | None | Some [] -> None
+                     | Some arms ->
+                         let body =
+                           String.concat "\n"
+                             (List.map (fun a -> "  | " ^ a) arms)
+                         in
+                         Some (Printf.sprintf "type %s =\n%s" tycon body))
+              | None ->
+                  (* alias: the non-name RHS type node *)
+                  (match
+                     List.find_opt
+                       (fun c ->
+                         c.field <> Some "name" && c.ntype = "type_identifier")
+                       tb.children
+                   with
+                   | None -> None
+                   | Some r ->
+                       (match translate_prim_type ~source r with
+                        | None -> None
+                        | Some prim ->
+                            Some (Printf.sprintf "type %s = %s" tycon prim)))))
+
+(* Walk the tree; translate every module-top-level type_declaration's
+   bindings. Returns [(source_line, affinescript)] in tree order. *)
+let rec collect_translations ~source ancestors acc node =
+  let acc =
+    if node.ntype = "type_declaration" && at_module_toplevel ancestors then
+      List.fold_left
+        (fun acc c ->
+          if c.ntype = "type_binding" then
+            (match translate_type_binding ~source c with
+             | Some s -> (c.start.row + 1, s) :: acc
+             | None -> acc)
+          else acc)
+        acc node.children
+    else acc
+  in
+  List.fold_left
+    (fun acc c -> collect_translations ~source (node.ntype :: ancestors) acc c)
+    acc node.children
+
 (* ---- public entry point --------------------------------------------------- *)
 
-let scan ~grammar_dir ~path ~source =
+let parse_file ~grammar_dir ~path =
   match run_tree_sitter ~grammar_dir ~path with
   | Error msg -> failwith ("res-to-affine walker: " ^ msg)
   | Ok output ->
-      let root =
-        try parse_sexp output
-        with Parse_error m ->
-          failwith ("res-to-affine walker: s-exp parse failed — " ^ m)
-      in
-      let findings = collect ~source [] [] root in
-      let findings = dedupe findings in
-      List.sort
-        (fun (a : Scanner.finding) (b : Scanner.finding) ->
-          compare a.line b.line)
-        findings
+      (try parse_sexp output
+       with Parse_error m ->
+         failwith ("res-to-affine walker: s-exp parse failed — " ^ m))
+
+let scan ~grammar_dir ~path ~source =
+  let root = parse_file ~grammar_dir ~path in
+  let findings = collect ~source [] [] root in
+  let findings = dedupe findings in
+  List.sort
+    (fun (a : Scanner.finding) (b : Scanner.finding) -> compare a.line b.line)
+    findings
+
+let translate ~grammar_dir ~path ~source =
+  let root = parse_file ~grammar_dir ~path in
+  collect_translations ~source [] [] root
+  |> List.sort (fun (l1, _) (l2, _) -> compare l1 l2)
