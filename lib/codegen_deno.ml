@@ -320,6 +320,8 @@ const __as_strGet = (s, i) => String(s)[i];
 const __as_strFind = (s, n) => String(s).indexOf(n);
 const __as_charToInt = (c) => String(c).codePointAt(0);
 const __as_intToChar = (n) => String.fromCodePoint(n);
+const __as_strCharCodeAt = (s, i) => (i >= 0 && i < s.length ? s.charCodeAt(i) : -1);
+const __as_strFromCharCode = (n) => String.fromCharCode(n & 0xff);
 const __as_parseInt = (s) => {
   const n = parseInt(String(s), 10);
   return Number.isNaN(n) ? None : Some(n);
@@ -560,6 +562,10 @@ let () =
   b "parse_float"    (fun a -> Printf.sprintf "__as_parseFloat(%s)" (arg 0 a));
   b "char_to_int"    (fun a -> Printf.sprintf "__as_charToInt(%s)" (arg 0 a));
   b "int_to_char"    (fun a -> Printf.sprintf "__as_intToChar(%s)" (arg 0 a));
+  b "string_char_code_at"
+    (fun a -> Printf.sprintf "__as_strCharCodeAt(%s, %s)" (arg 0 a) (arg 1 a));
+  b "string_from_char_code"
+    (fun a -> Printf.sprintf "__as_strFromCharCode(%s)" (arg 0 a));
   b "show"           (fun a -> Printf.sprintf "__as_show(%s)" (arg 0 a));
   b "panic"          (fun a -> Printf.sprintf "(() => { throw new Error(%s); })()" (arg 0 a));
   (* STDLIB-04b (Refs #329): `error<T>` is panic's polymorphic sibling.
