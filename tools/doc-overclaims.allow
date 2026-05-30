@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2024-2026 hyperpolymath
+# Over-claim baseline (issue #176, DOC-08/09 / ledger DOC-17) — the
+# frozen set of accepted over-claim-phrase occurrences. Regenerate with
+# `./tools/check-doc-overclaims.sh --update`. Each line is a
+# "relpath<TAB>normalised-line" signature. A new signature not listed
+# here fails CI; adding one is a deliberate, reviewable act. Current
+# entries are future-tense roadmap milestones, dated history snapshots,
+# and the corrective banners — none is a live over-claim.
+docs/ROADMAP.adoc	* Production-ready toolchain
+docs/ROADMAP.adoc	|Production ready
+docs/STATE-2026-05-26.adoc	|*Phase 3 (Q3 2026)* |Production ready |*1.0* |requires Stage E (typed-wasm contract widening — cross-repo)
+docs/architecture/BACKEND-IMPLEMENTATION.md	> *production-ready*. One reference target (WASM); Deno-ESM/Node-CJS solid;
+docs/bindings-roadmap.adoc	|Production backend default; pairs with SQLite for dev.
+docs/guides/WHAT-MAKES-IT-BRILLIANT.md	**Q: When will it be production-ready?**
+docs/history/ALPHA-1-RELEASE-NOTES.md	- Production-ready
+docs/history/ALPHA-1-RELEASE-NOTES.md	- Production-ready compiler
+docs/history/PHASE3-ASSESSMENT.md	- Row polymorphism is production-ready! ✅
+docs/history/PHASE3-COMPLETE.md	- **Production-ready** type system
+docs/history/PHASE3-SESSION-SUMMARY.md	- ✅ Row polymorphism is production-ready
+docs/history/PHASE3-SESSION-SUMMARY.md	| Row Polymorphism | 100% ✅ | Production ready |
+docs/standards/ROADMAP.md	This roadmap outlines the path from current state (lexer + parser) to a complete, production-ready language.

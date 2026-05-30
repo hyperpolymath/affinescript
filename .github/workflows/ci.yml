@@ -83,6 +83,14 @@ jobs:
         # stops flagging itself as a mirror (DOC-01..09). Toolchain-free.
         run: ./tools/check-doc-truthing.sh
 
+      - name: Issue #176 — over-claim ratchet (DOC-08/09)
+        # Companion to the banner guard above (DOC-16): a frozen-baseline
+        # ratchet that fails any *new* backend-breadth / "production-ready"
+        # / stdlib-% phrase beyond tools/doc-overclaims.allow — the
+        # DOC-08/09 detection the banner guard deliberately leaves to bots.
+        # Toolchain-free. See tools/check-doc-overclaims.sh (DOC-17).
+        run: ./tools/check-doc-overclaims.sh
+
       - name: Check formatting
         run: opam exec -- dune build @fmt
 
