@@ -112,6 +112,11 @@ type type_error =
           function's explicitly declared effect row (issue #59). Only
           raised when a row is declared; an undeclared row stays
           permissive under tracking-only v1. *)
+  | UnknownModule of string
+      (** A module-qualified type/effect reference (`Mod.T` / `Mod::E`)
+          named a module qualifier not introduced by any `use` in the
+          current program (ADR-014, #228). Symmetric to the value-path
+          resolution check done by #178. *)
 
 (* Known exports of stdlib/prelude.affine. Mirrors the same list in
    lib/face.ml — when an UnboundVariable fires at type-check time with
@@ -176,6 +181,12 @@ let show_type_error = function
        performs `Partial` — add it to the row, e.g. /{%s}."
       inferred declared
       (if declared = "" then "Partial" else declared ^ ", Partial")
+  | UnknownModule m ->
+    Printf.sprintf
+      "Unknown module '%s' in qualified type/effect reference (ADR-014, #228). \
+       Add `use %s;` to bring the module into scope, or `use %s::{Item};` to \
+       import items unqualified."
+      m m m
 
 let format_type_error = show_type_error
 
@@ -183,6 +194,12 @@ let format_type_error = show_type_error
     the [check_program] boundary and converted to [UnknownEffect]
     (lowering is not in the result monad). *)
 exception Effect_validation_error of string
+
+(** Raised by [strip_module_qualifier] when a qualified type/effect
+    reference names a module that no `use` decl introduced; caught at
+    [check_program] and converted to [UnknownModule]. Mirrors the
+    [Effect_validation_error] exception/boundary pattern. *)
+exception Module_resolution_error of string
 
 (** {1 Context} *)
 
@@ -217,6 +234,15 @@ type context = {
       NOT yet consulted by codegen — S3 threads & switches the WasmGC
       CPS boundary predicate onto it (the structural recogniser remains
       the sound table-miss fallback). *)
+  module_quals : (string, unit) Hashtbl.t;
+  (** ADR-014 / #228: set of module-name qualifiers introduced by
+      [`use Mod;`] (ImportSimple) decls in the current program. Used by
+      [lower_type_expr]/[lower_effect_expr] to strip a qualified
+      `Mod::T` reference back to `T` when `Mod` is in scope, or raise
+      [Module_resolution_error] when it isn't. Symmetric to the
+      value-path lowering done by [Resolve.lower_qualified_value_paths]
+      (#178). Populated at [check_program] entry from
+      [prog.prog_imports]. *)
 }
 
 type 'a result = ('a, type_error) Result.t
@@ -248,7 +274,30 @@ let create_context (symbols : Symbol.t) : context =
     trait_registry = Trait.create_registry ();
     declared_effects = Hashtbl.create 16;
     call_effects = Hashtbl.create 64;
+    module_quals = Hashtbl.create 4;
   }
+
+(** ADR-014 / #228. Strip a leading `Mod::` qualifier from a folded
+    type/effect name. Returns the unqualified tail when `Mod` was
+    introduced by a `use Mod;` decl; raises [Module_resolution_error]
+    when the qualifier is unknown; passes the name through unchanged
+    when not qualified. Only the first `::`-separated head is treated
+    as a module qualifier — deeper segments (`A::B::T`) carry through
+    unchanged so a nested module reference still errors symmetrically
+    when its head isn't in scope. *)
+let strip_module_qualifier (ctx : context) (name : string) : string =
+  match String.index_opt name ':' with
+  | None -> name
+  | Some _ ->
+    let parts = String.split_on_char ':' name
+                |> List.filter (fun s -> s <> "") in
+    (match parts with
+     | head :: (_ :: _ as rest) ->
+       if Hashtbl.mem ctx.module_quals head then
+         String.concat "::" rest
+       else
+         raise (Module_resolution_error head)
+     | _ -> name)
 
 (** Enter a deeper let-level. *)
 let enter_level (ctx : context) : unit =
@@ -428,6 +477,7 @@ let rec lower_type_expr (ctx : context) (te : type_expr) : ty =
         tv
     end
   | TyCon { name; _ } ->
+    let name = strip_module_qualifier ctx name in
     begin match name with
       | "Int" -> ty_int
       | "Float" -> ty_float
@@ -443,6 +493,7 @@ let rec lower_type_expr (ctx : context) (te : type_expr) : ty =
         end
     end
   | TyApp ({ name; _ }, args) ->
+    let name = strip_module_qualifier ctx name in
     let head = match Hashtbl.find_opt ctx.type_env name with
       | Some ty -> ty
       | None -> TCon name
@@ -485,6 +536,7 @@ and lower_effect_expr (ctx : context) (ee : effect_expr) : eff =
      user-declared (`effect <name>;`) → kept as written; anything else
      is rejected so contributors cannot silently invent effect names. *)
   let resolve (name : string) : eff =
+    let name = strip_module_qualifier ctx name in
     if name = "Pure" then EPure
     else match Effect.canonical_effect_name name with
       | Some canonical -> ESingleton canonical
@@ -1909,6 +1961,20 @@ let check_program ?(import_types : (string, scheme) Hashtbl.t option)
   try
   let ctx = create_context symbols in
   register_builtins ctx;
+  (* ADR-014 / #228: record `use Mod;` qualifiers so qualified type/effect
+     references can be stripped & resolved (or rejected with a clear
+     UnknownModule error). Only [ImportSimple] binds a qualifier; List/Glob
+     imports bring names unqualified, matching [Resolve.import_qualifiers]
+     for value paths. *)
+  List.iter (fun imp -> match imp with
+    | Ast.ImportSimple (path, alias) ->
+      let name = match alias with
+        | Some id -> id.name
+        | None -> (match List.rev path with id :: _ -> id.name | [] -> "")
+      in
+      if name <> "" then Hashtbl.replace ctx.module_quals name ()
+    | Ast.ImportList _ | Ast.ImportGlob _ -> ()
+  ) prog.prog_imports;
   Option.iter (fun tbl ->
     Hashtbl.iter (fun name sc -> Hashtbl.replace ctx.name_types name sc) tbl
   ) import_types;
@@ -1957,4 +2023,6 @@ let check_program ?(import_types : (string, scheme) Hashtbl.t option)
       Error (QuantityError (qerr, span))
     end
   | Error e -> Error e
-  with Effect_validation_error name -> Error (UnknownEffect name)
+  with
+  | Effect_validation_error name -> Error (UnknownEffect name)
+  | Module_resolution_error m -> Error (UnknownModule m)
