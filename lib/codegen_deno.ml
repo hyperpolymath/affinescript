@@ -721,8 +721,8 @@ and gen_literal (lit : literal) : string =
       if String.length s > 0 && s.[String.length s - 1] = '.' then s ^ "0" else s
   | LitBool (true, _)  -> "true"
   | LitBool (false, _) -> "false"
-  | LitString (s, _)   -> "\"" ^ String.escaped s ^ "\""
-  | LitChar (c, _)     -> "\"" ^ Char.escaped c ^ "\""
+  | LitString (s, _)   -> Js_codegen.js_string_lit s
+  | LitChar (c, _)     -> Js_codegen.js_string_lit (String.make 1 c)
   | LitUnit _          -> "Unit"
 
 and gen_pattern ctx (pat : pattern) : string =

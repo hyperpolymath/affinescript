@@ -1,0 +1,17 @@
+// SPDX-License-Identifier: MPL-2.0
+// issue #460 — non-ASCII string literals must round-trip under
+// strict-mode ESM. Pre-fix, the JS codegen used OCaml `String.escaped`
+// which emitted `\NNN` decimal sequences; the JS parser reads `\NNN`
+// as OCTAL escapes, which strict-mode ESM rejects with
+// `SyntaxError: Octal escape sequences are not allowed in strict mode`.
+// Post-fix, non-ASCII bytes lower to `\uXXXX` / `\u{XXXXX}` Unicode
+// escapes which all JS parser modes accept.
+
+pub fn emoji_cross() -> String { return "❌"; }
+pub fn emoji_check() -> String { return "✓"; }
+pub fn cjk_hello() -> String { return "你好"; }
+pub fn latin_accent() -> String { return "café résumé"; }
+pub fn non_bmp_sob() -> String { return "😭"; }
+pub fn mixed() -> String { return "[OK] café 你好 ❌"; }
+pub fn ascii_only() -> String { return "plain ASCII"; }
+pub fn quotes_and_backslash() -> String { return "\"escaped\" and \\back"; }

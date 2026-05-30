@@ -101,6 +101,62 @@ let mangle (name : string) : string =
   if List.mem name js_reserved then name ^ "_"
   else name
 
+(** Lower a UTF-8 byte string to a JS double-quoted literal that is
+    safe under strict-mode ESM.
+
+    OCaml's [String.escaped] emits non-ASCII bytes as [\NNN] *decimal*
+    sequences; JavaScript parses [\NNN] as *octal* escapes which strict
+    mode rejects ([SyntaxError: Octal escape sequences are not allowed
+    in strict mode]) and which would decode to wrong characters even
+    outside strict mode. This helper instead decodes the UTF-8 byte
+    sequence to code points and emits [\uXXXX] (BMP) or [\u{XXXXX}]
+    (non-BMP) Unicode escapes — accepted everywhere, no parser-mode
+    surprises, and preserves the original character. Closes #460. *)
+let js_string_lit (s : string) : string =
+  let buf = Buffer.create (String.length s + 8) in
+  Buffer.add_char buf '"';
+  let n = String.length s in
+  let i = ref 0 in
+  while !i < n do
+    let b0 = Char.code s.[!i] in
+    if b0 < 0x80 then begin
+      (match Char.chr b0 with
+       | '\\' -> Buffer.add_string buf "\\\\"
+       | '"'  -> Buffer.add_string buf "\\\""
+       | '\n' -> Buffer.add_string buf "\\n"
+       | '\r' -> Buffer.add_string buf "\\r"
+       | '\t' -> Buffer.add_string buf "\\t"
+       | c when b0 >= 0x20 && b0 <= 0x7E -> Buffer.add_char buf c
+       | _ -> Buffer.add_string buf (Printf.sprintf "\\x%02X" b0));
+      incr i
+    end else begin
+      let cp, len =
+        if b0 < 0xC0 then (b0, 1)
+        else if b0 < 0xE0 && !i + 1 < n then
+          let b1 = Char.code s.[!i + 1] in
+          (((b0 land 0x1F) lsl 6) lor (b1 land 0x3F), 2)
+        else if b0 < 0xF0 && !i + 2 < n then
+          let b1 = Char.code s.[!i + 1] in
+          let b2 = Char.code s.[!i + 2] in
+          (((b0 land 0x0F) lsl 12) lor ((b1 land 0x3F) lsl 6) lor (b2 land 0x3F), 3)
+        else if !i + 3 < n then
+          let b1 = Char.code s.[!i + 1] in
+          let b2 = Char.code s.[!i + 2] in
+          let b3 = Char.code s.[!i + 3] in
+          (((b0 land 0x07) lsl 18) lor ((b1 land 0x3F) lsl 12)
+            lor ((b2 land 0x3F) lsl 6) lor (b3 land 0x3F), 4)
+        else (b0, 1)
+      in
+      if cp <= 0xFFFF then
+        Buffer.add_string buf (Printf.sprintf "\\u%04X" cp)
+      else
+        Buffer.add_string buf (Printf.sprintf "\\u{%X}" cp);
+      i := !i + len
+    end
+  done;
+  Buffer.add_char buf '"';
+  Buffer.contents buf
+
 (* ============================================================================
    Expression Code Generation
    ============================================================================ *)
@@ -230,8 +286,8 @@ and gen_literal (lit : literal) : string =
       if String.length s > 0 && s.[String.length s - 1] = '.' then s ^ "0" else s
   | LitBool (true, _)    -> "true"
   | LitBool (false, _)   -> "false"
-  | LitString (s, _)     -> "\"" ^ String.escaped s ^ "\""
-  | LitChar (c, _)       -> "\"" ^ Char.escaped c ^ "\""
+  | LitString (s, _)     -> js_string_lit s
+  | LitChar (c, _)       -> js_string_lit (String.make 1 c)
   | LitUnit _            -> "Unit"
 
 and gen_pattern ctx (pat : pattern) : string =
