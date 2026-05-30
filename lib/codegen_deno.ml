@@ -695,6 +695,13 @@ let rec gen_expr ctx (expr : expr) : string =
   | ExprBlock block -> gen_block_expr ctx block
   | ExprReturn (Some e) -> iife ctx ("return " ^ gen_expr ctx e ^ ";")
   | ExprReturn None     -> iife ctx "return Unit;"
+  (* #459: break/continue lower to the corresponding JS keywords. The
+     wrapping IIFE pattern used for `return` doesn't work here — JS's
+     `break`/`continue` only target the nearest enclosing loop and an
+     IIFE wraps the keyword in a new function frame. Emit a bare
+     statement and rely on the parent block-flatten machinery. *)
+  | ExprBreak _    -> iife ctx "break;"
+  | ExprContinue _ -> iife ctx "continue;"
   | ExprLambda { elam_params; elam_body; elam_ret_ty = _ } ->
       let ps = List.map (fun (p : param) -> mangle p.p_name.name) elam_params in
       "((" ^ String.concat ", " ps ^ ") => " ^ gen_expr ctx elam_body ^ ")"
@@ -867,6 +874,8 @@ and gen_stmt_expr ctx (e : expr) : string =
   match unspan e with
   | ExprReturn (Some e) -> "return " ^ gen_expr ctx e ^ ";"
   | ExprReturn None     -> "return;"
+  | ExprBreak _    -> "break;"
+  | ExprContinue _ -> "continue;"
   | ExprIf { ei_cond; ei_then; ei_else } ->
       let elseb = match ei_else with
         | Some e -> " else { " ^ gen_branch ctx e ^ " }"

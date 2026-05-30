@@ -252,6 +252,13 @@ let rec gen_expr ctx (expr : expr) : string =
       "(() => { return " ^ gen_expr ctx e ^ "; })()"
   | ExprReturn None ->
       "(() => { return Unit; })()"
+  (* #459: see codegen_deno's matching comment. In statement position
+     `break`/`continue` lower to bare JS keywords; the expression-
+     position fallback uses an IIFE that can't actually escape the
+     loop, but legal AffineScript places these inside a loop body so
+     the statement path (gen_stmt) is what fires. *)
+  | ExprBreak _    -> "(() => { break; })()"
+  | ExprContinue _ -> "(() => { continue; })()"
   | ExprLambda { elam_params; elam_body; elam_ret_ty = _ } ->
       let param_strs = List.map (fun (p : param) -> mangle p.p_name.name) elam_params in
       "((" ^ String.concat ", " param_strs ^ ") => " ^ gen_expr ctx elam_body ^ ")"

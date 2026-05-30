@@ -769,6 +769,8 @@ expr_assign:
      is correct, since `return` diverges and was never a useful operand. */
   | RETURN e = expr? { ExprReturn e }
   | RESUME e = expr? { ExprResume e }
+  | BREAK    { ExprBreak (mk_span $startpos $endpos) }
+  | CONTINUE { ExprContinue (mk_span $startpos $endpos) }
   | lhs = expr_or EQ rhs = expr_assign
     { ExprLet { el_mut = false; el_quantity = None;
                 el_pat = PatVar (mk_ident "_" $startpos(lhs) $endpos(lhs));

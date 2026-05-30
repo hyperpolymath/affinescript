@@ -77,6 +77,8 @@ let rec expr_summary (expr : expr) : string =
   | ExprIndex _ -> "index"
   | ExprArray _ -> "array"
   | ExprReturn _ -> "return"
+  | ExprBreak _ -> "break"
+  | ExprContinue _ -> "continue"
   | ExprTry _ -> "try"
   | ExprHandle _ -> "handle"
   | ExprResume _ -> "resume"
@@ -117,6 +119,10 @@ type type_error =
           named a module qualifier not introduced by any `use` in the
           current program (ADR-014, #228). Symmetric to the value-path
           resolution check done by #178. *)
+  | NotInLoop of string
+      (** `break` / `continue` used outside any enclosing loop body
+          (issue #459). The string carries the keyword name for the
+          error message. *)
 
 (* Known exports of stdlib/prelude.affine. Mirrors the same list in
    lib/face.ml — when an UnboundVariable fires at type-check time with
@@ -187,6 +193,11 @@ let show_type_error = function
        Add `use %s;` to bring the module into scope, or `use %s::{Item};` to \
        import items unqualified."
       m m m
+  | NotInLoop kw ->
+    Printf.sprintf
+      "`%s` used outside a loop body (#459). `break` and `continue` must be \
+       lexically enclosed by a `while` or `for` loop."
+      kw
 
 let format_type_error = show_type_error
 
@@ -243,6 +254,12 @@ type context = {
       value-path lowering done by [Resolve.lower_qualified_value_paths]
       (#178). Populated at [check_program] entry from
       [prog.prog_imports]. *)
+  mutable in_loop : bool;
+  (** #459: tracks whether the synth/check walker is currently inside
+      a loop body. Set true on entry to a [StmtWhile]/[StmtFor] body,
+      restored on exit. Read by [ExprBreak]/[ExprContinue] handlers to
+      reject loop-control expressions outside of a loop with
+      [NotInLoop]. *)
 }
 
 type 'a result = ('a, type_error) Result.t
@@ -275,6 +292,7 @@ let create_context (symbols : Symbol.t) : context =
     declared_effects = Hashtbl.create 16;
     call_effects = Hashtbl.create 64;
     module_quals = Hashtbl.create 4;
+    in_loop = false;
   }
 
 (** ADR-014 / #228. Strip a leading `Mod::` qualifier from a folded
@@ -1108,6 +1126,16 @@ let rec synth (ctx : context) (expr : expr) : ty result =
         Ok ty_never
     end
 
+  (* Break / continue — diverging like return.  Loop-context check
+     happens at the statement-walker boundary (StmtWhile/StmtFor flip
+     ctx.in_loop); top-level break/continue is rejected there. #459. *)
+  | ExprBreak _ ->
+    if ctx.in_loop then Ok ty_never
+    else Error (NotInLoop "break")
+  | ExprContinue _ ->
+    if ctx.in_loop then Ok ty_never
+    else Error (NotInLoop "continue")
+
   (* Variant constructor: Type::Variant *)
   | ExprVariant ({ name = _type_name; _ }, { name = variant_name; _ }) ->
     begin match Hashtbl.find_opt ctx.constructor_env variant_name with
@@ -1235,6 +1263,8 @@ and synth_list (ctx : context) (exprs : expr list) : (ty list) result =
 and always_diverges (e : expr) : bool =
   match e with
   | ExprReturn _ -> true
+  | ExprBreak _ -> true
+  | ExprContinue _ -> true
   | ExprBlock blk -> block_always_diverges blk
   | ExprIf { ei_cond = _; ei_then; ei_else = Some else_e } ->
     always_diverges ei_then && always_diverges else_e
@@ -1298,7 +1328,11 @@ and check_stmt (ctx : context) (stmt : stmt) : unit result =
     check ctx rhs lhs_ty
   | StmtWhile (cond, body) ->
     let* () = check ctx cond ty_bool in
-    let* _ty = synth_block ctx body in
+    let prev = ctx.in_loop in
+    ctx.in_loop <- true;
+    let res = synth_block ctx body in
+    ctx.in_loop <- prev;
+    let* _ty = res in
     Ok ()
   | StmtFor (pat, iter_expr, body) ->
     let* iter_ty = synth ctx iter_expr in
@@ -1309,7 +1343,11 @@ and check_stmt (ctx : context) (stmt : stmt) : unit result =
       (n, Hashtbl.find_opt ctx.name_types n)
     ) bindings in
     List.iter (fun (n, t) -> bind_var ctx n t) bindings;
-    let* _ty = synth_block ctx body in
+    let prev = ctx.in_loop in
+    ctx.in_loop <- true;
+    let res = synth_block ctx body in
+    ctx.in_loop <- prev;
+    let* _ty = res in
     List.iter (fun (n, old_sc) ->
       match old_sc with
       | Some sc -> Hashtbl.replace ctx.name_types n sc

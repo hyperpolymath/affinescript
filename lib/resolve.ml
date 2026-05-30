@@ -326,6 +326,9 @@ let rec resolve_expr (ctx : context) (expr : expr) : unit result =
      | Some e -> resolve_expr ctx e
      | None -> Ok ())
 
+  | ExprBreak _ -> Ok ()
+  | ExprContinue _ -> Ok ()
+
   | ExprHandle eh ->
     let* () = resolve_expr ctx eh.eh_body in
     List.fold_left (fun acc arm ->
@@ -909,6 +912,8 @@ let rec lower_expr quals (e : expr) : expr =
   | ExprUnary (op, e1) -> ExprUnary (op, lower_expr quals e1)
   | ExprBlock b -> ExprBlock (lower_block quals b)
   | ExprReturn eo -> ExprReturn (Option.map (lower_expr quals) eo)
+  | ExprBreak sp -> ExprBreak sp
+  | ExprContinue sp -> ExprContinue sp
   | ExprTry r ->
     ExprTry { et_body = lower_block quals r.et_body;
               et_catch = Option.map (List.map (lower_arm quals)) r.et_catch;

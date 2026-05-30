@@ -460,6 +460,8 @@ let rec expr_span (expr : expr) : Span.t =
       | [] -> match blk_expr with Some e -> expr_span e | None -> Span.dummy
     end
   | ExprReturn _ -> Span.dummy
+  | ExprBreak sp -> sp
+  | ExprContinue sp -> sp
   | ExprTry _ -> Span.dummy
   | ExprHandle { eh_body; _ } -> expr_span eh_body
   | ExprResume _ -> Span.dummy
@@ -705,6 +707,8 @@ let compute_last_use_index (symbols : Symbol.t) (blk : block)
     | ExprLambda lam -> visit_expr idx lam.elam_body
     | ExprReturn (Some e) -> visit_expr idx e
     | ExprReturn None -> ()
+    | ExprBreak _ -> ()
+    | ExprContinue _ -> ()
     | ExprHandle eh ->
       visit_expr idx eh.eh_body;
       List.iter (fun arm ->
@@ -949,6 +953,7 @@ let rec check_expr (ctx : context) (state : state) (symbols : Symbol.t) (expr : 
       | ExprTupleIndex (e, _) | ExprRowRestrict (e, _) | ExprSpan (e, _) ->
         collect_free acc e
       | ExprReturn None | ExprResume None | ExprUnsafe [] -> acc
+      | ExprBreak _ | ExprContinue _ -> acc
       | ExprResume (Some e) -> collect_free acc e
       | ExprTuple es | ExprArray es -> List.fold_left collect_free acc es
       | ExprRecord er ->
@@ -1226,6 +1231,11 @@ let rec check_expr (ctx : context) (state : state) (symbols : Symbol.t) (expr : 
       | Some e -> check_expr ctx state symbols e
       | None -> Ok ()
     end
+
+  (* #459: break/continue carry no expression and own no borrows; safe
+     no-ops for the borrow checker (the typecheck loop-context guard is
+     what enforces well-formedness). *)
+  | ExprBreak _ | ExprContinue _ -> Ok ()
 
   | ExprTry et ->
     (* CFG-join (CORE-01 pt3 Slice C / #177): body runs first, then
