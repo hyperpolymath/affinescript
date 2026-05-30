@@ -1,0 +1,55 @@
+// SPDX-License-Identifier: MPL-2.0
+// Deno-ESM codegen regression for stdlib/encoding.affine (stdlib #25, hex).
+//
+// Self-contained mirror of stdlib/encoding.affine — the codegen-deno
+// runner compiles each fixture standalone (no stdlib resolution), so the
+// hex logic is inlined here, exactly as tests/codegen-deno/string_prims
+// mirrors stdlib/string.affine. Exercises the integer bit-op + string
+// primitive lowering (`&` / `>>` / `<<` / `|` / `string_sub` /
+// `string_find` / `++`) that the hex conversion is built on.
+
+fn hex_alphabet() -> String = "0123456789abcdef";
+
+pub fn hex_digit(nibble: Int) -> String =
+  string_sub(hex_alphabet(), nibble & 15, 1);
+
+pub fn to_hex(n: Int) -> String {
+  if n == 0 {
+    return "0";
+  }
+  let mut acc = "";
+  let mut v = n;
+  while v > 0 {
+    acc = hex_digit(v & 15) ++ acc;
+    v = v >> 4;
+  }
+  acc
+}
+
+pub fn to_hex_padded(n: Int, width: Int) -> String {
+  let mut s = to_hex(n);
+  while len(s) < width {
+    s = "0" ++ s;
+  }
+  s
+}
+
+pub fn hex_value(digit: String) -> Int {
+  let lower = string_find(hex_alphabet(), digit);
+  if lower >= 0 {
+    lower
+  } else {
+    string_find("0123456789ABCDEF", digit)
+  }
+}
+
+pub fn from_hex(s: String) -> Int {
+  let mut acc = 0;
+  let mut i = 0;
+  let n = len(s);
+  while i < n {
+    acc = (acc << 4) | hex_value(string_sub(s, i, 1));
+    i = i + 1;
+  }
+  acc
+}

@@ -254,9 +254,9 @@ Not blocking specific consumers today; included so they're discoverable.
 
 |25
 |*Base64 / Hex encoding* — encode / decode, URL-safe variant
-|`○`
-|new `encoding.affine`
-|Universal; needed for JWT, image data URIs, etc.
+|`◑` hex landed
+|`stdlib/encoding.affine`
+|Universal; needed for JWT, image data URIs, etc. Hex half landed (`to_hex` / `from_hex` / `to_hex_padded` / `hex_digit` / `hex_value`) on the interpreter + Deno-ESM backends, verified by `tests/codegen-deno/encoding_smoke`. Base64 deferred pending a `Bytes` type (#30), since it is byte- rather than integer-oriented.
 
 |26
 |*Logging surface* — `Logger`, levels, structured fields, JSON sink

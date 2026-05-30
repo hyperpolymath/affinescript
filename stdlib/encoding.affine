@@ -1,0 +1,77 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// AffineScript Standard Library — Hexadecimal encoding/decoding.
+//
+// Roadmap: stdlib #25 ("Base64/hex") in docs/stdlib-roadmap.adoc — the
+// hex half. Base64 is deferred until a `Bytes` type (stdlib #30) lands,
+// since correct base64 is byte-oriented rather than integer-oriented.
+//
+// Lowercase, non-negative, 32-bit hexadecimal conversion built on the
+// same string/number primitive layer as stdlib/string.affine —
+// `len` / `string_sub` / `string_find` / `++` plus integer bit-ops
+// (`&`, `>>`, `<<`, `|`), which resolve on the interpreter and Deno-ESM
+// backends (verified by tests/codegen-deno/encoding_smoke). The
+// linear-memory wasm backend does not yet expose `string_sub` /
+// `string_find` (the same limitation as stdlib/string.affine). Integer
+// `/` is deliberately avoided — it lowers to floating-point division on
+// the Deno-ESM backend.
+
+/// Lowercase hex alphabet; the character at index `v` is the digit for
+/// nibble value `v` (0..15).
+fn hex_alphabet() -> String = "0123456789abcdef";
+
+/// Map a nibble to its lowercase hex digit as a one-character string.
+/// Only the low four bits are used, so callers need not pre-mask.
+pub fn hex_digit(nibble: Int) -> String =
+  string_sub(hex_alphabet(), nibble & 15, 1);
+
+/// Encode a non-negative integer as lowercase hex with no `0x` prefix.
+/// `to_hex(0) == "0"`, `to_hex(255) == "ff"`, `to_hex(4096) == "1000"`.
+pub fn to_hex(n: Int) -> String {
+  if n == 0 {
+    return "0";
+  }
+  let mut acc = "";
+  let mut v = n;
+  while v > 0 {
+    acc = hex_digit(v & 15) ++ acc;
+    v = v >> 4;
+  }
+  acc
+}
+
+/// Encode `n` as lowercase hex left-padded with zeros to at least
+/// `width` digits. `to_hex_padded(255, 4) == "00ff"`.
+pub fn to_hex_padded(n: Int, width: Int) -> String {
+  let mut s = to_hex(n);
+  while len(s) < width {
+    s = "0" ++ s;
+  }
+  s
+}
+
+/// Value (0..15) of a single hex digit, accepting either case; returns
+/// `-1` for a non-hex character.
+pub fn hex_value(digit: String) -> Int {
+  let lower = string_find(hex_alphabet(), digit);
+  if lower >= 0 {
+    lower
+  } else {
+    string_find("0123456789ABCDEF", digit)
+  }
+}
+
+/// Decode a hex string (either case) to an integer. The input is assumed
+/// to be valid hex; an invalid digit contributes `-1` from `hex_value`.
+/// `from_hex("ff") == 255`, `from_hex("1000") == 4096`.
+pub fn from_hex(s: String) -> Int {
+  let mut acc = 0;
+  let mut i = 0;
+  let n = len(s);
+  while i < n {
+    acc = (acc << 4) | hex_value(string_sub(s, i, 1));
+    i = i + 1;
+  }
+  acc
+}
