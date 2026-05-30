@@ -3,8 +3,8 @@
 
 [metadata]
 project = "affinescript"
-version = "0.1.0"
-last-updated = "2026-05-23"
+version = "0.1.1"
+last-updated = "2026-05-30"
 status = "active"
 authoritative-status-doc = "docs/CAPABILITY-MATRIX.adoc"
 drift-flag = "STALE as of 2026-05-23 PM: this file's [components]/[features]/[project-context] still predate landed PRs since 2026-05-19. It MIRRORS, it does not LEAD. Authoritative sources by topic — readiness: docs/CAPABILITY-MATRIX.adoc; spine + AS↔typed-wasm contract: docs/ECOSYSTEM.adoc; coordination ledger / critical path: docs/TECH-DEBT.adoc; test taxonomy + PR-level gates: docs/standards/TESTING.adoc (added 2026-05-23); panic-attack SOP: docs/standards/PANIC-ATTACK.adoc (added 2026-05-23). Gate baseline: CAPABILITY-MATRIX records 260/260 at 2026-05-19 reconstruction; subsequent borrow-checker work has lifted it (#240 → 263, return-escape → 271/274, &mut surface → 278/281). The exact live number for any given commit comes from `dune runtest --force` — do not hard-code it here. (DOC-05, issue #176.)"
