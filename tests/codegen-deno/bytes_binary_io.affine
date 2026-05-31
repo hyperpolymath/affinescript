@@ -1,0 +1,43 @@
+// SPDX-License-Identifier: MPL-2.0
+// campaign #239 STEP 4-A — binary I/O smoke (raze-tui RazeEvent shape).
+//
+// Round-trips the 16-byte event record that estate ABI tests build and
+// parse byte-by-byte:
+//
+//   offset 0  size 4  i32_le  kind
+//   offset 4  size 4  u32_le  key_code
+//   offset 8  size 1  u8      modifiers
+//   offset 9  size 1  pad
+//   offset 10 size 2  u16_le  mouse_x
+//   offset 12 size 2  u16_le  mouse_y
+//   offset 14 size 2  pad
+//   Total: 16 bytes
+
+use Deno::{ Bytes, bytes_new, bytes_fill,
+            bytes_set_u8, bytes_set_u16_le, bytes_set_u32_le, bytes_set_i32_le,
+            bytes_get_u8, bytes_get_u16_le, bytes_get_u32_le, bytes_get_i32_le };
+
+pub fn build_event(kind: Int, key_code: Int, modifiers: Int, mouse_x: Int, mouse_y: Int) -> Bytes {
+  // Uniquely-named `let` discards keep the codegen pre-#504-compatible
+  // (the `PatWildcard` fix from #504 also works, but isn't required).
+  let b = bytes_new(16);
+  let _r0 = bytes_set_i32_le(b, 0, kind);
+  let _r4 = bytes_set_u32_le(b, 4, key_code);
+  let _r8 = bytes_set_u8(b, 8, modifiers);
+  let _ra = bytes_set_u16_le(b, 10, mouse_x);
+  let _rc = bytes_set_u16_le(b, 12, mouse_y);
+  b
+}
+
+pub fn read_kind(b: Bytes) -> Int { bytes_get_i32_le(b, 0) }
+pub fn read_key_code(b: Bytes) -> Int { bytes_get_u32_le(b, 4) }
+pub fn read_modifiers(b: Bytes) -> Int { bytes_get_u8(b, 8) }
+pub fn read_mouse_x(b: Bytes) -> Int { bytes_get_u16_le(b, 10) }
+pub fn read_mouse_y(b: Bytes) -> Int { bytes_get_u16_le(b, 12) }
+
+pub fn fill_byte(n: Int, byte: Int) -> Bytes { bytes_fill(n, byte) }
+
+pub fn fill_first(n: Int, byte: Int) -> Int {
+  let b = bytes_fill(n, byte);
+  bytes_get_u8(b, 0)
+}

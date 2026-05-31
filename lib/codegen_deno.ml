@@ -464,6 +464,19 @@ let () =
   (* Recursive file walk — depth-first, returns every file path under
      `root`. Filtering by extension is the caller's responsibility. *)
   b "walkRecursive" (fun a -> Printf.sprintf "__as_walkRecursive(%s)" (arg 0 a));
+  (* Bytes I/O — construction + LE getters/setters (campaign #239 STEP
+     4-A / standards#326). Setters return 0 so they compose in an
+     expression-statement position. All multi-byte ints are LE. *)
+  b "bytes_new"        (fun a -> Printf.sprintf "new Uint8Array(%s)" (arg 0 a));
+  b "bytes_fill"       (fun a -> Printf.sprintf "(new Uint8Array(%s)).fill((%s) & 0xFF)" (arg 0 a) (arg 1 a));
+  b "bytes_set_u8"     (fun a -> Printf.sprintf "((new DataView((%s).buffer, (%s).byteOffset, (%s).byteLength)).setUint8(%s, (%s) & 0xFF), 0)" (arg 0 a) (arg 0 a) (arg 0 a) (arg 1 a) (arg 2 a));
+  b "bytes_set_u16_le" (fun a -> Printf.sprintf "((new DataView((%s).buffer, (%s).byteOffset, (%s).byteLength)).setUint16(%s, (%s) & 0xFFFF, true), 0)" (arg 0 a) (arg 0 a) (arg 0 a) (arg 1 a) (arg 2 a));
+  b "bytes_set_u32_le" (fun a -> Printf.sprintf "((new DataView((%s).buffer, (%s).byteOffset, (%s).byteLength)).setUint32(%s, (%s) >>> 0, true), 0)" (arg 0 a) (arg 0 a) (arg 0 a) (arg 1 a) (arg 2 a));
+  b "bytes_set_i32_le" (fun a -> Printf.sprintf "((new DataView((%s).buffer, (%s).byteOffset, (%s).byteLength)).setInt32(%s, (%s) | 0, true), 0)" (arg 0 a) (arg 0 a) (arg 0 a) (arg 1 a) (arg 2 a));
+  b "bytes_get_u8"     (fun a -> Printf.sprintf "(new DataView((%s).buffer, (%s).byteOffset, (%s).byteLength)).getUint8(%s)" (arg 0 a) (arg 0 a) (arg 0 a) (arg 1 a));
+  b "bytes_get_u16_le" (fun a -> Printf.sprintf "(new DataView((%s).buffer, (%s).byteOffset, (%s).byteLength)).getUint16(%s, true)" (arg 0 a) (arg 0 a) (arg 0 a) (arg 1 a));
+  b "bytes_get_u32_le" (fun a -> Printf.sprintf "(new DataView((%s).buffer, (%s).byteOffset, (%s).byteLength)).getUint32(%s, true)" (arg 0 a) (arg 0 a) (arg 0 a) (arg 1 a));
+  b "bytes_get_i32_le" (fun a -> Printf.sprintf "(new DataView((%s).buffer, (%s).byteOffset, (%s).byteLength)).getInt32(%s, true)" (arg 0 a) (arg 0 a) (arg 0 a) (arg 1 a));
   (* `new RegExp(pat).test(s)` — minimal regex surface. Invalid `pat`
      throws at call time (RegExp constructor error). *)
   b "regexMatch"   (fun a -> Printf.sprintf "__as_regexMatch(%s, %s)" (arg 0 a) (arg 1 a));
