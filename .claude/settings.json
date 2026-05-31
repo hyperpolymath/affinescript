@@ -43,6 +43,7 @@
       "Bash(dune exec:*)",
       "Bash(dune test:*)",
       "Bash(tree-sitter:*)",
+      "Bash(_build/default/bin/main.exe:*)",
 
       "mcp__github__get_me",
       "mcp__github__get_commit",
