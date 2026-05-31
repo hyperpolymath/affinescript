@@ -401,8 +401,26 @@ let partial1_blob () =
 let test_partial_count () =
   skip_unless_ready ();
   Alcotest.(check int)
-    "five module-top-level functions -> fn skeletons"
-    5 (List.length (translate_partial1 ()))
+    "nine module-top-level functions -> fn skeletons"
+    9 (List.length (translate_partial1 ()))
+
+let test_partial_pipe () =
+  skip_unless_ready ();
+  let blob = partial1_blob () in
+  (* x->doStuff(1) -> doStuff(x, 1); chain x->f->g(2) -> g(f(x), 2) *)
+  Alcotest.(check bool) "pipe-first desugars, including left-nested chains"
+    true (contains blob "doStuff(x, 1)" && contains blob "g(f(x), 2)")
+
+let test_partial_if () =
+  skip_unless_ready ();
+  Alcotest.(check bool) "if/else translated"
+    true (contains (partial1_blob ()) "if x > 0 { x } else { 0 }")
+
+let test_partial_block () =
+  skip_unless_ready ();
+  let blob = partial1_blob () in
+  Alcotest.(check bool) "block body with a let statement translated"
+    true (contains blob "let y = x + 1" && contains blob "y * 2")
 
 let test_partial_switch_to_match () =
   skip_unless_ready ();
@@ -503,7 +521,7 @@ let () =
         ] );
       ( "walker-488-partial",
         [
-          Alcotest.test_case "five functions -> fn skeletons"
+          Alcotest.test_case "nine functions -> fn skeletons"
             `Quick test_partial_count;
           Alcotest.test_case "switch -> match + patterns + arm bodies"
             `Quick test_partial_switch_to_match;
@@ -513,5 +531,11 @@ let () =
             `Quick test_partial_concat_and_call;
           Alcotest.test_case "untranslatable form -> TODO hole"
             `Quick test_partial_todo_hole;
+          Alcotest.test_case "pipe-first desugars (incl. chains)"
+            `Quick test_partial_pipe;
+          Alcotest.test_case "if/else translated"
+            `Quick test_partial_if;
+          Alcotest.test_case "block with let statement translated"
+            `Quick test_partial_block;
         ] );
     ]

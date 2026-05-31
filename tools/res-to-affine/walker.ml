@@ -994,13 +994,14 @@ let rec translate_expr ~source n =
       match List.filter (fun c -> c.ntype <> "comment") n.children with
       | [ inner ] -> Printf.sprintf "(%s)" (translate_expr ~source inner)
       | _ -> todo_expr ~source n)
-  | "sequence_expression" | "block" -> (
+  | "pipe_expression" -> translate_pipe ~source n
+  | "if_expression" -> translate_if ~source n
+  | "block" -> translate_block ~source n
+  | "sequence_expression" -> (
       match List.filter (fun c -> c.ntype <> "comment") n.children with
       | [] -> "()"
       | [ single ] -> translate_expr ~source single
-      | many ->
-          Printf.sprintf "{ %s }"
-            (String.concat "; " (List.map (translate_expr ~source) many)))
+      | _ -> translate_block ~source n)
   | "ternary_expression" -> (
       match
         ( child_with_field "condition" n,
@@ -1089,6 +1090,91 @@ and translate_switch ~source sw =
   in
   Printf.sprintf "match %s {\n%s\n}" scrutinee (String.concat "\n" arms)
 
+(* ReScript pipe-first: `a -> f(b)` desugars to `f(a, b)`, `a -> f` to `f(a)`.
+   Pipes are left-nested so chains fall out of the recursion on [left]. *)
+and translate_pipe ~source n =
+  match List.filter (fun c -> c.ntype <> "comment") n.children with
+  | [ left; right ] -> (
+      let lhs = translate_expr ~source left in
+      match right.ntype with
+      | "call_expression" ->
+          let fn =
+            match child_with_field "function" right with
+            | Some f -> translate_expr ~source f
+            | None -> "todo_fn"
+          in
+          let rest =
+            match child_with_field "arguments" right with
+            | None -> []
+            | Some a ->
+                List.filter_map
+                  (fun c ->
+                    match c.ntype with
+                    | "type_annotation" -> None
+                    | "labeled_argument" ->
+                        Some (translate_labeled_arg ~source c)
+                    | _ -> Some (translate_expr ~source c))
+                  a.children
+          in
+          Printf.sprintf "%s(%s)" fn (String.concat ", " (lhs :: rest))
+      | _ -> Printf.sprintf "%s(%s)" (translate_expr ~source right) lhs)
+  | _ -> todo_expr ~source n
+
+and translate_if ~source n =
+  (* positional children: condition, then-block, optional else_clause. *)
+  match List.filter (fun c -> c.ntype <> "comment") n.children with
+  | cond :: then_blk :: rest ->
+      let else_part =
+        match rest with
+        | ec :: _ when ec.ntype = "else_clause" -> (
+            match List.filter (fun c -> c.ntype <> "comment") ec.children with
+            | [ b ] -> " else " ^ translate_as_block ~source b
+            | _ -> "")
+        | _ -> ""
+      in
+      Printf.sprintf "if %s %s%s" (translate_expr ~source cond)
+        (translate_as_block ~source then_blk) else_part
+  | _ -> todo_expr ~source n
+
+(* Render a node as an AffineScript braced block (if/else branches require it). *)
+and translate_as_block ~source n =
+  match n.ntype with
+  | "block" -> translate_block ~source n
+  | "if_expression" -> translate_if ~source n (* else-if chain *)
+  | _ -> Printf.sprintf "{ %s }" (translate_expr ~source n)
+
+and translate_block ~source n =
+  Printf.sprintf "{ %s }" (translate_block_inner ~source n)
+
+(* The statements of a block, `;`-joined, WITHOUT the surrounding braces (so a
+   function body can place them directly inside the `fn { … }`). *)
+and translate_block_inner ~source n =
+  String.concat "; "
+    (List.filter_map
+       (fun c ->
+         match c.ntype with
+         | "comment" -> None
+         | "let_declaration" -> Some (translate_block_let ~source c)
+         | _ -> Some (translate_expr ~source c))
+       n.children)
+
+and translate_block_let ~source ld =
+  let one lb =
+    let name =
+      match child_with_field "pattern" lb with
+      | Some p -> translate_pattern ~source p
+      | None -> "_"
+    in
+    let v =
+      match child_with_field "body" lb with
+      | Some b -> translate_expr ~source b
+      | None -> "()"
+    in
+    Printf.sprintf "let %s = %s" name v
+  in
+  String.concat "; "
+    (List.map one (List.filter (fun c -> c.ntype = "let_binding") ld.children))
+
 let translate_param ~source p =
   match p.ntype with
   | "value_identifier" -> node_text ~source p ^ ": _"
@@ -1119,6 +1205,8 @@ let partial_function ~source ~name fn =
   in
   let body =
     match child_with_field "body" fn with
+    (* a block body's statements go directly inside the fn braces (no nesting) *)
+    | Some b when b.ntype = "block" -> translate_block_inner ~source b
     | Some b -> translate_expr ~source b
     | None -> "()"
   in
