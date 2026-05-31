@@ -91,9 +91,9 @@ no further significant ReScript → AffineScript work is tractable.
 
 |8
 |*WebGL / Canvas2D context* (HTMLCanvasElement, getContext, drawImage, fillRect, transform stack)
-|`○`
-|`affinescript-canvas`, or extension to `affinescript-dom`
-|idaptik-ums uses raw Canvas2D (App.res: 1178 LoC of DOM + canvas); also needed for any non-Pixi-based UI.
+|`◑` partial (Canvas 2D half landed: 26 extern fns covering context acquisition, fill/stroke styles, rectangles, paths, transform stack, text rendering, and `drawImage`; WebGL / WebGL2 / WebGPU + `CanvasGradient`/`CanvasPattern` + `ImageData` pixel-level + curve primitives + compositing/clip deferred)
+|`stdlib/Canvas.affine`
+|idaptik-ums uses raw Canvas2D (App.res: 1178 LoC of DOM + canvas); also needed for any non-Pixi-based UI. Canvas2D half landed 2026-05-31. Test fixture: `tests/codegen-deno/canvas_smoke.{affine,harness.mjs}` exercises every shipped extern via 5 distinct smoke functions (`smokeRects` / `smokePath` / `smokeTransform` / `smokeText` / `smokeImages`) — full path/transform/text/image round-trips against a mocked `CanvasRenderingContext2D`. WebGL stays at `○` until a consumer surfaces a concrete need (Tier-3 axis when it lands; idaptik-ums is Canvas2D-only).
 
 |9
 |*IPC / structuredClone* for host↔guest message passing (postMessage, MessageChannel, transfer ownership)

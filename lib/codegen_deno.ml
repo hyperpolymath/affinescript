@@ -354,6 +354,39 @@ const __as_messagePortStart = (p) => { p.start(); return 0; };
 const __as_messagePortClose = (p) => { p.close(); return 0; };
 const __as_targetPostMessage = (t, msg) => { t.postMessage(msg); return 0; };
 const __as_structuredCloneValue = (v) => structuredClone(v);
+// ---- Canvas (bindings #8): HTML5 Canvas 2D rendering context ----
+// `canvas` arg is the consumer-supplied HTMLCanvasElement; helpers
+// dispatch directly to the standard CanvasRenderingContext2D
+// methods. Available unmodified in browsers, jsdom-under-Deno,
+// idaptik's WebView host, and any DOM emulator.
+const __as_canvasGetContext2D = (canvas) => canvas.getContext("2d");
+const __as_canvasFillStyle = (ctx, color) => { ctx.fillStyle = color; return 0; };
+const __as_canvasStrokeStyle = (ctx, color) => { ctx.strokeStyle = color; return 0; };
+const __as_canvasLineWidth = (ctx, w) => { ctx.lineWidth = w; return 0; };
+const __as_canvasGlobalAlpha = (ctx, a) => { ctx.globalAlpha = a; return 0; };
+const __as_canvasFillRect = (ctx, x, y, w, h) => { ctx.fillRect(x, y, w, h); return 0; };
+const __as_canvasStrokeRect = (ctx, x, y, w, h) => { ctx.strokeRect(x, y, w, h); return 0; };
+const __as_canvasClearRect = (ctx, x, y, w, h) => { ctx.clearRect(x, y, w, h); return 0; };
+const __as_canvasBeginPath = (ctx) => { ctx.beginPath(); return 0; };
+const __as_canvasClosePath = (ctx) => { ctx.closePath(); return 0; };
+const __as_canvasMoveTo = (ctx, x, y) => { ctx.moveTo(x, y); return 0; };
+const __as_canvasLineTo = (ctx, x, y) => { ctx.lineTo(x, y); return 0; };
+const __as_canvasArc = (ctx, x, y, r, s, e) => { ctx.arc(x, y, r, s, e); return 0; };
+const __as_canvasFill = (ctx) => { ctx.fill(); return 0; };
+const __as_canvasStroke = (ctx) => { ctx.stroke(); return 0; };
+const __as_canvasSave = (ctx) => { ctx.save(); return 0; };
+const __as_canvasRestore = (ctx) => { ctx.restore(); return 0; };
+const __as_canvasTranslate = (ctx, x, y) => { ctx.translate(x, y); return 0; };
+const __as_canvasRotate = (ctx, rad) => { ctx.rotate(rad); return 0; };
+const __as_canvasScale = (ctx, x, y) => { ctx.scale(x, y); return 0; };
+const __as_canvasFont = (ctx, font) => { ctx.font = font; return 0; };
+const __as_canvasTextAlign = (ctx, align) => { ctx.textAlign = align; return 0; };
+const __as_canvasTextBaseline = (ctx, baseline) => { ctx.textBaseline = baseline; return 0; };
+const __as_canvasFillText = (ctx, text, x, y) => { ctx.fillText(text, x, y); return 0; };
+const __as_canvasStrokeText = (ctx, text, x, y) => { ctx.strokeText(text, x, y); return 0; };
+const __as_canvasMeasureText = (ctx, text) => ctx.measureText(text);
+const __as_canvasDrawImage = (ctx, img, x, y) => { ctx.drawImage(img, x, y); return 0; };
+const __as_canvasDrawImageScaled = (ctx, img, x, y, w, h) => { ctx.drawImage(img, x, y, w, h); return 0; };
 // `++` is overloaded (string concat / array concat); `a + b` would
 // stringify arrays. Dispatch on shape so stdlib/string.affine's
 // `result ++ [x]` and `a ++ b` are both correct.
@@ -602,6 +635,35 @@ let () =
   b "messagePortClose"         (fun a -> Printf.sprintf "__as_messagePortClose(%s)" (arg 0 a));
   b "targetPostMessage"        (fun a -> Printf.sprintf "__as_targetPostMessage(%s, %s)" (arg 0 a) (arg 1 a));
   b "structuredCloneValue"     (fun a -> Printf.sprintf "__as_structuredCloneValue(%s)" (arg 0 a));
+  (* ---- Canvas (bindings #8): HTML5 Canvas 2D rendering context ---- *)
+  b "canvasGetContext2D"   (fun a -> Printf.sprintf "__as_canvasGetContext2D(%s)" (arg 0 a));
+  b "canvasFillStyle"      (fun a -> Printf.sprintf "__as_canvasFillStyle(%s, %s)" (arg 0 a) (arg 1 a));
+  b "canvasStrokeStyle"    (fun a -> Printf.sprintf "__as_canvasStrokeStyle(%s, %s)" (arg 0 a) (arg 1 a));
+  b "canvasLineWidth"      (fun a -> Printf.sprintf "__as_canvasLineWidth(%s, %s)" (arg 0 a) (arg 1 a));
+  b "canvasGlobalAlpha"    (fun a -> Printf.sprintf "__as_canvasGlobalAlpha(%s, %s)" (arg 0 a) (arg 1 a));
+  b "canvasFillRect"       (fun a -> Printf.sprintf "__as_canvasFillRect(%s, %s, %s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a) (arg 3 a) (arg 4 a));
+  b "canvasStrokeRect"     (fun a -> Printf.sprintf "__as_canvasStrokeRect(%s, %s, %s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a) (arg 3 a) (arg 4 a));
+  b "canvasClearRect"      (fun a -> Printf.sprintf "__as_canvasClearRect(%s, %s, %s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a) (arg 3 a) (arg 4 a));
+  b "canvasBeginPath"      (fun a -> Printf.sprintf "__as_canvasBeginPath(%s)" (arg 0 a));
+  b "canvasClosePath"      (fun a -> Printf.sprintf "__as_canvasClosePath(%s)" (arg 0 a));
+  b "canvasMoveTo"         (fun a -> Printf.sprintf "__as_canvasMoveTo(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
+  b "canvasLineTo"         (fun a -> Printf.sprintf "__as_canvasLineTo(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
+  b "canvasArc"            (fun a -> Printf.sprintf "__as_canvasArc(%s, %s, %s, %s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a) (arg 3 a) (arg 4 a) (arg 5 a));
+  b "canvasFill"           (fun a -> Printf.sprintf "__as_canvasFill(%s)" (arg 0 a));
+  b "canvasStroke"         (fun a -> Printf.sprintf "__as_canvasStroke(%s)" (arg 0 a));
+  b "canvasSave"           (fun a -> Printf.sprintf "__as_canvasSave(%s)" (arg 0 a));
+  b "canvasRestore"        (fun a -> Printf.sprintf "__as_canvasRestore(%s)" (arg 0 a));
+  b "canvasTranslate"      (fun a -> Printf.sprintf "__as_canvasTranslate(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
+  b "canvasRotate"         (fun a -> Printf.sprintf "__as_canvasRotate(%s, %s)" (arg 0 a) (arg 1 a));
+  b "canvasScale"          (fun a -> Printf.sprintf "__as_canvasScale(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
+  b "canvasFont"           (fun a -> Printf.sprintf "__as_canvasFont(%s, %s)" (arg 0 a) (arg 1 a));
+  b "canvasTextAlign"      (fun a -> Printf.sprintf "__as_canvasTextAlign(%s, %s)" (arg 0 a) (arg 1 a));
+  b "canvasTextBaseline"   (fun a -> Printf.sprintf "__as_canvasTextBaseline(%s, %s)" (arg 0 a) (arg 1 a));
+  b "canvasFillText"       (fun a -> Printf.sprintf "__as_canvasFillText(%s, %s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a) (arg 3 a));
+  b "canvasStrokeText"     (fun a -> Printf.sprintf "__as_canvasStrokeText(%s, %s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a) (arg 3 a));
+  b "canvasMeasureText"    (fun a -> Printf.sprintf "__as_canvasMeasureText(%s, %s)" (arg 0 a) (arg 1 a));
+  b "canvasDrawImage"      (fun a -> Printf.sprintf "__as_canvasDrawImage(%s, %s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a) (arg 3 a));
+  b "canvasDrawImageScaled" (fun a -> Printf.sprintf "__as_canvasDrawImageScaled(%s, %s, %s, %s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a) (arg 3 a) (arg 4 a) (arg 5 a));
   (* Generic JS array push helper (returns the array, fluent). *)
   b "arrayPush" (fun a -> Printf.sprintf "(%s.push(%s), %s)" (arg 0 a) (arg 1 a) (arg 0 a));
   (* ---- honest string/number primitives underpinning the
