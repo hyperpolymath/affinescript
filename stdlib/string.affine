@@ -68,7 +68,7 @@ fn starts_with(s: String, prefix: String) -> Bool {
 }
 
 /// Check if string ends with the given suffix
-fn ends_with(s: String, suffix: String) -> Bool {
+pub fn ends_with(s: String, suffix: String) -> Bool {
   let slen = len(s);
   let sfxlen = len(suffix);
   if sfxlen > slen {

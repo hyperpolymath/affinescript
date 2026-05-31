@@ -432,6 +432,14 @@ let () =
   b "ensureDir"     (fun a -> Printf.sprintf "__as_ensureDir(%s)" (arg 0 a));
   b "readDirNames"  (fun a -> Printf.sprintf "__as_readDirNames(%s)" (arg 0 a));
   b "statSize"      (fun a -> Printf.sprintf "Deno.statSync(%s).size" (arg 0 a));
+  b "statIsFile"      (fun a -> Printf.sprintf "Deno.statSync(%s).isFile" (arg 0 a));
+  b "statIsDirectory" (fun a -> Printf.sprintf "Deno.statSync(%s).isDirectory" (arg 0 a));
+  b "bytesLength"     (fun a -> Printf.sprintf "(%s).length" (arg 0 a));
+  b "bytesByteAt"     (fun a -> Printf.sprintf "(%s)[%s]" (arg 0 a) (arg 1 a));
+  b "bytesAsciiSlice" (fun a -> Printf.sprintf "String.fromCharCode(...(%s).slice(%s, %s))" (arg 0 a) (arg 1 a) (arg 2 a));
+  (* `import.meta.url` — only legal at module top level, which the
+     Deno-ESM backend's output already is. *)
+  b "importMetaUrl"   (fun _ -> "import.meta.url");
   b "pathJoin"      (fun a -> Printf.sprintf "__as_pathJoin(%s, %s)" (arg 0 a) (arg 1 a));
   b "isNotFound"    (fun a -> Printf.sprintf "__as_isNotFound(%s)" (arg 0 a));
   (* ---- JSON ---- *)
@@ -985,6 +993,13 @@ and gen_try_stmt ctx body catch finally =
 
 and gen_stmt ctx (stmt : stmt) : string =
   match stmt with
+  | StmtLet { sl_pat = PatWildcard _; sl_value; _ } ->
+      (* `let _ = X` evaluates X for side effects and drops the value.
+         Emitting `const _ = X;` produces a JS SyntaxError on the second
+         occurrence in the same scope ("Identifier '_' has already been
+         declared"). Drop the binding entirely; the bare expression
+         statement keeps the semantics. *)
+      gen_expr ctx sl_value ^ ";"
   | StmtLet { sl_pat; sl_value; sl_mut; sl_quantity = _; sl_ty = _ } ->
       let kw = if sl_mut then "let" else "const" in
       kw ^ " " ^ gen_pattern ctx sl_pat ^ " = " ^ gen_expr ctx sl_value ^ ";"

@@ -68,10 +68,38 @@ pub extern fn readDirNames(path: String) -> [String];
 /// `Deno.statSync(path).size` in bytes.
 pub extern fn statSize(path: String) -> Int;
 
+/// `Deno.statSync(path).isFile` — true if `path` is a regular file.
+/// Throws on a missing path (pair with `isNotFound` for the absent case).
+pub extern fn statIsFile(path: String) -> Bool;
+
+/// `Deno.statSync(path).isDirectory` — true if `path` is a directory.
+/// Throws on a missing path (pair with `isNotFound` for the absent case).
+pub extern fn statIsDirectory(path: String) -> Bool;
+
 /// Recursive walk under `root` — every file path beneath it, depth-first.
 /// Mirrors `std/fs/walk` for the common case (no glob filter; callers
 /// filter by extension). Throws on a missing root via `Deno.readDirSync`.
 pub extern fn walkRecursive(root: String) -> [String];
+
+// ── Bytes accessors ────────────────────────────────────────────────
+//
+// The opaque `Bytes` type (a Uint8Array under the hood) gets minimal
+// inspectors so AffineScript can peek at file magic, parse fixed-width
+// binary headers, and recover ASCII slices without crossing back through
+// `readTextFile`. Bounds-check via `bytesLength` — `bytesByteAt` with
+// an out-of-range index returns `undefined → NaN` coerced to 0.
+
+/// `b.length` — number of bytes.
+pub extern fn bytesLength(b: Bytes) -> Int;
+
+/// `b[i]` — byte value at index `i` (0..255). Bounds-check via `bytesLength`.
+pub extern fn bytesByteAt(b: Bytes, i: Int) -> Int;
+
+/// `String.fromCharCode(...b.slice(start, end))` — decode `[start, end)`
+/// as a Latin-1 / ASCII-safe string. Each byte becomes one code point
+/// (0..255). Use this for ASCII-only headers (PDF magic, MZ, ELF, etc.);
+/// for full UTF-8, prefer `readTextFile` directly.
+pub extern fn bytesAsciiSlice(b: Bytes, start: Int, end: Int) -> String;
 
 // ── Path ───────────────────────────────────────────────────────────
 
@@ -120,6 +148,15 @@ pub extern fn dateNow() -> Int;
 /// (e.g. `"2026-05-30T12:34:56.789Z"`). Distinct from `dateNow()` which
 /// returns epoch millis as `Int`.
 pub extern fn dateNowIso() -> String;
+
+// ── Module identity ────────────────────────────────────────────────
+
+/// `import.meta.url` — the absolute URL of the importing module. The JS
+/// idiom for "find my own location" (cf. `__dirname` / `__filename`). At
+/// Deno-ESM top level, lowers to the bare `import.meta.url` expression;
+/// callers parse it (`new URL(...)`/`fileURLToPath`/string split) for
+/// directory-relative behaviour.
+pub extern fn importMetaUrl() -> String;
 
 // ── CLI ────────────────────────────────────────────────────────────
 
