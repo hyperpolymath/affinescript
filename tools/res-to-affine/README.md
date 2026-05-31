@@ -8,8 +8,10 @@ with **migration markers** — comments that name each anti-pattern the
 scanner found, point at the source line, and propose the AffineScript
 answer the human migrator should consider before porting.
 
-Tracks: [`affinescript#57`](https://github.com/hyperpolymath/affinescript/issues/57)
-(parser + metaparser).
+Tracks: [`affinescript#488`](https://github.com/hyperpolymath/affinescript/issues/488)
+(partial-port mode) — successor to the now-closed
+[`affinescript#57`](https://github.com/hyperpolymath/affinescript/issues/57)
+(parser + metaparser; declaration translation delivered).
 Consumed by: [`hyperpolymath/gitbot-fleet#148`](https://github.com/hyperpolymath/gitbot-fleet/issues/148)
 and the broader `idaptik` migration.
 
