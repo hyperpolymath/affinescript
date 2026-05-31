@@ -35,7 +35,7 @@ let engine_label = function
   | Scanner_engine -> "scanner"
   | Walker_engine  -> "walker"
 
-let run engine grammar_dir do_translate input output_opt =
+let run engine grammar_dir do_translate do_partial input output_opt =
   if not (Sys.file_exists input) then begin
     Format.eprintf "res-to-affine: input not found: %s@." input;
     exit 2
@@ -53,20 +53,24 @@ let run engine grammar_dir do_translate input output_opt =
                input;
              Scanner.scan source)
   in
-  (* Phase 3: translation needs the AST, so it is walker-only. With the
-     scanner (or a walker that failed and would fall back), no translation
-     is emitted — the marker block + quoted original still carry the file. *)
+  (* Translation (--translate declarations / --partial function skeletons)
+     needs the AST, so it is walker-only. With the scanner, none is emitted —
+     the marker block + quoted original still carry the file. --partial takes
+     precedence over --translate when both are given. *)
   let translated =
-    if not do_translate then []
+    if not (do_translate || do_partial) then []
     else
       match engine with
       | Scanner_engine ->
           Format.eprintf
-            "res-to-affine: --translate needs the walker engine; \
+            "res-to-affine: --translate/--partial need the walker engine; \
              no translation emitted for %s@." input;
           []
       | Walker_engine ->
-          (try Walker.translate ~grammar_dir ~path:input ~source with
+          let f =
+            if do_partial then Walker.translate_partial else Walker.translate
+          in
+          (try f ~grammar_dir ~path:input ~source with
            | Failure msg ->
                Format.eprintf "res-to-affine: %s@." msg;
                Format.eprintf
@@ -75,7 +79,10 @@ let run engine grammar_dir do_translate input output_opt =
   in
   let module_name = Emitter.module_name_of_path input in
   let out =
-    if do_translate then
+    if do_partial then
+      Emitter.emit_partial
+        ~module_name ~source_path:input ~source ~findings ~translated
+    else if do_translate then
       Emitter.emit_translation
         ~module_name ~source_path:input ~source ~findings ~translated
     else
@@ -142,12 +149,22 @@ let translate_arg =
   in
   Cmdliner.Arg.(value & flag & info ["translate"] ~doc)
 
+let partial_arg =
+  let doc =
+    "#488 partial-port mode: render module-top-level functions as `fn` \
+     skeletons with switch->match and best-effort expression translation. \
+     The output DELIBERATELY does not type-check (un-inferable types are `_` \
+     holes; un-translatable forms are `() /* TODO */` / `_ /* TODO */`). \
+     Takes precedence over `--translate`; needs `--engine=walker`."
+  in
+  Cmdliner.Arg.(value & flag & info ["partial"] ~doc)
+
 let cmd =
   let doc = "Emit an AffineScript skeleton from a ReScript source file." in
   let info = Cmdliner.Cmd.info "res-to-affine" ~version:"0.1.0" ~doc in
   let term =
     Cmdliner.Term.(
-      const run $ engine_arg $ grammar_dir_arg $ translate_arg
+      const run $ engine_arg $ grammar_dir_arg $ translate_arg $ partial_arg
       $ input_arg $ output_arg)
   in
   Cmdliner.Cmd.v info term

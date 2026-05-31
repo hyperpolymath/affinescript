@@ -381,6 +381,60 @@ let test_translate_c_skips () =
   Alcotest.(check bool) "non-literal / ref / destructuring lets skipped"
     false leaked
 
+(* ---- #488 partial-port: fn skeletons + switch->match ----------------------
+
+   [fixtures/partial1.res] holds five module-top-level functions exercising
+   switch->match, variant + nullary patterns, int/float/concat operators, a
+   member-call, and a pipe-first form that must become a TODO hole. The output
+   is a partial port (does not type-check); these assert its structure. *)
+
+let partial_fixture = "fixtures/partial1.res"
+
+let translate_partial1 () =
+  let source = read_file partial_fixture in
+  let path = Filename.concat (Sys.getcwd ()) partial_fixture in
+  Walker.translate_partial ~grammar_dir:(grammar_dir ()) ~path ~source
+
+let partial1_blob () =
+  String.concat "\n" (List.map snd (translate_partial1 ()))
+
+let test_partial_count () =
+  skip_unless_ready ();
+  Alcotest.(check int)
+    "five module-top-level functions -> fn skeletons"
+    5 (List.length (translate_partial1 ()))
+
+let test_partial_switch_to_match () =
+  skip_unless_ready ();
+  let blob = partial1_blob () in
+  let ok =
+    contains blob "fn classify(x: _) -> _" && contains blob "match x {"
+    && contains blob "Some(n) => n + 1" && contains blob "None => 0"
+  in
+  Alcotest.(check bool) "switch -> match with translated arms + patterns" true ok
+
+let test_partial_float_op_normalised () =
+  skip_unless_ready ();
+  let blob = partial1_blob () in
+  Alcotest.(check bool) "float op normalised; multi-param skeleton"
+    true
+    (contains blob "fn area(w: _, h: _) -> _"
+    && contains blob "w * h"
+    && not (contains blob "*."))
+
+let test_partial_concat_and_call () =
+  skip_unless_ready ();
+  let blob = partial1_blob () in
+  Alcotest.(check bool) "string concat + member-call translated"
+    true
+    (contains blob "\"hi \" ++ name" && contains blob "Js.log(msg)")
+
+let test_partial_todo_hole () =
+  skip_unless_ready ();
+  let blob = partial1_blob () in
+  Alcotest.(check bool) "untranslatable form becomes a () /* TODO */ hole"
+    true (contains blob "() /* TODO:")
+
 let () =
   Alcotest.run "res-to-affine-walker"
     [
@@ -446,5 +500,18 @@ let () =
             `Quick test_translate_const_string_bool;
           Alcotest.test_case "call / ref / destructuring lets skipped"
             `Quick test_translate_c_skips;
+        ] );
+      ( "walker-488-partial",
+        [
+          Alcotest.test_case "five functions -> fn skeletons"
+            `Quick test_partial_count;
+          Alcotest.test_case "switch -> match + patterns + arm bodies"
+            `Quick test_partial_switch_to_match;
+          Alcotest.test_case "float op normalised + multi-param skeleton"
+            `Quick test_partial_float_op_normalised;
+          Alcotest.test_case "concat + member-call translated"
+            `Quick test_partial_concat_and_call;
+          Alcotest.test_case "untranslatable form -> TODO hole"
+            `Quick test_partial_todo_hole;
         ] );
     ]

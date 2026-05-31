@@ -24,9 +24,14 @@ dune exec tools/res-to-affine/main.exe -- path/to/Foo.res
 # or write to a file
 dune exec tools/res-to-affine/main.exe -- path/to/Foo.res -o Foo.affine
 
-# Phase 3 (slice 1): also translate fully-structural type declarations
-# (primitive aliases + simple sum types) into compilable AffineScript
+# --translate: render self-contained top-level declarations (type aliases,
+# sums, structs, generics, literal `let`->`const`) as compilable AffineScript
 dune exec tools/res-to-affine/main.exe -- --translate path/to/Foo.res
+
+# --partial (#488): render module-top-level functions as `fn` skeletons with
+# switch->match + best-effort bodies. Output is a partial port that does NOT
+# type-check (un-inferable types/exprs become `_` / `() /* TODO */` holes).
+dune exec tools/res-to-affine/main.exe -- --partial path/to/Foo.res
 
 # opt back into the Phase-1 line-regex scanner (no grammar required)
 dune exec tools/res-to-affine/main.exe -- --engine=scanner path/to/Foo.res
@@ -186,23 +191,47 @@ names are capitalised (`color` → `Color`) and type variables are mapped
 position as a type *variable*, not a constructor. Translation is
 walker-only (it needs the AST); with `--engine=scanner` the flag is a no-op.
 
-**Scope boundary — what `--translate` will *not* do.** The guarantee is
-"every emitted form type-checks standalone", which is why translation is
-limited to self-contained top-level *declarations* (types, structs,
-literal consts). Two forms are out of that scope by construction:
+**Scope boundary.** `--translate` keeps the "every emitted form type-checks
+standalone" guarantee, which is why it is limited to self-contained top-level
+*declarations* (types, structs, literal consts). Forms that can't meet that
+guarantee live in a separate mode or remain deferred:
 
-- **`switch`→`match`** is an *expression*, only meaningful inside a
-  function body. Emitting a type-checkable `match` means translating the
-  whole enclosing function — but ReScript function bindings are usually
-  un-annotated (`let f = x => …`), and AffineScript `fn` requires parameter
-  and return types, so the result wouldn't type-check. It belongs to a
-  future *partial-port* mode (translate-with-TODO-holes) that drops the
-  standalone-type-check guarantee, not to this declaration translator.
-- **module-qualified references** now *parse* (the
+- **`switch`→`match` + function bodies** — landed under **`--partial`**
+  ([#488](https://github.com/hyperpolymath/affinescript/issues/488)), a
+  distinct partial-port model. A `match` is an *expression*, only meaningful
+  inside a function, and ReScript bindings are usually un-annotated
+  (`let f = x => …`) while AffineScript `fn` requires param/return types — so
+  `--partial` emits a `fn` skeleton with `_` type holes + `switch`→`match` +
+  best-effort expression translation, and its output **deliberately does not
+  type-check**. Un-translatable expressions/patterns become `() /* TODO */` /
+  `_ /* TODO */` islands; the result still *parses*. See the `--partial`
+  section below.
+- **module-qualified references** in *type* position now *parse* (the
   [#228](https://github.com/hyperpolymath/affinescript/issues/228) grammar
   gap closed), but a faithful `Belt.Map.t` → `Belt::Map::T` would not
   *resolve* against a target module that doesn't exist yet — it waits for a
-  module-mapping story.
+  module-mapping story (tracked in #488).
+
+### `--partial` — partial-port mode (#488, landed)
+
+Renders each module-top-level function `let f = (params) => body` into an
+AffineScript `fn` skeleton:
+
+| ReScript | AffineScript (`--partial`) |
+|---|---|
+| `let area = (w, h) => w *. h` | `fn area(w: _, h: _) -> _ { w * h }` |
+| `let classify = x => switch x { \| Some(n) => n + 1 \| None => 0 }` | `fn classify(x: _) -> _ { match x { Some(n) => n + 1, None => 0, } }` |
+| `let greet = name => "hi " ++ name` | `fn greet(name: _) -> _ { "hi " ++ name }` |
+
+It translates literals, identifiers, calls, binary operators (normalising
+ReScript's float ops `+.`/`*.` → `+`/`*` and `===`/`!==` → `==`/`!=`), string
+concat `++`, member/qualified access, ternaries, and `switch`→`match` with
+variant/tuple/literal patterns. Anything else (pipe-first `->`, records, etc.)
+becomes a `() /* TODO */` hole. The output is a partial port to finish by
+hand: it **parses** but is not expected to type-check (verified — the
+generated skeletons reach resolution/type-checking without a parse error).
+First slice; the next steps (pipe desugaring `a->f(b)` → `f(a, b)`, `if`/block
+bodies, combining with `--translate`) continue under #488.
 
 ## Corpus run
 
@@ -230,10 +259,12 @@ The fixture under `test/fixtures/sample.res` is synthetic and exercises
 every Phase-1 anti-pattern; `test/fixtures/phase2c.res` exercises the
 two anti-patterns that are walker-only by construction
 (`inline-callback-record`, `oversized-function`); `test/fixtures/phase3.res`,
-`phase3b.res`, and `phase3c.res` exercise the Phase-3 `--translate` path
+`phase3b.res`, and `phase3c.res` exercise the `--translate` path
 (aliases / sums / generics / records / literal-`let`→`const` → compilable
 AffineScript, plus the qualified / mutable / optional / non-literal forms it
-must skip).
+must skip); `partial1.res` exercises the `--partial` path (function
+skeletons + switch→match + expression translation, with a pipe form that must
+become a TODO hole).
 Real `.res` files
 from the estate (e.g. `gitbot-fleet/bots/sustainabot/bot-integration/
 src/*.res`) can be run ad hoc through the CLI without changes to the
