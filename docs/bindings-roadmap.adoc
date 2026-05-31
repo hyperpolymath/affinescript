@@ -166,9 +166,9 @@ Surface that other estate repos are actively wanting.
 
 |19
 |*Zig FFI canonical patterns* — `extern fn` shape for calling Zig C-ABI exports from AffineScript
-|`◐` idiomatic patterns exist
-|`stdlib` + ADR-style doc
-|"Zig = APIs + FFIs" estate directive. Each `hpm-*-rsr` lib exposes Zig exports; AffineScript needs canonical patterns for binding them.
+|`●` usable
+|`docs/specs/zig-ffi-patterns.adoc`
+|"Zig = APIs + FFIs" estate directive. Each `hpm-*-rsr` lib exposes Zig exports; AffineScript needs canonical patterns for binding them. Canonical authoring recipe + per-backend host contract (wasm `env` import vs Deno-ESM same-named host symbol) landed in `docs/specs/zig-ffi-patterns.adoc` — companion to STDLIB-EXTERN-AUDIT + SPEC §2.10; unblocks the RSR rewires #11 / #12 / #16.
 
 |20
 |*Telegram (Grammy)* — already `stdlib/Grammy.affine`
@@ -434,8 +434,24 @@ Build, test, and cross-language surface.
 
 == Tracking
 
-* Umbrella tracker: (TBD — opened alongside this PR)
-* Per-tier child issues: (TBD — opened alongside this PR)
+* Umbrella tracker:
+  link:https://github.com/hyperpolymath/affinescript/issues/446[#446]
+  (campaign UMBRELLA).
+* Per-tier child issues (STEP 2 — all filed):
+** Tier 1 (required for current idaptik migration):
+   link:https://github.com/hyperpolymath/affinescript/issues/450[#450]
+** Tier 2 (estate-wide near-term needs):
+   link:https://github.com/hyperpolymath/affinescript/issues/451[#451]
+** Tier 3 (broadly useful — web universals):
+   link:https://github.com/hyperpolymath/affinescript/issues/452[#452]
+** Tier 4 (backend / cloud / data):
+   link:https://github.com/hyperpolymath/affinescript/issues/453[#453]
+** Tier 5 (tooling / FFI / language interop):
+   link:https://github.com/hyperpolymath/affinescript/issues/454[#454]
+* Shipped work items:
+** Tier 1 #5 (WASM-exports calling pattern, the recommended kickoff):
+   link:https://github.com/hyperpolymath/affinescript/issues/455[#455]
+   (closed; landed via PR #467).
 
 When a binding's status changes, update its row in this file in the
 *same* PR that lands the change; do not let the table drift.
