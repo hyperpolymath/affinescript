@@ -83,8 +83,49 @@ pub extern fn pixiContainerRemoveChild(parent: Container, child: Container) -> I
 /// Set `c.x` and `c.y` in one call. Returns 0.
 pub extern fn pixiContainerSetPosition(c: Container, x: Float, y: Float) -> Int;
 
+/// `c.scale.set(x, y)` — uniform-or-per-axis scaling. Returns 0.
+pub extern fn pixiContainerSetScale(c: Container, x: Float, y: Float) -> Int;
+
+/// `c.pivot.set(x, y)` — origin for rotation and scaling. Returns 0.
+pub extern fn pixiContainerSetPivot(c: Container, x: Float, y: Float) -> Int;
+
+/// `c.rotation = rad` — rotation in radians. Returns 0.
+pub extern fn pixiContainerSetRotation(c: Container, rad: Float) -> Int;
+
+/// `c.alpha = a` — opacity (0.0–1.0). Returns 0.
+pub extern fn pixiContainerSetAlpha(c: Container, a: Float) -> Int;
+
+/// `c.zIndex = z` — draw-order index; only honoured when the parent
+/// has `sortableChildren = true`. Returns 0.
+pub extern fn pixiContainerSetZIndex(c: Container, z: Int) -> Int;
+
+/// `c.sortableChildren = v` — enables zIndex sort of children on this
+/// container. Returns 0.
+pub extern fn pixiContainerSetSortableChildren(c: Container, v: Bool) -> Int;
+
+/// `c.eventMode = mode` — pointer-event participation. PIXI 8 accepts
+/// `"static"`, `"dynamic"`, `"passive"`, `"none"`, `"auto"`. Returns 0.
+pub extern fn pixiContainerSetEventMode(c: Container, mode: String) -> Int;
+
+/// `c.cursor = cursor` — CSS cursor name displayed while pointer is
+/// over this container (`"pointer"`, `"grab"`, …). Returns 0.
+pub extern fn pixiContainerSetCursor(c: Container, cursor: String) -> Int;
+
 /// Set `c.visible`. Returns 0.
 pub extern fn pixiContainerSetVisible(c: Container, v: Bool) -> Int;
+
+/// `c.on(event, handler)` — register a `FederatedPointerEvent`
+/// handler. `event` is a PIXI 8 event string (`"pointerdown"`,
+/// `"pointerup"`, `"pointertap"`, `"pointerover"`, `"pointerout"`,
+/// `"pointermove"`, `"pointercancel"`, `"globalpointermove"`).
+/// `handler` is an opaque JS function (`(event: Json) => void`) — the
+/// `FederatedPointerEvent` arg is exposed as `Json` and read with
+/// existing Json accessors. Returns 0.
+pub extern fn pixiContainerOn(c: Container, event: String, handler: Json) -> Int;
+
+/// `c.off(event, handler)` — deregister a previously-registered
+/// handler. Same `event`/`handler` shape as `pixiContainerOn`. Returns 0.
+pub extern fn pixiContainerOff(c: Container, event: String, handler: Json) -> Int;
 
 /// `c.destroy()` — recursively free this container and its children.
 /// Returns 0.
@@ -94,6 +135,11 @@ pub extern fn pixiContainerDestroy(c: Container) -> Int;
 
 /// `new PIXI.Sprite(texture)`.
 pub extern fn pixiSpriteFrom(texture: Texture) -> Sprite;
+
+/// `s.anchor.set(x, y)` — anchor point on the sprite for positioning
+/// and rotation. `0.0, 0.0` is top-left; `0.5, 0.5` centres the sprite
+/// on its `x, y`. Returns 0.
+pub extern fn pixiSpriteSetAnchor(s: Sprite, x: Float, y: Float) -> Int;
 
 /// Upcast a Sprite to its Container superclass. Zero-cost identity
 /// lowering — the underlying JS value is the same object.

@@ -593,6 +593,23 @@ let create_initial_env () : env =
         else Error (RuntimeError "int_to_char: code point out of ASCII range")
       | _ -> Error (TypeMismatch "int_to_char expects Int")
     ));
+    (* Byte-oriented String <-> Int accessors (see typecheck.ml bindings).
+       string_char_code_at returns the 0..255 byte at [i]; out-of-bounds
+       reads return -1 (mirroring string_find's "absent" sentinel rather
+       than raising, so decoders can probe defensively).
+       string_from_char_code builds a one-byte string from [n & 0xff]. *)
+    ("string_char_code_at", VBuiltin ("string_char_code_at", fun args ->
+      match args with
+      | [VString s; VInt i] ->
+        if i >= 0 && i < String.length s then Ok (VInt (Char.code s.[i]))
+        else Ok (VInt (-1))
+      | _ -> Error (TypeMismatch "string_char_code_at expects (String, Int)")
+    ));
+    ("string_from_char_code", VBuiltin ("string_from_char_code", fun args ->
+      match args with
+      | [VInt n] -> Ok (VString (String.make 1 (Char.chr (n land 0xff))))
+      | _ -> Error (TypeMismatch "string_from_char_code expects Int")
+    ));
     ("show", VBuiltin ("show", fun args ->
       match args with
       | [v] -> Ok (VString (Value.show_value v))

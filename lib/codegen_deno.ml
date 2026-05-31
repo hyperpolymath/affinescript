@@ -68,6 +68,25 @@ type codegen_ctx = {
      `await` it (e.g. `get(u).status` would otherwise read `.status` off
      a pending Promise). Populated in {!generate}. *)
   async_fns : (string, unit) Hashtbl.t;
+  (* Top-level functions whose declared return type is [Int]. Used by
+     {!expr_is_int} so a call like [gcd(a, b)] counts as an integer
+     operand — needed to truncate e.g. [abs(a*b) / gcd(a,b)]. Populated
+     in {!generate}. *)
+  int_fns : (string, unit) Hashtbl.t;
+  (* Names bound to a provably-[Int] value in the *current function*:
+     [Int]-typed params plus [let]/assignments whose value is an integer
+     expression. Mutated in source order as statements are emitted (the
+     existing per-statement {!List.iter} makes this order-correct), and
+     reset per function so names never leak across functions. Drives the
+     [Int / Int -> Math.trunc(a / b)] lowering (issue #478); an unknown
+     operand keeps plain [/], so float division is never affected. *)
+  mutable int_vars : (string, unit) Hashtbl.t;
+  (* Names provably bound to an [Array<Int>] (i.e. `[Int]`) in the
+     *current function*: array-typed params. Lets a `for x in xs` over an
+     int array seed [x] as [Int], and an `xs[i]` element read count as an
+     integer operand, so divisions over them truncate (#478). Reset per
+     function alongside {!int_vars}. *)
+  int_array_vars : (string, unit) Hashtbl.t;
   (* True while emitting a synthesised `async` method body. The
      expression-position IIFE wrappers (block/try/match/let/return) must
      then be `async` and awaited, because they may contain an awaited
@@ -85,6 +104,9 @@ let create_ctx symbols = {
   assoc = Hashtbl.create 32;
   local_fns = Hashtbl.create 64;
   async_fns = Hashtbl.create 32;
+  int_fns = Hashtbl.create 64;
+  int_vars = Hashtbl.create 16;
+  int_array_vars = Hashtbl.create 16;
   in_async = false;
 }
 
@@ -253,9 +275,20 @@ const __as_pixiContainerNew = () => new globalThis.__as_pixi.Container();
 const __as_pixiContainerAddChild = (p, c) => { p.addChild(c); return 0; };
 const __as_pixiContainerRemoveChild = (p, c) => { p.removeChild(c); return 0; };
 const __as_pixiContainerSetPosition = (c, x, y) => { c.x = x; c.y = y; return 0; };
+const __as_pixiContainerSetScale = (c, x, y) => { c.scale.set(x, y); return 0; };
+const __as_pixiContainerSetPivot = (c, x, y) => { c.pivot.set(x, y); return 0; };
+const __as_pixiContainerSetRotation = (c, rad) => { c.rotation = rad; return 0; };
+const __as_pixiContainerSetAlpha = (c, a) => { c.alpha = a; return 0; };
+const __as_pixiContainerSetZIndex = (c, z) => { c.zIndex = z; return 0; };
+const __as_pixiContainerSetSortableChildren = (c, v) => { c.sortableChildren = v; return 0; };
+const __as_pixiContainerSetEventMode = (c, mode) => { c.eventMode = mode; return 0; };
+const __as_pixiContainerSetCursor = (c, cursor) => { c.cursor = cursor; return 0; };
 const __as_pixiContainerSetVisible = (c, v) => { c.visible = v; return 0; };
+const __as_pixiContainerOn = (c, event, handler) => { c.on(event, handler); return 0; };
+const __as_pixiContainerOff = (c, event, handler) => { c.off(event, handler); return 0; };
 const __as_pixiContainerDestroy = (c) => { c.destroy(); return 0; };
 const __as_pixiSpriteFrom = (t) => new globalThis.__as_pixi.Sprite(t);
+const __as_pixiSpriteSetAnchor = (s, x, y) => { s.anchor.set(x, y); return 0; };
 // Upcasts are identity — PIXI's class hierarchy makes Sprite/Graphics/
 // Text actual Container subclasses, so the JS object is the same.
 const __as_pixiSpriteAsContainer = (s) => s;
@@ -308,6 +341,52 @@ const __as_pixiSoundPause = (s) => { s.pause(); return 0; };
 const __as_pixiSoundResume = (s) => { s.resume(); return 0; };
 const __as_pixiSoundSetVolume = (s, vol) => { s.volume = vol; return 0; };
 const __as_pixiSoundSetLoop = (s, loop) => { s.loop = loop; return 0; };
+// ---- Ipc (bindings #9): web-platform MessageChannel/MessagePort ----
+// Uses standard web globals (MessageChannel, structuredClone) — no
+// consumer-side init required. Available unmodified in Deno, Node 16+,
+// browsers, and Web Workers.
+const __as_messageChannelNew = () => new MessageChannel();
+const __as_messageChannelPort1 = (ch) => ch.port1;
+const __as_messageChannelPort2 = (ch) => ch.port2;
+const __as_messagePortPostMessage = (p, data) => { p.postMessage(data); return 0; };
+const __as_messagePortOnMessage = (p, handler) => { p.onmessage = handler; return 0; };
+const __as_messagePortStart = (p) => { p.start(); return 0; };
+const __as_messagePortClose = (p) => { p.close(); return 0; };
+const __as_targetPostMessage = (t, msg) => { t.postMessage(msg); return 0; };
+const __as_structuredCloneValue = (v) => structuredClone(v);
+// ---- Canvas (bindings #8): HTML5 Canvas 2D rendering context ----
+// `canvas` arg is the consumer-supplied HTMLCanvasElement; helpers
+// dispatch directly to the standard CanvasRenderingContext2D
+// methods. Available unmodified in browsers, jsdom-under-Deno,
+// idaptik's WebView host, and any DOM emulator.
+const __as_canvasGetContext2D = (canvas) => canvas.getContext("2d");
+const __as_canvasFillStyle = (ctx, color) => { ctx.fillStyle = color; return 0; };
+const __as_canvasStrokeStyle = (ctx, color) => { ctx.strokeStyle = color; return 0; };
+const __as_canvasLineWidth = (ctx, w) => { ctx.lineWidth = w; return 0; };
+const __as_canvasGlobalAlpha = (ctx, a) => { ctx.globalAlpha = a; return 0; };
+const __as_canvasFillRect = (ctx, x, y, w, h) => { ctx.fillRect(x, y, w, h); return 0; };
+const __as_canvasStrokeRect = (ctx, x, y, w, h) => { ctx.strokeRect(x, y, w, h); return 0; };
+const __as_canvasClearRect = (ctx, x, y, w, h) => { ctx.clearRect(x, y, w, h); return 0; };
+const __as_canvasBeginPath = (ctx) => { ctx.beginPath(); return 0; };
+const __as_canvasClosePath = (ctx) => { ctx.closePath(); return 0; };
+const __as_canvasMoveTo = (ctx, x, y) => { ctx.moveTo(x, y); return 0; };
+const __as_canvasLineTo = (ctx, x, y) => { ctx.lineTo(x, y); return 0; };
+const __as_canvasArc = (ctx, x, y, r, s, e) => { ctx.arc(x, y, r, s, e); return 0; };
+const __as_canvasFill = (ctx) => { ctx.fill(); return 0; };
+const __as_canvasStroke = (ctx) => { ctx.stroke(); return 0; };
+const __as_canvasSave = (ctx) => { ctx.save(); return 0; };
+const __as_canvasRestore = (ctx) => { ctx.restore(); return 0; };
+const __as_canvasTranslate = (ctx, x, y) => { ctx.translate(x, y); return 0; };
+const __as_canvasRotate = (ctx, rad) => { ctx.rotate(rad); return 0; };
+const __as_canvasScale = (ctx, x, y) => { ctx.scale(x, y); return 0; };
+const __as_canvasFont = (ctx, font) => { ctx.font = font; return 0; };
+const __as_canvasTextAlign = (ctx, align) => { ctx.textAlign = align; return 0; };
+const __as_canvasTextBaseline = (ctx, baseline) => { ctx.textBaseline = baseline; return 0; };
+const __as_canvasFillText = (ctx, text, x, y) => { ctx.fillText(text, x, y); return 0; };
+const __as_canvasStrokeText = (ctx, text, x, y) => { ctx.strokeText(text, x, y); return 0; };
+const __as_canvasMeasureText = (ctx, text) => ctx.measureText(text);
+const __as_canvasDrawImage = (ctx, img, x, y) => { ctx.drawImage(img, x, y); return 0; };
+const __as_canvasDrawImageScaled = (ctx, img, x, y, w, h) => { ctx.drawImage(img, x, y, w, h); return 0; };
 // `++` is overloaded (string concat / array concat); `a + b` would
 // stringify arrays. Dispatch on shape so stdlib/string.affine's
 // `result ++ [x]` and `a ++ b` are both correct.
@@ -320,6 +399,8 @@ const __as_strGet = (s, i) => String(s)[i];
 const __as_strFind = (s, n) => String(s).indexOf(n);
 const __as_charToInt = (c) => String(c).codePointAt(0);
 const __as_intToChar = (n) => String.fromCodePoint(n);
+const __as_strCharCodeAt = (s, i) => (i >= 0 && i < s.length ? s.charCodeAt(i) : -1);
+const __as_strFromCharCode = (n) => String.fromCharCode(n & 0xff);
 const __as_parseInt = (s) => {
   const n = parseInt(String(s), 10);
   return Number.isNaN(n) ? None : Some(n);
@@ -499,9 +580,20 @@ let () =
   b "pixiContainerAddChild"    (fun a -> Printf.sprintf "__as_pixiContainerAddChild(%s, %s)" (arg 0 a) (arg 1 a));
   b "pixiContainerRemoveChild" (fun a -> Printf.sprintf "__as_pixiContainerRemoveChild(%s, %s)" (arg 0 a) (arg 1 a));
   b "pixiContainerSetPosition" (fun a -> Printf.sprintf "__as_pixiContainerSetPosition(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
+  b "pixiContainerSetScale"    (fun a -> Printf.sprintf "__as_pixiContainerSetScale(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
+  b "pixiContainerSetPivot"    (fun a -> Printf.sprintf "__as_pixiContainerSetPivot(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
+  b "pixiContainerSetRotation" (fun a -> Printf.sprintf "__as_pixiContainerSetRotation(%s, %s)" (arg 0 a) (arg 1 a));
+  b "pixiContainerSetAlpha"    (fun a -> Printf.sprintf "__as_pixiContainerSetAlpha(%s, %s)" (arg 0 a) (arg 1 a));
+  b "pixiContainerSetZIndex"   (fun a -> Printf.sprintf "__as_pixiContainerSetZIndex(%s, %s)" (arg 0 a) (arg 1 a));
+  b "pixiContainerSetSortableChildren" (fun a -> Printf.sprintf "__as_pixiContainerSetSortableChildren(%s, %s)" (arg 0 a) (arg 1 a));
+  b "pixiContainerSetEventMode" (fun a -> Printf.sprintf "__as_pixiContainerSetEventMode(%s, %s)" (arg 0 a) (arg 1 a));
+  b "pixiContainerSetCursor"   (fun a -> Printf.sprintf "__as_pixiContainerSetCursor(%s, %s)" (arg 0 a) (arg 1 a));
   b "pixiContainerSetVisible"  (fun a -> Printf.sprintf "__as_pixiContainerSetVisible(%s, %s)" (arg 0 a) (arg 1 a));
+  b "pixiContainerOn"          (fun a -> Printf.sprintf "__as_pixiContainerOn(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
+  b "pixiContainerOff"         (fun a -> Printf.sprintf "__as_pixiContainerOff(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
   b "pixiContainerDestroy"     (fun a -> Printf.sprintf "__as_pixiContainerDestroy(%s)" (arg 0 a));
   b "pixiSpriteFrom"           (fun a -> Printf.sprintf "__as_pixiSpriteFrom(%s)" (arg 0 a));
+  b "pixiSpriteSetAnchor"      (fun a -> Printf.sprintf "__as_pixiSpriteSetAnchor(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
   b "pixiSpriteAsContainer"    (fun a -> Printf.sprintf "__as_pixiSpriteAsContainer(%s)" (arg 0 a));
   b "pixiTextureFromUrl"       (fun a -> Printf.sprintf "__as_pixiTextureFromUrl(%s)" (arg 0 a));
   b "pixiGraphicsNew"          (fun _ -> "__as_pixiGraphicsNew()");
@@ -540,6 +632,45 @@ let () =
   b "pixiSoundResume"    (fun a -> Printf.sprintf "__as_pixiSoundResume(%s)" (arg 0 a));
   b "pixiSoundSetVolume" (fun a -> Printf.sprintf "__as_pixiSoundSetVolume(%s, %s)" (arg 0 a) (arg 1 a));
   b "pixiSoundSetLoop"   (fun a -> Printf.sprintf "__as_pixiSoundSetLoop(%s, %s)" (arg 0 a) (arg 1 a));
+  (* ---- Ipc (bindings #9): MessageChannel/MessagePort + structuredClone ---- *)
+  b "messageChannelNew"        (fun _ -> "__as_messageChannelNew()");
+  b "messageChannelPort1"      (fun a -> Printf.sprintf "__as_messageChannelPort1(%s)" (arg 0 a));
+  b "messageChannelPort2"      (fun a -> Printf.sprintf "__as_messageChannelPort2(%s)" (arg 0 a));
+  b "messagePortPostMessage"   (fun a -> Printf.sprintf "__as_messagePortPostMessage(%s, %s)" (arg 0 a) (arg 1 a));
+  b "messagePortOnMessage"     (fun a -> Printf.sprintf "__as_messagePortOnMessage(%s, %s)" (arg 0 a) (arg 1 a));
+  b "messagePortStart"         (fun a -> Printf.sprintf "__as_messagePortStart(%s)" (arg 0 a));
+  b "messagePortClose"         (fun a -> Printf.sprintf "__as_messagePortClose(%s)" (arg 0 a));
+  b "targetPostMessage"        (fun a -> Printf.sprintf "__as_targetPostMessage(%s, %s)" (arg 0 a) (arg 1 a));
+  b "structuredCloneValue"     (fun a -> Printf.sprintf "__as_structuredCloneValue(%s)" (arg 0 a));
+  (* ---- Canvas (bindings #8): HTML5 Canvas 2D rendering context ---- *)
+  b "canvasGetContext2D"   (fun a -> Printf.sprintf "__as_canvasGetContext2D(%s)" (arg 0 a));
+  b "canvasFillStyle"      (fun a -> Printf.sprintf "__as_canvasFillStyle(%s, %s)" (arg 0 a) (arg 1 a));
+  b "canvasStrokeStyle"    (fun a -> Printf.sprintf "__as_canvasStrokeStyle(%s, %s)" (arg 0 a) (arg 1 a));
+  b "canvasLineWidth"      (fun a -> Printf.sprintf "__as_canvasLineWidth(%s, %s)" (arg 0 a) (arg 1 a));
+  b "canvasGlobalAlpha"    (fun a -> Printf.sprintf "__as_canvasGlobalAlpha(%s, %s)" (arg 0 a) (arg 1 a));
+  b "canvasFillRect"       (fun a -> Printf.sprintf "__as_canvasFillRect(%s, %s, %s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a) (arg 3 a) (arg 4 a));
+  b "canvasStrokeRect"     (fun a -> Printf.sprintf "__as_canvasStrokeRect(%s, %s, %s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a) (arg 3 a) (arg 4 a));
+  b "canvasClearRect"      (fun a -> Printf.sprintf "__as_canvasClearRect(%s, %s, %s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a) (arg 3 a) (arg 4 a));
+  b "canvasBeginPath"      (fun a -> Printf.sprintf "__as_canvasBeginPath(%s)" (arg 0 a));
+  b "canvasClosePath"      (fun a -> Printf.sprintf "__as_canvasClosePath(%s)" (arg 0 a));
+  b "canvasMoveTo"         (fun a -> Printf.sprintf "__as_canvasMoveTo(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
+  b "canvasLineTo"         (fun a -> Printf.sprintf "__as_canvasLineTo(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
+  b "canvasArc"            (fun a -> Printf.sprintf "__as_canvasArc(%s, %s, %s, %s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a) (arg 3 a) (arg 4 a) (arg 5 a));
+  b "canvasFill"           (fun a -> Printf.sprintf "__as_canvasFill(%s)" (arg 0 a));
+  b "canvasStroke"         (fun a -> Printf.sprintf "__as_canvasStroke(%s)" (arg 0 a));
+  b "canvasSave"           (fun a -> Printf.sprintf "__as_canvasSave(%s)" (arg 0 a));
+  b "canvasRestore"        (fun a -> Printf.sprintf "__as_canvasRestore(%s)" (arg 0 a));
+  b "canvasTranslate"      (fun a -> Printf.sprintf "__as_canvasTranslate(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
+  b "canvasRotate"         (fun a -> Printf.sprintf "__as_canvasRotate(%s, %s)" (arg 0 a) (arg 1 a));
+  b "canvasScale"          (fun a -> Printf.sprintf "__as_canvasScale(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
+  b "canvasFont"           (fun a -> Printf.sprintf "__as_canvasFont(%s, %s)" (arg 0 a) (arg 1 a));
+  b "canvasTextAlign"      (fun a -> Printf.sprintf "__as_canvasTextAlign(%s, %s)" (arg 0 a) (arg 1 a));
+  b "canvasTextBaseline"   (fun a -> Printf.sprintf "__as_canvasTextBaseline(%s, %s)" (arg 0 a) (arg 1 a));
+  b "canvasFillText"       (fun a -> Printf.sprintf "__as_canvasFillText(%s, %s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a) (arg 3 a));
+  b "canvasStrokeText"     (fun a -> Printf.sprintf "__as_canvasStrokeText(%s, %s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a) (arg 3 a));
+  b "canvasMeasureText"    (fun a -> Printf.sprintf "__as_canvasMeasureText(%s, %s)" (arg 0 a) (arg 1 a));
+  b "canvasDrawImage"      (fun a -> Printf.sprintf "__as_canvasDrawImage(%s, %s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a) (arg 3 a));
+  b "canvasDrawImageScaled" (fun a -> Printf.sprintf "__as_canvasDrawImageScaled(%s, %s, %s, %s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a) (arg 3 a) (arg 4 a) (arg 5 a));
   (* Generic JS array push helper (returns the array, fluent). *)
   b "arrayPush" (fun a -> Printf.sprintf "(%s.push(%s), %s)" (arg 0 a) (arg 1 a) (arg 0 a));
   (* ---- honest string/number primitives underpinning the
@@ -567,6 +698,10 @@ let () =
   b "parse_float"    (fun a -> Printf.sprintf "__as_parseFloat(%s)" (arg 0 a));
   b "char_to_int"    (fun a -> Printf.sprintf "__as_charToInt(%s)" (arg 0 a));
   b "int_to_char"    (fun a -> Printf.sprintf "__as_intToChar(%s)" (arg 0 a));
+  b "string_char_code_at"
+    (fun a -> Printf.sprintf "__as_strCharCodeAt(%s, %s)" (arg 0 a) (arg 1 a));
+  b "string_from_char_code"
+    (fun a -> Printf.sprintf "__as_strFromCharCode(%s)" (arg 0 a));
   b "show"           (fun a -> Printf.sprintf "__as_show(%s)" (arg 0 a));
   b "panic"          (fun a -> Printf.sprintf "(() => { throw new Error(%s); })()" (arg 0 a));
   (* STDLIB-04b (Refs #329): `error<T>` is panic's polymorphic sibling.
@@ -634,6 +769,104 @@ let resolve_var ctx (name : string) : string =
   | _ -> mangle name
 
 (* ============================================================================
+   Integer-operand inference for division (issue #478)
+
+   The Deno-ESM backend is type-erased, but JS `/` is floating-point, so a
+   naive `OpDiv -> "/"` turns `255 / 16` into `15.9375`. We lower an
+   `Int / Int` to `Math.trunc(a / b)` (truncate-toward-zero, matching the
+   interpreter's OCaml `/` and wasm's `i32.div_s`) and leave every other
+   `/` as plain float division. The classifier below is deliberately
+   conservative: it reports [true] only when an operand is *provably* an
+   integer, so a value of unknown type keeps `/` and float division is
+   never silently truncated.
+   ============================================================================ *)
+
+(* [Int] head of a (possibly ref/own/mut) type expression. Only the
+   nominal [Int] constructor counts; type variables / applications do not. *)
+let rec type_head_is_int : type_expr -> bool = function
+  | TyCon id -> id.name = "Int"
+  | TyOwn t | TyRef t | TyMut t -> type_head_is_int t
+  | _ -> false
+
+(* Is [t] an [Array<Int>] (surface `[Int]`, which the parser desugars to
+   `Array[Int]`)? Used to seed for-loop variables and recognise indexed
+   element reads as integers (#478). *)
+let rec type_is_int_array : type_expr -> bool = function
+  | TyApp (id, [ TyArg elem ]) -> id.name = "Array" && type_head_is_int elem
+  | TyOwn t | TyRef t | TyMut t -> type_is_int_array t
+  | _ -> false
+
+(* Simple-variable pattern name, if [pat] binds exactly one name. *)
+let pat_var_name : pattern -> string option = function
+  | PatVar id -> Some id.name
+  | _ -> None
+
+(* Builtins whose return type is unambiguously [Int]. Calls to these count
+   as integer operands. (Excludes e.g. [parse_int], which is Option<Int>.) *)
+let int_returning_builtins =
+  [ "len"; "string_find"; "string_char_code_at"; "char_to_int";
+    "string_length" ]
+
+(* Conservative "is this expression provably an [Int]?" Used only to decide
+   whether a `/` should truncate; a [false] is always safe (keeps `/`). *)
+let rec expr_is_int ctx (e : expr) : bool =
+  match e with
+  | ExprLit (LitInt _) -> true
+  | ExprLit _ -> false
+  | ExprSpan (e, _) -> expr_is_int ctx e
+  | ExprVar id -> Hashtbl.mem ctx.int_vars id.name
+  (* Integer-closed arithmetic: result is [Int] iff both operands are.
+     [OpDiv] is included because the emission below makes `Int / Int`
+     truncate, so it too yields an [Int]. *)
+  | ExprBinary (a, (OpAdd | OpSub | OpMul | OpDiv | OpMod), b) ->
+      expr_is_int ctx a && expr_is_int ctx b
+  (* JS bitwise operators coerce to a 32-bit integer regardless of input,
+     so the result is always an integer. *)
+  | ExprBinary (_, (OpBitAnd | OpBitOr | OpBitXor | OpShl | OpShr), _) -> true
+  | ExprUnary (OpNeg, e) -> expr_is_int ctx e
+  | ExprUnary (OpBitNot, _) -> true
+  | ExprIf { ei_then; ei_else = Some e; _ } ->
+      expr_is_int ctx ei_then && expr_is_int ctx e
+  | ExprApp (ExprVar id, _) ->
+      Hashtbl.mem ctx.int_fns id.name
+      || List.mem id.name int_returning_builtins
+  (* An element read from a provably-[Array<Int>] value is an [Int]
+     (covers `xs[i] / 2` where xs: [Int]) — issue #478 finding 2. *)
+  | ExprIndex (arr, _) -> expr_is_int_array ctx arr
+  | _ -> false
+
+(* Conservative "is this expression provably an [Array<Int>]?" Recognises
+   int-array params/locals and array literals whose every element is an
+   integer. As with {!expr_is_int}, a [false] is always safe. *)
+and expr_is_int_array ctx (e : expr) : bool =
+  match e with
+  | ExprSpan (e, _) -> expr_is_int_array ctx e
+  | ExprVar id -> Hashtbl.mem ctx.int_array_vars id.name
+  | ExprArray elems -> elems <> [] && List.for_all (expr_is_int ctx) elems
+  | _ -> false
+
+(* Record/forget whether [name] currently holds an [Int], after a binding
+   or assignment of [value] to it. Keeps {!ctx.int_vars} in sync as a
+   function body is emitted top-to-bottom. *)
+let track_int_binding ctx (name : string) (value : expr) : unit =
+  if expr_is_int ctx value then Hashtbl.replace ctx.int_vars name ()
+  else Hashtbl.remove ctx.int_vars name
+
+(* Reset [int_vars] / [int_array_vars] for a new function body and seed
+   them from [Int]- and [Array<Int>]-typed params. Returns [ctx] with the
+   fresh tables installed. *)
+let enter_fn_scope ctx (params : param list) : codegen_ctx =
+  let tbl = Hashtbl.create 16 in
+  let arr_tbl = Hashtbl.create 16 in
+  List.iter
+    (fun (p : param) ->
+      if type_head_is_int p.p_ty then Hashtbl.replace tbl p.p_name.name ()
+      else if type_is_int_array p.p_ty then
+        Hashtbl.replace arr_tbl p.p_name.name ())
+    params;
+  { ctx with int_vars = tbl; int_array_vars = arr_tbl }
+
+(* ============================================================================
    Expression code generation
 
    Shape adapted from {!Js_codegen}; the divergences are: variable
@@ -691,6 +924,11 @@ let rec gen_expr ctx (expr : expr) : string =
       (* `++` is string- OR array-concat; dispatch on shape at runtime so
          `a ++ b` (string) and `acc ++ [x]` (array) are both correct. *)
       "__as_concat(" ^ gen_expr ctx e1 ^ ", " ^ gen_expr ctx e2 ^ ")"
+  | ExprBinary (e1, OpDiv, e2) when expr_is_int ctx e1 && expr_is_int ctx e2 ->
+      (* Issue #478: integer `/` truncates toward zero; JS `/` is float.
+         Both operands are provably [Int] here, so emit a truncating
+         divide that matches the interpreter and wasm backends. *)
+      "Math.trunc((" ^ gen_expr ctx e1 ^ ") / (" ^ gen_expr ctx e2 ^ "))"
   | ExprBinary (e1, op, e2) ->
       let op_str = match op with
         | OpAdd -> "+" | OpSub -> "-" | OpMul -> "*" | OpDiv -> "/"
@@ -717,13 +955,28 @@ let rec gen_expr ctx (expr : expr) : string =
       let pat_str = gen_pattern ctx el_pat in
       let val_str = gen_expr ctx el_value in
       let kw = if el_mut then "let" else "const" in
-      (match el_body with
-       | Some body ->
-           iife ctx (kw ^ " " ^ pat_str ^ " = " ^ val_str ^ "; return "
-                     ^ gen_expr ctx body ^ ";")
-       | None ->
-           iife ctx (kw ^ " " ^ pat_str ^ " = " ^ val_str
-                     ^ "; return Unit;"))
+      (* `let x = v in body` is lexically scoped, so track [x]'s int-ness
+         only for [body] and restore afterward — a leaked binding could
+         wrongly truncate a same-named outer Float (#478). *)
+      let body_str =
+        match el_body with
+        | Some body ->
+            let restore =
+              match pat_var_name el_pat with
+              | Some n ->
+                  let had = Hashtbl.mem ctx.int_vars n in
+                  track_int_binding ctx n el_value;
+                  fun () ->
+                    if had then Hashtbl.replace ctx.int_vars n ()
+                    else Hashtbl.remove ctx.int_vars n
+              | None -> fun () -> ()
+            in
+            let b = gen_expr ctx body in
+            restore ();
+            kw ^ " " ^ pat_str ^ " = " ^ val_str ^ "; return " ^ b ^ ";"
+        | None -> kw ^ " " ^ pat_str ^ " = " ^ val_str ^ "; return Unit;"
+      in
+      iife ctx body_str
   | ExprTuple exprs | ExprArray exprs ->
       "[" ^ String.concat ", " (List.map (gen_expr ctx) exprs) ^ "]"
   | ExprIndex (arr, idx) ->
@@ -994,14 +1247,42 @@ and gen_stmt ctx (stmt : stmt) : string =
   match stmt with
   | StmtLet { sl_pat; sl_value; sl_mut; sl_quantity = _; sl_ty = _ } ->
       let kw = if sl_mut then "let" else "const" in
-      kw ^ " " ^ gen_pattern ctx sl_pat ^ " = " ^ gen_expr ctx sl_value ^ ";"
+      let js = kw ^ " " ^ gen_pattern ctx sl_pat ^ " = "
+               ^ gen_expr ctx sl_value ^ ";" in
+      (* Track an [Int]-bound name for the rest of this body (#478). A
+         block statement's scope is the enclosing function, which
+         {!enter_fn_scope} already bounds, so no restore is needed here. *)
+      (match pat_var_name sl_pat with
+       | Some n -> track_int_binding ctx n sl_value
+       | None -> ());
+      js
   | StmtExpr e -> gen_stmt_expr ctx e
   | StmtAssign (lhs, op, rhs) ->
-      let op_str = match op with
-        | AssignEq -> "=" | AssignAdd -> "+=" | AssignSub -> "-="
-        | AssignMul -> "*=" | AssignDiv -> "/="
+      (* #478: `x /= y` over integers must truncate, like `x = x / y`. *)
+      let div_int =
+        op = AssignDiv && expr_is_int ctx lhs && expr_is_int ctx rhs in
+      let js =
+        if div_int then
+          let t = gen_expr ctx lhs in
+          t ^ " = Math.trunc(" ^ t ^ " / (" ^ gen_expr ctx rhs ^ "));"
+        else
+          let op_str = match op with
+            | AssignEq -> "=" | AssignAdd -> "+=" | AssignSub -> "-="
+            | AssignMul -> "*=" | AssignDiv -> "/="
+          in
+          gen_expr ctx lhs ^ " " ^ op_str ^ " " ^ gen_expr ctx rhs ^ ";"
       in
-      gen_expr ctx lhs ^ " " ^ op_str ^ " " ^ gen_expr ctx rhs ^ ";"
+      (* Keep int-tracking current across reassignment of a simple var. *)
+      (match lhs, op with
+       | ExprVar id, AssignEq -> track_int_binding ctx id.name rhs
+       | ExprVar id, AssignDiv ->
+           if div_int then Hashtbl.replace ctx.int_vars id.name ()
+           else Hashtbl.remove ctx.int_vars id.name
+       | ExprVar id, (AssignAdd | AssignSub | AssignMul) ->
+           if not (expr_is_int ctx rhs) then
+             Hashtbl.remove ctx.int_vars id.name
+       | _ -> ());
+      js
   | StmtWhile (cond, body) ->
       "while (" ^ gen_expr ctx cond ^ ") { "
       ^ String.concat " " (List.map (gen_stmt ctx) body.blk_stmts)
@@ -1009,11 +1290,30 @@ and gen_stmt ctx (stmt : stmt) : string =
          | Some e -> " " ^ gen_stmt_expr ctx e | None -> "")
       ^ " }"
   | StmtFor (pat, iter, body) ->
-      "for (const " ^ gen_pattern ctx pat ^ " of " ^ gen_expr ctx iter ^ ") { "
-      ^ String.concat " " (List.map (gen_stmt ctx) body.blk_stmts)
-      ^ (match body.blk_expr with
-         | Some e -> " " ^ gen_stmt_expr ctx e | None -> "")
-      ^ " }"
+      (* The iterable is evaluated in the outer scope, so emit it first. *)
+      let iter_str = gen_expr ctx iter in
+      let pat_str = gen_pattern ctx pat in
+      (* #478: a `for x in xs` over a provably-[Array<Int>] binds [x] to an
+         [Int] each iteration, so `x / 2` in the body must truncate. The
+         loop variable is loop-scoped, so save/restore its [int_vars] entry
+         to avoid leaking onto a same-named outer binding after the loop. *)
+      let restore =
+        match pat_var_name pat with
+        | Some n when expr_is_int_array ctx iter ->
+            let had = Hashtbl.mem ctx.int_vars n in
+            Hashtbl.replace ctx.int_vars n ();
+            fun () ->
+              if had then Hashtbl.replace ctx.int_vars n ()
+              else Hashtbl.remove ctx.int_vars n
+        | _ -> fun () -> ()
+      in
+      let body_js =
+        String.concat " " (List.map (gen_stmt ctx) body.blk_stmts)
+        ^ (match body.blk_expr with
+           | Some e -> " " ^ gen_stmt_expr ctx e | None -> "")
+      in
+      restore ();
+      "for (const " ^ pat_str ^ " of " ^ iter_str ^ ") { " ^ body_js ^ " }"
 
 (* ============================================================================
    Top-level declarations + class emission
@@ -1047,7 +1347,7 @@ let gen_function ctx (fd : fn_decl) : unit =
     else async_kw ^ "function" in
   emit_line ctx
     (Printf.sprintf "%s %s(%s) {" kw name (String.concat ", " params));
-  let body_ctx = increase_indent ctx in
+  let body_ctx = enter_fn_scope (increase_indent ctx) fd.fd_params in
   let body_ctx =
     if is_async then { body_ctx with in_async = true } else body_ctx in
   gen_body body_ctx fd.fd_body;
@@ -1116,7 +1416,7 @@ let gen_method ctx ~(recv_name : string) ~(js_name : string)
   emit_line ctx_m
     (Printf.sprintf "async %s(%s) {" (mangle js_name)
        (String.concat ", " params));
-  gen_body (increase_indent ctx_m) fd.fd_body;
+  gen_body (enter_fn_scope (increase_indent ctx_m) fd.fd_params) fd.fd_body;
   emit_line ctx_m "}";
   emit ctx_m ""
 
@@ -1127,7 +1427,7 @@ let gen_constructor ctx (fd : fn_decl) : unit =
     List.map (fun (p : param) -> mangle p.p_name.name) fd.fd_params in
   emit_line ctx
     (Printf.sprintf "constructor(%s) {" (String.concat ", " params));
-  let body_ctx = increase_indent ctx in
+  let body_ctx = enter_fn_scope (increase_indent ctx) fd.fd_params in
   let rec assign_record e =
     match e with
     | ExprSpan (inner, _) -> assign_record inner
@@ -1224,12 +1524,23 @@ let generate (program : program) (symbols : Symbol.t) : string =
     | TopFn fd ->
         Hashtbl.replace ctx.local_fns fd.fd_name.name ();
         if fd_is_async fd then
-          Hashtbl.replace ctx.async_fns fd.fd_name.name ()
+          Hashtbl.replace ctx.async_fns fd.fd_name.name ();
+        (* Record [Int]-returning fns so calls to them count as integer
+           operands for the truncating-division lowering (#478). *)
+        (match fd.fd_ret_ty with
+         | Some t when type_head_is_int t ->
+             Hashtbl.replace ctx.int_fns fd.fd_name.name ()
+         | _ -> ())
     | TopConst { tc_name; _ } ->
         Hashtbl.replace ctx.local_fns tc_name.name ()
     | TopImpl ib ->
         List.iter (function
-          | ImplFn fd -> Hashtbl.replace ctx.local_fns fd.fd_name.name ()
+          | ImplFn fd ->
+              Hashtbl.replace ctx.local_fns fd.fd_name.name ();
+              (match fd.fd_ret_ty with
+               | Some t when type_head_is_int t ->
+                   Hashtbl.replace ctx.int_fns fd.fd_name.name ()
+               | _ -> ())
           | ImplType _ -> ()) ib.ib_items
     | _ -> ()) program.prog_decls;
 

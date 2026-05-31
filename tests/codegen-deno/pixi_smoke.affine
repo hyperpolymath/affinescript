@@ -6,7 +6,7 @@
 // extern shape (constructor, mutator, async init, upcast).
 
 use Deno::{Json};
-use Pixi::{Application, Container, Sprite, Graphics, Text, Texture, pixiAppInit, pixiAppStage, pixiContainerNew, pixiContainerAddChild, pixiContainerSetPosition, pixiContainerSetVisible, pixiSpriteFrom, pixiSpriteAsContainer, pixiTextureFromUrl, pixiGraphicsNew, pixiGraphicsRect, pixiGraphicsFill, pixiGraphicsAsContainer};
+use Pixi::{Application, Container, Sprite, Graphics, Text, Texture, pixiAppInit, pixiAppStage, pixiContainerNew, pixiContainerAddChild, pixiContainerSetPosition, pixiContainerSetVisible, pixiContainerSetScale, pixiContainerSetPivot, pixiContainerSetRotation, pixiContainerSetAlpha, pixiContainerSetZIndex, pixiContainerSetSortableChildren, pixiContainerSetEventMode, pixiContainerSetCursor, pixiContainerOn, pixiContainerOff, pixiSpriteFrom, pixiSpriteSetAnchor, pixiSpriteAsContainer, pixiTextureFromUrl, pixiGraphicsNew, pixiGraphicsRect, pixiGraphicsFill, pixiGraphicsAsContainer};
 
 pub fn smokeInit(options: Json) -> Application / { Async } = pixiAppInit(options);
 
@@ -25,5 +25,29 @@ pub fn smokeGraphicsFlow(app: Application, color: Int) -> Int {
   pixiGraphicsRect(g, 0.0, 0.0, 50.0, 50.0);
   pixiGraphicsFill(g, color);
   pixiContainerAddChild(pixiAppStage(app), pixiGraphicsAsContainer(g));
+  0
+}
+
+/// Exercises every Container accessor + Sprite anchor + on/off
+/// FederatedEvent registration shape — the PixiJS 8 transform-and-event
+/// surface idaptik's 215 src/app files lean on.
+pub fn smokeAccessorsFlow(app: Application, url: String, onDown: Json, onMove: Json) -> Int {
+  let stage = pixiAppStage(app);
+  let texture = pixiTextureFromUrl(url);
+  let sprite = pixiSpriteFrom(texture);
+  let spriteC = pixiSpriteAsContainer(sprite);
+  pixiSpriteSetAnchor(sprite, 0.5, 0.5);
+  pixiContainerSetScale(spriteC, 2.0, 3.0);
+  pixiContainerSetPivot(spriteC, 10.0, 20.0);
+  pixiContainerSetRotation(spriteC, 1.5708);
+  pixiContainerSetAlpha(spriteC, 0.75);
+  pixiContainerSetZIndex(spriteC, 7);
+  pixiContainerSetSortableChildren(stage, true);
+  pixiContainerSetEventMode(spriteC, "static");
+  pixiContainerSetCursor(spriteC, "pointer");
+  pixiContainerOn(spriteC, "pointerdown", onDown);
+  pixiContainerOn(spriteC, "pointermove", onMove);
+  pixiContainerAddChild(stage, spriteC);
+  pixiContainerOff(spriteC, "pointermove", onMove);
   0
 }
