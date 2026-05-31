@@ -1,0 +1,66 @@
+// SPDX-License-Identifier: MPL-2.0
+// bindings #8 — HTML5 Canvas 2D smoke test.
+//
+// Exercises every shipped extern via a single end-to-end drawing
+// sequence: acquire context, set styles, fill rect, stroke path,
+// save+translate+rotate+scale+restore the transform, draw text,
+// measure text, and drawImage. The harness mocks both the canvas
+// element and the 2D context.
+
+use Deno::{Json};
+use Canvas::{Ctx2D, canvasGetContext2D, canvasFillStyle, canvasStrokeStyle, canvasLineWidth, canvasGlobalAlpha, canvasFillRect, canvasStrokeRect, canvasClearRect, canvasBeginPath, canvasClosePath, canvasMoveTo, canvasLineTo, canvasArc, canvasFill, canvasStroke, canvasSave, canvasRestore, canvasTranslate, canvasRotate, canvasScale, canvasFont, canvasTextAlign, canvasTextBaseline, canvasFillText, canvasStrokeText, canvasMeasureText, canvasDrawImage, canvasDrawImageScaled};
+
+/// Exercises the styles + rect-drawing surface.
+pub fn smokeRects(canvas: Json) -> Ctx2D {
+  let ctx = canvasGetContext2D(canvas);
+  canvasFillStyle(ctx, "#ff0000");
+  canvasStrokeStyle(ctx, "rgba(0, 0, 0, 0.5)");
+  canvasLineWidth(ctx, 2.5);
+  canvasGlobalAlpha(ctx, 0.75);
+  canvasClearRect(ctx, 0.0, 0.0, 100.0, 100.0);
+  canvasFillRect(ctx, 10.0, 20.0, 30.0, 40.0);
+  canvasStrokeRect(ctx, 50.0, 60.0, 20.0, 20.0);
+  ctx
+}
+
+/// Exercises the path surface (begin/move/line/arc/close + fill+stroke).
+pub fn smokePath(ctx: Ctx2D) -> Int {
+  canvasBeginPath(ctx);
+  canvasMoveTo(ctx, 10.0, 10.0);
+  canvasLineTo(ctx, 20.0, 30.0);
+  canvasArc(ctx, 50.0, 50.0, 10.0, 0.0, 6.283);
+  canvasClosePath(ctx);
+  canvasFill(ctx);
+  canvasStroke(ctx);
+  0
+}
+
+/// Exercises the transform stack — save / translate / rotate / scale /
+/// restore — by applying a transform, drawing inside, and popping.
+pub fn smokeTransform(ctx: Ctx2D) -> Int {
+  canvasSave(ctx);
+  canvasTranslate(ctx, 100.0, 100.0);
+  canvasRotate(ctx, 1.5708);
+  canvasScale(ctx, 2.0, 3.0);
+  canvasFillRect(ctx, 0.0, 0.0, 5.0, 5.0);
+  canvasRestore(ctx);
+  0
+}
+
+/// Exercises the text surface — font, align, baseline, fill/stroke
+/// text, and measure-text round-trip (returns Json).
+pub fn smokeText(ctx: Ctx2D) -> Json {
+  canvasFont(ctx, "16px sans-serif");
+  canvasTextAlign(ctx, "center");
+  canvasTextBaseline(ctx, "middle");
+  canvasFillText(ctx, "Hello", 50.0, 50.0);
+  canvasStrokeText(ctx, "Outlined", 50.0, 70.0);
+  canvasMeasureText(ctx, "Measurement")
+}
+
+/// Exercises both drawImage shapes — natural-size and scaled.
+pub fn smokeImages(ctx: Ctx2D, img: Json) -> Int {
+  canvasDrawImage(ctx, img, 10.0, 20.0);
+  canvasDrawImageScaled(ctx, img, 30.0, 40.0, 100.0, 50.0);
+  0
+}

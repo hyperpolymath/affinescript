@@ -66,6 +66,7 @@ let seed_builtins (symbols : Symbol.t) : unit =
   (* String / char builtins *)
   def "len"; def "slice"; def "string_get"; def "string_sub"; def "string_find";
   def "char_to_int"; def "int_to_char"; def "show";
+  def "string_char_code_at"; def "string_from_char_code";
   def "to_lowercase"; def "to_uppercase"; def "trim";
   def "int_to_string"; def "float_to_string"; def "string_length";
   (* STDLIB-04e (Refs #332): `string_to_int` typed-alias for `parse_int` *)

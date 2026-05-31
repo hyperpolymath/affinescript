@@ -1,0 +1,57 @@
+// SPDX-License-Identifier: MPL-2.0
+// bindings #9 — IPC / MessageChannel / structuredClone smoke test.
+//
+// Exercises the host-side surface (creator-side): MessageChannel
+// construction, two-port handoff shape, postMessage round-trip,
+// onmessage handler wiring, port lifecycle (start), and the
+// structuredClone deep-copy helper. The peer port is also exercised
+// via JS-side stubs in the harness. close() is exercised
+// independently — calling it inline with post() would close the
+// queue before MessagePort's microtask-async delivery runs.
+
+use Deno::{Json};
+use Ipc::{MessageChannel, MessagePort, messageChannelNew, messageChannelPort1, messageChannelPort2, messagePortPostMessage, messagePortOnMessage, messagePortStart, messagePortClose, targetPostMessage, structuredCloneValue};
+
+/// Build a channel, register handlers on both ports, post a payload
+/// through each direction, and return the channel so the host can
+/// keep a reference until the message-event microtasks have drained.
+/// MessagePort delivery is asynchronous (host event-loop tick); on
+/// Node the ports are transferable objects backed by worker_threads
+/// and GC-eligible the moment the last reference drops — returning
+/// the channel keeps both ports alive across the drain.
+pub fn smokeChannelFlow(payload: Json, handler1: Json, handler2: Json) -> MessageChannel {
+  let ch = messageChannelNew();
+  let p1 = messageChannelPort1(ch);
+  let p2 = messageChannelPort2(ch);
+  messagePortOnMessage(p1, handler1);
+  messagePortOnMessage(p2, handler2);
+  messagePortStart(p1);
+  messagePortStart(p2);
+  messagePortPostMessage(p1, payload);
+  messagePortPostMessage(p2, payload);
+  ch
+}
+
+/// Standalone close exercise — host-driven so the test can assert
+/// it doesn't throw and that a post()-after-close lands quietly.
+pub fn smokeCloseFlow() -> Int {
+  let ch = messageChannelNew();
+  let p1 = messageChannelPort1(ch);
+  messagePortStart(p1);
+  messagePortClose(p1);
+  0
+}
+
+/// Demonstrate the generic `targetPostMessage` shape — host posts to
+/// an opaque target (could be a Worker, an iframe.contentWindow,
+/// `self` inside a worker). The harness supplies a target stub.
+pub fn smokeTargetFlow(target: Json, message: Json) -> Int {
+  targetPostMessage(target, message);
+  0
+}
+
+/// Round-trip a payload through `structuredCloneValue` — the deep
+/// clone must equal the original by value but not by reference.
+pub fn smokeStructuredClone(value: Json) -> Json {
+  structuredCloneValue(value)
+}

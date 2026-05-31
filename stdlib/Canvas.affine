@@ -1,0 +1,179 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// Canvas.affine — HTML5 Canvas 2D rendering context bindings
+// (bindings #8 in docs/bindings-roadmap.adoc).
+//
+// Initial typed surface covering the Canvas 2D operations idaptik-ums
+// (App.res: 1178 LoC of DOM + canvas) actually reaches for: context
+// acquisition, fill / stroke styling, rectangle and path drawing,
+// transform stack (save/restore/translate/rotate/scale), text
+// rendering, and image drawing.
+//
+// Targets the Deno-ESM backend. `HTMLCanvasElement` and
+// `CanvasRenderingContext2D` are standard web-platform types
+// available in browser embedders, the Deno+jsdom flow, and any DOM
+// emulator. No consumer-side init is required for the context-level
+// operations — `canvasGetContext2D(canvasJson)` lowers to a direct
+// `.getContext("2d")` call on the host canvas.
+//
+// `HTMLCanvasElement` itself crosses the boundary as opaque `Json`
+// in this binding because the canvas-creation entry point is host-
+// dependent (browser: `document.createElement("canvas")`; idaptik:
+// already in the DOM tree). A typed wrapper layered on top is the
+// natural follow-up once `affinescript-dom` lands runtime support
+// (currently blocked on the for-in / while wasm-codegen gap, issue
+// #255).
+//
+// Test fixture: `tests/codegen-deno/canvas_smoke.{affine,harness.mjs}`.
+//
+// Out of scope for this initial surface (deferred to follow-ups):
+//   * WebGL / WebGL2 / WebGPU contexts (separate axis — Tier 1 #8
+//     scope intentionally split, this is the Canvas2D half)
+//   * `CanvasGradient` / `CanvasPattern` extern types (typed gradients
+//     and pattern fills — currently the consumer pre-computes a CSS
+//     colour string and uses `fillStyle`)
+//   * `ImageData` (getImageData / putImageData — pixel-level
+//     manipulation, useful but lower-frequency than the drawing
+//     surface)
+//   * `bezierCurveTo` / `quadraticCurveTo` / `ellipse` (curve
+//     primitives — needed for richer paths)
+//   * Compositing operations / clip / globalAlpha (deferred — most
+//     consumers reach for save+restore around the alpha or blend
+//     mode anyway)
+
+module Canvas;
+
+use Deno::{Json};
+
+// ── Opaque host types ──────────────────────────────────────────────
+
+/// The `CanvasRenderingContext2D` returned by `canvas.getContext("2d")`.
+/// All stateful rendering operations are methods on this handle.
+pub extern type Ctx2D;
+
+// ── Context acquisition ────────────────────────────────────────────
+
+/// `canvas.getContext("2d")` — obtain the 2D rendering context from
+/// an `HTMLCanvasElement` (passed as opaque `Json` because the
+/// canvas-creation entry point is host-dependent).
+pub extern fn canvasGetContext2D(canvas: Json) -> Ctx2D;
+
+// ── Styles ─────────────────────────────────────────────────────────
+
+/// `ctx.fillStyle = color` — set the fill-style. `color` is any CSS
+/// colour string (`"#ff0000"`, `"red"`, `"rgba(0,0,0,0.5)"`, …).
+/// Returns 0.
+pub extern fn canvasFillStyle(ctx: Ctx2D, color: String) -> Int;
+
+/// `ctx.strokeStyle = color` — set the stroke-style. Returns 0.
+pub extern fn canvasStrokeStyle(ctx: Ctx2D, color: String) -> Int;
+
+/// `ctx.lineWidth = width` — stroke line width in pixels. Returns 0.
+pub extern fn canvasLineWidth(ctx: Ctx2D, width: Float) -> Int;
+
+/// `ctx.globalAlpha = a` — global opacity (0.0–1.0) applied to all
+/// subsequent rendering. Returns 0.
+pub extern fn canvasGlobalAlpha(ctx: Ctx2D, a: Float) -> Int;
+
+// ── Rectangles ─────────────────────────────────────────────────────
+
+/// `ctx.fillRect(x, y, w, h)` — paint a solid rectangle using the
+/// current `fillStyle`. Returns 0.
+pub extern fn canvasFillRect(ctx: Ctx2D, x: Float, y: Float, w: Float, h: Float) -> Int;
+
+/// `ctx.strokeRect(x, y, w, h)` — outline a rectangle using the
+/// current `strokeStyle` and `lineWidth`. Returns 0.
+pub extern fn canvasStrokeRect(ctx: Ctx2D, x: Float, y: Float, w: Float, h: Float) -> Int;
+
+/// `ctx.clearRect(x, y, w, h)` — clear the rectangle to fully
+/// transparent. Returns 0.
+pub extern fn canvasClearRect(ctx: Ctx2D, x: Float, y: Float, w: Float, h: Float) -> Int;
+
+// ── Paths ──────────────────────────────────────────────────────────
+
+/// `ctx.beginPath()` — start a new path. Returns 0.
+pub extern fn canvasBeginPath(ctx: Ctx2D) -> Int;
+
+/// `ctx.closePath()` — close the current sub-path back to its start.
+/// Returns 0.
+pub extern fn canvasClosePath(ctx: Ctx2D) -> Int;
+
+/// `ctx.moveTo(x, y)` — move the path pen without drawing. Returns 0.
+pub extern fn canvasMoveTo(ctx: Ctx2D, x: Float, y: Float) -> Int;
+
+/// `ctx.lineTo(x, y)` — line segment from the current pen position.
+/// Returns 0.
+pub extern fn canvasLineTo(ctx: Ctx2D, x: Float, y: Float) -> Int;
+
+/// `ctx.arc(x, y, r, startRad, endRad, ccw?)` — circular arc; this
+/// binding fixes counter-clockwise to `false` (the common case).
+/// Returns 0.
+pub extern fn canvasArc(ctx: Ctx2D, x: Float, y: Float, r: Float, startRad: Float, endRad: Float) -> Int;
+
+/// `ctx.fill()` — fill the current path using `fillStyle`. Returns 0.
+pub extern fn canvasFill(ctx: Ctx2D) -> Int;
+
+/// `ctx.stroke()` — stroke the current path using `strokeStyle` and
+/// `lineWidth`. Returns 0.
+pub extern fn canvasStroke(ctx: Ctx2D) -> Int;
+
+// ── Transform stack ────────────────────────────────────────────────
+
+/// `ctx.save()` — push the current transform / style state onto the
+/// internal stack. Returns 0.
+pub extern fn canvasSave(ctx: Ctx2D) -> Int;
+
+/// `ctx.restore()` — pop the most recently saved transform / style
+/// state. Returns 0.
+pub extern fn canvasRestore(ctx: Ctx2D) -> Int;
+
+/// `ctx.translate(x, y)` — translate the current transform. Returns 0.
+pub extern fn canvasTranslate(ctx: Ctx2D, x: Float, y: Float) -> Int;
+
+/// `ctx.rotate(rad)` — rotate the current transform by `rad`
+/// radians. Returns 0.
+pub extern fn canvasRotate(ctx: Ctx2D, rad: Float) -> Int;
+
+/// `ctx.scale(x, y)` — scale the current transform. Returns 0.
+pub extern fn canvasScale(ctx: Ctx2D, x: Float, y: Float) -> Int;
+
+// ── Text ───────────────────────────────────────────────────────────
+
+/// `ctx.font = font` — set the font string (CSS font shorthand,
+/// e.g. `"16px sans-serif"`). Returns 0.
+pub extern fn canvasFont(ctx: Ctx2D, font: String) -> Int;
+
+/// `ctx.textAlign = align` — horizontal text alignment
+/// (`"left" | "right" | "center" | "start" | "end"`). Returns 0.
+pub extern fn canvasTextAlign(ctx: Ctx2D, align: String) -> Int;
+
+/// `ctx.textBaseline = baseline` — vertical text alignment
+/// (`"top" | "middle" | "bottom" | "alphabetic" | "hanging"`).
+/// Returns 0.
+pub extern fn canvasTextBaseline(ctx: Ctx2D, baseline: String) -> Int;
+
+/// `ctx.fillText(text, x, y)` — paint filled text at `(x, y)` using
+/// `fillStyle`, `font`, `textAlign`, `textBaseline`. Returns 0.
+pub extern fn canvasFillText(ctx: Ctx2D, text: String, x: Float, y: Float) -> Int;
+
+/// `ctx.strokeText(text, x, y)` — outline text at `(x, y)` using
+/// `strokeStyle`. Returns 0.
+pub extern fn canvasStrokeText(ctx: Ctx2D, text: String, x: Float, y: Float) -> Int;
+
+/// `ctx.measureText(text)` — returns a `TextMetrics`-shaped JS object
+/// exposed as opaque `Json`. Read `width` and font-baseline metrics
+/// via existing Json accessors.
+pub extern fn canvasMeasureText(ctx: Ctx2D, text: String) -> Json;
+
+// ── Images ─────────────────────────────────────────────────────────
+
+/// `ctx.drawImage(image, x, y)` — draw a host image (`HTMLImageElement`,
+/// `HTMLCanvasElement`, `ImageBitmap`, …) at `(x, y)` at its
+/// natural size. The image is opaque `Json` since its concrete type
+/// depends on context. Returns 0.
+pub extern fn canvasDrawImage(ctx: Ctx2D, image: Json, x: Float, y: Float) -> Int;
+
+/// `ctx.drawImage(image, x, y, w, h)` — same as `canvasDrawImage`
+/// but scales the source to fit `(w, h)`. Returns 0.
+pub extern fn canvasDrawImageScaled(ctx: Ctx2D, image: Json, x: Float, y: Float, w: Float, h: Float) -> Int;

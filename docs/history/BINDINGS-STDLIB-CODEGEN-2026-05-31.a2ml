@@ -1,0 +1,83 @@
+# SPDX-License-Identifier: MPL-2.0
+# Machine-readable session summary: bindings/stdlib roadmap closeout +
+# hex/base64 encoding + Int-division codegen fix. Bot-primary doc per
+# A2ML standard; see the .adoc companion for human narrative.
+
+[metadata]
+session-date = "2026-05-31"
+triggered-by = "issue #446 (AffineScript top-50 framework bindings roadmap UMBRELLA) — 'drive this to conclusion'"
+scope = "single-session"
+pr = "affinescript#474"
+merge-method = "merge-commit"
+author = "Jonathan D.A. Jewell <6759885+hyperpolymath@users.noreply.github.com>"
+
+[summary]
+headline = "Roadmap-doc tracking fixes (×3) + Zig-FFI patterns spec (bindings #19) + hex/base64 stdlib module (stdlib #25) + byte primitives + Int-division codegen fix (#478, filed + fixed this session)"
+state-before = "bindings-roadmap/stdlib-roadmap/alib-roadmap Tracking sections carried stale '(TBD — opened alongside this PR)' placeholders; no Zig-FFI authoring doc (bindings #19 = scaffold); no stdlib/encoding.affine; Deno-ESM backend lowered Int/Int to JS float division (255/16 -> 15.9375), silently breaking math.affine integer fns"
+state-after = "all three Tracking sections point at live umbrellas (#446/#412/#413) + child issues; docs/specs/zig-ffi-patterns.adoc landed (row #19 ◐->●); stdlib/encoding.affine landed with hex + RFC4648 base64 (row #25 ○->◑); two byte builtins wired through resolve/typecheck/interp/codegen_deno; Int/Int division truncates via Math.trunc on Deno-ESM, Float/Float untouched"
+
+[changes.docs.tracking-fixes]
+files = "docs/bindings-roadmap.adoc, docs/stdlib-roadmap.adoc, docs/alib-roadmap.adoc"
+kind = "doc"
+detail = "Replaced '(TBD — opened alongside this PR)' Tracking placeholders with live umbrella + child-issue links. bindings -> #446 (pre-filed tiers #450-#454, kickoff #455); stdlib -> #412 (lazy stdlib #N; #415); alib -> #413 (lazy alib #N; #416)."
+
+[changes.docs.zig-ffi]
+file = "docs/specs/zig-ffi-patterns.adoc"
+kind = "doc-new"
+roadmap = "bindings #19"
+detail = "Canonical authoring recipe for binding a Zig C-ABI export to an extern fn. DOC-DEDUP-scoped vs SPEC §2.10 (grammar) / STDLIB-EXTERN-AUDIT (inventory) / codegen-environment (wasm codegen). Per-backend host contract: wasm (import \"env\" \"<name>\"); Deno-ESM same-named host symbol. Worked example uses the existing hpm-json-rsr binding."
+roadmap-row = "bindings-roadmap.adoc #19 ◐ -> ●"
+
+[changes.stdlib.encoding]
+file = "stdlib/encoding.affine"
+kind = "stdlib-new"
+roadmap = "stdlib #25"
+surface = "to_hex, from_hex, to_hex_padded, hex_digit, hex_value, to_base64, to_base64_url, from_base64, from_base64_url"
+detail = "Lowercase 32-bit hex + RFC 4648 base64 (standard + URL-safe). Built on string primitives (len/string_sub/string_find/++) and integer bit-ops (& >> << |). Integer / deliberately avoided — it lowered to float division on Deno-ESM (see #478)."
+deferred = "Base64 Bytes-typed overloads await a Bytes type (stdlib #30); current forms operate on Latin-1-byte Strings."
+roadmap-row = "stdlib-roadmap.adoc #25 ○ -> ◑"
+test = "tests/codegen-deno/encoding_smoke.{affine,harness.mjs} — RFC 4648 §10 vectors round-trip under Node"
+
+[changes.compiler.byte-primitives]
+files = "lib/resolve.ml, lib/typecheck.ml, lib/interp.ml, lib/codegen_deno.ml"
+kind = "compiler"
+added = "string_char_code_at (String -> Int -> Int; out-of-bounds -> -1), string_from_char_code (Int -> String; masks & 0xff)"
+detail = "Byte-oriented String<->Int accessors underpinning base64. Unlike string_get/int_to_char (Char-typed, ASCII-clamped), these go String<->Int directly so a byte 0..255 round-trips identically on interpreter + Deno-ESM. Wired through all four layers: resolver seed, typechecker binding, interpreter impl, codegen_deno __as_strCharCodeAt/__as_strFromCharCode + builtin map."
+
+[changes.compiler.int-division]
+file = "lib/codegen_deno.ml"
+kind = "codegen-fix"
+issue = "#478"
+severity = "high"
+symptom = "Int/Int lowered to JS '/' (IEEE-754 float): 255/16 -> 15.9375, -7/2 -> -3.5. Broke math.affine pow/sum_naturals/binomial/lcm/div_floor and for-loop/indexed integer division on the Deno-ESM backend."
+root-cause = "Type-erased emitter mapped OpDiv -> \"/\" unconditionally; JS division is always floating-point."
+fix = "Lower a provably-Int a/b to Math.trunc(a/b) (truncate toward zero, matching interpreter OCaml / and wasm i32.div_s); every other / stays float. Conservative expr_is_int/expr_is_int_array classifier: int literals, Int params, let/assign-tracked Int locals (per-fn reset via enter_fn_scope, per-let-scope restore), integer-closed arithmetic, JS bitwise (int32), Int-returning fn/builtin calls, for-loop var over Array<Int>, xs[i] element read. Unknown operand keeps / (no float regression). x /= y over ints truncates."
+test = "tests/codegen-deno/int_div.{affine,harness.mjs} — truncation, toward-zero negatives, float preserved (incl. Array<Float> loops), loop-mutated locals, Int-returning-call operands, for-loop var, indexed array, /="
+remaining = "Sibling OpDiv -> \"/\" in lib/js_codegen.ml + lib/codegen_node.ml; wasm float-division mirror (codegen.ml uses I32DivS unconditionally); record-field Int operands. All tracked in #478. Complete fix = thread typechecker inferred types into backends."
+
+[changes.config.gitignore]
+file = ".gitignore"
+kind = "chore"
+detail = "Ignore /.claude/worktrees/ — transient per-agent git worktrees, never committed (committing a nested worktree would corrupt the repo)."
+
+[verification]
+method = "apt-bootstrapped OCaml toolchain (opam.ocaml.org is 403 in web env; Ubuntu apt packages satisfy pins)"
+dune-build-bin = "clean"
+dune-runtest = "pass"
+codegen-wasm = "pass"
+codegen-deno = "pass (incl. int_div + encoding_smoke)"
+face-transformer = "pass"
+check-no-extension-ts = "pass"
+check-doc-truthing = "pass (DOC-01..09)"
+fmt = "dune build @fmt is a no-op for lib/*.ml (no root .ocamlformat; ocamlformat self-disables); origin/main passes @fmt with zero proposals; verified with ocamlformat 0.26.2 (pinned)"
+not-runnable-locally = "full dune build / @doc (need js_of_ocaml + odoc; present in CI)"
+
+[issue-state]
+umbrella = "#446 stays OPEN — STEP 1-3 done; STEP 4 (parallel tier execution) + STEP 5 (cross-campaign coordination) long-running by design"
+advanced = "bindings #19 shipped; stdlib #25 partial (hex+base64 done, Bytes overloads deferred to #30)"
+filed = "#478 (Int-division codegen; partially resolved — Deno-ESM done, js/node/wasm follow-ups tracked)"
+
+[process-notes]
+hazard-1 = "Batching dependent edits caused silent edit-match failures + a stale-binary false-green + a misleading commit message. Corrected: one edit + one build at a time; amend with honest message; force-push-with-lease."
+hazard-2 = "Branch was 15 commits behind main; rebased before merge to avoid reverting landed PRs (CLAUDE.md branching discipline). Rebase surfaced new gate check-doc-truthing.sh, then satisfied."
+hazard-3 = "Earlier 'files CLEAN' fmt claim was a vacuous self-disabled pass; corrected on PR thread with the real proof (main passes @fmt; lib/ predates ocamlformat)."
