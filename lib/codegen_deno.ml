@@ -454,6 +454,13 @@ let () =
   (* `new Date().toISOString()` — UTC ISO-8601 timestamp string. Distinct
      from `dateNow()` which returns epoch millis as Int. *)
   b "dateNowIso"  (fun _ -> "(new Date().toISOString())");
+  (* `performance.now()` — high-resolution sub-millisecond timer. *)
+  b "performance_now" (fun _ -> "performance.now()");
+  (* Math.random + derived integer-range helpers (campaign #239 STEP
+     4-B / standards#327). Non-crypto PRNG. *)
+  b "math_random"     (fun _ -> "Math.random()");
+  b "random_u32"      (fun _ -> "((Math.random() * 4294967296) >>> 0)");
+  b "random_in_range" (fun a -> Printf.sprintf "(Math.floor(Math.random() * ((%s) - (%s))) + (%s))" (arg 1 a) (arg 0 a) (arg 0 a));
   (* `Deno.args` — CLI argument vector (excludes argv[0]). *)
   b "args"        (fun _ -> "Deno.args");
   (* `Deno.exit(code)` — terminate process. Never returns. *)

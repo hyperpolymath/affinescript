@@ -121,6 +121,30 @@ pub extern fn dateNow() -> Int;
 /// returns epoch millis as `Int`.
 pub extern fn dateNowIso() -> String;
 
+/// `performance.now()` — high-resolution sub-millisecond timer in
+/// milliseconds since process start. Use for fine-grained timings (the
+/// existing `dateNow()` returns coarse epoch-millis as Int). Standard
+/// JS performance API, present in Deno, Node ≥ 16, and modern browsers.
+pub extern fn performance_now() -> Float;
+
+// ── Randomness (PRNG, non-crypto) ──────────────────────────────────
+//
+// Bound on `Math.random()` — the JS PRNG, **not cryptographically
+// secure**. Sufficient for property-test input generation, sampling,
+// and simulations. For cryptographic random bytes, a separate
+// `crypto_random_bytes` binding routing to `crypto.getRandomValues()`
+// belongs in a different sub-issue (different host call, different
+// threat model).
+
+/// `Math.random()` — uniform pseudo-random Float in `[0, 1)`.
+pub extern fn math_random() -> Float;
+
+/// Uniform u32 in `[0, 2^32)`, derived from `math_random()`.
+pub extern fn random_u32() -> Int;
+
+/// Uniform Int in `[lo, hi)`. Undefined behaviour if `hi <= lo`.
+pub extern fn random_in_range(lo: Int, hi: Int) -> Int;
+
 // ── CLI ────────────────────────────────────────────────────────────
 
 /// `Deno.args` — command-line arguments (excludes argv[0]).

@@ -1,0 +1,18 @@
+// SPDX-License-Identifier: MPL-2.0
+// campaign #239 STEP 4-B — randomness + perf.now smoke
+//
+// Exercises math_random / random_u32 / random_in_range bindings + the
+// performance_now monotone-clock binding. The harness verifies
+// distribution sanity (not crypto-grade): u32 spans a reasonable
+// fraction of its range, random_in_range stays inside [lo, hi), and
+// performance_now is non-decreasing.
+
+use Deno::{ math_random, random_u32, random_in_range, performance_now };
+
+pub fn draw_u32() -> Int = random_u32();
+
+pub fn draw_unit() -> Float = math_random();
+
+pub fn draw_in_range(lo: Int, hi: Int) -> Int = random_in_range(lo, hi);
+
+pub fn perf_tick() -> Float = performance_now();
