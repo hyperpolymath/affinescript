@@ -222,16 +222,22 @@ AffineScript `fn` skeleton:
 | `let area = (w, h) => w *. h` | `fn area(w: _, h: _) -> _ { w * h }` |
 | `let classify = x => switch x { \| Some(n) => n + 1 \| None => 0 }` | `fn classify(x: _) -> _ { match x { Some(n) => n + 1, None => 0, } }` |
 | `let greet = name => "hi " ++ name` | `fn greet(name: _) -> _ { "hi " ++ name }` |
+| `let piped = x => x->doStuff(1)` | `fn piped(x: _) -> _ { doStuff(x, 1) }` |
+| `let chain = x => x->f->g(2)` | `fn chain(x: _) -> _ { g(f(x), 2) }` |
+| `let clamp = x => if x > 0 { x } else { 0 }` | `fn clamp(x: _) -> _ { if x > 0 { x } else { 0 } }` |
+| `let scaled = x => { let y = x + 1; y * 2 }` | `fn scaled(x: _) -> _ { let y = x + 1; y * 2 }` |
 
 It translates literals, identifiers, calls, binary operators (normalising
 ReScript's float ops `+.`/`*.` → `+`/`*` and `===`/`!==` → `==`/`!=`), string
-concat `++`, member/qualified access, ternaries, and `switch`→`match` with
-variant/tuple/literal patterns. Anything else (pipe-first `->`, records, etc.)
-becomes a `() /* TODO */` hole. The output is a partial port to finish by
-hand: it **parses** but is not expected to type-check (verified — the
-generated skeletons reach resolution/type-checking without a parse error).
-First slice; the next steps (pipe desugaring `a->f(b)` → `f(a, b)`, `if`/block
-bodies, combining with `--translate`) continue under #488.
+concat `++`, member/qualified access, ternaries, **`if`/`else`**, **blocks
+with `let` statements**, **pipe-first `->`** (`a->f(b)` → `f(a, b)`, chained
+left-to-right), and `switch`→`match` with variant/tuple/literal patterns.
+Anything else (records, arrays, objects, …) becomes a `() /* TODO */` hole.
+The output is a partial port to finish by hand: it **parses** but is not
+expected to type-check (verified — the generated skeletons reach
+resolution/type-checking without a parse error). Continuing under #488:
+record/array/object literals, labelled args, combining `--partial` with
+`--translate`, and module-qualified-reference *resolution*.
 
 ## Corpus run
 
