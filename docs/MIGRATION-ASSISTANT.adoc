@@ -4,7 +4,8 @@
 :toc: macro
 :toclevels: 2
 
-Tracks issue #57 (parser + metaparser). Companion to
+Tracks issue #488 (partial-port mode), the successor to the now-closed #57
+(parser + metaparser; the declaration-translation phase, delivered). Companion to
 link:RESCRIPT-ELIMINATION.adoc[RESCRIPT-ELIMINATION.adoc], which is the
 authoritative ledger for the broader estate ReScript-surface retirement.
 
@@ -118,7 +119,8 @@ which is what makes the tool earn its keep on idaptik's 542 files.
 
 * `tools/res-to-affine/README.md` — tool usage, Phase plan, design rationale.
 * `editors/tree-sitter-rescript/README.md` — vendoring manifest details.
-* `affinescript#57` — parser + metaparser proposal.
+* `affinescript#57` — parser + metaparser proposal (closed; declaration translation delivered).
+* `affinescript#488` — successor: partial-port mode + module-qualified-reference resolution.
 * `gitbot-fleet#148` — downstream tracker for the consumed ReScript subtree.
 * link:RESCRIPT-ELIMINATION.adoc[`RESCRIPT-ELIMINATION.adoc`] — estate-wide ledger.
 * https://github.com/hyperpolymath/idaptik/blob/main/migration/main/LESSONS.md[idaptik LESSONS.md]

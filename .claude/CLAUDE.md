@@ -42,7 +42,7 @@ The following files in `.machine_readable/` contain structured project metadata:
 
 ## Language Policy (Hyperpolymath Standard)
 
-> **Policy refresh 2026-05-25**: AffineScript is now the primary application language across the estate (this is its home repo). ReScript / TypeScript / meaningfully-migrated JavaScript are banned going forward — write new code in AffineScript. Existing ReScript stays in place as legacy until the `.res → .affine` migration assistant (#57) walks the corpus. MPL-1.0 / MPL-1.0-or-later are banned; rewrite to MPL-2.0 wherever encountered (code + docs). **Jekyll is banned**; the canonical estate SSG is `hyperpolymath/casket-ssg` (Haskell). This repo already migrated via `.github/workflows/casket-pages.yml`.
+> **Policy refresh 2026-05-25**: AffineScript is now the primary application language across the estate (this is its home repo). ReScript / TypeScript / meaningfully-migrated JavaScript are banned going forward — write new code in AffineScript. Existing ReScript stays in place as legacy until the `.res → .affine` migration assistant (#488) walks the corpus. MPL-1.0 / MPL-1.0-or-later are banned; rewrite to MPL-2.0 wherever encountered (code + docs). **Jekyll is banned**; the canonical estate SSG is `hyperpolymath/casket-ssg` (Haskell). This repo already migrated via `.github/workflows/casket-pages.yml`.
 
 ### ALLOWED Languages & Tools
 
@@ -66,7 +66,7 @@ The following files in `.machine_readable/` contain structured project metadata:
 
 | Language | Status | Disposition |
 |----------|--------|-------------|
-| **ReScript** (`.res`, `.resi`) | Legacy — pre-2026-05-25 | Migrate via `tools/res-to-affine/` (#57) when touching adjacent code; do not add new `.res` files. |
+| **ReScript** (`.res`, `.resi`) | Legacy — pre-2026-05-25 | Migrate via `tools/res-to-affine/` (#488) when touching adjacent code; do not add new `.res` files. |
 | **JavaScript** (`.js`, `.cjs`, `.mjs`) | Legacy / carve-outs only | Approved runtime-exemption carve-outs (see below) remain; net-new JS in a project already migrated to AffineScript is banned. |
 
 ### BANNED — Do Not Use (write zero new occurrences)
@@ -74,7 +74,7 @@ The following files in `.machine_readable/` contain structured project metadata:
 | Banned | Replacement |
 |--------|-------------|
 | TypeScript | **AffineScript** |
-| ReScript (new files) | **AffineScript** (migration via #57) |
+| ReScript (new files) | **AffineScript** (migration via #488) |
 | JavaScript (where the project has been meaningfully migrated to AffineScript) | **AffineScript** |
 | Node.js | Deno |
 | npm | Deno |
@@ -102,7 +102,7 @@ Both are FOSS with independent governance (no Big Tech).
 ### Enforcement Rules
 
 1. **No new TypeScript files** - Write new code in AffineScript (closed exemptions table below covers the residual `.d.ts` / Deno-test cases).
-2. **No new ReScript files** - As of 2026-05-25 policy refresh; AffineScript is the go-forward. Existing `.res` files stay until migrated via #57.
+2. **No new ReScript files** - As of 2026-05-25 policy refresh; AffineScript is the go-forward. Existing `.res` files stay until migrated via #488.
 3. **No package.json for runtime deps** - Use deno.json imports.
 4. **No node_modules in production** - Deno caches deps automatically.
 5. **No Go code** - Use Rust instead.
