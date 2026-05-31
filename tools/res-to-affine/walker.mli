@@ -63,6 +63,23 @@ val translate :
     skipped form is recovered from the marker block / quoted source the
     emitter prints. Raises [Failure] under the same conditions as {!scan}. *)
 
+val translate_partial :
+  grammar_dir:string ->
+  path:string ->
+  source:string ->
+  (int * string) list
+(** [translate_partial ~grammar_dir ~path ~source] is the #488 partial-port
+    model (distinct from {!translate}): it renders module-top-level function
+    bindings ([let f = (x) => body]) into AffineScript [fn] skeletons with
+    [switch]->[match] and best-effort expression translation, as
+    [(source_line, affinescript)] pairs in source order.
+
+    Unlike {!translate}, the output is NOT guaranteed to type-check: un-
+    annotated parameters become [_] type holes and any expression/pattern
+    that can't be translated is emitted as a [() /* TODO */] or
+    [_ /* TODO */] hole. It is a partial port a human finishes; it does
+    still parse. Raises [Failure] under the same conditions as {!scan}. *)
+
 val default_grammar_dir : string
 (** Default location of the generated grammar relative to the current
     working directory: ["tools/vendor/tree-sitter-rescript"]. Matches

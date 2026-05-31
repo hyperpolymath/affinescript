@@ -911,6 +911,250 @@ let rec collect_translations ~source ancestors acc node =
     (fun acc c -> collect_translations ~source (node.ntype :: ancestors) acc c)
     acc node.children
 
+(* ---- #488 partial-port mode ----------------------------------------------
+
+   A SEPARATE model from the declaration translator above. It renders module-
+   top-level function bindings (`let f = (x) => body`) into AffineScript `fn`
+   skeletons with `switch`->`match` and best-effort expression translation.
+   The output is DELIBERATELY not type-checked: un-annotated ReScript params
+   become `_` type holes and any expression/pattern we can't translate is
+   emitted as a `() /* TODO */` (expr) or `_ /* TODO */` (pattern) hole. The
+   point is a partial port a human finishes; everything still PARSES. *)
+
+let partial_excerpt ~source n =
+  let s = node_text ~source n in
+  let s = String.map (function '\n' | '\r' | '\t' -> ' ' | c -> c) s in
+  let s = Str.global_replace (Str.regexp_string "*/") "* /" s in
+  let s = String.trim s in
+  if String.length s > 48 then String.sub s 0 45 ^ "..." else s
+
+let todo_expr ~source n =
+  Printf.sprintf "() /* TODO: %s */" (partial_excerpt ~source n)
+
+let todo_pattern ~source n =
+  Printf.sprintf "_ /* TODO: %s */" (partial_excerpt ~source n)
+
+(* The binary operator is an anonymous token (absent from the named tree);
+   we slice it from source. Normalise ReScript float ops + identity equality
+   to their AffineScript spellings. *)
+let affine_binop raw =
+  match String.trim raw with
+  | "+." -> "+" | "-." -> "-" | "*." -> "*" | "/." -> "/"
+  | "===" -> "==" | "!==" -> "!="
+  | op -> op
+
+let rec translate_pattern ~source n =
+  match n.ntype with
+  | "value_identifier" | "number" | "string" | "true" | "false" | "character"
+    -> node_text ~source n
+  | "tuple_item_pattern" -> (
+      match List.find_opt (fun c -> c.ntype <> "type_annotation") n.children with
+      | Some p -> translate_pattern ~source p
+      | None -> "_")
+  | "tuple_pattern" ->
+      Printf.sprintf "(%s)"
+        (String.concat ", " (List.map (translate_pattern ~source) n.children))
+  | "variant_pattern" -> (
+      match
+        List.find_opt (fun c -> c.ntype = "variant_identifier") n.children
+      with
+      | None -> todo_pattern ~source n
+      | Some v -> (
+          let name = node_text ~source v in
+          match
+            List.find_opt (fun c -> c.ntype = "formal_parameters") n.children
+          with
+          | None -> name
+          | Some fp ->
+              let args =
+                List.filter_map
+                  (fun c ->
+                    if c.ntype = "type_annotation" then None
+                    else Some (translate_pattern ~source c))
+                  fp.children
+              in
+              if args = [] then name
+              else Printf.sprintf "%s(%s)" name (String.concat ", " args)))
+  | _ -> todo_pattern ~source n
+
+let rec translate_expr ~source n =
+  match n.ntype with
+  | "number" | "string" | "true" | "false" | "character" | "value_identifier"
+    -> node_text ~source n
+  (* a module-qualified value (`Js.log`); the dotted form parses in
+     AffineScript as field access, which is enough for a skeleton. *)
+  | "value_identifier_path" -> node_text ~source n
+  | "unit" -> "()"
+  | "expression_statement" -> (
+      match List.filter (fun c -> c.ntype <> "comment") n.children with
+      | [ e ] -> translate_expr ~source e
+      | _ -> todo_expr ~source n)
+  | "switch_expression" -> translate_switch ~source n
+  | "parenthesized_expression" -> (
+      match List.filter (fun c -> c.ntype <> "comment") n.children with
+      | [ inner ] -> Printf.sprintf "(%s)" (translate_expr ~source inner)
+      | _ -> todo_expr ~source n)
+  | "sequence_expression" | "block" -> (
+      match List.filter (fun c -> c.ntype <> "comment") n.children with
+      | [] -> "()"
+      | [ single ] -> translate_expr ~source single
+      | many ->
+          Printf.sprintf "{ %s }"
+            (String.concat "; " (List.map (translate_expr ~source) many)))
+  | "ternary_expression" -> (
+      match
+        ( child_with_field "condition" n,
+          child_with_field "consequence" n,
+          child_with_field "alternative" n )
+      with
+      | Some c, Some a, Some b ->
+          Printf.sprintf "if %s { %s } else { %s }" (translate_expr ~source c)
+            (translate_expr ~source a) (translate_expr ~source b)
+      | _ -> todo_expr ~source n)
+  | "call_expression" ->
+      let fn =
+        match child_with_field "function" n with
+        | Some f -> translate_expr ~source f
+        | None -> "todo_fn"
+      in
+      let args =
+        match child_with_field "arguments" n with
+        | None -> []
+        | Some a ->
+            List.filter_map
+              (fun c ->
+                match c.ntype with
+                | "type_annotation" -> None
+                | "labeled_argument" -> Some (translate_labeled_arg ~source c)
+                | _ -> Some (translate_expr ~source c))
+              a.children
+      in
+      Printf.sprintf "%s(%s)" fn (String.concat ", " args)
+  | "binary_expression" -> (
+      match List.filter (fun c -> c.ntype <> "comment") n.children with
+      | [ l; r ] ->
+          let op = affine_binop (slice ~source ~start:l.stop ~stop:r.start) in
+          Printf.sprintf "%s %s %s" (translate_expr ~source l) op
+            (translate_expr ~source r)
+      | _ -> todo_expr ~source n)
+  | "member_expression" -> (
+      match (child_with_field "record" n, child_with_field "property" n) with
+      | Some r, Some p ->
+          Printf.sprintf "%s.%s" (translate_expr ~source r)
+            (node_text ~source p)
+      | _ -> todo_expr ~source n)
+  | _ -> todo_expr ~source n
+
+and translate_labeled_arg ~source n =
+  let value =
+    match child_with_field "value" n with
+    | Some v -> translate_expr ~source v
+    | None -> "()"
+  in
+  match child_with_field "label" n with
+  | Some l -> Printf.sprintf "/* ~%s */ %s" (node_text ~source l) value
+  | None -> value
+
+and translate_switch ~source sw =
+  let scrutinee =
+    match List.find_opt (fun c -> c.ntype <> "switch_match") sw.children with
+    | Some s -> translate_expr ~source s
+    | None -> "()"
+  in
+  let arms =
+    List.filter_map
+      (fun c ->
+        if c.ntype <> "switch_match" then None
+        else
+          let pat =
+            match child_with_field "pattern" c with
+            | Some p -> translate_pattern ~source p
+            | None -> "_"
+          in
+          let guard =
+            match List.find_opt (fun g -> g.ntype = "guard") c.children with
+            | Some g -> (
+                match g.children with
+                | e :: _ -> " if " ^ translate_expr ~source e
+                | [] -> "")
+            | None -> ""
+          in
+          let body =
+            match child_with_field "body" c with
+            | Some b -> translate_expr ~source b
+            | None -> "()"
+          in
+          Some (Printf.sprintf "  %s%s => %s," pat guard body))
+      sw.children
+  in
+  Printf.sprintf "match %s {\n%s\n}" scrutinee (String.concat "\n" arms)
+
+let translate_param ~source p =
+  match p.ntype with
+  | "value_identifier" -> node_text ~source p ^ ": _"
+  | "parameter" | "labeled_parameter" -> (
+      match
+        List.find_opt (fun c -> c.ntype = "value_identifier") p.children
+      with
+      | Some nm -> node_text ~source nm ^ ": _"
+      | None -> "_arg: _")
+  | "unit" -> "_unit: ()"
+  | _ -> "_arg: _"
+
+let partial_function ~source ~name fn =
+  let params =
+    match child_with_field "parameter" fn with
+    | Some single -> [ translate_param ~source single ]
+    | None -> (
+        match
+          List.find_opt (fun c -> c.ntype = "formal_parameters") fn.children
+        with
+        | Some fp ->
+            List.filter_map
+              (fun c ->
+                if c.ntype = "type_annotation" || c.ntype = "comment" then None
+                else Some (translate_param ~source c))
+              fp.children
+        | None -> [])
+  in
+  let body =
+    match child_with_field "body" fn with
+    | Some b -> translate_expr ~source b
+    | None -> "()"
+  in
+  Printf.sprintf
+    "// TODO(partial-port): fill the `_` types and `() /* TODO */` holes.\n\
+     fn %s(%s) -> _ {\n  %s\n}"
+    name (String.concat ", " params) body
+
+(* Translate a `let f = (..) => body` whose pattern is a plain identifier and
+   whose body is a function, into an `fn` skeleton. [None] otherwise. *)
+let translate_partial_let ~source lb =
+  match child_with_field "pattern" lb with
+  | Some pat when pat.ntype = "value_identifier" -> (
+      match child_with_field "body" lb with
+      | Some body when body.ntype = "function" ->
+          Some (partial_function ~source ~name:(node_text ~source pat) body)
+      | _ -> None)
+  | _ -> None
+
+let rec collect_partial ~source ancestors acc node =
+  let acc =
+    if at_module_toplevel ancestors && node.ntype = "let_declaration" then
+      List.fold_left
+        (fun acc c ->
+          if c.ntype = "let_binding" then
+            (match translate_partial_let ~source c with
+             | Some s -> (c.start.row + 1, s) :: acc
+             | None -> acc)
+          else acc)
+        acc node.children
+    else acc
+  in
+  List.fold_left
+    (fun acc c -> collect_partial ~source (node.ntype :: ancestors) acc c)
+    acc node.children
+
 (* ---- public entry point --------------------------------------------------- *)
 
 let parse_file ~grammar_dir ~path =
@@ -932,4 +1176,9 @@ let scan ~grammar_dir ~path ~source =
 let translate ~grammar_dir ~path ~source =
   let root = parse_file ~grammar_dir ~path in
   collect_translations ~source [] [] root
+  |> List.sort (fun (l1, _) (l2, _) -> compare l1 l2)
+
+let translate_partial ~grammar_dir ~path ~source =
+  let root = parse_file ~grammar_dir ~path in
+  collect_partial ~source [] [] root
   |> List.sort (fun (l1, _) (l2, _) -> compare l1 l2)
