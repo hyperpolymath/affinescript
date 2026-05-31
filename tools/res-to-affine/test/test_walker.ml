@@ -401,8 +401,19 @@ let partial1_blob () =
 let test_partial_count () =
   skip_unless_ready ();
   Alcotest.(check int)
-    "nine module-top-level functions -> fn skeletons"
-    9 (List.length (translate_partial1 ()))
+    "eleven module-top-level functions -> fn skeletons"
+    11 (List.length (translate_partial1 ()))
+
+let test_partial_array () =
+  skip_unless_ready ();
+  Alcotest.(check bool) "array literal translated"
+    true (contains (partial1_blob ()) "[x, x]")
+
+let test_partial_record () =
+  skip_unless_ready ();
+  (* nominal placeholder type `Rec`; field punning {x} -> x: x *)
+  Alcotest.(check bool) "record literal -> Rec #{ ... }"
+    true (contains (partial1_blob ()) "Rec #{ x: x, y: y }")
 
 let test_partial_pipe () =
   skip_unless_ready ();
@@ -521,8 +532,12 @@ let () =
         ] );
       ( "walker-488-partial",
         [
-          Alcotest.test_case "nine functions -> fn skeletons"
+          Alcotest.test_case "eleven functions -> fn skeletons"
             `Quick test_partial_count;
+          Alcotest.test_case "array literal translated"
+            `Quick test_partial_array;
+          Alcotest.test_case "record literal -> Rec #{ ... }"
+            `Quick test_partial_record;
           Alcotest.test_case "switch -> match + patterns + arm bodies"
             `Quick test_partial_switch_to_match;
           Alcotest.test_case "float op normalised + multi-param skeleton"

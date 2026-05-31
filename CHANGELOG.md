@@ -20,6 +20,7 @@ this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- feat(res-to-affine): partial-port mode #488 slice 3 — `--partial` now translates array literals (`[a, b]`) and record literals (`{x, y}` → `Rec #{ x: x, y: y }`, with a nominal placeholder type + field-punning expansion) (Refs #488)
 - feat(res-to-affine): partial-port mode #488 slice 2 — `--partial` now desugars ReScript pipe-first `->` (`a->f(b)` → `f(a, b)`, chained left-to-right), and translates `if`/`else` and blocks with `let` statements (Refs #488)
 - feat(res-to-affine): partial-port mode (#488) — new `--partial` flag renders module-top-level functions as AffineScript `fn` skeletons with `switch`→`match` and best-effort expression translation (literals / idents / calls / binary ops with float-op + identity-equality normalisation / `++` / member + qualified access / ternary / variant + tuple + literal patterns); un-translatable forms become `() /* TODO */` / `_ /* TODO */` holes. Output deliberately does NOT type-check but parses (verified). Distinct model from `--translate` (Refs #488)
 - feat(res-to-affine): Phase 3 slice 3 — `--translate` now also lowers module-level `let <id> = <literal>` (int/float/string/bool) to a typed `const name: T = value;`; call / `ref(...)` / destructuring bindings are skipped (not compile-time constants); every emitted form verified compilable via `main.exe check`. `switch`→`match` and qualified-path resolution remain out of the standalone-type-check scope (Refs #57)

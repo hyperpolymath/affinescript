@@ -231,13 +231,17 @@ It translates literals, identifiers, calls, binary operators (normalising
 ReScript's float ops `+.`/`*.` → `+`/`*` and `===`/`!==` → `==`/`!=`), string
 concat `++`, member/qualified access, ternaries, **`if`/`else`**, **blocks
 with `let` statements**, **pipe-first `->`** (`a->f(b)` → `f(a, b)`, chained
-left-to-right), and `switch`→`match` with variant/tuple/literal patterns.
-Anything else (records, arrays, objects, …) becomes a `() /* TODO */` hole.
-The output is a partial port to finish by hand: it **parses** but is not
-expected to type-check (verified — the generated skeletons reach
-resolution/type-checking without a parse error). Continuing under #488:
-record/array/object literals, labelled args, combining `--partial` with
-`--translate`, and module-qualified-reference *resolution*.
+left-to-right), **array literals** (`[a, b]`), **record literals** (`{x, y}` →
+`Rec #{ x: x, y: y }` — AffineScript records are *nominal*, so an anonymous
+ReScript record gets the placeholder type `Rec` for the human to rename;
+field punning `{x}` expands to `x: x`), and `switch`→`match` with
+variant/tuple/literal patterns. Anything else (JS objects, interpolated
+template strings, `try`/`catch`, …) becomes a `() /* TODO */` hole. The output
+is a partial port to finish by hand: it **parses** but is not expected to
+type-check (verified — the generated skeletons reach resolution/type-checking
+without a parse error). Continuing under #488: JS objects / template strings,
+labelled-arg refinement, combining `--partial` with `--translate`, and
+module-qualified-reference *resolution* (a module-mapping policy decision).
 
 ## Corpus run
 

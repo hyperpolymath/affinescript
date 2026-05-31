@@ -1044,6 +1044,35 @@ let rec translate_expr ~source n =
           Printf.sprintf "%s.%s" (translate_expr ~source r)
             (node_text ~source p)
       | _ -> todo_expr ~source n)
+  | "array" ->
+      Printf.sprintf "[%s]"
+        (String.concat ", "
+           (List.filter_map
+              (fun c ->
+                if c.ntype = "comment" then None
+                else Some (translate_expr ~source c))
+              n.children))
+  (* AffineScript records are nominal (`Type #{ … }`), so an anonymous ReScript
+     record gets a placeholder type `Rec` for the human to rename; the field
+     values are translated. Field punning `{x}` expands to `x: x`. *)
+  | "record" ->
+      let fields =
+        List.filter_map
+          (fun c ->
+            if c.ntype <> "record_field" then None
+            else
+              match List.filter (fun x -> x.ntype <> "comment") c.children with
+              | [ name ] ->
+                  let nm = node_text ~source name in
+                  Some (Printf.sprintf "%s: %s" nm nm)
+              | name :: value :: _ ->
+                  Some
+                    (Printf.sprintf "%s: %s" (node_text ~source name)
+                       (translate_expr ~source value))
+              | [] -> None)
+          n.children
+      in
+      Printf.sprintf "Rec #{ %s }" (String.concat ", " fields)
   | _ -> todo_expr ~source n
 
 and translate_labeled_arg ~source n =
