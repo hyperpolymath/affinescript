@@ -237,3 +237,20 @@ added = [
   ".machine_readable/MUST.contractile",
   ".machine_readable/TRUST.contractile"
 ]
+
+[[session-delta]]
+# Appended 2026-05-31 — bindings/stdlib roadmap closeout session (PR #474).
+# Mirror entry only; authoritative status remains docs/CAPABILITY-MATRIX.adoc
+# + the per-row status in docs/{bindings,stdlib}-roadmap.adoc. Live test
+# counts come from `dune runtest --force`, never hard-coded here (DOC-05, #176).
+date = "2026-05-31"
+pr = "#474"
+narrative = "docs/history/BINDINGS-STDLIB-CODEGEN-2026-05-31.{adoc,a2ml}"
+landed = [
+  "bindings #19 (Zig C-ABI FFI patterns) — docs/specs/zig-ffi-patterns.adoc; roadmap row ◐->●",
+  "stdlib #25 (hex + RFC4648 base64) — stdlib/encoding.affine; roadmap row ○->◑ (Bytes overloads deferred to #30)",
+  "compiler: string_char_code_at / string_from_char_code byte builtins (resolve/typecheck/interp/codegen_deno)",
+  "codegen fix #478 — Int/Int truncates via Math.trunc on Deno-ESM (Float/Float untouched); js/node/wasm follow-ups tracked in #478",
+  "docs: bindings/stdlib/alib roadmap Tracking sections de-staled to live umbrellas #446/#412/#413"
+]
+umbrella-446 = "stays open — STEP 1-3 done, STEP 4/5 long-running"
