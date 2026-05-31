@@ -1,0 +1,108 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// Ipc.affine — host↔guest message-passing primitives (bindings #9 in
+// docs/bindings-roadmap.adoc). Covers the MessageChannel /
+// MessagePort surface plus `structuredClone` for deep-copying values
+// across the IPC boundary.
+//
+// Pattern: the host creates a MessageChannel, transfers one port to
+// the embedded engine (worker / iframe / Gossamer-style guest) at
+// init time, and keeps the sibling port. Each side calls
+// `messagePortPostMessage` to send and registers a handler via
+// `messagePortOnMessage` to receive. Handlers see the raw
+// `MessageEvent` as opaque `Json` — read the payload as `event.data`
+// through existing Json accessors.
+//
+// Targets the Deno-ESM backend. No consumer-side init is required —
+// `MessageChannel`, `MessagePort`, and `structuredClone` are
+// standard web-platform globals available in Deno, Node 16+,
+// browsers, and Web Workers.
+//
+// Test fixture: `tests/codegen-deno/ipc_smoke.{affine,harness.mjs}`.
+//
+// Out of scope for this initial surface (deferred to follow-ups):
+//   * `transfer` array on `postMessage` (Transferable objects —
+//     ArrayBuffer transfer, sub-port handoff)
+//   * `BroadcastChannel` (separate same-origin pub/sub primitive)
+//   * `Worker` constructors / `Worker.terminate` (Tier 3 #25 — a
+//     dedicated Web Workers binding subsumes this)
+//   * Typed `MessageEvent` accessors (the handler currently sees the
+//     event as opaque Json; a typed extern_type + accessor surface
+//     is the natural follow-up axis once usage patterns crystallise)
+
+module Ipc;
+
+use Deno::{Json};
+
+// ── Opaque host types ──────────────────────────────────────────────
+
+/// Web-platform `MessageChannel` — a one-shot factory for a pair of
+/// linked `MessagePort`s. Either end can post to the other.
+pub extern type MessageChannel;
+
+/// One end of a `MessageChannel`. Posts on `port1` arrive on `port2`
+/// and vice versa.
+pub extern type MessagePort;
+
+// ── MessageChannel ─────────────────────────────────────────────────
+
+/// `new MessageChannel()` — returns a fresh channel whose two ports
+/// are not yet attached to anything. The convention is for the
+/// creator to keep `port1` and transfer `port2` to the guest.
+pub extern fn messageChannelNew() -> MessageChannel;
+
+/// `channel.port1` — the local (creator-side) port.
+pub extern fn messageChannelPort1(channel: MessageChannel) -> MessagePort;
+
+/// `channel.port2` — the remote (guest-side) port. Typically handed
+/// off via a `targetPostMessage` with a transfer list during the
+/// guest's init handshake.
+pub extern fn messageChannelPort2(channel: MessageChannel) -> MessagePort;
+
+// ── MessagePort ────────────────────────────────────────────────────
+
+/// `port.postMessage(data)` — enqueue a message for the peer port.
+/// `data` is any JSON-cloneable AffineScript `Json` value; cyclic
+/// graphs are preserved (the host applies `structuredClone`). The
+/// peer receives it as `event.data` on its registered handler.
+/// Returns 0.
+pub extern fn messagePortPostMessage(port: MessagePort, data: Json) -> Int;
+
+/// `port.onmessage = handler` — register the receive callback.
+/// `handler` is an opaque JS function `(event: Json) => void`; the
+/// `MessageEvent` arg is exposed as `Json` and read with existing
+/// `Json` field accessors (`event.data`, `event.ports`, …).
+/// Replaces any prior handler. Returns 0.
+pub extern fn messagePortOnMessage(port: MessagePort, handler: Json) -> Int;
+
+/// `port.start()` — explicitly open the port's queue. Required when
+/// the port was received via a `MessageEvent` rather than created
+/// locally; ports created via `MessageChannel` are auto-started on
+/// the first `onmessage` registration but calling `start` is always
+/// safe. Returns 0.
+pub extern fn messagePortStart(port: MessagePort) -> Int;
+
+/// `port.close()` — terminate the port. The peer's next post resolves
+/// silently; further receives are no-ops. Returns 0.
+pub extern fn messagePortClose(port: MessagePort) -> Int;
+
+// ── Cross-context postMessage ──────────────────────────────────────
+
+/// Generic `target.postMessage(message)` — works for any global with
+/// a `postMessage` method: `Worker`, `DedicatedWorkerGlobalScope`
+/// (`self` inside a worker), `Window`, `iframe.contentWindow`. The
+/// `target` is opaque `Json` because its shape depends on context;
+/// the AS caller obtains it from whatever host bridge supplies it
+/// (e.g. a `getCurrentSelf()` host helper inside a worker). Returns 0.
+pub extern fn targetPostMessage(target: Json, message: Json) -> Int;
+
+// ── structuredClone ────────────────────────────────────────────────
+
+/// `structuredClone(value)` — the web-platform deep-clone primitive.
+/// Preserves cyclic graphs, typed arrays, Maps, Sets, Dates, and
+/// `Transferable` views; rejects Functions, DOM nodes, Errors with
+/// non-cloneable causes. Useful for snapshotting a payload before
+/// posting it across an IPC boundary so downstream mutation can't
+/// leak back through a shared reference.
+pub extern fn structuredCloneValue(value: Json) -> Json;

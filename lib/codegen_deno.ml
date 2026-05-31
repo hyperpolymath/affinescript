@@ -330,6 +330,19 @@ const __as_pixiSoundPause = (s) => { s.pause(); return 0; };
 const __as_pixiSoundResume = (s) => { s.resume(); return 0; };
 const __as_pixiSoundSetVolume = (s, vol) => { s.volume = vol; return 0; };
 const __as_pixiSoundSetLoop = (s, loop) => { s.loop = loop; return 0; };
+// ---- Ipc (bindings #9): web-platform MessageChannel/MessagePort ----
+// Uses standard web globals (MessageChannel, structuredClone) — no
+// consumer-side init required. Available unmodified in Deno, Node 16+,
+// browsers, and Web Workers.
+const __as_messageChannelNew = () => new MessageChannel();
+const __as_messageChannelPort1 = (ch) => ch.port1;
+const __as_messageChannelPort2 = (ch) => ch.port2;
+const __as_messagePortPostMessage = (p, data) => { p.postMessage(data); return 0; };
+const __as_messagePortOnMessage = (p, handler) => { p.onmessage = handler; return 0; };
+const __as_messagePortStart = (p) => { p.start(); return 0; };
+const __as_messagePortClose = (p) => { p.close(); return 0; };
+const __as_targetPostMessage = (t, msg) => { t.postMessage(msg); return 0; };
+const __as_structuredCloneValue = (v) => structuredClone(v);
 // `++` is overloaded (string concat / array concat); `a + b` would
 // stringify arrays. Dispatch on shape so stdlib/string.affine's
 // `result ++ [x]` and `a ++ b` are both correct.
@@ -557,6 +570,16 @@ let () =
   b "pixiSoundResume"    (fun a -> Printf.sprintf "__as_pixiSoundResume(%s)" (arg 0 a));
   b "pixiSoundSetVolume" (fun a -> Printf.sprintf "__as_pixiSoundSetVolume(%s, %s)" (arg 0 a) (arg 1 a));
   b "pixiSoundSetLoop"   (fun a -> Printf.sprintf "__as_pixiSoundSetLoop(%s, %s)" (arg 0 a) (arg 1 a));
+  (* ---- Ipc (bindings #9): MessageChannel/MessagePort + structuredClone ---- *)
+  b "messageChannelNew"        (fun _ -> "__as_messageChannelNew()");
+  b "messageChannelPort1"      (fun a -> Printf.sprintf "__as_messageChannelPort1(%s)" (arg 0 a));
+  b "messageChannelPort2"      (fun a -> Printf.sprintf "__as_messageChannelPort2(%s)" (arg 0 a));
+  b "messagePortPostMessage"   (fun a -> Printf.sprintf "__as_messagePortPostMessage(%s, %s)" (arg 0 a) (arg 1 a));
+  b "messagePortOnMessage"     (fun a -> Printf.sprintf "__as_messagePortOnMessage(%s, %s)" (arg 0 a) (arg 1 a));
+  b "messagePortStart"         (fun a -> Printf.sprintf "__as_messagePortStart(%s)" (arg 0 a));
+  b "messagePortClose"         (fun a -> Printf.sprintf "__as_messagePortClose(%s)" (arg 0 a));
+  b "targetPostMessage"        (fun a -> Printf.sprintf "__as_targetPostMessage(%s, %s)" (arg 0 a) (arg 1 a));
+  b "structuredCloneValue"     (fun a -> Printf.sprintf "__as_structuredCloneValue(%s)" (arg 0 a));
   (* Generic JS array push helper (returns the array, fluent). *)
   b "arrayPush" (fun a -> Printf.sprintf "(%s.push(%s), %s)" (arg 0 a) (arg 1 a) (arg 0 a));
   (* ---- honest string/number primitives underpinning the

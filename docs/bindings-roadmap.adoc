@@ -97,9 +97,9 @@ no further significant ReScript → AffineScript work is tractable.
 
 |9
 |*IPC / structuredClone* for host↔guest message passing (postMessage, MessageChannel, transfer ownership)
-|`○`
-|`affinescript-ipc`, or under `Deno`
-|idaptik-ums uses Gossamer IPC for level I/O; pattern is broad — any embedded-engine binding needs it.
+|`◑` partial (MessageChannel + MessagePort + structuredClone + generic `targetPostMessage` landed; `transfer` array argument, `BroadcastChannel`, dedicated Worker constructors, and typed `MessageEvent` accessors deferred)
+|`stdlib/Ipc.affine`
+|idaptik-ums uses Gossamer IPC for level I/O; pattern is broad — any embedded-engine binding needs it. Landed 2026-05-31. Surface: 2 extern types (`MessageChannel`, `MessagePort`) + 9 extern fns covering channel construction, port handoff, post + onmessage, start/close lifecycle, generic `targetPostMessage` (Worker / iframe.contentWindow / self-from-worker), and `structuredCloneValue` deep-copy. No consumer init required — `MessageChannel` / `structuredClone` are standard web-platform globals (Deno, Node 16+, browsers, Web Workers). Test fixture: `tests/codegen-deno/ipc_smoke.{affine,harness.mjs}` exercises a port-pair round-trip with handler identity preservation + a target-post stub + a deep-clone reference-equality assertion. Follow-ups: `transfer` list (Transferables), `BroadcastChannel`, typed `MessageEvent` accessors (bindings #41 axis), Worker constructors (Tier 3 #25).
 
 |10
 |*JSON Schema validation (Ajv)* — already exists as `stdlib/Ajv.affine`
