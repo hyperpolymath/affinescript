@@ -18,6 +18,15 @@
       "Bash(git merge-base:*)",
       "Bash(git remote -v)",
 
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git rebase:*)",
+      "Bash(git checkout:*)",
+      "Bash(git switch:*)",
+      "Bash(git restore:*)",
+      "Bash(git reset:*)",
+      "Bash(git push:*)",
+
       "Bash(ls:*)",
       "Bash(cat:*)",
       "Bash(grep:*)",
