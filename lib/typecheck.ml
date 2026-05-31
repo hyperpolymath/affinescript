@@ -1550,6 +1550,15 @@ let register_builtins (ctx : context) : unit =
   bind_var ctx "parse_float"  (TArrow (ty_string, QOmega, opt ty_float, EPure));
   bind_var ctx "char_to_int"  (TArrow (ty_char, QOmega, ty_int, EPure));
   bind_var ctx "int_to_char"  (TArrow (ty_int, QOmega, ty_char, EPure));
+  (* Byte-oriented String accessors underpinning stdlib/encoding.affine's
+     base64. Unlike string_get/int_to_char (which traffic in [Char] and, on
+     the interpreter, clamp to ASCII), these go String<->Int directly so a
+     byte 0..255 round-trips on both the interpreter and the Deno-ESM
+     backend. string_from_char_code masks its argument to the low 8 bits. *)
+  bind_var ctx "string_char_code_at"
+    (TArrow (ty_string, QOmega, TArrow (ty_int, QOmega, ty_int, EPure), EPure));
+  bind_var ctx "string_from_char_code"
+    (TArrow (ty_int, QOmega, ty_string, EPure));
   bind_scheme ctx "show"
     (poly1 (fun a -> TArrow (a, QOmega, ty_string, EPure)));
   (* Reconcile with the resolver builtin-seed list (resolve.ml seed_builtins):

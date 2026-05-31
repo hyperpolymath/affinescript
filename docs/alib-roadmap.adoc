@@ -304,10 +304,17 @@ extensions that aLib doesn't currently capture. These items propose
 
 == Tracking
 
-* Umbrella tracker: (TBD — opened alongside this PR)
-* Per-tier child issues: (TBD — opened alongside this PR)
+* Umbrella tracker:
+  link:https://github.com/hyperpolymath/affinescript/issues/413[#413]
+  (Umbrella: aLib conformance and contributions roadmap — 25 items /
+  3 tracks).
+* Per-track child issues: opened lazily as work on an item starts.
+  Reference items by their stable doc number as `alib #N` in
+  cross-issue discussion. Filed so far:
+** link:https://github.com/hyperpolymath/affinescript/issues/416[#416]
+   — alib #10 (`stdlib/alib.affine` conformance module); closed.
 * Upstream tracking: `hyperpolymath/aggregate-library` (T3 items
-  result in PRs there, not in this repo)
+  result in PRs there, not in this repo).
 
 When an item's status changes, update its row in this file in the
 *same* PR that lands the change; do not let the table drift.

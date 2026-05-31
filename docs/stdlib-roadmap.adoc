@@ -254,9 +254,9 @@ Not blocking specific consumers today; included so they're discoverable.
 
 |25
 |*Base64 / Hex encoding* — encode / decode, URL-safe variant
-|`○`
-|new `encoding.affine`
-|Universal; needed for JWT, image data URIs, etc.
+|`◑` hex landed
+|`stdlib/encoding.affine`
+|Universal; needed for JWT, image data URIs, etc. Hex half landed (`to_hex` / `from_hex` / `to_hex_padded` / `hex_digit` / `hex_value`) on the interpreter + Deno-ESM backends, verified by `tests/codegen-deno/encoding_smoke`. Base64 deferred pending a `Bytes` type (#30), since it is byte- rather than integer-oriented.
 
 |26
 |*Logging surface* — `Logger`, levels, structured fields, JSON sink
@@ -481,8 +481,15 @@ Items that earn their place once the basics are solid.
 
 == Tracking
 
-* Umbrella tracker: (TBD — opened alongside this PR)
-* Per-tier child issues: (TBD — opened alongside this PR)
+* Umbrella tracker:
+  link:https://github.com/hyperpolymath/affinescript/issues/412[#412]
+  (Umbrella: standard library roadmap — 50 items / 5 tiers).
+* Per-tier child issues: opened lazily as work on an item starts — the
+  umbrella does not seed all 50 up front. Reference items by their
+  stable doc number as `stdlib #N` in cross-issue discussion. Filed so
+  far:
+** link:https://github.com/hyperpolymath/affinescript/issues/415[#415]
+   — stdlib #5 (cross-file `use` resolvability); closed.
 
 When a stdlib item's status changes, update its row in this file in
 the *same* PR that lands the change; do not let the table drift.

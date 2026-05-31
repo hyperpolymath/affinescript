@@ -107,3 +107,7 @@ packages/affine-js/deno.lock
 
 # ADR-015 S3: fetch-pinned WASI adapter (provisioned, not committed)
 tools/vendor/
+
+# Claude Code agent worktrees — transient per-agent git worktrees,
+# never committed (committing a nested worktree would corrupt the repo).
+/.claude/worktrees/
