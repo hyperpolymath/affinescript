@@ -360,11 +360,12 @@ a parse error (`::`-in-value-expr unwired; `::` reserved for
 `Type::Variant`). |S1 |`use ::{}`/`::*` + `use Mod;`/`as`-qualified
 `Mod.fn(x)` DONE (PR Refs #178); `::`-in-expression a separate parser
 follow-up
-|INT-02 |Host-agnostic loader bridge |S1 |*PROVEN + locked* (Refs #179):
-`packages/affine-js` loader (SAT-02 fixed; Deno/Node/browser parity,
-multi-ns import object, ownership accessor); 14 unit tests via pinned
-`deno task test` + `tests/modules/loader-bridge/` e2e on real
-compiler-emitted xmod wasm (closes INT-01↔INT-02). Unblocks INT-05/08/11
+|INT-02 |Host-agnostic loader bridge |S1 |**#179 CLOSED 2026-05-31** —
+*PROVEN + locked*: `packages/affine-js` loader (SAT-02 fixed;
+Deno/Node/browser parity, multi-ns import object, ownership accessor);
+14 unit tests via pinned `deno task test` + `tests/modules/loader-bridge/`
+e2e on real compiler-emitted xmod wasm (closes INT-01↔INT-02). INT-05/08/11
+INT-02 dep cleared. Satellite-repo scope question = #489.
 |INT-03 |WASI preview2 / host I/O |S1 |#180 ADR-015 (full
 Component-Model re-target, S1..S6c). **#180 closed 2026-05-31 —
 substrate done.** Shipped: S1 ADR (#252), S2 toolchain (#286,

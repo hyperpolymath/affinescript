@@ -164,8 +164,12 @@ target.
 Linear-msg invariant; reuses the INT-02 loader. 9 Deno tests vs the
 canonical `affinescript tea-bridge` + a re-entrancy fixture.
 
-|`affinescript-dom-loader` |scaffold |Was imaginary until #175. INT-02
-(#179) builds the host-agnostic loader. Blocks INT-05/08/11.
+|`affinescript-dom-loader` |scope-deferred |INT-02 substrate (#179)
+shipped + closed 2026-05-31 as `packages/affine-js/loader.js` — already
+host-agnostic (Deno/Node/browser parity). Whether the satellite repo
+still earns its keep (vs. folding into `affine-js`) is the open question
+in #489; revisit when INT-08 reconciler runtime (#183) unblocks (#255)
+and dictates any DOM-specific loader surface.
 
 |`affinescript-cadre` |scaffold |Was imaginary until #175. Router/navigation
 satellite (internal `lib/tea_router.ml` contract exists).
@@ -199,16 +203,16 @@ link:TECH-DEBT.adoc[TECH-DEBT.adoc].
 `use Mod::{fn}`/`::*` PROVEN+locked (deno link harness); `use Mod;`/`as`
 + `Mod.fn(x)` qualified-value path WIRED+locked (parse-boundary lowering;
 4 hermetic tests). Distinct parser follow-up: `Mod::fn(x)` in expr position
-|INT-02 |Host-agnostic loader bridge (`affinescript-dom-loader`) |#179 |loader
-in `packages/affine-js` (SAT-02 fixed; Deno/Node/browser parity,
-multi-namespace import object, ownership-section accessor). *PROVEN +
-regression-locked:* 14 unit tests via pinned `deno task test` (was
-flag-fragile — no run task) + `tests/modules/loader-bridge/` drives the
-*real* loader API over genuine compiler-emitted cross-module wasm
+|INT-02 |Host-agnostic loader bridge (`affinescript-dom-loader`) |#179
+**CLOSED 2026-05-31** |loader in `packages/affine-js` (SAT-02 fixed;
+Deno/Node/browser parity, multi-namespace import object, ownership-section
+accessor). *PROVEN + regression-locked:* 14 unit tests via pinned
+`deno task test` (was flag-fragile — no run task) + `tests/modules/loader-bridge/`
+drives the *real* loader API over genuine compiler-emitted cross-module wasm
 (`readBytes`+`buildImportObject` link `CrossCallee.consume(42)`=42;
 `parseOwnershipSection` reads a real Linear-param entry) — closes
-INT-01 ↔ INT-02. S1; unblocks INT-05/08/11. The `affinescript-dom-loader`
-satellite shell is downstream.
+INT-01 ↔ INT-02. S1; **unblocked INT-05/08/11**. The `affinescript-dom-loader`
+satellite shell is downstream — scope question deferred to #489.
 |INT-03 |WASI preview2 / host I/O beyond stdout |#180 |S1, ADR-015
 ACCEPTED (owner-chosen full WASM Component-Model re-target). Staged
 S1..S6c; legacy preview1 stdout path remains the default until S6c
@@ -255,7 +259,8 @@ manual-only `publish-jsr.yml`; docs/PACKAGING.adoc). INT-01 dep
 cleared. NOT published (owner-gated: needs explicit go + JSR/npm
 auth). Compiler-binary distribution = design fork #260
 |INT-05 |Loader-driven multi-module app bundling |ledger-only |planned
-(blocked by INT-02)
+(INT-02 dep cleared 2026-05-31 via #179; no other blockers — next-up
+candidate for an issue-spinout)
 |INT-06 |Server-side runtime profile (on INT-03 WASI p2) |ledger-only
 |planned (blocked by #485)
 |INT-07 |`affinescript-tea` runtime satellite |#182 |runtime + run loop
@@ -271,7 +276,8 @@ loop-codegen defect, pre-existing)
 distribution decided (ADR-019: Releases + thin Deno/JSR shim, #260).
 Consumes the shim once #260 S2/S3 land
 |INT-11 |Browser host parity (DOM loader + reconciler end-to-end) |
-ledger-only |planned (blocked by INT-02/08)
+ledger-only |planned (INT-02 dep cleared 2026-05-31 via #179; still
+blocked by INT-08 runtime via #255). Satellite-repo question = #489.
 |INT-12 |typed-wasm convergence: AffineScript-emitted fixtures into the
 typed-wasm cross-compat suite (closes the Stage-E runway) |ledger-only |
 planned (Stage E; coordinates with `hyperpolymath/typed-wasm` C5.1)
