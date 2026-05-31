@@ -20,6 +20,7 @@ this project aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- feat(res-to-affine): Phase 3 slice 3 — `--translate` now also lowers module-level `let <id> = <literal>` (int/float/string/bool) to a typed `const name: T = value;`; call / `ref(...)` / destructuring bindings are skipped (not compile-time constants); every emitted form verified compilable via `main.exe check`. `switch`→`match` and qualified-path resolution remain out of the standalone-type-check scope (Refs #57)
 - feat(res-to-affine): Phase 3 slice 2 — `--translate` now also handles record types (→ `struct`) and generics (type params `'a` → `[A]`) across aliases / sums / records; `mutable`/optional-`?` records, qualified paths, and nested generics are still skipped (never guessed); every emitted form verified compilable via `main.exe check` (Refs #57)
 - feat(res-to-affine): Phase 3 slice 1 — `--translate` renders fully-structural type declarations (primitive aliases + simple sum types) into compilable AffineScript; conservative (generics / qualified paths / records / non-primitive payloads are skipped, never guessed); walker-only (Refs #57)
 - feat(stdlib/Http): RSR rewire — surface `hpm-http-rsr` Zig FFI (10 server-side externs: listen / port / free / accept / method / path / header / body / respond / request-free) + opaque `HpmHttpServer` + `HpmHttpRequest` types; native-only (#425)

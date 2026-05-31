@@ -826,15 +826,81 @@ let translate_type_binding ~source tb =
                                     Some
                                       (Printf.sprintf "type %s = %s" header rhs)))))))
 
-(* Walk the tree; translate every module-top-level type_declaration's
-   bindings. Returns [(source_line, affinescript)] in tree order. *)
+(* ---- value bindings: `let x = <literal>` -> `const x: T = <literal>;` -----
+
+   AffineScript has no module-level `let`; a top-level value binding is
+   `const name: Type = value;` (type annotation + terminating semicolon both
+   required). We translate only when the RHS is a literal whose type is
+   unambiguous — int / float / string / bool — so the inferred annotation is
+   sound and the emitted const type-checks standalone. A `ref(...)` body (the
+   mutable-global anti-pattern) is not a literal, so it is left untranslated
+   and still surfaces as a marker. Number forms are restricted to plain
+   decimal int and D+.D+ float; hex / octal / binary / signed / scientific /
+   underscored literals are skipped rather than risk a form the AffineScript
+   lexer might not accept. *)
+
+let classify_number t =
+  let digits s =
+    String.length s > 0 && String.for_all (fun c -> c >= '0' && c <= '9') s
+  in
+  match String.index_opt t '.' with
+  | None -> if digits t then Some "Int" else None
+  | Some i ->
+      if String.contains_from t (i + 1) '.' then None
+      else
+        let intp = String.sub t 0 i in
+        let frac = String.sub t (i + 1) (String.length t - i - 1) in
+        if digits intp && digits frac then Some "Float" else None
+
+(* Infer the AffineScript type + value text of a literal expression node, or
+   [None] if the body isn't a translatable literal. *)
+let translate_literal ~source n =
+  match n.ntype with
+  | "number" -> (
+      match classify_number (node_text ~source n) with
+      | Some ty -> Some (ty, node_text ~source n)
+      | None -> None)
+  | "string" -> Some ("String", node_text ~source n)
+  | "true" | "false" -> Some ("Bool", node_text ~source n)
+  | _ -> None
+
+(* Translate one let_binding whose pattern is a plain identifier and whose
+   body is a literal, to a module-level `const`. [None] otherwise (a
+   destructuring pattern, an underscore discard, or a non-literal body). *)
+let translate_let_const ~source lb =
+  match child_with_field "pattern" lb with
+  | Some pat when pat.ntype = "value_identifier" -> (
+      match child_with_field "body" lb with
+      | None -> None
+      | Some body -> (
+          match translate_literal ~source body with
+          | None -> None
+          | Some (ty, value) ->
+              Some
+                (Printf.sprintf "const %s: %s = %s;"
+                   (node_text ~source pat) ty value)))
+  | _ -> None
+
+(* Walk the tree; translate every module-top-level type_declaration's bindings
+   and `let <id> = <literal>` value bindings. Returns [(source_line,
+   affinescript)] in tree order. *)
 let rec collect_translations ~source ancestors acc node =
   let acc =
-    if node.ntype = "type_declaration" && at_module_toplevel ancestors then
+    if not (at_module_toplevel ancestors) then acc
+    else if node.ntype = "type_declaration" then
       List.fold_left
         (fun acc c ->
           if c.ntype = "type_binding" then
             (match translate_type_binding ~source c with
+             | Some s -> (c.start.row + 1, s) :: acc
+             | None -> acc)
+          else acc)
+        acc node.children
+    else if node.ntype = "let_declaration" then
+      List.fold_left
+        (fun acc c ->
+          if c.ntype = "let_binding" then
+            (match translate_let_const ~source c with
              | Some s -> (c.start.row + 1, s) :: acc
              | None -> acc)
           else acc)

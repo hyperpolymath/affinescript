@@ -328,6 +328,59 @@ let test_translate_b_skips () =
   in
   Alcotest.(check bool) "mutable / optional records skipped" false leaked
 
+(* ---- Phase 3 slice 3: `let <id> = <literal>` -> module-level `const` ------
+
+   [fixtures/phase3c.res] holds literal lets (int/float/string/bool) that
+   become `const`, plus a call-bodied let, a ref (mutable-global), and a
+   destructuring let that must all be skipped. *)
+
+let phase3c_fixture = "fixtures/phase3c.res"
+
+let translate_phase3c () =
+  let source = read_file phase3c_fixture in
+  let path = Filename.concat (Sys.getcwd ()) phase3c_fixture in
+  Walker.translate ~grammar_dir:(grammar_dir ()) ~path ~source
+
+let translate_phase3c_blob () =
+  String.concat "\n" (List.map snd (translate_phase3c ()))
+
+let test_translate_c_count () =
+  skip_unless_ready ();
+  (* answer, pi, greeting, enabled, disabled -> 5; now/counter/(a,b) skip. *)
+  Alcotest.(check int)
+    "five literal let-bindings translate to const"
+    5 (List.length (translate_phase3c ()))
+
+let test_translate_const_int_float () =
+  skip_unless_ready ();
+  let blob = translate_phase3c_blob () in
+  let ok =
+    contains blob "const answer: Int = 42;"
+    && contains blob "const pi: Float = 3.14;"
+  in
+  Alcotest.(check bool) "int + float literal -> typed const" true ok
+
+let test_translate_const_string_bool () =
+  skip_unless_ready ();
+  let blob = translate_phase3c_blob () in
+  let ok =
+    contains blob "const greeting: String = \"hi\";"
+    && contains blob "const enabled: Bool = true;"
+    && contains blob "const disabled: Bool = false;"
+  in
+  Alcotest.(check bool) "string + bool literal -> typed const" true ok
+
+let test_translate_c_skips () =
+  skip_unless_ready ();
+  let blob = translate_phase3c_blob () in
+  (* call / ref / destructuring bindings must never become a const. *)
+  let leaked =
+    contains blob "Date" || contains blob "ref(" || contains blob "const now"
+    || contains blob "const counter" || contains blob "const a:"
+  in
+  Alcotest.(check bool) "non-literal / ref / destructuring lets skipped"
+    false leaked
+
 let () =
   Alcotest.run "res-to-affine-walker"
     [
@@ -382,5 +435,16 @@ let () =
             `Quick test_translate_generic_alias;
           Alcotest.test_case "mutable / optional records skipped"
             `Quick test_translate_b_skips;
+        ] );
+      ( "walker-phase3c-let-const",
+        [
+          Alcotest.test_case "five literal lets -> const"
+            `Quick test_translate_c_count;
+          Alcotest.test_case "int + float -> typed const"
+            `Quick test_translate_const_int_float;
+          Alcotest.test_case "string + bool -> typed const"
+            `Quick test_translate_const_string_bool;
+          Alcotest.test_case "call / ref / destructuring lets skipped"
+            `Quick test_translate_c_skips;
         ] );
     ]

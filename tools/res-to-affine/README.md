@@ -152,7 +152,7 @@ where re-decomposition is genuinely required.
 Phase 3 is when the tool earns its keep on idaptik's 542 files.
 
 **Phase 3 (`--translate`, landed).** The translation path renders the
-fully-structural type declarations into compilable AffineScript. Every
+self-contained, top-level declarations into compilable AffineScript. Every
 generated form below is verified by the compiler itself (`main.exe check`
 → *Type checking passed*).
 
@@ -165,28 +165,42 @@ generated form below is verified by the compiler itself (`main.exe check`
 | `type box<'a> = {value: 'a}` | `struct Box[A] {`<br>`  value: A`<br>`}` | 2 |
 | `type option<'a> = None \| Some('a)` | `type Option[A] =`<br>`  \| None`<br>`  \| Some(A)` | 2 |
 | `type id<'a> = 'a` | `type Id[A] = A` | 2 |
+| `let answer = 42` | `const answer: Int = 42;` | 3 |
+| `let pi = 3.14` | `const pi: Float = 3.14;` | 3 |
+| `let greeting = "hi"` | `const greeting: String = "hi";` | 3 |
+| `let enabled = true` | `const enabled: Bool = true;` | 3 |
 
 It is **conservative by construction**: a declaration is translated only
 when every part is representable — a qualified-path reference
 (`Belt.Map.t`), a non-primitive/opaque reference, a nested generic
-(`array<int>`), a GADT return, a variant spread, an object type, or a
-record with a `mutable` or optional-`?` field causes the whole decl to be
-*skipped* (it stays in the marker block + quoted original, never
-mis-translated). Two normalisations make the output referenceable:
-lower-case ReScript type names are capitalised (`color` → `Color`) and
-type variables are mapped (`'a` → `A`), because `lib/parser.mly` reads a
-lower-case name in type position as a type *variable*, not a constructor.
-Translation is walker-only (it needs the AST); with `--engine=scanner`
-the flag is a no-op.
+(`array<int>`), a GADT return, a variant spread, an object type, a record
+with a `mutable` or optional-`?` field, or a `let` whose body is not an
+int/float/string/bool literal (a call, a `ref(...)` mutable-global, a
+destructuring pattern) causes the whole decl to be *skipped* (it stays in
+the marker block + quoted original, never mis-translated). Two
+normalisations make the output referenceable: lower-case ReScript type
+names are capitalised (`color` → `Color`) and type variables are mapped
+(`'a` → `A`), because `lib/parser.mly` reads a lower-case name in type
+position as a type *variable*, not a constructor. Translation is
+walker-only (it needs the AST); with `--engine=scanner` the flag is a no-op.
 
-Deliberately **deferred to later Phase-3 slices**: `let`-to-`const` for
-literal bindings, the `switch`→`match` expression rewrite (needs body
-translation), and **module-qualified references** — these now *parse*
-(the [#228](https://github.com/hyperpolymath/affinescript/issues/228)
-grammar gap closed), but a faithful `Belt.Map.t` → `Belt::Map::T` would
-not *resolve* against a target module that doesn't exist yet, so emitting
-it would break the "every translated form type-checks" guarantee. It
-waits for a module-mapping story.
+**Scope boundary — what `--translate` will *not* do.** The guarantee is
+"every emitted form type-checks standalone", which is why translation is
+limited to self-contained top-level *declarations* (types, structs,
+literal consts). Two forms are out of that scope by construction:
+
+- **`switch`→`match`** is an *expression*, only meaningful inside a
+  function body. Emitting a type-checkable `match` means translating the
+  whole enclosing function — but ReScript function bindings are usually
+  un-annotated (`let f = x => …`), and AffineScript `fn` requires parameter
+  and return types, so the result wouldn't type-check. It belongs to a
+  future *partial-port* mode (translate-with-TODO-holes) that drops the
+  standalone-type-check guarantee, not to this declaration translator.
+- **module-qualified references** now *parse* (the
+  [#228](https://github.com/hyperpolymath/affinescript/issues/228) grammar
+  gap closed), but a faithful `Belt.Map.t` → `Belt::Map::T` would not
+  *resolve* against a target module that doesn't exist yet — it waits for a
+  module-mapping story.
 
 ## Corpus run
 
@@ -213,10 +227,11 @@ cd tools/res-to-affine/test
 The fixture under `test/fixtures/sample.res` is synthetic and exercises
 every Phase-1 anti-pattern; `test/fixtures/phase2c.res` exercises the
 two anti-patterns that are walker-only by construction
-(`inline-callback-record`, `oversized-function`); `test/fixtures/phase3.res`
-and `test/fixtures/phase3b.res` exercise the Phase-3 `--translate` path
-(aliases / sums / generics / records → compilable AffineScript, plus the
-qualified / mutable / optional / non-type forms it must skip).
+(`inline-callback-record`, `oversized-function`); `test/fixtures/phase3.res`,
+`phase3b.res`, and `phase3c.res` exercise the Phase-3 `--translate` path
+(aliases / sums / generics / records / literal-`let`→`const` → compilable
+AffineScript, plus the qualified / mutable / optional / non-literal forms it
+must skip).
 Real `.res` files
 from the estate (e.g. `gitbot-fleet/bots/sustainabot/bot-integration/
 src/*.res`) can be run ad hoc through the CLI without changes to the
