@@ -1,0 +1,147 @@
+// SPDX-License-Identifier: MPL-2.0
+= Bindings/stdlib roadmap closeout + hex/base64 + Int-division codegen fix
+:toc:
+:date: 2026-05-31
+:pr: affinescript#474
+:issues: #446 (umbrella), #478 (codegen bug, filed this session)
+:tests: codegen-deno (int_div + encoding_smoke added) · dune runtest · codegen-wasm — all green locally
+
+A single-session unit of work that began as "drive the bindings-roadmap
+umbrella (#446) to conclusion" and grew, by following the work where it
+led, into: three roadmap-doc tracking fixes, one new spec doc, a new
+stdlib module with its compiler support, and a genuine codegen bug fix
+discovered + filed (#478) + resolved along the way. See the companion
+link:BINDINGS-STDLIB-CODEGEN-2026-05-31.a2ml[machine-readable A2ML] for
+the exact change inventory; this document is the human narrative.
+
+== Trigger
+
+The session opened on #446 — the *AffineScript top-50 framework bindings
+roadmap* UMBRELLA — with the prompt "drive this to conclusion." Auditing
+the umbrella's own STEP plan showed STEPs 1–3 already shipped (doc on
+disk, tier sub-issues #450–#454 filed, kickoff #455 closed), leaving only
+the explicitly long-running STEP 4/5. The concludable gap was a stale
+*Tracking* section in the roadmap doc that still read
+`(TBD — opened alongside this PR)` despite the umbrellas now existing.
+
+That first fix expanded, at the user's direction ("both", "fan out",
+"do the rest"), across the sibling roadmap docs and then into real
+implementation work.
+
+== What landed
+
+. *Roadmap Tracking-section fixes* (3 docs). `docs/bindings-roadmap.adoc`,
+  `docs/stdlib-roadmap.adoc`, `docs/alib-roadmap.adoc` each carried the
+  same stale `(TBD)` placeholder. Filled in with the live umbrellas
+  (#446 / #412 / #413) and their child-issue models — pre-filed per-tier
+  for the bindings campaign, lazy (`stdlib #N` / `alib #N`) for the other
+  two. Each doc's own rule is "do not let the table drift"; this honoured
+  it.
+
+. *Zig C-ABI FFI patterns doc* (bindings #19). New
+  `docs/specs/zig-ffi-patterns.adoc` — the authoring recipe for binding a
+  Zig C-ABI export to an AffineScript `extern fn`. Scoped against the
+  `DOC-DEDUP` rule: SPEC §2.10 owns the grammar, STDLIB-EXTERN-AUDIT owns
+  the inventory, codegen-environment owns the wasm codegen mechanics; this
+  doc is the per-backend host-contract recipe that ties them together.
+  Grounded in the real lowering (wasm `(import "env" "<name>")`; Deno-ESM
+  same-named host symbol). Roadmap row `◐ → ●`.
+
+. *Hex + Base64 encoding* (stdlib #25). New `stdlib/encoding.affine`:
+  `to_hex` / `from_hex` / `to_hex_padded` / `hex_digit` / `hex_value`
+  (lowercase 32-bit hex) plus RFC 4648 `to_base64` / `to_base64_url` /
+  `from_base64` / `from_base64_url`. Built on the string-primitive layer
+  and integer bit-ops; integer `/` deliberately avoided (see #478 below).
+  Roadmap row `○ → ◑` (Base64 byte-oriented overloads await a `Bytes`
+  type, stdlib #30).
+
+. *Byte-primitive compiler support*. Base64 is byte-oriented, so two new
+  builtins — `string_char_code_at` (String→Int, out-of-bounds → -1) and
+  `string_from_char_code` (Int→String, masks & 0xff) — were wired through
+  all four layers consistently: `resolve.ml` seed, `typecheck.ml` binding,
+  `interp.ml` runtime, `codegen_deno.ml` `__as_*` helper + builtin map.
+
+. *Int-division codegen fix* (#478). See below — the substantive one.
+
+== The #478 bug: integer `/` lowered to float division
+
+While writing the hex codec, a probe revealed that on the Deno-ESM
+backend `255 / 16` produced `15.9375`, not `15`: the type-erased emitter
+mapped `OpDiv -> "/"`, and JS `/` is IEEE-754 floating-point. This
+silently broke every integer-division consumer — `stdlib/math.affine`'s
+`pow`, `sum_naturals`, `binomial`, `lcm`, `div_floor` — on that backend.
+Filed as #478.
+
+The fix lowers a *provably-`Int`* `a / b` to `Math.trunc(a / b)`
+(truncate-toward-zero, matching the interpreter's OCaml `/` and wasm's
+`i32.div_s`) and leaves every other `/` as plain float division, so
+`Float / Float` is untouched. Because `codegen_deno.ml` carries no static
+types, a conservative `expr_is_int` / `expr_is_int_array` classifier
+reports `Int` only when provable: int literals; `Int`-typed params;
+`let`/assignment-tracked `Int` locals (reset per function, restored per
+`let`-scope); integer-closed arithmetic; JS bitwise results; calls to
+`Int`-returning fns/builtins; `for x in xs` loop variables over a
+provable `Array<Int>`; and `xs[i]` element reads. An unknown operand
+keeps `/`, so float division is *never* silently truncated.
+
+The for-loop and indexed-array cases were not in the first cut — a
+self-review agent caught them, and they were added before merge.
+
+== Process notes (what went wrong, and the recovery)
+
+This session is also a cautionary record of two self-inflicted hazards,
+both caught and corrected:
+
+. *Batching dependent edits.* An early attempt applied the whole #478
+  change as one large batch; three edits silently failed to match
+  (wrong AST shapes — `StmtAssign` is a tuple, not a record; there is no
+  `AssignMod`), the build broke, and a stale binary made "verification"
+  look green. A broken commit was pushed with a message falsely claiming
+  "all green". Recovery: revert to one-edit-at-a-time with a build after
+  each, then amend the commit with an honest message and force-push. The
+  lesson: never trust a test result without confirming the binary
+  rebuilt; never narrate green without a fresh build.
+
+. *Stale base.* The branch was 15 commits behind `main` at closeout time;
+  merging would have reverted 15 landed PRs (they showed as spurious
+  deletions in the diff). Rebased onto `origin/main` (clean, no
+  conflicts) before merge, per CLAUDE.md's branching-discipline note. The
+  rebase also pulled in a *new* CI gate (`check-doc-truthing.sh`,
+  DOC-01..09) which then had to be — and was — satisfied.
+
+. *Formatting gate, correctly understood.* `dune build @fmt` is the one
+  CI step that could not be run locally (ocamlformat 0.26.2's non-GitHub
+  deps are proxy-blocked). After obtaining the pinned version it was
+  established that the step is a *no-op for `lib/*.ml`*: there is no root
+  `.ocamlformat`, so ocamlformat self-disables, and `origin/main` itself
+  passes `@fmt` with zero reformat proposals. An earlier "files are
+  CLEAN" claim was a vacuous pass (the checker self-disabled) and was
+  corrected on the PR thread rather than left to stand.
+
+== Toolchain note
+
+The web session reaches the Ubuntu archive and `github.com` but not
+`opam.ocaml.org` (403). Ubuntu's apt OCaml packages satisfy the project's
+pins, so a clean `dune build` / `dune runtest` was bootstrapped via apt —
+the same path the `.claude/hooks/session-start.sh` SessionStart hook
+(landed separately via #482) now automates for future web sessions.
+
+== State after
+
+* #446 umbrella: STEP 1–3 confirmed done; bindings #19 shipped, stdlib
+  #25 partial. STEPs 4/5 remain long-running by design — the umbrella
+  stays open. Per-row status updated in the roadmap docs.
+* #478: Deno-ESM backend fixed; the sibling `js_codegen.ml` /
+  `codegen_node.ml` `OpDiv` and the wasm float-division mirror remain
+  tracked there for follow-up. A complete fix would thread the
+  typechecker's inferred types into the backends rather than re-derive
+  Int-ness per backend.
+
+== See also
+
+* link:../bindings-roadmap.adoc[bindings-roadmap.adoc] — #19 row.
+* link:../stdlib-roadmap.adoc[stdlib-roadmap.adoc] — #25 row.
+* link:../specs/zig-ffi-patterns.adoc[specs/zig-ffi-patterns.adoc] — the
+  new doc.
+* PR affinescript#474 — the landing PR (full per-workstream breakdown +
+  verification matrix in the description).

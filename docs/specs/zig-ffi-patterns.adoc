@@ -1,0 +1,249 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+= Zig C-ABI FFI Binding Patterns
+:toc: macro
+:toclevels: 3
+:icons: font
+
+Canonical, task-oriented recipe for binding a Zig C-ABI export to an
+AffineScript `extern fn`. This is the "how do I wire a new native
+function" companion to the language grammar, the live inventory, and the
+codegen internals — it does not restate them.
+
+This document is the deliverable for *bindings #19* (Zig FFI canonical
+patterns) in link:../bindings-roadmap.adoc[bindings-roadmap.adoc], and
+underpins the RSR-convergence rewires (bindings #11 GitHub, #12 HTTP,
+#16 Crypto) that consume `hpm-*-rsr` Zig C-ABI crates.
+
+toc::[]
+
+== Scope — and what this doc deliberately is *not*
+
+To respect the estate `DOC-DEDUP` rule, the boundary with adjacent docs
+is explicit:
+
+[cols="2,5"]
+|===
+|Concern |Owning doc
+
+|*Grammar + static semantics* of `extern fn` / `extern type`
+|link:SPEC.adoc#_2_10_extern_declarations[SPEC.adoc §2.10]
+
+|*Which externs exist today*, their adapter class + unblock conditions
+|link:../STDLIB-EXTERN-AUDIT.adoc[STDLIB-EXTERN-AUDIT.adoc]
+
+|*WebAssembly codegen mechanics* (`ctx`, imports, identifier resolution)
+|link:codegen-environment.adoc[codegen-environment.adoc] §4.2–4.3, §5
+
+|*Decision that `extern fn` is the sole FFI surface* (no raw escape)
+|link:SETTLED-DECISIONS.adoc[SETTLED-DECISIONS.adoc]
+
+|*Idris2-ABI proof-carrier* convention on the FFI boundary
+|link:../reference/ABI-FFI.md[reference/ABI-FFI] (bindings #41 — distinct axis)
+
+|*This doc:* the step-by-step authoring recipe + per-backend host contract
+|(here)
+|===
+
+This doc adds no new inventory rows and no new grammar; it is the recipe
+that ties the above together for the specific case of a Zig C-ABI export.
+
+== The extern surface
+
+`extern fn` declares a function whose implementation the host supplies at
+link time; `extern type` declares an opaque host-provided type with no
+runtime representation. Grammar (from SPEC §2.10):
+
+[source,ebnf]
+----
+extern_fn_decl   = [visibility] "extern" "fn" LOWER_IDENT
+                   [type_params] "(" [param_list] ")"
+                   ["->" type_expr] ["/" effects] ";"
+extern_type_decl = [visibility] "extern" "type" UPPER_IDENT
+                   [type_params] ";"
+----
+
+Representative real declarations already in the tree:
+
+[source,affine]
+----
+// stdlib/json.affine — bound to the hpm-json-rsr Zig C-ABI crate
+pub extern type HpmJsonValue;
+pub extern fn hpm_json_parse(src: String) -> Option<HpmJsonValue>;
+pub extern fn hpm_json_free(val: HpmJsonValue) -> Int;
+pub extern fn hpm_json_array_get(val: HpmJsonValue, idx: Int) -> Option<HpmJsonValue>;
+
+// stdlib/Http.affine — bound to the http-capability-gateway Zig C-ABI
+pub extern fn hpm_http_server_listen(host: String, port: Int)
+  -> Option<HpmHttpServer> / { Net };
+----
+
+The `/ { … }` clause is the effect row (`Net`, `Async`, `Io`, …); it is
+part of the type and is checked at every call site like any other
+effectful function.
+
+== How an `extern fn` lowers
+
+A single declaration lowers differently on each backend. Knowing both is
+what makes the host contract predictable.
+
+=== Linear-memory WebAssembly backend
+
+Every `extern fn name` becomes an import under the conventional `"env"`
+module; the slot is registered so call sites resolve through `call k`
+exactly like a local function (`lib/codegen.ml`, `gen_decl`):
+
+[source,ocaml]
+----
+| TopFn fd when fd.fd_body = FnExtern ->
+    let ft = func_type_of_fn_decl fd in
+    let (type_idx, types_after) = intern_func_type ctx.types ft in
+    let import = { i_module = "env";
+                   i_name   = fd.fd_name.name;
+                   i_desc   = ImportFunc type_idx } in
+    Ok { ctx with imports = ctx.imports @ [import]; … }
+----
+
+Param and result cells are `i32` on this backend; aggregates (`String`,
+arrays, records, `Option`) cross as `i32` offsets/handles into linear
+memory per the runtime representation — see
+link:codegen-environment.adoc[codegen-environment.adoc] §4.2–4.3.
+`extern type` emits no artifact (it is an opaque host pointer/handle).
+
+*Host contract:* supply each symbol in the instantiation import object
+under `env`, e.g. `WebAssembly.instantiate(mod, { env: { hpm_json_parse,
+hpm_json_free, … } })`.
+
+=== Deno-ESM backend
+
+The emitter (`lib/codegen_deno.ml`) splits externs in two:
+
+1. *Intrinsics* registered in the `deno_builtins` table lower to a
+   self-contained helper emitted inline in the module preamble — no host
+   wiring required. These are conventionally named `__as_*`, e.g.:
++
+[source,javascript]
+----
+const __as_wasmCall = (exports, name, args) => Number(exports[name](...(args || [])));
+----
+
+2. *Declared externs not in that table* (the normal case for a new Zig
+   binding) lower to a call on a **same-named host symbol** — `mangle`
+   is identity except for JS reserved words:
++
+[source,ocaml]
+----
+| ExprVar id when Hashtbl.mem ctx.externs id.name ->
+    (* Declared extern with no intrinsic lowering: assume a
+       same-named host symbol is in scope. *)
+    mangle id.name ^ "(" ^ String.concat ", " arg_strs ^ ")"
+----
++
+So `hpm_json_parse(src)` emits `hpm_json_parse(src)`; the host must put a
+`hpm_json_parse` symbol in scope (typically `globalThis.hpm_json_parse`,
+populated by the consumer or its host wrapper before the generated module
+runs). Values cross as their natural JS forms (`Int`/`Float` → number,
+`String` → string); ADTs such as `Option<T>` follow the backend's value
+encoding.
+
+NOTE: A native Zig C-ABI crate is invoked directly via `"env"` imports on
+the wasm backend. On the Deno-ESM backend the same `extern fn` resolves
+to a JS host symbol — so a Zig export is reached either by a thin JS shim
+or by instantiating the crate's own `.wasm` and exposing its exports
+under the matching names.
+
+== Recipe — bind a new Zig C-ABI export
+
+. *Zig side* (lives in the sibling `hpm-*-rsr` / capability-gateway repo,
+  not here): export with C calling convention so the symbol is stable —
+  `export fn hpm_json_parse(src_ptr: [*]const u8, src_len: usize) ?*HpmJsonValue`.
+  Per the estate directive *"Zig = APIs + FFIs"*, the Zig crate owns the
+  C-ABI surface; AffineScript only declares it.
+. *AffineScript side:* declare one `extern fn` per export, matching the
+  symbol **name exactly** (the name is the wasm import name and the
+  Deno-ESM host-symbol name). Model returned handles as an
+  `extern type`; model "absent/failure" as `Option<T>`.
+. *Marshal types* per this table:
++
+[cols="2,3,3"]
+|===
+|AffineScript |Wasm (linear-memory) |Deno-ESM
+
+|`Int` |`i32` |`number`
+|`Float` |`f64` (host fn), `i32` cell at the import boundary |`number`
+|`String` |`i32` ptr+len into linear memory |`string`
+|`extern type` handle |`i32` (opaque pointer/index) |opaque host value
+|`Option<T>` |per value encoding (null/sentinel) |value or `null`
+|===
++
+When in doubt, confirm the exact encoding against
+link:codegen-environment.adoc[codegen-environment.adoc] rather than
+assuming a layout.
+. *Pair every allocation with a free.* C-ABI crates that hand back a
+  pointer expect the caller to release it — declare the matching
+  `extern fn hpm_json_free(val: HpmJsonValue) -> Int` and call it. The
+  affine type system does not track the host allocation for you.
+. *Annotate effects* (`/ { Net }`, `/ { Async }`, `/ { Io }`) so callers
+  thread the effect row; a pure transform needs none.
+. *Wire the host:* wasm → add the symbol to the `env` import object;
+  Deno-ESM → expose a same-named global before the module loads.
+. *Record + test:* add the rows to
+  link:../STDLIB-EXTERN-AUDIT.adoc[STDLIB-EXTERN-AUDIT.adoc] (per its
+  Update protocol) and add a `tests/codegen-deno/<name>_smoke.{affine,harness.mjs}`
+  pair (the harness provides the host symbols and asserts a round-trip).
+
+== Worked example — `hpm-json-rsr`
+
+`stdlib/json.affine` binds the `hpm-json-rsr` Zig crate. The AffineScript
+side is purely declarative:
+
+[source,affine]
+----
+pub extern type HpmJsonValue;
+
+pub extern fn hpm_json_parse(src: String) -> Option<HpmJsonValue>;
+pub extern fn hpm_json_type(val: HpmJsonValue) -> Int;
+pub extern fn hpm_json_object_get(val: HpmJsonValue, key: String)
+  -> Option<HpmJsonValue>;
+pub extern fn hpm_json_free(val: HpmJsonValue) -> Int;   // ownership: caller frees
+----
+
+* `HpmJsonValue` is an opaque handle — an `i32` pointer on wasm, an opaque
+  JS value on Deno-ESM.
+* `parse` returns `Option` because parsing can fail.
+* `free` discharges the host allocation; every successful `parse` is
+  balanced by exactly one `free`.
+* No effect row: parsing a string is pure with respect to the affine
+  effect lattice (the allocation is an implementation detail of the host).
+
+== Conventions and gotchas
+
+* *Name = the symbol.* The declared identifier is both the wasm `env`
+  import name and the Deno-ESM host-symbol name. Renaming on the affine
+  side is not a rename of the binding — it breaks the link.
+* *Opaque handles, not structs.* Cross the boundary with an `extern type`
+  handle plus accessor `extern fn`s; do not attempt to mirror a C struct
+  layout in affine.
+* *Ownership is manual.* Pair allocate/free; the borrow checker does not
+  see host memory.
+* *`Option<T>` is the failure channel.* Prefer `Option`/`Result` over
+  sentinel return values so call sites are total.
+* *Namespace flattening.* Where a host API is nested
+  (`vscode.commands.registerCommand`), bind a flat name
+  (`registerCommand`) and let the host wrapper resolve it — see
+  `stdlib/Vscode.affine`.
+
+== Cross-references
+
+* link:SPEC.adoc#_2_10_extern_declarations[SPEC.adoc §2.10] — `extern`
+  grammar + static semantics.
+* link:../STDLIB-EXTERN-AUDIT.adoc[STDLIB-EXTERN-AUDIT.adoc] — live
+  inventory of every `extern`, adapter class, unblock condition.
+* link:codegen-environment.adoc[codegen-environment.adoc] — WebAssembly
+  realisation of imports + identifier resolution.
+* link:SETTLED-DECISIONS.adoc[SETTLED-DECISIONS.adoc] — `extern fn` as the
+  sole FFI surface.
+* link:../bindings-roadmap.adoc[bindings-roadmap.adoc] — bindings #19
+  (this doc), #11/#12/#16 (the RSR rewires it unblocks).
+* link:../reference/ABI-FFI.md[reference/ABI-FFI] — Idris2-ABI proof
+  carriers on the FFI boundary (bindings #41 — a separate axis).
