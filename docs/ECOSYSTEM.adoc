@@ -211,53 +211,44 @@ INT-01 ↔ INT-02. S1; unblocks INT-05/08/11. The `affinescript-dom-loader`
 satellite shell is downstream.
 |INT-03 |WASI preview2 / host I/O beyond stdout |#180 |S1, ADR-015
 ACCEPTED (owner-chosen full WASM Component-Model re-target). Staged
-S1..S6; legacy preview1 stdout path remains the default until S6c
-(reversible-in-progress). S2 toolchain provisioned (#251). S3
-DONE: `tools/componentize.sh` wraps the emitted core module into a
-valid WASI-0.2 component via the fetch-pinned preview1→preview2
-*reactor* adapter (wasmtime v44.0.1, sha256-verified); the
-`typedwasm.ownership` section is proven to SURVIVE the wrap;
-`tests/componentize/smoke.sh` gates it (SKIP-safe without the
-toolchain). S4a (clock) + S4b (env_count, arg_count) DONE:
-builtins lower to on-demand `wasi_snapshot_preview1.*` imports
-(Effect_sites pre-scan, canonical-order indexing through
-`ctx.wasi_func_indices`; zero impact on units that don't use them;
-verified with a multi-import combo regression). Component path
-bridges to `wasi:clocks`/`wasi:cli`. **S6a (WIT export lifting)
-DONE: `lib/codegen.ml` auto-emits a `_start : () -> ()` shim that
-calls `main` and drops its i32 result whenever a parameter-less
-`fn main()` is present. `tools/componentize.sh --command` wraps
-with the fetch-pinned preview1→preview2 *command* adapter
-(wasmtime v44.0.1, sha256 8ff2ea78…) — the resulting component
-exports `wasi:cli/run@0.2.x` per `wit/affinescript.wit`. End-to-end
-smoke `tests/componentize/command_smoke.sh` proves the lift, the
-ownership section survives, and `wasmtime run <component>` exits
-0 on real-host invoke. Purely additive: reactor consumers, the
-`__indirect_function_table` export, and game-loop hooks are
-byte-unchanged.** **S6b (sockets on-ramp) DONE: new
+S1..S6c; legacy preview1 stdout path remains the default until S6c
+(reversible-in-progress). **#180 closed 2026-05-31 — substrate
+done.** Shipped: S1 ADR (#252), S2 toolchain (#286, closes #251),
+S3 componentize on-ramp via fetch-pinned preview1→preview2
+*reactor* adapter (wasmtime v44.0.1, sha256-verified) —
+`typedwasm.ownership` survives the wrap (#288), S4a `clock_now_ms`
++ S4b `env_count`/`arg_count` lowering to on-demand
+`wasi_snapshot_preview1.*` imports via Effect_sites pre-scan with
+canonical-order indexing through `ctx.wasi_func_indices` (component
+path bridges to `wasi:clocks`/`wasi:cli`; #289, #290), byte-level
+wasm IR (`I32Load8U`/`I32Store8` family) + `env_at`/`arg_at`
+string accessors lowering via `gen_str_at_via_get` (#339, #364),
+S6a WIT export lifting via `_start : () -> ()` shim around
+parameter-less `fn main()` + `tools/componentize.sh --command`
+fetch-pinned *command* adapter (sha256 8ff2ea78…) — component
+exports `wasi:cli/run@0.2.x` per `wit/affinescript.wit`, real-host
+`wasmtime run <component>` exits 0, purely additive (reactor
+consumers + `__indirect_function_table` + game-loop hooks
+byte-unchanged) (#343), S6b sockets on-ramp via
 `net_shutdown(fd, how) -> Int` builtin (Effect `Net`, reserved)
-lowers to `wasi_snapshot_preview1.sock_shutdown` via the same
-on-demand canonical-order pattern as S4a/S4b (`optional_wasi`
-entry 4); the command adapter bridges to `wasi:sockets/tcp`
-internally without surfacing a host-side `wasi:sockets/*`
-requirement; `tests/componentize/sockets_smoke.sh` gates the
-lift + a clock+env+sock combo for canonical-order regression;
-wasmtime real-host invoke exits 0 on `net_shutdown(stdin, RDWR)`
-(ENOTSOCK errno is dropped). Larger socket primitives
-(recv/send/accept) require byte-level wasm IR for buffer /
-network-address marshalling — tracked alongside env_at/arg_at.**
-String accessors (env_at/arg_at) gated on a
-byte-level wasm-IR extension (I32Load8U/I32Store8 absent today)
-— tracked as the next slice before/with S5. Remaining sub-slices
-(per ADR-015 canonical numbering in META.a2ml): S5 — bring up
-`wasi:filesystem` (open/read/write/close), which unblocks INT-06
-(server-side runtime profile); S6c — flip the default wasm
-target from preview1 → component, bundled with the optional
-native-preview2 cleanup that replaces the on-demand preview1
-shims emitted by S4a/S4b/S6b with direct `wasi:clocks` /
-`wasi:cli` / `wasi:sockets` calls (only pays off once preview2
-is the default, hence the bundling). WIT world of record:
-`wit/affinescript.wit`
+lowering to `wasi_snapshot_preview1.sock_shutdown`
+(`optional_wasi` entry 4; command adapter bridges to
+`wasi:sockets/tcp` without surfacing a host-side `wasi:sockets/*`
+requirement; ENOTSOCK errno on `net_shutdown(stdin, RDWR)`
+dropped; 81d9fc7). Test gates:
+`tests/componentize/{smoke,command_smoke,sockets_smoke}.sh` cover
+the contract end-to-end; ownership section byte-survives every
+wrap; combo-import canonical-order regression. Residual (filed
+2026-05-31): #485 — S5 native `wasi:filesystem`
+(open/read/write/close), unblocks INT-06 (server-side runtime
+profile); #486 — S6c flip default wasm target preview1 →
+component, bundled with native-preview2 cleanup replacing the
+on-demand preview1 shims emitted by S4a/S4b/S6b with direct
+`wasi:clocks` / `wasi:cli` / `wasi:sockets` calls (only pays off
+once preview2 is the default — the one-way door that ends
+reversibility); #487 — socket recv/send/accept primitives
+(byte-level buffer / network-address marshalling, helper mirrors
+`gen_str_at_via_get`). WIT world of record: `wit/affinescript.wit`
 |INT-04 |Publish compiler + runtime to JSR (then npm) |#181 |runtime
 packaging READY (affine-js + affinescript-tea JSR dry-run green;
 manual-only `publish-jsr.yml`; docs/PACKAGING.adoc). INT-01 dep
@@ -266,7 +257,7 @@ auth). Compiler-binary distribution = design fork #260
 |INT-05 |Loader-driven multi-module app bundling |ledger-only |planned
 (blocked by INT-02)
 |INT-06 |Server-side runtime profile (on INT-03 WASI p2) |ledger-only
-|planned (blocked by INT-03)
+|planned (blocked by #485)
 |INT-07 |`affinescript-tea` runtime satellite |#182 |runtime + run loop
 shipped (`TeaApp`/`parseTeaLayout`, Linear-msg enforced); INT-01 dep
 cleared (#253). Router/nav = separate INT-09
