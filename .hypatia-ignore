@@ -24,3 +24,11 @@
 # `feedback_inline_pragma_vs_snapshot_test` for the general principle.
 cicd_rules/banned_language_file:tools/res-to-affine/test/fixtures/sample.res
 cicd_rules/banned_language_file:tools/res-to-affine/test/fixtures/phase2c.res
+# Phase 3 + partial-port fixtures landed via PRs #481/#494/#495/#496 (Refs #488).
+# Were previously masked by the TypeScript-allowlist red on main (anti-pattern
+# job exited at the TS gate before reaching the .res gate); surfaced by PR #511's
+# allowlist fix and added in the same change to keep the gate strict.
+cicd_rules/banned_language_file:tools/res-to-affine/test/fixtures/partial1.res
+cicd_rules/banned_language_file:tools/res-to-affine/test/fixtures/phase3.res
+cicd_rules/banned_language_file:tools/res-to-affine/test/fixtures/phase3b.res
+cicd_rules/banned_language_file:tools/res-to-affine/test/fixtures/phase3c.res
