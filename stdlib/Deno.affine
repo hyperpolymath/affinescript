@@ -81,25 +81,48 @@ pub extern fn statIsDirectory(path: String) -> Bool;
 /// filter by extension). Throws on a missing root via `Deno.readDirSync`.
 pub extern fn walkRecursive(root: String) -> [String];
 
-// ── Bytes accessors ────────────────────────────────────────────────
+// ── Bytes I/O (construction + LE getters/setters) ──────────────────
 //
-// The opaque `Bytes` type (a Uint8Array under the hood) gets minimal
-// inspectors so AffineScript can peek at file magic, parse fixed-width
-// binary headers, and recover ASCII slices without crossing back through
-// `readTextFile`. Bounds-check via `bytesLength` — `bytesByteAt` with
-// an out-of-range index returns `undefined → NaN` coerced to 0.
+// Construction + per-field read/write at byte offsets. Companion to
+// the read-only `bytesLength` / `bytesByteAt` / `bytesAsciiSlice`
+// accessors (campaign #239 STEP 3 / standards#242). All multi-byte
+// integer variants are little-endian — the estate's C ABI contracts
+// (raze-tui `raze-events.ads`, Idris2 `Events.idr`) are LE-pinned.
+//
+// Setters return `Int = 0` so they compose in expression-statement
+// position; the caller is responsible for the buffer-bounds invariant
+// (an out-of-range offset throws `RangeError` at the host boundary).
+// Bounds-check via `bytesLength` from STEP 3.
 
-/// `b.length` — number of bytes.
-pub extern fn bytesLength(b: Bytes) -> Int;
+/// `new Uint8Array(n)` — zeroed buffer of `n` bytes.
+pub extern fn bytes_new(n: Int) -> Bytes;
 
-/// `b[i]` — byte value at index `i` (0..255). Bounds-check via `bytesLength`.
-pub extern fn bytesByteAt(b: Bytes, i: Int) -> Int;
+/// `new Uint8Array(n).fill(byte & 0xFF)` — all-`byte` buffer.
+pub extern fn bytes_fill(n: Int, byte: Int) -> Bytes;
 
-/// `String.fromCharCode(...b.slice(start, end))` — decode `[start, end)`
-/// as a Latin-1 / ASCII-safe string. Each byte becomes one code point
-/// (0..255). Use this for ASCII-only headers (PDF magic, MZ, ELF, etc.);
-/// for full UTF-8, prefer `readTextFile` directly.
-pub extern fn bytesAsciiSlice(b: Bytes, start: Int, end: Int) -> String;
+/// Write `v & 0xFF` to byte `offset`.
+pub extern fn bytes_set_u8(b: Bytes, offset: Int, v: Int) -> Int;
+
+/// Write `v & 0xFFFF` to bytes `[offset, offset+2)` as little-endian u16.
+pub extern fn bytes_set_u16_le(b: Bytes, offset: Int, v: Int) -> Int;
+
+/// Write `v >>> 0` to bytes `[offset, offset+4)` as little-endian u32.
+pub extern fn bytes_set_u32_le(b: Bytes, offset: Int, v: Int) -> Int;
+
+/// Write `v | 0` to bytes `[offset, offset+4)` as little-endian i32.
+pub extern fn bytes_set_i32_le(b: Bytes, offset: Int, v: Int) -> Int;
+
+/// Read byte at `offset` (0..255).
+pub extern fn bytes_get_u8(b: Bytes, offset: Int) -> Int;
+
+/// Read bytes `[offset, offset+2)` as little-endian u16 (0..65535).
+pub extern fn bytes_get_u16_le(b: Bytes, offset: Int) -> Int;
+
+/// Read bytes `[offset, offset+4)` as little-endian u32 (0..4294967295).
+pub extern fn bytes_get_u32_le(b: Bytes, offset: Int) -> Int;
+
+/// Read bytes `[offset, offset+4)` as little-endian i32 (-2147483648..2147483647).
+pub extern fn bytes_get_i32_le(b: Bytes, offset: Int) -> Int;
 
 // ── Path ───────────────────────────────────────────────────────────
 
