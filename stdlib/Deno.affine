@@ -124,6 +124,31 @@ pub extern fn bytes_get_u32_le(b: Bytes, offset: Int) -> Int;
 /// Read bytes `[offset, offset+4)` as little-endian i32 (-2147483648..2147483647).
 pub extern fn bytes_get_i32_le(b: Bytes, offset: Int) -> Int;
 
+// ── Bytes I/O (read-only accessors, STEP 3 / standards#242) ───────
+//
+// Read-only accessors over a `Bytes` buffer. Compile-time lowerings
+// live in lib/codegen_deno.ml `deno_builtins`:
+//   bytesLength(b)         -> (b).length
+//   bytesByteAt(b, i)      -> (b)[i]
+//   bytesAsciiSlice(b,a,c) -> String.fromCharCode(...(b).slice(a, c))
+// These three declarations restore the STEP 3 surface that the codegen
+// has wired since #504 (#52ccaf1) but which never landed in the stdlib
+// module — leaving the resolver unable to satisfy `use Deno::{ ... }`
+// imports that reach for them. The (in-tree) regression test that
+// surfaced this gap is `tests/codegen-deno/deno_scripting_part2.affine`.
+
+/// Length of `b` in bytes (`.length`).
+pub extern fn bytesLength(b: Bytes) -> Int;
+
+/// Byte at `offset` (0..255). Out-of-range reads return JS `undefined`
+/// which coerces to `NaN` on numeric use — bounds-check via `bytesLength`.
+pub extern fn bytesByteAt(b: Bytes, offset: Int) -> Int;
+
+/// Decode `b[a..c)` as if it were ASCII text (each byte becomes one
+/// `char`code). Cheap header-snippet/magic-string extractor; for full
+/// UTF-8 decoding go through a `TextDecoder` extern instead.
+pub extern fn bytesAsciiSlice(b: Bytes, a: Int, c: Int) -> String;
+
 // ── Path ───────────────────────────────────────────────────────────
 
 /// Single-segment join with a `/` separator (idempotent on a trailing
@@ -211,6 +236,38 @@ pub extern fn endsWith(s: String, suffix: String) -> Bool;
 
 /// `s` with a trailing `suffix` removed (no-op if absent).
 pub extern fn stripSuffix(s: String, suffix: String) -> String;
+
+// ── Randomness + high-res clock (STEP 4-B / standards#327) ─────────
+//
+// Compile-time lowerings in lib/codegen_deno.ml `deno_builtins`:
+//   math_random()              -> Math.random()
+//   random_u32()               -> ((Math.random() * 4294967296) >>> 0)
+//   random_in_range(lo, hi)    -> Math.floor(Math.random()*(hi-lo)) + lo
+//   performance_now()          -> performance.now()
+// These declarations restore the STEP 4-B surface that codegen has
+// wired since #509 (319bc84) but which never landed as stdlib externs
+// — leaving `use Deno::{math_random, ...}` unresolvable and the
+// `random_smoke` codegen-deno harness red at compile time.
+//
+// `math_random` is the JS PRNG (NOT cryptographic). For crypto-grade
+// random bytes route through a separate `crypto_random_bytes` extern
+// (different host call: `crypto.getRandomValues`, different threat
+// model — not in scope here).
+
+/// JS PRNG draw in `[0.0, 1.0)`. Non-cryptographic.
+pub extern fn math_random() -> Float;
+
+/// Uniform 32-bit unsigned integer draw, `[0, 2^32)`. Non-cryptographic.
+pub extern fn random_u32() -> Int;
+
+/// Uniform integer draw, `[lo, hi)`. Caller's responsibility to ensure
+/// `lo < hi`; an empty range collapses to `lo` (no error).
+pub extern fn random_in_range(lo: Int, hi: Int) -> Int;
+
+/// `performance.now()` — high-resolution sub-millisecond monotone timer.
+/// Distinct from `dateNow()` (epoch millis, Int) and `dateNowIso()`
+/// (ISO-8601 string). Use for bench / latency-measurement work.
+pub extern fn performance_now() -> Float;
 
 // ── WebAssembly (synchronous instantiate) ──────────────────────────
 

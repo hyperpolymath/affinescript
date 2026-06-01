@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: MPL-2.0
+#
+# .governance-allowlist — Layer 2.5 typed-infrastructure file enumerating
+# per-repo TypeScript exemptions for the standards-repo governance scanner
+# (check-ts-allowlist.deno.js). Sibling to the Layer 2 prose table in
+# .claude/CLAUDE.md (TypeScript Exemptions section).
+#
+# Why this file exists *in addition to* the CLAUDE.md table:
+# the upstream scanner's `globToRegex` keeps the glob's relative form
+# (no `./` prefix) while `__as_walkRecursive(".")` yields paths *with* the
+# `./` prefix (e.g. `./affinescript-deno-test/cli.ts`). Result: a glob like
+# `affinescript-deno-test/*.ts` produces `^affinescript-deno-test/.*\.ts$`
+# which fails to anchor against `./affinescript-deno-test/...`, so the
+# CLAUDE.md row exempts zero files in practice. The lead-`.*` wildcard
+# below sidesteps that until the scanner itself is fixed upstream
+# (filed as standards follow-up — see CLAUDE.md TS Exemptions section).
+#
+# Each non-blank, non-`#` line is a glob; `*` matches any run including
+# `/`. The pattern below covers all five non-builtin-allowed .ts files
+# (`affinescript-deno-test/{cli.ts,lib/{compile,discover,runner}.ts,
+# example/smoke_driver.ts}`); `mod.ts` and `.d.ts` files are exempted
+# automatically by the scanner's builtin allowlist.
+*affinescript-deno-test/*.ts
