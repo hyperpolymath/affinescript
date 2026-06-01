@@ -516,6 +516,31 @@ const __as_dbQueryInt = (h, sql, paramsJson) => {
   const v = globalThis.__as_sqlite.queryInt(h, sql, params);
   return Number(v) | 0;
 };
+// ---- Sqlite prepared statements (db-theory #1b) ----
+// Layered on top of the convenience surface above. The host adapter
+// gains nine extra methods (`prepare`, `bindInt`, `bindText`, `bindNull`,
+// `step`, `columnCount`, `columnInt`, `columnText`, `reset`, `finalize`);
+// the smoke harness's mock implements them, and both `jsr:@db/sqlite`
+// and `better-sqlite3` provide direct one-line wrappers (each library
+// already exposes a `prepare()` + iterator-style step + typed column
+// accessors). Bind-index convention is sqlite3's 1-indexed; column-index
+// convention is 0-indexed (matches both adapter libraries).
+const __as_dbPrepare      = (h, sql) => globalThis.__as_sqlite.prepare(h, sql);
+const __as_dbBindInt      = (s, idx, v) => { globalThis.__as_sqlite.bindInt(s, idx, v); return 0; };
+const __as_dbBindText     = (s, idx, v) => { globalThis.__as_sqlite.bindText(s, idx, v); return 0; };
+const __as_dbBindNull     = (s, idx) => { globalThis.__as_sqlite.bindNull(s, idx); return 0; };
+const __as_dbStep         = (s) => (globalThis.__as_sqlite.step(s) ? 1 : 0);
+const __as_dbColumnCount  = (s) => Number(globalThis.__as_sqlite.columnCount(s)) | 0;
+const __as_dbColumnInt    = (s, idx) => {
+  const v = globalThis.__as_sqlite.columnInt(s, idx);
+  return v == null ? 0 : (Number(v) | 0);
+};
+const __as_dbColumnText   = (s, idx) => {
+  const v = globalThis.__as_sqlite.columnText(s, idx);
+  return v == null ? "" : String(v);
+};
+const __as_dbReset        = (s) => { globalThis.__as_sqlite.reset(s); return 0; };
+const __as_dbFinalize     = (s) => { globalThis.__as_sqlite.finalize(s); return 0; };
 const __as_httpFetch = async (url, method, headers, bodyOpt) => {
   const init = { method, headers: __as_httpHeadersToObject(headers) };
   if (bodyOpt && bodyOpt.tag === "Some") init.body = bodyOpt.value;
@@ -804,7 +829,18 @@ let () =
   b "db_execute"   (fun a -> Printf.sprintf "__as_dbExecute(%s, %s)" (arg 0 a) (arg 1 a));
   b "db_query"     (fun a -> Printf.sprintf "__as_dbQuery(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
   b "db_query_one" (fun a -> Printf.sprintf "__as_dbQueryOne(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
-  b "db_query_int" (fun a -> Printf.sprintf "__as_dbQueryInt(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a))
+  b "db_query_int" (fun a -> Printf.sprintf "__as_dbQueryInt(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
+  (* ---- Sqlite prepared statements (db-theory #1b) ---- *)
+  b "db_prepare"     (fun a -> Printf.sprintf "__as_dbPrepare(%s, %s)" (arg 0 a) (arg 1 a));
+  b "db_bind_int"    (fun a -> Printf.sprintf "__as_dbBindInt(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
+  b "db_bind_text"   (fun a -> Printf.sprintf "__as_dbBindText(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
+  b "db_bind_null"   (fun a -> Printf.sprintf "__as_dbBindNull(%s, %s)" (arg 0 a) (arg 1 a));
+  b "db_step"        (fun a -> Printf.sprintf "__as_dbStep(%s)" (arg 0 a));
+  b "db_column_count" (fun a -> Printf.sprintf "__as_dbColumnCount(%s)" (arg 0 a));
+  b "db_column_int"  (fun a -> Printf.sprintf "__as_dbColumnInt(%s, %s)" (arg 0 a) (arg 1 a));
+  b "db_column_text" (fun a -> Printf.sprintf "__as_dbColumnText(%s, %s)" (arg 0 a) (arg 1 a));
+  b "db_reset"       (fun a -> Printf.sprintf "__as_dbReset(%s)" (arg 0 a));
+  b "db_finalize"    (fun a -> Printf.sprintf "__as_dbFinalize(%s)" (arg 0 a))
 
 (* ============================================================================
    Identifier sanitisation (JS reserved words -> trailing underscore)
