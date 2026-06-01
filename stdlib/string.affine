@@ -26,12 +26,12 @@ use prelude::{ Option, Some, None };
 // ============================================================================
 
 /// Check if string is empty
-fn is_empty(s: String) -> Bool {
+pub fn is_empty(s: String) -> Bool {
   len(s) == 0
 }
 
 /// Get character at index, returning None for out-of-bounds access
-fn char_at(s: String, idx: Int) -> Option<Char> {
+pub fn char_at(s: String, idx: Int) -> Option<Char> {
   if idx >= 0 && idx < len(s) {
     Some(string_get(s, idx))
   } else {
@@ -41,7 +41,7 @@ fn char_at(s: String, idx: Int) -> Option<Char> {
 
 /// Get the length of a string (alias for len)
 /// Conforms to aLib string/length spec v1.0
-fn length(s: String) -> Int {
+pub fn length(s: String) -> Int {
   len(s)
 }
 
@@ -58,7 +58,7 @@ fn length(s: String) -> Int {
 // ============================================================================
 
 /// Check if string starts with the given prefix
-fn starts_with(s: String, prefix: String) -> Bool {
+pub fn starts_with(s: String, prefix: String) -> Bool {
   let plen = len(prefix);
   if plen > len(s) {
     false
@@ -79,12 +79,12 @@ pub fn ends_with(s: String, suffix: String) -> Bool {
 }
 
 /// Check if string contains a substring
-fn contains(s: String, substr: String) -> Bool {
+pub fn contains(s: String, substr: String) -> Bool {
   string_find(s, substr) >= 0
 }
 
 /// Find the first index of a substring, or -1 if not found
-fn index_of(s: String, substr: String) -> Int {
+pub fn index_of(s: String, substr: String) -> Int {
   string_find(s, substr)
 }
 
@@ -94,13 +94,13 @@ fn index_of(s: String, substr: String) -> Int {
 
 /// Concatenate two strings
 /// Conforms to aLib string/concat spec v1.0
-fn concat(a: String, b: String) -> String {
+pub fn concat(a: String, b: String) -> String {
   a ++ b
 }
 
 /// Extract substring from start (inclusive) to end (exclusive)
 /// Conforms to aLib string/substring spec v1.0
-fn substring(s: String, start: Int, end: Int) -> String {
+pub fn substring(s: String, start: Int, end: Int) -> String {
   let slen = len(s);
   let clamped_start = if start < 0 { 0 } else if start > slen { slen } else { start };
   let clamped_end = if end < clamped_start { clamped_start } else if end > slen { slen } else { end };
@@ -108,7 +108,7 @@ fn substring(s: String, start: Int, end: Int) -> String {
 }
 
 /// Repeat a string n times
-fn repeat(s: String, n: Int) -> String {
+pub fn repeat(s: String, n: Int) -> String {
   let mut result = "";
   let mut i = 0;
   while i < n {
@@ -169,12 +169,12 @@ pub fn join(arr: [String], separator: String) -> String {
 }
 
 /// Replace all occurrences of `from` with `to_str` in a string
-fn replace(s: String, from: String, to_str: String) -> String {
+pub fn replace(s: String, from: String, to_str: String) -> String {
   join(split(s, from), to_str)
 }
 
 /// Reverse a string
-fn reverse_string(s: String) -> String {
+pub fn reverse_string(s: String) -> String {
   let slen = len(s);
   let mut result = "";
   let mut i = slen - 1;
@@ -186,7 +186,7 @@ fn reverse_string(s: String) -> String {
 }
 
 /// Pad a string on the left to reach a target length
-fn pad_left(s: String, target_len: Int, pad_char: String) -> String {
+pub fn pad_left(s: String, target_len: Int, pad_char: String) -> String {
   let slen = len(s);
   if slen >= target_len {
     s
@@ -196,7 +196,7 @@ fn pad_left(s: String, target_len: Int, pad_char: String) -> String {
 }
 
 /// Pad a string on the right to reach a target length
-fn pad_right(s: String, target_len: Int, pad_char: String) -> String {
+pub fn pad_right(s: String, target_len: Int, pad_char: String) -> String {
   let slen = len(s);
   if slen >= target_len {
     s
@@ -219,24 +219,24 @@ fn pad_right(s: String, target_len: Int, pad_char: String) -> String {
 // ============================================================================
 
 /// Check if character is an ASCII digit (0-9)
-fn is_digit(c: Char) -> Bool {
+pub fn is_digit(c: Char) -> Bool {
   let code = char_to_int(c);
   code >= 48 && code <= 57
 }
 
 /// Check if character is an ASCII letter (a-z, A-Z)
-fn is_alpha(c: Char) -> Bool {
+pub fn is_alpha(c: Char) -> Bool {
   let code = char_to_int(c);
   (code >= 65 && code <= 90) || (code >= 97 && code <= 122)
 }
 
 /// Check if character is alphanumeric
-fn is_alphanumeric(c: Char) -> Bool {
+pub fn is_alphanumeric(c: Char) -> Bool {
   is_digit(c) || is_alpha(c)
 }
 
 /// Check if character is ASCII whitespace (space, tab, newline, carriage return)
-fn is_whitespace(c: Char) -> Bool {
+pub fn is_whitespace(c: Char) -> Bool {
   let code = char_to_int(c);
   code == 32 || code == 9 || code == 10 || code == 13
 }
