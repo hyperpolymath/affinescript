@@ -555,6 +555,17 @@ const __as_txRelease     = (t, n) => { globalThis.__as_sqlite.txRelease(t, n); r
 const __as_txRollbackTo  = (t, n) => { globalThis.__as_sqlite.txRollbackTo(t, n); return 0; };
 const __as_txDb          = (t) => globalThis.__as_sqlite.txDb(t);
 const __as_txIsLive      = (t) => (globalThis.__as_sqlite.txIsLive(t) ? 1 : 0);
+// ---- Sqlite aggregation (db-theory #3 / stdlib/Aggregate.affine) ----
+// Each scalar aggregator delegates to a host adapter method that runs
+// the SQL, expects a single-row result, and unwraps column 0. `groupBy`
+// / `groupCount` return JSON strings (caller parses).
+const __as_dbCount       = (h, sql, params) => Number(globalThis.__as_sqlite.aggCount(h, sql, params)) | 0;
+const __as_dbSum         = (h, sql, params) => Number(globalThis.__as_sqlite.aggSum(h, sql, params)) | 0;
+const __as_dbMinInt      = (h, sql, params) => Number(globalThis.__as_sqlite.aggMinInt(h, sql, params)) | 0;
+const __as_dbMaxInt      = (h, sql, params) => Number(globalThis.__as_sqlite.aggMaxInt(h, sql, params)) | 0;
+const __as_dbAvg         = (h, sql, params) => Number(globalThis.__as_sqlite.aggAvg(h, sql, params));
+const __as_dbGroupBy     = (h, sql, params) => String(globalThis.__as_sqlite.groupBy(h, sql, params));
+const __as_dbGroupCount  = (h, table, keyCol) => String(globalThis.__as_sqlite.groupCount(h, table, keyCol));
 const __as_httpFetch = async (url, method, headers, bodyOpt) => {
   const init = { method, headers: __as_httpHeadersToObject(headers) };
   if (bodyOpt && bodyOpt.tag === "Some") init.body = bodyOpt.value;
@@ -863,7 +874,15 @@ let () =
   b "tx_release"      (fun a -> Printf.sprintf "__as_txRelease(%s, %s)" (arg 0 a) (arg 1 a));
   b "tx_rollback_to"  (fun a -> Printf.sprintf "__as_txRollbackTo(%s, %s)" (arg 0 a) (arg 1 a));
   b "tx_db"           (fun a -> Printf.sprintf "__as_txDb(%s)" (arg 0 a));
-  b "tx_is_live"      (fun a -> Printf.sprintf "__as_txIsLive(%s)" (arg 0 a))
+  b "tx_is_live"      (fun a -> Printf.sprintf "__as_txIsLive(%s)" (arg 0 a));
+  (* ---- Sqlite aggregation (db-theory #3 / stdlib/Aggregate.affine) ---- *)
+  b "db_count"        (fun a -> Printf.sprintf "__as_dbCount(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
+  b "db_sum"          (fun a -> Printf.sprintf "__as_dbSum(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
+  b "db_min_int"      (fun a -> Printf.sprintf "__as_dbMinInt(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
+  b "db_max_int"      (fun a -> Printf.sprintf "__as_dbMaxInt(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
+  b "db_avg"          (fun a -> Printf.sprintf "__as_dbAvg(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
+  b "db_group_by"     (fun a -> Printf.sprintf "__as_dbGroupBy(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
+  b "db_group_count"  (fun a -> Printf.sprintf "__as_dbGroupCount(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a))
 
 (* ============================================================================
    Identifier sanitisation (JS reserved words -> trailing underscore)
