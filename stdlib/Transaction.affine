@@ -1,0 +1,101 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+//
+// Transaction.affine — affine-bounded transactional scope for the
+// Sqlite stdlib (db-theory #2).
+//
+// A `Tx` is an opaque, affine handle returned by `tx_begin(db)` and
+// consumed *exactly once* by either `tx_commit(t)` or `tx_rollback(t)`.
+// While a `Tx` is live, all `db_execute` / `db_prepare` calls against
+// the same `Db` participate in the open transaction; on `tx_commit`
+// they atomically become visible to subsequent reads, on `tx_rollback`
+// they leak no writes (the safety property — see proof obligation
+// below).
+//
+// Nested scopes use savepoints (`tx_savepoint(t, name)` / `tx_release`
+// / `tx_rollback_to`), which is the standard SQLite-flavoured nesting
+// model (savepoints are NOT separate `Tx` handles — they share the
+// outer affine lifetime).
+//
+// **Affine discipline (carrier-level)**
+//   Aliasing: `Tx` is `extern type`, opaque from the AffineScript side
+//   — there is no copy constructor and no way to clone it. The host
+//   adapter is required to invalidate the handle on commit / rollback
+//   so that a use-after-consume turns into a host-side `Error`.
+//   See `lib/codegen_deno.ml`'s `__as_txBegin` / `__as_txCommit` /
+//   `__as_txRollback` contract for the JS side of this invariant.
+//
+// **Safety property (proof obligation #DB-2.1)**
+//   `rollback-discards-writes` — for any `Tx t` returned by
+//   `tx_begin(d)` and any sequence of `db_execute(d, ...)` issued while
+//   `t` is live, if the lifetime ends with `tx_rollback(t)` then no
+//   row visible to a `db_query*(d, ...)` issued *after* the rollback
+//   reflects any of those executes.
+//
+//   Status: pending against `hyperpolymath/echo-types` (see
+//   `docs/proof-obligations/db-theory-2-transaction-safety.md`).
+//   The echo-types audit (2026-06-01) found `LEcho.weaken` +
+//   `EchoSecurity.Security` + `EchoNoSectionGeneric.no-section-of-
+//   collapsing-map` carry the right shape but require a
+//   `TransactionMutations.agda` instantiation upstream. Tracked at
+//   the echo-types issue linked from the cross-doc file.
+//
+// **Why this is the natural db-theory #2**
+//   Affine semantics maps directly to write-set isolation: an affine
+//   resource is consumed exactly once, and the consumption is *the*
+//   commit/abort decision. The same `(begin, commit, rollback)` shape
+//   covers RDBMS transactions, Haskell STM atomic blocks, Clojure refs,
+//   and Mnesia activities — picking SQLite as the first concrete
+//   backend is purely the most useful one to ship first.
+
+module Transaction;
+
+pub extern type Tx;
+
+// ── Top-level transaction lifecycle ────────────────────────────────
+//
+// `tx_begin` issues `BEGIN` on `d` and returns a fresh `Tx`. Exactly
+// one of `tx_commit` / `tx_rollback` must be called on the result;
+// the affine type system enforces "at most one", and host-side
+// invalidation enforces "use-after-consume is an error".
+
+pub extern fn tx_begin(d: Db) -> Tx;
+
+/// Issue `COMMIT`. Returns 0 on success. Invalidates `t` host-side.
+pub extern fn tx_commit(t: Tx) -> Int;
+
+/// Issue `ROLLBACK`. Returns 0 on success. Invalidates `t` host-side.
+/// **All writes issued during `t`'s lifetime are discarded** — this
+/// is the safety property formalised in proof obligation #DB-2.1.
+pub extern fn tx_rollback(t: Tx) -> Int;
+
+// ── Savepoints (nested scopes within a single Tx) ──────────────────
+//
+// Savepoints share the outer `Tx`'s affine lifetime. A savepoint is
+// named (string) and may be released (`tx_release`, forgets the
+// savepoint but keeps its writes within the outer scope) or rolled
+// back to (`tx_rollback_to`, discards writes issued since the
+// savepoint but keeps the outer `Tx` open). Both leave `t` valid.
+//
+// Naming convention is caller-controlled — SQLite uses string names,
+// and shadowing is per-name LIFO. Reusing a savepoint name is legal
+// but typically a programmer bug; the adapter does not guard it.
+
+pub extern fn tx_savepoint(t: Tx, name: String) -> Int;
+pub extern fn tx_release(t: Tx, name: String) -> Int;
+pub extern fn tx_rollback_to(t: Tx, name: String) -> Int;
+
+// ── Introspection ──────────────────────────────────────────────────
+//
+// `tx_db` returns the `Db` underlying `t` — useful for handing the
+// connection to a query function that takes `Db` (the type system
+// has no row-polymorphism over "Tx-or-Db", so this manual escape is
+// the pragmatic seam). The returned handle aliases the original
+// connection; calls against it participate in the open transaction.
+
+pub extern fn tx_db(t: Tx) -> Db;
+
+/// Returns 1 if `t` is still live (neither committed nor rolled back),
+/// 0 otherwise. Primarily for assertions and tests; production code
+/// should rely on the affine type system, not this runtime check.
+pub extern fn tx_is_live(t: Tx) -> Int;

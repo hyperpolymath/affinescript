@@ -1,0 +1,94 @@
+// SPDX-License-Identifier: MPL-2.0
+// db-theory #2 — Transaction codegen smoke.
+//
+// Six smoke functions exercise the eight Transaction.affine externs:
+//   - smoke_commit_persists      (tx_begin → execute → tx_commit; row visible after)
+//   - smoke_rollback_discards    (tx_begin → execute → tx_rollback; row NOT visible after) ← key safety property
+//   - smoke_savepoint_release    (savepoint → execute → release; writes kept within outer tx)
+//   - smoke_savepoint_rollback_to (savepoint → execute → rollback_to; writes discarded, outer tx still live)
+//   - smoke_tx_db_aliasing       (tx_db returns a Db handle that participates in the open tx)
+//   - smoke_is_live_lifecycle    (live=1 between begin/commit; live=0 after)
+
+use Sqlite::{db_open, db_close, db_execute, db_query_int};
+use Transaction::{tx_begin, tx_commit, tx_rollback, tx_savepoint, tx_release, tx_rollback_to, tx_db, tx_is_live};
+
+pub fn smoke_commit_persists(path: String) -> Int {
+  let d = db_open(path);
+  let _id1 = db_execute(d, "CREATE TABLE t(n INTEGER)");
+  let t = tx_begin(d);
+  let _id2 = db_execute(d, "INSERT INTO t VALUES (42)");
+  let _id3 = tx_commit(t);
+  let v = db_query_int(d, "SELECT n FROM t LIMIT 1", "[]");
+  let _id4 = db_close(d);
+  v
+}
+
+pub fn smoke_rollback_discards(path: String) -> Int {
+  let d = db_open(path);
+  let _id1 = db_execute(d, "CREATE TABLE t(n INTEGER)");
+  let _id2 = db_execute(d, "INSERT INTO t VALUES (1)");
+  let t = tx_begin(d);
+  let _id3 = db_execute(d, "INSERT INTO t VALUES (999)");
+  let _id4 = db_execute(d, "INSERT INTO t VALUES (1000)");
+  let _id5 = tx_rollback(t);
+  // After rollback only the pre-tx row should remain.
+  let count = db_query_int(d, "SELECT COUNT(*) FROM t", "[]");
+  let _id6 = db_close(d);
+  count
+}
+
+pub fn smoke_savepoint_release(path: String) -> Int {
+  let d = db_open(path);
+  let _id1 = db_execute(d, "CREATE TABLE t(n INTEGER)");
+  let t = tx_begin(d);
+  let _id2 = db_execute(d, "INSERT INTO t VALUES (1)");
+  let _id3 = tx_savepoint(t, "sp1");
+  let _id4 = db_execute(d, "INSERT INTO t VALUES (2)");
+  let _id5 = tx_release(t, "sp1");
+  let _id6 = db_execute(d, "INSERT INTO t VALUES (3)");
+  let _id7 = tx_commit(t);
+  let count = db_query_int(d, "SELECT COUNT(*) FROM t", "[]");
+  let _id8 = db_close(d);
+  count
+}
+
+pub fn smoke_savepoint_rollback_to(path: String) -> Int {
+  let d = db_open(path);
+  let _id1 = db_execute(d, "CREATE TABLE t(n INTEGER)");
+  let t = tx_begin(d);
+  let _id2 = db_execute(d, "INSERT INTO t VALUES (1)");
+  let _id3 = tx_savepoint(t, "sp1");
+  let _id4 = db_execute(d, "INSERT INTO t VALUES (2)");
+  let _id5 = db_execute(d, "INSERT INTO t VALUES (3)");
+  let _id6 = tx_rollback_to(t, "sp1");
+  // Outer tx still live; only the pre-savepoint insert should persist.
+  let _id7 = tx_commit(t);
+  let count = db_query_int(d, "SELECT COUNT(*) FROM t", "[]");
+  let _id8 = db_close(d);
+  count
+}
+
+pub fn smoke_tx_db_aliasing(path: String) -> Int {
+  let d = db_open(path);
+  let _id1 = db_execute(d, "CREATE TABLE t(n INTEGER)");
+  let t = tx_begin(d);
+  // Aliased connection participates in the open transaction.
+  let d2 = tx_db(t);
+  let _id2 = db_execute(d2, "INSERT INTO t VALUES (7)");
+  let _id3 = tx_commit(t);
+  let v = db_query_int(d, "SELECT n FROM t LIMIT 1", "[]");
+  let _id4 = db_close(d);
+  v
+}
+
+pub fn smoke_is_live_lifecycle(path: String) -> Int {
+  let d = db_open(path);
+  let _id1 = db_execute(d, "CREATE TABLE t(n INTEGER)");
+  let t = tx_begin(d);
+  let live_during = tx_is_live(t);
+  let _id2 = tx_commit(t);
+  // Cannot ask tx_is_live(t) after commit — affine: handle consumed.
+  // Smoke returns the during-witness; harness asserts == 1.
+  let _id3 = db_close(d);
+  live_during
+}
