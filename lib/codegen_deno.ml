@@ -476,6 +476,46 @@ const __as_hpmJsonEscapeString = (s) => {
   }
   return out;
 };
+// ---- Sqlite (db-theory #1a / stdlib/Sqlite.affine): SQL via host adapter ----
+// Host JS environment must expose globalThis.__as_sqlite, a namespace
+// implementing the small adapter contract below. Consumers init once
+// (Deno):
+//   import * as s from "jsr:@db/sqlite";
+//   globalThis.__as_sqlite = {
+//     open: (p) => new s.Database(p),
+//     close: (db) => db.close(),
+//     execute: (db, sql) => db.exec(sql),
+//     query: (db, sql, params) => db.prepare(sql).all(...params),
+//     queryOne: (db, sql, params) => db.prepare(sql).get(...params),
+//     queryInt: (db, sql, params) => db.prepare(sql).value(...params),
+//   };
+// or (Node + better-sqlite3): adapt the same shape. The smoke harness
+// installs an in-memory mock that implements the same contract.
+//
+// Parameter marshalling is intentionally simple: the AffineScript side
+// hands the adapter a JSON-encoded `params` string (`"[]"` for none);
+// rows + single-row results come back as JSON strings for caller-side
+// decoding via `json::parse`. This matches the existing 6-extern
+// stdlib/Sqlite.affine surface; richer typed bindings (prepared
+// statements, schema introspection, bulk I/O) land in db-theory #1b.
+const __as_dbOpen = (path) => globalThis.__as_sqlite.open(path);
+const __as_dbClose = (h) => { globalThis.__as_sqlite.close(h); return 0; };
+const __as_dbExecute = (h, sql) => { globalThis.__as_sqlite.execute(h, sql); return 0; };
+const __as_dbQuery = (h, sql, paramsJson) => {
+  const params = paramsJson === "" || paramsJson === "[]" ? [] : JSON.parse(paramsJson);
+  const rows = globalThis.__as_sqlite.query(h, sql, params);
+  return JSON.stringify(rows);
+};
+const __as_dbQueryOne = (h, sql, paramsJson) => {
+  const params = paramsJson === "" || paramsJson === "[]" ? [] : JSON.parse(paramsJson);
+  const row = globalThis.__as_sqlite.queryOne(h, sql, params);
+  return JSON.stringify(row);
+};
+const __as_dbQueryInt = (h, sql, paramsJson) => {
+  const params = paramsJson === "" || paramsJson === "[]" ? [] : JSON.parse(paramsJson);
+  const v = globalThis.__as_sqlite.queryInt(h, sql, params);
+  return Number(v) | 0;
+};
 const __as_httpFetch = async (url, method, headers, bodyOpt) => {
   const init = { method, headers: __as_httpHeadersToObject(headers) };
   if (bodyOpt && bodyOpt.tag === "Some") init.body = bodyOpt.value;
@@ -757,7 +797,14 @@ let () =
   b "hpm_json_object_get"    (fun a -> Printf.sprintf "__as_hpmJsonObjectGet(%s, %s)" (arg 0 a) (arg 1 a));
   b "hpm_json_array_len"     (fun a -> Printf.sprintf "__as_hpmJsonArrayLen(%s)" (arg 0 a));
   b "hpm_json_array_get"     (fun a -> Printf.sprintf "__as_hpmJsonArrayGet(%s, %s)" (arg 0 a) (arg 1 a));
-  b "hpm_json_escape_string" (fun a -> Printf.sprintf "__as_hpmJsonEscapeString(%s)" (arg 0 a))
+  b "hpm_json_escape_string" (fun a -> Printf.sprintf "__as_hpmJsonEscapeString(%s)" (arg 0 a));
+  (* ---- Sqlite (db-theory #1a / stdlib/Sqlite.affine): SQL via host adapter ---- *)
+  b "db_open"      (fun a -> Printf.sprintf "__as_dbOpen(%s)" (arg 0 a));
+  b "db_close"     (fun a -> Printf.sprintf "__as_dbClose(%s)" (arg 0 a));
+  b "db_execute"   (fun a -> Printf.sprintf "__as_dbExecute(%s, %s)" (arg 0 a) (arg 1 a));
+  b "db_query"     (fun a -> Printf.sprintf "__as_dbQuery(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
+  b "db_query_one" (fun a -> Printf.sprintf "__as_dbQueryOne(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
+  b "db_query_int" (fun a -> Printf.sprintf "__as_dbQueryInt(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a))
 
 (* ============================================================================
    Identifier sanitisation (JS reserved words -> trailing underscore)

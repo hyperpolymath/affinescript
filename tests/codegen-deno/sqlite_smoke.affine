@@ -1,0 +1,41 @@
+// SPDX-License-Identifier: MPL-2.0
+// db-theory #1a — Sqlite codegen smoke
+//
+// Exercises the 6 stdlib/Sqlite.affine externs through the Deno-ESM
+// codegen path. The .harness.mjs installs an in-memory `globalThis
+// .__as_sqlite` mock implementing the adapter contract documented in
+// `lib/codegen_deno.ml :: __as_dbOpen` so this runs under plain Node
+// without requiring a real sqlite library.
+//
+// db-theory #1b (prepared statements, schema introspection, bulk I/O,
+// typed `DbError`) layers on top of this foundation; landing the
+// foundation first keeps each PR independently reviewable.
+
+use Sqlite::{ db_open, db_close, db_execute, db_query, db_query_one, db_query_int };
+
+pub fn smoke_full_lifecycle(path: String) -> Int {
+  let d = db_open(path);
+  let _id1 = db_execute(d, "CREATE TABLE t(id INTEGER, name TEXT)");
+  let _id2 = db_execute(d, "INSERT INTO t VALUES (1, 'a'), (2, 'b'), (3, 'c')");
+  let count = db_query_int(d, "SELECT COUNT(*) FROM t", "[]");
+  let _id3 = db_close(d);
+  count
+}
+
+pub fn smoke_query_one(path: String) -> String {
+  let d = db_open(path);
+  let _id1 = db_execute(d, "CREATE TABLE t(id INTEGER, name TEXT)");
+  let _id2 = db_execute(d, "INSERT INTO t VALUES (1, 'first')");
+  let row = db_query_one(d, "SELECT * FROM t WHERE id = ?", "[1]");
+  let _id3 = db_close(d);
+  row
+}
+
+pub fn smoke_query_all(path: String) -> String {
+  let d = db_open(path);
+  let _id1 = db_execute(d, "CREATE TABLE t(id INTEGER)");
+  let _id2 = db_execute(d, "INSERT INTO t VALUES (1), (2), (3)");
+  let rows = db_query(d, "SELECT id FROM t ORDER BY id", "[]");
+  let _id3 = db_close(d);
+  rows
+}
