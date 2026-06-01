@@ -1,0 +1,80 @@
+// SPDX-License-Identifier: MPL-2.0
+// db-theory #1c — Sqlite schema introspection + bulk I/O + error
+// inspection codegen smoke.
+//
+// Six smoke functions exercise:
+//   - db_schema_tables       (list created tables, JSON array)
+//   - db_schema_columns      (list columns of a table, JSON array)
+//   - db_table_exists        (boolean reflection)
+//   - db_import_csv          (mocked path import, returns row count)
+//   - db_export_csv          (mocked path export, returns row count)
+//   - db_last_error          (string error sentinel after a forced fault)
+
+use Sqlite::{db_open, db_close, db_execute, db_schema_tables, db_schema_columns, db_table_exists, db_import_csv, db_export_csv, db_last_error};
+
+pub fn smoke_schema_tables(path: String) -> String {
+  let d = db_open(path);
+  let _id1 = db_execute(d, "CREATE TABLE users(id INTEGER, name TEXT)");
+  let _id2 = db_execute(d, "CREATE TABLE posts(id INTEGER, body TEXT)");
+  let json = db_schema_tables(d);
+  let _id3 = db_close(d);
+  json
+}
+
+pub fn smoke_schema_columns(path: String) -> String {
+  let d = db_open(path);
+  let _id1 = db_execute(d, "CREATE TABLE t(id INTEGER, name TEXT, age INTEGER)");
+  let json = db_schema_columns(d, "t");
+  let _id2 = db_close(d);
+  json
+}
+
+pub fn smoke_table_exists_true(path: String) -> Bool {
+  let d = db_open(path);
+  let _id1 = db_execute(d, "CREATE TABLE present(id INTEGER)");
+  let yes = db_table_exists(d, "present");
+  let _id2 = db_close(d);
+  yes
+}
+
+pub fn smoke_table_exists_false(path: String) -> Bool {
+  let d = db_open(path);
+  let no = db_table_exists(d, "absent");
+  let _id1 = db_close(d);
+  no
+}
+
+pub fn smoke_import_csv(path: String, table: String, csv_path: String) -> Int {
+  let d = db_open(path);
+  let _id1 = db_execute(d, "CREATE TABLE rows(a INTEGER, b TEXT)");
+  let n = db_import_csv(d, table, csv_path, true);
+  let _id2 = db_close(d);
+  n
+}
+
+pub fn smoke_export_csv(path: String, sql: String, params_json: String, csv_path: String) -> Int {
+  let d = db_open(path);
+  let _id1 = db_execute(d, "CREATE TABLE rows(a INTEGER, b TEXT)");
+  let _id2 = db_execute(d, "INSERT INTO rows VALUES (1, 'one'), (2, 'two'), (3, 'three')");
+  let n = db_export_csv(d, sql, params_json, csv_path);
+  let _id3 = db_close(d);
+  n
+}
+
+pub fn smoke_last_error_empty(path: String) -> String {
+  let d = db_open(path);
+  let e = db_last_error(d);
+  let _id1 = db_close(d);
+  e
+}
+
+pub fn smoke_last_error_set(path: String) -> String {
+  let d = db_open(path);
+  // Mock-side: an execute with the magic string `RAISE` records an
+  // error retrievable via db_last_error without throwing through to
+  // the AffineScript side (the smoke validates the read-back path).
+  let _id1 = db_execute(d, "RAISE 'simulated failure'");
+  let e = db_last_error(d);
+  let _id2 = db_close(d);
+  e
+}
