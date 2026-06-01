@@ -154,6 +154,14 @@ module_path:
 qualified_type_name:
   | head = upper_ident qsep rest = qualified_type_name_rest
     { head ^ "::" ^ rest }
+  /* #448 item 1: stdlib has lowercase module names (json, option,
+     prelude, dict, …) that must be representable as qualifier heads
+     at type/effect position. Same right-recursive shape, lookahead
+     at qsep (`.`/`::`) disambiguates against the bare lower_ident →
+     TyVar reduce; `qualified_type_name_rest` stays upper_ident-only
+     so a tail segment like `.value` still parse-errors. */
+  | head = lower_ident qsep rest = qualified_type_name_rest
+    { head ^ "::" ^ rest }
 
 qualified_type_name_rest:
   | name = upper_ident { name }
