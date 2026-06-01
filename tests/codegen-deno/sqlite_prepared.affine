@@ -1,0 +1,106 @@
+// SPDX-License-Identifier: MPL-2.0
+// db-theory #1b — Sqlite prepared-statement codegen smoke
+//
+// Exercises the 10 prepared-statement externs added in #1b. The
+// `.harness.mjs` extends the #1a in-memory mock with prepare / bind* /
+// step / column* / reset / finalize methods on `globalThis.__as_sqlite`.
+//
+// Each smoke function exercises one shape of the lifecycle:
+//   - smoke_prepare_bind_int_step_finalize: classic `INSERT (?, ?)`
+//     with two int binds, then re-query via the convenience surface to
+//     prove the row landed.
+//   - smoke_step_iteration: SELECT returning N rows; loop `db_step`
+//     until it returns 0, accumulating an int sum from column 0.
+//   - smoke_text_bind_and_column: round-trip a string through bind_text
+//     and column_text.
+//   - smoke_null_bind: bind NULL; verify column_int coerces to 0.
+//   - smoke_reset_and_reuse: prepare once, bind+step, reset, re-bind
+//     with different params, step again.
+
+use Sqlite::{db_open, db_close, db_execute, db_prepare, db_bind_int, db_bind_text, db_bind_null, db_step, db_column_count, db_column_int, db_column_text, db_reset, db_finalize, db_query_int, db_query_one};
+
+pub fn smoke_prepare_bind_int_step_finalize(path: String) -> Int {
+  let d = db_open(path);
+  let _id1 = db_execute(d, "CREATE TABLE t(a INTEGER, b INTEGER)");
+  let s = db_prepare(d, "INSERT INTO t(a, b) VALUES (?, ?)");
+  let _id2 = db_bind_int(s, 1, 7);
+  let _id3 = db_bind_int(s, 2, 35);
+  let _step1 = db_step(s);
+  let _id4 = db_finalize(s);
+  let v = db_query_int(d, "SELECT a + b FROM t LIMIT 1", "[]");
+  let _id5 = db_close(d);
+  v
+}
+
+pub fn smoke_step_iteration(path: String) -> Int {
+  let d = db_open(path);
+  let _id1 = db_execute(d, "CREATE TABLE t(n INTEGER)");
+  let _id2 = db_execute(d, "INSERT INTO t VALUES (1), (2), (3), (4), (5)");
+  let s = db_prepare(d, "SELECT n FROM t ORDER BY n");
+  let mut sum = 0;
+  let mut row = db_step(s);
+  while row == 1 {
+    sum = sum + db_column_int(s, 0);
+    row = db_step(s);
+  }
+  let _id3 = db_finalize(s);
+  let _id4 = db_close(d);
+  sum
+}
+
+pub fn smoke_text_bind_and_column(path: String) -> String {
+  let d = db_open(path);
+  let _id1 = db_execute(d, "CREATE TABLE t(name TEXT)");
+  let s_ins = db_prepare(d, "INSERT INTO t VALUES (?)");
+  let _id2 = db_bind_text(s_ins, 1, "affinescript");
+  let _step1 = db_step(s_ins);
+  let _id3 = db_finalize(s_ins);
+  let s_sel = db_prepare(d, "SELECT name FROM t LIMIT 1");
+  let _step2 = db_step(s_sel);
+  let out = db_column_text(s_sel, 0);
+  let _id4 = db_finalize(s_sel);
+  let _id5 = db_close(d);
+  out
+}
+
+pub fn smoke_null_bind(path: String) -> Int {
+  let d = db_open(path);
+  let _id1 = db_execute(d, "CREATE TABLE t(v INTEGER)");
+  let s_ins = db_prepare(d, "INSERT INTO t VALUES (?)");
+  let _id2 = db_bind_null(s_ins, 1);
+  let _step1 = db_step(s_ins);
+  let _id3 = db_finalize(s_ins);
+  let s_sel = db_prepare(d, "SELECT v FROM t LIMIT 1");
+  let _step2 = db_step(s_sel);
+  let v = db_column_int(s_sel, 0);
+  let _id4 = db_finalize(s_sel);
+  let _id5 = db_close(d);
+  v
+}
+
+pub fn smoke_reset_and_reuse(path: String) -> Int {
+  let d = db_open(path);
+  let _id1 = db_execute(d, "CREATE TABLE t(n INTEGER)");
+  let s = db_prepare(d, "INSERT INTO t VALUES (?)");
+  let _id2 = db_bind_int(s, 1, 10);
+  let _step1 = db_step(s);
+  let _id3 = db_reset(s);
+  let _id4 = db_bind_int(s, 1, 32);
+  let _step2 = db_step(s);
+  let _id5 = db_finalize(s);
+  let count = db_query_int(d, "SELECT COUNT(*) FROM t", "[]");
+  let _id6 = db_close(d);
+  count
+}
+
+pub fn smoke_column_count_basic(path: String) -> Int {
+  let d = db_open(path);
+  let _id1 = db_execute(d, "CREATE TABLE t(a INTEGER, b INTEGER, c INTEGER)");
+  let _id2 = db_execute(d, "INSERT INTO t VALUES (1, 2, 3)");
+  let s = db_prepare(d, "SELECT a, b, c FROM t");
+  let _step1 = db_step(s);
+  let n = db_column_count(s);
+  let _id3 = db_finalize(s);
+  let _id4 = db_close(d);
+  n
+}

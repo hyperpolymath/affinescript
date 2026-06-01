@@ -3,13 +3,30 @@
 //
 // Sqlite.affine — extern bindings for an SQLite backend.
 //
-// All database handles are opaque Int. Query parameters are JSON-encoded
-// strings; each result row is returned as a JSON-encoded string for
-// caller-side decoding. The Node-CJS shim wraps Deno sqlite or node:sqlite.
+// Two layers:
+//   1. **Convenience surface** (`db_open`, `db_execute`, `db_query*`):
+//      JSON-encoded parameters in, JSON-encoded rows out. Sufficient
+//      for one-shot queries and prototyping; *not* sufficient for
+//      injection-safe parametrised queries or cursor-style iteration
+//      over large result sets.
+//   2. **Prepared-statement surface** (`Stmt` type + `db_prepare` +
+//      `db_bind_*` + `db_step` + `db_column_*` + `db_finalize`):
+//      sqlite3-style bind-step-column-finalize loop. Use this for
+//      anything carrying user input, anything iterating over more
+//      than a handful of rows, and anything where typed value
+//      marshalling matters (Int / Text / null).
+//
+// All database + statement handles are opaque from the AffineScript
+// side. The Deno-ESM backend's `__as_sqlite` adapter contract
+// (documented in `lib/codegen_deno.ml`) maps each extern to a host
+// SQL library (`jsr:@db/sqlite` for Deno; `better-sqlite3` for Node).
 
 module Sqlite;
 
 pub extern type Db;
+pub extern type Stmt;
+
+// ── Convenience surface (db-theory #1a) ────────────────────────────
 
 pub extern fn db_open(path: String) -> Db;
 pub extern fn db_close(d: Db) -> Int;
@@ -17,3 +34,37 @@ pub extern fn db_execute(d: Db, sql: String) -> Int;
 pub extern fn db_query(d: Db, sql: String, params_json: String) -> String;
 pub extern fn db_query_one(d: Db, sql: String, params_json: String) -> String;
 pub extern fn db_query_int(d: Db, sql: String, params_json: String) -> Int;
+
+// ── Prepared statements (db-theory #1b) ────────────────────────────
+//
+// Lifecycle: `db_prepare` returns a `Stmt`; bind each `?` placeholder
+// (1-indexed, sqlite3 convention) via the typed `db_bind_*` calls;
+// iterate rows by calling `db_step` until it returns 0 (`SQLITE_DONE`);
+// read column values from the current row via `db_column_*`; release
+// the statement with `db_finalize`. A statement may be reset via
+// `db_reset` and re-stepped if reused.
+//
+// Return value conventions:
+//   - `db_step(s) -> Int`: 1 if a row is available (`SQLITE_ROW`),
+//     0 if iteration is complete (`SQLITE_DONE`). Adapter raises on
+//     other sqlite3 codes (error / busy / misuse).
+//   - `db_bind_*(s, idx, v) -> Int`: returns 0 on success.
+//   - `db_column_count(s) -> Int`: number of columns in the current row.
+//   - `db_column_int(s, idx) -> Int`: column value as integer
+//     (0-indexed). NULL columns coerce to 0; use `db_query_one` + JSON
+//     null-check if NULL must be distinguished.
+//   - `db_column_text(s, idx) -> String`: column value as text.
+//     NULL columns coerce to "".
+//   - `db_finalize(s) -> Int`: returns 0; the `Stmt` handle is invalid
+//     after this call.
+
+pub extern fn db_prepare(d: Db, sql: String) -> Stmt;
+pub extern fn db_bind_int(s: Stmt, idx: Int, v: Int) -> Int;
+pub extern fn db_bind_text(s: Stmt, idx: Int, v: String) -> Int;
+pub extern fn db_bind_null(s: Stmt, idx: Int) -> Int;
+pub extern fn db_step(s: Stmt) -> Int;
+pub extern fn db_column_count(s: Stmt) -> Int;
+pub extern fn db_column_int(s: Stmt, idx: Int) -> Int;
+pub extern fn db_column_text(s: Stmt, idx: Int) -> String;
+pub extern fn db_reset(s: Stmt) -> Int;
+pub extern fn db_finalize(s: Stmt) -> Int;
