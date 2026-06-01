@@ -103,6 +103,42 @@ let qualified_reserved_effect_with_use_passes () =
   | Ok () -> ()
   | Error m -> Alcotest.failf "expected Ok, got: %s" m
 
+(* #448 item 1: `qualified_type_name` head now accepts `lower_ident`
+   so stdlib's lowercase module names (json, option, prelude, dict,
+   alib, collections, io, string, result, testing, effects, math)
+   are representable at type position. Parse-side regression guard. *)
+let lowercase_qualified_type_parses () =
+  let src = "use json;\npub fn f(x: json.Value) -> () { () }\n" in
+  match frontend src with
+  | Ok () -> ()
+  | Error m ->
+    (* `json` may not be a known module in this isolated frontend run,
+       so accept any non-parse error — what we explicitly forbid is the
+       pre-fix `parse error at .` from the lowercase head. *)
+    Alcotest.(check bool) "no parse error on lowercase qualifier head"
+      false (contains ~needle:"Parse error" m);
+    Alcotest.(check bool) "no `parse error at .`"
+      false (contains ~needle:"parse error at" m);
+    ignore m
+
+(* Same shape with the `::` separator. *)
+let lowercase_qualified_type_double_colon_parses () =
+  let src = "use json;\npub fn f(x: json::Value) -> () { () }\n" in
+  match frontend src with
+  | Ok () -> ()
+  | Error m ->
+    Alcotest.(check bool) "no parse error on lowercase qualifier head (`::`)"
+      false (contains ~needle:"Parse error" m);
+    ignore m
+
+(* Tail segment still requires UpperCase (TyCon name), so a fully-
+   lowercase qualified path (`json.value`) must STILL parse-error. *)
+let fully_lowercase_qualified_type_still_rejected () =
+  let src = "use json;\npub fn f(x: json.value) -> () { () }\n" in
+  match frontend src with
+  | Ok () -> Alcotest.fail "expected parse error on lowercase tail segment"
+  | Error _ -> ()
+
 let tests = [
   Alcotest.test_case "qualified type + use → passes" `Quick
     qualified_type_with_use_passes;
@@ -116,4 +152,10 @@ let tests = [
     bare_typecon_unaffected;
   Alcotest.test_case "qualified reserved effect + use → passes" `Quick
     qualified_reserved_effect_with_use_passes;
+  Alcotest.test_case "#448(1) lowercase qualifier head parses" `Quick
+    lowercase_qualified_type_parses;
+  Alcotest.test_case "#448(1) lowercase qualifier head + `::` parses" `Quick
+    lowercase_qualified_type_double_colon_parses;
+  Alcotest.test_case "#448(1) fully-lowercase qualified path still rejected" `Quick
+    fully_lowercase_qualified_type_still_rejected;
 ]
