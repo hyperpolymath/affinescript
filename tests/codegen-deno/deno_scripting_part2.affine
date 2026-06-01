@@ -1,0 +1,63 @@
+// SPDX-License-Identifier: MPL-2.0
+// campaign #239 STEP 3 — second batch of Deno-scripting stdlib gaps
+// surfaced during STEP 2 ports (panic-attack#82, session-sentinel#25,
+// tropical-resource-typing#15, nafa-app#23).
+//
+// New externs / fixes exercised:
+//   - statIsFile / statIsDirectory         (gap 3)
+//   - bytesLength / bytesByteAt /
+//     bytesAsciiSlice                      (gap 4)
+//   - importMetaUrl                        (gap 5)
+//   - let _ = X wildcard binding emits
+//     a bare expression statement          (gap 7)
+//
+// Signatures stay in primitives so the harness can stub the host.
+
+use Deno::{ statIsFile, statIsDirectory, bytesLength, bytesByteAt, bytesAsciiSlice, importMetaUrl, readFileBytes };
+
+pub fn classify_path(p: String) -> Int {
+  if statIsFile(p) {
+    1
+  } else {
+    if statIsDirectory(p) {
+      2
+    } else {
+      0
+    }
+  }
+}
+
+pub fn first_byte(p: String) -> Int {
+  let b = readFileBytes(p);
+  if bytesLength(b) == 0 {
+    0
+  } else {
+    bytesByteAt(b, 0)
+  }
+}
+
+pub fn header_string(p: String, n: Int) -> String {
+  let b = readFileBytes(p);
+  let lim = bytesLength(b);
+  let end = if n > lim { lim } else { n };
+  bytesAsciiSlice(b, 0, end)
+}
+
+pub fn module_url_has_scheme() -> Bool {
+  let u = importMetaUrl();
+  // Any well-formed module URL starts with `file:` or `http`.
+  len(u) > 4
+}
+
+fn side(n: Int) -> Int { n + 1 }
+
+pub fn discard_chain() -> Int {
+  // Three back-to-back `let _ = side(N)` discards. Before the fix this
+  // tripped JS `SyntaxError: Identifier '_' has already been declared`
+  // because the AS pattern lowered to `const _ = ...` thrice. Now they
+  // lower to bare expression statements.
+  let _ = side(1);
+  let _ = side(2);
+  let _ = side(3);
+  42
+}

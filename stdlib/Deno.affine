@@ -68,6 +68,14 @@ pub extern fn readDirNames(path: String) -> [String];
 /// `Deno.statSync(path).size` in bytes.
 pub extern fn statSize(path: String) -> Int;
 
+/// `Deno.statSync(path).isFile` — true if `path` is a regular file.
+/// Throws on a missing path (pair with `isNotFound` for the absent case).
+pub extern fn statIsFile(path: String) -> Bool;
+
+/// `Deno.statSync(path).isDirectory` — true if `path` is a directory.
+/// Throws on a missing path (pair with `isNotFound` for the absent case).
+pub extern fn statIsDirectory(path: String) -> Bool;
+
 /// Recursive walk under `root` — every file path beneath it, depth-first.
 /// Mirrors `std/fs/walk` for the common case (no glob filter; callers
 /// filter by extension). Throws on a missing root via `Deno.readDirSync`.
@@ -163,6 +171,15 @@ pub extern fn dateNow() -> Int;
 /// (e.g. `"2026-05-30T12:34:56.789Z"`). Distinct from `dateNow()` which
 /// returns epoch millis as `Int`.
 pub extern fn dateNowIso() -> String;
+
+// ── Module identity ────────────────────────────────────────────────
+
+/// `import.meta.url` — the absolute URL of the importing module. The JS
+/// idiom for "find my own location" (cf. `__dirname` / `__filename`). At
+/// Deno-ESM top level, lowers to the bare `import.meta.url` expression;
+/// callers parse it (`new URL(...)`/`fileURLToPath`/string split) for
+/// directory-relative behaviour.
+pub extern fn importMetaUrl() -> String;
 
 // ── CLI ────────────────────────────────────────────────────────────
 
