@@ -14,4 +14,5 @@ let () =
       ("Effect-sites (#234, ADR-016)", Test_effect_sites.tests);
       ("TW L13 isolation (#10)", Test_tw_isolation.tests);
       ("Qualified paths (#228, ADR-014)", Test_qualified_paths.tests);
+      ("Deno builtins ↔ stdlib decls consistency", Test_deno_builtins_consistency.tests);
     ] @ Test_e2e.tests @ Test_stdlib_aot.tests)
