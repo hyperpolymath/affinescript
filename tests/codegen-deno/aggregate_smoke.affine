@@ -1,0 +1,77 @@
+// SPDX-License-Identifier: MPL-2.0
+// db-theory #3 — Aggregate codegen smoke.
+//
+// Seven smoke functions exercise the seven Aggregate.affine externs:
+//   - smoke_count          (COUNT(*) over inserted rows)
+//   - smoke_sum            (SUM(n) over inserted ints)
+//   - smoke_min_int        (MIN(n) over inserted ints)
+//   - smoke_max_int        (MAX(n) over inserted ints)
+//   - smoke_avg            (AVG(n) computed Float result)
+//   - smoke_group_by       (GROUP BY dept returning JSON array of buckets)
+//   - smoke_group_count    (db_group_count over (key, value) rows)
+
+use Sqlite::{db_open, db_close, db_execute};
+use Aggregate::{db_count, db_sum, db_min_int, db_max_int, db_avg, db_group_by, db_group_count};
+
+pub fn smoke_count(path: String) -> Int {
+  let d = db_open(path);
+  let _id1 = db_execute(d, "CREATE TABLE t(n INTEGER)");
+  let _id2 = db_execute(d, "INSERT INTO t VALUES (10), (20), (30), (40), (50)");
+  let c = db_count(d, "SELECT COUNT(*) FROM t", "[]");
+  let _id3 = db_close(d);
+  c
+}
+
+pub fn smoke_sum(path: String) -> Int {
+  let d = db_open(path);
+  let _id1 = db_execute(d, "CREATE TABLE t(n INTEGER)");
+  let _id2 = db_execute(d, "INSERT INTO t VALUES (1), (2), (3), (4), (5)");
+  let s = db_sum(d, "SELECT SUM(n) FROM t", "[]");
+  let _id3 = db_close(d);
+  s
+}
+
+pub fn smoke_min_int(path: String) -> Int {
+  let d = db_open(path);
+  let _id1 = db_execute(d, "CREATE TABLE t(n INTEGER)");
+  let _id2 = db_execute(d, "INSERT INTO t VALUES (7), (3), (9), (1), (5)");
+  let m = db_min_int(d, "SELECT MIN(n) FROM t", "[]");
+  let _id3 = db_close(d);
+  m
+}
+
+pub fn smoke_max_int(path: String) -> Int {
+  let d = db_open(path);
+  let _id1 = db_execute(d, "CREATE TABLE t(n INTEGER)");
+  let _id2 = db_execute(d, "INSERT INTO t VALUES (7), (3), (9), (1), (5)");
+  let m = db_max_int(d, "SELECT MAX(n) FROM t", "[]");
+  let _id3 = db_close(d);
+  m
+}
+
+pub fn smoke_avg(path: String) -> Float {
+  let d = db_open(path);
+  let _id1 = db_execute(d, "CREATE TABLE t(n INTEGER)");
+  let _id2 = db_execute(d, "INSERT INTO t VALUES (10), (20), (30)");
+  let a = db_avg(d, "SELECT AVG(n) FROM t", "[]");
+  let _id3 = db_close(d);
+  a
+}
+
+pub fn smoke_group_by(path: String) -> String {
+  let d = db_open(path);
+  let _id1 = db_execute(d, "CREATE TABLE e(dept TEXT, salary INTEGER)");
+  let _id2 = db_execute(d, "INSERT INTO e VALUES ('eng', 100), ('eng', 200), ('sales', 50), ('sales', 75)");
+  let j = db_group_by(d, "SELECT dept, COUNT(*), SUM(salary) FROM e GROUP BY dept", "[]");
+  let _id3 = db_close(d);
+  j
+}
+
+pub fn smoke_group_count(path: String) -> String {
+  let d = db_open(path);
+  let _id1 = db_execute(d, "CREATE TABLE t(k TEXT, v INTEGER)");
+  let _id2 = db_execute(d, "INSERT INTO t VALUES ('a', 1), ('a', 2), ('b', 3), ('c', 4), ('a', 5), ('b', 6)");
+  let j = db_group_count(d, "t", "k");
+  let _id3 = db_close(d);
+  j
+}
