@@ -32,13 +32,13 @@
 //   row visible to a `db_query*(d, ...)` issued *after* the rollback
 //   reflects any of those executes.
 //
-//   Status: pending against `hyperpolymath/echo-types` (see
-//   `docs/proof-obligations/db-theory-2-transaction-safety.md`).
+//   Status: pending against `hyperpolymath/echo-types#174` (see
+//   `docs/academic/proofs/db-theory-2-transaction-safety.md`).
 //   The echo-types audit (2026-06-01) found `LEcho.weaken` +
 //   `EchoSecurity.Security` + `EchoNoSectionGeneric.no-section-of-
 //   collapsing-map` carry the right shape but require a
-//   `TransactionMutations.agda` instantiation upstream. Tracked at
-//   the echo-types issue linked from the cross-doc file.
+//   `TransactionMutations.agda` instantiation upstream — tracked at
+//   echo-types issue #174.
 //
 // **Why this is the natural db-theory #2**
 //   Affine semantics maps directly to write-set isolation: an affine

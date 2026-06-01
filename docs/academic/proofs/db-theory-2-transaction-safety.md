@@ -68,7 +68,7 @@ The Security-record instance lives in a sibling `TransactionSecurity.agda`, para
 
 - AffineScript stdlib: `stdlib/Transaction.affine` carries the safety obligation statement in its module-level docstring and references this file by name.
 - AffineScript codegen + smoke: `lib/codegen_deno.ml` and `tests/codegen-deno/transaction_smoke.{affine,harness.mjs}` *witness* the property at the Node runtime level by snapshotting tables on `txBegin` and restoring on `txRollback`. The witness is not a proof — it's an executable check that the runtime mock observes the same invariant the formal proof will eventually establish.
-- Echo-types upstream: tracked at `hyperpolymath/echo-types` (issue to be filed alongside this document landing; link added once the issue number is allocated).
+- Echo-types upstream: tracked at [`hyperpolymath/echo-types#174`](https://github.com/hyperpolymath/echo-types/issues/174) — proposes the new `TransactionMutations.agda` module shape (and sibling `TransactionSecurity.agda` providing the `Security` instance) reducing to the existing `EchoNoSectionGeneric.no-section-of-collapsing-map`. Acceptance criteria include zero new axioms (`Print Assumptions` clean) and a back-link from the upstream commit SHA into this document.
 
 ## 5. Why this matters
 
