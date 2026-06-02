@@ -68,3 +68,59 @@ pub extern fn db_column_int(s: Stmt, idx: Int) -> Int;
 pub extern fn db_column_text(s: Stmt, idx: Int) -> String;
 pub extern fn db_reset(s: Stmt) -> Int;
 pub extern fn db_finalize(s: Stmt) -> Int;
+
+// ── Schema introspection (db-theory #1c) ───────────────────────────
+//
+// Read the database's `sqlite_master`-equivalent metadata. Both
+// returns are JSON-encoded strings for consistency with the
+// convenience surface — caller parses with `json::parse`. A typed
+// `Schema` carrier with stronger guarantees (column types as a typed
+// enum, NOT NULL / PRIMARY KEY flags exposed) is the natural follow-on
+// once the wider db-theory programme lands a typed `Schema<T>` carrier
+// (db-theory #8 — declarative schema as type).
+
+/// JSON array of table names — `'["users","posts","comments"]'`.
+/// Excludes sqlite_*-prefixed internal tables.
+pub extern fn db_schema_tables(d: Db) -> String;
+
+/// JSON array of column descriptors for `table` — each entry has
+/// shape `{"name": "id", "type": "INTEGER", "notnull": true, "pk": true}`.
+/// Returns `"[]"` if the table does not exist.
+pub extern fn db_schema_columns(d: Db, table: String) -> String;
+
+/// `true` iff `table` exists in the current database (excludes views,
+/// indexes, and the sqlite_* internal namespace). Convenience over
+/// parsing `db_schema_tables`.
+pub extern fn db_table_exists(d: Db, table: String) -> Bool;
+
+// ── Bulk I/O (db-theory #1c) ───────────────────────────────────────
+//
+// CSV is the lingua franca for spreadsheet / data-engineering
+// pipelines; both directions stay narrow (no JSON-lines / Parquet
+// / Avro yet — those are separate bindings if and when needed).
+//
+// `db_import_csv` assumes the destination table already exists and the
+// CSV column order matches the table column order. `has_header=true`
+// skips the first row. Returns the number of rows inserted.
+//
+// `db_export_csv` runs `sql` with `params_json` substituted (same shape
+// as `db_query`), writes one row per result-row to `csv_path`, prepending
+// a header row of column names. Returns the number of rows written.
+
+pub extern fn db_import_csv(d: Db, table: String, csv_path: String, has_header: Bool) -> Int;
+pub extern fn db_export_csv(d: Db, sql: String, params_json: String, csv_path: String) -> Int;
+
+// ── Error inspection (db-theory #1c) ───────────────────────────────
+//
+// Most extern calls signal failure by raising in the host adapter
+// (caught by the AffineScript-side `try`/`catch` desugar). When a call
+// returns a sentinel instead of raising (e.g. `db_query_one` returns
+// `"null"` for "no row"), use `db_last_error` to disambiguate "no row"
+// from "error". Returns `""` if no error has been recorded on this
+// connection.
+//
+// A typed `DbError` carrier — landing in db-theory #1d alongside the
+// `Result<T, DbError>` shape — will eventually obsolete this string
+// surface, but it stays for the prototyping path.
+
+pub extern fn db_last_error(d: Db) -> String;

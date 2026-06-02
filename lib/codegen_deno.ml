@@ -541,6 +541,25 @@ const __as_dbColumnText   = (s, idx) => {
 };
 const __as_dbReset        = (s) => { globalThis.__as_sqlite.reset(s); return 0; };
 const __as_dbFinalize     = (s) => { globalThis.__as_sqlite.finalize(s); return 0; };
+// ---- Sqlite schema introspection + bulk I/O + error inspection (db-theory #1c) ----
+// Five more adapter methods (`schemaTables`, `schemaColumns`,
+// `tableExists`, `importCsv`, `exportCsv`, `lastError`); each
+// real-world adapter (jsr:@db/sqlite, better-sqlite3) backs them with
+// a one-liner over `PRAGMA table_info` / a `Database.prepare()`
+// iterator / a `fs.writeFileSync(..., csv)` call.
+const __as_dbSchemaTables  = (h) => String(globalThis.__as_sqlite.schemaTables(h));
+const __as_dbSchemaColumns = (h, table) => String(globalThis.__as_sqlite.schemaColumns(h, table));
+const __as_dbTableExists   = (h, table) => Boolean(globalThis.__as_sqlite.tableExists(h, table));
+const __as_dbImportCsv     = (h, table, path, hasHeader) =>
+  Number(globalThis.__as_sqlite.importCsv(h, table, path, Boolean(hasHeader))) | 0;
+const __as_dbExportCsv     = (h, sql, paramsJson, path) => {
+  const params = paramsJson === "" || paramsJson === "[]" ? [] : JSON.parse(paramsJson);
+  return Number(globalThis.__as_sqlite.exportCsv(h, sql, params, path)) | 0;
+};
+const __as_dbLastError     = (h) => {
+  const v = globalThis.__as_sqlite.lastError(h);
+  return v == null ? "" : String(v);
+};
 const __as_httpFetch = async (url, method, headers, bodyOpt) => {
   const init = { method, headers: __as_httpHeadersToObject(headers) };
   if (bodyOpt && bodyOpt.tag === "Some") init.body = bodyOpt.value;
@@ -840,7 +859,14 @@ let () =
   b "db_column_int"  (fun a -> Printf.sprintf "__as_dbColumnInt(%s, %s)" (arg 0 a) (arg 1 a));
   b "db_column_text" (fun a -> Printf.sprintf "__as_dbColumnText(%s, %s)" (arg 0 a) (arg 1 a));
   b "db_reset"       (fun a -> Printf.sprintf "__as_dbReset(%s)" (arg 0 a));
-  b "db_finalize"    (fun a -> Printf.sprintf "__as_dbFinalize(%s)" (arg 0 a))
+  b "db_finalize"    (fun a -> Printf.sprintf "__as_dbFinalize(%s)" (arg 0 a));
+  (* ---- Sqlite schema introspection + bulk I/O + error inspection (db-theory #1c) ---- *)
+  b "db_schema_tables"  (fun a -> Printf.sprintf "__as_dbSchemaTables(%s)" (arg 0 a));
+  b "db_schema_columns" (fun a -> Printf.sprintf "__as_dbSchemaColumns(%s, %s)" (arg 0 a) (arg 1 a));
+  b "db_table_exists"   (fun a -> Printf.sprintf "__as_dbTableExists(%s, %s)" (arg 0 a) (arg 1 a));
+  b "db_import_csv"     (fun a -> Printf.sprintf "__as_dbImportCsv(%s, %s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a) (arg 3 a));
+  b "db_export_csv"     (fun a -> Printf.sprintf "__as_dbExportCsv(%s, %s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a) (arg 3 a));
+  b "db_last_error"     (fun a -> Printf.sprintf "__as_dbLastError(%s)" (arg 0 a))
 
 (* ============================================================================
    Identifier sanitisation (JS reserved words -> trailing underscore)
