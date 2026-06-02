@@ -333,6 +333,21 @@ trap STDLIB-04c removed). Now the typed-alias of `parse_int` in interp
 + Deno codegen + resolve/typecheck seeds. 4 hermetic tests in "E2E
 STDLIB-04e Pure #332" lock the round-trip semantics. |S3 |DONE
 2026-05-24 (Refs #332)
+|STDLIB-05 |db-theory triplet (`Sqlite` / `Transaction` / `Aggregate`)
+— *LANDED* 2026-06-01..02. Sqlite.affine progressed across #522
+(codegen foundation, 6 externs wired Deno-ESM end-to-end), #524
+(prepared statements — `Stmt` opaque + 10 typed externs), and #525
+(schema introspection + bulk I/O + error inspection — 6 externs).
+Transaction.affine (#526) ships an affine-bounded `Tx` handle
+(consumed exactly once by commit/rollback) + savepoint surface — 8
+externs; companion proof
+`docs/academic/proofs/db-theory-2-transaction-safety.md`.
+Aggregate.affine (#527) ships SQL group-by + aggregation primitives —
+7 externs; companion proof
+`docs/academic/proofs/db-theory-3-aggregation-as-fold.md`. All three
+modules picked up by the dynamic AOT gate; each ships its own
+Deno-ESM smoke harness under `tests/codegen-deno/`. CHANGELOG sync
+landed via #528. |S3 |DONE 2026-06-02 (PRs #522/#524/#525/#526/#527/#528)
 |===
 
 == Section D — INT (ecosystem integration)

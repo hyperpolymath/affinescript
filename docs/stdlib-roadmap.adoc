@@ -65,7 +65,9 @@ tracked in the main ROADMAP. Such items are flagged `tracked-by-main`.
 |`Crypto.affine`      |`◑` partial |Should consume `hpm-crypto-rsr` C-ABI.
 |`Http.affine`        |`◑` partial |Client-side; rewire to `hpm-http-client-rsr`.
 |`Network.affine`     |`◐` scaffold|Sockets / DNS coverage unclear.
-|`Sqlite.affine`      |`◑` partial |Coverage audit needed.
+|`Sqlite.affine`      |`●` usable  |db-theory #1a/#1b/#1c landed (PRs #522/#524/#525): Deno-ESM codegen foundation + prepared `Stmt` (10 externs) + schema introspection + bulk I/O + error inspection (6 externs).
+|`Transaction.affine` |`●` usable  |db-theory #2 landed (PR #526): affine-bounded `Tx` handle consumed exactly once by commit/rollback, savepoint surface, 8 externs; proof at `docs/academic/proofs/db-theory-2-transaction-safety.md`.
+|`Aggregate.affine`   |`●` usable  |db-theory #3 landed (PR #527): SQL group-by + aggregation primitives, 7 externs; proof at `docs/academic/proofs/db-theory-3-aggregation-as-fold.md`.
 |`Grammy.affine`      |`◑` partial |Telegram bot coverage.
 |`Ajv.affine`         |`◑` partial |Schema validation; estate-wide a2ml use.
 |`Deno.affine`        |`●` usable  |`WasmExports` + `wasmInstance` + `readFile`; calling individual exports is a binding gap (see bindings #5).
