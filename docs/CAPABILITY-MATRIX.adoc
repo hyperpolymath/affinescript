@@ -199,10 +199,14 @@ no `FnExtern` story raises `Match_failure` at runtime by design (correct
 
 == Standard library
 
-`stdlib` ~95%; 19/19 stdlib files compile resolve→typecheck→codegen with the
-AOT CI gate (`test/test_stdlib_aot.ml`) since Stage C closed 2026-05-18.
-Portable primitives Http (#160) / Json (#161) / Dict-Map (#162) are the
-current authoring frontier. A few primitives remain `extern` builtins.
+`stdlib` ~95%; all `stdlib/*.affine` files compile resolve→typecheck→codegen
+with the AOT CI gate (`test/test_stdlib_aot.ml`) — file list is discovered
+dynamically, so new modules are gated on landing. Stage C closed 2026-05-18.
+Portable primitives Http (#160) / Json (#161) / Dict-Map (#162) plus the
+db-theory triplet — `Sqlite.affine` (#522 / #524 / #525), `Transaction.affine`
+(#526; affine-bounded write-set isolation), `Aggregate.affine` (#527;
+group-by + aggregation primitives) — are the current authoring frontier.
+A few primitives remain `extern` builtins.
 
 == What AffineScript is NOT (anti-over-claim)
 
