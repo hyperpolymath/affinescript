@@ -1,0 +1,98 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+//
+// Aggregate.affine — SQL group-by + aggregation primitives (db-theory #3).
+//
+// Aggregation is a thin convenience layer over the existing Sqlite
+// extern surface. The runtime contract is: each aggregator extern
+// runs a SQL query that returns *exactly one row* with the aggregate
+// in column 0, and that result is unwrapped to a typed scalar
+// (`Int` / `Float`). The `db_group_by` extern returns the whole
+// grouped result-set as a JSON array — caller parses with `Json::parse`.
+//
+// **Proof obligation #DB-3.1 (aggregation-as-monoid-homomorphism)**
+//   Each scalar aggregator is a commutative monoid; group-by is the
+//   indexed sum. Formally, for any aggregator `M` (with identity `ε`
+//   and combine `⊕`) and any partition `{group_k}` of the row set:
+//     aggregate(SELECT M(v) FROM t GROUP BY k)
+//       = { k ↦ foldr ⊕ ε (map M.agg group_k) }
+//
+//   Concretely: COUNT is `(ℕ, 0, +)`, SUM is `(ℕ, 0, +)`, MIN is
+//   `(ℕ ∪ {∞}, ∞, min)`, MAX is `(ℕ ∪ {-∞}, -∞, max)`. AVG is *not*
+//   a monoid (no identity) — express as `SUM/COUNT`.
+//
+//   Status: pending against `hyperpolymath/echo-types#175` — proposes
+//   a new `EchoAggregation.agda` module with `Monoid` + `GroupAggregator`
+//   carriers reducing to the standard provenance-semiring framing
+//   (Green / Karvounarakis / Tannen). Cross-doc:
+//   `docs/academic/proofs/db-theory-3-aggregation-as-fold.md`.
+//
+// **Why this is the natural db-theory #3**
+//   Aggregation is the most-used non-trivial query shape outside
+//   selection/projection — every SQL report depends on it. Wiring
+//   aggregation through typed monoids (rather than ad-hoc strings)
+//   gives us the foundation for later db-theory items: #4 (selection
+//   distributivity over agg), #6 (agg over indexed scans), #9 (CRDTs
+//   as monoids with convergence).
+
+module Aggregate;
+
+// ── Scalar aggregators (single-row result) ─────────────────────────
+//
+// Each extern runs a SQL returning exactly one row with the aggregate
+// in column 0. `params_json` follows the same JSON-array contract as
+// the `db_query*` family. Empty result-sets degenerate to the
+// aggregator's identity (`0` for COUNT/SUM, runtime-defined for MIN/MAX).
+
+/// COUNT — returns the cardinality of the result-set. SQL form:
+/// `SELECT COUNT(*) FROM t WHERE ...` or `SELECT COUNT(col) FROM t ...`.
+/// Identity: 0. Monoid: `(ℕ, 0, +)`.
+pub extern fn db_count(d: Db, sql: String, params_json: String) -> Int;
+
+/// SUM — returns the sum of an integer-valued expression. SQL form:
+/// `SELECT SUM(col) FROM t WHERE ...`. Identity: 0. Monoid: `(ℕ, 0, +)`.
+pub extern fn db_sum(d: Db, sql: String, params_json: String) -> Int;
+
+/// MIN — returns the minimum integer value. SQL form:
+/// `SELECT MIN(col) FROM t WHERE ...`. Identity: ∞ (runtime: sentinel).
+/// Monoid: `(ℕ ∪ {∞}, ∞, min)`.
+pub extern fn db_min_int(d: Db, sql: String, params_json: String) -> Int;
+
+/// MAX — returns the maximum integer value. SQL form:
+/// `SELECT MAX(col) FROM t WHERE ...`. Identity: -∞. Monoid:
+/// `(ℕ ∪ {-∞}, -∞, max)`.
+pub extern fn db_max_int(d: Db, sql: String, params_json: String) -> Int;
+
+/// AVG — returns the average as a Float. **NOT a monoid** (no identity);
+/// implemented as `SUM/COUNT`. The host adapter rounds following IEEE 754.
+pub extern fn db_avg(d: Db, sql: String, params_json: String) -> Float;
+
+// ── Multi-row aggregation (GROUP BY) ───────────────────────────────
+//
+// `db_group_by` runs a SQL with a GROUP BY clause and returns the
+// entire result-set as a JSON array. Each element is itself a JSON
+// array of column values, in the order declared in the SELECT list.
+// Caller parses with `Json::parse` and pattern-matches the shape.
+//
+// Example:
+//   db_group_by(d, "SELECT dept, COUNT(*), SUM(salary) FROM e GROUP BY dept", "[]")
+//   -> '[["eng", 12, 1450000], ["sales", 5, 420000], ...]'
+//
+// The shape contract is *adapter-enforced*: a missing GROUP BY clause
+// still works (single-row result) but defeats the purpose. A future
+// typed `Group<K, V>` carrier would lift this to a parametric type;
+// blocked on the dependent-type story for parametric externs
+// (typed bindings #DB-3.2).
+
+pub extern fn db_group_by(d: Db, sql: String, params_json: String) -> String;
+
+// ── Group-bucket count (convenience over db_group_by) ──────────────
+//
+// `db_group_count` returns the count-per-group as a JSON array of
+// `[key, count]` pairs. Equivalent to:
+//   `db_group_by(d, "SELECT key, COUNT(*) FROM t GROUP BY key", ...)`
+// — but encapsulates the SELECT-list shape so callers don't need to
+// inline the COUNT(*) projection. The key column is referenced by
+// name (`key_col`), the table by name (`table`).
+
+pub extern fn db_group_count(d: Db, table: String, key_col: String) -> String;

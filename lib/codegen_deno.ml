@@ -560,6 +560,31 @@ const __as_dbLastError     = (h) => {
   const v = globalThis.__as_sqlite.lastError(h);
   return v == null ? "" : String(v);
 };
+// ---- Sqlite transactions (db-theory #2) ----
+// `Tx` is an opaque handle; the host adapter is required to
+// invalidate it on `commit` / `rollback` so that subsequent calls
+// throw a host-side `Error` (the affine type system's
+// at-most-one-use guarantee is enforced statically on the AS side;
+// this host invariant catches FFI-side aliasing bugs in tests).
+const __as_txBegin       = (h) => globalThis.__as_sqlite.txBegin(h);
+const __as_txCommit      = (t) => { globalThis.__as_sqlite.txCommit(t); return 0; };
+const __as_txRollback    = (t) => { globalThis.__as_sqlite.txRollback(t); return 0; };
+const __as_txSavepoint   = (t, n) => { globalThis.__as_sqlite.txSavepoint(t, n); return 0; };
+const __as_txRelease     = (t, n) => { globalThis.__as_sqlite.txRelease(t, n); return 0; };
+const __as_txRollbackTo  = (t, n) => { globalThis.__as_sqlite.txRollbackTo(t, n); return 0; };
+const __as_txDb          = (t) => globalThis.__as_sqlite.txDb(t);
+const __as_txIsLive      = (t) => (globalThis.__as_sqlite.txIsLive(t) ? 1 : 0);
+// ---- Sqlite aggregation (db-theory #3 / stdlib/Aggregate.affine) ----
+// Each scalar aggregator delegates to a host adapter method that runs
+// the SQL, expects a single-row result, and unwraps column 0. `groupBy`
+// / `groupCount` return JSON strings (caller parses).
+const __as_dbCount       = (h, sql, params) => Number(globalThis.__as_sqlite.aggCount(h, sql, params)) | 0;
+const __as_dbSum         = (h, sql, params) => Number(globalThis.__as_sqlite.aggSum(h, sql, params)) | 0;
+const __as_dbMinInt      = (h, sql, params) => Number(globalThis.__as_sqlite.aggMinInt(h, sql, params)) | 0;
+const __as_dbMaxInt      = (h, sql, params) => Number(globalThis.__as_sqlite.aggMaxInt(h, sql, params)) | 0;
+const __as_dbAvg         = (h, sql, params) => Number(globalThis.__as_sqlite.aggAvg(h, sql, params));
+const __as_dbGroupBy     = (h, sql, params) => String(globalThis.__as_sqlite.groupBy(h, sql, params));
+const __as_dbGroupCount  = (h, table, keyCol) => String(globalThis.__as_sqlite.groupCount(h, table, keyCol));
 const __as_httpFetch = async (url, method, headers, bodyOpt) => {
   const init = { method, headers: __as_httpHeadersToObject(headers) };
   if (bodyOpt && bodyOpt.tag === "Some") init.body = bodyOpt.value;
@@ -866,7 +891,24 @@ let () =
   b "db_table_exists"   (fun a -> Printf.sprintf "__as_dbTableExists(%s, %s)" (arg 0 a) (arg 1 a));
   b "db_import_csv"     (fun a -> Printf.sprintf "__as_dbImportCsv(%s, %s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a) (arg 3 a));
   b "db_export_csv"     (fun a -> Printf.sprintf "__as_dbExportCsv(%s, %s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a) (arg 3 a));
-  b "db_last_error"     (fun a -> Printf.sprintf "__as_dbLastError(%s)" (arg 0 a))
+  b "db_last_error"     (fun a -> Printf.sprintf "__as_dbLastError(%s)" (arg 0 a));
+  (* ---- Sqlite transactions (db-theory #2 / stdlib/Transaction.affine) ---- *)
+  b "tx_begin"        (fun a -> Printf.sprintf "__as_txBegin(%s)" (arg 0 a));
+  b "tx_commit"       (fun a -> Printf.sprintf "__as_txCommit(%s)" (arg 0 a));
+  b "tx_rollback"     (fun a -> Printf.sprintf "__as_txRollback(%s)" (arg 0 a));
+  b "tx_savepoint"    (fun a -> Printf.sprintf "__as_txSavepoint(%s, %s)" (arg 0 a) (arg 1 a));
+  b "tx_release"      (fun a -> Printf.sprintf "__as_txRelease(%s, %s)" (arg 0 a) (arg 1 a));
+  b "tx_rollback_to"  (fun a -> Printf.sprintf "__as_txRollbackTo(%s, %s)" (arg 0 a) (arg 1 a));
+  b "tx_db"           (fun a -> Printf.sprintf "__as_txDb(%s)" (arg 0 a));
+  b "tx_is_live"      (fun a -> Printf.sprintf "__as_txIsLive(%s)" (arg 0 a));
+  (* ---- Sqlite aggregation (db-theory #3 / stdlib/Aggregate.affine) ---- *)
+  b "db_count"        (fun a -> Printf.sprintf "__as_dbCount(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
+  b "db_sum"          (fun a -> Printf.sprintf "__as_dbSum(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
+  b "db_min_int"      (fun a -> Printf.sprintf "__as_dbMinInt(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
+  b "db_max_int"      (fun a -> Printf.sprintf "__as_dbMaxInt(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
+  b "db_avg"          (fun a -> Printf.sprintf "__as_dbAvg(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
+  b "db_group_by"     (fun a -> Printf.sprintf "__as_dbGroupBy(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
+  b "db_group_count"  (fun a -> Printf.sprintf "__as_dbGroupCount(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a))
 
 (* ============================================================================
    Identifier sanitisation (JS reserved words -> trailing underscore)
