@@ -1,4 +1,8 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 = AffineScript: A Practical Language for Resource-Safe Systems
+image:https://img.shields.io/badge/OpenSSF-Best_Practices-green?logo=openssourcesecurity[OpenSSF Best Practices,link="https://www.bestpractices.dev/en/projects/new?repo_url=https://github.com/hyperpolymath/affinescript"]
+
 :toc:
 :toclevels: 3
 :sectnums:
@@ -645,9 +649,9 @@ ____
 
 == License
 
-This repository is documented and distributed under AGPL-3.0-or-later.
+This repository is documented and distributed under MPL-2.0.
 
-The broader Palimpsest-MPL licensing layer applies to associated ecosystem technology including:
+The broader MPL-2.0 licensing layer applies to associated ecosystem technology including:
 
 - Gossamer
 - Burble
@@ -655,8 +659,8 @@ The broader Palimpsest-MPL licensing layer applies to associated ecosystem techn
 
 See also:
 
-- AGPL-3.0-or-later: https://www.gnu.org/licenses/agpl-3.0.html
-- PMPL-1.0: https://github.com/hyperpolymath/palimpsest-license
+- MPL-2.0: https://www.gnu.org/licenses/agpl-3.0.html
+- MPL-2.0: https://github.com/hyperpolymath/palimpsest-license
 
 == Final Positioning Summary
 
