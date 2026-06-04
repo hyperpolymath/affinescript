@@ -1,3 +1,7 @@
+<!--
+SPDX-License-Identifier: MPL-2.0
+Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+-->
 # AffineScript for Visual Studio Code
 
 Official Visual Studio Code extension for AffineScript - a language with affine types, algebraic effects, and dependent types that compiles to WebAssembly.

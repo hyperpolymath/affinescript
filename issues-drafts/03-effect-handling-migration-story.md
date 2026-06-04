@@ -1,3 +1,7 @@
+<!--
+SPDX-License-Identifier: MPL-2.0
+Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+-->
 # Document the migration story for code that needs algebraic effect handling
 
 **Surfaced by:** IDApTIK migration (Wave 3, 2026-05-02)

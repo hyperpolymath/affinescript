@@ -1,3 +1,7 @@
+<!--
+SPDX-License-Identifier: MPL-2.0
+Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+-->
 # AffineScript Licensing Guide
 
 ## 📜 Comprehensive Licensing Information
@@ -8,7 +12,7 @@ This document clarifies the licensing structure for the AffineScript ecosystem, 
 
 ## 🏷️ Three-Tier Licensing Structure
 
-### 1. **Game Content (AGPL-3.0-or-later)**
+### 1. **Game Content (MPL-2.0)**
 **Applies to:** All game-specific assets, levels, scripts, and modifications
 
 **Purpose:** Ensure game modifications remain open source and accessible to the community
@@ -68,9 +72,9 @@ This document clarifies the licensing structure for the AffineScript ecosystem, 
 
 ```mermaid
 graph TD
-    A[Game Content] -->|AGPL-3.0-or-later| B[Open Source Game]
+    A[Game Content] -->|MPL-2.0| B[Open Source Game]
     C[Core Technology] -->|MPL-2.0| D[AffineScript Compiler]
-    E[Foundational Tech] -->|PMPL-1.0/MPL-2.0| F[Gossamer/Burble]
+    E[Foundational Tech] -->|MPL-2.0/MPL-2.0| F[Gossamer/Burble]
     
     B -->|Uses| D
     B -->|Uses| F
@@ -81,7 +85,7 @@ graph TD
 
 ## 📋 Detailed License Breakdown
 
-### AGPL-3.0-or-later (Game Content)
+### MPL-2.0 (Game Content)
 
 **Full Name:** GNU Affero General Public License version 3.0 or later
 
@@ -99,11 +103,11 @@ graph TD
 
 **File Header:**
 ```affinescript
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 // SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell
 //
 // This file is part of the AffineScript Game
-// Licensed under AGPL-3.0-or-later
+// Licensed under MPL-2.0
 ```
 
 ---
@@ -144,7 +148,7 @@ graph TD
 
 ---
 
-### PMPL-1.0 / MPL-2.0-derived (Foundational Technologies)
+### MPL-2.0 / MPL-2.0-derived (Foundational Technologies)
 
 **Full Name:** Palimpsest Mutual Public License 1.0 (based on MPL-2.0)
 
@@ -173,7 +177,7 @@ graph TD
 // SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell
 //
 // This file is part of Gossamer/Burble Foundational Technologies
-// Licensed under PMPL-1.0 (Palimpsest-MPL) based on MPL-2.0
+// Licensed under MPL-2.0 (MPL-2.0) based on MPL-2.0
 // Complete license: https://github.com/hyperpolymath/palimpsest-license
 ```
 
@@ -185,7 +189,7 @@ graph TD
 
 **Short Version (GitHub):**
 ```
-AffineScript: The game developer's secret weapon. AGPL-3.0 game content with PMPL-1.0 core technology. Compiles to WASM with compiler-proven correctness. Built on Gossamer (PMPL) and Burble (PMPL) foundations.
+AffineScript: The game developer's secret weapon. AGPL-3.0 game content with MPL-2.0 core technology. Compiles to WASM with compiler-proven correctness. Built on Gossamer (PMPL) and Burble (PMPL) foundations.
 ```
 
 **Long Version (README):**
@@ -194,7 +198,7 @@ AffineScript: The game developer's secret weapon. AGPL-3.0 game content with PMP
 
 **AffineScript** is a revolutionary game development platform featuring:
 
-🎮 **Game Content** (AGPL-3.0-or-later)
+🎮 **Game Content** (MPL-2.0)
 - Open source game assets and modifications
 - Community-driven development
 - Ensured accessibility for all players
@@ -205,7 +209,7 @@ AffineScript: The game developer's secret weapon. AGPL-3.0 game content with PMP
 - WebAssembly compilation
 - Permissive tooling license
 
-🛡️ **Foundational Technologies** (PMPL-1.0/MPL-2.0)
+🛡️ **Foundational Technologies** (MPL-2.0/MPL-2.0)
 - **Gossamer**: Linearly-typed webview shell
 - **Burble**: High-assurance multiplayer communications
 - Ethical use requirements
@@ -234,9 +238,9 @@ quantum-safe, provenance, linear-types, resource-safety
 
 **Content Tags:**
 - `game-content` (AGPL-3.0 content)
-- `compiler` (PMPL-1.0 technology)
-- `gossamer` (PMPL-1.0 foundation)
-- `burble` (PMPL-1.0 foundation)
+- `compiler` (MPL-2.0 technology)
+- `gossamer` (MPL-2.0 foundation)
+- `burble` (MPL-2.0 foundation)
 
 ---
 
@@ -244,9 +248,9 @@ quantum-safe, provenance, linear-types, resource-safety
 
 ```
 LICENSES/
-├── LICENSE                    # PMPL-1.0 (Primary)
+├── LICENSE                    # MPL-2.0 (Primary)
 ├── LICENSE-AGPL-3.0          # AGPL-3.0 (Game Content)
-├── LICENSE-PMPL-1.0          # PMPL-1.0 (Core Tech)
+├── LICENSE-MPL-2.0          # MPL-2.0 (Core Tech)
 ├── LICENSE-MPL-2.0           # MPL-2.0 (Reference)
 ├── EXHIBIT-A-ETHICAL-USE.txt  # Ethical guidelines
 ├── EXHIBIT-B-QUANTUM-SAFE.txt # Quantum-safe specs
@@ -392,14 +396,14 @@ fn is_terminal() -> bool {
 
 ### For Game Distributors
 - [ ] Include LICENSE-AGPL-3.0 file
-- [ ] Include LICENSE-PMPL-1.0 file
+- [ ] Include LICENSE-MPL-2.0 file
 - [ ] Provide source code access (AGPL requirement)
 - [ ] Document modifications (AGPL requirement)
 - [ ] Preserve copyright notices
 - [ ] Include license guide
 
 ### For Technology Users
-- [ ] Include LICENSE-PMPL-1.0 file
+- [ ] Include LICENSE-MPL-2.0 file
 - [ ] Preserve copyright notices
 - [ ] Document modifications
 - [ ] Follow ethical use guidelines
@@ -418,12 +422,12 @@ fn is_terminal() -> bool {
 
 ### Full License Texts
 - **AGPL-3.0:** https://www.gnu.org/licenses/agpl-3.0.html
-- **PMPL-1.0:** https://github.com/hyperpolymath/palimpsest-license
+- **MPL-2.0:** https://github.com/hyperpolymath/palimpsest-license
 - **MPL-2.0:** https://www.mozilla.org/en-US/MPL/2.0/
 
 ### License Identification
-- **SPDX AGPL-3.0:** `AGPL-3.0-or-later`
-- **SPDX PMPL-1.0:** `MPL-2.0`
+- **SPDX AGPL-3.0:** `MPL-2.0`
+- **SPDX MPL-2.0:** `MPL-2.0`
 - **SPDX MPL-2.0:** `MPL-2.0`
 
 ### Compliance Tools
@@ -438,13 +442,13 @@ fn is_terminal() -> bool {
 ### Licensing Structure
 ```
 Game Content (AGPL-3.0) → Open game development
-Core Technology (PMPL-1.0) → Permissive tooling
+Core Technology (MPL-2.0) → Permissive tooling
 Foundational Tech (PMPL/MPL-2.0) → Ethical infrastructure
 ```
 
 ### Key Points
 1. **Dual licensing** ensures open games with permissive tools
-2. **PMPL-1.0** extends MPL-2.0 with ethical use requirements
+2. **MPL-2.0** extends MPL-2.0 with ethical use requirements
 3. **AGPL-3.0** ensures game modifications remain open
 4. **All licenses** are OSI-approved and compatible
 5. **Clear separation** between game content and technology
@@ -462,5 +466,5 @@ Foundational Tech (PMPL/MPL-2.0) → Ethical infrastructure
 **Version:** Alpha-1
 **Status:** Complete licensing documentation
 
-SPDX-License-Identifier: AGPL-3.0-or-later AND MPL-2.0 AND MPL-2.0
+SPDX-License-Identifier: MPL-2.0 AND MPL-2.0 AND MPL-2.0
 SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell and contributors

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 = AffineScript-Vite
 :toc: macro
 :toclevels: 3
@@ -85,7 +87,7 @@ gameLogic.init();
 
 == License
 
-This project is licensed under **AGPL-3.0-or-later**.
+This project is licensed under **MPL-2.0**.
 
 == See Also
 

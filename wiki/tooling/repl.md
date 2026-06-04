@@ -1,3 +1,7 @@
+<!--
+SPDX-License-Identifier: MPL-2.0
+Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+-->
 # REPL Guide
 
 The AffineScript REPL (Read-Eval-Print Loop) provides an interactive environment for exploring the language.

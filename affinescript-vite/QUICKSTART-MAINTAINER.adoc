@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+// Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 // Template: QUICKSTART-MAINTAINER.adoc — packaging, deploying, and maintaining
 // Replace rsr-template-repo, {{PACKAGE_NAME}}, {{DEPS}} with actuals
 = rsr-template-repo — Quick Start for Platform Maintainers
@@ -106,7 +107,7 @@ Or via OPSM: `opsm update {{PACKAGE_NAME}}`
 
 == Security Notes
 
-* License: MPL-2.0 (Palimpsest License)
+* License: MPL-2.0 (MPL-2.0)
 * All dependencies SHA-pinned
 * `panic-attacker` scan results: link:INSTALL-SECURITY-REPORT.adoc[]
 * OpenSSF Scorecard: see badge in README

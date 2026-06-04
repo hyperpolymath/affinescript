@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 = AffineScript Framework Bindings Roadmap
 :toc: macro
 :toclevels: 3
@@ -51,7 +53,7 @@ no further significant ReScript → AffineScript work is tractable.
 |*PixiJS core* (Application, Container, Sprite, Graphics, Text, Ticker, FederatedEvent)
 |`◑` partial (Application / Container / Sprite / Graphics / Text / Texture / Ticker landed; Container 8.x transform-and-event surface — scale / pivot / rotation / alpha / zIndex / sortableChildren / eventMode / cursor + on/off pointer-event registration + Sprite anchor — landed; opaque `FederatedPointerEvent` Json accessors + `parent` read accessor + Point/Rectangle/Circle helper types + sprite atlases + filters + hitArea deferred)
 |`stdlib/Pixi.affine` (eventual home: `affinescript-pixijs` as a separate repo per the SNIFs/typed-wasm precedent)
-|idaptik `src/bindings/Pixi.res`; all 215 `src/app/*.res` files depend on this. Restarted 2026-05-28 — the prior `affinescript-pixijs/` directory used the obsolete `.as` extension + AGPL-3.0-or-later headers + a Zig→C→WASM-import architecture incompatible with the Deno-ESM emitter; it was deleted and the surface rebuilt in `stdlib/Pixi.affine` matching the wasmCall / motion pattern. Container accessor + on/off expansion landed 2026-05-31. Test fixture: `tests/codegen-deno/pixi_smoke.{affine,harness.mjs}` exercises every shipped extern, including `smokeAccessorsFlow` over the 11-extern 8.x transform-and-event addition. Follow-ups: typed `FederatedPointerEvent` accessors (read global/client x,y; target; stopPropagation); `parent` read accessor with Option-null handling; Point/Rectangle/Circle helper types; sprite atlases; filters; hitArea.
+|idaptik `src/bindings/Pixi.res`; all 215 `src/app/*.res` files depend on this. Restarted 2026-05-28 — the prior `affinescript-pixijs/` directory used the obsolete `.as` extension + MPL-2.0 headers + a Zig→C→WASM-import architecture incompatible with the Deno-ESM emitter; it was deleted and the surface rebuilt in `stdlib/Pixi.affine` matching the wasmCall / motion pattern. Container accessor + on/off expansion landed 2026-05-31. Test fixture: `tests/codegen-deno/pixi_smoke.{affine,harness.mjs}` exercises every shipped extern, including `smokeAccessorsFlow` over the 11-extern 8.x transform-and-event addition. Follow-ups: typed `FederatedPointerEvent` accessors (read global/client x,y; target; stopPropagation); `parent` read accessor with Option-null handling; Point/Rectangle/Circle helper types; sprite atlases; filters; hitArea.
 
 |2
 |*@pixi/sound* (`Sound.from`, play, stop, volume, setVolume, loop)

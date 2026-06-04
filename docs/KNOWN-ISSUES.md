@@ -1,4 +1,7 @@
-<!-- SPDX-License-Identifier: MPL-2.0 -->
+<!--
+SPDX-License-Identifier: MPL-2.0
+Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+-->
 # Known AffineScript codegen issues
 
 Minimal reproducers for codegen bugs discovered while using AffineScript

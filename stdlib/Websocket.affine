@@ -1,0 +1,110 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// Websocket.affine — WebSocket client binding (bindings #6 in
+// docs/bindings-roadmap.adoc).
+//
+// Foundational layer for Phoenix Channels (the row #6 named consumer
+// pattern: idaptik `src/app/multiplayer/PhoenixSocket.res` +
+// LobbyManager). The Phoenix Channels protocol — message envelopes of
+// shape `[join_ref, ref, topic, event, payload]`, heartbeat, presence
+// — is pure JSON-over-WebSocket and layers on top of this binding in
+// AffineScript; no further `extern fn` is required for the protocol
+// itself.
+//
+// Targets the Deno-ESM backend. `WebSocket` is a standard web-platform
+// global (`globalThis.WebSocket`) in Deno, Node 22+ via the WHATWG
+// shim, browsers, and Web Workers. No consumer-side init required.
+//
+// Test fixture: `tests/codegen-deno/websocket_smoke.{affine,harness.mjs}`.
+//
+// Out of scope for this initial surface (deferred to follow-ups):
+//   * `WebSocketServer` (the server half — different shape, different
+//     runtime surface; Deno has `Deno.upgradeWebSocket`, Node has
+//     `ws` package, Tauri proxies; pick a host at server time)
+//   * Subprotocol negotiation (the `WebSocket(url, protocols)` arg)
+//     and per-message-deflate / extensions — most consumers don't
+//     need them; the extra constructor extern can layer on top
+//   * `binaryType` + `ArrayBuffer` send/receive — text-frame
+//     sufficient for Phoenix Channels and typed payload via
+//     JSON.stringify; binary handling is its own axis (Tier-3
+//     adjacent — `Streams` / `Fetch`)
+//   * Typed `MessageEvent` accessors — the handler currently sees
+//     the event as opaque `Json` and reads `event.data` via Json
+//     accessors; typed surface is the natural follow-up axis
+
+module Websocket;
+
+use Deno::{Json};
+
+// ── Opaque host types ──────────────────────────────────────────────
+
+/// A `WebSocket` instance. Created by `websocketOpen`; the constructor
+/// is async-ish (the connection is in `CONNECTING` state until the
+/// `open` event fires) so consumers should register handlers
+/// immediately and treat the value as a future-readiness handle.
+pub extern type WebSocket;
+
+// ── Construction ───────────────────────────────────────────────────
+
+/// `new WebSocket(url)` — open a connection. The connection enters
+/// `CONNECTING` state synchronously; the `open` handler fires once
+/// the WebSocket handshake completes. The `Net` effect row reflects
+/// the network capability.
+pub extern fn websocketOpen(url: String) -> WebSocket / { Net };
+
+// ── Lifecycle accessors ────────────────────────────────────────────
+
+/// `ws.readyState` — the connection's current state. Values:
+///   * `0` = CONNECTING
+///   * `1` = OPEN
+///   * `2` = CLOSING
+///   * `3` = CLOSED
+/// Useful for guarding `websocketSend` against transient unready
+/// states without setting up a handler dance.
+pub extern fn websocketReadyState(ws: WebSocket) -> Int;
+
+// ── Sending ────────────────────────────────────────────────────────
+
+/// `ws.send(data)` — enqueue a text frame for the server. `data` is
+/// any AffineScript `String`; JSON callers `String`-ify their
+/// payload before calling. Throws on closed-or-closing sockets in
+/// the host JS runtime — guard with `websocketReadyState` if in
+/// doubt. Returns 0.
+pub extern fn websocketSend(ws: WebSocket, data: String) -> Int;
+
+// ── Handler registration ───────────────────────────────────────────
+
+/// `ws.onopen = handler` — fires once when the handshake completes.
+/// `handler` is an opaque JS function `(event: Json) => void`.
+/// Replaces any prior handler. Returns 0.
+pub extern fn websocketOnOpen(ws: WebSocket, handler: Json) -> Int;
+
+/// `ws.onmessage = handler` — fires for every received text-frame.
+/// Handler receives the `MessageEvent`; read `event.data` (the
+/// text payload) via existing `Json` accessors. Returns 0.
+pub extern fn websocketOnMessage(ws: WebSocket, handler: Json) -> Int;
+
+/// `ws.onerror = handler` — fires on transport / protocol errors.
+/// Handler receives the `Event` (read-only; the WebSocket spec
+/// deliberately hides error detail for security). Returns 0.
+pub extern fn websocketOnError(ws: WebSocket, handler: Json) -> Int;
+
+/// `ws.onclose = handler` — fires on connection close, whether
+/// host-initiated, server-initiated, or transport-failure. Handler
+/// receives the `CloseEvent`; read `event.code` (1000=normal,
+/// 1001=going-away, 1006=abnormal, …) and `event.reason` via Json
+/// accessors. Returns 0.
+pub extern fn websocketOnClose(ws: WebSocket, handler: Json) -> Int;
+
+// ── Close ──────────────────────────────────────────────────────────
+
+/// `ws.close()` — initiate normal close (close-code 1000). The
+/// `onclose` handler fires once the close handshake completes.
+/// Returns 0.
+pub extern fn websocketClose(ws: WebSocket) -> Int;
+
+/// `ws.close(code, reason)` — initiate close with an explicit
+/// close-code (1000–4999 valid; 1000 normal, 4000–4999 reserved for
+/// application use) and human-readable reason string. Returns 0.
+pub extern fn websocketCloseWithReason(ws: WebSocket, code: Int, reason: String) -> Int;

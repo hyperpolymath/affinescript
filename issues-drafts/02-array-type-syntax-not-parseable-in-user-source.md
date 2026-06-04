@@ -1,3 +1,7 @@
+<!--
+SPDX-License-Identifier: MPL-2.0
+Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+-->
 # Array type syntax `[T]` not parseable in user source code
 
 **STATUS: CLOSED 2026-05-03** — `[T]` desugars to `Array[T]` in any

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-// Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+// Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 //
 // ABI module for affinescriptiser — Core type definitions for affine/linear resource tracking,
 // WASM compilation targets, and violation reporting. These types model the AffineScript type

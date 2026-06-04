@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-// Copyright (c) 2024-2026 Jonathan D.A. Jewell (hyperpolymath)
-
+// Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 //! Compiler resolution (INT-10 / #282 — ADR-019 S4).
 //!
 //! The AffineScript compiler is a native OCaml binary, not a crate the

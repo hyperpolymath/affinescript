@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+// Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 = affinescript-deno-test
 :toc:
 :icons: font
@@ -38,7 +39,6 @@ in `_test.affine` or `.test.affine`.
 [source,affine]
 ----
 // example/hello_test.affine
-// SPDX-License-Identifier: MPL-2.0
 
 pub fn test_addition() -> Bool {
   let result = 2 + 3;

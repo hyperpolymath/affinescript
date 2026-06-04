@@ -1,3 +1,7 @@
+<!--
+SPDX-License-Identifier: MPL-2.0
+Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+-->
 # AffineScript v0.1.0 - Reference Parser Release
 
 This is the first public release of AffineScript, featuring a complete specification and reference parser.

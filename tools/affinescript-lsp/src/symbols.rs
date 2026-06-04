@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-// Copyright (c) 2024-2026 Jonathan D.A. Jewell (hyperpolymath)
-
+// Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 //! Phase B: Symbol Table and References
 //!
 //! Parses the v2 `--json` contract's `symbols` and `references` fields.

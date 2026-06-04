@@ -1,3 +1,7 @@
+<!--
+SPDX-License-Identifier: MPL-2.0
+Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+-->
 ## 🚨 Disambiguation (read first)
 
 **This repo is `hyperpolymath/affinescript`.** It is **NOT** `hyperpolymath/ephapax`.
@@ -103,7 +107,7 @@ Both are FOSS with independent governance (no Big Tech).
 
 1. **No new TypeScript files** - Write new code in AffineScript (closed exemptions table below covers the residual `.d.ts` / Deno-test cases).
 2. **No new ReScript files** - As of 2026-05-25 policy refresh; AffineScript is the go-forward. Existing `.res` files stay until migrated via #488.
-3. **No package.json for runtime deps** - Use deno.json imports.
+3. **No package.json - use deno.json deps** - Use deno.json imports.
 4. **No node_modules in production** - Deno caches deps automatically.
 5. **No Go code** - Use Rust instead.
 6. **Python only for SaltStack** - All other Python must be rewritten.

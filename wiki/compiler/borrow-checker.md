@@ -1,3 +1,7 @@
+<!--
+SPDX-License-Identifier: MPL-2.0
+Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+-->
 # Borrow Checker
 
 The AffineScript borrow checker verifies ownership and borrowing rules at compile time.

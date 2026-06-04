@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 // Affinescriptiser FFI Implementation
 //
 // This module implements the C-compatible FFI declared in src/interface/abi/Foreign.idr.
@@ -6,8 +8,6 @@
 //
 // All types and layouts must match the Idris2 ABI definitions in Types.idr and Layout.idr.
 //
-// SPDX-License-Identifier: MPL-2.0
-// Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
 
 const std = @import("std");
 

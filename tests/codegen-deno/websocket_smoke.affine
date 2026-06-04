@@ -1,0 +1,36 @@
+// SPDX-License-Identifier: MPL-2.0
+// bindings #6 — WebSocket client smoke test.
+//
+// Tests the binding without a real network — the harness installs a
+// MockWebSocket on globalThis.WebSocket before importing the
+// generated module. Asserts handler registration, send dispatch,
+// readyState read-through, and the two close shapes.
+
+use Deno::{Json};
+use Websocket::{WebSocket, websocketOpen, websocketReadyState, websocketSend, websocketOnOpen, websocketOnMessage, websocketOnError, websocketOnClose, websocketClose, websocketCloseWithReason};
+
+/// Open a connection and register every handler — the harness then
+/// asserts each was set.
+pub fn smokeOpenAndListen(url: String, onOpen: Json, onMessage: Json, onError: Json, onClose: Json) -> WebSocket / { Net } {
+  let ws = websocketOpen(url);
+  websocketOnOpen(ws, onOpen);
+  websocketOnMessage(ws, onMessage);
+  websocketOnError(ws, onError);
+  websocketOnClose(ws, onClose);
+  ws
+}
+
+/// Send a text payload + observe the readyState.
+pub fn smokeSendAndReadState(ws: WebSocket, payload: String) -> Int {
+  websocketSend(ws, payload);
+  websocketReadyState(ws)
+}
+
+/// Exercise both close shapes — normal close + close-with-reason.
+pub fn smokeCloseShapes(url: String) -> Int / { Net } {
+  let ws1 = websocketOpen(url);
+  websocketClose(ws1);
+  let ws2 = websocketOpen(url);
+  websocketCloseWithReason(ws2, 4000, "application-shutdown");
+  0
+}

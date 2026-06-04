@@ -1,3 +1,7 @@
+<!--
+SPDX-License-Identifier: MPL-2.0
+Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+-->
 # Row Polymorphism
 
 Row polymorphism enables flexible, type-safe operations on extensible records and variants.

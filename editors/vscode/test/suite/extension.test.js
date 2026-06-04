@@ -1,4 +1,5 @@
-// SPDX-License-Identifier: MIT OR AGPL-3.0-or-later
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 // Acceptance harness for #139 — in-editor smoke test of the .affine
 // VS Code extension. Runs inside the VS Code extension host launched by
 // runTest.js. Each `test` maps to one of the four acceptance bullets:

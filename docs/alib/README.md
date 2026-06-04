@@ -1,3 +1,7 @@
+<!--
+SPDX-License-Identifier: MPL-2.0
+Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+-->
 # AffineScript ↔ aLib Integration
 
 This directory contains documentation and tools for integrating AffineScript with the **aggregate-library (aLib)** methodology.
@@ -147,4 +151,4 @@ fn filter<T: affine>(arr: [T], pred: &T -> Bool) -> [T] {
 
 ## License
 
-PMPL-1.0 (following AffineScript project license)
+MPL-2.0 (following AffineScript project license)

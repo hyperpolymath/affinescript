@@ -1,3 +1,7 @@
+<!--
+SPDX-License-Identifier: MPL-2.0
+Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+-->
 # Contributing to AffineScript
 
 Thank you for your interest in AffineScript — a practical language for resource-safe systems, compiling to typed WebAssembly. This guide covers how to set up a working tree, file useful bugs, and submit changes.
@@ -47,7 +51,7 @@ affinescript/
 ├── .github/             # CI workflows, issue templates
 ├── CODE_OF_CONDUCT.md
 ├── CONTRIBUTING.md      # This file
-├── LICENSE / LICENSES   # MIT OR AGPL-3.0-or-later
+├── LICENSE / LICENSES   # MIT OR MPL-2.0
 ├── MAINTAINERS.adoc
 ├── README.adoc
 ├── SECURITY.md
@@ -152,4 +156,4 @@ This project follows the [Code of Conduct](CODE_OF_CONDUCT.md). By participating
 
 ## License
 
-By contributing you agree your contribution is licensed under the project's dual licence (MIT OR AGPL-3.0-or-later), as recorded in [`LICENSE`](LICENSE) and per-file SPDX headers.
+By contributing you agree your contribution is licensed under the project's dual licence (MIT OR MPL-2.0), as recorded in [`LICENSE`](LICENSE) and per-file SPDX headers.

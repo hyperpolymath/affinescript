@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-// Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+// Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 //
 // Codegen orchestrator for affinescriptiser — Coordinates the three-phase code generation
 // pipeline: (1) parse source files to find resource sites, (2) generate AffineScript type

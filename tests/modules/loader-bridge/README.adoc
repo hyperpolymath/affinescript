@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
+// Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 = INT-02 loader-bridge acceptance harness (#179)
 
 Proves the host-agnostic loader (`packages/affine-js/loader.js`) on

@@ -1,3 +1,7 @@
+<!--
+SPDX-License-Identifier: MPL-2.0
+Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+-->
 # AffineScript Academic Documentation
 
 This directory contains formal academic documentation for the AffineScript programming language, including proofs, specifications, white papers, and mechanized verification.

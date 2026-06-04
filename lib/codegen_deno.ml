@@ -387,6 +387,18 @@ const __as_canvasStrokeText = (ctx, text, x, y) => { ctx.strokeText(text, x, y);
 const __as_canvasMeasureText = (ctx, text) => ctx.measureText(text);
 const __as_canvasDrawImage = (ctx, img, x, y) => { ctx.drawImage(img, x, y); return 0; };
 const __as_canvasDrawImageScaled = (ctx, img, x, y, w, h) => { ctx.drawImage(img, x, y, w, h); return 0; };
+// ---- Websocket (bindings #6): WebSocket client ----
+// `WebSocket` is a standard web-platform global — Deno, Node 22+
+// (WHATWG shim), browsers, Web Workers. No host indirection.
+const __as_websocketOpen = (url) => new WebSocket(url);
+const __as_websocketReadyState = (ws) => ws.readyState;
+const __as_websocketSend = (ws, data) => { ws.send(data); return 0; };
+const __as_websocketOnOpen = (ws, h) => { ws.onopen = h; return 0; };
+const __as_websocketOnMessage = (ws, h) => { ws.onmessage = h; return 0; };
+const __as_websocketOnError = (ws, h) => { ws.onerror = h; return 0; };
+const __as_websocketOnClose = (ws, h) => { ws.onclose = h; return 0; };
+const __as_websocketClose = (ws) => { ws.close(); return 0; };
+const __as_websocketCloseWithReason = (ws, code, reason) => { ws.close(code, reason); return 0; };
 // `++` is overloaded (string concat / array concat); `a + b` would
 // stringify arrays. Dispatch on shape so stdlib/string.affine's
 // `result ++ [x]` and `a ++ b` are both correct.
@@ -664,6 +676,16 @@ let () =
   b "canvasMeasureText"    (fun a -> Printf.sprintf "__as_canvasMeasureText(%s, %s)" (arg 0 a) (arg 1 a));
   b "canvasDrawImage"      (fun a -> Printf.sprintf "__as_canvasDrawImage(%s, %s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a) (arg 3 a));
   b "canvasDrawImageScaled" (fun a -> Printf.sprintf "__as_canvasDrawImageScaled(%s, %s, %s, %s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a) (arg 3 a) (arg 4 a) (arg 5 a));
+  (* ---- Websocket (bindings #6): WebSocket client ---- *)
+  b "websocketOpen"            (fun a -> Printf.sprintf "__as_websocketOpen(%s)" (arg 0 a));
+  b "websocketReadyState"      (fun a -> Printf.sprintf "__as_websocketReadyState(%s)" (arg 0 a));
+  b "websocketSend"            (fun a -> Printf.sprintf "__as_websocketSend(%s, %s)" (arg 0 a) (arg 1 a));
+  b "websocketOnOpen"          (fun a -> Printf.sprintf "__as_websocketOnOpen(%s, %s)" (arg 0 a) (arg 1 a));
+  b "websocketOnMessage"       (fun a -> Printf.sprintf "__as_websocketOnMessage(%s, %s)" (arg 0 a) (arg 1 a));
+  b "websocketOnError"         (fun a -> Printf.sprintf "__as_websocketOnError(%s, %s)" (arg 0 a) (arg 1 a));
+  b "websocketOnClose"         (fun a -> Printf.sprintf "__as_websocketOnClose(%s, %s)" (arg 0 a) (arg 1 a));
+  b "websocketClose"           (fun a -> Printf.sprintf "__as_websocketClose(%s)" (arg 0 a));
+  b "websocketCloseWithReason" (fun a -> Printf.sprintf "__as_websocketCloseWithReason(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
   (* Generic JS array push helper (returns the array, fluent). *)
   b "arrayPush" (fun a -> Printf.sprintf "(%s.push(%s), %s)" (arg 0 a) (arg 1 a) (arg 0 a));
   (* ---- honest string/number primitives underpinning the

@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-// Copyright (c) 2024-2026 Jonathan D.A. Jewell (hyperpolymath)
-
+// Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 //! Text-Based Symbol Index (Phase C)
 //!
 //! Provides a fallback symbol index by scanning AffineScript source text for

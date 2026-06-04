@@ -1,4 +1,5 @@
-// SPDX-License-Identifier: MIT OR AGPL-3.0-or-later
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 // Mocha entry point that the extension host invokes via
 // --extensionTestsPath. Discovers *.test.js files in this directory.
 

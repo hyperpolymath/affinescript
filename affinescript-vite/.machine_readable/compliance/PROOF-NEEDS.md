@@ -1,5 +1,8 @@
+<!--
+SPDX-License-Identifier: MPL-2.0
+Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+-->
 # Proof Requirements — {{PROJECT}}
-<!-- SPDX-License-Identifier: MPL-2.0 -->
 <!-- Template: rsr-template-repo/PROOF-NEEDS.md -->
 <!-- Authoritative master list: ~/Desktop/PROOF-REQUIREMENTS-MASTER.md -->
 

@@ -1,3 +1,7 @@
+<!--
+SPDX-License-Identifier: MPL-2.0
+Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+-->
 # Type Checker
 
 The AffineScript type checker implements bidirectional type inference with support for dependent types, row polymorphism, and effects.

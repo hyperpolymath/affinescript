@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-// Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+// Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 //
 // AffineScript type annotation generator — Takes parsed resource sites and manifest resource
 // declarations and produces AffineScript wrapper modules. Each tracked resource gets a wrapper

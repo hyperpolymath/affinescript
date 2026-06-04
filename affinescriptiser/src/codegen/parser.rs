@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-// Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+// Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 //
 // Source parser for affinescriptiser — Scans source files (Rust, C, Zig) to identify call sites
 // where tracked resources are allocated or deallocated. Produces a list of ResourceSite records

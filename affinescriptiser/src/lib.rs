@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 #![forbid(unsafe_code)]
 #![allow(
     dead_code,
@@ -6,8 +8,6 @@
     clippy::if_same_then_else,
     clippy::vec_init_then_push
 )]
-// SPDX-License-Identifier: MPL-2.0
-// Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 //
 // affinescriptiser library — Public API for embedding affinescriptiser's analysis and
 // codegen pipeline into other tools. Re-exports the core modules (ABI types, manifest

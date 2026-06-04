@@ -18,6 +18,7 @@ permissions:
 jobs:
   trigger-boj:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     if: ${{ vars.BOJ_SERVER_URL != '' || secrets.BOJ_SERVER_URL != '' }}
     steps:
       - name: Checkout

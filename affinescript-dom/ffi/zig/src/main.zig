@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 /// AffineScript DOM Connector FFI (Zig Implementation)
 /// (c) 2026 hyperpolymath
 /// SPDX-License-Identifier: AGPL-3.0-or-later

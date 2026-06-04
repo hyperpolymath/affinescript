@@ -1,6 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 #![forbid(unsafe_code)]
-// SPDX-License-Identifier: Apache-2.0 OR MIT
-// Copyright 2024 AffineScript Contributors
 
 //! AffineScript Package Manager
 //!

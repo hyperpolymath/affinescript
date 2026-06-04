@@ -1,3 +1,7 @@
+<!--
+SPDX-License-Identifier: MPL-2.0
+Copyright (c) Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+-->
 # Ownership and Borrowing
 
 AffineScript uses an ownership system inspired by Rust and linear types from type theory. This ensures memory safety without garbage collection.
