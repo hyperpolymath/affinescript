@@ -1,0 +1,69 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+= AffineScript co-development proposals (cross-repo, staged for review)
+:toc: macro
+
+toc::[]
+
+== What this directory is
+
+This tree holds **cross-repo proposals produced during AffineScript
+co-development that target a repo *other than* affinescript**. They are
+staged here — as real, diff-able files — because the working agreement
+for this session is *writes go to the affinescript repo only*; everything
+destined for idaptik, echo-types, standards, etc. is parked here for human
+review before it is applied to its home repo.
+
+Each subdirectory is a self-contained proposal with its own `README.adoc`
+explaining what it is, where it belongs, how it was verified, and how to
+land it.
+
+== Index
+
+[cols="1,2,1,2",options="header"]
+|===
+| Subtree | Target repo | Status | What
+
+| `echo-types/`
+| `hyperpolymath/echo-types`
+| *Verified*
+| `EchoEncodingFaithfulness.agda` — a machine-checked Agda module
+  certifying the soundness of the "the integer IS the X" co-processor
+  integerization pattern (lossless = injective; lossy = collision /
+  clamp-to-sentinel). Typechecks under `--safe --without-K`, zero
+  postulates.
+
+| `idaptik/`
+| `hyperpolymath/idaptik`
+| _pending_
+| The kernel migration(s) (ReScript -> AffineScript) as a reviewable
+  case-study / patch, with their differential-parity harnesses.
+
+| `standards/`
+| `hyperpolymath/standards`
+| _pending_
+| Estate-standards implications: the co-processor integerization +
+  differential-parity convention, the String host-boundary ABI, the
+  github-only-network install recipe, the `--deno-esm` / TS-0
+  exemption-table delta.
+
+| `toolchain/`
+| `hyperpolymath/affinescript` (compiler/roadmap) + estate
+| _pending_
+| Compiler/toolchain implications harvested from dogfooding: the
+  variable-string-backend gap, `--deno-esm` to retire the TS harnesses,
+  compiler-emitted Echo boundary obligations, release-cadence coupling.
+|===
+
+== Why staged-not-applied
+
+Three reasons, all from the session's working agreement:
+
+. *Review gate.* The owner wants to review anything touching repos other
+  than affinescript before it lands.
+. *Honest provenance.* A staged proposal records exactly how it was
+  produced and verified, so the receiving repo's maintainer can re-run
+  the checks rather than trust a claim.
+. *No silent cross-repo drift.* Estate policy (see the standards repo's
+  license + no-automated-edits guardrails) is firmly against bulk
+  cross-repo sweeps; per-repo human acceptance is the rule.

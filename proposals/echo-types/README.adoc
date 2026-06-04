@@ -1,0 +1,203 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+= Proposal: EchoEncodingFaithfulness — certifying the co-processor integerization pattern
+:toc: macro
+:source-highlighter: rouge
+
+[IMPORTANT]
+====
+*Status: PROPOSAL, staged for review.* This file and the accompanying
+`EchoEncodingFaithfulness.agda` are staged *in the affinescript repo* on
+purpose. Their eventual home is *`hyperpolymath/echo-types`*
+(`proofs/agda/`). Nothing here has been written into the echo-types repo
+— this is a reviewable, diff-able artefact so the echo-types maintainer
+can accept or revise it before it lands. Do not auto-merge into
+echo-types.
+====
+
+toc::[]
+
+== One-sentence summary
+
+The AffineScript migration slogan *"the integer IS the X"* is, precisely,
+an **encoding-faithfulness theorem**, and echo-types already contains
+every primitive needed to prove it — so this proposal packages those
+primitives under migration-engineer names and supplies the
+clamp-to-sentinel hazard as a worked, machine-checked bridge to the game.
+
+== Why this exists (the link nobody had drawn yet)
+
+The idaptik ReScript -> AffineScript -> wasm migration leans on a
+repeatable pattern the dogfooding report calls *co-processor
+integerization*: a host-side enumerated / stringly-typed value `X` (a
+device port name, a security rank `Open/Weak/Medium/Strong`, a device
+type) is **encoded to an integer**, and a *pure-integer* AffineScript
+wasm kernel computes on the integer. The correctness slogan is "the
+integer IS the X".
+
+That slogan is not folklore — it is a statement about the *fibres* of the
+encoder `enc : X -> ℤ`:
+
+[cols="1,3a",options="header"]
+|===
+| Claim | What it really means
+| "the integer IS the X" (lossless)
+| `enc` is **injective** — every integer determines its `X` uniquely;
+  no two values share a code.
+| "we lost something" (lossy / controlled loss)
+| two distinct `x₁ ≢ x₂` **collide** onto one integer; the lost
+  distinction is the *residue*, localised at the shared code; no
+  integer -> X decoder can be written.
+|===
+
+This is exactly the shape of `echo-types`: `Echo f y := Σ (x : A), (f x ≡
+y)` is the fibre of `f` over `y`, and the library already proves
+"injective ⟹ fibres are unique" and "collision ⟹ no section". This
+proposal is the **audience-facing read** of that pairing for a
+compiler/runtime migrator — in the same mould as the existing
+`EchoProvenance.agda` and `EchoSecurity.agda` audience modules.
+
+== What it proves
+
+Three headline theorems, an abstract record, two worked instances, and an
+honest-bounds block. All under `--safe --without-K`, zero postulates,
+zero funext.
+
+[cols="1,3a",options="header"]
+|===
+| Name | Statement
+
+| `encoding-lossless`
+| If `enc` is injective then for every code `i`, any two echoes of `enc`
+  over `i` have the same underlying source element. (K-free; via
+  `EchoImageFactorization.injective-fibres-proj-unique`.) *The integer
+  faithfully names the X.*
+
+| `encoding-collision⇒no-section`
+| If `x₁ ≢ x₂` but `enc x₁ ≡ enc x₂`, there is **no** `decode : Code ->
+  Source` with `decode ∘ enc ≡ id`. (Via
+  `EchoNoSectionGeneric.no-section-of-collapsing-map`.) *The collision is
+  the named, localised residue.*
+
+| `clamp-sentinel-no-section`
+| **The game-relevant one.** Models the canonical migration bug: an
+  encoder injective on the valid band that *clamps out-of-band input to a
+  sentinel integer that also names a valid value* (the "default a bad
+  input to 0 / `Open`" hazard). Exhibited as a **checked concrete
+  instance**: `valid0` and `oob` both encode to `0`, so the sentinel
+  fibre has no section. The collapse is further witnessed as a fibre-count
+  doubling (`sentinel-two-distinct-indices`) against the lossless valid
+  band (`valid-band-fibre-count-1`).
+|===
+
+The abstract carrier is `record Encoding` (`Source`, `Code`, `enc`) with
+parametric theorems in `module EncodingTheorems (E : Encoding)`. The
+worked `Rank` instance (`open' weak medium strong` -> `0 1 2 3`, proven
+injective) is the bridge to idaptik's actual `SecurityRank`.
+
+== Verification (this was actually run, not asserted)
+
+[source,console]
+----
+$ cd <echo-types-mirror>
+$ LC_ALL=C.UTF-8 agda -i proofs/agda proofs/agda/EchoEncodingFaithfulness.agda
+Checking EchoEncodingFaithfulness (.../proofs/agda/EchoEncodingFaithfulness.agda).
+  (cold elaboration of the full dependency cone)
+$ echo $?
+0
+----
+
+* *Toolchain:* Agda 2.6.3 + agda-stdlib v2.3 (the exact pair echo-types
+  CI pins).
+* *Discipline:* `{-# OPTIONS --safe --without-K #-}`; a forbidden-construct
+  scan (`postulate|TERMINATING|trustMe|primTrustMe|funext`) returns
+  nothing.
+* *Independence:* drafted + typechecked by a dedicated proof-engineer
+  agent in an isolated `/tmp` mirror (no writes into echo-types), then
+  *re-verified independently* in this session. The staged `.agda` file is
+  byte-identical to the file that typechecked.
+* *Size:* 474 lines (most of it the dense explanatory comments that match
+  echo-types house style).
+
+== How to land it in echo-types
+
+Per the echo-types `CLAUDE.md` "Working rules" (every module wired into
+`All.agda`, every headline pinned in `Smoke.agda`):
+
+. Drop `EchoEncodingFaithfulness.agda` into `proofs/agda/`.
+. Register in `All.agda`, in the *"Audience moves (Tier 3)"* block,
+  immediately after `EchoSecurity` (it reuses `EchoSecurity`'s engine,
+  `no-section-of-collapsing-map`, so it belongs in that cluster):
++
+[source,agda]
+----
+open import EchoEncodingFaithfulness  -- Encode faithfulness (migration "the integer IS the X")
+----
+. Add the pin block to `Smoke.agda` (its own `using` block with a header
+  comment, per house rule):
++
+[source,agda]
+----
+-- EchoEncodingFaithfulness — the ReScript->AffineScript->wasm encode-
+-- faithfulness theorem ("the integer IS the X").
+open import EchoEncodingFaithfulness using
+  ( Encoding ; encoding-injective⇒fibre-unique ; encoding-lossless
+  ; encoding-collision⇒no-section ; Rank ; rankCode ; rankCode-injective
+  ; rank-encoding ; rank-lossless-at ; ClampInput ; clampCode
+  ; clamp-sentinel-collision ; clamp-encoding ; clamp-sentinel-no-section
+  ; sentinel-two-distinct-indices ; valid-band-fibre-count-1 )
+----
+. `agda proofs/agda/All.agda` and `agda proofs/agda/Smoke.agda` should
+  both still exit 0.
+
+== Honest bounds (and the conceptual payoff)
+
+The module ships a `NotProved-*` matched-negative block. The load-bearing
+one:
+
+[quote]
+____
+`NotProved-wasm-implements-enc` — proving the encoder injective says
+*nothing* about whether the deployed wasm kernel bit-for-bit implements
+it. That is the **differential-parity harness's** job (run host-side
+`enc` and wasm-side `enc` on the same inputs and compare), not the
+proof's.
+____
+
+This is the clean **division of labour** that the whole migration
+methodology turns on, now made precise:
+
+* the **proof** (`EchoEncodingFaithfulness`) certifies the encoding is
+  faithful *in principle* — that the integer model carries no hidden
+  collision;
+* the **parity harness** certifies the wasm *in practice* implements that
+  model.
+
+Neither subsumes the other. Stating the boundary as a checked
+`NotProved-*` alias is what keeps the proof honest and the harness
+load-bearing.
+
+== Forward pointer: the toolchain implication
+
+If host-boundary encodings are this regular, the AffineScript compiler
+could *emit* the obligation. A boundary-annotated encoder
+
+[source,affine]
+----
+@boundary enc : Rank -> i32
+----
+
+could require discharge by **either** an injectivity proof (lossless —
+the `encoding-lossless` shape) **or** an explicit
+clamp-with-declared-sentinel (acknowledged controlled loss — the
+`clamp-sentinel` shape), turning "the integer IS the X" from a slogan
+into a *checked compiler obligation*. Full write-up will live in
+`proposals/toolchain/` once the affinescript-compiler scout reports.
+
+== Provenance
+
+Generated and verified in the 2026-06-04 co-development session on branch
+`claude/cool-keller-gr5sl`. Source of truth for the theorem statements:
+the existing echo-types modules `Echo`, `EchoImageFactorization`,
+`EchoNoSectionGeneric`, `EchoFiberCount` — this module adds no new proof
+primitive, only repackages and instantiates them.
