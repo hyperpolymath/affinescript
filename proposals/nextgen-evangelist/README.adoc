@@ -88,7 +88,7 @@ guide-linked readiness report
 
 == Verified end-to-end (the orchestrator output)
 
-`deno run -A evangelist/evangelist.mjs /tmp/evangelist-demo manifest.json`
+`deno run --allow-read --allow-run evangelist/evangelist.mjs /tmp/evangelist-demo manifest.json`
 (demo target = the three idaptik kernels + `SecurityRank.affine` +
 `Kernel_IO.affine`) produced:
 

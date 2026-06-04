@@ -15,7 +15,7 @@
 // it shells out to `deno` running the sibling component .mjs files only.
 //
 // Usage:
-//   deno run -A evangelist.mjs <target-dir> [manifest.json]
+//   deno run --allow-read --allow-run evangelist.mjs <target-dir> [manifest.json]
 //
 // manifest.json (optional) lets the proof/parity steps run (they need a table
 // / oracle that can't be inferred from source):
@@ -64,7 +64,7 @@ async function* walk(dir) {
 }
 
 const target = Deno.args[0];
-if (!target) { console.error("usage: deno run -A evangelist.mjs <target-dir> [manifest.json]"); Deno.exit(2); }
+if (!target) { console.error("usage: deno run --allow-read --allow-run evangelist.mjs <target-dir> [manifest.json]"); Deno.exit(2); }
 const manifest = Deno.args[1] ? JSON.parse(await Deno.readTextFile(Deno.args[1])) : {};
 
 const resFiles = [], affFiles = [];
@@ -85,7 +85,7 @@ report.push(``);
 report.push(`| file | verdict | walls |`);
 report.push(`|---|---|---|`);
 for (const f of resFiles) {
-  const r = await run("deno", ["run", "-A", COMP.migratability, f]);
+  const r = await run("deno", ["run", "--allow-read", "--allow-run", "--allow-write", COMP.migratability, f]);
   const j = lastJson(r.out);
   const tok = (r.out.match(/STRING-GATED|EFFECT-GATED|MIGRATABLE NOW/) || [])[0];
   const verdict = j?.verdict ?? tok ?? (r.code === 0 ? "ran" : `err(${r.code})`);
@@ -100,7 +100,7 @@ report.push(``);
 report.push(`| file | findings |`);
 report.push(`|---|---|`);
 for (const f of affFiles) {
-  const r = await run("deno", ["run", "-A", COMP.assail, f]);
+  const r = await run("deno", ["run", "--allow-read", "--allow-run", "--allow-write", COMP.assail, f]);
   const j = lastJson(r.out);
   const n = j?.findings?.length ?? (r.code === 0 ? 0 : "?");
   const kinds = j?.findings ? [...new Set(j.findings.map((x) => x.rule))].join(", ") : "";
@@ -115,7 +115,7 @@ if (manifest.boundary?.length) {
   report.push(`| encoding | verdict |`);
   report.push(`|---|---|`);
   for (const b of manifest.boundary) {
-    const r = await run("deno", ["run", "-A", COMP.boundary, JSON.stringify({ table: b.table, clamp: b.clamp })]);
+    const r = await run("deno", ["run", "--allow-read", "--allow-run", "--allow-write", COMP.boundary, JSON.stringify({ table: b.table, clamp: b.clamp })]);
     const j = lastJson(r.out);
     const tok = (r.out.match(/CONTROLLED LOSS|LOSSLESS/) || [])[0];
     const verdict = j?.verdict ?? tok ?? (r.code === 0 ? "checked" : `err(${r.code})`);
@@ -131,7 +131,7 @@ if (manifest.parity?.length) {
   report.push(`| kernel | result |`);
   report.push(`|---|---|`);
   for (const p of manifest.parity) {
-    const r = await run("deno", ["run", "-A", COMP.parity, p.config]);
+    const r = await run("deno", ["run", "--allow-read", "--allow-run", "--allow-write", COMP.parity, p.config]);
     const all = [...r.out.matchAll(/(\d+\/\d+)\s*pass/g)];
     const m = all.length ? `${all[all.length - 1][1]} pass` : (r.code === 0 ? "pass" : `err(${r.code})`);
     report.push(`| ${p.name} | ${m} |`);

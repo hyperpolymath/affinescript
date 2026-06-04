@@ -27,10 +27,10 @@ cannot be inferred from source alone.
 [source,console]
 ----
 # automatic triage + weak-point scan over a tree:
-$ deno run -A evangelist.mjs /tmp/evangelist-demo
+$ deno run --allow-read --allow-run evangelist.mjs /tmp/evangelist-demo
 
 # add proofs + parity via a manifest:
-$ deno run -A evangelist.mjs /tmp/evangelist-demo manifest.json
+$ deno run --allow-read --allow-run evangelist.mjs /tmp/evangelist-demo manifest.json
 ----
 
 `manifest.json` shape:
