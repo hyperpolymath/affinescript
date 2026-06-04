@@ -189,11 +189,14 @@ strings *around* the AS string-gap, not through it.
 
 === T2 — "snifs instead of nifs": it doesn't dismantle this — it IS the server side
 
-CONFIRMED from `github.com/hyperpolymath/snifs`: *SNIFS = Safe NIFs* —
-native (Zig) code compiled to WebAssembly and run via `wasmex`/`wasmtime`,
+CONFIRMED from `github.com/hyperpolymath/snifs`: *SNIFS = Safer NIFs*
+(the owner's preferred framing — a *comparative* claim that survives a
+single sandbox-escape counterexample, where the absolute "safe" would not;
+the `SNIFS` acronym is unchanged — Safer Native Implemented Functions).
+Native (Zig) code compiled to WebAssembly and run via `wasmex`/`wasmtime`,
 so guest faults (out-of-bounds, overflow, divide-by-zero, crashes) become
-`{:error, reason}` tuples instead of taking down the BEAM. Tagline:
-"WebAssembly sandboxing provides genuine crash isolation for BEAM NIFs."
+`{:error, reason}` tuples instead of taking down the BEAM — crash
+*containment*, not a perfect security boundary.
 
 This is not a threat to server-authoritative determinism — *it is the
 recommended way to do the server side of it.* The diagram's "server-side
