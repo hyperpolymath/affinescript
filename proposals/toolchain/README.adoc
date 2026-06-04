@@ -1,0 +1,385 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+= Proposal: AffineScript compiler/toolchain implications harvested from the idaptik dogfooding run
+:toc: macro
+:source-highlighter: rouge
+
+[IMPORTANT]
+====
+*Status: PROPOSAL, staged for review.* This document lives in the
+affinescript repo (`proposals/toolchain/`) and is the compiler/roadmap
+half of the 2026-06-04 co-development session. Items (1), (2), (3) and
+(6) target *this* repo (`hyperpolymath/affinescript`) directly — they are
+roadmap/issue material. Item (5) is partly estate-facing (install recipe)
+and is mirrored in `proposals/standards/`. Nothing here has been written
+into the compiler, CI, or the roadmap; this is a reviewable artefact so
+the maintainer can accept, defer, or revise before anything lands.
+====
+
+toc::[]
+
+== One-paragraph summary
+
+Dogfooding the idaptik ReScript -> AffineScript -> wasm migration surfaced
+six concrete compiler/toolchain findings, ranked here by leverage. The
+single highest-leverage item is the *variable-string backend gap*: it is
+the reason the estate keeps strings host-side, and closing it unblocks the
+two remaining coprocessor kernels plus all of i18n. The other five are a
+verified-proof-backed *compiler-emitted boundary obligation*, a
+*`--deno-esm` spike to retire ~17.6k LOC of TypeScript parity harnesses*,
+the *stale-harness finding* (those harnesses are doubly stale — wrong
+runtime AND a retired podman container), an *ecosystem-portability recipe*
+for the github-only network, and a *release-cadence coupling* note pinning
+the IO/Quantum kernels to two specific compiler capabilities.
+
+[NOTE]
+====
+All facts below were confirmed in-session by running the tools, not
+inferred. Where a claim depends on a build outcome, the exact command and
+its result are stated. Two compiler facts were re-confirmed against the
+source while drafting this doc:
+
+* `--deno-esm` exists and is issue #122 — `bin/main.ml:1216-1226`,
+  wired in at `bin/main.ml:1576`. It selects the direct AST -> ES-module
+  backend (`Affinescript.Codegen_deno`), lowering `extern fn` to direct
+  host calls (`Deno.*Sync` / `JSON` / `WebAssembly`), `export class` for
+  struct+impl, `export` for public fns/consts. No wasm in that path.
+* The full default `dune build` fails *only* on `js/playground.bc.js`
+  (needs the `js_of_ocaml` *binary*); `dune exec affinescript -- compile
+  FILE -o OUT` builds and emits valid wasm with apt OCaml deps alone.
+====
+
+== Finding 1 — The variable-string backend gap (highest-leverage compiler work)
+
+=== What is true today
+
+AffineScript already supports, and the migrated kernels already use:
+
+* String *literals*;
+* `++` string *concatenation*;
+* String-*typed* parameters.
+
+Verified: `Kernel_Compute.affine` builds wire messages out of exactly
+these three. What is *not* yet supported is **variable-string
+operations** — the value-dependent primitives:
+
+* `String.fromCharCode` (int -> char/string);
+* `String.length`;
+* `String.startsWith` (and prefix/predicate matching generally);
+* string *indexing* / slicing.
+
+=== Why this is the load-bearing blocker
+
+This gap is *the* reason the estate keeps strings host-side. With only
+literals + `++` + string params, a kernel can *assemble* a message but
+cannot *inspect* or *compute over* one. Concretely it blocks or distorts:
+
+[cols="1,3a",options="header"]
+|===
+| Consumer | What the gap costs
+
+| `Kernel_IO`
+| The ASCII path-sandbox check needs `String.length` + indexing +
+  `startsWith` to validate a path purely in-wasm. (See
+  `proposals/idaptik/` — the re-decomposition sidesteps it by comparing
+  Int arrays directly, which *works today* but is a workaround the gap
+  forces.)
+
+| `DeviceType`
+| Stringly-typed device discrimination has to be integerized at the host
+  boundary (the "co-processor integerization" pattern) precisely because
+  the kernel cannot pattern-match the string itself.
+
+| All i18n
+| Any locale/format string handling needs `length` + indexing +
+  `fromCharCode`. With the gap, i18n stays host-side wholesale.
+|===
+
+=== Recommendation
+
+Treat the variable-string backend as the **#1 compiler roadmap item**,
+ahead of the cosmetic/ergonomic backlog. Sequence it as:
+
+. `String.length` + indexing (read-only, needs only the existing String
+  host-boundary ABI — see Finding 5 and Document B);
+. `startsWith` / prefix predicates (built on indexing);
+. `String.fromCharCode` (int -> string, the only one that *constructs*
+  variable string data and therefore exercises `__affine_alloc` on the
+  write path).
+
+The payoff is disproportionate: it is the gate on `Kernel_IO`,
+`DeviceType`, and i18n simultaneously, and it converts the
+integerize-at-boundary workaround from a *necessity* into an *option*.
+File as a tracking epic with the three sub-items above as the slices.
+
+== Finding 2 — Compiler-emitted Echo boundary obligations
+
+=== The link, now machine-checked
+
+The migration slogan *"the integer IS the X"* is an
+encoding-faithfulness theorem, and it is no longer folklore: the staged,
+typechecked Agda module `proposals/echo-types/EchoEncodingFaithfulness.agda`
+(`--safe --without-K`, zero postulates, zero funext; Agda 2.6.3 +
+agda-stdlib v2.3) certifies both halves —
+
+* *lossless* = `enc` injective => each fibre has a unique source
+  (`encoding-lossless`);
+* *controlled loss* = a collision (incl. the canonical
+  clamp-to-sentinel bug) => **no decoder section exists**
+  (`encoding-collision⇒no-section`, `clamp-sentinel-no-section`).
+
+That regularity is the opening for a compiler feature.
+
+=== Sketch: the `@boundary` annotation
+
+A boundary-annotated encoder
+
+[source,affine]
+----
+@boundary enc : X -> i32
+----
+
+would be required to discharge *one of two* obligations, mirroring the
+two proven halves:
+
+[cols="1,3a",options="header"]
+|===
+| Mode | Obligation | Echo shape it maps to
+
+| *Lossless* (default)
+| An **injectivity proof** for `enc` (or, for a finite enumerated `X`, a
+  compiler-discharged exhaustive distinctness check on the code table).
+  Compiler accepts: the integer faithfully names the X.
+| `encoding-lossless` (`injective-fibres-proj-unique`).
+
+| *Acknowledged controlled loss*
+| A **declared clamp-with-sentinel**: the author names the out-of-band
+  -> sentinel collapse explicitly (e.g. `@boundary(clamp = 0) enc : X ->
+  i32`). The compiler accepts the loss *because it was declared*, and can
+  emit the localised-residue note (loss lives at the sentinel code).
+| `clamp-sentinel-no-section` (the checked concrete instance in the
+  module).
+|===
+
+The point is symmetry with the proof: *either* you prove no collision,
+*or* you declare the one you are choosing to accept. A silent clamp (the
+"default a bad input to 0 / `Open`" hazard — which the idaptik
+`SecurityRank` kernel actually does) becomes a *compile error*, not a
+latent bug.
+
+=== Honest boundary (carried over from the proof's `NotProved-*` block)
+
+The proof certifies the encoding is faithful *in principle*; it says
+nothing about whether the deployed wasm *bit-for-bit implements* `enc`.
+That remains the **differential-parity harness's** job (Findings 3-4).
+So the `@boundary` obligation and the parity harness are complementary,
+not redundant — the obligation guards the *model*, the harness guards the
+*lowering*. The compiler feature should explicitly *not* be marketed as
+removing the harness.
+
+=== Recommendation
+
+Open a *design* issue (not an implementation issue) for `@boundary`,
+referencing the staged echo-types module as the soundness artefact. Scope
+the first cut to *finite enumerated* `X` (the idaptik `SecurityRank`
+`Open/Weak/Medium/Strong -> 0/1/2/3` case the module already instantiates
+as `Rank`), where injectivity is a decidable table check the compiler can
+discharge itself — no user-supplied proof term needed for the common case.
+
+== Finding 3 — `--deno-esm` to retire the TypeScript harnesses (spike proposal)
+
+=== The opportunity
+
+`--deno-esm` (issue #122, verified in `bin/main.ml`) already emits a
+standalone Deno/Node ES module directly from the AST. That means the
+differential-parity harnesses — currently TypeScript — *could be authored
+in AffineScript and compiled to Deno-ESM* instead. Doing so lets the
+idaptik migration reach **true TypeScript = 0** rather than declaring
+victory while carrying ~17.6k LOC of TS harness.
+
+=== Proposed spike (bounded, falsifiable)
+
+. Pick *one* already-migrated kernel with a parity harness — *Compute* or
+  *Crypto* (both migrated).
+. Re-author that single harness in AffineScript: run host-side `enc`/kernel
+  and wasm-side `enc`/kernel on the same input vectors, compare.
+. Compile it with `affinescript ... --deno-esm -o harness.js`.
+. Run it under Deno. Success criterion: the AffineScript-authored,
+  Deno-ESM-compiled harness reproduces the TS harness's pass/fail verdict
+  on the same vectors.
+
+=== What the spike tells us
+
+* *If it passes:* the TS harnesses are removable; the migration's TS-0
+  claim becomes real, and Document B's exemption-table unblock condition
+  (the `affinescript-deno-test/**` carve-out) can be tied to it.
+* *If it surfaces gaps* (e.g. the harness needs a string/JSON primitive
+  the `--deno-esm` path doesn't yet lower), those gaps are themselves
+  high-value roadmap signal — they are exactly the primitives a real
+  AffineScript test harness needs, and they likely overlap Finding 1.
+
+Either outcome is a win. Keep it to one kernel; do not convert the corpus
+on spec.
+
+== Finding 4 — The stale-harness finding (TS + retired podman container)
+
+=== What is wrong
+
+The idaptik differential-parity harnesses are *doubly* stale:
+
+. *Wrong runtime.* They are TypeScript (~17.6k LOC across idaptik) —
+  against the post-2026-05-25 policy that AffineScript is the go-forward
+  application language, and against the migration's own TS-0 target.
+. *Wrong toolchain.* They still shell out to a **retired** podman image,
+  `idaptik-affinescript-build:latest` (verified: `vm/tests/affinescript_stralloc_diff.ts`
+  invokes `podman run ... idaptik-affinescript-build:latest compile`). The
+  2026-06-03 idaptik reanchor (authority: Marina) *retired containers* in
+  favour of host-native `affinescript` on PATH (guix/nix dev shell). A
+  harness that invokes the retired container is invoking a toolchain that
+  no longer exists.
+
+=== Recommendation (host-native fix, independent of Finding 3)
+
+Even before the AffineScript-rewrite spike lands, the harnesses should be
+*de-containerised now*:
+
+* Replace every `podman run idaptik-affinescript-build:latest affinescript
+  ...` invocation with a direct host-native `affinescript ...` call,
+  matching the reanchor's `just affinescript-smoke` pattern (sibling
+  `hyperpolymath/affinescript` repo on PATH). This session's harnesses
+  (`proposals/idaptik/`) already do this.
+* This is mechanical and is correct *regardless* of whether the harness
+  body stays TS (interim) or moves to AffineScript (Finding 3 end-state).
+
+Sequence: *de-containerise first* (unblocks the harness today) ->
+*then* re-author in AffineScript via the Finding 3 spike (reaches TS-0).
+The two are separable; do not block the urgent container fix on the
+larger rewrite.
+
+== Finding 5 — Ecosystem portability under the github-only network policy
+
+=== The constraint (verified this session)
+
+The build network is *github-only*. `crates.io`, `deno.land`,
+`opam.ocaml.org`, and launchpad PPAs all return **403**; `github.com` and
+`archive.ubuntu.com` are reachable. Any install path that reaches for a
+package registry will fail.
+
+=== The host-native apt recipe (this is what worked)
+
+The affinescript compiler builds from Ubuntu *universe* OCaml deps with
+**no opam**:
+
+[source,console]
+----
+# Ubuntu universe (archive.ubuntu.com is reachable):
+#   ocaml (4.14), dune (3.14), menhir, ocaml-findlib,
+#   libsedlex-ocaml-dev, libyojson-ocaml-dev, libfmt-ocaml-dev,
+#   libcmdliner-ocaml-dev, libppx-deriving-ocaml-dev,
+#   libppx-sexp-conv-ocaml-dev, libsexplib0-ocaml-dev, libmenhir-ocaml-dev
+$ dune exec affinescript -- compile FILE -o OUT.wasm   # builds, emits valid wasm
+----
+
+=== The `js_of_ocaml` playground caveat (must be documented)
+
+`dune build` *full default* fails on **one** optional target,
+`js/playground.bc.js`, because that target needs the `js_of_ocaml`
+*binary* (not merely the library), which the apt set does not provide. The
+core compiler is unaffected. Guidance:
+
+* For toolchain/CI use, build the compiler target specifically (or `dune
+  exec affinescript -- ...`), *not* the full default, to avoid the
+  playground stop.
+* Document `js/playground.bc.js` as *playground-only, requires
+  `js_of_ocaml` binary, not on the github-only build path*.
+
+=== The "install where the registry can't reach" pattern (generalise it)
+
+State the pattern explicitly for downstream repos: *prefer the OS package
+manager (apt universe) over language registries; vendor or git-submodule
+anything the registry would otherwise serve; never assume registry
+reachability in CI.* This is the affinescript-specific instance of a
+recipe the whole github-only estate needs — see Document B item (3) for
+the estate-CI-guidance form.
+
+== Finding 6 — Release-cadence coupling
+
+=== The pin
+
+The idaptik migration pins **affinescript v0.1.1**. Two of four
+coprocessor kernels are migrated (*Compute*, *Crypto*); the two remaining
+(*IO*, *Quantum*) are *exactly* the ones blocked by compiler capability:
+
+[cols="1,2,2",options="header"]
+|===
+| Kernel | Blocking capability | Maps to
+
+| `Kernel_IO`
+| Variable-string backend (ASCII path-sandbox check needs `length` /
+  indexing / `startsWith`)
+| Finding 1
+
+| `Kernel_Quantum`
+| Effect codegen (module-level mutable state / `Date.now` / `Console.log`
+  cannot yet lower to wasm — `Kernel_Compute.affine` documents the effect
+  codegen "references an unbound binding")
+| The effect-codegen wall
+|===
+
+=== The effect-codegen wall (stated for the record)
+
+`Kernel_Compute.affine` documents that effect codegen cannot lower to
+wasm — it "references an unbound binding". The consequence: any kernel
+needing module-level mutable state, `Date.now`, or `Console.log`
+(`Kernel_Quantum`) cannot be migrated yet; such state must be *threaded as
+explicit parameters* instead. This is a second, independent compiler wall
+sitting beside the string gap.
+
+=== Recommendation
+
+Make the coupling explicit in release planning:
+
+* *Do not* advertise IO/Quantum migration as "scheduled" until *both*
+  gating capabilities land — IO on the variable-string backend (Finding
+  1), Quantum on effect codegen.
+* When cutting the affinescript release that lands either capability, note
+  in the changelog which downstream kernel it unblocks (the migration
+  pins a version, so the changelog is the coordination surface).
+* Until then, the honest status is: *2/4 kernels migrated; the remaining
+  2 are compiler-gated, not effort-gated.*
+
+== Bonus finding — interpreter vs wasm-codegen divergence
+
+While verifying the `Kernel_IO` re-decomposition (`proposals/idaptik/`),
+`affinescript -- eval FILE` (the interpreter) raised `Runtime error: Type
+mismatch: Expected mutable reference` on a `let mut x = ...; x = if c { a }
+else { x }` reassignment, while `affinescript -- compile FILE` (the wasm
+codegen) accepted the same source and produced a wasm whose `main()`
+returned the correct result. This is an *interpreter/codegen divergence*:
+a `let mut` self-referential reassignment that the codegen lowers but the
+interpreter rejects. Worth a focused issue + a regression test feeding the
+shape to `Interp.eval_program` (the same "first user of an existing-but-
+untested shape" class the repo's agent-ops notes flag for `FnExtern`).
+
+== Verification summary (what was actually run)
+
+* *Network:* `crates.io` / `deno.land` / `opam.ocaml.org` / launchpad ->
+  403; `github.com` / `archive.ubuntu.com` -> reachable. Confirmed.
+* *Build:* apt OCaml deps -> `dune exec affinescript -- compile FILE -o
+  OUT` emits valid wasm; full `dune build` stops only on
+  `js/playground.bc.js` (needs `js_of_ocaml` binary). Confirmed.
+* *`--deno-esm`:* present, issue #122, `bin/main.ml:1216-1226` + `:1576`;
+  AST -> ES-module backend, `extern fn` -> direct host calls. Confirmed
+  in source while drafting.
+* *Proof:* `proposals/echo-types/EchoEncodingFaithfulness.agda` typechecks
+  `--safe --without-K`, zero postulates, Agda 2.6.3 + stdlib v2.3.
+* *Migration corpus:* idaptik 107,758 LOC ReScript / 21,540 LOC
+  AffineScript / 17,633 LOC TS; 2/4 kernels migrated; pins affinescript
+  v0.1.1. Stated facts.
+
+== Provenance
+
+Produced in the 2026-06-04 AffineScript co-development session by the
+toolchain-architect analyst, READ-ONLY, from session-verified facts. No
+compiler, CI, roadmap, or issue was modified. License: MPL-2.0 (this doc
+lives in the affinescript repo).

@@ -2,13 +2,13 @@
 // SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
 = AffineScript Migration Playbook: Re-decomposition Patterns
 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
-v1.1, 2026-05-02
+v1.4, 2026-06-04
 :sectnums:
 :toc: left
 :icons: font
 :source-highlighter: rouge
-:revnumber: 1.1
-:revdate: 2026-05-02
+:revnumber: 1.4
+:revdate: 2026-06-04
 
 [NOTE]
 ====
@@ -20,6 +20,7 @@ This guide is the **systematic companion** to link:frontier-guide.adoc[`frontier
 The machine-readable companion for AI agents is link:frontier-programming-practices/AI.a2ml[`AI.a2ml`].
 ====
 
+[#the-cardinal-rule]
 == The Cardinal Rule
 
 **Re-decompose. Do not transliterate.**
@@ -337,6 +338,431 @@ What changed:
 
 The two versions are roughly the same number of lines. They are different programs.
 
+[#coprocessor-integerization]
+== Co-processor Integerization (ReScript → AffineScript → wasm)
+
+The largest-scale pattern surfacing from the in-flight idaptik migration is
+not a single rule but a *shape for the whole port*: the host language keeps
+the strings, the state, and the dispatch; AffineScript becomes a
+**pure-integer wasm co-processor** that the host calls across a primitives-only
+boundary. The Human Programming Guide names the deployment posture — _"AffineScript
+serves as the 'brain'… while the frontend serves as the 'senses'… the two
+communicate by passing raw primitives across the WASM boundary."_ This section
+is the migration-engineering companion to that posture: six named, verified
+patterns for carrying real ReScript across the boundary.
+
+The patterns are independent but reinforce each other. Read them in order the
+first time; thereafter <<integerization-pattern-index>> indexes them for
+lookup.
+
+[#integerization-pattern-index]
+[cols="1,3,2"]
+|===
+| Pattern | One-line | Where it bites
+
+| <<p-integer-is-x>>
+| The integer IS the X — encode the host's stringly/enumerated value to an integer; compute on the integer in wasm.
+| Any value that crosses the boundary.
+
+| <<p-redecompose>>
+| Re-decompose, don't transliterate — the `.affine` shape differs from the `.res` shape, even for "the same" function.
+| Every non-leaf translation.
+
+| <<p-parity>>
+| Differential parity is the acceptance bar — build-green AND parity-green against an independent oracle.
+| Sign-off; CI.
+
+| <<p-string-abi>>
+| The String host-boundary ABI — `[len][utf8]`, exported allocator, host read/write helpers.
+| The few times strings must actually cross.
+
+| <<p-no-load-effects>>
+| No module-load side-effects — thread state/time/log explicitly until effect-handling codegen lands.
+| Singletons, registries, `Date.now`, `Console.log`.
+
+| <<p-certify>>
+| Certifying the boundary — the integerization is a machine-checked theorem, not just convention.
+| Sign-off; security-relevant encoders.
+|===
+
+[#p-integer-is-x]
+=== Pattern 1 — Co-processor integerization: "the integer IS the X"
+
+A host-side value drawn from a small enumerated or stringly-typed domain — a
+security rank `Open/Weak/Medium/Strong`, a device-port name, a device type — is
+**encoded to a canonical integer** on the host side. The AffineScript wasm core
+receives only that integer, computes on it with ordinary `Int` arithmetic, and
+returns an integer (or `Bool`). The strings, the dispatch table, and the mutable
+state stay on the host. _AffineScript is the brain; JS/Pixi are the senses; only
+primitives cross the wasm boundary._
+
+The correctness slogan is **"the integer IS the X"**: the encoding is chosen so
+that the integer faithfully names the value, and every operation the host used to
+express in terms of the value is re-expressed as integer arithmetic on the code.
+
+==== The verified worked example — idaptik `SecurityRank.affine`
+
+The canonical instance is idaptik's `SecurityRank.affine`, whose own header
+states the thesis directly: *"the encoding IS the rank."* The four ranks map to
+the canonical `0..3` integer encoding:
+
+[cols="1,1"]
+|===
+| Rank | Integer code
+
+| `Open`   | `0`
+| `Weak`   | `1`
+| `Medium` | `2`
+| `Strong` | `3`
+|===
+
+The core exports two pure-integer functions — `rank_security_level` (which
+normalises an arbitrary input into the `0..3` band) and `passes_min_security`
+(an integer comparison). Compiled host-native, it is a **454-byte wasm module**
+whose only WASI import is `fd_write`; everything else is integer arithmetic.
+
+[source,affine]
+----
+// SecurityRank.affine (shape) — the encoding IS the rank.
+// 0 = Open, 1 = Weak, 2 = Medium, 3 = Strong.
+
+// Clamp any input integer into the valid 0..3 band.
+pub fn rank_security_level(v: Int) -> Int {
+  if v < 0 { 0 } else { if v > 3 { 3 } else { v } }
+}
+
+// Does `actual` meet `required`?  Pure integer comparison.
+pub fn passes_min_security(actual: Int, required: Int) -> Bool {
+  rank_security_level(actual) >= rank_security_level(required)
+}
+----
+
+Note what is *not* here: there is no `String`, no `Rank` sum type crossing the
+boundary, no dictionary of rank names. Those live host-side. The host owns
+`"Open" ↔ 0`; the core owns `0 ≥ 1`.
+
+==== The split, stated outright
+
+idaptik's `PortNames` work states the division of labour without euphemism:
+_"The host keeps the port string literals and the suffix concatenation; only
+integers cross the boundary… Host-side string layer (the senses half)."_ Read
+that as the general rule:
+
+[cols="1,1"]
+|===
+| Stays host-side (the senses) | Crosses to wasm (the brain)
+
+| String literals and their concatenation | Integer codes
+| The enum-name ↔ code table | Integer arithmetic and comparison
+| Mutable session/game state | Pure functions of the codes
+| Dispatch on the decoded value | The band-normalisation / decision logic
+|===
+
+When you can keep a value's *identity* host-side and send only its *code*, do
+so. The wasm core gets smaller, the boundary gets narrower, and — see
+<<p-string-abi>> — you avoid the String ABI entirely for that value.
+
+[#p-redecompose]
+=== Pattern 2 — Re-decompose, don't transliterate
+
+This is the <<the-cardinal-rule,Cardinal Rule>> applied at co-processor scale.
+A 1:1 port of a ReScript kernel into AffineScript reproduces the ReScript design;
+the integerization only pays off if the `.affine` is re-decomposed around what
+the wasm boundary and the current codegen actually support. The verified example
+is `Kernel_Compute.affine`, a genuine re-decomposition of `Kernel_Compute.res`.
+Six concrete deltas:
+
+[cols="1,2,2"]
+|===
+| # | ReScript shape | Re-decomposed AffineScript shape
+
+| (a)
+| `promise<executionResult>` — an incidental Promise wrapper around a value that is, at the kernel boundary, already settled.
+| Collapsed to its settled `ExecutionResult`. The Promise was async-ness the kernel never actually needed; carrying it into wasm would have invented an effect to handle.
+
+| (b)
+| A service-locator global — `ResourceAccounting.getDeviceState` reached for ambiently inside the function.
+| The one consumed slice (`activeCalls`) threaded in as an **explicit parameter**. The hidden dependency becomes a visible argument. (Same move as the service-locator row in <<source-pattern-index>>.)
+
+| (c)
+| A process-global backend registry, mutated and read at module scope.
+| An explicitly-passed `Registry` value. No module-load mutation; the caller supplies the registry. (See <<p-no-load-effects>>.)
+
+| (d)
+| `option<string>` for the result message.
+| A closed `ResultMessage` enum. The "maybe a string, maybe not, and the string means something" triple becomes one exhaustive sum type the `match` must cover.
+
+| (e)
+| `Int.toString` to render the result.
+| A **hand-laddered divmod integer renderer** — there is no wasm intrinsic for `Int.toString`, so the digits are produced explicitly. (This is a real codegen gap, named honestly; see the note below.)
+
+| (f)
+| Wire-message strings.
+| Kept **byte-identical**. The re-decomposition changes the *internal* shape, never the bytes that go out on the wire — parity (<<p-parity>>) depends on the externally observable output not moving.
+|===
+
+[NOTE]
+====
+Delta (e) is load-bearing, not an embarrassment. `Int.toString` has no wasm
+intrinsic, so a faithful port that called it would fail at codegen. The
+re-decomposition turns "call a stdlib function that doesn't lower" into "compute
+the digits with `/` and `%`" — integer arithmetic the wasm backend *does* emit.
+When you hit a stdlib function with no wasm lowering, the question is not "how do
+I make the stdlib function work" but "what is the integer computation underneath
+it." That reframing is the whole pattern.
+====
+
+==== Second verified example — `Kernel_IO`: keep the data as it already is
+
+`Kernel_IO` does a sandbox check: in ReScript it decodes ASCII bytes to a
+`String` and then calls `String.startsWith` for a prefix test. The naïve port
+inherits the String backend — which AffineScript's wasm target does not yet
+fully provide (see <<p-string-abi>>). The re-decomposition observes that **the
+data already IS an `Int` array** (the bytes), and does an **integer-array prefix
+comparison** directly:
+
+[source,affine]
+----
+// Sandbox prefix check, re-decomposed: the bytes never become a String.
+// Compare the first `prefix.length` elements of `data` against `prefix`.
+fn has_prefix(data: ref Array[Int], prefix: ref Array[Int]) -> Bool {
+  if Array.length(prefix) > Array.length(data) {
+    false
+  } else {
+    let mut i: Int = 0;
+    let mut ok: Bool = true;
+    // (loop omitted) compare data[i] == prefix[i] for i in 0..prefix.length
+    ok
+  }
+}
+----
+
+The decode-to-String + `String.startsWith` step is *deleted*, not ported. This
+sidesteps the string-backend gap entirely — which is exactly the point: the
+cheapest String ABI is the one you never invoke because the data was integers
+all along. This is Pattern 1 in reverse: rather than encode a value down to an
+integer, you *notice it was never anything but integers* and stop lifting it to
+a String.
+
+[#p-parity]
+=== Pattern 3 — Differential parity as the acceptance bar
+
+A co-processor port is *done* when two conditions both hold:
+
+. **Build-green** — the `.affine` compiles to wasm host-native.
+. **Parity-green** — the wasm output matches an *independent oracle* across a
+  sweep of inputs, including out-of-band ones.
+
+Build-green alone is not acceptance. A module that compiles but computes the
+wrong band has passed the compiler and failed the contract. The oracle is a
+*separate* implementation of the documented contract — written from the spec,
+not from the `.affine` — so that agreement is evidence and not tautology.
+
+==== The host-native compile + parity loop
+
+[source,bash]
+----
+# 1. Compile .affine to wasm, host-native (no container):
+affinescript compile SecurityRank.affine -o SecurityRank.wasm
+#    or, from a compiler checkout:
+# dune exec affinescript -- compile SecurityRank.affine -o SecurityRank.wasm
+
+# 2. Instantiate the wasm (WASI fd_write stub) and call the exports.
+# 3. For each input in a sweep (incl. out-of-band: -5, 4, 9999, ...),
+#    compare wasm rank_security_level(v) against an INDEPENDENT oracle
+#    implementing the documented 0..3 contract. Any mismatch fails.
+----
+
+The verified result: the `SecurityRank` parity harness ran **78/78 green**
+against a JS oracle of the documented `0..3` contract — every input, in-band and
+out-of-band, agreed.
+
+[IMPORTANT]
+====
+**Host-native, not containerized — the 2026-06-03 reanchor.** The existing
+idaptik harnesses (`vm/tests/*_diff.ts`) still shell out to a *retired*
+`idaptik-affinescript-build:latest` podman container. That container was retired
+in the 2026-06-03 reanchor in favour of running the toolchain host-native
+(guix/nix dev shell + `affinescript` on `PATH`). **New harnesses must call the
+host compiler directly** — `affinescript compile …` (or `dune exec affinescript
+-- compile …`) — not the container. If you are copying an older `*_diff.ts`
+harness, replace the container invocation with the host-native form above before
+relying on it.
+====
+
+==== Why an *independent* oracle
+
+If the oracle were generated from the same `.affine`, parity would only prove the
+compiler is deterministic — not that the kernel is correct. The oracle's job is to
+encode the *contract* (here: "clamp to `0..3`, fail-... see <<p-certify>> for the
+direction") from the human-readable spec. Disagreement then localises a real bug:
+either the `.affine` is wrong, the oracle is wrong, or the spec is ambiguous —
+all three are worth discovering, and all three are invisible to a build-green-only
+gate.
+
+[#p-string-abi]
+=== Pattern 4 — The String host-boundary ABI
+
+Patterns 1 and 2 work hard to keep strings host-side precisely because, when a
+string *must* cross the wasm boundary, there is a concrete ABI to honour. Document
+it once; reach for it only when integerization genuinely cannot avoid it.
+
+==== Wire format
+
+A string crossing the boundary is laid out in linear memory as:
+
+----
+[ len : i32, little-endian ][ utf8 bytes … ]
+----
+
+The 4-byte little-endian length prefix precedes the raw UTF-8 bytes. There is no
+trailing NUL; the length is authoritative.
+
+==== The exported bump allocator
+
+So the host can reserve the right amount of linear memory (and not collide with
+the module's own literal/heap storage), the codegen **exports a bump allocator**:
+
+[source,affine]
+----
+// Exported by codegen; the host calls this to reserve `n` bytes and
+// gets back the offset to write into.
+__affine_alloc(n: i32) -> i32
+----
+
+[NOTE]
+====
+`__affine_alloc` **replaced an earlier fixed scratch offset of `8192`**. The
+fixed offset could collide with literal or heap storage once a module grew past
+it — a silent corruption hazard. The exported allocator lets the host ask the
+module where it is safe to write, instead of guessing. If you see `8192` hard-coded
+as a scratch base in an older harness, that is the superseded pattern; use
+`__affine_alloc`.
+====
+
+==== Host helpers and instantiation
+
+The host side supplies two helpers and a WASI stub:
+
+[source]
+----
+readString(mem, ptr)      // read [len][utf8] at `ptr` out of wasm memory
+writeString(mem, at, s)   // lay s out as [len][utf8] at offset `at`
+// Instantiate with a WASI fd_write stub (the only import SecurityRank needs).
+----
+
+==== Calling back into the host, and exporting
+
+Two declaration forms complete the boundary:
+
+[source,affine]
+----
+// Let the wasm core call back into a host-provided string function:
+extern fn host_x(s: String) -> String;
+
+// Export an AffineScript function to the host:
+pub fn handle(s: String) -> String { /* … */ }
+----
+
+`extern fn host_x(s: String) -> String;` is the wasm→host call (the host
+implements `host_x`); `pub fn` is the host→wasm export. This is the same
+`extern` machinery the link:effects-migration-stance.adoc[Effects Migration
+Stance] uses for its interim FFI posture — here it carries strings rather than
+effects, but the mechanism is identical.
+
+[#p-no-load-effects]
+=== Pattern 5 — No module-load side-effects → explicit threading / registration
+
+AffineScript modules **do not run code at load time**. There is no implicit
+module-load-time hook in wasm to attach a side effect to. ReScript/JS code that
+relies on `let _ = X.foo()` at module scope, or that reads `Date.now()` /
+`Console.log` ambiently, has nowhere to put that behaviour after the port — *until*
+extensible-effect handling codegen lands.
+
+==== The verified counter-example — `Kernel_Quantum`
+
+`Kernel_Quantum` is the cautionary case. It carries module-level mutable `Dict`
+state (`lastQuantumOp`), and reaches for `Date.now` and `Console.log` directly.
+All three hit the **effect-codegen wall**: `Kernel_Compute.affine` documents that
+effect codegen currently *"references an unbound binding"* and cannot yet lower to
+wasm. A faithful port of `Kernel_Quantum` therefore does not compile to wasm at
+all.
+
+==== The pattern
+
+Until extensible-effect codegen lands, thread the three offending capabilities as
+**explicit parameters** (or supply them through explicit registration functions):
+
+[cols="1,2"]
+|===
+| Module-load side-effect | Re-decomposition
+
+| Module-level mutable `Dict` (`lastQuantumOp`)
+| Pass the state in and return the updated state out — `fn step(state: own QuantumState, …) -> own QuantumState`. The caller owns the cell. (Same logic as `mut` vs `State` in <<decision-criteria>>, pushed to its threaded extreme.)
+
+| `Date.now()`
+| A `now: Int` parameter supplied by the host (the senses read the clock; the brain receives the reading).
+
+| `Console.log(…)`
+| Either an `extern fn host_log(s: String);` the host implements, or a returned log payload the host emits. Do not log from inside the kernel.
+|===
+
+This mirrors the link:effects-migration-stance.adoc[Effects Migration Stance]'s
+interim posture and the AI companion's `no-side-effect-imports` rule:
+_"There is no implicit module-load-time side effect to hook in wasm."_ The
+threaded form is also forward-compatible — when effect handling ships, the
+threaded parameters become the obvious sites for `State` / `IO` handlers.
+
+[#p-certify]
+=== Pattern 6 — Certifying the boundary
+
+[sidebar]
+.The integerization is a theorem, not just a convention
+****
+"The integer IS the X" reads like a slogan, but it is precisely an
+**encoding-faithfulness theorem**, and it has been machine-checked. The
+echo-types module `EchoEncodingFaithfulness.agda` — staged in this repo at
+link:../../proposals/echo-types/README.adoc[`proposals/echo-types/`] — proves
+the two halves of the slogan under `--safe --without-K`, zero postulates:
+
+* **Lossless** — if the host-boundary encoder `enc : X → Int` is **injective**,
+  the integer faithfully names the X (every code determines its `X` uniquely).
+  This is the "the integer IS the X" half, proved.
+* **Controlled loss** — a **collision / clamp** is *provable, localised loss
+  with no decoder* (`clamp-sentinel-no-section`): when two distinct values share
+  a code, no `decode : Int → X` can recover the lost distinction.
+
+SecurityRank's clamp — `Invalid(v) => if v < 0 { 0 } else { 3 }` (the band-normalisation
+in `rank_security_level`) — is **exactly that certified hazard**: out-of-band
+inputs collide onto a code that also names a valid rank, so the sentinel fibre
+provably has no section.
+
+**The security nuance the clamp direction encodes.** For a *minimum-security
+filter*, the clamp direction is a real security decision, not a cosmetic one:
+
+* Clamping high garbage **up to `Strong` (3)** is **fail-open** — a malformed
+  "very privileged" input is treated as maximally privileged.
+* Clamping low garbage **down to `Open` (0)** is **fail-closed** — a malformed
+  input is treated as least privileged.
+
+For a `passes_min_security` gate, fail-closed is the safe default; fail-open lets
+garbage through. The clamp direction is therefore a teaching point: the proof
+tells you the loss is *localised and decoderless*, and the security review tells
+you *which direction the loss must go*. Cross-link:
+link:../../proposals/echo-types/README.adoc[`proposals/echo-types/README.adoc`].
+****
+
+[NOTE]
+====
+**Division of labour — what the proof does NOT cover.** The faithfulness theorem
+certifies the *encoding model* carries no hidden collision. It says *nothing*
+about whether the deployed wasm kernel bit-for-bit implements that encoding —
+that is <<p-parity>>'s job. The proof and the parity harness are complementary:
+the proof certifies the integer model is faithful *in principle*; the harness
+certifies the wasm implements that model *in practice*. Neither subsumes the
+other.
+====
+
 == Lessons from Real Migrations
 
 Case studies from in-flight migrations land in link:lessons/migrations/[`docs/guides/lessons/migrations/`]. (The sibling `lessons/` folder is the 10-lesson tutorial track for new AffineScript users — different audience.)
@@ -351,9 +777,11 @@ If you complete a non-trivial `.res → .affine` translation and the re-decompos
 
 == See Also
 
-* link:frontier-guide.adoc[Frontier Guide: The Unveiling] — the *what* and *why* of AffineScript's design.
-* link:frontier-programming-practices/Human_Programming_Guide.adoc[Frontier Programming Practices] — the wider design philosophy.
-* link:frontier-programming-practices/AI.a2ml[`AI.a2ml`] — machine-readable companion, read by AI agents at session start.
+* link:frontier-guide.adoc[Frontier Guide: The Unveiling] — the *what* and *why* of AffineScript's design; Chapter 9 introduces the co-processor mental model that <<coprocessor-integerization>> operationalises.
+* link:frontier-programming-practices/Human_Programming_Guide.adoc[Frontier Programming Practices] — the wider design philosophy, including the WASM Co-processor Model (the "brain / senses" framing).
+* link:frontier-programming-practices/AI.a2ml[`AI.a2ml`] — machine-readable companion, read by AI agents at session start; carries the machine-readable stanzas for the <<coprocessor-integerization>> patterns.
+* link:effects-migration-stance.adoc[Effects Migration Stance] — the interim `extern fn` FFI posture used by the String ABI (<<p-string-abi>>) and the threaded-effects pattern (<<p-no-load-effects>>).
+* link:../../proposals/echo-types/README.adoc[`proposals/echo-types/` — EchoEncodingFaithfulness] — the machine-checked proof that certifies the boundary (<<p-certify>>).
 * link:../specs/SETTLED-DECISIONS.adoc[Settled Decisions] — architectural choices and why they were made.
 * link:../specs/SPEC.adoc[Language Specification] — authoritative grammar and semantics.
 
@@ -379,4 +807,8 @@ If you complete a non-trivial `.res → .affine` translation and the re-decompos
 | 1.3
 | 2026-05-18
 | New `<<portable-http>>` recipe for the C-spine `Http` stdlib primitive (issue #160): ReScript `fetch`/`Js.Promise` → typed `Request`/`Response` with a `/ { Net, Async }` effect row. Deno-ESM target landed and exercised end-to-end; typed-wasm target tracked as the next slice (convergence ABI shared with Ephapax). No existing guidance changed.
+
+| 1.4
+| 2026-06-04
+| New `<<coprocessor-integerization>>` section — six verified, named patterns for the ReScript → AffineScript → wasm co-processor port, grounded in the in-flight idaptik migration: (1) *the integer IS the X* (verified: `SecurityRank.affine`, 454-byte wasm, `0..3` rank encoding); (2) *re-decompose, don't transliterate* (verified deltas from `Kernel_Compute.affine` + the `Kernel_IO` int-array prefix-check); (3) *differential parity as the acceptance bar* (verified: 78/78 green; host-native compile per the 2026-06-03 reanchor, not the retired podman container); (4) *the String host-boundary ABI* (`[len][utf8]`, `__affine_alloc` replacing the fixed `8192` scratch offset, host read/write helpers, `extern fn`/`pub fn`); (5) *no module-load side-effects* (verified counter-example: `Kernel_Quantum` hits the effect-codegen wall; thread state/time/log explicitly); (6) *certifying the boundary* (the `EchoEncodingFaithfulness.agda` faithfulness theorem + the clamp-direction fail-open/fail-closed security nuance). The `<<the-cardinal-rule>>` heading gains an explicit anchor. No existing guidance changed.
 |===

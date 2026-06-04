@@ -1,0 +1,322 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+= Proposal: idaptik coprocessor migration — two worked, verified ports + one honest non-port
+:toc: macro
+:source-highlighter: rouge
+
+[IMPORTANT]
+====
+*Status: PROPOSAL, staged for review.* This document lives in the
+affinescript repo (MPL-2.0). Its subject — the `.affine` source below — is
+destined for *`hyperpolymath/idaptik`*, which is *AGPL-3.0-or-later*
+(shared-with-son). To keep the affinescript tree license-clean, the AGPL
+source is *embedded here in code blocks* (carrying its AGPL header) rather
+than dropped in as standalone `.affine` files; on acceptance it lands in
+`idaptik/shared/src/` with that header intact. Everything below was
+compiled and run *host-native* this session (no retired container).
+====
+
+toc::[]
+
+== What this is
+
+Practising the idaptik ReScript -> AffineScript -> wasm migration for real,
+end to end, with the host-native toolchain. Three artefacts:
+
+[cols="1,3a",options="header"]
+|===
+| Artefact | Outcome
+| **A. `Kernel_IO`** — a *fresh* re-decomposition migration | Compiles to wasm; logic verified 6/6 through the wasm. A clean win that *deletes* the string step rather than porting it.
+| **B. `SecurityRank`** — verify the *existing* migration + tie it to the proof | Differential parity **78/78 green**; the clamp it performs is certified by the echo-types module as controlled loss.
+| **C. `Kernel_Quantum`** — an honest *non*-migration | Documented as blocked on the effect-codegen wall, with the re-decomposition path it needs.
+|===
+
+The through-line: the migration front has advanced *exactly* as far as the
+compiler's current capabilities reach (Compute, Crypto, SecurityRank,
+PortNames — done) and stalled *exactly* where they don't (IO needs the
+string backend, Quantum needs effect codegen). That boundary is the story.
+
+== A. `Kernel_IO` — re-decompose, don't transliterate
+
+=== The problem
+
+`shared/src/Kernel_IO.res` enforces a per-device path sandbox. Its check
+*decodes* the ASCII byte array into a `String` and then uses
+`String.length` + `String.startsWith`:
+
+[source,rescript]
+----
+let path = decodePathForCheck(data)            // [int] -> String, byte by byte
+String.length(path) == 0 || path == root || String.startsWith(path, root ++ "/")
+----
+
+AffineScript's variable-string backend cannot lower `String.fromCharCode`
+/ `String.length` / `String.startsWith` to wasm today. A 1:1
+transliteration is therefore *stuck*.
+
+=== The re-decomposition
+
+The data already *is* an `Int` array, and "is this path inside the
+sandbox?" is a statement about byte sequences, not Strings. So we keep
+everything as `Int` arrays and compute the prefix relationship
+arithmetically. The host (which holds the `deviceId` string) computes the
+root bytes `"/sandbox/<deviceId>"` once and passes them in; *only integers
+cross the boundary*. No String op is needed anywhere. This is the
+"brain/senses" split made concrete: the senses (string) stay host-side;
+the brain (the prefix arithmetic) is the wasm.
+
+The load-bearing subtlety — kept byte-identical to the `.res` — is the
+separator clause: `path == root OR startsWith(path, root ++ "/")`. A raw
+prefix test would wrongly admit `/sandbox/dev10` into device `dev1`'s
+sandbox; the explicit "next byte is `/` (47)" check keeps it out.
+
+=== The source (drops into `idaptik/shared/src/Kernel_IO.affine`)
+
+[source,affine]
+----
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// Kernel_IO.affine -- pure-integer device sandbox check, re-decomposed from
+// shared/src/Kernel_IO.res. The .res decoded ASCII bytes to a String then used
+// String.startsWith; AffineScript's variable-string backend can't lower that.
+// But the data already IS an Int array, so we compare Int arrays directly --
+// no String op crosses the boundary. The host computes "/sandbox/<deviceId>"
+// and passes the bytes; only integers cross.
+
+fn array_len(xs: [Int]) -> Int {
+  let mut n = 0;
+  for x in xs { n = n + 1; }
+  n
+}
+
+// Path length = bytes before the first 0 (write packs [path, 0, content];
+// other commands' data IS the bare path). Same thing decodePathForCheck did.
+fn path_len(data: [Int]) -> Int {
+  let mut i = 0;
+  let mut live = 1;
+  for b in data {
+    let isnull = if b == 0 { 1 } else { 0 };
+    let inc = if live == 1 { if isnull == 1 { 0 } else { 1 } } else { 0 };
+    i = i + inc;
+    live = if isnull == 1 { 0 } else { live };
+  }
+  i
+}
+
+// k-th byte (guarded callers keep k in range; the 0 default is never observed).
+fn nth(xs: [Int], k: Int) -> Int {
+  let mut out = 0;
+  let mut i = 0;
+  for x in xs {
+    out = if i == k { x } else { out };
+    i = i + 1;
+  }
+  out
+}
+
+// Do the first n bytes of path equal the first n bytes of root? (No startsWith.)
+fn prefix_eq(path: [Int], root: [Int], n: Int) -> Int {
+  let mut bad = 0;
+  let mut i = 0;
+  for r in root {
+    let mism = if i < n { if r == nth(path, i) { 0 } else { 1 } } else { 0 };
+    bad = bad + mism;
+    i = i + 1;
+  }
+  if bad == 0 { 1 } else { 0 }
+}
+
+// 1 = inside the device sandbox, 0 = forbidden (403). data = command payload,
+// root = host-computed "/sandbox/<deviceId>" bytes.
+pub fn in_sandbox(data: [Int], root: [Int]) -> Int {
+  let pl = path_len(data);
+  let rl = array_len(root);
+  if pl == 0 {
+    1
+  } else {
+    if pl < rl {
+      0
+    } else {
+      if prefix_eq(data, root, rl) == 1 {
+        if pl == rl {
+          1
+        } else {
+          if nth(data, rl) == 47 { 1 } else { 0 }
+        }
+      } else {
+        0
+      }
+    }
+  }
+}
+----
+
+(The full artefact also carries a `pub fn main()` that runs six scenarios
+against their expected verdicts and returns the pass count — the embedded
+self-check used for verification below.)
+
+=== Verification (host-native, this session)
+
+[source,console]
+----
+$ dune exec affinescript -- compile Kernel_IO.affine -o kernel_io.wasm
+Compiled Kernel_IO.affine -> kernel_io.wasm (WASM)          # 2262 bytes
+$ deno eval '...instantiate kernel_io.wasm; print main()...'
+main() = 6   -- ALL 6 SANDBOX SCENARIOS GREEN
+----
+
+The six scenarios (oracle baked into `main`): exact root -> IN; `root +
+"/file"` -> IN; different device `dev2` -> OUT; `/etc/passwd` -> OUT;
+empty path -> IN; **`/sandbox/dev10` (prefix without separator) -> OUT**.
+All six match. The logic is verified through the *wasm* — the deployment
+target — not merely argued.
+
+[WARNING]
+====
+*Compiler-quality finding (interpreter vs codegen divergence).* The same
+source, run through `affinescript -- eval` (the interpreter), raised
+`Runtime error: Type mismatch: Expected mutable reference` on the
+`x = if c { a } else { x }` self-referential `let mut` reassignment — while
+`affinescript -- compile` (the wasm codegen) accepted it and produced a
+correct module. The interpreter and the wasm backend disagree on this
+shape. Filed as a toolchain finding (`proposals/toolchain/`, bonus
+finding) with a suggested regression test feeding the shape to
+`Interp.eval_program`.
+====
+
+=== Re-decomposition deltas (what changed, and why)
+
+[cols="1,2a",options="header"]
+|===
+| ReScript shape | AffineScript re-decomposition
+| `decodePathForCheck : [int] -> String` then `String.startsWith` | *deleted*; compare `Int` arrays directly (`prefix_eq`), so no variable-string op is needed.
+| `String.length(path)` | `path_len` (scan to the first 0 byte) over the `Int` array.
+| `path == root \|\| startsWith(path, root ++ "/")` | `prefix_eq` + an explicit separator check `nth(data, rl) == 47`.
+| host holds `deviceId`; kernel re-derives root | host computes the root bytes once and passes them; only integers cross.
+| `let root = ...` reused freely | each call constructs its own root — an owned `[Int]` is an *affine resource* and cannot be casually aliased (a real lesson the type system enforces).
+|===
+
+== B. `SecurityRank` — verified parity + the proof made flesh
+
+`vm/coprocessor/SecurityRank.affine` is already migrated. Its own header
+says *"the encoding IS the rank"*: the 4 ranks Open/Weak/Medium/Strong map
+to the canonical `0..3` integer encoding, and `rank_security_level` clamps
+out-of-band input to the band (`Invalid(v) => if v < 0 { 0 } else { 3 }`).
+It compiles host-native to a 454-byte wasm (exports `rank_security_level`,
+`passes_min_security`; only WASI import is `fd_write`).
+
+=== The differential parity harness (host-native; drops into idaptik tests)
+
+[source,javascript]
+----
+// SecurityRank differential parity: independent JS oracle vs AffineScript wasm.
+const bytes = await Deno.readFile("securityrank.wasm");
+const stub = () => 0;
+const { instance } = await WebAssembly.instantiate(bytes, { wasi_snapshot_preview1: {
+  fd_write: () => 0, proc_exit: () => {}, fd_close: stub, fd_seek: stub, fd_read: stub,
+  environ_sizes_get: stub, environ_get: stub, args_sizes_get: stub, args_get: stub, clock_time_get: stub,
+}});
+const rank = instance.exports.rank_security_level;
+const passes = instance.exports.passes_min_security;
+// Oracle = the documented contract: 0..3 identity; out-of-band clamps (v<0 -> 0 else -> 3).
+const oracleRank = (lv) => (lv===0?0:lv===1?1:lv===2?2:lv===3?3:(lv<0?0:3));
+const oraclePasses = (dl, th) => (oracleRank(dl) >= oracleRank(th) ? 1 : 0);
+let pass = 0, fail = 0;
+const check = (n, got, exp) => { got===exp ? pass++ : (fail++, console.log(`FAIL ${n}`)); };
+for (let lv = -5; lv <= 8; lv++) check(`rank(${lv})`, rank(lv), oracleRank(lv));
+for (let dl = -2; dl <= 5; dl++) for (let th = -2; th <= 5; th++)
+  check(`passes(${dl},${th})`, passes(dl, th), oraclePasses(dl, th));
+console.log(`SecurityRank parity: ${pass}/${pass+fail}` + (fail ? ` FAILED` : "  -- ALL GREEN"));
+----
+
+Result this session: **78/78 checks pass, ALL GREEN.**
+
+=== The clamp is the proof's clamp-sentinel (certified)
+
+`SecurityRank`'s clamp is exactly the hazard `EchoEncodingFaithfulness.agda`
+(`proposals/echo-types/`) certifies as `clamp-sentinel-no-section`.
+Demonstrated live:
+
+----
+rank(-5) = 0 = rank(0)    -> Open and an out-of-band negative both collapse to 0
+rank(99) = 3 = rank(3)    -> Strong and an out-of-band high value both collapse to 3
+=> the integer alone cannot distinguish in-band from clamped input: provable, localised loss.
+----
+
+=== Security nuance (a refactoring observation, not a bug claim)
+
+The clamp is *asymmetric*: low-garbage clamps DOWN to `Open(0)` (a device
+with a garbage-low level fails a min-security filter — *fail-closed*),
+while high-garbage clamps UP to `Strong(3)` (a device with a garbage-high
+level *passes* a `Strong` threshold — *fail-open*). For the
+`passes_min_security` predicate, the fail-open direction is the one worth a
+second look: a malformed-high `device_level` reads as maximally secure. If
+the intended posture is fail-closed on *any* malformed input, the
+high-garbage arm should clamp to `Open`, not `Strong`. This is precisely
+the kind of decision the `@boundary(clamp = …)` annotation
+(`proposals/toolchain/` Finding 2) would force an author to make
+explicitly rather than inherit silently.
+
+== C. `Kernel_Quantum` — the honest non-migration (the effect-codegen wall)
+
+`shared/src/Kernel_Quantum.res` cannot be migrated today, and pretending
+otherwise would be dishonest. It carries:
+
+* *module-level mutable state* — `let lastQuantumOp: Dict.t<float> = Dict.make()` (per-device cooldown timestamps);
+* *a wall-clock effect* — `Date.now` (cooldown elapsed-time);
+* *a logging effect* — `Console.log` (the quantum audit line).
+
+`Kernel_Compute.affine` documents the wall directly: effect codegen
+"references an unbound binding" and cannot lower to wasm. So the
+re-decomposition path is known but *blocked on the compiler*:
+
+. thread the cooldown state and the current timestamp as *explicit
+  parameters* (`activeCooldownMs`, `nowMs`) the way `Kernel_Compute`
+  threaded `activeCalls` — the pure decision (decohered? in cooldown?)
+  becomes a pure-integer function;
+. surface the audit line as a *returned value* the host logs, not an
+  in-kernel `Console.log`;
+. promote (1) and (2) to true extensible effects once effect codegen
+  lands.
+
+Until then the honest status is **compiler-gated, not effort-gated**.
+
+== Lessons learned (the point of the exercise)
+
+. **Re-decompose, don't transliterate — and sometimes that means
+  *deleting*.** The best `Kernel_IO` move was not porting `String.startsWith`
+  but removing the String entirely. The gap forced a *better* design (the
+  data was always an `Int` array).
+. **Affine types forbid casual aliasing.** An owned `[Int]` can't be reused
+  across calls the way a ReScript `let root = …` can; you construct per use.
+  Surprising at first, correct on reflection.
+. **Verify through the wasm, not the interpreter.** The interpreter has at
+  least one `let mut` self-reassignment bug the codegen doesn't; the wasm is
+  the deployment target and the source of truth for acceptance.
+. **Host-native, not the retired container.** Every compile here was
+  `affinescript -- compile` directly, per the 2026-06-03 reanchor. The
+  in-tree idaptik harnesses still shell out to the retired
+  `idaptik-affinescript-build` podman image and need updating
+  (`proposals/toolchain/` Finding 4).
+. **The two compiler walls *are* the migration frontier.** IO is gated on
+  the variable-string backend; Quantum on effect codegen. Naming the walls
+  turns "two kernels left" into a precise, schedulable roadmap.
+
+== Reproduce it
+
+[source,console]
+----
+# compiler (host-native, github-only network): apt OCaml deps, no opam (see proposals/toolchain/)
+$ dune exec --root <affinescript> affinescript -- compile Kernel_IO.affine -o kernel_io.wasm
+$ deno eval '...instantiate; main()...'        # -> 6
+$ dune exec --root <affinescript> affinescript -- compile SecurityRank.affine -o securityrank.wasm
+$ deno run --allow-read sr_parity.mjs          # -> 78/78 ALL GREEN
+----
+
+== Provenance
+
+Produced in the 2026-06-04 AffineScript co-development session. The
+`Kernel_IO.affine` re-decomposition is new work authored this session; the
+`SecurityRank` parity harness and proof tie-in are new; `Kernel_Quantum`'s
+non-migration is a documented finding. Target repo: `hyperpolymath/idaptik`
+(AGPL-3.0-or-later). Nothing was written into idaptik.

@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 = AffineScript Frontier Guide: The Unveiling
 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
-v1.0, 2026-04-11
+v1.2, 2026-06-04
 :toc:
 :icons: font
 :source-highlighter: rouge
-:revnumber: 1.0
-:revdate: 2026-04-11
+:revnumber: 1.2
+:revdate: 2026-06-04
 
 [NOTE]
 ====
@@ -444,6 +444,141 @@ A practical implication for translators: identify your target's tier
 writing kernel-shaped code from the first line; sum types and effects
 won't be available, and that should drive the design.
 
+== Chapter 9: The Co-processor and the Integer
+
+You already know the problem, even if you have not named it. You have a
+working ReScript or JavaScript program — a game, a simulator, a tool — and
+you want the *logic* to run with AffineScript's guarantees, compiled to
+wasm, without rewriting the rendering, the input handling, or the network.
+The instinct is to port the whole thing. The better move is to split it.
+
+**AffineScript is the brain; JS/Pixi are the senses.** The wasm core does
+logic, physics, decisions, state machines; the host does rendering, input,
+strings, and dispatch. The two halves communicate by passing **raw
+primitives** — Ints, Floats, Arrays — across the wasm boundary. Nothing
+stringly-typed crosses; nothing stateful crosses; only numbers.
+
+This chapter unveils the mental model. The systematic, verified
+re-decomposition patterns live in the
+link:migration-playbook.adoc#coprocessor-integerization[Migration Playbook's
+co-processor section] — read that when you are actually carrying a codebase
+across.
+
+=== The integer IS the X
+
+The keystone idea: a value drawn from a small, named domain — a security
+rank `Open/Weak/Medium/Strong`, a device-port name, a tile kind — is
+**encoded to a canonical integer on the host side**, and the wasm core
+computes on that integer. The host keeps the names; the core gets the code.
+
+[source,affine]
+----
+// The encoding IS the rank.  0 = Open, 1 = Weak, 2 = Medium, 3 = Strong.
+// The host owns "Open" <-> 0; this core owns the arithmetic.
+pub fn rank_security_level(v: Int) -> Int {
+  if v < 0 { 0 } else { if v > 3 { 3 } else { v } }
+}
+
+pub fn passes_min_security(actual: Int, required: Int) -> Bool {
+  rank_security_level(actual) >= rank_security_level(required)
+}
+----
+
+There is no `String` here, and no sum type crossing the boundary. The four
+rank *names* never enter wasm; only their codes do. Compiled host-native,
+this is a tiny module — in idaptik's case **454 bytes**, whose only WASI
+import is `fd_write`. Every decision the host used to phrase in terms of
+rank *names* is re-phrased as integer arithmetic on rank *codes*. That is
+the whole pattern, and its slogan is _"the integer IS the X."_
+
+=== Why a co-processor, and not a rewrite
+
+Three things fall out of the split that a full rewrite would not give you:
+
+. **The boundary is narrow and auditable.** Only primitives cross. You can
+  enumerate exactly what passes between brain and senses, because it is a
+  short list of Ints and Floats — not an open-ended graph of objects.
+. **The core is small and verifiable.** A pure-integer kernel has no
+  strings to allocate, no state to corrupt, no effects to handle. It
+  compiles to a handful of kilobytes and its behaviour is a function of its
+  inputs — which is exactly what makes <<chapter-9-parity,differential
+  parity>> (below) a usable acceptance test.
+. **The senses stay where they are good.** Rendering, input, and the DOM
+  remain in the host, which already does them well. You are not reimplementing
+  Pixi in AffineScript; you are giving Pixi a verified brain to call.
+
+[NOTE]
+====
+This is the operational form of the WASM Co-processor Model described in the
+link:frontier-programming-practices/Human_Programming_Guide.adoc[Frontier
+Programming Practices] guide. That guide states the posture; this chapter and
+the Playbook show you how to *port into it*.
+====
+
+[#chapter-9-parity]
+=== How you know it worked: differential parity
+
+A co-processor port has a crisp acceptance bar, and it is *not* "the compiler
+accepted it." It is two conditions, both required:
+
+* **Build-green** — the `.affine` compiles to wasm, host-native
+  (`affinescript compile FILE -o OUT.wasm`).
+* **Parity-green** — the wasm output matches an **independent oracle** — a
+  separate implementation written from the *contract*, not from the
+  `.affine` — across a sweep of inputs, including out-of-band ones.
+
+idaptik's `SecurityRank` core cleared this bar at **78/78** against a JS
+oracle of the documented `0..3` contract: every input, in-band and
+out-of-band, agreed. Build-green alone would only have proved the compiler
+ran; parity-green proves the kernel is *right*.
+
+=== The honest edges
+
+The co-processor model is sharp because its limits are sharp, and the limits
+are teaching points, not apologies:
+
+* **Strings have an ABI, so avoid crossing them.** When a string genuinely
+  must cross, there is a real wire format (`[len: i32 little-endian][utf8]`)
+  and an exported allocator to honour — see the Playbook. The cheapest way
+  to handle a string at the boundary is to keep it host-side and send a code
+  instead (the integerization above). Sometimes the data was *never* a
+  string — idaptik's `Kernel_IO` does a sandbox prefix check on bytes that
+  are already an `Int` array, so it compares integer arrays directly and
+  never builds a `String` at all.
+* **No code runs at module load.** AffineScript modules have no load-time
+  side effect to hook. ReScript that mutates a module-level cell, reads
+  `Date.now()`, or calls `Console.log` ambiently has nowhere to put that
+  after the port — those capabilities must be *threaded in as parameters*
+  (or supplied by `extern` host functions) until effect-handling codegen
+  lands. A kernel that relies on module-load effects will not compile to
+  wasm today; that is the compiler telling you to make the dependency
+  explicit.
+* **The faithfulness is provable.** "The integer IS the X" is not folklore —
+  it is an encoding-faithfulness theorem, machine-checked in
+  link:../../proposals/echo-types/README.adoc[`EchoEncodingFaithfulness.agda`].
+  An *injective* encoder is lossless; a *clamp* is provable, localised loss
+  with no decoder. SecurityRank's clamp is exactly that certified hazard —
+  and which *direction* it clamps (garbage up to `Strong` is fail-open;
+  garbage down to `Open` is fail-closed) is a security decision the proof
+  surfaces but does not make for you.
+
+=== Try it
+
+Sketch the boundary for a different domain before reading the Playbook.
+Suppose the host has tile kinds `Empty | Wall | Door | Water`:
+
+. Choose the integer encoding (`Empty = 0`, `Wall = 1`, …). Write it down —
+  that table is the contract.
+. Write a pure-integer AffineScript function `is_passable(tile: Int) -> Bool`
+  that the host can call per tile. No `String`, no sum type crosses.
+. Name one out-of-band input (a negative code, or `99`) and decide — *as a
+  game-design question* — what `is_passable` should return for it, and
+  whether that default is fail-open or fail-closed.
+
+You have just done the three hardest parts of a co-processor port: the
+encoding, the pure kernel, and the out-of-band policy. The Playbook turns
+the sketch into a compiled, parity-checked module.
+
 == Putting It Together: A Complete Program
 
 [source,affinescript]
@@ -590,5 +725,9 @@ This document is intended to evolve. When you change it — adding a chapter, sh
   (4) New Chapter 8 — *What Every Backend Gets vs. What Some Get* — introduces the A/B/C tier taxonomy so users know which backends accept full AS and which are kernel sublanguages by design.
   (5) New Appendix — *Bringing in Target Intrinsics* — documents the stub-as-intrinsic pattern that lets user code call CUDA / ONNX / Faust / Verilog runtime ops without extending the language.
   No removals; existing v1.0 content unchanged.
+
+| 1.2
+| 2026-06-04
+| New Chapter 9 — *The Co-processor and the Integer* — unveils the ReScript → AffineScript → wasm co-processor mental model ("AffineScript is the brain; JS/Pixi the senses; only primitives cross the boundary") and the "the integer IS the X" encoding idea, grounded in idaptik's verified 454-byte `SecurityRank` core (78/78 differential-parity). The chapter introduces the model and the honest edges (String ABI, no module-load effects, machine-checked faithfulness via `EchoEncodingFaithfulness.agda`); the systematic re-decomposition patterns live in the link:migration-playbook.adoc#coprocessor-integerization[Migration Playbook §Co-processor Integerization] (playbook v1.4). No removals; existing v1.1 content unchanged.
 
 |===

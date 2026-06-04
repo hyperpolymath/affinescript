@@ -35,25 +35,43 @@ land it.
 
 | `idaptik/`
 | `hyperpolymath/idaptik`
-| _pending_
-| The kernel migration(s) (ReScript -> AffineScript) as a reviewable
-  case-study / patch, with their differential-parity harnesses.
+| *Verified*
+| Two worked, verified coprocessor ports + one honest non-port:
+  `Kernel_IO` (fresh re-decomposition, compiles to wasm, logic 6/6 green),
+  `SecurityRank` (existing port, differential parity 78/78 green + proof
+  tie-in), `Kernel_Quantum` (documented effect-codegen-wall non-migration).
 
 | `standards/`
 | `hyperpolymath/standards`
-| _pending_
-| Estate-standards implications: the co-processor integerization +
-  differential-parity convention, the String host-boundary ABI, the
-  github-only-network install recipe, the `--deno-esm` / TS-0
-  exemption-table delta.
+| *Drafted*
+| Estate-standards implications with drafted normative text: the
+  integerization + differential-parity acceptance bar (AS-MIG-1/2), the
+  String host-boundary ABI spec (AS-ABI-STR-1), the github-only install
+  recipe (EST-CI-NET-1), the `--deno-esm`/TS-0 exemption-table amendment,
+  and a release-cadence-coupling note (EST-REL-PIN-1).
 
 | `toolchain/`
 | `hyperpolymath/affinescript` (compiler/roadmap) + estate
-| _pending_
-| Compiler/toolchain implications harvested from dogfooding: the
-  variable-string-backend gap, `--deno-esm` to retire the TS harnesses,
-  compiler-emitted Echo boundary obligations, release-cadence coupling.
+| *Drafted*
+| Six compiler/toolchain findings: the variable-string-backend gap (#1
+  leverage), compiler-emitted `@boundary` Echo obligations, `--deno-esm`
+  to retire the TS harnesses, the stale-harness finding, github-only
+  portability, release-cadence coupling — plus the interpreter/codegen
+  divergence bonus finding.
 |===
+
+== Not staged here (landed directly in affinescript)
+
+The **frontier-practices guide** development is first-class affinescript
+content, so it landed directly (not under `proposals/`):
+
+* `docs/guides/migration-playbook.adoc` — the systematic *Co-processor
+  Integerization* chapter (six named, verified patterns + pattern index).
+* `docs/guides/frontier-guide.adoc` — conceptual *Chapter 9: The
+  Co-processor and the Integer*.
+* `docs/guides/frontier-programming-practices/AI.a2ml` — the
+  machine-readable companion stanza (the bot-loaded session-start file),
+  so AI agents get the same patterns humans do.
 
 == Why staged-not-applied
 

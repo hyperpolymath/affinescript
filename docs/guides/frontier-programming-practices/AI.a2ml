@@ -1,12 +1,15 @@
 (a2ml
   (metadata
     (name "Frontier Programming Practices in AffineScript — AI Edition")
-    (version "2.0.0")
-    (date "2026-04-10")
+    (version "2.1.0")
+    (date "2026-06-04")
     (audience "Bot / LLM / Agent")
     (status "authoritative-scope-statement")
     (supersedes "v1.0.0 (defensive draft)")
     (companion "Human_Programming_Guide.adoc")
+    (changelog
+      (entry (version "2.1.0") (date "2026-06-04")
+        (note "Added (coprocessor-integerization) stanza — six verified ReScript->AffineScript->wasm co-processor patterns from the in-flight idaptik migration (the-integer-is-the-X, re-decompose-not-transliterate, differential-parity-acceptance-bar, string-host-boundary-abi, no-module-load-side-effects, certifying-the-boundary) + named codegen gaps. Added agent-behavior/coprocessor-port-discipline. Human companions: migration-playbook.adoc §Co-processor Integerization (v1.4) + frontier-guide.adoc Chapter 9 (v1.2).")))
   )
 
   (thesis
@@ -168,6 +171,72 @@
       (sketch "type DeviceStatus = Compromised | Clean | Suspect | Unknown\nfn dispatch(d: DeviceId, s: DeviceStatus)"))
   )
 
+  (coprocessor-integerization
+    (note "Six verified, named patterns for the ReScript -> AffineScript -> wasm co-processor port. The human companion is migration-playbook.adoc §'Co-processor Integerization' (#coprocessor-integerization) and frontier-guide.adoc Chapter 9. Grounded ONLY in the in-flight idaptik migration; every claim below is observed, not aspirational. Load at session start before any .res -> .affine kernel translation.")
+    (mental-model
+      (one-sentence "AffineScript is the brain (logic, physics, decisions, integer math in wasm); JS/Pixi are the senses (rendering, input, strings, dispatch); only raw primitives (Int, Float, Array) cross the wasm boundary.")
+      (source "Human_Programming_Guide.adoc §'The WASM Co-processor Model'"))
+
+    (pattern
+      (name "the-integer-is-the-X")
+      (slogan "the integer IS the X")
+      (composition "host-side encoder + pure-integer wasm kernel")
+      (purpose "Encode a host-side enumerated/stringly value to a canonical integer; compute on the integer in a pure-Int AffineScript wasm core; keep strings, state, and dispatch host-side.")
+      (verified-example "idaptik SecurityRank.affine — header says 'the encoding IS the rank'; ranks Open/Weak/Medium/Strong map to canonical 0/1/2/3; rank_security_level clamps out-of-band into the band; passes_min_security is an integer comparison. Compiled host-native to a 454-byte wasm; exports rank_security_level + passes_min_security; only WASI import is fd_write.")
+      (split-rule "Host keeps: string literals + name<->code table + mutable state + dispatch on the decoded value (the senses). Wasm gets: integer codes + arithmetic + pure decision logic (the brain). idaptik PortNames states it: 'The host keeps the port string literals and the suffix concatenation; only integers cross the boundary… Host-side string layer (the senses half).'")
+      (sketch "pub fn rank_security_level(v: Int) -> Int { if v < 0 { 0 } else { if v > 3 { 3 } else { v } } }\npub fn passes_min_security(actual: Int, required: Int) -> Bool { rank_security_level(actual) >= rank_security_level(required) }"))
+
+    (pattern
+      (name "re-decompose-not-transliterate")
+      (composition "the Cardinal Rule at co-processor scale")
+      (purpose "The .affine shape differs from the .res shape even for 'the same' function; re-decompose around what the wasm boundary and current codegen support, never 1:1 port.")
+      (verified-example "Kernel_Compute.affine is a real re-decomposition of Kernel_Compute.res. Six deltas: (a) incidental promise<executionResult> collapsed to settled ExecutionResult; (b) service-locator global ResourceAccounting.getDeviceState replaced by threading the one consumed slice (activeCalls) as an explicit parameter; (c) process-global backend registry replaced by an explicitly-passed Registry; (d) option<string> replaced by a closed ResultMessage enum; (e) Int.toString (NO wasm intrinsic) replaced by a hand-laddered divmod integer renderer; (f) wire-message strings kept byte-identical.")
+      (second-verified-example "Kernel_IO decodes ASCII bytes to a String then String.startsWith for a sandbox check. Re-decomposition keeps the data as an Int array and does an integer-array prefix comparison — the decode-to-String step is DELETED, not ported, sidestepping the string-backend gap (the data already IS an int array).")
+      (reframing-rule "When a stdlib function has no wasm lowering (e.g. Int.toString), do not ask 'how do I make it work'; ask 'what is the integer computation underneath it' and emit that. The externally observable output (wire bytes) must NOT move — only the internal shape changes."))
+
+    (pattern
+      (name "differential-parity-acceptance-bar")
+      (composition "host-native compile + independent oracle sweep")
+      (purpose "Acceptance = build-green AND parity-green. Build-green alone (compiler accepted it) is NOT acceptance.")
+      (procedure "1. Compile host-native: affinescript compile FILE -o OUT.wasm (or dune exec affinescript -- compile …). 2. Instantiate (WASI fd_write stub). 3. For each input in a sweep INCLUDING out-of-band values, compare wasm output against an INDEPENDENT oracle written from the documented contract (not from the .affine). Any mismatch fails.")
+      (verified-example "SecurityRank harness ran 78/78 green against a JS oracle of the documented 0..3 contract.")
+      (host-native-warning "CRITICAL: existing idaptik harnesses (vm/tests/*_diff.ts) still shell out to a RETIRED idaptik-affinescript-build:latest podman container. The 2026-06-03 reanchor went host-native (guix/nix dev shell + affinescript on PATH). NEW harnesses must call the host compiler directly — do NOT copy the container invocation. Replace it with the host-native form.")
+      (why-independent "An oracle generated from the same .affine only proves the compiler is deterministic, not that the kernel is correct. The oracle must encode the human-readable contract so disagreement localises a real bug (wrong .affine, wrong oracle, or ambiguous spec)."))
+
+    (pattern
+      (name "string-host-boundary-abi")
+      (composition "wire format + exported allocator + host helpers + extern/pub")
+      (purpose "When a string MUST cross the wasm boundary (rare — prefer integerization), honour this ABI. Reach for it only when integerization genuinely cannot avoid it.")
+      (wire-format "[len: i32 little-endian][utf8 bytes]. No trailing NUL; the length is authoritative.")
+      (allocator "Codegen exports __affine_alloc(n: i32) -> i32, a bump allocator, so the host reserves space correctly. This REPLACED an earlier fixed scratch offset of 8192 that could collide with literal/heap storage. If you see 8192 hard-coded as a scratch base in an older harness, that is the superseded pattern.")
+      (host-helpers "readString(mem, ptr) / writeString(mem, at, s); instantiate with a WASI fd_write stub.")
+      (callbacks-and-exports "extern fn host_x(s: String) -> String;  lets wasm call back into the host (wasm->host). pub fn exports an AffineScript function to the host (host->wasm). Same extern machinery as effects-migration-stance.adoc, carrying strings rather than effects.")
+      (sketch "extern fn host_x(s: String) -> String;\npub fn handle(s: String) -> String { /* … */ }"))
+
+    (pattern
+      (name "no-module-load-side-effects")
+      (composition "explicit threading / registration")
+      (purpose "AffineScript modules do not run code at load time; there is no implicit module-load hook in wasm. Thread state/time/log as explicit parameters (or registration functions) until extensible-effect codegen lands; do NOT rely on module-load side effects.")
+      (verified-counter-example "Kernel_Quantum carries module-level mutable Dict state (lastQuantumOp), Date.now, and Console.log. All three hit the EFFECT-CODEGEN WALL: Kernel_Compute.affine documents that effect codegen 'references an unbound binding' and cannot yet lower to wasm. A faithful port of Kernel_Quantum therefore does not compile to wasm.")
+      (re-decomposition "Module-level mutable Dict -> pass state in and return updated state out (own QuantumState). Date.now() -> a now: Int parameter supplied by the host. Console.log(…) -> an extern fn host_log(s: String); the host implements, or a returned log payload. Do not log from inside the kernel.")
+      (cross-ref "Mirrors agent-behavior/no-side-effect-imports and effects-migration-stance.adoc. Forward-compatible: threaded parameters become the obvious State/IO handler sites when effect handling ships.")
+      (anti-pattern "let _ = X.foo() at module scope; ambient Date.now()/Console.log inside a kernel intended for wasm."))
+
+    (pattern
+      (name "certifying-the-boundary")
+      (composition "machine-checked encoding-faithfulness theorem")
+      (purpose "The integerization is not just convention — it is a theorem. 'the integer IS the X' is precisely an encoding-faithfulness theorem, machine-checked.")
+      (proof-artefact "echo-types module EchoEncodingFaithfulness.agda, staged at proposals/echo-types/ in THIS repo. Under --safe --without-K, zero postulates. Proves: an INJECTIVE host-boundary encoder is lossless ('the integer IS the X'); a COLLISION/CLAMP is provable, localised loss with no decoder (clamp-sentinel-no-section).")
+      (security-nuance "SecurityRank's Invalid(v) => if v<0 {0} else {3} clamp is exactly that certified hazard. The clamp DIRECTION is a real security decision for a min-security filter: clamping high garbage UP to Strong (3) is FAIL-OPEN (malformed privileged input treated as maximally privileged); clamping low garbage DOWN to Open (0) is FAIL-CLOSED (malformed input treated as least privileged). For passes_min_security, fail-closed is the safe default. The proof tells you the loss is localised and decoderless; the security review tells you which direction it must go.")
+      (division-of-labour "The proof certifies the encoding model carries no hidden collision (faithful IN PRINCIPLE). It says NOTHING about whether the deployed wasm bit-for-bit implements the encoding — that is the differential-parity harness's job (faithful IN PRACTICE). Neither subsumes the other; stated in the module as a checked NotProved-wasm-implements-enc alias.")
+      (cross-ref "proposals/echo-types/README.adoc"))
+
+    (codegen-gaps-named
+      (note "These are LOAD-BEARING teaching points surfaced by the verified migration, not embarrassments. Do not paper over them; re-decompose around them.")
+      (gap (name "Int.toString-no-wasm-intrinsic") (workaround "hand-laddered divmod integer renderer, per Kernel_Compute.affine delta (e)"))
+      (gap (name "String-backend-incomplete-on-wasm") (workaround "keep data as Int arrays where possible (Kernel_IO int-array prefix check); honour the String ABI only when a string must genuinely cross"))
+      (gap (name "effect-codegen-references-unbound-binding") (workaround "thread state/time/log as explicit parameters; do not rely on effect handling lowering to wasm yet (Kernel_Quantum counter-example)"))))
+
   (agent-behavior
     (session-startup
       (rule "Read this document at the start of every AffineScript session. It is the authoritative scope statement."))
@@ -191,6 +260,9 @@
       (rule "When a function has named pi-binders ((name : Type) -> ...), prefer eta-expanded definitions over point-free. Point-free is a parser-cascade trigger when the eta-rewrite's argument name disagrees with the declared signature's name."))
     (no-side-effect-imports
       (rule "AffineScript modules do not run code at load time. Migrating ReScript/JS code that uses `let _ = X.foo` for module-load side effects must be rewritten to call an explicit registration function. There is no implicit module-load-time side effect to hook in wasm."))
+    (coprocessor-port-discipline
+      (rule "Before any .res -> .affine kernel translation aimed at wasm, load the (coprocessor-integerization) stanza above. Apply the integerization patterns: encode host values to integers and keep strings/state/dispatch host-side; re-decompose (do not transliterate); gate on differential parity against an INDEPENDENT oracle compiled HOST-NATIVE (not the retired podman container); thread state/time/log explicitly because modules have no load-time side effect; honour the String ABI only when a string must genuinely cross.")
+      (anti-pattern "1:1 porting a ReScript kernel; copying vm/tests/*_diff.ts container invocations; calling Int.toString or relying on module-load mutation / Date.now / Console.log inside a wasm-targeted kernel; treating build-green as acceptance.")))
   )
 
   (relationship-with-typed-wasm-project
