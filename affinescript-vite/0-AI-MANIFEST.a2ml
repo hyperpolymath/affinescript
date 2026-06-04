@@ -67,7 +67,7 @@ Policy enforcement contracts (k9, dust, lust, must, trust).
 - `CONTRIBUTING.md` - Technical contribution manual
 - `CODE_OF_CONDUCT.md` - Conduct rules
 
-### Agent Instructions: `.machine_readable/agent_instructions/` ONLY
+### Agent Instructions: `.machine_readable/bot_directives/` ONLY
 
 Methodology-aware AI agent configuration (ADR-002):
 - `methodology.a2ml` - Mode, invariants, ring ceiling, priority weights

@@ -5,7 +5,7 @@
 # the language scope from bot-drift back to user intent. This ANCHOR is
 # retroactive: the project predates the ANCHOR.a2ml convention, and a full
 # .machine_readable/ suite upgrade (anchors/, CLADE.a2ml, contractiles/,
-# agent_instructions/, integrations/, top-level .contractile files) is deferred
+# bot_directives/, integrations/, top-level .contractile files) is deferred
 # as separate work — see STATE.a2ml [deferred-upgrade].
 
 id: "org.hyperpolymath.affinescript"
@@ -109,7 +109,7 @@ realignment-history:
       Brought .machine_readable/ up to the canonical standards repo shape.
       Migrated root contractiles/ → .machine_readable/contractiles/ (git mv,
       history preserved). Added: CLADE.a2ml, contractiles/adjust/Adjustfile.a2ml,
-      contractiles/intend/Intentfile.a2ml, agent_instructions/ (README + coverage
+      contractiles/intend/Intentfile.a2ml, bot_directives/ (README + coverage
       + debt + methodology), integrations/ (verisimdb + vexometer),
       ADJUST.contractile, INTENT.contractile, MUST.contractile, TRUST.contractile.
       STATE.a2ml [deferred-upgrade] marked done.
@@ -118,7 +118,7 @@ realignment-history:
       - ".machine_readable/ now matches canonical standards shape"
       - "root contractiles/ migrated to .machine_readable/contractiles/"
       - "CLADE.a2ml added (clade=language)"
-      - "agent_instructions/ + integrations/ added"
+      - "bot_directives/ + integrations/ added"
       - "top-level .contractile instance files added"
       - "ANCHOR notes section updated"
 
@@ -176,4 +176,4 @@ notes: >
   now matches the canonical standards repo shape. The minimum captured in the
   first ANCHOR (identity, thesis, authorities, relationships, manhattan-recovery)
   is preserved; the suite-upgrade adds the contractile instance files,
-  CLADE.a2ml, agent_instructions/, and integrations/.
+  CLADE.a2ml, bot_directives/, and integrations/.

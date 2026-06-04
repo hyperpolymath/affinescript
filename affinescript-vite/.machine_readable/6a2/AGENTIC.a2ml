@@ -34,18 +34,18 @@ release-claim-requires-hard-pass = true
 # METHODOLOGY (ADR-002)
 # ============================================================================
 # Detailed methodology configuration lives in:
-#   .machine_readable/agent_instructions/methodology.a2ml
-#   .machine_readable/agent_instructions/coverage.a2ml
-#   .machine_readable/agent_instructions/debt.a2ml
+#   .machine_readable/bot_directives/methodology.a2ml
+#   .machine_readable/bot_directives/coverage.a2ml
+#   .machine_readable/bot_directives/debt.a2ml
 #
 # AGENTIC.a2ml declares WHAT agents can do (permissions, gating).
-# agent_instructions/ declares HOW agents should work (methodology).
+# bot_directives/ declares HOW agents should work (methodology).
 
 [methodology]
-instructions-dir = ".machine_readable/agent_instructions/"
+instructions-dir = ".machine_readable/bot_directives/"
 default-mode = "hybrid"
 
 [automation-hooks]
-# on-enter: Read 0-AI-MANIFEST.a2ml, then STATE.a2ml, then agent_instructions/
+# on-enter: Read 0-AI-MANIFEST.a2ml, then STATE.a2ml, then bot_directives/
 # on-exit: Update STATE.a2ml, coverage.a2ml, and debt.a2ml with session outcomes
 # on-commit: Run just validate-rsr
