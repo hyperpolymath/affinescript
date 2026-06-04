@@ -1,0 +1,299 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+= Proposal: estate-standards implications of the AffineScript dogfooding run
+:toc: macro
+:source-highlighter: rouge
+
+[IMPORTANT]
+====
+*Status: PROPOSAL for owner review. NOT an edit.* This document is staged
+*in the affinescript repo* (`proposals/standards/`, MPL-2.0) even though
+its subject matter targets *`hyperpolymath/standards`*. It is deliberately
+*not* written into the standards repo: estate policy forbids automated
+cross-repo sweeps and requires per-repo human acceptance (see the standards
+repo's license-policy + no-automated-edits guardrails). Every normative
+paragraph below is *drafted* for the owner to lift, revise, or reject — it
+is not in force anywhere. Nothing here changes any repo's behaviour until
+the owner manually applies it to the standards repo.
+====
+
+toc::[]
+
+== One-paragraph summary
+
+The idaptik AffineScript migration exercised five things that are
+currently per-repo folklore but read like *estate standards*: (1) the
+co-processor integerization + differential-parity acceptance bar; (2) the
+String host-boundary ABI (one ABI, not reinvented per repo); (3) the
+github-only install recipe as CI guidance; (4) the `--deno-esm` / TS-0
+implication and its interaction with the TypeScript exemption tables; and
+(5) a release-cadence-coupling note. Each section below states the
+*proposed normative text* in standards-repo voice, plus where it belongs.
+
+== Item 1 — Co-processor integerization + the differential-parity acceptance bar
+
+=== Should this be estate standard guidance?
+
+*Yes, as guidance (SHOULD), scoped to AffineScript-compiled-to-wasm
+migrations.* The pattern is now backed by a machine-checked proof
+(`proposals/echo-types/EchoEncodingFaithfulness.agda`, `--safe
+--without-K`, zero postulates), so it is no longer a convention resting on
+intuition — the soundness of "the integer IS the X" and the
+clamp-to-sentinel hazard are both certified.
+
+=== Where it belongs
+
+`hyperpolymath/standards`, in a new *AffineScript migration practices*
+section of the language-policy / migration guidance (adjacent to the
+existing ReScript/TS exemption material, since it governs the same
+RS/TS -> AffineScript -> typed-wasm pipeline).
+
+=== Proposed normative text
+
+[quote]
+____
+*AS-MIG-1 (Co-processor integerization).* When migrating a host-side
+enumerated or stringly-typed value `X` to an AffineScript wasm kernel that
+computes on an integer encoding (`enc : X -> i32`), the encoding SHOULD be
+*either* provably injective (lossless — the integer faithfully names the
+X) *or* an explicitly declared clamp-with-sentinel (acknowledged,
+localised, controlled loss). A *silent* collapse of out-of-band input onto
+a sentinel that also names a valid value (e.g. defaulting a bad input to
+`0`) is a defect, not a design choice. The soundness of this dichotomy is
+certified by `EchoEncodingFaithfulness` in `hyperpolymath/echo-types`.
+
+*AS-MIG-2 (Differential-parity acceptance bar).* A kernel migration is NOT
+"done" on the strength of an injectivity/loss argument alone. Acceptance
+REQUIRES a *differential-parity harness*: run the host-side reference and
+the deployed wasm on the same input vectors and assert identical output.
+The proof certifies the *model* (no hidden collision); the harness
+certifies the *lowering* (the wasm bit-for-bit implements the model).
+Neither subsumes the other; both are required for sign-off.
+____
+
+[NOTE]
+====
+AS-MIG-2 has a direct toolchain consequence covered in
+`proposals/toolchain/` Findings 3-4: parity harnesses SHOULD be authored
+in AffineScript and compiled via `--deno-esm` (not TypeScript), and MUST
+NOT depend on the retired `idaptik-affinescript-build` podman container
+(host-native `affinescript` only, per the 2026-06-03 idaptik reanchor).
+====
+
+== Item 2 — The String host-boundary ABI as a blessed estate spec
+
+=== The problem it solves
+
+Every repo that crosses the AffineScript/host string boundary will
+otherwise invent its own marshalling. The dogfooding run already settled
+on *one* working ABI; blessing it estate-wide means *one spec, not N
+divergent ones*.
+
+=== The ABI (verified this session)
+
+* *Wire format:* `[len:i32 LE][utf8]` — a 4-byte little-endian length
+  prefix followed by the UTF-8 bytes.
+* *Allocation:* a wasm-exported bump allocator `__affine_alloc(n) ->
+  i32` returns an offset for `n` bytes. This *replaced* an earlier fixed
+  `8192` scratch offset that risked colliding with literal/heap storage —
+  so the allocator is the correct, collision-safe form and the fixed
+  offset is the anti-pattern.
+
+=== Where it belongs
+
+`hyperpolymath/standards`, as a short normative *ABI spec* under the
+AffineScript/typed-wasm interop material (it is a peer of, and feeds, the
+typed-wasm target spec). It should be the *single* referent for any repo
+doing String boundary marshalling.
+
+=== Proposed normative text
+
+[quote]
+____
+*AS-ABI-STR-1 (String host-boundary ABI).* AffineScript wasm modules that
+exchange strings with a host MUST use the canonical wire format
+`[len:i32 LE][utf8]`: a 32-bit little-endian byte-length immediately
+followed by the UTF-8 payload. Host-side buffers for strings passed *into*
+wasm MUST be obtained from the module's exported bump allocator,
+`__affine_alloc(n: i32) -> i32`, which returns a byte offset for `n` bytes
+of scratch. Modules MUST NOT use a hard-coded scratch offset (the
+historical fixed `8192` offset is deprecated: it can collide with literal
+and heap storage). Repos crossing the String boundary SHOULD reference
+this spec rather than re-deriving a marshalling convention.
+____
+
+[NOTE]
+====
+This ABI is the *read-side* prerequisite for the variable-string backend
+(`proposals/toolchain/` Finding 1): once `String.length`/indexing land,
+they consume strings already laid out in this format, and
+`String.fromCharCode` is the first primitive to *write* one via
+`__affine_alloc`. Blessing the ABI now de-risks that compiler work.
+====
+
+== Item 3 — The github-only install recipe as estate CI guidance
+
+=== The constraint (verified this session)
+
+The build network is *github-only*: `crates.io`, `deno.land`,
+`opam.ocaml.org`, and launchpad PPAs return *403*; `github.com` and
+`archive.ubuntu.com` are reachable. CI that assumes registry reachability
+will fail estate-wide, not just here.
+
+=== Where it belongs
+
+`hyperpolymath/standards`, in the CI/build guidance (peer to the existing
+"package management: Guix primary, Nix fallback, Deno for JS deps"
+material).
+
+=== Proposed normative text
+
+[quote]
+____
+*EST-CI-NET-1 (Registry-independent install).* Estate CI runs on a
+*github-only* network: package registries (`crates.io`, `deno.land`,
+`opam.ocaml.org`, launchpad PPAs) are unreachable (HTTP 403); only
+`github.com` and the OS package archive (`archive.ubuntu.com`) are
+reachable. CI workflows MUST NOT depend on language-registry reachability.
+Toolchains SHOULD be installed from the OS package manager (apt universe)
+or vendored/git-submoduled from `github.com`. The AffineScript compiler is
+the reference instance: it builds host-native from apt OCaml universe
+packages (`ocaml`, `dune`, `menhir`, `ocaml-findlib`, `libsedlex`/`yojson`/
+`fmt`/`cmdliner`/`ppx_deriving`/`ppx_sexp_conv`/`sexplib0`/`menhir`
+`-ocaml-dev`) with *no opam*, and `dune exec affinescript -- compile FILE
+-o OUT` emits valid wasm.
+
+*EST-CI-NET-1a (build-target narrowing).* Where a project's full default
+build pulls an optional registry-only dependency, CI SHOULD build the
+specific required target rather than the full default. Reference instance:
+the affinescript full `dune build` stops only on `js/playground.bc.js`
+(which needs the `js_of_ocaml` *binary*); building the compiler target
+directly avoids the stop with no loss of the shippable artefact.
+____
+
+== Item 4 — `--deno-esm` / TS-0 and the TypeScript exemption tables
+
+=== The implication
+
+`--deno-esm` (affinescript issue #122) emits a standalone Deno/Node ES
+module directly from the AST, lowering `extern fn` to direct host calls.
+That means *test harnesses and Deno-facing shims currently exempted as
+TypeScript could be authored in AffineScript and compiled to Deno-ESM* —
+which would let those exemptions reach a real unblock condition instead of
+sitting open indefinitely.
+
+=== Interaction with the existing exemption tables
+
+The standards repo's TypeScript-exemptions table (and the mirrored
+per-repo tables) carry a structural carve-out:
+
+* `affinescript-deno-test/**`, `affinescript-cli/**` — *"bootstrap shim:
+  bootstrap the AffineScript toolchain itself; unblock: when AffineScript
+  self-hosts these."*
+
+Today that unblock condition is *vague* ("when AffineScript self-hosts").
+`--deno-esm` makes it *concrete and testable*.
+
+=== Proposed amendment (exemption-table unblock condition)
+
+Replace the open-ended unblock condition on the
+`affinescript-deno-test/**` (and the affinescript repo's
+`affinescript-deno-test/*.ts`) TypeScript-exemption row with:
+
+[cols="1,3a",options="header"]
+|===
+| Path | Proposed unblock condition
+
+| `affinescript-deno-test/**`, `affinescript-cli/**`
+| *Tied to `--deno-esm` (affinescript issue #122).* The carve-out closes
+  when the AffineScript test harness / CLI shim is re-authored in
+  AffineScript and compiled via `affinescript ... --deno-esm`, producing
+  the Deno ES module these `.ts` files currently provide. The
+  `proposals/toolchain/` Finding 3 spike (re-author *one* migrated
+  kernel's parity harness in AffineScript -> Deno-ESM and reproduce the TS
+  verdict) is the *gating experiment*: a green spike converts this from
+  "indefinite carve-out" to "scheduled removal".
+|===
+
+[quote]
+____
+*AS-TS0-1 (TS-0 reachability).* Where a repo's only remaining TypeScript
+is differential-parity harnesses or Deno-facing shims, the repo SHOULD
+treat `--deno-esm` re-authoring as the path to *TypeScript = 0* rather
+than grandfathering the TS indefinitely. The idaptik migration is the
+reference case: ~17.6k LOC of TS parity harness is removable in principle
+via this route, which is the difference between a declared TS-0 and a real
+one.
+____
+
+[NOTE]
+====
+This is an *amendment proposal to existing tables*, not a new sweep.
+Per estate policy it requires explicit owner approval and a recorded
+unblock condition (which the text above supplies). The `.d.ts`
+declaration-file exemptions and the runtime carve-outs
+(`affinescript-cli/mod.js` distribution shim, `editors/vscode/test/**`
+smoke harness) are *unaffected* — they have permanent rationales and are
+not reachable by `--deno-esm`.
+====
+
+== Item 5 — Release-cadence-coupling note
+
+=== The fact
+
+The idaptik migration pins *affinescript v0.1.1*. The two unmigrated
+coprocessor kernels (*IO*, *Quantum*) are gated on *specific compiler
+capabilities*, not on migration effort: IO on the variable-string backend,
+Quantum on effect codegen (module-level mutable state / `Date.now` /
+`Console.log` cannot yet lower to wasm).
+
+=== Where it belongs
+
+`hyperpolymath/standards`, as a short *cross-repo release-coordination*
+note (peer to whatever version-pinning guidance the estate keeps).
+
+=== Proposed normative text
+
+[quote]
+____
+*EST-REL-PIN-1 (capability-gated migration honesty).* When a downstream
+repo pins a specific AffineScript compiler version for a migration, work
+that is blocked by an *absent compiler capability* (rather than by effort)
+MUST be recorded as *compiler-gated*, naming the capability and the
+gated unit. The pinned-version changelog is the coordination surface: the
+affinescript release that lands a gating capability SHOULD name the
+downstream unit it unblocks. Reference instance: idaptik pins affinescript
+v0.1.1 with 2/4 kernels migrated; `Kernel_IO` is gated on the
+variable-string backend and `Kernel_Quantum` on effect codegen — these are
+*compiler-gated, not stalled*, and SHOULD be labelled as such so a reader
+does not mistake a compiler wall for abandoned work.
+____
+
+== Cross-references
+
+* Toolchain-side companion: `proposals/toolchain/README.adoc` (this
+  session) — Findings 1 (string backend), 2 (`@boundary`), 3-4
+  (`--deno-esm` + stale harness), 5 (github-only build), 6 (cadence).
+* Soundness artefact: `proposals/echo-types/EchoEncodingFaithfulness.agda`
+  + its `README.adoc` — certifies AS-MIG-1's lossless/controlled-loss
+  dichotomy.
+* Worked migration: `proposals/idaptik/README.adoc` — `Kernel_IO`
+  re-decomposition + `SecurityRank` verified parity (the AS-MIG-1/2
+  reference instances).
+
+== Standing reminder (why these are proposals, not edits)
+
+Estate policy is firmly against bulk cross-repo sweeps; per-repo human
+acceptance is the rule, and license/normalisation findings are *flag-only*.
+This document is therefore a *flag with drafted text*: it gives the owner
+ready-to-lift normative paragraphs for `hyperpolymath/standards` but
+applies nothing. The owner reviews, edits, and lands each item manually
+into the standards repo.
+
+== Provenance
+
+Produced in the 2026-06-04 AffineScript co-development session by the
+estate-standards analyst, READ-ONLY, from session-verified facts. No repo
+was modified. This file is MPL-2.0 (it lives in the affinescript repo);
+its *target* is `hyperpolymath/standards`, which is itself MPL-2.0 as a
+sole-owner repo per the estate license classification.
