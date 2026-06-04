@@ -361,6 +361,28 @@ interpreter rejects. Worth a focused issue + a regression test feeding the
 shape to `Interp.eval_program` (the same "first user of an existing-but-
 untested shape" class the repo's agent-ops notes flag for `FnExtern`).
 
+== Finding 7 — panic-attack has no AffineScript analyzer (the primary language is unanalyzed)
+
+Running `panic-attack assail` (v2.5.5) on the migrated coprocessor cores
+(`idaptik/vm/coprocessor/*.affine`) this session returned `Error: Could
+not detect language` — panic-attack's 49-language analyzer does not yet
+include AffineScript, so the estate's *primary go-forward application
+language* currently has *zero* static-analysis coverage. Two adjacent
+robustness issues surfaced in the same run: on a small `.affine`-only
+directory the tool *backtrace-crashed* (a raw Rust panic + stack trace)
+rather than skipping unknown files gracefully, and it emitted `warning:
+failed to read AI manifest: extra tokens after manifest` on an idaptik
+`.a2ml` manifest.
+
+*Recommendation (targets `hyperpolymath/panic-attack`):* add an
+AffineScript analyzer (a language entry recognising `.affine` with
+weak-point patterns suited to the integerization style — unguarded
+boundary decoders, *silent* clamps, unbounded `nth`/`path_len`-style
+scans), and harden language detection to *skip, not crash* on unknown
+extensions. Until then, AffineScript code is outside the panicbot /
+gitbot-fleet security gate — a notable gap now that AffineScript is the
+estate's primary application language.
+
 == Verification summary (what was actually run)
 
 * *Network:* `crates.io` / `deno.land` / `opam.ocaml.org` / launchpad ->
