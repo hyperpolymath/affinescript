@@ -1,0 +1,244 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+= Server-authoritative determinism — the same wasm on both sides
+:toc: macro
+
+[IMPORTANT]
+====
+*Status: ARCHITECTURE NOTE / PROPOSAL.* Analysis of why the
+ReScript→AffineScript→wasm migration *unlocks* a class of multiplayer
+netcode that ReScript→JS made impractical, why it is not Elixir-specific,
+and the open threads it raises (Burble string-offload, safe-NIF embedding,
+three-runtime debugging). Staged in affinescript (MPL); subject is idaptik
+(AGPL). A companion SVG (`server-authoritative-determinism.svg`) renders
+the two diagrams below.
+====
+
+toc::[]
+
+== The thesis in one line
+
+The *server's* simulation is the single source of truth (authoritative);
+every machine runs the *same deterministic* simulation; so a client can
+*predict ahead* of the server and, when it guesses wrong, *rewind and
+replay* to land exactly on the server's result — no drift, no cheating, no
+laggy feel.
+
+Three legs: **authority** (server decides), **prediction** (client
+simulates locally so input feels instant), **determinism** (same inputs +
+same start state → bit-identical result everywhere). Determinism is the
+load-bearing leg — and AffineScript→wasm makes it nearly free.
+
+== Diagram 1 — same binary, both sides
+
+----
+        ┌──────────── CLIENT (browser) ───────────┐         ┌──────────── SERVER (Elixir / OTP) ──────────┐
+        │  my input ─▶ [ vm.wasm ] ─▶ predict ─▶ Pixi│        │  collect ALL inputs ─▶ [ vm.wasm ] ─▶ step   │
+        │                 ▲                          │        │            (authoritative)  via wasmex       │
+        │   rollback + replay                        │        │  per-entity GenServer + OTP supervision     │
+        └───────────────────────────┬───────────────┘        └───────────────┬─────────────────────────────┘
+                                     │  inputs (tick, player, bits)           │
+                                     └──────────────▶  Phoenix Channel  ◀─────┘
+                                          authoritative state / hash @ tick T
+                                     ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+                            the IDENTICAL AffineScript-compiled vm.wasm runs in BOTH boxes
+----
+
+Only *inputs* cross client→server (tiny), and *authoritative state (or a
+hash)* crosses server→client. Determinism is what lets you ship inputs
+instead of whole world-states.
+
+== Diagram 2 — predict → confirm → reconcile
+
+----
+ticks →     8     9    10    11    12    13    14    ← client's predicted "now"
+CLIENT:   [C]   [C]   [C]   [P]   [P]   [P]   [P]      C = confirmed   P = predicted (my inputs only)
+                          ▲
+SERVER confirms tick 11 — but it includes PLAYER B's input the client never predicted
+                          │
+                          ▼   predicted@11  ≠  authoritative@11   →  MISMATCH
+                          │
+                RECONCILE: 1. rewind to 10 (last confirmed)
+                           2. re-apply now-known inputs (mine + B's) for 11..14
+                           3. replay forward → corrected "now" @14
+                           (determinism ⇒ this lands exactly on the server's result)
+----
+
+If the prediction was right (the common case) the compare matches and the
+player never notices. Mispredictions cost a one-frame correction, not a
+stall.
+
+== Diagram 3 — why ReScript couldn't, and what the real requirement is
+
+----
+  CLASSIC netcode (brittle)                  AFFINESCRIPT → wasm (by construction)
+  ─────────────────────────                  ─────────────────────────────────────
+  client sim        server sim               client            server
+  (JS / ReScript)   (rewritten in Elixir)    [ vm.wasm ] ===== [ vm.wasm ]
+       └─ must match BIT-FOR-BIT, by hand           same bytes → same result, always
+       float rounding / map order / overflow        compile ONCE, run both places
+       → silent divergence → DESYNC                 (browser + Elixir via wasmex/wasmtime NIF)
+----
+
+In the classic world you maintain *two* implementations that must agree to
+the last bit forever; one float-rounding difference between V8 and the BEAM
+and you desync. AffineScript compiles to one `vm.wasm` you run in both
+places, so "the two sims match" is true *by construction*.
+
+== Every gamer knows this (the examples)
+
+[cols="1,2a",options="header"]
+|===
+| What gamers say | The concept it is
+
+| *"GGPO / rollback netcode is so good"* (Guilty Gear Strive, Skullgirls, Street Fighter 6)
+| This *is* predict + rollback + replay. It feels like magic *because* the
+  sim is deterministic — the praised netcode is literally this mechanism.
+
+| *"I SHOT him, he was behind the wall!"* (CS, Valorant, Apex — peeker's advantage)
+| Prediction vs authority under latency: you acted on your predicted frame;
+  the server's authoritative timeline disagreed. The eternal complaint is
+  the reconciliation gap made visible.
+
+| *Rubber-banding / teleporting players*
+| Reconciliation snapping a client to the authoritative position after a
+  misprediction (or packet loss). The "warp" is the correction.
+
+| *"This guy's on wifi"* (Smash Ultimate desync/lag jokes — "why is my Falco teleporting")
+| Latency + weak determinism = the experience you are trying to *kill*.
+  Delay-based, non-deterministic netcode is the thing gamers mock.
+
+| *Dark Souls backstab / "phantom hit" desyncs* (P2P, no authoritative host)
+| The horror of *no authority + weak determinism*: two peers each think
+  they're right, neither can reconcile. This is the architecture you are
+  *avoiding*.
+|===
+
+The punchline: determinism + same-binary + reversibility is the recipe
+behind the netcode gamers *praise* (GGPO rollback) and whose *absence* is
+the netcode they *mock* (delay-based, P2P backstab desync, wifi Falco).
+
+== Is this Elixir-specific? (no)
+
+It is a *determinism + shared-artifact* property, not an Elixir property.
+The requirement is: **a deterministic simulation that the same artifact can
+run on both the client and the authoritative host.**
+
+[cols="2,1,3a",options="header"]
+|===
+| Stack | Works? | Why
+| ReScript → JS  +  Elixir | ✗ | JS float/GC nondeterminism; and you can't run the *same artifact* server-side — you'd reimplement the sim in Elixir (the two-sims problem).
+| *AffineScript → wasm*  +  Elixir | ✓✓ | Deterministic integer wasm both sides + affine no-aliasing + *reversible* VM (rollback = step backward).
+| Rust → wasm  +  Elixir | ✓ | Rust is deterministic; same wasm both sides (Rust-native also works server-side via a Rustler NIF). A very common, strong combo.
+| C/C++/Zig → wasm  +  any host | ✓ | Deterministic if you avoid float / UB / map-order. wasm is the shared artifact.
+| "Elixir sim on both sides" | ✗ (browser) | BEAM doesn't run in the browser; Gleam→JS puts you back on JS-client nondeterminism.
+|===
+
+**wasm is the lingua franca** that makes "same binary both sides" possible.
+Elixir's role is just a *great authoritative host* (per-entity processes,
+OTP supervision, `wasmex` to embed the module) — swap Elixir for a
+Rust/Go server and the determinism story is unchanged. So: *Rust+Elixir,
+Rust+Rust, AffineScript+Elixir* all work; *ReScript+anything* doesn't,
+because it can't give you the shared deterministic artifact.
+
+== Honest caveats
+
+* The synced sim must be **pure**: no wall-clock, unseeded RNG, or host
+  effects in the stepped path (exactly the effect-codegen wall — networking
+  and time stay *outside* the VM). AffineScript *enforces* this rather than
+  hoping for it.
+* The VM's I/O ports must be **fed identically** server-side (the server's
+  wasm consumes recorded inputs, it does not make live host calls).
+* `wasmex`/`wasmtime` is real but you **batch ticks** across the NIF
+  boundary to amortise call overhead, and validate under load.
+* Determinism removes *desync*, not *latency* — you still need input-delay /
+  a rollback window.
+
+== Open threads (raised, not yet resolved)
+
+=== T1 — Burble's data channel to offload the string gap
+
+CONFIRMED from `github.com/hyperpolymath/burble`: a *media plane* (WebRTC
+RTP/SRTP voice), an Elixir/OTP *control plane* (auth, rooms, presence,
+signaling), a P2P *data channel* (the burble proof-spec: a "bidirectional
+AI agent data channel" exchanging JSON over the same connection as voice),
+and a *Protobuf-defined wire protocol* shared by server and clients. (Your
+three-channel framing — voice/chat, an LLM channel, an "rtsm" real-time
+state channel — maps onto media-plane + two uses of the data channel; the
+exact `rtsm` name isn't in the public ARCHITECTURE.adoc I could read.)
+
+Idea: route the game's *stringy* comms (chat, names, AI/LLM text) over
+Burble's data channel so the AffineScript sim never touches them — routing
+strings *around* the AS string-gap, not through it.
+
+* *Strong fit:* the data channel is **Protobuf**, not ad-hoc string
+  parsing — structured, length-delimited, integer-tagged. That is exactly
+  the shape AffineScript likes at a boundary; the AS sim can read protobuf
+  field tags/ints without needing variable-string ops.
+* *Works for:* non-authoritative peer strings (chat, voice, the LLM
+  channel). Brain/senses: AS = integer brain on Phoenix; Burble data
+  channel = peer string/voice senses.
+* *Does NOT replace the authoritative path:* game-*affecting* strings must
+  still traverse Phoenix→Elixir→wasm (authority + determinism), not a P2P
+  side-channel.
+* *Integration cost is real:* Burble needs signaling/discovery (its Elixir
+  control plane, or Groove); adding it as a game dependency is a second
+  transport. Verdict: a good *partial* offload for the comms layer, the
+  protobuf wire is a bonus — but not a substitute for the variable-string
+  backend on the authoritative path.
+
+=== T2 — "snifs instead of nifs": it doesn't dismantle this — it IS the server side
+
+CONFIRMED from `github.com/hyperpolymath/snifs`: *SNIFS = Safe NIFs* —
+native (Zig) code compiled to WebAssembly and run via `wasmex`/`wasmtime`,
+so guest faults (out-of-bounds, overflow, divide-by-zero, crashes) become
+`{:error, reason}` tuples instead of taking down the BEAM. Tagline:
+"WebAssembly sandboxing provides genuine crash isolation for BEAM NIFs."
+
+This is not a threat to server-authoritative determinism — *it is the
+recommended way to do the server side of it.* The diagram's "server-side
+`vm.wasm` via wasmex" literally IS a SNIF. So:
+
+* *Determinism is unaffected:* it comes from the *wasm module being
+  identical both sides*. SNIFS runs that same wasm; the computation is
+  bit-identical.
+* *SNIFS improves the architecture:* a runaway or faulting authoritative
+  tick yields `{:error}` (the entity's GenServer rejects/rolls back that
+  input) instead of crashing the lobby — exactly the OTP-shaped recovery
+  you want. Raw-NIF embedding gives determinism but not containment; SNIFS
+  gives both.
+* *A convergence worth naming:* the determinism argument *wants* wasm on
+  the server (the same-binary property); SNIFS *independently* wants wasm
+  on the server (crash isolation). Same choice, two reasons. SNIFS is the
+  production substrate for "vm.wasm via wasmex."
+
+Net: use SNIFs, not raw NIFs — *same determinism, crash-contained
+authority*. Far from dismantling it, SNIFS is the piece that makes the
+server side safe to ship.
+
+=== T3 — three-runtime debugging (concrete anchor)
+
+A desync spans three runtimes. Concrete bug: *"Player A sees the door open;
+Player B sees it closed."* The door bit lives in the AS-wasm VM; the input
+was marshalled by the JS host; relayed/authorised by Elixir. Suspects:
+
+. *AS↔JS ABI* — A's input mis-marshalled (wrong integer crossed the wasm boundary).
+. *JS↔Elixir codec* — schema drift (a field dropped in JSON).
+. *Elixir ordering* — input applied at the wrong tick.
+. *determinism break* — B's wasm ≠ A's wasm (shouldn't happen with the same binary).
+
+One symptom, three runtimes, four boundaries, *no single stack trace*. The
+concrete handle: a **unified trace keyed by `(tick, entityId, traceId)`**
+that every runtime emits, so the cross-runtime causal chain can be
+reconstructed — and because the VM is *reversible + deterministic*, the
+exact desync can be **replayed from recorded inputs** across all three
+runtimes (record-and-replay debugging end to end). A generalised
+debugging idea is worth testing against this anchor: *does it help
+reconstruct/replay the cross-runtime causal chain keyed by tick?*
+
+== Provenance
+
+2026-06-04 AffineScript co-development session. Companion: the multiplayer
+architecture analysis in `proposals/idaptik/README.adoc` and the migratability
+tally of `src/app/multiplayer/*.res` (6 MIGRATABLE NOW / 5 EFFECT-GATED /
+2 STRING-GATED) that empirically confirms the brain/senses cleavage.
