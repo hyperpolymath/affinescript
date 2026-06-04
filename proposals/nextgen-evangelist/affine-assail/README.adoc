@@ -1,0 +1,197 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+= affine-assail — a weak-point scanner for AffineScript (.affine)
+:toc: macro
+
+[IMPORTANT]
+====
+*Status: REFERENCE IMPL / PROPOSAL — TRIALED, GREEN.* This directory is the
+*working reference implementation* for the *panic-attack AffineScript gap*:
+panic-attack scans 49 languages but not `.affine`. nextgen-languages-evangelist
+roadmap ask #5.
+
+It is a *Deno* trial script (plain JavaScript `.mjs`, NOT TypeScript) so it
+runs immediately under the firewall. The *production* analyzer should be the
+Rust pass inside `panic-attack` (`src/assail/`), learning the three rules this
+script demonstrates against real migrated kernels.
+====
+
+toc::[]
+
+== What it flags
+
+Three `.affine`-specific weak points, each with a stable rule id paralleling
+panic-attack's `PA0xx` codes:
+
+[cols="1,2,1,4"]
+|===
+| Rule | Name | Severity | What it catches
+
+| `PA-AFF-001`
+| undeclared clamp-sentinel  *(the key rule)*
+| high
+| A `match` arm or `if/else` mapping a catch-all / out-of-band / `Invalid`
+  case to a *literal integer* in-band code (`Invalid(v) => if v < 0 { 0 } else
+  { 3 }`, or `_ => 0`). These collapse out-of-band input onto an in-band code.
+
+| `PA-AFF-002`
+| unguarded boundary decoder
+| medium / low
+| A `pub fn` whose params include `[Int]`/`Int` and whose body indexes/scans
+  (`nth(`, subscript, `get(`) — a boundary decoder. *Medium* by default;
+  *lowered to low* when a length/bounds guard is detected in the body
+  (heuristic).
+
+| `PA-AFF-003`
+| unbounded scan
+| info
+| `for <v> in <coll>` over an array-typed parameter. Informational/perf: O(n)
+  over caller-supplied length; reviewer confirms n is bounded.
+|===
+
+The PA-AFF-001 message points the author at the sibling `echo-boundary/`
+proposal: _"out-of-band collapses to in-band code N; declare a clamp or prove
+injective via echo-boundary."_
+
+== Design notes (honest)
+
+* *Line-oriented heuristic, no full parse.* A tool in the panic-attack family
+  must run standalone on partial / non-compiling sources, exactly like its
+  other 49 analyzers. This scanner therefore matches *shapes*, not a typed AST.
+  The migrated kernels write flat single-line arms (per the AffineScript
+  "flat guarded returns" style the parser prefers), which suits this approach.
+* *Trailing `//` comments are stripped* before matching, so comment prose never
+  triggers a rule. Block comments don't exist in the canonical face; `//`
+  inside a string literal is an accepted known limitation.
+* *Guarded vs unguarded* (PA-AFF-002) is a genuine heuristic: presence of a
+  `len`/`length`/`array_len`/`path_len` token or an `if ... < / <= / > / >= /
+  ==` comparison in the body lowers severity. It does NOT prove the guard
+  covers *every* index — the message says so.
+* *Exit code:* 1 if any *high*-severity finding (CI-gate friendly), else 0.
+
+== Usage
+
+----
+deno run --allow-read assail.mjs <path-to.affine>          # human + JSON summary
+deno run --allow-read assail.mjs <path-to.affine> --json   # JSON object only
+----
+
+== Trial 1 — SecurityRank.affine (MUST flag the clamp) — PASS
+
+Target: `/home/user/idaptik/vm/coprocessor/SecurityRank.affine`. The
+load-bearing line is 48: `Invalid(v) => { if v < 0 { 0 } else { 3 } }`.
+
+----
+$ deno run --allow-read assail.mjs /home/user/idaptik/vm/coprocessor/SecurityRank.affine
+affine-assail: scanning /home/user/idaptik/vm/coprocessor/SecurityRank.affine
+
+  [HIGH] PA-AFF-001  /home/user/idaptik/vm/coprocessor/SecurityRank.affine:48
+      Invalid(v) => { if v < 0 { 0 } else { 3 } }
+      -> out-of-band collapses to in-band code 0; declare a clamp or prove injective via echo-boundary (proposals/nextgen-evangelist/echo-boundary).
+
+  1 finding(s): 1 high.
+
+JSON summary:
+{"file":"/home/user/idaptik/vm/coprocessor/SecurityRank.affine","findings":[{"rule":"PA-AFF-001","severity":"high","line":48,"snippet":"Invalid(v) => { if v < 0 { 0 } else { 3 } }","detail":"out-of-band collapses to in-band code 0; declare a clamp or prove injective via echo-boundary (proposals/nextgen-evangelist/echo-boundary)."}]}
+exit=1
+----
+
+*Result: the required clamp-sentinel is flagged HIGH at line 48.* Note the
+*absence* of false positives: `rank_of`'s in-band arms (`Open => 0`, `Weak =>
+1`, …) and `level_of`'s `if level == N { return Variant }` guarded returns are
+correctly NOT flagged — only the out-of-band `Invalid(v) =>` arm fires. The two
+`pub fn`s (`rank_security_level`, `passes_min_security`) take `Int` but call
+`rank_of`/`level_of` rather than indexing, so PA-AFF-002 correctly stays quiet.
+
+== Trial 2 — Kernel_IO.affine (the in_sandbox decoder + scans) — PASS
+
+Target: `/tmp/idaptik-migration/Kernel_IO.affine`.
+
+----
+$ deno run --allow-read assail.mjs /tmp/idaptik-migration/Kernel_IO.affine
+affine-assail: scanning /tmp/idaptik-migration/Kernel_IO.affine
+
+  [INFO] PA-AFF-003  /tmp/idaptik-migration/Kernel_IO.affine:34
+      for x in xs { n = n + 1; }
+      -> scans array parameter 'xs' — O(n) over caller-supplied length; confirm n is bounded.
+
+  [INFO] PA-AFF-003  /tmp/idaptik-migration/Kernel_IO.affine:45
+      for b in data {
+      -> scans array parameter 'data' — O(n) over caller-supplied length; confirm n is bounded.
+
+  [INFO] PA-AFF-003  /tmp/idaptik-migration/Kernel_IO.affine:59
+      for x in xs {
+      -> scans array parameter 'xs' — O(n) over caller-supplied length; confirm n is bounded.
+
+  [INFO] PA-AFF-003  /tmp/idaptik-migration/Kernel_IO.affine:71
+      for r in root {
+      -> scans array parameter 'root' — O(n) over caller-supplied length; confirm n is bounded.
+
+  [LOW] PA-AFF-002  /tmp/idaptik-migration/Kernel_IO.affine:82
+      pub fn in_sandbox(data: [Int], root: [Int]) -> Int {
+      -> pub fn 'in_sandbox' decodes numeric boundary input and indexes/scans (a length/bounds guard was detected; severity lowered to low — confirm it covers every index).
+
+  5 finding(s): 1 low, 4 info.
+----
+(exit=0 — no high-severity finding)
+
+*Result: the `in_sandbox` boundary decoder is flagged (PA-AFF-002, lowered to
+LOW because the body has guards: `if pl < rl`, `if pl == rl`), and all four
+array-parameter scans are flagged informational (PA-AFF-003).* This is the
+honest verdict — `in_sandbox` genuinely does bounds-guard its `nth(data, rl)`
+read, so LOW is correct, but it is still surfaced so a reviewer can confirm the
+guard covers every index.
+
+== Trial 3 — synthetic fixture (the shapes the real kernels don't cover) — PASS
+
+`fixtures/weakpoints.affine` is a hand-written fixture exercising the wildcard
+`_ => N` arm, the brace-less `Invalid(v) => N` arm, and a *genuinely
+unguarded* decoder (to show PA-AFF-002 at MEDIUM, contrasting Kernel_IO's LOW).
+
+----
+$ deno run --allow-read assail.mjs fixtures/weakpoints.affine
+affine-assail: scanning fixtures/weakpoints.affine
+
+  [HIGH] PA-AFF-001  fixtures/weakpoints.affine:17
+      _ => 0
+      -> out-of-band collapses to in-band code 0; declare a clamp or prove injective via echo-boundary (proposals/nextgen-evangelist/echo-boundary).
+
+  [HIGH] PA-AFF-001  fixtures/weakpoints.affine:26
+      Invalid(v) => 3
+      -> out-of-band collapses to in-band code 3; declare a clamp or prove injective via echo-boundary (proposals/nextgen-evangelist/echo-boundary).
+
+  [MEDIUM] PA-AFF-002  fixtures/weakpoints.affine:33
+      pub fn first_byte(data: [Int]) -> Int {
+      -> pub fn 'first_byte' decodes numeric boundary input and indexes/scans with NO obvious length/bounds guard; a malformed [Int]/Int can read out of range.
+
+  [INFO] PA-AFF-003  fixtures/weakpoints.affine:40
+      for x in xs {
+      -> scans array parameter 'xs' — O(n) over caller-supplied length; confirm n is bounded.
+
+  4 finding(s): 2 high, 1 medium, 1 info.
+----
+(exit=1 — two high-severity findings)
+
+*Result: both clamp-sentinel shapes flag HIGH; the unguarded `first_byte`
+decoder flags MEDIUM (vs Kernel_IO's guarded LOW), confirming the
+guarded/unguarded heuristic discriminates as intended.*
+
+== Files
+
+[cols="1,3"]
+|===
+| `assail.mjs` | The scanner (Deno, plain JavaScript).
+| `fixtures/weakpoints.affine` | Synthetic fixture covering shapes the two real kernels don't.
+|===
+
+== Hand-off to panic-attack (production)
+
+The Rust port in `panic-attack` (`src/assail/analyzer.rs` +
+`src/assail/patterns.rs`) should add an AffineScript analyzer with these three
+patterns. PA-AFF-001 is the novel, high-value one — it is the type-system-aware
+analogue of panic-attack's existing `InputBoundary` (PA024) / `MutationGap`
+(PA025) family, specialised to the AffineScript "out-of-band variant collapses
+to an in-band integer" idiom that the ReScript->AffineScript migration produces
+when a variant is re-decomposed onto a closed integer band. The fix the message
+recommends — a *declared clamp* or an *injectivity proof via `echo-boundary`* —
+ties the finding to the sibling proposal.
