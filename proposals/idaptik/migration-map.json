@@ -219,11 +219,15 @@
       "id": "C7",
       "name": "Player coprocessors",
       "description": "Player attribute, loadout, skill and ability coprocessors \u2014 pure integer player state.",
-      "status": "IN_PROGRESS",
-      "drafted_unverified": {
+      "status": "DONE",
+      "done": {
         "date": "2026-06-05",
-        "note": "Agent timed out before writing parity configs/evidence. 8 .affine drafts exist in the working tree but are UNVERIFIED (no config.mjs, no boundary, no assail run) and deliberately NOT committed. Complete the 4 gates over the existing drafts.",
-        "kernels_drafted": ["CriticalRoll", "PlayerAttributes", "QCertifications", "SkillRank", "SkillAbilities", "QPrograms", "JessicaLoadout", "JessicaBackground"]
+        "phase": "C7 completion (scoped agents + parent re-verification)",
+        "staged_at": "proposals/idaptik/migrated/",
+        "kernels": ["CriticalRoll", "PlayerAttributes", "QCertifications", "SkillRank", "SkillAbilities", "QPrograms", "JessicaLoadout", "JessicaBackground"],
+        "gates": "8/8 compile; 4348/4348 parity (re-run by parent); 6 echo-boundary LOSSLESS proofs (QCertifications, SkillRank, JessicaLoadout x3, JessicaBackground; agda exit 0, re-typechecked by parent); 8/8 assail-clean",
+        "float_redecompositions": "CriticalRoll (min_float/max_float), PlayerAttributes (max_float/min_float), QPrograms (trunc) -> Int-native milli-unit convention; QCertifications f64-comparison pub fns removed host-side. Floats stay host-side (C6 *Int pattern). Parity caught an off-by-100 in PlayerAttributes.",
+        "evidence": "proposals/idaptik/migrated/EVIDENCE-C7.adoc"
       },
       "files": [
         "src/app/player/CriticalRollCoprocessor.res",

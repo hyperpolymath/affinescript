@@ -1,0 +1,88 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+= Cluster C7 (player) — four-gate evidence (captured 2026-06-05)
+:toc: macro
+
+[IMPORTANT]
+====
+*Captured run of the 4-gate recipe over the cluster-C7 player kernels.*
+Produced by two scoped agents (5 already-compiling kernels verified; 3
+Float-wall kernels re-decomposed Int-native) and then *independently
+re-verified by the parent on the final state* — every parity sweep, assail
+scan, compile, and Agda boundary proof was re-run, not trusted from the
+agent reports. (An earlier mid-flight parent check raced agent A and missed
+the boundary proofs it had not yet written; the figures here are from the
+post-completion re-run.) Toolchain: AffineScript compiler
+`_build/default/bin/main.exe`, Deno 2.8.2, Agda 2.6.3.
+====
+
+toc::[]
+
+== Summary
+
+[cols="2,1,1,2,1",options="header"]
+|===
+| Kernel | G1 compile | G2 parity | G3 boundary | G4 assail
+| `CriticalRoll`      | OK | 59/59     | n/a (transform)          | clean
+| `PlayerAttributes`  | OK | 155/155   | n/a (transform)          | clean
+| `QCertifications`   | OK | 101/101   | LOSSLESS (certTier, 5)   | clean
+| `SkillRank`         | OK | 180/180   | LOSSLESS (skillRank, 5)  | clean
+| `SkillAbilities`    | OK | 894/894   | n/a (classifier)         | clean
+| `QPrograms`         | OK | 2593/2593 | n/a (transform)          | clean
+| `JessicaLoadout`    | OK | 265/265   | LOSSLESS x3 (weapon 6, tool 8, consumable 6) | clean
+| `JessicaBackground` | OK | 101/101   | LOSSLESS (background, 6) | clean
+| *Total*             | *8/8* | *4348/4348* | *6 LOSSLESS proofs* | *8/8 clean*
+|===
+
+== G3 — echo-boundary (6 LOSSLESS proofs)
+
+Four of the eight kernels carry a discrete value-to-integer ENCODING (an
+enum tier/rank/type table), so injectivity is the relevant faithfulness
+property and is machine-proved: `QCertificationsBoundary`,
+`SkillRankBoundary`, `JessicaLoadoutWeaponBoundary`,
+`JessicaLoadoutToolBoundary`, `JessicaLoadoutConsumableBoundary`,
+`JessicaBackgroundBoundary` — 6 Agda modules, each instantiating the
+`EchoEncodingFaithfulness` framework and proving `code-injective`. All 6
+were re-typechecked by the parent (`agda` exit 0).
+
+The other four kernels (`CriticalRoll`, `PlayerAttributes`, `QPrograms`,
+`SkillAbilities`) are numeric transforms / pure classifiers with no
+encoding table, so G3 does not apply — the G2 round-trip against the
+independent oracle is the faithfulness check.
+
+== The Float-to-wasm wall (4 of 8 kernels)
+
+Four kernels used Float operations the AffineScript backend cannot lower —
+the same wall the C2/C6/C8 waves hit, now a 5th data point. Three were
+re-decomposed Int-native to the milli-unit convention (the JS host scales
+floats by 1000 / pre-floors; the wasm brain is pure integer), per the
+DualAlert / CombatFxInt exemplars; the fourth had its Float-param exports
+removed to the host:
+
+[cols="2,2,3",options="header"]
+|===
+| Kernel | Float issue | Resolution
+| `CriticalRoll`     | `min_float`, `max_float` undefined | stats cross as raw Int; probabilities as milli-units; `imin`/`imax` integer helpers
+| `PlayerAttributes` | `max_float`, `min_float` undefined | all functions Int-native milli-units; `imax`/`imin` helpers
+| `QPrograms`        | `trunc` undefined | `trunc((m-1)*100)` becomes `(m_milli-1000)/10` (integer division == truncation for non-negative, matching ReScript `Float.toInt`)
+| `QCertifications`  | f64-comparison pub fns emit `i32.ge_s` -> uninstantiable wasm | the two Float-param exports removed to host-side; integer logic + certTier encoding retained and proved
+|===
+
+*Parity caught a real bug:* `PlayerAttributes.jump_acceleration_milli` was
+first coded as `dex` instead of `dex*100` (0.1 x dex x 1000); the
+differential sweep flagged the mismatch and it was fixed before the final
+green run. The differential harness doing its job — a transcription error a
+"looks right" read would have shipped.
+
+== Re-verification (parent, independent, final state)
+
+Every figure above was reproduced by the parent re-running the gates
+directly after both agents completed: `parity.mjs` recompiles each
+`.affine` and executes the wasm over the full Cartesian input sweep;
+`assail.mjs` re-scanned each source; each boundary `.agda` was copied into
+the echo mirror and re-typechecked with `agda`. All reproduced clean.
+
+== Remaining in cluster C7
+
+None — the cluster is complete. `Player.res` itself is a host-side
+composition shell (no separable integer brain) and is not a kernel.

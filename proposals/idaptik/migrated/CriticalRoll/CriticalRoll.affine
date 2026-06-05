@@ -1,75 +1,94 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 //
 // CriticalRoll -- the pure probability/threshold kernel re-decomposed from
-// src/app/player/CriticalRoll.res. The ReScript original entangles three things:
-// a non-deterministic draw (Math.random()), two attribute-driven threshold
-// formulae for Jessica, and a three-way classification of the draw against a
-// success and a failure threshold shared by Jessica and Q. Per the DESIGN-VISION
-// ("AffineScript is the brain, JS/Pixi the senses; only primitives cross the wasm
-// boundary"), neither the draw nor the variant labels are the unit of migration.
-// What crosses is the deterministic arithmetic: the two thresholds and the band
-// the comparison falls into. The host owns the entropy (Math.random), the rate
-// tables QCertifications already serves, the rollResult record, and the outcome
-// labels and colours. The kernel is stateless and total: every Float the boundary
-// admits yields a defined Int verdict or Float threshold, never a trap.
+// src/app/player/CriticalRollCoprocessor.res. The ReScript original entangles
+// three things: a non-deterministic draw (Math.random()), two attribute-driven
+// threshold formulae for Jessica, and a three-way classification of the draw
+// against a success and a failure threshold shared by Jessica and Q. Per the
+// DESIGN-VISION ("AffineScript is the brain, JS/Pixi the senses; only
+// primitives cross the wasm boundary"), neither the draw nor the variant labels
+// are the unit of migration. What crosses is the deterministic arithmetic: the
+// two thresholds and the band the comparison falls into. The host owns the
+// entropy (Math.random), the rate tables QCertifications already serves, the
+// rollResult record, and the outcome labels and colours. The kernel is
+// stateless and total: every Int the boundary admits yields a defined Int
+// verdict or Int threshold, never a trap.
 //
 //## Why this split, not a port of jessicaRoll/qRoll
-// jessicaRoll and qRoll each draw a random number, look thresholds up (Jessica by
-// formula, Q by host rate table), then classify. The draw is impure and the Q
-// lookups are discrete table reads with no arithmetic, so both stay host senses.
-// The arithmetic that remains -- the two Jessica formulae and the one shared
-// classification -- is what the co-processor owns. Both call sites feed the same
-// classify_outcome with their respective thresholds, so the brain has one decision
-// rule and the host supplies the two numbers however it sourced them.
+// jessicaRoll and qRoll each draw a random number, look thresholds up (Jessica
+// by formula, Q by host rate table), then classify. The draw is impure and the
+// Q lookups are discrete table reads with no arithmetic, so both stay host
+// senses. The arithmetic that remains -- the two Jessica formulae and the one
+// shared classification -- is what the co-processor owns. Both call sites feed
+// the same classify_outcome with their respective thresholds, so the brain has
+// one decision rule and the host supplies the two numbers however it sourced
+// them.
 //
 //## Outcome encoding (the header contract for the JS host)
 // The rollOutcome variant collapses to an ordinal the host maps back to the
 // variant and thence to a label/colour:
 //   0 CriticalSuccess   1 Normal   2 CriticalFailure
 // classify_outcome returns exactly one of these three. The boundaries match the
-// ReScript verbatim: roll < critSuccess -> 0; else roll > 1 - critFail -> 2; else
-// 1. The success test wins ties at the lower edge (strict <), the failure test at
-// the upper edge (strict >), so a roll sitting exactly on a threshold is Normal,
-// identical to the ReScript if/else chain.
+// ReScript verbatim: roll < critSuccess -> 0; else roll > 1 - critFail -> 2;
+// else 1. The success test wins ties at the lower edge (strict <), the failure
+// test at the upper edge (strict >), so a roll sitting exactly on a threshold
+// is Normal, identical to the ReScript if/else chain.
 //
-//## Float contract
-// roll, crit_success and crit_fail cross as f64 (proven to marshal both ways;
-// cf. migration/bindings/Maths.wasm and PlayerHP.wasm). roll is the host's draw in
-// [0, 1); crit_success and crit_fail are probabilities in [0, 1]. The float
-// comparisons drive an Int verdict, which the wasm backend compares as i32, the
-// working subset for float-fed branches. jessica_crit_success and
-// jessica_crit_fail return f64 thresholds the host either feeds straight back into
-// classify_outcome or displays in the rollResult.
+//## Int-native convention (MILLI-UNITS): the host pre-floors floats to ints
+// All probabilities and roll values cross as MILLI-UNITS (×1000 of the Float):
+//   roll_milli      = round(roll * 1000)         e.g. 0.37 -> 370
+//   crit_success_milli returned from jessica_crit_success_milli
+//   crit_fail_milli returned from jessica_crit_fail_milli
+//
+// Game stats (primaryStat, wil) are integer-valued in the ReScript source
+// (e.g. 80, 100, 150) and cross as raw Int -- NOT scaled. The division
+// (stat - 100)/1000 in the original formulae has value < 1 and contributes
+// only to the milli result: the integer formula below is exact.
+//
+// The original Float formulae and their milli-integer equivalents:
+//   jessica_crit_success: min(0.25, 0.05 + (stat-100)/1000.0)
+//     -> milli: min(250, 50 + (stat - 100))    [= min(250, stat - 50)]
+//   jessica_crit_fail:    max(0.01, 0.10 + (100-wil)/1000.0)
+//     -> milli: max(10, 100 + (100 - wil))     [= max(10, 200 - wil)]
+//   classify_outcome: roll < crit_success / roll > 1 - crit_fail
+//     -> milli: roll_milli < cs_milli / roll_milli > (1000 - cf_milli)
+//
+// Arithmetic is identical to the ReScript on integer-valued stats (which are
+// always whole numbers in game data). The host applies Math.round(x*1000) for
+// the roll.
 
-//## Jessica's critical-success threshold
-// min(0.25, 0.05 + (primaryStat - 100)/1000), the jessicaRoll line verbatim in
-// f64. Higher primary stat raises the chance; the cap at 0.25 is the design
-// ceiling. primaryStat arrives as a Float, so the division is pure f64 and no
-// int->float is implicated. Branchless via min_float rather than a Float if/else.
-pub fn jessica_crit_success(primary_stat: Float) -> Float {
-  min_float(0.25, 0.05 + (primary_stat - 100.0) / 1000.0)
+fn imin(a: Int, b: Int) -> Int {
+  if a < b { a } else { b }
 }
 
-//## Jessica's critical-failure threshold
-// max(0.01, 0.10 + (100 - wil)/1000), the jessicaRoll line verbatim in f64.
-// Higher willpower lowers the chance; the floor at 0.01 is the design minimum.
-// Branchless via max_float. wil is a Float host-side, so the subtract and divide
-// are pure f64.
-pub fn jessica_crit_fail(wil: Float) -> Float {
-  max_float(0.01, 0.10 + (100.0 - wil) / 1000.0)
+fn imax(a: Int, b: Int) -> Int {
+  if a > b { a } else { b }
+}
+
+//## Jessica's critical-success threshold (milli-units)
+// ReScript: min(0.25, 0.05 + (primaryStat - 100)/1000). In milli (stat is raw
+// integer game stat): min(250, 50 + (stat - 100)). Cap at 250 (= 0.25).
+pub fn jessica_crit_success_milli(stat: Int) -> Int {
+  imin(250, 50 + (stat - 100))
+}
+
+//## Jessica's critical-failure threshold (milli-units)
+// ReScript: max(0.01, 0.10 + (100 - wil)/1000). In milli: max(10, 100 + (100 -
+// wil)) = max(10, 200 - wil). Floor at 10 (= 0.01).
+pub fn jessica_crit_fail_milli(wil: Int) -> Int {
+  imax(10, 200 - wil)
 }
 
 //## Shared three-way classification
 // The outcome if/else chain shared by jessicaRoll and qRoll, in isolation:
-//   if roll < crit_success            -> CriticalSuccess (0)
-//   else if roll > 1.0 - crit_fail    -> CriticalFailure (2)
-//   else                              -> Normal          (1)
-// Flat guarded returns rather than nested if/else; the parser dislikes deep
-// nesting and the order of the guards preserves the ReScript precedence (success
-// tested first, then failure, Normal as the fall-through). The strict comparisons
+//   if roll_milli < crit_success_milli         -> CriticalSuccess (0)
+//   else if roll_milli > 1000 - crit_fail_milli -> CriticalFailure (2)
+//   else                                        -> Normal          (1)
+// Flat guarded returns rather than nested if/else. The strict comparisons
 // mean a roll exactly on a boundary is Normal, matching the ReScript.
-pub fn classify_outcome(roll: Float, crit_success: Float, crit_fail: Float) -> Int {
-  if roll < crit_success { return 0; }
-  if roll > 1.0 - crit_fail { return 2; }
+pub fn classify_outcome(roll_milli: Int, crit_success_milli: Int, crit_fail_milli: Int) -> Int {
+  if roll_milli < crit_success_milli { return 0; }
+  if roll_milli > (1000 - crit_fail_milli) { return 2; }
   1
 }
