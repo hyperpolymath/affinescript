@@ -203,7 +203,16 @@
       "id": "C5",
       "name": "Engine coprocessors",
       "description": "Core engine coprocessors: audio state, navigation, resize, maths, random, storage.",
-      "status": "TODO",
+      "status": "DONE",
+      "done": {
+        "date": "2026-06-05",
+        "phase": "G",
+        "kernels": ["Maths", "Random"],
+        "note": "2 integer brains + 9 senses. Random = deterministic xmur3+mulberry32 PRNG (multiplayer-reproducibility backbone); host iterates the seed string + does the final u32->[0,1) float div, brain owns the i32 mixing. Maths = clamp/lerp-milli/dist_sq (float-wall convention; sqrt host-side).",
+        "gates": "2/2 compile; 2108/2108 parity (Random bit-exact vs JS source over full i32 + UTF-16 code units); G3 n/a; 2/2 assail-clean",
+        "evidence": "proposals/idaptik/migrated/EVIDENCE-C5.adoc",
+        "senses": ["ResizeCoprocessor", "GetResolutionCoprocessor", "MathsCoprocessor", "RandomCoprocessor", "StorageCoprocessor", "Resize (float+DOM)", "GetResolution (float+DOM)", "Audio (Pixi)", "Navigation (screen-stack orchestration, effect-gated)", "WaitFor (timing)"]
+      },
       "files": [
         "src/engine/audio/Audio.res",
         "src/engine/navigation/Navigation.res",

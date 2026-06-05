@@ -1,0 +1,94 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+= Cluster C5 (engine coprocessors) — four-gate evidence (captured 2026-06-05)
+:toc: macro
+
+[IMPORTANT]
+====
+*Two integer brains extracted; nine files classified as senses.* C5 is the
+engine-coprocessor layer (audio, navigation, resize, resolution, maths, random,
+storage). The brains are `Maths` and — the strategically important one —
+`Random`, the deterministic xmur3 + mulberry32 PRNG that is the multiplayer
+reproducibility backbone. The rest are senses: FFI bridges, DOM-coupled display
+math, Pixi audio state, screen-stack orchestration, and timing. Toolchain:
+AffineScript compiler `_build/default/bin/main.exe`, Deno 2.8.2.
+====
+
+toc::[]
+
+== Summary
+
+[cols="2,2,1,1,2,1",options="header"]
+|===
+| Kernel | Source | G1 | G2 parity | G3 | G4 assail
+| `Maths`  | `src/engine/utils/Maths.res`  | OK | 1982/1982 | n/a (transform) | clean
+| `Random` | `src/engine/utils/Random.res` | OK | 126/126   | n/a (mixing)    | clean
+| *Total*  |                               | *2/2* | *2108/2108* | *n/a* | *2/2 clean*
+|===
+
+== Random — the deterministic PRNG (bit-exact, the headline)
+
+`Random` is the multiplayer-reproducibility backbone: identical seed -> identical
+stream, bit-for-bit, on every client. Per the brain/senses split the host
+iterates the seed string (feeding UTF-16 code units to `xmur3_step`) and does the
+final `u32 -> [0,1)` float division; the brain owns only the i32 mixing. Six
+exports, matching the `RandomCoprocessor.res` bridge surface exactly:
+
+* `xmur3_init`, `xmur3_step`, `xmur3_finalise` — the seed hash.
+* `mulberry32_advance`, `mulberry32_output`, `mulberry32_draw_raw` — the generator.
+
+*Parity is bit-exact against the ORIGINAL `Random.res`* — each oracle re-derives
+the source with JS-native `Math.imul` and `>>>` (the source of truth), over the
+full i32 domain plus real UTF-16 code-unit values. 126/126. If `xmur3_step`
+matches for every `(h, c)` the folded multi-char hash matches by induction, and
+the host loop never leaves i32. Two compiler facts were written around:
+
+* `*` == `i32.mul` == `Math.imul` (32-bit truncating multiply).
+* `>>>` is emulated via `lsr(x,n) = (x >> n) & ((1 << (32-n)) - 1)` (per
+  VmBitwise); the u32 multiplier constants are written as their signed-i32 bit
+  patterns (`3432918353 = -862048943`, etc.) — identical under `i32.mul`.
+
+This is exactly the kind of core-correctness logic to lock into verified wasm
+before the game is handed on: a desync-proof shared RNG, provably matching the
+legacy stream so the FeaturePacks flag can flip with zero behavioural drift.
+
+== Maths — integer utilities
+
+`clamp` (integer, swap-if-inverted), `lerp_milli` (milli-unit blend; host
+pre-scales `t` by 1000), `dist_sq` (squared Euclidean distance — the integer core
+of `getDistance`; the `sqrt` stays host-side, and games compare squared distances
+anyway). 1982/1982 over moderate domains chosen so the blend and squared terms
+never overflow i32 (these are screen/value magnitudes). The ReScript original is
+float throughout; this is the float-wall convention (integer brain, floats stay
+host-side).
+
+== Senses (9 files — classified, not migrated)
+
+[cols="2,3",options="header"]
+|===
+| File | Class
+| `ResizeCoprocessor.res`, `GetResolutionCoprocessor.res`, `MathsCoprocessor.res`, `RandomCoprocessor.res`, `StorageCoprocessor.res` | FFI bridges — load the wasm, expose the brain across the boundary in i32. *Senses.*
+| `Resize.res` | Canvas-size computation from `window.innerWidth/innerHeight` (DOM reads) + float aspect-ratio/scale math. Display-layout — the player's window size *is* a sense. *Senses / float-gated.*
+| `GetResolution.res` | Reads `window.devicePixelRatio` (DOM) + float. *Senses.*
+| `Audio.res` | Pixi sound state (BGM/SFX). 2 trivial logic lines, no separable integer brain. *Senses.*
+| `Navigation.res` | Screen/popup *stack orchestration* with async asset preloading — manages UI objects with lifecycle methods (prepare/show/hide/...), `Promise`-based loading. Effect-gated orchestration over objects, not a pure-integer brain (51 logic lines are array/option/lifecycle plumbing). *Senses / effect-gated.*
+| `WaitFor.res` | Timing (`setTimeout`/clock). *Senses / effect-gated.*
+|===
+
+== Gate detail
+
+* *G1 compile* — `main.exe compile <k>.affine -o <k>.wasm` → WASM (Maths 346 B,
+  Random 507 B).
+* *G2 parity* — 2108/2108. Maths over moderate domains; Random bit-exact over the
+  full i32 domain + UTF-16 code units.
+* *G3 boundary* — n/a. Numeric transforms / bit-mixing with no discrete
+  value↔integer encoding table; the G2 bit-exact round-trip against the
+  independent JS-source oracle is the faithfulness check.
+* *G4 assail* — 0 findings on both. No enum decoders; the PRNG is pure
+  arithmetic; PA-AFF-001 does not apply.
+
+== Cluster C5 status: DONE
+
+2 brains migrated + 4-gate-verified (incl. the deterministic PRNG backbone);
+9 senses classified. NEXT per the completion-drive directive: C11 ("pure integer
+presentation state").

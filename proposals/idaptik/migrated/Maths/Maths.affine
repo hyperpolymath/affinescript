@@ -1,0 +1,36 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// Maths -- the pure-integer math utilities of the idaptik engine, the brain
+// extracted from src/engine/utils/Maths.res. The ReScript original is Float
+// (getDistance/lerp/clamp); per the float-wall convention the brain is
+// integer-native: clamp on integers, lerp in milli-units (the host pre-scales t
+// by 1000), and the squared distance dist_sq. The sqrt that finishes
+// getDistance stays host-side -- the default wasm backend has no float sqrt, and
+// distance comparisons use the square anyway. "The integer IS the magnitude."
+
+fn imin(a: Int, b: Int) -> Int { if a < b { a } else { b } }
+fn imax(a: Int, b: Int) -> Int { if a > b { a } else { b } }
+
+// clamp v into [lo, hi]; if the bounds are inverted, swap them first (matching
+// the ReScript clamp's min>max guard). Integer-exact, no float.
+pub fn clamp(v: Int, lo: Int, hi: Int) -> Int {
+  let mn = imin(lo, hi);
+  let mx = imax(lo, hi);
+  imax(mn, imin(v, mx))
+}
+
+// lerp in milli-units: t_milli in [0,1000] represents t in [0,1]. Returns the
+// truncated integer blend (1-t)*a + t*b. The host pre-scales t by 1000; integer
+// division truncates toward zero, matching ReScript Float.toInt on the blend.
+pub fn lerp_milli(a: Int, b: Int, t_milli: Int) -> Int {
+  ((1000 - t_milli) * a + t_milli * b) / 1000
+}
+
+// squared Euclidean distance between (ax,ay) and (bx,by) -- the integer core of
+// getDistance. The final sqrt is a host op (senses); games compare squared
+// distances directly, so the brain rarely needs the root at all.
+pub fn dist_sq(ax: Int, ay: Int, bx: Int, by: Int) -> Int {
+  let dx = bx - ax;
+  let dy = by - ay;
+  dx * dx + dy * dy
+}
