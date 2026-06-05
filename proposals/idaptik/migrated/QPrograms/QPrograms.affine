@@ -1,30 +1,31 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 //
-// QPrograms -- the program-loadout co-processor, the pure integer/float core
-// extracted from src/app/player/QPrograms.res. Per the DESIGN-VISION
+// QPrograms -- the program-loadout co-processor, the pure integer core
+// extracted from src/app/player/QProgramsCoprocessor.res. Per the DESIGN-VISION
 // ("AffineScript is the brain, JS/Pixi the senses; they pass primitives across
 // the wasm boundary"), this module owns only the duration arithmetic of Q's
-// software deck: the cert-tier base-duration tables for the three timed programs,
-// the discrete background and equipment synergy multipliers, the multiplicative
-// combine that yields an effective duration, the deck-capacity predicate, and the
-// two display arithmetic primitives (the bonus percentage and the one-decimal
-// rounding). The JS host keeps every string (program names, descriptions, the
-// formatted line itself), the programInfo records, the deck record and its
-// dict of remaining uses, the option/result plumbing of load/unload, and the
-// programId <-> string mapping. None of those is arithmetic, so they remain
-// senses, not brain.
+// software deck: the cert-tier base-duration tables for the three timed
+// programs, the discrete background and equipment synergy multipliers, the
+// multiplicative combine that yields an effective duration, the deck-capacity
+// predicate, and the two display arithmetic primitives (the bonus percentage
+// and the one-decimal rounding). The JS host keeps every string (program names,
+// descriptions, the formatted line itself), the programInfo records, the deck
+// record and its dict of remaining uses, the option/result plumbing of
+// load/unload, and the programId <-> string mapping. None of those is
+// arithmetic, so they remain senses, not brain.
 //
 //## Program encoding (the header contract for the JS host)
 // The ReScript programId variant collapses to its ordinal, in allPrograms order:
 //   1 PortScanner   2 NetworkMapper      3 VulnerabilityProbe  4 CredentialHarvester
 //   5 CameraLoop    6 FirewallBypass     7 Rootkit             8 LogScrubber
 //   9 PacketSniffer 10 DNSRedirect      11 DroneOverride      12 SignalJam
-// Only 5 CameraLoop, 6 FirewallBypass, 12 SignalJam carry a timed duration; every
-// other program returns base 0.0 from the duration kernels (the ReScript None arm).
+// Only 5 CameraLoop, 6 FirewallBypass, 12 SignalJam carry a timed duration;
+// every other program returns base 0 from the duration kernels.
 //
 //## Tier encoding (mirrors QCertifications.tierValue)
 //   1 Practitioner  2 Professional  3 Expert  4 Architect  5 Sovereign
-// Any tier outside 1..5 is off-domain and yields 0.0 from every duration table.
+// Any tier outside 1..5 is off-domain and yields 0 from every duration table.
 //
 //## Background encoding (JessicaBackground.all order)
 //   1 Assault  2 Recon  3 Engineer  4 Signals  5 Medic  6 Logistics
@@ -32,132 +33,145 @@
 //## Equipment encoding (JessicaBackground techEquipment order)
 //   1 AutorunUSB  2 FieldTablet  3 SignalBooster  4 RFIDCloner
 //   5 CameraSpotter  6 EMPGrenade  7 FibreTap  8 FaradayPouch
-// Equipment ordinal 0 is the "no item equipped" sentinel (the ReScript None arm of
-// the option<techEquipment>); it contributes a multiplier of 1.0.
+// Equipment ordinal 0 is the "no item equipped" sentinel (the ReScript None
+// arm of the option<techEquipment>); it contributes a multiplier of 1000.
 //
-//## Float contract
-// Durations are f64 seconds in [0, +inf). Multipliers are f64 (1.0 = no bonus).
-// The combine is exact f64 multiplication; the host reads a 0.0 effective duration
-// as "no timed window" (the ReScript None case).
+//## Int-native convention (MILLI-UNITS): trunc = integer division
+// All Float durations cross as MILLI-UNITS (×1000 of the Float seconds value):
+//   5.0s -> 5000, 10.0s -> 10000, 120.0s -> 120000.
+// All multipliers cross/return as MILLI-UNITS:
+//   1.0  -> 1000, 1.25 -> 1250, 1.30 -> 1300.
+//
+// The two trunc sites in the original kernel:
+//   bonus_percent:   trunc((m - 1.0) * 100.0) = (m_milli - 1000) / 10
+//     Integer division truncates toward zero, matching ReScript Float.toInt.
+//     Products of valid multipliers are non-negative so the sign is irrelevant.
+//   round_one_decimal: trunc(dur * 10.0) / 10.0 in milli =
+//     (dur_milli / 100) * 100  -- truncate to nearest 100 milli (= 0.1s).
+//
+// The effective_duration combine:
+//   base_milli * bg_milli * eq_milli / 1_000_000
+// (base up to 120000, multipliers up to 1300; product stays within i32 range
+// after the first /1000 step, performed as two sequential divides below.)
 
-//## Camera loop base duration
-// cameraLoopDuration(): the Wireless-tier switch, one fixed f64 per tier. Off-domain
-// tiers yield 0.0. Guarded returns avoid the deep if/else the parser dislikes.
-pub fn camera_loop_base(tier: Int) -> Float {
-  if tier == 1 { return 5.0; }
-  if tier == 2 { return 10.0; }
-  if tier == 3 { return 20.0; }
-  if tier == 4 { return 30.0; }
-  if tier == 5 { return 60.0; }
-  0.0
+//## Camera loop base duration (milli-units)
+// cameraLoopDuration(): the Wireless-tier switch. Off-domain tiers yield 0.
+pub fn camera_loop_base(tier: Int) -> Int {
+  if tier == 1 { return 5000; }
+  if tier == 2 { return 10000; }
+  if tier == 3 { return 20000; }
+  if tier == 4 { return 30000; }
+  if tier == 5 { return 60000; }
+  0
 }
 
-//## Signal jam base duration
+//## Signal jam base duration (milli-units)
 // signalJamDuration(): the Wireless-tier switch for the radio blackout window.
-pub fn signal_jam_base(tier: Int) -> Float {
-  if tier == 1 { return 5.0; }
-  if tier == 2 { return 10.0; }
-  if tier == 3 { return 15.0; }
-  if tier == 4 { return 25.0; }
-  if tier == 5 { return 40.0; }
-  0.0
+pub fn signal_jam_base(tier: Int) -> Int {
+  if tier == 1 { return 5000; }
+  if tier == 2 { return 10000; }
+  if tier == 3 { return 15000; }
+  if tier == 4 { return 25000; }
+  if tier == 5 { return 40000; }
+  0
 }
 
-//## Firewall bypass base duration
-// firewallBypassDuration(): the CyberSecurity-tier switch for the bridge lifetime.
-pub fn firewall_bypass_base(tier: Int) -> Float {
-  if tier == 1 { return 8.0; }
-  if tier == 2 { return 15.0; }
-  if tier == 3 { return 30.0; }
-  if tier == 4 { return 60.0; }
-  if tier == 5 { return 120.0; }
-  0.0
+//## Firewall bypass base duration (milli-units)
+// firewallBypassDuration(): the CyberSecurity-tier switch for bridge lifetime.
+pub fn firewall_bypass_base(tier: Int) -> Int {
+  if tier == 1 { return 8000; }
+  if tier == 2 { return 15000; }
+  if tier == 3 { return 30000; }
+  if tier == 4 { return 60000; }
+  if tier == 5 { return 120000; }
+  0
 }
 
-//## Base duration by program ordinal
-// Dispatches the three timed programs to their tier table; every other program is
-// untimed and yields 0.0 (the ReScript getEffectiveDuration None arm). The caller
-// passes the tier of the gating track (Wireless for CameraLoop/SignalJam,
-// CyberSecurity for FirewallBypass), exactly as ReScript reads it before the switch.
-pub fn base_duration(program: Int, tier: Int) -> Float {
+//## Base duration (milli-units) by program ordinal
+// Dispatches the three timed programs to their tier table; every other program
+// is untimed and yields 0 (the ReScript getEffectiveDuration None arm).
+pub fn base_duration(program: Int, tier: Int) -> Int {
   if program == 5 { return camera_loop_base(tier); }
   if program == 6 { return firewall_bypass_base(tier); }
   if program == 12 { return signal_jam_base(tier); }
-  0.0
+  0
 }
 
-//## Background synergy multiplier
-// backgroundSynergy(): the (program, background) pair table. Returns 1.25 for the
-// six complementary pairs, 1.0 otherwise. Pairs (program ordinal, background ordinal):
-//   (5 CameraLoop, 2 Recon)      (9 PacketSniffer, 4 Signals)  (10 DNSRedirect, 4 Signals)
-//   (6 FirewallBypass, 3 Eng.)   (7 Rootkit, 3 Engineer)       (11 DroneOverride, 2 Recon)
-pub fn background_synergy(program: Int, bg: Int) -> Float {
-  if program == 5 { if bg == 2 { return 1.25; } return 1.0; }
-  if program == 9 { if bg == 4 { return 1.25; } return 1.0; }
-  if program == 10 { if bg == 4 { return 1.25; } return 1.0; }
-  if program == 6 { if bg == 3 { return 1.25; } return 1.0; }
-  if program == 7 { if bg == 3 { return 1.25; } return 1.0; }
-  if program == 11 { if bg == 2 { return 1.25; } return 1.0; }
-  1.0
+//## Background synergy multiplier (milli-units)
+// backgroundSynergy(): the (program, background) pair table. Returns 1250 for
+// the six complementary pairs, 1000 otherwise. Pairs:
+//   (5 CameraLoop, 2 Recon)      (9 PacketSniffer, 4 Signals)
+//   (10 DNSRedirect, 4 Signals)  (6 FirewallBypass, 3 Engineer)
+//   (7 Rootkit, 3 Engineer)      (11 DroneOverride, 2 Recon)
+pub fn background_synergy(program: Int, bg: Int) -> Int {
+  if program == 5 { if bg == 2 { return 1250; } return 1000; }
+  if program == 9 { if bg == 4 { return 1250; } return 1000; }
+  if program == 10 { if bg == 4 { return 1250; } return 1000; }
+  if program == 6 { if bg == 3 { return 1250; } return 1000; }
+  if program == 7 { if bg == 3 { return 1250; } return 1000; }
+  if program == 11 { if bg == 2 { return 1250; } return 1000; }
+  1000
 }
 
-//## Tech equipment synergy multiplier
-// techEquipmentBonus(): the (program, equipment) pair table. Equipment ordinal 0 is
-// the no-item sentinel and yields 1.0 (the ReScript None arm). Pairs:
-//   (9 PacketSniffer, 3 SignalBooster) 1.30   (6 FirewallBypass, 7 FibreTap) 1.20
-//   (4 CredentialHarvester, 1 AutorunUSB) 1.15  (8 LogScrubber, 2 FieldTablet) 1.10
-//   (5 CameraLoop, 5 CameraSpotter) 1.10
-pub fn equipment_bonus(program: Int, eq: Int) -> Float {
-  if eq == 0 { return 1.0; }
-  if program == 9 { if eq == 3 { return 1.30; } return 1.0; }
-  if program == 6 { if eq == 7 { return 1.20; } return 1.0; }
-  if program == 4 { if eq == 1 { return 1.15; } return 1.0; }
-  if program == 8 { if eq == 2 { return 1.10; } return 1.0; }
-  if program == 5 { if eq == 5 { return 1.10; } return 1.0; }
-  1.0
+//## Tech equipment synergy multiplier (milli-units)
+// techEquipmentBonus(): the (program, equipment) pair table. Equipment ordinal
+// 0 is the no-item sentinel and yields 1000. Pairs:
+//   (9 PacketSniffer, 3 SignalBooster) 1300
+//   (6 FirewallBypass, 7 FibreTap) 1200
+//   (4 CredentialHarvester, 1 AutorunUSB) 1150
+//   (8 LogScrubber, 2 FieldTablet) 1100
+//   (5 CameraLoop, 5 CameraSpotter) 1100
+pub fn equipment_bonus(program: Int, eq: Int) -> Int {
+  if eq == 0 { return 1000; }
+  if program == 9 { if eq == 3 { return 1300; } return 1000; }
+  if program == 6 { if eq == 7 { return 1200; } return 1000; }
+  if program == 4 { if eq == 1 { return 1150; } return 1000; }
+  if program == 8 { if eq == 2 { return 1100; } return 1000; }
+  if program == 5 { if eq == 5 { return 1100; } return 1000; }
+  1000
 }
 
-//## Effective duration
-// The unified combine of getEffectiveDuration: base (by program+tier) times the
-// background multiplier times the equipment multiplier. Untimed programs have base
-// 0.0, so the product stays 0.0 -- the host reads that as the ReScript None case.
-// Equipment ordinal 0 contributes the 1.0 identity, matching the option None arm.
-pub fn effective_duration(program: Int, tier: Int, bg: Int, eq: Int) -> Float {
+//## Effective duration (milli-units)
+// base_milli * (bg_milli/1000) * (eq_milli/1000) = base * bg * eq / 1_000_000.
+// Computed as two sequential divides to stay in i32 range:
+//   step1 = base_milli * bg_milli / 1000
+//   result = step1 * eq_milli / 1000
+// Untimed programs have base 0, so the product stays 0.
+pub fn effective_duration(program: Int, tier: Int, bg: Int, eq: Int) -> Int {
   let base = base_duration(program, tier);
   let bgm = background_synergy(program, bg);
   let eqm = equipment_bonus(program, eq);
-  base * bgm * eqm
+  let step1 = base * bgm / 1000;
+  step1 * eqm / 1000
 }
 
-//## Combined bonus multiplier
-// The bgMult * eqMult product of formatDurationLine, before the percentage. Pure;
-// the host pairs it with bonus_percent to decide whether to print the "+N%" note.
-pub fn combined_multiplier(program: Int, bg: Int, eq: Int) -> Float {
-  background_synergy(program, bg) * equipment_bonus(program, eq)
+//## Combined bonus multiplier (milli-units)
+// bgMult * eqMult in milli: bg_milli * eq_milli / 1000.
+pub fn combined_multiplier(program: Int, bg: Int, eq: Int) -> Int {
+  let bgm = background_synergy(program, bg);
+  let eqm = equipment_bonus(program, eq);
+  bgm * eqm / 1000
 }
 
 //## Bonus percentage
-// formatDurationLine's Float.toInt((bgMult *. eqMult -. 1.0) *. 100.0): the integer
-// percentage above baseline. Float.toInt truncates toward zero in ReScript; trunc
-// here returns Int, matching that. With both multipliers at 1.0 the result is 0.
+// formatDurationLine's trunc((bgMult * eqMult - 1.0) * 100.0) in milli:
+// (combined_milli - 1000) / 10. Integer division truncates toward zero,
+// matching ReScript Float.toInt for non-negative arguments.
 pub fn bonus_percent(program: Int, bg: Int, eq: Int) -> Int {
   let m = combined_multiplier(program, bg, eq);
-  trunc((m - 1.0) * 100.0)
+  (m - 1000) / 10
 }
 
-//## One-decimal rounding
-// formatDurationLine's Float.fromInt(Float.toInt(dur *. 10.0)) /. 10.0: truncate the
-// duration to one decimal place. trunc returns Int; float() lifts it back. This is
-// the exact display rounding the console line uses.
-pub fn round_one_decimal(dur: Float) -> Float {
-  float(trunc(dur * 10.0)) / 10.0
+//## One-decimal rounding (milli-units)
+// formatDurationLine's trunc(dur * 10.0) / 10.0 in milli:
+// truncate dur_milli to the nearest 100 (= 0.1s): (dur_milli / 100) * 100.
+pub fn round_one_decimal(dur_milli: Int) -> Int {
+  (dur_milli / 100) * 100
 }
 
 //## Deck capacity predicate
-// loadProgram's `Array.length(deck.slots) >= maxSlots` gate, with maxSlots = 4.
+// loadProgram's `Array.length(deck.slots) >= maxSlots` gate, with maxSlots=4.
 // Returns 1 when the deck is full (load must be refused), 0 when a slot is free.
-// The host owns the slots array and the duplicate-program check; only the capacity
-// arithmetic crosses.
 pub fn deck_is_full(slot_count: Int) -> Int {
   if slot_count >= 4 { return 1; }
   0

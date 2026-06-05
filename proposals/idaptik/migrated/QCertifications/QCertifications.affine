@@ -90,21 +90,11 @@ pub fn is_cyberwar_unlocked(expert_count: Int) -> Int {
   if expert_count >= 3 { 1 } else { 0 }
 }
 
-//## Progress accumulation
-// The exact f64 sum cert.progress + amount, the arithmetic of addProgress's
-// `cert.progress = cert.progress +. amount`. Total and pure; the host decides
-// what to do with the sum (carry it, or reset to 0.0 on tier-up).
-pub fn progress_total(before: Float, amount: Float) -> Float {
-  before + amount
-}
-
-//## Progress crossing predicate
-// Whether accumulating `amount` onto `before` reaches the tier-up boundary 1.0,
-// mirroring addProgress's `if cert.progress >= 1.0`. The float sum drives an Int
-// verdict (1 crossed, 0 not), which the wasm backend compares as i32 -- the
-// working subset for float-fed branches. The host pairs this with next_tier to
-// effect the promotion and zero the progress.
-pub fn progress_crosses(before: Float, amount: Float) -> Int {
-  if before + amount >= 1.0 { return 1; }
-  0
-}
+//## Progress helpers (Float-param — wasm-ABI note)
+// progress_total and progress_crosses cannot be expressed as wasm-exported pub fns
+// in the scalar-i32 ABI: the v0.1.1 backend emits i32.ge_s for f64 comparisons,
+// producing an uninstantiable wasm module (type mismatch: i32.ge_s[1] expected i32,
+// found f64.const). Both helpers are therefore omitted from this wasm kernel; the
+// host implements the equivalent arithmetic natively:
+//   progress_total  = (before, amount) => before + amount
+//   progress_crosses = (before, amount) => (before + amount >= 1.0) ? 1 : 0
