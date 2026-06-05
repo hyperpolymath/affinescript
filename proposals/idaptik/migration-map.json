@@ -315,7 +315,15 @@
       "id": "C9",
       "name": "Game loop, AffineTEA, and VeriSim types",
       "description": "Top-level game loop, AffineTEA architecture, VeriSim integration types, and the entry point.",
-      "status": "TODO",
+      "status": "DONE",
+      "done": {
+        "date": "2026-06-05",
+        "phase": "G",
+        "verdict": "NO_NEW_BRAINS — bridges, HTTP clients, effect-gated orchestration, string-wall type definitions",
+        "note": "All 16 files are host-side senses. 4 bridge files wrap already-live wasm brains: AffineTEA.res → titlescreen.wasm (TEA title-screen machine), AffineTEARouter.res → router.wasm (affine nav back-stack), PixiCoprocessor.res → pixi.wasm (AS PixiJS scene driver), VmCoprocessor.res → vmcoprocessor.wasm (C2). 8 VeriSimDB/Burble HTTP clients are async fetch wrappers (effect-gated). VeriSimTypes enums (modality/hexadStatus/driftLevel) have no standalone integer computation — used only as serialization tags in string-bearing records; modalityToString uses string literals (string-wall). VeriSimError constructors all carry string payloads (string-wall). Main.res/GameLoop.res are effect-gated orchestration; GameLoop integer counters are trivial increments interleaved with float physics and mutable JS objects.",
+        "no_4gate": "nothing new to compile/parity/prove; four wasm brains already live (titlescreen, router, pixi, vmcoprocessor); remaining code is senses or string-wall gated",
+        "evidence": "proposals/idaptik/migrated/EVIDENCE-C9.adoc"
+      },
       "files": [
         "src/Main.res",
         "src/app/GameLoop.res",
