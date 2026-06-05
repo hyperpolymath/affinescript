@@ -1,0 +1,201 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+= Cluster C12 (render-glue screens, UI, and bindings) — migration evidence (2026-06-05)
+:toc: macro
+
+[IMPORTANT]
+====
+*Verdict: NO_NEW_BRAINS — render-logic coprocessor bridges, effect-gated screen
+implementations, PixiJS/Motion/Sound/UI binding declarations.*
+All 43 files are host-side senses.  No new AffineScript kernels are required
+because:
+
+1. Twelve `*RenderLogicCoprocessor.res` / `*Coprocessor.res` bridge files are
+   pure `external` FFI declarations wrapping already-compiled wasm brains:
+   `companionsrenderlogic.wasm`, `devicesrenderlogic.wasm`,
+   `enemiesrenderlogic.wasm`, `toolspickupsrenderlogic.wasm`,
+   `playerrenderlogic.wasm`, `narrativepopupsrenderlogic.wasm`,
+   `balanceanalyser.wasm`, `locationdata.wasm`, `screenglitchfx.wasm`,
+   `screensrunlooplogic.wasm`, `uirenderlogic.wasm`,
+   `verisimprovenrenderlogic.wasm`.
+2. Twenty-three screen and popup implementation files (`CreditsScreen.res`,
+   `TitleScreen.res`, `LoadScreen.res`, `LoadoutScreen.res`,
+   `JessicaCustomiseScreen.res`, `ObserverScreen.res`, `QViewScreen.res`,
+   `SkillTreeScreen.res`, eleven location screens, `Bouncer.res`, `Logo.res`,
+   `MainScreen.res`, `TrainingMenuScreen.res`, `FeaturePacksPopup.res`,
+   `IntegrationsPopup.res`, `LanguagePopup.res`, `PausePopup.res`,
+   `LocationBase.res`) are effect-gated PixiJS rendering orchestrators.
+   Every file uses one or more of: `GameI18n.t()` string calls, string
+   template literals, `Motion.animate` tweening, `Navigation.showScreen`/
+   `presentPopup` routing, `Announcer.status()`, mutable `ref(...)` animation
+   state, `Container`/`Sprite`/`Graphics`/`Text` DOM APIs, `%raw` JS blocks.
+   No standalone integer computation separable from the PixiJS/string/effect
+   orchestration.
+3. Four binding files (`Motion.res`, `Pixi.res`, `PixiSound.res`,
+   `PixiUI.res`) are pure `external` FFI declarations wrapping host-side
+   JavaScript libraries (`motion`, `pixi.js`, `@pixi/sound`, `@pixi/ui`).
+   They are SENSES by definition — they ARE the host/wasm boundary.
+
+No 4-gate recipe is applied; no new wasm is produced.
+====
+
+toc::[]
+
+== File-by-file disposition
+
+[cols="3,1,4",options="header"]
+|===
+| File | Disposition | Reason
+| `src/app/companions/CompanionsRenderLogicCoprocessor.res` | SENSES (bridge) | ReScript FFI wrapping `CompanionsRenderLogicCoprocessorBridge.js` → `companionsrenderlogic.wasm`. Pure `external` declarations. Companions render-logic brain already live.
+| `src/app/devices/DevicesRenderLogicCoprocessor.res` | SENSES (bridge) | ReScript FFI wrapping `DevicesRenderLogicCoprocessorBridge.js` → `devicesrenderlogic.wasm`. Pure `external` declarations. Devices render-logic brain already live.
+| `src/app/enemies/EnemiesRenderLogicCoprocessor.res` | SENSES (bridge) | ReScript FFI wrapping `EnemiesRenderLogicCoprocessorBridge.js` → `enemiesrenderlogic.wasm`. Pure `external` declarations. Enemies render-logic brain (detection ordinals, euclidean distance, angle functions) already live.
+| `src/app/pickups/ToolsPickupsRenderLogicCoprocessor.res` | SENSES (bridge) | ReScript FFI wrapping `ToolsPickupsRenderLogicCoprocessorBridge.js` → `toolspickupsrenderlogic.wasm`. Pure `external` declarations. Tools/pickups render-logic brain already live.
+| `src/app/player/PlayerRenderLogicCoprocessor.res` | SENSES (bridge) | ReScript FFI wrapping `PlayerRenderLogicCoprocessorBridge.js` → `playerrenderlogic.wasm`. Pure `external` declarations. Player render-logic brain (body geometry, animation frames, trajectory arc) already live.
+| `src/app/popups/FeaturePacksPopup.res` | SENSES (effect-gated) | PixiJS popup UI: `GameI18n.t()` string calls, `Motion.animate` tweening, `Announcer.status(string)`, `Navigation.dismissPopup`, `FeaturePacks.setInvertibleProgramming`/`setMoletaire` toggle callbacks. No integer computation.
+| `src/app/popups/IntegrationsPopup.res` | SENSES (effect-gated) | PixiJS popup UI: string template literals (`\`${label}: ON/OFF\``), `mutable ref(bool)` toggle state, `DesktopIntegration` API calls, `UserSettings.setSystemTrayEnabled`, `GameI18n.t()`. No integer computation.
+| `src/app/popups/LanguagePopup.res` | SENSES (effect-gated) | PixiJS popup UI: `LanguageSettings.cycleLanguage()`/`languageDisplayName()` string calls, `GameI18n.setLanguage()`, `Text.setText()` string updates, `Motion.animate`. No integer computation.
+| `src/app/popups/NarrativePopupsRenderLogicCoprocessor.res` | SENSES (bridge) | ReScript FFI wrapping `NarrativePopupsRenderLogicCoprocessorBridge.js` → `narrativepopupsrenderlogic.wasm`. Pure `external` declarations. Network-desktop tree layout, curved-edge geometry, pan/zoom, `feedbackCycleNext` brain already live.
+| `src/app/popups/PausePopup.res` | SENSES (effect-gated) | PixiJS popup UI: `GameI18n.t()` string calls, `Announcer.alert(string)`, `BlurFilter`, `Motion.animate`, `Navigation.dismissPopup/presentPopup`. No integer computation.
+| `src/app/screens/BalanceAnalyserCoprocessor.res` | SENSES (bridge) | ReScript FFI wrapping `BalanceAnalyserCoprocessorBridge.js` → `balanceanalyser.wasm`. Pure `external` declarations. Balance analysis brain (`impactValue`, `passesImpact`, `impactColor`, `winRatePct`) already live.
+| `src/app/screens/CreditsScreen.res` | SENSES (effect-gated) | Scrolling credits screen: `%raw` `window.addEventListener/removeEventListener('keydown')`, `Motion.animate`, mutable `ref<float>` scroll state, `Navigation.goBack`. No integer computation.
+| `src/app/screens/JessicaCustomiseScreen.res` | SENSES (effect-gated) | Appearance customisation UI: string-returning `hairStyleName`/`hairColorName`/`clothingName` dispatch functions, PixiJS rendering, mutable customisation state record. String-wall + effect-gated.
+| `src/app/screens/LoadScreen.res` | SENSES (effect-gated) | Asset loading progress bar: `Motion.animate`, `progress /. 100.0` scale arithmetic wired directly to PixiJS `Container.scale`. No standalone integer brain.
+| `src/app/screens/LoadoutScreen.res` | SENSES (effect-gated) | Loadout selection UI: string concatenation (`"Current: " ++ current`, `"Available: " ++ Int.toString(...) ++ " options"`), `Text.make`, PixiJS containers, mutable refs. String-wall + effect-gated.
+| `src/app/screens/LocationDataCoprocessor.res` | SENSES (bridge) | ReScript FFI wrapping `LocationDataCoprocessorBridge.js` → `locationdata.wasm`. Pure `external` declarations. Location count/layout brain already live.
+| `src/app/screens/ObserverScreen.res` | SENSES (effect-gated) | Multiplayer observer interface: string fields (`id`, `deviceIp`, `connectionId`), `Text.make` for camera grid/tactical display, mutable arrays. String-wall + effect-gated.
+| `src/app/screens/QViewScreen.res` | SENSES (effect-gated) | Q's CCTV/blueprint view: string fields (`id`, `ipAddress`, `deviceType`, `status`), PixiJS rendering, mutable device/blueprint/camera state. String-wall + effect-gated.
+| `src/app/screens/ScreenGlitchFxCoprocessor.res` | SENSES (bridge) | ReScript FFI wrapping `ScreenGlitchFxCoprocessorBridge.js` → `screenglitchfx.wasm`. Pure `external` declarations. Glitch FX arithmetic brain already live.
+| `src/app/screens/ScreensRunLoopLogicCoprocessor.res` | SENSES (bridge) | ReScript FFI wrapping `ScreensRunLoopLogicCoprocessorBridge.js` → `screensrunlooplogic.wasm`. Pure `external` declarations. Run-loop decisions, layout helpers, SkillTree XP, `victoryScore`, `gradeOrdinal` brain already live.
+| `src/app/screens/SkillTreeScreen.res` | SENSES (effect-gated) | Skill tree display: string-returning `rankName`/`categoryName` dispatch; `rankColor` returns static int constants but is tightly coupled to PixiJS Text/Graphics rendering with no separable algorithmic content. SkillTree XP arithmetic already extracted to `screensrunlooplogic.wasm`. String-wall + effect-gated.
+| `src/app/screens/TitleScreen.res` | SENSES (effect-gated) | Title screen consumer of already-live `titlescreen.wasm` (via `AffineTEA.load`) and `router.wasm` (via `AffineTEARouter.load`). Wires Wasm state back into PixiJS: `applyView` reads `AffineTEA.getSelected` and calls `Motion.animate`; navigation decisions come from Wasm. Audio BGM/SFX. Mutable `ref` bridge handles. The brain IS the already-live wasm; this file is the sense layer.
+| `src/app/screens/locations/AtlasScreen.res` | SENSES (effect-gated) | Thin delegate: `LocationBase.makeLocationScreen(locationData, ...)` with string ID `"atlas"`, `Navigation.showScreen`. Effect-gated via `LocationBase`.
+| `src/app/screens/locations/BackboneScreen.res` | SENSES (effect-gated) | Thin delegate: `LocationBase.makeLocationScreen(locationData, ...)` with string ID `"backbone"`. Effect-gated via `LocationBase`.
+| `src/app/screens/locations/BusinessISPScreen.res` | SENSES (effect-gated) | Thin delegate: `LocationBase.makeLocationScreen(locationData, ...)` with string ID `"business-isp"`. Effect-gated via `LocationBase`.
+| `src/app/screens/locations/CityScreen.res` | SENSES (effect-gated) | Thin delegate: `LocationBase.makeLocationScreen(locationData, ...)` with string ID `"city"`. Effect-gated via `LocationBase`.
+| `src/app/screens/locations/DevHubScreen.res` | SENSES (effect-gated) | Thin delegate: `LocationBase.makeLocationScreen(locationData, ...)` with string ID `"devhub"`. Effect-gated via `LocationBase`.
+| `src/app/screens/locations/FieldScreen.res` | SENSES (effect-gated) | Thin delegate: `LocationBase.makeLocationScreen(locationData, ...)` with string ID `"field"`. Effect-gated via `LocationBase`.
+| `src/app/screens/locations/LabScreen.res` | SENSES (effect-gated) | Thin delegate: `LocationBase.makeLocationScreen(locationData, ...)` with string ID `"lab"`. Effect-gated via `LocationBase`.
+| `src/app/screens/locations/LocationBase.res` | SENSES (effect-gated) | Thin delegate to `WorldBuilder.buildLocationScreen(location)`. The platformer world construction, PixiJS scene building, and physics are all in the effect-gated WorldBuilder layer. No integer computation.
+| `src/app/screens/locations/NexusScreen.res` | SENSES (effect-gated) | Thin delegate: `LocationBase.makeLocationScreen(locationData, ...)` with string ID `"nexus"`. Effect-gated via `LocationBase`.
+| `src/app/screens/locations/RegionalISPScreen.res` | SENSES (effect-gated) | Thin delegate: `LocationBase.makeLocationScreen(locationData, ...)` with string ID `"regional-isp"`. Effect-gated via `LocationBase`.
+| `src/app/screens/locations/RuralISPScreen.res` | SENSES (effect-gated) | Thin delegate: `LocationBase.makeLocationScreen(locationData, ...)` with string ID `"rural-isp"`. Effect-gated via `LocationBase`.
+| `src/app/screens/main/Bouncer.res` | SENSES (effect-gated) | Bouncing-logo animation manager: `Random.float`, `Motion.animate`, mutable logo arrays and bounds `ref`. Effect-gated throughout.
+| `src/app/screens/main/Logo.res` | SENSES (effect-gated) | Logo sprite with `Random.bool()` texture selection, mutable `direction`/`speed` state, float bounds computed from `Sprite.width/height`. Effect-gated + float arithmetic host-side.
+| `src/app/screens/main/MainScreen.res` | SENSES (effect-gated) | Main game screen UI: `FancyButton`, `Navigation.presentPopup`, mutable `paused` state, `Bouncer` animation. Effect-gated.
+| `src/app/screens/training/TrainingMenuScreen.res` | SENSES (effect-gated) | Training scenario menu: `GameI18n.t()` string calls for all titles/descriptions, PixiJS button grid, `Navigation.showScreen`. String-wall + effect-gated.
+| `src/app/ui/UiRenderLogicCoprocessor.res` | SENSES (bridge) | ReScript FFI wrapping `UiRenderLogicCoprocessorBridge.js` → `uirenderlogic.wasm`. Pure `external` declarations. HUD, KernelMonitor, PowerView, ParticleField, FontScale, RoundedBox arithmetic brain already live.
+| `src/app/verisimdb/VerisimProvenRenderLogicCoprocessor.res` | SENSES (bridge) | ReScript FFI wrapping `VerisimProvenRenderLogicCoprocessorBridge.js` → `verisimprovenrenderlogic.wasm`. Pure `external` declarations. Play-time decomposition arithmetic (`playTimeHours`, `playTimeMinutes`, `playTimeHasHours`) brain already live. String formatting (`"Xh Ym"`) stays host-side.
+| `src/bindings/Motion.res` | SENSES (binding) | Pure `external` FFI declarations wrapping the `motion` tweening library (`animate`, `then_`, `animateAsync`). SENSES by definition — this IS the host-library boundary.
+| `src/bindings/Pixi.res` | SENSES (binding) | Pure `external` FFI declarations wrapping `pixi.js` (`Container`, `Sprite`, `Graphics`, `Text`, `Texture`, DOM types, `window`). SENSES by definition — this IS the PixiJS boundary.
+| `src/bindings/PixiSound.res` | SENSES (binding) | Pure `external` FFI declarations wrapping `@pixi/sound` (`Sound.play/stop`, `sound.find/play/muteAll/pauseAll`). SENSES by definition.
+| `src/bindings/PixiUI.res` | SENSES (binding) | Pure `external` FFI declarations wrapping `@pixi/ui` (`FancyButton`, `Slider`, `ProgressBar`, `List`, `Signal`). SENSES by definition.
+|===
+
+== Already-live wasm brains referenced by C12 bridges
+
+The twelve bridge files reference wasm kernels that are already compiled and
+live in `public/assets/wasm/`:
+
+[cols="2,2,3",options="header"]
+|===
+| Bridge file | Wasm target | Brain description
+| `CompanionsRenderLogicCoprocessor.res` | `companionsrenderlogic.wasm` | Companions render-logic: visual Y, underground flag, body/nose/eye/lens/arc geometry, mound dimensions, hitbox positions, carried item offset.
+| `DevicesRenderLogicCoprocessor.res` | `devicesrenderlogic.wasm` | Devices render-logic: uptime decomposition, traffic units, camera geometry, UPS battery, laptop storage, radial angle, status/power colours, drag/close arithmetic.
+| `EnemiesRenderLogicCoprocessor.res` | `enemiesrenderlogic.wasm` | Enemies render-logic: detection-level ordinals (GUARD_DETECT/DRONE_DETECT/DOG_DETECT), euclidean distance, angle arithmetic, guard/drone/dog detect and colour functions.
+| `ToolsPickupsRenderLogicCoprocessor.res` | `toolspickupsrenderlogic.wasm` | Tools/pickups render-logic: `pulsePhase`, `pulseAlpha`, `pickupDistance`, `pickupInRange`, `collectRise`, `pinY`, `crackProgressPct`.
+| `PlayerRenderLogicCoprocessor.res` | `playerrenderlogic.wasm` | Player render-logic: body geometry, animation frame/speed/state, trajectory preview arc maths.
+| `NarrativePopupsRenderLogicCoprocessor.res` | `narrativepopupsrenderlogic.wasm` | Narrative popups render-logic: NetworkDesktop tree layout, curved-edge geometry, pan/zoom, legend grid, slider percent, PowerView, `feedbackCycleNext`.
+| `BalanceAnalyserCoprocessor.res` | `balanceanalyser.wasm` | Balance analyser: `impactValue`, `passesImpact`, `impactColor`, `hasCriticalIssues`, `round1`, `pct100`, `winRatePct`.
+| `LocationDataCoprocessor.res` | `locationdata.wasm` | Location data: `locationCount`, `worldWidth`, `backgroundColor`, `environmentKind`, `deviceCount`, `buildingCount`.
+| `ScreenGlitchFxCoprocessor.res` | `screenglitchfx.wasm` | Screen glitch FX: `glitchAdvance`, `glitchCycle`, `glitchRemainder`, `glitchFires`.
+| `ScreensRunLoopLogicCoprocessor.res` | `screensrunlooplogic.wasm` | Screens run-loop logic: `dtSeconds`, `clampPlayerX`, `cameraTargetX`, layout helpers, grid/stack layout, SkillTree XP thresholds, `victoryScore`, `gradeOrdinal`.
+| `UiRenderLogicCoprocessor.res` | `uirenderlogic.wasm` | UI render-logic: HUD HP/alert/inventory/minimap arithmetic, KernelMonitor bar colour/fill/redraw, PowerView battery/node grid, ParticleField alpha clamp/wrap, FontScale, RoundedBox anchors.
+| `VerisimProvenRenderLogicCoprocessor.res` | `verisimprovenrenderlogic.wasm` | VeriSim/Proven render-logic: play-time decomposition (`playTimeTotalMinutes`, `playTimeHours`, `playTimeMinutes`, `playTimeHasHours`). String formatting of the caption stays host-side.
+|===
+
+C12 being NO_NEW_BRAINS does not add to the wasm surface — all twelve brains
+were already live before C12 was triaged.
+
+== Screen and popup files — effect-gated analysis
+
+All 23 screen/popup implementation files are effect-gated PixiJS rendering
+orchestrators.  The common pattern:
+
+* *String-wall*: every screen calls `GameI18n.t(key)` for all user-visible
+  text; popup titles, button labels, and descriptions are all string-valued.
+  String template literals (`\`${label}: ON\``) appear in toggle buttons.
+  Display-name functions (`hairStyleName`, `rankName`, `categoryName`) produce
+  strings from enum dispatch.  String concatenation for loadout slot captions.
+  These cannot cross the wasm boundary while the string backend is absent.
+
+* *PixiJS effect-wall*: all screens construct `Container`/`Sprite`/`Graphics`/
+  `Text` objects, set x/y positions, call `Motion.animate` for tweening,
+  fire `Navigation.showScreen`/`presentPopup`/`dismissPopup`, read mutable
+  DOM state.
+
+* *Mutable ref state*: scroll position, navigation guards (`navigating := true`),
+  animation handles, screen dimensions — all `ref` values that cannot be
+  isolated into a pure-integer kernel.
+
+* *Special case — `TitleScreen.res`*: the title screen IS a consumer of the
+  already-live `titlescreen.wasm` (loaded via `AffineTEA.load`) and
+  `router.wasm` (loaded via `AffineTEARouter.load`).  The `applyView` step
+  reads `AffineTEA.getSelected(tea) : int` and drives a PixiJS alpha pulse;
+  navigation decisions come FROM the Wasm state.  The integer brain is the
+  already-live wasm; TitleScreen.res is the sense layer wiring Wasm output
+  to PixiJS.  No new brain required.
+
+* *Special case — `SkillTreeScreen.res`*: `rankColor` returns static hex
+  constants (`0x888888` through `0xff4488`) with no algorithmic content —
+  these are display palette constants, not a separable integer kernel.  SkillTree
+  XP threshold arithmetic is already extracted to `screensrunlooplogic.wasm`.
+  The string-returning `rankName`/`categoryName` functions and PixiJS rendering
+  make the file string-wall + effect-gated throughout.
+
+* *Location screen delegates*: eleven location screens (`AtlasScreen`,
+  `BackboneScreen`, `BusinessISPScreen`, `CityScreen`, `DevHubScreen`,
+  `FieldScreen`, `LabScreen`, `NexusScreen`, `RegionalISPScreen`,
+  `RuralISPScreen` via `LocationBase`) follow a single structural pattern:
+  call `LocationBase.makeLocationScreen(locationData, ~onExit)`.
+  The `locationData` record carries string fields (`id`, `name`, `description`,
+  `environment`) and float/int layout values (`worldWidth`, `backgroundColor`,
+  `devicePositions`).  The integer content (`worldWidth`, `backgroundColor`,
+  device counts) is already handled by `locationdata.wasm` (C12 bridge 8).
+  The `LocationBase` delegate calls `WorldBuilder.buildLocationScreen`  which
+  constructs the full PixiJS platformer scene — effect-gated throughout.
+
+== PixiJS binding files — SENSES by definition
+
+The four binding files (`Motion.res`, `Pixi.res`, `PixiSound.res`,
+`PixiUI.res`) are pure `external` FFI declaration files.  They ARE the
+host/wasm boundary: every function in these files is a host-side JavaScript
+API.  Extracting them to wasm would mean running PixiJS inside wasm, which
+is not the architecture.
+
+[cols="1,4",options="header"]
+|===
+| File | Classification reason
+| `Motion.res` | `@module("motion") external animate: ...`. The `motion` animation library is a host-side DOM API.
+| `Pixi.res` | `@new @module("pixi.js") external make: ...`. All PixiJS types (`Container`, `Sprite`, `Graphics`, `Text`, `Texture`, `window`, `document`) are host-side DOM/WebGL APIs.
+| `PixiSound.res` | `@module("@pixi/sound") external ...`. Web Audio API wrapper — host-side.
+| `PixiUI.res` | `@new @module("@pixi/ui") external ...`. PixiJS UI widgets — host-side.
+|===
+
+== Impact on Phase Ω
+
+With C12 as NO_NEW_BRAINS, the Phase Ω cluster sequence (C11 → C9 → C10 → C12)
+is complete.  All twelve wasm brains referenced by C12 bridges were already live
+before C12 was triaged.  The screen, popup, and binding modules remain host-side
+ReScript throughout Phase Ω.
+
+The remaining migration walls:
+
+* *String wall*: 71 files across the corpus require `String.length`, indexing,
+  `startsWith`/`endsWith`/`slice`, `fromCharCode`, or string ops not yet in
+  the AffineScript codegen backend.  Unblocked by Phase F string backend.
+* *Effect wall*: 111 files use module-level `ref()`, `Console.log`,
+  `module-level Dict.make()`, `Date.now`, or `Math.random`.  Unblocked by
+  Phase F+ effect codegen.
+
+Phase Ω cluster migration is complete.  Phase F (string backend) and Phase F+
+(effect codegen) are the next compiler-side milestones.

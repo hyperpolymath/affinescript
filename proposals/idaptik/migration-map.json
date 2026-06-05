@@ -413,7 +413,15 @@
       "id": "C12",
       "name": "Render-glue screens, UI, and bindings",
       "description": "Screen implementations, render-logic coprocessors, and PixiJS bindings. Migrated last \u2014 these call the AffineScript brain from the host JS/Pixi layer.",
-      "status": "TODO",
+      "status": "DONE",
+      "done": {
+        "date": "2026-06-05",
+        "phase": "G",
+        "verdict": "NO_NEW_BRAINS \u2014 render-logic coprocessor bridges, effect-gated screen implementations, PixiJS/Motion/Sound/UI binding declarations",
+        "note": "All 43 files are host-side senses. 12 bridge files wrap already-live wasm brains (companionsrenderlogic, devicesrenderlogic, enemiesrenderlogic, toolspickupsrenderlogic, playerrenderlogic, narrativepopupsrenderlogic, balanceanalyser, locationdata, screenglitchfx, screensrunlooplogic, uirenderlogic, verisimprovenrenderlogic). 23 screen/popup files are effect-gated PixiJS rendering orchestrators (GameI18n string calls, Motion.animate, Navigation APIs, mutable refs, %raw DOM). 4 binding files (Motion, Pixi, PixiSound, PixiUI) are pure external FFI declarations wrapping host-side JS libraries.",
+        "no_4gate": "nothing new to compile/parity/prove; twelve wasm brains already live; remaining code is effect-gated screen/popup/binding senses",
+        "evidence": "proposals/idaptik/migrated/EVIDENCE-C12.adoc"
+      },
       "files": [
         "src/app/companions/CompanionsRenderLogicCoprocessor.res",
         "src/app/devices/DevicesRenderLogicCoprocessor.res",
