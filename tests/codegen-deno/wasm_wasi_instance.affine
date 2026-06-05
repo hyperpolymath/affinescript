@@ -1,0 +1,16 @@
+// SPDX-License-Identifier: MPL-2.0
+// Regression for the Deno-ESM WASI-stub fix: `__as_wasmInstance`
+// (lib/codegen_deno.ml) must be able to instantiate a wasm that imports
+// `wasi_snapshot_preview1.fd_write` — which EVERY affinescript-compiled wasm
+// does, unconditionally — and not only an import-free module. Before the fix
+// the shim instantiated with no import object and threw "Imports argument must
+// be present and must be an object", so the deno-esm backend could not load any
+// affinescript-produced wasm. Companion to wasm_call.affine (closes #414); this
+// fixture exercises the wasmInstance lowering against a WASI-importing module.
+
+use Deno::{ Bytes, WasmExports, wasmInstance, wasmCall };
+
+pub fn addViaWasiWasm(bytes: Bytes, a: Float, b: Float) -> Float {
+  let exports = wasmInstance(bytes);
+  wasmCall(exports, "add", [a, b])
+}
