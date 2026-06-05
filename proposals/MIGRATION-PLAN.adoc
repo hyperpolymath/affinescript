@@ -202,3 +202,33 @@ Heuristic:
 
 *Resume rule:* read the highest non-DONE row + `migration-map.json`;
 continue from its "Notes".
+
+[IMPORTANT]
+====
+*Completion-drive directive (user-authorised 2026-06-05).* The owner authorised
+driving the migratable corpus to completion *autonomously* — do NOT stop to
+re-ask at each cluster boundary. Standing plan for the resuming agent:
+
+. Drive the MIGRATABLE-NOW clusters in this order, each via the full 4-gate
+  recipe, staged under `proposals/idaptik/migrated/`, one PR per cluster,
+  squash-merged when the gates are green (CI on this repo is non-gating; the
+  authoritative gates are the parity/assail/agda runs done locally):
+  *C5 → C11 → C9 → C10 → C12.* Classify senses/string-gated/effect-gated files
+  honestly (like C3) rather than forcing a migration.
+. Then attack the two compiler walls *in this repo* (in scope): the string
+  backend, then effect codegen — each unblocks its STRING-/EFFECT-GATED kernels.
+. Update this Ledger + `migration-map.json` after every cluster (repo-as-memory;
+  compaction-proof).
+
+*Git hygiene (learned 2026-06-05):* base each cluster's work on the *dev-branch
+tip* (`origin/claude/cool-keller-gr5sl`), NOT on `origin/main`'s squash SHA —
+the remote dev branch is force-push-protected, so basing on it keeps pushes
+fast-forward and avoids the post-squash-merge divergence that nags the
+commit-identity hook. Rebase onto `origin/main` only if main has advanced beyond
+the staged content.
+
+*The one gate I cannot clear myself:* Phase Ω cutover (apply staged units to
+idaptik + delete the `.res` shadows) needs idaptik *write-access*. Until the
+owner opens that, "migrated" = "staged + 4-gate-verified", and true CLEAR
+(ReScript→0) waits on access. Everything up to that line is drivable here.
+====
