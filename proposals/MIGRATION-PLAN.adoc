@@ -155,13 +155,38 @@ until then each cutover is a staged applyable bundle for sign-off.)
 
 *CLEAR* = migratable corpus migrated + applied, walls down, shadows retired.
 
+== Model per phase (advise at each compact)
+
+Heuristic:
+
+* *Opus* — re-decomposition design, compiler-internals (the walls),
+  novel cross-runtime integration, cutover review. Anywhere a wrong or
+  subtle call is expensive. ("Fast" Opus when you want that reasoning with
+  quicker output.)
+* *Sonnet* — known-pattern multi-file grinding: the triage sweep, the rote
+  waves once the recipe is set, the mechanical cutover apply.
+* *Haiku* — pure mechanical sub-steps (bulk tool runs, boilerplate, status
+  checks). Rarely a whole phase.
+
+[cols="1,1,3",options="header"]
+|===
+| Phase | Model | Why
+| A consolidate/plan | Opus | synthesis + architecture
+| B broad triage | *Sonnet* | run one tool over ~571 files, bucket + prioritise; systematic, low-novelty
+| C/D deep waves | *Opus* for the re-decomposition; Sonnet once rote | re-decompose is subtle (a transliteration is rejected); the 4 gates are mechanical
+| E wasmex/SNIFS PoC | *Opus* | novel Elixir+wasm+Deno integration + determinism reasoning
+| F + walls (compiler) | *Opus* | real OCaml compiler engineering (lexer/typer/codegen/ABI), correctness-critical
+| G..N grind | alternate: *Sonnet* (migrate) / *Opus* (wall-slice) | per window
+| Ω cutover | *Sonnet* to execute, *Opus* to sign off the diff | high-stakes deletes; mechanical apply
+|===
+
 == Ledger (each phase updates this; the resume point lives here)
 
 [cols="1,1,3",options="header"]
 |===
 | Phase | State | Notes
 | Pre | DONE | #531 echo proof (merged); #532 migration practice + guide + proposals (merged); #533 evangelist toolkit (draft, CI green).
-| A | IN PROGRESS | This plan written. Architecture docs staged (determinism + 2 SVGs). Pending: fold SVGs into determinism doc as appendix; settle #533 on owner word.
+| A | DONE | Plan + model-per-phase guidance written; determinism doc gained a latency-regimes appendix (verify-don't-transfer + game-vs-deep-space + the 2 SVGs); #533 green (draft, owner to merge). NEXT: PHASE B.
 | B | TODO | Full-corpus triage -> migration-map.{adoc,json}.
 | C+ | TODO | Deep waves via the 4-gate recipe.
 | F+ | TODO | Compiler walls (string backend, then effects).

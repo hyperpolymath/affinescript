@@ -239,6 +239,37 @@ runtimes (record-and-replay debugging end to end). A generalised
 debugging idea is worth testing against this anchor: *does it help
 reconstruct/replay the cross-runtime causal chain keyed by tick?*
 
+== Appendix — latency regimes (captured from the 2026-06-04 discussion)
+
+Two companion diagrams are staged beside this note:
+`state-vs-digest.svg` (state transfer O(state) vs agreement-by-digest ~O(1))
+and `game-vs-deepspace.svg` (game netcode vs deep-space link).
+
+=== Verify, don't transfer (the hash tripwire, restated)
+Under shared determinism the state is *redundant* — both sides reconstruct
+it from the same inputs — so the only non-redundant thing worth sending is
+one bit: "do we agree?" A per-tick state hash carries exactly that ("look at
+the moon — is it there?" "yes"). Three honest caveats: (1) it is a *detector,
+not a corrector* — on mismatch you fall back to replay from the input log, so
+keep the log; (2) it is agreement *with overwhelming probability*, not proof
+(use a wide collision-resistant hash); (3) granularity — one hash finds
+*that* you diverged; a *Merkle tree of per-entity hashes* finds *where* in
+log n; reversibility finds *when* by reverse-bisection. Localisation in
+space (Merkle) x time (reversible step), both logarithmic.
+
+=== The flip across latency regimes
+*Cheap round-trips* (game, ~ms) reward sending LESS — a fingerprint, ask
+"agree?", reconcile on the rare mismatch. *Ruinous round-trips* (deep space,
+light-seconds to light-minutes) forbid asking at all, so they send MORE:
+forward error correction (Reed-Solomon / Turbo / LDPC, CCSDS), store-and-
+forward relays (Delay-Tolerant Networking; Queqiao is CNSA's Chang'e relay
+at Earth-Moon L2 — not ESA), and autonomy + a ground "digital twin" checked
+offline. echo-types (a PROOF of recoverability) is the static cousin of
+channel coding (a coding-theory GUARANTEE of correctability): same goal —
+know the data survives the crossing — different layer. IDApTIK lives at the
+millisecond end where verification wins; a probe lives at the light-minute
+end where redundancy wins.
+
 == Provenance
 
 2026-06-04 AffineScript co-development session. Companion: the multiplayer
