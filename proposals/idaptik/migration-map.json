@@ -370,7 +370,15 @@
       "id": "C11",
       "name": "UI and accessibility coprocessors",
       "description": "UI widget logic, font scaling, i18n, keyboard navigation, popup logic \u2014 pure integer presentation state.",
-      "status": "TODO",
+      "status": "DONE",
+      "done": {
+        "date": "2026-06-05",
+        "phase": "G",
+        "verdict": "NO_NEW_BRAINS \u2014 wiring/senses cluster",
+        "note": "All 10 files are host-side senses. DualAlert integer brain already extracted in C6 (DualAlert.affine, 613/613 parity, LOSSLESS boundary proof). DualAlertCoprocessor.res = bridge to C6 wasm. ForceLayoutCoprocessor.res = bridge to float-only physics wasm (euclidean/repulsion/attraction/velocity/alpha kernel; float-wall: deferred host-side). Button/HubButton/NavButton/Label/VolumeSlider/InventoryUI/HardwareWiring = pure PixiJS/UI senses with zero integer computation.",
+        "no_4gate": "nothing new to compile/parity/prove; DualAlert integer core C6-verified (613/613), float physics stays host-side",
+        "evidence": "proposals/idaptik/migrated/EVIDENCE-C11.adoc"
+      },
       "files": [
         "src/app/popups/ForceLayoutCoprocessor.res",
         "src/app/ui/Button.res",
