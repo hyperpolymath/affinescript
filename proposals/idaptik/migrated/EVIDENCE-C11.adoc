@@ -1,0 +1,97 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+= Cluster C11 (UI and accessibility coprocessors) — migration evidence (2026-06-05)
+:toc: macro
+
+[IMPORTANT]
+====
+*Verdict: NO_NEW_BRAINS — wiring/senses cluster.* All 10 files are host-side
+senses (PixiJS UI components, coprocessor bridges, float-physics wiring). No
+new AffineScript kernels are required because:
+
+1. The integer brain of `DualAlert.res` (alert-level ordinals, escalation,
+   trigger-milli, scrub, overall-threat, dispatch predicates) was already
+   extracted in *cluster C6* (`DualAlert.affine`, 613/613 parity, LOSSLESS
+   boundary proof). `DualAlertCoprocessor.res` is the existing ReScript
+   bridge to that wasm.
+2. `ForceLayoutCoprocessor.res` is a bridge to `forcelayout.wasm` (a
+   float-only physics kernel — euclidean distance, repulsion/attraction
+   velocity deltas, velocity decay, position integration, alpha cooling).
+   The brain is f64-only; the float-wall convention defers it to host-side.
+3. `Button`, `HubButton`, `NavButton`, `Label`, `VolumeSlider`,
+   `InventoryUI`, `HardwareWiring` are pure PixiJS/PixiUI components with
+   zero separable integer computation.
+
+No 4-gate recipe is applied; no new wasm is produced.
+====
+
+toc::[]
+
+== File-by-file disposition
+
+[cols="3,1,4",options="header"]
+|===
+| File | Disposition | Reason
+| `src/app/ui/DualAlert.res` | SENSES (brain in C6) | Integer core (`levelValue`, `levelColor`, `escalateLevel`, `scrubStep`, trigger-milli, cooldown-milli, `overallThreat`, `shouldDispatchAntiHacker`, `guardsCheckingTerminals`) already lives in `DualAlert.affine` (C6, 613/613 parity). Float progress/trigger-severity orchestration stays host-side.
+| `src/app/ui/DualAlertCoprocessor.res` | SENSES (bridge) | ReScript FFI wrapping `DualAlertCoprocessorBridge.js` → `dualalert.wasm`. Pure `external` declarations; no logic.
+| `src/app/popups/ForceLayoutCoprocessor.res` | SENSES (float-brain bridge) | Wraps `forcelayout.wasm` float kernel (euclidean, repelDv, attractDv, decayVelocity, integratePosition, decayAlpha). All f64 primitives; float-wall convention: brain deferred to host-side.
+| `src/app/ui/Button.res` | SENSES (PixiJS) | FancyButton nine-slice wrapper + FontScale + Audio SFX. Zero integer computation.
+| `src/app/ui/HardwareWiring.res` | SENSES (PixiJS) | Interactive patch-panel with float catenary sag (`computeSagLocal`), quadratic Bézier cable rendering, pointer-event wiring, string template port IDs. No separable integer brain.
+| `src/app/ui/HubButton.res` | SENSES (PixiJS) | Programmatic Graphics FancyButton variant. Zero integer computation.
+| `src/app/ui/InventoryUI.res` | SENSES (UI) | `formatQuickbar` maps inventory slots to HUD display records. No integer computation.
+| `src/app/ui/Label.res` | SENSES (PixiJS) | `Text.make` wrapper with centered anchor. Zero integer computation.
+| `src/app/ui/NavButton.res` | SENSES (PixiJS) | Sidebar navigation FancyButton with active-indicator Graphics. Zero integer computation.
+| `src/app/ui/VolumeSlider.res` | SENSES (PixiJS) | PixiUI Slider component factory. Zero integer computation.
+|===
+
+== DualAlert — de-duplication verification
+
+The C11 cluster description names `src/app/ui/DualAlert.res` as a source file.
+C6's kernel inventory entry is:
+
+----
+DualAlert.affine  |  DualAlert.res — dual-threat alert level machine
+----
+
+Cross-check of C6 evidence versus C11 `DualAlert.res` content:
+
+* C6 `DualAlert.affine` exports: `level_value`, `level_color`, `escalate_level`,
+  `scrub_step`, `trigger_escalates`, `trigger_progress`, `trigger_level`,
+  `cooldown_progress`, `overall_threat`, `should_dispatch_anti_hacker`,
+  `guards_checking_terminals`.
+* C11 `DualAlertCoprocessor.res` bridge methods: `levelValue`, `levelColour`,
+  `escalateLevel`, `scrubStep`, `triggerEscalates`, `triggerProgress`,
+  `triggerLevel`, `cooldownProgress`, `overallThreat`, `shouldDispatchAntiHacker`,
+  `guardsCheckingTerminals` — exact semantic correspondence.
+* The float functions in `DualAlert.res` (`physicalSeverity`, `cyberSeverity`,
+  `triggerPhysical`, `triggerCyber`, `updateCooldown`) operate on the mutable
+  `alertState` record (float progress/cooldown fields) — these are host-side
+  orchestration that feeds integer primitives to the wasm.
+
+Verdict: *no new brain needed*; C6's `DualAlert.affine` covers the integer surface.
+C6 evidence: `proposals/idaptik/migrated/EVIDENCE-C6.adoc` (Gate 2: 613/613 parity,
+Gate 3: LOSSLESS boundary proof, Gate 4: clean).
+
+== Host-side senses: ForceLayout physics
+
+`ForceLayoutCoprocessor.res` bridges the following float-only exports of
+`forcelayout.wasm`:
+
+* `euclidean(bridge, x1, y1, x2, y2): float` — Euclidean distance
+* `repelDv(bridge, dist, d, strength, radius): float` — repulsion velocity delta
+* `attractDv(bridge, dist, d, strength): float` — attraction velocity delta
+* `decayVelocity(bridge, v, decay): float` — velocity damping
+* `integratePosition(bridge, pos, v, alpha): float` — position integration step
+* `decayAlpha(bridge, alpha, alphaDecay): float` — simulation cooling
+
+All parameters and return values are `float`. This is a pure f64 physics
+kernel; the float-wall convention requires the brain to remain host-side
+(the AffineScript wasm backend has no f64 sqrt or general float codegen).
+No integer decomposition is applicable — the physics simulation requires
+continuous-domain arithmetic throughout.
+
+== Impact on remaining clusters
+
+C11 being NO_NEW_BRAINS does not affect the C9/C10/C12 roadmap. The
+`DualAlertCoprocessor` wasm is already live; the UI components remain host-side
+ReScript throughout Phase Ω. The completion-drive directive proceeds to *C9*.
