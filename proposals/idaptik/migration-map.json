@@ -348,7 +348,15 @@
       "id": "C10",
       "name": "Utils, tools, companions, narrative, and proven modules",
       "description": "Game utilities, tools coprocessors, Moletaire companion, mission briefing, and formal-proof integration.",
-      "status": "TODO",
+      "status": "DONE",
+      "done": {
+        "date": "2026-06-05",
+        "phase": "G",
+        "verdict": "NO_NEW_BRAINS — coprocessor bridges, float-wall physics, string-wall i18n/persistence/errors, effect-gated accessibility/settings orchestration",
+        "note": "All 21 files are host-side senses. 9 bridge files wrap already-live wasm brains (moletairecoprocessors, moletairehunger, missionbriefing, safefloat, passwordcracker, portscanner, colorpalette, fontscale, gamei18n). Float-wall: MoletaireHunger (f64 gravity/hunger physics; integer enum functions already in moletairehunger.wasm), SafeAngle (Math.atan2/cos/sin/mod_float — all f64). String-wall: ProvenError (all constructors carry string fields), MoletairePersistence (equipmentToString/FromString), Locales (5-language translation dicts, ~650 string pairs), PolyglotI18n (String.replaceAll, async fetch locale JSON). Effect-gated: Announcer (AccessibilitySettings + DomA11y), DomA11y (%raw DOM), ColorPalette (AccessibilitySettings mutable refs; color tables already in colorpalette.wasm), KeyboardNav (%raw window events), PanicHandler (Console.error), UserSettings (Storage/Audio/DesktopIntegration; stance enum string-serialized).",
+        "no_4gate": "nothing new to compile/parity/prove; nine wasm brains already live; remaining code is float-wall, string-wall, or effect-gated senses",
+        "evidence": "proposals/idaptik/migrated/EVIDENCE-C10.adoc"
+      },
       "files": [
         "src/app/companions/MoletaireCoprocessorsCoprocessor.res",
         "src/app/companions/MoletaireHunger.res",

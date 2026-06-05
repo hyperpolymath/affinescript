@@ -1,0 +1,181 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+= Cluster C10 (utils/tools/companions/narrative/proven) — migration evidence (2026-06-05)
+:toc: macro
+
+[IMPORTANT]
+====
+*Verdict: NO_NEW_BRAINS — coprocessor bridges, float-wall physics, string-wall
+i18n/persistence/errors, and effect-gated accessibility/settings orchestration.*
+All 21 files are host-side senses.  No new AffineScript kernels are required
+because:
+
+1. Nine `*Coprocessor.res` bridge files are pure `external` FFI declarations
+   wrapping already-compiled wasm brains:
+   `moletairecoprocessors.wasm` (Moletaire behaviour FSM),
+   `moletairehunger.wasm` (hunger ordinals — already extracted),
+   `missionbriefing.wasm` (mission briefing state machine),
+   `safefloat.wasm` (safe-float arithmetic coprocessor),
+   `passwordcracker.wasm` (password-crack score engine),
+   `portscanner.wasm` (port-scan result classifier),
+   `colorpalette.wasm` (color-palette lookup),
+   `fontscale.wasm` (font-scale arithmetic),
+   `gamei18n.wasm` (plural-form selection + language-cycle arithmetic).
+2. Two float-wall files (`MoletaireHunger.res`, `SafeAngle.res`):
+   `MoletaireHunger.res` contains gravity/hunger physics
+   (`calculatePull`, `calculateTotalPull`, `calculateHungerRate` — all f64);
+   the integer-flavoured `getBehaviour`/`hungerColor`/`willEatObjective` enum
+   functions are already extracted to `moletairehunger.wasm`.
+   `SafeAngle.res` is pure trigonometry (`Math.atan2`, `normalize`,
+   `Math.cos`, `Math.sin`, `mod_float`) — float-wall throughout.
+3. String-wall files: `ProvenError.res` (all constructors carry `operation`,
+   `message`, `errorType` string fields), `MoletairePersistence.res`
+   (`equipmentToString`/`equipmentFromString` string serialization via
+   `localStorage`), `Locales.res` (five-language translation dicts; all data
+   is string key→value, `getTranslations(string)` dispatches on string param),
+   `PolyglotI18n.res` (`String.replaceAll`, JSON string parsing, async
+   `fetch` of locale JSON files, string template literals in `tw`/`tn`).
+4. Effect-gated files: `Announcer.res` (gated on
+   `AccessibilitySettings.isScreenReaderEnabled()`; passes string messages to
+   `DomA11y.announce`), `DomA11y.res` (all `%raw` DOM manipulation —
+   `window.matchMedia`, `document.createElement`, `region.textContent`),
+   `ColorPalette.res` (branches on `AccessibilitySettings.isHighContrastEnabled()`
+   and `getColorBlindMode()` mutable JS refs; integer color tables are
+   already extracted to `colorpalette.wasm`), `KeyboardNav.res` (all `%raw`
+   `window.addEventListener/removeEventListener`, `e.key`, `e.preventDefault`),
+   `PanicHandler.res` (`Console.error`, string template literals),
+   `UserSettings.res` (`Storage` API, `Audio` API, `DesktopIntegration`;
+   the `stance` enum serializes via string literals and has no standalone
+   integer computation).
+
+No 4-gate recipe is applied; no new wasm is produced.
+====
+
+toc::[]
+
+== File-by-file disposition
+
+[cols="3,1,4",options="header"]
+|===
+| File | Disposition | Reason
+| `src/app/companions/MoletaireCoprocessorsCoprocessor.res` | SENSES (bridge) | ReScript FFI wrapping `MoletaireCoprocessorsBridge.js` → `moletairecoprocessors.wasm`. Pure `external` declarations. Moletaire behaviour FSM brain already live.
+| `src/app/companions/MoletaireHunger.res` | SENSES (float-wall) | Gravity/hunger physics: `calculatePull`, `calculateTotalPull`, `calculateHungerRate` — all f64. Integer-flavoured functions (`getBehaviour`, `hungerColor`, `willEatObjective`) already extracted to `moletairehunger.wasm`.
+| `src/app/companions/MoletaireHungerCoprocessor.res` | SENSES (bridge) | ReScript FFI wrapping `MoletaireHungerCoprocessorBridge.js` → `moletairehunger.wasm`. Pure `external` declarations. Hunger-ordinal brain already live.
+| `src/app/companions/MoletairePersistence.res` | SENSES (string-wall gated) | localStorage persistence: `equipmentToString`/`equipmentFromString` string serialization, `Storage.getString`/`setBool`. String-wall prevents extraction.
+| `src/app/narrative/MissionBriefingCoprocessor.res` | SENSES (bridge) | ReScript FFI wrapping `MissionBriefingCoprocessorBridge.js` → `missionbriefing.wasm`. Pure `external` declarations. Mission briefing state machine already live.
+| `src/app/proven/ProvenError.res` | SENSES (string-wall gated) | Error type `provenError` with `operation: string`, `message: string`, `errorType: string` fields. All constructors string-bearing. String-wall prevents extraction.
+| `src/app/proven/SafeAngle.res` | SENSES (float-wall) | Pure trigonometry: `Math.atan2`, `normalize`, `Math.cos`, `Math.sin`, `mod_float`. All f64 operations. No integer brain.
+| `src/app/proven/SafeFloatCoprocessor.res` | SENSES (bridge) | ReScript FFI wrapping `SafeFloatCoprocessorBridge.js` → `safefloat.wasm`. Pure `external` declarations. Safe-float arithmetic brain already live.
+| `src/app/tools/PasswordCrackerCoprocessor.res` | SENSES (bridge) | ReScript FFI wrapping `PasswordCrackerCoprocessorBridge.js` → `passwordcracker.wasm`. Pure `external` declarations. Password-crack score brain already live.
+| `src/app/tools/PortScannerCoprocessor.res` | SENSES (bridge) | ReScript FFI wrapping `PortScannerCoprocessorBridge.js` → `portscanner.wasm`. Pure `external` declarations. Port-scan classifier brain already live. Inline `deviceTypeId`/`securityLevelId` enum dispatch needs no wasm.
+| `src/app/utils/Announcer.res` | SENSES (effect-gated) | Screen-reader announcer: gated on `AccessibilitySettings.isScreenReaderEnabled()`, passes string messages to `DomA11y.announce`. No integer computation.
+| `src/app/utils/ColorPalette.res` | SENSES (effect-gated) | Color lookup tables (`alertColor(int)`, `deviceColor`, `securityColor`) read `AccessibilitySettings.isHighContrastEnabled()` and `getColorBlindMode()` mutable JS refs. Integer color tables already extracted to `colorpalette.wasm`. Effect-gated selector stays host-side.
+| `src/app/utils/ColorPaletteCoprocessor.res` | SENSES (bridge) | ReScript FFI wrapping `ColorPaletteCoprocessorBridge.js` → `colorpalette.wasm`. Pure `external` declarations. Color-palette lookup brain already live.
+| `src/app/utils/DomA11y.res` | SENSES (effect-gated) | DOM accessibility utilities: all `%raw` — `window.matchMedia`, `document.createElement`, `region.textContent`, event listeners. No integer computation.
+| `src/app/utils/FontScaleCoprocessor.res` | SENSES (bridge) | ReScript FFI wrapping `FontScaleCoprocessorBridge.js` → `fontscale.wasm`. Pure `external` declarations (`scaleFloat`, `scaleInt`, `clampScale`, `scaleIntClamped`). Font-scale arithmetic brain already live.
+| `src/app/utils/GameI18nCoprocessor.res` | SENSES (bridge) | ReScript FFI wrapping `GameI18nCoprocessorBridge.js` → `gamei18n.wasm`. Pure `external` declarations (`languageClamp`, `nextLanguage`, `selectPluralForm`). Plural-form selection + language-cycle brain already live.
+| `src/app/utils/KeyboardNav.res` | SENSES (effect-gated) | All `%raw` window event wiring: `window.addEventListener/removeEventListener('keydown')`, `e.key`, `e.preventDefault`. No integer computation.
+| `src/app/utils/Locales.res` | SENSES (string-wall gated) | Five-language translation dicts (~130 keys × 5 languages). `getTranslations(string)` dispatches on string lang-code parameter. All data is string key→string value. String-wall throughout.
+| `src/app/utils/PanicHandler.res` | SENSES (effect-gated) | Error reporting: `Console.error`, string template literals, `Promise.resolve()`. No integer computation.
+| `src/app/utils/PolyglotI18n.res` | SENSES (string-wall + effect-gated) | Polyglot i18n wrapper: async `fetch` of locale JSON files, `String.replaceAll` interpolation, `tw`/`tn` string ops, mutable `ref<string>` language state. String-wall + effect-wall prevents extraction.
+| `src/app/utils/UserSettings.res` | SENSES (effect-gated) | Settings persistence: `Storage` API (getString/setBool/setNumber), `Audio` API (setMasterVolume/setBgmVolume/setSfxVolume), `DesktopIntegration`. The `stance` enum (Jessica/Q) serializes via string literals — string-wall gated; no standalone integer computation.
+|===
+
+== Already-live wasm brains referenced by C10 bridges
+
+The nine bridge files reference wasm kernels that are already compiled and
+live in `public/assets/wasm/`:
+
+[cols="2,2,3",options="header"]
+|===
+| Bridge file | Wasm target | Brain description
+| `MoletaireCoprocessorsCoprocessor.res` | `moletairecoprocessors.wasm` | Moletaire companion behaviour FSM. Position/action decisions for the robotic mole companion.
+| `MoletaireHungerCoprocessor.res` | `moletairehunger.wasm` | Hunger ordinal decisions: `getBehaviour`, `hungerColor`, `willEatObjective`, `objectiveAtRisk`. Already extracted; float-wall physics stays host-side.
+| `MissionBriefingCoprocessor.res` | `missionbriefing.wasm` | Mission briefing state machine. Screen-progression logic.
+| `SafeFloatCoprocessor.res` | `safefloat.wasm` | Safe-float arithmetic coprocessor. Guards float operations with formal safety bounds.
+| `PasswordCrackerCoprocessor.res` | `passwordcracker.wasm` | Password-crack score engine. Integer scoring for crack success/failure states.
+| `PortScannerCoprocessor.res` | `portscanner.wasm` | Port-scan result classifier. Maps scan outcomes to integer result codes.
+| `ColorPaletteCoprocessor.res` | `colorpalette.wasm` | Color-palette lookup. Integer RGB hex values for alert/device/security levels.
+| `FontScaleCoprocessor.res` | `fontscale.wasm` | Font-scale arithmetic. `scaleFloat`, `scaleInt`, `clampScale`, `scaleIntClamped` pure integer/float pixel-size operations.
+| `GameI18nCoprocessor.res` | `gamei18n.wasm` | Plural-form selection and language-cycle arithmetic. `languageClamp` (0..4 band), `nextLanguage` (EN→ES→FR→DE→JA→EN cycle), `selectPluralForm` (count == 1 → singular).
+|===
+
+C10 being NO_NEW_BRAINS does not add to the wasm surface — all nine brains
+were already live before C10 was triaged.
+
+== MoletaireHunger.res — float-wall analysis
+
+`MoletaireHunger.res` contains f64 physics that cannot cross the float-wall:
+
+* `calculatePull(dist: float, strength: float): float` — gravitational
+  attraction formula (`strength / (dist * dist)`). Pure f64.
+* `calculateTotalPull(positions: array<...>, strength: float): (float, float)`
+  — sum of pull vectors over all attractor positions. f64 throughout.
+* `calculateHungerRate(hungerMultiplier: float, ...): float` — speed-based
+  hunger drain. f64 physics.
+
+The integer-flavoured functions are NOT extractable because they are already
+in `moletairehunger.wasm` from a prior migration pass:
+
+* `getBehaviour(hungerScore: float): behaviour` — float threshold → enum.
+* `hungerColor(hungerScore: float): int` — float → RGB hex. Already in wasm.
+* `willEatObjective(...)`, `objectiveAtRisk(...)` — float comparisons.
+
+Verdict: no new brain needed; the integer surface is already live.
+
+== SafeAngle.res — float-wall analysis
+
+All six functions in `SafeAngle.res` are pure f64 trigonometry:
+
+* `fromAtan2(dy: float, dx: float): safeAngle` — `Math.atan2`.
+* `normalize(a: safeAngle): safeAngle` — fmod-based angle normalization.
+* `diff(a: safeAngle, b: safeAngle): safeAngle` — angle subtraction with
+  normalization.
+* `cos(a: safeAngle): float` — `Math.cos`.
+* `sin(a: safeAngle): float` — `Math.sin`.
+* `toFloat(a: safeAngle): float` — identity cast.
+
+The float-wall convention (AffineScript wasm backend has no f64 `sqrt`
+or general float codegen) requires these to remain host-side. The `safefloat.wasm`
+brain handles safe arithmetic on simple float ranges; trigonometry is a
+separate concern with no integer-only reformulation possible.
+
+== String-wall analysis: ProvenError, MoletairePersistence, Locales, PolyglotI18n
+
+[cols="1,1,4",options="header"]
+|===
+| File | Wall type | Why NOT extracted
+| `ProvenError.res` | String-wall | Every constructor (`ProvenError` record) carries `operation: string`, `message: string`, `errorType: string` fields. No integer computation separable from the string payloads.
+| `MoletairePersistence.res` | String-wall + effect | `equipmentToString`/`equipmentFromString` use string serialization throughout; `Storage.getString`/`setBool` are DOM-side effects. No integer brain separable.
+| `Locales.res` | String-wall | Five-language dicts (~650 string pairs total). `getTranslations(langCode: string)` dispatches on a string parameter and returns `dict<string>`. No integer computation exists — the entire module is translation data.
+| `PolyglotI18n.res` | String-wall + effect | `tw` uses `String.replaceAll`; `tn` compares `count == 1.0` (float); async `fetch` for locale JSON; mutable `ref<string>` language state. String ops throughout; effect-wall (async + mutable ref).
+|===
+
+In contrast, `GameI18nCoprocessor.res` already wraps `gamei18n.wasm` which
+handles the *integer* core (`languageClamp`, `nextLanguage`,
+`selectPluralForm`) — the AffineScript brain for this cluster's numeric
+i18n logic is already live.
+
+== UserSettings.res — stance enum analysis
+
+`UserSettings.res` contains a 2-value `stance` enum (Jessica | Q).
+At first glance it appears potentially extractable, but:
+
+1. `getCharacterStance()` reads `Storage.getString(keyStance)` and matches on
+   string values `"Q"` / `_` — string-wall gated.
+2. `setCharacterStance(s: stance)` serializes to string literals `"Jessica"` /
+   `"Q"` before calling `Storage.setString` — string-wall gated.
+3. The remaining functions (`getMasterVolume`, `getBgmVolume`, `getSfxVolume`,
+   `init`, `setMasterVolume`, `setBgmVolume`, `setSfxVolume`,
+   `setSystemTrayEnabled`) are pure effect-gated orchestration over `Audio`
+   and `Storage` APIs with float volume values.
+
+No standalone integer brain is separable from the string serialization and
+effect-heavy orchestration.
+
+== Impact on remaining clusters
+
+C10 being NO_NEW_BRAINS does not affect the C12 roadmap. All nine wasm
+brains referenced by C10 bridges are already live. The utilities/tools/
+companions/narrative/proven modules remain host-side ReScript throughout
+Phase Ω. The completion-drive directive proceeds to *C12*.
