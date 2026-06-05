@@ -1,0 +1,137 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+= Cluster C9 (game-loop/AffineTEA/VeriSim types) — migration evidence (2026-06-05)
+:toc: macro
+
+[IMPORTANT]
+====
+*Verdict: NO_NEW_BRAINS — bridges, HTTP clients, effect-gated orchestration, and
+string-wall type definitions.*  All 16 files are host-side senses.  No new
+AffineScript kernels are required because:
+
+1. The four coprocessor bridges (`AffineTEA.res`, `AffineTEARouter.res`,
+   `PixiCoprocessor.res`, `VmCoprocessor.res`) are pure `external` FFI
+   declarations wrapping already-compiled wasm brains:
+   `titlescreen.wasm` (TEA title-screen state machine),
+   `router.wasm` (affine navigation back-stack),
+   `pixi.wasm` (AffineScript PixiJS scene driver), and
+   `vmcoprocessor.wasm` (reversible VM — C2 migration).
+2. Eight VeriSimDB/Burble HTTP clients (`SaveGame.res`, `VeriSimDrift.res`,
+   `VeriSimFederation.res`, `VeriSimHexad.res`, `VeriSimProvenance.res`,
+   `VeriSimSearch.res`, `VeriSimVcl.res`, `BurbleIntegration.res`) are async
+   `fetch`-based wrappers with JSON serialization throughout.  Effect-gated.
+3. `VeriSimTypes.res` defines enum variants (`modality`/`hexadStatus`/
+   `driftLevel`) that appear integer-clean, but `modalityToString` /
+   `modalityFromString` use string literals and all enums are used exclusively
+   as fields in string-bearing record structures.  No standalone integer
+   computation exists — the enums are type tags for HTTP serialization.
+   String-wall prevents extraction.
+4. `VeriSimError.res` error variant `fromStatus(int) → t` dispatches on HTTP
+   status codes, but every constructor carries a `string` payload
+   (`BadRequest(string)`, `NotFound(string)`, etc.).  The string payloads make
+   this string-wall gated.
+5. `Main.res` is the app entry point: side-effect screen imports, multiplayer
+   init, Burble voice bridge startup.  Effect-gated (Console.log, Promise,
+   %raw, DOM manipulation).
+6. `GameLoop.res` is the per-frame orchestrator.  Integer counters
+   (`commandsExecuted`, `devicesHacked`, `maxAlertReached`, etc.) exist but
+   are trivial increments interleaved with float physics (playerX/playerY,
+   dt accumulation), mutable JS guard/dog arrays, and AI state calls.  No
+   standalone integer brain is separable from the effect-heavy orchestration.
+
+No 4-gate recipe is applied; no new wasm is produced.
+====
+
+toc::[]
+
+== File-by-file disposition
+
+[cols="3,1,4",options="header"]
+|===
+| File | Disposition | Reason
+| `src/Main.res` | SENSES (effect-gated) | App entry point: side-effect screen imports, multiplayer init, Burble voice startup, PixiJS engine creation. DOM manipulation, `Promise.catch` error display. No separable integer computation.
+| `src/app/GameLoop.res` | SENSES (effect-gated) | Per-frame game loop coordinator. Integer counters (`commandsExecuted`, `devicesHacked`, `maxAlertReached`) are trivial increments interleaved with float physics (`playerX`/`playerY`/`dt`), mutable JS guard/dog arrays, and AI orchestration calls. No standalone integer brain separable from the effect-heavy orchestration.
+| `src/app/burble/BurbleIntegration.res` | SENSES (effect-gated) | HTTP/WebSocket voice-server client: async `fetch`, URL string construction, connection state enum. No integer computation.
+| `src/app/pixi/PixiCoprocessor.res` | SENSES (bridge) | ReScript FFI wrapping `PixiCoprocessorBridge.js` → `pixi.wasm`. Pure `external` declarations. AffineScript PixiJS brain already live.
+| `src/app/tea/AffineTEA.res` | SENSES (bridge) | ReScript FFI wrapping `AffineTEA.js` → `titlescreen.wasm`. Pure `external` declarations. TEA title-screen brain already live.
+| `src/app/tea/AffineTEARouter.res` | SENSES (bridge) | ReScript FFI wrapping `AffineTEARouter.js` → `router.wasm`. Pure `external` declarations. Affine navigation router brain already live.
+| `src/app/verisimdb/SaveGame.res` | SENSES (effect-gated) | VeriSimDB save/load: async HTTP, JSON serialization, `formatPlayTime` string formatting. Effect-gated throughout.
+| `src/app/verisimdb/VeriSimDrift.res` | SENSES (HTTP client) | Async HTTP wrappers for drift score/status/normalize endpoints. No integer computation.
+| `src/app/verisimdb/VeriSimError.res` | SENSES (string-wall gated) | Error variant `fromStatus(int) → t` dispatches HTTP codes, but every constructor carries a `string` payload. String-wall prevents integer brain extraction.
+| `src/app/verisimdb/VeriSimFederation.res` | SENSES (HTTP client) | Async HTTP wrappers for federation peer/query endpoints. No integer computation.
+| `src/app/verisimdb/VeriSimHexad.res` | SENSES (HTTP client) | Async HTTP wrappers for hexad CRUD + list. No integer computation.
+| `src/app/verisimdb/VeriSimProvenance.res` | SENSES (HTTP client) | Async HTTP wrappers for provenance chain/event/verify. No integer computation.
+| `src/app/verisimdb/VeriSimSearch.res` | SENSES (HTTP client) | Async HTTP wrappers for text/vector/spatial/nearest/related search. No integer computation.
+| `src/app/verisimdb/VeriSimTypes.res` | SENSES (string-wall gated) | Type definitions: `modality` (8 enum), `hexadStatus` (4 enum), `driftLevel` (5 enum). Variants themselves have no string payloads, but `modalityToString`/`modalityFromString` use string literals and all enums appear exclusively as fields in string-bearing records. No standalone integer computation exists on these enums. String-wall gated.
+| `src/app/verisimdb/VeriSimVcl.res` | SENSES (HTTP client) | Async HTTP wrappers for VCL execute/explain. No integer computation.
+| `src/app/vm/VmCoprocessor.res` | SENSES (bridge) | ReScript FFI wrapping `VmCoprocessorBridge.js` → `vmcoprocessor.wasm`. Pure `external` declarations. VM brain migrated in C2.
+|===
+
+== Already-live wasm brains referenced by C9 bridges
+
+The four bridge files reference wasm kernels that are already compiled and
+live in `public/assets/wasm/`:
+
+[cols="2,2,3",options="header"]
+|===
+| Bridge file | Wasm target | Brain description
+| `AffineTEA.res` | `titlescreen.wasm` | AffineScript TEA title-screen state machine (Msg dispatch, Selected tag, screen resize). Linear message consumption.
+| `AffineTEARouter.res` | `router.wasm` | Affine navigation back-stack (push/pop/presentPopup/dismissPopup). Affine resource — stack consumed on pop.
+| `PixiCoprocessor.res` | `pixi.wasm` | AffineScript PixiJS scene driver (registerContainer, scene, makeAndDestroy). Linear ownership path exercised via `makeAndDestroy`.
+| `VmCoprocessor.res` | `vmcoprocessor.wasm` | Reversible VM co-processor (13 opcodes, step/run). Migrated in C2.
+|===
+
+C9 being NO_NEW_BRAINS does not add to the wasm surface — these four brains
+were already live before C9 was triage.
+
+== GameLoop.res — no separable integer brain
+
+`GameLoop.res` contains the following integer-flavoured state:
+
+* Counters: `commandsExecuted`, `devicesHacked`, `covertLinksDiscovered`,
+  `maxAlertReached`, `distractionsCalled`, `assassinKillAttempts`,
+  `critSuccessCount`, `critFailureCount`.
+* Running-max: `if currentAlertInt > state.maxAlertReached { state.maxAlertReached = currentAlertInt }`.
+
+Why these are NOT extractable as a wasm brain:
+
+1. `currentAlertInt` comes from `DetectionSystem.getAlertInt(state.detection)`,
+   which reads a mutable float `alertScore` field inside a JS object.  The
+   integer is computed from a float inside a mutable structure — the senses and
+   the integer are interleaved at the source level.
+2. Every counter increment happens inside `Array.forEach` loops over mutable
+   `GuardNPC.t` and `SecurityDog.t` records.  Extracting a pure-integer
+   "counter kernel" would require the caller to pre-aggregate events from
+   those mutable arrays, defeating the purpose of a senses/brain split.
+3. The counters are simple increments (`+= 1`) and a max comparison — they
+   have no algorithmic content worth isolating.  Compare with `DualAlert` (C6):
+   that brain had escalation logic, cooldown-milli ticking, trigger-progress
+   computation, and overall-threat aggregation.  GameLoop's counters are
+   trivial running tallies.
+
+Verdict: GameLoop integer state stays host-side.
+
+== VeriSimTypes.res — string-wall analysis for enum candidates
+
+Three enum variants in `VeriSimTypes.res` appear potentially extractable:
+
+[cols="1,1,4",options="header"]
+|===
+| Variant | Constructors | Why NOT extracted
+| `modality` | Graph/Vector/Tensor/Semantic/Document/Temporal/Provenance/Spatial (8) | `modalityToString`/`modalityFromString` use string literals. Used exclusively as fields in string-bearing records (`hexadInput.modalities`, `textSearchParams.modalities`). String-wall gated.
+| `hexadStatus` | Active/Archived/Draft/Deleted (4) | Used only as `hexad.status` field alongside `hexad.id: string`, `hexad.createdAt: string`, etc. No computation — only serialized to/from JSON. String-wall gated.
+| `driftLevel` | Stable/Low/Moderate/High/Critical (5) | Used only as `driftStatusReport.level` field. No comparison, escalation, or ordinal arithmetic in C9 code — the level is received from the HTTP server and displayed. No integer computation to extract.
+|===
+
+In contrast, `DualAlert.affine` (C6) had computation: `level_value` mapped
+ordinals to display integers, `escalate_level` implemented the state machine,
+`overall_threat` aggregated physical + cyber levels.  The VeriSimTypes enums
+have none of this — they are pure serialization tags with no logic in the
+ReScript sources of C9.
+
+== Impact on remaining clusters
+
+C9 being NO_NEW_BRAINS does not affect the C10/C12 roadmap.  The four wasm
+brains referenced by C9 bridges are already live.  The VeriSimDB HTTP client
+modules remain host-side ReScript throughout Phase Ω.  The completion-drive
+directive proceeds to *C10*.
