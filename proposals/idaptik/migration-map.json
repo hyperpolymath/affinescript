@@ -91,7 +91,19 @@
         "evidence": "proposals/idaptik/migrated/EVIDENCE-C2.adoc",
         "compiler_findings": "unary ~ codegen bug (i32.xor missing operand; workaround -a-1); >> is arithmetic + no >>> (logical shift-right emulated for ROL/ROR)"
       },
-      "remaining_wave2": ["Mul", "Div", "Push", "Pop", "Load", "Store", "Call", "Loop", "IfPos", "IfZero", "Recv", "Send", "CoprocessorCall", "InstructionCoprocessor", "State", "VM", "SubroutineRegistry", "VmStateCoprocessor", "bindings"],
+      "done_wave2a": {
+        "date": "2026-06-05",
+        "phase": "G",
+        "staged_at": "proposals/idaptik/migrated/",
+        "kernels": ["VmMulDiv"],
+        "opcodes": ["Mul", "Div"],
+        "note": "Mul/Div are pure SCALAR transforms, not memory ops; need no array ABI, so split out of wave 2 and landed ahead of 2b. Reversibility via Bennett ancilla (mul c:=c+a*b) and quotient+remainder (div q*b+r==a for all b).",
+        "gates": "1/1 compile; 3322/3322 parity (incl. mul_roundtrip + div_reconstruct); G3 n/a (numeric transform); 1/1 assail-clean",
+        "evidence": "proposals/idaptik/migrated/EVIDENCE-C2-wave2a.adoc",
+        "compiler_findings": "JS a*b loses precision >2^53 -> oracle must use Math.imul to match i32.mul; i32.div_s TRAPS on b==0 and INT_MIN/-1 (ReScript wraps) and i32.rem_s TRAPS on b==0 -> brain guards both (nested-if, avoiding unverified && codegen) for a total wasm"
+      },
+      "remaining_wave2b": ["Push", "Pop", "Load", "Store", "Call", "Loop", "IfPos", "IfZero", "Recv", "Send", "CoprocessorCall", "InstructionCoprocessor", "State", "VM", "SubroutineRegistry", "VmStateCoprocessor", "bindings"],
+      "remaining_wave2b_blocker": "needs array/linear-memory ABI ([len:i32 LE][bytes] + __affine_alloc); Opus-level design; also unblocks the string wall",
       "files": [
         "vm/lib/ocaml/Add.res",
         "vm/lib/ocaml/And.res",

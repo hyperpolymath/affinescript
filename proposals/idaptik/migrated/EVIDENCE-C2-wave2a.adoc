@@ -1,0 +1,91 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+= Cluster C2 wave 2a (VM multiply/divide) — four-gate evidence (captured 2026-06-05)
+:toc: macro
+
+[IMPORTANT]
+====
+*Captured run of the 4-gate recipe over the scalar multiply/divide opcodes.*
+Wave 1 (#537-era) covered the value-transform opcodes that need only `+`/`-`/
+bitwise ops. This wave 2a covers `Mul` and `Div` — also pure scalar transforms,
+so they need *no* array/linear-memory ABI. (The memory opcodes — Push/Pop/Load/
+Store/Call/Loop/IfPos/IfZero and the structural VM files — are wave 2b and *do*
+need the array ABI; they are deliberately not in this wave.) Toolchain:
+AffineScript compiler `_build/default/bin/main.exe`, Deno 2.8.2.
+====
+
+toc::[]
+
+== Summary
+
+[cols="2,1,1,2,1",options="header"]
+|===
+| Kernel | G1 compile | G2 parity | G3 boundary | G4 assail
+| `VmMulDiv` | OK | 3322/3322 | n/a (numeric transform) | clean
+| *Total*    | *1/1* | *3322/3322* | *n/a* | *1/1 clean*
+|===
+
+Source: `vm/lib/ocaml/Mul.res` + `vm/lib/ocaml/Div.res`. Eleven exports —
+`mul_fwd`, `mul_inv`, `mul_roundtrip`, `div_q`, `div_r`, `div_reconstruct`,
+`mul_inplace_fwd`, `mul_inplace_inv`, `div_simple_q`, `div_simple_invert`.
+
+== Re-decomposition (brain/senses)
+
+The ReScript VM stores state in a `dict<int>` keyed by register name; each
+opcode is an `execute`/`invert` closure pair over that dict. Per the brain/
+senses split the register-name strings + dict stay host-side; the brain is the
+scalar-int value transform. "The integer IS the register."
+
+*Reversibility is migrated as explicit headline exports:*
+
+* `mul_roundtrip` — `mul_inv(a, b, mul_fwd(a,b,c)) == c` (Bennett ancilla:
+  `c := c + a*b`, inverse `c := c - a*b`). 729/729.
+* `div_reconstruct` — `q*b + r == a` for *all* `b` including 0 (the source
+  stashes the original `a` into `r` on the divide-by-zero branch, so the
+  identity holds universally). 81/81.
+
+The intentional-flaw educational variants (`Mul.makeInPlace`, `Div.makeSimple`)
+are migrated faithfully as value transforms but carry *no* roundtrip==id claim
+(the source ships them precisely to demonstrate where in-place multiply / simple
+divide break reversibility).
+
+== Two real i32 ABI facts surfaced by this opcode pair
+
+. *JS multiplication is not i32-exact.* `a * b` in JS is exact only below 2^53;
+  for two i32 operands the product can exceed that and lose precision before
+  `| 0`. The parity oracle therefore uses `Math.imul`, which matches wasm
+  `i32.mul` exactly (e.g. `2147483647 * 2147483647 -> 1`). A naive `(a*b)|0`
+  oracle would have produced false mismatches at the domain extremes. This is a
+  new fact beyond wave 1 (which used only `+`/`-`, exact in JS over the domain).
+. *`i32.div_s` / `i32.rem_s` trap where ReScript wraps/guards.* `i32.div_s`
+  TRAPS on `b == 0` and on `INT_MIN / -1`; `i32.rem_s` TRAPS on `b == 0`
+  (but `INT_MIN % -1 == 0`, no trap). ReScript's int `/` truncates through
+  `| 0` so `INT_MIN / -1` wraps to `INT_MIN`, and the source guards `b == 0`
+  explicitly. The `.affine` brain reproduces both guards (nested-`if` form, to
+  stay clear of the unverified `&&` codegen path) so the wasm is a *total*
+  function matching ReScript's observable output — never a trap. The oracle
+  re-derives the original `.res` output independently and the two agree across
+  the full sweep, including every `(x, 0)` and the `(INT_MIN, -1)` pair.
+
+== Gate detail
+
+* *G1 compile* — `main.exe compile VmMulDiv.affine -o VmMulDiv.wasm` → WASM,
+  validates via `WebAssembly.compile`; 11 exports + `memory`.
+* *G2 parity* — `parity.mjs vmmuldiv.config.mjs` → 3322/3322 over the i32
+  domain `{INT_MIN, -1e6, -7, -1, 0, 1, 7, 1e6, INT_MAX}` (Cartesian per arity).
+* *G3 boundary* — n/a. `Mul`/`Div` are numeric transforms with no discrete
+  value↔integer encoding table, so injectivity is not the relevant property;
+  the G2 round-trip against the independent oracle is the faithfulness check
+  (same disposition as wave-1 `VmArith`/`VmBitwise`/`VmAncilla`).
+* *G4 assail* — `assail.mjs VmMulDiv.affine` → 0 findings. The numeric guards
+  return out-of-band-safe values (`0` on divide-by-zero per source; `INT_MIN`
+  on the wrap); there is no enum decoder, so PA-AFF-001 does not apply.
+
+== Remaining in cluster C2
+
+Wave 2b — the memory/control opcodes (Push, Pop, Load, Store, Call, Loop,
+IfPos, IfZero, Recv, Send, CoprocessorCall, InstructionCoprocessor) and the
+structural VM files (State, VM, SubroutineRegistry, VmStateCoprocessor,
+bindings). These need an *array / linear-memory ABI* (`[len:i32 LE][bytes]` +
+`__affine_alloc`), the next real unblocker — it also feeds the string wall.
+That is Opus-level ABI design and is the next C2 task.
