@@ -191,7 +191,8 @@ const __as_walkRecursive = (root) => {
 };
 const __as_regexMatch = (s, pat) => new RegExp(pat).test(String(s));
 const __as_wasmInstance = (bytes) =>
-  new WebAssembly.Instance(new WebAssembly.Module(bytes)).exports;
+  new WebAssembly.Instance(new WebAssembly.Module(bytes),
+    { wasi_snapshot_preview1: { fd_write: () => 0 } }).exports;
 const __as_wasmCall = (exports, name, args) => Number(exports[name](...(args || [])));
 // ---- WasmValue (Deno.affine #455 — Tier 1 #5, Option B) ----
 // Opaque tagged value crossing the AS/JS boundary as `{ kind, v }`.
