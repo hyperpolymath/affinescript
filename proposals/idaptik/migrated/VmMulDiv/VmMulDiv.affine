@@ -1,0 +1,81 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// VmMulDiv -- the reversible integer multiply/divide opcodes of the idaptik VM,
+// the pure-integer core extracted from vm/lib/ocaml/{Mul,Div}.res. Per the
+// brain/senses split (DESIGN-VISION), the register-name strings and the state
+// dict live host-side; the brain is the reversible VALUE transform each opcode
+// performs, as scalar-int functions. "The integer IS the register."
+//
+// Reversibility is the defining invariant of this VM, but MUL and DIV are NOT
+// reversible in place -- multiply-by-zero and integer division both erase
+// information (Landauer). The source therefore uses Bennett's ancilla trick:
+//   * MUL.make accumulates the product into a THIRD register: c := c + a*b,
+//     inverse c := c - a*b -- reversible as long as a,b are untouched.
+//   * DIV.make keeps BOTH quotient and remainder (q = a/b, r = a mod b), so the
+//     dividend is reconstructable: a == q*b + r (true even for b == 0, since the
+//     source stashes the original a into r on the divide-by-zero branch).
+// The educational in-place / simple variants (intentionally NOT reversible) are
+// migrated faithfully as value transforms, but carry no roundtrip==id claim.
+//
+//## Two wasm i32 hazards the ReScript source does not share (guarded here)
+//   i32.div_s TRAPS on b == 0 and on INT_MIN / -1; i32.rem_s TRAPS on b == 0.
+//   ReScript wraps INT_MIN / -1 to INT_MIN (its `/` truncates through `| 0`) and
+//   the source guards b == 0 explicitly. We reproduce both guards so the wasm is
+//   a TOTAL function matching ReScript's observable output -- never a trap.
+//   (Separately, JS `a*b` loses precision above 2^53, so the parity oracle uses
+//   Math.imul to stay i32-exact against i32.mul -- see vmmuldiv.config.mjs.)
+
+// --- MUL.make: ancilla multiply, a reversible inverse-pair on the c register ---
+// execute  c := c + a*b      invert  c := c - a*b
+pub fn mul_fwd(a: Int, b: Int, c: Int) -> Int { c + a * b }
+pub fn mul_inv(a: Int, b: Int, c: Int) -> Int { c - a * b }
+// reversibility headline: invert undoes execute (oracle = identity on c).
+// Holds over i32 wraparound: (c + a*b) - a*b == c even when a*b overflows.
+pub fn mul_roundtrip(a: Int, b: Int, c: Int) -> Int { mul_inv(a, b, mul_fwd(a, b, c)) }  // == c
+
+// --- DIV.make: quotient + remainder, reconstructable dividend ---
+// Quotient. b == 0 guard mirrors the source (q := 0). The INT_MIN/-1 guard
+// returns ReScript's wrapped value and avoids the i32.div_s trap.
+fn div_q_guarded(a: Int, b: Int) -> Int {
+  if b == 0 { return 0; }
+  if a == -2147483648 {
+    if b == -1 { return -2147483648; }
+  }
+  a / b
+}
+pub fn div_q(a: Int, b: Int) -> Int { div_q_guarded(a, b) }
+// Remainder. b == 0 stores the original a (the source's divide-by-zero branch).
+// i32.rem_s(INT_MIN, -1) == 0 in wasm, matching ReScript's 0 -- no guard needed.
+pub fn div_r(a: Int, b: Int) -> Int {
+  if b == 0 { return a; }
+  a % b
+}
+// reversibility headline: a == q*b + r -- the whole reason DIV keeps r.
+// Holds for ALL b (b == 0: q=0, r=a, so 0*0 + a == a).
+pub fn div_reconstruct(a: Int, b: Int) -> Int { div_q(a, b) * b + div_r(a, b) }  // == a
+
+// --- MUL.makeInPlace: a := a*b (execute), a := a/b (invert) -- INTENTIONAL FLAW
+// The source ships this to demonstrate why in-place multiply breaks
+// reversibility (b == 0 erases the product; a*b can overflow). We migrate the
+// value transforms faithfully; NO roundtrip == id is claimed for them.
+pub fn mul_inplace_fwd(a: Int, b: Int) -> Int { a * b }
+pub fn mul_inplace_inv(a: Int, b: Int) -> Int {
+  if b == 0 { return a; }            // source leaves a unchanged when b == 0
+  if a == -2147483648 {
+    if b == -1 { return -2147483648; }
+  }
+  a / b
+}
+
+// --- DIV.makeSimple: q := a/b (execute; q unchanged if b == 0), q := 0 (invert)
+// execute reads the prior quotient register so the b == 0 no-write branch is a
+// faithful identity on it.
+pub fn div_simple_q(a: Int, b: Int, q_prev: Int) -> Int {
+  if b == 0 { return q_prev; }       // source performs no write when b == 0
+  if a == -2147483648 {
+    if b == -1 { return -2147483648; }
+  }
+  a / b
+}
+// invert clears the quotient ancilla unconditionally.
+pub fn div_simple_invert() -> Int { 0 }
