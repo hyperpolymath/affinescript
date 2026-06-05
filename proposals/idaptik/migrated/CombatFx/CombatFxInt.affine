@@ -1,0 +1,25 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+//
+// CombatFxInt -- Integer-input parity subset of CombatFx.affine.
+// For flash_cycle, flash_on_phase, flash_is_even_cycle: timer and period are
+// passed as whole-number integers. The division timer/period is integer division
+// which equals floor(timer/period) for non-negative integers, matching the
+// Float-based floor_pos logic for these test inputs.
+
+pub fn flash_cycle_int(timer: Int, period: Int) -> Int {
+  timer / period
+}
+
+pub fn flash_on_phase_int(timer: Int, period: Int, on_frac: Int) -> Int {
+  let cycles = timer / period;
+  let remainder = timer - cycles * period;
+  if remainder < on_frac { return 1; }
+  0
+}
+
+pub fn flash_is_even_cycle_int(timer: Int, period: Int) -> Int {
+  let cycle = timer / period;
+  if cycle % 2 == 0 { return 1; }
+  0
+}

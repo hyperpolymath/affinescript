@@ -1,0 +1,166 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Joshua B. Jewell and Jonathan D.A. Jewell
+//
+// CovertLink -- the pure link-state/threshold/bandwidth kernel re-decomposed
+// from src/app/devices/CovertLink.res. The ReScript original is a mutable record
+// (id, endpoints, connectionType, state, stats, ttl, timeRemaining, a clutch of
+// bool flags) plus a Registry dict, all entangled with string IDs, discovery
+// hints, terminal formatting and per-frame effects. Per the DESIGN-VISION ("the
+// brain is AffineScript, the senses are JS; only primitives cross the wasm
+// boundary"), the mutable record and the dict are NOT the unit of migration.
+// What crosses is the numeric/enum core: the connection-type stats table, the
+// state-to-colour map, the IDS-visibility predicate, the constant covert
+// latency, and the TTL relaxation arithmetic. The host keeps the record, the
+// Registry dict, the string IDs/hints, every formatting routine and every
+// effect (discover/activate/cut mutate the host's own state variant).
+//
+//## Why a stateless split, not a model in linear memory
+// Every value the kernel returns is a pure function of an enum ordinal or of
+// (remaining, dt). defaultStats and stateToColor are constant lookups keyed by
+// the variant ordinal; isMonitored is a constant predicate over the same
+// ordinal; getLatencyTicks is a literal. The only time-varying piece is the TTL
+// countdown, and update's `newRemaining = remaining -. deltaSeconds` depends on
+// nothing but the single remaining field the host already holds and passes back
+// each frame. No accumulated history exists, so the cheaper stateless shape fits
+// exactly, as PlayerHP and NetworkTransfer do with their host-held scalars.
+//
+//## What stays on the JS side (the senses, not the brain)
+// The connectionType / discoveryMethod / connectionState variants carry no
+// payload the arithmetic needs; only the variant TAG matters, so the host passes
+// a small Int ordinal and keeps the variants themselves. The id/endpoint/hint
+// strings, the activationItems array, the Registry dict, connectionTypeName /
+// discoveryMethodName / stateToString / portName / formatInfo / formatShort /
+// formatOverlay (all string work), and connects / hasEndpoint / otherEndpoint
+// (string equality the host runs directly) all remain host-side. discover /
+// activate / cut are single host-state writes guarded by a state check; the host
+// performs them, consulting ttl_expired only to learn whether a frame's decay
+// drove the link Dead.
+//
+//## Boundary contract (the header the JS host relies on)
+// Stats and the colour cross as Int (they are integer-valued); the TTL values
+// cross as f64 (proven to marshal both ways without truncation; cf.
+// migration/bindings/NetworkTransfer.wasm). The connection-type tag and the
+// state tag are small Ints. No strings, dicts, options or effects cross.
+//   type_bandwidth(ct: Int) -> Int   1..5, the defaultStats bandwidth column
+//   type_latency(ct: Int)   -> Int   1..5, the defaultStats latency column
+//   type_stealth(ct: Int)   -> Int   1..5, the defaultStats stealth column
+//   type_durability(ct: Int)-> Int   1..5, the defaultStats durability column
+//       ct is the connectionType ordinal 0..6:
+//         0 DarkFibre  1 LegacyTrunk  2 OOBManagement  3 WirelessBridge
+//         4 CrossConnect  5 MaintenanceVLAN  6 ImprovisedLink
+//       An out-of-band ct clamps to 0 for every column (an unknown substrate
+//       contributes nothing), defending a malformed host call.
+//   is_monitored(ct: Int) -> Int   1 when traffic is IDS/RF-visible, else 0.
+//       WirelessBridge (3) and MaintenanceVLAN (5) are monitored; all other
+//       canonical types, and any out-of-band ct, are stealthy (0).
+//   state_color(st: Int) -> Int   the stateToColor swatch as a packed 0xRRGGBB.
+//         0 Unknown 0x444444  1 Discovered 0xFFAA00  2 Active 0x00FF88
+//         3 Dead 0xFF2222 ; out-of-band -> Unknown's 0x444444.
+//   latency_ticks() -> Int   the constant 1: a covert link is always one tick.
+//   ttl_step(remaining: Float, dt: Float) -> Float
+//       max(0.0, remaining -. dt): the update countdown, floored at zero so the
+//       Dead-frame pins timeRemaining at 0.0 exactly as the ReScript does.
+//   ttl_expired(remaining: Float, dt: Float) -> Int
+//       1 when remaining -. dt <= 0.0 (the frame that drives the link Dead),
+//       else 0. The host reads this to apply its Active -> Dead state write.
+
+//## Connection-type stats table (defaultStats), one column per export
+// The defaultStats switch decomposed into four ordinal-keyed lookups. Each is a
+// guarded decode in the variant's declaration order; an out-of-band ordinal
+// falls through to 0, the defended clamp.
+pub fn type_bandwidth(ct: Int) -> Int {
+  if ct == 0 { return 5; }
+  if ct == 1 { return 4; }
+  if ct == 2 { return 2; }
+  if ct == 3 { return 3; }
+  if ct == 4 { return 4; }
+  if ct == 5 { return 3; }
+  if ct == 6 { return 1; }
+  0
+}
+
+pub fn type_latency(ct: Int) -> Int {
+  if ct == 0 { return 5; }
+  if ct == 1 { return 4; }
+  if ct == 2 { return 3; }
+  if ct == 3 { return 2; }
+  if ct == 4 { return 4; }
+  if ct == 5 { return 3; }
+  if ct == 6 { return 1; }
+  0
+}
+
+pub fn type_stealth(ct: Int) -> Int {
+  if ct == 0 { return 5; }
+  if ct == 1 { return 3; }
+  if ct == 2 { return 4; }
+  if ct == 3 { return 1; }
+  if ct == 4 { return 3; }
+  if ct == 5 { return 2; }
+  if ct == 6 { return 3; }
+  0
+}
+
+pub fn type_durability(ct: Int) -> Int {
+  if ct == 0 { return 5; }
+  if ct == 1 { return 2; }
+  if ct == 2 { return 4; }
+  if ct == 3 { return 3; }
+  if ct == 4 { return 3; }
+  if ct == 5 { return 5; }
+  if ct == 6 { return 1; }
+  0
+}
+
+//## IDS/RF visibility predicate (isMonitored)
+// The isMonitored switch: WirelessBridge is RF-detectable, MaintenanceVLAN may
+// carry vendor telemetry; every other canonical type is stealthy. An out-of-band
+// ordinal is treated as stealthy (0), matching the conservative defended clamp.
+pub fn is_monitored(ct: Int) -> Int {
+  if ct == 3 { return 1; }
+  if ct == 5 { return 1; }
+  0
+}
+
+//## State-to-colour swatch (stateToColor)
+// The stateToColor switch as a guarded decode returning the packed 0xRRGGBB int
+// the overlay tints with. An out-of-band state falls through to Unknown's dark
+// grey, the safe default for an unrecognised lifecycle value.
+pub fn state_color(st: Int) -> Int {
+  if st == 0 { return 0x444444; }
+  if st == 1 { return 0xFFAA00; }
+  if st == 2 { return 0x00FF88; }
+  if st == 3 { return 0xFF2222; }
+  0x444444
+}
+
+//## Constant covert latency (getLatencyTicks)
+// Normal routing costs one tick per hop; a covert link always costs exactly one,
+// regardless of the connection it tunnels. The literal lifts verbatim.
+pub fn latency_ticks() -> Int {
+  1
+}
+
+//## TTL countdown, floored at zero (update)
+// update's `newRemaining = remaining -. deltaSeconds`, then the Dead branch pins
+// timeRemaining at 0.0. max(0.0, remaining - dt) collapses both arms: it yields
+// the live remaining while positive and exactly 0.0 once spent, matching the
+// ReScript's Some(0.0) on expiry. Guard style (no max_float builtin available).
+// Compiler note: `next < 0.0` triggers the float-literal wasm bug; `zero` is
+// passed as a Float parameter (host passes 0) so the comparison is var-to-var.
+pub fn ttl_step(remaining: Float, dt: Float, zero: Float) -> Float {
+  let next = remaining - dt;
+  if next < zero { zero } else { next }
+}
+
+//## TTL expiry predicate (update's Dead transition)
+// update flips the state to Dead when `newRemaining <= 0.0`. The host owns the
+// state variant, so the kernel returns the boolean as a 1/0 Int for the host to
+// branch on, reproducing the `<= 0.0` comparison exactly (an exact-zero frame
+// counts as expired, as in the ReScript).
+// Compiler note: `remaining - dt <= 0.0` fails wasm validation (f64.const as i32
+// operand bug); rewritten as `dt >= remaining` which is logically identical and
+// uses only variable-to-variable comparison.
+pub fn ttl_expired(remaining: Float, dt: Float) -> Int {
+  if dt >= remaining { 1 } else { 0 }
+}

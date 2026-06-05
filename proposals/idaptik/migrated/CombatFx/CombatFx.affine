@@ -1,0 +1,166 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+//
+// CombatFx -- the render-decision co-processor for the combat FX scattered
+// across the player, combat and training subsystems. Extracted from
+// src/app/combat/CombatFxLogicCoprocessor.res (the wasm binding shim) whose
+// upstream implementation lives in the original combatfxlogic.wasm.
+//
+// Per the DESIGN-VISION ("AffineScript is the brain, Pixi the senses; only
+// primitives cross the wasm boundary"), every AnimatedSprite.setTint,
+// Container.setAlpha, Text.make, Motion.animate and hex palette entry stays in
+// ReScript. This co-processor owns only the scalar arithmetic that decides WHAT
+// the FX should be this frame; the host feeds each result straight to a draw
+// call, so the observable picture is identical while the decision now lives in
+// wasm.
+//
+//## Compiler note: no trunc/float built-ins in wasm codegen
+// `trunc(x)` and `float(n)` resolve at the type-checking stage but are absent
+// from the wasm code-generator. Both are replaced by proved loop idioms from
+// the estate playbook:
+//   floor_pos(x)      -- counts how many whole 1.0s fit below x (non-negative x)
+//   int_to_float_s(n) -- counts up from 0.0 n times (small non-negative n)
+// These lower correctly via i32/f64 Wasm instructions.
+//
+//## Boundary contract (the header the JS host relies on)
+//   flash_cycle(timer, period) -> Int
+//       floor(timer / period): shared cycle index for both flash routines.
+//   flash_on_phase(timer, period, on_frac) -> Int
+//       1 while within the on-window of the current cycle, else 0.
+//       Host passes period=0.2, on_frac=0.1 to match PlayerSprite exactly.
+//   flash_alpha_phase(timer, period) -> Float
+//       1.0 on even cycle, 0.3 on odd; host passes period=0.1 (PlayerGraphics).
+//   flash_alpha_phase_v(timer, period, hi, lo) -> Float
+//       As flash_alpha_phase but with host-supplied hi/lo alpha values.
+//   flash_is_even_cycle(timer, period) -> Int
+//       1 when cycle index is even, 0 when odd.
+//   flash_advance(timer, dt) -> Float
+//       timer + dt: per-frame accumulation while invincibility is active.
+//   flash_reset() -> Float
+//       0.0: timer reset when invincibility expires.
+//   floattext_start_y(y, off) -> Float
+//       y - off: spawn Y for damage/pickup floating text (off = 40.0).
+//   floattext_end_y(y, rise) -> Float
+//       y - rise: rise/fade target Y (rise = 100.0).
+//   floattext_rise_distance(start_off, rise) -> Float
+//       rise - start_off: total vertical travel independent of y (= 60.0 default).
+//   knockback_pop_y(speed) -> Float
+//       0.0 - speed: upward pop magnitude; up is negative Y; host passes 80.0.
+
+//## floor_pos: non-negative float -> integer floor
+// Counts how many whole 1.0s fit below x.  Used instead of trunc() which is
+// absent from the wasm code-generator.  For the timer/period quotients here
+// (order of magnitude 0..~500) the loop completes in microseconds.
+fn floor_pos(x: Float) -> Int {
+  let mut n = 0;
+  let mut acc = 0.0;
+  while acc + 1.0 <= x { acc = acc + 1.0; n = n + 1; }
+  n
+}
+
+//## int_to_float_s: small non-negative Int -> Float
+// Counts from 0.0 up to n.  Used instead of float() which is absent from the
+// wasm code-generator.  For the cycle indices here (order of magnitude 0..~500)
+// the loop completes in microseconds.
+fn int_to_float_s(n: Int) -> Float {
+  let mut f = 0.0;
+  let mut i = 0;
+  while i < n { f = f + 1.0; i = i + 1; }
+  f
+}
+
+//## PlayerSprite / PlayerGraphics -- shared flash cycle index
+// Both flash routines compute floor(timer / period): PlayerSprite uses period=0.2
+// (the full red-tint cycle), PlayerGraphics uses period=0.1 (the alpha cycle).
+// This kernel is the shared implementation; the host chooses the period.
+pub fn flash_cycle(timer: Float, period: Float) -> Int {
+  floor_pos(timer / period)
+}
+
+//## PlayerSprite.updateDamageFlash -- red-tint on/off phase
+// remainder = timer - floor(timer/period) * period; on when remainder < on_frac.
+// Reconstructed without a float modulo (unsupported for variables in this backend)
+// using floor_pos + int_to_float_s. The host passes period=0.2, on_frac=0.1 to
+// match PlayerSprite exactly (first half of each 0.2 s cycle is the on-window).
+pub fn flash_on_phase(timer: Float, period: Float, on_frac: Float) -> Int {
+  let cycles = floor_pos(timer / period);
+  let remainder = timer - int_to_float_s(cycles) * period;
+  if remainder < on_frac { return 1; }
+  0
+}
+
+//## PlayerGraphics.updateDamageFlash -- container-alpha flicker (cycle parity)
+// alpha = (floor(timer / period) mod 2 == 0) ? 1.0 : 0.3.
+// Returns the f64 alpha directly so the host hands it straight to Container.setAlpha.
+// The host passes period=0.1 to match PlayerGraphics exactly.
+pub fn flash_alpha_phase(timer: Float, period: Float) -> Float {
+  let cycle = floor_pos(timer / period);
+  if cycle % 2 == 0 { return 1.0; }
+  0.3
+}
+
+//## PlayerGraphics.updateDamageFlash -- alpha flicker, host-supplied magnitudes
+// As flash_alpha_phase but with the two alpha values passed by the host, in case
+// a render branch wants different on/off opacities while keeping the same parity
+// decision. hi on even cycles, lo on odd.
+pub fn flash_alpha_phase_v(timer: Float, period: Float, hi: Float, lo: Float) -> Float {
+  let cycle = floor_pos(timer / period);
+  if cycle % 2 == 0 { return hi; }
+  lo
+}
+
+//## PlayerGraphics.updateDamageFlash -- the parity flag alone
+// The discrete even/odd decision behind the alpha choice, returned as an Int flag
+// for hosts that own both alpha magnitudes and only need the selector.
+pub fn flash_is_even_cycle(timer: Float, period: Float) -> Int {
+  let cycle = floor_pos(timer / period);
+  if cycle % 2 == 0 { return 1; }
+  0
+}
+
+//## PlayerSprite / PlayerGraphics -- effect-lifetime timer accumulation
+// While the invincibility timer is positive both routines accumulate
+// damageFlashTimer += deltaTime each frame; this kernel is that step. The host
+// owns the > 0.0 guard and the mutable field; the brain owns the addition.
+pub fn flash_advance(timer: Float, dt: Float) -> Float {
+  timer + dt
+}
+
+//## PlayerSprite / PlayerGraphics -- flash-timer reset
+// When the invincibility timer reaches zero both routines reset damageFlashTimer
+// to 0.0 (and the host restores the base tint / full alpha). The value is a
+// constant, lifted so the reset point is the same total kernel as the advance.
+pub fn flash_reset() -> Float {
+  0.0
+}
+
+//## ScavengerTraining.showFloatingText -- spawn Y
+// The floating damage/pickup text is created at y - 40.0 (Text.setY(floatText,
+// y - 40.0)). Generalised over the spawn offset; the host passes 40.0.
+pub fn floattext_start_y(y: Float, off: Float) -> Float {
+  y - off
+}
+
+//## ScavengerTraining.showFloatingText -- rise/fade target Y
+// Motion.animate drives the text to y - 100.0 with alpha 0.0 over 1.5 s. This is
+// the target Y of that tween; generalised over the rise, the host passes 100.0.
+pub fn floattext_end_y(y: Float, rise: Float) -> Float {
+  y - rise
+}
+
+//## ScavengerTraining.showFloatingText -- total vertical travel
+// The distance the text drifts upward over its lifetime: (y - start_off) minus
+// (y - rise) = rise - start_off. Independent of y, so the host can size the tween
+// or a pooled effect without re-deriving it. With 40.0 / 100.0 this is 60.0.
+pub fn floattext_rise_distance(start_off: Float, rise: Float) -> Float {
+  rise - start_off
+}
+
+//## PlayerHP.takeDamage -- upward knockback pop
+// On taking a hit the player gets a slight upward pop alongside the signed
+// horizontal knockback (already migrated in PlayerHp). The original
+// hard-codes knockbackVelY = -80.0; lifted as the negation of a host-supplied
+// speed so the FX co-processor owns the sign convention (up is negative Y).
+pub fn knockback_pop_y(speed: Float) -> Float {
+  0.0 - speed
+}

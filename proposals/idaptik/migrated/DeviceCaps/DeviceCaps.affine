@@ -1,0 +1,62 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+//
+// DeviceCaps -- the device-type colour table and security-level colour table,
+// the pure-integer lookup cores extracted from
+// src/app/devices/types/DeviceTypes.res (getDeviceColor, getSecurityColor). Per
+// the DESIGN-VISION ("AffineScript is the brain, JS/Pixi the senses; only
+// primitives cross the wasm boundary"), the JS host keeps the deviceType and
+// securityLevel variants and all strings; AffineScript owns only the integer
+// colour code that each variant ordinal maps to.
+//
+// The DeviceType kernel (already staged at DeviceType/) owns the taxonomy
+// validity predicate and sentinel. DeviceCaps is a DISTINCT kernel: it owns the
+// colour assignments, which are idaptik game-specific and separate from the
+// eight-constructor taxonomy in DeviceTypes.res (not the twelve-constructor
+// shared/src/DeviceType.res). DeviceCaps does NOT re-define the encoding; it
+// takes the ordinal as given and returns a packed 0xRRGGBB colour integer.
+//
+//## Device-type colour table (getDeviceColor, DeviceTypes.res)
+// The idaptik game uses 8 device types. Ordinal mirrors the declaration order in
+// DeviceTypes.res (switch constructor order):
+//   0 Laptop       0x2196F3  (Blue)
+//   1 Router       0xFF9800  (Orange)
+//   2 Server       0x9C27B0  (Purple)
+//   3 IotCamera    0xF44336  (Red)
+//   4 Terminal     0x4CAF50  (Green)
+//   5 PowerStation 0xFFEB3B  (Yellow)
+//   6 UPS          0x795548  (Brown)
+//   7 Firewall     0xE53935  (Dark Red)
+// An out-of-band ordinal returns 0x888888 (neutral grey) — a declared sentinel,
+// not an in-band colour, so no collision with any defined type.
+//
+//## Security-level colour table (getSecurityColor, DeviceTypes.res)
+// The four security levels encoded as 0..3 (Open/Weak/Medium/Strong), same
+// ordinal as SecurityRank:
+//   0 Open    0x00ff00  (Green  — unrestricted)
+//   1 Weak    0xffff00  (Yellow — notice)
+//   2 Medium  0xff9800  (Orange — caution)
+//   3 Strong  0xff0000  (Red    — locked)
+// An out-of-band ordinal returns 0x888888 (neutral grey) — same sentinel.
+
+//## Device-type colour lookup (getDeviceColor)
+pub fn device_color(dt: Int) -> Int {
+  if dt == 0 { return 0x2196F3; }
+  if dt == 1 { return 0xFF9800; }
+  if dt == 2 { return 0x9C27B0; }
+  if dt == 3 { return 0xF44336; }
+  if dt == 4 { return 0x4CAF50; }
+  if dt == 5 { return 0xFFEB3B; }
+  if dt == 6 { return 0x795548; }
+  if dt == 7 { return 0xE53935; }
+  0x888888
+}
+
+//## Security-level colour lookup (getSecurityColor)
+pub fn security_color(level: Int) -> Int {
+  if level == 0 { return 0x00ff00; }
+  if level == 1 { return 0xffff00; }
+  if level == 2 { return 0xff9800; }
+  if level == 3 { return 0xff0000; }
+  0x888888
+}

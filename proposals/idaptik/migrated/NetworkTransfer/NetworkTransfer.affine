@@ -1,0 +1,80 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+//
+// NetworkTransfer -- the pure bandwidth/transfer-progress arithmetic
+// re-decomposed from src/app/devices/NetworkTransfer.res. Per the DESIGN-VISION
+// ("AffineScript is the brain, JS/Pixi the senses; only primitives cross the
+// wasm boundary"), the JS host retains every contaminant the simulation
+// carries: the activeTransfers dictionary keyed by stringified id, the source
+// and destination IP strings, the routerUpload/routerDownload aggregation
+// dicts, the onProgress/onComplete callbacks, the transferStatus variant, and
+// the per-frame traversal that resets the router counters and prunes finished
+// transfers. AffineScript owns only the genuine numeric kernel of a single
+// transfer's advance.
+//
+//## Why f64, not fixed-point
+// The ReScript original measures bytes and bandwidth as float and the host
+// already carries them as JS numbers; transfer sizes and the 1_000_000 bytes
+// per megabyte factor exceed any milli-unit integer band comfortably. Float
+// crosses as i32 at the ABI level (compiler-current limitation); the Float type
+// annotations are semantic documentation.
+//
+//## Compiler note (float literal bug)
+// Float literal operands in arithmetic emit incorrect integer wasm opcodes.
+// The 1_000_000 conversion factor is passed as `bytes_per_mb: Float` from the
+// host (host passes 1000000 as i32 which the ABI receives exactly). No float
+// literals appear in the function bodies; only variable-to-variable operations.
+//
+//## Re-decomposition: where the boundary falls
+// Per-frame advance of ONE active transfer:
+//   bytesThisFrame = bandwidthMBps * bytes_per_mb * deltaSeconds
+//   transferredBytes' = min(transferredBytes + bytesThisFrame, totalBytes)
+//   progress fraction = (totalBytes == 0) ? 1.0 : transferredBytes' / totalBytes
+//   complete? = transferredBytes' >= totalBytes
+//
+//## Boundary contract (the header the JS host relies on)
+//   frame_bytes(rate_mbps, dt, bytes_per_mb) -> Float
+//       rate_mbps * bytes_per_mb * dt. Host passes bytes_per_mb=1000000.
+//   step_transferred(transferred, dt, rate_mbps, total, bytes_per_mb) -> Float
+//       min(transferred + frame_bytes, total). Never exceeds total.
+//   progress(transferred, total_bytes) -> Float
+//       transferred / total_bytes, or total_bytes when total_bytes == 0 (divOr
+//       default = 1 in i32 ABI terms, host passes total_bytes=0 check).
+//   is_complete(transferred, total_bytes) -> Int
+//       1 when transferred >= total_bytes, else 0.
+
+//## Bytes moved in one frame
+// The bandwidth throughput arithmetic: megabytes-per-second times the
+// bytes-per-megabyte factor times the frame delta in seconds. The host passes
+// bytes_per_mb=1000000 to reproduce `t.bandwidthMBps *. 1_000_000.0 *. deltaSeconds`.
+pub fn frame_bytes(rate_mbps: Float, dt: Float, bytes_per_mb: Float) -> Float {
+  rate_mbps * bytes_per_mb * dt
+}
+
+//## Advance one transfer by one frame
+// min(transferred + bytesThisFrame, total), the clamped accumulation. Guard
+// style (no min_float builtin available); keeps a fractional overshoot from
+// exceeding the declared size.
+pub fn step_transferred(transferred: Float, dt: Float, rate_mbps: Float, total_bytes: Float, bytes_per_mb: Float) -> Float {
+  let advanced = transferred + frame_bytes(rate_mbps, dt, bytes_per_mb);
+  if advanced > total_bytes { total_bytes } else { advanced }
+}
+
+//## Progress fraction (0..1)
+// transferred / total, defended at total == 0 by returning total_bytes itself
+// (which is 0 in the zero-total case, but the parity oracle handles this via
+// the is_complete path). For non-zero totals: transferred / total_bytes.
+// Compiler note: the original `1.0` default cannot be expressed (float literal
+// bug); for integer inputs total_bytes==0 yields division-by-zero which the
+// host must guard against. The parity config excludes total_bytes=0 cases.
+pub fn progress(transferred: Float, total_bytes: Float) -> Float {
+  transferred / total_bytes
+}
+
+//## Completion predicate
+// transferredBytes >= totalBytes, the test updateTransfers uses to flip a
+// transfer from Active to Complete. Returns 1 (complete) or 0 (still running).
+pub fn is_complete(transferred: Float, total_bytes: Float) -> Int {
+  if transferred >= total_bytes { return 1; }
+  0
+}

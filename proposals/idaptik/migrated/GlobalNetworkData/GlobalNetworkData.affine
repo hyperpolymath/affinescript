@@ -1,0 +1,78 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// GlobalNetworkData -- the content-addressable-storage hash-geometry
+// co-processor, the pure integer core extracted from
+// src/app/devices/GlobalNetworkData.res (hashContent). Per the DESIGN-VISION
+// ("AffineScript is the brain, JS/Pixi the senses; they pass primitives across
+// the wasm boundary"), the JS host keeps the file content string and the
+// string-keyed content registry; AffineScript owns only the arithmetic that
+// decides the shape of a content hash from the content's length.
+//
+// The ReScript original is a %raw JavaScript closure: for content shorter than
+// 100 characters it keys on the full content, otherwise on the length plus the
+// first 50 and last 50 characters. That string assembly (a concatenation of
+// variables) stays on the JS side, which is where the strings live anyway; what
+// crosses the boundary is purely the integer GEOMETRY of the hash -- which
+// branch the length selects, how many leading characters the host slices, and
+// where the trailing slice begins. NO strings, no floats, no effects cross; the
+// integers ARE the slice plan the host then carries out.
+//
+//## Hash-geometry contract (the header the JS host reads)
+//   param/return        meaning                              defended range
+//   len: Int            content.length in characters         negative -> 0
+//   hash_is_short -> Int 1 when len < 100 (full-content key) 0/1 only
+//                        0 when len >= 100 (length+slices key)
+//   hash_head_len -> Int leading chars the host slices,      clamped to 0..50
+//                        i.e. content.slice(0, head_len)
+//   hash_tail_start -> Int index the trailing slice begins   clamped to >= 0
+//                        at, i.e. content.slice(tail_start)
+//
+// On the short branch the host keys on the whole content, so head/tail geometry
+// is moot there; the host consults them only when hash_is_short returns 0. The
+// boundary length constant (100) and the slice width (50) mirror the %raw source
+// exactly. A negative host length (a malformed call) is treated as length zero,
+// yielding the short branch and a zero-width head, so no slice index can ever go
+// out of range.
+
+//## The format-selection threshold and the slice width, as the %raw source has
+//## them. Kept as named values so the geometry reads as one rule, not magic
+//## numbers scattered across the exports.
+fn short_limit() -> Int { 100 }
+fn slice_width() -> Int { 50 }
+
+// Defend a host-supplied length: a negative length is meaningless for a string,
+// so fold it to zero before any geometry is computed.
+fn clamp_len(len: Int) -> Int {
+  if len < 0 { return 0; }
+  len
+}
+
+//## Pure exports (pub fn over Int only)
+
+// Which hash format the length selects: 1 for the short, full-content key (the
+// %raw `len < 100` branch), 0 for the long key built from length plus slices.
+pub fn hash_is_short(len: Int) -> Int {
+  let n = clamp_len(len);
+  if n < short_limit() { return 1; }
+  0
+}
+
+// How many leading characters the host slices for the long key, mirroring
+// content.slice(0, 50). Clamped to 0..50: a content shorter than the slice width
+// yields its whole length, never an over-long slice; a negative length yields 0.
+pub fn hash_head_len(len: Int) -> Int {
+  let n = clamp_len(len);
+  if n < slice_width() { return n; }
+  slice_width()
+}
+
+// Where the trailing slice begins for the long key, mirroring
+// content.slice(-50), which JavaScript resolves to content.slice(len - 50)
+// floored at 0. Clamped to >= 0 so a content shorter than the slice width starts
+// its tail at the beginning rather than at a negative index.
+pub fn hash_tail_start(len: Int) -> Int {
+  let n = clamp_len(len);
+  let start = n - slice_width();
+  if start < 0 { return 0; }
+  start
+}

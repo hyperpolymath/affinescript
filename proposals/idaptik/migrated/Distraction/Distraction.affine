@@ -1,0 +1,92 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+//
+// Distraction (Shape-A) -- the stateless transition-kernel co-processor extracted
+// from src/app/enemies/Distraction.res. The ReScript original is a stateful PBX
+// engine: a mutable pbxState record (a stringly-keyed use-count dict, a cooldown,
+// an array of active distractions, each with its own mutable guardsResponding
+// counter) threaded through call / registerResponder / unregisterResponder /
+// applyDifficultyScaling, all of which mutate in place.
+//
+// Per the DESIGN-VISION ("AffineScript is the brain, JS/Pixi the senses; only
+// primitives cross the wasm boundary") and the Shape-A pattern (the model lives in
+// linear memory is compiler-blocked), the JS HOST owns the state -- the per-item
+// uses dict and each distraction's responder counter -- and this module exposes
+// only PURE, TOTAL, STATELESS transition kernels. Each takes the relevant current
+// scalar field(s) plus the event arguments as Int and RETURNS the new scalar; the
+// host reads the return back and stores it. Nothing richer than i32 crosses, and
+// no state persists between calls.
+//
+//## Boundary contract (the header the JS host reads)
+//   param/return     meaning                              defended range
+//   uses: Int        an item's current remaining uses     <=0 yields unchanged
+//   kind: Int        item-kind selector (see below)       any value tolerated
+//   count: Int       a distraction's responder count      clamped to >= 0
+//   difficulty: Int  0 Tutorial .. 4 Expert               below threshold = identity
+//   base: Int        an item's unscaled base use count    passes through unscaled
+//
+//## Item-kind selector (shared with DifficultyScale, byte-identical rules)
+//   0  pizza         capped to 1 use when difficulty >= 3
+//   1  prank         capped to 1 use when difficulty >= 3
+//   2  maintenance   zeroed     when difficulty >= 4
+//   3  police        zeroed     when difficulty >= 4
+//   4  other (fire)  never scaled; the base count passes through unchanged
+
+//## Item-kind decode
+// One guarded return per canonical value, Other as the fall-through, so an
+// out-of-band selector can never tag an undefined kind.
+enum Kind { Pizza, Prank, Maintenance, Police, Other }
+
+fn kind_of(k: Int) -> Kind {
+  if k == 0 { return Pizza; }
+  if k == 1 { return Prank; }
+  if k == 2 { return Maintenance; }
+  if k == 3 { return Police; }
+  Other
+}
+
+//## use_item -- the per-call use-count decrement (transition kernel)
+// Re-decomposes the decrement at the heart of Distraction.res `call`: a call with
+// `remaining <= 0` returns unchanged (NoUsesLeft), otherwise count - 1. So a use
+// only consumes a charge when one is available, and never drives the count negative.
+pub fn use_item(uses: Int, kind: Int) -> Int {
+  if uses <= 0 {
+    uses
+  } else {
+    uses - 1
+  }
+}
+
+//## register_responder -- a guard joins a distraction (transition kernel)
+// Re-decomposes Distraction.res registerResponder: count + 1.
+pub fn register_responder(count: Int) -> Int {
+  count + 1
+}
+
+//## unregister_responder -- a guard leaves a distraction (transition kernel)
+// Re-decomposes Distraction.res unregisterResponder: max(0, count - 1).
+pub fn unregister_responder(count: Int) -> Int {
+  if count <= 0 {
+    0
+  } else {
+    count - 1
+  }
+}
+
+//## apply_difficulty -- the difficulty-scaling kernel
+// Re-decomposes applyDifficultyScaling. Pizza/prank cap to 1 at difficulty >= 3,
+// maintenance/police zero at difficulty >= 4. Below threshold and for Other, base
+// passes through. Byte-identical to DifficultyScale.scale_use_count.
+fn scale(difficulty: Int, base: Int, k: Kind) -> Int {
+  match k {
+    Pizza => { if difficulty >= 3 { 1 } else { base } },
+    Prank => { if difficulty >= 3 { 1 } else { base } },
+    Maintenance => { if difficulty >= 4 { 0 } else { base } },
+    Police => { if difficulty >= 4 { 0 } else { base } },
+    Other => base
+  }
+}
+
+pub fn apply_difficulty(base: Int, difficulty: Int, kind: Int) -> Int {
+  scale(difficulty, base, kind_of(kind))
+}

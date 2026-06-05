@@ -1,0 +1,93 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+//
+// Detection -- the pure detection-score kernel re-decomposed from
+// src/app/enemies/DetectionSystem.res. The ReScript original is a mutable record
+// (alertScore, decayRate, events array, suppression flag, counters) over which
+// reportDetection and update mutate in place, entangled with string-keyed variants,
+// the HUD enum, AccessibilitySettings effects, and an event-history array.
+//
+// Per the DESIGN-VISION ("the brain is AffineScript, the senses are JS; only
+// primitives cross the wasm boundary"), the mutable record is NOT migrated. What
+// crosses: the per-source weight table, the suppression/calm scaling, the clamped
+// score accumulation, the natural decay, and the discrete level ladder. The host
+// keeps the record, the event array, source-to-string formatting, and every effect.
+//
+// The alert-level thresholding reproduced here so a caller needs only one kernel.
+//
+//## Compiler note: no min_float / max_float built-in in wasm codegen
+// The built-in names `min_float` and `max_float` are not wired in the current wasm
+// codegen. Both are replaced by guard-style inline if/else expressions, which lower
+// correctly via F64 conditional select.
+//
+//## Boundary contract (the header the JS host relies on)
+//   source_weight(tag: Int) -> Float
+//       Raw per-source weight: tag is ordinal 0..12; out-of-band -> 0.0.
+//         0 GuardSight 40   1 GuardHearing 15   2 DogDetection 30
+//         3 DogHearing 10    4 CameraMotion 25    5 CanaryTripped 50
+//         6 PortScanDetected 10  7 CrackFailed 20  8 FirewallBlock 5
+//         9 CovertLinkProbe 8   10 DistractionExpired 0  11 ContactDamage 20
+//        12 ManualAlert 60
+//   effective_weight(tag: Int, suppressed: Float) -> Float
+//       Weight after stealth-tool scaling: * 0.3 when suppressed != 0.
+//   accumulate(score: Float, weight: Float) -> Float
+//       min(120.0, score + weight).
+//   decay(score: Float, rate: Float, dt: Float) -> Float
+//       max(0.0, score - rate * dt).
+//   alert_level(score: Float) -> Int
+//       Discrete level 0..5 (Clear .. Lockdown).
+
+//## Per-source weight table
+pub fn source_weight(tag: Int) -> Float {
+  if tag == 0 { return 40.0; }
+  if tag == 1 { return 15.0; }
+  if tag == 2 { return 30.0; }
+  if tag == 3 { return 10.0; }
+  if tag == 4 { return 25.0; }
+  if tag == 5 { return 50.0; }
+  if tag == 6 { return 10.0; }
+  if tag == 7 { return 20.0; }
+  if tag == 8 { return 5.0; }
+  if tag == 9 { return 8.0; }
+  if tag == 10 { return 0.0; }
+  if tag == 11 { return 20.0; }
+  if tag == 12 { return 60.0; }
+  0.0
+}
+
+//## Suppression-scaled effective weight
+// reportDetection: if suppressionActive { weight *. 0.3 } else { weight }.
+// suppressed is a 1.0/0.0 float flag; non-zero selects the 0.3 stealth scaling.
+pub fn effective_weight(tag: Int, suppressed: Float) -> Float {
+  let w = source_weight(tag);
+  if suppressed == 0.0 {
+    w
+  } else {
+    w * 0.3
+  }
+}
+
+//## Clamped score escalation
+// min(120.0, score + weight). min_float not available: guard-style.
+pub fn accumulate(score: Float, weight: Float) -> Float {
+  let next = score + weight;
+  if next > 120.0 { 120.0 } else { next }
+}
+
+//## Natural decay, floored at zero
+// max(0.0, score - rate*dt). max_float not available: guard-style.
+pub fn decay(score: Float, rate: Float, dt: Float) -> Float {
+  let next = score - rate * dt;
+  if next < 0.0 { 0.0 } else { next }
+}
+
+//## Discrete alert-level ladder
+// getAlertLevel composed with HUD.alertToInt: threshold cascade top-down.
+pub fn alert_level(score: Float) -> Int {
+  if score >= 100.0 { return 5; }
+  if score >= 85.0 { return 4; }
+  if score >= 60.0 { return 3; }
+  if score >= 35.0 { return 2; }
+  if score >= 15.0 { return 1; }
+  0
+}

@@ -192,7 +192,16 @@
       "id": "C6",
       "name": "Combat and enemy AI coprocessors",
       "description": "Game simulation: hitbox geometry, HP, difficulty scaling, detection, distraction \u2014 pure integer state machines.",
-      "status": "TODO",
+      "status": "DONE",
+      "done": {
+        "date": "2026-06-05",
+        "phase": "fan-out wave (C6+C8)",
+        "staged_at": "proposals/idaptik/migrated/",
+        "kernels": ["CombatFx", "Detection", "DifficultyScale", "Distraction", "DualAlert", "HitboxGeom", "PlayerHp", "SecurityAi"],
+        "host_side_no_brain": ["Hitbox.res (geometry consumed by HitboxGeom)", "DualAlertBridge.res (string routing bridge)"],
+        "gates": "8/8 compile; 8185/8185 parity (re-run by parent); 2 echo-boundary LOSSLESS (DualAlert level, SecurityAi phase); 8/8 assail-clean (SecurityAi needed a guard-helper clamp fix at re-verification)",
+        "evidence": "proposals/idaptik/migrated/EVIDENCE-C6.adoc"
+      },
       "files": [
         "src/app/combat/CombatFxLogicCoprocessor.res",
         "src/app/combat/Hitbox.res",
@@ -210,7 +219,12 @@
       "id": "C7",
       "name": "Player coprocessors",
       "description": "Player attribute, loadout, skill and ability coprocessors \u2014 pure integer player state.",
-      "status": "TODO",
+      "status": "IN_PROGRESS",
+      "drafted_unverified": {
+        "date": "2026-06-05",
+        "note": "Agent timed out before writing parity configs/evidence. 8 .affine drafts exist in the working tree but are UNVERIFIED (no config.mjs, no boundary, no assail run) and deliberately NOT committed. Complete the 4 gates over the existing drafts.",
+        "kernels_drafted": ["CriticalRoll", "PlayerAttributes", "QCertifications", "SkillRank", "SkillAbilities", "QPrograms", "JessicaLoadout", "JessicaBackground"]
+      },
       "files": [
         "src/app/player/CriticalRollCoprocessor.res",
         "src/app/player/JessicaBackgroundCoprocessor.res",
@@ -229,7 +243,16 @@
       "id": "C8",
       "name": "Device and network coprocessors",
       "description": "Device state machine coprocessors: power, network transfer, security rank, covert link.",
-      "status": "TODO",
+      "status": "DONE",
+      "done": {
+        "date": "2026-06-05",
+        "phase": "fan-out wave (C6+C8)",
+        "staged_at": "proposals/idaptik/migrated/",
+        "kernels": ["GlobalNetworkData", "NetworkManager", "SecurityRank", "DeviceCaps", "LaptopState", "NetworkTransfer", "PowerManager", "CovertLink"],
+        "host_side_no_brain": ["DeviceFactory.res (registry/factory glue)", "PowerStationDevice.res (device wrapper)"],
+        "gates": "8/8 compile; 26095/26095 parity (re-run by parent); 5 echo-boundary LOSSLESS (security-level, device-type/security-colour ordinals, covert-link type/state); 8/8 assail-clean (NetworkManager + SecurityRank needed a guard-helper clamp fix at re-verification)",
+        "evidence": "proposals/idaptik/migrated/EVIDENCE-C8.adoc"
+      },
       "files": [
         "src/app/devices/CovertLinkCoprocessor.res",
         "src/app/devices/DeviceFactory.res",

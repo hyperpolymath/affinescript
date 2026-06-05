@@ -1,0 +1,56 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+//
+// DifficultyScale -- the distraction-item difficulty-scaling co-processor,
+// extracted as a pure-integer kernel from src/app/enemies/Distraction.res
+// (applyDifficultyScaling). On harder difficulties a distraction's per-item use
+// count is curtailed; the original mutates a string-keyed Dict in place, but the
+// arithmetic at its heart is purely integer, so we lift that core across the
+// wasm boundary and leave the Dict bookkeeping on the JS side.
+//
+// The JS host already knows each item's base use count and its kind; it asks the
+// co-processor for the adjusted count given the current difficulty. NO strings
+// cross the boundary (item kinds are passed as an Int selector); integer-only.
+//
+//## Difficulty ladder (the header contract for the JS host)
+// difficulty  0=Tutorial  1=Easy  2=Normal  3=Hard  4=Expert
+//
+//## Item-kind selector (the second contract for the JS host)
+//   0  pizza         capped to 1 use when difficulty >= 3
+//   1  prank         capped to 1 use when difficulty >= 3
+//   2  maintenance   zeroed     when difficulty >= 4
+//   3  police        zeroed     when difficulty >= 4
+//   4  other         never scaled; the base count passes through unchanged
+//
+// The source applies its rules unconditionally (Dict.set), overwriting whatever
+// base value was present, so for an affected kind the result does NOT depend on
+// base_uses once the threshold is met. An unknown kind passes base_uses through.
+
+enum Kind { Pizza, Prank, Maintenance, Police, Other }
+
+fn kind_of(k: Int) -> Kind {
+  if k == 0 { return Pizza; }
+  if k == 1 { return Prank; }
+  if k == 2 { return Maintenance; }
+  if k == 3 { return Police; }
+  Other
+}
+
+// The pure scaling kernel. Mirrors the two guarded Dict.set blocks of
+// applyDifficultyScaling: pizza/prank cap at difficulty >= 3, maintenance/police
+// zeroed at difficulty >= 4, every other case leaving base_uses untouched.
+fn scale(difficulty: Int, base_uses: Int, k: Kind) -> Int {
+  match k {
+    Pizza => { if difficulty >= 3 { 1 } else { base_uses } },
+    Prank => { if difficulty >= 3 { 1 } else { base_uses } },
+    Maintenance => { if difficulty >= 4 { 0 } else { base_uses } },
+    Police => { if difficulty >= 4 { 0 } else { base_uses } },
+    Other => base_uses
+  }
+}
+
+// The co-processor entry point. Return the difficulty-adjusted use count for an
+// item of the given kind whose unscaled base count is base_uses.
+pub fn scale_use_count(difficulty: Int, base_uses: Int, item_kind: Int) -> Int {
+  scale(difficulty, base_uses, kind_of(item_kind))
+}

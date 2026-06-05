@@ -1,0 +1,374 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// NetworkManager -- the pure routing/reachability arithmetic core of
+// src/app/devices/NetworkManager.res and its access-control dependency
+// src/app/devices/NetworkZones.res. Per the DESIGN-VISION ("AffineScript is the
+// brain, JS/Pixi the senses; only primitives cross the wasm boundary") the JS
+// host keeps the device Dict, the DNS record tables, every IP string, every
+// hostname, and the device getInfo()/service effects; the brain owns only the
+// integer predicates the routing decision reduces to.
+//
+// The genuine logic lifted here is the zone-access graph and the subnet and
+// address arithmetic. NetworkZones models sixteen fixed zones whose mutual
+// reachability is a static graph plus an ISP-tier routing rule; in ReScript that
+// is an array<networkZone> searched by string id with Array.some over a
+// canAccessZones string array. We re-decompose each zone to a stable ordinal
+// 0..15 and the canAccessZones adjacency to integer membership tests, so
+// canZoneAccessZone, canRouteViaISP and canIpAccessIp become pure ordinal
+// kernels rather than string-array traversals. The host owns the one residual
+// string concern: mapping an IP string to its zone ordinal by subnet-prefix
+// match (getZoneByIp), which is variable string startsWith and stays host-side.
+//
+//## Zone ordinal encoding (the header contract for the JS host)
+// The ordinal mirrors the index of each zone in NetworkZones.allZones, in source
+// order. The host computes the ordinal by prefix-matching the IP against the
+// zone subnets exactly as getZoneByIp does, then passes the ordinal here.
+//   ord  zone id              subnet
+//    0   downtown-lan         192.168.1.
+//    1   rural-lan            192.168.2.
+//    2   downtown-dmz         10.0.0.
+//    3   downtown-internal    10.0.1.
+//    4   downtown-dev         10.0.2.
+//    5   downtown-security    10.0.3.
+//    6   downtown-iot         192.168.100.
+//    7   downtown-mgmt        172.16.0.
+//    8   downtown-scada       10.10.1.
+//    9   isp-tier3-rural      100.64.1.
+//   10   isp-tier3-business   100.64.2.
+//   11   isp-tier2-regional   198.51.100.
+//   12   isp-tier1-backbone   203.0.113.
+//   13   service-atlas        8.8.8. / 142.250.
+//   14   service-nexus        1.1.1. / 104.16.
+//   15   service-devhub       140.82.
+//   16   public               (no subnet)
+// A host IP that matches no zone is the absence of a zone; the host signals that
+// with the sentinel ordinal -1 (NO_ZONE), which every kernel below defends.
+//
+//## Category encoding (mirrors zoneCategory, for the ISP routing rule)
+//   0 LAN  1 DMZ  2 Internal  3 IoT  4 Management  5 SCADA  6 ISP  7 Service
+//
+//## Boolean encoding
+// Every predicate returns 1 for true and 0 for false, mirroring the ReScript
+// bool. Out-of-band ordinals (negative or above the highest zone) are treated as
+// unknown zones and yield 0 (no access), matching the `| _ => false` arms.
+
+// The sentinel the host passes when an IP matches no defined zone.
+fn no_zone() -> Int {
+  0 - 1
+}
+
+// The count of real zones (ordinals 0..16 inclusive are valid; 16 is public).
+fn max_zone() -> Int {
+  16
+}
+
+// Whether an ordinal names a real zone. The sentinel and any out-of-band value
+// are not real zones.
+fn is_zone(ord: Int) -> Int {
+  if ord < 0 {
+    0
+  } else {
+    if ord > 16 { 0 } else { 1 }
+  }
+}
+
+// The category ordinal of a zone, mirroring each networkZone.category. Flat
+// guarded returns keep the parser happy and the bands explicit.
+fn category_of(ord: Int) -> Int {
+  if ord == 0 { return 0; }
+  if ord == 1 { return 0; }
+  if ord == 2 { return 1; }
+  if ord == 3 { return 2; }
+  if ord == 4 { return 2; }
+  if ord == 5 { return 2; }
+  if ord == 6 { return 3; }
+  if ord == 7 { return 4; }
+  if ord == 8 { return 5; }
+  if ord == 9 { return 6; }
+  if ord == 10 { return 6; }
+  if ord == 11 { return 6; }
+  if ord == 12 { return 6; }
+  if ord == 13 { return 7; }
+  if ord == 14 { return 7; }
+  if ord == 15 { return 7; }
+  if ord == 16 { return 7; }
+  0 - 1
+}
+
+//## Adjacency kernel
+// has_edge(src, dst): 1 iff dst is listed in src's canAccessZones array in
+// NetworkZones.allZones. This is the integer transcription of the static
+// adjacency the ReScript holds as string arrays; one guarded block per source
+// zone, each enumerating its destination ordinals. Self-edges are NOT encoded
+// here (the ReScript Array.some never lists a zone in its own canAccessZones);
+// the self case is handled by the public predicates, matching canZoneAccessZone's
+// `if sourceZoneId == destZoneId { true }` short-circuit.
+fn has_edge(src: Int, dst: Int) -> Int {
+  // downtown-lan -> dmz, internal, dev, iot, mgmt, isp-tier3-business, public
+  if src == 0 {
+    if dst == 2 { return 1; }
+    if dst == 3 { return 1; }
+    if dst == 4 { return 1; }
+    if dst == 6 { return 1; }
+    if dst == 7 { return 1; }
+    if dst == 10 { return 1; }
+    if dst == 16 { return 1; }
+    return 0;
+  }
+  // rural-lan -> dmz, isp-tier3-rural, public
+  if src == 1 {
+    if dst == 2 { return 1; }
+    if dst == 9 { return 1; }
+    if dst == 16 { return 1; }
+    return 0;
+  }
+  // downtown-dmz -> internal, security, isp-tier3-business, public
+  if src == 2 {
+    if dst == 3 { return 1; }
+    if dst == 5 { return 1; }
+    if dst == 10 { return 1; }
+    if dst == 16 { return 1; }
+    return 0;
+  }
+  // downtown-internal -> dmz, dev, security, mgmt
+  if src == 3 {
+    if dst == 2 { return 1; }
+    if dst == 4 { return 1; }
+    if dst == 5 { return 1; }
+    if dst == 7 { return 1; }
+    return 0;
+  }
+  // downtown-dev -> internal, security, public
+  if src == 4 {
+    if dst == 3 { return 1; }
+    if dst == 5 { return 1; }
+    if dst == 16 { return 1; }
+    return 0;
+  }
+  // downtown-security -> lan, dmz, internal, dev, iot, mgmt, scada
+  if src == 5 {
+    if dst == 0 { return 1; }
+    if dst == 2 { return 1; }
+    if dst == 3 { return 1; }
+    if dst == 4 { return 1; }
+    if dst == 6 { return 1; }
+    if dst == 7 { return 1; }
+    if dst == 8 { return 1; }
+    return 0;
+  }
+  // downtown-iot -> security
+  if src == 6 {
+    if dst == 5 { return 1; }
+    return 0;
+  }
+  // downtown-mgmt -> lan, dmz, internal, dev, security, iot, scada
+  if src == 7 {
+    if dst == 0 { return 1; }
+    if dst == 2 { return 1; }
+    if dst == 3 { return 1; }
+    if dst == 4 { return 1; }
+    if dst == 5 { return 1; }
+    if dst == 6 { return 1; }
+    if dst == 8 { return 1; }
+    return 0;
+  }
+  // downtown-scada -> (air-gapped, no outbound)
+  if src == 8 {
+    return 0;
+  }
+  // isp-tier3-rural -> isp-tier2-regional
+  if src == 9 {
+    if dst == 11 { return 1; }
+    return 0;
+  }
+  // isp-tier3-business -> isp-tier2-regional
+  if src == 10 {
+    if dst == 11 { return 1; }
+    return 0;
+  }
+  // isp-tier2-regional -> isp-tier1-backbone
+  if src == 11 {
+    if dst == 12 { return 1; }
+    return 0;
+  }
+  // isp-tier1-backbone -> service-atlas, service-nexus, service-devhub
+  if src == 12 {
+    if dst == 13 { return 1; }
+    if dst == 14 { return 1; }
+    if dst == 15 { return 1; }
+    return 0;
+  }
+  // service-atlas -> isp-tier1-backbone, public
+  if src == 13 {
+    if dst == 12 { return 1; }
+    if dst == 16 { return 1; }
+    return 0;
+  }
+  // service-nexus -> isp-tier1-backbone, public
+  if src == 14 {
+    if dst == 12 { return 1; }
+    if dst == 16 { return 1; }
+    return 0;
+  }
+  // service-devhub -> isp-tier1-backbone, public
+  if src == 15 {
+    if dst == 12 { return 1; }
+    if dst == 16 { return 1; }
+    return 0;
+  }
+  // public -> (nothing)
+  if src == 16 {
+    return 0;
+  }
+  0
+}
+
+//## Pure exports
+
+// same_subnet re-decomposed: the ReScript getSubnet takes the first three octets
+// of the dotted IP and sameSubnet compares them for string equality. With the
+// host packing each /24 prefix as a single integer (octet0*65536 + octet1*256 +
+// octet2), the comparison is plain integer equality. Returns 1 when the two
+// packed prefixes match, 0 otherwise. The packing is the host's concern; this
+// kernel is the equality the ReScript performs on the joined prefix strings.
+pub fn same_subnet(prefix_a: Int, prefix_b: Int) -> Int {
+  if prefix_a == prefix_b { 1 } else { 0 }
+}
+
+// Pack three octets into the /24 prefix integer the host compares with
+// same_subnet, so the host need not assemble it. Mirrors getSubnet's first-three-
+// octet join collapsed to a number. Octets are assumed already validated by the
+// host (0..255); this is pure positional arithmetic.
+pub fn pack_subnet(octet0: Int, octet1: Int, octet2: Int) -> Int {
+  octet0 * 65536 + octet1 * 256 + octet2
+}
+
+// can_zone_access_zone re-decomposed from canZoneAccessZone: same zone always
+// accessible; otherwise the destination must be a direct edge of the source.
+// Unknown (out-of-band or sentinel) source or destination ordinals yield 0,
+// matching the `| None => false` arm of the ReScript getZoneById lookup.
+pub fn can_zone_access_zone(src: Int, dst: Int) -> Int {
+  if src == dst {
+    if is_zone(src) == 1 { return 1; }
+    return 0;
+  }
+  if is_zone(src) == 0 { return 0; }
+  if is_zone(dst) == 0 { return 0; }
+  has_edge(src, dst)
+}
+
+// Whether a source zone's canAccessZones contains any ISP-tier entry, the
+// disjunction canRouteViaISP repeats: isp-tier3-business (10), isp-tier3-rural
+// (9), isp-tier2-regional (11) or isp-tier1-backbone (12).
+fn reaches_any_isp(src: Int) -> Int {
+  if has_edge(src, 10) == 1 { return 1; }
+  if has_edge(src, 9) == 1 { return 1; }
+  if has_edge(src, 11) == 1 { return 1; }
+  if has_edge(src, 12) == 1 { return 1; }
+  0
+}
+
+// can_route_via_isp re-decomposed from canRouteViaISP, which branches on the
+// destination zone's category. For a Service destination: reachable if the
+// source can reach any ISP tier or can reach public. For an ISP destination:
+// reachable if the source edges directly to that ISP, or can reach a tier-3 ISP,
+// or can reach public. Any other destination category: false. Unknown ordinals
+// yield 0.
+pub fn can_route_via_isp(src: Int, dst: Int) -> Int {
+  if is_zone(src) == 0 { return 0; }
+  if is_zone(dst) == 0 { return 0; }
+  let c = category_of(dst);
+  // CatService (7): reachable via any ISP tier or public.
+  if c == 7 {
+    if reaches_any_isp(src) == 1 { return 1; }
+    return has_edge(src, 16);
+  }
+  // CatISP (6): a direct edge, a tier-3 ISP, or public.
+  if c == 6 {
+    if has_edge(src, dst) == 1 { return 1; }
+    if has_edge(src, 10) == 1 { return 1; }
+    if has_edge(src, 9) == 1 { return 1; }
+    return has_edge(src, 16);
+  }
+  // Every other category (and any unclassifiable zone) is not ISP-routable.
+  0
+}
+
+// can_ip_access_ip re-decomposed from canIpAccessIp, taking the source and
+// destination ZONE ORDINALS the host derives by subnet match (getZoneByIp). The
+// `same_ip` flag carries the ReScript's `sourceIp == destIp` short-circuit, which
+// the host knows from the strings the brain never sees. Three cases mirror the
+// ReScript match on (sourceZone, destZone):
+//   both known   -> direct access, else ISP routing
+//   src known, dst unknown (NO_ZONE) -> src can reach public or a tier-3 ISP
+//   src unknown  -> no access
+pub fn can_ip_access_ip(src: Int, dst: Int, same_ip: Int) -> Int {
+  if same_ip == 1 { return 1; }
+  if is_zone(src) == 0 { return 0; }
+  if is_zone(dst) == 1 {
+    if can_zone_access_zone(src, dst) == 1 { return 1; }
+    return can_route_via_isp(src, dst);
+  }
+  // dst is the NO_ZONE sentinel: source reaches public or a tier-3 ISP.
+  if has_edge(src, 16) == 1 { return 1; }
+  if has_edge(src, 10) == 1 { return 1; }
+  has_edge(src, 9)
+}
+
+// is_reachable_from re-decomposed from NetworkManager.isReachableFrom. The host
+// supplies: same_ip (sourceIp == destIp), dest_exists (the device Dict holds
+// destIp), and the precomputed zone ordinals. The ReScript logic: reach yourself
+// always; if the destination device does not exist and sits in no zone, fall
+// through to the public-internet access check; if it does not exist but a zone
+// owns its subnet, deny (zone exists but device doesn't); otherwise apply the
+// zone access control. dst_zone is NO_ZONE exactly when getZoneByIp(destIp) is
+// None.
+pub fn is_reachable_from(src: Int, dst: Int, same_ip: Int, dest_exists: Int) -> Int {
+  if same_ip == 1 { return 1; }
+  if dest_exists == 0 {
+    if is_zone(dst) == 1 {
+      // Zone exists but the device does not: deny.
+      return 0;
+    }
+    // No zone and no device: public-internet access check.
+    return can_ip_access_ip(src, dst, 0);
+  }
+  // Device exists: zone-based access control.
+  can_ip_access_ip(src, dst, same_ip)
+}
+
+// Trace-route hop arithmetic, lifted from getTraceRoute. The route is a star
+// topology: source -> router -> (internet hops if external) -> destination. The
+// host owns the IP strings, hostnames and the hop array assembly; the brain owns
+// the two integers the route geometry turns on: how many hops precede the final
+// destination hop, and the final-hop latency. is_external is 1 when the
+// destination device is not in the local Dict (Option.isNone), src_is_router is
+// 1 when sourceIp == routerIp.
+//
+// Hop budget mirrors the ReScript: a router hop unless the source IS the router
+// (1 hop); then, when external, three simulated internet hops (isp-gateway,
+// core-router-1, edge-router). The destination hop is counted separately by
+// final latency.
+pub fn route_prefix_hops(src_is_router: Int, is_external: Int) -> Int {
+  let mut hops = 0;
+  if src_is_router == 0 {
+    hops = hops + 1;
+  }
+  if is_external == 1 {
+    hops = hops + 3;
+  }
+  hops
+}
+
+// The final-hop latency getTraceRoute assigns the destination: 32 ms when the
+// destination is external, 2 ms when it is local.
+pub fn route_final_latency(is_external: Int) -> Int {
+  if is_external == 1 { 32 } else { 2 }
+}
+
+// The total hop count of a completed trace, the prefix hops plus the one final
+// destination hop. A convenience the host can assert the assembled array length
+// against.
+pub fn route_total_hops(src_is_router: Int, is_external: Int) -> Int {
+  route_prefix_hops(src_is_router, is_external) + 1
+}
