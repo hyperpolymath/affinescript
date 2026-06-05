@@ -1,0 +1,103 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+= Cluster C2 wave 2b (VM memory / stack / port / control) — four-gate evidence (captured 2026-06-05)
+:toc: macro
+
+[IMPORTANT]
+====
+*The ledger's premise for this wave was wrong, and re-decomposition overturned
+it.* Wave 2b was scoped as "needs an array/linear-memory ABI." Reading the
+actual opcode sources shows the VM's memory, stack, and port buffers are NOT
+arrays in the brain — `VmState.res` stores every one of them as *string-keyed
+dict entries* (`_mem:0`, `_s:0`, `_pin:port`, ...). That dict is host-side STATE
+(the senses). The pure-integer brains are all SCALAR: additive value transforms,
+pointer arithmetic, and branch predicates. So wave 2b needs *no* array ABI —
+it is the established scalar recipe. Toolchain: AffineScript compiler
+`_build/default/bin/main.exe`, Deno 2.8.2.
+====
+
+toc::[]
+
+== Summary
+
+[cols="2,2,1,1,2,1",options="header"]
+|===
+| Kernel | Opcodes | G1 | G2 parity | G3 | G4 assail
+| `VmMemory`  | LOAD, STORE         | OK | 486/486  | n/a (transform)  | clean
+| `VmStack`   | PUSH, POP           | OK | 28/28    | n/a (transform)  | clean
+| `VmPort`    | RECV, SEND          | OK | 298/298  | n/a (transform)  | clean
+| `VmControl` | IF_POS, IF_ZERO, LOOP | OK | 756/756 | n/a (predicate) | clean
+| *Total*     | *9 opcodes*         | *4/4* | *1568/1568* | *n/a* | *4/4 clean*
+|===
+
+== The re-decomposition that dissolved the array-ABI blocker
+
+Each opcode manipulates host-side state, but the integer brain is scalar:
+
+[cols="1,3,2",options="header"]
+|===
+| Opcode | Source semantics | Scalar brain (the wasm)
+| LOAD   | `reg += memory[addr]` / `reg -= memory[addr]` | additive `reg ± mem` (host supplies `mem`)
+| STORE  | `memory[addr] += reg` / `-= reg` | additive `mem ± reg`
+| PUSH   | `stack[sp]:=reg; sp++; reg:=0` | pointer `sp+1`, register clear `0`
+| POP    | `sp--; reg:=stack[sp]; stack[sp]:=0` | pointer `sp-1`
+| RECV   | `reg += port_in[ptr]; ptr++` | additive `reg ± val`, pointer `ptr±1`
+| SEND   | `port_out[ptr]:=reg; ptr++` (inv writes 0) | pointer `ptr±1`, slot clear `0`
+| IF_POS | run then/else by `testReg > 0` | predicate `v > 0 -> 1/0`
+| IF_ZERO| run then/else by `testReg == 0` | predicate `v == 0 -> 1/0`
+| LOOP   | `while exitReg != 0 && iters < max` | continuation predicate + `iters+1`
+|===
+
+The arrays (`stack`, `memory`, port buffers) and the register dict are the
+*senses* — host-owned `VmState` dict slots. The host performs every array
+get/set; the wasm computes only the next pointer, the accumulated value, or the
+branch decision. "The integer IS the register / pointer / predicate."
+
+*Reversibility is migrated as explicit round-trip exports* (the headline gate):
+`load_roundtrip == reg`, `store_roundtrip == mem`, `sp_roundtrip == sp`,
+`recv_acc_roundtrip == reg`, `recv_ptr_roundtrip == ptr`,
+`send_ptr_roundtrip == ptr`. IF_POS/IF_ZERO/LOOP carry no value round-trip —
+their Janus reversibility is host orchestration (the reverse run applies the
+same predicate to the *exit* register and runs the chosen branch reversed); the
+brain is the shared predicate.
+
+== No-kernel files (host-side senses, faithfully classified — not migrated)
+
+[cols="2,3",options="header"]
+|===
+| File | Why no integer brain
+| `Call.res` | Pure orchestration: runs the body instructions forward / reversed-and-inverted. No value transform.
+| `CoprocessorCall.res` | *Tombstone* — never implemented; superseded by terminal SEND/RECV + VM Tier-4 Send/Recv (see the file's own header). Nothing to migrate.
+| `State.res`, `VmState.res` | The state container itself (the senses): `dict<int>` slot accessors + serialise (string-gated). No brain.
+| `SubroutineRegistry.res` | name -> `array<Instruction.t>` registry; orchestration container.
+| `VmStateCoprocessor.res`, `InstructionCoprocessor.res` | Coprocessor bridges — host-side dispatch; the integer cores they call are the already-migrated opcode brains.
+| `VM.res` | Top-level interpreter loop: sequences opcode execute/invert over the state dict. Orchestration; the per-opcode brains are migrated here + in waves 1/2a.
+|===
+
+== Gate detail
+
+* *G1 compile* — `main.exe compile <k>.affine -o <k>.wasm` → WASM for all 4
+  (VmMemory 346 B, VmStack 243 B, VmPort 508 B, VmControl 299 B).
+* *G2 parity* — `parity.mjs <k>.config.mjs` → 1568/1568 over the i32 domain
+  `{INT_MIN, -1e6, -7, -1, 0, 1, 7, 1e6, INT_MAX}` (Cartesian per arity). Each
+  oracle independently re-derives the original `.res` value transform.
+* *G3 boundary* — n/a for all 4. These are numeric transforms / branch
+  predicates with no discrete value↔integer encoding table; the G2 round-trip
+  against the independent oracle is the faithfulness check (same disposition as
+  the wave-1/2a value-transform kernels).
+* *G4 assail* — 0 findings across all 4. Predicates use boolean fall-through
+  (`if cond { 1 } else { 0 }`) and the LOOP guard uses an out-of-band `return 0`
+  on the `exit_val == 0` early exit; there is no enum decoder, so PA-AFF-001
+  does not apply.
+
+== Cluster C2 — COMPLETE
+
+With wave 1 (Add/Sub/Negate/Noop/Swap/Flip/Xor/Rol/Ror/And/Or + Instruction
+taxonomy), wave 2a (Mul/Div), and wave 2b (Load/Store/Push/Pop/Recv/Send/IfPos/
+IfZero/Loop), every reversible-VM opcode with a separable integer brain is
+migrated and four-gate verified. The remaining C2 files (Call, CoprocessorCall,
+State, VmState, VM, SubroutineRegistry, VmStateCoprocessor, InstructionCoprocessor)
+are host-side senses / orchestration with no integer brain, classified above.
+*No array/linear-memory ABI was required* — that blocker was an artefact of the
+coarse triage bucket, dissolved by reading the sources. (The string wall remains
+a separate, genuine compiler gate for the STRING-GATED clusters.)

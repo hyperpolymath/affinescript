@@ -1,0 +1,27 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// VmControl -- the control-flow opcodes IF_POS/IF_ZERO/LOOP of the idaptik VM,
+// the pure-integer core from vm/lib/ocaml/{IfPos,IfZero,Loop}.res. The branch
+// bodies are arrays of sub-instructions run by the host orchestrator (the
+// senses); the brain is only the scalar BRANCH PREDICATE that selects a branch
+// (and, for LOOP, the iteration counter + bound check). Janus reversibility
+// lives in the host: the reverse run applies the SAME predicate to the exit
+// register instead of the test register, then runs the chosen branch reversed.
+//
+//   IF_POS   take then-branch iff testReg > 0    (reverse: iff exitReg > 0)
+//   IF_ZERO  take then-branch iff testReg == 0   (reverse: iff exitReg == 0)
+//   LOOP     continue iff exitReg != 0 and iterations < maxIterations
+// Predicates return 1 (take / continue) or 0 (skip / stop).
+
+// --- IF_POS / IF_ZERO branch predicates (1 = then-branch, 0 = else-branch) ---
+pub fn if_pos(v: Int) -> Int { if v > 0 { 1 } else { 0 } }
+pub fn if_zero(v: Int) -> Int { if v == 0 { 1 } else { 0 } }
+
+// --- LOOP continuation: 1 = run another iteration, 0 = stop ---
+// Continue while the exit register is non-zero AND the iteration cap is unhit.
+pub fn loop_continue(exit_val: Int, iters: Int, max_iters: Int) -> Int {
+  if exit_val == 0 { return 0; }
+  if iters < max_iters { 1 } else { 0 }
+}
+// Iteration counter advance (the maxIterations guard counts these).
+pub fn loop_iter_next(iters: Int) -> Int { iters + 1 }
