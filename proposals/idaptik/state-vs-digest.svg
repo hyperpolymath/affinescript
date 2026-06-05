@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 680" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <rect width="980" height="680" fill="#0f1320"/>
+
+  <text x="490" y="36" text-anchor="middle" fill="#e6e9f0" font-size="22" font-weight="700">Two ways to check that both sides agree</text>
+  <text x="490" y="60" text-anchor="middle" fill="#9aa3b2" font-size="13">both computers ran the SAME recipe on the SAME inputs, so they SHOULD already match &#8212; we just want to confirm it</text>
+
+  <!-- PANEL 1 -->
+  <rect x="28" y="80" width="924" height="250" rx="10" fill="#171c2b" stroke="#2a3147"/>
+  <text x="48" y="110" fill="#ff8a8a" font-size="16" font-weight="700">(1)  SEND THE WHOLE THING</text>
+  <text x="300" y="110" fill="#9aa3b2" font-size="14">cost grows with the amount of data &#8212; written  O(state)</text>
+
+  <rect x="60" y="130" width="150" height="150" rx="8" fill="#13284a" stroke="#4f8cff"/>
+  <text x="135" y="152" text-anchor="middle" fill="#9cc2ff" font-size="13" font-weight="700">Computer A</text>
+  <g fill="#8b93a7">
+    <rect x="80" y="166" width="110" height="12" rx="2"/>
+    <rect x="80" y="183" width="110" height="12" rx="2"/>
+    <rect x="80" y="200" width="110" height="12" rx="2"/>
+    <rect x="80" y="217" width="110" height="12" rx="2"/>
+    <rect x="80" y="234" width="110" height="12" rx="2"/>
+    <rect x="80" y="251" width="110" height="12" rx="2"/>
+  </g>
+
+  <rect x="770" y="130" width="150" height="150" rx="8" fill="#0f3326" stroke="#36c98d"/>
+  <text x="845" y="152" text-anchor="middle" fill="#7fe3bf" font-size="13" font-weight="700">Computer B</text>
+  <text x="845" y="210" text-anchor="middle" fill="#6f7890" font-size="11">reads it all,</text>
+  <text x="845" y="226" text-anchor="middle" fill="#6f7890" font-size="11">repacks, replies</text>
+
+  <line x1="222" y1="175" x2="755" y2="175" stroke="#566077" stroke-width="13"/>
+  <polygon points="755,175 735,166 735,184" fill="#566077"/>
+  <rect x="408" y="150" width="170" height="52" rx="6" fill="#39425e" stroke="#7c87a3"/>
+  <text x="493" y="172" text-anchor="middle" fill="#e6e9f0" font-size="12" font-weight="700">the ENTIRE state</text>
+  <text x="493" y="190" text-anchor="middle" fill="#aab2c6" font-size="10.5">every byte, packed up</text>
+
+  <line x1="755" y1="250" x2="225" y2="250" stroke="#39425e" stroke-width="5"/>
+  <polygon points="225,250 245,242 245,258" fill="#39425e"/>
+  <text x="493" y="243" text-anchor="middle" fill="#6f7890" font-size="11">reply &#8212; also big</text>
+
+  <text x="60" y="312" fill="#9aa3b2" font-size="12">COST</text>
+  <rect x="110" y="300" width="360" height="16" rx="4" fill="#23293c"/>
+  <rect x="110" y="300" width="360" height="16" rx="4" fill="#ff6b6b"/>
+  <text x="486" y="312" fill="#ff8a8a" font-size="12">grows with the state size  &#8212;  like couriering a whole genome, every time</text>
+
+  <!-- PANEL 2 -->
+  <rect x="28" y="356" width="924" height="262" rx="10" fill="#171c2b" stroke="#2a3147"/>
+  <text x="48" y="386" fill="#7fe3bf" font-size="16" font-weight="700">(2)  ASK IF WE AGREE</text>
+  <text x="300" y="386" fill="#9aa3b2" font-size="14">cost is tiny and constant &#8212; written  ~O(1)</text>
+
+  <rect x="60" y="406" width="150" height="150" rx="8" fill="#13284a" stroke="#4f8cff"/>
+  <text x="135" y="428" text-anchor="middle" fill="#9cc2ff" font-size="13" font-weight="700">Computer A</text>
+  <g fill="#5b637a">
+    <rect x="80" y="442" width="110" height="9" rx="2"/>
+    <rect x="80" y="455" width="110" height="9" rx="2"/>
+    <rect x="80" y="468" width="110" height="9" rx="2"/>
+    <rect x="80" y="481" width="110" height="9" rx="2"/>
+    <rect x="80" y="494" width="110" height="9" rx="2"/>
+  </g>
+  <text x="135" y="524" text-anchor="middle" fill="#6f7890" font-size="10.5">already computed</text>
+  <text x="135" y="538" text-anchor="middle" fill="#6f7890" font-size="10.5">(has the whole thing)</text>
+
+  <rect x="770" y="406" width="150" height="150" rx="8" fill="#0f3326" stroke="#36c98d"/>
+  <text x="845" y="428" text-anchor="middle" fill="#7fe3bf" font-size="13" font-weight="700">Computer B</text>
+  <g fill="#5b637a">
+    <rect x="790" y="442" width="110" height="9" rx="2"/>
+    <rect x="790" y="455" width="110" height="9" rx="2"/>
+    <rect x="790" y="468" width="110" height="9" rx="2"/>
+    <rect x="790" y="481" width="110" height="9" rx="2"/>
+    <rect x="790" y="494" width="110" height="9" rx="2"/>
+  </g>
+  <text x="845" y="524" text-anchor="middle" fill="#6f7890" font-size="10.5">already computed</text>
+  <text x="845" y="538" text-anchor="middle" fill="#6f7890" font-size="10.5">(has the whole thing)</text>
+
+  <text x="493" y="438" text-anchor="middle" fill="#9aa3b2" font-size="11">a tiny fingerprint  ("is the moon there?")</text>
+  <line x1="222" y1="461" x2="453" y2="461" stroke="#566077" stroke-width="3"/>
+  <line x1="540" y1="461" x2="755" y2="461" stroke="#566077" stroke-width="3"/>
+  <polygon points="755,461 740,454 740,468" fill="#566077"/>
+  <rect x="453" y="445" width="87" height="34" rx="5" fill="#24304a" stroke="#f5d36b"/>
+  <g fill="#f5d36b">
+    <rect x="461" y="453" width="3" height="18"/>
+    <rect x="466" y="453" width="2" height="18"/>
+    <rect x="470" y="453" width="4" height="18"/>
+    <rect x="476" y="453" width="2" height="18"/>
+    <rect x="480" y="453" width="3" height="18"/>
+  </g>
+  <text x="500" y="467" fill="#f5d36b" font-size="11" font-weight="700">a1f3</text>
+  <circle cx="525" cy="462" r="7" fill="#f5d36b"/>
+  <circle cx="528" cy="460" r="6" fill="#24304a"/>
+
+  <line x1="755" y1="501" x2="245" y2="501" stroke="#36c98d" stroke-width="3"/>
+  <polygon points="245,501 260,494 260,508" fill="#36c98d"/>
+  <rect x="455" y="489" width="70" height="24" rx="5" fill="#0f3326" stroke="#36c98d"/>
+  <text x="490" y="506" text-anchor="middle" fill="#7fe3bf" font-size="12" font-weight="700">yes</text>
+
+  <text x="60" y="588" fill="#9aa3b2" font-size="12">COST</text>
+  <rect x="110" y="576" width="360" height="16" rx="4" fill="#23293c"/>
+  <rect x="110" y="576" width="22" height="16" rx="4" fill="#36c98d"/>
+  <text x="486" y="588" fill="#7fe3bf" font-size="12">same tiny size, no matter how big the state is</text>
+
+  <text x="490" y="644" text-anchor="middle" fill="#f5d36b" font-size="12.5">If the fingerprints DON'T match (rare): then &#8212; and only then &#8212; you do the expensive full comparison.</text>
+  <text x="490" y="666" text-anchor="middle" fill="#6f7890" font-size="11">information = surprise: you already expect to match, so confirming it is nearly free; you pay big only for the surprise.</text>
+</svg>

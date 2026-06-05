@@ -1,0 +1,1905 @@
+{
+  "schema": "migration-map/1.0",
+  "triage_date": "2026-06-05",
+  "tool": "affine-migratability",
+  "resume_rule": "Read highest non-DONE cluster. Apply 4-gate recipe (re-decompose \u2192 compile\u2192wasm \u2192 affine-parity green \u2192 echo-boundary LOSSLESS \u2192 affine-assail clean). Update status to DONE.",
+  "corpus": {
+    "total": 571,
+    "migratable_now": 389,
+    "string_gated": 71,
+    "effect_gated": 111,
+    "migratable_pct": 68
+  },
+  "corpus_non_test": {
+    "total": 358,
+    "migratable_now": 196,
+    "string_gated": 52,
+    "effect_gated": 110,
+    "migratable_pct": 55
+  },
+  "walls": {
+    "string": {
+      "count": 71,
+      "unblocked_by": "Phase F string backend: String.length + indexing + startsWith/endsWith/slice/fromCharCode",
+      "top_patterns": [
+        "string subscript (44 files)",
+        "String.length (30 files)",
+        "String.startsWith (13 files)",
+        "String.slice (7 files)",
+        "String.fromCharCode (4 files)"
+      ]
+    },
+    "effect": {
+      "count": 111,
+      "unblocked_by": "Phase F+ effect codegen: module-level mutable state, Date.now, Console.log",
+      "top_patterns": [
+        "module-level ref() (79 files)",
+        "Console.log (24 files)",
+        "module-level Dict.make() (20 files)",
+        "Date.now (8 files)",
+        "Math.random (6 files)"
+      ]
+    }
+  },
+  "clusters": [
+    {
+      "id": "C1",
+      "name": "Pure-integer kernel definitions",
+      "description": "Leaf kernel types and coprocessor backends in shared/src. No string ops, no effects. First \u2014 no dependencies on other migrated files.",
+      "status": "DONE",
+      "done": {
+        "date": "2026-06-05",
+        "phase": "C",
+        "staged_at": "proposals/idaptik/migrated/",
+        "kernels": [
+          "DeviceType", "PuzzleFormat", "PortNames", "GameEvent",
+          "Kernel_Compute", "Kernel", "RetryPolicy", "Diagnostics"
+        ],
+        "host_side_no_brain": [
+          "Coprocessor_Backends.res", "PortNamesCoprocessor.res", "DLCLoader.res"
+        ],
+        "gates": "8/8 compile; 1223/1223 parity; 6 echo-boundary proofs (agda exit 0); 8/8 assail-clean",
+        "evidence": "proposals/idaptik/migrated/EVIDENCE.adoc"
+      },
+      "files": [
+        "shared/src/Coprocessor_Backends.res",
+        "shared/src/DLCLoader.res",
+        "shared/src/DeviceType.res",
+        "shared/src/Diagnostics.res",
+        "shared/src/GameEvent.res",
+        "shared/src/Kernel.res",
+        "shared/src/Kernel_Compute.res",
+        "shared/src/PortNames.res",
+        "shared/src/PortNamesCoprocessor.res",
+        "shared/src/PuzzleFormat.res",
+        "shared/src/RetryPolicy.res"
+      ],
+      "count": 11
+    },
+    {
+      "id": "C2",
+      "name": "VM instruction set",
+      "description": "VM instruction modules in vm/lib/ocaml \u2014 one file per opcode, pure-integer reversible VM. Also the wasm binding shim.",
+      "status": "TODO",
+      "files": [
+        "vm/lib/ocaml/Add.res",
+        "vm/lib/ocaml/And.res",
+        "vm/lib/ocaml/Call.res",
+        "vm/lib/ocaml/CoprocessorCall.res",
+        "vm/lib/ocaml/Div.res",
+        "vm/lib/ocaml/Flip.res",
+        "vm/lib/ocaml/IfPos.res",
+        "vm/lib/ocaml/IfZero.res",
+        "vm/lib/ocaml/Instruction.res",
+        "vm/lib/ocaml/InstructionCoprocessor.res",
+        "vm/lib/ocaml/Load.res",
+        "vm/lib/ocaml/Loop.res",
+        "vm/lib/ocaml/Mul.res",
+        "vm/lib/ocaml/Negate.res",
+        "vm/lib/ocaml/Noop.res",
+        "vm/lib/ocaml/Or.res",
+        "vm/lib/ocaml/Pop.res",
+        "vm/lib/ocaml/Push.res",
+        "vm/lib/ocaml/Recv.res",
+        "vm/lib/ocaml/Rol.res",
+        "vm/lib/ocaml/Ror.res",
+        "vm/lib/ocaml/Send.res",
+        "vm/lib/ocaml/State.res",
+        "vm/lib/ocaml/Store.res",
+        "vm/lib/ocaml/Sub.res",
+        "vm/lib/ocaml/SubroutineRegistry.res",
+        "vm/lib/ocaml/Swap.res",
+        "vm/lib/ocaml/VM.res",
+        "vm/lib/ocaml/VmStateCoprocessor.res",
+        "vm/lib/ocaml/Xor.res",
+        "vm/wasm/src/bindings.res"
+      ],
+      "count": 31
+    },
+    {
+      "id": "C3",
+      "name": "src/shared coprocessor wiring",
+      "description": "Coprocessor bridge layer in src/shared \u2014 wrappers exposing kernels to the game engine. Depends on C1.",
+      "status": "TODO",
+      "files": [
+        "src/shared/CoprocessorComputeCoprocessor.res",
+        "src/shared/CoprocessorCoreCoprocessor.res",
+        "src/shared/CoprocessorIOCoprocessor.res",
+        "src/shared/CoprocessorSecurityCoprocessor.res",
+        "src/shared/Coprocessor_Backends.res",
+        "src/shared/DLCLoaderCoprocessor.res",
+        "src/shared/DeviceType.res",
+        "src/shared/DiagnosticsCoprocessor.res",
+        "src/shared/GameEvent.res",
+        "src/shared/InventoryCoprocessor.res",
+        "src/shared/KernelCoprocessor.res",
+        "src/shared/Kernel_Compute.res",
+        "src/shared/PuzzleFormatCoprocessor.res",
+        "src/shared/ResourceAccountingCoprocessor.res",
+        "src/shared/RetryPolicy.res",
+        "src/shared/RetryPolicyCoprocessor.res",
+        "src/shared/UmsLevelLoaderCoprocessor.res"
+      ],
+      "count": 17
+    },
+    {
+      "id": "C4",
+      "name": "Multiplayer coprocessors",
+      "description": "Server-authoritative multiplayer in src/app/multiplayer \u2014 the coprocessors that run identically in browser and on the Elixir server via wasmex/SNIFS.",
+      "status": "TODO",
+      "files": [
+        "src/app/multiplayer/BurbleAdapter.res",
+        "src/app/multiplayer/LobbyManager.res",
+        "src/app/multiplayer/LobbyManagerCoprocessor.res",
+        "src/app/multiplayer/MultiplayerClientCoprocessor.res",
+        "src/app/multiplayer/VMNetworkCoprocessor.res",
+        "src/app/multiplayer/VoiceBridge.res"
+      ],
+      "count": 6
+    },
+    {
+      "id": "C5",
+      "name": "Engine coprocessors",
+      "description": "Core engine coprocessors: audio state, navigation, resize, maths, random, storage.",
+      "status": "TODO",
+      "files": [
+        "src/engine/audio/Audio.res",
+        "src/engine/navigation/Navigation.res",
+        "src/engine/resize/Resize.res",
+        "src/engine/resize/ResizeCoprocessor.res",
+        "src/engine/utils/GetResolution.res",
+        "src/engine/utils/GetResolutionCoprocessor.res",
+        "src/engine/utils/Maths.res",
+        "src/engine/utils/MathsCoprocessor.res",
+        "src/engine/utils/RandomCoprocessor.res",
+        "src/engine/utils/StorageCoprocessor.res",
+        "src/engine/utils/WaitFor.res"
+      ],
+      "count": 11
+    },
+    {
+      "id": "C6",
+      "name": "Combat and enemy AI coprocessors",
+      "description": "Game simulation: hitbox geometry, HP, difficulty scaling, detection, distraction \u2014 pure integer state machines.",
+      "status": "TODO",
+      "files": [
+        "src/app/combat/CombatFxLogicCoprocessor.res",
+        "src/app/combat/Hitbox.res",
+        "src/app/combat/HitboxGeomCoprocessor.res",
+        "src/app/combat/PlayerHPCoprocessor.res",
+        "src/app/enemies/DetectionSystemCoprocessor.res",
+        "src/app/enemies/DifficultyScaleCoprocessor.res",
+        "src/app/enemies/DistractionCoprocessor.res",
+        "src/app/enemies/DualAlertBridge.res",
+        "src/app/enemies/SecurityAICoprocessor.res"
+      ],
+      "count": 9
+    },
+    {
+      "id": "C7",
+      "name": "Player coprocessors",
+      "description": "Player attribute, loadout, skill and ability coprocessors \u2014 pure integer player state.",
+      "status": "TODO",
+      "files": [
+        "src/app/player/CriticalRollCoprocessor.res",
+        "src/app/player/JessicaBackgroundCoprocessor.res",
+        "src/app/player/JessicaLoadoutCoprocessor.res",
+        "src/app/player/Player.res",
+        "src/app/player/PlayerAttributesCoprocessor.res",
+        "src/app/player/QCertifications.res",
+        "src/app/player/QCertificationsCoprocessor.res",
+        "src/app/player/QProgramsCoprocessor.res",
+        "src/app/player/SkillAbilitiesCoprocessor.res",
+        "src/app/player/SkillRankCoprocessor.res"
+      ],
+      "count": 10
+    },
+    {
+      "id": "C8",
+      "name": "Device and network coprocessors",
+      "description": "Device state machine coprocessors: power, network transfer, security rank, covert link.",
+      "status": "TODO",
+      "files": [
+        "src/app/devices/CovertLinkCoprocessor.res",
+        "src/app/devices/DeviceFactory.res",
+        "src/app/devices/GlobalNetworkDataCoprocessor.res",
+        "src/app/devices/LaptopStateCoprocessor.res",
+        "src/app/devices/NetworkManagerCoprocessor.res",
+        "src/app/devices/NetworkTransferCoprocessor.res",
+        "src/app/devices/PowerManagerCoprocessor.res",
+        "src/app/devices/PowerStationDevice.res",
+        "src/app/devices/SecurityRankCoprocessor.res",
+        "src/app/devices/types/DeviceTypes.res"
+      ],
+      "count": 10
+    },
+    {
+      "id": "C9",
+      "name": "Game loop, AffineTEA, and VeriSim types",
+      "description": "Top-level game loop, AffineTEA architecture, VeriSim integration types, and the entry point.",
+      "status": "TODO",
+      "files": [
+        "src/Main.res",
+        "src/app/GameLoop.res",
+        "src/app/burble/BurbleIntegration.res",
+        "src/app/pixi/PixiCoprocessor.res",
+        "src/app/tea/AffineTEA.res",
+        "src/app/tea/AffineTEARouter.res",
+        "src/app/verisimdb/SaveGame.res",
+        "src/app/verisimdb/VeriSimDrift.res",
+        "src/app/verisimdb/VeriSimError.res",
+        "src/app/verisimdb/VeriSimFederation.res",
+        "src/app/verisimdb/VeriSimHexad.res",
+        "src/app/verisimdb/VeriSimProvenance.res",
+        "src/app/verisimdb/VeriSimSearch.res",
+        "src/app/verisimdb/VeriSimTypes.res",
+        "src/app/verisimdb/VeriSimVcl.res",
+        "src/app/vm/VmCoprocessor.res"
+      ],
+      "count": 16
+    },
+    {
+      "id": "C10",
+      "name": "Utils, tools, companions, narrative, and proven modules",
+      "description": "Game utilities, tools coprocessors, Moletaire companion, mission briefing, and formal-proof integration.",
+      "status": "TODO",
+      "files": [
+        "src/app/companions/MoletaireCoprocessorsCoprocessor.res",
+        "src/app/companions/MoletaireHunger.res",
+        "src/app/companions/MoletaireHungerCoprocessor.res",
+        "src/app/companions/MoletairePersistence.res",
+        "src/app/narrative/MissionBriefingCoprocessor.res",
+        "src/app/proven/ProvenError.res",
+        "src/app/proven/SafeAngle.res",
+        "src/app/proven/SafeFloatCoprocessor.res",
+        "src/app/tools/PasswordCrackerCoprocessor.res",
+        "src/app/tools/PortScannerCoprocessor.res",
+        "src/app/utils/Announcer.res",
+        "src/app/utils/ColorPalette.res",
+        "src/app/utils/ColorPaletteCoprocessor.res",
+        "src/app/utils/DomA11y.res",
+        "src/app/utils/FontScaleCoprocessor.res",
+        "src/app/utils/GameI18nCoprocessor.res",
+        "src/app/utils/KeyboardNav.res",
+        "src/app/utils/Locales.res",
+        "src/app/utils/PanicHandler.res",
+        "src/app/utils/PolyglotI18n.res",
+        "src/app/utils/UserSettings.res"
+      ],
+      "count": 21
+    },
+    {
+      "id": "C11",
+      "name": "UI and accessibility coprocessors",
+      "description": "UI widget logic, font scaling, i18n, keyboard navigation, popup logic \u2014 pure integer presentation state.",
+      "status": "TODO",
+      "files": [
+        "src/app/popups/ForceLayoutCoprocessor.res",
+        "src/app/ui/Button.res",
+        "src/app/ui/DualAlert.res",
+        "src/app/ui/DualAlertCoprocessor.res",
+        "src/app/ui/HardwareWiring.res",
+        "src/app/ui/HubButton.res",
+        "src/app/ui/InventoryUI.res",
+        "src/app/ui/Label.res",
+        "src/app/ui/NavButton.res",
+        "src/app/ui/VolumeSlider.res"
+      ],
+      "count": 10
+    },
+    {
+      "id": "C12",
+      "name": "Render-glue screens, UI, and bindings",
+      "description": "Screen implementations, render-logic coprocessors, and PixiJS bindings. Migrated last \u2014 these call the AffineScript brain from the host JS/Pixi layer.",
+      "status": "TODO",
+      "files": [
+        "src/app/companions/CompanionsRenderLogicCoprocessor.res",
+        "src/app/devices/DevicesRenderLogicCoprocessor.res",
+        "src/app/enemies/EnemiesRenderLogicCoprocessor.res",
+        "src/app/pickups/ToolsPickupsRenderLogicCoprocessor.res",
+        "src/app/player/PlayerRenderLogicCoprocessor.res",
+        "src/app/popups/FeaturePacksPopup.res",
+        "src/app/popups/IntegrationsPopup.res",
+        "src/app/popups/LanguagePopup.res",
+        "src/app/popups/NarrativePopupsRenderLogicCoprocessor.res",
+        "src/app/popups/PausePopup.res",
+        "src/app/screens/BalanceAnalyserCoprocessor.res",
+        "src/app/screens/CreditsScreen.res",
+        "src/app/screens/JessicaCustomiseScreen.res",
+        "src/app/screens/LoadScreen.res",
+        "src/app/screens/LoadoutScreen.res",
+        "src/app/screens/LocationDataCoprocessor.res",
+        "src/app/screens/ObserverScreen.res",
+        "src/app/screens/QViewScreen.res",
+        "src/app/screens/ScreenGlitchFxCoprocessor.res",
+        "src/app/screens/ScreensRunLoopLogicCoprocessor.res",
+        "src/app/screens/SkillTreeScreen.res",
+        "src/app/screens/TitleScreen.res",
+        "src/app/screens/locations/AtlasScreen.res",
+        "src/app/screens/locations/BackboneScreen.res",
+        "src/app/screens/locations/BusinessISPScreen.res",
+        "src/app/screens/locations/CityScreen.res",
+        "src/app/screens/locations/DevHubScreen.res",
+        "src/app/screens/locations/FieldScreen.res",
+        "src/app/screens/locations/LabScreen.res",
+        "src/app/screens/locations/LocationBase.res",
+        "src/app/screens/locations/NexusScreen.res",
+        "src/app/screens/locations/RegionalISPScreen.res",
+        "src/app/screens/locations/RuralISPScreen.res",
+        "src/app/screens/main/Bouncer.res",
+        "src/app/screens/main/Logo.res",
+        "src/app/screens/main/MainScreen.res",
+        "src/app/screens/training/TrainingMenuScreen.res",
+        "src/app/ui/UiRenderLogicCoprocessor.res",
+        "src/app/verisimdb/VerisimProvenRenderLogicCoprocessor.res",
+        "src/bindings/Motion.res",
+        "src/bindings/Pixi.res",
+        "src/bindings/PixiSound.res",
+        "src/bindings/PixiUI.res"
+      ],
+      "count": 43
+    },
+    {
+      "id": "C_TESTS",
+      "name": "Test harnesses",
+      "description": "Existing ReScript test harnesses \u2014 when coprocessors migrate these become affine-parity harnesses, not direct migrations.",
+      "status": "TODO",
+      "files": [
+        "__tests__/AccessibilityPopup_test.res",
+        "__tests__/AccessibilitySettings_test.res",
+        "__tests__/Announcer_test.res",
+        "__tests__/AssassinTraining_test.res",
+        "__tests__/AtlasScreen_test.res",
+        "__tests__/Audio_test.res",
+        "__tests__/BackboneScreen_test.res",
+        "__tests__/Bouncer_test.res",
+        "__tests__/BurbleAdapter_test.res",
+        "__tests__/BurbleIntegration_test.res",
+        "__tests__/BusinessISPScreen_test.res",
+        "__tests__/Button_test.res",
+        "__tests__/CameraDevice_test.res",
+        "__tests__/CameraFeed_test.res",
+        "__tests__/CharacterSelectScreen_test.res",
+        "__tests__/CityScreen_test.res",
+        "__tests__/ColorPalette_test.res",
+        "__tests__/CombatTraining_test.res",
+        "__tests__/Combat_test.res",
+        "__tests__/CoprocessorBridge_test.res",
+        "__tests__/CoprocessorManager_test.res",
+        "__tests__/Coprocessor_Backends_test.res",
+        "__tests__/Coprocessor_Compute_test.res",
+        "__tests__/Coprocessor_IO_test.res",
+        "__tests__/Coprocessor_Security_test.res",
+        "__tests__/Coprocessor_test.res",
+        "__tests__/CovertLink_test.res",
+        "__tests__/CriticalRoll_test.res",
+        "__tests__/DLCLoader_test.res",
+        "__tests__/DesktopDevice_test.res",
+        "__tests__/DesktopIntegration_test.res",
+        "__tests__/DetectionSystem_test.res",
+        "__tests__/DevHubScreen_test.res",
+        "__tests__/DeviceActivity_test.res",
+        "__tests__/DeviceFactory_test.res",
+        "__tests__/DeviceRegistry_test.res",
+        "__tests__/DeviceType_test.res",
+        "__tests__/DeviceTypes_test.res",
+        "__tests__/DeviceView_test.res",
+        "__tests__/DeviceWindow_test.res",
+        "__tests__/Diagnostics_test.res",
+        "__tests__/Distraction_test.res",
+        "__tests__/DogTraining_test.res",
+        "__tests__/DomA11y_test.res",
+        "__tests__/DroneTrainingGround_test.res",
+        "__tests__/DroneTraining_test.res",
+        "__tests__/Drone_test.res",
+        "__tests__/DualAlertBridge_test.res",
+        "__tests__/Engine_test.res",
+        "__tests__/FeaturePacksPopup_test.res",
+        "__tests__/FeaturePacks_test.res",
+        "__tests__/FeedbackIntegration_test.res",
+        "__tests__/FieldScreen_test.res",
+        "__tests__/FirewallDevice_test.res",
+        "__tests__/FontScale_test.res",
+        "__tests__/GameEvent_test.res",
+        "__tests__/GameI18n_test.res",
+        "__tests__/GameLoop_test.res",
+        "__tests__/GetEngine_test.res",
+        "__tests__/GetResolution_test.res",
+        "__tests__/GlobalNetworkData_test.res",
+        "__tests__/GlobalNetworkManager_test.res",
+        "__tests__/GossamerFs_test.res",
+        "__tests__/GuardNPC_test.res",
+        "__tests__/GuardTraining_test.res",
+        "__tests__/HUD_test.res",
+        "__tests__/HardwareWiring_test.res",
+        "__tests__/HighwayCrossingTraining_test.res",
+        "__tests__/Hitbox_test.res",
+        "__tests__/HubButton_test.res",
+        "__tests__/IntegrationsPopup_test.res",
+        "__tests__/InventoryUI_test.res",
+        "__tests__/Inventory_test.res",
+        "__tests__/JessicaCustomiseScreen_test.res",
+        "__tests__/JessicaLoadout_test.res",
+        "__tests__/KernelMonitor_test.res",
+        "__tests__/Kernel_Compute_test.res",
+        "__tests__/Kernel_Crypto_test.res",
+        "__tests__/Kernel_IO_test.res",
+        "__tests__/Kernel_Quantum_test.res",
+        "__tests__/Kernel_test.res",
+        "__tests__/KeyboardAiming_test.res",
+        "__tests__/KeyboardNav_test.res",
+        "__tests__/LabScreen_test.res",
+        "__tests__/Label_test.res",
+        "__tests__/LanguagePopup_test.res",
+        "__tests__/LanguageSettings_test.res",
+        "__tests__/LaptopGUI_test.res",
+        "__tests__/LaptopState_test.res",
+        "__tests__/LevelConfig_test.res",
+        "__tests__/LoadScreen_test.res",
+        "__tests__/LoadoutScreen_test.res",
+        "__tests__/LobbyRegistry_test.res",
+        "__tests__/LobbyScreen_test.res",
+        "__tests__/Locales_test.res",
+        "__tests__/LocationBase_test.res",
+        "__tests__/LocationRegistry_test.res",
+        "__tests__/Logo_test.res",
+        "__tests__/MainHubScreen_test.res",
+        "__tests__/MainScreen_test.res",
+        "__tests__/Main_test.res",
+        "__tests__/Maths_test.res",
+        "__tests__/MoletaireHunger_test.res",
+        "__tests__/MoletairePersistence_test.res",
+        "__tests__/MoletaireTraining_test.res",
+        "__tests__/Motion_test.res",
+        "__tests__/MultiplayerClient_test.res",
+        "__tests__/MultiplayerGlobal_test.res",
+        "__tests__/MultiplayerScreenWiring_test.res",
+        "__tests__/NavButton_test.res",
+        "__tests__/Navigation_test.res",
+        "__tests__/NetworkDesktop_test.res",
+        "__tests__/NetworkManager_test.res",
+        "__tests__/NetworkTransfer_test.res",
+        "__tests__/NetworkZones_test.res",
+        "__tests__/NexusScreen_test.res",
+        "__tests__/ObserverScreen_test.res",
+        "__tests__/PBXDevice_test.res",
+        "__tests__/PanicHandler_test.res",
+        "__tests__/PasswordCracker_test.res",
+        "__tests__/PausePopup_test.res",
+        "__tests__/PhoenixSocket_test.res",
+        "__tests__/PixiSound_test.res",
+        "__tests__/PixiUI_test.res",
+        "__tests__/Pixi_test.res",
+        "__tests__/PlayerAttributes_test.res",
+        "__tests__/PlayerGraphics_test.res",
+        "__tests__/PlayerHP_test.res",
+        "__tests__/PlayerSprite_test.res",
+        "__tests__/PlayerState_test.res",
+        "__tests__/Player_test.res",
+        "__tests__/PolyglotI18n_test.res",
+        "__tests__/PopupConstructors_test.res",
+        "__tests__/PortNames_test.res",
+        "__tests__/PortScanner_test.res",
+        "__tests__/PowerManager_test.res",
+        "__tests__/PowerStationDevice_test.res",
+        "__tests__/PowerView_test.res",
+        "__tests__/ProvenError_test.res",
+        "__tests__/PuzzleFormat_test.res",
+        "__tests__/QPrograms_test.res",
+        "__tests__/QViewScreen_test.res",
+        "__tests__/RegionalISPScreen_test.res",
+        "__tests__/Resize_test.res",
+        "__tests__/ResourceAccounting_test.res",
+        "__tests__/RetryPolicy_test.res",
+        "__tests__/RoundedBox_test.res",
+        "__tests__/RouterDevice_test.res",
+        "__tests__/RuralISPScreen_test.res",
+        "__tests__/SafeAngle_test.res",
+        "__tests__/SafeFloat_test.res",
+        "__tests__/SafeJson_test.res",
+        "__tests__/SaveGame_test.res",
+        "__tests__/ScavengerTraining_test.res",
+        "__tests__/ScreenConstructors_test.res",
+        "__tests__/SecurityAI_test.res",
+        "__tests__/SecurityDog_test.res",
+        "__tests__/ServerDevice_test.res",
+        "__tests__/SettingsPopup_test.res",
+        "__tests__/SkillAbilities_test.res",
+        "__tests__/SkillTreeScreen_test.res",
+        "__tests__/Storage_test.res",
+        "__tests__/SystemLogs_test.res",
+        "__tests__/TerminalDevice_test.res",
+        "__tests__/Terminal_test.res",
+        "__tests__/TitleScreen_test.res",
+        "__tests__/TrainingBase_test.res",
+        "__tests__/TrainingMenuScreen_test.res",
+        "__tests__/TrainingRegistry_test.res",
+        "__tests__/TrajectoryPreview_test.res",
+        "__tests__/UPSDevice_test.res",
+        "__tests__/UmsLevelLoader_test.res",
+        "__tests__/UserSettings_test.res",
+        "__tests__/VMBridge_test.res",
+        "__tests__/VMMessageBus_test.res",
+        "__tests__/VMNetwork_test.res",
+        "__tests__/VeriSimClient_test.res",
+        "__tests__/VeriSimDrift_test.res",
+        "__tests__/VeriSimError_test.res",
+        "__tests__/VeriSimFederation_test.res",
+        "__tests__/VeriSimHexad_test.res",
+        "__tests__/VeriSimProvenance_test.res",
+        "__tests__/VeriSimSearch_test.res",
+        "__tests__/VeriSimTypes_test.res",
+        "__tests__/VeriSimVcl_test.res",
+        "__tests__/VmBackend_test.res",
+        "__tests__/VoiceBridge_test.res",
+        "__tests__/VolumeSlider_test.res",
+        "__tests__/WaitFor_test.res",
+        "__tests__/WorldBuilder_test.res",
+        "__tests__/WorldMapScreen_test.res",
+        "__tests__/WorldPickup_test.res",
+        "__tests__/WorldScreen_test.res"
+      ],
+      "count": 193
+    }
+  ],
+  "walled": {
+    "string_gated": [
+      {
+        "file": "__tests__/CreditsScreen_test.res",
+        "area": "__tests__",
+        "walls": [
+          "string subscript"
+        ]
+      },
+      {
+        "file": "__tests__/DataFiles_test.res",
+        "area": "__tests__",
+        "walls": [
+          "String.length"
+        ]
+      },
+      {
+        "file": "__tests__/DualAlert_test.res",
+        "area": "__tests__",
+        "walls": [
+          "string subscript"
+        ]
+      },
+      {
+        "file": "__tests__/FeedbackPopup_test.res",
+        "area": "__tests__",
+        "walls": [
+          "string subscript"
+        ]
+      },
+      {
+        "file": "__tests__/ForceLayout_test.res",
+        "area": "__tests__",
+        "walls": [
+          "string subscript"
+        ]
+      },
+      {
+        "file": "__tests__/GameOverScreen_test.res",
+        "area": "__tests__",
+        "walls": [
+          "String.length"
+        ]
+      },
+      {
+        "file": "__tests__/IntroScreen_test.res",
+        "area": "__tests__",
+        "walls": [
+          "String.length"
+        ]
+      },
+      {
+        "file": "__tests__/JessicaBackground_test.res",
+        "area": "__tests__",
+        "walls": [
+          "String.length",
+          "string subscript"
+        ]
+      },
+      {
+        "file": "__tests__/LobbyManager_test.res",
+        "area": "__tests__",
+        "walls": [
+          "string subscript",
+          "String.length"
+        ]
+      },
+      {
+        "file": "__tests__/LocationData_test.res",
+        "area": "__tests__",
+        "walls": [
+          "String.length"
+        ]
+      },
+      {
+        "file": "__tests__/MissionBriefing_test.res",
+        "area": "__tests__",
+        "walls": [
+          "String.length"
+        ]
+      },
+      {
+        "file": "__tests__/MoletaireCoprocessors_test.res",
+        "area": "__tests__",
+        "walls": [
+          "String.length"
+        ]
+      },
+      {
+        "file": "__tests__/MoletaireMusic_test.res",
+        "area": "__tests__",
+        "walls": [
+          "string subscript"
+        ]
+      },
+      {
+        "file": "__tests__/Moletaire_test.res",
+        "area": "__tests__",
+        "walls": [
+          "String.length"
+        ]
+      },
+      {
+        "file": "__tests__/ParticleField_test.res",
+        "area": "__tests__",
+        "walls": [
+          "string subscript"
+        ]
+      },
+      {
+        "file": "__tests__/PeerDetection_test.res",
+        "area": "__tests__",
+        "walls": [
+          "string subscript"
+        ]
+      },
+      {
+        "file": "__tests__/QCertifications_test.res",
+        "area": "__tests__",
+        "walls": [
+          "string subscript",
+          "String.length"
+        ]
+      },
+      {
+        "file": "__tests__/Random_test.res",
+        "area": "__tests__",
+        "walls": [
+          "String.length"
+        ]
+      },
+      {
+        "file": "__tests__/VictoryScreen_test.res",
+        "area": "__tests__",
+        "walls": [
+          "String.length"
+        ]
+      },
+      {
+        "file": "idaptik-ums/src/App.res",
+        "area": "idaptik-ums",
+        "walls": [
+          "string subscript"
+        ]
+      },
+      {
+        "file": "idaptik-ums/src/editor/EditorLevelCmd.res",
+        "area": "idaptik-ums",
+        "walls": [
+          "string subscript"
+        ]
+      },
+      {
+        "file": "idaptik-ums/tests/test_round_trip.res",
+        "area": "idaptik-ums",
+        "walls": [
+          "string subscript"
+        ]
+      },
+      {
+        "file": "shared/src/Coprocessor_Compute.res",
+        "area": "shared/src",
+        "walls": [
+          "string subscript"
+        ]
+      },
+      {
+        "file": "shared/src/Coprocessor_IO.res",
+        "area": "shared/src",
+        "walls": [
+          "String.fromCharCode",
+          "String.length",
+          "String.charCodeAt",
+          "String.startsWith"
+        ]
+      },
+      {
+        "file": "shared/src/Coprocessor_Security.res",
+        "area": "shared/src",
+        "walls": [
+          "string subscript"
+        ]
+      },
+      {
+        "file": "shared/src/Inventory.res",
+        "area": "shared/src",
+        "walls": [
+          "string subscript"
+        ]
+      },
+      {
+        "file": "shared/src/Kernel_IO.res",
+        "area": "shared/src",
+        "walls": [
+          "String.fromCharCode",
+          "String.length",
+          "String.startsWith"
+        ]
+      },
+      {
+        "file": "src/app/companions/Moletaire.res",
+        "area": "src/app/companions",
+        "walls": [
+          "string subscript"
+        ]
+      },
+      {
+        "file": "src/app/companions/MoletaireMusic.res",
+        "area": "src/app/companions",
+        "walls": [
+          "string subscript"
+        ]
+      },
+      {
+        "file": "src/app/devices/CoprocessorBridge.res",
+        "area": "src/app/devices",
+        "walls": [
+          "String.length",
+          "String.indexOf",
+          "String.slice"
+        ]
+      },
+      {
+        "file": "src/app/devices/DeviceView.res",
+        "area": "src/app/devices",
+        "walls": [
+          "string subscript",
+          "String.endsWith",
+          "String.length"
+        ]
+      },
+      {
+        "file": "src/app/devices/FirewallDevice.res",
+        "area": "src/app/devices",
+        "walls": [
+          "String.indexOf",
+          "String.slice",
+          "string subscript"
+        ]
+      },
+      {
+        "file": "src/app/devices/GlobalNetworkData.res",
+        "area": "src/app/devices",
+        "walls": [
+          "String.length",
+          "string subscript"
+        ]
+      },
+      {
+        "file": "src/app/devices/LaptopGUI.res",
+        "area": "src/app/devices",
+        "walls": [
+          "String.endsWith",
+          "String.startsWith"
+        ]
+      },
+      {
+        "file": "src/app/devices/NetworkZones.res",
+        "area": "src/app/devices",
+        "walls": [
+          "String.startsWith"
+        ]
+      },
+      {
+        "file": "src/app/devices/Terminal.res",
+        "area": "src/app/devices",
+        "walls": [
+          "string subscript",
+          "String.startsWith",
+          "String.length",
+          "String.slice"
+        ]
+      },
+      {
+        "file": "src/app/devices/VMBridge.res",
+        "area": "src/app/devices",
+        "walls": [
+          "string subscript",
+          "String.length",
+          "String.startsWith"
+        ]
+      },
+      {
+        "file": "src/app/enemies/Drone.res",
+        "area": "src/app/enemies",
+        "walls": [
+          "string subscript"
+        ]
+      },
+      {
+        "file": "src/app/enemies/GuardNPC.res",
+        "area": "src/app/enemies",
+        "walls": [
+          "string subscript"
+        ]
+      },
+      {
+        "file": "src/app/enemies/SecurityAI.res",
+        "area": "src/app/enemies",
+        "walls": [
+          "string subscript"
+        ]
+      },
+      {
+        "file": "src/app/enemies/SecurityDog.res",
+        "area": "src/app/enemies",
+        "walls": [
+          "string subscript"
+        ]
+      },
+      {
+        "file": "src/app/multiplayer/VMMessageBus.res",
+        "area": "src/app/multiplayer",
+        "walls": [
+          "String.startsWith"
+        ]
+      },
+      {
+        "file": "src/app/multiplayer/VMNetwork.res",
+        "area": "src/app/multiplayer",
+        "walls": [
+          "String.startsWith",
+          "string subscript"
+        ]
+      },
+      {
+        "file": "src/app/narrative/DataFiles.res",
+        "area": "src/app/narrative",
+        "walls": [
+          "string subscript"
+        ]
+      },
+      {
+        "file": "src/app/pickups/WorldPickup.res",
+        "area": "src/app/pickups",
+        "walls": [
+          "String.slice"
+        ]
+      },
+      {
+        "file": "src/app/popups/FeedbackPopup.res",
+        "area": "src/app/popups",
+        "walls": [
+          "String.length",
+          "String.slice"
+        ]
+      },
+      {
+        "file": "src/app/popups/NetworkDesktop.res",
+        "area": "src/app/popups",
+        "walls": [
+          "String.startsWith",
+          "string subscript"
+        ]
+      },
+      {
+        "file": "src/app/proven/SafeJson.res",
+        "area": "src/app/proven",
+        "walls": [
+          "String.slice",
+          "String.length"
+        ]
+      },
+      {
+        "file": "src/app/screens/CharacterSelectScreen.res",
+        "area": "src/app/screens",
+        "walls": [
+          "String.length",
+          "String.slice"
+        ]
+      },
+      {
+        "file": "src/app/screens/IntroScreen.res",
+        "area": "src/app/screens",
+        "walls": [
+          "string subscript"
+        ]
+      },
+      {
+        "file": "src/app/screens/WorldMapScreen.res",
+        "area": "src/app/screens",
+        "walls": [
+          "string subscript"
+        ]
+      },
+      {
+        "file": "src/app/screens/training/CombatTraining.res",
+        "area": "src/app/screens",
+        "walls": [
+          "string subscript"
+        ]
+      },
+      {
+        "file": "src/app/screens/training/HighwayCrossingTraining.res",
+        "area": "src/app/screens",
+        "walls": [
+          "string subscript"
+        ]
+      },
+      {
+        "file": "src/app/screens/training/MoletaireTraining.res",
+        "area": "src/app/screens",
+        "walls": [
+          "string subscript"
+        ]
+      },
+      {
+        "file": "src/app/tools/PasswordCracker.res",
+        "area": "src/app/tools",
+        "walls": [
+          "String.length",
+          "String.charCodeAt"
+        ]
+      },
+      {
+        "file": "src/app/tools/PortScanner.res",
+        "area": "src/app/tools",
+        "walls": [
+          "string subscript"
+        ]
+      },
+      {
+        "file": "src/app/ui/HUD.res",
+        "area": "src/app/ui",
+        "walls": [
+          "string subscript"
+        ]
+      },
+      {
+        "file": "src/app/ui/KernelMonitor.res",
+        "area": "src/app/ui",
+        "walls": [
+          "String.length"
+        ]
+      },
+      {
+        "file": "src/app/utils/DesktopIntegration.res",
+        "area": "src/app/utils",
+        "walls": [
+          "string subscript"
+        ]
+      },
+      {
+        "file": "src/engine/utils/Random.res",
+        "area": "src/engine",
+        "walls": [
+          "string subscript",
+          "String.length"
+        ]
+      },
+      {
+        "file": "src/shared/Coprocessor_Compute.res",
+        "area": "src/shared",
+        "walls": [
+          "string subscript"
+        ]
+      },
+      {
+        "file": "src/shared/Coprocessor_IO.res",
+        "area": "src/shared",
+        "walls": [
+          "String.fromCharCode",
+          "String.length",
+          "String.charCodeAt",
+          "String.startsWith"
+        ]
+      },
+      {
+        "file": "src/shared/Coprocessor_Security.res",
+        "area": "src/shared",
+        "walls": [
+          "string subscript"
+        ]
+      },
+      {
+        "file": "src/shared/DLCLoader.res",
+        "area": "src/shared",
+        "walls": [
+          "String.length"
+        ]
+      },
+      {
+        "file": "src/shared/GossamerFs.res",
+        "area": "src/shared",
+        "walls": [
+          "string subscript"
+        ]
+      },
+      {
+        "file": "src/shared/Inventory.res",
+        "area": "src/shared",
+        "walls": [
+          "string subscript"
+        ]
+      },
+      {
+        "file": "src/shared/Kernel_IO.res",
+        "area": "src/shared",
+        "walls": [
+          "String.fromCharCode",
+          "String.length",
+          "String.startsWith"
+        ]
+      },
+      {
+        "file": "src/shared/PortNames.res",
+        "area": "src/shared",
+        "walls": [
+          "String.startsWith"
+        ]
+      },
+      {
+        "file": "vm/lib/ocaml/InstructionParser.res",
+        "area": "vm",
+        "walls": [
+          "String.length",
+          "string subscript"
+        ]
+      },
+      {
+        "file": "vm/lib/ocaml/StateDiff.res",
+        "area": "vm",
+        "walls": [
+          "String.length"
+        ]
+      },
+      {
+        "file": "vm/lib/ocaml/VmState.res",
+        "area": "vm",
+        "walls": [
+          "String.startsWith"
+        ]
+      }
+    ],
+    "effect_gated": [
+      {
+        "file": "__tests__/TestRunner.res",
+        "area": "__tests__",
+        "walls": [
+          "Console.log"
+        ]
+      },
+      {
+        "file": "shared/src/Coprocessor.res",
+        "area": "shared/src",
+        "walls": [
+          "module-level mutable state (Dict.make())",
+          "Console.log",
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "shared/src/CoprocessorManager.res",
+        "area": "shared/src",
+        "walls": [
+          "Console.log"
+        ]
+      },
+      {
+        "file": "shared/src/Kernel_Crypto.res",
+        "area": "shared/src",
+        "walls": [
+          "module-level mutable state (Dict.make())"
+        ]
+      },
+      {
+        "file": "shared/src/Kernel_Quantum.res",
+        "area": "shared/src",
+        "walls": [
+          "module-level mutable state (Dict.make())",
+          "Console.log"
+        ]
+      },
+      {
+        "file": "shared/src/ResourceAccounting.res",
+        "area": "shared/src",
+        "walls": [
+          "module-level mutable state (Dict.make())"
+        ]
+      },
+      {
+        "file": "src/app/GetEngine.res",
+        "area": "src/app",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/combat/Combat.res",
+        "area": "src/app/combat",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/combat/PlayerHP.res",
+        "area": "src/app/combat",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/companions/MoletaireCoprocessors.res",
+        "area": "src/app/companions",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/devices/CameraDevice.res",
+        "area": "src/app/devices",
+        "walls": [
+          "module-level mutable state (Dict.make())"
+        ]
+      },
+      {
+        "file": "src/app/devices/CameraFeed.res",
+        "area": "src/app/devices",
+        "walls": [
+          "module-level mutable state (ref(...))",
+          "module-level mutable state (Dict.make())"
+        ]
+      },
+      {
+        "file": "src/app/devices/CovertLink.res",
+        "area": "src/app/devices",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/devices/DesktopDevice.res",
+        "area": "src/app/devices",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/devices/DeviceActivity.res",
+        "area": "src/app/devices",
+        "walls": [
+          "Date.now",
+          "module-level mutable state (Dict.make())"
+        ]
+      },
+      {
+        "file": "src/app/devices/DeviceRegistry.res",
+        "area": "src/app/devices",
+        "walls": [
+          "module-level mutable state (Dict.make())",
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/devices/GlobalNetworkManager.res",
+        "area": "src/app/devices",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/devices/LaptopState.res",
+        "area": "src/app/devices",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/devices/NetworkManager.res",
+        "area": "src/app/devices",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/devices/NetworkTransfer.res",
+        "area": "src/app/devices",
+        "walls": [
+          "module-level mutable state (ref(...))",
+          "module-level mutable state (Dict.make())"
+        ]
+      },
+      {
+        "file": "src/app/devices/PBXDevice.res",
+        "area": "src/app/devices",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/devices/PowerManager.res",
+        "area": "src/app/devices",
+        "walls": [
+          "module-level mutable state (ref(...))",
+          "module-level mutable state (Dict.make())"
+        ]
+      },
+      {
+        "file": "src/app/devices/RouterDevice.res",
+        "area": "src/app/devices",
+        "walls": [
+          "Date.now",
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/devices/ServerDevice.res",
+        "area": "src/app/devices",
+        "walls": [
+          "Date.now",
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/devices/SystemLogs.res",
+        "area": "src/app/devices",
+        "walls": [
+          "Date.now",
+          "module-level mutable state (Dict.make())"
+        ]
+      },
+      {
+        "file": "src/app/devices/TerminalDevice.res",
+        "area": "src/app/devices",
+        "walls": [
+          "Date.now"
+        ]
+      },
+      {
+        "file": "src/app/devices/UPSDevice.res",
+        "area": "src/app/devices",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/devices/common/DeviceWindow.res",
+        "area": "src/app/devices",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/enemies/DetectionSystem.res",
+        "area": "src/app/enemies",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/enemies/Distraction.res",
+        "area": "src/app/enemies",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/multiplayer/LobbyRegistry.res",
+        "area": "src/app/multiplayer",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/multiplayer/MultiplayerClient.res",
+        "area": "src/app/multiplayer",
+        "walls": [
+          "Date.now"
+        ]
+      },
+      {
+        "file": "src/app/multiplayer/MultiplayerGlobal.res",
+        "area": "src/app/multiplayer",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/multiplayer/MultiplayerScreenWiring.res",
+        "area": "src/app/multiplayer",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/multiplayer/PhoenixSocket.res",
+        "area": "src/app/multiplayer",
+        "walls": [
+          "module-level mutable state (Dict.make())"
+        ]
+      },
+      {
+        "file": "src/app/narrative/MissionBriefing.res",
+        "area": "src/app/narrative",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/player/CriticalRoll.res",
+        "area": "src/app/player",
+        "walls": [
+          "module-level mutable state (ref(...))",
+          "Math.random"
+        ]
+      },
+      {
+        "file": "src/app/player/JessicaBackground.res",
+        "area": "src/app/player",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/player/JessicaLoadout.res",
+        "area": "src/app/player",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/player/KeyboardAiming.res",
+        "area": "src/app/player",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/player/PlayerAttributes.res",
+        "area": "src/app/player",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/player/PlayerGraphics.res",
+        "area": "src/app/player",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/player/PlayerSprite.res",
+        "area": "src/app/player",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/player/PlayerState.res",
+        "area": "src/app/player",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/player/QPrograms.res",
+        "area": "src/app/player",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/player/SkillAbilities.res",
+        "area": "src/app/player",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/player/TrajectoryPreview.res",
+        "area": "src/app/player",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/popups/AccessibilityPopup.res",
+        "area": "src/app/popups",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/popups/ForceLayout.res",
+        "area": "src/app/popups",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/popups/PopupConstructors.res",
+        "area": "src/app/popups",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/popups/PowerView.res",
+        "area": "src/app/popups",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/popups/SettingsPopup.res",
+        "area": "src/app/popups",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/proven/SafeFloat.res",
+        "area": "src/app/proven",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/screens/BalanceAnalyserModel.res",
+        "area": "src/app/screens",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/screens/GameOverScreen.res",
+        "area": "src/app/screens",
+        "walls": [
+          "module-level mutable state (ref(...))",
+          "Math.random"
+        ]
+      },
+      {
+        "file": "src/app/screens/LevelConfig.res",
+        "area": "src/app/screens",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/screens/LobbyScreen.res",
+        "area": "src/app/screens",
+        "walls": [
+          "module-level mutable state (ref(...))",
+          "Date.now"
+        ]
+      },
+      {
+        "file": "src/app/screens/LocationData.res",
+        "area": "src/app/screens",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/screens/LocationRegistry.res",
+        "area": "src/app/screens",
+        "walls": [
+          "module-level mutable state (Dict.make())"
+        ]
+      },
+      {
+        "file": "src/app/screens/ScreenConstructors.res",
+        "area": "src/app/screens",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/screens/VictoryScreen.res",
+        "area": "src/app/screens",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/screens/WorldBuilder.res",
+        "area": "src/app/screens",
+        "walls": [
+          "module-level mutable state (ref(...))",
+          "Math.random"
+        ]
+      },
+      {
+        "file": "src/app/screens/WorldScreen.res",
+        "area": "src/app/screens",
+        "walls": [
+          "module-level mutable state (ref(...))",
+          "Math.random"
+        ]
+      },
+      {
+        "file": "src/app/screens/hub/MainHubScreen.res",
+        "area": "src/app/screens",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/screens/training/AssassinTraining.res",
+        "area": "src/app/screens",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/screens/training/DogTraining.res",
+        "area": "src/app/screens",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/screens/training/DroneTraining.res",
+        "area": "src/app/screens",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/screens/training/DroneTrainingGround.res",
+        "area": "src/app/screens",
+        "walls": [
+          "Math.random",
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/screens/training/GuardTraining.res",
+        "area": "src/app/screens",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/screens/training/ScavengerTraining.res",
+        "area": "src/app/screens",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/screens/training/TrainingBase.res",
+        "area": "src/app/screens",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/screens/training/TrainingRegistry.res",
+        "area": "src/app/screens",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/ui/ParticleField.res",
+        "area": "src/app/ui",
+        "walls": [
+          "module-level mutable state (ref(...))",
+          "Math.random"
+        ]
+      },
+      {
+        "file": "src/app/ui/RoundedBox.res",
+        "area": "src/app/ui",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/utils/AccessibilitySettings.res",
+        "area": "src/app/utils",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/utils/FeaturePacks.res",
+        "area": "src/app/utils",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/utils/FeedbackIntegration.res",
+        "area": "src/app/utils",
+        "walls": [
+          "module-level mutable state (ref(...))",
+          "Date.now"
+        ]
+      },
+      {
+        "file": "src/app/utils/FontScale.res",
+        "area": "src/app/utils",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/utils/GameI18n.res",
+        "area": "src/app/utils",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/utils/LanguageSettings.res",
+        "area": "src/app/utils",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/utils/PeerDetection.res",
+        "area": "src/app/utils",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/app/verisimdb/VeriSimClient.res",
+        "area": "src/app",
+        "walls": [
+          "module-level mutable state (Dict.make())"
+        ]
+      },
+      {
+        "file": "src/engine/Engine.res",
+        "area": "src/engine",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/engine/VmBackend.res",
+        "area": "src/engine",
+        "walls": [
+          "module-level mutable state (ref(...))",
+          "Console.log",
+          "module-level mutable state (Dict.make())"
+        ]
+      },
+      {
+        "file": "src/engine/utils/Storage.res",
+        "area": "src/engine",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/shared/Coprocessor.res",
+        "area": "src/shared",
+        "walls": [
+          "module-level mutable state (Dict.make())",
+          "Console.log",
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/shared/CoprocessorManager.res",
+        "area": "src/shared",
+        "walls": [
+          "Console.log"
+        ]
+      },
+      {
+        "file": "src/shared/Diagnostics.res",
+        "area": "src/shared",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/shared/Kernel.res",
+        "area": "src/shared",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/shared/Kernel_Crypto.res",
+        "area": "src/shared",
+        "walls": [
+          "module-level mutable state (Dict.make())"
+        ]
+      },
+      {
+        "file": "src/shared/Kernel_Quantum.res",
+        "area": "src/shared",
+        "walls": [
+          "module-level mutable state (Dict.make())",
+          "Console.log"
+        ]
+      },
+      {
+        "file": "src/shared/PuzzleFormat.res",
+        "area": "src/shared",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/shared/ResourceAccounting.res",
+        "area": "src/shared",
+        "walls": [
+          "module-level mutable state (Dict.make())",
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "src/shared/UmsLevelLoader.res",
+        "area": "src/shared",
+        "walls": [
+          "module-level mutable state (ref(...))"
+        ]
+      },
+      {
+        "file": "vm/lib/ocaml/add_test.res",
+        "area": "vm",
+        "walls": [
+          "Console.log"
+        ]
+      },
+      {
+        "file": "vm/lib/ocaml/and_or_test.res",
+        "area": "vm",
+        "walls": [
+          "Console.log"
+        ]
+      },
+      {
+        "file": "vm/lib/ocaml/benchmark.res",
+        "area": "vm",
+        "walls": [
+          "Console.log"
+        ]
+      },
+      {
+        "file": "vm/lib/ocaml/call_test.res",
+        "area": "vm",
+        "walls": [
+          "Console.log"
+        ]
+      },
+      {
+        "file": "vm/lib/ocaml/flip_test.res",
+        "area": "vm",
+        "walls": [
+          "Console.log"
+        ]
+      },
+      {
+        "file": "vm/lib/ocaml/if_pos_test.res",
+        "area": "vm",
+        "walls": [
+          "Console.log"
+        ]
+      },
+      {
+        "file": "vm/lib/ocaml/if_zero_test.res",
+        "area": "vm",
+        "walls": [
+          "Console.log"
+        ]
+      },
+      {
+        "file": "vm/lib/ocaml/load_store_test.res",
+        "area": "vm",
+        "walls": [
+          "Console.log"
+        ]
+      },
+      {
+        "file": "vm/lib/ocaml/loop_test.res",
+        "area": "vm",
+        "walls": [
+          "Console.log"
+        ]
+      },
+      {
+        "file": "vm/lib/ocaml/push_pop_test.res",
+        "area": "vm",
+        "walls": [
+          "Console.log"
+        ]
+      },
+      {
+        "file": "vm/lib/ocaml/rol_ror_test.res",
+        "area": "vm",
+        "walls": [
+          "Console.log"
+        ]
+      },
+      {
+        "file": "vm/lib/ocaml/send_recv_test.res",
+        "area": "vm",
+        "walls": [
+          "Console.log"
+        ]
+      },
+      {
+        "file": "vm/lib/ocaml/swap_test.res",
+        "area": "vm",
+        "walls": [
+          "Console.log"
+        ]
+      },
+      {
+        "file": "vm/lib/ocaml/test_all.res",
+        "area": "vm",
+        "walls": [
+          "Console.log"
+        ]
+      },
+      {
+        "file": "vm/lib/ocaml/test_runner.res",
+        "area": "vm",
+        "walls": [
+          "Console.log"
+        ]
+      },
+      {
+        "file": "vm/lib/ocaml/xor_test.res",
+        "area": "vm",
+        "walls": [
+          "Console.log"
+        ]
+      },
+      {
+        "file": "vm/wasm/src/WasmVm.res",
+        "area": "vm",
+        "walls": [
+          "module-level mutable state (ref(...))",
+          "module-level mutable state (Dict.make())"
+        ]
+      }
+    ]
+  }
+}

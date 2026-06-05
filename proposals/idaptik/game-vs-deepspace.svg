@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 660" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <rect width="1000" height="660" fill="#0f1320"/>
+  <text x="500" y="34" text-anchor="middle" fill="#e6e9f0" font-size="21" font-weight="700">Same enemy ("did the data survive?"), opposite weapon</text>
+  <text x="500" y="56" text-anchor="middle" fill="#9aa3b2" font-size="13">because LATENCY flips the economics: cheap round-trips reward sending LESS; ruinous round-trips force sending MORE</text>
+  <line x1="500" y1="74" x2="500" y2="500" stroke="#2a3147" stroke-width="1.5"/>
+
+  <!-- ============ LEFT: IDApTIK game ============ -->
+  <text x="40" y="100" fill="#9cc2ff" font-size="16" font-weight="700">IDApTIK  —  client &#8644; server</text>
+  <text x="40" y="120" fill="#9aa3b2" font-size="12.5">round-trips are CHEAP  (~milliseconds)</text>
+
+  <rect x="55" y="138" width="160" height="78" rx="8" fill="#13284a" stroke="#4f8cff"/>
+  <text x="135" y="162" text-anchor="middle" fill="#9cc2ff" font-size="13" font-weight="700">CLIENT</text>
+  <text x="135" y="182" text-anchor="middle" fill="#aab2c6" font-size="11">live sim</text>
+  <text x="135" y="198" text-anchor="middle" fill="#aab2c6" font-size="11">predict + rollback</text>
+
+  <rect x="285" y="138" width="160" height="78" rx="8" fill="#0f3326" stroke="#36c98d"/>
+  <text x="365" y="162" text-anchor="middle" fill="#7fe3bf" font-size="13" font-weight="700">SERVER</text>
+  <text x="365" y="182" text-anchor="middle" fill="#aab2c6" font-size="11">live sim</text>
+  <text x="365" y="198" text-anchor="middle" fill="#aab2c6" font-size="11">authority</text>
+
+  <line x1="215" y1="170" x2="285" y2="170" stroke="#566077" stroke-width="3"/>
+  <polygon points="285,170 272,164 272,176" fill="#566077"/>
+  <line x1="285" y1="186" x2="215" y2="186" stroke="#566077" stroke-width="3"/>
+  <polygon points="215,186 228,180 228,192" fill="#566077"/>
+  <text x="250" y="156" text-anchor="middle" fill="#7fe3bf" font-size="11" font-weight="700">~ms</text>
+
+  <rect x="205" y="232" width="90" height="26" rx="5" fill="#24304a" stroke="#f5d36b"/>
+  <text x="250" y="249" text-anchor="middle" fill="#f5d36b" font-size="11" font-weight="700">a1f3? &#8594; yes</text>
+  <text x="250" y="278" text-anchor="middle" fill="#9aa3b2" font-size="11">same deterministic sim runs LIVE on both sides (lockstep)</text>
+
+  <rect x="50" y="300" width="410" height="92" rx="9" fill="#10241b" stroke="#36c98d"/>
+  <text x="68" y="324" fill="#7fe3bf" font-size="14" font-weight="700">STRATEGY:  VERIFY, don't transfer</text>
+  <text x="68" y="346" fill="#cdd6e6" font-size="12">Send the smallest possible thing &#8212; a fingerprint.</text>
+  <text x="68" y="364" fill="#cdd6e6" font-size="12">Reconcile only on the rare mismatch. You can afford to</text>
+  <text x="68" y="382" fill="#cdd6e6" font-size="12">ask "do we agree?" because the answer is back in milliseconds.</text>
+
+  <!-- ============ RIGHT: deep space ============ -->
+  <text x="540" y="100" fill="#f5d36b" font-size="16" font-weight="700">Ground  &#8644;  relay  &#8644;  probe</text>
+  <text x="540" y="120" fill="#9aa3b2" font-size="12.5">round-trips are RUINOUS  (seconds to many minutes of light-time)</text>
+
+  <rect x="540" y="138" width="118" height="70" rx="8" fill="#2a2030" stroke="#c98be0"/>
+  <text x="599" y="162" text-anchor="middle" fill="#dcb6ef" font-size="12" font-weight="700">Ground (ESOC)</text>
+  <text x="599" y="182" text-anchor="middle" fill="#9aa3b2" font-size="10">digital twin</text>
+  <text x="599" y="196" text-anchor="middle" fill="#9aa3b2" font-size="10">(offline)</text>
+
+  <rect x="700" y="138" width="120" height="70" rx="8" fill="#2c2620" stroke="#f5d36b"/>
+  <text x="760" y="160" text-anchor="middle" fill="#f5d36b" font-size="12" font-weight="700">Queqiao relay</text>
+  <text x="760" y="176" text-anchor="middle" fill="#9aa3b2" font-size="9.5">Earth-Moon L2 (CNSA)</text>
+  <text x="760" y="194" text-anchor="middle" fill="#9aa3b2" font-size="9.5">store + forward (DTN)</text>
+
+  <rect x="862" y="138" width="100" height="70" rx="8" fill="#102a3a" stroke="#5fb0d8"/>
+  <text x="912" y="162" text-anchor="middle" fill="#9fd2ec" font-size="12" font-weight="700">Probe</text>
+  <text x="912" y="182" text-anchor="middle" fill="#9aa3b2" font-size="10">autonomous</text>
+  <text x="912" y="196" text-anchor="middle" fill="#9aa3b2" font-size="10">SPARK/Ada</text>
+
+  <line x1="658" y1="173" x2="700" y2="173" stroke="#566077" stroke-width="3"/>
+  <polygon points="700,173 687,167 687,179" fill="#566077"/>
+  <line x1="820" y1="173" x2="862" y2="173" stroke="#566077" stroke-width="3"/>
+  <polygon points="862,173 849,167 849,179" fill="#566077"/>
+
+  <text x="750" y="232" text-anchor="middle" fill="#9aa3b2" font-size="11">light-time delay: Moon &#8776; 1.3 s one-way  &#183;  Mars 3&#8211;22 min  &#183;  no real-time loop possible</text>
+
+  <!-- FEC packet -->
+  <text x="540" y="260" fill="#9aa3b2" font-size="11">a message goes out PADDED with error-correcting redundancy:</text>
+  <rect x="540" y="268" width="120" height="22" rx="3" fill="#39425e" stroke="#7c87a3"/>
+  <text x="600" y="284" text-anchor="middle" fill="#e6e9f0" font-size="11" font-weight="700">DATA</text>
+  <rect x="666" y="268" width="74" height="22" rx="3" fill="#3a2e16" stroke="#f5d36b"/>
+  <text x="703" y="284" text-anchor="middle" fill="#f5d36b" font-size="10">+ parity</text>
+  <rect x="746" y="268" width="74" height="22" rx="3" fill="#3a2e16" stroke="#f5d36b"/>
+  <text x="783" y="284" text-anchor="middle" fill="#f5d36b" font-size="10">+ parity</text>
+  <rect x="826" y="268" width="74" height="22" rx="3" fill="#3a2e16" stroke="#f5d36b"/>
+  <text x="863" y="284" text-anchor="middle" fill="#f5d36b" font-size="10">+ parity</text>
+
+  <rect x="510" y="300" width="450" height="92" rx="9" fill="#2c2414" stroke="#f5d36b"/>
+  <text x="528" y="324" fill="#f5d36b" font-size="14" font-weight="700">STRATEGY:  CORRECT, don't ask</text>
+  <text x="528" y="346" fill="#cdd6e6" font-size="12">Pile on redundancy so the receiver self-heals bit-errors with</text>
+  <text x="528" y="364" fill="#cdd6e6" font-size="12">NO resend (Reed-Solomon / Turbo / LDPC, CCSDS). Asking again</text>
+  <text x="528" y="382" fill="#cdd6e6" font-size="12">costs a whole round-trip (minutes&#8211;hours), so you never rely on it.</text>
+
+  <!-- ============ FOOTER ============ -->
+  <rect x="40" y="420" width="920" height="200" rx="10" fill="#171c2b" stroke="#2a3147"/>
+  <text x="500" y="452" text-anchor="middle" fill="#e6e9f0" font-size="15" font-weight="700">The flip</text>
+  <text x="60" y="486" fill="#7fe3bf" font-size="13" font-weight="700">GAME (cheap round-trips)</text>
+  <text x="60" y="508" fill="#cdd6e6" font-size="12">&#8226; send LESS &#8212; a fingerprint</text>
+  <text x="60" y="528" fill="#cdd6e6" font-size="12">&#8226; ask "do we agree?", reconcile on mismatch</text>
+  <text x="60" y="548" fill="#cdd6e6" font-size="12">&#8226; two LIVE sims in lockstep; check is a hash</text>
+  <text x="60" y="568" fill="#cdd6e6" font-size="12">&#8226; enemy = DESYNC between two simulations</text>
+
+  <text x="530" y="486" fill="#f5d36b" font-size="13" font-weight="700">DEEP SPACE (ruinous round-trips)</text>
+  <text x="530" y="508" fill="#cdd6e6" font-size="12">&#8226; send MORE &#8212; data + heavy parity (FEC)</text>
+  <text x="530" y="528" fill="#cdd6e6" font-size="12">&#8226; never ask; receiver self-corrects on arrival</text>
+  <text x="530" y="548" fill="#cdd6e6" font-size="12">&#8226; probe autonomous; ground twin checks telemetry later</text>
+  <text x="530" y="568" fill="#cdd6e6" font-size="12">&#8226; enemy = BIT-ERRORS on a one-way, noisy channel</text>
+
+  <text x="500" y="600" text-anchor="middle" fill="#9aa3b2" font-size="11.5">echo-types (a PROOF data is recoverable) is the static cousin of deep-space CHANNEL CODING (a coding-theory GUARANTEE errors are correctable) &#8212; same goal, different layer</text>
+</svg>
