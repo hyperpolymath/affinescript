@@ -1,0 +1,53 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// VmArith -- the reversible integer-arithmetic opcodes of the idaptik VM, the
+// pure-integer core extracted from vm/lib/ocaml/{Add,Sub,Negate,Noop,Swap}.res.
+// The ReScript VM stores state in a dict<int> keyed by register NAME and each
+// instruction is a pair of `execute` / `invert` closures over that dict. We
+// re-decompose per the brain/senses split: the register-name strings and the
+// dict live host-side (the senses); the brain is the reversible VALUE transform
+// each opcode performs, as scalar-int functions. "The integer IS the register."
+//
+// The defining invariant of the reversible VM is that every opcode's `invert`
+// undoes its `execute`. We pin that here as explicit *_roundtrip exports whose
+// oracle is the identity -- the headline gate for this cluster.
+//
+//## Opcode value semantics (register a, register b; result is the new a)
+//   ADD     execute a := a + b      invert a := a - b      (inverse pair)
+//   SUB     execute a := a - b      invert a := a + b      (inverse pair)
+//   NEGATE  execute a := -a         invert a := -a         (self-inverse)
+//   NOOP    execute a := a          invert a := a          (identity)
+//   SWAP    execute (a,b):=(b,a)    invert (a,b):=(b,a)    (self-inverse)
+// All identities hold over i32 two's-complement wraparound: (a+b)-b == a even
+// when a+b overflows, because the wrap is consistent in both directions.
+
+// --- ADD: inverse pair ---
+pub fn add_fwd(a: Int, b: Int) -> Int { a + b }
+pub fn add_inv(a: Int, b: Int) -> Int { a - b }
+
+// --- SUB: inverse pair ---
+pub fn sub_fwd(a: Int, b: Int) -> Int { a - b }
+pub fn sub_inv(a: Int, b: Int) -> Int { a + b }
+
+// --- NEGATE: self-inverse ---
+pub fn negate(a: Int) -> Int { -a }
+
+// --- NOOP: identity ---
+pub fn noop(a: Int) -> Int { a }
+
+// --- SWAP: self-inverse; two projections of the (a,b) -> (b,a) transform ---
+pub fn swap_first(a: Int, b: Int) -> Int { b }
+pub fn swap_second(a: Int, b: Int) -> Int { a }
+
+// --- Reversibility round-trips (oracle = identity): invert undoes execute ---
+pub fn add_roundtrip(a: Int, b: Int) -> Int { add_inv(add_fwd(a, b), b) }       // == a
+pub fn sub_roundtrip(a: Int, b: Int) -> Int { sub_inv(sub_fwd(a, b), b) }       // == a
+pub fn negate_roundtrip(a: Int) -> Int { negate(negate(a)) }                    // == a
+pub fn noop_roundtrip(a: Int) -> Int { noop(noop(a)) }                          // == a
+// SWAP twice is identity: re-applying the (b,a) transform to (b,a) gives (a,b).
+pub fn swap_roundtrip_first(a: Int, b: Int) -> Int {
+  swap_first(swap_first(a, b), swap_second(a, b))
+}                                                                                // == a
+pub fn swap_roundtrip_second(a: Int, b: Int) -> Int {
+  swap_second(swap_first(a, b), swap_second(a, b))
+}                                                                                // == b

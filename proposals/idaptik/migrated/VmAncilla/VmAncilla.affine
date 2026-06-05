@@ -1,0 +1,38 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// VmAncilla -- the CONDITIONALLY-reversible bitwise opcodes of the idaptik VM,
+// the pure-integer core extracted from vm/lib/ocaml/{And,Or}.res. Unlike the
+// VmArith / VmBitwise opcodes (unconditionally reversible), AND and OR are
+// reversible only via Bennett's ancilla trick, and only under a PRECONDITION.
+// This distinction is the interesting semantic content of this kernel.
+//
+//## The Bennett ancilla protocol (registers a, b, ancilla c)
+//   execute  c := a & b   (resp. a | b)      -- write the result into c
+//   invert   c := 0                          -- clear c back to zero
+// This is reversible ONLY when c == 0 before execute: then the pair restores c
+// to its original value (0). If c != 0 beforehand, invert does NOT restore it --
+// the trick has a declared precondition, exactly like a declared clamp. The
+// reversibility is on the ANCILLA round-trip:  0 --execute--> a∘b --invert--> 0.
+//
+// a & b and a | b are themselves many-to-one (lossy as maps from (a,b)); they
+// are made reversible only by keeping a and b live and storing the result in a
+// fresh zeroed ancilla. We expose the forward computation and the inverse clear
+// separately, and pin the ancilla round-trip (oracle = 0).
+
+// --- forward: the value written into the zeroed ancilla c ---
+pub fn and_compute(a: Int, b: Int) -> Int { a & b }
+pub fn or_compute(a: Int, b: Int) -> Int { a | b }
+
+// --- invert: clear the ancilla back to zero (independent of a, b) ---
+pub fn ancilla_clear() -> Int { 0 }
+
+// --- ancilla round-trip under the precondition c0 == 0:
+//     start at 0, execute writes a∘b, invert clears to 0. Result == 0. ---
+pub fn and_ancilla_roundtrip(a: Int, b: Int) -> Int {
+  let _written = and_compute(a, b);
+  ancilla_clear()
+}                                                                   // == 0
+pub fn or_ancilla_roundtrip(a: Int, b: Int) -> Int {
+  let _written = or_compute(a, b);
+  ancilla_clear()
+}                                                                   // == 0

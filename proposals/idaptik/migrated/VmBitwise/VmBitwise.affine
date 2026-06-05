@@ -1,0 +1,41 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// VmBitwise -- the reversible bitwise opcodes of the idaptik VM, the
+// pure-integer core extracted from vm/lib/ocaml/{Flip,Xor,Rol,Ror}.res. Same
+// brain/senses split as VmArith: register names + dict are host-side; the brain
+// is the reversible bit-level value transform. Every export's reversibility is
+// pinned as a *_roundtrip whose oracle is the identity.
+//
+//## Opcode value semantics
+//   FLIP  execute a := ~a            invert a := ~a            (self-inverse)
+//   XOR   execute a := a ^ b         invert a := a ^ b         (self-inverse in a)
+//   ROL   execute a := rotl(a,bits)  invert a := rotr(a,bits)  (inverse pair)
+//   ROR   execute a := rotr(a,bits)  invert a := rotl(a,bits)  (inverse pair)
+//
+//## Two compiler facts this kernel is written around (see EVIDENCE.adoc)
+//   * Unary `~` mis-compiles (emits i32.xor missing an operand), so FLIP uses
+//     the two's-complement identity ~a == -a - 1. Self-inverse is preserved:
+//     ~(~a) = a, and (-(-a-1))-1 = a.
+//   * `>>` is ARITHMETIC (sign-propagating) and `>>>` does not exist, but the
+//     ReScript ROL/ROR use a LOGICAL shift-right (lsr). We emulate it:
+//       lsr(a,n) = (a >> n) & ((1 << (32 - n)) - 1)   for 1 <= n <= 31
+//     which clears the n sign-extended high bits. The mask (1<<(32-n))-1 wraps
+//     correctly at i32 (e.g. n=1 -> (1<<31)-1 = 0x7FFFFFFF).
+// bits is the rotation amount, valid for 1 <= bits <= 31.
+
+// --- FLIP: self-inverse (~a via the two's-complement identity) ---
+pub fn flip(a: Int) -> Int { -a - 1 }
+pub fn flip_roundtrip(a: Int) -> Int { flip(flip(a)) }              // == a
+
+// --- XOR: self-inverse in a ---
+pub fn xor(a: Int, b: Int) -> Int { a ^ b }
+pub fn xor_roundtrip(a: Int, b: Int) -> Int { xor(xor(a, b), b) }  // == a
+
+// --- logical shift right (32-bit), emulated; private helper ---
+fn lsr(a: Int, n: Int) -> Int { (a >> n) & ((1 << (32 - n)) - 1) }
+
+// --- ROL / ROR: inverse pair (rotate left/right by `bits`, 1..31) ---
+pub fn rol(a: Int, bits: Int) -> Int { (a << bits) | lsr(a, 32 - bits) }
+pub fn ror(a: Int, bits: Int) -> Int { lsr(a, bits) | (a << (32 - bits)) }
+pub fn rol_roundtrip(a: Int, bits: Int) -> Int { ror(rol(a, bits), bits) }  // == a
+pub fn ror_roundtrip(a: Int, bits: Int) -> Int { rol(ror(a, bits), bits) }  // == a
