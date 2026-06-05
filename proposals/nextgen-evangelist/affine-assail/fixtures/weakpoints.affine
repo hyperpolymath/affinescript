@@ -1,0 +1,45 @@
+// SPDX-License-Identifier: MPL-2.0
+//
+// weakpoints.affine -- a SYNTHETIC fixture (not migrated source) exercising
+// the shapes the two real kernels don't cover, so affine-assail's full reach
+// is demonstrated honestly in one place:
+//   - a wildcard `_ => N` clamp-sentinel arm,
+//   - a brace-less `Invalid(v) => N` clamp-sentinel arm,
+//   - a genuinely UNGUARDED boundary decoder (severity medium, no length check).
+
+enum Tag { A, B, Invalid(Int) }
+
+// Wildcard catch-all collapsing to an in-band literal: PA-AFF-001.
+fn classify(t: Int) -> Int {
+  match t {
+    0 => 1,
+    1 => 2,
+    _ => 0
+  }
+}
+
+// Brace-less out-of-band arm collapsing to a literal: PA-AFF-001.
+fn rank(tag: Tag) -> Int {
+  match tag {
+    A => 0,
+    B => 1,
+    Invalid(v) => 3
+  }
+}
+
+// Unguarded boundary decoder: pub fn over [Int], indexes via nth(, NO length
+// guard anywhere -> PA-AFF-002 at MEDIUM. (Contrast Kernel_IO.in_sandbox, which
+// has guards and is lowered to LOW.)
+pub fn first_byte(data: [Int]) -> Int {
+  nth(data, 0)
+}
+
+fn nth(xs: [Int], k: Int) -> Int {
+  let mut out = 0;
+  let mut i = 0;
+  for x in xs {
+    out = if i == k { x } else { out };
+    i = i + 1;
+  }
+  out
+}

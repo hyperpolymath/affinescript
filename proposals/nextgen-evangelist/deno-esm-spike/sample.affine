@@ -1,0 +1,28 @@
+// SPDX-License-Identifier: MPL-2.0
+//
+// sample.affine -- minimal AffineScript source for the deno-esm-spike. Proves
+// the AffineScript -> Deno-ESM -> TypeScript-0 path (roadmap ask #3): if a
+// trivial pure module compiles to a runnable, importable Deno ES module, then
+// parity / scan harnesses can be authored in AffineScript instead of TypeScript.
+//
+// Two public surfaces, both pure integer arithmetic (no extern, no host calls),
+// so the only thing under test is the ESM *export shape*, not the host glue:
+//   - add        : the canonical "does the export work" probe.
+//   - clamp_band : a tiny clamp onto 0..3, mirroring SecurityRank's band, so the
+//                  driver exercises a branch too.
+
+pub fn add(a: Int, b: Int) -> Int {
+  a + b
+}
+
+pub fn clamp_band(x: Int) -> Int {
+  if x < 0 {
+    0
+  } else {
+    if x > 3 {
+      3
+    } else {
+      x
+    }
+  }
+}

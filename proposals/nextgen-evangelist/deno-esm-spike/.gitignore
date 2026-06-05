@@ -1,0 +1,4 @@
+# Generated AffineScript -> Deno-ESM output (regenerate via README Step 1).
+# Not committed: compiler output; its prelude tripped a Semgrep non-literal-RegExp
+# (ReDoS) finding -- a codegen concern, not source.
+sample.js

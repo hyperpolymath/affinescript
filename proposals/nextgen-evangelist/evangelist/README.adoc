@@ -1,0 +1,62 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+= evangelist — the orchestrator
+:toc: macro
+
+The thin top layer of the nextgen-languages-evangelist. It walks a target
+tree and composes the four component tools into one *next-gen readiness
+report*.
+
+== Pipeline
+
+[cols="1,1,2",options="header"]
+|===
+| Step | Component | On
+| ① migratability triage | `affine-migratability` | every `.res`
+| ② weak-point scan | `affine-assail` | every `.affine`
+| ③ boundary faithfulness proof | `echo-boundary` | manifest tables (emits machine-checked Agda)
+| ④ differential parity | `affine-parity` | manifest configs (wasm vs oracle)
+|===
+
+Steps ① and ② are fully automatic (the tools take a file path). Steps ③
+and ④ need a small `manifest.json` because a proof table / parity oracle
+cannot be inferred from source alone.
+
+== Run it
+
+[source,console]
+----
+# automatic triage + weak-point scan over a tree:
+$ deno run --allow-read --allow-run evangelist.mjs /tmp/evangelist-demo
+
+# add proofs + parity via a manifest:
+$ deno run --allow-read --allow-run evangelist.mjs /tmp/evangelist-demo manifest.json
+----
+
+`manifest.json` shape:
+
+[source,json]
+----
+{
+  "boundary": [{ "name": "SecurityRank",
+                 "table": {"Open":0,"Weak":1,"Medium":2,"Strong":3} }],
+  "parity":   [{ "name": "SecurityRank",
+                 "config": "../affine-parity/securityrank.config.mjs" }]
+}
+----
+
+== Status
+
+*Verified end-to-end this session.* The orchestrator composes the four
+trialed component tools and produced a full readiness report on the demo
+target — the captured output is in the parent `README.adoc`
+("Verified end-to-end"). Per-component evidence lives in each sibling
+subdir.
+
+== Design note (production)
+
+This trial orchestrator is Deno/JS for immediate runnability under the
+github-only firewall. The production evangelist should be a Rust or
+AffineScript CLI per estate policy, and would gain: a real manifest
+schema, JSON/SARIF output for CI, and a `groove`-style auto-discovery of
+kernels rather than a directory walk.

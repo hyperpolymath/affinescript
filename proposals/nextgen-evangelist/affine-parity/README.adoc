@@ -1,0 +1,199 @@
+// SPDX-License-Identifier: MPL-2.0
+= affine-parity -- a generic differential-parity harness runner for AffineScript wasm
+:toc: macro
+:toclevels: 2
+
+A config-driven runner that generalises the one-off "compile + instantiate +
+sweep + compare to a JS oracle" harnesses written by hand during the
+AffineScript co-development sessions. It is roadmap asks #2/#3 of the
+*nextgen-languages-evangelist*.
+
+Given a config it:
+
+. compiles the `.affine` source *host-native* by calling the prebuilt
+  compiler binary directly (no `dune`, to dodge the build lock);
+. instantiates the resulting wasm (scalar i32 ABI; WASI stubbed);
+. calls each exported `pub fn` over a sweep of inputs;
+. compares every result against an *independent* JS oracle;
+. reports `N/N pass` and exits `1` on any mismatch.
+
+toc::[]
+
+== ABI scope (read this)
+
+This runner handles the *scalar i32 ABI* only: every argument is an `i32` and
+every result is an `i32`. That is exactly the boundary the `DESIGN-VISION`
+prescribes ("AffineScript is the brain, JS/Pixi the senses; they pass
+*primitives* across the wasm boundary") and it covers pure-integer
+co-processors such as `SecurityRank`.
+
+Array/string parameters use a *different* convention --
+`[len:i32 LE][utf8/bytes]` written into linear memory plus an exported
+`__affine_alloc` -- and are a deliberate *follow-on*, NOT implemented here.
+Exports taking `[Int]` / `String` parameters can therefore only be invoked here
+in their nullary form (e.g. `Kernel_IO`'s `main`, whose array arguments are
+inlined inside the `.affine` source). See the limitation note at the end.
+
+== Requirements
+
+* `deno` on `PATH`.
+* The prebuilt AffineScript compiler at
+  `/home/user/affinescript/_build/default/bin/main.exe`
+  (the path is a constant at the top of `parity.mjs`).
+
+== Usage
+
+[source,console]
+----
+deno run --allow-read --allow-run parity.mjs <config.mjs>
+deno run --allow-read --allow-run parity.mjs <config.mjs> --verbose
+----
+
+Exit codes: `0` = all cases pass, `1` = a mismatch / compile / load error,
+`2` = bad invocation.
+
+== Config shape
+
+A config is a `.mjs` module with a default export:
+
+[source,js]
+----
+export default {
+  affine: "SecurityRank.affine",          // path, resolved relative to the config file
+  // out: "SecurityRank.wasm",            // optional wasm output path
+  // compile: true,                        // optional; default true. false = reuse an existing wasm
+  cases: [
+    {
+      name: "rank_security_level over [-5..8]",  // optional label
+      export: "rank_security_level",             // the wasm export to call
+      args: [ [-5, 8] ],                          // one entry per parameter
+      oracle: (level) => /* expected i32 */,      // independent expected-value fn
+    },
+    // ...
+  ],
+};
+----
+
+Each entry in `args` is one of:
+
+* an inclusive integer range `[lo, hi]` -- swept `lo..hi`;
+* an explicit value list `{ values: [a, b, c] }` -- swept verbatim;
+* a single number -- a fixed scalar (1-element sweep).
+
+The runner takes the *Cartesian product* across all parameters. A nullary export
+uses `args: []` and is called once. Results are normalised to i32 (`| 0`) on
+both sides before comparison.
+
+Relative paths (`affine`, `out`) resolve against the *config file's* directory,
+so a config can sit next to its `.affine`/`.wasm`.
+
+== Files in this directory
+
+[cols="1,3"]
+|===
+| `parity.mjs` | the runner (plain JavaScript / Deno; scalar i32 ABI)
+| `securityrank.config.mjs` | trial 1 config (two cases, 78 inputs)
+| `kernel_io.config.mjs` | trial 2 config (one nullary case)
+| `SecurityRank.affine` | local copy of the idaptik co-processor under test
+| `SecurityRank.wasm` / `Kernel_IO.wasm` | compiler output (regenerated each run)
+|===
+
+`Kernel_IO.affine` itself is read from `/tmp/idaptik-migration/Kernel_IO.affine`
+(referenced by absolute path in `kernel_io.config.mjs`); it was not copied into
+this directory.
+
+== Captured trials
+
+=== Setup -- copy + compile
+
+[source,console]
+----
+$ cp /home/user/idaptik/vm/coprocessor/SecurityRank.affine ./SecurityRank.affine
+
+$ /home/user/affinescript/_build/default/bin/main.exe compile ./SecurityRank.affine -o ./SecurityRank.wasm
+Compiled ./SecurityRank.affine -> ./SecurityRank.wasm (WASM)
+# exit=0
+
+$ /home/user/affinescript/_build/default/bin/main.exe compile /tmp/idaptik-migration/Kernel_IO.affine -o ./Kernel_IO.wasm
+Compiled /tmp/idaptik-migration/Kernel_IO.affine -> ./Kernel_IO.wasm (WASM)
+# exit=0
+----
+
+Export/import surface confirmed (both import only
+`wasi_snapshot_preview1.fd_write`; the runner stubs the whole WASI namespace so
+modules pulling in extra wasi names via `_start` still instantiate):
+
+----
+SecurityRank.wasm EXPORTS= memory, rank_security_level, passes_min_security
+Kernel_IO.wasm    EXPORTS= memory, in_sandbox, main, _start
+----
+
+=== Trial 1 -- SecurityRank (78/78 pass)
+
+`rank_security_level(level)` over `level` in `[-5..8]` (14 inputs), oracle
+`lv => lv===0?0:lv===1?1:lv===2?2:lv===3?3:(lv<0?0:3)`; and
+`passes_min_security(dl, th)` over `dl, th` in `[-2..5]^2` (64 inputs), oracle
+`(dl, th) => oracleRank(dl) >= oracleRank(th) ? 1 : 0`. 14 + 64 = 78.
+
+[source,console]
+----
+$ deno run --allow-read --allow-run parity.mjs securityrank.config.mjs
+  [PASS] rank_security_level over [-5..8]: 14/14
+  [PASS] passes_min_security over [-2..5]^2: 64/64
+
+78/78 pass
+# exit=0
+----
+
+*Result: 78/78 pass, exit 0.* (Matches the expected 78/78.)
+
+=== Trial 2 -- Kernel_IO (`main()` === 6)
+
+`Kernel_IO`'s `in_sandbox` takes two `[Int]` parameters (the array ABI this
+runner does not yet marshal), so it cannot be swept here. Instead the harness
+drives the module's nullary self-check `main()`, which runs six inlined sandbox
+scenarios and returns the count that passed -- 6 when all green. Oracle: the
+constant `6`.
+
+[source,console]
+----
+$ deno run --allow-read --allow-run parity.mjs kernel_io.config.mjs
+  [PASS] main() self-check returns 6: 1/1
+
+1/1 pass
+# exit=0
+----
+
+*Result: `main()` === 6, 1/1 pass, exit 0.*
+(`/tmp/idaptik-migration/Kernel_IO.affine` was present, so case 2 was not
+skipped.)
+
+=== Negative check -- a wrong oracle exits 1
+
+To show the mismatch path is real (not a runner that always reports green), a
+deliberately-wrong oracle (`() => 99`) against `rank_security_level`:
+
+[source,console]
+----
+  [FAIL] deliberately wrong oracle: 0/14
+        args=(-5)  got=0  want=99
+        args=(-4)  got=0  want=99
+        ... and 4 more
+
+0/14 pass  <-- MISMATCH
+# exit=1
+----
+
+Per-input failures are reported (first 10, then a count), and the process exits
+`1`.
+
+== Known limitation
+
+The runner currently marshals only the *scalar i32 ABI* (i32 args -> i32
+result), which is the primitives-across-the-boundary contract pure-integer
+co-processors use. Exports with `[Int]` / `String` parameters need the
+`[len:i32 LE][utf8 bytes]`-into-linear-memory convention plus the exported
+`__affine_alloc` allocator; marshalling those (write args into `memory`, pass
+pointers, read back any array result) is a clean follow-on but is *not*
+implemented here -- which is why `Kernel_IO` is exercised through its nullary
+`main()` rather than by sweeping `in_sandbox` directly.
