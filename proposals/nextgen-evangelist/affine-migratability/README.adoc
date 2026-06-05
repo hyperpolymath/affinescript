@@ -1,0 +1,235 @@
+// SPDX-License-Identifier: MPL-2.0
+= affine-migratability
+:toc: macro
+:toclevels: 2
+
+A linter that triages whether a ReScript `.res` kernel can be migrated to
+AffineScript-wasm *today*, or is blocked on a specific AffineScript compiler
+wall. Roadmap ask #4 of the *nextgen-languages-evangelist*. It automates the
+by-hand triage of the idaptik ReScript->AffineScript migration campaign.
+
+toc::[]
+
+== What it does
+
+`migratability.mjs` takes one or more `.res` files, line-scans for the two
+known AffineScript compiler walls plus the re-decomposition signals, and
+prints a verdict per file with the offending patterns and line numbers. It
+also emits a machine-readable JSON summary for an orchestrator to consume.
+
+=== The two compiler walls
+
+[cols="1,3a",options="header"]
+|===
+| Wall | What it detects
+
+| `STRING-GATED`
+| The *variable-string backend gap*: string-introspection ops the current
+AffineScript codegen cannot lower over a runtime string value.
+`String.fromCharCode`, `String.length`, `String.startsWith`,
+`String.endsWith`, `String.slice`, `String.get`, `String.charCodeAt`,
+`String.indexOf`, and string subscripting (`s[i]`).
+
+*Not* flagged: plain `++` concatenation and string *literals* — those are
+fine today.
+
+| `EFFECT-GATED`
+| The *effect-codegen wall*: ambient effects and module-level mutable state
+with no effect-tracked lowering yet. `Date.now`, `Js.Date`, `Console.log`,
+`Math.random`, and *module-level* mutable state — a top-level
+`let x = Dict.make()` or `let x = ref(...)` (a binding *not* nested inside a
+function body).
+|===
+
+=== Re-decomposition signals (non-blocking)
+
+These are migratable, but not 1:1 — they require re-decomposition rather than
+transliteration, per the migration-playbook. They do *not* block migration;
+they are reported as `re-decompose` notes:
+
+* `promise<` / `Promise.resolve` — incidental async.
+* service-locator globals `getDeviceState` / `getState(` — hidden-state reads.
+
+=== Verdict logic
+
+[source]
+----
+if   (any STRING-GATED wall) -> STRING-GATED
+elif (any EFFECT-GATED wall) -> EFFECT-GATED
+else                          -> MIGRATABLE NOW   (+ any re-decompose notes)
+----
+
+Process exit code: `0` when every input is `MIGRATABLE NOW`, `1` when any
+input is walled, `2` on a usage / IO error. Re-decompose notes alone never
+fail the run.
+
+== Usage
+
+[source,bash]
+----
+# human-readable report (one block per file)
+deno run --allow-read migratability.mjs <file.res> [<file.res> ...]
+
+# JSON summary only (for the orchestrator)
+deno run --allow-read migratability.mjs --json <file.res>
+----
+
+The JSON summary shape (the contract for the orchestrator):
+
+[source,json]
+----
+{
+  "file":    "<path>",
+  "verdict": "STRING-GATED | EFFECT-GATED | MIGRATABLE NOW",
+  "walls":   [ { "kind", "label", "line", "snippet" }, ... ],
+  "notes":   [ { "label", "line", "snippet" }, ... ]
+}
+----
+
+When more than one file is passed with `--json`, the output is a JSON array of
+these objects.
+
+== Detection notes / known limitations
+
+* *Comment-aware.* Line comments (`//`) and block comments (`+/* */+`) are
+  stripped before scanning, so a pattern that appears only in prose does not
+  count as a real wall.
+* *`@val external` bindings are skipped for effect calls.* A line such as
+  `@val external dateNow: unit => float = "Date.now"` *declares* a name; the
+  effect is carried by the *use* (`dateNow()`). The literal `"Date.now"` on
+  the binding line is therefore not counted. (This is exactly why
+  `Kernel_Quantum.res` is judged `EFFECT-GATED` by its module-level
+  `Dict.make()` + `Console.log`, not by the `"Date.now"` binding string.)
+* *Module-level vs function-local mutable state* is decided by column: a
+  top-level `let` starts at column 0, a function-local `let` is indented
+  inside its enclosing `let f = (...) => {`. So `Kernel_IO.res`'s in-function
+  `ref("")` / `ref(false)` are correctly *not* treated as effect walls.
+* *String subscript vs array subscript.* ReScript uses the same `ident[i]`
+  syntax for string and array access, so an array subscript like `arr[2]`
+  would also match the string-subscript rule. In practice the idaptik kernels
+  use `Array.get(...)` for arrays, so this does not misfire on them; treat a
+  lone string-subscript hit as a prompt to confirm the element type. Array
+  *literals* (`[1, 2, 3]`) are not matched (no leading identifier).
+
+== Trials (captured)
+
+Run on the three real idaptik kernels. All three reproduce the known by-hand
+triage.
+
+=== Trial 1 — `Kernel_Compute.res` -> MIGRATABLE NOW
+
+Command:
+
+[source,bash]
+----
+deno run --allow-read migratability.mjs --json \
+  /home/user/idaptik/shared/src/Kernel_Compute.res
+----
+
+Output:
+
+[source,json]
+----
+{
+  "file": "/home/user/idaptik/shared/src/Kernel_Compute.res",
+  "verdict": "MIGRATABLE NOW",
+  "walls": [],
+  "notes": [
+    { "label": "promise type (incidental async)",      "line": 63, "snippet": "promise<" },
+    { "label": "service-locator: getDeviceState",       "line": 64, "snippet": "getDeviceState" },
+    { "label": "Promise.resolve (incidental async)",    "line": 68, "snippet": "Promise.resolve" },
+    { "label": "Promise.resolve (incidental async)",    "line": 83, "snippet": "Promise.resolve" },
+    { "label": "Promise.resolve (incidental async)",    "line": 97, "snippet": "Promise.resolve" }
+  ]
+}
+----
+
+Matches the triage: no walls, re-decompose notes for Promise + the
+`getDeviceState` service-locator. This kernel was in fact the migrated
+exemplar this session.
+
+=== Trial 2 — `Kernel_IO.res` -> STRING-GATED
+
+Command:
+
+[source,bash]
+----
+deno run --allow-read migratability.mjs --json \
+  /home/user/idaptik/shared/src/Kernel_IO.res
+----
+
+Output:
+
+[source,json]
+----
+{
+  "file": "/home/user/idaptik/shared/src/Kernel_IO.res",
+  "verdict": "STRING-GATED",
+  "walls": [
+    { "kind": "STRING-GATED", "label": "String.fromCharCode", "line": 47, "snippet": "String.fromCharCode" },
+    { "kind": "STRING-GATED", "label": "String.length",       "line": 61, "snippet": "String.length" },
+    { "kind": "STRING-GATED", "label": "String.startsWith",   "line": 63, "snippet": "String.startsWith" }
+  ],
+  "notes": [
+    { "label": "promise type (incidental async)",   "line": 80, "snippet": "promise<" },
+    { "label": "Promise.resolve (incidental async)", "line": 88, "snippet": "Promise.resolve" }
+  ]
+}
+----
+
+Matches the triage: `String.startsWith` / `String.length` /
+`String.fromCharCode`. Note the in-function `ref("")` / `ref(false)` on lines
+40-41 are correctly *not* flagged as effect walls (they are nested inside
+`decodePathForCheck`). Exit code `1` (walled).
+
+=== Trial 3 — `Kernel_Quantum.res` -> EFFECT-GATED
+
+Command:
+
+[source,bash]
+----
+deno run --allow-read migratability.mjs --json \
+  /home/user/idaptik/shared/src/Kernel_Quantum.res
+----
+
+Output:
+
+[source,json]
+----
+{
+  "file": "/home/user/idaptik/shared/src/Kernel_Quantum.res",
+  "verdict": "EFFECT-GATED",
+  "walls": [
+    { "kind": "EFFECT-GATED", "label": "module-level mutable state (Dict.make())", "line": 37,
+      "snippet": "let lastQuantumOp: Dict.t<float> = Dict.make()" },
+    { "kind": "EFFECT-GATED", "label": "Console.log", "line": 99, "snippet": "Console.log" }
+  ],
+  "notes": [
+    { "label": "promise type (incidental async)",   "line": 62,  "snippet": "promise<" },
+    { "label": "service-locator: getDeviceState",    "line": 63,  "snippet": "getDeviceState" },
+    { "label": "Promise.resolve (incidental async)", "line": 68,  "snippet": "Promise.resolve" },
+    { "label": "Promise.resolve (incidental async)", "line": 85,  "snippet": "Promise.resolve" },
+    { "label": "Promise.resolve (incidental async)", "line": 108, "snippet": "Promise.resolve" },
+    { "label": "Promise.resolve (incidental async)", "line": 120, "snippet": "Promise.resolve" }
+  ]
+}
+----
+
+Matches the triage: module-level `Dict.make()` (`lastQuantumOp`, line 37) and
+`Console.log` (line 99). The `@val external dateNow ... = "Date.now"` binding
+on line 44 is correctly *not* counted as an effect site (it is a binding, not
+a use); the verdict stands on the module-level `Dict` + `Console.log`. Exit
+code `1` (walled).
+
+=== Trial summary
+
+[cols="2,1,3",options="header"]
+|===
+| Kernel | Verdict | Decided by
+
+| `Kernel_Compute.res` | `MIGRATABLE NOW` | no walls (Promise + getDeviceState re-decompose notes only)
+| `Kernel_IO.res`      | `STRING-GATED`   | `String.fromCharCode` / `String.length` / `String.startsWith`
+| `Kernel_Quantum.res` | `EFFECT-GATED`   | module-level `Dict.make()` + `Console.log`
+|===
+
+All three reproduce the known by-hand triage.

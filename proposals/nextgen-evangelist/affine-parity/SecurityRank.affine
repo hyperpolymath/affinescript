@@ -1,0 +1,63 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// SecurityRank -- the device security-level ranking co-processor, the pure
+// integer core extracted from DeviceRegistry.byMinSecurityLevel. Per the
+// DESIGN-VISION ("AffineScript is the brain, JS/Pixi the senses; they pass
+// primitives across the wasm boundary"), the JS host keeps the dict of devices
+// and their string IP keys; AffineScript owns only the ordering arithmetic.
+//
+// The ReScript original folds a securityLevel variant through a four-arm rank
+// switch (Open < Weak < Medium < Strong) and keeps a device iff its rank is at
+// least the threshold's. We re-decompose that variant as the canonical 0..3
+// integer encoding the switch already produces, so the rank function is a clamp
+// onto that closed band and the filter predicate is a single comparison. No
+// strings, no floats, no effects cross the boundary; the encoding IS the rank.
+//
+//## Security-level encoding (the header contract for the JS host)
+//   level   variant   rank
+//     0     Open       0
+//     1     Weak       1
+//     2     Medium     2
+//     3     Strong     3
+// Any input outside 0..3 is clamped to the nearest valid rank, so a malformed
+// host level can never invert the ordering.
+
+enum Level { Open, Weak, Medium, Strong, Invalid(Int) }
+
+// Decode a host integer into a level variant. The trailing Invalid arm carries
+// the offending value so the nullary variants ahead of it tag correctly and so
+// the clamp can recover a defined rank. Flat guarded returns avoid the deep
+// if/else expression nesting the parser dislikes.
+fn level_of(level: Int) -> Level {
+  if level == 0 { return Open; }
+  if level == 1 { return Weak; }
+  if level == 2 { return Medium; }
+  if level == 3 { return Strong; }
+  Invalid(level)
+}
+
+// Map a level variant to its ordinal rank. Out-of-band inputs clamp: anything
+// below Open becomes 0, anything above Strong becomes 3, preserving the total
+// order Open < Weak < Medium < Strong.
+fn rank_of(l: Level) -> Int {
+  match l {
+    Open => 0,
+    Weak => 1,
+    Medium => 2,
+    Strong => 3,
+    Invalid(v) => { if v < 0 { 0 } else { 3 } }
+  }
+}
+
+// Rank a security level, clamping the 0..3 encoding. Identity on valid input.
+pub fn rank_security_level(level: Int) -> Int {
+  rank_of(level_of(level))
+}
+
+// The filter predicate of byMinSecurityLevel: keep a device iff its security
+// rank meets or exceeds the threshold. Returns 1 to keep, 0 to drop.
+pub fn passes_min_security(device_level: Int, threshold: Int) -> Int {
+  let dr = rank_of(level_of(device_level));
+  let tr = rank_of(level_of(threshold));
+  if dr >= tr { 1 } else { 0 }
+}

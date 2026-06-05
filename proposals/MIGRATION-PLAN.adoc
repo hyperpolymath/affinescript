@@ -1,0 +1,197 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+= Migration plan — organised by compaction boundary
+:toc: macro
+
+[IMPORTANT]
+====
+*This file is the durable spine of the ReScript -> AffineScript -> wasm
+migration.* It is written to survive context compaction: the repo is the
+memory, not the model's window. Each PHASE below ends at a *committed,
+verified checkpoint* and updates the *Ledger* at the bottom. After any
+compaction, the resuming agent reads (1) this file's Ledger and (2) the
+latest `proposals/idaptik/migration-map.json`, and continues — it does not
+rely on the auto-summary.
+
+Cadence: roughly one PHASE per context window ("to compact"). Each PHASE =
+goal + deliverables + a green checkpoint + a one-line handoff. The arc runs
+until "CLEAR": the migratable corpus is exhausted, the two compiler walls
+are down, and the cutover has retired the ReScript shadows.
+====
+
+toc::[]
+
+== Standing gates (re-check every phase)
+
+* *Decision gate 1 — production language.* The evangelist tools + harnesses
+  are Deno trials today; production should be Rust or AffineScript (owner's
+  call). Until decided: keep the Deno trials, do NOT re-author. Blocks only
+  the "harden the tooling" sub-tasks, not the migration.
+* *Decision gate 2 — evangelist home repo* (dedicated repo vs under
+  `nextgen-languages`). Cosmetic; blocks nothing.
+* *Access gate — idaptik write-access.* Current rule: writes land in
+  affinescript only; everything idaptik-bound is *staged as applyable
+  units* under `proposals/idaptik/`. The actual *apply* + *cutover* steps
+  (Phases C+ "apply", Phase Ω) need either idaptik opened for writes or the
+  owner accepting the staged patches. Until then, "migrated" means
+  "verified + staged + applyable", not "applied".
+
+== The two walls (what ultimately gates "CLEAR")
+
+. *Variable-string backend* — `String.length` / indexing / `startsWith` /
+  `fromCharCode` cannot lower to wasm yet. Gates every STRING-GATED kernel
+  (e.g. `Kernel_IO`, `DeviceType`, i18n). Lives in *this* repo's compiler,
+  so it is attackable here.
+. *Effect codegen* — module-level mutable state / `Date.now` / `Console.log`
+  cannot lower ("references an unbound binding"). Gates every EFFECT-GATED
+  kernel (e.g. `Kernel_Quantum`). Also a compiler task.
+
+Until a wall falls, its kernels stay staged with the honest
+"compiler-gated, not effort-gated" label.
+
+== Phases
+
+=== PHASE A — now -> compact 1 : consolidate + make the plan durable
+Goal: a clean baseline that compaction can't lose.
+
+* Write this file + the Ledger (done by creating it).
+* Settle PR #533 (evangelist toolkit): CI green; leave as draft for owner
+  review (merge on owner word).
+* Fold the three architecture artefacts (`multiplayer-determinism.adoc`,
+  `state-vs-digest.svg`, `game-vs-deepspace.svg`) into the determinism doc
+  as a captured "latency regimes" appendix.
+* Record the standing gates above.
+
+*Checkpoint:* plan + ledger committed & pushed; staged work coherent.
+*Handoff:* "Read §Ledger; next is PHASE B (full-corpus triage)."
+
+=== PHASE B — compact 1 -> 2 : broad sweep (the master worklist)
+Goal: know the whole backlog, prioritised.
+
+* Run `affine-migratability` over all ~571 idaptik `.res`; bucket by area
+  (`src/app`, `shared/src`, `vm`, `src/app/multiplayer`, …) x verdict
+  (MIGRATABLE-NOW / STRING-GATED / EFFECT-GATED) x shape (pure-integer core
+  / binding shim / render-glue).
+* Emit `proposals/idaptik/migration-map.adoc` (human) +
+  `migration-map.json` (machine, the resumable worklist) + the headline %.
+* Order the MIGRATABLE-NOW set into clusters: leaf pure-integer cores
+  first, then up the dependency tree.
+
+*Checkpoint:* full triage committed; backlog + order fixed.
+*Handoff:* "worklist = migration-map.json; cluster 1 = <top N>; PHASE C."
+
+=== PHASE C — compact 2 -> 3 : deep wave 1 (first clean cluster, end-to-end)
+Goal: migrate + verify the first batch via the 4-gate recipe.
+
+The *recipe* (every kernel, every wave):
+. re-decompose `.res` -> `.affine` (NOT transliterate — collapse incidental
+  Promise/async, thread service-locator state as params, enum the options,
+  hand-ladder int rendering, keep wire bytes identical);
+. `affinescript compile` -> wasm (gate 1: builds);
+. `affine-parity` oracle-vs-wasm sweep green (gate 2: parity);
+. `echo-boundary` proves each host-boundary encoding LOSSLESS or
+  declared-clamp (gate 3: faithful);
+. `affine-assail` clean — no undeclared clamp / unguarded decoder (gate 4).
+
+* Apply recipe to cluster 1 (~6-10 pure-integer cores). Stage each under
+  `proposals/idaptik/migrated/<name>/` with `.affine` + harness + evidence.
+
+*Checkpoint:* cluster 1 four-gate-green + staged. Ledger % updated.
+*Handoff:* "cluster 1 done (list); cluster 2 next; recipe in §Phase C."
+
+=== PHASE D — compact 3 -> 4 : deep wave 2 + the TS-0 harness path
+Goal: more kernels + start retiring the 17.6k LOC of TS harness.
+
+* Cluster 2 of MIGRATABLE-NOW (same recipe).
+* Trial `--deno-esm` struct -> `export class` + `extern fn` lowering;
+  re-author ONE parity harness in AffineScript -> Deno-ESM; prove it
+  reproduces the TS harness's verdict. TS-0-for-harnesses becomes real.
+
+*Checkpoint:* cluster 2 green + the AffineScript-authored harness PoC.
+
+=== PHASE E — compact 4 -> 5 : the multiplayer determinism spine (wasmex + SNIFS)
+Goal: make server-authoritative determinism concrete before the big
+multiplayer-client migration.
+
+* `vm.affine` reversible counter; run the *identical* wasm in Deno (client)
+  and under SNIFS/`wasmex` in a one-file Elixir (server); demonstrate
+  identical step, reverse (rollback), and the per-tick *hash tripwire*
+  catching an injected desync.
+
+*Checkpoint:* same-binary-both-sides PoC + hash-tripwire demo verified.
+
+=== PHASE F — compact 5 -> 6 : attack wall 1, slice 1 (variable-string backend)
+Goal: stop documenting the wall; start removing it (compiler work, in scope).
+
+* Implement `String.length` + string indexing end-to-end in the compiler
+  (lexer/typer/codegen) on the `[len:i32 LE][utf8]` read-side ABI, with
+  tests; demonstrate a previously STRING-GATED kernel now builds +
+  parity-greens.
+
+*Checkpoint:* first string primitive lands (compiler PR) + one string-kernel
+unblocked.
+
+=== PHASES G..N — compact -> compact : the repeating grind
+Each window, in order:
+. migrate the next cluster the latest compiler capability unblocked (recipe);
+. advance the next wall-slice (`startsWith` -> `fromCharCode`; then the
+  effect-codegen slices for `Date.now`/log/module-state);
+. re-run the evangelist readiness map (the % climbs; gated counts fall);
+. update the Ledger.
+
+Repeat until the MIGRATABLE set is exhausted and both walls are down — at
+which point `Kernel_IO` (string) and `Kernel_Quantum` (effect) finally fall.
+
+=== PHASE Ω — -> CLEAR : cutover + extinction (the goodbye)
+Goal: flip the switches, delete the shadows. (Gated on idaptik write-access;
+until then each cutover is a staged applyable bundle for sign-off.)
+
+* Per area, once all cores are parity-green + bindings wired: enable the
+  `FeaturePacks` flag, delete the `.res` shadows, drop the TS harnesses,
+  remove the lone `.py` holdout; re-run the census (ReScript -> 0 in that
+  area).
+* Final census target: ReScript 0 in migrated areas, AffineScript primary,
+  TypeScript 0, Python 0; agreed-keep set (Elixir/Zig/Idris2/Julia) intact.
+
+*CLEAR* = migratable corpus migrated + applied, walls down, shadows retired.
+
+== Model per phase (advise at each compact)
+
+Heuristic:
+
+* *Opus* — re-decomposition design, compiler-internals (the walls),
+  novel cross-runtime integration, cutover review. Anywhere a wrong or
+  subtle call is expensive. ("Fast" Opus when you want that reasoning with
+  quicker output.)
+* *Sonnet* — known-pattern multi-file grinding: the triage sweep, the rote
+  waves once the recipe is set, the mechanical cutover apply.
+* *Haiku* — pure mechanical sub-steps (bulk tool runs, boilerplate, status
+  checks). Rarely a whole phase.
+
+[cols="1,1,3",options="header"]
+|===
+| Phase | Model | Why
+| A consolidate/plan | Opus | synthesis + architecture
+| B broad triage | *Sonnet* | run one tool over ~571 files, bucket + prioritise; systematic, low-novelty
+| C/D deep waves | *Opus* for the re-decomposition; Sonnet once rote | re-decompose is subtle (a transliteration is rejected); the 4 gates are mechanical
+| E wasmex/SNIFS PoC | *Opus* | novel Elixir+wasm+Deno integration + determinism reasoning
+| F + walls (compiler) | *Opus* | real OCaml compiler engineering (lexer/typer/codegen/ABI), correctness-critical
+| G..N grind | alternate: *Sonnet* (migrate) / *Opus* (wall-slice) | per window
+| Ω cutover | *Sonnet* to execute, *Opus* to sign off the diff | high-stakes deletes; mechanical apply
+|===
+
+== Ledger (each phase updates this; the resume point lives here)
+
+[cols="1,1,3",options="header"]
+|===
+| Phase | State | Notes
+| Pre | DONE | #531 echo proof (merged); #532 migration practice + guide + proposals (merged); #533 evangelist toolkit (draft, CI green).
+| A | DONE | Plan + model-per-phase guidance written; determinism doc gained a latency-regimes appendix (verify-don't-transfer + game-vs-deep-space + the 2 SVGs); #533 green (draft, owner to merge). NEXT: PHASE B.
+| B | TODO | Full-corpus triage -> migration-map.{adoc,json}.
+| C+ | TODO | Deep waves via the 4-gate recipe.
+| F+ | TODO | Compiler walls (string backend, then effects).
+| Ω | TODO (access-gated) | Cutover + ReScript extinction.
+|===
+
+*Resume rule:* read the highest non-DONE row + `migration-map.json`;
+continue from its "Notes".

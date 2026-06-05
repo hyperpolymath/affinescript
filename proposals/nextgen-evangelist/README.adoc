@@ -1,0 +1,148 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+= nextgen-languages-evangelist — component seed (trialed here)
+:toc: macro
+
+[IMPORTANT]
+====
+*Status: SEED / PROPOSAL — all six pieces built and trialed end-to-end this
+session.* A *nextgen-languages-evangelist* is a toolkit that automates the
+AffineScript-migration pipeline this session ran by hand. Every component
+here was *run and verified in this environment* (evidence captured below
+and in each subdir) against the real github-only network policy. Staged in
+the affinescript repo for review; eventual home is a dedicated evangelist
+repo (or under `hyperpolymath/nextgen-languages`).
+
+*Two decisions flagged for the owner* (defaulted, not blocking): (1) the
+trial components are **Deno** scripts so they run immediately under the
+firewall — the *production* CLI should be **Rust or AffineScript** per
+estate policy; (2) the eventual **home repo** is the owner's call.
+====
+
+toc::[]
+
+== What an "evangelist" is
+
+A tool (and ultimately an agent) that *finds, validates, demonstrates, and
+advances* next-gen-language adoption across the estate. It automates the
+pipeline a human/agent otherwise runs by hand for every kernel:
+
+----
+.res kernel
+   │  ① triage        (migratable now? gated on which compiler wall?)
+   ▼
+re-decomposed .affine
+   │  ② weak-points   (silent clamps? unguarded decoders? unbounded scans?)
+   │  ③ boundary-proof (is the host->int encoding lossless, or a declared clamp?)
+   │  ④ parity         (does the wasm match an independent oracle?)
+   ▼
+guide-linked readiness report
+----
+
+== Component map (each maps to a roadmap ask 1-5) — all TRIALED
+
+[cols="1,1,3,2",options="header"]
+|===
+| Component | Ask | What it does | Trial result (this session)
+
+| `echo-boundary/`
+| #1 #2
+| Reads an encoding table, decides lossless (injective) vs controlled
+  loss (clamp/collision), GENERATES the matching `EchoEncodingFaithfulness`
+  Agda instance, and typechecks it. The `@boundary` obligation as a
+  runnable, machine-checked check.
+| ✅ `{Open:0..Strong:3}` -> *LOSSLESS*; `+{OOB:0}` -> *CONTROLLED LOSS*; both generated modules **agda exit 0** (`--safe --without-K`).
+
+| `affine-parity/`
+| #2 #3
+| Config-driven differential-parity runner: compile `.affine` host-native,
+  instantiate the wasm, sweep exported `pub fn`s against an independent
+  oracle, report N/N (scalar i32 ABI).
+| ✅ SecurityRank **78/78 pass**; Kernel_IO `main()` **= 6**; wrong-oracle negative check exits 1.
+
+| `affine-migratability/`
+| #4
+| Scans a `.res` kernel for the two compiler walls + re-decomposition
+  signals; verdict MIGRATABLE NOW / STRING-GATED / EFFECT-GATED.
+| ✅ Reproduced the triage 3/3: Compute=MIGRATABLE, IO=STRING-GATED, Quantum=EFFECT-GATED.
+
+| `affine-assail/`
+| #5
+| Weak-point scanner for `.affine` (PA-AFF-001 undeclared clamp-sentinel,
+  PA-AFF-002 unguarded boundary decoder, PA-AFF-003 unbounded scan) — the
+  reference impl for the panic-attack gap (Finding 7).
+| ✅ Flags SecurityRank's `Invalid(v) => …{0}else{3}` clamp at HIGH (exit 1); Kernel_IO decoder + scans, no false positives on in-band arms.
+
+| `deno-esm-spike/`
+| #3
+| Compiles a `.affine` with `--deno-esm` and runs it under Deno — proving
+  the TypeScript-0 harness path.
+| ✅ **WORKS** — real ESM named exports (`export function add…`), 5/5 driver checks, zero TS. Caveat: ~440-line host-shim prelude; struct/`extern fn` lowering not yet trialed.
+
+| `evangelist/`
+| all
+| Orchestrator: walks a tree, runs ①+② automatically and ③+④ via a
+  manifest, emits one readiness report.
+| ✅ End-to-end on the demo target (report below).
+|===
+
+== Verified end-to-end (the orchestrator output)
+
+`deno run --allow-read --allow-run evangelist/evangelist.mjs /tmp/evangelist-demo manifest.json`
+(demo target = the three idaptik kernels + `SecurityRank.affine` +
+`Kernel_IO.affine`) produced:
+
+----
+# Next-gen readiness report
+Target: /tmp/evangelist-demo  |  3 .res, 2 .affine
+
+① ReScript migratability (.res)
+  Kernel_Quantum.res  | EFFECT-GATED
+  Kernel_IO.res       | STRING-GATED
+  Kernel_Compute.res  | MIGRATABLE NOW
+
+② AffineScript weak points (.affine)
+  Kernel_IO.affine    | 5 — PA-AFF-003, PA-AFF-002
+  SecurityRank.affine | 1 — PA-AFF-001
+
+③ Boundary faithfulness proofs (echo-boundary)
+  SecurityRank        | LOSSLESS   (generated Agda, exit 0)
+
+④ Differential parity (affine-parity)
+  SecurityRank        | 78/78 pass
+----
+
+== The consistency the toolkit surfaces
+
+`affine-assail` flags SecurityRank's clamp (PA-AFF-001), while
+`echo-boundary` reports the in-band table `{Open:0..Strong:3}` as LOSSLESS
+*and* the same table **with** the clamp (`+{OOB:0}`) as CONTROLLED LOSS.
+That is not a contradiction — it is the whole point: the toolkit *flags*
+the undeclared clamp and *lets you discharge it*, either by certifying the
+lossless band or by declaring the controlled loss (the `@boundary`
+obligation from `proposals/toolchain/` Finding 2). Flag -> certify, in one
+pipeline.
+
+== Trial-here principle
+
+No component is "done" until it *runs and is verified in this environment*.
+Each subdir captures the exact command + output that proves it works,
+against the same github-only firewall the estate CI runs under (agda, the
+host-native `affinescript` binary, deno — no registries).
+
+== What's next (production)
+
+* Re-author the orchestrator + tools as a Rust or AffineScript CLI (policy).
+* JSON/SARIF output for CI; a real manifest schema; `groove`-style kernel
+  auto-discovery instead of a directory walk.
+* Trial `--deno-esm` struct->`export class` + `extern fn` lowering before
+  parity harnesses are migrated off TypeScript wholesale.
+* Promote `affine-assail`'s rules into a real panic-attack AffineScript
+  analyzer (closes Finding 7).
+
+== Provenance
+
+Seeded in the 2026-06-04 AffineScript co-development session, extending the
+verified migration + proof + guide work (PRs #531, #532) toward a reusable
+evangelist toolkit. Built by a five-agent fan-out + an orchestrator;
+every component trialed here.
