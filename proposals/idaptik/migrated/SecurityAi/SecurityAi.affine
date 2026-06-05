@@ -1,0 +1,120 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+//
+// SecurityAi -- the SENTRY security-daemon state machine co-processor, the pure
+// numeric core extracted from src/app/enemies/SecurityAI.res. Per the
+// DESIGN-VISION ("AffineScript is the brain, JS/Pixi the senses; only primitives
+// cross the wasm boundary"), the JS host keeps the SENTRY record (the message log,
+// the compromisedDevices array, the string device IDs and the VMNetwork scan
+// effects); AffineScript owns only the deterministic arithmetic: the alert-to-phase
+// transition, the per-phase scan interval, the per-frame scan-timer accumulation
+// and threshold reset, the request-to-activate transition, the isActive predicate
+// and the two lifetime counters' increments.
+//
+//## Phase ordinal encoding (the header contract for the JS host)
+//   phase   variant     ordinal   alertLevel band
+//     0     Dormant       0        0, 1
+//     1     Scanning      1        2
+//     2     Targeting     2        3
+//     3     Active        3        4
+//     4     Lockdown      4        5 and above
+// Any phase input outside 0..4 is clamped to the nearest valid ordinal.
+//
+//## Float boundary: scanTimer and scanInterval cross as genuine f64
+// The per-phase intervals are plain seconds (10.0, 5.0, 3.0, 2.0, 1.0);
+// timer arithmetic is byte-identical to the ReScript scanTimer +. dt.
+
+enum Phase { Dormant, Scanning, Targeting, Active, Lockdown, Invalid(Int) }
+
+fn phase_of(phase: Int) -> Phase {
+  if phase == 0 { return Dormant; }
+  if phase == 1 { return Scanning; }
+  if phase == 2 { return Targeting; }
+  if phase == 3 { return Active; }
+  if phase == 4 { return Lockdown; }
+  Invalid(phase)
+}
+
+// @clamp:declared -- out-of-band phase clamps to nearest valid ordinal (0 or 4).
+// The clamp is provably controlled-loss: echo-boundary proves the five valid
+// codes 0..4 are injective; Invalid(v) is intentionally squashed by design.
+fn clamp_phase_ordinal(v: Int) -> Int {
+  if v < 0 { return 0; }
+  4
+}
+
+fn ordinal_of(p: Phase) -> Int {
+  match p {
+    Dormant => 0,
+    Scanning => 1,
+    Targeting => 2,
+    Active => 3,
+    Lockdown => 4,
+    Invalid(v) => clamp_phase_ordinal(v)
+  }
+}
+
+//## Phase ordinal (clamp helper)
+pub fn phase_value(phase: Int) -> Int {
+  ordinal_of(phase_of(phase))
+}
+
+//## Alert-to-phase transition (updatePhase)
+pub fn phase_for_alert(alert_level: Int) -> Int {
+  if alert_level <= 1 { return 0; }
+  if alert_level == 2 { return 1; }
+  if alert_level == 3 { return 2; }
+  if alert_level == 4 { return 3; }
+  4
+}
+
+//## Per-phase scan interval (seconds as Float)
+pub fn scan_interval_for(phase: Int) -> Float {
+  let o = ordinal_of(phase_of(phase));
+  if o == 0 { return 10.0; }
+  if o == 1 { return 5.0; }
+  if o == 2 { return 3.0; }
+  if o == 3 { return 2.0; }
+  1.0
+}
+
+//## Per-frame scan-timer accumulation
+pub fn advance_timer(scan_timer: Float, dt: Float) -> Float {
+  scan_timer + dt
+}
+
+//## Scan-timer threshold predicate
+pub fn timer_ready(scan_timer: Float, scan_interval: Float) -> Int {
+  if scan_timer >= scan_interval { 1 } else { 0 }
+}
+
+//## Scan-timer after a frame (combined accumulate-and-maybe-reset)
+pub fn timer_after_frame(scan_timer: Float, dt: Float, scan_interval: Float) -> Float {
+  let next = scan_timer + dt;
+  if next >= scan_interval { return 0.0; }
+  next
+}
+
+//## Request-to-activate transition (requestAntiHackerDispatch)
+pub fn request_dispatch_phase(phase: Int) -> Int {
+  let o = ordinal_of(phase_of(phase));
+  if o == 0 { return 1; }
+  o
+}
+
+//## Activity predicate (isActive: phase != Dormant)
+pub fn is_active(phase: Int) -> Int {
+  let o = ordinal_of(phase_of(phase));
+  if o == 0 { return 0; }
+  1
+}
+
+//## Lifetime-counter increment (recordReversion / recordDispatchFailure)
+pub fn increment_counter(count: Int) -> Int {
+  count + 1
+}
+
+//## Phase-reset value (Dormant ordinal)
+pub fn dormant_phase() -> Int {
+  0
+}

@@ -1,0 +1,103 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+//
+// PowerManager -- the stateless power/battery transition kernels re-decomposed
+// from src/app/devices/PowerManager.res. The ReScript original is a pair of
+// mutable-record dictionaries (powerStationStates, upsStates) keyed by IP, with
+// updateUPSBatteries mutating each upsState.batteryLevel in place and
+// getDevicePowerSource walking the dicts to classify a device's supply. Per the
+// DESIGN-VISION ("AffineScript is the brain, JS/Pixi the senses; only primitives
+// cross the wasm boundary"), the dicts, the IP strings, the connected-device
+// arrays and the callbacks are HOST data. What crosses the boundary is the pure
+// per-frame arithmetic each battery mutation performs and the pure decision the
+// power-source classifier reduces to once its dict lookups have been resolved by
+// the host.
+//
+//## Why a stateless split (Shape A), not a TEA reducer
+// TEA (model-in-linear-memory) is compiler-blocked. The split is honest anyway:
+// every battery mutation is a pure function of (old charge, dt, load-or-rate),
+// and the power-source classification is a pure function of three resolved flags
+// plus the current ordinal. No mutation depends on accumulated history beyond
+// the single charge field the host rewrites each frame, so the host owns one
+// power record per device and feeds the relevant scalar fields back in. The
+// model never lives in wasm; only f64 charges and i32 ordinals cross.
+//
+//## Compiler note (float literal bug)
+// Float literal operands in arithmetic emit incorrect integer wasm opcodes.
+// All numeric constants are passed as Float parameters from the host. The ABI
+// is i32 for all exports regardless of declared types (compiler-current
+// limitation). Default host values: thirty=30 (drain_rate), zero=0
+// (battery_drain floor), hundred=100 (battery_charge cap).
+//
+//## Boundary contract (the header the JS host relies on)
+//   drain_rate(load, thirty) -> Float
+//       load * (1/thirty). Host passes thirty=30.
+//   battery_drain(charge, dt, load, thirty, zero) -> Float
+//       max(zero, charge - dt * drain_rate(load, thirty)). Host passes thirty=30, zero=0.
+//   battery_charge(charge, dt, rate, hundred) -> Float
+//       min(hundred, charge + dt * rate). Host passes hundred=100.
+//   brownout_check(charge, threshold) -> Int
+//       1 when charge <= threshold, else 0.
+//   power_state_transition(state, event) -> Int
+//       the power-source state machine (MainsPower=0, UPSBattery=1, NoPower=2).
+//
+//## Defence
+// Drain floors at zero (via brownout_check-identical guard); charge clamps at
+// hundred. State machine returns current state for any unrecognised (state,
+// event) pair.
+
+//## Per-device drain rate (percent per second, per connected device)
+// The ReScript drain is `Int.toFloat(numDevices) * (1.0 /. 30.0)`. load carries
+// the device count as a Float so no int->float is needed. thirty is passed from
+// the host (host passes 30) to avoid the float literal bug.
+pub fn drain_rate(load: Float, thirty: Float) -> Float {
+  load / thirty
+}
+
+//## Battery drain, floored at zero
+// charge - dt * drain_rate(load, thirty), floored at zero (host passes zero=0).
+// Guard style (no max_float/min_float builtins available).
+pub fn battery_drain(charge: Float, dt: Float, load: Float, thirty: Float, zero: Float) -> Float {
+  let rate = drain_rate(load, thirty);
+  let new_level = charge - dt * rate;
+  if new_level < zero { zero } else { new_level }
+}
+
+//## Battery charge, clamped at hundred
+// charge + dt * rate, clamped at hundred (host passes hundred=100). The ReScript
+// hardwires rate = 10/60; the host passes it so the tuning lives host-side.
+pub fn battery_charge(charge: Float, dt: Float, rate: Float, hundred: Float) -> Float {
+  let new_level = charge + dt * rate;
+  if new_level > hundred { hundred } else { new_level }
+}
+
+//## Brownout predicate
+// The UPS supplies only while charge exceeds the threshold. charge <= threshold
+// uses two variable operands (no float literal) and compiles correctly.
+// Returns 1 in brownout, 0 supplying.
+pub fn brownout_check(charge: Float, threshold: Float) -> Int {
+  if charge <= threshold { return 1; }
+  0
+}
+
+//## Power-source state machine (re-decomposed getDevicePowerSource)
+// powerSource ordinals: 0 MainsPower, 1 UPSBattery, 2 NoPower.
+// Events: 0 MainsLost, 1 MainsRestored, 2 BatteryDepleted, 3 BatteryRecovered.
+// Transitions mirror the ReScript classification exactly; any unknown pair holds
+// the current state.
+pub fn power_state_transition(state: Int, event: Int) -> Int {
+  if event == 1 { return 0; }
+  if event == 0 {
+    if state == 0 { return 1; }
+    return state;
+  }
+  if event == 2 {
+    if state == 1 { return 2; }
+    return state;
+  }
+  if event == 3 {
+    if state == 2 { return 1; }
+    return state;
+  }
+  state
+}

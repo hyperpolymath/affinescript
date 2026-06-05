@@ -1,0 +1,15 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+//
+// DetectionInt -- Int-only parity subset of Detection.affine.
+// Contains only alert_level which returns Int, so the scalar parity runner
+// can instantiate this wasm without encountering f64-return functions.
+
+pub fn alert_level(score: Int) -> Int {
+  if score >= 100 { return 5; }
+  if score >= 85 { return 4; }
+  if score >= 60 { return 3; }
+  if score >= 35 { return 2; }
+  if score >= 15 { return 1; }
+  0
+}

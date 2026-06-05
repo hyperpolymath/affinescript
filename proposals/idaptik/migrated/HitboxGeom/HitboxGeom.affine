@@ -1,0 +1,55 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+//
+// HitboxGeom -- axis-aligned bounding-box collision primitives, re-decomposed
+// from src/app/combat/Hitbox.res. The ReScript original models a rectangle as
+// floating-point {x, y, w, h} and exposes `overlaps`, `contains` and `fromCenter`.
+// Here the JS host scales each coordinate to fixed-point integers (e.g. * 1000)
+// before the call, so the entire overlap and containment algebra reduces to exact
+// i32 comparisons. No float crosses the wasm<->JS boundary.
+//
+// This is a PURE INTEGER kernel (no Float). The senses are: all float-to-fixed
+// scaling, fromCenter's divide-by-2, and any distance threshold squaring.
+//
+//## Edge semantics mirror Hitbox.res precisely:
+//   overlaps: STRICT inequality (touching edges do NOT overlap).
+//   contains: INCLUSIVE bounds (a point on the border IS contained).
+//
+//## Boundary contract (the header the JS host reads)
+//   aabb_overlap(ax,ay,aw,ah, bx,by,bw,bh) -> Int   1 if overlap, 0 otherwise
+//   point_in_rect(px,py, rx,ry,rw,rh)      -> Int   1 if inside, 0 otherwise
+//   dist_sq(x1,y1, x2,y2)                  -> Int   (dx*dx + dy*dy), exact
+
+//## AABB overlap, exclusive edges
+// Re-decomposition of Hitbox.overlaps:
+//   a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y
+// Negated termwise into guarded returns: the boxes are disjoint the moment any
+// separating-axis condition fails.
+pub fn aabb_overlap(ax: Int, ay: Int, aw: Int, ah: Int, bx: Int, by: Int, bw: Int, bh: Int) -> Int {
+  if ax >= bx + bw { return 0; }
+  if ax + aw <= bx { return 0; }
+  if ay >= by + bh { return 0; }
+  if ay + ah <= by { return 0; }
+  1
+}
+
+//## Point-in-rectangle, inclusive edges
+// Re-decomposition of Hitbox.contains:
+//   pointX >= r.x && pointX <= r.x + r.w && pointY >= r.y && pointY <= r.y + r.h
+pub fn point_in_rect(px: Int, py: Int, rx: Int, ry: Int, rw: Int, rh: Int) -> Int {
+  if px < rx { return 0; }
+  if px > rx + rw { return 0; }
+  if py < ry { return 0; }
+  if py > ry + rh { return 0; }
+  1
+}
+
+//## Squared Euclidean distance, exact integer arithmetic
+// Contact and proximity tests compare separation against a threshold; squaring
+// the threshold on the host avoids sqrt entirely. With fixed-point Int coordinates
+// the result is exact.
+pub fn dist_sq(x1: Int, y1: Int, x2: Int, y2: Int) -> Int {
+  let dx = x2 - x1;
+  let dy = y2 - y1;
+  (dx * dx) + (dy * dy)
+}

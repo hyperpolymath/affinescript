@@ -1,0 +1,148 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+//
+// DualAlert -- the dual-threat alert combination/priority co-processor extracted
+// from src/app/ui/DualAlert.res (referenced in DualAlertBridge.res). Per the
+// DESIGN-VISION ("AffineScript is the brain, JS/Pixi the senses; only primitives
+// cross the wasm boundary"), the JS host keeps the alertState record, descriptive
+// labels and frame-by-frame mutation; AffineScript owns the pure numeric and enum
+// core: the level ordinal encoding, the per-level colour table, the escalation/
+// scrub step machine, the trigger-combination rule and the cross-alert predicates.
+//
+// DualAlertBridge.res is a PURE ROUTING BRIDGE (string-keyed switch statements
+// over mutable JS service objects) — it has no integer brain of its own. Its
+// classify/convert logic re-encodes variant constructors to kernel tags host-side.
+//
+//## Float boundary: progress crosses in MILLI-UNITS
+// The 0.0..1.0 progress and per-trigger severities cross as Ints scaled by 1000:
+// the JS caller passes round(progress * 1000) and round(severity * 1000), and the
+// 1.0 escalation threshold becomes 1000. Arithmetic matches the ReScript exactly.
+//
+//## Level ordinal encoding (the header contract for the JS host)
+//   level   variant    ordinal
+//     0     Clear        0
+//     1     Guarded      1
+//     2     Elevated     2
+//     3     High         3
+//     4     Severe       4
+// Any input outside 0..4 is clamped to the nearest valid ordinal.
+
+enum Level { Clear, Guarded, Elevated, High, Severe, Invalid(Int) }
+
+fn level_of(level: Int) -> Level {
+  if level == 0 { return Clear; }
+  if level == 1 { return Guarded; }
+  if level == 2 { return Elevated; }
+  if level == 3 { return High; }
+  if level == 4 { return Severe; }
+  Invalid(level)
+}
+
+// @clamp:declared -- out-of-band level clamps to nearest valid ordinal (0 or 4).
+// The clamp is provably controlled-loss: echo-boundary proves the five valid
+// codes 0..4 are injective; Invalid(v) is intentionally squashed by design.
+fn clamp_level_ordinal(v: Int) -> Int {
+  if v < 0 { return 0; }
+  4
+}
+
+fn ordinal_of(l: Level) -> Int {
+  match l {
+    Clear => 0,
+    Guarded => 1,
+    Elevated => 2,
+    High => 3,
+    Severe => 4,
+    Invalid(v) => clamp_level_ordinal(v)
+  }
+}
+
+//## Level ordinal (levelValue)
+pub fn level_value(level: Int) -> Int {
+  ordinal_of(level_of(level))
+}
+
+//## Per-level colour (levelColor) -- 24-bit RGB integer constants
+//   0 Clear     0x44ff44  4521796
+//   1 Guarded   0xaaff44  11206468
+//   2 Elevated  0xffaa44  16755268
+//   3 High      0xff4444  16729156
+//   4 Severe    0xff0000  16711680
+pub fn level_colour(level: Int) -> Int {
+  let o = ordinal_of(level_of(level));
+  if o == 0 { return 4521796; }
+  if o == 1 { return 11206468; }
+  if o == 2 { return 16755268; }
+  if o == 3 { return 16729156; }
+  16711680
+}
+
+//## Escalation step (escalateLevel) -- saturating successor
+pub fn escalate_level(level: Int) -> Int {
+  let o = ordinal_of(level_of(level));
+  if o >= 4 { return 4; }
+  o + 1
+}
+
+//## Scrub step (scrubCyberAlert) -- saturating predecessor
+pub fn scrub_step(level: Int) -> Int {
+  let o = ordinal_of(level_of(level));
+  if o <= 0 { return 0; }
+  o - 1
+}
+
+//## Trigger combination: did the level advance?
+pub fn trigger_escalates(level: Int, progress_milli: Int, severity_milli: Int) -> Int {
+  let combined = progress_milli + severity_milli;
+  if combined < 1000 { return 0; }
+  let o = ordinal_of(level_of(level));
+  if o >= 4 { return 0; }
+  1
+}
+
+//## Trigger combination: the new progress after a trigger
+pub fn trigger_progress(level: Int, progress_milli: Int, severity_milli: Int) -> Int {
+  let combined = progress_milli + severity_milli;
+  if combined < 1000 { return combined; }
+  let o = ordinal_of(level_of(level));
+  if o >= 4 { return 1000; }
+  combined - 1000
+}
+
+//## Trigger combination: the new level after a trigger
+pub fn trigger_level(level: Int, progress_milli: Int, severity_milli: Int) -> Int {
+  let o = ordinal_of(level_of(level));
+  let combined = progress_milli + severity_milli;
+  if combined < 1000 { return o; }
+  if o >= 4 { return o; }
+  o + 1
+}
+
+//## Cooldown decay, floored at zero
+pub fn cooldown_progress(progress_milli: Int, decay_milli: Int) -> Int {
+  let next = progress_milli - decay_milli;
+  if next < 0 { return 0; }
+  next
+}
+
+//## Overall threat level (higher of physical vs cyber)
+pub fn overall_threat(physical: Int, cyber: Int) -> Int {
+  let p = ordinal_of(level_of(physical));
+  let c = ordinal_of(level_of(cyber));
+  if p >= c { return p; }
+  c
+}
+
+//## Cross-alert: dispatch AntiHacker guards (cyber >= Elevated = 2)
+pub fn should_dispatch_antihacker(cyber: Int) -> Int {
+  let c = ordinal_of(level_of(cyber));
+  if c >= 2 { return 1; }
+  0
+}
+
+//## Cross-alert: guards checking terminals (physical >= High = 3)
+pub fn guards_checking_terminals(physical: Int) -> Int {
+  let p = ordinal_of(level_of(physical));
+  if p >= 3 { return 1; }
+  0
+}

@@ -1,0 +1,74 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+//
+// PlayerHp -- health, damage, knockback arithmetic, the pure-integer core
+// extracted from src/app/combat/PlayerHP.res. Per the DESIGN-VISION ("AffineScript
+// is the brain, JS/Pixi the senses; only primitives cross the wasm boundary"), the
+// mutable t record (hp, invincibilityTimer, knockbackVelX, knockbackVelY,
+// knockbackTimer) lives host-side; AffineScript owns the stateless transition
+// kernels for each scalar field. The host reads each returned value and stores it
+// back into the matching field, exactly as PlayerHPCoprocessor.res describes.
+//
+//## Int-only boundary (v0.1.0 expedient)
+// Float arithmetic is not needed here: HP is stored in tenths (1000 = 100.0 HP),
+// timers in milliseconds (1000 = 1.0 s), knockback velocities in units/s as
+// integer, CON is 0-200, damage amounts are pre-scaled integers. No float crosses.
+//
+//## Re-decompositions vs the ReScript original
+// 1. The single mutable record is fissioned: each `pub fn` takes the relevant
+//    field(s) + event args as scalars and returns the new scalar.
+// 2. Same-typed labelled args (~fromX, ~playerX) become positional Int params.
+// 3. Module-level tuning constants become no-arg fns (compiler-inlinable).
+//
+//## Boundary contract (the header the JS host reads)
+//   max_hp(con: Int) -> Int
+//       CON-scaled maximum HP: 800 + 2*con (in tenths; 100 baseline = 1000).
+//   apply_damage(current_hp: Int, amount: Int) -> Int
+//       max(0, current_hp - amount); caller gates on invincibility frames.
+//   knockback_vel_x(player_x: Int, source_x: Int) -> Int
+//       Signed horizontal knockback: +speed if player_x >= source_x, else -speed.
+//   decay_timer(timer_ms: Int, dt_ms: Int) -> Int
+//       max(0, timer_ms - dt_ms); for both iframe and knockback timers.
+//   iframe_duration_ms() -> Int   Invincibility-frame duration in ms.
+//   knockback_duration_ms() -> Int  Knockback window duration in ms.
+//   knockback_pop_y() -> Int      Upward knockback pop (negative = up).
+//   knockback_speed() -> Int      Horizontal knockback speed in units/s.
+
+// Tuning constants as no-arg fns (avoids module-level static surface question).
+pub fn knockback_speed() -> Int { 200 }
+pub fn knockback_duration_ms() -> Int { 300 }
+pub fn iframe_duration_ms() -> Int { 1000 }
+pub fn knockback_pop_y() -> Int { 0 - 80 }
+
+fn int_max(a: Int, b: Int) -> Int {
+  if a > b { a } else { b }
+}
+
+//## CON-scaled maximum HP
+// Baseline con=100 -> 800 + 200 = 1000 (= 100.0 HP in tenths).
+pub fn max_hp(con: Int) -> Int {
+  800 + 2 * con
+}
+
+//## Floored damage application
+// max(0, current_hp - amount); the caller gates on invincibility frames.
+pub fn apply_damage(current_hp: Int, amount: Int) -> Int {
+  int_max(0, current_hp - amount)
+}
+
+//## Signed horizontal knockback velocity
+// Mirrors PlayerHP.res knockbackVelX: player moves AWAY from source.
+pub fn knockback_vel_x(player_x: Int, source_x: Int) -> Int {
+  if player_x >= source_x {
+    knockback_speed()
+  } else {
+    0 - knockback_speed()
+  }
+}
+
+//## Timer decay, floored at zero
+// max(0, timer_ms - dt_ms). Idempotent at zero; unconditional call equals the
+// ReScript guard `if timer > 0`.
+pub fn decay_timer(timer_ms: Int, dt_ms: Int) -> Int {
+  int_max(0, timer_ms - dt_ms)
+}

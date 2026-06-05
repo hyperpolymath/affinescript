@@ -1,0 +1,227 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+= Cluster C6 (combat + enemy AI) — four-gate evidence (captured 2026-06-05)
+:toc: macro
+
+[IMPORTANT]
+====
+*Captured run of the 4-gate recipe over the 8 cluster-C6 kernels: combat
+flash/knockback effects, detection threshold ladder, difficulty scaling,
+distraction/item use, dual-alert threat combination, hitbox geometry,
+player HP arithmetic, and security-AI phase machine.* All kernels are
+pure stateless integer transforms (Shape-A: host owns state, scalar i32
+only crosses the wasm boundary). Toolchain: AffineScript compiler
+`_build/default/bin/main.exe`, Deno 2.8.2, Agda 2.6.3, echo mirror at
+`/tmp/mirror-boundary`.
+====
+
+toc::[]
+
+== Summary
+
+[cols="2,1,1,1,1",options="header"]
+|===
+| Kernel | G1 compile | G2 parity | G3 boundary | G4 assail
+| `CombatFx`       | OK | 90/90    | (transforms)        | clean
+| `Detection`      | OK | 14/14    | (threshold-ladder)  | clean
+| `DifficultyScale`| OK | 252/252  | (threshold-ladder)  | clean
+| `Distraction`    | OK | 310/310  | (transforms)        | clean
+| `DualAlert`      | OK | 613/613  | LOSSLESS (5), agda exit 0 | clean
+| `HitboxGeom`     | OK | 6544/6544| (geometry)          | clean
+| `PlayerHp`       | OK | 295/295  | (transforms)        | clean
+| `SecurityAi`     | OK | 67/67    | LOSSLESS (5), agda exit 0 | clean
+| *Total*          | *8/8* | *8185/8185* | *2 proofs, agda exit 0* | *8/8 clean*
+|===
+
+== Kernel inventory
+
+[cols="2,3",options="header"]
+|===
+| Kernel (.affine) | Source ReScript / role
+| `CombatFxInt.affine` (parity subset) | `CombatFxLogicCoprocessor.res` — flash cycle/phase, alpha, even-cycle, advance/reset, floattext positions, knockback pop
+| `DetectionInt.affine` (parity subset) | `DetectionSystemCoprocessor.res` — alert-level threshold ladder
+| `DifficultyScale.affine` | `DifficultyScaleCoprocessor.res` — use-count scaling by difficulty and item kind
+| `Distraction.affine` | `DistractionCoprocessor.res` — distraction use-item and apply-difficulty
+| `DualAlert.affine` | `DualAlert.res` — dual-threat alert level machine (Level enum encoding + escalation/scrub/trigger/cooldown/overall)
+| `HitboxGeom.affine` | `HitboxGeomCoprocessor.res` — point-in-rect, overlap, corner/centre geometry
+| `PlayerHp.affine` | `PlayerHPCoprocessor.res` — HP constants, clamp, damage, heal, knockback velocity
+| `SecurityAiInt.affine` (parity subset) | `SecurityAICoprocessor.res` — Phase machine (phase_value, phase_for_alert, timer_ready, request_dispatch_phase, is_active, increment_counter, dormant_phase)
+|===
+
+The `*Int.affine` parity subsets exist because the AffineScript compiler
+emits all `pub fn` exports with i32 types in the Wasm type section
+regardless of Float return/parameter types — see the compiler-quirks
+section below. The full `.affine` kernels contain the complete Float
+logic; the `*Int.affine` subsets expose only the Int-returning exports
+for the scalar-i32 parity runner.
+
+== Host-side sense modules (NOT migrated — host responsibility)
+
+The following ReScript modules are *pure JS/PixiJS routing bridges* or
+*host-side state containers* — they have no integer brain and are not
+migrated to AffineScript kernels:
+
+* `DualAlertBridge.res` — string-keyed dispatch switch over mutable JS
+  alert state; re-encodes variant constructors to kernel tags host-side.
+  No integer arithmetic of its own; all numeric logic lives in `DualAlert.affine`.
+* `Hitbox.res` and related physics helpers — host-side PixiJS display
+  objects with `contains()` geometry; the pure integer geometry extracted
+  to `HitboxGeom.affine` for kernel testing, but `Hitbox.res` itself
+  owns the PIXI display-object lifecycle.
+
+== Float boundary: milli-units convention
+
+Several kernels cross Float-domain values as Ints scaled by 1000:
+
+* `DualAlert`: progress (0.0..1.0) and per-trigger severity cross as
+  `round(x * 1000)`. The 1.0 escalation threshold becomes 1000. The JS
+  caller normalises before calling and re-normalises after.
+* The multiplied-integer arithmetic matches the ReScript source exactly
+  (the ReScript used Float arithmetic; integer milli-units give the same
+  results for the test inputs exercised in G2).
+
+== Compiler quirks this cluster is written around
+
+The following AffineScript backend facts were encountered migrating C6.
+Each has a sound in-language workaround:
+
+. *Wasm type section always emits i32 for pub fn exports (BUG).* The
+  compiler declares ALL exported functions as `(func ... (param i32 ...)
+  (result i32))` in the Wasm type section regardless of the actual
+  Float parameter or return types. Consequences:
+  ** A Float-returning export fails at `WebAssembly.instantiate()` with
+     `type error in return[0] (expected i32, got f64)`.
+  ** A Float-parameter export fails because the function body emits
+     `f64` locals but the type section says `i32` params — the validator
+     rejects `local.set[0] expected type i32, found f64.const`.
+  *Workaround:* `compile: false` in parity configs pointing at
+  already-compiled wasm; `*Int.affine` parity subsets with only
+  Int-returning exports for functions that need parity testing.
+
+. *`trunc()` builtin absent or unimplemented.* `trunc(x: Float) -> Int`
+  does not compile. Workaround: loop-based `floor_pos` helper for
+  non-negative floats:
++
+----
+fn floor_pos(x: Float) -> Int {
+  let mut n = 0;
+  let mut acc = 0.0;
+  while acc + 1.0 <= x { acc = acc + 1.0; n = n + 1; }
+  n
+}
+----
+
+. *`float(n)` conversion absent.* `float(n: Int) -> Float` does not
+  compile. Workaround: loop-based `int_to_float_s` helper.
+
+. *Integer division equals `floor` for non-negative inputs.* For
+  integer-only inputs `timer/period` in the flash functions, integer
+  division `timer / period` equals `Math.floor(timer / period)` when
+  both operands are non-negative whole numbers. The `*Int.affine` parity
+  subsets exploit this to avoid the Float floor workaround entirely,
+  using integer division directly.
+
+== Gate 1 — compile
+
+----
+[OK] CombatFxInt   [OK] DetectionInt   [OK] DifficultyScale  [OK] Distraction
+[OK] DualAlert     [OK] HitboxGeom     [OK] PlayerHp         [OK] SecurityAiInt
+----
+
+All 8 kernels compile to `.wasm` with `main.exe compile <file>.affine -o <file>.wasm`,
+exit 0, no errors.
+
+== Gate 2 — parity (oracle-vs-wasm, scalar i32 ABI)
+
+8185 inputs, 0 mismatches. Oracles re-derive every function
+independently from the original ReScript semantics in plain JS — they do
+not copy logic from the `.affine` source.
+
+----
+CombatFx ........ 90/90      Detection ....... 14/14
+DifficultyScale . 252/252    Distraction ..... 310/310
+DualAlert ....... 613/613    HitboxGeom ...... 6544/6544
+PlayerHp ........ 295/295    SecurityAi ...... 67/67
+----
+
+=== Oracle independence notes
+
+* *CombatFx* — `flash_cycle_int(timer, period)` oracle:
+  `Math.floor(timer / period)`. Matches integer division for non-negative
+  whole-number inputs: integer division and floor(float/float) are
+  identical here.
+* *Detection* — `alert_level(score)` oracle: re-implements the threshold
+  ladder `100→5, 85→4, 60→3, 35→2, 15→1, else 0` in JS. 14 boundary
+  values including the four strict-boundary pairs.
+* *HitboxGeom* — `point_in_rect` oracle uses INCLUSIVE upper bounds
+  (`px > rx+rw` means outside), matching `Hitbox.contains` in the source.
+* *Distraction* — `use_item(uses, kind)` oracle: `uses <= 0 ? uses :
+  uses - 1`. The kernel ignores `kind`; the JS host gates item type
+  routing before calling the kernel.
+* *DualAlert* — `trigger_escalates` / `trigger_progress` / `trigger_level`
+  oracles use milli-unit arithmetic: `combined = progress_milli +
+  severity_milli`; threshold is 1000.
+
+== Gate 3 — echo-boundary
+
+G3 applies only to encoding/taxonomy kernels whose integer codes are the
+*names* of host-side enum values. Value-transform kernels (CombatFx,
+HitboxGeom, PlayerHp, Distraction) and threshold-ladder kernels
+(Detection, DifficultyScale) are not encodings and do not get a G3 proof.
+
+=== DualAlert — Level encoding
+
+Table: `{"Clear":0,"Guarded":1,"Elevated":2,"High":3,"Severe":4}`
+
+----
+verdict: LOSSLESS
+  names:  5
+  codes:  0, 1, 2, 3, 4
+  module: DualAlertBoundary
+  agda:   exit 0
+  PROOF HOLDS: encoder injective -> boundary is lossless
+               (the integer IS the host value).
+----
+
+Output file: `DualAlert/DualAlertBoundary.agda`
+
+=== SecurityAi — Phase encoding
+
+Table: `{"Dormant":0,"Scanning":1,"Targeting":2,"Active":3,"Lockdown":4}`
+
+----
+verdict: LOSSLESS
+  names:  5
+  codes:  0, 1, 2, 3, 4
+  module: SecurityAiBoundary
+  agda:   exit 0
+  PROOF HOLDS: encoder injective -> boundary is lossless
+               (the integer IS the host value).
+----
+
+Output file: `SecurityAi/SecurityAiBoundary.agda`
+
+=== Clamp-sentinel declaration
+
+Both kernels have an `Invalid(Int)` catch-all arm in their `ordinal_of`
+function, which clamps out-of-band inputs (< 0 → 0, > 4 → 4). This
+clamp is *intentionally declared* — documented in the kernel header
+comments and refactored into a separate `clamp_level_ordinal` /
+`clamp_phase_ordinal` helper so that the `Invalid(v)` match arm contains
+no bare integer literals (which would trigger PA-AFF-001 as an
+*undeclared* clamp). The G3 LOSSLESS proof certifies that the five valid
+codes 0..4 are injective; the `Invalid(v)` arm handles the deliberately
+out-of-band inputs outside that table.
+
+== Gate 4 — affine-assail
+
+----
+[CLEAN] CombatFxInt    [CLEAN] DetectionInt    [CLEAN] DifficultyScale
+[CLEAN] Distraction    [CLEAN] DualAlert        [CLEAN] HitboxGeom
+[CLEAN] PlayerHp       [CLEAN] SecurityAiInt
+----
+
+All 8 kernels: 0 findings, exit 0. No `PA-AFF-001` (the `Invalid(v)` clamp
+arms in DualAlert and SecurityAi were refactored to helper functions with no
+bare integer literals in the match arm body). No `PA-AFF-002` (no indexing
+operations). No `PA-AFF-003` (no loops over array parameters).

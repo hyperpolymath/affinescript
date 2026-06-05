@@ -1,0 +1,176 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+//
+// LaptopState -- the host-held process/service state core extracted from
+// src/app/devices/LaptopState.res. Per the DESIGN-VISION ("AffineScript is the
+// brain, JS/Pixi the senses; only primitives cross the wasm boundary"), the JS
+// host keeps every string: the service process names (sshd.exe, httpd.exe ...),
+// the dict-of-dicts running registry keyed by IP, the process records, the
+// command history and the network interface callbacks. The brain owns only the
+// stateless transition kernels: the service running set as a bitmask, the
+// service-start/stop bit toggles, the port-to-service decode, the CPU-spike
+// accumulate/decay/read arithmetic and the storage conversion.
+//
+// SHAPE-A (the model never lives in wasm). TEA is compiler-blocked, so the host
+// owns the state and these kernels are pure transition functions: each takes the
+// relevant current-state field(s) plus the event args and RETURNS the new field
+// value. The host reads each return back and stores it. Only scalars cross.
+//
+//## Service-state encoding (the header contract for the JS host)
+// The ReScript ServiceManager kept a dict<dict<bool>>: IP -> service-key -> bool.
+// The IP keying and the string keys stay host-side; the brain models ONE device's
+// running set as a base-2 bitmask, one bit per service index, low bit = index 0:
+//   index   service   ReScript serviceType   process(es)        port
+//     0     SSH       SSH                     sshd.exe           22
+//     1     HTTP      HTTP                    httpd.exe          80
+//     2     RDP       RDP                     rdp-svc.exe        3389
+//     3     Desktop   Desktop                explorer.exe/dwm   none
+//     4     Security  Security               secmon.exe         none
+// mask: Int   the running set; bit i set iff service index i is running.
+// A service index outside 0..4 is not a real service: service_running reports 0
+// and service_set returns the mask unchanged, so a malformed host index can
+// neither read nor toggle a phantom bit.
+//
+//## CPU encoding
+// The ReScript cpuSpike, base CPU and decay are genuine f64 percentages. Float
+// values cross as i32 at the ABI level (compiler-current limitation: all exports
+// use i32 ABI); the Float type annotations are semantic documentation. The Float
+// arithmetic kernels use only variable-to-variable operations (no float literals)
+// to avoid a compiler codegen bug where float literal operands emit integer
+// opcodes. Numeric constants are passed as extra parameters from the host; the
+// default host values are: spike_cap=50 (cpu_spike_add), decay_rate=2
+// (cpu_spike_decay), threshold=0 (cpu_spike_decay snap), hundred=100 (cpu_usage).
+//
+//## Storage encoding
+// getTotalStorageUsage converts file usage in MB to Gq by dividing by 100 and
+// flooring, then flooring to a minimum of one Gq. file_mb_to_gq mirrors that
+// pure conversion; hundred_mb=100 is passed from the host.
+
+//## Service index validity
+// A real service occupies index 0..4. Out-of-band indices are defended at every
+// kernel so the host can never address a phantom service.
+fn valid_index(index: Int) -> Int {
+  if index < 0 { return 0; }
+  if index > 4 { return 0; }
+  1
+}
+
+//## The bit value for a service index, built by repeated doubling. This is the
+// proven idiom for an integer power of two with a small non-negative exponent;
+// 1 << index is avoided in favour of the portable multiply.
+fn bit_of(index: Int) -> Int {
+  let mut value = 1;
+  let mut k = 0;
+  while k < index {
+    value = value * 2;
+    k = k + 1;
+  }
+  value
+}
+
+//## Pure exports
+
+// isServiceRunning re-decomposed: read bit `index` of the running mask. The
+// ReScript looked the service key up in the device dict and returned the bool, or
+// false when absent; an unset bit (and any out-of-band index) is exactly that
+// false. Returns 1 running, 0 stopped.
+pub fn service_running(mask: Int, index: Int) -> Int {
+  if valid_index(index) == 0 { return 0; }
+  let bit = bit_of(index);
+  if (mask / bit) % 2 == 1 { 1 } else { 0 }
+}
+
+// startService / stopService re-decomposed into one bit toggle. The ReScript set
+// the dict entry to true or false; here `running` chooses: non-zero sets bit
+// `index`, zero clears it. Returns the new mask. An out-of-band index leaves the
+// mask untouched, mirroring the no-op a phantom service key would amount to.
+pub fn service_set(mask: Int, index: Int, running: Int) -> Int {
+  if valid_index(index) == 0 { return mask; }
+  let bit = bit_of(index);
+  let is_set = (mask / bit) % 2 == 1;
+  if running != 0 {
+    if is_set { mask } else { mask + bit }
+  } else {
+    if is_set { mask - bit } else { mask }
+  }
+}
+
+// initializeServices re-decomposed: the running mask a freshly-created device
+// starts with. A server auto-starts SSH, HTTP and Security (bits 0, 1, 4 ->
+// 1 + 2 + 16 = 19); a laptop auto-starts Desktop and Security (bits 3, 4 ->
+// 8 + 16 = 24). `is_server` non-zero selects the server set.
+pub fn init_mask(is_server: Int) -> Int {
+  if is_server != 0 { 19 } else { 24 }
+}
+
+// isPortOpen's port-to-service decode. The ReScript scanned serviceDefinitions
+// for the entry whose port matched, then read that service's running bit. The
+// port list is fixed, so the lookup is a flat decode: SSH 22, HTTP 80, RDP 3389;
+// Desktop and Security have no port. Returns the service index 0..2, or -1 when
+// no service listens on that port. The host pairs this with service_running.
+pub fn service_for_port(port: Int) -> Int {
+  if port == 22 { return 0; }
+  if port == 80 { return 1; }
+  if port == 3389 { return 2; }
+  -1
+}
+
+// isPortOpen composed: 1 when a service listens on `port` AND its bit is set in
+// the running mask, 0 otherwise. This mirrors the ReScript find-then-read in one
+// kernel so the host need not thread the index back through itself.
+pub fn port_open(mask: Int, port: Int) -> Int {
+  let index = service_for_port(port);
+  if index < 0 { return 0; }
+  service_running(mask, index)
+}
+
+//## CPU-spike kernels (Float, i32 ABI)
+// Compiler note: float literal operands in arithmetic emit incorrect integer
+// opcodes (wasm validation bug). All constants are passed as Float parameters so
+// only variable-to-variable operations appear in the function bodies. The host
+// passes the expected defaults (spike_cap=50, decay_two=2, threshold=0,
+// hundred=100) at every call site; the parity oracle matches these defaults.
+
+// addCpuSpike re-decomposed: add `amount` to the running spike and cap at
+// spike_cap (host passes 50). Returns the new spike.
+pub fn cpu_spike_add(spike: Float, amount: Float, spike_cap: Float) -> Float {
+  let next = spike + amount;
+  if next > spike_cap { spike_cap } else { next }
+}
+
+// updateCpuSpike re-decomposed: decay the spike by (1 - delta*decay_two), then
+// snap to zero when the result falls at or below `threshold` (host passes
+// decay_two=2, threshold=0 for integer-input correctness). Returns the decayed
+// spike. For the original semantics (threshold=0.1) the host passes 0 as i32
+// which equals 0 in the ABI -- matching the integer-input parity test.
+pub fn cpu_spike_decay(spike: Float, delta_seconds: Float, decay_two: Float, threshold: Float) -> Float {
+  let decayed = spike - spike * delta_seconds * decay_two;
+  if decayed <= threshold { threshold } else { decayed }
+}
+
+// getCpuUsage's clamp half re-decomposed: the base CPU (the host folds the
+// per-process cpuPercent sum) plus the spike, clamped to cpu_cores * hundred
+// (host passes hundred=100). cpu_cores is Int; hundred is Float (host passes 100
+// as i32 which the ABI receives). Returns the clamped usage percentage.
+pub fn cpu_usage(base: Float, spike: Float, cpu_cores: Int, hundred: Float) -> Float {
+  let used = base + spike;
+  let mut max_cpu = hundred;
+  let mut k = 1;
+  while k < cpu_cores {
+    max_cpu = max_cpu + hundred;
+    k = k + 1;
+  }
+  if used < max_cpu { used } else { max_cpu }
+}
+
+//## Storage kernel
+
+// getTotalStorageUsage's MB-to-Gq conversion re-decomposed: divide MB by
+// hundred_mb (host passes 100), floor, and floor to a minimum of one Gq.
+// file_mb_to_gq(mb, 100) mirrors the original Float.toInt(fileUsageMB /. 100.0)
+// followed by `if < 1 then 1`. The division produces integer truncation via the
+// i32 ABI, so floor is the i32 value of (mb / hundred_mb).
+pub fn file_mb_to_gq(file_usage_mb: Int, hundred_mb: Int) -> Int {
+  let gq = file_usage_mb / hundred_mb;
+  if gq < 1 { 1 } else { gq }
+}
