@@ -1,0 +1,72 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// GameEvent -- the cross-component event taxonomy co-processor, the pure-integer
+// core extracted from idaptik shared/src/GameEvent.res. The ReScript original is
+// a ~40-constructor event variant `t` carrying string/float/int payloads plus a
+// `toTag` string serialiser; that variant and its string tags are irreducibly
+// host-side (the senses). What IS pure integer are the two ordered/closed
+// sub-enums the guard AI, firewall and event router actually branch on:
+//
+//   * alertLevel (Green < Yellow < Orange < Red) -- ORDERED, so an out-of-band
+//     level clamps to the nearest valid rank (CONTROLLED LOSS, like
+//     SecurityRank); guards can never read an undefined alert state.
+//   * direction (PlayerToVM .. ServerBroadcast) -- a flat UNORDERED routing
+//     enum, so an out-of-band code maps to the sentinel -1 (LOSSLESS taxonomy).
+//
+// Per the DESIGN-VISION the host keeps every event payload and the `toTag`
+// strings; AffineScript owns these two integer encodings.
+//
+//## alertLevel encoding (ordered)   ## direction encoding (flat)
+//   code  level                        code  direction
+//     0   Green                          0   PlayerToVM
+//     1   Yellow                         1   VMToGame
+//     2   Orange                         2   GameToDevice
+//     3   Red                            3   DeviceToPlayer
+//                                         4   PlayerToPlayer
+//                                         5   ServerBroadcast
+
+enum Alert { Green, Yellow, Orange, Red, BadAlert(Int) }
+
+fn alert_of(code: Int) -> Alert {
+  if code == 0 { return Green; }
+  if code == 1 { return Yellow; }
+  if code == 2 { return Orange; }
+  if code == 3 { return Red; }
+  BadAlert(code)
+}
+
+// Rank an alert level, clamping the ordered 0..3 band: anything below Green
+// becomes 0, anything above Red becomes 3 (the nearest valid rank). This is the
+// SecurityRank clamp shape -- a DECLARED controlled-loss clamp so guard AI can
+// never act on an undefined alert state.
+fn rank_alert(a: Alert) -> Int {
+  match a {
+    Green => 0,
+    Yellow => 1,
+    Orange => 2,
+    Red => 3,
+    BadAlert(v) => { if v < 0 { 0 } else { 3 } }
+  }
+}
+
+pub fn alert_level_count() -> Int { 4 }
+pub fn direction_count() -> Int { 6 }
+
+// Clamp a host integer onto the ordered alert band (DECLARED controlled loss).
+pub fn clamp_alert_level(code: Int) -> Int {
+  rank_alert(alert_of(code))
+}
+
+// Whether a host integer names a defined alert level (before clamping).
+pub fn is_valid_alert_level(code: Int) -> Int {
+  if code < 0 { 0 } else { if code > 3 { 0 } else { 1 } }
+}
+
+// Direction is a flat routing enum with no order, so an out-of-band code maps
+// to the sentinel -1 rather than clamping onto a real direction (LOSSLESS).
+pub fn is_valid_direction(code: Int) -> Int {
+  if code < 0 { 0 } else { if code > 5 { 0 } else { 1 } }
+}
+pub fn clamp_direction(code: Int) -> Int {
+  if is_valid_direction(code) == 1 { code } else { -1 }
+}

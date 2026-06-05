@@ -1,0 +1,39 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// Diagnostics -- the device-health band classifier + registry sanity check, the
+// pure-integer core extracted from idaptik shared/src/Diagnostics.res. The
+// ReScript original wraps raw float utilisation percentages and per-backend
+// stats into typed report structures and formatted strings; those reports and
+// strings are host-side (the senses). What IS pure integer is the threshold
+// classification `healthOf` and the `allDomainsRegistered` count check.
+//
+// We re-decompose `healthOf : float -> healthLevel` onto an integer utilisation
+// percentage 0..100 (the host floors the float before crossing the boundary --
+// Math.floor is a sense). The three bands and their cutoffs are unchanged.
+//
+//## Health band encoding (Diagnostics.healthLevel)
+//   band  level     range
+//     0   Healthy   pct < 70
+//     1   Warning   70 <= pct < 90
+//     2   Critical  pct >= 90      (>= 95 is the hard 503 cutoff)
+// health_of is deliberately many-to-one (a whole range folds onto one band);
+// that is the intended classification, not an encoding, so no injectivity is
+// claimed for it. The expected full registry is exactly ten domain backends.
+
+pub fn health_band_count() -> Int { 3 }
+pub fn expected_domain_count() -> Int { 10 }
+
+// Classify an integer utilisation percentage into a health band. Negative input
+// (impossible from a real percentage, but total here) lands in Healthy; >=90
+// in Critical, mirroring the ReScript `< 70 / < 90 / else` ladder.
+pub fn health_of(pct: Int) -> Int {
+  if pct < 70 { return 0; }
+  if pct < 90 { return 1; }
+  2
+}
+
+// 1 iff all ten expected domain backends are registered (Diagnostics
+// .allDomainsRegistered: registeredBackendCount() == 10).
+pub fn all_domains_registered(count: Int) -> Int {
+  if count == expected_domain_count() { 1 } else { 0 }
+}

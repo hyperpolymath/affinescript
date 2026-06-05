@@ -1,0 +1,51 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// Kernel_Compute -- the compute-domain scheduler gate, the pure-integer core
+// extracted from idaptik shared/src/Kernel_Compute.res `handleCompute`. The
+// ReScript original returns a promise<executionResult> and dispatches to a
+// backend; we re-decompose it by collapsing the incidental Promise, threading
+// the service-locator reads (ResourceAccounting device state, the backend
+// lookup) as explicit integer parameters, and keeping only the GATE decision --
+// which HTTP-style status the scheduler returns before any backend runs. The
+// string messages and the actual backend.execute stay host-side (the senses).
+//
+//## Domain encoding (the header contract for the JS host)
+// The host maps Coprocessor.Domain.t -> this code using PortNames order:
+//   0 crypto  1 vector  2 maths  3 io  4 neural
+//   5 quantum 6 physics 7 audio  8 tensor 9 graphics
+//
+//## Status codes returned by compute_gate
+//   504  concurrency saturated  (active calls >= max)
+//   413  payload too large      (data length > the domain's element cap)
+//   404  no backend             (the domain is unregistered on this device)
+//     0  admit                  (dispatch to the backend)
+// Precedence is exactly the ReScript order: concurrency, then payload, then
+// backend presence. The caller passes has_backend as 1/0 (it owns the registry).
+
+// Maximum concurrent compute-domain calls per device before 504.
+pub fn max_concurrent_compute() -> Int { 10 }
+
+// Per-domain input-array element cap (Kernel_Compute.dataLimitForDomain):
+//   vector | neural | audio -> 513   (n header + two 256-element vectors)
+//   maths  | physics        -> 16    (all commands take <= 4 small ints)
+//   tensor                  -> 259   (3 dimension ints + 16x16 matrix)
+//   anything else           -> 1024  (catch-all fallback)
+pub fn data_limit_for_domain(domain: Int) -> Int {
+  if domain == 1 { return 513; }   // vector
+  if domain == 4 { return 513; }   // neural
+  if domain == 7 { return 513; }   // audio
+  if domain == 2 { return 16; }    // maths
+  if domain == 6 { return 16; }    // physics
+  if domain == 8 { return 259; }   // tensor
+  1024
+}
+
+// The scheduler gate: the status handleCompute returns before dispatch.
+// active_calls = ResourceAccounting device active-call count (threaded in);
+// data_len = input array length; has_backend = 1 iff a backend is registered.
+pub fn compute_gate(domain: Int, active_calls: Int, data_len: Int, has_backend: Int) -> Int {
+  if active_calls >= max_concurrent_compute() { return 504; }
+  if data_len > data_limit_for_domain(domain) { return 413; }
+  if has_backend == 0 { return 404; }
+  0
+}

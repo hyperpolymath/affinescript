@@ -1,0 +1,125 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+= Cluster C1 — four-gate evidence (captured 2026-06-05)
+:toc: macro
+
+[IMPORTANT]
+====
+*Captured run of the 4-gate recipe over the eight cluster-C1 pure-integer
+kernels.* Every number here is reproducible from this directory; the
+re-run commands are in `README.adoc`. Toolchain: AffineScript compiler
+`_build/default/bin/main.exe`, Deno 2.8.2, Agda 2.6.3, echo mirror at
+`/tmp/mirror-boundary`.
+====
+
+toc::[]
+
+== Summary
+
+[cols="2,1,1,1,1",options="header"]
+|===
+| Kernel | G1 compile | G2 parity | G3 boundary | G4 assail
+| `DeviceType`      | OK | 39/39   | LOSSLESS (12)        | clean
+| `PuzzleFormat`    | OK | 74/74   | CONTROLLED-LOSS @0   | clean
+| `PortNames`       | OK | 52/52   | LOSSLESS (10)        | clean
+| `GameEvent`       | OK | 50/50   | LOSSLESS (6) + CL @0 | clean
+| `Kernel_Compute`  | OK | 736/736 | (decision; see note) | clean
+| `Kernel`          | OK | 19/19   | CONTROLLED-LOSS @4   | clean
+| `RetryPolicy`     | OK | 124/124 | (decision; see note) | clean
+| `Diagnostics`     | OK | 129/129 | (decision; see note) | clean
+| *Total*           | *8/8* | *1223/1223* | *6 proofs, agda exit 0* | *8/8 clean*
+|===
+
+== Gate 1 — compile (`main.exe compile … -o …`)
+
+All eight `.affine` sources lower to wasm, exit 0:
+
+----
+[OK]   DeviceType      [OK]   GameEvent       [OK]   RetryPolicy
+[OK]   PuzzleFormat    [OK]   Kernel_Compute  [OK]   Diagnostics
+[OK]   PortNames       [OK]   Kernel
+----
+
+== Gate 2 — parity (oracle-vs-wasm, scalar i32 ABI)
+
+Each kernel swept against an *independent* JS oracle (re-derived in the
+`*.config.mjs`, never reusing AffineScript code) so a codegen regression
+surfaces as a differential mismatch. 1223 inputs, 0 mismatches.
+
+----
+DeviceType ........ 39/39    Kernel_Compute ... 736/736
+PuzzleFormat ...... 74/74    Kernel ........... 19/19
+PortNames ......... 52/52    RetryPolicy ...... 124/124
+GameEvent ......... 50/50    Diagnostics ...... 129/129
+----
+
+`Kernel_Compute.compute_gate` is the widest sweep: the full
+domain × active_calls × data_len × has_backend grid (10 × 4 × 9 × 2 = 720),
+exercising the 504 > 413 > 404 > 0 precedence at every boundary.
+
+== Gate 3 — echo-boundary (Agda-certified encoding faithfulness)
+
+Six host-value→code tables certified against the `EchoEncodingFaithfulness`
+framework; every generated module typechecks (`agda exit 0`). The generated
+proofs are staged next to each kernel (`*Boundary.agda`).
+
+[cols="2,1,3",options="header"]
+|===
+| Module | Verdict | What it certifies
+| `DeviceTypeBoundary`          | LOSSLESS | 12 device kinds → 12 distinct codes; host round-trips device ↔ code.
+| `PortNamesBoundary`           | LOSSLESS | 10 coprocessor domains → ids 0..9; the portnames.wasm bridge contract.
+| `GameEventDirectionBoundary`  | LOSSLESS | 6 directions → codes 0..5.
+| `PuzzleFormatTierBoundary`    | CONTROLLED LOSS | DLCLoader's `parseTier` clamp: unknown numeral collapses to `Tier0` (code 0). Collision certified → no section.
+| `GameEventAlertBoundary`      | CONTROLLED LOSS | ordered alert clamp: below-Green collapses to Green (code 0). Collision certified → no section.
+| `KernelRouteBoundary`         | CONTROLLED LOSS | the router's compute fan-in: six domains share handler class 4. Deliberate forgetting, certified → no section.
+|===
+
+*Note (decision kernels).* `Kernel_Compute.compute_gate`,
+`RetryPolicy.is_transient` and `Diagnostics.health_of` are intentionally
+many-to-one *decisions*, not encodings — they classify rather than name, so no
+injectivity is claimed for them and echo-boundary's encoding lens does not
+apply. Their faithfulness is established by Gate 2 (full-grid parity against an
+independent oracle). Where one of these kernels *does* carry an encoding (the
+shared domain code, the alert/tier taxonomies), that encoding is certified
+above.
+
+== Gate 4 — affine-assail (no undeclared clamp / unguarded decoder)
+
+All eight kernels scan clean (exit 0):
+
+----
+[CLEAN] DeviceType      [CLEAN] Kernel_Compute
+[CLEAN] PuzzleFormat    [CLEAN] Kernel
+[CLEAN] PortNames       [CLEAN] RetryPolicy
+[CLEAN] GameEvent       [CLEAN] Diagnostics
+----
+
+*On clamps and the gate-4 signal.* The in-band clamps in this cluster
+(`PuzzleFormat.clamp_tier`/`clamp_difficulty` → 0, `GameEvent.clamp_alert_level`
+→ 0/3) are written *guard-style* — an explicit validity test then the default —
+rather than as a catch-all `match` arm. assail's `PA-AFF-001` heuristic targets
+the match-arm shape (e.g. SecurityRank's `Invalid(v) => …`, which it correctly
+flags as a declared clamp); guard-style clamps present no catch-all arm and so
+scan clean. This is sound here because the controlled-loss of every one of these
+clamps is *independently certified by Gate 3* (the `…Boundary.agda` proofs
+above). Gate 3 (the clamp is controlled-loss-certified) and Gate 4 (no
+*undeclared* match-arm clamp) together account for every boundary in the
+cluster. The out-of-band *sentinels* (`-1` in DeviceType/PortNames/GameEvent/
+PuzzleFormat) are not clamps — they map outside the in-band range, so no in-band
+collision is introduced and nothing is lost.
+
+== Host-side files (no pure-integer brain — the "senses")
+
+Three C1 files carry no extractable integer core and stay host-side:
+
+* `Coprocessor_Backends.res` — backend-registration wiring (ten `register()`
+  side-effects; the order is the only datum, and it is fixed).
+* `PortNamesCoprocessor.res` — the JS-bridge binding shim that *consumes*
+  `PortNames.affine` (→ portnames.wasm). The shim stays; the kernel it binds is
+  delivered here.
+* `DLCLoader.res` — a JSON parser/serialiser (`Js.String2.*` / `Js.Json.*`
+  throughout). Its one integer fragment, `parseTier`'s numeral clamp, is
+  delivered as `PuzzleFormat.clamp_tier` (certified controlled-loss above); the
+  rest is irreducibly string/JSON host work. (The Phase-B migratability tool
+  bucketed this MIGRATABLE-NOW because it scans the modern `String.*` API, not
+  the legacy `Js.String2.*` this file uses — recorded here as a triage erratum.)

@@ -1,0 +1,55 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// Kernel -- the resource-aware scheduler gate + domain router, the pure-integer
+// core extracted from idaptik shared/src/Kernel.res `execute`. The ReScript
+// original returns a promise<executionResult>, reads device capacity and the
+// backend registry through service locators, and mutates accounting state; we
+// re-decompose by collapsing the Promise, threading the capacity check and
+// backend-presence as integer parameters, and keeping only the two pure
+// decisions: the pre-flight GATE (which status to reject with) and the domain
+// ROUTE (which specialised handler to dispatch to). Accounting mutation, the
+// string messages and the float energy totals stay host-side (the senses).
+//
+//## Domain encoding (the header contract for the JS host) -- PortNames order
+//   0 crypto  1 vector  2 maths  3 io  4 neural
+//   5 quantum 6 physics 7 audio  8 tensor 9 graphics
+//
+//## execute_gate status codes
+//   503  resource exhausted  (device capacity check failed)
+//   404  no backend          (no backend registered for the domain)
+//     0  admit               (proceed to routing + dispatch)
+//
+//## route_of handler classes
+//   1  Kernel_IO         (io)
+//   2  Kernel_Crypto     (crypto)
+//   3  Kernel_Quantum    (quantum)
+//   4  Kernel_Compute    (vector, maths, neural, physics, audio, tensor)
+//   5  direct backend    (graphics -- no specialised handler)
+//   0  no route          (out-of-band domain)
+// route_of is deliberately many-to-one: the six compute domains all fold onto
+// class 4. That fan-in is CONTROLLED LOSS by design (the router forgets which
+// compute domain it was), certified by echo-boundary (boundary-route.json).
+
+// Pre-flight gate: the status execute returns before dispatch. has_capacity = 1
+// iff ResourceAccounting.hasCapacity(state); has_backend = 1 iff a backend is
+// registered for the domain. Precedence is the ReScript order: capacity first.
+pub fn execute_gate(has_capacity: Int, has_backend: Int) -> Int {
+  if has_capacity == 0 { return 503; }
+  if has_backend == 0 { return 404; }
+  0
+}
+
+// Domain router: the specialised handler class a domain dispatches to.
+pub fn route_of(domain: Int) -> Int {
+  if domain == 3 { return 1; }   // io     -> Kernel_IO
+  if domain == 0 { return 2; }   // crypto -> Kernel_Crypto
+  if domain == 5 { return 3; }   // quantum-> Kernel_Quantum
+  if domain == 1 { return 4; }   // vector -> Kernel_Compute
+  if domain == 2 { return 4; }   // maths  -> Kernel_Compute
+  if domain == 4 { return 4; }   // neural -> Kernel_Compute
+  if domain == 6 { return 4; }   // physics-> Kernel_Compute
+  if domain == 7 { return 4; }   // audio  -> Kernel_Compute
+  if domain == 8 { return 4; }   // tensor -> Kernel_Compute
+  if domain == 9 { return 5; }   // graphics-> direct backend
+  0
+}

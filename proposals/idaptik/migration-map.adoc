@@ -1,0 +1,654 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+= IDApTIK migration map — ReScript → AffineScript corpus triage
+:toc: macro
+
+[IMPORTANT]
+====
+*Machine-generated from `affine-migratability` on 2026-06-05.*
+Companion: `migration-map.json` (the resumable worklist).
+Resume rule: read highest non-DONE cluster in the JSON; apply the 4-gate recipe (§recipe below).
+====
+
+toc::[]
+
+== Headline numbers
+
+Total `.res` files scanned: *571*
+
+[cols="2,1,1",options="header"]
+|===
+| Verdict | Count | %
+| *MIGRATABLE NOW* | 389 | 68%
+| STRING-GATED (wall 1) | 71 | 12%
+| EFFECT-GATED (wall 2) | 111 | 19%
+|===
+
+*Excluding test harnesses* (213 `__tests__/*.res` files; these become parity harnesses, not direct migrations):
+
+[cols="2,1,1",options="header"]
+|===
+| Verdict | Count | %
+| *MIGRATABLE NOW* | 196 | 55%
+| STRING-GATED | 52 | 15%
+| EFFECT-GATED | 110 | 31%
+|===
+
+== The two compiler walls
+
+=== Wall 1 — variable-string backend (STRING-GATED)
+
+*71 files* blocked. Unblocked by Phase F compiler work.
+
+Top patterns:
+* string subscript (44 files)
+* String.length (30 files)
+* String.startsWith (13 files)
+* String.slice (7 files)
+* String.fromCharCode (4 files)
+
+Key finding: `string subscript` (`s[i]` / `path[0]`) is the single largest pattern (44 files),
+mostly in device/enemy/companion code that slices string identifiers. `String.length` (30 files)
+is the second — mostly for path/name length checks. Both collapse once the variable-string
+ABI (`[len:i32 LE][utf8]` read-side) lands.
+
+=== Wall 2 — effect codegen (EFFECT-GATED)
+
+*111 files* blocked. Unblocked by Phase F+ effect-codegen work.
+
+Top patterns:
+* module-level ref() (79 files)
+* Console.log (24 files)
+* module-level Dict.make() (20 files)
+* Date.now (8 files)
+* Math.random (6 files)
+
+Key finding: module-level `ref()` (79 files) is the dominant wall — these are stateful service
+singletons (`GlobalNetworkManager`, `FeaturePacks`, `GameI18n`, etc.) that use
+`let state = ref(...)` at module scope. The re-decomposition strategy threads this state
+as explicit parameters. `Console.log` (24 files, mostly vm tests) is trivially fixed by routing
+to an I/O port. `Date.now` / `Math.random` must be fed as explicit inputs to the wasm brain.
+
+== Area breakdown
+
+[cols="2,1,1,1,1",options="header"]
+|===
+| Area | Total | MIG NOW | STR-GATED | EFF-GATED
+| `shared/src` | 21 | 11 | 5 | 5
+| `src/shared` | 34 | 17 | 8 | 9
+| `vm` | 51 | 31 | 3 | 17
+| `src/app/multiplayer` | 13 | 6 | 2 | 5
+| `src/engine` | 15 | 11 | 1 | 3
+| `src/app/combat` | 6 | 4 | 0 | 2
+| `src/app/enemies` | 12 | 6 | 4 | 2
+| `src/app/player` | 22 | 11 | 0 | 11
+| `src/app/devices` | 37 | 11 | 8 | 18
+| `src/app/proven` | 5 | 3 | 1 | 1
+| `src/app/utils` | 19 | 11 | 1 | 7
+| `src/app/companions` | 8 | 5 | 2 | 1
+| `src/app/narrative` | 3 | 1 | 1 | 1
+| `src/app/ui` | 14 | 10 | 2 | 2
+| `src/app/popups` | 13 | 6 | 2 | 5
+| `src/app/screens` | 52 | 27 | 6 | 19
+| `src/app` | 18 | 16 | 0 | 2
+| `src/bindings` | 4 | 4 | 0 | 0
+| `src/app/tools` | 4 | 2 | 2 | 0
+| `src/app/pickups` | 2 | 1 | 1 | 0
+| `idaptik-ums` | 3 | 0 | 3 | 0
+| `__tests__` | 213 | 193 | 19 | 1
+| `src/other` | 1 | 1 | 0 | 0
+|===
+
+== The 4-gate recipe (every kernel, every wave)
+
+[[recipe]]
+
+[arabic]
+. *Re-decompose* — NOT transliterate: collapse incidental Promise/async, thread service-locator state as params, enum the options, hand-ladder int rendering, keep wire bytes identical.
+. *`affinescript compile` → wasm* — gate 1: builds.
+. *`affine-parity` oracle-vs-wasm sweep green* — gate 2: parity.
+. *`echo-boundary` proves each host-boundary encoding LOSSLESS or declared-clamp* — gate 3: faithful.
+. *`affine-assail` clean* — no undeclared clamp / unguarded decoder — gate 4.
+
+Each migrated kernel is staged under `proposals/idaptik/migrated/<name>/` with `.affine` + harness + evidence.
+
+== MIGRATABLE NOW clusters (priority order)
+
+These clusters are the deep-wave work (Phases C, D, G..N).
+Ordered: leaf pure-integer cores first, up the dependency tree.
+
+=== C1 — Pure-integer kernel definitions (11 files)
+
+Leaf kernel types and coprocessor backends in shared/src. No string ops, no effects. First — no dependencies on other migrated files.
+
+*Status:* TODO
+
+[source]
+----
+shared/src/Coprocessor_Backends.res
+shared/src/DLCLoader.res
+shared/src/DeviceType.res
+shared/src/Diagnostics.res
+shared/src/GameEvent.res
+shared/src/Kernel.res
+shared/src/Kernel_Compute.res
+shared/src/PortNames.res
+shared/src/PortNamesCoprocessor.res
+shared/src/PuzzleFormat.res
+shared/src/RetryPolicy.res
+----
+
+=== C2 — VM instruction set (31 files)
+
+VM instruction modules in vm/lib/ocaml — one file per opcode, pure-integer reversible VM. Also the wasm binding shim.
+
+*Status:* TODO
+
+[source]
+----
+vm/lib/ocaml/Add.res
+vm/lib/ocaml/And.res
+vm/lib/ocaml/Call.res
+vm/lib/ocaml/CoprocessorCall.res
+vm/lib/ocaml/Div.res
+vm/lib/ocaml/Flip.res
+vm/lib/ocaml/IfPos.res
+vm/lib/ocaml/IfZero.res
+vm/lib/ocaml/Instruction.res
+vm/lib/ocaml/InstructionCoprocessor.res
+vm/lib/ocaml/Load.res
+vm/lib/ocaml/Loop.res
+vm/lib/ocaml/Mul.res
+vm/lib/ocaml/Negate.res
+vm/lib/ocaml/Noop.res
+vm/lib/ocaml/Or.res
+vm/lib/ocaml/Pop.res
+vm/lib/ocaml/Push.res
+vm/lib/ocaml/Recv.res
+vm/lib/ocaml/Rol.res
+vm/lib/ocaml/Ror.res
+vm/lib/ocaml/Send.res
+vm/lib/ocaml/State.res
+vm/lib/ocaml/Store.res
+vm/lib/ocaml/Sub.res
+vm/lib/ocaml/SubroutineRegistry.res
+vm/lib/ocaml/Swap.res
+vm/lib/ocaml/VM.res
+vm/lib/ocaml/VmStateCoprocessor.res
+vm/lib/ocaml/Xor.res
+vm/wasm/src/bindings.res
+----
+
+=== C3 — src/shared coprocessor wiring (17 files)
+
+Coprocessor bridge layer in src/shared — wrappers exposing kernels to the game engine. Depends on C1.
+
+*Status:* TODO
+
+[source]
+----
+src/shared/CoprocessorComputeCoprocessor.res
+src/shared/CoprocessorCoreCoprocessor.res
+src/shared/CoprocessorIOCoprocessor.res
+src/shared/CoprocessorSecurityCoprocessor.res
+src/shared/Coprocessor_Backends.res
+src/shared/DLCLoaderCoprocessor.res
+src/shared/DeviceType.res
+src/shared/DiagnosticsCoprocessor.res
+src/shared/GameEvent.res
+src/shared/InventoryCoprocessor.res
+src/shared/KernelCoprocessor.res
+src/shared/Kernel_Compute.res
+src/shared/PuzzleFormatCoprocessor.res
+src/shared/ResourceAccountingCoprocessor.res
+src/shared/RetryPolicy.res
+src/shared/RetryPolicyCoprocessor.res
+src/shared/UmsLevelLoaderCoprocessor.res
+----
+
+=== C4 — Multiplayer coprocessors (6 files)
+
+Server-authoritative multiplayer in src/app/multiplayer — the coprocessors that run identically in browser and on the Elixir server via wasmex/SNIFS.
+
+*Status:* TODO
+
+[source]
+----
+src/app/multiplayer/BurbleAdapter.res
+src/app/multiplayer/LobbyManager.res
+src/app/multiplayer/LobbyManagerCoprocessor.res
+src/app/multiplayer/MultiplayerClientCoprocessor.res
+src/app/multiplayer/VMNetworkCoprocessor.res
+src/app/multiplayer/VoiceBridge.res
+----
+
+=== C5 — Engine coprocessors (11 files)
+
+Core engine coprocessors: audio state, navigation, resize, maths, random, storage.
+
+*Status:* TODO
+
+[source]
+----
+src/engine/audio/Audio.res
+src/engine/navigation/Navigation.res
+src/engine/resize/Resize.res
+src/engine/resize/ResizeCoprocessor.res
+src/engine/utils/GetResolution.res
+src/engine/utils/GetResolutionCoprocessor.res
+src/engine/utils/Maths.res
+src/engine/utils/MathsCoprocessor.res
+src/engine/utils/RandomCoprocessor.res
+src/engine/utils/StorageCoprocessor.res
+src/engine/utils/WaitFor.res
+----
+
+=== C6 — Combat and enemy AI coprocessors (9 files)
+
+Game simulation: hitbox geometry, HP, difficulty scaling, detection, distraction — pure integer state machines.
+
+*Status:* TODO
+
+[source]
+----
+src/app/combat/CombatFxLogicCoprocessor.res
+src/app/combat/Hitbox.res
+src/app/combat/HitboxGeomCoprocessor.res
+src/app/combat/PlayerHPCoprocessor.res
+src/app/enemies/DetectionSystemCoprocessor.res
+src/app/enemies/DifficultyScaleCoprocessor.res
+src/app/enemies/DistractionCoprocessor.res
+src/app/enemies/DualAlertBridge.res
+src/app/enemies/SecurityAICoprocessor.res
+----
+
+=== C7 — Player coprocessors (10 files)
+
+Player attribute, loadout, skill and ability coprocessors — pure integer player state.
+
+*Status:* TODO
+
+[source]
+----
+src/app/player/CriticalRollCoprocessor.res
+src/app/player/JessicaBackgroundCoprocessor.res
+src/app/player/JessicaLoadoutCoprocessor.res
+src/app/player/Player.res
+src/app/player/PlayerAttributesCoprocessor.res
+src/app/player/QCertifications.res
+src/app/player/QCertificationsCoprocessor.res
+src/app/player/QProgramsCoprocessor.res
+src/app/player/SkillAbilitiesCoprocessor.res
+src/app/player/SkillRankCoprocessor.res
+----
+
+=== C8 — Device and network coprocessors (10 files)
+
+Device state machine coprocessors: power, network transfer, security rank, covert link.
+
+*Status:* TODO
+
+[source]
+----
+src/app/devices/CovertLinkCoprocessor.res
+src/app/devices/DeviceFactory.res
+src/app/devices/GlobalNetworkDataCoprocessor.res
+src/app/devices/LaptopStateCoprocessor.res
+src/app/devices/NetworkManagerCoprocessor.res
+src/app/devices/NetworkTransferCoprocessor.res
+src/app/devices/PowerManagerCoprocessor.res
+src/app/devices/PowerStationDevice.res
+src/app/devices/SecurityRankCoprocessor.res
+src/app/devices/types/DeviceTypes.res
+----
+
+=== C9 — Game loop, AffineTEA, and VeriSim types (16 files)
+
+Top-level game loop, AffineTEA architecture, VeriSim integration types, and the entry point.
+
+*Status:* TODO
+
+[source]
+----
+src/Main.res
+src/app/GameLoop.res
+src/app/burble/BurbleIntegration.res
+src/app/pixi/PixiCoprocessor.res
+src/app/tea/AffineTEA.res
+src/app/tea/AffineTEARouter.res
+src/app/verisimdb/SaveGame.res
+src/app/verisimdb/VeriSimDrift.res
+src/app/verisimdb/VeriSimError.res
+src/app/verisimdb/VeriSimFederation.res
+src/app/verisimdb/VeriSimHexad.res
+src/app/verisimdb/VeriSimProvenance.res
+src/app/verisimdb/VeriSimSearch.res
+src/app/verisimdb/VeriSimTypes.res
+src/app/verisimdb/VeriSimVcl.res
+src/app/vm/VmCoprocessor.res
+----
+
+=== C10 — Utils, tools, companions, narrative, and proven modules (21 files)
+
+Game utilities, tools coprocessors, Moletaire companion, mission briefing, and formal-proof integration.
+
+*Status:* TODO
+
+[source]
+----
+src/app/companions/MoletaireCoprocessorsCoprocessor.res
+src/app/companions/MoletaireHunger.res
+src/app/companions/MoletaireHungerCoprocessor.res
+src/app/companions/MoletairePersistence.res
+src/app/narrative/MissionBriefingCoprocessor.res
+src/app/proven/ProvenError.res
+src/app/proven/SafeAngle.res
+src/app/proven/SafeFloatCoprocessor.res
+src/app/tools/PasswordCrackerCoprocessor.res
+src/app/tools/PortScannerCoprocessor.res
+src/app/utils/Announcer.res
+src/app/utils/ColorPalette.res
+src/app/utils/ColorPaletteCoprocessor.res
+src/app/utils/DomA11y.res
+src/app/utils/FontScaleCoprocessor.res
+src/app/utils/GameI18nCoprocessor.res
+src/app/utils/KeyboardNav.res
+src/app/utils/Locales.res
+src/app/utils/PanicHandler.res
+src/app/utils/PolyglotI18n.res
+src/app/utils/UserSettings.res
+----
+
+=== C11 — UI and accessibility coprocessors (10 files)
+
+UI widget logic, font scaling, i18n, keyboard navigation, popup logic — pure integer presentation state.
+
+*Status:* TODO
+
+[source]
+----
+src/app/popups/ForceLayoutCoprocessor.res
+src/app/ui/Button.res
+src/app/ui/DualAlert.res
+src/app/ui/DualAlertCoprocessor.res
+src/app/ui/HardwareWiring.res
+src/app/ui/HubButton.res
+src/app/ui/InventoryUI.res
+src/app/ui/Label.res
+src/app/ui/NavButton.res
+src/app/ui/VolumeSlider.res
+----
+
+=== C12 — Render-glue screens, UI, and bindings (43 files)
+
+Screen implementations, render-logic coprocessors, and PixiJS bindings. Migrated last — these call the AffineScript brain from the host JS/Pixi layer.
+
+*Status:* TODO
+
+[source]
+----
+src/app/companions/CompanionsRenderLogicCoprocessor.res
+src/app/devices/DevicesRenderLogicCoprocessor.res
+src/app/enemies/EnemiesRenderLogicCoprocessor.res
+src/app/pickups/ToolsPickupsRenderLogicCoprocessor.res
+src/app/player/PlayerRenderLogicCoprocessor.res
+src/app/popups/FeaturePacksPopup.res
+src/app/popups/IntegrationsPopup.res
+src/app/popups/LanguagePopup.res
+src/app/popups/NarrativePopupsRenderLogicCoprocessor.res
+src/app/popups/PausePopup.res
+src/app/screens/BalanceAnalyserCoprocessor.res
+src/app/screens/CreditsScreen.res
+src/app/screens/JessicaCustomiseScreen.res
+src/app/screens/LoadScreen.res
+src/app/screens/LoadoutScreen.res
+src/app/screens/LocationDataCoprocessor.res
+src/app/screens/ObserverScreen.res
+src/app/screens/QViewScreen.res
+src/app/screens/ScreenGlitchFxCoprocessor.res
+src/app/screens/ScreensRunLoopLogicCoprocessor.res
+src/app/screens/SkillTreeScreen.res
+src/app/screens/TitleScreen.res
+src/app/screens/locations/AtlasScreen.res
+src/app/screens/locations/BackboneScreen.res
+src/app/screens/locations/BusinessISPScreen.res
+src/app/screens/locations/CityScreen.res
+src/app/screens/locations/DevHubScreen.res
+src/app/screens/locations/FieldScreen.res
+src/app/screens/locations/LabScreen.res
+src/app/screens/locations/LocationBase.res
+src/app/screens/locations/NexusScreen.res
+src/app/screens/locations/RegionalISPScreen.res
+src/app/screens/locations/RuralISPScreen.res
+src/app/screens/main/Bouncer.res
+src/app/screens/main/Logo.res
+src/app/screens/main/MainScreen.res
+src/app/screens/training/TrainingMenuScreen.res
+src/app/ui/UiRenderLogicCoprocessor.res
+src/app/verisimdb/VerisimProvenRenderLogicCoprocessor.res
+src/bindings/Motion.res
+src/bindings/Pixi.res
+src/bindings/PixiSound.res
+src/bindings/PixiUI.res
+----
+
+=== C_TESTS — Test harnesses (193 files)
+
+The `__tests__/*.res` test harnesses are a separate track. When a coprocessor kernel migrates,
+its test harness becomes an *affine-parity* harness (gate 2 of the recipe) — the ReScript oracle
+runs the original `.res.mjs` and the new `.wasm` must match output on all inputs.
+These are NOT direct `.res → .affine` migrations.
+
+== Compiler-gated files (not effort-gated)
+
+=== STRING-GATED (71 files)
+
+These files are blocked on Wall 1 (variable-string backend). When Phase F lands `String.length`
++ indexing end-to-end, these unblock. Key files in each area:
+
+*`idaptik-ums`* (3 files):
+  `App.res` — string subscript
+  `EditorLevelCmd.res` — string subscript
+  `test_round_trip.res` — string subscript
+
+*`shared/src`* (5 files):
+  `Coprocessor_Compute.res` — string subscript
+  `Coprocessor_IO.res` — String.fromCharCode; String.length
+  `Coprocessor_Security.res` — string subscript
+  `Inventory.res` — string subscript
+  `Kernel_IO.res` — String.fromCharCode; String.length
+
+*`src/app/companions`* (2 files):
+  `Moletaire.res` — string subscript
+  `MoletaireMusic.res` — string subscript
+
+*`src/app/devices`* (8 files):
+  `CoprocessorBridge.res` — String.length; String.indexOf
+  `DeviceView.res` — string subscript; String.endsWith
+  `FirewallDevice.res` — String.indexOf; String.slice
+  `GlobalNetworkData.res` — String.length; string subscript
+  `LaptopGUI.res` — String.endsWith; String.startsWith
+  `NetworkZones.res` — String.startsWith
+  _...and 2 more_
+
+*`src/app/enemies`* (4 files):
+  `Drone.res` — string subscript
+  `GuardNPC.res` — string subscript
+  `SecurityAI.res` — string subscript
+  `SecurityDog.res` — string subscript
+
+*`src/app/multiplayer`* (2 files):
+  `VMMessageBus.res` — String.startsWith
+  `VMNetwork.res` — String.startsWith; string subscript
+
+*`src/app/narrative`* (1 files):
+  `DataFiles.res` — string subscript
+
+*`src/app/pickups`* (1 files):
+  `WorldPickup.res` — String.slice
+
+*`src/app/popups`* (2 files):
+  `FeedbackPopup.res` — String.length; String.slice
+  `NetworkDesktop.res` — String.startsWith; string subscript
+
+*`src/app/proven`* (1 files):
+  `SafeJson.res` — String.slice; String.length
+
+*`src/app/screens`* (6 files):
+  `CharacterSelectScreen.res` — String.length; String.slice
+  `IntroScreen.res` — string subscript
+  `WorldMapScreen.res` — string subscript
+  `CombatTraining.res` — string subscript
+  `HighwayCrossingTraining.res` — string subscript
+  `MoletaireTraining.res` — string subscript
+
+*`src/app/tools`* (2 files):
+  `PasswordCracker.res` — String.length; String.charCodeAt
+  `PortScanner.res` — string subscript
+
+*`src/app/ui`* (2 files):
+  `HUD.res` — string subscript
+  `KernelMonitor.res` — String.length
+
+*`src/app/utils`* (1 files):
+  `DesktopIntegration.res` — string subscript
+
+*`src/engine`* (1 files):
+  `Random.res` — string subscript; String.length
+
+*`src/shared`* (8 files):
+  `Coprocessor_Compute.res` — string subscript
+  `Coprocessor_IO.res` — String.fromCharCode; String.length
+  `Coprocessor_Security.res` — string subscript
+  `DLCLoader.res` — String.length
+  `GossamerFs.res` — string subscript
+  `Inventory.res` — string subscript
+  _...and 2 more_
+
+*`vm`* (3 files):
+  `InstructionParser.res` — String.length; string subscript
+  `StateDiff.res` — String.length
+  `VmState.res` — String.startsWith
+
+*`__tests__`* (19 files):
+  `CreditsScreen_test.res` — string subscript
+  `DataFiles_test.res` — String.length
+  `DualAlert_test.res` — string subscript
+  `FeedbackPopup_test.res` — string subscript
+  `ForceLayout_test.res` — string subscript
+  `GameOverScreen_test.res` — String.length
+  _...and 13 more_
+
+=== EFFECT-GATED (111 files)
+
+These files are blocked on Wall 2 (effect codegen). Dominant pattern: module-level `ref()` —
+re-decomposition strategy is to thread the mutable state as an explicit parameter to the wasm
+function (the ref becomes an `&mut` or affine owned value). Key files:
+
+*`shared/src`* (5 files):
+  `Coprocessor.res` — module-level mutable state (Dict.make()); Console.log
+  `CoprocessorManager.res` — Console.log
+  `Kernel_Crypto.res` — module-level mutable state (Dict.make())
+  `Kernel_Quantum.res` — module-level mutable state (Dict.make()); Console.log
+  `ResourceAccounting.res` — module-level mutable state (Dict.make())
+
+*`src/app`* (2 files):
+  `GetEngine.res` — module-level mutable state (ref(...))
+  `VeriSimClient.res` — module-level mutable state (Dict.make())
+
+*`src/app/combat`* (2 files):
+  `Combat.res` — module-level mutable state (ref(...))
+  `PlayerHP.res` — module-level mutable state (ref(...))
+
+*`src/app/companions`* (1 files):
+  `MoletaireCoprocessors.res` — module-level mutable state (ref(...))
+
+*`src/app/devices`* (18 files):
+  `CameraDevice.res` — module-level mutable state (Dict.make())
+  `CameraFeed.res` — module-level mutable state (ref(...)); module-level mutable state (Dict.make())
+  `CovertLink.res` — module-level mutable state (ref(...))
+  `DesktopDevice.res` — module-level mutable state (ref(...))
+  `DeviceActivity.res` — Date.now; module-level mutable state (Dict.make())
+  _...and 13 more_
+
+*`src/app/enemies`* (2 files):
+  `DetectionSystem.res` — module-level mutable state (ref(...))
+  `Distraction.res` — module-level mutable state (ref(...))
+
+*`src/app/multiplayer`* (5 files):
+  `LobbyRegistry.res` — module-level mutable state (ref(...))
+  `MultiplayerClient.res` — Date.now
+  `MultiplayerGlobal.res` — module-level mutable state (ref(...))
+  `MultiplayerScreenWiring.res` — module-level mutable state (ref(...))
+  `PhoenixSocket.res` — module-level mutable state (Dict.make())
+
+*`src/app/narrative`* (1 files):
+  `MissionBriefing.res` — module-level mutable state (ref(...))
+
+*`src/app/player`* (11 files):
+  `CriticalRoll.res` — module-level mutable state (ref(...)); Math.random
+  `JessicaBackground.res` — module-level mutable state (ref(...))
+  `JessicaLoadout.res` — module-level mutable state (ref(...))
+  `KeyboardAiming.res` — module-level mutable state (ref(...))
+  `PlayerAttributes.res` — module-level mutable state (ref(...))
+  _...and 6 more_
+
+*`src/app/popups`* (5 files):
+  `AccessibilityPopup.res` — module-level mutable state (ref(...))
+  `ForceLayout.res` — module-level mutable state (ref(...))
+  `PopupConstructors.res` — module-level mutable state (ref(...))
+  `PowerView.res` — module-level mutable state (ref(...))
+  `SettingsPopup.res` — module-level mutable state (ref(...))
+
+*`src/app/proven`* (1 files):
+  `SafeFloat.res` — module-level mutable state (ref(...))
+
+*`src/app/screens`* (19 files):
+  `BalanceAnalyserModel.res` — module-level mutable state (ref(...))
+  `GameOverScreen.res` — module-level mutable state (ref(...)); Math.random
+  `LevelConfig.res` — module-level mutable state (ref(...))
+  `LobbyScreen.res` — module-level mutable state (ref(...)); Date.now
+  `LocationData.res` — module-level mutable state (ref(...))
+  _...and 14 more_
+
+*`src/app/ui`* (2 files):
+  `ParticleField.res` — module-level mutable state (ref(...)); Math.random
+  `RoundedBox.res` — module-level mutable state (ref(...))
+
+*`src/app/utils`* (7 files):
+  `AccessibilitySettings.res` — module-level mutable state (ref(...))
+  `FeaturePacks.res` — module-level mutable state (ref(...))
+  `FeedbackIntegration.res` — module-level mutable state (ref(...)); Date.now
+  `FontScale.res` — module-level mutable state (ref(...))
+  `GameI18n.res` — module-level mutable state (ref(...))
+  _...and 2 more_
+
+*`src/engine`* (3 files):
+  `Engine.res` — module-level mutable state (ref(...))
+  `VmBackend.res` — module-level mutable state (ref(...)); Console.log
+  `Storage.res` — module-level mutable state (ref(...))
+
+*`src/shared`* (9 files):
+  `Coprocessor.res` — module-level mutable state (Dict.make()); Console.log
+  `CoprocessorManager.res` — Console.log
+  `Diagnostics.res` — module-level mutable state (ref(...))
+  `Kernel.res` — module-level mutable state (ref(...))
+  `Kernel_Crypto.res` — module-level mutable state (Dict.make())
+  _...and 4 more_
+
+*`vm`* (17 files):
+  `add_test.res` — Console.log
+  `and_or_test.res` — Console.log
+  `benchmark.res` — Console.log
+  `call_test.res` — Console.log
+  `flip_test.res` — Console.log
+  _...and 12 more_
+
+*`__tests__`* (1 files):
+  `TestRunner.res` — Console.log
+
+== Provenance
+
+Generated 2026-06-05 by running `affine-migratability` over 571 `.res` source files
+in `hyperpolymath/idaptik` (excluding compiled output in `lib/js/`, `lib/es6/`).
+Part of the ReScript→AffineScript migration campaign; companion: `MIGRATION-PLAN.adoc`.

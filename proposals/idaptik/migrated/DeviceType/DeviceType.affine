@@ -1,0 +1,47 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// DeviceType -- the device-type taxonomy co-processor, the pure-integer core
+// extracted from idaptik shared/src/DeviceType.res. Per the DESIGN-VISION
+// ("AffineScript is the brain, JS/Pixi the senses; they pass primitives across
+// the wasm boundary"), the JS host keeps every device-type STRING (portName,
+// fromString) and the per-device mutable defenceFlags record; AffineScript owns
+// only the canonical integer encoding of the twelve device kinds and its
+// validity.
+//
+// The ReScript original is a 12-constructor variant `t` plus a `portName`
+// switch and a `fromString` parser. We re-decompose the variant as the
+// canonical 0..11 integer the constructor order already implies, so the
+// taxonomy is a closed band and validity is one range test. The variant IS the
+// integer; no strings cross the boundary. (We use range guards rather than an
+// enum round-trip because, the band being contiguous, the round-trip would be
+// the identity -- the same flat shape PortNames.affine uses for its 0..9 band.)
+//
+//## Device-type encoding (the header contract for the JS host)
+//   code  device          code  device
+//     0   Laptop            6   Camera
+//     1   Desktop           7   AccessPoint
+//     2   Server            8   PatchPanel
+//     3   Router            9   PowerSupply
+//     4   Switch           10   PhoneSystem (PBX)
+//     5   Firewall         11   FibreHub
+// The encoding is LOSSLESS: twelve distinct kinds map to twelve distinct codes,
+// so the host round-trips device-type <-> code with no collision (certified by
+// echo-boundary, DeviceTypeBoundary.agda). A code outside 0..11 is not a device
+// type: is_valid_device_type reports 0 and clamp_device_type returns the
+// out-of-band sentinel -1 -- never an in-band code, so no in-band collision is
+// introduced (this is a sentinel, not a clamp; assail stays clean).
+
+// The number of canonical device kinds in the taxonomy.
+pub fn device_type_count() -> Int { 12 }
+
+// Whether a host integer names a defined device type. 1 = valid, 0 = out of band.
+pub fn is_valid_device_type(code: Int) -> Int {
+  if code < 0 { 0 } else { if code > 11 { 0 } else { 1 } }
+}
+
+// Canonicalise a host integer: identity on a valid 0..11 code, the out-of-band
+// sentinel -1 otherwise. -1 is not an in-band code, so out-of-band input can
+// never be confused with a real device type (this is a sentinel, not a clamp).
+pub fn clamp_device_type(code: Int) -> Int {
+  if is_valid_device_type(code) == 1 { code } else { -1 }
+}
