@@ -1,0 +1,85 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// SkillAbilities -- the ability-unlock decision co-processor, extracted from
+// src/app/player/SkillAbilities.res. The ReScript original is a registry of 34
+// abilities whose payload is mostly strings (id, name, description); none of
+// that crosses the wasm boundary. What DOES is the pure numeric decision that
+// governs whether a given ability is unlocked, which the ReScript module folds
+// out of two ingredients:
+//
+//   rankMeetsRequirement(current, required) = rankValue(current) >= rankValue(required)
+//   isAbilityUnlocked = backgroundMatches && rankMeetsRequirement(skill.rank, required)
+//
+// Strings stay host-side, exactly as the migration brief requires: the JS host
+// owns the ability ids, names and prose descriptions and resolves each ability
+// to its required-rank index and exclusive-background index before calling in.
+// The brain answers only in dense integers.
+//
+// PURE integer-only: no strings, no floats, no effects, no I/O. Each entry point
+// is a flat sequence of guarded returns rather than a nested if/else chain, to
+// keep the wasm backend's parser within its nesting tolerance.
+
+//## Boundary contract (the encoding the JS host marshals)
+//   param/return         meaning                              defended range
+//   rank: Int            dense skill-rank index               1 Novice .. 5 Expert;
+//                                                             off-domain -> value 0
+//   abilityBg: Int       ability's exclusive-background index  0 = none (generic);
+//                                                             >=1 = a specific background
+//   playerBg: Int        operative's background index          0 = none chosen;
+//                                                             >=1 = a specific background
+//   any predicate ret    1 = true, 0 = false                  total over all Int inputs
+
+//## Numeric value for a skill rank
+// Mirrors JessicaBackground.rankValue: Novice->1 .. Expert->5. Off-domain
+// indices yield 0, the sentinel the JS host treats as "no such rank". This is
+// the same identity table SkillRank exposes; SkillAbilities replicates it so the
+// unlock comparison is self-contained and need not call across modules.
+pub fn rank_value(rank: Int) -> Int {
+  if rank == 1 { return 1; }
+  if rank == 2 { return 2; }
+  if rank == 3 { return 3; }
+  if rank == 4 { return 4; }
+  if rank == 5 { return 5; }
+  0
+}
+
+//## Rank-requirement comparison
+// rankMeetsRequirement(current, required): 1 when the current rank's value meets
+// or exceeds the required rank's value, else 0. Off-domain ranks collapse to
+// value 0 via rank_value, so an unknown current rank never spuriously unlocks a
+// real requirement, and a requirement keyed on an unknown rank (value 0) is met
+// by any in-domain current rank, matching the ReScript >= on rankValue.
+pub fn rank_meets(current: Int, required: Int) -> Int {
+  if rank_value(current) >= rank_value(required) { return 1; }
+  0
+}
+
+//## Background exclusivity check
+// background_ok(abilityBg, playerBg): mirrors the ReScript exclusiveBackground
+// fold. A generic ability (abilityBg == 0) is permitted for any operative. An
+// exclusive ability (abilityBg >= 1) is permitted only when the player has a
+// background (playerBg >= 1) and it equals the ability's required background.
+// A player with no background (playerBg == 0) can never satisfy an exclusive
+// ability, matching the ReScript `None => false` arm.
+pub fn background_ok(abilityBg: Int, playerBg: Int) -> Int {
+  if abilityBg == 0 { return 1; }
+  if playerBg == 0 { return 0; }
+  if abilityBg == playerBg { return 1; }
+  0
+}
+
+//## Full unlock decision
+// isAbilityUnlocked, re-decomposed: an ability is unlocked when its exclusive
+// background (if any) is satisfied AND the operative's rank in the ability's
+// category meets the ability's required rank. The ReScript checks the background
+// first and short-circuits; the same ordering holds here -- background failure
+// alone denies the unlock regardless of rank.
+//   currentRank  the operative's rank index in the ability's category
+//   requiredRank the ability's required rank index
+//   abilityBg    the ability's exclusive-background index (0 = generic)
+//   playerBg     the operative's background index (0 = none)
+pub fn unlock_ok(currentRank: Int, requiredRank: Int, abilityBg: Int, playerBg: Int) -> Int {
+  if background_ok(abilityBg, playerBg) == 0 { return 0; }
+  if rank_meets(currentRank, requiredRank) == 1 { return 1; }
+  0
+}

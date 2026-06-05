@@ -1,0 +1,152 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+//
+// JessicaBackground -- the operative-background numeric core extracted from
+// src/app/player/JessicaBackground.res. The rank/XP progression tables
+// (rankValue, rankXpThreshold, canPromote) already live in the SkillRank
+// co-processor and are NOT duplicated here; this binding carries the remaining
+// numeric tables that switch on the `background` variant: the per-background
+// attribute-bonus matrix that getBonus folds, and the starting-skill grant that
+// makeSkillSet applies (which skill category a background seeds at Trained).
+//
+// Per the DESIGN-VISION ("AffineScript is the brain, the JS/Pixi host the
+// senses; only primitives cross the wasm boundary"), the host keeps every
+// string (display names, descriptions), the attributeBonus and skill records,
+// the skillSet construction, and the variant tags. AffineScript owns only the
+// scalar tables. The `background` variant collapses to its JessicaBackground.all
+// index (0 Assault .. 5 Logistics), exactly the dense tag order the .res.mjs
+// emits; each attribute collapses to a column ordinal; each skill category to
+// its JessicaBackground skillCategory index.
+//
+// getBonus returns a six-field float record per background. A record cannot
+// cross the boundary, so it re-decomposes into a single bonus(background, attr)
+// kernel selected by an attribute-column ordinal; the host reassembles the six
+// columns into its attributeBonus record. The values are the baseline shifts
+// added to the base 100.0 — ALL of the bonus shifts are whole numbers (e.g.
+// Assault: str+20, dex+10, con+15, int_-5, wil+5, cha-5), so they cross as Int
+// without loss. The host receives an integer shift and applies it to the float
+// base (100.0 + shift). The signed integer suffices and avoids Float literals
+// in the wasm codegen, which the v0.1.1 backend does not lower cleanly to f64
+// at the ABI level.
+//
+//## Background encoding (the header contract for the JS host)
+// Backgrounds index the JessicaBackground.all array order:
+//   0 Assault  1 Recon  2 Engineer  3 Signals  4 Medic  5 Logistics
+// An off-domain background index yields 0 from bonus (a neutral shift) and -1
+// from start_skill (a sentinel the host reads as "no grant").
+//
+//## Attribute-column encoding (the second contract, for the bonus selector)
+// Columns index the attributeBonus record field order:
+//   0 str  1 dex  2 con  3 int_  4 wil  5 cha
+// An off-domain column yields 0.
+//
+//## Skill-category encoding (the third contract, for the starting grant)
+// Categories index the JessicaBackground skillCategory variant order:
+//   0 Infiltration  1 CombatSkill  2 Athletics  3 Observation
+//   4 TechLiteracy  5 Fieldcraft   6 Composure
+// start_skill returns the category index a background seeds at Trained, or -1
+// when the background is off-domain.
+//
+// PURE: integers only, no floats, no strings, no arrays, no effects, no I/O.
+// Each entry point is a flat sequence of guarded returns rather than nested
+// if/else, which keeps the wasm backend's parser within its nesting tolerance.
+
+//## Attribute bonus for the STR column
+// All shifts are whole numbers; crossing as Int preserves the value exactly.
+fn bonus_str(background: Int) -> Int {
+  if background == 0 { return 20; }
+  if background == 1 { return -5; }
+  if background == 2 { return 5; }
+  if background == 3 { return -5; }
+  if background == 4 { return 0; }
+  if background == 5 { return 10; }
+  0
+}
+
+//## Attribute bonus for the DEX column
+fn bonus_dex(background: Int) -> Int {
+  if background == 0 { return 10; }
+  if background == 1 { return 15; }
+  if background == 2 { return 5; }
+  if background == 3 { return 5; }
+  if background == 4 { return 5; }
+  if background == 5 { return 0; }
+  0
+}
+
+//## Attribute bonus for the CON column
+fn bonus_con(background: Int) -> Int {
+  if background == 0 { return 15; }
+  if background == 1 { return 0; }
+  if background == 2 { return 5; }
+  if background == 3 { return 0; }
+  if background == 4 { return 20; }
+  if background == 5 { return 10; }
+  0
+}
+
+//## Attribute bonus for the INT column
+fn bonus_int(background: Int) -> Int {
+  if background == 0 { return -5; }
+  if background == 1 { return 10; }
+  if background == 2 { return 15; }
+  if background == 3 { return 10; }
+  if background == 4 { return 10; }
+  if background == 5 { return 5; }
+  0
+}
+
+//## Attribute bonus for the WIL column
+fn bonus_wil(background: Int) -> Int {
+  if background == 0 { return 5; }
+  if background == 1 { return 10; }
+  if background == 2 { return 5; }
+  if background == 3 { return 10; }
+  if background == 4 { return 10; }
+  if background == 5 { return 0; }
+  0
+}
+
+//## Attribute bonus for the CHA column
+fn bonus_cha(background: Int) -> Int {
+  if background == 0 { return -5; }
+  if background == 1 { return 0; }
+  if background == 2 { return -5; }
+  if background == 3 { return 10; }
+  if background == 4 { return 0; }
+  if background == 5 { return 10; }
+  0
+}
+
+//## Attribute bonus selector
+// bonus(background, attr): getBonus re-decomposed to a single signed integer
+// shift per (background, attribute-column) pairing. The host calls this six
+// times, once per column ordinal, and applies each shift to the float base
+// (100.0 + shift). Off-domain column yields 0; off-domain background yields 0
+// from each column kernel.
+pub fn bonus(background: Int, attr: Int) -> Int {
+  if attr == 0 { return bonus_str(background); }
+  if attr == 1 { return bonus_dex(background); }
+  if attr == 2 { return bonus_con(background); }
+  if attr == 3 { return bonus_int(background); }
+  if attr == 4 { return bonus_wil(background); }
+  if attr == 5 { return bonus_cha(background); }
+  0
+}
+
+//## Starting-skill grant
+// makeSkillSet re-decomposed. Each background seeds exactly one skill category
+// at Trained rank; this returns that category's index. Mirrors the switch:
+//   Assault -> CombatSkill(1)   Recon -> Observation(3)
+//   Engineer -> TechLiteracy(4) Signals -> TechLiteracy(4)
+//   Medic -> Composure(6)       Logistics -> Fieldcraft(5)
+// Off-domain background yields -1 (no grant), distinct from any valid 0..6 index.
+pub fn start_skill(background: Int) -> Int {
+  if background == 0 { return 1; }
+  if background == 1 { return 3; }
+  if background == 2 { return 4; }
+  if background == 3 { return 4; }
+  if background == 4 { return 6; }
+  if background == 5 { return 5; }
+  -1
+}

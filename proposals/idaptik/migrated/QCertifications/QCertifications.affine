@@ -1,0 +1,110 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// QCertifications -- the certification-progression co-processor, the pure
+// integer/float core extracted from src/app/player/QCertifications.res. Per the
+// DESIGN-VISION ("AffineScript is the brain, JS/Pixi the senses; they pass
+// primitives across the wasm boundary"), this module owns only the tier
+// arithmetic: the ordinal of a tier, its UI palette colour, the successor in the
+// tier ladder, the rank comparison that decides whether a track meets a
+// threshold, the CyberWar prerequisite test, and the floating-point progress
+// accumulation and its crossing predicate. The JS host keeps every string (tier
+// and track display names, descriptions), the portfolio record, the fold that
+// counts how many tracks clear a tier, the discrete failure/success rate tables,
+// and the trivial "zero the progress on tier-up" selection. None of those is
+// arithmetic, so they remain senses, not brain.
+//
+//## Tier encoding (the header contract for the JS host)
+// The ReScript certTier variant collapses to its ordinal, exactly tierValue():
+//   1 Practitioner   2 Professional   3 Expert   4 Architect   5 Sovereign
+// Any tier outside 1..5 is off-domain. tier_value returns 0 there (a sentinel the
+// host reads as "no such tier"); meets_tier treats an off-domain tier as not
+// meeting any positive threshold; next_tier returns 0 (no successor).
+//
+//## Track encoding (the second contract, for the count predicate)
+// Tracks do not cross as such; the host folds over its own portfolio and asks
+// meets_tier per track. Track identity therefore never enters the wasm.
+//
+//## Float contract
+// progress_total and progress_crosses take the cert's current progress and the
+// amount being added, both f64 in [0, +inf). progress_total is their exact sum;
+// progress_crosses returns 1 iff that sum reaches 1.0 (the tier-up boundary),
+// else 0. The post-crossing reset of progress to 0.0 is a discrete host-side
+// selection, not arithmetic, so it stays in the bridge.
+
+//## Tier ordinal
+// tierValue(): Practitioner->1 .. Sovereign->5. Off-domain tiers yield 0. Flat
+// guarded returns avoid the deep if/else nesting the parser dislikes.
+pub fn tier_value(tier: Int) -> Int {
+  if tier == 1 { return 1; }
+  if tier == 2 { return 2; }
+  if tier == 3 { return 3; }
+  if tier == 4 { return 4; }
+  if tier == 5 { return 5; }
+  0
+}
+
+//## Tier badge colour
+// tierColor(): the PixiJS hex palette, one fixed integer per tier. Off-domain
+// tiers yield 0 (transparent/black), a defined fallback the host can detect.
+//   1 Practitioner 0x888888   2 Professional 0x44aaff   3 Expert 0xffaa44
+//   4 Architect    0xff4488   5 Sovereign    0xff0000
+pub fn tier_color(tier: Int) -> Int {
+  if tier == 1 { return 8947848; }
+  if tier == 2 { return 4500223; }
+  if tier == 3 { return 16755268; }
+  if tier == 4 { return 16729224; }
+  if tier == 5 { return 16711680; }
+  0
+}
+
+//## Tier successor
+// The nextTier switch at the heart of addProgress: each tier promotes to the
+// next, Sovereign has no successor. Returns the successor's ordinal, or 0 when
+// none exists (Sovereign, or an off-domain tier). The host reads 0 as "already
+// at max tier", matching the ReScript None arm.
+pub fn next_tier(tier: Int) -> Int {
+  if tier == 1 { return 2; }
+  if tier == 2 { return 3; }
+  if tier == 3 { return 4; }
+  if tier == 4 { return 5; }
+  0
+}
+
+//## Rank comparison
+// The per-track predicate of countAtTier and canProgressCyberWar: a track at
+// `tier` meets `min_tier` iff its ordinal is at least the threshold's. Returns 1
+// to count the track, 0 to skip it. An off-domain tier has ordinal 0 and so
+// meets only a non-positive threshold, never a real tier.
+pub fn meets_tier(tier: Int, min_tier: Int) -> Int {
+  let t = tier_value(tier);
+  let m = tier_value(min_tier);
+  if t >= m { 1 } else { 0 }
+}
+
+//## CyberWar prerequisite
+// canProgressCyberWar's gate: CyberWar may advance only once three or more of the
+// seven scorable tracks (CyberWar and Gaming excluded) have reached Expert. The
+// host counts the Expert-or-above tracks via meets_tier and hands the tally here;
+// this is the threshold test in isolation. Returns 1 when unlocked, else 0.
+pub fn is_cyberwar_unlocked(expert_count: Int) -> Int {
+  if expert_count >= 3 { 1 } else { 0 }
+}
+
+//## Progress accumulation
+// The exact f64 sum cert.progress + amount, the arithmetic of addProgress's
+// `cert.progress = cert.progress +. amount`. Total and pure; the host decides
+// what to do with the sum (carry it, or reset to 0.0 on tier-up).
+pub fn progress_total(before: Float, amount: Float) -> Float {
+  before + amount
+}
+
+//## Progress crossing predicate
+// Whether accumulating `amount` onto `before` reaches the tier-up boundary 1.0,
+// mirroring addProgress's `if cert.progress >= 1.0`. The float sum drives an Int
+// verdict (1 crossed, 0 not), which the wasm backend compares as i32 -- the
+// working subset for float-fed branches. The host pairs this with next_tier to
+// effect the promotion and zero the progress.
+pub fn progress_crosses(before: Float, amount: Float) -> Int {
+  if before + amount >= 1.0 { return 1; }
+  0
+}

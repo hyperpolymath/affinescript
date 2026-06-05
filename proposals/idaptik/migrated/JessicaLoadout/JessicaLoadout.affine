@@ -1,0 +1,142 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// JessicaLoadout -- the loadout selection/validation co-processor, the pure
+// integer core extracted from src/app/player/JessicaLoadout.res. Per the
+// DESIGN-VISION ("AffineScript is the brain, JS/Pixi the senses; they pass
+// primitives across the wasm boundary"), the JS host keeps every string (item
+// display names, descriptions), the metadata records, and the array filters that
+// build the available-item lists; AffineScript owns only the access arithmetic
+// and the consumable charge bookkeeping.
+//
+// The ReScript original folds each weapon/tool variant through getWeaponInfo /
+// getToolInfo to a tier plus an allowedBackgrounds array, then canUseWeapon /
+// canUseTool grant access when the tier is T1, or when the allowed set is empty,
+// or when it contains the operative's background. We re-decompose those getInfo
+// switches (whose strings and arrays cannot cross the boundary) into the integer
+// bands the switch already produces: each item is its index, each tier its
+// ordinal, each background its index, and the allowed-set membership becomes a
+// flat guarded comparison per (item, background) pairing. No strings, no arrays,
+// no effects cross; the encoding IS the access rule.
+//
+//## Item encoding (the header contract for the JS host)
+// Weapons index the allWeapons array order:
+//   0 StunPistol  1 TacticalBaton  2 TranqRifle
+//   3 BreachingShotgun  4 Railgun  5 EMPPistol
+// Tools index the allTools array order:
+//   0 LockpickSet  1 GrapplingHook  2 MotionSensor  3 SignalJammer
+//   4 TraumaKit    5 C4Charge       6 GhillieWrap   7 FieldSurgeryKit
+// Consumables index the allConsumables array order:
+//   0 Flashbang  1 SmokeGrenade  2 ZipTies
+//   3 AdrenalineShot  4 DecoyPhone  5 FibreTap
+// Any index outside its band is off-domain: the tier functions return 0 (a
+// sentinel the host reads as "no such item"), can_use_weapon / can_use_tool
+// return 0 (denied), and consumable_uses returns 0.
+//
+//## Background encoding (the second contract, for the access predicate)
+// Backgrounds index the JessicaBackground.all array order, exactly the dense
+// tag order the .res.mjs emits:
+//   0 Assault  1 Recon  2 Engineer  3 Signals  4 Medic  5 Logistics
+// An off-domain background index matches no allowed set, so a T2/T3 item with a
+// non-empty set denies it, mirroring the ReScript Array.some returning false.
+//
+//## Tier encoding
+// The implicit tier ordering the access switch walks:
+//   1 T1 (universal)  2 T2 (background OR Trained)  3 T3 (background AND Veteran+)
+// can_use only distinguishes T1 (always granted) from T2/T3 (set-gated); the
+// rank arithmetic the T2/T3 distinction feeds lives in SkillRank, not here.
+
+//## Weapon tier
+// weapon_tier(): the tier ordinal each getWeaponInfo arm assigns. Off-domain
+// weapon indices yield 0. Flat guarded returns avoid the deep if/else nesting the
+// parser dislikes.
+pub fn weapon_tier(weapon: Int) -> Int {
+  if weapon == 0 { return 1; }
+  if weapon == 1 { return 1; }
+  if weapon == 2 { return 2; }
+  if weapon == 3 { return 2; }
+  if weapon == 4 { return 3; }
+  if weapon == 5 { return 3; }
+  0
+}
+
+//## Tool tier
+// tool_tier(): the tier ordinal each getToolInfo arm assigns. Off-domain tool
+// indices yield 0.
+pub fn tool_tier(tool: Int) -> Int {
+  if tool == 0 { return 1; }
+  if tool == 1 { return 1; }
+  if tool == 2 { return 2; }
+  if tool == 3 { return 2; }
+  if tool == 4 { return 2; }
+  if tool == 5 { return 2; }
+  if tool == 6 { return 3; }
+  if tool == 7 { return 3; }
+  0
+}
+
+//## Consumable charges
+// consumable_uses(): the initial charge count each getConsumableInfo arm assigns,
+// the value makeLoadout seeds consumableUsesLeft with. Off-domain indices yield 0.
+pub fn consumable_uses(consumable: Int) -> Int {
+  if consumable == 0 { return 2; }
+  if consumable == 1 { return 2; }
+  if consumable == 2 { return 3; }
+  if consumable == 3 { return 1; }
+  if consumable == 4 { return 2; }
+  if consumable == 5 { return 1; }
+  0
+}
+
+//## Weapon access predicate
+// canUseWeapon re-decomposed. T1 weapons are universal (return 1 regardless of
+// background). The two T1 weapons (0, 1) short-circuit first. The four gated
+// weapons each carry a non-empty allowed set, so the empty-set arm of the
+// ReScript switch is unreachable for them and need not be modelled; access is
+// granted iff the background index is a member, tested as a flat guarded compare
+// per (weapon, background) pairing. Any unmatched pairing falls through to 0
+// (denied), which also covers every off-domain weapon and background.
+//   2 TranqRifle       -> Assault(0), Recon(1)
+//   3 BreachingShotgun -> Assault(0), Engineer(2)
+//   4 Railgun          -> Assault(0)
+//   5 EMPPistol        -> Engineer(2), Signals(3)
+pub fn can_use_weapon(weapon: Int, background: Int) -> Int {
+  if weapon == 0 { return 1; }
+  if weapon == 1 { return 1; }
+  if weapon == 2 { if background == 0 { return 1; } if background == 1 { return 1; } return 0; }
+  if weapon == 3 { if background == 0 { return 1; } if background == 2 { return 1; } return 0; }
+  if weapon == 4 { if background == 0 { return 1; } return 0; }
+  if weapon == 5 { if background == 2 { return 1; } if background == 3 { return 1; } return 0; }
+  0
+}
+
+//## Tool access predicate
+// canUseTool re-decomposed, same shape. The two T1 tools (0, 1) are universal.
+// The six gated tools each carry a single-background allowed set.
+//   2 MotionSensor    -> Recon(1)
+//   3 SignalJammer    -> Signals(3)
+//   4 TraumaKit       -> Medic(4)
+//   5 C4Charge        -> Engineer(2)
+//   6 GhillieWrap     -> Recon(1)
+//   7 FieldSurgeryKit -> Medic(4)
+pub fn can_use_tool(tool: Int, background: Int) -> Int {
+  if tool == 0 { return 1; }
+  if tool == 1 { return 1; }
+  if tool == 2 { if background == 1 { return 1; } return 0; }
+  if tool == 3 { if background == 3 { return 1; } return 0; }
+  if tool == 4 { if background == 4 { return 1; } return 0; }
+  if tool == 5 { if background == 2 { return 1; } return 0; }
+  if tool == 6 { if background == 1 { return 1; } return 0; }
+  if tool == 7 { if background == 4 { return 1; } return 0; }
+  0
+}
+
+//## Consumable charge decrement
+// useConsumable re-decomposed. The ReScript guard is `if usesLeft > 0 then
+// usesLeft - 1`. This returns the charges remaining AFTER one use: one fewer when
+// any remain, else a floored 0 so a malformed negative or zero count can never
+// drive the counter below empty. The host reads "decremented < before" as the
+// boolean success the ReScript returns.
+pub fn use_consumable(uses_left: Int) -> Int {
+  if uses_left > 0 { return uses_left - 1; }
+  0
+}

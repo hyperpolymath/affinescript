@@ -1,0 +1,52 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// SkillRank -- the player skill-rank progression co-processor, extracted from
+// src/app/player/JessicaBackground.res. The ReScript original keys the rank
+// tables on a `skillRank` variant (Novice..Expert); here that variant collapses
+// to a dense integer index, which is what crosses the wasm boundary. Index 1 is
+// Novice, 2 Trained, 3 Proficient, 4 Veteran, 5 Expert. The numeric rank value
+// rankValue() happens to equal that index, so rank_value is the identity on the
+// valid domain, while xp_threshold carries the cumulative-XP table and
+// can_promote folds the "is there a next rank and does the XP clear its
+// threshold" check into one Int answer.
+//
+// PURE integer-only: no strings, no floats, no effects, no I/O. Each entry point
+// is a flat sequence of guarded returns rather than a nested if/else expression
+// chain, which keeps the wasm backend's parser within its nesting tolerance.
+
+//## Numeric value for a skill rank
+// rankValue(): Novice->1 .. Expert->5. Off-domain indices yield 0, a sentinel
+// the JS host can treat as "no such rank".
+pub fn rank_value(rank: Int) -> Int {
+  if rank == 1 { return 1; }
+  if rank == 2 { return 2; }
+  if rank == 3 { return 3; }
+  if rank == 4 { return 4; }
+  if rank == 5 { return 5; }
+  0
+}
+
+//## Cumulative XP required to reach each rank
+// rankXpThreshold(): Novice->0, Trained->100, Proficient->350, Veteran->800,
+// Expert->1500. Off-domain indices yield 0.
+pub fn xp_threshold(rank: Int) -> Int {
+  if rank == 1 { return 0; }
+  if rank == 2 { return 100; }
+  if rank == 3 { return 350; }
+  if rank == 4 { return 800; }
+  if rank == 5 { return 1500; }
+  0
+}
+
+//## Promotion eligibility
+// Returns 1 when a next rank exists (the current rank is below Expert, i.e. in
+// 1..4) and the accrued XP clears that next rank's threshold; otherwise 0. The
+// top rank (Expert, 5) and any off-domain index have no successor and so can
+// never promote. Mirrors the ReScript guard `nextRank exists && xp >= threshold`.
+pub fn can_promote(rank: Int, xp: Int) -> Int {
+  if rank < 1 { return 0; }
+  if rank > 4 { return 0; }
+  let next = rank + 1;
+  if xp >= xp_threshold(next) { return 1; }
+  0
+}
