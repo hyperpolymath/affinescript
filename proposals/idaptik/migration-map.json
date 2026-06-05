@@ -153,7 +153,16 @@
       "id": "C3",
       "name": "src/shared coprocessor wiring",
       "description": "Coprocessor bridge layer in src/shared \u2014 wrappers exposing kernels to the game engine. Depends on C1.",
-      "status": "TODO",
+      "status": "DONE",
+      "done": {
+        "date": "2026-06-05",
+        "phase": "G",
+        "verdict": "NO_NEW_BRAINS \u2014 wiring/senses cluster",
+        "note": "All 17 files are host-side senses exposing C1's already-migrated wasm brains. 12 *Coprocessor.res are pure-FFI passthrough (0 logic lines). Kernel_Compute/RetryPolicy (src/shared) are async/float wrappers over C1 brains (compute_gate, is_transient + policy table). DeviceType/GameEvent add string-gated ops (string wall). De-dup verified by constant: compute limits 513/16/259/1024, concurrency 10, is_transient 503/504/429 all match C1 staged kernels exactly.",
+        "no_4gate": "nothing new to compile/parity/prove; the integer cores are C1-verified (Kernel_Compute 736/736, RetryPolicy 124/124)",
+        "bridges_disposition": "stay host-side as essential wasm-loading glue (ADDITIVE, FeaturePacks-flagged); ReScript->glue is a Phase-Omega cutover decision, not a brain migration",
+        "evidence": "proposals/idaptik/migrated/EVIDENCE-C3.adoc"
+      },
       "files": [
         "src/shared/CoprocessorComputeCoprocessor.res",
         "src/shared/CoprocessorCoreCoprocessor.res",

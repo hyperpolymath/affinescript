@@ -1,0 +1,78 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+= Cluster C3 (src/shared coprocessor wiring) — classification (captured 2026-06-05)
+:toc: macro
+
+[IMPORTANT]
+====
+*C3 is a wiring/senses cluster with NO new integer brains to extract.* Unlike a
+leaf-kernel cluster, C3 is the coprocessor *bridge layer* — the host-side glue
+that exposes the already-migrated C1 wasm brains to the game engine. Every
+integer core C3 needs is already migrated and four-gate-verified in cluster C1.
+There is therefore no 4-gate run for C3: there is nothing new to compile,
+parity-test, or prove. This document records the file-by-file classification
+that establishes that, with the cross-reference to C1's verified brains. The
+de-dup was verified by comparing the actual constants, not just file names.
+====
+
+toc::[]
+
+== Why there are no new brains (verified, not assumed)
+
+`src/shared/` and `shared/src/` are two different directories. C1 migrated the
+`shared/src/` integer cores; C3's `src/shared/` files carry the *same* integer
+logic behind a game-facing senses surface. The cores were confirmed identical by
+value:
+
+[cols="2,3,3",options="header"]
+|===
+| Brain | `shared/src` (C1 source) | C1 staged kernel (verified)
+| compute data limits | Vector/Neural/Audio→513, Maths/Physics→16, Tensor→259, _→1024 | `Kernel_Compute.data_limit_for_domain` — identical (513/16/259/1024)
+| compute concurrency cap | `maxConcurrentCompute = 10` | `Kernel_Compute.max_concurrent_compute() = 10`
+| compute preflight ladder | 504 (saturated) / 413 (payload) / 404 (no backend) | `Kernel_Compute.compute_gate(domain, active_calls, data_len, has_backend)`
+| retry transient class | `status == 503 \|\| 504 \|\| 429` | `RetryPolicy.is_transient` — identical
+| retry policy table | default/fast/patient (retries, baseMs, factor) | `RetryPolicy.policy_max_retries` / `policy_base_delay_ms` / `policy_backoff_factor_pct`
+|===
+
+C1 gates for these: `Kernel_Compute` 736/736 parity, `RetryPolicy` 124/124
+parity, both assail-clean (see `EVIDENCE.adoc`). C3 adds no integer logic on top.
+
+== File-by-file classification (17 files)
+
+[cols="3,2,3",options="header"]
+|===
+| File | Class | Disposition
+| `KernelCoprocessor.res` | FFI bridge | 0 logic lines; `@module external` to `KernelCoprocessorBridge.js` + thin wrappers. Loads `kernel.wasm` (C1's brain), exposes dispatch as Int. *Senses.*
+| `CoprocessorComputeCoprocessor.res` | FFI bridge | 0 logic lines. Exposes the compute brain. *Senses.*
+| `CoprocessorCoreCoprocessor.res` | FFI bridge | 0 logic lines. *Senses.*
+| `CoprocessorIOCoprocessor.res` | FFI bridge | 0 logic lines. *Senses.*
+| `CoprocessorSecurityCoprocessor.res` | FFI bridge | 0 logic lines. *Senses.*
+| `DiagnosticsCoprocessor.res` | FFI bridge | 0 logic lines. Wraps C1 `Diagnostics`. *Senses.*
+| `DLCLoaderCoprocessor.res` | FFI bridge | 0 logic lines. *Senses.*
+| `InventoryCoprocessor.res` | FFI bridge | 0 logic lines. *Senses.*
+| `PuzzleFormatCoprocessor.res` | FFI bridge | 0 logic lines. Wraps C1 `PuzzleFormat`. *Senses.*
+| `ResourceAccountingCoprocessor.res` | FFI bridge | 0 logic lines. *Senses.*
+| `RetryPolicyCoprocessor.res` | FFI bridge | 0 logic lines. Wraps C1 `RetryPolicy`. *Senses.*
+| `UmsLevelLoaderCoprocessor.res` | FFI bridge | 0 logic lines. *Senses.*
+| `Coprocessor_Backends.res` | registry | Backend-registration table; host-side dispatch state. *Senses.*
+| `Kernel_Compute.res` | async wrapper | `promise<executionResult>` dispatch + string messages over the C1 `compute_gate` brain. Async/string = *senses*; brain already in C1.
+| `RetryPolicy.res` | async/float wrapper | `setTimeout` + `Promise` + float backoff over the C1 `is_transient` + policy-table brain. Effect/float = *senses*; brain already in C1.
+| `DeviceType.res` | types + string ops | Game-side device taxonomy (defenceFlags, deviceInfo); `portName`/`fromString` are string-gated. Ordinal encoding already in C1 `DeviceType` (39/39). *Senses / string-gated.*
+| `GameEvent.res` | types + string ops | Cross-component event union; `toTag` is string serialisation (string-gated). `alertLevel` ordinal already in C1 `GameEvent`. *Senses / string-gated.*
+|===
+
+== Disposition
+
+* *Brain extraction:* COMPLETE for C3 — nothing to extract; the integer cores
+  live in C1's verified wasm.
+* *The bridges stay host-side* as the essential wasm-loading glue (the
+  AffineScript→wasm FFI exemption). They are ADDITIVE by design (callable behind
+  a FeaturePacks flag; the pure-ReScript path remains until cutover). Their
+  eventual ReScript→(JS glue / thin .affine) fate is a *Phase Ω cutover* wiring
+  decision, not a brain migration.
+* *String-gated remnants* (`DeviceType.portName`/`fromString`, `GameEvent.toTag`)
+  fall to the *string wall* (Phase F) like every other STRING-GATED surface.
+
+*Cluster C3 status: DONE (wiring layer — no new kernels).* NEXT high-yield
+leaf-brain clusters: C5 (engine coprocessors — maths/random/navigation) and C11
+("pure integer presentation state").
