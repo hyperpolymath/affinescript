@@ -1,0 +1,58 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// Random -- the deterministic seeded-PRNG brain of the idaptik engine, the pure
+// i32 core extracted from src/engine/utils/Random.res (xmur3 seed hash +
+// mulberry32 generator). This is the MULTIPLAYER-REPRODUCIBILITY backbone:
+// identical seed -> identical stream, bit-for-bit, on every client. The brain
+// owns ONLY the integer mixing; the host iterates the seed string (feeding code
+// units to xmur3_step) and does the final u32 -> [0,1) float division (the wasm
+// backend has no int->float). Surface matches RandomCoprocessor.res exactly.
+//
+//## Two compiler facts this kernel is written around
+//   * `*` == i32.mul == JS Math.imul (32-bit truncating multiply), so the
+//     `imul(...)` calls in the source become plain `*`.
+//   * `>>>` (unsigned shift-right) is not native; emulated via lsr (per
+//     VmBitwise): lsr(x,n) = (x >> n) & ((1 << (32-n)) - 1) for 1 <= n <= 31.
+//   The u32 multiplier constants exceed i32, so they are written as their
+//   signed-i32 bit patterns (identical under i32.mul):
+//     3432918353 = -862048943   2246822507 = -2048144789   3266489909 = -1028477387
+//   1779033703 and 0x6d2b79f5 (= 1831565813) fit i32 directly.
+
+fn lsr(x: Int, n: Int) -> Int { (x >> n) & ((1 << (32 - n)) - 1) }
+
+// --- xmur3 string-seed hash (host feeds the string one code unit at a time) ---
+// init: h := 1779033703 ^ length
+pub fn xmur3_init(len: Int) -> Int { 1779033703 ^ len }
+
+// step: fold one UTF-16 code unit c into the accumulator h
+//   h := imul(h ^ c, 3432918353);  h := (h << 13) | (h >>> 19)
+pub fn xmur3_step(h: Int, c: Int) -> Int {
+  let m = (h ^ c) * (-862048943);
+  (m << 13) | lsr(m, 19)
+}
+
+// finalise: avalanche to the u32 seed bit pattern
+//   h := imul(h ^ (h>>>16), 2246822507);  h := imul(h ^ (h>>>13), 3266489909)
+//   return h ^ (h>>>16)
+pub fn xmur3_finalise(h: Int) -> Int {
+  let h1 = (h ^ lsr(h, 16)) * (-2048144789);
+  let h2 = (h1 ^ lsr(h1, 13)) * (-1028477387);
+  h2 ^ lsr(h2, 16)
+}
+
+// --- mulberry32 generator (host threads the state across draws) ---
+// advance: a := (a + 0x6d2b79f5) | 0
+pub fn mulberry32_advance(a: Int) -> Int { a + 1831565813 }
+
+// output: derive the raw u32 draw from an advanced state
+//   t := a;  t := imul(t ^ (t>>>15), t | 1);  t ^= t + imul(t ^ (t>>>7), t | 61)
+//   return t ^ (t>>>14)
+pub fn mulberry32_output(a: Int) -> Int {
+  let t1 = (a ^ lsr(a, 15)) * (a | 1);
+  let t2 = t1 ^ (t1 + (t1 ^ lsr(t1, 7)) * (t1 | 61));
+  t2 ^ lsr(t2, 14)
+}
+
+// composite per-draw raw u32: advance THEN output -- the host's inner loop body.
+// (The float division to [0,1) is host-side; this returns the raw u32 bits.)
+pub fn mulberry32_draw_raw(state: Int) -> Int { mulberry32_output(mulberry32_advance(state)) }
