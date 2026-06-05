@@ -1,0 +1,22 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// VmStack -- the stack opcodes PUSH/POP of the idaptik VM, the pure-integer core
+// from vm/lib/ocaml/{Push,Pop}.res. The stack (slots `_s:N`, pointer `_sp`)
+// lives in the host-side state dict (the senses); the host moves the value
+// between register and stack slot. The brain is only the stack-POINTER
+// arithmetic plus the register-clear constant -- no array ABI.
+//
+//   PUSH  execute stack[sp]:=reg; sp:=sp+1; reg:=0
+//         invert  sp:=sp-1; reg:=stack[sp]; stack[sp]:=0
+//   POP   execute sp:=sp-1; reg:=stack[sp]; stack[sp]:=0
+//         invert  stack[sp]:=reg; sp:=sp+1; reg:=0
+// PUSH and POP are mutual inverses; the shared brain is sp+1 / sp-1 with the
+// register cleared to 0.
+
+// PUSH advances the stack pointer; POP retreats it.
+pub fn push_sp(sp: Int) -> Int { sp + 1 }
+pub fn pop_sp(sp: Int) -> Int { sp - 1 }
+// reversibility: POP undoes PUSH on the pointer (and vice versa).
+pub fn sp_roundtrip(sp: Int) -> Int { pop_sp(push_sp(sp)) }  // == sp
+// PUSH (forward) and POP (inverse) clear the register to 0.
+pub fn reg_clear() -> Int { 0 }

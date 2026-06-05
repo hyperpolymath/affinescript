@@ -80,7 +80,7 @@
       "id": "C2",
       "name": "VM instruction set",
       "description": "VM instruction modules in vm/lib/ocaml \u2014 one file per opcode, pure-integer reversible VM. Also the wasm binding shim.",
-      "status": "IN_PROGRESS",
+      "status": "DONE",
       "done_wave1": {
         "date": "2026-06-05",
         "phase": "D",
@@ -102,8 +102,18 @@
         "evidence": "proposals/idaptik/migrated/EVIDENCE-C2-wave2a.adoc",
         "compiler_findings": "JS a*b loses precision >2^53 -> oracle must use Math.imul to match i32.mul; i32.div_s TRAPS on b==0 and INT_MIN/-1 (ReScript wraps) and i32.rem_s TRAPS on b==0 -> brain guards both (nested-if, avoiding unverified && codegen) for a total wasm"
       },
-      "remaining_wave2b": ["Push", "Pop", "Load", "Store", "Call", "Loop", "IfPos", "IfZero", "Recv", "Send", "CoprocessorCall", "InstructionCoprocessor", "State", "VM", "SubroutineRegistry", "VmStateCoprocessor", "bindings"],
-      "remaining_wave2b_blocker": "needs array/linear-memory ABI ([len:i32 LE][bytes] + __affine_alloc); Opus-level design; also unblocks the string wall",
+      "done_wave2b": {
+        "date": "2026-06-05",
+        "phase": "G",
+        "staged_at": "proposals/idaptik/migrated/",
+        "kernels": ["VmMemory", "VmStack", "VmPort", "VmControl"],
+        "opcodes": ["Load", "Store", "Push", "Pop", "Recv", "Send", "IfPos", "IfZero", "Loop"],
+        "note": "The 'needs array/linear-memory ABI' premise was WRONG. VmState stores memory/stack/port buffers as string-keyed dict slots (_mem:N, _s:N, _pin:port) = host-side senses; the integer brains are all scalar (additive transforms, pointer arithmetic, branch predicates). No array ABI required.",
+        "gates": "4/4 compile; 1568/1568 parity (incl. load/store/sp/recv/send round-trips); G3 n/a (transforms/predicates); 4/4 assail-clean",
+        "evidence": "proposals/idaptik/migrated/EVIDENCE-C2-wave2b.adoc",
+        "no_kernel_senses": ["Call (orchestration)", "CoprocessorCall (tombstone, never implemented)", "State", "VmState", "VM", "SubroutineRegistry", "VmStateCoprocessor", "InstructionCoprocessor"],
+        "cluster_complete": true
+      },
       "files": [
         "vm/lib/ocaml/Add.res",
         "vm/lib/ocaml/And.res",

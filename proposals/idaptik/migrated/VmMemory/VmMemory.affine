@@ -1,0 +1,23 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// VmMemory -- the additive memory opcodes LOAD/STORE of the idaptik VM, the
+// pure-integer core extracted from vm/lib/ocaml/{Load,Store}.res. The VM's
+// "memory" is NOT an array in the brain: VmState stores it as string-keyed dict
+// entries (`_mem:0`, `_mem:1`, ... 256 slots), so that dict is host-side STATE
+// (the senses). The host reads/writes memory[addr]; the brain is only the
+// reversible ADDITIVE value transform -- LOAD/STORE therefore need no array ABI.
+//
+//   LOAD   execute reg := reg + memory[addr]   invert reg := reg - memory[addr]
+//   STORE  execute memory[addr] := memory[addr] + reg   invert ... - reg
+// Both are additive (non-destructive): the inverse subtracts, so the round-trip
+// is exact over i32 wraparound -- the same reason ADD/SUB round-trip.
+
+// --- LOAD: additive load (host supplies memory[addr] as `mem`) ---
+pub fn load_fwd(reg: Int, mem: Int) -> Int { reg + mem }
+pub fn load_inv(reg: Int, mem: Int) -> Int { reg - mem }
+pub fn load_roundtrip(reg: Int, mem: Int) -> Int { load_inv(load_fwd(reg, mem), mem) }  // == reg
+
+// --- STORE: additive store (host supplies memory[addr] as `mem`) ---
+pub fn store_fwd(mem: Int, reg: Int) -> Int { mem + reg }
+pub fn store_inv(mem: Int, reg: Int) -> Int { mem - reg }
+pub fn store_roundtrip(mem: Int, reg: Int) -> Int { store_inv(store_fwd(mem, reg), reg) }  // == mem

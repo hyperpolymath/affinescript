@@ -1,0 +1,26 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// VmPort -- the I/O port opcodes RECV/SEND of the idaptik VM, the pure-integer
+// core from vm/lib/ocaml/{Recv,Send}.res. The port buffers (`_pin:port`,
+// `_pout:port` slots + pointers) are host-side state (the senses); the host
+// reads/writes the buffer slot. The brain is the port-POINTER arithmetic plus,
+// for RECV, the additive accumulate of the received value -- no array ABI.
+//
+//   RECV  execute reg := reg + port_in[ptr]; ptr := ptr + 1
+//         invert  ptr := ptr - 1; reg := reg - port_in[ptr]
+//   SEND  execute port_out[ptr] := reg; ptr := ptr + 1
+//         invert  ptr := ptr - 1; port_out[ptr] := 0
+
+// --- RECV: additive accumulate + input-pointer advance ---
+pub fn recv_acc_fwd(reg: Int, val: Int) -> Int { reg + val }
+pub fn recv_acc_inv(reg: Int, val: Int) -> Int { reg - val }
+pub fn recv_acc_roundtrip(reg: Int, val: Int) -> Int { recv_acc_inv(recv_acc_fwd(reg, val), val) }  // == reg
+pub fn recv_ptr_fwd(ptr: Int) -> Int { ptr + 1 }
+pub fn recv_ptr_inv(ptr: Int) -> Int { ptr - 1 }
+pub fn recv_ptr_roundtrip(ptr: Int) -> Int { recv_ptr_inv(recv_ptr_fwd(ptr)) }  // == ptr
+
+// --- SEND: output-pointer advance; inverse clears the vacated slot to 0 ---
+pub fn send_ptr_fwd(ptr: Int) -> Int { ptr + 1 }
+pub fn send_ptr_inv(ptr: Int) -> Int { ptr - 1 }
+pub fn send_ptr_roundtrip(ptr: Int) -> Int { send_ptr_inv(send_ptr_fwd(ptr)) }  // == ptr
+pub fn send_clears_slot() -> Int { 0 }
