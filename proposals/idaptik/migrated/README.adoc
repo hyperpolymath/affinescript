@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
-= idaptik migration — staged kernels (Phase C, cluster C1)
+= idaptik migration — staged kernels (Phase C cluster C1, Phase D cluster C2)
 :toc: macro
 
 [IMPORTANT]
@@ -42,6 +42,33 @@ brain to extract (see `EVIDENCE.adoc` § Host-side files).
 Verification status: *all four gates green* — 8/8 compile, 1223/1223 parity,
 6 echo-boundary proofs (agda exit 0), 8/8 assail-clean. Captured in
 `EVIDENCE.adoc`.
+
+== What landed (C2 wave 1 — the reversible VM)
+
+Cluster C2 = the 31 `vm/lib/ocaml` instruction-set files. Wave 1 delivers the
+*reversible value-transform opcodes* + the opcode taxonomy as four kernels. The
+VM stores state in a `dict<int>` keyed by register NAME with each instruction a
+pair of `execute`/`invert` closures; we keep the names + dict host-side and make
+the brain the reversible scalar-int value transform per opcode. The defining
+invariant — `invert` undoes `execute` — is pinned as `*_roundtrip` exports
+(oracle = identity) and swept in Gate 2.
+
+[cols="2,3,2",options="header"]
+|===
+| Kernel | Brain (reversible value transforms) | Source `vm/lib/ocaml/*.res`
+| `VmArith`       | ADD/SUB (inverse pair), NEGATE/NOOP/SWAP (self-inverse) | `Add,Sub,Negate,Noop,Swap`
+| `VmBitwise`     | FLIP/XOR (self-inverse), ROL/ROR (inverse pair, 32-bit) | `Flip,Xor,Rol,Ror`
+| `VmAncilla`     | AND/OR via Bennett's ancilla (reversible iff c==0) | `And,Or`
+| `VmInstruction` | 23-opcode instruction-set encoding + tier classifier | `Instruction`
+|===
+
+Verification status: *all four gates green* — 4/4 compile, 2100/2100 parity
+(every reversibility round-trip included), 1 echo-boundary proof (LOSSLESS
+23-opcode encoding, agda exit 0), 4/4 assail-clean. Captured in
+`EVIDENCE-C2.adoc`, which also records three AffineScript backend facts this
+cluster is written around (the unary-`~` codegen bug; arithmetic `>>` with no
+`>>>`; correct i32 `<<`/wrap). Wave 2 (Mul/Div, stack/memory/control opcodes,
+the structural VM files) needs an array/linear-memory ABI — deferred.
 
 == Layout (per kernel)
 

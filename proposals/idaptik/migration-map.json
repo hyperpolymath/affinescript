@@ -80,7 +80,18 @@
       "id": "C2",
       "name": "VM instruction set",
       "description": "VM instruction modules in vm/lib/ocaml \u2014 one file per opcode, pure-integer reversible VM. Also the wasm binding shim.",
-      "status": "TODO",
+      "status": "IN_PROGRESS",
+      "done_wave1": {
+        "date": "2026-06-05",
+        "phase": "D",
+        "staged_at": "proposals/idaptik/migrated/",
+        "kernels": ["VmArith", "VmBitwise", "VmAncilla", "VmInstruction"],
+        "opcodes": ["Add", "Sub", "Negate", "Noop", "Swap", "Flip", "Xor", "Rol", "Ror", "And", "Or", "Instruction"],
+        "gates": "4/4 compile; 2100/2100 parity (incl. all reversibility round-trips); 1 echo-boundary LOSSLESS (23-opcode encoding, agda exit 0); 4/4 assail-clean",
+        "evidence": "proposals/idaptik/migrated/EVIDENCE-C2.adoc",
+        "compiler_findings": "unary ~ codegen bug (i32.xor missing operand; workaround -a-1); >> is arithmetic + no >>> (logical shift-right emulated for ROL/ROR)"
+      },
+      "remaining_wave2": ["Mul", "Div", "Push", "Pop", "Load", "Store", "Call", "Loop", "IfPos", "IfZero", "Recv", "Send", "CoprocessorCall", "InstructionCoprocessor", "State", "VM", "SubroutineRegistry", "VmStateCoprocessor", "bindings"],
       "files": [
         "vm/lib/ocaml/Add.res",
         "vm/lib/ocaml/And.res",

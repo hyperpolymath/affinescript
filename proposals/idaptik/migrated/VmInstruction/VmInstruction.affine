@@ -1,0 +1,55 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// VmInstruction -- the instruction-set taxonomy of the idaptik reversible VM,
+// the pure-integer core behind vm/lib/ocaml/Instruction.res. The ReScript
+// `Instruction.t` carries an `instructionType` STRING and `execute`/`invert`
+// closures; the string is host-side (the senses). The brain is the canonical
+// integer OPCODE for each of the 23 instructions, plus the tier each belongs to
+// (the tier gates which opcodes a puzzle admits -- see PuzzleFormat.affine).
+//
+//## Opcode encoding (the header contract for the JS host) -- tier order
+//   tier 0 (register arithmetic)   tier 2 (stack / memory)
+//     0 NOOP    5 FLIP   10 XOR      16 PUSH   18 LOAD
+//     1 ADD     6 ROL    11 MUL      17 POP    19 STORE
+//     2 SUB     7 ROR    12 DIV     tier 3 (subroutines)
+//     3 NEGATE  8 AND               20 CALL
+//     4 SWAP    9 OR                tier 4 (I/O channels)
+//   tier 1 (conditionals)            21 SEND   22 RECV
+//    13 IFZERO 14 IFPOS 15 LOOP
+// The encoding is LOSSLESS: 23 instructions map to 23 distinct opcodes, so the
+// host round-trips instruction <-> opcode with no collision (certified by
+// echo-boundary, VmInstructionBoundary.agda). An opcode outside 0..22 is not an
+// instruction: clamp returns the out-of-band sentinel -1.
+
+pub fn opcode_count() -> Int { 23 }
+pub fn tier_count() -> Int { 5 }
+
+// Whether an integer names a defined opcode. 1 = valid, 0 = out of band.
+pub fn is_valid_opcode(op: Int) -> Int {
+  if op < 0 { 0 } else { if op > 22 { 0 } else { 1 } }
+}
+
+// Canonicalise: identity on a valid 0..22 opcode, the sentinel -1 otherwise.
+pub fn clamp_opcode(op: Int) -> Int {
+  if is_valid_opcode(op) == 1 { op } else { -1 }
+}
+
+// The tier (0..4) an opcode belongs to, or -1 if the opcode is out of band.
+// A puzzle of tier T admits exactly the opcodes with tier_of_opcode <= T.
+pub fn tier_of_opcode(op: Int) -> Int {
+  if is_valid_opcode(op) == 0 { return -1; }
+  if op <= 12 { return 0; }   // NOOP..DIV   -- register arithmetic
+  if op <= 15 { return 1; }   // IFZERO..LOOP-- conditionals
+  if op <= 19 { return 2; }   // PUSH..STORE -- stack / memory
+  if op == 20 { return 3; }   // CALL        -- subroutines
+  4                           // SEND, RECV  -- I/O channels
+}
+
+// Whether an opcode is admitted by a puzzle of the given tier (opcode tier <=
+// puzzle tier). Out-of-band opcode or tier -> 0.
+pub fn opcode_in_tier(op: Int, puzzle_tier: Int) -> Int {
+  let ot = tier_of_opcode(op);
+  if ot < 0 { return 0; }
+  if puzzle_tier < 0 { return 0; }
+  if ot <= puzzle_tier { 1 } else { 0 }
+}

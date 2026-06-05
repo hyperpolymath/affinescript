@@ -1,0 +1,128 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+= Cluster C2 (wave 1) — reversible-VM four-gate evidence (captured 2026-06-05)
+:toc: macro
+
+[IMPORTANT]
+====
+*Captured run of the 4-gate recipe over the cluster-C2 wave-1 kernels — the
+unconditionally- and conditionally-reversible value-transform opcodes of the
+idaptik VM, plus the opcode taxonomy.* The defining C2 invariant is
+*reversibility*: every opcode's `invert` undoes its `execute`. This is pinned
+directly as `*_roundtrip` exports whose oracle is the identity. Toolchain:
+AffineScript compiler `_build/default/bin/main.exe`, Deno 2.8.2, Agda 2.6.3,
+echo mirror at `/tmp/mirror-boundary`.
+====
+
+toc::[]
+
+== Summary
+
+[cols="2,1,1,1,1",options="header"]
+|===
+| Kernel | G1 compile | G2 parity | G3 boundary | G4 assail
+| `VmArith`       | OK | 846/846  | (transforms) | clean
+| `VmBitwise`     | OK | 572/572  | (transforms) | clean
+| `VmAncilla`     | OK | 401/401  | (transforms) | clean
+| `VmInstruction` | OK | 281/281  | LOSSLESS (23) | clean
+| *Total*         | *4/4* | *2100/2100* | *1 proof, agda exit 0* | *4/4 clean*
+|===
+
+Opcodes delivered this wave (11 + the taxonomy): ADD, SUB, NEGATE, NOOP, SWAP
+(`VmArith`); FLIP, XOR, ROL, ROR (`VmBitwise`); AND, OR (`VmAncilla`); the
+23-opcode instruction-set encoding + tier classifier (`VmInstruction`).
+
+== The reversibility gate (what makes C2 different from C1)
+
+Each opcode is migrated as the scalar-int *value transform* the ReScript
+`execute` / `invert` closures perform on a register; the register-name strings
+and the `dict<int>` stay host-side. The reversibility law is pinned as explicit
+round-trip exports and swept in Gate 2 with the identity (or 0) as oracle:
+
+[cols="2,3,1",options="header"]
+|===
+| Opcode(s) | Round-trip law (verified over i32 incl. extremes) | Kind
+| ADD / SUB | `inv(fwd(a,b),b) == a` (holds under two's-complement wrap) | inverse pair
+| NEGATE / NOOP / SWAP | `op(op(x)) == x` | self-inverse
+| FLIP / XOR | `op(op(x)) == x` | self-inverse
+| ROL / ROR | `ror(rol(a,bits),bits) == a` over full i32 | inverse pair
+| AND / OR | ancilla `0 -> a∘b -> 0` (Bennett, precondition c==0) | conditional
+|===
+
+AND/OR are the honest outlier: reversible *only* via Bennett's ancilla trick and
+*only* under the precondition that the ancilla register starts at 0 — a declared
+precondition, documented in `VmAncilla.affine`. Every other opcode here is
+unconditionally reversible.
+
+== Compiler facts this cluster is written around
+
+Migrating the bitwise opcodes surfaced three AffineScript backend facts. None
+blocked the migration — each has a sound in-language workaround — but they are
+recorded here as findings (the first is a genuine codegen bug worth a Phase-F
+fix).
+
+. *Unary `~` mis-compiles (BUG).* `pub fn f(a) { ~a }` compiles but the wasm
+  fails to instantiate: `i32.xor (need 2, got 1)` — the codegen emits an
+  `i32.xor` without pushing the second operand. Isolated to the unary `~`
+  operator only; binary `&` `|` `^` are all sound. *Workaround:* FLIP uses the
+  two's-complement identity `~a == -a - 1` (verified equal to JS `~a` over the
+  i32 sample, and self-inverse: `~(~a) = a`).
+. *`>>` is arithmetic; `>>>` does not exist.* `-1 >> 1 == -1` (sign-propagating),
+  and `a >>> n` is a parse error. The ReScript ROL/ROR use a *logical* shift
+  right, so a naive `(a<<b)|(a>>(32-b))` rotation fails to round-trip for
+  high-bit values. *Workaround:* emulate logical shift right as
+  `lsr(a,n) = (a >> n) & ((1 << (32 - n)) - 1)` (clears the n sign-extended
+  bits). With it, ROL/ROR match JS `((a<<n)|(a>>>(32-n)))|0` and round-trip over
+  the full i32 range (checked at `0x55555555` / `0xAAAAAAAA` and the extremes).
+. *`<<` and i32 wrap are correct.* `1 << 31 == -2147483648`; `&` `|` `^` `-a`
+  all behave as i32 two's-complement, which is exactly the VM's word model.
+
+== Gate 1 — compile
+
+----
+[OK] VmArith   [OK] VmBitwise   [OK] VmAncilla   [OK] VmInstruction
+----
+
+== Gate 2 — parity (oracle-vs-wasm, scalar i32 ABI)
+
+2100 inputs, 0 mismatches. Oracles re-derive every transform independently
+(JS native bitwise incl. the logical `>>>` the kernel emulates) plus the
+reversibility round-trips (oracle = identity, or 0 for the ancilla).
+
+----
+VmArith ......... 846/846     VmAncilla ....... 401/401
+VmBitwise ....... 572/572     VmInstruction ... 281/281
+----
+
+== Gate 3 — echo-boundary
+
+`VmInstructionBoundary` — the 23-opcode instruction-set encoding (NOOP=0 ..
+RECV=22) certified LOSSLESS (`agda exit 0`): 23 instructions → 23 distinct
+opcodes, so the host round-trips instruction ↔ opcode with no collision. The
+value-transform kernels (`VmArith`/`VmBitwise`/`VmAncilla`) are reversible
+*transforms*, not encodings, so echo-boundary's injectivity lens does not apply;
+their faithfulness is the Gate-2 round-trip.
+
+== Gate 4 — affine-assail
+
+----
+[CLEAN] VmArith   [CLEAN] VmBitwise   [CLEAN] VmAncilla   [CLEAN] VmInstruction
+----
+
+All clamps are guard-style sentinels (`-1` for out-of-band opcodes/tiers, which
+are outside the in-band range — not in-band collapses), so no `PA-AFF-001`.
+
+== Remaining in cluster C2 (wave 2)
+
+This wave migrated the value-transform opcodes (no stack/memory/control state
+crosses the boundary as a scalar). The rest of C2 needs an array/linear-memory
+ABI and a control-flow model, deferred to wave 2:
+
+* *Arithmetic with structure:* `Mul`, `Div` (reversibility needs the operand
+  kept + the remainder, respectively — richer than the inverse-pair shape here).
+* *Stack / memory:* `Push`, `Pop`, `Load`, `Store` (operate on `_sp` / `_mem:N`
+  dict keys — need the array/memory ABI).
+* *Control flow:* `Call`, `Loop`, `IfPos`, `IfZero` (sequences + branch state).
+* *I/O channels:* `Send`, `Recv`, `CoprocessorCall` (port buffers).
+* *Structural:* `State`, `VM`, `SubroutineRegistry`, the `*Coprocessor`
+  wrappers, and the `vm/wasm/src/bindings` shim (the host-side glue).
