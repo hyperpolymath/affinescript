@@ -1,0 +1,54 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// PortNames -- the coprocessor-domain port taxonomy co-processor, the
+// pure-integer core behind public/assets/wasm/portnames.wasm that
+// shared/src/PortNamesCoprocessor.res already binds via its JS bridge. This is
+// the real consumer the bridge was written for: PortNamesCoprocessor exposes
+// portCount / isCoprocessorPort / domainIndexOfPort / portOfDomainIndex as the
+// integer half, and nameOfPort / portOfName as the host string half. Per the
+// DESIGN-VISION the host keeps the port-name STRINGS and the ":in"/":out"/":ctrl"
+// suffix concatenation; AffineScript owns the integer taxonomy.
+//
+// The ReScript original (PortNames.res) keeps a `coprocessorDomains` array of
+// ten domain-prefix strings and tests membership with String.split + includes
+// (a string op, host-side). We re-decompose the taxonomy as the canonical 0..9
+// integer the array order already implies, so membership is one range test and
+// the port id IS the domain index.
+//
+//## Coprocessor-domain encoding (the header contract for the JS host)
+//   id  domain     id  domain      id  domain
+//    0  crypto      4  neural       8  tensor
+//    1  vector      5  quantum      9  graphics
+//    2  maths       6  physics
+//    3  io          7  audio
+// Order is PortNames.res `coprocessorDomains`. The encoding is LOSSLESS: ten
+// distinct domains map to ten distinct ids (certified by echo-boundary,
+// boundary.json). In this taxonomy the port id and the 0..9 domain index
+// coincide -- there are exactly ten coprocessor ports, one per domain. An id
+// outside 0..9 is not a coprocessor port: the predicate reports 0 and the index
+// maps return the out-of-band sentinel -1.
+
+// The number of coprocessor-domain ports in the taxonomy (PortNamesCoprocessor
+// `portCount`).
+pub fn coprocessor_domain_count() -> Int { 10 }
+
+// Whether a port id targets a coprocessor domain (PortNamesCoprocessor
+// `isCoprocessorPort`). 1 = yes, 0 = out of band. Mirrors PortNames.res
+// `isCoprocessorPort` over the integer taxonomy instead of the string prefix.
+pub fn is_coprocessor_port(id: Int) -> Int {
+  if id < 0 { 0 } else { if id > 9 { 0 } else { 1 } }
+}
+
+// The 0..9 coprocessor-domain index of a port id, or -1 for a non-coprocessor
+// id (PortNamesCoprocessor `domainIndexOfPort`). The id is the index in this
+// taxonomy, so this is identity-with-sentinel.
+pub fn domain_index_of_port(id: Int) -> Int {
+  if is_coprocessor_port(id) == 1 { id } else { -1 }
+}
+
+// The canonical port id of a 0..9 coprocessor-domain index, or -1 if out of
+// range (PortNamesCoprocessor `portOfDomainIndex`). Inverse of the above; on
+// the valid band it is the identity, so the pair round-trips losslessly.
+pub fn port_of_domain_index(idx: Int) -> Int {
+  if is_coprocessor_port(idx) == 1 { idx } else { -1 }
+}

@@ -1,0 +1,56 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// RetryPolicy -- the transient-failure classifier + backoff-policy table, the
+// pure-integer core extracted from idaptik shared/src/RetryPolicy.res. The
+// ReScript original couples the retry DECISION (is a status worth retrying?) and
+// the retry CONFIG (max retries, base delay, backoff factor) to the actual
+// timed retry loop (setTimeout + promise recursion). We re-decompose by keeping
+// the decision and the config -- both pure integer -- and leaving the timing
+// (wall-clock delay + Promise scheduling) host-side, where per the
+// multiplayer-determinism model wall-clock IS a sense, not a brain.
+//
+//## Transient status classification (RetryPolicy.isTransient)
+//   503 resource exhausted, 504 compute saturated, 429 rate-limited -> transient
+//   everything else (0 ok, 400/402/404/413 permanent)               -> not
+//
+//## Policy table (the three built-in policies, encoded by policy code)
+//   policy  name      max_retries  base_delay_ms  backoff_factor_pct
+//     0     default        3            50              200   (2.0x)
+//     1     fast           1            10              100   (1.0x)
+//     2     patient        5           200              150   (1.5x)
+// backoff_factor is carried as a percent (x100) so it stays a pure integer; the
+// host divides by 100 when scheduling. Any unknown policy code falls back to
+// default -- a DECLARED clamp onto policy 0 (controlled loss over the policy
+// code, certified by echo-boundary boundary-policy.json).
+
+// 1 iff the status is a transient failure that may clear on retry.
+pub fn is_transient(status: Int) -> Int {
+  if status == 503 { return 1; }
+  if status == 504 { return 1; }
+  if status == 429 { return 1; }
+  0
+}
+
+// The number of built-in policies.
+pub fn policy_count() -> Int { 3 }
+
+// Max re-attempts after the first failure, per policy code (unknown -> default).
+pub fn policy_max_retries(policy: Int) -> Int {
+  if policy == 1 { return 1; }   // fast
+  if policy == 2 { return 5; }   // patient
+  3                              // default (policy 0 and the unknown clamp)
+}
+
+// Base delay in ms before the first retry, per policy code (unknown -> default).
+pub fn policy_base_delay_ms(policy: Int) -> Int {
+  if policy == 1 { return 10; }  // fast
+  if policy == 2 { return 200; } // patient
+  50                             // default
+}
+
+// Backoff multiplier as a percent (x100), per policy code (unknown -> default).
+pub fn policy_backoff_factor_pct(policy: Int) -> Int {
+  if policy == 1 { return 100; } // fast   (1.0x)
+  if policy == 2 { return 150; } // patient(1.5x)
+  200                            // default(2.0x)
+}

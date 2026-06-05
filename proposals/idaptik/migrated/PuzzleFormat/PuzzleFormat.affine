@@ -1,0 +1,60 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// PuzzleFormat -- the puzzle difficulty/tier taxonomy co-processor, the
+// pure-integer core extracted from idaptik shared/src/PuzzleFormat.res (the
+// `difficulty` and `tier` variants + `tierToInt`) AND from shared/src/
+// DLCLoader.res (the `parseTier` / `parseDifficulty` clamps). Per the
+// DESIGN-VISION, the JS host keeps every difficulty/tier STRING and the puzzle
+// JSON; AffineScript owns the canonical integer encoding and the loader's clamp.
+//
+// Two distinct boundary behaviours live here, and the split is the whole point:
+//
+//   * difficulty/tier ENCODING is LOSSLESS -- PuzzleFormat.res's `tierToInt`
+//     maps Tier0..Tier4 -> 0..4 injectively, and difficulty maps
+//     Beginner..Expert -> 0..3 injectively. is_valid_* reports membership and
+//     *_to_int re-emits the code unchanged.
+//
+//   * the loader's parseTier / parseDifficulty CLAMP is CONTROLLED LOSS -- an
+//     unrecognised numeral collapses to Tier0 / Beginner (code 0). This is a
+//     DECLARED clamp (DLCLoader chose a forgiving default); clamp_tier /
+//     clamp_difficulty reproduce it, and echo-boundary (boundary-tier.json)
+//     certifies the collision at code 0 as controlled loss.
+//
+//## Difficulty encoding            ## Tier encoding
+//   code  difficulty                  code  tier
+//     0   Beginner                      0   Tier0 (register arithmetic)
+//     1   Intermediate                  1   Tier1 (+ conditionals)
+//     2   Advanced                      2   Tier2 (+ stack / memory)
+//     3   Expert                        3   Tier3 (+ subroutines)
+//                                        4   Tier4 (+ I/O channels)
+
+pub fn difficulty_count() -> Int { 4 }
+pub fn tier_count() -> Int { 5 }
+
+// Whether a host integer names a defined difficulty / tier.
+pub fn is_valid_difficulty(code: Int) -> Int {
+  if code < 0 { 0 } else { if code > 3 { 0 } else { 1 } }
+}
+pub fn is_valid_tier(code: Int) -> Int {
+  if code < 0 { 0 } else { if code > 4 { 0 } else { 1 } }
+}
+
+// The lossless half: PuzzleFormat.res's tierToInt is the identity on a valid
+// tier code; difficulty likewise. We re-emit the code unchanged on a valid
+// input and the out-of-band sentinel -1 otherwise (sentinel, not a clamp).
+pub fn tier_to_int(code: Int) -> Int {
+  if is_valid_tier(code) == 1 { code } else { -1 }
+}
+pub fn difficulty_to_int(code: Int) -> Int {
+  if is_valid_difficulty(code) == 1 { code } else { -1 }
+}
+
+// The controlled-loss half: DLCLoader.parseTier / parseDifficulty map any
+// unrecognised numeral to Tier0 / Beginner (code 0). This DECLARED clamp
+// collapses every out-of-band input onto in-band code 0.
+pub fn clamp_tier(code: Int) -> Int {
+  if is_valid_tier(code) == 1 { code } else { 0 }
+}
+pub fn clamp_difficulty(code: Int) -> Int {
+  if is_valid_difficulty(code) == 1 { code } else { 0 }
+}
