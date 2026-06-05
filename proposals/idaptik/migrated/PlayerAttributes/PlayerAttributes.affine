@@ -1,0 +1,140 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+//
+// PlayerAttributes -- the pure stat-derivation kernel re-decomposed from
+// src/app/player/PlayerAttributes.res. The ReScript original is a mutable record
+// (a t holding six Floats str/dex/con/int/wil/cha) over which a dozen getters
+// compute derived gameplay values: speed, jump, trajectory divisor, tech-task
+// speed, the two critical thresholds, distraction, Moletaire obedience, fall
+// resistance, lockpick speed, melee damage. Per the DESIGN-VISION ("the brain is
+// AffineScript, the senses are JS; only primitives cross the wasm boundary") the
+// mutable record is NOT the unit of migration. The record is host data; what
+// crosses the boundary is the pure arithmetic each getter performs. The JS host
+// owns the record and the construction; the co-processor owns the maths and is
+// stateless and total: a malformed call yields a defined Float, never a trap.
+//
+//## Why a stateless split, not a TEA reducer
+// Every getter here is a pure function of one or two attribute Floats: a scale, a
+// weighted blend, a clamped affine map. None depends on accumulated history; each
+// reads the record and returns a number. The stateless co-processor shape fits
+// exactly and no model-in-linear-memory is needed.
+//
+//## What stays on the JS side (the senses, not the brain)
+// Construction (make, makeWithClass) is record assembly over JessicaBackground's
+// bonus variant: a switch over six nullary constructors yielding a struct, with
+// no arithmetic beyond 100 + bonus. That is host record-building and stays in the
+// bridge with the variant; only the six summed Float fields would cross, and they
+// add nothing the host cannot do with `+`. The getters that are bare scalings
+// (getSpeedMultiplier, getLockpickSpeed, getMeleeDamage, getDistractionEffectiveness
+// = stat/100; getMaxJump = 5*str; getJumpAcceleration = 0.1*dex) are single
+// multiplies/divides; the host could inline them, but routing them through the
+// verified brain keeps the stat formulae in ONE audited place, so they cross too.
+//
+//## The SafeFloat refinement (getTrajectoryDivisor)
+// getTrajectoryDivisor calls SafeFloat.divOr(baseIncrement*int, trajectoryLength,
+// default=1.0). divOr's contract: if the divisor is zero, OR the quotient is
+// non-finite, return the default; else the quotient. For the finite numerator and
+// finite divisor the host ever supplies, the ONLY way the quotient turns
+// non-finite is a zero divisor (which yields +/-Infinity), and that case is
+// already the zero-divisor branch. So the brain reproduces divOr exactly with a
+// single Float-valued if on `len == 0`: the host never feeds NaN/Inf stats, and
+// the bridge documents that contract. (A Float-valued if/else now lowers on the
+// :latest image, so this guard is direct, not branchless.) The default is PASSED
+// IN as `dflt` so the kernel carries no magic number and the host owns the policy.
+//
+//## The clamped thresholds (getCriticalFailureThreshold, getCriticalSuccessChance,
+//## getFallDamageResistance)
+// Each is an affine map of one stat then a clamp: max(floor, base + slope*stat) or
+// min(ceil, base + slope*stat). The clamps re-decompose to max_float / min_float
+// intrinsics (proven on :latest), so no Float if/else is needed for the clamp;
+// the arithmetic is verbatim f64. The clamp BOUNDS (0.01, 0.25, 0.3) and the
+// midpoints (100) are intrinsic to the stat curve, not tuning the host varies, so
+// they remain literals here exactly as in the ReScript source.
+//
+//## Boundary contract (the header the JS host relies on)
+// Every value crosses as f64 (proven to marshal both ways without truncation; cf.
+// migration/bindings/Maths.wasm and PlayerHP.wasm). No strings, ints, dicts or
+// effects cross.
+//   speed_multiplier(dex) -> Float          dex / 100
+//   max_jump(str) -> Float                  5 * str
+//   jump_acceleration(dex) -> Float         0.1 * dex
+//   trajectory_divisor(base, int, len, dflt) -> Float
+//                                           SafeFloat.divOr(base*int, len, dflt)
+//   tech_task_speed(int, wil) -> Float      (int*0.6 + wil*0.4) / 100
+//   critical_failure_threshold(wil) -> Float  max(0.01, 0.10 + (100-wil)/1000)
+//   critical_success_chance(stat) -> Float  min(0.25, 0.05 + (stat-100)/1000)
+//   distraction_effectiveness(cha) -> Float cha / 100
+//   moletaire_obedience(cha) -> Float       0.8 + cha/500
+//   fall_damage_resistance(con) -> Float    max(0.3, 1 - (con-100)/200)
+//   lockpick_speed(dex) -> Float            dex / 100
+//   melee_damage(str) -> Float              str / 100
+
+//## DEX-scaled movement speed multiplier, 1.0 at baseline 100.
+pub fn speed_multiplier(dex: Float) -> Float {
+  dex / 100.0
+}
+
+//## STR-scaled maximum jump magnitude, MAXJMP_MULT(5) * STR.
+pub fn max_jump(strength: Float) -> Float {
+  5.0 * strength
+}
+
+//## DEX-scaled jump charge accumulation rate, JMPACC_MULT(0.1) * DEX.
+pub fn jump_acceleration(dex: Float) -> Float {
+  0.1 * dex
+}
+
+//## Trajectory divisor with the SafeFloat.divOr refinement.
+// (base*int)/len, falling back to dflt when len is zero (the sole non-finite
+// source for the finite stats the host supplies). Float-valued if lowers on
+// :latest, so the zero guard is direct.
+pub fn trajectory_divisor(base: Float, intel: Float, len: Float, dflt: Float) -> Float {
+  if len == 0.0 {
+    dflt
+  } else {
+    (base * intel) / len
+  }
+}
+
+//## INT/WIL-weighted tech-task speed, (INT*0.6 + WIL*0.4) / 100.
+pub fn tech_task_speed(intel: Float, wil: Float) -> Float {
+  (intel * 0.6 + wil * 0.4) / 100.0
+}
+
+//## WIL-driven critical-failure threshold, floored at 0.01.
+// max(0.01, 0.10 + (100 - WIL)/1000); lower is better resistance.
+pub fn critical_failure_threshold(wil: Float) -> Float {
+  let modifier = (100.0 - wil) / 1000.0;
+  max_float(0.01, 0.10 + modifier)
+}
+
+//## Primary-stat-driven critical-success chance, capped at 0.25.
+// min(0.25, 0.05 + (stat - 100)/1000); higher is better crit chance.
+pub fn critical_success_chance(stat: Float) -> Float {
+  min_float(0.25, 0.05 + (stat - 100.0) / 1000.0)
+}
+
+//## CHA-scaled distraction effectiveness, CHA / 100.
+pub fn distraction_effectiveness(cha: Float) -> Float {
+  cha / 100.0
+}
+
+//## CHA-scaled Moletaire obedience multiplier, 0.8 + CHA/500 (>1 = more obedient).
+pub fn moletaire_obedience(cha: Float) -> Float {
+  0.8 + cha / 500.0
+}
+
+//## CON-scaled fall-damage resistance, floored at 0.3.
+// max(0.3, 1 - (CON - 100)/200); a multiplier on fall damage, lower = less taken.
+pub fn fall_damage_resistance(con: Float) -> Float {
+  max_float(0.3, 1.0 - (con - 100.0) / 200.0)
+}
+
+//## DEX-scaled lockpick speed multiplier, DEX / 100.
+pub fn lockpick_speed(dex: Float) -> Float {
+  dex / 100.0
+}
+
+//## STR-scaled melee damage multiplier, STR / 100.
+pub fn melee_damage(strength: Float) -> Float {
+  strength / 100.0
+}
