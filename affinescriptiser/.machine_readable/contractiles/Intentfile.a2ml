@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: MPL-2.0
+# Intentfile (A2ML) - Converted from INTENT.contractile for affinescriptiser
+
+@abstract:
+Purpose and scope for affinescriptiser. This file was converted from Scheme-based
+INTENT.contractile format to A2ML format.
+@end
+
+## Purpose
+
+this software is
+
+## Anti-Purpose
+
+this software is
+
+## If In Doubt
+
+Sensitive areas from original contractile:
+- section in INTENT maps directly
+- this software is
+- 
+- 
+- 
+- 

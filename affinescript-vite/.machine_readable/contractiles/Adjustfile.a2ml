@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: MPL-2.0
+# Adjustfile (A2ML) - Converted from ADJUST.contractile
+
+@abstract:
+Drift tolerances and corrective actions. Converted from Scheme-based
+ADJUST.contractile format to A2ML format.
+@end
+
+## Drift Tolerance
+
+### placeholder-drift
+- description: Template placeholder values should be replaced
+- tolerance: 0 placeholder markers
+- corrective: Replace all {{PLACEHOLDER}} values
+- severity: advisory

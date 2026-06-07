@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: MPL-2.0
+# Mustfile (A2ML) - Converted from MUST.contractile
+
+@abstract:
+Physical state contract for this repository. Converted from Scheme-based
+MUST.contractile format to A2ML format.
+@end
+
+## File Presence
+
+### license-present
+- description: LICENSE file must exist
+- run: test -f LICENSE
+- severity: critical
