@@ -66,6 +66,15 @@ pub fn sign_float(x: Float) -> Int {
   if x > 0.0 { 1 } else if x < 0.0 { -1 } else { 0 }
 }
 
+/// Copy the sign of `sign_source` onto the magnitude of `magnitude`.
+/// Returns `+|magnitude|` when `sign_source >= 0.0`, else `-|magnitude|`.
+/// Branchless replacement for the common pattern
+/// `if cond { x } else { -x }` where `cond` is itself the sign of some value.
+pub fn copysign(magnitude: Float, sign_source: Float) -> Float {
+  let m = if magnitude < 0.0 { -magnitude } else { magnitude };
+  if sign_source < 0.0 { -m } else { m }
+}
+
 // ============================================================================
 // Power and roots
 // ============================================================================
