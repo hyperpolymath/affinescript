@@ -18,7 +18,7 @@ use prelude::{Result, Ok, Err, Option, Some, None, map};
 // ============================================================================
 
 /// Convert Option to Result
-fn option_to_result<T, E>(opt: Option<T>, err: E) -> Result<T, E> {
+pub fn option_to_result<T, E>(opt: Option<T>, err: E) -> Result<T, E> {
   match opt {
     Some(value) => Ok(value),
     None => Err(err)
@@ -26,7 +26,7 @@ fn option_to_result<T, E>(opt: Option<T>, err: E) -> Result<T, E> {
 }
 
 /// Convert Result to Option (discarding error)
-fn result_to_option<T, E>(result: Result<T, E>) -> Option<T> {
+pub fn result_to_option<T, E>(result: Result<T, E>) -> Option<T> {
   match result {
     Ok(value) => Some(value),
     Err(_) => None
@@ -38,7 +38,7 @@ fn result_to_option<T, E>(result: Result<T, E>) -> Option<T> {
 // ============================================================================
 
 /// Map over Ok value
-fn map_ok<T, U, E>(f: T -> U, result: Result<T, E>) -> Result<U, E> {
+pub fn map_ok<T, U, E>(f: T -> U, result: Result<T, E>) -> Result<U, E> {
   match result {
     Ok(value) => Ok(f(value)),
     Err(e) => Err(e)
@@ -46,7 +46,7 @@ fn map_ok<T, U, E>(f: T -> U, result: Result<T, E>) -> Result<U, E> {
 }
 
 /// Map over Err value
-fn map_err<T, E, F>(f: E -> F, result: Result<T, E>) -> Result<T, F> {
+pub fn map_err<T, E, F>(f: E -> F, result: Result<T, E>) -> Result<T, F> {
   match result {
     Ok(value) => Ok(value),
     Err(e) => Err(f(e))
@@ -54,7 +54,7 @@ fn map_err<T, E, F>(f: E -> F, result: Result<T, E>) -> Result<T, F> {
 }
 
 /// Apply function in Result to value in Result
-fn apply<T, U, E>(f_result: Result<T -> U, E>, value_result: Result<T, E>) -> Result<U, E> {
+pub fn apply<T, U, E>(f_result: Result<T -> U, E>, value_result: Result<T, E>) -> Result<U, E> {
   match (f_result, value_result) {
     (Ok(f), Ok(value)) => Ok(f(value)),
     (Err(e), _) => Err(e),
@@ -63,7 +63,7 @@ fn apply<T, U, E>(f_result: Result<T -> U, E>, value_result: Result<T, E>) -> Re
 }
 
 /// Flat map (bind) over Result
-fn flat_map<T, U, E>(f: T -> Result<U, E>, result: Result<T, E>) -> Result<U, E> {
+pub fn flat_map<T, U, E>(f: T -> Result<U, E>, result: Result<T, E>) -> Result<U, E> {
   match result {
     Ok(value) => f(value),
     Err(e) => Err(e)
@@ -71,12 +71,12 @@ fn flat_map<T, U, E>(f: T -> Result<U, E>, result: Result<T, E>) -> Result<U, E>
 }
 
 /// Also known as 'and_then'
-fn and_then<T, U, E>(result: Result<T, E>, f: T -> Result<U, E>) -> Result<U, E> {
+pub fn and_then<T, U, E>(result: Result<T, E>, f: T -> Result<U, E>) -> Result<U, E> {
   flat_map(f, result)
 }
 
 /// Or else - use alternative Result on error
-fn or_else<T, E, F>(result: Result<T, E>, f: E -> Result<T, F>) -> Result<T, F> {
+pub fn or_else<T, E, F>(result: Result<T, E>, f: E -> Result<T, F>) -> Result<T, F> {
   match result {
     Ok(value) => Ok(value),
     Err(e) => f(e)
@@ -88,7 +88,7 @@ fn or_else<T, E, F>(result: Result<T, E>, f: E -> Result<T, F>) -> Result<T, F> 
 // ============================================================================
 
 /// Check if Result is Ok
-fn is_ok<T, E>(result: Result<T, E>) -> Bool {
+pub fn is_ok<T, E>(result: Result<T, E>) -> Bool {
   match result {
     Ok(_) => true,
     Err(_) => false
@@ -96,7 +96,7 @@ fn is_ok<T, E>(result: Result<T, E>) -> Bool {
 }
 
 /// Check if Result is Err
-fn is_err<T, E>(result: Result<T, E>) -> Bool {
+pub fn is_err<T, E>(result: Result<T, E>) -> Bool {
   match result {
     Ok(_) => false,
     Err(_) => true
@@ -108,7 +108,7 @@ fn is_err<T, E>(result: Result<T, E>) -> Bool {
 // ============================================================================
 
 /// Unwrap Ok value or panic
-fn unwrap<T, E>(result: Result<T, E>) -> T {
+pub fn unwrap<T, E>(result: Result<T, E>) -> T {
   match result {
     Ok(value) => value,
     Err(_) => panic("Called unwrap on Err value")
@@ -116,7 +116,7 @@ fn unwrap<T, E>(result: Result<T, E>) -> T {
 }
 
 /// Unwrap Err value or panic
-fn unwrap_err<T, E>(result: Result<T, E>) -> E {
+pub fn unwrap_err<T, E>(result: Result<T, E>) -> E {
   match result {
     Ok(_) => panic("Called unwrap_err on Ok value"),
     Err(e) => e
@@ -124,7 +124,7 @@ fn unwrap_err<T, E>(result: Result<T, E>) -> E {
 }
 
 /// Unwrap with custom error message
-fn expect<T, E>(result: Result<T, E>, msg: String) -> T {
+pub fn expect<T, E>(result: Result<T, E>, msg: String) -> T {
   match result {
     Ok(value) => value,
     Err(_) => panic(msg)
@@ -132,7 +132,7 @@ fn expect<T, E>(result: Result<T, E>, msg: String) -> T {
 }
 
 /// Unwrap or provide default value
-fn unwrap_or<T, E>(result: Result<T, E>, default: T) -> T {
+pub fn unwrap_or<T, E>(result: Result<T, E>, default: T) -> T {
   match result {
     Ok(value) => value,
     Err(_) => default
@@ -140,7 +140,7 @@ fn unwrap_or<T, E>(result: Result<T, E>, default: T) -> T {
 }
 
 /// Unwrap or compute default value
-fn unwrap_or_else<T, E>(result: Result<T, E>, f: E -> T) -> T {
+pub fn unwrap_or_else<T, E>(result: Result<T, E>, f: E -> T) -> T {
   match result {
     Ok(value) => value,
     Err(e) => f(e)
@@ -152,7 +152,7 @@ fn unwrap_or_else<T, E>(result: Result<T, E>, f: E -> T) -> T {
 // ============================================================================
 
 /// Transpose Option of Result to Result of Option
-fn transpose_opt<T, E>(opt: Option<Result<T, E>>) -> Result<Option<T>, E> {
+pub fn transpose_opt<T, E>(opt: Option<Result<T, E>>) -> Result<Option<T>, E> {
   match opt {
     Some(Ok(value)) => Ok(Some(value)),
     Some(Err(e)) => Err(e),
@@ -161,7 +161,7 @@ fn transpose_opt<T, E>(opt: Option<Result<T, E>>) -> Result<Option<T>, E> {
 }
 
 /// Collect list of Results into Result of list (fails on first error)
-fn collect<T, E>(results: [Result<T, E>]) -> Result<[T], E> {
+pub fn collect<T, E>(results: [Result<T, E>]) -> Result<[T], E> {
   let values = [];
   for result in results {
     match result {
@@ -173,7 +173,7 @@ fn collect<T, E>(results: [Result<T, E>]) -> Result<[T], E> {
 }
 
 /// Partition list of Results into successes and failures
-fn partition_results<T, E>(results: [Result<T, E>]) -> ([T], [E]) {
+pub fn partition_results<T, E>(results: [Result<T, E>]) -> ([T], [E]) {
   let oks = [];
   let errs = [];
   for result in results {
@@ -186,7 +186,7 @@ fn partition_results<T, E>(results: [Result<T, E>]) -> ([T], [E]) {
 }
 
 /// Try to apply function to all elements, collecting errors
-fn try_map<T, U, E>(f: T -> Result<U, E>, list: [T]) -> Result<[U], E> {
+pub fn try_map<T, U, E>(f: T -> Result<U, E>, list: [T]) -> Result<[U], E> {
   let results = map(list, f);
   collect(results)
 }
@@ -196,7 +196,7 @@ fn try_map<T, U, E>(f: T -> Result<U, E>, list: [T]) -> Result<[U], E> {
 // ============================================================================
 
 /// Convert bool to Result
-fn bool_to_result(b: Bool, err: E) -> Result<(), E> {
+pub fn bool_to_result(b: Bool, err: E) -> Result<(), E> {
   if b {
     Ok(())
   } else {
@@ -205,7 +205,7 @@ fn bool_to_result(b: Bool, err: E) -> Result<(), E> {
 }
 
 /// AND operation on Results (both must be Ok)
-fn result_and<T, U, E>(a: Result<T, E>, b: Result<U, E>) -> Result<(T, U), E> {
+pub fn result_and<T, U, E>(a: Result<T, E>, b: Result<U, E>) -> Result<(T, U), E> {
   match (a, b) {
     (Ok(x), Ok(y)) => Ok((x, y)),
     (Err(e), _) => Err(e),
@@ -214,7 +214,7 @@ fn result_and<T, U, E>(a: Result<T, E>, b: Result<U, E>) -> Result<(T, U), E> {
 }
 
 /// OR operation on Results (first Ok wins)
-fn result_or<T, E>(a: Result<T, E>, b: Result<T, E>) -> Result<T, E> {
+pub fn result_or<T, E>(a: Result<T, E>, b: Result<T, E>) -> Result<T, E> {
   match a {
     Ok(value) => Ok(value),
     Err(_) => b
@@ -228,7 +228,7 @@ fn result_or<T, E>(a: Result<T, E>, b: Result<T, E>) -> Result<T, E> {
 /// Try block emulation - execute function and catch panics as Err.
 /// Named `attempt` (not `try`) because `try` is a reserved keyword
 /// (try/catch/finally); see #135 keyword-as-identifier slice.
-fn attempt<T>(f: () -> T) -> Result<T, String> {
+pub fn attempt<T>(f: () -> T) -> Result<T, String> {
   // TODO: Requires exception handling support
   try {
     Ok(f())
@@ -239,7 +239,7 @@ fn attempt<T>(f: () -> T) -> Result<T, String> {
 }
 
 /// Retry operation n times on failure
-fn retry<T, E>(n: Int, f: () -> Result<T, E>) -> Result<T, E> {
+pub fn retry<T, E>(n: Int, f: () -> Result<T, E>) -> Result<T, E> {
   let result = f();
   match result {
     Ok(_) => result,
