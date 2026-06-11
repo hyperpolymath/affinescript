@@ -1382,19 +1382,29 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
        the record pointer is unchanged (fields are still in memory). *)
     gen_expr ctx base
 
-  | ExprHandle eh ->
-    (* Effect handlers in WASM: compile the body expression.
-       Effect handling requires continuation support which WASM doesn't
-       natively have. We compile as a simple wrapper that evaluates the
-       body — unhandled effects will trap at runtime. *)
-    gen_expr ctx eh.eh_body
+  | ExprHandle _eh ->
+    (* Effect handler dispatch is not implementable on this backend today.
+       The previous behaviour — compile the body only, dropping every
+       handler arm and lowering `resume` as a passthrough — was SILENTLY
+       WRONG: an effects-free `handle 41 { return(v) => v + 1 }` evaluated
+       to 42 in the interpreter and 41 in compiled wasm (issue #555), and
+       performs trapped at op stubs instead of dispatching.  codegen_gc.ml
+       already fails loudly on this exact shape; this back-ports the fence.
+       Note: the ADR-013/ADR-016 CPS line covers Async-effect *calls*, not
+       `handle` expressions — failing here does not regress async support.
+       To use algebraic effects, run under the interpreter (`--interp`/`-i`). *)
+    Error (UnsupportedFeature
+      "effect handler (handle { ... }) in the WASM backend — \
+       handler arms cannot be dispatched (requires WASM EH proposal or a \
+       general-handler CPS transform; Refs #555); use `--interp` / `-i`")
 
-  | ExprResume arg_opt ->
-    (* Resume passes through the argument value *)
-    begin match arg_opt with
-      | Some e -> gen_expr ctx e
-      | None -> Ok (ctx, [I32Const 0l])  (* unit *)
-    end
+  | ExprResume _arg_opt ->
+    (* `resume` is only meaningful inside a handler arm; the enclosing
+       `handle` already fails above.  Fail consistently (was: silent
+       argument passthrough — issue #555). *)
+    Error (UnsupportedFeature
+      "`resume` expression in the WASM backend — \
+       only valid inside a `handle` block (Refs #555); use `--interp` / `-i`")
 
   | ExprTry et ->
     (* WASM 1.0 has no exception-handling proposal.
