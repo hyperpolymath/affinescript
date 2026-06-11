@@ -1,0 +1,14 @@
+// SPDX-License-Identifier: MPL-2.0
+// #470 — Deno externs `endsWith` / `stripSuffix` / `numToFixed2` needed
+// explicit lowering entries in codegen_deno.ml. Before the fix all three
+// emitted a bare call to an undefined symbol -> runtime ReferenceError.
+
+use Deno::{ endsWith, stripSuffix, numToFixed2 };
+
+pub fn is_ts(p: String) -> Bool = endsWith(p, ".ts");
+
+pub fn drop_ts_suffix(p: String) -> String = stripSuffix(p, ".ts");
+
+pub fn drop_missing_suffix(p: String) -> String = stripSuffix(p, ".rs");
+
+pub fn fmt_pct(x: Int) -> String = numToFixed2(x);

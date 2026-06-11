@@ -648,6 +648,12 @@ let () =
   (* Kilobyte display string: `(n/1024).toFixed(2)` — runtime number
      formatting is an honest host primitive in every language. *)
   b "kbString"    (fun a -> Printf.sprintf "(Number(%s) / 1024).toFixed(2)" (arg 0 a));
+  (* String suffix predicates + numeric formatter (#470). Originally
+     intended to ride on stdlib bodies; without extern->stdlib linkage
+     they need explicit lowering entries. *)
+  b "endsWith"    (fun a -> Printf.sprintf "String(%s).endsWith(%s)" (arg 0 a) (arg 1 a));
+  b "stripSuffix" (fun a -> Printf.sprintf "((__s, __x) => __s.endsWith(__x) ? __s.slice(0, -__x.length) : __s)(%s, %s)" (arg 0 a) (arg 1 a));
+  b "numToFixed2" (fun a -> Printf.sprintf "Number(%s).toFixed(2)" (arg 0 a));
   (* ---- misc host ---- *)
   b "dateNow"     (fun _ -> "Date.now()");
   (* `new Date().toISOString()` — UTC ISO-8601 timestamp string. Distinct
