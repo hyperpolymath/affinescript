@@ -1804,10 +1804,15 @@ let generate (program : program) (symbols : Symbol.t) : string =
         List.iter (function
           | ImplFn fd -> gen_function ctx fd
           | ImplType _ -> ()) ib.ib_items
-    | TopConst { tc_vis; tc_name; tc_value; _ } ->
+    | TopConst { tc_vis; tc_mut; tc_name; tc_value; _ } ->
         let exp = if visibility_is_public tc_vis then "export " else "" in
+        (* #548: `const mut` (tc_mut=true) lowers to JS `let` so the
+           binding is mutable; writes are plain assignment statements.
+           Plain `const` (tc_mut=false) keeps the existing `const`
+           emission and JS-enforces immutability. *)
+        let kw = if tc_mut then "let" else "const" in
         emit_line ctx
-          (Printf.sprintf "%sconst %s = %s;" exp (mangle tc_name.name)
+          (Printf.sprintf "%s%s %s = %s;" exp kw (mangle tc_name.name)
              (gen_expr ctx tc_value))
     | TopEffect _ -> emit_line ctx "// effect declaration (erased)"
     | TopTrait _  -> emit_line ctx "// trait declaration (erased)"

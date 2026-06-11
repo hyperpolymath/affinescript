@@ -221,9 +221,10 @@ let desugar_top_level (ctx : context) (top : top_level) : top_level =
     ) ib.ib_items in
     TopImpl { ib with ib_items = items' }
 
-  | TopConst { tc_vis; tc_name; tc_ty; tc_value } ->
+  | TopConst { tc_vis; tc_mut; tc_name; tc_ty; tc_value } ->
     TopConst {
       tc_vis;
+      tc_mut;
       tc_name;
       tc_ty;
       tc_value = desugar_expr ctx tc_value;
