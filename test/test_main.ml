@@ -15,6 +15,7 @@ let () =
       ("TW L13 isolation (#10)", Test_tw_isolation.tests);
       ("Qualified paths (#228, ADR-014)", Test_qualified_paths.tests);
       ("Module mut (#548)", Test_module_mut.tests);
+      ("Int-div on JS-text backend (#478)", Test_int_div_js.tests);
       ("Deno builtins ↔ stdlib decls consistency", Test_deno_builtins_consistency.tests);
       ("Stdlib algebraic laws (batch 1)", Test_stdlib_laws.tests);
     ] @ Test_e2e.tests @ Test_stdlib_aot.tests)
