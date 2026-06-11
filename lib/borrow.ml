@@ -1581,8 +1581,12 @@ and check_stmt (ctx : context) (state : state) (symbols : Symbol.t) (stmt : stmt
     [out[i] = expr] for a buffer parameter). Without this, the assignment
     check at [StmtAssign] rejects all writes through parameters even when
     the surface syntax explicitly opted in with [mut]. *)
-let check_function (ctx : context) (symbols : Symbol.t) (fd : fn_decl) : unit result =
+let check_function ?(extra_mut_bindings = []) (ctx : context) (symbols : Symbol.t) (fd : fn_decl) : unit result =
   let state = create () in
+  (* #548: seed module-level `const mut` bindings so the borrow checker
+     treats them as mutable. Empty for callers that don't supply them
+     so existing call sites (tests, lsp, repl) keep their semantics. *)
+  state.mutable_bindings <- extra_mut_bindings @ state.mutable_bindings;
   List.iter (fun (p : param) ->
     let own = param_ownership p in
     (match lookup_symbol_by_name symbols p.p_name.name with
@@ -1622,13 +1626,32 @@ let check_function (ctx : context) (symbols : Symbol.t) (fd : fn_decl) : unit re
 let check_program (symbols : Symbol.t) (program : program) : unit result =
   (* Build context with all function signatures *)
   let ctx = build_context program in
+  (* #548: collect module-level `const mut <name>` bindings so each
+     function's borrow state knows they are mutable. Reads and writes
+     to these go through the same {!StmtAssign} path used for
+     function-scope `let mut`; without this seed every write to a
+     module-mut binding would be rejected by [is_mutable] just as
+     function-scope writes to non-mut [let] bindings are.
+     [lookup_symbol_by_name] reaches the global symbol table populated
+     by {!Symbol} during resolution, so the [sym_id] matches the one
+     [expr_to_place] resolves an [ExprVar] to in {!check_expr}. *)
+  let module_mut_bindings : place list =
+    List.fold_left (fun acc decl ->
+      match decl with
+      | TopConst { tc_mut = true; tc_name; _ } ->
+        (match lookup_symbol_by_name symbols tc_name.name with
+         | Some sym -> PlaceVar (tc_name.name, sym.sym_id) :: acc
+         | None -> acc)
+      | _ -> acc
+    ) [] program.prog_decls
+  in
   (* Check each function *)
   List.fold_left (fun acc decl ->
     match acc with
     | Error e -> Error e
     | Ok () ->
       match decl with
-      | TopFn fd -> check_function ctx symbols fd
+      | TopFn fd -> check_function ~extra_mut_bindings:module_mut_bindings ctx symbols fd
       | _ -> Ok ()
   ) (Ok ()) program.prog_decls
 

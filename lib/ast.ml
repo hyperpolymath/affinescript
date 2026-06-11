@@ -373,6 +373,17 @@ type top_level =
   | TopImpl of impl_block
   | TopConst of {
       tc_vis : visibility;
+      tc_mut : bool;
+        (** ADR-014-adjacent (#548): `const mut <name>: T = init;`
+            declares a mutable module-level binding. Reads compile to a
+            plain identifier lookup; writes are assignment statements
+            (`name = new_value;`) and lower to a JS `let` rather than a
+            JS `const`. The `mut` qualifier is intentionally folded into
+            the existing `TopConst` shape rather than spawning a
+            separate `TopMut` constructor so that downstream codegen
+            backends that already pattern-match on [TopConst { _ }] keep
+            building unchanged; only the JS-family (and any backend with
+            true mutability) reads the flag. *)
       tc_name : ident;
       tc_ty : type_expr;
       tc_value : expr;
