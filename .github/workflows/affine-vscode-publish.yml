@@ -17,26 +17,21 @@
 # publish rights to the @hyperpolymath scope).
 
 name: Publish affine-vscode
-
 on:
   push:
     tags:
       - 'affine-vscode-v*'
-
 permissions:
   contents: read
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
 jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
       - name: Verify tag matches package version
         working-directory: packages/affine-vscode
         run: |
@@ -47,7 +42,6 @@ jobs:
             exit 1
           fi
           echo "✅ Publishing @hyperpolymath/affine-vscode@$pkg"
-
       - name: Configure npm auth
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -57,11 +51,9 @@ jobs:
             exit 1
           fi
           echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > "${HOME}/.npmrc"
-
       - name: Publish to npm
         working-directory: packages/affine-vscode
         run: npm publish --access public
-
       - name: Clean up npm auth
         if: always()
         run: rm -f "${HOME}/.npmrc"

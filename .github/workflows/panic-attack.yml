@@ -13,22 +13,18 @@
 #       Installed from crates.io.
 
 name: Panic-Attack (compliance scan)
-
 on:
   schedule:
     # Sundays 03:00 UTC — quiet window for the estate's CI fleet.
     - cron: '0 3 * * 0'
   workflow_dispatch:
-
 # Read-only audit workflow — safe to cancel superseded runs.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
 permissions:
   contents: read
-  issues: write  # opens a tracking issue on unresolved critical/high
-
+  issues: write # opens a tracking issue on unresolved critical/high
 jobs:
   scan:
     runs-on: ubuntu-latest
@@ -37,12 +33,10 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-
       - name: Install Rust toolchain (stable)
         uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # stable
         with:
           toolchain: stable
-
       - name: Install panic-attacker
         # Installed from crates.io (the estate crate is published at
         # `hyperpolymath/panic-attack`). The previous `road-skate/features/
@@ -55,14 +49,12 @@ jobs:
             echo "::error::panic-attacker unavailable from crates.io"
             exit 1
           }
-
       - name: Run panic-attack
         id: scan
         continue-on-error: true
         run: |
           set -o pipefail
           panic-attack assail 2>&1 | tee panic-attack.log
-
       - name: Render summary
         if: always()
         run: |
@@ -83,7 +75,6 @@ jobs:
             echo ""
             echo "Policy: see [docs/standards/PANIC-ATTACK.adoc](docs/standards/PANIC-ATTACK.adoc)."
           } >> "$GITHUB_STEP_SUMMARY"
-
       - name: Upload log artifact
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

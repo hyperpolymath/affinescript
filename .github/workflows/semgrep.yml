@@ -1,6 +1,5 @@
 # SPDX-License-Identifier: MPL-2.0
 name: Semgrep SAST
-
 on:
   push:
     branches: [main]
@@ -9,15 +8,12 @@ on:
   schedule:
     - cron: '0 5 * * 1'
   workflow_dispatch:
-
 permissions: read-all
-
 # Actions concurrency pool. Applied only to read-only check workflows
 # (no publish/mutation), so cancelling a superseded run is always safe.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
 jobs:
   semgrep:
     runs-on: ubuntu-latest
@@ -28,12 +24,10 @@ jobs:
       image: semgrep/semgrep
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
       - name: Run Semgrep
         run: semgrep scan --sarif --output=semgrep.sarif --config=auto .
         env:
           SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
-
       - name: Upload SARIF
         uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
         with:

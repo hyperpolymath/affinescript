@@ -1,42 +1,33 @@
 # SPDX-License-Identifier: MPL-2.0
 name: CI
-
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
-
 permissions:
   contents: read
-
 # Actions concurrency pool. Applied only to read-only check workflows
 # (no publish/mutation), so cancelling a superseded run is always safe.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
       - name: Set up OCaml
         uses: ocaml/setup-ocaml@e32b06a3e831ff2fbc6f08cf35be2085e3918014 # v3
         with:
           ocaml-compiler: "5.1"
-
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v4
         with:
           node-version: "20"
-
       - name: Install dependencies
         run: opam install . --deps-only --with-test --with-doc
-
       - name: Install tree-sitter CLI (for res-to-affine walker tests)
         # Same rationale as the migration-assistant job (see below):
         # npm distribution is the fast CI install (~5 s). The walker
@@ -45,28 +36,21 @@ jobs:
         # this step is only required to *exercise* the walker — the
         # build itself does not depend on it.
         run: npm install -g tree-sitter-cli@^0.25.0
-
       - name: Build pinned tree-sitter-rescript grammar
         run: ./editors/tree-sitter-rescript/scripts/install.sh
-
       - name: Build
         run: opam exec -- dune build
-
       - name: Run tests
         run: opam exec -- dune runtest
-
       - name: Run codegen WASM tests
         run: opam exec -- ./tools/run_codegen_wasm_tests.sh
-
       - name: Run codegen Deno-ESM tests (issue #122)
         # Compiles tests/codegen-deno/*.affine with the --deno-esm backend
         # and runs the *.harness.mjs under Node (CI has Node 20, not Deno;
         # the Phase 1 fixtures are pure logic so Node ESM exercises them).
         run: opam exec -- ./tools/run_codegen_deno_tests.sh
-
       - name: Run face-transformer regression tests
         run: opam exec -- ./tools/run_face_transformer_tests.sh
-
       - name: Issue #35 Phase 3 — block extension.ts regression
         # The vscode extension is now authored in extension.affine and
         # compiled to extension.cjs. Re-introducing extension.ts would
@@ -74,7 +58,6 @@ jobs:
         # the policy forbids. See tools/check-no-extension-ts.sh for
         # rationale + recovery instructions.
         run: ./tools/check-no-extension-ts.sh
-
       - name: Issue #176 — doc-truthing re-drift guard (DOC-01..09)
         # Single toolchain-free gate enforcing both halves of the doc-truthing
         # MONITOR: the presence invariants (DOC-04/05 — banner pointers, matrix
@@ -83,65 +66,51 @@ jobs:
         # "production-ready" / stdlib-% phrase beyond tools/doc-overclaims.allow).
         # See tools/check-doc-truthing.sh.
         run: ./tools/check-doc-truthing.sh
-
       - name: Check formatting
         run: opam exec -- dune build @fmt
-
   lint:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
       - name: Set up OCaml
         uses: ocaml/setup-ocaml@e32b06a3e831ff2fbc6f08cf35be2085e3918014 # v3
         with:
           ocaml-compiler: "5.1"
-
       - name: Install dependencies
         # Match the build job: `dune build` compiles everything including
         # test/ (which depends on alcotest, with-test) and the @doc target
         # below (which depends on odoc, with-doc). Without these flags, lint
         # fails on missing alcotest before it ever reaches the doc step.
         run: opam install . --deps-only --with-test --with-doc
-
       - name: Build
         run: opam exec -- dune build
-
       - name: Lint with odoc
         run: opam exec -- dune build @doc
         continue-on-error: true
-
   bench-visibility:
     # Visibility-only microbenchmarks per docs/standards/TESTING.adoc
     # §"Bench standards". Does NOT block merge. Promotion to a
     # ratcheted gate requires a calibrated baseline first.
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
       - name: Set up OCaml
         uses: ocaml/setup-ocaml@e32b06a3e831ff2fbc6f08cf35be2085e3918014 # v3
         with:
           ocaml-compiler: "5.1"
-
       - name: Install dependencies
         run: opam install . --deps-only --with-test --with-doc
-
       - name: Build bench targets
         run: opam exec -- dune build @bench --force
         continue-on-error: true
-
       - name: Run benches
         id: bench
         continue-on-error: true
         run: |
           set -o pipefail
           opam exec -- dune runtest @bench --force 2>&1 | tee bench-output.log
-
       - name: Render bench summary
         if: always()
         run: |
@@ -156,7 +125,6 @@ jobs:
               echo '```'
             fi
           } >> "$GITHUB_STEP_SUMMARY"
-
       - name: Upload bench log
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -164,35 +132,28 @@ jobs:
           name: bench-output
           path: bench-output.log
           retention-days: 30
-
   coverage-visibility:
     # Visibility-only coverage report per
     # docs/standards/TESTING.adoc §"Coverage (visibility-only)".
     # No merge-blocking floor today.
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
       - name: Set up OCaml
         uses: ocaml/setup-ocaml@e32b06a3e831ff2fbc6f08cf35be2085e3918014 # v3
         with:
           ocaml-compiler: "5.1"
-
       - name: Install dependencies
         run: opam install . --deps-only --with-test --with-doc
-
       - name: Run tests with bisect_ppx instrumentation
         run: |
           opam exec -- dune runtest --force --instrument-with bisect_ppx
-
       - name: Generate HTML coverage report
         continue-on-error: true
         run: |
           opam exec -- bisect-ppx-report html -o _coverage --title="AffineScript coverage"
           opam exec -- bisect-ppx-report summary | tee coverage-summary.txt
-
       - name: Render coverage summary
         if: always()
         run: |
@@ -207,7 +168,6 @@ jobs:
               echo '```'
             fi
           } >> "$GITHUB_STEP_SUMMARY"
-
       - name: Upload coverage HTML
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -215,7 +175,6 @@ jobs:
           name: coverage-html
           path: _coverage
           retention-days: 30
-
   vscode-smoke:
     # In-editor end-to-end smoke test for the .affine VS Code extension
     # (issue #139). Loads the compiled out/extension.cjs in a real VS Code
@@ -232,16 +191,13 @@ jobs:
     # (previously gated on #104's npm publish). A real regression should
     # turn this job red and gate, so no `continue-on-error`.
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v4
         with:
           node-version: "20"
-
       - name: Install test runner dependencies
         working-directory: editors/vscode
         # The compiled out/extension.cjs is checked in (see #35 Phase 3)
@@ -251,7 +207,6 @@ jobs:
         # The #381 SKIP-when-missing guard remains downstream as a safety
         # net but is now expected to find the adapter present.
         run: npm install --no-audit --no-fund
-
       - name: Report adapter availability
         working-directory: editors/vscode
         # Surface the @hyperpolymath/affine-vscode publish state in the
@@ -264,7 +219,6 @@ jobs:
           else
             echo "::notice title=adapter::@hyperpolymath/affine-vscode NOT installed (optional, awaits #104 npm publish) — smoke will skip"
           fi
-
       - name: Run in-editor smoke (xvfb)
         working-directory: editors/vscode
         # Headless display required because @vscode/test-electron launches
@@ -272,7 +226,6 @@ jobs:
         # available the suite calls `this.skip()` in suiteSetup and exits
         # 0 with all tests marked skipped (mocha's expected behaviour).
         run: xvfb-run -a npm test
-
   migration-assistant:
     # Build pinned tree-sitter-rescript grammar consumed by the
     # `.res → .affine` migration assistant (#57 Phase 2). The grammar
@@ -281,16 +234,13 @@ jobs:
     # commit still build cleanly and (b) gate `tools/res-to-affine/`
     # walker work that depends on the generated parser.
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v4
         with:
           node-version: "20"
-
       - name: Install tree-sitter CLI
         # npm install of tree-sitter-cli is the fast CI path (~5 s vs.
         # ~5 min for `cargo install tree-sitter-cli`). The repo's
@@ -300,7 +250,6 @@ jobs:
         # tracks `tree-sitter-rescript`'s package.json devDependency
         # range.
         run: npm install -g tree-sitter-cli@^0.25.0
-
       - name: Build pinned tree-sitter-rescript grammar
         # Direct script invocation rather than `just install-grammar` —
         # GitHub Actions runners do not ship `just` preinstalled, and
@@ -308,7 +257,6 @@ jobs:
         # adding a setup step for it. The justfile recipe still exists
         # for local developer ergonomics; both call the same script.
         run: ./editors/tree-sitter-rescript/scripts/install.sh
-
       - name: Verify generated parser
         # `tree-sitter generate` is supposed to drop src/parser.c into
         # the cloned grammar. If it didn't, the install path is broken
@@ -318,7 +266,6 @@ jobs:
           test -f tools/vendor/tree-sitter-rescript/src/parser.c \
             || { echo "error: parser.c not produced by tree-sitter generate" >&2; exit 1; }
           echo "parser.c size: $(wc -c < tools/vendor/tree-sitter-rescript/src/parser.c) bytes"
-
       - name: Smoke-parse a sample .res file
         # Sanity-check that the grammar actually parses a non-trivial
         # ReScript source. Picks the existing res-to-affine test fixture

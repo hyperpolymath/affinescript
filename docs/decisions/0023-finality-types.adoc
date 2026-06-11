@@ -1,0 +1,143 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath (Jonathan D.A. Jewell) <j.d.a.jewell@open.ac.uk>
+= ADR-023: Finality types — assured irreversibility as AffineScript's dual to ephapax's accounted loss
+Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+:toc:
+:toclevels: 2
+:icons: font
+
+Status:: Draft (stub — design-only; no implementation authorised by this document)
+Date:: 2026-06-11
+Issue:: https://github.com/hyperpolymath/affinescript/issues/554[#554 (soundness gate)], https://github.com/hyperpolymath/affinescript/issues/553[#553 (ADR-022 sequencing)]
+Series:: Settled-decisions ledger; companion entry to be added to `.machine_readable/6a2/META.a2ml` at ratification.
+
+== The hard question, on page one
+
+*Deep/transitive freeze.* If `freeze x` coerces `x: T @ 1` to `T @ ω`, what
+happens to fields, captured references, and aliases reachable *through*
+`x`? Shallow freeze is unsound for assurance claims (a frozen aggregate
+with a thawable interior is not final); recursive freeze needs a
+reachability story the type system must carry. The literature is
+*viewpoint adaptation* (Pony's `iso`→`val` via `consume`), Clean's
+uniqueness one-way coercion, and OCaml's uniqueness/modes work. Any
+ratified version of this ADR must answer this before the coercion's
+typing rule is written. Related local wrinkle: `const mut` module-level
+bindings (#549) have no cross-function consumption story yet — freezing
+module state is in scope for this question, not exempt from it.
+
+== Context
+
+AffineScript's identity is affine-first: "affine is the permanent resting
+state" (DESIGN-VISION.adoc), explicitly contrasted with ephapax's
+affine-as-enabler-of-linear. The estate disambiguation doc
+(`nextgen-languages/docs/disambiguation/ephapax-vs-affinescript.md`)
+limits shared surface to the typed-wasm target and bans cross-applying
+mechanisms between the two languages.
+
+Finality types lean *into* that identity rather than against it.
+The upstream theorem already exists: echo-types' `no-section-weaken`
+(EchoLinear.agda) — no pure function reconstructs a value from its affine
+residue. Ephapax consumes the *witness* side of that theorem (residues,
+receipts, accounted loss). AffineScript consumes only the *negative*
+side: once a value crosses a finality boundary, the type system
+guarantees nothing brings it back.
+
+Duality, stated once: *ephapax = accounted loss; AffineScript = assured
+finality.* Same theorem, opposite poles.
+
+== Proposed family
+
+[cols="1,2,3"]
+|===
+|Kind |Lane |Sketch
+
+|`freeze`
+|*Quantity lane* (`lib/quantity.ml`, QTT `{0,1,ω}`)
+|One-way coercion `1 → ω`. No `thaw` exists, ever. Deliberately NOT the
+borrow lane: borrow-graph structures are slated for deletion by ADR-022
+M4, and `quantity.ml` is self-contained with branch snapshot/join
+machinery already present. Note `freeze ≠ unsafe forget` (which lowers to
+a stack discard, codegen.ml:1436-1438): freeze is a typed coercion with
+an assurance, forget is an escape hatch.
+
+|`seal`
+|Row lane (row polymorphism exists in the typechecker)
+|Irreversible row closure: a sealed record/effect row admits no further
+extension or restriction. Type-level only at v0.
+
+|`commit`
+|stdlib lowering (`Transaction.affine`)
+|First concrete instance and the first *emission* arm: transaction commit
+lowers to a `commit` receipt in the `typedwasm.receipts` carrier (see
+Carrier). Chosen first because the db-theory work (#522–#528,
+echo-types#174) already defines the obligation shape.
+
+|`revoke`
+|Capability lane
+|Capability invalidation with no re-grant from the revoked handle.
+Converges with the reserved `Encode.capabilities` wire slot
+(`lib/tw_section.mli`).
+|===
+
+== Carrier (Stage-E / CONV-04 log entry — no compiler work)
+
+The receipts RFC lives upstream in `hyperpolymath/typed-wasm`
+(`typedwasm.receipts`: digest/unit records; echo family v0 =
+`region_exit` / `drop` / `observe`; finality family *reserved* =
+`freeze` / `seal` / `commit` / `revoke`). Hard rule inherited here:
+*witness payloads never serialise.* AffineScript's first emission arm is
+`commit` receipts from `Transaction.affine` lowering. The control-arm
+asymmetry — AffineScript has no `region_exit`/`drop` events to emit
+(no reclamation machinery exists on any backend) — is the design, not a
+gap: AffineScript is the affine/discard control group; ephapax is the
+linear/witness treatment.
+
+Per the disambiguation doc's own rule (:106), the "What is shared"
+section there must be updated *before* the receipts carrier becomes
+shared surface.
+
+== Anti-hollowing rule (reverse direction)
+
+This repo receives at most *negative capabilities* (no-section
+consequences) and *digest/unit receipts*. It never grows witness shapes
+(`Σ`-typed preimages, `LEcho linear`, observation obligations). If a
+change request needs a witness, it belongs in ephapax — route it there.
+
+== Sequencing constraints (non-negotiable)
+
+. *No assurance claims while #554 is open.* A finality "guarantee"
+  built over a borrow checker with a live use-after-move false negative
+  is an overclaim of exactly the class the doc-truthing ratchet cannot
+  catch.
+. *Full `&mut`-at-freeze-point enforcement waits for ADR-022 (#553).*
+  Today the typechecker cannot even see exclusivity at a coercion point:
+  `&mut e` types as plain `TRef` (typecheck.ml:615-619, "exclusivity is a
+  static borrow-checker property only"). Until origins exist, freeze can
+  only be checked against the quantity environment, not against live
+  exclusive borrows.
+. *Prerequisite hygiene:* `quantity.ml`'s environment is keyed by
+  variable name, not symbol id (quantity.ml:196-205); nested-scope
+  shadowing already miscounts (over-reject direction). Re-key by symbol
+  id before `freeze` lands — a finality coercion must not depend on
+  name-collision behaviour.
+. *May land before any of the above:* this ADR; the reserved carrier
+  kind names (upstream RFC); the quantity-lane coercion *design* (typing
+  rule + degradation laws on paper).
+
+== Precedents to cite at ratification
+
+* Clean: uniqueness as a one-way coercion (unique → non-unique).
+* Pony: `iso` → `val` via `consume`; viewpoint adaptation for the deep
+  case.
+* OCaml: uniqueness/modes (Jane Street's mode system work).
+* Upstream theorem: echo-types `no-section-weaken` (EchoLinear.agda:51-54)
+  with its honest bound — type-level non-reconstructibility, NOT byte
+  zeroing, NOT runtime attestation. That disclosure discipline travels
+  with every consumer of the vocabulary, including this one.
+
+== Status of this stub
+
+Drafted 2026-06-11 on owner instruction following the whole-picture
+survey; concurrence recorded against the identity doc and ADR-022
+sequencing. Not ratified. No implementation. Lands via PR when the owner
+moves it; until then it is an uncommitted draft.

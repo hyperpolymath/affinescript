@@ -10,28 +10,23 @@
 # at lowercase prevents the duplicate-file regression.
 
 name: Stdlib Naming Convention
-
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
-
 permissions:
   contents: read
-
 # Actions concurrency pool. Applied only to read-only check workflows
 # (no publish/mutation), so cancelling a superseded run is always safe.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
 jobs:
   enforce-lowercase-stdlib:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
       - name: Enforce lowercase .affine filenames in stdlib/
         run: |
           BAD=$(find stdlib -maxdepth 1 -type f -name '*.affine' | grep -E '/stdlib/[A-Z]' || true)
