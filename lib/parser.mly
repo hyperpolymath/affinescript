@@ -228,6 +228,20 @@ extern_type_decl:
 const_decl:
   | vis = visibility? CONST name = ident COLON ty = type_expr EQ value = expr SEMICOLON
     { TopConst { tc_vis = Option.value vis ~default:Private;
+                 tc_mut = false;
+                 tc_name = name; tc_ty = ty; tc_value = value } }
+  /* #548: `const mut <name>: T = init;` — mutable module-level binding.
+     Mirrors the function-scope `let mut <name>: T = init;` shape (handled
+     in let_stmt / let_expr) one level up to module scope. The MUT token
+     here is the same one already accepted in let_stmt's `LET mut_ = MUT?`
+     prefix; no new token, no new keyword. Lowering emits JS `let` instead
+     of JS `const` so the binding is JS-mutable; writes from inside any
+     function body go through the existing StmtAssign path (which already
+     compiles to `name = value;` and was already valid for module-level
+     `let`-style bindings on the codegen side). */
+  | vis = visibility? CONST MUT name = ident COLON ty = type_expr EQ value = expr SEMICOLON
+    { TopConst { tc_vis = Option.value vis ~default:Private;
+                 tc_mut = true;
                  tc_name = name; tc_ty = ty; tc_value = value } }
 
 

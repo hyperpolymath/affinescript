@@ -319,9 +319,10 @@ let flatten_imports (loader : t) (prog : program) : program =
                 let renamed = match found with
                   | `Fn fd ->
                     `Fn { fd with fd_name = { fd.fd_name with name = bound_name } }
-                  | `Const (TopConst { tc_vis; tc_name; tc_ty; tc_value }) ->
+                  | `Const (TopConst { tc_vis; tc_mut; tc_name; tc_ty; tc_value }) ->
                     `Const (TopConst {
                       tc_vis;
+                      tc_mut;
                       tc_name = { tc_name with name = bound_name };
                       tc_ty;
                       tc_value;

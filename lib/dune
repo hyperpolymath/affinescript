@@ -38,6 +38,7 @@
   face
   face_pragma
   formatter
+  int_div_classifier
   bash_codegen
   cuda_codegen
   faust_codegen

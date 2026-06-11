@@ -37,7 +37,7 @@ use string::{ split, join };
 ///
 /// Example:
 ///   printf("Hello, {}! You are {} years old.", ["Alice", 30])
-fn printf(format: String, args: [Any]) -> () {
+pub fn printf(format: String, args: [Any]) -> () {
   let flen = len(format);
   let mut arg_idx = 0;
   let mut i = 0;
@@ -59,23 +59,23 @@ fn printf(format: String, args: [Any]) -> () {
 }
 
 /// Print formatted string with trailing newline
-fn println_fmt(format: String, args: [Any]) -> () {
+pub fn println_fmt(format: String, args: [Any]) -> () {
   printf(format, args);
   println("");
 }
 
 /// Print debug representation of any value
-fn debug<T>(value: T) -> () {
+pub fn debug<T>(value: T) -> () {
   eprintln("DEBUG: " ++ show(value));
 }
 
 /// Print error with newline to stderr (convenience wrapper)
-fn error(msg: String) -> () {
+pub fn error(msg: String) -> () {
   eprintln("[ERROR] " ++ msg);
 }
 
 /// Print warning with newline to stderr
-fn warn(msg: String) -> () {
+pub fn warn(msg: String) -> () {
   eprintln("[WARN] " ++ msg);
 }
 
@@ -86,7 +86,7 @@ fn warn(msg: String) -> () {
 // read_file, write_file, append_file, file_exists are builtins — see module header
 
 /// Read file as a list of lines
-fn read_lines(path: String) -> Result<[String], String> {
+pub fn read_lines(path: String) -> Result<[String], String> {
   match read_file(path) {
     Ok(content) => Ok(split(content, "\n")),
     Err(msg) => Err(msg)
@@ -97,7 +97,7 @@ fn read_lines(path: String) -> Result<[String], String> {
 ///
 /// Note: this reads the entire file; a more efficient builtin would be
 /// preferable for large files once the runtime supports stat().
-fn file_size(path: String) -> Result<Int, String> {
+pub fn file_size(path: String) -> Result<Int, String> {
   match read_file(path) {
     Ok(content) => Ok(len(content)),
     Err(msg) => Err(msg)
@@ -124,7 +124,7 @@ extern fn remove_dir(path: String) -> Result<(), String>;
 // ============================================================================
 
 /// Join path components with the system separator (/)
-fn path_join(components: [String]) -> String {
+pub fn path_join(components: [String]) -> String {
   let mut result = "";
   let mut first = true;
   for component in components {
@@ -142,7 +142,7 @@ fn path_join(components: [String]) -> String {
 ///
 /// Returns None if no extension is found.
 /// Example: path_extension("file.txt") => Some("txt")
-fn path_extension(path: String) -> Option<String> {
+pub fn path_extension(path: String) -> Option<String> {
   let plen = len(path);
   let mut i = plen - 1;
   while i >= 0 {
@@ -166,7 +166,7 @@ fn path_extension(path: String) -> Option<String> {
 /// Get the filename component from a path
 ///
 /// Example: path_filename("/home/user/file.txt") => "file.txt"
-fn path_filename(path: String) -> String {
+pub fn path_filename(path: String) -> String {
   let plen = len(path);
   if plen == 0 {
     return "";
@@ -185,7 +185,7 @@ fn path_filename(path: String) -> String {
 /// Get the directory component from a path
 ///
 /// Example: path_dirname("/home/user/file.txt") => "/home/user"
-fn path_dirname(path: String) -> String {
+pub fn path_dirname(path: String) -> String {
   let plen = len(path);
   if plen == 0 {
     return ".";
@@ -207,7 +207,7 @@ fn path_dirname(path: String) -> String {
 /// Get the filename without its extension (stem)
 ///
 /// Example: path_stem("archive.tar.gz") => "archive.tar"
-fn path_stem(path: String) -> String {
+pub fn path_stem(path: String) -> String {
   let filename = path_filename(path);
   let flen = len(filename);
   let mut i = flen - 1;
@@ -239,7 +239,7 @@ extern fn chdir(path: String) -> Result<(), String>;
 // read_line is a builtin — see module header
 
 /// Read all input from stdin until EOF
-fn read_stdin() -> Result<String, String> {
+pub fn read_stdin() -> Result<String, String> {
   let mut parts = [];
   let mut done = false;
   while !done {
@@ -256,7 +256,7 @@ fn read_stdin() -> Result<String, String> {
 }
 
 /// Prompt user for input and return their response
-fn prompt(message: String) -> Result<String, String> {
+pub fn prompt(message: String) -> Result<String, String> {
   print(message);
   read_line()
 }
@@ -268,7 +268,7 @@ fn prompt(message: String) -> Result<String, String> {
 // time_now is a builtin — see module header
 
 /// Measure the wall-clock time of a function call (in seconds)
-fn timed<T>(f: () -> T) -> (T, Float) {
+pub fn timed<T>(f: () -> T) -> (T, Float) {
   let start = time_now();
   let result = f();
   let elapsed = time_now() - start;

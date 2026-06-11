@@ -20,7 +20,7 @@ use prelude::{Option, Some, None, Result, Ok, Err};
 // ============================================================================
 
 /// Map over Some value
-fn map<T, U>(f: T -> U, opt: Option<T>) -> Option<U> {
+pub fn map<T, U>(f: T -> U, opt: Option<T>) -> Option<U> {
   match opt {
     Some(value) => Some(f(value)),
     None => None
@@ -28,7 +28,7 @@ fn map<T, U>(f: T -> U, opt: Option<T>) -> Option<U> {
 }
 
 /// Apply function in Option to value in Option
-fn apply<T, U>(f_opt: Option<T -> U>, value_opt: Option<T>) -> Option<U> {
+pub fn apply<T, U>(f_opt: Option<T -> U>, value_opt: Option<T>) -> Option<U> {
   match (f_opt, value_opt) {
     (Some(f), Some(value)) => Some(f(value)),
     _ => None
@@ -36,7 +36,7 @@ fn apply<T, U>(f_opt: Option<T -> U>, value_opt: Option<T>) -> Option<U> {
 }
 
 /// Flat map (bind) over Option
-fn flat_map<T, U>(f: T -> Option<U>, opt: Option<T>) -> Option<U> {
+pub fn flat_map<T, U>(f: T -> Option<U>, opt: Option<T>) -> Option<U> {
   match opt {
     Some(value) => f(value),
     None => None
@@ -44,12 +44,12 @@ fn flat_map<T, U>(f: T -> Option<U>, opt: Option<T>) -> Option<U> {
 }
 
 /// Also known as 'and_then'
-fn and_then<T, U>(opt: Option<T>, f: T -> Option<U>) -> Option<U> {
+pub fn and_then<T, U>(opt: Option<T>, f: T -> Option<U>) -> Option<U> {
   flat_map(f, opt)
 }
 
 /// Or else - use alternative Option if None
-fn or_else<T>(opt: Option<T>, alternative: Option<T>) -> Option<T> {
+pub fn or_else<T>(opt: Option<T>, alternative: Option<T>) -> Option<T> {
   match opt {
     Some(_) => opt,
     None => alternative
@@ -57,7 +57,7 @@ fn or_else<T>(opt: Option<T>, alternative: Option<T>) -> Option<T> {
 }
 
 /// Or else computed - compute alternative only if None
-fn or_else_with<T>(opt: Option<T>, f: () -> Option<T>) -> Option<T> {
+pub fn or_else_with<T>(opt: Option<T>, f: () -> Option<T>) -> Option<T> {
   match opt {
     Some(_) => opt,
     None => f()
@@ -69,7 +69,7 @@ fn or_else_with<T>(opt: Option<T>, f: () -> Option<T>) -> Option<T> {
 // ============================================================================
 
 /// Check if Option is Some
-fn is_some<T>(opt: Option<T>) -> Bool {
+pub fn is_some<T>(opt: Option<T>) -> Bool {
   match opt {
     Some(_) => true,
     None => false
@@ -77,7 +77,7 @@ fn is_some<T>(opt: Option<T>) -> Bool {
 }
 
 /// Check if Option is None
-fn is_none<T>(opt: Option<T>) -> Bool {
+pub fn is_none<T>(opt: Option<T>) -> Bool {
   match opt {
     Some(_) => false,
     None => true
@@ -85,7 +85,7 @@ fn is_none<T>(opt: Option<T>) -> Bool {
 }
 
 /// Check if Option contains specific value
-fn contains<T>(opt: Option<T>, value: T) -> Bool {
+pub fn contains<T>(opt: Option<T>, value: T) -> Bool {
   match opt {
     Some(x) => x == value,
     None => false
@@ -97,7 +97,7 @@ fn contains<T>(opt: Option<T>, value: T) -> Bool {
 // ============================================================================
 
 /// Unwrap Some value or panic
-fn unwrap<T>(opt: Option<T>) -> T {
+pub fn unwrap<T>(opt: Option<T>) -> T {
   match opt {
     Some(value) => value,
     None => panic("Called unwrap on None")
@@ -105,7 +105,7 @@ fn unwrap<T>(opt: Option<T>) -> T {
 }
 
 /// Unwrap with custom error message
-fn expect<T>(opt: Option<T>, msg: String) -> T {
+pub fn expect<T>(opt: Option<T>, msg: String) -> T {
   match opt {
     Some(value) => value,
     None => panic(msg)
@@ -121,7 +121,7 @@ pub fn unwrap_or<T>(opt: Option<T>, default: T) -> T {
 }
 
 /// Unwrap or compute default value
-fn unwrap_or_else<T>(opt: Option<T>, f: () -> T) -> T {
+pub fn unwrap_or_else<T>(opt: Option<T>, f: () -> T) -> T {
   match opt {
     Some(value) => value,
     None => f()
@@ -129,7 +129,7 @@ fn unwrap_or_else<T>(opt: Option<T>, f: () -> T) -> T {
 }
 
 /// Get value or return from function with default
-fn ok_or<T, E>(opt: Option<T>, err: E) -> Result<T, E> {
+pub fn ok_or<T, E>(opt: Option<T>, err: E) -> Result<T, E> {
   match opt {
     Some(value) => Ok(value),
     None => Err(err)
@@ -137,7 +137,7 @@ fn ok_or<T, E>(opt: Option<T>, err: E) -> Result<T, E> {
 }
 
 /// Get value or compute error
-fn ok_or_else<T, E>(opt: Option<T>, f: () -> E) -> Result<T, E> {
+pub fn ok_or_else<T, E>(opt: Option<T>, f: () -> E) -> Result<T, E> {
   match opt {
     Some(value) => Ok(value),
     None => Err(f())
@@ -149,7 +149,7 @@ fn ok_or_else<T, E>(opt: Option<T>, f: () -> E) -> Result<T, E> {
 // ============================================================================
 
 /// Filter Option based on predicate
-fn filter<T>(pred: T -> Bool, opt: Option<T>) -> Option<T> {
+pub fn filter<T>(pred: T -> Bool, opt: Option<T>) -> Option<T> {
   match opt {
     Some(value) => if pred(value) { Some(value) } else { None },
     None => None
@@ -157,7 +157,7 @@ fn filter<T>(pred: T -> Bool, opt: Option<T>) -> Option<T> {
 }
 
 /// Zip two Options together
-fn zip<A, B>(a: Option<A>, b: Option<B>) -> Option<(A, B)> {
+pub fn zip<A, B>(a: Option<A>, b: Option<B>) -> Option<(A, B)> {
   match (a, b) {
     (Some(x), Some(y)) => Some((x, y)),
     _ => None
@@ -165,7 +165,7 @@ fn zip<A, B>(a: Option<A>, b: Option<B>) -> Option<(A, B)> {
 }
 
 /// Zip with function
-fn zip_with<A, B, C>(f: (A, B) -> C, a: Option<A>, b: Option<B>) -> Option<C> {
+pub fn zip_with<A, B, C>(f: (A, B) -> C, a: Option<A>, b: Option<B>) -> Option<C> {
   match (a, b) {
     (Some(x), Some(y)) => Some(f(x, y)),
     _ => None
@@ -173,7 +173,7 @@ fn zip_with<A, B, C>(f: (A, B) -> C, a: Option<A>, b: Option<B>) -> Option<C> {
 }
 
 /// Unzip Option of pair
-fn unzip<A, B>(opt: Option<(A, B)>) -> (Option<A>, Option<B>) {
+pub fn unzip<A, B>(opt: Option<(A, B)>) -> (Option<A>, Option<B>) {
   match opt {
     Some((a, b)) => (Some(a), Some(b)),
     None => (None, None)
@@ -185,7 +185,7 @@ fn unzip<A, B>(opt: Option<(A, B)>) -> (Option<A>, Option<B>) {
 // ============================================================================
 
 /// Transpose Option of list to list of Option
-fn transpose<T>(opt: Option<[T]>) -> [Option<T>] {
+pub fn transpose<T>(opt: Option<[T]>) -> [Option<T>] {
   match opt {
     Some(list) => {
       let mut result = [];
@@ -199,7 +199,7 @@ fn transpose<T>(opt: Option<[T]>) -> [Option<T>] {
 }
 
 /// Collect list of Options into Option of list (None on any None)
-fn collect<T>(opts: [Option<T>]) -> Option<[T]> {
+pub fn collect<T>(opts: [Option<T>]) -> Option<[T]> {
   let mut values = [];
   for opt in opts {
     match opt {
@@ -211,7 +211,7 @@ fn collect<T>(opts: [Option<T>]) -> Option<[T]> {
 }
 
 /// Filter out Nones from list
-fn cat_options<T>(opts: [Option<T>]) -> [T] {
+pub fn cat_options<T>(opts: [Option<T>]) -> [T] {
   let mut values = [];
   for opt in opts {
     match opt {
@@ -226,7 +226,7 @@ fn cat_options<T>(opts: [Option<T>]) -> [T] {
 }
 
 /// Map list with function returning Option, filtering Nones
-fn map_filter<T, U>(f: T -> Option<U>, list: [T]) -> [U] {
+pub fn map_filter<T, U>(f: T -> Option<U>, list: [T]) -> [U] {
   let mut results = [];
   for x in list {
     results = results ++ [f(x)];
@@ -235,7 +235,7 @@ fn map_filter<T, U>(f: T -> Option<U>, list: [T]) -> [U] {
 }
 
 /// Find first Some in list of Options
-fn first_some<T>(opts: [Option<T>]) -> Option<T> {
+pub fn first_some<T>(opts: [Option<T>]) -> Option<T> {
   for opt in opts {
     match opt {
       Some(value) => return Some(value),
@@ -246,7 +246,7 @@ fn first_some<T>(opts: [Option<T>]) -> Option<T> {
 }
 
 /// Get head of list as Option
-fn head<T>(list: [T]) -> Option<T> {
+pub fn head<T>(list: [T]) -> Option<T> {
   if len(list) > 0 {
     Some(list[0])
   } else {
@@ -255,7 +255,7 @@ fn head<T>(list: [T]) -> Option<T> {
 }
 
 /// Get tail of list as Option
-fn tail<T>(list: [T]) -> Option<[T]> {
+pub fn tail<T>(list: [T]) -> Option<[T]> {
   if len(list) > 0 {
     Some(list[1:])
   } else {
@@ -264,7 +264,7 @@ fn tail<T>(list: [T]) -> Option<[T]> {
 }
 
 /// Get last element of list as Option
-fn last<T>(list: [T]) -> Option<T> {
+pub fn last<T>(list: [T]) -> Option<T> {
   let n = len(list);
   if n > 0 {
     Some(list[n - 1])
@@ -274,7 +274,7 @@ fn last<T>(list: [T]) -> Option<T> {
 }
 
 /// Get element at index as Option
-fn get<T>(list: [T], index: Int) -> Option<T> {
+pub fn get<T>(list: [T], index: Int) -> Option<T> {
   if index >= 0 && index < len(list) {
     Some(list[index])
   } else {
@@ -287,7 +287,7 @@ fn get<T>(list: [T], index: Int) -> Option<T> {
 // ============================================================================
 
 /// Convert bool to Option
-fn bool_to_option(b: Bool) -> Option<()> {
+pub fn bool_to_option(b: Bool) -> Option<()> {
   if b {
     Some(())
   } else {
@@ -296,17 +296,17 @@ fn bool_to_option(b: Bool) -> Option<()> {
 }
 
 /// AND operation on Options (both must be Some)
-fn option_and<T, U>(a: Option<T>, b: Option<U>) -> Option<(T, U)> {
+pub fn option_and<T, U>(a: Option<T>, b: Option<U>) -> Option<(T, U)> {
   zip(a, b)
 }
 
 /// OR operation on Options (first Some wins)
-fn option_or<T>(a: Option<T>, b: Option<T>) -> Option<T> {
+pub fn option_or<T>(a: Option<T>, b: Option<T>) -> Option<T> {
   or_else(a, b)
 }
 
 /// XOR operation on Options (exactly one must be Some)
-fn option_xor<T>(a: Option<T>, b: Option<T>) -> Option<T> {
+pub fn option_xor<T>(a: Option<T>, b: Option<T>) -> Option<T> {
   match (a, b) {
     (Some(x), None) => Some(x),
     (None, Some(y)) => Some(y),
@@ -319,7 +319,7 @@ fn option_xor<T>(a: Option<T>, b: Option<T>) -> Option<T> {
 // ============================================================================
 
 /// Flatten nested Option
-fn flatten<T>(opt: Option<Option<T>>) -> Option<T> {
+pub fn flatten<T>(opt: Option<Option<T>>) -> Option<T> {
   match opt {
     Some(inner) => inner,
     None => None
@@ -327,19 +327,19 @@ fn flatten<T>(opt: Option<Option<T>>) -> Option<T> {
 }
 
 /// Replace None with provided Option
-fn replace_none<T>(opt: Option<T>, replacement: Option<T>) -> Option<T> {
+pub fn replace_none<T>(opt: Option<T>, replacement: Option<T>) -> Option<T> {
   or_else(opt, replacement)
 }
 
 /// Take value from Option, leaving None
-fn take<T>(mut opt: Option<T>) -> Option<T> {
+pub fn take<T>(mut opt: Option<T>) -> Option<T> {
   let result = opt;
   opt = None;
   result
 }
 
 /// Insert value into Option if None
-fn get_or_insert<T>(mut opt: Option<T>, value: T) -> T {
+pub fn get_or_insert<T>(mut opt: Option<T>, value: T) -> T {
   match opt {
     Some(x) => x,
     None => {

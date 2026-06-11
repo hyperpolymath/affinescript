@@ -648,6 +648,12 @@ let () =
   (* Kilobyte display string: `(n/1024).toFixed(2)` — runtime number
      formatting is an honest host primitive in every language. *)
   b "kbString"    (fun a -> Printf.sprintf "(Number(%s) / 1024).toFixed(2)" (arg 0 a));
+  (* String suffix predicates + numeric formatter (#470). Originally
+     intended to ride on stdlib bodies; without extern->stdlib linkage
+     they need explicit lowering entries. *)
+  b "endsWith"    (fun a -> Printf.sprintf "String(%s).endsWith(%s)" (arg 0 a) (arg 1 a));
+  b "stripSuffix" (fun a -> Printf.sprintf "((__s, __x) => __s.endsWith(__x) ? __s.slice(0, -__x.length) : __s)(%s, %s)" (arg 0 a) (arg 1 a));
+  b "numToFixed2" (fun a -> Printf.sprintf "Number(%s).toFixed(2)" (arg 0 a));
   (* ---- misc host ---- *)
   b "dateNow"     (fun _ -> "Date.now()");
   (* `new Date().toISOString()` — UTC ISO-8601 timestamp string. Distinct
@@ -1804,10 +1810,15 @@ let generate (program : program) (symbols : Symbol.t) : string =
         List.iter (function
           | ImplFn fd -> gen_function ctx fd
           | ImplType _ -> ()) ib.ib_items
-    | TopConst { tc_vis; tc_name; tc_value; _ } ->
+    | TopConst { tc_vis; tc_mut; tc_name; tc_value; _ } ->
         let exp = if visibility_is_public tc_vis then "export " else "" in
+        (* #548: `const mut` (tc_mut=true) lowers to JS `let` so the
+           binding is mutable; writes are plain assignment statements.
+           Plain `const` (tc_mut=false) keeps the existing `const`
+           emission and JS-enforces immutability. *)
+        let kw = if tc_mut then "let" else "const" in
         emit_line ctx
-          (Printf.sprintf "%sconst %s = %s;" exp (mangle tc_name.name)
+          (Printf.sprintf "%s%s %s = %s;" exp kw (mangle tc_name.name)
              (gen_expr ctx tc_value))
     | TopEffect _ -> emit_line ctx "// effect declaration (erased)"
     | TopTrait _  -> emit_line ctx "// trait declaration (erased)"
