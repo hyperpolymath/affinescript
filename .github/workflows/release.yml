@@ -18,19 +18,15 @@
 # third-party action needs SHA-pinning beyond checkout + setup-ocaml.
 
 name: Release
-
 on:
   push:
     tags:
       - 'v*'
-
 permissions:
   contents: write
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
 jobs:
   prepare:
     runs-on: ubuntu-latest
@@ -47,7 +43,6 @@ jobs:
           else
             gh release create "$tag" --generate-notes --verify-tag --title "$tag"
           fi
-
   build:
     needs: prepare
     strategy:
@@ -64,15 +59,12 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
       - name: Set up OCaml
         uses: ocaml/setup-ocaml@e32b06a3e831ff2fbc6f08cf35be2085e3918014 # v3
         with:
           ocaml-compiler: "5.1"
-
       - name: Install dependencies
         run: opam install . --deps-only --yes
-
       - name: Bake release version into source (#297)
         # Single source of truth for the compiler version string lives
         # in `lib/version.ml`; `dune-project` mirrors it for opam.  The
@@ -86,22 +78,18 @@ jobs:
           echo "Baked version: $v"
           grep '^let value' lib/version.ml
           grep '^(version' .build/dune-project
-
       - name: Build release
         run: opam exec -- dune build --release
-
       - name: Stage the binary
         run: |
           install -m 0755 _build/default/bin/main.exe \
             "affinescript-${{ matrix.target }}"
-
       - name: Upload the binary to the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release upload "${GITHUB_REF_NAME}" \
             "affinescript-${{ matrix.target }}" --clobber
-
   checksums:
     needs: build
     runs-on: ubuntu-latest

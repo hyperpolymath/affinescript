@@ -6,15 +6,12 @@
 # To enable: set BOJ_SERVER_URL as a repository secret or variable.
 # To disable: delete this file or leave BOJ_SERVER_URL unset.
 name: BoJ Server Build Trigger
-
 on:
   push:
     branches: [main, master]
   workflow_dispatch:
-
 permissions:
   contents: read
-
 jobs:
   trigger-boj:
     runs-on: ubuntu-latest
@@ -22,7 +19,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
       - name: Trigger BoJ Server (Casket/ssg-mcp)
         env:
           BOJ_URL: ${{ secrets.BOJ_SERVER_URL || vars.BOJ_SERVER_URL }}
