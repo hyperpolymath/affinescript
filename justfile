@@ -11,8 +11,9 @@ default:
 
 # Build the compiler.
 # Masks the benign, intentionally-left LALR parser-generator notices
-# (inherent ambiguities Menhir resolves correctly — the 257-test gate
-# proves the parse is right). NOT hidden: the build prints how many were
+# (inherent ambiguities Menhir resolves correctly — the alcotest gate
+# proves the parse is right; the count drifts, so it is not hardcoded
+# here). NOT hidden: the build prints how many were
 # masked, the proof they are inconsequential, and how to show them.
 # Policy: docs/specs/SETTLED-DECISIONS.adoc "Parser-Conflict Disclosure".
 build:

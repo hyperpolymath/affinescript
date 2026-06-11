@@ -9,7 +9,7 @@
 | File extension | `.affine` (plus face dialects) | `.eph` |
 | Build | `dune-project` at root | `Cargo.toml` at root |
 | Type checker | `lib/borrow.ml` (OCaml) | `ephapax-linear/src/{linear,affine}.rs` (Rust) |
-| Proofs | None mechanized; soundness arguments live in `lib/borrow.ml` + `docs/CAPABILITY-MATRIX.adoc` + issue #177 (CORE-01) | `formal/Semantics.v` (Coq), `src/abi/Ephapax/…` (Idris2) |
+| Proofs | None mechanized (programme filed: #513–#521, unstarted); soundness arguments live in `lib/borrow.ml` + `docs/CAPABILITY-MATRIX.adoc`. CORE-01/#177 CLOSED 2026-05-30; known hole #554; Polonius residual #553 | `formal/Semantics.v` (Coq), `src/abi/Ephapax/…` (Idris2) |
 
 **The trap.** Ephapax is internally dyadic — it contains `ephapax-linear` and `ephapax-affine` *sublanguages* inside one Rust crate. **The `ephapax-affine` sublanguage is NOT AffineScript.** The word `affine` is shared because both type systems happen to be substructural-logic-family — that's a logic-family fact, not a project relationship.
 
@@ -186,6 +186,23 @@ Action (gitbot): Never use GitHub's "close issue" API directly; only close via P
 
 Practical guidance for agents (Claude / other) operating in this repo,
 captured from parallel-bot session experience. Read once; saves turns.
+
+### Known soundness items (2026-06-11 survey — read before claiming soundness)
+
+Execution-verified, open, and load-bearing for any "is this sound?" answer:
+
+* **#554** — the borrow checker ACCEPTS use-after-move through a
+  callee-returned borrow (`let r = pick(a); consume(a); *r` passes).
+  Do not state "the soundness gap closed with CORE-01" — #177 closed,
+  this hole remains. Polonius residual: #553 (ADR-022, 0% implemented).
+* **#555** — `handle` is silently mis-lowered on core-WASM / JS-text /
+  Deno-ESM (arms dropped; interpreter 42 vs wasm 41 on an effects-free
+  return-arm program). Interpreter handler dispatch is shallow
+  single-shot tail-resume only. Zero runtime handler tests exist.
+* **#556** — Async CPS table-miss silently lowers synchronously.
+* **#558** — refinement-type predicates parse but are silently not
+  enforced. **#559** — trait coherence not checked.
+* v1 release-readiness ledger (tiers + estate cross-refs): **#563**.
 
 ### CI signal reliability
 

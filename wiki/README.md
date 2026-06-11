@@ -11,8 +11,14 @@ algebraic effects, and a typed-WebAssembly compilation target.
 > state, *the matrices win* — see
 > [`docs/CAPABILITY-MATRIX.adoc`](../docs/CAPABILITY-MATRIX.adoc) for live
 > per-feature readiness and [`docs/TECH-DEBT.adoc`](../docs/TECH-DEBT.adoc)
-> for the coordination ledger. AffineScript is **alpha** today, with the
-> CORE-01 borrow-checker work in progress (see issue #177).
+> for the coordination ledger. AffineScript is **alpha** today: CORE-01
+> (#177) closed 2026-05-30, but one known borrow-checker soundness hole
+> remains (#554; Polonius residual #553) and effect handlers are silently
+> mis-lowered outside the interpreter (#555) — `handle`/`resume` examples
+> in these pages run correctly **only** under `--interp` (single-shot
+> tail-resume) until #555 lands. Dated narrative:
+> [`docs/STATE-2026-06-11.adoc`](../docs/STATE-2026-06-11.adoc) ·
+> v1 release-readiness ledger: #563.
 
 ## Quick Navigation
 

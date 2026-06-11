@@ -33,8 +33,12 @@ link:https://github.com/hyperpolymath/nextgen-languages/blob/main/docs/disambigu
 ====
 *Authoritative status lives in link:docs/CAPABILITY-MATRIX.adoc[docs/CAPABILITY-MATRIX.adoc].*
 Where this README's prose implies broader maturity than that matrix states,
-the matrix wins. AffineScript is *alpha* with one known base-language
-soundness gap (CORE-01 / issue #177). typed-wasm is a *separate*
+the matrix wins. AffineScript is *alpha*: CORE-01 (#177) closed
+2026-05-30, but one known base-language soundness hole remains
+(use-after-move via a callee-returned borrow, issue #554; Polonius
+residual #553) and effect handlers are silently mis-lowered on three
+backends (#555). The v1 release-readiness ledger is issue #563.
+typed-wasm is a *separate*
 language-agnostic target (`hyperpolymath/typed-wasm`), not an AffineScript
 subsystem — see link:docs/ECOSYSTEM.adoc[docs/ECOSYSTEM.adoc].
 ====
