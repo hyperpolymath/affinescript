@@ -1,0 +1,114 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// wasm-exports-demo — end-to-end usage example for the generic
+// `wasm_export_call` binding (#455 — Tier 1 #5, closes #500).
+//
+// What this demonstrates
+// ----------------------
+//
+// `stdlib/Deno.affine` exposes a single calling primitive for wasm
+// exports:
+//
+//     wasm_export_call(exports, name, args: [WasmValue]) -> WasmValue
+//
+// Values cross the AS↔JS boundary as `WasmValue` — an opaque host
+// handle wrapping `{ kind: "i32"|"i64"|"f32"|"f64", v: <number> }`.
+// The four `wv_*` constructors marshal a typed AS value into a
+// `WasmValue`; the `wv_as_*` accessors read it back out.
+//
+// This file ships one driver per wasm scalar kind. A loaded host module
+// is expected to export four functions:
+//
+//     add_i32 :: (i32, i32) -> i32
+//     add_i64 :: (i64, i64) -> i64
+//     mul_f32 :: (f32, f32) -> f32
+//     mul_f64 :: (f64, f64) -> f64
+//
+// The harness `tests/codegen-deno/wasm_exports_demo.{affine,harness.mjs}`
+// instantiates a hand-built wasm module with exactly that shape and
+// asserts every driver round-trips.
+//
+// Why one driver per kind
+// -----------------------
+//
+// `wasm_export_call`'s return value is always a `WasmValue`. AS code
+// has to know the expected kind statically to pick `wv_as_int`
+// (i32/i64 → Int) or `wv_as_float` (f32/f64 → Float). The drivers
+// below pin that knowledge at the AS-side call site — exactly the
+// pattern downstream consumers should copy. A `wv_kind`-driven dynamic
+// dispatch is also possible (see `dispatch_unknown` at the bottom)
+// for the rare case where the kind is not statically known.
+//
+// Usage in your own AS code
+// -------------------------
+//
+//     use Deno::{
+//       Bytes, WasmExports, wasmInstance, wasm_export_call,
+//       wv_i32, wv_as_int,
+//     };
+//
+//     pub fn add_via_wasm(bytes: Bytes, a: Int, b: Int) -> Int {
+//       let exports = wasmInstance(bytes);
+//       let result = wasm_export_call(
+//         exports, "add", [wv_i32(a), wv_i32(b)]);
+//       wv_as_int(result)
+//     }
+
+use Deno::{ WasmExports, wasm_export_call, wv_i32, wv_i64, wv_f32, wv_f64, wv_as_int, wv_as_float, wv_kind };
+
+// ── Drivers — one per wasm scalar kind ───────────────────────────
+
+/// Call a wasm export of shape `add_i32(i32, i32) -> i32` and read
+/// the result as an AS `Int`.
+///
+/// The four-step pattern (marshal → call → marshal-back → cast) is
+/// the canonical use of `wasm_export_call`; every other driver below
+/// follows the same shape.
+pub fn add_i32_via_wasm(exports: WasmExports, a: Int, b: Int) -> Int {
+  let result = wasm_export_call(
+    exports, "add_i32", [wv_i32(a), wv_i32(b)]);
+  wv_as_int(result)
+}
+
+/// `add_i64(i64, i64) -> i64`. Values cross the boundary as `BigInt`
+/// host-side, so values beyond ±2^53 preserve exact precision until
+/// they round-trip back through `wv_as_int` (which clamps to the
+/// JS safe-integer range).
+pub fn add_i64_via_wasm(exports: WasmExports, a: Int, b: Int) -> Int {
+  let result = wasm_export_call(
+    exports, "add_i64", [wv_i64(a), wv_i64(b)]);
+  wv_as_int(result)
+}
+
+/// `mul_f32(f32, f32) -> f32`. Inputs are rounded to f32 precision
+/// via `Math.fround` at the host boundary; outputs come back as JS
+/// numbers (f64), and `wv_as_float` returns the AS `Float`.
+pub fn mul_f32_via_wasm(exports: WasmExports, a: Float, b: Float) -> Float {
+  let result = wasm_export_call(
+    exports, "mul_f32", [wv_f32(a), wv_f32(b)]);
+  wv_as_float(result)
+}
+
+/// `mul_f64(f64, f64) -> f64`. Full f64 precision preserved in both
+/// directions.
+pub fn mul_f64_via_wasm(exports: WasmExports, a: Float, b: Float) -> Float {
+  let result = wasm_export_call(
+    exports, "mul_f64", [wv_f64(a), wv_f64(b)]);
+  wv_as_float(result)
+}
+
+// ── Dynamic dispatch (the rare case) ─────────────────────────────
+
+/// When the kind of an export's return is not statically known —
+/// e.g. when wrapping an unknown wasm module — read the result kind
+/// at runtime via `wv_kind` and map to a tagged AS value.
+///
+/// Returns a one-character kind code as a `String` so the caller can
+/// decide what to do (we keep this binding small; a richer sum-type
+/// dispatch can layer on top once tagged-variant codegen for the
+/// Deno-ESM backend ships).
+pub fn dispatch_unknown(exports: WasmExports, name: String, args: [WasmValue]) -> String {
+  let result = wasm_export_call(exports, name, args);
+  wv_kind(result)
+}
