@@ -1,0 +1,33 @@
+// SPDX-License-Identifier: MPL-2.0
+// #500 — smoke test for examples/wasm-exports-demo.affine drivers.
+//
+// Test surface mirrors the example: one wrapper per wasm scalar kind.
+// The harness instantiates a hand-built wasm module with four
+// exports (add_i32 / add_i64 / mul_f32 / mul_f64) and asserts each
+// driver round-trips at the boundary.
+
+use Deno::{ WasmExports, wasm_export_call, wv_i32, wv_i64, wv_f32, wv_f64, wv_as_int, wv_as_float };
+
+pub fn add_i32_via_wasm(exports: WasmExports, a: Int, b: Int) -> Int {
+  let result = wasm_export_call(
+    exports, "add_i32", [wv_i32(a), wv_i32(b)]);
+  wv_as_int(result)
+}
+
+pub fn add_i64_via_wasm(exports: WasmExports, a: Int, b: Int) -> Int {
+  let result = wasm_export_call(
+    exports, "add_i64", [wv_i64(a), wv_i64(b)]);
+  wv_as_int(result)
+}
+
+pub fn mul_f32_via_wasm(exports: WasmExports, a: Float, b: Float) -> Float {
+  let result = wasm_export_call(
+    exports, "mul_f32", [wv_f32(a), wv_f32(b)]);
+  wv_as_float(result)
+}
+
+pub fn mul_f64_via_wasm(exports: WasmExports, a: Float, b: Float) -> Float {
+  let result = wasm_export_call(
+    exports, "mul_f64", [wv_f64(a), wv_f64(b)]);
+  wv_as_float(result)
+}
