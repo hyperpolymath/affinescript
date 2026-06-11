@@ -12,7 +12,6 @@
 # on the former via an import map).
 
 name: Publish to JSR (manual)
-
 on:
   workflow_dispatch:
     inputs:
@@ -29,15 +28,12 @@ on:
         required: true
         type: boolean
         default: true
-
 permissions:
   contents: read
   id-token: write # JSR OIDC; no token secret needed
-
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
 jobs:
   publish:
     runs-on: ubuntu-latest

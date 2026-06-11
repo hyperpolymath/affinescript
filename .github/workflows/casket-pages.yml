@@ -1,20 +1,16 @@
 # SPDX-License-Identifier: MPL-2.0
 name: GitHub Pages
-
 on:
   push:
     branches: [main]
   workflow_dispatch:
-
 permissions:
   contents: read
   pages: write
   id-token: write
-
 concurrency:
   group: "pages"
   cancel-in-progress: false
-
 jobs:
   # Pages is a repo-level admin feature; a workflow's `GITHUB_TOKEN`
   # cannot enable it from CI, regardless of `pages: write` at workflow
@@ -45,7 +41,6 @@ jobs:
             echo "enabled=false" >> "$GITHUB_OUTPUT"
             echo "::notice::Pages not enabled on ${GITHUB_REPOSITORY} — skipping build/deploy. Enable via repo Settings → Pages to unblock."
           fi
-
   build:
     needs: precheck
     if: needs.precheck.outputs.enabled == 'true'
@@ -53,19 +48,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
-
       - name: Checkout casket-ssg
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
         with:
           repository: hyperpolymath/casket-ssg
           path: .casket-ssg
-
       - name: Setup GHCup
         uses: haskell-actions/setup@cd0d9bdd65b20557f41bea4dbe43d0b5fbbfe553 # v2
         with:
           ghc-version: '9.8.2'
           cabal-version: '3.10'
-
       - name: Cache Cabal
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v4
         with:
@@ -74,11 +66,9 @@ jobs:
             ~/.cabal/store
             .casket-ssg/dist-newstyle
           key: ${{ runner.os }}-casket-${{ hashFiles('.casket-ssg/casket-ssg.cabal') }}
-
       - name: Build casket-ssg
         working-directory: .casket-ssg
         run: cabal build
-
       - name: Build site
         run: |
           mkdir -p site _site
@@ -109,7 +99,6 @@ jobs:
             fi
           fi
           cd .casket-ssg && cabal run casket-ssg -- build ../site ../_site
-
       - name: Setup Pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
         with:
@@ -121,12 +110,10 @@ jobs:
           # own permissions (pages: write, id-token: write) authorise
           # this.
           enablement: true
-
       - name: Upload artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: '_site'
-
   deploy:
     environment:
       name: github-pages
