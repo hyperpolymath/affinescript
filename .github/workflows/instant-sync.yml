@@ -18,6 +18,7 @@ concurrency:
 jobs:
   dispatch:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     # Skip the dispatch job entirely when the FARM_DISPATCH_TOKEN secret is
     # not configured (e.g. on forks, or before the secret is provisioned).
     # Without this gate the action errors with "Parameter token or opts.auth

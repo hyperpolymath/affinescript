@@ -19,6 +19,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout code
@@ -89,6 +90,7 @@ jobs:
 
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout code
@@ -118,6 +120,7 @@ jobs:
     # §"Bench standards". Does NOT block merge. Promotion to a
     # ratcheted gate requires a calibrated baseline first.
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout code
@@ -170,6 +173,7 @@ jobs:
     # docs/standards/TESTING.adoc §"Coverage (visibility-only)".
     # No merge-blocking floor today.
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout code
@@ -232,6 +236,7 @@ jobs:
     # (previously gated on #104's npm publish). A real regression should
     # turn this job red and gate, so no `continue-on-error`.
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout code
@@ -281,6 +286,7 @@ jobs:
     # commit still build cleanly and (b) gate `tools/res-to-affine/`
     # walker work that depends on the generated parser.
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout code
