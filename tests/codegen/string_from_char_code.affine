@@ -1,0 +1,32 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// PHASE-F string-wall slice 2: string_from_char_code — the write-side of
+// the [len: i32 LE][utf8 bytes...] ABI (proposals/MIGRATION-PLAN.adoc
+// §"The two walls"). string_from_char_code(n) bump-allocates a one-byte
+// string [len=1][byte] whose byte is the low 8 bits of n. Read back via
+// the slice-1 reader string_char_code_at and via string_length.
+//
+// The companion harness test_string_from_char_code.mjs asserts main()
+// against the value derived from the interp oracle (lib/interp.ml:
+// String.make 1 (Char.chr (n land 0xff))); the same constants are pinned
+// interp-side in test/test_e2e.ml (E2E String-wall slice 2).
+
+fn main() -> Int {
+  // build one-byte strings and read the byte back (slice-1 reader)
+  let a = string_char_code_at(string_from_char_code(65), 0);      // 'A' = 65
+  let z = string_char_code_at(string_from_char_code(90), 0);      // 'Z' = 90
+  let masked = string_char_code_at(string_from_char_code(321), 0); // 321 & 0xff = 65
+  let neg = string_char_code_at(string_from_char_code(-1), 0);    // low byte of -1 = 255
+  let len = string_length(string_from_char_code(0));              // NUL byte; length still 1
+  let oob = string_char_code_at(string_from_char_code(65), 1);    // 1 byte only -> -1
+
+  // Positional pack of the three round-tripped bytes (each 0..255, so the
+  // 24-bit pack stays well within i32), plus the boundary trio as an
+  // additive checksum:
+  //   packed = 65 + 90*256 + 65*65536 = 4282945
+  //   + neg(255) + len(1) - oob(-1)   = +257
+  //   total                            = 4283202
+  let packed = a + z * 256 + masked * 65536;
+  packed + neg + len - oob
+}

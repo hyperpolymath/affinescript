@@ -3739,6 +3739,53 @@ let stringwall_index_tests = [
   Alcotest.test_case "char_to_int('Z') == 90" `Quick test_stringwall_char_to_int;
 ]
 
+(* ---- PHASE-F string-wall slice 2: string_from_char_code ----
+
+   `string_from_char_code(n)` gained a wasm-backend lowering (the write-side
+   of the [len: i32 LE][utf8] ABI): bump-allocate [len=1][byte], where the
+   byte is the low 8 bits of n. The interp binding already existed
+   (lib/interp.ml: String.make 1 (Char.chr (n land 0xff))); these pin the
+   interp oracle the wasm lowering must reproduce. Observable via the
+   slice-1 reader string_char_code_at and via string_length. *)
+
+let test_stringwall_sfcc_roundtrip () =
+  Alcotest.(check int) "scca(sfcc(66), 0) == 66" 66
+    (eval_int_fn "fn f() -> Int { string_char_code_at(string_from_char_code(66), 0) }")
+
+let test_stringwall_sfcc_nul () =
+  Alcotest.(check int) "code 0 (NUL byte) survives" 0
+    (eval_int_fn "fn f() -> Int { string_char_code_at(string_from_char_code(0), 0) }")
+
+let test_stringwall_sfcc_high_byte () =
+  Alcotest.(check int) "code 255 survives (unsigned byte)" 255
+    (eval_int_fn "fn f() -> Int { string_char_code_at(string_from_char_code(255), 0) }")
+
+let test_stringwall_sfcc_mask_overflow () =
+  Alcotest.(check int) "256 masked to low byte == 0" 0
+    (eval_int_fn "fn f() -> Int { string_char_code_at(string_from_char_code(256), 0) }")
+
+let test_stringwall_sfcc_mask_negative () =
+  Alcotest.(check int) "low byte of -1 == 255" 255
+    (eval_int_fn "fn f() -> Int { string_char_code_at(string_from_char_code(-1), 0) }")
+
+let test_stringwall_sfcc_length () =
+  Alcotest.(check int) "string_length(sfcc(n)) == 1" 1
+    (eval_int_fn "fn f() -> Int { string_length(string_from_char_code(65)) }")
+
+let test_stringwall_sfcc_oob () =
+  Alcotest.(check int) "index 1 into a 1-byte string == -1" (-1)
+    (eval_int_fn "fn f() -> Int { string_char_code_at(string_from_char_code(65), 1) }")
+
+let stringwall_alloc_tests = [
+  Alcotest.test_case "scca(sfcc(66),0) == 66" `Quick test_stringwall_sfcc_roundtrip;
+  Alcotest.test_case "sfcc(0) NUL byte == 0" `Quick test_stringwall_sfcc_nul;
+  Alcotest.test_case "sfcc(255) == 255" `Quick test_stringwall_sfcc_high_byte;
+  Alcotest.test_case "sfcc(256) masked == 0" `Quick test_stringwall_sfcc_mask_overflow;
+  Alcotest.test_case "sfcc(-1) low byte == 255" `Quick test_stringwall_sfcc_mask_negative;
+  Alcotest.test_case "string_length(sfcc) == 1" `Quick test_stringwall_sfcc_length;
+  Alcotest.test_case "index past 1-byte string == -1" `Quick test_stringwall_sfcc_oob;
+]
+
 (* ---- STDLIB-04b: Throws extern `error<T>` (Refs #329) ----
 
    `error<T>(msg: String) -> T / Throws` was declared in
@@ -4847,6 +4894,7 @@ let tests =
     ("E2E STDLIB-04d IO #331",   stdlib_04d_io_tests);
     ("E2E STDLIB-04e Pure #332", stdlib_04e_pure_tests);
     ("E2E String-wall slice 1 (indexing)", stringwall_index_tests);
+    ("E2E String-wall slice 2 (string_from_char_code)", stringwall_alloc_tests);
     ("E2E STDLIB-04b error #329", stdlib_04b_error_tests);
     ("E2E Vscode Bindings",      vscode_bindings_tests);
     ("E2E Array Type Sugar",     array_type_tests);
