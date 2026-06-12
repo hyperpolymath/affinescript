@@ -505,6 +505,22 @@ type_expr_arrow:
     { TyArrow (arg, None, ret, None) }
   | arg = type_expr_primary MINUS LBRACE eff = effect_expr RBRACE ARROW ret = type_expr_arrow
     { TyArrow (arg, None, ret, Some eff) }
+  /* #547: slash-effect-row trailing form `T -> R / { E1, ... }` and
+     single-effect `T -> R / E`. Mirrors the return_type slash forms
+     in fn-decl signatures (lines 271-282) one level up to type-
+     expression position, closing the parser asymmetry surfaced in
+     #547: until this PR the `fn(...) -> R / { E }` syntax accepted
+     in fn-decl signatures parse-errored in record-field / type-alias
+     positions, forcing every effectful function-typed record field
+     to fall back to the older `-{E}->` arrow form. Both spellings
+     remain accepted; the slash form is the canonical effect-row
+     spelling from the Frontier Guide. Effect attaches to the
+     outermost arrow (the position of the slash); inner-arrow
+     attachment is still expressible via `-{E}->`. */
+  | arg = type_expr_primary ARROW ret = type_expr_arrow SLASH LBRACE effs = separated_nonempty_list(COMMA, effect_term) RBRACE
+    { TyArrow (arg, None, ret, Some (effect_union_of_list effs)) }
+  | arg = type_expr_primary ARROW ret = type_expr_arrow SLASH single = effect_term
+    { TyArrow (arg, None, ret, Some single) }
   /* `(A, B, ...) -> R` lowers to the curried arrow `A -> B -> ... -> R`
      so user source can write multi-arg fn types without manual currying.
      The existing tuple-as-type rule (LPAREN ty COMMA tys RPAREN) still
@@ -566,6 +582,39 @@ type_expr_primary:
     { match params with
       | [] -> TyArrow (TyTuple [], None, ret, None)
       | _  -> List.fold_right (fun p acc -> TyArrow (p, None, acc, None)) params ret }
+  /* #547: slash-effect-row form for fn-type, single + braced. Mirrors
+     the `MINUS LBRACE ... ARROW` variant immediately below it. The
+     effect attaches to the innermost arrow (the one whose result is
+     ret) to match the existing prefix-row semantics. */
+  | FN LPAREN params = separated_list(COMMA, type_expr) RPAREN ARROW
+    ret = type_expr_arrow SLASH LBRACE effs = separated_nonempty_list(COMMA, effect_term) RBRACE
+    { let eff = effect_union_of_list effs in
+      match params with
+      | [] -> TyArrow (TyTuple [], None, ret, Some eff)
+      | _ ->
+        let rev_params = List.rev params in
+        (match rev_params with
+         | [] -> assert false
+         | last :: earlier_rev ->
+           let innermost = TyArrow (last, None, ret, Some eff) in
+           List.fold_left
+             (fun acc p -> TyArrow (p, None, acc, None))
+             innermost
+             earlier_rev) }
+  | FN LPAREN params = separated_list(COMMA, type_expr) RPAREN ARROW
+    ret = type_expr_arrow SLASH single = effect_term
+    { match params with
+      | [] -> TyArrow (TyTuple [], None, ret, Some single)
+      | _ ->
+        let rev_params = List.rev params in
+        (match rev_params with
+         | [] -> assert false
+         | last :: earlier_rev ->
+           let innermost = TyArrow (last, None, ret, Some single) in
+           List.fold_left
+             (fun acc p -> TyArrow (p, None, acc, None))
+             innermost
+             earlier_rev) }
   /* Effect-row variant: `fn(A, B) -{E}-> C`. Mirrors the prefix-row arrow
      already accepted in `type_expr_arrow` and in `return_type`, and is
      required by hand-ports such as `fn(Http::Request) -{IO}-> Http::Response`
