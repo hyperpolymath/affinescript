@@ -2200,6 +2200,75 @@ let try_catch_tests = [
 ]
 
 (* ============================================================================
+   Issue #555: effect-handler loud-fail fences
+   ============================================================================
+
+   The core-WASM / JS-text / Deno-ESM backends previously compiled `handle`
+   body-only (handler arms silently dropped; `resume` lowered as an argument
+   passthrough). An effects-free return-arm handle evaluated to 42 in the
+   interpreter and 41 in compiled wasm — a silent wrong-value miscompile.
+   These tests pin the fences: all three backends must fail loudly, and the
+   interpreter path must keep working. *)
+
+let contains_str needle haystack =
+  try let _ = Str.search_forward (Str.regexp_string needle) haystack 0 in true
+  with Not_found -> false
+
+let test_handle_interp_still_works () =
+  match run_interp_pipeline (fixture "handle_return_arm.affine") with
+  | Error msg -> Alcotest.fail msg
+  | Ok _ -> ()
+
+let test_handle_wasm_loud_fail () =
+  match run_wasm_pipeline (fixture "handle_return_arm.affine") with
+  | Ok _ ->
+      Alcotest.fail
+        "expected UnsupportedFeature for handle on core-WASM (Refs #555); \
+         got Ok — silent arm-drop has regressed"
+  | Error msg ->
+      Alcotest.(check bool) "error names the handler fence" true
+        (contains_str "effect handler" msg)
+
+let test_handle_js_loud_fail () =
+  let result =
+    let open Result in
+    let ( let* ) = bind in
+    let* (prog, resolve_ctx) = run_frontend (fixture "handle_return_arm.affine") in
+    Js_codegen.codegen_js prog resolve_ctx.symbols
+  in
+  match result with
+  | Ok _ ->
+      Alcotest.fail
+        "expected loud failure for handle on JS-text (Refs #555); \
+         got Ok — silent erasure has regressed"
+  | Error msg ->
+      Alcotest.(check bool) "error names the handler fence" true
+        (contains_str "effect handler" msg)
+
+let test_handle_deno_loud_fail () =
+  let result =
+    let open Result in
+    let ( let* ) = bind in
+    let* (prog, resolve_ctx) = run_frontend (fixture "handle_return_arm.affine") in
+    Codegen_deno.codegen_deno prog resolve_ctx.symbols
+  in
+  match result with
+  | Ok _ ->
+      Alcotest.fail
+        "expected loud failure for handle on Deno-ESM (Refs #555); \
+         got Ok — silent erasure has regressed"
+  | Error msg ->
+      Alcotest.(check bool) "error names the handler fence" true
+        (contains_str "effect handler" msg)
+
+let handler_fence_tests = [
+  Alcotest.test_case "interp: return-arm handle still evaluates" `Quick test_handle_interp_still_works;
+  Alcotest.test_case "wasm: handle → loud UnsupportedFeature"     `Quick test_handle_wasm_loud_fail;
+  Alcotest.test_case "js-text: handle → loud failure"             `Quick test_handle_js_loud_fail;
+  Alcotest.test_case "deno-esm: handle → loud failure"            `Quick test_handle_deno_loud_fail;
+]
+
+(* ============================================================================
    Section: Stage 7 — typed-wasm Ownership Verifier (Tw_verify)
    ============================================================================
 
@@ -4701,6 +4770,7 @@ let tests =
     ("E2E LSP Phase C", lsp_phase_c_tests);
     ("E2E LSP Phase D", lsp_phase_d_tests);
     ("E2E Try/Catch/Finally", try_catch_tests);
+    ("E2E Handler Fence (#555)", handler_fence_tests);
     ("E2E Ownership Verify", tw_verify_tests);
     ("E2E Cmd Linearity", cmd_linear_tests);
     ("E2E Boundary Verify", tw_interface_tests);

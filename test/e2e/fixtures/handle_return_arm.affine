@@ -1,0 +1,7 @@
+// Issue #555 regression fixture: an effects-free handle with only a
+// return arm. Interpreter evaluates to 42; the WASM/JS/Deno backends
+// previously compiled body-only (silently dropping the arm → 41).
+// They must now fail loudly instead.
+fn main() -> Int {
+  return handle 41 { return(v) => v + 1 };
+}
