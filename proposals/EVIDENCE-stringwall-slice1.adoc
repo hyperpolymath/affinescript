@@ -1,0 +1,152 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+= Phase F — string-wall slice 1: string indexing (evidence)
+:toc: macro
+
+[IMPORTANT]
+====
+*Slice landed: read-side string indexing in the wasm backend.* The
+`string_char_code_at(s, i)` and `char_to_int(c)` builtins — already present
+in resolve/typecheck/interp — gained wasm-backend lowerings on the
+`[len: i32 LE][utf8 bytes...]` ABI. A previously STRING-GATED shape (byte
+indexing into a string literal) now compiles to wasm *and* parity-greens
+against the interpreter oracle.
+
+This is the first slice of the *variable-string backend* wall
+(`proposals/MIGRATION-PLAN.adoc` §"The two walls", Phase F). It removes the
+wall for the *indexing/scan* family; allocation-returning string ops
+(`string_from_char_code`, `string_sub`, `slice`, concat, case-folding) remain
+for later slices.
+====
+
+toc::[]
+
+== What was missing
+
+The string-builtin surface was wired end-to-end *except* the wasm backend:
+
+[cols="2,1,1,1,1",options="header"]
+|===
+| Builtin | resolve.ml | typecheck.ml | interp.ml | codegen.ml (wasm)
+| `string_length` | ✓ | ✓ | ✓ | ✓ (pre-existing, `I32Load (2,0)`)
+| `string_char_code_at` | ✓ | ✓ | ✓ | *was missing -> added*
+| `char_to_int` | ✓ | ✓ | ✓ | *was missing -> added*
+|===
+
+Before this slice, compiling `string_char_code_at(s, i)` failed at codegen:
+
+----
+Code generation error: (Codegen.UnboundVariable
+   "Function or variable not found: string_char_code_at")
+----
+
+The builtin fell through the `gen_call` dispatch to the generic
+named-function path, which only knows user functions + the already-handled
+builtins — hence "unbound". The fix is a dispatch arm that emits the load
+sequence, exactly as `string_length` already does for length.
+
+== The lowering (lib/codegen.ml)
+
+String layout is `[len: i32 LE]` at the base pointer, with utf8 bytes
+starting at offset 4. Byte `i` therefore lives at `base + 4 + i`.
+
+`string_char_code_at(s, i)` — total function, `-1` on out-of-bounds (the
+shared absent-byte sentinel; the interp oracle returns the same):
+
+----
+s_code; LocalSet base
+i_code; LocalSet idx
+;; condition: (idx >= 0) && (idx < len)
+LocalGet idx; I32Const 0;             I32GeS
+LocalGet idx; LocalGet base; I32Load; I32LtS
+I32And
+If (result i32)
+  ;; in-bounds: zero-extend byte at base + idx + 4
+  then: LocalGet base; LocalGet idx; I32Add; I32Load8U (offset=4)
+  ;; out-of-bounds sentinel
+  else: I32Const -1
+----
+
+The bounds test *guards* the load (`If`, not `Select`): an out-of-bounds
+`I32Load8U` could trap or read foreign linear memory, so the load must not
+execute unless the index is in range. `Select` would evaluate both arms.
+
+`char_to_int(c)` — identity on the wasm value lattice. A `Char` is already
+an i32 byte code (`LitChar` lowers to `I32Const (Char.code c)`), so the arm
+just evaluates the argument and leaves it; no conversion instruction.
+
+== Gate evidence
+
+=== Gate 1 — builds
+
+`dune build bin/main.exe` exit 0. The previously-failing probe now compiles:
+
+----
+$ affinescript compile idx.affine -o idx.wasm   # fn main = string_char_code_at("ABC",1)
+Compiled idx.affine -> idx.wasm (WASM)           # exit 0
+----
+
+=== Gate 2 — parity (wasm vs interpreter oracle)
+
+Same inputs through both backends agree. Interp oracle confirmed against the
+real library API (`Parse_driver.parse_string` -> `Interp.eval_program` ->
+`Value.lookup_env "f"` -> `apply_function`); wasm executed under Node.
+
+[cols="3,1,1",options="header"]
+|===
+| Expression | interp | wasm
+| `string_char_code_at("ABC", 0)` | 65 | 65
+| `string_char_code_at("ABC", 1)` | 66 | 66
+| `string_char_code_at("ABC", 2)` | 67 | 67
+| `string_char_code_at("ABC", -1)` | -1 | -1
+| `string_char_code_at("ABC", 9)` | -1 | -1
+| `string_char_code_at("", 0)` | -1 | -1
+| `char_to_int('Z')` | 90 | 90
+|===
+
+The packed fixture `tests/codegen/string_char_code_at.affine` returns
+`4276896` (positional base-256 pack of the three in-bounds bytes, minus the
+three `-1` sentinels, plus `char_to_int('Z')`); both backends produce it.
+
+=== Type safety preserved
+
+`char_to_int(65)` (Int where Char is required) is still rejected:
+`Unification error: (Unify.TypeMismatch (Char, Int))`. The wasm identity
+lowering does not loosen the front-end Char/Int distinction.
+
+== Tests added
+
+* `test/test_e2e.ml` — group *"E2E String-wall slice 1 (indexing)"*: seven
+  interp-oracle cases (in-bounds bytes, both OOB directions, empty string,
+  `char_to_int`). Runs under `dune runtest`. This is the interp consumer
+  coverage mandated by `.claude/CLAUDE.md` §"Test-fixture hygiene".
+* `tests/codegen/string_char_code_at.affine` +
+  `tests/codegen/test_string_char_code_at.mjs` — executable wasm parity,
+  run by `tools/run_codegen_wasm_tests.sh` (CI). Asserts `main()` against the
+  oracle constant; the same constants are pinned interp-side above.
+
+Full `tools/run_codegen_wasm_tests.sh` run: *all* codegen WASM tests pass,
+including the new harness, no sibling regressions.
+
+== Corpus impact
+
+This slice unblocks the *indexing/scan* shape — code that reads bytes out of
+a string and compares/branches on them (first-byte dispatch, manual scanning,
+char-class checks). It does *not* yet unblock string-gated kernels whose work
+is dominated by *building new strings* (`*ToString`/`*FromString`
+serialisers, `String.replaceAll` interpolation, translation-dict lookups
+keyed by string), which need the allocation-returning ops in later slices.
+
+== Next slices (variable-string backend wall)
+
+. *Allocation-returning ABI* — a shared `gen_string_alloc` helper writing the
+  `[len][bytes]` shape into the heap, then `string_from_char_code(n)` as its
+  first consumer (one-byte string `[1][n & 0xff]`).
+. *`string_sub` / `slice`* — bounded copy loops over the byte range.
+. *`startsWith` / `string_find`* — prefix/substring scans (read-side; can
+  build on this slice's indexing without allocation).
+. *Concat + case-folding* — `to_lowercase` / `to_uppercase` / `++` on strings.
+
+Each slice: add the codegen arm, an interp-parity e2e group, and a
+`tests/codegen/*.mjs` executable check, then re-run the census and drop the
+gated count.

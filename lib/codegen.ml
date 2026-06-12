@@ -907,6 +907,50 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
         let* (ctx_with_arg, arg_code) = gen_expr ctx (List.hd args) in
         Ok (ctx_with_arg, arg_code @ [I32Load (2, 0)])
 
+      | ExprVar id when id.name = "string_char_code_at"
+                        && List.length args = 2 ->
+        (* PHASE-F string-wall slice 1 (proposals/MIGRATION-PLAN.adoc
+           §"The two walls"). String indexing on the read-side
+           `[len: i32 LE][utf8 bytes...]` ABI: byte `i` lives at
+           `base + 4 + i`. Total function — out-of-bounds (i < 0 OR
+           i >= len) returns -1, matching the interp oracle
+           (lib/interp.ml `string_char_code_at`) so the absent-byte
+           sentinel is shared across both backends. The bounds test must
+           guard the load: an OOB `I32Load8U` could trap or read foreign
+           linear memory, so this is `If`, not `Select` (which would
+           evaluate the load unconditionally). *)
+        let* (ctx1, s_code) = gen_expr ctx  (List.nth args 0) in
+        let* (ctx2, i_code) = gen_expr ctx1 (List.nth args 1) in
+        let (ctx3, base_local) = alloc_local ctx2 "__scca_base" in
+        let (ctx4, idx_local)  = alloc_local ctx3 "__scca_idx" in
+        let code =
+          s_code @ [LocalSet base_local] @
+          i_code @ [LocalSet idx_local] @
+          (* condition: (idx >= 0) && (idx < len), len = i32 at base+0 *)
+          [ LocalGet idx_local; I32Const 0l; I32GeS ] @
+          [ LocalGet idx_local; LocalGet base_local; I32Load (2, 0); I32LtS ] @
+          [ I32And ] @
+          [ If (BtType I32,
+                (* in-bounds: zero-extend byte at base + idx + 4 *)
+                [ LocalGet base_local; LocalGet idx_local; I32Add;
+                  I32Load8U (0, 4) ],
+                (* out-of-bounds sentinel, shared with the interp oracle *)
+                [ I32Const (-1l) ]) ]
+        in
+        Ok (ctx4, code)
+
+      | ExprVar id when id.name = "char_to_int"
+                        && List.length args = 1 ->
+        (* PHASE-F string-wall slice 1. `char_to_int` is identity on the
+           wasm value lattice: a Char is already an i32 byte code (cf. the
+           `LitChar` lowering to `I32Const (Char.code c)`), and
+           `string_char_code_at` likewise yields the raw code. Evaluate the
+           argument and leave its value in place — no conversion
+           instruction is required. Faithful to the interp oracle
+           (`Char.code`) for every value the wasm backend can produce. *)
+        let* (ctx_with_arg, arg_code) = gen_expr ctx (List.hd args) in
+        Ok (ctx_with_arg, arg_code)
+
       | ExprVar id when (id.name = "env_at" || id.name = "arg_at")
                         && List.length args = 1 ->
         (* ADR-015 S5 (#180): env_at(i) / arg_at(i) — fetch the i-th
