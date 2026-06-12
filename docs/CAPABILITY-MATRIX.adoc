@@ -82,12 +82,18 @@ estate re-audit + ReScript residue (#229) follow separately.
 `Never`/bottom, block divergence. Enforced on every check/compile/eval path.
 
 |Effect system |partial |Pure/impure separation + effect polymorphism
-enforced. Handlers: *interpreter-complete*; WasmGC dispatch is
-`UnsupportedFeature` pending the EH proposal or the CPS transform (the #225
-CPS line is closing the async slice of this).
+enforced. Handlers: interpreter dispatch is *shallow single-shot
+tail-resume only* (`resume(v)` returns `v` as the whole handle result,
+discarding post-perform code — in-code admission at `interp.ml:248-263`);
+WasmGC dispatch is `UnsupportedFeature` (loud); core-WASM, JS-text and
+Deno-ESM *silently drop handler arms* — execution-verified divergence on
+an effects-free return-arm program, tracked as #555 (decision: back-port
+the WasmGC loud failure). The #225 CPS line closed the *async slice*
+only; its table-miss fallback silently lowers synchronously (#556).
 
-|Borrow checker |*partial — graph validation + NLL last-use landed
-(CORE-01 pts 1–3 Slice A)* |
+|Borrow checker |*partial — full CORE-01 slice stack landed, #177
+CLOSED 2026-05-30; one known soundness hole (#554); Polonius residual
+(#553)* |
 Place/borrow/move infra + use-after-move, conflicting-borrow,
 move-while-borrowed, lambda-capture. *CORE-01 part 1* (PR #240, Refs #177,
 gate 263/263): borrow-graph validation wired — `BorrowOutlivesOwner` now
@@ -115,13 +121,21 @@ catch arms are now isolated via snapshot-restore-merge (factored
 `merge_arm_results` helper, mirroring `ExprMatch`'s inlined logic).
 Moves/borrows from arm i no longer pollute arm i+1; finally runs
 deterministically against the merged post-catch state. 2 hermetic
-tests (positive + anti-regression). *Deferred (Slices C-full / C' /
-D):* true Polonius origin/region variables on `TyRef`/`TyMut` with
-subset constraints + datalog-style loan-live-at-point solver
-(ADR-gated); loop soundness via 2-iter check on `StmtWhile`/
-`StmtFor` (coupled to a `StmtAssign` clear-on-rewrite fix); reborrow
-through indirection (RHS not a direct `&place`); quantity-checker
-tightening for captured linears.
+tests (positive + anti-regression). *Since landed (2026-05-26/27):*
+Slice C′ loop soundness via 2-iteration re-check (#396 + #399
+clear-on-rewrite), Slice D `@linear`-capture-by-closure rejection
+(#397), ref-to-ref binding (#395 + #400 self-assign guard). *Deferred:*
+true Polonius origin/region variables on `TyRef`/`TyMut` with subset
+constraints + datalog-style loan-live-at-point solver — ADR-022,
+tracked as #553 (design ratified in-thread, 0% implemented; M1 sketch
+at branch `core-01/polonius-m1-sketch`); quantity-checker tightening
+for captured linears. *Known soundness hole (execution-verified):*
+use-after-move through a *callee-returned borrow* passes the full
+pipeline (#554) — call-arg borrows are released at call end and call
+results never register as borrow sources, so `let r = pick(a);
+consume(a); *r` is accepted. This is the loan-propagation class
+Polonius (#553) resolves; until then the checker is unsound on this
+shape, not merely imprecise.
 
 |Quantity / affine types |*enforced* |QTT semiring in `lib/quantity.ml`,
 invoked inside the standard CLI pipeline. `@linear`/`@erased`/`@unrestricted`
@@ -210,8 +224,12 @@ A few primitives remain `extern` builtins.
 
 == What AffineScript is NOT (anti-over-claim)
 
-* Not "production-ready". Alpha. The borrow checker has a known soundness gap
-  (CORE-01).
+* Not "production-ready". Alpha. CORE-01 (#177) closed 2026-05-30, but the
+  borrow checker has one known, execution-verified soundness hole —
+  use-after-move through a callee-returned borrow (#554; Polonius residual
+  #553) — and effect handlers are silently mis-lowered on three backends
+  (#555) with a silently-synchronous async fallback (#556). The v1
+  release-readiness ledger is #563.
 * Not "N production backends". One reference target (WASM), two solid JS-host
   targets (Deno-ESM, Node-CJS), the rest experimental.
 * typed-wasm is *not* an AffineScript subsystem. It is a separate,

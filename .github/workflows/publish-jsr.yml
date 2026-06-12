@@ -37,8 +37,9 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x

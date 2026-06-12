@@ -1200,9 +1200,21 @@ let rec gen_expr ctx (expr : expr) : string =
        | _, name   -> Printf.sprintf "({ tag: %S })" name)
   | ExprSpan (inner, _) -> gen_expr ctx inner
   | ExprRowRestrict (e, _) -> gen_expr ctx e
-  | ExprHandle { eh_body; eh_handlers = _ } -> gen_expr ctx eh_body
-  | ExprResume (Some e) -> gen_expr ctx e
-  | ExprResume None     -> "Unit"
+  | ExprHandle _ ->
+      (* Was: silent erasure (body-only, handler arms dropped) — wrong-value
+         miscompiles even for effects-free return arms (issue #555).  Fail
+         loudly at compile time; `Failure` is converted to `Error` by
+         [codegen_deno]'s entry wrapper.  Declared `/ Async` rows are
+         unaffected — they lower via `async function` (fd_is_async), not
+         via `handle` expressions. *)
+      failwith
+        "effect handler (handle { ... }) is not supported by the Deno-ESM \
+         backend — handler arms cannot be dispatched (Refs #555); \
+         use `--interp` / `-i`"
+  | ExprResume _ ->
+      failwith
+        "`resume` is not supported by the Deno-ESM backend — only valid \
+         inside a `handle` block (Refs #555); use `--interp` / `-i`"
   | ExprUnsafe _ ->
       iife ctx "throw new Error('unsafe op not supported in Deno-ESM backend');"
 

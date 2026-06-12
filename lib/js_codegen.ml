@@ -285,11 +285,19 @@ let rec gen_expr ctx (expr : expr) : string =
        | _, name    -> Printf.sprintf "({ tag: %S })" name)
   | ExprSpan (inner, _) -> gen_expr ctx inner
   | ExprRowRestrict (e, _field) -> gen_expr ctx e  (* runtime no-op *)
-  | ExprHandle { eh_body; eh_handlers = _ } ->
-      (* Effect handlers are erased at MVP — IO collapses to direct calls. *)
-      gen_expr ctx eh_body
-  | ExprResume (Some e) -> gen_expr ctx e
-  | ExprResume None     -> "Unit"
+  | ExprHandle _ ->
+      (* Was: silent erasure (body-only, handler arms dropped) — wrong-value
+         miscompiles even for effects-free return arms (issue #555).  Fail
+         loudly at compile time; `Failure` is converted to `Error` at this
+         backend's entry point. *)
+      failwith
+        "effect handler (handle { ... }) is not supported by the JS-text \
+         backend — handler arms cannot be dispatched (Refs #555); \
+         use `--interp` / `-i`"
+  | ExprResume _ ->
+      failwith
+        "`resume` is not supported by the JS-text backend — only valid \
+         inside a `handle` block (Refs #555); use `--interp` / `-i`"
   | ExprUnsafe _ ->
       "(() => { throw new Error('unsafe op not supported in JS backend'); })()"
 

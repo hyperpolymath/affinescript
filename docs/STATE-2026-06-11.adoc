@@ -1,0 +1,90 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath (Jonathan D.A. Jewell) <j.d.a.jewell@open.ac.uk>
+= STATE — 2026-06-11 snapshot
+Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+:toc:
+:toclevels: 2
+:icons: font
+
+Supersedes link:STATE-2026-05-26.adoc[STATE-2026-05-26.adoc] as the dated
+narrative snapshot. Authority order unchanged: CAPABILITY-MATRIX wins on
+feature readiness; TECH-DEBT is the ledger; this document is narrative.
+Trigger for this re-emit: stage-status change (CORE-01 closed) + the
+2026-06-11 whole-picture survey findings.
+
+== What changed since 2026-05-26
+
+* *CORE-01 (#177) CLOSED 2026-05-30* via PR #473 after the full slice
+  stack landed (#240, #254, #335, Slice B via #355, #358, #395, #396,
+  #397, #399, #400). The declared residual is ADR-022 Polonius —
+  ratified in the PR #407 thread, 0% implemented, now tracked as *#553*
+  (M1 sketch preserved at branch `core-01/polonius-m1-sketch`).
+* *~100 PRs merged*: CORE-01 endgame, doc-truthing guards, stdlib +
+  bindings campaign, res-to-affine Phase 3, db-theory triplet
+  (#522–#528), NO_NEW_BRAINS migration clusters C1–C12, `const mut`
+  (#549). Test gate grew 327 → 416 alcotests, all green.
+* *Stage D drawn CLOSED* in TECH-DEBT ("base lang complete"); Stage E
+  (typed-wasm convergence) is the declared frontier. The typed-wasm side
+  of C5.1 already landed upstream (their PR #81: cross_compat_real.rs +
+  4 real affinescript-emitted fixture pairs) — residual here is *#562*.
+
+== The 2026-06-11 survey findings (execution-verified)
+
+An eight-agent whole-picture survey (plus adversarial re-verification)
+established, by running the compiler, two soundness-order items that sit
+*behind* the CORE-01-closed stamp:
+
+. *#554* — use-after-move through a callee-returned borrow is accepted
+  end-to-end (`fn pick(ref x: Int) -> ref Int { return &x; }` then
+  `let r = pick(a); consume(a); *r` → "Type checking passed"). The
+  control probe (plain double-consume) is correctly rejected, so this is
+  a genuine false negative. It is exactly the loan-propagation class
+  ADR-022/#553 resolves; the ADR's framing is corrected from
+  "residual = precision" to "residual = soundness".
+. *#555* — `handle` is silently mis-lowered on the three JS/wasm-core
+  backends: `handle 41 { return(v) => v + 1 }` evaluates to 42 in the
+  interpreter and 41 in compiled wasm, with a silent compile. The WasmGC
+  backend's loud `UnsupportedFeature` was never back-ported. The
+  interpreter itself is shallow single-shot tail-resume. No backend
+  implements general handler semantics correctly, and no runtime handler
+  test exists on any path.
+
+Supporting items filed the same day: *#556* (silent synchronous CPS
+fallback), *#557* (gates that gate: branch protection + promote
+`--typed-wasm` to blocking), *#558* (refinement predicates parse-only —
+silently unenforced), *#559* (CORE-04 traits residual incl. coherence),
+*#560*/*#561* (the two codegen walls: variable strings; module
+state/host effects), *#562* (Stage E1 fixture corpus).
+
+== Current frontier
+
+The borrow checker is no longer the active front. The front is:
+
+. *T0 soundness/correctness*: #554, #555, #556, #558, #559, #557 — see
+  the *v1 release-readiness ledger #563* for the full tiered ladder with
+  estate-wide cross-references (upstream obligations to echo-types,
+  coordination with typed-wasm/ephapax, downstream campaign pressure).
+. *T1 completeness*: #553 (or a recorded v1 cut), #560/#561, #562,
+  #412 Phase A, INT-04 publish go-switch, doc-truth refresh (this PR).
+. *T2 cut-lines to record*: #245, #249, #262, #228 close-out, #235,
+  #513 proof-programme deferral disclosure, WasmGC ships
+  disclosed-partial, ADR-020/021.
+
+== Design track
+
+ADR-023 (finality types — assured irreversibility as AffineScript's dual
+to ephapax's accounted loss) exists as a *Draft stub*:
+link:decisions/0023-finality-types.adoc[docs/decisions/0023]. Its own
+sequencing constraints forbid assurance claims while #554 is open and
+gate `&mut`-at-freeze-point enforcement on #553. The `typedwasm.receipts`
+carrier RFC lives upstream in typed-wasm (not yet filed there); witness
+payloads never serialise; this repo receives digest/unit receipts at
+most and never grows witness shapes.
+
+== Honest bounds
+
+Zero mechanized proofs in-repo (#513–#521 filed, unstarted). Soundness
+is operational: the 416-test gate demonstrably did not catch #554 or
+#555. The reference WASM backend's allocator never frees (bump,
+increment-only) — leak-freedom claims are contract-level (tw_verify
+L10), not runtime facts. Do not paraphrase any of these bounds upward.
