@@ -3676,6 +3676,69 @@ let stdlib_04e_pure_tests = [
   Alcotest.test_case "#332 string_length(\"hello\") == 5" `Quick test_stdlib_04e_string_length;
 ]
 
+(* ---- PHASE-F string-wall slice 1: string indexing ----
+
+   `string_char_code_at(s, i)` + `char_to_int(c)` gained wasm-backend
+   lowerings in lib/codegen.ml (the read-side `[len: i32 LE][utf8]` ABI).
+   The interp bindings already existed (lib/interp.ml); these tests pin the
+   interp oracle whose values the new wasm lowerings must reproduce — the
+   parity reference for the matching tests/codegen/*.mjs executable check.
+
+   Oracle semantics (lib/interp.ml `string_char_code_at`): byte 0..255 at
+   index i, or -1 when i < 0 OR i >= length (the shared absent-byte
+   sentinel). `char_to_int` is `Char.code`. *)
+
+let eval_int_fn src =
+  let prog = Parse_driver.parse_string ~file:"<stringwall>" src in
+  match Interp.eval_program prog with
+  | Error e -> Alcotest.failf "interp failed: %s" (Value.show_eval_error e)
+  | Ok env ->
+    (match Value.lookup_env "f" env with
+     | Ok fn ->
+       (match Interp.apply_function fn [] with
+        | Ok (Value.VInt n) -> n
+        | Ok v -> Alcotest.failf "expected VInt, got %s" (Value.show_value v)
+        | Error e -> Alcotest.failf "apply failed: %s" (Value.show_eval_error e))
+     | Error e -> Alcotest.failf "lookup f failed: %s" (Value.show_eval_error e))
+
+let test_stringwall_scca_first () =
+  Alcotest.(check int) "string_char_code_at(\"ABC\",0) == 'A'" 65
+    (eval_int_fn "fn f() -> Int { string_char_code_at(\"ABC\", 0) }")
+
+let test_stringwall_scca_mid () =
+  Alcotest.(check int) "string_char_code_at(\"ABC\",1) == 'B'" 66
+    (eval_int_fn "fn f() -> Int { string_char_code_at(\"ABC\", 1) }")
+
+let test_stringwall_scca_last () =
+  Alcotest.(check int) "string_char_code_at(\"ABC\",2) == 'C'" 67
+    (eval_int_fn "fn f() -> Int { string_char_code_at(\"ABC\", 2) }")
+
+let test_stringwall_scca_oob_neg () =
+  Alcotest.(check int) "negative index -> -1 sentinel" (-1)
+    (eval_int_fn "fn f() -> Int { string_char_code_at(\"ABC\", -1) }")
+
+let test_stringwall_scca_oob_past () =
+  Alcotest.(check int) "index past end -> -1 sentinel" (-1)
+    (eval_int_fn "fn f() -> Int { string_char_code_at(\"ABC\", 9) }")
+
+let test_stringwall_scca_empty () =
+  Alcotest.(check int) "index into empty string -> -1 sentinel" (-1)
+    (eval_int_fn "fn f() -> Int { string_char_code_at(\"\", 0) }")
+
+let test_stringwall_char_to_int () =
+  Alcotest.(check int) "char_to_int('Z') == 90" 90
+    (eval_int_fn "fn f() -> Int { char_to_int('Z') }")
+
+let stringwall_index_tests = [
+  Alcotest.test_case "scca(\"ABC\",0) == 65" `Quick test_stringwall_scca_first;
+  Alcotest.test_case "scca(\"ABC\",1) == 66" `Quick test_stringwall_scca_mid;
+  Alcotest.test_case "scca(\"ABC\",2) == 67" `Quick test_stringwall_scca_last;
+  Alcotest.test_case "scca neg index == -1" `Quick test_stringwall_scca_oob_neg;
+  Alcotest.test_case "scca past-end index == -1" `Quick test_stringwall_scca_oob_past;
+  Alcotest.test_case "scca empty string == -1" `Quick test_stringwall_scca_empty;
+  Alcotest.test_case "char_to_int('Z') == 90" `Quick test_stringwall_char_to_int;
+]
+
 (* ---- STDLIB-04b: Throws extern `error<T>` (Refs #329) ----
 
    `error<T>(msg: String) -> T / Throws` was declared in
@@ -4783,6 +4846,7 @@ let tests =
     ("E2E STDLIB-04a Mut #328",  stdlib_04a_mut_tests);
     ("E2E STDLIB-04d IO #331",   stdlib_04d_io_tests);
     ("E2E STDLIB-04e Pure #332", stdlib_04e_pure_tests);
+    ("E2E String-wall slice 1 (indexing)", stringwall_index_tests);
     ("E2E STDLIB-04b error #329", stdlib_04b_error_tests);
     ("E2E Vscode Bindings",      vscode_bindings_tests);
     ("E2E Array Type Sugar",     array_type_tests);

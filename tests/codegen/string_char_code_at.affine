@@ -1,0 +1,34 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// PHASE-F string-wall slice 1: string indexing on the read-side
+// `[len: i32 LE][utf8 bytes...]` ABI (proposals/MIGRATION-PLAN.adoc
+// §"The two walls"). Exercises in-bounds bytes, both out-of-bounds
+// directions, the empty string, and `char_to_int`.
+//
+// The companion harness `test_string_char_code_at.mjs` asserts `main()`
+// against the value derived from the interp oracle (lib/interp.ml
+// `string_char_code_at` / `char_to_int`); that equality is the
+// wasm-vs-interp parity check for this slice. The same constants are
+// pinned interp-side in test/test_e2e.ml (E2E String-wall slice 1).
+
+fn main() -> Int {
+  // "ABC" bytes: 'A' = 65, 'B' = 66, 'C' = 67
+  let a = string_char_code_at("ABC", 0);    // 65
+  let b = string_char_code_at("ABC", 1);    // 66
+  let c = string_char_code_at("ABC", 2);    // 67
+  // out-of-bounds (both directions) and the empty string -> -1 sentinel
+  let neg = string_char_code_at("ABC", -1); // -1
+  let past = string_char_code_at("ABC", 9); // -1
+  let empty = string_char_code_at("", 0);   // -1
+  // char_to_int is identity on a Char literal at the wasm value lattice
+  let z = char_to_int('Z');                 // 90
+
+  // Pack positionally so a wrong byte at any index changes the total:
+  //   inbounds = ((65*256 + 66)*256 + 67) = 0x414243 = 4276803
+  //   - (neg + past + empty) = -(-3)      = +3   (all three sentinels)
+  //   + z                                  = +90
+  //   total                                = 4276896
+  let inbounds = (a * 256 + b) * 256 + c;
+  inbounds - (neg + past + empty) + z
+}
