@@ -26,6 +26,7 @@ jobs:
   # point also keeps the workflow re-triggerable post-enablement.
   precheck:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       enabled: ${{ steps.check.outputs.enabled }}
     steps:
@@ -45,6 +46,7 @@ jobs:
     needs: precheck
     if: needs.precheck.outputs.enabled == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
@@ -119,6 +121,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: [precheck, build]
     if: needs.precheck.outputs.enabled == 'true'
     steps:
