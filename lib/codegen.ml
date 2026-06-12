@@ -951,6 +951,36 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
         let* (ctx_with_arg, arg_code) = gen_expr ctx (List.hd args) in
         Ok (ctx_with_arg, arg_code)
 
+      | ExprVar id when id.name = "string_from_char_code"
+                        && List.length args = 1 ->
+        (* PHASE-F string-wall slice 2: the write-side of the
+           `[len: i32 LE][utf8 bytes...]` ABI. `string_from_char_code(n)`
+           builds a one-byte string from the low 8 bits of `n` — matching
+           the interp oracle (lib/interp.ml: `String.make 1 (Char.chr
+           (n land 0xff))`). This is the first heap-allocating string op:
+           bump-allocate 5 bytes `[len=1][byte]`, store the length word and
+           the byte, and leave the base pointer as the result.
+
+           `I32Store8` writes only the low 8 bits, so it performs the
+           `land 0xff` masking itself (incl. the correct result for negative
+           `n`: e.g. -1 stores 0xFF, read back as 255 via the slice-1
+           `I32Load8U`), so no explicit mask instruction is needed. *)
+        let* (ctx_n, n_code) = gen_expr ctx (List.hd args) in
+        let (ctx_a, alloc_code) = gen_heap_alloc ctx_n 5 in
+        let (ctx_p, ptr_local) = alloc_local ctx_a "__sfcc_ptr" in
+        let (ctx_v, val_local) = alloc_local ctx_p "__sfcc_val" in
+        let code =
+          n_code @ [LocalSet val_local] @       (* val_local = n *)
+          alloc_code @ [LocalSet ptr_local] @   (* ptr_local = base addr *)
+          (* [ptr + 0] = length 1 *)
+          [ LocalGet ptr_local; I32Const 1l; I32Store (2, 0) ] @
+          (* [ptr + 4] = low byte of n (I32Store8 truncates) *)
+          [ LocalGet ptr_local; LocalGet val_local; I32Store8 (0, 4) ] @
+          (* result: the string pointer *)
+          [ LocalGet ptr_local ]
+        in
+        Ok (ctx_v, code)
+
       | ExprVar id when (id.name = "env_at" || id.name = "arg_at")
                         && List.length args = 1 ->
         (* ADR-015 S5 (#180): env_at(i) / arg_at(i) — fetch the i-th

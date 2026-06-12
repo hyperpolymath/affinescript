@@ -1,0 +1,140 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+= Phase F — string-wall slice 2: string_from_char_code (evidence)
+:toc: macro
+
+[IMPORTANT]
+====
+*Slice landed: the write-side of the string ABI.* `string_from_char_code(n)`
+— already wired in resolve/typecheck/interp — gained a wasm-backend lowering
+that *bump-allocates* a one-byte string `[len: i32 LE = 1][byte]` on the heap,
+where the byte is the low 8 bits of `n`. This is the first heap-allocating
+string op, establishing the write side of the `[len][utf8]` ABI whose read
+side landed in slice 1.
+
+Second slice of the *variable-string backend* wall
+(`proposals/MIGRATION-PLAN.adoc` §"The two walls", Phase F). Remaining
+write-side ops (`string_sub`/`slice`/concat/case-fold) need *runtime-length*
+allocation — deferred to slice 3, which will extract the shared
+runtime-length helper once two real callers fix its signature.
+====
+
+toc::[]
+
+== What was missing
+
+`string_from_char_code` was wired end-to-end except the wasm backend:
+
+[cols="2,1,1,1,1",options="header"]
+|===
+| Builtin | resolve.ml | typecheck.ml | interp.ml | codegen.ml (wasm)
+| `string_char_code_at` | ✓ | ✓ | ✓ | ✓ (slice 1)
+| `char_to_int` | ✓ | ✓ | ✓ | ✓ (slice 1)
+| `string_from_char_code` | ✓ | ✓ | ✓ | *was missing -> added*
+|===
+
+Before this slice it failed at codegen:
+
+----
+Code generation error: (Codegen.UnboundVariable
+   "Function or variable not found: string_from_char_code")
+----
+
+== The lowering (lib/codegen.ml)
+
+`string_from_char_code(n)` — interp oracle (lib/interp.ml):
+`String.make 1 (Char.chr (n land 0xff))`.
+
+----
+n_code; LocalSet val            ;; val = n
+gen_heap_alloc 5; LocalSet ptr  ;; ptr = bump-allocated base (5 bytes)
+LocalGet ptr; I32Const 1; I32Store (offset=0)   ;; [ptr+0] = length 1
+LocalGet ptr; LocalGet val; I32Store8 (offset=4) ;; [ptr+4] = low byte of n
+LocalGet ptr                    ;; result = the string pointer
+----
+
+`I32Store8` writes only the low 8 bits, so it performs the `land 0xff`
+masking itself — including the correct result for negative `n` (`-1` stores
+`0xFF`, read back as `255` via slice 1's `I32Load8U`). No explicit mask
+instruction is needed.
+
+The allocation reuses the existing bump allocator (`gen_heap_alloc`, the same
+one closures and enum variants use), so no new memory machinery is
+introduced.
+
+== Gate evidence
+
+=== Gate 1 — builds
+
+`dune build bin/main.exe` exit 0. The previously-failing probe now compiles
+and round-trips with slice 1's reader:
+
+----
+$ affinescript compile sfcc.affine -o sfcc.wasm    # string_char_code_at(string_from_char_code(66), 0)
+Compiled sfcc.affine -> sfcc.wasm (WASM)
+$ node ... main()  =>  66
+----
+
+=== Gate 2 — parity (wasm vs interpreter oracle)
+
+Same inputs through both backends agree across masking, NUL, negatives,
+overflow, length, and out-of-bounds-after-construction. Interp oracle
+confirmed against the real library API; wasm executed under Node.
+
+[cols="4,1,1",options="header"]
+|===
+| Expression | interp | wasm
+| `scca(string_from_char_code(66), 0)` | 66 | 66
+| `scca(string_from_char_code(0), 0)` (NUL) | 0 | 0
+| `scca(string_from_char_code(255), 0)` | 255 | 255
+| `scca(string_from_char_code(256), 0)` (mask) | 0 | 0
+| `scca(string_from_char_code(-1), 0)` (low byte) | 255 | 255
+| `scca(string_from_char_code(320), 0)` (mask) | 64 | 64
+| `string_length(string_from_char_code(65))` | 1 | 1
+| `scca(string_from_char_code(65), 1)` (OOB) | -1 | -1
+|===
+
+(`scca` = `string_char_code_at`, the slice-1 reader.)
+
+The packed fixture `tests/codegen/string_from_char_code.affine` returns
+`4283202` (positional pack of three round-tripped bytes + the boundary
+trio); both backends produce it.
+
+== Tests added
+
+* `test/test_e2e.ml` — group *"E2E String-wall slice 2 (string_from_char_code)"*:
+  seven interp-oracle cases (round-trip, NUL byte, high byte, mask-overflow,
+  mask-negative, length, OOB-after-construction). Runs under `dune runtest`.
+  The interp consumer coverage mandated by `.claude/CLAUDE.md`
+  §"Test-fixture hygiene".
+* `tests/codegen/string_from_char_code.affine` +
+  `tests/codegen/test_string_from_char_code.mjs` — executable wasm parity,
+  run by `tools/run_codegen_wasm_tests.sh` (CI).
+
+Full `tools/run_codegen_wasm_tests.sh` run: *all* codegen WASM tests pass
+(both slice-1 and slice-2 string harnesses), no sibling regressions.
+
+== Corpus impact
+
+This slice adds string *construction from a code point* — the building block
+for any kernel that emits text one byte at a time (manual int->string
+ladders, single-character separators, byte-builders). Combined with slice 1's
+indexing, the read+write byte primitives are now both present.
+
+It does *not* yet unblock ops that copy *ranges* of bytes (`string_sub`,
+`slice`) or *concatenate* (`++`, `string_concat`) — those need a
+runtime-length allocation, the subject of slice 3.
+
+== Next slices (variable-string backend wall)
+
+. *Runtime-length allocation ABI* — a bump-alloc variant taking a runtime
+  byte count, plus a copy-loop primitive. First consumers `string_sub(s,
+  start, len)` and `slice(s, lo, hi)` (bounded byte copies), which between
+  them fix the shared helper's signature.
+. *`startsWith` / `string_find`* — prefix/substring scans (read-side; build on
+  slice-1 indexing, no allocation).
+. *Concat + case-folding* — `++` on strings, `to_lowercase` / `to_uppercase`.
+
+Each slice: add the codegen arm, an interp-parity e2e group, and a
+`tests/codegen/*.mjs` executable check, then re-run the census and drop the
+gated count.
