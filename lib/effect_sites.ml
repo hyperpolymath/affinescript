@@ -73,7 +73,11 @@ let rec visit_expr (visit : expr -> unit) (e : expr) : unit =
   | ExprField (e, _) | ExprTupleIndex (e, _) | ExprRowRestrict (e, _)
   | ExprSpan (e, _) | ExprUnary (_, e) ->
     go_expr e
-  | ExprIndex (a, b) | ExprBinary (a, _, b) ->
+  | ExprIndex (a, b) | ExprBinary (a, _, b) | ExprStringConcat (a, b) ->
+    (* ExprStringConcat (slice 8b) recurses like ExprBinary and is NOT a call
+       site: string `++` is not an effect operation, so keeping it out of the
+       ExprApp census preserves effect-ordinal parity between the interpreter
+       (which sees the original ExprBinary) and the wasm backend. *)
     go_expr a;
     go_expr b
   | ExprTuple es | ExprArray es -> List.iter go_expr es

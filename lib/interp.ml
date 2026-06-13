@@ -132,6 +132,12 @@ let rec eval (env : env) (expr : expr) : value result =
     let* arg_vals = eval_list env args in
     apply_function func_val arg_vals
 
+  | ExprStringConcat (left, right) ->
+    (* String-wall slice 8b: the interpreter is the oracle and never sees the
+       wasm-only elaboration, but handle it defensively as ordinary String
+       `++` so the node has identical semantics in every backend. *)
+    eval env (ExprBinary (left, OpConcat, right))
+
   | ExprBinary (left, op, right) ->
     let* left_val = eval env left in
     let* right_val = eval env right in

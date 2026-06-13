@@ -736,6 +736,26 @@ and type_of_literal (lit : literal) : ty =
   | LitString _ -> ty_string
   | LitUnit _ -> ty_unit
 
+(** String-wall slice 8b. Physical-identity record of the `++` ([OpConcat])
+    nodes that typed as {b String} concatenation (rather than array concat).
+    Populated by {!synth} while checking, consumed by
+    {!elaborate_string_concat} to rewrite exactly those nodes into
+    {!Ast.ExprStringConcat} for the byte-concat wasm lowering.
+
+    Keyed by physical identity ([==], via [List.memq]) and not by span/value:
+    [ExprBinary] carries no span, and two distinct same-text `++` occurrences
+    are value-equal. This is sound because typecheck and the elaboration run
+    over the {e same} program object — [parse_with_face]'s lowered [prog],
+    shared by resolve/typecheck/codegen — so the node [synth] records is
+    physically the node the elaboration rewrites. Stale entries from a prior
+    compile never match the current [prog]'s nodes, so accumulation across
+    compiles is harmless; {!elaborate_string_concat} clears the list when it
+    consumes it. *)
+let string_concat_sites : expr list ref = ref []
+
+(** Discard any recorded String-concat sites (e.g. before re-checking). *)
+let reset_string_concat_sites () : unit = string_concat_sites := []
+
 (** {1 Expression synthesis (mode ⇒)} *)
 
 (** Synthesize a type for an expression. *)
@@ -1015,7 +1035,7 @@ let rec synth (ctx : context) (expr : expr) : ty result =
      synthesise lhs, walk through repr to pierce variables; if it's a Float,
      pin rhs to Float and return the matching result type; otherwise fall
      through to the legacy [type_of_binop] path which is Int-monomorphic. *)
-  | ExprBinary (lhs, op, rhs) ->
+  | ExprBinary (lhs, op, rhs) as concat_node ->
     let arith_or_bitwise = match op with
       | OpAdd | OpSub | OpMul | OpDiv | OpMod
       | OpBitAnd | OpBitOr | OpBitXor | OpShl | OpShr -> true
@@ -1065,6 +1085,10 @@ let rec synth (ctx : context) (expr : expr) : ty result =
          Ok (TApp (TCon "Array", [elem]))
        | TCon "String" ->
          let* () = check ctx rhs ty_string in
+         (* String-wall slice 8b: record this `++` node (physical identity)
+            as a String concat, so elaborate_string_concat can rewrite it to
+            ExprStringConcat for the byte-concat wasm lowering. *)
+         string_concat_sites := concat_node :: !string_concat_sites;
          Ok ty_string
        | _ ->
          (* lhs type not yet determined (e.g. `let mut acc = []`):
@@ -1077,6 +1101,8 @@ let rec synth (ctx : context) (expr : expr) : ty result =
           | _ ->
             let* () = unify_or_err lhs_ty ty_string in
             let* () = unify_or_err rhs_ty ty_string in
+            (* Slice 8b: also a String concat (lhs was undetermined). *)
+            string_concat_sites := concat_node :: !string_concat_sites;
             Ok ty_string))
     end else begin
       let (lhs_ty, rhs_ty, result_ty) = type_of_binop op in
@@ -1420,6 +1446,121 @@ and check (ctx : context) (expr : expr) (expected : ty) : unit result =
 and synth_and_unify (ctx : context) (expr : expr) (expected : ty) : unit result =
   let* got = synth ctx expr in
   unify_or_err expected got
+
+(** {1 String-concat elaboration (slice 8b)} *)
+
+(* Rewrite every `++` node {!synth} recorded as a String concat into
+   [ExprStringConcat], leaving array `++` as [ExprBinary _ OpConcat _]. The
+   traversal mirrors {!Resolve.lower_expr} exactly so it is total over the
+   expression grammar — any constructor it failed to descend into would leave
+   a String `++` un-elaborated, where the slice-8a guard would (loudly) catch
+   the obvious cases and a var-var case could still miscompile. *)
+let rec elab_expr (e : expr) : expr =
+  match e with
+  | ExprBinary (l, op, r) ->
+    let l' = elab_expr l in
+    let r' = elab_expr r in
+    if List.memq e !string_concat_sites
+    then ExprStringConcat (l', r')
+    else ExprBinary (l', op, r')
+  | ExprStringConcat (l, r) -> ExprStringConcat (elab_expr l, elab_expr r)
+  | ExprSpan (e', sp) -> ExprSpan (elab_expr e', sp)
+  | ExprLit _ | ExprVar _ | ExprVariant _ -> e
+  | ExprField (base, fld) -> ExprField (elab_expr base, fld)
+  | ExprLet r ->
+    ExprLet { r with el_value = elab_expr r.el_value;
+                     el_body = Option.map elab_expr r.el_body }
+  | ExprIf r ->
+    ExprIf { ei_cond = elab_expr r.ei_cond;
+             ei_then = elab_expr r.ei_then;
+             ei_else = Option.map elab_expr r.ei_else }
+  | ExprMatch r ->
+    ExprMatch { em_scrutinee = elab_expr r.em_scrutinee;
+                em_arms = List.map elab_arm r.em_arms }
+  | ExprLambda r -> ExprLambda { r with elam_body = elab_expr r.elam_body }
+  | ExprApp (f, args) -> ExprApp (elab_expr f, List.map elab_expr args)
+  | ExprTupleIndex (e1, i) -> ExprTupleIndex (elab_expr e1, i)
+  | ExprIndex (a, i) -> ExprIndex (elab_expr a, elab_expr i)
+  | ExprTuple es -> ExprTuple (List.map elab_expr es)
+  | ExprArray es -> ExprArray (List.map elab_expr es)
+  | ExprRecord r ->
+    ExprRecord
+      { er_fields =
+          List.map (fun (id, eo) -> (id, Option.map elab_expr eo)) r.er_fields;
+        er_spread = Option.map elab_expr r.er_spread }
+  | ExprRowRestrict (e1, id) -> ExprRowRestrict (elab_expr e1, id)
+  | ExprUnary (op, e1) -> ExprUnary (op, elab_expr e1)
+  | ExprBlock b -> ExprBlock (elab_block b)
+  | ExprReturn eo -> ExprReturn (Option.map elab_expr eo)
+  | ExprBreak _ | ExprContinue _ -> e
+  | ExprTry r ->
+    ExprTry { et_body = elab_block r.et_body;
+              et_catch = Option.map (List.map elab_arm) r.et_catch;
+              et_finally = Option.map elab_block r.et_finally }
+  | ExprHandle r ->
+    ExprHandle { eh_body = elab_expr r.eh_body;
+                 eh_handlers = List.map elab_handler r.eh_handlers }
+  | ExprResume eo -> ExprResume (Option.map elab_expr eo)
+  | ExprUnsafe ops -> ExprUnsafe (List.map elab_unsafe ops)
+
+and elab_arm a =
+  { a with ma_guard = Option.map elab_expr a.ma_guard;
+           ma_body = elab_expr a.ma_body }
+
+and elab_handler = function
+  | HandlerReturn (p, e) -> HandlerReturn (p, elab_expr e)
+  | HandlerOp (id, ps, e) -> HandlerOp (id, ps, elab_expr e)
+
+and elab_unsafe = function
+  | UnsafeRead e -> UnsafeRead (elab_expr e)
+  | UnsafeWrite (a, b) -> UnsafeWrite (elab_expr a, elab_expr b)
+  | UnsafeOffset (a, b) -> UnsafeOffset (elab_expr a, elab_expr b)
+  | UnsafeTransmute (t1, t2, e) -> UnsafeTransmute (t1, t2, elab_expr e)
+  | UnsafeForget e -> UnsafeForget (elab_expr e)
+
+and elab_block b =
+  { blk_stmts = List.map elab_stmt b.blk_stmts;
+    blk_expr = Option.map elab_expr b.blk_expr }
+
+and elab_stmt = function
+  | StmtLet r -> StmtLet { r with sl_value = elab_expr r.sl_value }
+  | StmtExpr e -> StmtExpr (elab_expr e)
+  | StmtAssign (a, op, b) -> StmtAssign (elab_expr a, op, elab_expr b)
+  | StmtWhile (e, b) -> StmtWhile (elab_expr e, elab_block b)
+  | StmtFor (p, e, b) -> StmtFor (p, elab_expr e, elab_block b)
+
+let elab_fn_body = function
+  | FnBlock b -> FnBlock (elab_block b)
+  | FnExpr e -> FnExpr (elab_expr e)
+  | FnExtern -> FnExtern
+
+let elab_top = function
+  | TopFn fd -> TopFn { fd with fd_body = elab_fn_body fd.fd_body }
+  | TopConst r -> TopConst { r with tc_value = elab_expr r.tc_value }
+  | TopImpl ib ->
+    TopImpl { ib with ib_items = List.map (function
+      | ImplFn fd -> ImplFn { fd with fd_body = elab_fn_body fd.fd_body }
+      | ImplType _ as it -> it) ib.ib_items }
+  | TopTrait td ->
+    TopTrait { td with trd_items = List.map (function
+      | TraitFnDefault fd ->
+        TraitFnDefault { fd with fd_body = elab_fn_body fd.fd_body }
+      | other -> other) td.trd_items }
+  | (TopType _ | TopEffect _ | TopExternType _ | TopExternFn _) as t -> t
+
+(** Rewrite the String case of `++` to {!Ast.ExprStringConcat} across [program],
+    using the sites {!synth} recorded during type-checking. Pure apart from
+    clearing the recorded sites; returns [program] unchanged when nothing was
+    recorded. Intended to run on the wasm-codegen path only (the interpreter
+    and other backends handle String `++` directly). *)
+let elaborate_string_concat (program : program) : program =
+  let result =
+    match !string_concat_sites with
+    | [] -> program
+    | _ -> { program with prog_decls = List.map elab_top program.prog_decls }
+  in
+  reset_string_concat_sites ();
+  result
 
 (** {1 Declaration checking} *)
 

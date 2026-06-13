@@ -143,6 +143,15 @@ type expr =
     }
   | ExprRowRestrict of expr * ident                  (** e \ field *)
   | ExprBinary of expr * binary_op * expr
+  | ExprStringConcat of expr * expr
+      (** String concatenation, `a ++ b` where both sides are `String`.
+          Not produced by the parser: it is introduced by a post-typecheck
+          *elaboration* (see {!Typecheck.elaborate_string_concat}) that
+          rewrites the String case of the polymorphic `++` (`ExprBinary (_,
+          OpConcat, _)`) into this node, so the wasm backend can lower it as
+          byte concatenation rather than the list-element copy used for array
+          `++`. The interpreter and non-wasm backends treat it as ordinary
+          string concatenation. String-wall slice 8b. *)
   | ExprUnary of unary_op * expr
   | ExprBlock of block
   | ExprReturn of expr option

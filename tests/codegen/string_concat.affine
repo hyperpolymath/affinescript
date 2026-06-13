@@ -1,0 +1,43 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// PHASE-F string-wall slice 8b: string `++` (concatenation) — the
+// type-directed byte-concat lowering (proposals/DESIGN-string-concat.adoc).
+// `++` is polymorphic over String and [T]; typecheck records the String case
+// and Typecheck.elaborate_string_concat rewrites it to ExprStringConcat, which
+// codegen lowers as a byte copy (4 + la + lb bytes, one length word) rather
+// than the list-element copy used for array `++`.
+//
+// This fixture pins THE bug the slice-8a guard stood in for: `"ab" ++ "cd"`
+// read at byte 2 was 2 (the length word of "cd") under the list lowering; it
+// must be 'c' (99). It also covers the var-var case the guard could not catch,
+// chained `a ++ b ++ c`, and empty operands. Read back through the slice-1
+// reader string_char_code_at / string_length. The companion harness
+// test_string_concat.mjs asserts main() against the interp oracle.
+
+fn main() -> Int {
+  // THE miscompile: "ab" ++ "cd" = "abcd"; byte 2 = 'c' (99) [was 2 pre-8b].
+  let c = string_char_code_at("ab" ++ "cd", 2);          // 99
+  let len4 = string_length("ab" ++ "cd");                // 4
+
+  // var-var: neither operand is syntactically a string, so the slice-8a guard
+  // could not catch it — only the type-directed elaboration reaches it.
+  let a = "foo";
+  let b = "bar";
+  let vbyte = string_char_code_at(a ++ b, 3);            // 'b' = 98
+  let vlen = string_length(a ++ b);                      // 6
+
+  // chained a ++ b ++ c (parses (a ++ b) ++ c — nested ExprStringConcat).
+  let ch = string_char_code_at("a" ++ "bb" ++ "ccc", 3); // 'c' = 99
+  let chlen = string_length("a" ++ "bb" ++ "ccc");       // 6
+
+  // empty operands.
+  let el = string_length("" ++ "x");                     // 1
+  let er = string_length("x" ++ "");                     // 1
+
+  // packed = c + vbyte*256 + ch*65536 = 99 + 25088 + 6488064 = 6513251
+  // + len4 + vlen + chlen + el + er   = 4 + 6 + 6 + 1 + 1     = 18
+  // total                             = 6513269
+  let packed = c + vbyte * 256 + ch * 65536;
+  packed + len4 + vlen + chlen + el + er
+}

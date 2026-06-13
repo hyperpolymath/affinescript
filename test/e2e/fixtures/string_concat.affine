@@ -1,0 +1,15 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// PHASE-F string-wall slice 8b e2e fixture: string `++` must lower to wasm
+// (via Typecheck.elaborate_string_concat) rather than be rejected by the
+// slice-8a guard. Covers literal, var-var, and chained concatenation.
+
+fn main() -> Int {
+  let a = "foo";
+  let b = "bar";
+  let lit = string_char_code_at("ab" ++ "cd", 2);   // 'c'
+  let vv = string_char_code_at(a ++ b, 3);           // 'b'
+  let ch = string_length("a" ++ "bb" ++ "ccc");      // 6
+  lit + vv + ch
+}
