@@ -3838,6 +3838,53 @@ let stringwall_sub_tests = [
   Alcotest.test_case "zero length -> 0" `Quick test_stringwall_sub_zero_len;
 ]
 
+(* ---- PHASE-F string-wall slice 4: to_lowercase / to_uppercase ----
+
+   ASCII case-folding gained wasm lowerings: a copy-with-transform over the
+   slice-3 runtime-length idiom. The branchless per-byte shift matches the
+   interp oracle (lib/interp.ml String.{lowercase,uppercase}_ascii): only
+   'A'..'Z' / 'a'..'z' shift by 32; everything else (digits, punctuation,
+   non-ASCII bytes) passes through. The @ (64) / [ (91) probes pin the
+   exclusive 'A'..'Z' boundary. *)
+
+let test_stringwall_lower_A () =
+  Alcotest.(check int) "to_lowercase(\"ABC\")[0] == 'a'" 97
+    (eval_int_fn "fn f() -> Int { string_char_code_at(to_lowercase(\"ABC\"), 0) }")
+
+let test_stringwall_lower_C () =
+  Alcotest.(check int) "to_lowercase(\"ABC\")[2] == 'c'" 99
+    (eval_int_fn "fn f() -> Int { string_char_code_at(to_lowercase(\"ABC\"), 2) }")
+
+let test_stringwall_upper_a () =
+  Alcotest.(check int) "to_uppercase(\"abc\")[0] == 'A'" 65
+    (eval_int_fn "fn f() -> Int { string_char_code_at(to_uppercase(\"abc\"), 0) }")
+
+let test_stringwall_lower_digit_passthrough () =
+  Alcotest.(check int) "non-letter '3' passes through" 51
+    (eval_int_fn "fn f() -> Int { string_char_code_at(to_lowercase(\"aB3\"), 2) }")
+
+let test_stringwall_lower_below_A () =
+  Alcotest.(check int) "'@' (64, just below 'A') unchanged" 64
+    (eval_int_fn "fn f() -> Int { string_char_code_at(to_lowercase(\"@\"), 0) }")
+
+let test_stringwall_lower_above_Z () =
+  Alcotest.(check int) "'[' (91, just above 'Z') unchanged" 91
+    (eval_int_fn "fn f() -> Int { string_char_code_at(to_lowercase(\"[\"), 0) }")
+
+let test_stringwall_case_length () =
+  Alcotest.(check int) "case-fold preserves length" 5
+    (eval_int_fn "fn f() -> Int { string_length(to_uppercase(\"Hello\")) }")
+
+let stringwall_case_tests = [
+  Alcotest.test_case "lower(\"ABC\")[0] == 97" `Quick test_stringwall_lower_A;
+  Alcotest.test_case "lower(\"ABC\")[2] == 99" `Quick test_stringwall_lower_C;
+  Alcotest.test_case "upper(\"abc\")[0] == 65" `Quick test_stringwall_upper_a;
+  Alcotest.test_case "digit passthrough == 51" `Quick test_stringwall_lower_digit_passthrough;
+  Alcotest.test_case "'@' below 'A' unchanged" `Quick test_stringwall_lower_below_A;
+  Alcotest.test_case "'[' above 'Z' unchanged" `Quick test_stringwall_lower_above_Z;
+  Alcotest.test_case "case-fold preserves length" `Quick test_stringwall_case_length;
+]
+
 (* ---- STDLIB-04b: Throws extern `error<T>` (Refs #329) ----
 
    `error<T>(msg: String) -> T / Throws` was declared in
@@ -4948,6 +4995,7 @@ let tests =
     ("E2E String-wall slice 1 (indexing)", stringwall_index_tests);
     ("E2E String-wall slice 2 (string_from_char_code)", stringwall_alloc_tests);
     ("E2E String-wall slice 3 (string_sub)", stringwall_sub_tests);
+    ("E2E String-wall slice 4 (case-fold)", stringwall_case_tests);
     ("E2E STDLIB-04b error #329", stdlib_04b_error_tests);
     ("E2E Vscode Bindings",      vscode_bindings_tests);
     ("E2E Array Type Sugar",     array_type_tests);

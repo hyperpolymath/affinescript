@@ -1047,6 +1047,66 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
         in
         Ok (c11, code)
 
+      | ExprVar id when (id.name = "to_lowercase" || id.name = "to_uppercase")
+                        && List.length args = 1 ->
+        (* PHASE-F string-wall slice 4: ASCII case-folding — a copy-with-
+           transform over the runtime-length idiom established in slice 3
+           (`string_sub`). `to_lowercase` / `to_uppercase` allocate
+           `4 + slen` bytes and copy each byte through a *branchless* ASCII
+           case shift, matching the interp oracle (lib/interp.ml:
+           `String.{lowercase,uppercase}_ascii`):
+             lowercase c = c + 32 * ((c >= 'A') & (c <= 'Z'))   ['A'..'Z' -> +32]
+             uppercase c = c - 32 * ((c >= 'a') & (c <= 'z'))   ['a'..'z' -> -32]
+           The in-range test is a 0/1 product (`I32And` of two `I32{Ge,Le}S`),
+           so bytes outside the letter range (incl. non-ASCII bytes >= 128
+           read via `I32Load8U`) pass through unchanged — exactly the
+           ASCII-only semantics. *)
+        let lower = id.name = "to_lowercase" in
+        let* (ctx1, s_code) = gen_expr ctx (List.hd args) in
+        let (ctx2, heap_idx) = ensure_heap_ptr ctx1 in
+        let (c3, src)  = alloc_local ctx2 "__scase_src"  in
+        let (c4, slen) = alloc_local c3   "__scase_slen" in
+        let (c5, dst)  = alloc_local c4   "__scase_dst"  in
+        let (c6, k)    = alloc_local c5   "__scase_k"    in
+        let (c7, c)    = alloc_local c6   "__scase_c"    in
+        (* transform: leave the case-shifted byte on the stack from `c` *)
+        let lo, hi, combine =
+          if lower then 65l, 90l, I32Add    (* 'A'..'Z' -> +32 *)
+          else          97l, 122l, I32Sub   (* 'a'..'z' -> -32 *)
+        in
+        let transform =
+          [ LocalGet c;
+            LocalGet c; I32Const lo; I32GeS;
+            LocalGet c; I32Const hi; I32LeS;
+            I32And; I32Const 32l; I32Mul;
+            combine ]
+        in
+        let loop_body =
+          [ LocalGet k; LocalGet slen; I32GeS; BrIf 1;
+            (* c = src[4 + k] *)
+            LocalGet src; LocalGet k; I32Add; I32Load8U (0, 4); LocalSet c;
+            (* dst slot address (store uses static +4): dst + k *)
+            LocalGet dst; LocalGet k; I32Add ]
+          @ transform
+          @ [ I32Store8 (0, 4);
+              LocalGet k; I32Const 1l; I32Add; LocalSet k;
+              Br 0 ]
+        in
+        let code =
+          s_code @ [LocalSet src] @
+          [ LocalGet src; I32Load (2, 0); LocalSet slen;
+            (* dst = heap; heap += 4 + slen *)
+            GlobalGet heap_idx; LocalSet dst;
+            GlobalGet heap_idx; I32Const 4l; LocalGet slen; I32Add; I32Add;
+            GlobalSet heap_idx;
+            (* dst[0] = slen *)
+            LocalGet dst; LocalGet slen; I32Store (2, 0);
+            I32Const 0l; LocalSet k;
+            Block (BtEmpty, [ Loop (BtEmpty, loop_body) ]);
+            LocalGet dst ]
+        in
+        Ok (c7, code)
+
       | ExprVar id when (id.name = "env_at" || id.name = "arg_at")
                         && List.length args = 1 ->
         (* ADR-015 S5 (#180): env_at(i) / arg_at(i) — fetch the i-th
