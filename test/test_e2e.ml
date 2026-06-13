@@ -4030,6 +4030,47 @@ let stringwall_i2s_tests = [
   Alcotest.test_case "int_to_string(INT_MIN)" `Quick test_stringwall_i2s_intmin;
 ]
 
+(* ---- PHASE-F string-wall slice 8 (guard half): string `++` rejection ----
+
+   String `++` reaching the wasm backend's *list*-concat lowering silently
+   miscompiles (the source string's [len][utf8] bytes are copied as i32
+   elements; "ab" ++ "cd" yields byte 2 = 2 instead of 'c' — see
+   proposals/DESIGN-string-concat.adoc). Until the type-directed lowering
+   lands, codegen rejects the syntactically-obvious string `++` with a loud
+   error. These pin that the guard fires for string `++` and does NOT fire for
+   list `++` (no false positive). *)
+
+let string_contains s sub =
+  let n = String.length s and m = String.length sub in
+  let rec go i = i + m <= n && (String.sub s i m = sub || go (i + 1)) in
+  go 0
+
+let test_stringwall_concat_guard_rejects_string () =
+  let prog = Parse_driver.parse_string ~file:"<stringwall>"
+    "fn f() -> Int { string_char_code_at(\"ab\" ++ \"cd\", 0) }" in
+  match wasm_codegen prog with
+  | Error msg when string_contains msg "concatenation" -> ()
+  | Error msg -> Alcotest.failf "expected the slice-8 string-++ guard, got: %s" msg
+  | Ok _ ->
+    Alcotest.fail
+      "string `++` must be rejected by the slice-8 guard (the list-concat \
+       lowering would silently miscompile it), not compiled to wasm"
+
+let test_stringwall_concat_guard_allows_list () =
+  (* The guard must not misfire on genuine list `++`. *)
+  let prog = Parse_driver.parse_string ~file:"<stringwall>"
+    "fn f() -> Int { let xs = [1, 2] ++ [3]; 0 }" in
+  match wasm_codegen prog with
+  | Ok _ -> ()
+  | Error msg -> Alcotest.failf "list `++` must still compile (guard false positive): %s" msg
+
+let stringwall_concat_guard_tests = [
+  Alcotest.test_case "string `++` is rejected (not silently miscompiled)"
+    `Quick test_stringwall_concat_guard_rejects_string;
+  Alcotest.test_case "list `++` still compiles (no guard false positive)"
+    `Quick test_stringwall_concat_guard_allows_list;
+]
+
 (* ---- STDLIB-04b: Throws extern `error<T>` (Refs #329) ----
 
    `error<T>(msg: String) -> T / Throws` was declared in
@@ -5144,6 +5185,7 @@ let tests =
     ("E2E String-wall slice 5 (trim)", stringwall_trim_tests);
     ("E2E String-wall slice 6 (string_find)", stringwall_find_tests);
     ("E2E String-wall slice 7 (int_to_string)", stringwall_i2s_tests);
+    ("E2E String-wall slice 8 guard (string ++ rejection)", stringwall_concat_guard_tests);
     ("E2E STDLIB-04b error #329", stdlib_04b_error_tests);
     ("E2E Vscode Bindings",      vscode_bindings_tests);
     ("E2E Array Type Sugar",     array_type_tests);

@@ -354,6 +354,35 @@ let dedup (lst : string list) : string list =
     if List.mem x acc then acc else x :: acc
   ) [] lst |> List.rev
 
+(** PHASE-F string-wall slice 8 (guard half). Syntactic recogniser for a
+    string-typed operand of `++`. The wasm `OpConcat` handler lowers `++` as
+    *list* concatenation (4-byte element stride); applied to a string's
+    `[len][utf8]` layout it silently miscompiles (a source string's length
+    word leaks in as a payload byte — see proposals/DESIGN-string-concat.adoc).
+    Codegen is type-blind, so until the type-directed lowering lands (slice 8
+    full fix) this recogniser lets the handler reject the *obvious* string `++`
+    cases with a loud error instead of emitting garbage.
+
+    It is a *sound-rejection* heuristic: it only returns true for operands that
+    are unambiguously strings — a string literal, a call to a String-returning
+    builtin, or a nested string `++`. List `++` operands (arrays / array
+    literals / bare variables) are never matched, so genuine list
+    concatenation is unaffected. It is deliberately *incomplete*: a pure
+    variable-to-variable string `++` (e.g. `a ++ b` with both string-typed
+    vars) is not recognised syntactically and still slips through; closing that
+    gap needs the type channel and is the slice-8 full fix. *)
+let rec is_string_concat_operand (e : expr) : bool =
+  match e with
+  | ExprLit (LitString _) -> true
+  | ExprApp (ExprVar id, _) ->
+    (* String-returning builtins (Int/Char-returning ones are excluded). *)
+    List.mem id.name
+      [ "int_to_string"; "float_to_string"; "to_lowercase"; "to_uppercase";
+        "trim"; "string_sub"; "string_from_char_code"; "show" ]
+  | ExprBinary (a, OpConcat, b) ->
+    is_string_concat_operand a || is_string_concat_operand b
+  | _ -> false
+
 (** Generate code for a literal *)
 let gen_literal (ctx : context) (lit : literal) : (context * instr) result =
   match lit with
@@ -462,6 +491,22 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
             end
         end
     end
+
+  | ExprBinary (left, OpConcat, right)
+    when is_string_concat_operand left || is_string_concat_operand right ->
+    (* PHASE-F string-wall slice 8 (guard half). String `++` reaching the
+       *list*-concat lowering below would silently miscompile (the source
+       string's `[len][utf8]` is copied as 4-byte elements — see
+       proposals/DESIGN-string-concat.adoc, where `"ab" ++ "cd"` yields byte
+       2 = 2 instead of 'c'). Codegen is type-blind, so we reject the
+       syntactically-obvious string `++` cases with a loud error rather than
+       emit garbage; the type-directed lowering is the slice-8 full fix. *)
+    let _ = (left, right) in
+    Error (UnsupportedFeature
+      "string `++` (concatenation) is not yet lowered to wasm. The list-concat \
+       lowering would silently miscompile a string's [len][utf8] bytes as i32 \
+       elements. See proposals/DESIGN-string-concat.adoc (string-wall slice 8); \
+       the type-directed string-concat lowering is the follow-up fix.")
 
   | ExprBinary (left, OpConcat, right) ->
     (* List concatenation `a ++ b`. `OpConcat` was a placeholder `I32Add`
