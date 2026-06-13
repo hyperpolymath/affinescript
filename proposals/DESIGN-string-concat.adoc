@@ -3,10 +3,31 @@
 = Design: lowering string `++` (and `slice`) to wasm
 :toc: macro
 
-*Status:* PROPOSAL — awaiting owner sign-off before implementation.
+*Status:* ACCEPTED (owner sign-off 2026-06-13, "guard first, then full fix").
+*Slice 8a (guard): LANDED.* Slice 8b (type-directed lowering): next.
 *Author:* string-wall slice-8 design (Phase F, `proposals/MIGRATION-PLAN.adoc`).
 *Scope:* the last remaining string-wall items — string concatenation (`++`)
 and polymorphic `slice` — which slices 1-7 deferred as "type-directed".
+
+[NOTE]
+====
+*Slice 8a — guard (LANDED).* Per the owner's "guard first" decision, the wasm
+`OpConcat` handler now *rejects the syntactically-obvious string `++`* with a
+loud `UnsupportedFeature` error (via `is_string_concat_operand` in
+`lib/codegen.ml`) instead of silently miscompiling it. This is a
+*sound-rejection* heuristic: it fires only on operands that are unambiguously
+strings (a string literal, a String-returning builtin call, or a nested string
+`++`), so genuine list `++` is never affected; it is deliberately *incomplete*
+— a pure variable-to-variable string `++` still slips through, and closing that
+gap is exactly what slice 8b (the type-directed lowering) does. The latent
+footgun is currently unreachable in practice (no migrated kernel compiles
+string `++` to wasm yet), so the partial guard is a safe interim that stops the
+common cases loudly while 8b is built.
+
+*Slice 8b — full fix (next).* The type-directed lowering of §"Implementation
+plan" makes string `++` *correct* (and complete, incl. variable-to-variable),
+at which point the guard is replaced by the real byte-concat lowering.
+====
 
 toc::[]
 
