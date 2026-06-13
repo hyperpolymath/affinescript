@@ -1,0 +1,29 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// PHASE-F string-wall slice 6: string_find — substring search (read-side
+// nested scan, no allocation) returning the first-occurrence index or -1
+// (proposals/MIGRATION-PLAN.adoc §"The two walls").
+//
+// The companion harness test_string_find.mjs asserts main() against the value
+// derived from the interp oracle (lib/interp.ml string_find, whose empty-needle
+// crash was fixed in the same change so an empty needle returns 0). The same
+// constants are pinned interp-side in test/test_e2e.ml (E2E String-wall
+// slice 6).
+
+fn main() -> Int {
+  let a = string_find("hello", "ll");      // 2  (found mid)
+  let b = string_find("hello", "o");       // 4  (found at end)
+  let c = string_find("hello", "xyz");     // -1 (not found)
+  let d = string_find("abcabc", "bc");     // 1  (FIRST occurrence, not 4)
+  let e = string_find("hello", "");        // 0  (empty needle -> 0; was a crash)
+  let f = string_find("hello", "hellox");  // -1 (needle longer than haystack)
+
+  // Each result is in [-1, 5]; pack (result + 1) as a 4-bit nibble so every
+  // case occupies its own position and a wrong value shifts the total:
+  //   (2+1) + (4+1)*16 + (-1+1)*256 + (1+1)*4096 + (0+1)*65536 + (-1+1)*1048576
+  // =  3    +  80       +  0         +  8192       +  65536      +  0
+  // =  73811
+  (a + 1) + (b + 1) * 16 + (c + 1) * 256 + (d + 1) * 4096
+    + (e + 1) * 65536 + (f + 1) * 1048576
+}
