@@ -1,0 +1,137 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+= Phase F — string-wall slice 6: string_find (evidence)
+:toc: macro
+
+[IMPORTANT]
+====
+*Slice landed: substring search* (read-side, no allocation). `string_find(haystack,
+needle)` — already wired in resolve/typecheck/interp — gained a wasm-backend
+lowering: a nested scan returning the first-occurrence index or -1.
+
+*Also fixes an interp bug:* the interp's `string_find` called
+`String.get needle 0` *before* its `nlen = 0` guard, so an empty needle
+crashed the interpreter with an uncaught `Invalid_argument` (the `nlen = 0`
+branch was dead code). The guard is now reordered so an empty needle returns
+`0` (standard) — making the two backends agree.
+
+Sixth slice of the *variable-string backend* wall
+(`proposals/MIGRATION-PLAN.adoc` §"The two walls", Phase F). With this, all
+the *name-dispatched* string builtins that have a faithful trap-free wasm
+analogue are lowered.
+====
+
+toc::[]
+
+== Two changes
+
+. *`lib/interp.ml` — bugfix.* Move the length guards (`nlen = 0 -> 0`,
+  `nlen > hlen -> -1`) ahead of `String.get needle 0`. Before:
++
+----
+match String.index_opt haystack (String.get needle 0) with   (* raises on "" *)
+| None -> -1
+| Some _ -> let hlen = ... and nlen = ... in
+            if nlen = 0 then 0 else ...                       (* dead code *)
+----
++
+After: compute `hlen`/`nlen` first; `if nlen = 0 then 0 else if nlen > hlen
+then -1 else (index_opt-guarded scan)`. Behaviour is identical for every
+*non-empty* needle (the `index_opt` fast-path is preserved); only the empty
+needle changes — from *uncaught crash* to `0`.
+
+. *`lib/codegen.ml` — wasm lowering.* Nested scan, no allocation:
++
+----
+hlen = haystack[0]; nlen = needle[0]; res = -1; i = 0
+loop (outer):
+  if res != -1: break                       ;; already found
+  if i > hlen - nlen: break                 ;; past last start (covers nlen>hlen: bound < 0)
+  m = 1; j = 0
+  loop (inner): if j >= nlen: break
+                m = m & (haystack[i+j] == needle[j])   ;; AND-accumulate, no early break
+                j++
+  res = m ? i : res                          ;; branchless Select; first match only
+  i++
+return res
+----
+
+*Control flow is flat-safe* — there is no `Br` out of an `If`. The inner loop
+AND-accumulates the match over all `nlen` bytes (rather than breaking early),
+the outer loop's two exits are top-of-loop `BrIf`s, and the result update is a
+branchless `Select`. Because the outer loop exits on `res != -1` at the top of
+the *next* iteration, `res` keeps the FIRST match. For `nlen = 0` the inner
+loop runs zero times (`m` stays 1) and the first outer iteration sets
+`res = 0`, matching the fixed oracle; for `nlen > hlen` the bound is negative
+so the outer loop exits immediately with `res = -1`.
+
+== Gate evidence
+
+=== Gate 1 — builds
+
+`dune build bin/main.exe` exit 0.
+
+=== Gate 2 — parity (wasm vs interpreter oracle)
+
+Same inputs through both backends agree across found / not-found /
+first-occurrence / needle-longer / empty-needle / empty-haystack. Interp
+oracle (post-fix) confirmed against the real library API; wasm executed under
+Node.
+
+[cols="3,1,1",options="header"]
+|===
+| Expression | interp | wasm
+| `string_find("hello", "ll")` | 2 | 2
+| `string_find("hello", "o")` | 4 | 4
+| `string_find("hello", "xyz")` | -1 | -1
+| `string_find("abcabc", "bc")` (first occ) | 1 | 1
+| `string_find("hello", "hellox")` (longer) | -1 | -1
+| `string_find("hello", "")` (was a crash) | 0 | 0
+| `string_find("", "x")` (empty haystack) | -1 | -1
+| `string_find("", "")` (both empty) | 0 | 0
+|===
+
+The packed fixture `tests/codegen/string_find.affine` returns `73811` (each
+result `+1` packed as a 4-bit nibble); both backends produce it.
+
+== Tests added
+
+* `test/test_e2e.ml` — group *"E2E String-wall slice 6 (string_find)"*: seven
+  interp-oracle cases, including the empty-needle case that previously crashed
+  the interpreter. Runs under `dune runtest`.
+* `tests/codegen/string_find.affine` + `tests/codegen/test_string_find.mjs` —
+  executable wasm parity, run by `tools/run_codegen_wasm_tests.sh` (CI).
+
+Full `tools/run_codegen_wasm_tests.sh` run: *all* codegen WASM tests pass
+(slices 1-6 string harnesses), no sibling regressions.
+
+== Corpus impact
+
+Substring search (delimiter detection, `contains`-style predicates, simple
+parsing) now lowers to wasm. With slices 1-6, every *name-dispatched* string
+builtin with a faithful trap-free wasm analogue is lowered: `string_length`,
+`string_char_code_at`, `char_to_int`, `string_from_char_code`, `string_sub`,
+`to_lowercase`, `to_uppercase`, `trim`, `string_find`.
+
+== What remains (and the decision still pending)
+
+* *`int_to_string` / `float_to_string`* — name-dispatched decimal rendering.
+  `int_to_string` is the obvious next autonomous slice (digit loop + sign;
+  `INT_MIN` is the one i32 edge — handle it by extracting digits in negative
+  space to avoid the un-negatable magnitude). `float_to_string` needs the
+  float story, so it stays host-side under the float-wall convention.
+* *Concatenation (`++` / `OpConcat`) and polymorphic `slice`* — still gated on
+  the *type-access* design decision (`lib/codegen.ml` has no per-expression
+  type information; `++` already lowers to *list* concat). Owner call: thread
+  typed-AST into codegen, or add a dedicated `string_concat` builtin. See
+  `proposals/EVIDENCE-stringwall-slice5.adoc` §"remaining string ops".
+* *`string_get` / `int_to_char`* — deferred (raise on out-of-range; no
+  trap-free wasm analogue without a declared-clamp convention).
+
+== Next slices (variable-string backend wall)
+
+. *`int_to_string`* — decimal rendering (autonomous; the last clean
+  name-dispatched op).
+. *Concatenation / `slice`* — gated on the type-access design decision.
+
+Then the *effect-codegen wall* (module-state / `Date.now` / `Console.log`).

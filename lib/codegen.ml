@@ -1173,6 +1173,71 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
         in
         Ok (c9, code)
 
+      | ExprVar id when id.name = "string_find"
+                        && List.length args = 2 ->
+        (* PHASE-F string-wall slice 6: substring search (read-side, no
+           allocation). `string_find(haystack, needle)` returns the index of
+           the first occurrence of `needle` in `haystack`, or -1. Matches the
+           interp oracle (lib/interp.ml, fixed in this same change so an empty
+           needle returns 0 instead of crashing): nlen = 0 -> 0; nlen > hlen
+           -> -1; otherwise the first start index whose `nlen`-byte window
+           equals the needle, else -1.
+
+           Control flow is kept *flat-safe* — no `Br` out of an `If`:
+           * inner loop AND-accumulates a match flag over all `nlen` bytes
+             (no early break);
+           * outer loop exits at the top on "already found" (`res != -1`) or
+             "past the last start" (`i > hlen - nlen`, which also covers
+             nlen > hlen since the bound is then negative);
+           * the result update is the branchless `res = m ? i : res` via
+             `Select` (only fires once — the next outer iteration exits on the
+             res-check, so `res` keeps the FIRST match).
+           For nlen = 0 the inner loop runs zero times (m stays 1) and the
+           first outer iteration yields res = 0, matching the oracle. *)
+        let* (ctx1, h_code) = gen_expr ctx  (List.nth args 0) in
+        let* (ctx2, n_code) = gen_expr ctx1 (List.nth args 1) in
+        let (c3,  hay)  = alloc_local ctx2 "__sfind_hay"  in
+        let (c4,  ndl)  = alloc_local c3   "__sfind_ndl"  in
+        let (c5,  hlen) = alloc_local c4   "__sfind_hlen" in
+        let (c6,  nlen) = alloc_local c5   "__sfind_nlen" in
+        let (c7,  res)  = alloc_local c6   "__sfind_res"  in
+        let (c8,  i)    = alloc_local c7   "__sfind_i"    in
+        let (c9,  j)    = alloc_local c8   "__sfind_j"    in
+        let (c10, m)    = alloc_local c9   "__sfind_m"    in
+        (* inner: m := (haystack[i .. i+nlen) == needle), via AND-accumulation *)
+        let inner =
+          [ I32Const 1l; LocalSet m;
+            I32Const 0l; LocalSet j;
+            Block (BtEmpty, [ Loop (BtEmpty,
+              [ LocalGet j; LocalGet nlen; I32GeS; BrIf 1;
+                (* m = m & (hay[i+j] == ndl[j]) *)
+                LocalGet m;
+                LocalGet hay; LocalGet i; LocalGet j; I32Add; I32Add;
+                I32Load8U (0, 4);
+                LocalGet ndl; LocalGet j; I32Add; I32Load8U (0, 4);
+                I32Eq; I32And; LocalSet m;
+                LocalGet j; I32Const 1l; I32Add; LocalSet j;
+                Br 0 ]) ]) ] in
+        let code =
+          h_code @ [LocalSet hay] @ n_code @ [LocalSet ndl] @
+          [ LocalGet hay; I32Load (2, 0); LocalSet hlen;
+            LocalGet ndl; I32Load (2, 0); LocalSet nlen;
+            I32Const (-1l); LocalSet res;
+            I32Const 0l; LocalSet i;
+            Block (BtEmpty, [ Loop (BtEmpty,
+              [ (* exit if already found *)
+                LocalGet res; I32Const (-1l); I32Ne; BrIf 1;
+                (* exit if i > hlen - nlen (covers nlen > hlen: bound < 0) *)
+                LocalGet i; LocalGet hlen; LocalGet nlen; I32Sub; I32GtS; BrIf 1 ]
+              @ inner @
+              [ (* res = m ? i : res  (first match only) *)
+                LocalGet i; LocalGet res; LocalGet m; Select; LocalSet res;
+                LocalGet i; I32Const 1l; I32Add; LocalSet i;
+                Br 0 ]) ]);
+            LocalGet res ]
+        in
+        Ok (c10, code)
+
       | ExprVar id when (id.name = "env_at" || id.name = "arg_at")
                         && List.length args = 1 ->
         (* ADR-015 S5 (#180): env_at(i) / arg_at(i) — fetch the i-th

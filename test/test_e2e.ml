@@ -3931,6 +3931,54 @@ let stringwall_trim_tests = [
   Alcotest.test_case "tab+newline stripped" `Quick test_stringwall_trim_tab_newline;
 ]
 
+(* ---- PHASE-F string-wall slice 6: string_find ----
+
+   `string_find(haystack, needle)` gained a wasm lowering (read-side nested
+   scan, no allocation) returning the first-occurrence index or -1. Matches
+   the interp oracle (lib/interp.ml string_find) — whose empty-needle crash
+   (`String.get needle 0` before the nlen=0 guard) was fixed in the same
+   change so an empty needle returns 0. Cases pin: found / not-found /
+   first-occurrence / needle-longer-than-haystack / empty needle / empty
+   haystack. *)
+
+let test_stringwall_find_mid () =
+  Alcotest.(check int) "string_find(\"hello\",\"ll\") == 2" 2
+    (eval_int_fn "fn f() -> Int { string_find(\"hello\", \"ll\") }")
+
+let test_stringwall_find_end () =
+  Alcotest.(check int) "string_find(\"hello\",\"o\") == 4" 4
+    (eval_int_fn "fn f() -> Int { string_find(\"hello\", \"o\") }")
+
+let test_stringwall_find_absent () =
+  Alcotest.(check int) "needle not present -> -1" (-1)
+    (eval_int_fn "fn f() -> Int { string_find(\"hello\", \"xyz\") }")
+
+let test_stringwall_find_first_occurrence () =
+  Alcotest.(check int) "returns FIRST occurrence" 1
+    (eval_int_fn "fn f() -> Int { string_find(\"abcabc\", \"bc\") }")
+
+let test_stringwall_find_needle_longer () =
+  Alcotest.(check int) "needle longer than haystack -> -1" (-1)
+    (eval_int_fn "fn f() -> Int { string_find(\"hello\", \"hellox\") }")
+
+let test_stringwall_find_empty_needle () =
+  Alcotest.(check int) "empty needle -> 0 (was an interp crash)" 0
+    (eval_int_fn "fn f() -> Int { string_find(\"hello\", \"\") }")
+
+let test_stringwall_find_empty_haystack () =
+  Alcotest.(check int) "empty haystack, non-empty needle -> -1" (-1)
+    (eval_int_fn "fn f() -> Int { string_find(\"\", \"x\") }")
+
+let stringwall_find_tests = [
+  Alcotest.test_case "find \"ll\" == 2" `Quick test_stringwall_find_mid;
+  Alcotest.test_case "find \"o\" == 4" `Quick test_stringwall_find_end;
+  Alcotest.test_case "find absent == -1" `Quick test_stringwall_find_absent;
+  Alcotest.test_case "find first occurrence == 1" `Quick test_stringwall_find_first_occurrence;
+  Alcotest.test_case "needle longer == -1" `Quick test_stringwall_find_needle_longer;
+  Alcotest.test_case "empty needle == 0" `Quick test_stringwall_find_empty_needle;
+  Alcotest.test_case "empty haystack == -1" `Quick test_stringwall_find_empty_haystack;
+]
+
 (* ---- STDLIB-04b: Throws extern `error<T>` (Refs #329) ----
 
    `error<T>(msg: String) -> T / Throws` was declared in
@@ -5043,6 +5091,7 @@ let tests =
     ("E2E String-wall slice 3 (string_sub)", stringwall_sub_tests);
     ("E2E String-wall slice 4 (case-fold)", stringwall_case_tests);
     ("E2E String-wall slice 5 (trim)", stringwall_trim_tests);
+    ("E2E String-wall slice 6 (string_find)", stringwall_find_tests);
     ("E2E STDLIB-04b error #329", stdlib_04b_error_tests);
     ("E2E Vscode Bindings",      vscode_bindings_tests);
     ("E2E Array Type Sugar",     array_type_tests);

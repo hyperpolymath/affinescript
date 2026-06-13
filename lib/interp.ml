@@ -565,14 +565,20 @@ let create_initial_env () : env =
     ("string_find", VBuiltin ("string_find", fun args ->
       match args with
       | [VString haystack; VString needle] ->
-        (match String.index_opt haystack (String.get needle 0) with
-         | None -> Ok (VInt (-1))
-         | Some _ ->
-           let hlen = String.length haystack in
-           let nlen = String.length needle in
-           if nlen = 0 then Ok (VInt 0)
-           else if nlen > hlen then Ok (VInt (-1))
-           else
+        let hlen = String.length haystack in
+        let nlen = String.length needle in
+        (* Length guards first: an empty needle matches at index 0 (standard),
+           and a needle longer than the haystack cannot match. Both must
+           precede `String.get needle 0` below, which raises on an empty
+           needle — the prior ordering made the nlen=0 branch dead code and
+           crashed the interp with an uncaught Invalid_argument. This keeps
+           the wasm backend (PHASE-F string-wall) and the interp in agreement. *)
+        if nlen = 0 then Ok (VInt 0)
+        else if nlen > hlen then Ok (VInt (-1))
+        else
+          (match String.index_opt haystack (String.get needle 0) with
+           | None -> Ok (VInt (-1))
+           | Some _ ->
              let found = ref (-1) in
              for i = 0 to hlen - nlen do
                if !found = -1 && String.sub haystack i nlen = needle then
