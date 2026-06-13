@@ -1,0 +1,175 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+= Design: lowering string `++` (and `slice`) to wasm
+:toc: macro
+
+*Status:* PROPOSAL — awaiting owner sign-off before implementation.
+*Author:* string-wall slice-8 design (Phase F, `proposals/MIGRATION-PLAN.adoc`).
+*Scope:* the last remaining string-wall items — string concatenation (`++`)
+and polymorphic `slice` — which slices 1-7 deferred as "type-directed".
+
+toc::[]
+
+== TL;DR
+
+* String `++` *silently miscompiles* to wasm today (confirmed below). It
+  typechecks, the interpreter is correct, but the wasm bytes are wrong.
+* The fix is *not* a new builtin: `++` is the canonical, pervasively-used
+  string-concat surface, and a `string_concat` builtin was *deliberately
+  removed* (#330). We must make `++` *lower correctly*.
+* The blocker is that codegen is *type-blind* — it cannot tell string `++`
+  from list `++`. The typechecker already makes that distinction; the work is
+  *threading it to codegen*.
+* *Recommendation:* a typecheck-time elaboration that rewrites string-`++`
+  into a dedicated internal AST node which codegen lowers via the established
+  byte-copy idiom. `slice`-on-string is mostly already covered by the shipped
+  `string_sub`.
+
+== The bug (confirmed)
+
+`++` is polymorphic over `String` and `[T]` (`typecheck.ml:1056-1068`): it
+synthesises the lhs type and dispatches `TCon "String"` -> string concat,
+`TApp("Array",…)` -> array concat. So *string `++` typechecks*, and the
+interpreter handles it (`interp.ml` `binop_string`).
+
+But codegen's `ExprBinary(_, OpConcat, _)` handler lowers *only* the list
+case — `[len][elem i @ +4 + i*4]`, a 4-byte element stride. Applied to a
+string (`[len][utf8 bytes]`), it copies the source's length word and bytes as
+if they were i32 elements. Measured for `"ab" ++ "cd"` (should be "abcd"):
+
+[cols="1,1,1",options="header"]
+|===
+| byte index | interp | wasm
+| 0 | 97 ('a') | 97  (coincidental — "ab" packs into one i32)
+| 1 | 98 ('b') | 98  (coincidental)
+| 2 | 99 ('c') | *2*  ← the length word of "cd" leaking through
+| 3 | 100 ('d') | *0*
+|===
+
+This is a *#555-class silent mis-lowering*: no error, wrong result. It is the
+load-bearing reason this work is a correctness fix, not a feature.
+
+== Why "add a `string_concat` builtin / ban string `++`" is rejected
+
+The obvious alternative — add a name-dispatched `string_concat(a, b)` builtin
+(like slices 1-7) and stop using `++` for strings — is *ruled out by the
+codebase*:
+
+* *`++` is the canonical surface.* `string_concat` was *deliberately removed*
+  in STDLIB-04c / #330; `stdlib/effects.affine:42` records "the canonical
+  surface" is `++`. Re-adding the builtin reverses a deliberate decision.
+* *The stdlib uses string `++` pervasively.* `encoding.affine` (`"0" ++ s`,
+  `out ++ "=="`), `json.affine` (`"\\u00" ++ hex_digit(hi) ++ …`),
+  `io.affine` (`"DEBUG: " ++ show(value)`), `testing.affine`
+  (`"Assertion failed: " ++ message ++ …`), `AlibSchema.affine`, … Rejecting
+  string `++` in the typechecker would break all of these.
+* *It is tested as `++`.* `test/test_stdlib_laws.ml` has `string_concat`
+  associativity / left-unit / right-unit laws and
+  `tests/conformance/string/concat.affine` — all exercising the `++` string
+  semantics.
+
+Conclusion: the only acceptable fix makes the *existing* `++` lower correctly.
+
+== The real blocker: codegen is type-blind
+
+`ExprBinary of expr * binary_op * expr` (`ast.ml`) carries *no type*. Codegen
+has no per-expression type environment. And two facts rule out the easy
+channels:
+
+* The `expr` AST nodes carry *no span* and *no id*, so a side table keyed by
+  source location is not available.
+* `Opt.fold_constants_program` rebuilds the AST before codegen, so a side
+  table keyed by *physical node identity* (typecheck's nodes vs codegen's
+  post-fold nodes) would not survive.
+
+The typechecker, by contrast, *already* computes the string-vs-array decision
+at every `++` node. The task is to carry that decision across to codegen.
+
+== Options for the typecheck -> codegen channel
+
+[cols="1,3,2,2",options="header"]
+|===
+| # | Mechanism | Pros | Cons
+| A1
+| *Elaboration to a dedicated internal node.* Typecheck (which knows the type)
+  rewrites a string `++` from `ExprBinary(a, OpConcat, b)` into a new internal
+  `ExprStringConcat(a, b)` AST node, threaded to codegen. Codegen lowers
+  `ExprStringConcat` via the byte-copy idiom; `OpConcat` stays list-only.
+| `++` stays idiomatic and lowers correctly; no source/stdlib breakage; the
+  new node is unambiguous so codegen needs no type logic; const-fold passes it
+  through; reusable for other type-directed rewrites.
+| Adds one AST constructor (touch every `match` on `expr`: resolve / interp /
+  opt / faces / codegen — mostly a pass-through arm); the compile pipeline must
+  thread the *elaborated* program to codegen.
+| A2
+| *Annotation field on `ExprBinary`.* Add `concat_kind : [`String|`Array|`Unknown]`;
+  typecheck sets it; codegen reads it.
+| No new constructor; smaller conceptually.
+| Changes `ExprBinary`'s shape (every construction + match site updates);
+  const-fold must preserve the field; "Unknown" still needs a fallback.
+| B
+| *`string_concat` builtin + reject string `++`.*
+| Smallest codegen change (name-dispatched, like slices 1-7).
+| *Rejected* — breaks the stdlib and reverses #330 (see above).
+|===
+
+*Recommended: A1 (elaboration to `ExprStringConcat`).* It is the cleanest
+*sound* option: codegen gets an unambiguous node and needs no type access; the
+idiomatic `++` surface is unchanged; the stdlib keeps compiling. The cost is
+mechanical (a new constructor that most passes treat as a pass-through, plus
+threading the elaborated program).
+
+The byte-concat *lowering* itself is already proven: it is the list-`++`
+allocate-then-copy idiom (`codegen.ml`) with a 1-byte stride instead of 4 —
+allocate `4 + la + lb`, store the length, two copy loops
+(`I32Load8U`/`I32Store8`), exactly as slices 3/5 copy bytes.
+
+== `slice`
+
+`slice(coll, lo, hi)` is a *polymorphic scheme* (`typecheck.ml:1497`), so it
+faces the same type-blindness. But the common string case — non-negative
+substring extraction — is *already lowered* by `string_sub` (slice 3,
+merged). The only residual is `slice`-on-string with JS-style negative-index
+normalisation, which is niche. Proposal: ride the same elaboration channel
+(rewrite `slice` on a string into an internal string-slice node), or defer it
+as low-value once `++` lands. Recommend deferring until a concrete consumer
+needs negative-index string slicing.
+
+== Implementation plan (on sign-off)
+
+. Add `ExprStringConcat of expr * expr` to `ast.ml`; add pass-through arms in
+  resolve, interp (delegate to the existing string `++` semantics), opt
+  (fold-through), and the non-wasm codegens (or a clean "unsupported" where
+  appropriate).
+. In typecheck, at the `TCon "String"` `++` branch, emit `ExprStringConcat`
+  into the elaborated program (confirm the compile pipeline threads
+  typecheck's output to codegen; if not, add a thin elaboration pass that
+  consumes the type decision).
+. Lower `ExprStringConcat` in `codegen.ml` via the byte-copy idiom (alloc
+  `4 + la + lb`, two `I32Load8U`/`I32Store8` loops) — mirroring the list-`++`
+  handler.
+. Tests: `test/test_e2e.ml` interp group (already correct — pins the oracle) +
+  a `tests/codegen/string_concat.{affine,…mjs}` executable parity check across
+  empty / single / multi-word / chained `a ++ b ++ c`, byte-exact via the
+  slice-1 reader. The very case that miscompiles today (`"ab" ++ "cd"` byte 2)
+  becomes a regression test.
+. Evidence doc + ledger update (Phase F slice 8).
+
+== Risks
+
+* *AST-constructor blast radius.* A new `expr` constructor touches every
+  exhaustive `match` on `expr`. Mitigation: most arms are a one-line
+  pass-through (treat like `ExprApp`); the OCaml compiler's exhaustiveness
+  warnings enumerate the sites.
+* *Pipeline threading.* Need to confirm codegen consumes the typecheck-
+  elaborated AST (not the raw parse). If the pipeline doesn't already thread
+  it, a small dedicated elaboration pass (post-typecheck, pre-codegen) is the
+  fallback.
+* *Const-fold interaction.* `Opt.fold_constants` must pass `ExprStringConcat`
+  through (and may even constant-fold `"a" ++ "b"` to `"ab"` — a nice-to-have).
+
+== Decision requested
+
+Sign off to proceed with *A1* (make string `++` lower correctly via the
+`ExprStringConcat` elaboration), defer the `slice` negative-index residual, and
+land it as Phase F slice 8 — or redirect.
