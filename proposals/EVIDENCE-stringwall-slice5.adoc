@@ -1,0 +1,125 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+= Phase F — string-wall slice 5: trim (evidence)
+:toc: macro
+
+[IMPORTANT]
+====
+*Slice landed: whitespace trimming.* `trim(s)` — already wired in
+resolve/typecheck/interp — gained a wasm-backend lowering: two flat scans
+bracket the non-whitespace core, then a slice-3-style byte copy of the inner
+range. Combines the *scan* and *copy* idioms established by earlier slices.
+
+Fifth slice of the *variable-string backend* wall
+(`proposals/MIGRATION-PLAN.adoc` §"The two walls", Phase F).
+====
+
+toc::[]
+
+== What was missing
+
+`trim` was wired in resolve/typecheck/interp; only the wasm codegen was
+absent (fell through `gen_call`'s dispatch -> `UnboundVariable`).
+
+== The lowering (lib/codegen.ml)
+
+Interp oracle: `String.trim`, whose whitespace set is
+`{space 32, tab 9, newline 10, form-feed 12, carriage-return 13}`.
+
+. `slen = src[0]`.
+. *Front scan* — advance `lo` from 0 while `src[lo]` is whitespace and
+  `lo < slen`. Stops at the first non-whitespace byte (or `slen` if all
+  whitespace).
+. *Back scan* — retreat `hi` (exclusive) from `slen` while `hi > lo` and
+  `src[hi-1]` is whitespace.
+. Allocate `4 + (hi - lo)`, store the length, and copy `[lo, hi)` byte-wise
+  (`I32Load8U` / `I32Store8`) — the slice-3 copy with a shifted source base.
+. Return the new pointer.
+
+The whitespace test (`is_ws`) is a 0/1 `I32Or` chain of five `I32Eq`
+comparisons; the scan loops break on `I32Eqz` of it (i.e. at the first
+non-whitespace byte). If the whole string is whitespace, `lo == hi` and the
+result is the empty string; internal whitespace is preserved.
+
+== Gate evidence
+
+=== Gate 1 — builds
+
+`dune build bin/main.exe` exit 0; the previously-failing op compiles.
+
+=== Gate 2 — parity (wasm vs interpreter oracle)
+
+Same inputs through both backends agree across both-end / leading / trailing
+trims, all-whitespace, the empty string, internal-whitespace preservation,
+and tab/newline. Interp oracle confirmed against the real library API; wasm
+executed under Node.
+
+[cols="4,1,1",options="header"]
+|===
+| Expression | interp | wasm
+| `string_length(trim("  hi  "))` | 2 | 2
+| `scca(trim("  hi  "), 0)` ('h') | 104 | 104
+| `string_length(trim("   "))` (all ws) | 0 | 0
+| `string_length(trim(""))` | 0 | 0
+| `string_length(trim(" a b "))` (internal kept) | 3 | 3
+| `scca(trim(" a b "), 1)` (the kept space) | 32 | 32
+| `string_length(trim("\thi\n"))` (tab+nl) | 2 | 2
+|===
+
+(`scca` = `string_char_code_at`, the slice-1 reader.)
+
+The packed fixture `tests/codegen/string_trim.affine` returns `27023`; both
+backends produce it.
+
+== Tests added
+
+* `test/test_e2e.ml` — group *"E2E String-wall slice 5 (trim)"*: seven
+  interp-oracle cases. Runs under `dune runtest`.
+* `tests/codegen/string_trim.affine` + `tests/codegen/test_string_trim.mjs`
+  — executable wasm parity, run by `tools/run_codegen_wasm_tests.sh` (CI).
+
+Full `tools/run_codegen_wasm_tests.sh` run: *all* codegen WASM tests pass
+(slices 1-5 string harnesses), no sibling regressions.
+
+== Corpus impact
+
+Input normalisation (trimming user/file input before parsing or comparison)
+now lowers to wasm. The front/back scan + inner-copy shape is also the
+template for `slice` once the array-vs-string dispatch is resolved.
+
+== The remaining string ops need a design decision (NOT done autonomously)
+
+Slices 1-5 lowered the *name-dispatched* string builtins whose semantics are
+unambiguous and total. The remaining high-value string ops are blocked on an
+*architectural* question, deliberately left for owner direction:
+
+* *Concatenation* (`++` / `OpConcat`) and *`slice`* are **type-directed**:
+  the `++` operator already lowers to *list* concatenation (4-byte element
+  stride), and `slice` is polymorphic over `array | string`. Lowering them
+  for strings requires the codegen to know an operand's type — but
+  `lib/codegen.ml` currently has *no per-expression type access*
+  (`ExprBinary` is an untyped AST node; there is no type environment threaded
+  into codegen). Options: (a) thread typecheck's inferred types into the AST /
+  a side table consumed by codegen; (b) add a dedicated `string_concat`
+  builtin (name-dispatched, sidesteps the operator overload) — a language-
+  surface decision. Both are owner calls.
+* *`int_to_string` / `float_to_string`* are name-dispatched but need a
+  decimal-conversion algorithm (digit extraction + ordering + sign; `INT_MIN`
+  magnitude is an i32 edge case). Self-contained but larger; can proceed
+  autonomously if prioritised.
+* *`string_find`* — name-dispatched substring search (nested scan returning an
+  index, no allocation). Clean; the next obvious autonomous slice.
+* *`string_get`* / *`int_to_char`* — deferred: their interp semantics raise on
+  out-of-range input, which has no faithful trap-free wasm analogue without a
+  declared-clamp convention.
+
+== Next slices (variable-string backend wall)
+
+. *`string_find`* — substring search returning an index (read-side nested
+  scan, no allocation). Clean autonomous slice.
+. *`int_to_string`* — decimal rendering (if prioritised).
+. *Concatenation / `slice`* — gated on the type-access design decision above.
+
+Each slice: add the codegen arm, an interp-parity e2e group, and a
+`tests/codegen/*.mjs` executable check, then re-run the census and drop the
+gated count.

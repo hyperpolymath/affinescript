@@ -3885,6 +3885,52 @@ let stringwall_case_tests = [
   Alcotest.test_case "case-fold preserves length" `Quick test_stringwall_case_length;
 ]
 
+(* ---- PHASE-F string-wall slice 5: trim ----
+
+   `trim(s)` gained a wasm lowering: two flat scans (front for `lo`, back for
+   `hi`) bracket the non-whitespace core, then a slice-3-style copy of
+   `[lo, hi)`. Matches the interp oracle (lib/interp.ml: `String.trim`), whose
+   whitespace set is {space 32, tab 9, newline 10, form-feed 12, CR 13}.
+   Internal whitespace is preserved; an all-whitespace string trims to empty. *)
+
+let test_stringwall_trim_both_len () =
+  Alcotest.(check int) "trim(\"  hi  \") length == 2" 2
+    (eval_int_fn "fn f() -> Int { string_length(trim(\"  hi  \")) }")
+
+let test_stringwall_trim_byte0 () =
+  Alcotest.(check int) "trim(\"  hi  \")[0] == 'h'" 104
+    (eval_int_fn "fn f() -> Int { string_char_code_at(trim(\"  hi  \"), 0) }")
+
+let test_stringwall_trim_all_ws () =
+  Alcotest.(check int) "all-whitespace trims to empty" 0
+    (eval_int_fn "fn f() -> Int { string_length(trim(\"   \")) }")
+
+let test_stringwall_trim_empty () =
+  Alcotest.(check int) "trim(\"\") == \"\"" 0
+    (eval_int_fn "fn f() -> Int { string_length(trim(\"\")) }")
+
+let test_stringwall_trim_internal_len () =
+  Alcotest.(check int) "internal whitespace preserved (len 3)" 3
+    (eval_int_fn "fn f() -> Int { string_length(trim(\" a b \")) }")
+
+let test_stringwall_trim_internal_space () =
+  Alcotest.(check int) "kept internal space byte == 32" 32
+    (eval_int_fn "fn f() -> Int { string_char_code_at(trim(\" a b \"), 1) }")
+
+let test_stringwall_trim_tab_newline () =
+  Alcotest.(check int) "tab + newline stripped (len 2)" 2
+    (eval_int_fn "fn f() -> Int { string_length(trim(\"\\thi\\n\")) }")
+
+let stringwall_trim_tests = [
+  Alcotest.test_case "trim both ends len == 2" `Quick test_stringwall_trim_both_len;
+  Alcotest.test_case "trim(\"  hi  \")[0] == 104" `Quick test_stringwall_trim_byte0;
+  Alcotest.test_case "all whitespace -> empty" `Quick test_stringwall_trim_all_ws;
+  Alcotest.test_case "trim empty -> empty" `Quick test_stringwall_trim_empty;
+  Alcotest.test_case "internal ws preserved len" `Quick test_stringwall_trim_internal_len;
+  Alcotest.test_case "internal space byte == 32" `Quick test_stringwall_trim_internal_space;
+  Alcotest.test_case "tab+newline stripped" `Quick test_stringwall_trim_tab_newline;
+]
+
 (* ---- STDLIB-04b: Throws extern `error<T>` (Refs #329) ----
 
    `error<T>(msg: String) -> T / Throws` was declared in
@@ -4996,6 +5042,7 @@ let tests =
     ("E2E String-wall slice 2 (string_from_char_code)", stringwall_alloc_tests);
     ("E2E String-wall slice 3 (string_sub)", stringwall_sub_tests);
     ("E2E String-wall slice 4 (case-fold)", stringwall_case_tests);
+    ("E2E String-wall slice 5 (trim)", stringwall_trim_tests);
     ("E2E STDLIB-04b error #329", stdlib_04b_error_tests);
     ("E2E Vscode Bindings",      vscode_bindings_tests);
     ("E2E Array Type Sugar",     array_type_tests);
