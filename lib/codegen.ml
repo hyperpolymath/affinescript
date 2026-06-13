@@ -1107,6 +1107,72 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
         in
         Ok (c7, code)
 
+      | ExprVar id when id.name = "trim"
+                        && List.length args = 1 ->
+        (* PHASE-F string-wall slice 5: `trim` — scan-for-bounds then copy,
+           over the slice-3 runtime-length idiom. Matches the interp oracle
+           (lib/interp.ml: `String.trim`), whose whitespace set is
+           {space 32, tab 9, newline 10, form-feed 12, carriage-return 13}.
+           Two flat scans (front for `lo`, back for `hi` exclusive) bracket
+           the non-whitespace core; then a slice-3-style byte copy of
+           `[lo, hi)` into a freshly-allocated `4 + (hi - lo)` block. If the
+           whole string is whitespace, `lo == hi` and the result is empty. *)
+        let* (ctx1, s_code) = gen_expr ctx (List.hd args) in
+        let (ctx2, heap_idx) = ensure_heap_ptr ctx1 in
+        let (c3, src)  = alloc_local ctx2 "__trim_src"  in
+        let (c4, slen) = alloc_local c3   "__trim_slen" in
+        let (c5, lo)   = alloc_local c4   "__trim_lo"   in
+        let (c6, hi)   = alloc_local c5   "__trim_hi"   in
+        let (c7, c)    = alloc_local c6   "__trim_c"    in
+        let (c8, dst)  = alloc_local c7   "__trim_dst"  in
+        let (c9, k)    = alloc_local c8   "__trim_k"    in
+        (* is_ws: leaves 0/1 on the stack from the byte in `c` *)
+        let is_ws =
+          [ LocalGet c; I32Const 32l; I32Eq;
+            LocalGet c; I32Const 9l;  I32Eq; I32Or;
+            LocalGet c; I32Const 10l; I32Eq; I32Or;
+            LocalGet c; I32Const 12l; I32Eq; I32Or;
+            LocalGet c; I32Const 13l; I32Eq; I32Or ] in
+        let code =
+          s_code @ [LocalSet src] @
+          [ LocalGet src; I32Load (2, 0); LocalSet slen;
+            (* lo = first non-whitespace index from the front *)
+            I32Const 0l; LocalSet lo;
+            Block (BtEmpty, [ Loop (BtEmpty,
+              [ LocalGet lo; LocalGet slen; I32GeS; BrIf 1;
+                LocalGet src; LocalGet lo; I32Add; I32Load8U (0, 4); LocalSet c ]
+              @ is_ws @ [ I32Eqz; BrIf 1;       (* stop at first non-ws *)
+                LocalGet lo; I32Const 1l; I32Add; LocalSet lo;
+                Br 0 ]) ]);
+            (* hi (exclusive) = scan back from slen past trailing whitespace *)
+            LocalGet slen; LocalSet hi;
+            Block (BtEmpty, [ Loop (BtEmpty,
+              [ LocalGet hi; LocalGet lo; I32LeS; BrIf 1;
+                LocalGet src; LocalGet hi; I32Const 1l; I32Sub; I32Add;
+                I32Load8U (0, 4); LocalSet c ]
+              @ is_ws @ [ I32Eqz; BrIf 1;       (* stop at first non-ws *)
+                LocalGet hi; I32Const 1l; I32Sub; LocalSet hi;
+                Br 0 ]) ]);
+            (* dst = heap; heap += 4 + (hi - lo) *)
+            GlobalGet heap_idx; LocalSet dst;
+            GlobalGet heap_idx; I32Const 4l; LocalGet hi; LocalGet lo; I32Sub;
+            I32Add; I32Add; GlobalSet heap_idx;
+            (* dst[0] = hi - lo *)
+            LocalGet dst; LocalGet hi; LocalGet lo; I32Sub; I32Store (2, 0);
+            (* copy [lo, hi): for k in 0..(hi-lo): dst[4+k] = src[4+lo+k] *)
+            I32Const 0l; LocalSet k;
+            Block (BtEmpty, [ Loop (BtEmpty,
+              [ LocalGet k; LocalGet hi; LocalGet lo; I32Sub; I32GeS; BrIf 1;
+                LocalGet dst; LocalGet k; I32Add;
+                LocalGet src; LocalGet lo; I32Add; LocalGet k; I32Add;
+                I32Load8U (0, 4);
+                I32Store8 (0, 4);
+                LocalGet k; I32Const 1l; I32Add; LocalSet k;
+                Br 0 ]) ]);
+            LocalGet dst ]
+        in
+        Ok (c9, code)
+
       | ExprVar id when (id.name = "env_at" || id.name = "arg_at")
                         && List.length args = 1 ->
         (* ADR-015 S5 (#180): env_at(i) / arg_at(i) — fetch the i-th

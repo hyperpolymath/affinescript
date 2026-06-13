@@ -1,0 +1,30 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// PHASE-F string-wall slice 5: trim — scan-for-bounds then copy, over the
+// slice-3 runtime-length idiom (proposals/MIGRATION-PLAN.adoc §"The two
+// walls"). Strips leading/trailing whitespace (space, tab, newline,
+// form-feed, carriage-return) and copies the inner range. Read back through
+// the slice-1 reader string_char_code_at and string_length.
+//
+// The companion harness test_string_trim.mjs asserts main() against the value
+// derived from the interp oracle (lib/interp.ml: String.trim). The same
+// constants are pinned interp-side in test/test_e2e.ml (E2E String-wall
+// slice 5).
+
+fn main() -> Int {
+  let h = string_char_code_at(trim("  hi  "), 0);            // 'h' = 104
+  let i = string_char_code_at(trim("  hi  "), 1);            // 'i' = 105
+  let lenBoth = string_length(trim("  hi  "));               // 2  (both ends stripped)
+  let lenWs = string_length(trim("   "));                    // 0  (all whitespace -> empty)
+  let lenInternal = string_length(trim(" a b "));            // 3  ("a b": internal space kept)
+  let internalSpace = string_char_code_at(trim(" a b "), 1); // 32 (the kept internal space)
+  let lenTab = string_length(trim("\thi\n"));                // 2  (tab + newline stripped)
+
+  // Positional pack of the two trimmed bytes + the length/space probes:
+  //   packed = 104 + 105*256 = 26984
+  //   + 2 + 0 + 3 + 32 + 2   = +39
+  //   total                  = 27023
+  let packed = h + i * 256;
+  packed + lenBoth + lenWs + lenInternal + internalSpace + lenTab
+}
