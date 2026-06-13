@@ -1,0 +1,121 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+= Phase F — string-wall slice 7: int_to_string (evidence)
+:toc: macro
+
+[IMPORTANT]
+====
+*Slice landed: decimal rendering.* `int_to_string(n)` — already wired in
+resolve/typecheck/interp — gained a wasm-backend lowering producing the
+base-10 text of an i32, matching the interp oracle (`string_of_int`). Built on
+the slice-3 allocation idiom.
+
+*INT_MIN-safe:* the magnitude of `INT_MIN` (-2147483648) is not a representable
+positive i32, so the lowering never negates into positive space — it works
+with the *non-positive* magnitude and extracts digits as `48 - (m % 10)`.
+
+Seventh slice of the *variable-string backend* wall
+(`proposals/MIGRATION-PLAN.adoc` §"The two walls", Phase F). This is the *last
+clean name-dispatched* string op; what remains needs a design decision (below).
+====
+
+toc::[]
+
+== What was missing
+
+`int_to_string` was wired in resolve/typecheck/interp; only the wasm codegen
+was absent (fell through `gen_call`'s dispatch -> `UnboundVariable`).
+
+== The lowering (lib/codegen.ml)
+
+Interp oracle: `string_of_int n`.
+
+. `neg = n < 0`.
+. `m = neg ? n : -n` (via `Select`) — the *non-positive* magnitude. For
+  `INT_MIN`, `neg` is true and `m = n` (no negation), so the un-representable
+  positive magnitude is never formed.
+. *Digit count* `dc` — a *do-while* loop dividing a copy of `m` by 10 until 0.
+  Because it runs at least once, `n = 0` yields `dc = 1` (the single '0') with
+  no special case.
+. `len = dc + neg`; allocate `4 + len`; store `len`.
+. *Write digits backwards* — a *do-while* loop from the last byte:
+  `[wpos] = 48 - (m % 10)` (i32 `rem_s` truncates toward zero, so `m % 10 <= 0`
+  and `48 - (m%10) = '0' + digit`), then `m = m / 10`, `wpos--`, until `m = 0`.
+. If `neg`, write `'-'` (45) at `dst + 4`.
+
+`m / 10` (`div_s`) never traps: the divisor is 10 (not 0), and the only
+trapping `div_s` case (`INT_MIN / -1`) never occurs. The leading-`'-'` write
+uses an `If` whose else-branch is a single `Nop` (no empty-else).
+
+== Gate evidence
+
+=== Gate 1 — builds
+
+`dune build bin/main.exe` exit 0.
+
+=== Gate 2 — parity (wasm vs interpreter oracle)
+
+The wasm string was read back from linear memory (`[len][utf8]`) and compared
+to `String(n)`; the interp oracle (`string_of_int`) was confirmed against the
+real library API. Both agree across zero, single digit, multi-digit, negative,
+powers of ten, `INT_MAX`, and `INT_MIN`:
+
+[cols="2,2,2",options="header"]
+|===
+| n | interp / wasm | note
+| 0 | "0" | do-while yields one '0'
+| 7 | "7" | single digit
+| 42 | "42" |
+| -5 | "-5" | sign
+| -123 | "-123" |
+| 100 | "100" | trailing zeros
+| 2147483647 | "2147483647" | INT_MAX (10 digits)
+| -2147483648 | "-2147483648" | *INT_MIN — negative-space extraction*
+|===
+
+The packed fixture `tests/codegen/string_int_to_string.affine` returns
+`3485103` (three positional bytes + INT_MIN/INT_MAX content/length probes);
+both backends produce it.
+
+== Tests added
+
+* `test/test_e2e.ml` — new `eval_string_fn` helper + group *"E2E String-wall
+  slice 7 (int_to_string)"*: five full-string interp-oracle cases (0, 42, -123,
+  INT_MAX, INT_MIN). Runs under `dune runtest`.
+* `tests/codegen/string_int_to_string.affine` +
+  `tests/codegen/test_string_int_to_string.mjs` — executable wasm parity, run
+  by `tools/run_codegen_wasm_tests.sh` (CI).
+
+Full `tools/run_codegen_wasm_tests.sh` run: *all* codegen WASM tests pass
+(slices 1-7 string harnesses), no sibling regressions.
+
+== Corpus impact
+
+Integer-to-text rendering — one of the most common string-building operations,
+explicitly called out in the migration recipe as a "hand-ladder int rendering"
+workaround — now lowers to wasm. This *closes the clean lane*: every
+name-dispatched string builtin with a faithful trap-free wasm analogue is
+lowered (`string_length`, `string_char_code_at`, `char_to_int`,
+`string_from_char_code`, `string_sub`, `to_lowercase`, `to_uppercase`, `trim`,
+`string_find`, `int_to_string`).
+
+== What remains — a design decision (NOT done autonomously)
+
+* *Concatenation (`++` / `OpConcat`) and polymorphic `slice`* — the remaining
+  high-value string ops, *blocked on a type-access decision*: `lib/codegen.ml`
+  has no per-expression type information (`ExprBinary` is an untyped AST node;
+  no type environment is threaded into codegen), and `++` already lowers to
+  *list* concatenation. Lowering them for strings requires either (a) threading
+  typecheck's inferred types into the AST / a side table consumed by codegen,
+  or (b) adding a dedicated `string_concat` builtin (name-dispatched, sidesteps
+  the operator overload) — a language-surface decision. Both are owner calls.
+* *`float_to_string`* — needs the float story; stays host-side under the
+  float-wall convention.
+* *`string_get` / `int_to_char`* — deferred (raise on out-of-range; no
+  trap-free wasm analogue without a declared-clamp convention).
+
+== Next
+
+. *Concatenation / `slice`* — gated on the type-access design decision above.
+. Otherwise, the *effect-codegen wall* (module-state / `Date.now` /
+  `Console.log`) is the other half of the migration's compiler work.

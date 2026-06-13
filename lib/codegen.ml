@@ -1238,6 +1238,79 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
         in
         Ok (c10, code)
 
+      | ExprVar id when id.name = "int_to_string"
+                        && List.length args = 1 ->
+        (* PHASE-F string-wall slice 7: decimal rendering. `int_to_string(n)`
+           produces the base-10 text of an i32 — matching the interp oracle
+           (`string_of_int`). Built on the slice-3 allocation idiom.
+
+           INT_MIN safety: the magnitude of `INT_MIN` (-2147483648) is not
+           representable as a positive i32, so we never negate into positive
+           space. Instead we work with the *non-positive* magnitude
+           `m = (n < 0) ? n : -n` (m <= 0 for all inputs incl. INT_MIN), and
+           each digit is `48 - (m % 10)` (i32 `rem_s` truncates toward zero,
+           so `m % 10 <= 0`, and `48 - (m%10) = '0' + digit`). `m / 10`
+           (`div_s`) never traps here (divisor 10 != 0, and the only trapping
+           `div_s` case, INT_MIN / -1, never occurs).
+
+           Both loops are *do-while* (`Loop [ body; cond; BrIf 0 ]`), so they
+           run at least once — giving `n = 0` the digit count 1 and the single
+           byte '0' with no special case. Digits come out least-significant
+           first, so they are written *backwards* from the last byte. *)
+        let* (ctx1, n_code) = gen_expr ctx (List.hd args) in
+        let (ctx2, heap_idx) = ensure_heap_ptr ctx1 in
+        let (c3,  n)    = alloc_local ctx2 "__i2s_n"    in
+        let (c4,  neg)  = alloc_local c3   "__i2s_neg"  in
+        let (c5,  m)    = alloc_local c4   "__i2s_m"    in
+        let (c6,  dc)   = alloc_local c5   "__i2s_dc"   in
+        let (c7,  tmp)  = alloc_local c6   "__i2s_tmp"  in
+        let (c8,  len)  = alloc_local c7   "__i2s_len"  in
+        let (c9,  dst)  = alloc_local c8   "__i2s_dst"  in
+        let (c10, wpos) = alloc_local c9   "__i2s_wpos" in
+        let code =
+          n_code @ [LocalSet n] @
+          [ (* neg = n < 0 *)
+            LocalGet n; I32Const 0l; I32LtS; LocalSet neg;
+            (* m = neg ? n : (0 - n)  — non-positive magnitude (INT_MIN-safe) *)
+            LocalGet n;
+            I32Const 0l; LocalGet n; I32Sub;
+            LocalGet n; I32Const 0l; I32LtS;
+            Select; LocalSet m;
+            (* dc = decimal digit count (do-while: >= 1, so 0 -> one digit) *)
+            LocalGet m; LocalSet tmp;
+            I32Const 0l; LocalSet dc;
+            Loop (BtEmpty, [
+              LocalGet dc; I32Const 1l; I32Add; LocalSet dc;
+              LocalGet tmp; I32Const 10l; I32DivS; LocalSet tmp;
+              LocalGet tmp; BrIf 0 ]);
+            (* len = dc + neg *)
+            LocalGet dc; LocalGet neg; I32Add; LocalSet len;
+            (* dst = heap; heap += 4 + len *)
+            GlobalGet heap_idx; LocalSet dst;
+            GlobalGet heap_idx; I32Const 4l; LocalGet len; I32Add; I32Add;
+            GlobalSet heap_idx;
+            (* dst[0] = len *)
+            LocalGet dst; LocalGet len; I32Store (2, 0);
+            (* write digits backwards: wpos = dst + 4 + len - 1 (absolute) *)
+            LocalGet dst; I32Const 4l; I32Add; LocalGet len; I32Add;
+            I32Const 1l; I32Sub; LocalSet wpos;
+            Loop (BtEmpty, [
+              (* [wpos] = '0' + digit = 48 - (m % 10) *)
+              LocalGet wpos;
+              I32Const 48l; LocalGet m; I32Const 10l; I32RemS; I32Sub;
+              I32Store8 (0, 0);
+              LocalGet m; I32Const 10l; I32DivS; LocalSet m;
+              LocalGet wpos; I32Const 1l; I32Sub; LocalSet wpos;
+              LocalGet m; BrIf 0 ]);
+            (* leading '-' at dst+4 when negative (else-branch is a no-op) *)
+            LocalGet neg;
+            If (BtEmpty,
+                [ LocalGet dst; I32Const 45l; I32Store8 (0, 4) ],
+                [ Nop ]);
+            LocalGet dst ]
+        in
+        Ok (c10, code)
+
       | ExprVar id when (id.name = "env_at" || id.name = "arg_at")
                         && List.length args = 1 ->
         (* ADR-015 S5 (#180): env_at(i) / arg_at(i) — fetch the i-th
