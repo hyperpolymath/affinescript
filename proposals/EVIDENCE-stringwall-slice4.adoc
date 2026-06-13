@@ -1,0 +1,124 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+= Phase F — string-wall slice 4: to_lowercase / to_uppercase (evidence)
+:toc: macro
+
+[IMPORTANT]
+====
+*Slice landed: ASCII case-folding.* `to_lowercase(s)` and `to_uppercase(s)` —
+already wired in resolve/typecheck/interp — gained wasm-backend lowerings as a
+*copy-with-transform* over the runtime-length idiom established in slice 3
+(`string_sub`): allocate `4 + slen`, then copy each byte through a *branchless*
+ASCII case shift.
+
+Fourth slice of the *variable-string backend* wall
+(`proposals/MIGRATION-PLAN.adoc` §"The two walls", Phase F). Demonstrates the
+slice-3 alloc + copy-loop idiom generalises to per-byte transforms; the same
+shape will carry concat (two source ranges) and other byte-wise string ops.
+====
+
+toc::[]
+
+== What was missing
+
+[cols="2,1,1,1,1",options="header"]
+|===
+| Builtin | resolve.ml | typecheck.ml | interp.ml | codegen.ml (wasm)
+| `string_sub` | ✓ | ✓ | ✓ | ✓ (slice 3)
+| `to_lowercase` | ✓ | ✓ | ✓ | *was missing -> added*
+| `to_uppercase` | ✓ | ✓ | ✓ | *was missing -> added*
+|===
+
+Both failed at codegen (`UnboundVariable`) before this slice.
+
+== The lowering (lib/codegen.ml)
+
+Interp oracle: `String.lowercase_ascii` / `String.uppercase_ascii` — shift only
+the ASCII letters, leave everything else (digits, punctuation, bytes >= 128)
+unchanged. Both builtins share one handler; the transform is selected by name:
+
+----
+lowercase c = c + 32 * ((c >= 'A') & (c <= 'Z'))   ;; 'A'..'Z' -> +32
+uppercase c = c - 32 * ((c >= 'a') & (c <= 'z'))   ;; 'a'..'z' -> -32
+----
+
+The in-range test is a *0/1 product* (`I32And` of two `I32{Ge,Le}S`) multiplied
+by 32, then added/subtracted — *branchless*, so no per-byte `If` block inside
+the loop. Bytes outside the letter range (incl. non-ASCII bytes >= 128, read
+zero-extended via `I32Load8U`) get `(in_range = 0)` and pass through unchanged,
+exactly matching the ASCII-only semantics.
+
+Structure (same runtime-length alloc + `Block`/`Loop` copy as slice 3, with the
+transform spliced into the loop body):
+
+----
+dst = heap; heap += 4 + slen
+dst[0] = slen
+for k in 0..slen:
+  c = src[4 + k]                         ;; I32Load8U
+  dst[4 + k] = c (+/-) 32*((c>=lo)&(c<=hi))  ;; I32Store8
+----
+
+== Gate evidence
+
+=== Gate 1 — builds
+
+`dune build bin/main.exe` exit 0. Both previously-failing ops now compile.
+
+=== Gate 2 — parity (wasm vs interpreter oracle)
+
+Same inputs through both backends agree across folding, non-letter
+passthrough, and the *exclusive* `'A'..'Z'` boundary. Interp oracle confirmed
+against the real library API; wasm executed under Node.
+
+[cols="4,1,1",options="header"]
+|===
+| Expression | interp | wasm
+| `scca(to_lowercase("ABC"), 0)` ('A'->'a') | 97 | 97
+| `scca(to_lowercase("ABC"), 2)` ('C'->'c') | 99 | 99
+| `scca(to_uppercase("abc"), 0)` ('a'->'A') | 65 | 65
+| `scca(to_lowercase("aB3"), 2)` ('3' unchanged) | 51 | 51
+| `scca(to_lowercase("@"), 0)` (64, below 'A') | 64 | 64
+| `scca(to_lowercase("["), 0)` (91, above 'Z') | 91 | 91
+| `string_length(to_uppercase("Hello"))` | 5 | 5
+|===
+
+(`scca` = `string_char_code_at`, the slice-1 reader.) The `@`/`[` probes pin
+the boundary: shifting either would mean the range test was off by one.
+
+The packed fixture `tests/codegen/string_case.affine` returns `4285492`; both
+backends produce it.
+
+== Tests added
+
+* `test/test_e2e.ml` — group *"E2E String-wall slice 4 (case-fold)"*: seven
+  interp-oracle cases (lower, upper, non-letter passthrough, both boundary
+  bytes, length preservation). Runs under `dune runtest`.
+* `tests/codegen/string_case.affine` + `tests/codegen/test_string_case.mjs` —
+  executable wasm parity, run by `tools/run_codegen_wasm_tests.sh` (CI).
+
+Full `tools/run_codegen_wasm_tests.sh` run: *all* codegen WASM tests pass
+(slices 1-4 string harnesses), no sibling regressions.
+
+== Corpus impact
+
+Case-insensitive normalisation (a very common string-gated operation — keyed
+lookups, comparisons, command parsing) now lowers to wasm. More structurally:
+this proves the slice-3 idiom carries *per-byte transforms*, not just verbatim
+copies — the template for the remaining byte-wise ops.
+
+== Next slices (variable-string backend wall)
+
+. *Concatenation* — `string_concat` / `++` on strings (allocate `4 + la + lb`,
+  two copy loops). Needs compile-time string-vs-list dispatch for the `++`
+  operator (lists already lower `OpConcat`).
+. *`string_find`* — substring search returning an index (read-side nested
+  scan, no allocation; builds on slice-1 indexing).
+. *`trim`* — leading/trailing whitespace strip (scan for bounds, then a
+  slice-3-style copy of the inner range).
+. *`slice`* — the polymorphic (array|string) JS-semantics variant with
+  negative-index normalisation.
+
+Each slice: add the codegen arm, an interp-parity e2e group, and a
+`tests/codegen/*.mjs` executable check, then re-run the census and drop the
+gated count.

@@ -1,0 +1,31 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// PHASE-F string-wall slice 4: to_lowercase / to_uppercase — ASCII
+// case-folding as copy-with-transform over the runtime-length idiom
+// (proposals/MIGRATION-PLAN.adoc §"The two walls"). Allocates 4 + slen and
+// copies each byte through a branchless ASCII case shift. Read back through
+// the slice-1 reader string_char_code_at and string_length.
+//
+// The companion harness test_string_case.mjs asserts main() against the value
+// derived from the interp oracle (lib/interp.ml String.{lowercase,uppercase}_ascii).
+// The same constants are pinned interp-side in test/test_e2e.ml
+// (E2E String-wall slice 4).
+
+fn main() -> Int {
+  let la = string_char_code_at(to_lowercase("ABC"), 0);    // 'A'->'a' = 97
+  let lc = string_char_code_at(to_lowercase("ABC"), 2);    // 'C'->'c' = 99
+  let uA = string_char_code_at(to_uppercase("abc"), 0);    // 'a'->'A' = 65
+  let digit = string_char_code_at(to_lowercase("aB3"), 2); // '3' unchanged = 51
+  let below = string_char_code_at(to_lowercase("@"), 0);   // 64 (just below 'A') unchanged
+  let above = string_char_code_at(to_lowercase("["), 0);   // 91 (just above 'Z') unchanged
+  let len = string_length(to_uppercase("Hello"));          // length preserved = 5
+
+  // Positional pack of three transformed bytes + non-letter passthroughs and
+  // length as an additive checksum:
+  //   packed = 97 + 99*256 + 65*65536 = 4285281
+  //   + digit(51) + below(64) + above(91) + len(5) = +211
+  //   total                                         = 4285492
+  let packed = la + lc * 256 + uA * 65536;
+  packed + digit + below + above + len
+}
