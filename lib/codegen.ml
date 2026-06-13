@@ -275,6 +275,8 @@ let rec find_free_vars (bound_vars : string list) (expr : expr) : string list =
     if List.mem id.name bound_vars then [] else [id.name]
   | ExprBinary (e1, _, e2) ->
     find_free_vars bound_vars e1 @ find_free_vars bound_vars e2
+  | ExprStringConcat (e1, e2) ->
+    find_free_vars bound_vars e1 @ find_free_vars bound_vars e2
   | ExprUnary (_, e) ->
     find_free_vars bound_vars e
   | ExprIf ei ->
@@ -558,6 +560,65 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
         LocalGet dst; LocalGet la; LocalGet lb; I32Add; I32Store (2, 0) ]
       @ copy_loop a la zero   (* dst[0..la)  := a *)
       @ copy_loop b lb la     (* dst[la..)   := b *)
+      @ [ LocalGet dst ]
+    in
+    Ok (ctxA, code)
+
+  | ExprStringConcat (left, right) ->
+    (* String byte-concatenation `a ++ b` (both `String`). String-wall slice
+       8b — the type-directed lowering the slice-8a guard stood in for.
+       Introduced by Typecheck.elaborate_string_concat for the String case of
+       the polymorphic `++`, so codegen no longer has to guess string-vs-list.
+
+       String layout (slices 1-7): `[len@+0][utf8 byte i @ +4+i]`. This
+       mirrors the list-concat handler above but copies *1-byte* elements past
+       a *single* length word, instead of 4-byte i32 elements — which is
+       exactly the bug the guard caught: the list path copied a string's
+       [len][utf8] as i32 elements, so `"ab" ++ "cd"` read byte 2 as the
+       length word of "cd" (= 2) instead of 'c' (= 99). Allocate 4 + la + lb
+       bytes, write the length word, copy a's then b's bytes. *)
+    let* (ctx1, left_code)  = gen_expr ctx  left  in
+    let* (ctx2, right_code) = gen_expr ctx1 right in
+    let (ctx3, heap_idx) = ensure_heap_ptr ctx2 in
+    let (ctx4, a)    = alloc_local ctx3 "__scat_a"    in
+    let (ctx5, b)    = alloc_local ctx4 "__scat_b"    in
+    let (ctx6, la)   = alloc_local ctx5 "__scat_la"   in
+    let (ctx7, lb)   = alloc_local ctx6 "__scat_lb"   in
+    let (ctx8, dst)  = alloc_local ctx7 "__scat_dst"  in
+    let (ctx9, k)    = alloc_local ctx8 "__scat_k"    in
+    let (ctxA, zero) = alloc_local ctx9 "__scat_zero" in
+    let copy_bytes src_ptr count dst_base_off =
+      (* for k in 0..count: dst[4 + dst_base_off + k] = src[4 + k]
+         (the +4 that skips the length word is folded into the load/store
+         static offset, matching the slice-1..7 byte idiom). *)
+      [ I32Const 0l; LocalSet k;
+        Block (BtEmpty, [ Loop (BtEmpty, [
+          LocalGet k; LocalGet count; I32GeS; BrIf 1;
+          (* dst slot addr (pre-+4): dst + dst_base_off + k *)
+          LocalGet dst; LocalGet dst_base_off; I32Add; LocalGet k; I32Add;
+          (* value: byte at src + k (+4 via the load offset) *)
+          LocalGet src_ptr; LocalGet k; I32Add;
+          I32Load8U (0, 4);
+          I32Store8 (0, 4);
+          LocalGet k; I32Const 1l; I32Add; LocalSet k;
+          Br 0 ]) ]) ]
+    in
+    let code =
+      left_code @ [LocalSet a] @ right_code @ [LocalSet b] @
+      [ LocalGet a; I32Load (2, 0); LocalSet la;
+        LocalGet b; I32Load (2, 0); LocalSet lb;
+        I32Const 0l; LocalSet zero;
+        (* dst = heap; heap += 4 + (la + lb) *)
+        GlobalGet heap_idx; LocalSet dst;
+        GlobalGet heap_idx;
+        I32Const 4l;
+        LocalGet la; LocalGet lb; I32Add;
+        I32Add; I32Add;
+        GlobalSet heap_idx;
+        (* dst length word = la + lb *)
+        LocalGet dst; LocalGet la; LocalGet lb; I32Add; I32Store (2, 0) ]
+      @ copy_bytes a la zero   (* dst[0..la)  := a's bytes *)
+      @ copy_bytes b lb la     (* dst[la..)   := b's bytes *)
       @ [ LocalGet dst ]
     in
     Ok (ctxA, code)

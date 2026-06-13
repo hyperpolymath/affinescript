@@ -4064,11 +4064,30 @@ let test_stringwall_concat_guard_allows_list () =
   | Ok _ -> ()
   | Error msg -> Alcotest.failf "list `++` must still compile (guard false positive): %s" msg
 
+(* Slice 8b: after typecheck records the String-concat sites,
+   Typecheck.elaborate_string_concat rewrites them to ExprStringConcat, which
+   the wasm backend lowers as byte concatenation. So the full pipeline
+   (frontend -> elaborate -> codegen) compiles string `++` rather than hitting
+   the slice-8a backstop guard. *)
+let test_stringwall_concat_lowers_after_elaboration () =
+  match run_frontend (fixture "string_concat.affine") with
+  | Error e -> Alcotest.failf "frontend failed on string_concat.affine: %s" e
+  | Ok (prog, _resolve_ctx) ->
+    let elaborated = Affinescript.Typecheck.elaborate_string_concat prog in
+    (match wasm_codegen elaborated with
+     | Ok _ -> ()
+     | Error msg ->
+       Alcotest.failf
+         "slice 8b: string `++` should lower to wasm after elaboration, got: %s"
+         msg)
+
 let stringwall_concat_guard_tests = [
   Alcotest.test_case "string `++` is rejected (not silently miscompiled)"
     `Quick test_stringwall_concat_guard_rejects_string;
   Alcotest.test_case "list `++` still compiles (no guard false positive)"
     `Quick test_stringwall_concat_guard_allows_list;
+  Alcotest.test_case "string `++` lowers to wasm after elaboration (slice 8b)"
+    `Quick test_stringwall_concat_lowers_after_elaboration;
 ]
 
 (* ---- STDLIB-04b: Throws extern `error<T>` (Refs #329) ----

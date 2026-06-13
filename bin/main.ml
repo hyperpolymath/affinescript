@@ -675,7 +675,11 @@ let compile_file face json wasm_gc vscode_ext vscode_adapter vscode_no_lc
                 Affinescript.Wasm_gc_encode.write_gc_module_to_file output gc_module
             end else if Filename.check_suffix output ".cjs" then begin
               (* Issue #35 Phase 1: Node-CJS shim around the compiled wasm. *)
-              let optimized_prog = Affinescript.Opt.fold_constants_program prog in
+              (* String-wall slice 8b: rewrite String `++` to ExprStringConcat
+               (byte-concat) for the wasm backend before const-folding. No-op
+               unless typecheck recorded String-concat sites. *)
+            let prog = Affinescript.Typecheck.elaborate_string_concat prog in
+            let optimized_prog = Affinescript.Opt.fold_constants_program prog in
               match Affinescript.Codegen.generate_module ~loader optimized_prog with
               | Error e ->
                 add { severity = Error; code = "E0810";
@@ -694,7 +698,11 @@ let compile_file face json wasm_gc vscode_ext vscode_adapter vscode_no_lc
                 output_string oc cjs;
                 close_out oc
             end else begin
-              let optimized_prog = Affinescript.Opt.fold_constants_program prog in
+              (* String-wall slice 8b: rewrite String `++` to ExprStringConcat
+               (byte-concat) for the wasm backend before const-folding. No-op
+               unless typecheck recorded String-concat sites. *)
+            let prog = Affinescript.Typecheck.elaborate_string_concat prog in
+            let optimized_prog = Affinescript.Opt.fold_constants_program prog in
               match Affinescript.Codegen.generate_module ~loader optimized_prog with
               | Error e ->
                 add { severity = Error; code = "E0801";
@@ -908,7 +916,11 @@ let compile_file face json wasm_gc vscode_ext vscode_adapter vscode_no_lc
                 `Ok ())
             else if Filename.check_suffix output ".cjs" then
               (* Issue #35 Phase 1: Node-CJS shim around the compiled wasm. *)
-              let optimized_prog = Affinescript.Opt.fold_constants_program prog in
+              (* String-wall slice 8b: rewrite String `++` to ExprStringConcat
+               (byte-concat) for the wasm backend before const-folding. No-op
+               unless typecheck recorded String-concat sites. *)
+            let prog = Affinescript.Typecheck.elaborate_string_concat prog in
+            let optimized_prog = Affinescript.Opt.fold_constants_program prog in
               (match Affinescript.Codegen.generate_module ~loader optimized_prog with
               | Error e ->
                 Format.eprintf "@[<v>Node-CJS codegen error: %s@]@."
@@ -929,7 +941,11 @@ let compile_file face json wasm_gc vscode_ext vscode_adapter vscode_no_lc
                   (if vscode_ext then ", --vscode-extension" else "");
                 `Ok ())
             else
-              let optimized_prog = Affinescript.Opt.fold_constants_program prog in
+              (* String-wall slice 8b: rewrite String `++` to ExprStringConcat
+               (byte-concat) for the wasm backend before const-folding. No-op
+               unless typecheck recorded String-concat sites. *)
+            let prog = Affinescript.Typecheck.elaborate_string_concat prog in
+            let optimized_prog = Affinescript.Opt.fold_constants_program prog in
               (match Affinescript.Codegen.generate_module ~loader optimized_prog with
               | Error e ->
                 Format.eprintf "@[<v>Code generation error: %s@]@."
@@ -1086,6 +1102,10 @@ let compile_to_wasm_module face path
               (Affinescript.Face.format_quantity_error face err);
             Error "Quantity error"
           | Ok () ->
+            (* String-wall slice 8b: rewrite String `++` to ExprStringConcat
+               (byte-concat) for the wasm backend before const-folding. No-op
+               unless typecheck recorded String-concat sites. *)
+            let prog = Affinescript.Typecheck.elaborate_string_concat prog in
             let optimized_prog = Affinescript.Opt.fold_constants_program prog in
             (match Affinescript.Codegen.generate_module ~loader optimized_prog with
             | Error e ->
@@ -1146,6 +1166,10 @@ let verify_file face path =
               (Affinescript.Face.format_quantity_error face err);
             `Error (false, "Quantity error")
           | Ok () ->
+            (* String-wall slice 8b: rewrite String `++` to ExprStringConcat
+               (byte-concat) for the wasm backend before const-folding. No-op
+               unless typecheck recorded String-concat sites. *)
+            let prog = Affinescript.Typecheck.elaborate_string_concat prog in
             let optimized_prog = Affinescript.Opt.fold_constants_program prog in
             (match Affinescript.Codegen.generate_module ~loader optimized_prog with
             | Error e ->

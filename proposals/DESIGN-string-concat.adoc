@@ -4,29 +4,44 @@
 :toc: macro
 
 *Status:* ACCEPTED (owner sign-off 2026-06-13, "guard first, then full fix").
-*Slice 8a (guard): LANDED.* Slice 8b (type-directed lowering): next.
+*Slice 8a (guard): LANDED (#575). Slice 8b (type-directed lowering): LANDED.*
 *Author:* string-wall slice-8 design (Phase F, `proposals/MIGRATION-PLAN.adoc`).
 *Scope:* the last remaining string-wall items — string concatenation (`++`)
 and polymorphic `slice` — which slices 1-7 deferred as "type-directed".
 
 [NOTE]
 ====
-*Slice 8a — guard (LANDED).* Per the owner's "guard first" decision, the wasm
-`OpConcat` handler now *rejects the syntactically-obvious string `++`* with a
-loud `UnsupportedFeature` error (via `is_string_concat_operand` in
-`lib/codegen.ml`) instead of silently miscompiling it. This is a
-*sound-rejection* heuristic: it fires only on operands that are unambiguously
-strings (a string literal, a String-returning builtin call, or a nested string
-`++`), so genuine list `++` is never affected; it is deliberately *incomplete*
-— a pure variable-to-variable string `++` still slips through, and closing that
-gap is exactly what slice 8b (the type-directed lowering) does. The latent
-footgun is currently unreachable in practice (no migrated kernel compiles
-string `++` to wasm yet), so the partial guard is a safe interim that stops the
-common cases loudly while 8b is built.
+*Slice 8a — guard (LANDED, #575).* The wasm `OpConcat` handler rejects the
+syntactically-obvious string `++` with a loud `UnsupportedFeature` error
+(`is_string_concat_operand` in `lib/codegen.ml`) instead of silently
+miscompiling it. Retained as a *backstop* after 8b: any String `++` that
+reaches codegen un-elaborated still errors loudly rather than emitting garbage.
 
-*Slice 8b — full fix (next).* The type-directed lowering of §"Implementation
-plan" makes string `++` *correct* (and complete, incl. variable-to-variable),
-at which point the guard is replaced by the real byte-concat lowering.
+*Slice 8b — type-directed lowering (LANDED).* String `++` now lowers
+*correctly and completely* (incl. variable-to-variable):
+
+* `lib/ast.ml` gains `ExprStringConcat of expr * expr` (not produced by the
+  parser).
+* `lib/typecheck.ml`: `synth` records each `++` node it types as String concat
+  (physical identity, `string_concat_sites`); `elaborate_string_concat`
+  rewrites exactly those nodes to `ExprStringConcat`. Physical-identity keying
+  is sound because typecheck and the elaboration run over the same `prog`
+  object (`parse_with_face`'s lowered prog, shared by resolve/typecheck/codegen).
+* `bin/main.ml`: the wasm path runs `elaborate_string_concat` after typecheck,
+  before `Opt.fold_constants_program`. The interpreter and non-wasm backends
+  keep the original `prog` (String `++` = `ExprBinary _ OpConcat _`), so the
+  oracle is unchanged.
+* `lib/codegen.ml` lowers `ExprStringConcat` as a byte concat — allocate
+  `4 + la + lb`, write the length word, copy a's then b's bytes — mirroring the
+  list-concat handler but with 1-byte elements and a single length word.
+* `lib/effect_sites.ml`: `ExprStringConcat` recurses like `ExprBinary` and is
+  *not* an `ExprApp` call site, preserving effect-ordinal parity between interp
+  and wasm. `lib/opt.ml` folds its sub-expressions; `lib/interp.ml` handles it
+  defensively as ordinary String `++`.
+
+Parity: `tests/codegen/string_concat.{affine,mjs}` (byte-exact via the slice-1
+reader: the `"ab" ++ "cd"` byte-2 = 99 regression, var-var, chained, empty) +
+`test/test_e2e.ml` "E2E String-wall slice 8 guard".
 ====
 
 toc::[]
