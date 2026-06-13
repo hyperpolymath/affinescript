@@ -1,0 +1,30 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// PHASE-F string-wall slice 7: int_to_string — decimal rendering of an i32,
+// matching the interp oracle (string_of_int). Built on the slice-3
+// allocation idiom, with INT_MIN handled by extracting digits in negative
+// space (no un-negatable magnitude is ever formed). Read back through the
+// slice-1 reader string_char_code_at and string_length.
+//
+// The companion harness test_string_int_to_string.mjs asserts main() against
+// the value derived from the oracle. The full-string INT_MIN/INT_MAX content
+// is pinned interp-side in test/test_e2e.ml (E2E String-wall slice 7).
+
+fn main() -> Int {
+  let z = string_char_code_at(int_to_string(0), 0);                 // '0' = 48
+  let neg = string_char_code_at(int_to_string(-5), 0);             // '-' = 45
+  let d5 = string_char_code_at(int_to_string(-5), 1);             // '5' = 53
+  // INT_MIN renders as "-2147483648": byte 1 = '2' (50), byte 10 = '8' (56)
+  let minHead = string_char_code_at(int_to_string(-2147483648), 1);  // 50
+  let minTail = string_char_code_at(int_to_string(-2147483648), 10); // 56
+  let lmin = string_length(int_to_string(-2147483648));            // 11 (INT_MIN)
+  let lmax = string_length(int_to_string(2147483647));            // 10 (INT_MAX)
+
+  // Positional pack of three bytes + the INT_MIN/INT_MAX probes:
+  //   packed = 48 + 45*256 + 53*65536 = 3484976
+  //   + minHead(50) + minTail(56) + lmin(11) + lmax(10) = +127
+  //   total                                              = 3485103
+  let packed = z + neg * 256 + d5 * 65536;
+  packed + minHead + minTail + lmin + lmax
+}

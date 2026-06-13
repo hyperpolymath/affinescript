@@ -3701,6 +3701,21 @@ let eval_int_fn src =
         | Error e -> Alcotest.failf "apply failed: %s" (Value.show_eval_error e))
      | Error e -> Alcotest.failf "lookup f failed: %s" (Value.show_eval_error e))
 
+(* String-returning sibling of [eval_int_fn], for ops whose result is a
+   String (e.g. int_to_string). *)
+let eval_string_fn src =
+  let prog = Parse_driver.parse_string ~file:"<stringwall>" src in
+  match Interp.eval_program prog with
+  | Error e -> Alcotest.failf "interp failed: %s" (Value.show_eval_error e)
+  | Ok env ->
+    (match Value.lookup_env "f" env with
+     | Ok fn ->
+       (match Interp.apply_function fn [] with
+        | Ok (Value.VString s) -> s
+        | Ok v -> Alcotest.failf "expected VString, got %s" (Value.show_value v)
+        | Error e -> Alcotest.failf "apply failed: %s" (Value.show_eval_error e))
+     | Error e -> Alcotest.failf "lookup f failed: %s" (Value.show_eval_error e))
+
 let test_stringwall_scca_first () =
   Alcotest.(check int) "string_char_code_at(\"ABC\",0) == 'A'" 65
     (eval_int_fn "fn f() -> Int { string_char_code_at(\"ABC\", 0) }")
@@ -3977,6 +3992,42 @@ let stringwall_find_tests = [
   Alcotest.test_case "needle longer == -1" `Quick test_stringwall_find_needle_longer;
   Alcotest.test_case "empty needle == 0" `Quick test_stringwall_find_empty_needle;
   Alcotest.test_case "empty haystack == -1" `Quick test_stringwall_find_empty_haystack;
+]
+
+(* ---- PHASE-F string-wall slice 7: int_to_string ----
+
+   `int_to_string(n)` gained a wasm lowering: decimal rendering of an i32 over
+   the slice-3 allocation idiom, with INT_MIN handled by extracting digits in
+   negative space. These pin the interp oracle (`string_of_int`) the wasm
+   lowering must reproduce — full-string equality across zero, positive,
+   negative, INT_MAX, and the INT_MIN edge. *)
+
+let test_stringwall_i2s_zero () =
+  Alcotest.(check string) "int_to_string(0) == \"0\"" "0"
+    (eval_string_fn "fn f() -> String { int_to_string(0) }")
+
+let test_stringwall_i2s_pos () =
+  Alcotest.(check string) "int_to_string(42) == \"42\"" "42"
+    (eval_string_fn "fn f() -> String { int_to_string(42) }")
+
+let test_stringwall_i2s_neg () =
+  Alcotest.(check string) "int_to_string(-123) == \"-123\"" "-123"
+    (eval_string_fn "fn f() -> String { int_to_string(-123) }")
+
+let test_stringwall_i2s_intmax () =
+  Alcotest.(check string) "int_to_string(INT_MAX)" "2147483647"
+    (eval_string_fn "fn f() -> String { int_to_string(2147483647) }")
+
+let test_stringwall_i2s_intmin () =
+  Alcotest.(check string) "int_to_string(INT_MIN) (negative-space)" "-2147483648"
+    (eval_string_fn "fn f() -> String { int_to_string(-2147483648) }")
+
+let stringwall_i2s_tests = [
+  Alcotest.test_case "int_to_string(0) == \"0\"" `Quick test_stringwall_i2s_zero;
+  Alcotest.test_case "int_to_string(42) == \"42\"" `Quick test_stringwall_i2s_pos;
+  Alcotest.test_case "int_to_string(-123) == \"-123\"" `Quick test_stringwall_i2s_neg;
+  Alcotest.test_case "int_to_string(INT_MAX)" `Quick test_stringwall_i2s_intmax;
+  Alcotest.test_case "int_to_string(INT_MIN)" `Quick test_stringwall_i2s_intmin;
 ]
 
 (* ---- STDLIB-04b: Throws extern `error<T>` (Refs #329) ----
@@ -5092,6 +5143,7 @@ let tests =
     ("E2E String-wall slice 4 (case-fold)", stringwall_case_tests);
     ("E2E String-wall slice 5 (trim)", stringwall_trim_tests);
     ("E2E String-wall slice 6 (string_find)", stringwall_find_tests);
+    ("E2E String-wall slice 7 (int_to_string)", stringwall_i2s_tests);
     ("E2E STDLIB-04b error #329", stdlib_04b_error_tests);
     ("E2E Vscode Bindings",      vscode_bindings_tests);
     ("E2E Array Type Sugar",     array_type_tests);
