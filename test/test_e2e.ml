@@ -3786,6 +3786,58 @@ let stringwall_alloc_tests = [
   Alcotest.test_case "index past 1-byte string == -1" `Quick test_stringwall_sfcc_oob;
 ]
 
+(* ---- PHASE-F string-wall slice 3: string_sub ----
+
+   `string_sub(s, start, length)` gained a wasm-backend lowering: a
+   runtime-sized heap allocation plus a byte-copy loop, with the interp's
+   clamp semantics (lib/interp.ml: start' = max 0 (min start slen);
+   length' = max 0 (min length (slen - start'))). These pin the interp oracle
+   the wasm lowering must reproduce; the result is read back via the slice-1
+   reader string_char_code_at and via string_length. *)
+
+let test_stringwall_sub_byte0 () =
+  Alcotest.(check int) "sub(\"hello\",1,3)[0] == 'e'" 101
+    (eval_int_fn "fn f() -> Int { string_char_code_at(string_sub(\"hello\", 1, 3), 0) }")
+
+let test_stringwall_sub_byte2 () =
+  Alcotest.(check int) "sub(\"hello\",1,3)[2] == 'l'" 108
+    (eval_int_fn "fn f() -> Int { string_char_code_at(string_sub(\"hello\", 1, 3), 2) }")
+
+let test_stringwall_sub_len () =
+  Alcotest.(check int) "string_length(sub(\"hello\",1,3)) == 3" 3
+    (eval_int_fn "fn f() -> Int { string_length(string_sub(\"hello\", 1, 3)) }")
+
+let test_stringwall_sub_full () =
+  Alcotest.(check int) "string_length(sub(\"hello\",0,5)) == 5" 5
+    (eval_int_fn "fn f() -> Int { string_length(string_sub(\"hello\", 0, 5)) }")
+
+let test_stringwall_sub_clamp_len () =
+  Alcotest.(check int) "length clamped to slen-start' == 3" 3
+    (eval_int_fn "fn f() -> Int { string_length(string_sub(\"hello\", 2, 100)) }")
+
+let test_stringwall_sub_clamp_start () =
+  Alcotest.(check int) "start past end -> empty (len 0)" 0
+    (eval_int_fn "fn f() -> Int { string_length(string_sub(\"hello\", 10, 3)) }")
+
+let test_stringwall_sub_neg_start () =
+  Alcotest.(check int) "negative start clamps to 0 -> 'h'" 104
+    (eval_int_fn "fn f() -> Int { string_char_code_at(string_sub(\"hello\", -1, 2), 0) }")
+
+let test_stringwall_sub_zero_len () =
+  Alcotest.(check int) "zero length -> empty (len 0)" 0
+    (eval_int_fn "fn f() -> Int { string_length(string_sub(\"hello\", 1, 0)) }")
+
+let stringwall_sub_tests = [
+  Alcotest.test_case "sub(\"hello\",1,3)[0] == 101" `Quick test_stringwall_sub_byte0;
+  Alcotest.test_case "sub(\"hello\",1,3)[2] == 108" `Quick test_stringwall_sub_byte2;
+  Alcotest.test_case "len sub(\"hello\",1,3) == 3" `Quick test_stringwall_sub_len;
+  Alcotest.test_case "len sub full == 5" `Quick test_stringwall_sub_full;
+  Alcotest.test_case "length clamp == 3" `Quick test_stringwall_sub_clamp_len;
+  Alcotest.test_case "start clamp -> 0" `Quick test_stringwall_sub_clamp_start;
+  Alcotest.test_case "neg start -> 'h'" `Quick test_stringwall_sub_neg_start;
+  Alcotest.test_case "zero length -> 0" `Quick test_stringwall_sub_zero_len;
+]
+
 (* ---- STDLIB-04b: Throws extern `error<T>` (Refs #329) ----
 
    `error<T>(msg: String) -> T / Throws` was declared in
@@ -4895,6 +4947,7 @@ let tests =
     ("E2E STDLIB-04e Pure #332", stdlib_04e_pure_tests);
     ("E2E String-wall slice 1 (indexing)", stringwall_index_tests);
     ("E2E String-wall slice 2 (string_from_char_code)", stringwall_alloc_tests);
+    ("E2E String-wall slice 3 (string_sub)", stringwall_sub_tests);
     ("E2E STDLIB-04b error #329", stdlib_04b_error_tests);
     ("E2E Vscode Bindings",      vscode_bindings_tests);
     ("E2E Array Type Sugar",     array_type_tests);

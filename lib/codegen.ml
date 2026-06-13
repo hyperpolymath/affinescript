@@ -981,6 +981,72 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
         in
         Ok (ctx_v, code)
 
+      | ExprVar id when id.name = "string_sub"
+                        && List.length args = 3 ->
+        (* PHASE-F string-wall slice 3: the runtime-length copy op.
+           `string_sub(s, start, length)` returns the substring of `length`
+           bytes from `start`, with both clamped to the source — matching the
+           interp oracle (lib/interp.ml):
+             slen   = len s
+             start' = max 0 (min start slen)
+             length'= max 0 (min length (slen - start'))
+           This introduces the two capabilities the rest of the string wall
+           needs: a *runtime-sized* heap allocation (4 + length' bytes) and a
+           *byte-copy loop*, both modelled on the list `++` lowering (the
+           canonical allocate-then-copy idiom in this file). `min`/`max` use
+           `Select` over the operand pair (no side effects). *)
+        let* (ctx1, s_code)     = gen_expr ctx  (List.nth args 0) in
+        let* (ctx2, start_code) = gen_expr ctx1 (List.nth args 1) in
+        let* (ctx3, len_code)   = gen_expr ctx2 (List.nth args 2) in
+        let (ctx4, heap_idx) = ensure_heap_ptr ctx3 in
+        let (c5,  src)   = alloc_local ctx4 "__ssub_src"   in
+        let (c6,  slen)  = alloc_local c5   "__ssub_slen"  in
+        let (c7,  start_) = alloc_local c6  "__ssub_start" in
+        let (c8,  len_)  = alloc_local c7   "__ssub_len"   in
+        let (c9,  dst)   = alloc_local c8   "__ssub_dst"   in
+        let (c10, k)     = alloc_local c9   "__ssub_k"     in
+        let (c11, tmp)   = alloc_local c10  "__ssub_tmp"   in
+        (* min(a,b) via Select: stack [a; b; a<b] -> a<b ? a : b *)
+        let imin_into a_get b_get dst_local =
+          a_get @ b_get @ a_get @ b_get @ [ I32LtS; Select; LocalSet dst_local ] in
+        (* max(x, 0) via Select: stack [x; 0; x>0] -> x>0 ? x : 0 *)
+        let imax0_into x_get dst_local =
+          x_get @ [ I32Const 0l ] @ x_get @ [ I32Const 0l; I32GtS; Select; LocalSet dst_local ] in
+        let code =
+          s_code @ [LocalSet src] @
+          start_code @ [LocalSet start_] @   (* start_ temporarily = raw start *)
+          len_code @ [LocalSet len_] @       (* len_ temporarily = raw length *)
+          (* slen = src[0] *)
+          [ LocalGet src; I32Load (2, 0); LocalSet slen ] @
+          (* start' = max(0, min(raw_start, slen)) *)
+          imin_into [LocalGet start_] [LocalGet slen] tmp @
+          imax0_into [LocalGet tmp] start_ @
+          (* length' = max(0, min(raw_length, slen - start')) *)
+          imin_into [LocalGet len_]
+                    [LocalGet slen; LocalGet start_; I32Sub] tmp @
+          imax0_into [LocalGet tmp] len_ @
+          (* dst = heap; heap += 4 + length' *)
+          [ GlobalGet heap_idx; LocalSet dst;
+            GlobalGet heap_idx; I32Const 4l; LocalGet len_; I32Add; I32Add;
+            GlobalSet heap_idx;
+            (* dst[0] = length' *)
+            LocalGet dst; LocalGet len_; I32Store (2, 0) ] @
+          (* copy loop: for k in 0..length': dst[4+k] = src[4 + start' + k] *)
+          [ I32Const 0l; LocalSet k;
+            Block (BtEmpty, [ Loop (BtEmpty, [
+              LocalGet k; LocalGet len_; I32GeS; BrIf 1;
+              (* dst slot address (store uses static +4): dst + k *)
+              LocalGet dst; LocalGet k; I32Add;
+              (* source byte (load uses static +4): src + start' + k *)
+              LocalGet src; LocalGet start_; I32Add; LocalGet k; I32Add;
+              I32Load8U (0, 4);
+              I32Store8 (0, 4);
+              LocalGet k; I32Const 1l; I32Add; LocalSet k;
+              Br 0 ]) ]) ] @
+          [ LocalGet dst ]
+        in
+        Ok (c11, code)
+
       | ExprVar id when (id.name = "env_at" || id.name = "arg_at")
                         && List.length args = 1 ->
         (* ADR-015 S5 (#180): env_at(i) / arg_at(i) — fetch the i-th

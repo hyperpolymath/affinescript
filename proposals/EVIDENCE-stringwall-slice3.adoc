@@ -1,0 +1,140 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+= Phase F — string-wall slice 3: string_sub (evidence)
+:toc: macro
+
+[IMPORTANT]
+====
+*Slice landed: the runtime-length copy op.* `string_sub(s, start, length)` —
+already wired in resolve/typecheck/interp — gained a wasm-backend lowering
+that introduces the two capabilities the rest of the string wall needs: a
+*runtime-sized* heap allocation and a *byte-copy loop*. Both are modelled on
+the existing list `++` lowering (the canonical allocate-then-copy idiom in
+`lib/codegen.ml`).
+
+Third slice of the *variable-string backend* wall
+(`proposals/MIGRATION-PLAN.adoc` §"The two walls", Phase F). With runtime
+allocation + copy now in hand, the remaining write-side ops (concat, case-fold)
+and the read-side scans (`startsWith`, `string_find`) reuse these idioms.
+====
+
+toc::[]
+
+== What was missing
+
+[cols="2,1,1,1,1",options="header"]
+|===
+| Builtin | resolve.ml | typecheck.ml | interp.ml | codegen.ml (wasm)
+| `string_char_code_at` / `char_to_int` | ✓ | ✓ | ✓ | ✓ (slice 1)
+| `string_from_char_code` | ✓ | ✓ | ✓ | ✓ (slice 2)
+| `string_sub` | ✓ | ✓ | ✓ | *was missing -> added*
+|===
+
+Before this slice it failed at codegen:
+
+----
+Code generation error: (Codegen.UnboundVariable
+   "Function or variable not found: string_sub")
+----
+
+== The lowering (lib/codegen.ml)
+
+Interp oracle (lib/interp.ml):
+
+----
+slen    = String.length s
+start'  = max 0 (min start slen)
+length' = max 0 (min length (slen - start'))
+String.sub s start' length'
+----
+
+The wasm lowering, on the `[len: i32 LE][utf8]` ABI:
+
+. Evaluate `s` (-> base pointer), `start`, `length`; load `slen` from `[src+0]`.
+. Clamp: `start' = max(0, min(start, slen))`, then
+  `length' = max(0, min(length, slen - start'))`. `min`/`max` use `Select`
+  over the operand pair (the operands are locals/constants — no side effects,
+  so evaluating both arms is safe, unlike the bounds-guarded load in slice 1).
+. *Runtime-sized* allocation: `dst = heap; heap += 4 + length'` — the bump
+  allocator (`ensure_heap_ptr`) with a runtime byte count, exactly as list
+  `++` allocates `4 + (la+lb)*4`.
+. Store `length'` at `[dst+0]`.
+. *Copy loop* (`Block [ Loop [ k>=length' ? break; dst[4+k] = src[4+start'+k];
+  k++; continue ] ]`), byte-wise via `I32Load8U` / `I32Store8`. Same
+  `Block`/`Loop`/`BrIf 1`/`Br 0` idiom as the list-`++` element copy, with a
+  1-byte stride instead of 4.
+. Return `dst`.
+
+All clamps are non-negative (`max 0`), so no negative addresses are formed.
+`length' = 0` exits the loop immediately and yields the empty string.
+
+== Gate evidence
+
+=== Gate 1 — builds
+
+`dune build bin/main.exe` exit 0. The previously-failing op now compiles and
+round-trips with the slice-1 reader.
+
+=== Gate 2 — parity (wasm vs interpreter oracle)
+
+Same inputs through both backends agree across normal extraction, both
+clamps, negative start, and zero length. Interp oracle confirmed against the
+real library API; wasm executed under Node.
+
+[cols="4,1,1",options="header"]
+|===
+| Expression | interp | wasm
+| `scca(string_sub("hello",1,3), 0)` ('e') | 101 | 101
+| `scca(string_sub("hello",1,3), 2)` ('l') | 108 | 108
+| `string_length(string_sub("hello",1,3))` | 3 | 3
+| `string_length(string_sub("hello",0,5))` (full) | 5 | 5
+| `string_length(string_sub("hello",2,100))` (clamp length) | 3 | 3
+| `string_length(string_sub("hello",10,3))` (clamp start) | 0 | 0
+| `scca(string_sub("hello",-1,2), 0)` (neg start -> 0, 'h') | 104 | 104
+| `string_length(string_sub("hello",1,0))` (zero length) | 0 | 0
+|===
+
+(`scca` = `string_char_code_at`, the slice-1 reader.)
+
+The packed fixture `tests/codegen/string_sub.affine` returns `6843501`
+(positional pack of three round-tripped bytes + four length probes); both
+backends produce it.
+
+== Tests added
+
+* `test/test_e2e.ml` — group *"E2E String-wall slice 3 (string_sub)"*: eight
+  interp-oracle cases (extraction, length, length-clamp, start-clamp,
+  negative-start, zero-length). Runs under `dune runtest`. The interp consumer
+  coverage mandated by `.claude/CLAUDE.md` §"Test-fixture hygiene".
+* `tests/codegen/string_sub.affine` + `tests/codegen/test_string_sub.mjs` —
+  executable wasm parity, run by `tools/run_codegen_wasm_tests.sh` (CI).
+
+Full `tools/run_codegen_wasm_tests.sh` run: *all* codegen WASM tests pass
+(slices 1, 2, and 3 string harnesses), no sibling regressions.
+
+== Corpus impact
+
+The runtime-length allocation + byte-copy loop are now established string
+primitives. This unblocks substring extraction directly, and gives the next
+slices their building blocks:
+
+* *Concatenation* (`++` on strings, `string_concat`) — allocate
+  `4 + la + lb`, copy both byte ranges (two copy loops, like list `++`).
+* *Case-folding* (`to_lowercase` / `to_uppercase`) — allocate `4 + slen`,
+  copy with a per-byte transform in the loop body.
+* *Scans* (`startsWith`, `string_find`) — comparison loops over slice-1
+  indexing; no allocation.
+
+== Next slices (variable-string backend wall)
+
+. *Concatenation* — `string_concat` / `++` on strings (two copy loops into a
+  `4 + la + lb` allocation).
+. *Scans* — `string_find` (substring search returning an index), the read-side
+  loop with no allocation.
+. *Case-folding* — `to_lowercase` / `to_uppercase` (copy-with-transform).
+. *`slice`* — the polymorphic (array|string) JS-semantics variant with
+  negative-index normalisation; needs compile-time array-vs-string dispatch.
+
+Each slice: add the codegen arm, an interp-parity e2e group, and a
+`tests/codegen/*.mjs` executable check, then re-run the census and drop the
+gated count.
