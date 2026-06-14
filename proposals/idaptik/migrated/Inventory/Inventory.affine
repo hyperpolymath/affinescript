@@ -1,0 +1,195 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// Inventory -- the slot-and-weight co-processor, the pure-integer core extracted
+// from src/shared/Inventory.res. Per the DESIGN-VISION ("AffineScript is the
+// brain, JS/Pixi the senses; only primitives cross the wasm boundary"), the JS
+// host keeps every contaminant the toolkit carries: the item id/name/description
+// strings, the itemKind/itemCondition/portType/compatibility variants, the
+// per-item mutable condition/usesRemaining records, the float weights/lengths,
+// the Promise-driven coprocessor loader, and -- crucially -- the inventory STATE
+// (the `slots` array and `totalWeight`). The brain owns only the stateless
+// slot-and-weight kernels the bridge already calls across the boundary.
+//
+// This file is the AffineScript side of the contract that
+// src/shared/InventoryCoprocessor.res ALREADY declares: it mirrors that bridge's
+// @send signatures one-for-one (slotCount, isSlotLocked, findEmptySlot,
+// filledCount, unlockedCount, remainingCapacity, addWeight, fitsWeight, canAdd),
+// in the same argument order, as pure scalar functions. The ReScript original
+// holds the model in `ref`s and mutates the slots array in place; we
+// re-decompose those mutations away -- every kernel takes the current state as
+// explicit integer parameters and RETURNS the answer, holding NO module state
+// (rule 3: no module-level mutable state). The host reads each result back.
+//
+//## SHAPE-A (the model never lives in wasm)
+// The inventory `t` (slots/maxWeight/tier/totalWeight) stays host-side. The
+// brain is queried with the relevant fields as primitives; it computes and
+// returns, the host stores. Only scalars cross.
+//
+//## Slot-state encoding (the header contract for the JS host) -- base-3
+// The ReScript `slot` is { item: option<item>, locked: bool }. The item payload
+// (name, kind, weight, condition...) is a sense and stays host-side; the brain
+// sees only the slot's STATE as a base-3 digit, low digit = slot index 0,
+// mirroring InventoryCoprocessor.res's SLOT alphabet and packSlots helper:
+//   digit  state    meaning
+//     0    EMPTY    unlocked and holding no item
+//     1    FILLED   holding an item
+//     2    LOCKED   locked (progression-gated), holds no item
+// `packed` is the base-3 number sum_i digit_i * 3^i. Idaptik kits are six slots,
+// so packed in [0, 3^6) for a real inventory; the count parameter bounds every
+// scan, so an over-long packed value cannot read a phantom slot.
+//
+//## Slot layout per tier (Inventory.make)
+// Every tier has SIX slots. The lock layout is the only difference:
+//   tier ordinal   tier         locked slot indices
+//     0            Accessible   none (all six unlocked)
+//     1            Realistic    4, 5
+//     2            Hardcore     4, 5
+// A tier ordinal outside 0..2 is not a real tier: slot_count returns 0 and
+// is_slot_locked returns 0, so a malformed tier can address no slot layout.
+//
+//## Weight encoding -- floored milli-kilograms (Int, ×1000 host-side)
+// The ReScript weights (item.weight, totalWeight, maxWeight) are f64 kilograms.
+// Float arithmetic in the brain hits a known compiler codegen bug (float literal
+// operands emit integer opcodes) and the float ABI is i32-narrowed, so per
+// rule 2 the host floors each weight to integer milli-kilograms (×1000) before
+// the call and the brain works in pure Int. maxWeight 3.0 kg -> 3000; a 0.15 kg
+// cable -> 150. The comparisons are integer-exact and order-preserving, so the
+// 1-milligram quantisation is below the game's display precision (two decimals).
+// No float crosses this boundary.
+//
+// The find/filled/unlocked scans are O(count) while-loops with a guard on every
+// step (k < count); there is no array indexing -- a slot's digit is recovered by
+// the integer extraction (packed / 3^k) % 3, never by a subscript. No `for..in`,
+// no nth/get, no string operation appears in the brain.
+
+//## Slot-state digit alphabet (mirror of InventoryCoprocessor SLOT scope)
+fn slot_empty() -> Int { 0 }
+fn slot_filled() -> Int { 1 }
+fn slot_locked() -> Int { 2 }
+
+//## Tier validity. A real tier occupies ordinal 0..2 (Accessible/Realistic/
+// Hardcore). Out-of-band ordinals are defended at every kernel.
+fn valid_tier(tier: Int) -> Int {
+  if tier < 0 { return 0; }
+  if tier > 2 { return 0; }
+  1
+}
+
+//## 3^k by repeated tripling -- the place value of slot index k in the base-3
+// packing. The proven small-non-negative-power idiom (mirrors LaptopState's
+// bit_of doubling); avoids any shift/pow builtin.
+fn place_of(k: Int) -> Int {
+  let mut value = 1;
+  let mut i = 0;
+  while i < k {
+    value = value * 3;
+    i = i + 1;
+  }
+  value
+}
+
+//## The base-3 digit at slot index k of a packed slot word.
+fn slot_digit(packed: Int, k: Int) -> Int {
+  let place = place_of(k);
+  (packed / place) % 3
+}
+
+//## Pure exports (mirror InventoryCoprocessor.res @send signatures)
+
+// slotCount: the number of slots a tier's kit has. Inventory.make builds six
+// slots for every tier, so the count is six on any valid tier; an out-of-band
+// tier has no layout and returns 0.
+pub fn slot_count(tier: Int) -> Int {
+  if valid_tier(tier) == 0 { return 0; }
+  6
+}
+
+// isSlotLocked: whether slot `idx` starts locked under `tier`. 1 locked, 0 not.
+// Mirrors Inventory.make: Accessible locks nothing; Realistic and Hardcore lock
+// the last two slots (indices 4 and 5). An out-of-band tier or an index outside
+// 0..5 is not a real slot and reads 0 (unlocked) -- the host pairs this with
+// slot_count to stay in range.
+pub fn is_slot_locked(tier: Int, idx: Int) -> Int {
+  if valid_tier(tier) == 0 { return 0; }
+  if idx < 0 { return 0; }
+  if idx > 5 { return 0; }
+  if tier == 0 { return 0; }
+  if idx >= 4 { 1 } else { 0 }
+}
+
+// findEmptySlot: index of the first EMPTY (unlocked, item-free) slot in the
+// packed slot word, scanning indices 0..count-1; -1 when none is free. This is
+// the re-decomposition of Inventory.findEmptySlot's forEachWithIndex search for
+// the first slot with no item and not locked. -1 is the out-of-band sentinel the
+// bridge already documents ("-1 when none is free"); it is not a valid slot
+// index, so a "no free slot" answer can never be confused with a real index
+// (a sentinel, not a clamp).
+pub fn find_empty_slot(packed: Int, count: Int) -> Int {
+  let mut k = 0;
+  while k < count {
+    if slot_digit(packed, k) == slot_empty() { return k; }
+    k = k + 1;
+  }
+  -1
+}
+
+// filledCount: how many slots hold an item (digit == FILLED). Re-decomposition
+// of getFilledCount (filter Option.isSome). Scans 0..count-1.
+pub fn filled_count(packed: Int, count: Int) -> Int {
+  let mut acc = 0;
+  let mut k = 0;
+  while k < count {
+    if slot_digit(packed, k) == slot_filled() { acc = acc + 1; }
+    k = k + 1;
+  }
+  acc
+}
+
+// unlockedCount: how many slots are not locked (digit != LOCKED). Re-decomposition
+// of getUnlockedCount (filter !slot.locked). EMPTY and FILLED are both unlocked;
+// only LOCKED is excluded. Scans 0..count-1.
+pub fn unlocked_count(packed: Int, count: Int) -> Int {
+  let mut acc = 0;
+  let mut k = 0;
+  while k < count {
+    if slot_digit(packed, k) != slot_locked() { acc = acc + 1; }
+    k = k + 1;
+  }
+  acc
+}
+
+// remainingCapacity: maxWeight - totalWeight, in floored milli-kilograms.
+// Re-decomposition of Inventory.remainingCapacity (maxWeight -. totalWeight).
+// Can go negative if the host's accumulated total ever exceeds max (it should
+// not, since the addItem gate forbids it), in which case the negative value is
+// the genuine over-capacity overshoot.
+pub fn remaining_capacity(max_milli: Int, total_milli: Int) -> Int {
+  max_milli - total_milli
+}
+
+// addWeight: the fold step of recalculateWeight -- accumulate one item's weight
+// onto the running total, in milli-kilograms. Re-decomposition of the
+// Array.reduce step `acc +. item.weight`.
+pub fn add_weight(acc_milli: Int, item_milli: Int) -> Int {
+  acc_milli + item_milli
+}
+
+// fitsWeight: the weight half of the addItem gate. 1 when the item fits, 0 when
+// too heavy. Re-decomposition of `inv.totalWeight +. item.weight > inv.maxWeight`
+// (the ReScript `tooHeavy` test) negated: it fits exactly when the new total is
+// at or below max. All three weights are floored milli-kilograms.
+pub fn fits_weight(total_milli: Int, item_milli: Int, max_milli: Int) -> Int {
+  if total_milli + item_milli > max_milli { 0 } else { 1 }
+}
+
+// canAdd: the full addItem eligibility -- 1 when the item fits by weight AND an
+// empty unlocked slot exists, 0 otherwise. Re-decomposition of the whole
+// Inventory.addItem decision (the `tooHeavy` gate composed with findEmptySlot
+// returning Some). Lets the host get the verdict in one call rather than
+// threading fits_weight and find_empty_slot together itself.
+pub fn can_add(packed: Int, count: Int, total_milli: Int, item_milli: Int, max_milli: Int) -> Int {
+  if fits_weight(total_milli, item_milli, max_milli) == 0 { return 0; }
+  if find_empty_slot(packed, count) < 0 { return 0; }
+  1
+}

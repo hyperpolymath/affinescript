@@ -1,0 +1,90 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// PortScanner -- the pure port-scan classification kernel re-decomposed from
+// src/app/tools/PortScanner.res. The ReScript original entangles four things: a
+// well-known-service STRING table (port/protocol/service/version records), a
+// per-device open-port SELECTION over that table, the numeric scan totals
+// (open / closed / filtered counts), and a simulated wall-clock DELAY. Per the
+// DESIGN-VISION ("AffineScript is the brain, JS/Pixi the senses; only primitives
+// cross the wasm boundary"), the service records and their strings are NOT the
+// unit of migration -- they never become integers and stay host-side. What
+// crosses is the deterministic ARITHMETIC the scan reports: how many ports a
+// given device kind opens, the closed-port complement, and the filtered count
+// and delay a security level implies. The kernel is stateless and total: every
+// Int the boundary admits yields a defined Int, never a trap.
+//
+//## Why this split, not a port of getOpenPorts/scan
+// getOpenPorts builds an array of serviceInfo records (strings inside) keyed by
+// device type; `scan` reads Date.now() twice and routes the totals. The record
+// array and the clock are senses. The arithmetic that remains -- the open-port
+// COUNT per device, the closed complement, and the filtered/delay tables per
+// security level -- is what the co-processor owns. The host reconstructs the
+// openPorts record array itself (it owns the string table); it asks the brain
+// only for the four numbers `scan` puts in the scanResult.
+//
+//## Device-type encoding (the header contract for the JS host)
+// The host passes the device-type id in DeviceTypes.deviceType *bridge* order
+// (PortScannerCoprocessorBridge.js DEVICE_TYPE), NOT the shared DeviceType.res
+// order. The two differ; this kernel speaks the bridge's eight-id band:
+//   0 Laptop    2 Server     4 Terminal      6 UPS
+//   1 Router    3 IotCamera  5 PowerStation  7 Firewall
+// The open-port COUNTS are the lengths of getOpenPorts' filtered arrays:
+//   Laptop 1, Router 2, Server 3, IotCamera 2, Terminal 1,
+//   PowerStation 2, UPS 2, Firewall 3.
+// An id outside 0..7 is not a known device kind: open_port_count returns the
+// safe default 0 (no in-band count is fabricated for an unknown device), so the
+// closed count is the full 65535 -- the conservative "we saw nothing open"
+// reading, never a trap.
+//
+//## Security-level encoding (the header contract for the JS host)
+// Security-level id in DeviceTypes.securityLevel order (also the bridge's
+// SECURITY_LEVEL order -- they agree):
+//   0 Open   1 Weak   2 Medium   3 Strong
+// filtered_port_count: Open 0, Weak 100, Medium 500, Strong 2000.
+// scan_delay_ms: Open 50, Weak 200, Medium 500, Strong 1500. The ReScript
+// delays are Floats (50.0 ..) but are whole milliseconds, so they cross as raw
+// Int -- no milli-scaling needed (a delay is already an integer count of ms).
+// An out-of-band level yields 0 for both (no delay, no filtering) -- the
+// neutral identity, never a fabricated in-band figure.
+
+//## Open-port count per device-type id (bridge DEVICE_TYPE order)
+// Flat guarded returns mirroring getOpenPorts' array lengths. Unknown id -> 0.
+pub fn open_port_count(dev: Int) -> Int {
+  if dev == 0 { return 1; }   // Laptop      -> [ssh]
+  if dev == 1 { return 2; }   // Router      -> [ssh, http]
+  if dev == 2 { return 3; }   // Server      -> [ssh, http, https]
+  if dev == 3 { return 2; }   // IotCamera   -> [http, rtsp]
+  if dev == 4 { return 1; }   // Terminal    -> [ssh]
+  if dev == 5 { return 2; }   // PowerStation-> [snmp, http]
+  if dev == 6 { return 2; }   // UPS         -> [snmp, http]
+  if dev == 7 { return 3; }   // Firewall    -> [ssh, http, https]
+  0
+}
+
+//## Closed-port count for a device-type id.
+// ReScript: 65535 - Array.length(openPorts). Derived from open_port_count so
+// the complement is consistent by construction. Unknown id -> 65535 (open=0).
+pub fn closed_port_count(dev: Int) -> Int {
+  65535 - open_port_count(dev)
+}
+
+//## Filtered-port count for a security-level id (0..3). Unknown -> 0.
+pub fn filtered_port_count(sec: Int) -> Int {
+  if sec == 0 { return 0; }      // Open
+  if sec == 1 { return 100; }    // Weak
+  if sec == 2 { return 500; }    // Medium
+  if sec == 3 { return 2000; }   // Strong
+  0
+}
+
+//## Simulated scan delay in whole milliseconds for a security-level id (0..3).
+// The ReScript values are Float but integral milliseconds, so they cross as raw
+// Int. Unknown level -> 0 (no simulated delay).
+pub fn scan_delay_ms(sec: Int) -> Int {
+  if sec == 0 { return 50; }     // Open
+  if sec == 1 { return 200; }    // Weak
+  if sec == 2 { return 500; }    // Medium
+  if sec == 3 { return 1500; }   // Strong
+  0
+}

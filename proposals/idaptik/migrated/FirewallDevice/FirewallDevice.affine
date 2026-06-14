@@ -1,0 +1,137 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// FirewallDevice -- the ACL packet-filter decision co-processor, the pure
+// integer core extracted from src/app/devices/FirewallDevice.res (checkPacket,
+// matchesSubnet's port/proto predicates, the action accounting). Per the
+// DESIGN-VISION ("AffineScript is the brain, JS/Pixi the senses; they pass
+// primitives across the wasm boundary"), the JS host keeps every rule STRING
+// (sourceSubnet / destSubnet CIDR text, protocol text, description), the
+// mutable counters (blockedAttempts / passedPackets / bypassed), and every Pixi
+// Text/Graphics call; AffineScript owns only the integer allow/deny/log decision
+// over the parsed rule fields.
+//
+// The ReScript original models the verdict as an `aclAction = Allow | Deny | Log`
+// variant and decides it inside checkPacket: a rule applies when source, dest,
+// port and protocol all match, where the port test is `rule.port == 0 ||
+// rule.port == port` and the protocol test is `rule.protocol == "ANY" ||
+// rule.protocol == protocol`; an unmatched packet falls through to a default
+// Deny; Allow/Log bump passedPackets and Deny bumps blockedAttempts. We
+// re-decompose that variant as the canonical 0..2 integer band the constructor
+// order already implies, and we lift the four match predicates and the
+// pass/block accounting into pure integer tests. The STRING comparisons stay on
+// the JS side -- which is where the subnet and protocol strings live anyway: the
+// host parses each rule's protocol text to an integer code and resolves each
+// CIDR subnet match to a 0/1 flag, then crosses the boundary with integers only.
+// No strings, no floats, no effects, and no mutation cross; the integers ARE the
+// firewall's decision.
+//
+//## Action encoding (the header contract for the JS host)
+//   code  action   render colour (stays host-side)
+//     0   Deny     0xF44336
+//     1   Allow    0x4CAF50
+//     2   Log      0xFFEB3B
+// The encoding is LOSSLESS: three distinct actions map to three distinct codes,
+// so the host round-trips action <-> code with no collision. A code outside
+// 0..2 is not an action: is_valid_action reports 0 and clamp_action returns the
+// out-of-band sentinel -1 -- never an in-band code, so no in-band collision is
+// introduced (this is a sentinel, not a clamp; assail stays clean).
+//
+//## Protocol encoding (host parses the rule/packet protocol strings)
+//   code  protocol        code  protocol
+//     0   TCP               2   ICMP
+//     1   UDP             255   ANY (the wildcard; matches every protocol)
+// The brain never sees protocol text. It needs only equality and the ANY
+// wildcard, exactly mirroring `rule.protocol == "ANY" || rule.protocol ==
+// protocol`. The host is free to assign 3.. to further named protocols; the only
+// reserved code is 255 = ANY (proto_any), matching the source's "ANY" literal.
+//
+//## Port convention (mirrors the source exactly)
+//   rule_port 0 is the wildcard ("ANY port"), matching every packet port; any
+//   other rule_port matches only the identical packet port. This is the source's
+//   `rule.port == 0 || rule.port == port` verbatim.
+
+//## The canonical action band, as the aclAction constructor order has it. Kept
+//## as named values so the verdict reads as one taxonomy, not magic numbers
+//## scattered across the exports. Deny is 0 because it is also the default
+//## (no-match) policy, so default_action and action_deny coincide by design.
+pub fn action_deny() -> Int { 0 }
+pub fn action_allow() -> Int { 1 }
+pub fn action_log() -> Int { 2 }
+
+// The number of canonical ACL actions in the taxonomy.
+pub fn action_count() -> Int { 3 }
+
+// The ANY-protocol wildcard code. A rule whose protocol parses to this matches
+// every packet protocol, mirroring the source's `rule.protocol == "ANY"`.
+pub fn proto_any() -> Int { 255 }
+
+//## Pure exports (pub fn over Int only)
+
+// Whether a host integer names a defined ACL action. 1 = valid (0..2), 0 = out
+// of band. The host round-trips its Allow/Deny/Log variant through this band.
+pub fn is_valid_action(code: Int) -> Int {
+  if code < 0 { return 0; }
+  if code > 2 { return 0; }
+  1
+}
+
+// Canonicalise a host action integer: identity on a valid 0..2 code, the
+// out-of-band sentinel -1 otherwise. -1 is not an in-band action code, so an
+// out-of-band input can never be confused with Deny/Allow/Log (this is a
+// sentinel, not a clamp; it never collapses garbage onto an in-band verdict).
+pub fn clamp_action(code: Int) -> Int {
+  if is_valid_action(code) == 1 { return code; }
+  -1
+}
+
+// The port predicate of checkPacket: `rule.port == 0 || rule.port == port`.
+// A rule_port of 0 is the wildcard and matches any packet port; otherwise the
+// ports must be identical. Returns 1 on match, 0 on miss.
+pub fn port_matches(rule_port: Int, pkt_port: Int) -> Int {
+  if rule_port == 0 { return 1; }
+  if rule_port == pkt_port { return 1; }
+  0
+}
+
+// The protocol predicate of checkPacket: `rule.protocol == "ANY" ||
+// rule.protocol == protocol`, with the strings already parsed to integer codes
+// by the host. A rule_proto of 255 (ANY) is the wildcard and matches every
+// packet protocol; otherwise the codes must be identical. Returns 1/0.
+pub fn protocol_matches(rule_proto: Int, pkt_proto: Int) -> Int {
+  if rule_proto == 255 { return 1; }
+  if rule_proto == pkt_proto { return 1; }
+  0
+}
+
+// Whether a rule applies to a packet: the conjunction `sourceMatch && destMatch
+// && portMatch && protoMatch` from checkPacket. The host supplies each leg as a
+// 0/1 flag -- source/dest from its CIDR subnet parsing (the string sense), port
+// and proto ideally from port_matches / protocol_matches above. Re-decomposed as
+// guarded returns: the rule fails the moment any leg is not 1, mirroring the
+// short-circuit AND. Returns 1 when all four hold, 0 otherwise. Any leg that is
+// not exactly 1 (e.g. a malformed host flag) is treated as a miss.
+pub fn rule_applies(src_match: Int, dest_match: Int, port_match: Int, proto_match: Int) -> Int {
+  if src_match != 1 { return 0; }
+  if dest_match != 1 { return 0; }
+  if port_match != 1 { return 0; }
+  if proto_match != 1 { return 0; }
+  1
+}
+
+// The default (no-rule-matched) policy of checkPacket: "Default deny". Returns
+// the Deny code 0. Exposed as its own export so the host's fall-through path
+// reads as the rule it is, rather than a bare literal at the call site.
+pub fn default_action() -> Int { 0 }
+
+// The accounting verdict of checkPacket: which counter a resolved action bumps.
+// In the source, Allow and Log both increment passedPackets while Deny
+// increments blockedAttempts. So the packet PASSES under Allow (1) or Log (2)
+// and is BLOCKED under Deny (0). Returns 1 = passed (bump passedPackets), 0 =
+// blocked (bump blockedAttempts). An out-of-band action code is treated as
+// blocked -- the safe default, consistent with default_action being Deny.
+pub fn verdict_passes_packet(action_code: Int) -> Int {
+  if action_code == 1 { return 1; }
+  if action_code == 2 { return 1; }
+  0
+}

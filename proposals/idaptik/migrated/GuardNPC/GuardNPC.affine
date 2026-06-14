@@ -1,0 +1,381 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// GuardNPC -- the guard-NPC decision core, the pure-integer brain re-decomposed
+// from src/app/enemies/GuardNPC.res (1870 LOC). The ReScript original is a large
+// mutable entity (`t`) carrying string ids, Pixi Container/Graphics handles,
+// float positions, option<antiHackerPsych>/rivalHackerAI/chiefAI/assassinAI
+// sub-records, an async wasm coprocessor ref, and per-frame mutation. None of
+// that crosses the boundary.
+//
+// Per the DESIGN-VISION ("AffineScript is the brain, JS/Pixi the senses; only
+// primitives cross the wasm boundary"), the host KEEPS: every string id and
+// label (stateToString, rankToString, reverseTarget device ids, deviceQueue),
+// all rendering (renderGuard, rankColor, rankSize, vision-cone geometry), the
+// float pathfinding/movement integration (guard.x +. dir *. speed *. dt and the
+// SafeAngle.fromAtan2 bearing), Math.random jitter, all mutable records and
+// arrays, the Promise-based coprocessor load, and every Pixi effect. The
+// AffineScript brain owns ONLY the deterministic integer decisions: the
+// state/rank ordinal taxonomies, the detection-class ladder, the per-rank
+// suspicion thresholds / decay rates / pursuit multipliers, the anti-hacker
+// courage arithmetic and panic predicate, the full-detection response band, the
+// assassin spawn gate, the trap-effect classifier and trap-kind rotation, and
+// the waypoint-advance modulus.
+//
+//## Float boundary: distances, ranges, speeds and courage cross as MILLI-UNITS
+// Every float the brain needs is floored host-side to an Int scaled by 1000
+// (a "milli-unit"): the JS caller passes round(value * 1000). Pixel distances
+// (already large) cross as round(px * 1000); 0.0..1.0 factors (courage,
+// proximity, suspicion, speed multipliers) cross as round(factor * 1000), so
+// 0.6 -> 600, 0.85 -> 850, 1.0 -> 1000. The integer formulae below are exact
+// for these milli operands and reproduce the ReScript float comparisons byte
+// for byte at the thresholds (strict `>` stays strict, `>=` stays `>=`).
+//
+//## State ordinal encoding (the header contract for the JS host)
+//   code  state            code  state            code  state
+//     0   Patrolling         6   Panicking         12   Racing
+//     1   Investigating      7   Fleeing           13   Hiding
+//     2   Alerted            8   CallingBackup     14   Ambushing
+//     3   Returning          9   Commanding        15   Stalking
+//     4   Stationary        10   Hacking           16   SettingTrap
+//     5   ReverseHacking    11   Sabotaging        17   KnockedDown
+// The 18 valid codes are 0..17; the encoding is lossless. Any input outside
+// 0..17 clamps to the nearest valid ordinal (0 or 17) via a declared clamp.
+//
+//## Rank ordinal encoding (the header contract for the JS host)
+//   code  rank             code  rank
+//     0   BasicGuard         4   EliteGuard
+//     1   SecurityGuard      5   SecurityChief
+//     2   AntiHacker         6   RivalHacker
+//     3   Sentinel           7   Assassin
+// The 8 valid codes are 0..7. Out-of-band clamps to the nearest valid ordinal.
+
+// =========================================================================
+// State taxonomy
+// =========================================================================
+
+enum State {
+  Patrolling, Investigating, Alerted, Returning, Stationary, ReverseHacking,
+  Panicking, Fleeing, CallingBackup, Commanding, Hacking, Sabotaging,
+  Racing, Hiding, Ambushing, Stalking, SettingTrap, KnockedDown,
+  InvalidState(Int)
+}
+
+fn state_of(code: Int) -> State {
+  if code == 0 { return Patrolling; }
+  if code == 1 { return Investigating; }
+  if code == 2 { return Alerted; }
+  if code == 3 { return Returning; }
+  if code == 4 { return Stationary; }
+  if code == 5 { return ReverseHacking; }
+  if code == 6 { return Panicking; }
+  if code == 7 { return Fleeing; }
+  if code == 8 { return CallingBackup; }
+  if code == 9 { return Commanding; }
+  if code == 10 { return Hacking; }
+  if code == 11 { return Sabotaging; }
+  if code == 12 { return Racing; }
+  if code == 13 { return Hiding; }
+  if code == 14 { return Ambushing; }
+  if code == 15 { return Stalking; }
+  if code == 16 { return SettingTrap; }
+  if code == 17 { return KnockedDown; }
+  InvalidState(code)
+}
+
+// @clamp:declared -- out-of-band state clamps to nearest valid ordinal (0 or 17).
+// Controlled-loss by design: the 18 valid codes 0..17 are injective; only the
+// out-of-band InvalidState(v) is squashed, never an in-band code.
+fn clamp_state_ordinal(v: Int) -> Int {
+  if v < 0 { return 0; }
+  17
+}
+
+fn state_ordinal_of(s: State) -> Int {
+  match s {
+    Patrolling => 0,
+    Investigating => 1,
+    Alerted => 2,
+    Returning => 3,
+    Stationary => 4,
+    ReverseHacking => 5,
+    Panicking => 6,
+    Fleeing => 7,
+    CallingBackup => 8,
+    Commanding => 9,
+    Hacking => 10,
+    Sabotaging => 11,
+    Racing => 12,
+    Hiding => 13,
+    Ambushing => 14,
+    Stalking => 15,
+    SettingTrap => 16,
+    KnockedDown => 17,
+    InvalidState(v) => clamp_state_ordinal(v)
+  }
+}
+
+//## Number of canonical guard states.
+pub fn state_count() -> Int { 18 }
+
+//## State ordinal (canonicalise a host integer to a valid state code).
+pub fn state_value(code: Int) -> Int {
+  state_ordinal_of(state_of(code))
+}
+
+// =========================================================================
+// Rank taxonomy
+// =========================================================================
+
+enum Rank {
+  BasicGuard, SecurityGuard, AntiHacker, Sentinel, EliteGuard, SecurityChief,
+  RivalHacker, Assassin, InvalidRank(Int)
+}
+
+fn rank_of(code: Int) -> Rank {
+  if code == 0 { return BasicGuard; }
+  if code == 1 { return SecurityGuard; }
+  if code == 2 { return AntiHacker; }
+  if code == 3 { return Sentinel; }
+  if code == 4 { return EliteGuard; }
+  if code == 5 { return SecurityChief; }
+  if code == 6 { return RivalHacker; }
+  if code == 7 { return Assassin; }
+  InvalidRank(code)
+}
+
+// @clamp:declared -- out-of-band rank clamps to nearest valid ordinal (0 or 7).
+fn clamp_rank_ordinal(v: Int) -> Int {
+  if v < 0 { return 0; }
+  7
+}
+
+fn rank_ordinal_of(r: Rank) -> Int {
+  match r {
+    BasicGuard => 0,
+    SecurityGuard => 1,
+    AntiHacker => 2,
+    Sentinel => 3,
+    EliteGuard => 4,
+    SecurityChief => 5,
+    RivalHacker => 6,
+    Assassin => 7,
+    InvalidRank(v) => clamp_rank_ordinal(v)
+  }
+}
+
+//## Number of canonical guard ranks.
+pub fn rank_count() -> Int { 8 }
+
+//## Rank ordinal (canonicalise a host integer to a valid rank code).
+pub fn rank_value(code: Int) -> Int {
+  rank_ordinal_of(rank_of(code))
+}
+
+// =========================================================================
+// Detection ladder (detectPlayer's pure integer core)
+// =========================================================================
+//
+// detectPlayer in the .res first does isInVisionCone (float cone geometry +
+// SafeAngle bearing -- stays host-side), then on a hit it computes:
+//   effectiveRange = crouching ? range*0.6 : range
+//   if distance > effectiveRange -> NotDetected
+//   proximityFactor = 1 - distance/effectiveRange
+//   proximityFactor > 0.6 -> FullDetection, else Peripheral(proximityFactor)
+// All of that (after the cone test) is exact integer arithmetic in milli-units.
+
+//## Crouch-scaled effective range (×0.6 == ×600/1000 when crouching).
+// range_milli is round(vision.range * 1000); crouching is 1/0.
+pub fn effective_range_milli(range_milli: Int, crouching: Int) -> Int {
+  if crouching == 1 { return range_milli * 600 / 1000; }
+  range_milli
+}
+
+//## Detection class given distance and the already-scaled effective range.
+// Returns the detectionResult band:  0 = NotDetected, 1 = Peripheral,
+// 2 = FullDetection. Mirrors detectPlayer after the cone hit. Inputs are
+// milli-units (round(px * 1000)). proximityFactor = 1 - distance/effRange, so
+// proximityFactor > 0.6 == distance < effRange * 400 / 1000 (the 0.4 boundary).
+// On effective_range_milli == 0 every in-cone hit is at/over range -> NotDetected.
+pub fn detection_class(distance_milli: Int, effective_range_milli: Int) -> Int {
+  if effective_range_milli <= 0 { return 0; }
+  if distance_milli > effective_range_milli { return 0; }
+  if distance_milli < effective_range_milli * 400 / 1000 { return 2; }
+  1
+}
+
+// =========================================================================
+// Suspicion thresholds, decay, and pursuit multipliers (per rank)
+// =========================================================================
+
+//## Peripheral suspicion threshold to begin Investigating (milli-units).
+// detectPlayer Peripheral branch: BasicGuard 0.85, SecurityGuard 0.65,
+// EliteGuard 0.5, SecurityChief 0.6, default 0.7.
+pub fn peripheral_threshold_milli(rank: Int) -> Int {
+  let r = rank_ordinal_of(rank_of(rank));
+  if r == 0 { return 850; }
+  if r == 1 { return 650; }
+  if r == 4 { return 500; }
+  if r == 5 { return 600; }
+  700
+}
+
+//## Suspicion decay rate per second when NotDetected (milli-units).
+// detectPlayer NotDetected branch: BasicGuard 0.3, EliteGuard 0.1, default 0.2.
+pub fn decay_rate_milli(rank: Int) -> Int {
+  let r = rank_ordinal_of(rank_of(rank));
+  if r == 0 { return 300; }
+  if r == 4 { return 100; }
+  200
+}
+
+//## Investigating pursuit speed multiplier (milli-units).
+// updatePatrol Investigating: BasicGuard 1.2, EliteGuard 1.8, default 1.5.
+pub fn investigate_speed_mult_milli(rank: Int) -> Int {
+  let r = rank_ordinal_of(rank_of(rank));
+  if r == 0 { return 1200; }
+  if r == 4 { return 1800; }
+  1500
+}
+
+//## Alerted pursuit speed multiplier (milli-units).
+// updatePatrol Alerted: BasicGuard 1.5, SecurityGuard 2.0, EliteGuard 2.5,
+// SecurityChief 1.8, default 1.5.
+pub fn alerted_speed_mult_milli(rank: Int) -> Int {
+  let r = rank_ordinal_of(rank_of(rank));
+  if r == 0 { return 1500; }
+  if r == 1 { return 2000; }
+  if r == 4 { return 2500; }
+  if r == 5 { return 1800; }
+  1500
+}
+
+// =========================================================================
+// Anti-hacker psychology (updateAntiHacker's pure integer core)
+// =========================================================================
+
+//## Anti-hacker courage (milli-units), clamped to 0..1000.
+// updateAntiHacker: courage = clamp(0, 1, baseCourage(0.3) + backupBonus(+0.4
+// if backupArrived) + alertPenalty(-0.15 if alertLevel>=4) + proximityPenalty
+// (-0.2 if playerDist<120px)). backup is 1/0; player_dist_milli is round(px*1000),
+// so the 120px gate is player_dist_milli < 120000.
+pub fn courage_milli(backup: Int, alert_level: Int, player_dist_milli: Int) -> Int {
+  let mut c = 300;
+  if backup == 1 { c = c + 400; }
+  if alert_level >= 4 { c = c - 150; }
+  if player_dist_milli < 120000 { c = c - 200; }
+  if c < 0 { return 0; }
+  if c > 1000 { return 1000; }
+  c
+}
+
+//## Panic predicate: courage below the panic threshold.
+// updateAntiHacker / detectPlayer FullDetection: psych.courage < psych.panicThreshold.
+// Both operands are milli-units (panic_threshold default 250). 1 = panic, 0 = hold.
+pub fn should_panic(courage_milli: Int, panic_threshold_milli: Int) -> Int {
+  if courage_milli < panic_threshold_milli { 1 } else { 0 }
+}
+
+//## Anti-hacker FullDetection response band.
+// detectPlayer FullDetection, AntiHacker arm: if courage < panicThreshold ->
+// Panicking (state 6); else if hasRadio and not backupArrived -> CallingBackup
+// (state 8); else hold (sentinel -1, no transition). has_radio / backup are 1/0.
+// The host applies the returned state code (or leaves state unchanged on -1).
+pub fn antihacker_full_detection_state(
+  courage_milli: Int,
+  panic_threshold_milli: Int,
+  has_radio: Int,
+  backup: Int
+) -> Int {
+  if courage_milli < panic_threshold_milli { return 6; }
+  if has_radio == 1 {
+    if backup == 0 { return 8; }
+  }
+  -1
+}
+
+//## Generic FullDetection target-state band by rank.
+// detectPlayer FullDetection switch (non-AntiHacker arms): BasicGuard ->
+// Investigating(1), SecurityChief -> Commanding(9), default -> Alerted(2).
+// AntiHacker(2) is routed through antihacker_full_detection_state instead and
+// returns the sentinel -1 here. (Sentinel/Elite/SecurityGuard/RivalHacker take
+// the default Alerted band; RivalHacker/Assassin never reach detectPlayer.)
+pub fn full_detection_state_for_rank(rank: Int) -> Int {
+  let r = rank_ordinal_of(rank_of(rank));
+  if r == 0 { return 1; }
+  if r == 2 { return -1; }
+  if r == 5 { return 9; }
+  2
+}
+
+// =========================================================================
+// Assassin spawn gate + trap classifier
+// =========================================================================
+
+//## Assassin spawn gate (shouldSpawnAssassin): difficulty >= 3 (Hard+).
+pub fn should_spawn_assassin(difficulty: Int) -> Int {
+  if difficulty >= 3 { 1 } else { 0 }
+}
+
+//## Trap-kind rotation (updateAssassin SettingTrap): mod(trapCount, 5) chooses
+// the trap type. 0 Tripwire, 1 Garrotte, 2 DisabledLight, 3 LockedDoor,
+// 4 EMPDevice. Identity band 0..4; the host maps the code to its trapType.
+pub fn trap_kind_for(trap_count: Int) -> Int {
+  let m = trap_count % 5;
+  if m < 0 { return m + 5; }
+  m
+}
+
+//## Trap-effect classifier (checkPlayerTrapCollision's pure integer core).
+// Given the trap kind (0..4 as above), the player-to-trap distance in
+// milli-units (round(px*1000)) and whether the player is sprinting (1/0),
+// returns the trapEffect band:
+//   0 TrapNone     1 TrapTrip      2 TrapLethal
+//   3 TrapSpotted  4 TrapDarkness  5 TrapEMP
+// Per-kind ranges from the .res: Tripwire 20px, Garrotte 15px (lethal if
+// sprinting, else spotted), DisabledLight 30px, EMPDevice 25px, LockedDoor
+// environmental (never proximity -> TrapNone). Boundaries are strict `<`,
+// matching the ReScript `dist < N`.
+pub fn trap_effect(trap_kind: Int, dist_milli: Int, sprinting: Int) -> Int {
+  if trap_kind == 0 {
+    if dist_milli < 20000 { return 1; }
+    return 0;
+  }
+  if trap_kind == 1 {
+    if dist_milli < 15000 {
+      if sprinting == 1 { return 2; }
+      return 3;
+    }
+    return 0;
+  }
+  if trap_kind == 2 {
+    if dist_milli < 30000 { return 4; }
+    return 0;
+  }
+  if trap_kind == 4 {
+    if dist_milli < 25000 { return 5; }
+    return 0;
+  }
+  0
+}
+
+// =========================================================================
+// Misc integer machinery
+// =========================================================================
+
+//## Waypoint advance (updatePatrol / updateAssassin): mod(current+1, len).
+// On len <= 0 there is no next waypoint; the host guards that case, so the brain
+// returns 0 (the canonical "no waypoint" index).
+pub fn next_waypoint(current: Int, len: Int) -> Int {
+  if len <= 0 { return 0; }
+  // NB: `let` binding (not a bare `(current + 1) % len`) -- a statement that
+  // begins with `(` immediately after an `if { ... }` block is otherwise parsed
+  // as the block being *applied* to `(current + 1)`, a Unit-not-a-function error.
+  let succ = current + 1;
+  succ % len
+}
+
+//## Lifetime-counter increment (undosCompleted, killAttempts, etc.).
+pub fn increment_counter(count: Int) -> Int {
+  count + 1
+}
