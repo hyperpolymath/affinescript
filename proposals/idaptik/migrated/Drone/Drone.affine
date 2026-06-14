@@ -1,0 +1,451 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// Drone -- the aerial-drone behaviour co-processor, the pure-integer core
+// re-decomposed from src/app/enemies/Drone.res (an 859-LOC enemy state machine).
+// Per the DESIGN-VISION ("AffineScript is the brain, JS/Pixi the senses; only
+// primitives cross the wasm boundary"), the JS host keeps the mutable drone
+// record, the string id, the option<float> lastKnownPlayerX, the Pixi container
+// /graphics, the async co-processor promise, every Math.random jitter, the actual
+// float positions, and all state-name / variant-name strings (stateToString,
+// variantToString). AffineScript owns the deterministic numeric brain: the
+// variant/state ordinal encodings, the per-variant stat table, the detection
+// classifier, the battery thresholds, and every alert/suspicion/distance-driven
+// STATE TRANSITION decision the ReScript updateState makes.
+//
+// The ReScript original entangles each decision with in-place mutation of timers
+// and positions (which stay host-side senses). We extract only the decisions:
+// "given the current state ordinal, variant ordinal, alert level, detection class
+// and the relevant scaled thresholds, what is the next state ordinal / boolean?"
+//
+//## Float boundary: every 0.0..1.0 / px float crosses in MILLI-UNITS (x1000)
+// battery 0.0..1.0 -> 0..1000; suspicion/proximity 0.0..1.0 -> 0..1000;
+// drain/charge rates per-second -> x1000; distances in px -> x1000; the JS host
+// passes round(value * 1000). Integer-valued floats (speed 60/100/35, detection
+// radius 120/80/100, noise radius 100/180/80) cross as plain Int (no scaling).
+// Arithmetic matches the ReScript exactly under this scaling.
+//
+//## Variant ordinal encoding (header contract for the JS host)
+//   code  variant     code  variant
+//     0   Recon         2   EMP_Drone
+//     1   Pursuit
+//
+//## State ordinal encoding (header contract for the JS host)
+//   code  state          code  state          code  state
+//     0   Patrolling       5   Charging        10   Repairing
+//     1   Hovering         6   Jammed          11   Reviving
+//     2   Tracking         7   Disabled        12   OpeningDoor
+//     3   Spotlighting     8   Delivering
+//     4   Returning        9   Rescuing
+// The constructor order of droneState IS the integer; the encoding is lossless
+// (thirteen distinct states <-> thirteen distinct codes). An ordinal outside the
+// band is not a state: predicates report safely and decoders return the
+// out-of-band sentinel -1, never an in-band code (no in-band collision).
+//
+//## Detection-class encoding (the detectionResult variant, payload dropped)
+//   0 NotDetected   1 InDetectionZone   2 SpotlightLock
+// The InDetectionZone proximity payload crosses separately as proximity_milli.
+
+// ---------------------------------------------------------------------------
+// Band canonicalisers (validity-preserving: identity on band, -1 off it)
+//
+// Both bands are CONTIGUOUS (variant 0..2, state 0..12), so the canonicaliser is
+// the identity on the band -- no enum round-trip is needed (it would be the
+// identity, the same flat shape DeviceType.affine uses). Out-of-band input is
+// mapped to the out-of-band sentinel -1 via an explicit `if valid {..} else {-1}`
+// guard, NEVER onto an in-band code, so no in-band collision is ever introduced
+// (this is a sentinel, not a clamp). echo-boundary certifies the bands injective.
+// ---------------------------------------------------------------------------
+
+//## Whether an ordinal names a defined variant. 1 = valid 0..2, 0 = out of band.
+pub fn is_valid_variant(code: Int) -> Int {
+  if code < 0 { return 0; }
+  if code > 2 { return 0; }
+  1
+}
+
+//## Variant ordinal (validity-preserving canonicaliser): identity on 0..2, else -1.
+pub fn variant_value(code: Int) -> Int {
+  if is_valid_variant(code) == 1 { code } else { -1 }
+}
+
+//## Whether an ordinal names a defined state. 1 = valid 0..12, 0 = out of band.
+pub fn is_valid_state(code: Int) -> Int {
+  if code < 0 { return 0; }
+  if code > 12 { return 0; }
+  1
+}
+
+//## State ordinal (validity-preserving canonicaliser): identity on 0..12, else -1.
+pub fn state_value(code: Int) -> Int {
+  if is_valid_state(code) == 1 { code } else { -1 }
+}
+
+// ---------------------------------------------------------------------------
+// Per-variant stat table  (the `switch variant` in Drone.make)
+//   Recon     speed 60   detRadius 120   noise 100   drain 0.008  (8 milli)
+//   Pursuit   speed 100  detRadius 80    noise 180   drain 0.015  (15 milli)
+//   EMP_Drone speed 35   detRadius 100   noise 80    drain 0.012  (12 milli)
+// Out-of-band variant -> -1 sentinel (host must pass a valid 0..2 variant).
+// ---------------------------------------------------------------------------
+
+//## Base movement speed in px/s (integer-valued float, no scaling).
+pub fn variant_speed(code: Int) -> Int {
+  let v = variant_value(code);
+  if v == 0 { return 60; }
+  if v == 1 { return 100; }
+  if v == 2 { return 35; }
+  -1
+}
+
+//## Ground detection-circle radius in px (integer-valued float, no scaling).
+pub fn variant_detection_radius(code: Int) -> Int {
+  let v = variant_value(code);
+  if v == 0 { return 120; }
+  if v == 1 { return 80; }
+  if v == 2 { return 100; }
+  -1
+}
+
+//## Noise radius in px -- how far the player can "hear" the drone.
+pub fn variant_noise_radius(code: Int) -> Int {
+  let v = variant_value(code);
+  if v == 0 { return 100; }
+  if v == 1 { return 180; }
+  if v == 2 { return 80; }
+  -1
+}
+
+//## Battery drain rate per second, in MILLI-units (0.008 -> 8 etc.).
+pub fn variant_drain_milli(code: Int) -> Int {
+  let v = variant_value(code);
+  if v == 0 { return 8; }
+  if v == 1 { return 15; }
+  if v == 2 { return 12; }
+  -1
+}
+
+// ---------------------------------------------------------------------------
+// Detection  (the detectPlayer classifier, floats in milli-units)
+// ---------------------------------------------------------------------------
+
+//## Can this drone detect at all? (detectPlayer early-exit)
+// NotDetected unconditionally while Disabled(7), Charging(5) or Jammed(6).
+// 1 = detection runs, 0 = blind this frame. Out-of-band state -> 0 (safe blind).
+pub fn can_detect(state: Int) -> Int {
+  let s = state_value(state);
+  if s == 7 { return 0; }
+  if s == 5 { return 0; }
+  if s == 6 { return 0; }
+  if s < 0 { return 0; }
+  1
+}
+
+//## Effective detection radius after crouch scaling, in MILLI-units.
+// detectPlayer: crouching shrinks the radius to *0.6 (harder to spot from above).
+// Input detection_radius is plain px; output is px*1000 (milli) so the proximity
+// division below stays exact. crouching is a 1/0 flag.
+pub fn effective_radius_milli(detection_radius: Int, crouching: Int) -> Int {
+  if crouching == 0 { return detection_radius * 1000; }
+  detection_radius * 600
+}
+
+//## Proximity 0..1000 within the detection circle (detectPlayer).
+// ReScript: proximity = 1.0 - groundDist / effectiveRadius. In milli-units, with
+// ground_dist and eff_radius BOTH already in milli, this is 1000 - dist*1000/radius.
+// Clamped to [0,1000]; a non-positive radius yields 0 (degenerate, host guards it).
+pub fn proximity_milli(ground_dist_milli: Int, eff_radius_milli: Int) -> Int {
+  if eff_radius_milli <= 0 { return 0; }
+  if ground_dist_milli >= eff_radius_milli { return 0; }
+  let p = 1000 - (ground_dist_milli * 1000) / eff_radius_milli;
+  if p < 0 { return 0; }
+  if p > 1000 { return 1000; }
+  p
+}
+
+//## Detection classifier (detectPlayer result -> 0/1/2).
+// Given the frame's gating, the scaled ground distance, the crouch-scaled radius
+// (milli), whether the spotlight is on (1/0), classify:
+//   0 NotDetected   1 InDetectionZone   2 SpotlightLock
+// SpotlightLock requires spotlightActive AND proximity > 0.3 (300 milli); else
+// inside the circle it is InDetectionZone; outside, NotDetected.
+pub fn detection_class(
+  state: Int,
+  ground_dist_milli: Int,
+  eff_radius_milli: Int,
+  spotlight_active: Int
+) -> Int {
+  if can_detect(state) == 0 { return 0; }
+  if eff_radius_milli <= 0 { return 0; }
+  if ground_dist_milli >= eff_radius_milli { return 0; }
+  let prox = proximity_milli(ground_dist_milli, eff_radius_milli);
+  if spotlight_active == 0 { return 1; }
+  if prox > 300 { return 2; }
+  1
+}
+
+// ---------------------------------------------------------------------------
+// Battery  (updateState's battery accounting, milli-units)
+//   battery 0.0..1.0 -> 0..1000;  lowBatteryThreshold 0.15 -> 150
+//   charge "full" 0.95 -> 950
+// ---------------------------------------------------------------------------
+
+//## Is the battery dead? (battery <= 0 after drain). 1 = dead -> Disabled.
+pub fn battery_dead(battery_milli: Int) -> Int {
+  if battery_milli <= 0 { return 1; }
+  0
+}
+
+//## Is the battery low enough to return-to-base? (battery <= 0.15 -> 150 milli).
+// Drone.lowBatteryThreshold is fixed at 0.15; passed as threshold_milli for the
+// host to override. 1 = should switch to Returning.
+pub fn battery_low(battery_milli: Int, threshold_milli: Int) -> Int {
+  if battery_milli <= threshold_milli { return 1; }
+  0
+}
+
+//## Is the battery recharged enough to resume patrol? (battery >= 0.95 -> 950).
+pub fn charge_complete(battery_milli: Int) -> Int {
+  if battery_milli >= 950 { return 1; }
+  0
+}
+
+// ---------------------------------------------------------------------------
+// State-machine transitions  (the heart of updateState, decisions only)
+// Each function answers "what is the next state ordinal?" for one decision
+// point; the host applies the timer/position mutations (senses) around it.
+// ---------------------------------------------------------------------------
+
+//## Movement arrival test (moveToward: arrived when |dx| < 5px). dist in milli.
+pub fn arrived(dist_milli: Int) -> Int {
+  if dist_milli < 5000 { return 1; }
+  0
+}
+
+//## Patrolling: a strong sighting escalates. (updateState Patrolling arm.)
+// On InDetectionZone with proximity > 0.4 (400 milli): high alert (alertLevel>=3)
+// OR a Pursuit drone goes straight to Tracking(2); otherwise to Hovering(1).
+// No qualifying sighting -> stay Patrolling(0).
+// detection_class: 0 NotDetected, 1 InDetectionZone, 2 SpotlightLock.
+pub fn patrol_next(
+  variant: Int,
+  alert_level: Int,
+  detection_class: Int,
+  proximity_milli: Int
+) -> Int {
+  if detection_class != 1 { return 0; }
+  if proximity_milli <= 400 { return 0; }
+  if alert_level >= 3 { return 2; }
+  if variant_value(variant) == 1 { return 2; }
+  1
+}
+
+//## Hovering: observe; escalate on sustained suspicion. (updateState Hovering.)
+// SpotlightLock(2) -> Tracking(2) immediately. InDetectionZone with proximity>0.3
+// (300 milli) AND the accumulated suspicion now exceeds 0.7 (700 milli) -> Tracking.
+// If the observation window expired (hover_timer >= 5s -> 5000 milli) with no
+// qualifying sighting -> back to Patrolling(0). Otherwise stay Hovering(1).
+// suspicion_milli is the post-accumulation suspicion the host has already updated.
+pub fn hover_next(
+  detection_class: Int,
+  proximity_milli: Int,
+  suspicion_milli: Int,
+  hover_timer_milli: Int
+) -> Int {
+  if detection_class == 2 { return 2; }
+  if detection_class == 1 {
+    if proximity_milli > 300 {
+      if suspicion_milli > 700 { return 2; }
+      return 1;
+    }
+  }
+  if hover_timer_milli >= 5000 { return 0; }
+  1
+}
+
+//## Tracking: follow; branch to Spotlighting/Delivering or lose visual.
+// (updateState Tracking arm, decision core.) With a live sighting (class 1 or 2):
+//   Pursuit(1) at alertLevel>=2 -> Spotlighting(3);
+//   EMP_Drone(2) with payload available and within 40px (40000 milli) -> Delivering(8);
+//   otherwise stay Tracking(2).
+// With NotDetected(0): the search window decides -- hover_timer >= 8s (8000 milli)
+//   gives up to Patrolling(0); otherwise stay Tracking(2).
+// has_payload is 1/0; dist_milli is |player - drone| in milli.
+pub fn tracking_next(
+  variant: Int,
+  alert_level: Int,
+  detection_class: Int,
+  has_payload: Int,
+  dist_milli: Int,
+  hover_timer_milli: Int
+) -> Int {
+  if detection_class == 0 {
+    if hover_timer_milli >= 8000 { return 0; }
+    return 2;
+  }
+  let v = variant_value(variant);
+  if v == 1 {
+    if alert_level >= 2 { return 3; }
+  }
+  if v == 2 {
+    if has_payload == 1 {
+      if dist_milli < 40000 { return 8; }
+    }
+  }
+  2
+}
+
+//## Spotlighting: stay locked or drop back. (updateState Spotlighting arm.)
+// With a live sighting (class 1 or 2): stay Spotlighting(3). With NotDetected(0):
+// the spotlight fades; once intensity reaches 0 (intensity_milli <= 0) the lock
+// drops to Tracking(2); otherwise hold Spotlighting(3) while it fades.
+// intensity_milli is the post-decay spotlight intensity the host has updated.
+pub fn spotlight_next(detection_class: Int, intensity_milli: Int) -> Int {
+  if detection_class == 0 {
+    if intensity_milli <= 0 { return 2; }
+    return 3;
+  }
+  3
+}
+
+//## Delivering: EMP dive completes after 1.5s. (updateState Delivering arm.)
+// timer_milli is the post-increment empDeliveryTimer in milli; once it reaches
+// 1.5s (1500 milli) the payload deploys and the drone returns -> Returning(4);
+// otherwise keep Delivering(8).
+pub fn delivering_next(timer_milli: Int) -> Int {
+  if timer_milli >= 1500 { return 4; }
+  8
+}
+
+//## Returning: dock when arrived at the charging pad. (updateState Returning.)
+// arrived is 1/0 from arrived(dist). On arrival -> Charging(5); else Returning(4).
+pub fn returning_next(arrived: Int) -> Int {
+  if arrived == 1 { return 5; }
+  4
+}
+
+//## Charging: resume patrol once recharged. (updateState Charging arm.)
+// charge_done is 1/0 from charge_complete(battery). Done -> Patrolling(0); else
+// keep Charging(5).
+pub fn charging_next(charge_done: Int) -> Int {
+  if charge_done == 1 { return 0; }
+  5
+}
+
+//## Helper task (Rescuing/Repairing/Reviving/OpeningDoor): finish on timer.
+// (updateState helper-states arm.) has_target is 1/0; with no target the task is
+// aborted -> Patrolling(0). With a target, once arrived AND the countdown timer is
+// spent (task_timer_milli <= 0) the task completes -> Patrolling(0). Otherwise the
+// drone stays in its current helper state (returned unchanged as current_state).
+pub fn helper_task_next(
+  current_state: Int,
+  has_target: Int,
+  arrived: Int,
+  task_timer_milli: Int
+) -> Int {
+  if has_target == 0 { return 0; }
+  if arrived == 1 {
+    if task_timer_milli <= 0 { return 0; }
+  }
+  state_value(current_state)
+}
+
+// ---------------------------------------------------------------------------
+// Interactions & orders  (applyEMP, hackTick, helper orders, distraction)
+// ---------------------------------------------------------------------------
+
+//## applyEMP: jam unless already disabled. Returns the resulting state ordinal:
+// Jammed(6) if it took effect, else the unchanged state (Disabled stays Disabled).
+// The boolean "did it take" is (next != current): host reads that as the .res bool.
+pub fn apply_emp_next(state: Int) -> Int {
+  let s = state_value(state);
+  if s == 7 { return 7; }
+  6
+}
+
+//## hackTick: does this tick complete the hack? (hackProgress >= 1.0 -> 1000 milli).
+// hackProgress accrues dt*0.08 per tick (~12.5s). progress_milli is the
+// post-increment progress. 1 = hack completes this tick (-> Disabled), 0 = ongoing.
+pub fn hack_complete(progress_milli: Int) -> Int {
+  if progress_milli >= 1000 { return 1; }
+  0
+}
+
+//## Audible-to-player gate (isAudibleTo). The state gate plus the distance test.
+// Silent while Disabled(7) or Charging(5). Otherwise audible iff |player-drone| <
+// noiseRadius. dist_milli and noise_radius_milli are in milli. 1 = player hears it.
+pub fn is_audible(state: Int, dist_milli: Int, noise_radius_milli: Int) -> Int {
+  let s = state_value(state);
+  if s == 7 { return 0; }
+  if s == 5 { return 0; }
+  if s < 0 { return 0; }
+  if dist_milli < noise_radius_milli { return 1; }
+  0
+}
+
+//## Helper-order eligibility & target state (orderRescue/Repair/Revive/OpenDoor).
+// task_kind picks the target helper state:
+//   0 -> Rescuing(9)   1 -> Repairing(10)   2 -> Reviving(11)   3 -> OpeningDoor(12)
+// Eligibility reproduces the ReScript guard EXACTLY, operator precedence included:
+//     variant == EMP_Drone && state == Patrolling  ||  state == Hovering
+// In ReScript `&&` binds tighter than `||`, so this parses as
+//     (variant == EMP_Drone && state == Patrolling) || (state == Hovering)
+// i.e. ANY variant in Hovering(1) is eligible; an EMP_Drone(2) is also eligible in
+// Patrolling(0). (This faithfully mirrors the source, latent precedence quirk and
+// all.) Eligible -> the task's target state; ineligible OR bad task_kind -> -1.
+pub fn helper_order_state(variant: Int, state: Int, task_kind: Int) -> Int {
+  let v = variant_value(variant);
+  let s = state_value(state);
+  // eligibility per the .res precedence: (v==2 && s==0) || (s==1)
+  let eligible_emp_patrol = if v == 2 { if s == 0 { 1 } else { 0 } } else { 0 };
+  let eligible_hover = if s == 1 { 1 } else { 0 };
+  if eligible_emp_patrol == 0 {
+    if eligible_hover == 0 { return -1; }
+  }
+  if task_kind == 0 { return 9; }
+  if task_kind == 1 { return 10; }
+  if task_kind == 2 { return 11; }
+  if task_kind == 3 { return 12; }
+  -1
+}
+
+//## respondToDistraction: pull to investigate. Eligible iff the distraction is in
+// range (dist < distractionRange) AND the drone is Patrolling(0) or Hovering(1).
+// Eligible -> Tracking(2); otherwise the unchanged state. dist/range in milli.
+pub fn distraction_next(state: Int, dist_milli: Int, range_milli: Int) -> Int {
+  let s = state_value(state);
+  if dist_milli >= range_milli { return s; }
+  if s == 0 { return 2; }
+  if s == 1 { return 2; }
+  s
+}
+
+// ---------------------------------------------------------------------------
+// Queries  (isActive, isHelperBusy, hasEMPPayload)
+// ---------------------------------------------------------------------------
+
+//## isActive: not Disabled(7) and not Charging(5). 1 = active, 0 = inert.
+// Out-of-band state -> 0 (treated inert).
+pub fn is_active(state: Int) -> Int {
+  let s = state_value(state);
+  if s < 0 { return 0; }
+  if s == 7 { return 0; }
+  if s == 5 { return 0; }
+  1
+}
+
+//## isHelperBusy: in a helper task state (Rescuing..OpeningDoor = 9..12).
+pub fn is_helper_busy(state: Int) -> Int {
+  let s = state_value(state);
+  if s < 9 { return 0; }
+  if s > 12 { return 0; }
+  1
+}
+
+//## hasEMPPayload: an EMP_Drone(2) that still holds its single-use payload.
+// payload_available is 1/0. 1 only when variant is EMP_Drone AND payload remains.
+pub fn has_emp_payload(variant: Int, payload_available: Int) -> Int {
+  if variant_value(variant) != 2 { return 0; }
+  if payload_available == 1 { return 1; }
+  0
+}

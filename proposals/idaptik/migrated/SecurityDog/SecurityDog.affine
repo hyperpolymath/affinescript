@@ -1,0 +1,389 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// SecurityDog -- the pure-integer decision core for the guard-dog / robo-dog
+// enemies, re-decomposed from src/app/enemies/SecurityDog.res. A SecurityDog is
+// either a biological GuardDog (omnidirectional scent, food-distractible, barks)
+// or a RoboDog (camera+IR cone, hackable, EMP-vulnerable, battery-limited). Each
+// frame the dog detects the player, runs an 8-state machine (Patrol -> Track ->
+// Bark -> ...) and answers a handful of interaction gates (distract / EMP / hack
+// / stomp).
+//
+// Per the DESIGN-VISION ("AffineScript is the brain, JS/Pixi the senses; only
+// primitives cross the wasm boundary"), every SENSE stays host-side: the Pixi
+// Container/Graphics, the SafeAngle.fromAtan2 trigonometry, the Math.sqrt
+// distance, all float positions/timers/suspicion, the waypoint array, the
+// device-id string, the FeaturePacks flag and the async coprocessor handle. The
+// brain owns only the deterministic DECISIONS -- no strings, no arrays, no
+// floats, no promises, no module-level mutable state cross the boundary.
+//
+// FLOAT BOUNDARY (rule: floors stay host-side). The host computes the float
+// geometry (distance via sqrt, target angle via atan2, the per-frame timer
+// accumulation) and floors each to integer milli-units before calling the brain:
+//   * distances / ranges  -> milli-pixels  (pixels  x 1000)
+//   * angles              -> milli-radians (radians x 1000)
+//   * timers / durations  -> milliseconds  (seconds x 1000)
+//   * scent strength       -> milli-units   (0..1000, where 1000 == 1.0)
+// Detection-model ranges are integer-valued in the source (180, 200, 120, ...),
+// so they are returned directly in milli-pixels; only the runtime distance and
+// angle are floored by the host. Every comparison and the strength formula then
+// run in exact integer arithmetic, byte-identical to the ReScript float compares
+// at the floored resolution.
+//
+//## Variant encoding (header contract)         ## State encoding
+//   0  GuardDog                                    0  Patrolling
+//   1  RoboDog                                      1  Tracking
+// out-of-band -> -1                                 2  Barking
+//                                                   3  Distracted
+//## Facing encoding                                 4  Investigating
+//   0  Left   1  Right                              5  Returning
+//                                                   6  Disabled
+//## Detection-result encoding                       7  Stunned
+//   0  NotDetected                              out-of-band -> -1
+//   1  ScentDetected (carries strength out-of-band, see detect_guarddog)
+//   2  VisualDetected
+//   3  HeardMovement
+
+// ---------------------------------------------------------------------------
+// Closed-band validity (every code below is a contiguous enum; the host can
+// never address a phantom variant / state / result).
+// ---------------------------------------------------------------------------
+
+pub fn variant_count() -> Int { 2 }
+pub fn state_count() -> Int { 8 }
+pub fn detection_count() -> Int { 4 }
+
+fn valid_variant(v: Int) -> Int {
+  if v < 0 { return 0; }
+  if v > 1 { return 0; }
+  1
+}
+
+fn valid_state(s: Int) -> Int {
+  if s < 0 { return 0; }
+  if s > 7 { return 0; }
+  1
+}
+
+// ---------------------------------------------------------------------------
+// Detection-model range table (detectionModel constants, in milli-pixels and
+// milli-radians). guardDogDetection / roboDogDetection are fixed records; the
+// brain returns each field so the host need not hardcode the magic numbers.
+// An out-of-band variant returns the out-of-band sentinel -1.
+// ---------------------------------------------------------------------------
+
+// scentRange: GuardDog 180000, RoboDog 0 (no scent).
+pub fn scent_range_mu(variant: Int) -> Int {
+  if valid_variant(variant) == 0 { return -1; }
+  if variant == 0 { return 180000; }
+  0
+}
+
+// cameraRange: GuardDog 0, RoboDog 200000.
+pub fn camera_range_mu(variant: Int) -> Int {
+  if valid_variant(variant) == 0 { return -1; }
+  if variant == 1 { return 200000; }
+  0
+}
+
+// cameraHalfAngle: GuardDog 0, RoboDog 500 milli-rad (~0.5 rad).
+pub fn camera_half_angle_mu(variant: Int) -> Int {
+  if valid_variant(variant) == 0 { return -1; }
+  if variant == 1 { return 500; }
+  0
+}
+
+// irRange: GuardDog 0, RoboDog 120000.
+pub fn ir_range_mu(variant: Int) -> Int {
+  if valid_variant(variant) == 0 { return -1; }
+  if variant == 1 { return 120000; }
+  0
+}
+
+// hearingRange: GuardDog 200000, RoboDog 150000.
+pub fn hearing_range_mu(variant: Int) -> Int {
+  if valid_variant(variant) == 0 { return -1; }
+  if variant == 0 { return 200000; }
+  150000
+}
+
+// movementSpeed: GuardDog 75000, RoboDog 55000 (milli-pixels / second). The make
+// constructor's per-variant speed; the host scales by dt host-side.
+pub fn speed_mu(variant: Int) -> Int {
+  if valid_variant(variant) == 0 { return -1; }
+  if variant == 0 { return 75000; }
+  55000
+}
+
+// ---------------------------------------------------------------------------
+// Scent strength (GuardDog ScentDetected payload): 1.0 - distance/scentRange,
+// in milli-units (0..1000). distance_mu and range_mu share milli-pixel units.
+// Clamped to [0, 1000]; a non-positive range (only the no-scent RoboDog) yields
+// 0. Guarded so a degenerate input can never produce an out-of-band strength.
+// ---------------------------------------------------------------------------
+pub fn scent_strength_milli(distance_mu: Int, range_mu: Int) -> Int {
+  if range_mu <= 0 { return 0; }
+  if distance_mu < 0 { return 1000; }
+  if distance_mu >= range_mu { return 0; }
+  let s = 1000 - (distance_mu * 1000) / range_mu;
+  if s < 0 { return 0; }
+  if s > 1000 { return 1000; }
+  s
+}
+
+// ---------------------------------------------------------------------------
+// Angle normalisation (RoboDog camera cone): fold an absolute angle difference
+// into [0, pi]. Mirrors `if angleDiff > pi { 2*pi - angleDiff } else angleDiff`,
+// in milli-radians. pi ~= 3141 mrad, 2*pi ~= 6283 mrad (the host passes these so
+// the brain carries no float literals). A negative difference is folded to 0.
+// ---------------------------------------------------------------------------
+pub fn angle_norm_mu(angle_diff_mu: Int, pi_mu: Int, two_pi_mu: Int) -> Int {
+  if angle_diff_mu < 0 { return 0; }
+  if angle_diff_mu > pi_mu { return two_pi_mu - angle_diff_mu; }
+  angle_diff_mu
+}
+
+// Effective camera range under crouch: cameraRange * 0.5 when crouching, else
+// cameraRange (in milli-pixels). crouching is a 1/0 flag.
+pub fn effective_camera_range_mu(camera_range_mu_in: Int, crouching: Int) -> Int {
+  if camera_range_mu_in < 0 { return -1; }
+  if crouching != 0 { return camera_range_mu_in / 2; }
+  camera_range_mu_in
+}
+
+// ---------------------------------------------------------------------------
+// detectPlayer -- the detection classifier. Returns the detection-result code
+// (0 NotDetected, 1 ScentDetected, 2 VisualDetected, 3 HeardMovement). The host
+// has already computed and floored the distance and, for RoboDog, the normalised
+// cone angle and effective range. The guard early-out (Disabled/Stunned/
+// Distracted -> NotDetected) is the host's responsibility before calling, but is
+// also defended here via the state argument so the kernel is self-contained.
+//
+//   state          current dog state ordinal (0..7)
+//   variant        0 GuardDog / 1 RoboDog
+//   distance_mu    floored player distance, milli-pixels
+//   sprinting      1/0 player sprinting (loud)
+//   norm_angle_mu  RoboDog: folded cone angle (milli-rad); ignored for GuardDog
+//   eff_range_mu   RoboDog: crouch-adjusted camera range (milli-pixels)
+// The per-variant range constants are read from the tables above internally, so
+// the host passes only the runtime-computed distance/angle and the flags.
+// ---------------------------------------------------------------------------
+pub fn detect_class(state: Int, variant: Int, distance_mu: Int, sprinting: Int, norm_angle_mu: Int, eff_range_mu: Int) -> Int {
+  if valid_variant(variant) == 0 { return 0; }
+  // Disabled (6), Stunned (7), Distracted (3) never detect.
+  if state == 6 { return 0; }
+  if state == 7 { return 0; }
+  if state == 3 { return 0; }
+
+  if variant == 0 {
+    // GuardDog: omnidirectional scent, then hearing of a sprinter.
+    let scent = scent_range_mu(0);
+    let hearing = hearing_range_mu(0);
+    if distance_mu < scent { return 1; }
+    if sprinting != 0 {
+      if distance_mu < hearing { return 3; }
+    }
+    return 0;
+  }
+
+  // RoboDog: camera cone, then omnidirectional IR, then hearing.
+  let half = camera_half_angle_mu(1);
+  let ir = ir_range_mu(1);
+  let hearing = hearing_range_mu(1);
+  if norm_angle_mu < half {
+    if distance_mu < eff_range_mu { return 2; }
+  }
+  if distance_mu < ir { return 2; }
+  if sprinting != 0 {
+    if distance_mu < hearing { return 3; }
+  }
+  0
+}
+
+// ---------------------------------------------------------------------------
+// State machine. next_state encodes updateState's transition table: given the
+// current state, the detection-result class just produced, and the floored
+// timers/distances the arm consults, it returns the next state ordinal. Pure
+// integer thresholds; the host owns the movement integration and the float
+// suspicion decay.
+//
+//   state          current state ordinal (0..7)
+//   detection      detection-result class (0..3) from detect_class
+//   strength_milli ScentDetected strength (0..1000); 0 when not scent
+//   dist_to_target_mu  |targetX - dogX| toward the tracked point, milli-pixels
+//   bark_timer_ms      ms spent in the current Barking burst
+//   pause_timer_ms     ms accumulated at an Investigating/Returning hold
+//   has_target         1/0 whether lastScentX is set (Some vs None)
+//
+// Threshold provenance (SecurityDog.res updateState):
+//   Patrolling: scent strength > 0.3 (300 milli) -> Tracking;
+//               VisualDetected -> Barking; HeardMovement -> Investigating.
+//   Tracking:   dist < 30px (30000 mu) -> Barking; lost target -> Returning.
+//   Barking:    barkTimer >= 4s (4000 ms) -> Tracking.
+//   Investigating: dist < 10px (10000) and pause >= 2.5s (2500) -> Returning;
+//               scent s > 0.4 (400) -> Tracking; Visual -> Barking; lost -> Returning.
+//   Returning:  dist < 5px (5000) -> Patrolling.
+//   Disabled/Stunned: absorbing (host clears them via EMP/hack/battery/stomp).
+// ---------------------------------------------------------------------------
+pub fn next_state(state: Int, detection: Int, strength_milli: Int, dist_to_target_mu: Int, bark_timer_ms: Int, pause_timer_ms: Int, has_target: Int) -> Int {
+  if valid_state(state) == 0 { return -1; }
+
+  // Patrolling (0)
+  if state == 0 {
+    if detection == 1 {
+      if strength_milli > 300 { return 1; }
+      return 0;
+    }
+    if detection == 2 { return 2; }
+    if detection == 3 { return 4; }
+    return 0;
+  }
+
+  // Tracking (1)
+  if state == 1 {
+    if has_target == 0 { return 5; }
+    if dist_to_target_mu < 30000 { return 2; }
+    return 1;
+  }
+
+  // Barking (2)
+  if state == 2 {
+    if bark_timer_ms >= 4000 { return 1; }
+    return 2;
+  }
+
+  // Distracted (3): the host's distraction timer drives the exit; the brain
+  // holds the state until the host signals expiry (distraction_expired).
+  if state == 3 { return 3; }
+
+  // Investigating (4)
+  if state == 4 {
+    if has_target == 0 { return 5; }
+    if detection == 1 {
+      if strength_milli > 400 { return 1; }
+    }
+    if detection == 2 { return 2; }
+    if dist_to_target_mu < 10000 {
+      if pause_timer_ms >= 2500 { return 5; }
+    }
+    return 4;
+  }
+
+  // Returning (5)
+  if state == 5 {
+    if dist_to_target_mu < 5000 { return 0; }
+    return 5;
+  }
+
+  // Disabled (6) / Stunned (7): absorbing.
+  state
+}
+
+// Distraction-timer expiry: the Distracted state exits to Returning (5) when the
+// host's floored distraction timer has run out (<= 0 ms remaining), else holds.
+pub fn distraction_expired(state: Int, distract_timer_ms: Int) -> Int {
+  if state != 3 { return state; }
+  if distract_timer_ms <= 0 { return 5; }
+  3
+}
+
+// ---------------------------------------------------------------------------
+// RoboDog pre-state early exits (updateState's leading guards). Returns the
+// forced state when an exit fires, else -1 meaning "no early exit, run the main
+// machine". empActive / hacked / batteryEmpty are 1/0 flags the host derives
+// from its float empTimer / hacked bool / batteryLevel.
+//   empActive   -> Stunned (7); when it has just expired the host passes
+//                  emp_just_expired=1 to flip to Returning (5) instead.
+//   hacked      -> Disabled (6).
+//   batteryEmpty-> Disabled (6).
+// ---------------------------------------------------------------------------
+pub fn robodog_early_exit(variant: Int, emp_active: Int, emp_just_expired: Int, hacked: Int, battery_empty: Int) -> Int {
+  if variant != 1 { return -1; }
+  if emp_active != 0 {
+    if emp_just_expired != 0 { return 5; }
+    return 7;
+  }
+  if hacked != 0 { return 6; }
+  if battery_empty != 0 { return 6; }
+  -1
+}
+
+// ---------------------------------------------------------------------------
+// Interaction gates. Each returns 1 (action succeeds) or 0 (refused), mirroring
+// the bool returns in SecurityDog.res. The host supplies the floored distance
+// and the variant/state; no float or string crosses.
+// ---------------------------------------------------------------------------
+
+// distractWithFood: GuardDog only, not Disabled(6)/Stunned(7), food within
+// scent range. 1 = the dog takes the food (host then sets Distracted + timer).
+pub fn can_distract(variant: Int, state: Int, food_dist_mu: Int) -> Int {
+  if variant != 0 { return 0; }
+  if state == 6 { return 0; }
+  if state == 7 { return 0; }
+  let scent = scent_range_mu(0);
+  if food_dist_mu < scent { return 1; }
+  0
+}
+
+// applyEMP: RoboDog only, not already Disabled(6). 1 = EMP lands (host sets
+// Stunned + empTimer).
+pub fn can_emp(variant: Int, state: Int) -> Int {
+  if variant != 1 { return 0; }
+  if state == 6 { return 0; }
+  1
+}
+
+// hackTick: RoboDog only, not already hacked. Given the floored cumulative hack
+// progress in milli-units (0..1000, where the host advances by ~dt*100/s), 1 =
+// the hack completed this tick (progress reached 1000 -> Disabled), 0 = still in
+// progress / refused.
+pub fn hack_complete(variant: Int, hacked: Int, progress_milli: Int) -> Int {
+  if variant != 1 { return 0; }
+  if hacked != 0 { return 0; }
+  if progress_milli >= 1000 { return 1; }
+  0
+}
+
+// respondToDistraction (PBX pull): only while Patrolling(0) and within range.
+// 1 = the dog diverts to Investigating(4).
+pub fn can_respond_distraction(state: Int, dist_mu: Int, range_mu: Int) -> Int {
+  if state != 0 { return 0; }
+  if dist_mu < range_mu { return 1; }
+  0
+}
+
+// ---------------------------------------------------------------------------
+// Combat / query helpers (pure state classification).
+// ---------------------------------------------------------------------------
+
+// applyHeadStomp -> Disabled(6); applyBodyStomp -> Stunned(7). Returned as the
+// post-stomp state so the host writes one value back.
+pub fn head_stomp_state() -> Int { 6 }
+pub fn body_stomp_state() -> Int { 7 }
+
+// isAggressiveContact: Tracking(1) or Barking(2) -> 1, else 0. The "alert and
+// not incapacitated" predicate.
+pub fn is_aggressive(state: Int) -> Int {
+  if valid_state(state) == 0 { return 0; }
+  if state == 1 { return 1; }
+  if state == 2 { return 1; }
+  0
+}
+
+// Simple state predicates (isBarking / isDisabled / isDistracted / isTracking).
+pub fn is_barking(state: Int) -> Int { if state == 2 { 1 } else { 0 } }
+pub fn is_disabled(state: Int) -> Int { if state == 6 { 1 } else { 0 } }
+pub fn is_distracted(state: Int) -> Int { if state == 3 { 1 } else { 0 } }
+pub fn is_tracking(state: Int) -> Int { if state == 1 { 1 } else { 0 } }
+
+// Facing from horizontal delta sign: dx > 0 -> Right(1), else Left(0). The
+// pure integer sign decision behind every `dog.facing = if dx > 0 { Right }`.
+pub fn facing_for_delta(dx_mu: Int) -> Int {
+  if dx_mu > 0 { 1 } else { 0 }
+}
+
+// Movement direction sign: dx > 0 -> +1, else -1. Behind every
+// `direction = if dx > 0 { 1.0 } else { -1.0 }`.
+pub fn direction_for_delta(dx_mu: Int) -> Int {
+  if dx_mu > 0 { 1 } else { -1 }
+}
