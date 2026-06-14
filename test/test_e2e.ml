@@ -4100,6 +4100,23 @@ let test_stringwall_eq_lowers_after_elaboration () =
          "slice 9: string `==`/`!=` should lower to wasm after elaboration, got: %s"
          msg)
 
+(* Slice 10 (#458): String relational ops `<`/`<=`/`>`/`>=` typecheck in the
+   [comparison] branch and must be rewritten to ExprStringRel by
+   elaborate_string_concat (driven by string_rel_sites), so the wasm backend
+   does a byte-wise lexicographic compare rather than a signed compare of the
+   two `[len][utf8]` pointers. The full pipeline must compile them. *)
+let test_stringwall_rel_lowers_after_elaboration () =
+  match run_frontend (fixture "string_rel.affine") with
+  | Error e -> Alcotest.failf "frontend failed on string_rel.affine: %s" e
+  | Ok (prog, _resolve_ctx) ->
+    let elaborated = Affinescript.Typecheck.elaborate_string_concat prog in
+    (match wasm_codegen elaborated with
+     | Ok _ -> ()
+     | Error msg ->
+       Alcotest.failf
+         "slice 10: string `<`/`<=`/`>`/`>=` should lower to wasm after elaboration, got: %s"
+         msg)
+
 let stringwall_concat_guard_tests = [
   Alcotest.test_case "string `++` is rejected (not silently miscompiled)"
     `Quick test_stringwall_concat_guard_rejects_string;
@@ -4109,6 +4126,8 @@ let stringwall_concat_guard_tests = [
     `Quick test_stringwall_concat_lowers_after_elaboration;
   Alcotest.test_case "string `==`/`!=` lowers to wasm after elaboration (slice 9)"
     `Quick test_stringwall_eq_lowers_after_elaboration;
+  Alcotest.test_case "string `<`/`<=`/`>`/`>=` lowers to wasm after elaboration (slice 10)"
+    `Quick test_stringwall_rel_lowers_after_elaboration;
 ]
 
 (* ---- STDLIB-04b: Throws extern `error<T>` (Refs #329) ----

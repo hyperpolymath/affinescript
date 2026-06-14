@@ -144,6 +144,12 @@ let rec eval (env : env) (expr : expr) : value result =
        as the original `==`/`!=` so semantics match across every backend. *)
     eval env (ExprBinary (left, (if negate then OpNe else OpEq), right))
 
+  | ExprStringRel (left, right, op) ->
+    (* String-wall slice 10: defensively re-dispatch to the original
+       relational `ExprBinary` — the interpreter compares strings directly and
+       never sees this wasm-only elaboration. *)
+    eval env (ExprBinary (left, op, right))
+
   | ExprBinary (left, op, right) ->
     let* left_val = eval env left in
     let* right_val = eval env right in
