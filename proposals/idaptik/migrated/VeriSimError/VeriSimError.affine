@@ -1,0 +1,94 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// VeriSimError -- the HTTP-status error-classification brain, the pure-integer
+// core extracted from idaptik src/app/verisimdb/VeriSimError.res `fromStatus`
+// and `isRetryable`. Per the DESIGN-VISION ("AffineScript is the brain, the
+// host the senses; only primitives cross the wasm boundary") the ReScript host
+// keeps every human-readable message String, the variant payloads and the
+// `message` interpolation; AffineScript owns only the integer mapping from an
+// HTTP status code to the canonical error CATEGORY and the retry decision over
+// that category.
+//
+//## Why this is the separable Int sub-brain (not the whole VeriSimError module)
+// VeriSimError.res is a 20-constructor variant, each arm carrying a String, plus
+// three functions: `message` (variant -> String render -- pure host text, no
+// scalar maths), `fromStatus` (HTTP status Int -> variant) and `isRetryable`
+// (variant -> Bool). The String render cannot and should not cross the i32
+// boundary. What is pure-integer is the CLASSIFICATION skeleton underneath:
+// fromStatus is really `status code -> category ordinal`, and isRetryable is
+// really `category ordinal -> bool`. Those two Int->Int maps are lifted here;
+// the host re-attaches the per-category default message String (the existing
+// in-place VeriSimError.affine keeps the String arms) so the rendered error is
+// byte-identical. This integer core is exactly harness-compatible.
+//
+//## Category encoding (the header contract for the host)
+// The ordinals are the VeriSimError.res variant declaration order, so the host
+// round-trips category <-> ordinal with no collision (the same flat closed-band
+// shape DeviceType.affine and ThreatClass.affine use):
+//   ord  category                ord  category
+//     0  BadRequest (400)         10  ModalityUnavailable
+//     1  Unauthorized (401)       11  DriftComputationError
+//     2  Forbidden (403)          12  ProvenanceInvalid
+//     3  NotFound (404)           13  VclParseError
+//     4  Conflict (409)           14  VclExecutionError
+//     5  ValidationFailed (422)   15  FederationError
+//     6  RateLimited (429)        16  ConnectionError
+//     7  InternalError (500)      17  TimeoutError
+//     8  ServiceUnavailable (503) 18  SerializationError
+//     9  HexadNotFound            19  UnknownError
+// Only the nine status-reachable categories (0..8) and the catch-all 19 are
+// produced by classify_status; the domain-specific (9..15) and remaining
+// client-side (16..18) categories are constructed by the host directly, never
+// from a status code, exactly as the ReScript fromStatus switch does.
+
+// The number of canonical error categories in the taxonomy.
+pub fn error_category_count() -> Int { 20 }
+
+// Whether a host integer names a defined error category. 1 = valid, 0 = out of
+// band. Lets the host validate a category ordinal before re-attaching its
+// message String.
+pub fn is_valid_error_category(ord: Int) -> Int {
+  if ord < 0 { 0 } else { if ord > 19 { 0 } else { 1 } }
+}
+
+// Classify an HTTP status code into its error-category ordinal, reproducing
+// VeriSimError.res fromStatus exactly: the nine mapped codes go to their
+// category ordinal, and every other code (the `code => UnknownError` arm) goes
+// to UnknownError (19). This is a total map over all Int; an unmapped code is
+// not a sentinel collapse but the genuine UnknownError category the original
+// returns, so assail stays clean (flat early-return ladder, no out-of-band arm).
+pub fn classify_status(status: Int) -> Int {
+  if status == 400 { return 0; }
+  if status == 401 { return 1; }
+  if status == 403 { return 2; }
+  if status == 404 { return 3; }
+  if status == 409 { return 4; }
+  if status == 422 { return 5; }
+  if status == 429 { return 6; }
+  if status == 500 { return 7; }
+  if status == 503 { return 8; }
+  19
+}
+
+// Whether an error CATEGORY ordinal is retryable, reproducing isRetryable
+// exactly: RateLimited (6), InternalError (7), ServiceUnavailable (8),
+// ConnectionError (16) and TimeoutError (17) are retryable; every other
+// category is not. 1 = retry safe, 0 = do not retry. On an out-of-band ordinal
+// (not a real category) the conservative answer is 0 (do not retry).
+pub fn is_category_retryable(ord: Int) -> Int {
+  if is_valid_error_category(ord) == 0 { return 0; }
+  if ord == 6 { return 1; }
+  if ord == 7 { return 1; }
+  if ord == 8 { return 1; }
+  if ord == 16 { return 1; }
+  if ord == 17 { return 1; }
+  0
+}
+
+// Convenience composition: whether an HTTP status code is retryable, classifying
+// then deciding in one call (the host's common path -- it has a status code, not
+// a category, at the response boundary). 1 = retry safe, 0 = do not retry.
+pub fn is_status_retryable(status: Int) -> Int {
+  is_category_retryable(classify_status(status))
+}

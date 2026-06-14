@@ -1,0 +1,94 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// VeriSimModality -- the VeriSimDB taxonomy brain, the pure-integer core
+// extracted from idaptik src/app/verisimdb/VeriSimTypes.res. Per the
+// DESIGN-VISION ("AffineScript is the brain, the host the senses; only
+// primitives cross the wasm boundary") the ReScript host keeps every modality
+// STRING (modalityToString / modalityFromString) and every wire record;
+// AffineScript owns only the canonical integer encodings of the two closed
+// VeriSimDB taxonomies (the eight data modalities and the five drift levels)
+// plus the ONE genuine client-side classification decision over them.
+//
+//## Why this is the separable Int sub-brain (not the whole VeriSimTypes module)
+// VeriSimTypes.res is overwhelmingly record/variant TYPE definitions plus two
+// string-conversion switches (modalityToString, modalityFromString). The string
+// conversions cannot cross the i32 boundary and stay host-side. What IS
+// pure-integer is the taxonomy skeleton underneath: `modality` is a closed
+// eight-member enum whose constructor order is its canonical 0..7 ordinal, and
+// `driftLevel` is a closed FIVE-member ORDINAL enum (Stable < Low < Moderate <
+// High < Critical) whose order carries severity meaning. Validity over those two
+// bands, and the severity comparison the client uses to decide whether a drift
+// reading is actionable, are lifted here. This integer core is exactly
+// harness-compatible.
+//
+//## Modality encoding (the header contract for the host; VeriSimTypes.res order)
+//   code  modality       code  modality
+//     0   Graph            4   Document
+//     1   Vector           5   Temporal
+//     2   Tensor           6   Provenance
+//     3   Semantic         7   Spatial
+// The encoding is LOSSLESS: eight distinct modalities map to eight distinct
+// codes, so the host round-trips modality <-> code with no collision (the same
+// flat closed-band shape DeviceType.affine uses). A code outside 0..7 is not a
+// modality: is_valid_modality reports 0 and clamp_modality returns the
+// out-of-band sentinel -1 (never an in-band code -- a sentinel, not a clamp).
+//
+//## Drift-level encoding (VeriSimTypes.res driftLevel order -- ORDINAL/ranked)
+//   code  level      meaning
+//     0   Stable     no meaningful divergence
+//     1   Low        minor drift, informational
+//     2   Moderate   drift worth surfacing -- the actionable threshold
+//     3   High       significant divergence
+//     4   Critical   re-normalisation strongly indicated
+// Unlike the modality band this band is TOTALLY ORDERED by severity, so the host
+// can ask "is this at least as severe as Moderate?" -- the single client-side
+// drift decision (everything else, the score itself and the level assignment,
+// is computed server-side and merely received).
+
+// The number of canonical data modalities in the VeriSimDB taxonomy.
+pub fn modality_count() -> Int { 8 }
+
+// Whether a host integer names a defined data modality. 1 = valid, 0 = out of band.
+pub fn is_valid_modality(code: Int) -> Int {
+  if code < 0 { 0 } else { if code > 7 { 0 } else { 1 } }
+}
+
+// Canonicalise a host integer modality: identity on a valid 0..7 code, the
+// out-of-band sentinel -1 otherwise. -1 is not an in-band code, so out-of-band
+// input can never be confused with a real modality (a sentinel, not a clamp).
+pub fn clamp_modality(code: Int) -> Int {
+  if is_valid_modality(code) == 1 { code } else { 0 - 1 }
+}
+
+// The number of drift severity levels.
+pub fn drift_level_count() -> Int { 5 }
+
+// Whether a host integer names a defined drift level. 1 = valid, 0 = out of band.
+pub fn is_valid_drift_level(code: Int) -> Int {
+  if code < 0 { 0 } else { if code > 4 { 0 } else { 1 } }
+}
+
+// Canonicalise a host integer drift level: identity on a valid 0..4 code, the
+// out-of-band sentinel -1 otherwise.
+pub fn clamp_drift_level(code: Int) -> Int {
+  if is_valid_drift_level(code) == 1 { code } else { 0 - 1 }
+}
+
+// Whether a drift level is actionable -- Moderate (2) or more severe. This is the
+// single client-side drift decision: the host uses it to decide whether to
+// surface a re-normalisation prompt. 1 = actionable, 0 = below threshold. On an
+// out-of-band level (not a real drift level) the conservative answer is 0.
+pub fn drift_is_actionable(code: Int) -> Int {
+  if is_valid_drift_level(code) == 0 { return 0; }
+  if code >= 2 { return 1; }
+  0
+}
+
+// Whether a drift level warrants the strongest warning -- Critical (4) only.
+// 1 = critical, 0 = not. Out-of-band rejects to 0.
+pub fn drift_is_critical(code: Int) -> Int {
+  if is_valid_drift_level(code) == 0 { return 0; }
+  if code == 4 { return 1; }
+  0
+}

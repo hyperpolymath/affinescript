@@ -1,0 +1,86 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// SkillTreeScreen -- the pure-integer XP-threshold brain extracted from
+// src/app/screens/SkillTreeScreen.res (xpForNextRank). The screen is senses:
+// the seven branching skill rows, the per-rank colour ints and rank/category
+// display STRINGS, the ability-node circles, the connector lines, the XP-bar
+// Graphics, the Storage.getString("jessica-class") read and every Pixi draw.
+// Per the DESIGN-VISION ("AffineScript is the brain, JS/Pixi the senses; only
+// primitives cross the wasm boundary"), every string and Pixi object stays
+// host-side; AffineScript owns only the rank -> next-XP-threshold classification
+// that drives the progress bar's denominator.
+//
+// RE-DECOMPOSITION. The ReScript switches on the `skillRank` variant
+// (Novice | Trained | Proficient | Veteran | Expert) to a threshold int. We
+// re-decompose the variant as its 0..4 ascending ordinal -- the canonical
+// rank order the .res `rankOrder` array and `rankMeetsRequirement` already
+// impose (Novice < Trained < Proficient < Veteran < Expert). The variant IS
+// the ordinal; no rank strings cross. The XP-bar FILL fraction (xp/threshold)
+// is a float and stays host-side (it is a sense); the brain owns only the
+// integer threshold the fraction divides by, and the integer "is this rank
+// the maxed top" classification.
+//
+//## Rank ordinal encoding (the header contract for the JS host)
+//   ord  rank          ord  rank
+//     0  Novice          3  Veteran
+//     1  Trained         4  Expert (maxed)
+//     2  Proficient
+//   A rank ordinal outside 0..4 is not a defined rank: skill_rank_valid
+//   reports 0, and xp_for_next_rank returns the out-of-band sentinel -1 (never
+//   an in-band threshold), so an off-domain rank cannot manufacture a real
+//   threshold. -1 is a sentinel, not a clamp (assail stays clean).
+//
+//## XP-threshold contract (the second contract, for the progress bar)
+//   The next-rank XP thresholds, verbatim from the .res xpForNextRank:
+//     Novice -> 100, Trained -> 350, Proficient -> 800, Veteran -> 1500,
+//     Expert -> 1500 (already maxed: the .res returns 1500 as a no-op cap).
+//   xp_for_next_rank(ord) returns the threshold for a valid ord, else -1.
+//   These are the .res XP-threshold comment's 0 / 100 / 350 / 800 / 1500 ladder
+//   read as "threshold for the NEXT rank up from the current one".
+//
+// PURE: integers only, no floats, no strings, no arrays, no effects, no I/O.
+
+//## The number of skill ranks (Novice..Expert).
+pub fn skill_rank_count() -> Int { 5 }
+
+//## Whether a host integer names a defined skill rank. 1 = valid, 0 = out of band.
+pub fn skill_rank_valid(rank: Int) -> Int {
+  if rank < 0 { 0 } else { if rank > 4 { 0 } else { 1 } }
+}
+
+//## The XP threshold for the next rank above the given rank ordinal. Mirrors
+// xpForNextRank: Novice 100, Trained 350, Proficient 800, Veteran 1500, Expert
+// 1500 (maxed cap). An off-domain rank yields the out-of-band sentinel -1.
+pub fn xp_for_next_rank(rank: Int) -> Int {
+  if skill_rank_valid(rank) == 1 {
+    if rank == 0 { 100 } else {
+      if rank == 1 { 350 } else {
+        if rank == 2 { 800 } else {
+          if rank == 3 { 1500 } else { 1500 }
+        }
+      }
+    }
+  } else { -1 }
+}
+
+//## Whether a rank is the maxed top rank (Expert, ordinal 4): 1 if so, else 0.
+// A non-Expert valid rank still has a real next threshold; the .res shows this
+// as Expert's threshold being a no-op (its own cap). Off-domain ranks are 0.
+pub fn skill_rank_is_maxed(rank: Int) -> Int {
+  if rank == 4 { 1 } else { 0 }
+}
+
+//## The XP-bar fill, expressed as an integer permille (0..1000), so the float
+// xp/threshold of the .res crosses the boundary as a scaled Int. Mirrors
+// `fillPct = xp / threshold` then the `Math.min(.., barW)` clamp: the permille
+// is xp * 1000 / threshold, capped at 1000 (full bar). A non-positive or
+// off-domain threshold means "already full" -> 1000 (the .res `else 1.0` arm).
+// A negative xp clamps up to 0 (an empty bar can never be negative).
+pub fn xp_fill_permille(xp: Int, threshold: Int) -> Int {
+  if threshold <= 0 { 1000 } else {
+    let clamped_xp = if xp < 0 { 0 } else { xp };
+    let raw = clamped_xp * 1000 / threshold;
+    if raw > 1000 { 1000 } else { raw }
+  }
+}

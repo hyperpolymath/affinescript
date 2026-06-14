@@ -1,0 +1,95 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// LocationData -- the pure-integer world-map attribute brain extracted from
+// src/app/screens/LocationData.res (the numeric core its
+// LocationDataCoprocessor.res binding routes to locationdata.wasm). The .res is
+// a 13-row table of locations; almost every column is senses: the id / name /
+// description / environment STRINGS, the per-device (IP string, x float)
+// position pairs, the worldWidth FLOAT, the backgroundColor hex. Per the
+// DESIGN-VISION ("AffineScript is the brain, JS/Pixi the senses; only
+// primitives cross the wasm boundary"), the host keeps every string, every
+// float, and the colour hexes, and resolves a location id to its table INDEX
+// before querying; AffineScript owns only the integer attribute lookups the
+// index keys.
+//
+// RE-DECOMPOSITION. The ReScript holds the attributes inside a record array and
+// reads them with Array.find / Array.length / field access. We re-decompose the
+// two genuinely-integer columns -- the environment KIND (an enum) and the
+// device COUNT -- as flat index-keyed lookups over the 0..12 closed band the row
+// order already fixes. The environment string column becomes its 0..3 ordinal
+// (the order the binding's ENVIRONMENT selector imposes: FIELD < CITY <
+// DATACENTER < LAB); the device-count column becomes the length of each row's
+// devicePositions array, frozen as an Int. The float worldWidth and the hex
+// backgroundColor stay host-side (they are senses); the WorldBuilder
+// buildingCount is worldWidth/200 -- a float derivation -- and also stays host-
+// side. No location strings cross; the brain sees an index, returns an Int.
+//
+//## Location index encoding (the header contract for the JS host)
+//   idx  id            env       devices      idx  id            env       devices
+//     0  field         FIELD(0)     2           7  nexus         DC(2)        3
+//     1  city          CITY(1)      8           8  devhub        DC(2)        2
+//     2  dmz           DC(2)        4           9  rural-isp     DC(2)        1
+//     3  security      DC(2)        4          10  business-isp  DC(2)        1
+//     4  scada         DC(2)        3          11  regional-isp  DC(2)        1
+//     5  lab           LAB(3)       4          12  backbone      DC(2)        1
+//     6  atlas         DC(2)        3
+//   The id->idx resolution is the host's (it owns the id strings); the brain's
+//   band is 0..12. An index outside 0..12 is not a location: location_valid
+//   reports 0, and environment_kind / device_count return the out-of-band
+//   sentinel -1 (never an in-band ordinal/count), so an off-domain index can
+//   never read a spurious attribute. -1 is a sentinel, not a clamp (assail stays
+//   clean).
+//
+//## Environment-kind encoding (mirror of the binding's ENVIRONMENT selector)
+//   0 FIELD, 1 CITY, 2 DATACENTER, 3 LAB. Only `field` and `city` are their own
+//   kind; `lab` is LAB; every other location is DATACENTER (the .res environment
+//   column verbatim).
+//
+// PURE: integers only, no floats, no strings, no arrays, no effects, no I/O.
+
+//## The number of locations in the world map (the .res allLocations length).
+pub fn location_count() -> Int { 13 }
+
+//## Whether a host integer names a defined location index. 1 = valid, 0 = out of band.
+pub fn location_valid(idx: Int) -> Int {
+  if idx < 0 { 0 } else { if idx > 12 { 0 } else { 1 } }
+}
+
+//## The environment-kind ordinal (0 FIELD, 1 CITY, 2 DATACENTER, 3 LAB) for a
+// location index, from the .res environment column. Off-domain indices return
+// the out-of-band sentinel -1. field=0, city=1, lab=5->3; all others DATACENTER.
+pub fn environment_kind(idx: Int) -> Int {
+  if location_valid(idx) == 1 {
+    if idx == 0 { 0 } else {
+      if idx == 1 { 1 } else {
+        if idx == 5 { 3 } else { 2 }
+      }
+    }
+  } else { -1 }
+}
+
+//## The number of devices a location hosts (the length of its devicePositions
+// row in the .res), keyed by location index. Off-domain indices return the
+// out-of-band sentinel -1.
+pub fn device_count(idx: Int) -> Int {
+  if location_valid(idx) == 1 {
+    if idx == 0 { 2 } else {
+      if idx == 1 { 8 } else {
+        if idx == 2 { 4 } else {
+          if idx == 3 { 4 } else {
+            if idx == 4 { 3 } else {
+              if idx == 5 { 4 } else {
+                if idx == 6 { 3 } else {
+                  if idx == 7 { 3 } else {
+                    if idx == 8 { 2 } else { 1 }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  } else { -1 }
+}

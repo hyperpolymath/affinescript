@@ -1,0 +1,76 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// IntroScreen -- the pure-integer paginator brain extracted from
+// src/app/screens/IntroScreen.res (the tutorial page-flip state machine). The
+// screen is senses: the per-page title/body STRINGS (all GameI18n.t lookups),
+// the highlight colour strings, the Pixi Text/Graphics page render, the
+// feature-pack page filter, and the Next/Skip button wiring. Per the
+// DESIGN-VISION ("AffineScript is the brain, JS/Pixi the senses; only
+// primitives cross the wasm boundary"), every string and Pixi object stays
+// host-side; AffineScript owns only the page-INDEX arithmetic that the Next
+// button and page indicator reduce to.
+//
+// RE-DECOMPOSITION. The ReScript keeps a `currentPage = ref(0)` and, on Next,
+// does `if currentPage < length - 1 { currentPage := currentPage + 1 }` (else
+// it starts the game), shows `currentPage + 1 / length` in the indicator, and
+// swaps the button label to "Start" on the last page. We re-decompose the ref
+// into explicit (current, count) Int params -- no module state -- so each
+// transition is a pure function of where you are and how many pages there are.
+// The page COUNT is host data (it varies with the InvertibleProgramming
+// feature flag, which filters the page array), so it is passed in rather than
+// hard-coded: the brain owns the bounded-advance arithmetic, the host owns
+// which pages exist. The string render stays host-side entirely.
+//
+//## Paginator contract (the header contract for the JS host)
+//   page indices are 0-based and dense; `count` is the number of pages the
+//   host's feature-filtered array currently holds (>= 1 in practice -- the
+//   welcome/controls/alerts/coop pages are always present).
+//   intro_next_page(current, count) -> the index after pressing Next: current
+//     + 1 while more pages remain, else stays on the last page (the .res only
+//     increments when current < count - 1; on the last page Next instead
+//     starts the game, so the index itself does not advance).
+//   intro_is_last_page(current, count) -> 1 when current is the final page
+//     (current == count - 1), else 0. This is the .res "swap Next -> Start"
+//     test and the "Next starts the game" branch condition.
+//   intro_page_label(current) -> the 1-based page number shown in the "N / M"
+//     indicator: current + 1.
+//   A current index outside 0..count-1, or a non-positive count, is off-domain;
+//   the guarded kernels return the out-of-band sentinel -1 rather than an
+//   in-band index (-1 is a sentinel, not a clamp; assail stays clean).
+//
+// PURE: integers only, no floats, no strings, no arrays, no effects, no I/O.
+
+//## Whether (current, count) is a valid paginator position: count >= 1 and
+// 0 <= current < count. 1 = valid, 0 = off-domain.
+pub fn intro_pos_valid(current: Int, count: Int) -> Int {
+  if count < 1 { 0 } else {
+    if current < 0 { 0 } else {
+      if current >= count { 0 } else { 1 }
+    }
+  }
+}
+
+//## Whether the current page is the last one (current == count - 1): 1 if so,
+// else 0. Off-domain positions yield 0 (no spurious "last page").
+pub fn intro_is_last_page(current: Int, count: Int) -> Int {
+  if intro_pos_valid(current, count) == 1 {
+    if current == count - 1 { 1 } else { 0 }
+  } else { 0 }
+}
+
+//## The page index after pressing Next: current + 1 while pages remain, else
+// the unchanged last index (the .res increments only when current < count - 1;
+// on the last page Next starts the game and the index stays put). Off-domain
+// positions yield the out-of-band sentinel -1.
+pub fn intro_next_page(current: Int, count: Int) -> Int {
+  if intro_pos_valid(current, count) == 1 {
+    if current < count - 1 { current + 1 } else { current }
+  } else { -1 }
+}
+
+//## The 1-based page number for the "N / M" indicator: current + 1. Guarded so
+// a negative current cannot show a zero-or-negative page number (-1 sentinel).
+pub fn intro_page_label(current: Int) -> Int {
+  if current < 0 { -1 } else { current + 1 }
+}

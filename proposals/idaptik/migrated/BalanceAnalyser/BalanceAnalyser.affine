@@ -1,0 +1,70 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// BalanceAnalyser -- the pure-integer impact-classification brain extracted from
+// src/app/screens/BalanceAnalyserModel.res (the numeric core its
+// BalanceAnalyserCoprocessor.res binding routes to balanceanalyser.wasm). The
+// model is overwhelmingly senses: it PARSES the balance-report JSON (every
+// string key, every Float field), formats recommendation STRINGS, and builds
+// the PixiJS display lines. Per the DESIGN-VISION ("AffineScript is the brain,
+// JS/Pixi the senses; only primitives cross the wasm boundary"), all of that
+// -- the JSON, the version/parameter/reason strings, the win-rate and
+// difficulty FLOATS, the per-impact colour ints -- stays host-side.
+//
+// RE-DECOMPOSITION. The separable integer decisions are the impact-level
+// comparison (getByImpact's filter) and the critical-issue test
+// (hasCriticalIssues). The ReScript switches the `impactLevel` variant
+// (Minor | Moderate | Major) to a 0..2 ordinal (impactValue) and then compares
+// ordinals; we re-decompose the variant as that 0..2 ordinal directly -- the
+// order the .res `impactValue` switch already imposes (Minor < Moderate <
+// Major). The variant IS the ordinal; no impact strings cross. The float
+// rounding helpers (round1 / pct100 / winRatePct) are senses and stay host-side.
+//
+//## Impact-level encoding (the header contract for the JS host)
+//   ord  level       (mirrors BalanceAnalyserCoprocessor IMPACT.{MINOR,MODERATE,MAJOR})
+//     0  Minor
+//     1  Moderate
+//     2  Major
+//   An ordinal outside 0..2 is not a defined impact: impact_valid reports 0 and
+//   impact_value returns the out-of-band sentinel -1 (never an in-band ordinal),
+//   so an off-domain input cannot pass as a real impact. -1 is a sentinel, not a
+//   clamp (assail stays clean).
+//
+//## Filter / threshold contract (the decisions getByImpact + hasCriticalIssues make)
+//   passes_impact(item_ord, min_ord) -> 1 when the item's impact meets or
+//     exceeds the minimum (item_ord >= min_ord), else 0. This is getByImpact's
+//     `impactValue(item.impact) >= impactValue(minImpact)` kept-row test.
+//   has_critical_issues(major_count) -> 1 when the report has any major issue
+//     (major_count > 0), else 0. This is hasCriticalIssues' `majorIssues > 0`.
+//   Both treat their inputs as plain counts/ordinals; the host owns the
+//   recommendation array, the strings, and the float fields.
+//
+// PURE: integers only, no floats, no strings, no arrays, no effects, no I/O.
+
+//## The number of impact levels (Minor, Moderate, Major).
+pub fn impact_level_count() -> Int { 3 }
+
+//## Whether a host integer names a defined impact level. 1 = valid, 0 = out of band.
+pub fn impact_valid(ord: Int) -> Int {
+  if ord < 0 { 0 } else { if ord > 2 { 0 } else { 1 } }
+}
+
+//## Canonicalise an impact ordinal: identity on a valid 0..2 ordinal, the
+// out-of-band sentinel -1 otherwise. Mirrors impactValue's role as the
+// variant's ordinal; -1 is never an in-band ordinal so out-of-band input can
+// never be confused with a real impact (sentinel, not a clamp).
+pub fn impact_value(ord: Int) -> Int {
+  if impact_valid(ord) == 1 { ord } else { -1 }
+}
+
+//## Whether an item's impact meets or exceeds the minimum: 1 keep, 0 drop.
+// getByImpact's `impactValue(item) >= impactValue(min)` row filter.
+pub fn passes_impact(item_ord: Int, min_ord: Int) -> Int {
+  if item_ord >= min_ord { 1 } else { 0 }
+}
+
+//## Whether the report has any major issue (majorIssues > 0): 1 yes, 0 no.
+// hasCriticalIssues' test. A non-positive count is never positive -> 0.
+pub fn has_critical_issues(major_count: Int) -> Int {
+  if major_count > 0 { 1 } else { 0 }
+}
