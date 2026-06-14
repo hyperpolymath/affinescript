@@ -1,0 +1,15 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// Issue #555 regression fixture (POSITIVE). Single-shot tail-resume: the
+// handled computation `ask()` is itself the perform, so resuming with 5 makes
+// the whole `handle` evaluate to 5. This is the one resume shape the
+// tree-walking interpreter implements correctly; the multi-shot guard must not
+// disturb it. (First interpreter test to actually exercise `resume`.)
+effect Ask { fn ask() -> Int; }
+
+fn main() -> Int {
+  handle ask() {
+    ask() => resume(5)
+  }
+}

@@ -1,0 +1,19 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// Issue #555 regression fixture (NEGATIVE). The arm calls `resume` twice. The
+// tree-walking interpreter has no reified continuation, so each call
+// previously just returned its argument and `a + b` silently evaluated to 3
+// instead of running the continuation twice. The second `resume` must now fail
+// loudly rather than silently miscompute.
+effect Choose { fn pick() -> Int; }
+
+fn main() -> Int {
+  handle pick() {
+    pick() => {
+      let a = resume(1);
+      let b = resume(2);
+      a + b
+    }
+  }
+}
