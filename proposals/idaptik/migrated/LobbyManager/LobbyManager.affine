@@ -1,0 +1,225 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// LobbyManager -- the lobby-state co-processor, the pure-integer core extracted
+// from idaptik src/app/multiplayer/LobbyManager.res (multiplayer-lobby state
+// management). Per the DESIGN-VISION ("AffineScript is the brain, JS/Pixi the
+// senses; only primitives cross the wasm boundary") and the SHAPE-A note on the
+// host binding (LobbyManagerCoprocessor.res / its Bridge.js), the model never lives
+// in wasm: "the HOST owns every room record and its string id and name, the array
+// of player entries, the selected-room option, the player name, the error string
+// and every Phoenix channel push" (LobbyManagerCoprocessor.res:14-19). Each kernel
+// takes the relevant current scalar(s) plus event args and returns the new scalar,
+// which the caller stores back. Only the lobby-state ordinal, the role ordinal, the
+// packed ready-bit mask and the counts cross. Every export is i32 -> i32 (scalar ABI).
+//
+//## Why this split, not a port of LobbyManager.res
+// LobbyManager.res entangles (a) the lobbyState transitions (setConnectionState,
+// enterRoom, leaveRoom, setReady, unsetReady, res:69-175), (b) the role toggle
+// (toggleRole, res:89-96), (c) the per-player readiness over the player list
+// (setPlayerReady, allPlayersReady, canStartGame, res:147-199), and (d) a great
+// deal of STRING/record/array work (room records, playerEntry arrays, the player
+// name, the role strings "q"/"observer", the error option, stateToString,
+// roleDisplayName, roleDescription, res:24-50, 178-241). Only (a)-(c) are integer
+// decisions; (d) is host senses. The player LIST stays host-side as a SHAPE-A
+// array; what crosses for readiness is its packed bit-mask (bit i = player i is
+// ready) plus the live-player count. This file is the verified core of the
+// transition + predicate kernels the host binding already contracts for
+// (LobbyManagerCoprocessor.res:67-100: stateOfConnection / enterRoomState /
+// leaveRoomState / setReadyState / unsetReadyState / toggleRole / setPlayerReady /
+// allPlayersReady / canStartGame / readyCount / stateToColor).
+//
+//## lobbyState encoding (declaration order of `lobbyState`, res:16-22)
+//   code  state         meaning
+//     0   Disconnected  not connected to the sync server
+//     1   Connecting    WebSocket opening
+//     2   Connected     socket open, not yet in a room
+//     3   InRoom        joined a room (host keeps the room id string)
+//     4   Ready         in a room and marked ready
+// A state ordinal outside 0..4 is not a defined lobby state: unset_ready_state
+// passes it through untouched (its "otherwise unchanged" arm) and state_to_color
+// reports the OUT-OF-BAND SENTINEL -1 (never an in-band colour, so no collision).
+//
+//## connectionState encoding (declaration order of PhoenixSocket.connectionState)
+//   0 Disconnected   1 Connecting   2 Connected
+// state_of_connection maps these onto the lobbyState band; a connection ordinal
+// outside 0..2 is undefined and yields the SENTINEL -1.
+//
+//## role encoding (the host's "q"/"observer" strings, read as ordinals)
+//   0 Q (hacker)   1 Observer/Operator
+// The host parses the role string; the kernel flips the ordinal. Mirrors the .res
+// `if role == "q" { "observer" } else { "q" }` -- ANY non-Q ordinal toggles to Q.
+//
+//## ready-mask encoding
+// The packed ready mask is an i32 with bit i set iff player i (in the host's array
+// order) is ready. `count` is the number of live players (0..MAX_PLAYERS). The
+// "live bits" are the low `count` bits; all_players_ready asks they are all set,
+// ready_count tallies them. MAX_PLAYERS caps the mask at a realistic lobby size so
+// the bit idiom stays well inside i32 (asymmetric co-op needs only a handful).
+
+//## The lobby player cap. The asymmetric co-op design seats only a few players per
+// room; 16 is a generous ceiling that keeps the 2^count live-mask inside i32.
+fn max_players() -> Int { 16 }
+
+//## The bit value for a player index, built by repeated doubling (the proven idiom
+// for 2^index with a small non-negative exponent; 1 << index is avoided in favour
+// of the portable multiply, mirroring LaptopState.bit_of).
+fn bit_of(index: Int) -> Int {
+  let mut value = 1;
+  let mut k = 0;
+  while k < index {
+    value = value * 2;
+    k = k + 1;
+  }
+  value
+}
+
+//## Whether a player index addresses a live seat (0 .. MAX_PLAYERS-1). An
+// out-of-band index is a phantom seat and every mask kernel no-ops on it.
+fn valid_index(index: Int) -> Int {
+  if index < 0 { return 0; }
+  if index >= max_players() { return 0; }
+  1
+}
+
+//## state_of_connection -- map a PhoenixSocket connectionState ordinal onto the
+// lobbyState ordinal. The integer core of LobbyManager.setConnectionState
+// (res:69-76): Connected -> Connected, Connecting -> Connecting, Disconnected ->
+// Disconnected. lobbyState and connectionState are DISTINCT enums (hence the
+// binding's stateOfConnection); they happen to agree on these three ordinals, but
+// we map explicitly so a future reorder of either enum is caught by parity rather
+// than silently aliased. An undefined connection ordinal yields the OUT-OF-BAND
+// SENTINEL -1 (not an in-band lobby state; sentinel, not a clamp).
+pub fn state_of_connection(conn: Int) -> Int {
+  if conn == 0 { return 0; }   // Disconnected -> Disconnected
+  if conn == 1 { return 1; }   // Connecting   -> Connecting
+  if conn == 2 { return 2; }   // Connected    -> Connected
+  -1                           // undefined connection ordinal
+}
+
+//## enter_room_state -- the lobby state after a successful channel join.
+// The integer core of LobbyManager.enterRoom (res:104-112): joining a room moves
+// the lobby to InRoom(3) regardless of the prior state (the host stores the room
+// id string separately). Constant InRoom(3).
+pub fn enter_room_state(prev: Int) -> Int {
+  let _ = prev;
+  3
+}
+
+//## leave_room_state -- the lobby state after leaving a room.
+// The integer core of LobbyManager.leaveRoom (res:115-124): leaving returns the
+// lobby to Connected(2) (socket still open, no room). Constant Connected(2).
+pub fn leave_room_state(prev: Int) -> Int {
+  let _ = prev;
+  2
+}
+
+//## set_ready_state -- the lobby state after marking self ready.
+// The integer core of LobbyManager.setReady (res:161-163): marking ready moves the
+// lobby to Ready(4). Constant Ready(4).
+pub fn set_ready_state(prev: Int) -> Int {
+  let _ = prev;
+  4
+}
+
+//## unset_ready_state -- the lobby state after unmarking ready.
+// The integer core of LobbyManager.unsetReady (res:166-175): ONLY from Ready(4)
+// does unmarking do anything -- it drops to InRoom(3) when a room is still selected
+// (has_room != 0) else to Connected(2). From any other state it is a no-op and the
+// state is returned UNCHANGED (res:172 `| _ => model`). An out-of-band state is not
+// Ready and is likewise passed through untouched (sentinel-preserving: we never
+// fabricate an in-band state from an undefined one).
+pub fn unset_ready_state(state: Int, has_room: Int) -> Int {
+  if state == 4 {
+    if has_room != 0 { return 3; }   // back to InRoom (room still selected)
+    return 2;                        // back to Connected (no room)
+  }
+  state                              // not Ready: unchanged
+}
+
+//## toggle_role -- flip the role ordinal Q <-> Observer.
+// The integer core of LobbyManager.toggleRole (res:89-96): the .res flips on the
+// string identity `role == "q"`, so Q(0) -> Observer(1) and ANY non-Q ordinal ->
+// Q(0). This makes Q the canonical "off-Observer" fixpoint exactly as the string
+// logic does (a stray ordinal toggles back to Q, never to a phantom role).
+pub fn toggle_role(role: Int) -> Int {
+  if role == 0 { 1 } else { 0 }
+}
+
+//## set_player_ready -- set or clear the ready bit for player `index` in the mask.
+// The integer core of LobbyManager.setPlayerReady (res:147-158): the host marks
+// one player in its array ready/not, which here is one bit toggle on the packed
+// mask. `ready` non-zero SETS bit `index`, zero CLEARS it; the new mask is returned
+// for the host to store back. An out-of-band index addresses no live seat and
+// leaves the mask untouched (the no-op a phantom player id would amount to).
+// Built from add/subtract of the bit value (mirroring LaptopState.service_set), so
+// no unary ~ is needed (that opcode mis-compiles; see VmBitwise EVIDENCE).
+pub fn set_player_ready(mask: Int, index: Int, ready: Int) -> Int {
+  if valid_index(index) == 0 { return mask; }
+  let bit = bit_of(index);
+  let is_set = (mask / bit) % 2 == 1;
+  if ready != 0 {
+    if is_set { mask } else { mask + bit }
+  } else {
+    if is_set { mask - bit } else { mask }
+  }
+}
+
+//## ready_count -- the number of players currently ready (the "k of n" readout).
+// Companion to LobbyManager.allPlayersReady (res:190-193) and the binding's
+// readyCount (res:96-97): popcount of the LOW `count` bits of the mask, i.e. how
+// many of the `count` live players have their ready bit set. A non-positive count
+// has no live players and tallies 0; the count is capped at MAX_PLAYERS so the scan
+// is bounded. Implemented as a bounded bit-scan (while loop, mirroring the
+// LaptopState idiom) rather than a SWAR popcount, to stay clear of the arithmetic
+// `>>` sign-propagation on the high bit.
+pub fn ready_count(mask: Int, count: Int) -> Int {
+  let mut live = count;
+  if live < 0 { live = 0; }
+  if live > max_players() { live = max_players(); }
+  let mut acc = 0;
+  let mut bit = 1;
+  let mut k = 0;
+  while k < live {
+    if (mask / bit) % 2 == 1 { acc = acc + 1; }
+    bit = bit * 2;
+    k = k + 1;
+  }
+  acc
+}
+
+//## all_players_ready -- whether every live player is ready.
+// The integer core of LobbyManager.allPlayersReady (res:190-193): true iff there is
+// at least one player AND all of them are ready. Over the packed mask that is
+// `count > 0 AND ready_count(mask, count) == count` -- the low `count` bits are all
+// set. Returns 1 = all ready, 0 = not. A zero/negative count returns 0 (an empty
+// lobby is never "all ready"), mirroring res:191 `Array.length > 0`.
+pub fn all_players_ready(mask: Int, count: Int) -> Int {
+  if count <= 0 { return 0; }
+  if ready_count(mask, count) == count { 1 } else { 0 }
+}
+
+//## can_start_game -- whether the Start Game button should enable.
+// The integer core of LobbyManager.canStartGame (res:197-199): the host may start
+// iff it IS the host AND all players are ready. `is_host` non-zero means host.
+// Returns 1 = enable, 0 = disable.
+pub fn can_start_game(is_host: Int, mask: Int, count: Int) -> Int {
+  if is_host == 0 { return 0; }
+  all_players_ready(mask, count)
+}
+
+//## state_to_color -- the status-indicator hex colour for a lobby-state ordinal.
+// The integer core of LobbyManager.stateToColor (res:213-221): red Disconnected,
+// orange Connecting, green Connected, blue InRoom, teal Ready. Total over the 0..4
+// band, each state a distinct hex (no collision). An out-of-band state ordinal is
+// not a defined state and yields the OUT-OF-BAND SENTINEL -1 (not an in-band
+// colour; sentinel, not a clamp; assail PA-AFF-001 stays clean). Values mirror
+// res:214-220 exactly.
+pub fn state_to_color(state: Int) -> Int {
+  if state == 0 { return 16729156; }   // 0xff4444 -- Disconnected (red)
+  if state == 1 { return 16755268; }   // 0xffaa44 -- Connecting (orange)
+  if state == 2 { return 4521796; }    // 0x44ff44 -- Connected (green)
+  if state == 3 { return 4491519; }    // 0x4488ff -- InRoom (blue)
+  if state == 4 { return 4521898; }    // 0x44ffaa -- Ready (teal)
+  -1                                   // out of band: not a defined lobby state
+}

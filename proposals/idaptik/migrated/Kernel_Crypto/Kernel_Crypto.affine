@@ -1,0 +1,62 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// Kernel_Crypto -- the crypto-domain kernel GATE, the pure-integer brain
+// extracted from idaptik src/shared/Kernel_Crypto.res. Per the DESIGN-VISION
+// ("AffineScript is the brain, JS/Pixi the senses; they pass primitives across
+// the wasm boundary"), the JS host keeps the per-device `dict<ref<int>>` active-
+// count state, the device-id STRINGS, every executionResult message, the Promise
+// dispatch, and the registry walk (listByDomain). AffineScript owns only the
+// integer GATE decision the handler makes before dispatch: which status code the
+// two enforcement layers (concurrency rate limit; quantum gate for strong cracks)
+// select, given the device's current active count and the decoded command shape.
+//
+// Re-decomposition notes (NOT a transliteration):
+//   * Kernel_Crypto.res is async (returns promise<executionResult>) and string-
+//     keyed (cmd == "crack"). The async + string + message framing is incidental
+//     senses-work; the BRAIN is the synchronous integer status selection. The host
+//     classifies the command to a flag (is_crack) and reads data[1] as the integer
+//     strength before calling the brain.
+//   * No module state: the active count is an explicit Int param; the brain owns
+//     only the threshold comparisons, not the dict.
+//   * "no backend registered" (status 404) is registry state the host owns; the
+//     brain models the gate up to the point of dispatch -- 0 means "proceed to
+//     dispatch" (to the Crypto backend, or the Quantum backend on the strong-crack
+//     route), and the host then resolves 404 itself if the chosen domain is empty.
+//
+//## Status encoding (the header contract for the JS host)
+//   429  rate limit hit   -- active crypto ops at the per-device maximum
+//   402  quantum required -- crack strength >= 4 but no quantum backend present
+//     0  proceed          -- dispatch to the Crypto (or Quantum) backend
+// These mirror the .res `status: 429 / 402` resolutions and the `| Some(...)`
+// dispatch arms.
+
+// Maximum simultaneous crypto operations allowed per device (.res
+// maxConcurrentCrypto). At or above this, the gate returns 429.
+pub fn max_concurrent_crypto() -> Int { 3 }
+
+// The crack-strength threshold at or above which a crack is routed to the Quantum
+// domain instead of Crypto (.res `strength >= 4`).
+pub fn crack_strength_threshold() -> Int { 4 }
+
+// The crypto-gate status selector. Inputs:
+//   active      -- the device's current in-flight crypto-op count.
+//   is_crack    -- 1 if the command is "crack", else 0 (host-classified).
+//   strength    -- the decoded crack strength (data[1]; host default 3 if absent).
+//   has_quantum -- 1 if a Quantum backend is registered, else 0 (registry state).
+// Returns 429 (rate limit), 402 (quantum required), or 0 (proceed to dispatch),
+// mirroring the .res control flow exactly:
+//   1. active >= max            -> 429
+//   2. crack & strength >= 4    -> has_quantum ? 0 : 402
+//   3. otherwise                -> 0
+pub fn crypto_status(active: Int, is_crack: Int, strength: Int, has_quantum: Int) -> Int {
+  if active >= max_concurrent_crypto() {
+    429
+  } else {
+    if is_crack == 1 {
+      if strength >= crack_strength_threshold() {
+        if has_quantum == 1 { 0 } else { 402 }
+      } else { 0 }
+    } else { 0 }
+  }
+}

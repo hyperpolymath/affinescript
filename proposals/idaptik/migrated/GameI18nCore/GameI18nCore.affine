@@ -1,0 +1,76 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// GameI18nCore -- the localisation numeric co-processor, the pure-integer core
+// extracted from idaptik src/app/utils/LanguageSettings.res and the plural rule
+// of src/app/utils/GameI18n.res (the same brain that gamei18n.wasm serves, which
+// GameI18nCoprocessor.res already binds via languageClamp / nextLanguage /
+// selectPluralForm). Per the DESIGN-VISION ("AffineScript is the brain, JS/Pixi
+// the senses; only primitives cross the wasm boundary") the JS host keeps every
+// language CODE string ("en"/"es"/...), the navigator-language sniff, the
+// translation catalogues and the mustache interpolation; AffineScript owns only
+// the canonical integer encoding of the five languages, the cycle step, and the
+// singular/plural decision.
+//
+// The ReScript original is a 5-constructor variant `language` with a
+// `languageIndex` / `languageOfIndex` pair and a `nextLanguage` cycle, plus the
+// `tn` plural selector (count == 1 -> singular, else plural). We re-decompose the
+// variant as the canonical 0..4 integer the constructor order already implies, so
+// the taxonomy is a closed band and the unknown band folds onto EN, matching
+// `languageOfIndex`'s `_ => EN` arm. No strings cross the boundary.
+//
+//## Language encoding (the header contract for the JS host)
+//   code  language        code  language
+//     0   EN (English)      3   DE (Deutsch)
+//     1   ES (Espanol)      4   JA (Japanese)
+//     2   FR (Francais)
+// The encoding is LOSSLESS over 0..4: five distinct languages map to five
+// distinct codes. Unlike DeviceType this is NOT a sentinel taxonomy -- the
+// ReScript `languageOfIndex` deliberately FOLDS every out-of-band index onto EN
+// (its `_ => EN` arm), so language_clamp returns the in-band code 0 for anything
+// outside 0..4. That fold is intentional, defined behaviour (an unknown locale
+// degrades to English), so this collapse-to-in-band is the specified contract,
+// not an undeclared clamp.
+
+//## Plural form codes
+//   0 = SINGULAR, 1 = PLURAL
+
+// The number of canonical languages in the taxonomy.
+pub fn language_count() -> Int { 5 }
+
+// Whether a host integer names a defined language. 1 = valid 0..4, 0 = otherwise.
+pub fn is_valid_language(code: Int) -> Int {
+  if code < 0 { 0 } else { if code > 4 { 0 } else { 1 } }
+}
+
+// Fold an arbitrary language index onto the valid 0..4 band; unknown -> EN (0).
+// This mirrors LanguageSettings.languageOfIndex's `_ => EN` arm: the fold to the
+// in-band code 0 is the SPECIFIED degrade-to-English behaviour, not a sentinel.
+pub fn language_clamp(code: Int) -> Int {
+  if is_valid_language(code) == 1 { code } else { 0 }
+}
+
+// Advance to the next language in the cycle EN->ES->FR->DE->JA->EN
+// (LanguageSettings.nextLanguage). The input is first folded to the valid band so
+// an unknown index cycles as if it were EN, landing on ES (1).
+pub fn next_language(code: Int) -> Int {
+  let c = language_clamp(code);
+  if c >= 4 { 0 } else { c + 1 }
+}
+
+// The previous language in the cycle (JA<-EN reversed), the inverse of
+// next_language on the closed band. Not in the ReScript source but the natural
+// companion of a cyclic enum; keeps the cycle losslessly invertible.
+pub fn prev_language(code: Int) -> Int {
+  let c = language_clamp(code);
+  if c <= 0 { 4 } else { c - 1 }
+}
+
+// Select the singular (0) or plural (1) form for a count (GameI18n.tn /
+// PolyglotI18n.tn). The ReScript checks `count == 1.0` on a Float; integer item
+// counts cross unscaled (count IS already a whole number at every call site), so
+// the rule is exactly: count == 1 -> SINGULAR (0), otherwise PLURAL (1). A count
+// of 0 is plural ("0 items"), matching the `else` arm.
+pub fn select_plural_form(count: Int) -> Int {
+  if count == 1 { 0 } else { 1 }
+}

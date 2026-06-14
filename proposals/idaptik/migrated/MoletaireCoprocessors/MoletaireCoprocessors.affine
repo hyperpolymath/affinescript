@@ -1,0 +1,161 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// MoletaireCoprocessors -- the coprocessor-effect co-processor, the pure-integer
+// core extracted from idaptik src/app/companions/MoletaireCoprocessors.res (the
+// GURPS-style 3-level computational augments for the Moletaire companion). Per the
+// DESIGN-VISION ("AffineScript is the brain, JS/Pixi the senses; only primitives
+// cross the wasm boundary") and the host binding contract
+// (MoletaireCoprocessorsCoprocessor.res / its Bridge.js), the model never lives in
+// wasm: the host keeps the coprocessorBay record, every coprocessor STRING (name,
+// description), the variant `level` and `coprocessorType`, and the FeaturePacks
+// flag plumbing. The kernel sees only the LEVEL ORDINAL 0..3 the host derives from
+// the `level` variant via levelValue, and returns the per-augment effect as a
+// scalar. Every export is i32 -> i32 (scalar ABI).
+//
+//## Why this split, not a port of MoletaireCoprocessors.res
+// MoletaireCoprocessors.res entangles (a) the level<->ordinal mapping (levelValue,
+// res:41-47), (b) the per-augment integer-effect ladders keyed by that ordinal
+// (audioSoundCount 0/3/6/10 res:222-238; sensorRange 1/3/5/8 res:275-291; the
+// MK-III gate predicates canMimicVoice/canDetectVaultWeakPoints res:240-251,
+// 295-305; the >= Enhanced gate canCarryFragile res:370-371; the 0..3 vibration
+// band res:319-346), (c) the upgrade step (Stock->Basic->Enhanced->Overclocked or
+// none, res:171-186), and (d) the badge colour map (levelColor, res:59-65). Plus
+// two FLOAT effects (pathEfficiency, eatChanceMultiplier res:255-271, 350-366) and
+// all the STRING work (coprocessorName/Description, res:98-119). Only (a)-(d) are
+// integer decisions; the floats cross in milli-units host-side per the binding
+// (Bridge divides by 1000) and the strings are host senses. This file is the
+// verified core of the integer kernels the host binding already contracts for
+// (MoletaireCoprocessorsCoprocessor.res:47-78: audioSoundCount / canMimicVoice /
+// sensorRange / canDetectVaultWeakPoints / vibrationQuality / canCarryFragile /
+// levelValue / levelColour / nextLevel).
+//
+//## Level-ordinal encoding (the header contract for the JS host)
+// The host derives the ordinal from the `level` variant (declaration order,
+// res:30-47) and hands the kernel the ordinal, never the variant:
+//   code  level         meaning
+//     0   Stock         no coprocessor installed (baseline)
+//     1   Basic         MK-I  -- basic augment
+//     2   Enhanced      MK-II -- enhanced augment
+//     3   Overclocked   MK-III -- overclocked (max capability)
+// The encoding is LOSSLESS over its closed 0..3 band. A level ordinal outside
+// 0..3 is not a defined level: level_value clamps it to the nearest in-band
+// endpoint (it is a numeric magnitude, so clamping to the band is meaningful --
+// this IS a clamp, mirroring res:41-47's total switch over the four constructors),
+// while the per-augment ladders fail safe to the Stock effect for any undefined
+// ordinal, and next_level returns the OUT-OF-BAND SENTINEL -1 past Overclocked.
+
+//## The number of canonical augment levels in the GURPS ladder (Stock..Overclocked).
+pub fn level_count() -> Int { 4 }
+
+//## level_value -- canonicalise a host level ordinal onto the closed 0..3 band.
+// The integer core of MoletaireCoprocessors.levelValue (res:41-47): a total map
+// from the four-constructor `level` variant to its numeric magnitude 0..3. Because
+// the band is a magnitude (more level = more capability), an out-of-band ordinal
+// is CLAMPED to the nearest endpoint rather than sentinelled: a negative ordinal
+// floors to Stock(0), an ordinal above Overclocked ceils to Overclocked(3). The
+// in-band 0..3 is the identity. (This is the one true clamp in the module; every
+// other export uses a 0/-1 predicate or sentinel.)
+pub fn level_value(lvl: Int) -> Int {
+  if lvl < 0 { return 0; }
+  if lvl > 3 { return 3; }
+  lvl
+}
+
+//## level_colour -- the 24-bit RGB badge colour for a level ordinal.
+// The integer core of MoletaireCoprocessors.levelColor (res:59-65): the upgrade
+// UI badge hex, keyed by the canonicalised level. Stock grey, Basic green,
+// Enhanced blue, Overclocked orange (the host palette, read as its ordinal). An
+// out-of-band ordinal is canonicalised first via level_value, so the colour map is
+// total over the band and never collides (each of the four levels has a distinct
+// hex). The values mirror res:59-65 exactly.
+pub fn level_colour(lvl: Int) -> Int {
+  let c = level_value(lvl);
+  if c == 0 { return 5592405; }    // 0x555555 -- Stock (grey)
+  if c == 1 { return 4500036; }    // 0x44aa44 -- Basic (green)
+  if c == 2 { return 4491519; }    // 0x4488ff -- Enhanced (blue)
+  16746564                         // 0xff8844 -- Overclocked (orange)
+}
+
+//## next_level -- the level ordinal after an upgrade, or -1 when maxed.
+// The integer core of MoletaireCoprocessors.upgrade's next-level step
+// (res:171-186): Stock->Basic->Enhanced->Overclocked advances by one, and an
+// Overclocked coprocessor has NO next level (upgrade returns false, res:178/184).
+// So this returns lvl+1 on the closed 0..2 band and the OUT-OF-BAND SENTINEL -1 at
+// Overclocked(3) -- and likewise -1 for any out-of-band ordinal, which is not a
+// defined level and therefore has no successor. -1 is not an in-band level, so "no
+// upgrade available" can never be confused with a real level (sentinel, not a
+// clamp; assail PA-AFF-001 stays clean).
+pub fn next_level(lvl: Int) -> Int {
+  if lvl < 0 { return -1; }   // out of band: not a defined level
+  if lvl >= 3 { return -1; }  // Overclocked or above: no next level
+  lvl + 1
+}
+
+//## audio_sound_count -- distinct synthesised-sound count for a level.
+// The integer core of MoletaireCoprocessors.audioSoundCount (res:222-238): the
+// AudioSynthesiser augment yields 0 sounds at Stock, 3 at Basic, 6 at Enhanced,
+// 10 at Overclocked. An undefined level is not an installed augment and fails safe
+// to the Stock effect (0 sounds).
+pub fn audio_sound_count(lvl: Int) -> Int {
+  if lvl == 1 { return 3; }
+  if lvl == 2 { return 6; }
+  if lvl == 3 { return 10; }
+  0   // Stock or undefined: no synthesised sounds
+}
+
+//## sensor_range -- detection range ahead underground, in grid cells, for a level.
+// The integer core of MoletaireCoprocessors.sensorRange (res:275-291): the
+// SignalProcessor augment detects 1 cell at Stock (only the adjacent cell), 3 at
+// Basic, 5 at Enhanced, 8 at Overclocked. An undefined level fails safe to the
+// Stock effect (range 1) -- never 0, since even with no augment the mole sees the
+// adjacent cell.
+pub fn sensor_range(lvl: Int) -> Int {
+  if lvl == 1 { return 3; }
+  if lvl == 2 { return 5; }
+  if lvl == 3 { return 8; }
+  1   // Stock or undefined: only the directly-adjacent cell
+}
+
+//## can_mimic_voice -- whether voice mimicry (ventriloquism) is available.
+// The integer core of MoletaireCoprocessors.canMimicVoice (res:240-251): the
+// AudioSynthesiser unlocks voice mimicry ONLY at Overclocked (res:249,
+// `level == Overclocked`). Returns 1 iff the level is exactly Overclocked(3), else
+// 0. Any other (incl. out-of-band) ordinal is not Overclocked and returns 0.
+pub fn can_mimic_voice(lvl: Int) -> Int {
+  if lvl == 3 { 1 } else { 0 }
+}
+
+//## can_detect_vault_weak_points -- whether vault-wall weak points are detectable.
+// The integer core of MoletaireCoprocessors.canDetectVaultWeakPoints (res:295-305):
+// the SignalProcessor reveals vault weak points (needed for the plasma cutter)
+// ONLY at Overclocked (res:303, `level == Overclocked`). Returns 1 iff the level is
+// exactly Overclocked(3), else 0.
+pub fn can_detect_vault_weak_points(lvl: Int) -> Int {
+  if lvl == 3 { 1 } else { 0 }
+}
+
+//## can_carry_fragile -- whether fragile items can be carried without breaking.
+// The integer core of MoletaireCoprocessors.canCarryFragile (res:370-371): the
+// StabilisationCore lets the mole carry fragile items at Enhanced OR ABOVE
+// (res:371, `level >= Enhanced`). This is the one inequality gate (not an equality
+// gate), so it returns 1 for Enhanced(2) and Overclocked(3), and 0 for Stock(0)
+// and Basic(1). An out-of-band negative ordinal is below Enhanced and returns 0.
+pub fn can_carry_fragile(lvl: Int) -> Int {
+  if lvl >= 2 { 1 } else { 0 }
+}
+
+//## vibration_quality -- the above-ground-movement reading band for a level.
+// The integer core of MoletaireCoprocessors.vibrationQuality + vibrationOfBand
+// (res:319-346): the VibrationAnalyser's reading quality is NoData at Stock,
+// DirectionOnly at Basic, DirectionAndIntent at Enhanced, FullProfile at
+// Overclocked -- i.e. the reading band IS the level band (res:339-344 maps each
+// level onto the same-index variant, and vibrationOfBand res:320-326 maps it
+// back). So over the defined band this is the identity; an out-of-band ordinal is
+// not a defined level and fails safe to the NoData band (0), mirroring
+// vibrationOfBand's `| _ => FullProfile` only ever being reached for in-band 3.
+pub fn vibration_quality(lvl: Int) -> Int {
+  if lvl < 0 { return 0; }   // out of band: no reading
+  if lvl > 3 { return 0; }   // out of band: no reading
+  lvl                        // NoData=0 / DirectionOnly=1 / DirectionAndIntent=2 / FullProfile=3
+}

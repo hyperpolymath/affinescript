@@ -1,0 +1,70 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// Coprocessor -- the co-processor-framework core, the pure-integer brain
+// extracted from idaptik src/shared/Coprocessor.res. Per the DESIGN-VISION
+// ("AffineScript is the brain, JS/Pixi the senses; they pass primitives across
+// the wasm boundary"), the JS host keeps the Domain STRING names (Domain.toString),
+// the backend `dict<backend>` registry, every executionResult message, the
+// mutable resourceStats RECORD and its float energy field, and the power-consumer
+// callback. AffineScript owns only the integer decisions the framework makes once
+// the strings are classified: the canonical Domain ordinal band and the integer
+// resourceStats accumulation arithmetic.
+//
+// This file IS the contract the existing host bridge
+// (CoprocessorCoreCoprocessorBridge.js) links against: it expects the exports
+// domain_count / domain_clamp / accumulate_metric / increment_calls, exactly what
+// CoprocessorCoreCoprocessor.res names (domainCount, domainClamp, accumulateMetric,
+// incrementCalls). The float accumulateEnergy fold stays host-side (the energy
+// drain is a float Joule total; per the migration rule floats not integer-exact
+// stay with the senses), so it is intentionally NOT exported here.
+//
+// Re-decomposition notes (NOT a transliteration):
+//   * The Domain variant (IO..Neural) IS the integer its constructor order
+//     implies; we encode it as the closed contiguous 0..9 band, not an enum
+//     round-trip (the round-trip would be the identity), the same flat shape
+//     PortNames.affine and DeviceType.affine use.
+//   * The resourceStats record is mutable host state; the brain owns only the
+//     per-field fold STEP (total := total + delta, calls := calls + 1), pure
+//     functions of explicit Int params -- no module state.
+//
+//## Domain-ordinal encoding (the header contract for the JS host)
+//   code  domain          code  domain
+//     0   IO                5   Maths
+//     1   Vector            6   Quantum
+//     2   Tensor            7   Crypto
+//     3   Graphics          8   Audio
+//     4   Physics           9   Neural
+// The encoding is LOSSLESS: ten distinct domains map to ten distinct codes, so
+// the host round-trips domain <-> code with no collision. A code outside 0..9 is
+// not a domain: domain_clamp folds it to the out-of-band sentinel -1 -- never an
+// in-band code, so no in-band collision is introduced (this is a sentinel, not a
+// clamp; assail stays clean).
+
+// The number of canonical co-processor domains in the taxonomy.
+pub fn domain_count() -> Int { 10 }
+
+// Whether a host integer names a defined domain. 1 = valid, 0 = out of band.
+pub fn is_valid_domain(code: Int) -> Int {
+  if code < 0 { 0 } else { if code > 9 { 0 } else { 1 } }
+}
+
+// Canonicalise a host integer: identity on a valid 0..9 code, the out-of-band
+// sentinel -1 otherwise. -1 is not an in-band code, so out-of-band input can
+// never be confused with a real domain (this is a sentinel, not a clamp).
+pub fn domain_clamp(code: Int) -> Int {
+  if is_valid_domain(code) == 1 { code } else { -1 }
+}
+
+// Fold an integer metric (compute units or memory bytes) into a running total,
+// the resourceStats.totalCompute / totalMemory cumulative step. Pure: the host
+// stores the returned scalar back into its mutable record.
+pub fn accumulate_metric(running_total: Int, delta: Int) -> Int {
+  running_total + delta
+}
+
+// Advance the resourceStats call counter by one (the totalCalls step). The host
+// owns the count; the brain owns only the increment.
+pub fn increment_calls(running_calls: Int) -> Int {
+  running_calls + 1
+}

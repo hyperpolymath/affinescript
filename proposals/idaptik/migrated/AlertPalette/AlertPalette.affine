@@ -1,0 +1,128 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// AlertPalette -- the accessibility alert-colour lookup co-processor, the
+// pure-integer core extracted from src/app/utils/ColorPalette.res `alertColor`.
+// The existing ColorPalette co-processor (colorpalette.wasm, bound by
+// ColorPaletteCoprocessor.res) deliberately captured only the RGB-channel and
+// WCAG luminance/contrast KERNELS and left the accessibility palette LOOKUP
+// TABLES on the ReScript side (FeaturePacks documents this: "the live HUD
+// call-sites alertColor/deviceColor are accessibility palette lookup tables with
+// no corresponding kernel"). This brain captures exactly that residual: the
+// alert-level colour table, which is wholly pure-integer (enum bands in, a 24-bit
+// RGB integer out) with no host delegation -- unlike deviceColor/securityColor
+// whose Normal arm delegates to DeviceTypes host getters.
+//
+// Per the DESIGN-VISION the JS host keeps the AccessibilitySettings refs (the
+// high-contrast flag and colour-blind mode); AffineScript owns only the integer
+// table: given the high-contrast flag, the colour-blind mode and the alert level
+// it returns the packed colour.
+//
+//## Alert level encoding (levelInt, the header contract for the JS host)
+//   0 = Clear   1 = Noticed   2 = Caution   3 = Alert   4 = Danger
+// The ReScript switch has explicit arms for 0..4 and a `_` catch-all that takes
+// the Danger-row's "max" colour; we reproduce that fold (level >= 4 OR level < 0
+// uses the catch-all row), so the table is total over all Int and matches the
+// ReScript exactly.
+//
+//## Colour-blind mode encoding (mode, mirrors AccessibilitySettings.colorBlindMode)
+//   0 = Normal       3 = Tritanopia
+//   1 = Protanopia   4 = Achromatopsia
+//   2 = Deuteranopia
+// Protanopia and Deuteranopia share one table (the ReScript `Protanopia |
+// Deuteranopia =>` combined arm). An out-of-band mode folds onto Normal (0),
+// matching AccessibilitySettings.colorBlindModeFromString's `_ => Normal`.
+//
+// high_contrast is a host boolean crossed as 0 (off) or 1 (on); any non-zero is
+// treated as on. When on, the mode is ignored (the ReScript tests high contrast
+// first), so the high-contrast table is returned regardless of mode.
+//
+// All outputs are 24-bit RGB integers (0..0xFFFFFF = 16777215), well inside i32;
+// no value collides with another row at the same level, and -1 is never emitted,
+// so this is a pure total lookup (assail stays clean: no sentinel collapse).
+
+// Fold an arbitrary colour-blind mode index onto the valid 0..4 band; unknown ->
+// Normal (0). Mirrors colorBlindModeFromString's `_ => Normal`.
+pub fn clamp_mode(mode: Int) -> Int {
+  if mode < 0 { 0 } else { if mode > 4 { 0 } else { mode } }
+}
+
+// The catch-all alert row index used for level < 0 or level > 4: the ReScript
+// `_` arm coincides with the Danger row visually but uses a DISTINCT "max"
+// colour, so it is modelled as its own row index 5.
+fn alert_row(level: Int) -> Int {
+  if level < 0 { 5 } else { if level > 4 { 5 } else { level } }
+}
+
+//## High-contrast alert table (isHighContrastEnabled() == true)
+//   row 0 0x00ff00  1 0xffff00  2 0xffaa00  3 0xff4400  4 0xff0000  _ 0xff0000
+fn high_contrast_colour(level: Int) -> Int {
+  let r = alert_row(level);
+  if r == 0 { 65280 } else {
+  if r == 1 { 16776960 } else {
+  if r == 2 { 16755200 } else {
+  if r == 3 { 16729088 } else {
+  16711680 } } } }
+}
+
+//## Normal-mode alert table
+//   0 0x00ff00  1 0x88ff00  2 0xffff00  3 0xff8800  4 0xff4400  _ 0xff0000
+fn normal_colour(level: Int) -> Int {
+  let r = alert_row(level);
+  if r == 0 { 65280 } else {
+  if r == 1 { 8978176 } else {
+  if r == 2 { 16776960 } else {
+  if r == 3 { 16746496 } else {
+  if r == 4 { 16729088 } else {
+  16711680 } } } } }
+}
+
+//## Protanopia/Deuteranopia alert table (shared arm)
+//   0 0x0088ff  1 0x44aaff  2 0xffdd44  3 0xffaa00  4 0xff8800  _ 0xff6600
+fn protan_deuter_colour(level: Int) -> Int {
+  let r = alert_row(level);
+  if r == 0 { 35071 } else {
+  if r == 1 { 4500223 } else {
+  if r == 2 { 16768324 } else {
+  if r == 3 { 16755200 } else {
+  if r == 4 { 16746496 } else {
+  16737792 } } } } }
+}
+
+//## Tritanopia alert table
+//   0 0x00ee88  1 0x66dd66  2 0xdddd00  3 0xee6688  4 0xdd2266  _ 0xcc0044
+fn tritan_colour(level: Int) -> Int {
+  let r = alert_row(level);
+  if r == 0 { 61064 } else {
+  if r == 1 { 6741350 } else {
+  if r == 2 { 14540032 } else {
+  if r == 3 { 15623816 } else {
+  if r == 4 { 14492262 } else {
+  13369412 } } } } }
+}
+
+//## Achromatopsia alert table (brightness-only)
+//   0 0xffffff  1 0xcccccc  2 0x999999  3 0x777777  4 0x444444  _ 0x222222
+fn achroma_colour(level: Int) -> Int {
+  let r = alert_row(level);
+  if r == 0 { 16777215 } else {
+  if r == 1 { 13421772 } else {
+  if r == 2 { 10066329 } else {
+  if r == 3 { 7829367 } else {
+  if r == 4 { 4473924 } else {
+  2236962 } } } } }
+}
+
+// The packed RGB alert colour for a high-contrast flag, a colour-blind mode and
+// an alert level. High contrast wins first (mode ignored); otherwise the mode
+// selects the table. This is the full ColorPalette.res `alertColor` decision.
+pub fn alert_colour(high_contrast: Int, mode: Int, level: Int) -> Int {
+  if high_contrast != 0 { high_contrast_colour(level) } else {
+    let m = clamp_mode(mode);
+    if m == 0 { normal_colour(level) } else {
+    if m == 1 { protan_deuter_colour(level) } else {
+    if m == 2 { protan_deuter_colour(level) } else {
+    if m == 3 { tritan_colour(level) } else {
+    achroma_colour(level) } } } }
+  }
+}

@@ -1,0 +1,58 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// PeerPort -- the peer-port arithmetic co-processor, the pure-integer core
+// extracted from src/app/utils/PeerDetection.res `getCandidatePorts` /
+// `getPeerCandidatePorts`. Per the DESIGN-VISION ("AffineScript is the brain,
+// JS/Pixi the senses; only primitives cross the wasm boundary") the JS host keeps
+// the actual fetch, the /__idaptik_health probe, the AbortController timeout and
+// the navigator/env mode sniff; AffineScript owns only the integer port-candidate
+// arithmetic and the base-port selection.
+//
+// The ReScript original builds a six-element candidate array
+//   [basePort, 10000+basePort, 20000+basePort, ..., 50000+basePort]
+// and picks the peer's base port by mode: a browser instance (8080 family) looks
+// for a Gossamer peer (8008 family) and vice versa. We re-decompose the array
+// constructor as an indexed pure function (slot in, port out) and the mode pick
+// as a boolean-flag selector, so no array and no string cross the boundary.
+//
+//## Candidate slot encoding (the header contract for the JS host)
+//   slot 0 -> basePort + 0       slot 3 -> basePort + 30000
+//   slot 1 -> basePort + 10000   slot 4 -> basePort + 40000
+//   slot 2 -> basePort + 20000   slot 5 -> basePort + 50000
+// There are exactly six candidate slots (PeerDetection's fixed array length).
+
+//## Port-family bases
+//   8080 = browser family base, 8008 = Gossamer family base.
+
+// The number of candidate ports generated per base (PeerDetection's array length).
+pub fn candidate_slot_count() -> Int { 6 }
+
+// Whether a slot index is within the valid 0..5 candidate band.
+pub fn is_valid_slot(slot: Int) -> Int {
+  if slot < 0 { 0 } else { if slot > 5 { 0 } else { 1 } }
+}
+
+// The candidate port for a base port and a slot index: basePort + slot * 10000.
+// Out-of-band slots return the sentinel -1 (PeerDetection only ever indexes 0..5;
+// -1 is below every real port so it can never be mistaken for a candidate). This
+// is a guard sentinel, not a fold onto an in-band port.
+pub fn candidate_port(base_port: Int, slot: Int) -> Int {
+  if is_valid_slot(slot) == 1 { base_port + slot * 10000 } else { -1 }
+}
+
+// The peer's base port given OUR mode. is_gossamer is the host mode flag crossed
+// as 0 (we are the browser instance) or 1 (we are the Gossamer instance). The
+// ReScript picks the OPPOSITE family: a browser instance (we == 0) seeks a
+// Gossamer peer on the 8008 base; a Gossamer instance (we == 1) seeks a browser
+// peer on the 8080 base. Any non-zero flag is treated as Gossamer.
+pub fn peer_base_port(is_gossamer: Int) -> Int {
+  if is_gossamer != 0 { 8080 } else { 8008 }
+}
+
+// Convenience composite: the peer candidate port for OUR mode flag and a slot.
+// Folds peer_base_port into candidate_port so the host can ask for a peer probe
+// target in one call (out-of-band slot still yields the -1 guard sentinel).
+pub fn peer_candidate_port(is_gossamer: Int, slot: Int) -> Int {
+  candidate_port(peer_base_port(is_gossamer), slot)
+}

@@ -1,0 +1,80 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// Coprocessor_IO -- the virtual-filesystem index-and-byte core, the pure-integer
+// brain extracted from idaptik src/shared/Coprocessor_IO.res. Per the
+// DESIGN-VISION ("AffineScript is the brain, JS/Pixi the senses; they pass
+// primitives across the wasm boundary"), the JS host keeps the per-device file
+// buffers, the path and tombstone `dict`s, every path STRING, the array<int>
+// marshalling, the executionResult records and messages, and the float energy /
+// latency metrics. AffineScript owns only the integer kernels: the path-byte
+// validity test and its 7-bit mask, the content-length frame split, the stat
+// big-endian byte pair, and the integer compute-unit metrics.
+//
+// This is the file-buffer anti-pattern from the migration-playbook, re-decomposed:
+// the stateful per-device buffer stays a host SENSE; the deterministic integer
+// arithmetic over indices and bytes is the BRAIN. This file IS the contract the
+// existing host bridge (CoprocessorIOCoprocessorBridge.js) links against: it
+// expects path_byte_valid / mask_ascii / content_len / stat_hi / stat_lo /
+// write_compute / read_compute / list_compute, mirroring CoprocessorIOCoprocessor.res.
+// The float metrics (write/read energyJoules + latencyMs) are NOT integer-exact
+// and stay host-side (per the migration rule), so they are NOT exported here.
+//
+// Re-decomposition notes (NOT a transliteration):
+//   * The write/read/list/stat handlers in the .res are async (promise<
+//     executionResult>) and string-keyed; the async + string + record framing is
+//     senses-work. The BRAIN is the synchronous integer kernels the handlers
+//     compute (50 + contentLen, the >>8/&0xFF stat pair, the 0<b<128 path-byte
+//     filter, the b & 0x7F encode mask).
+//   * No module state: every kernel is a pure function of explicit Int params. The
+//     host folds the actual frame/path/buffer and passes the integer lengths.
+//   * contentLen is the write-frame split: data is [path\0content...], so the byte
+//     count after the null separator is frameLen - (nullIx + 1), floored at 0.
+
+// pathByteValid -- 1 if b is an accepted path byte (0 < b < 128), else 0. Mirrors
+// the decodePath filter `b > 0 && b < 128` (line 111): printable single-byte ASCII
+// only; 0 is the null separator and the high bytes are rejected.
+pub fn path_byte_valid(b: Int) -> Int {
+  if b > 0 { if b < 128 { 1 } else { 0 } } else { 0 }
+}
+
+// maskAscii -- b & 0x7F, the encodePath 7-bit mask (line 124,
+// Int.Bitwise.land(charCode, 0x7F)). Folds any code point onto the low 7 bits.
+pub fn mask_ascii(b: Int) -> Int {
+  b & 127
+}
+
+// contentLen -- bytes after the null separator in a write frame:
+// frameLen - (nullIx + 1), floored at 0. The host has located the null index;
+// the brain owns the floored subtraction so a missing/last-byte null can never
+// yield a negative count.
+pub fn content_len(frame_len: Int, null_ix: Int) -> Int {
+  let n = frame_len - (null_ix + 1);
+  if n < 0 { 0 } else { n }
+}
+
+// statHi -- high byte of the big-endian size pair: (size >> 8) & 0xFF. Mirrors the
+// stat 2-byte big-endian encoding (line 29 / cmdStat).
+pub fn stat_hi(size: Int) -> Int {
+  (size >> 8) & 255
+}
+
+// statLo -- low byte of the big-endian size pair: size & 0xFF.
+pub fn stat_lo(size: Int) -> Int {
+  size & 255
+}
+
+// writeCompute -- write computeUnits: 50 + contentLen (line 174).
+pub fn write_compute(content_len: Int) -> Int {
+  50 + content_len
+}
+
+// readCompute -- read computeUnits: 30 + contentLen (line 206).
+pub fn read_compute(content_len: Int) -> Int {
+  30 + content_len
+}
+
+// listCompute -- list computeUnits: 20 + livePathCount * 5 (line 238).
+pub fn list_compute(live_path_count: Int) -> Int {
+  20 + live_path_count * 5
+}

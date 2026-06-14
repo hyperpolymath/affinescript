@@ -1,0 +1,107 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// ResourceAccounting -- the per-device resource-accounting core, the pure-integer
+// brain extracted from idaptik src/shared/ResourceAccounting.res. Per the
+// DESIGN-VISION ("AffineScript is the brain, JS/Pixi the senses; they pass
+// primitives across the wasm boundary"), the JS host keeps the per-device
+// `deviceResourceState` record, the `dict<deviceResourceState>` registry, the
+// device-id STRINGS, the FeaturePacks/wasm-handle routing and the lazy creation.
+// AffineScript owns only the integer transition kernels: the cumulative
+// compute/energy folds, the memory PEAK, the active-call decrement, the floored
+// utilisation percentage, the saturation predicate, and the quota-fit gate.
+//
+// SHAPE-A (per ResourceAccountingCoprocessor.res): the MODEL never lives in wasm.
+// The host keeps the account and threads each field through a kernel, storing the
+// returned scalar back. ENERGY crosses as integer milli-Joules (1 J = 1000 mJ):
+// the .res holds energy as a float Joule total, but the kernel boundary is i32, so
+// the host scales J -> mJ before calling and the brain folds the integer. This is
+// the migration rule "floats -> x1000 when integer-expressible".
+//
+// This file IS the contract the existing host bridge
+// (ResourceAccountingCoprocessorBridge.js) links against: it expects the exports
+// record_compute / record_memory_peak / record_energy / end_call / pct /
+// has_capacity, exactly what ResourceAccountingCoprocessor.res names. We add
+// check_quota (the integer form of checkQuota), whose three sub-predicates the
+// .res spells out (computeOk && memOk && energyOk) -- the fit gate the kernel
+// applies before dispatch.
+//
+// Re-decomposition notes (NOT a transliteration):
+//   * Compute and energy are CUMULATIVE (running total += op); memory is PEAK
+//     (keep the larger). The .res getUsagePercentage / hasCapacity use a 95%
+//     hard cutoff (>= 95% saturated); pct floors to an integer percent.
+//   * No module state: each kernel is a pure function of explicit Int params.
+//   * The float pctInt/pctFloat helpers in the .res are unified here as one
+//     integer pct (used*100/avail, floored), with avail<=0 -> 0 guarding the
+//     NaN/infinity the .res guarded with `if avail <= 0`.
+
+// |n| without a library call.
+fn iabs(n: Int) -> Int {
+  if n < 0 { 0 - n } else { n }
+}
+
+// recordCompute -- fold one operation's compute units into the running total
+// (cumulative). The host stores the returned scalar back into used.maxCompute.
+pub fn record_compute(running_total: Int, units: Int) -> Int {
+  running_total + units
+}
+
+// recordMemoryPeak -- keep the largest single-operation memory allocation (PEAK
+// semantics; the game models memory as "maximum live allocation"). Mirrors the
+// .res `if bytes > peak then bytes else peak`.
+pub fn record_memory_peak(current_peak: Int, bytes: Int) -> Int {
+  if bytes > current_peak { bytes } else { current_peak }
+}
+
+// recordEnergy -- fold one operation's energy drain (milli-Joules) into the total
+// (cumulative). Integer mJ; the host has scaled Joules -> mJ before the call.
+pub fn record_energy(running_total_mj: Int, op_mj: Int) -> Int {
+  running_total_mj + op_mj
+}
+
+// endCall -- decrement the concurrent-operation count on completion, floored at
+// zero (the .res decrement is always-positive, but the brain floors so an
+// out-of-order decrement can never go negative). DECLARED floor at 0.
+pub fn end_call(active: Int) -> Int {
+  if active <= 0 { 0 } else { active - 1 }
+}
+
+// pct -- floored integer utilisation percentage (used*100/avail). When capacity
+// is non-positive returns 0 (guarding the NaN/infinity the .res guarded with
+// `if avail <= 0 { 0.0 }`), matching the floor of getUsagePercentage's value.
+pub fn pct(used: Int, avail: Int) -> Int {
+  if avail <= 0 { 0 } else { iabs(used) * 100 / avail }
+}
+
+// hasCapacity -- saturation predicate over two already-computed percentages:
+// 1 iff BOTH sit below 95, else 0. Mirrors the .res `computeRatio < 0.95 &&
+// energyRatio < 0.95` 95%-cutoff (here in integer percent, so < 95).
+pub fn has_capacity(pct_a: Int, pct_b: Int) -> Int {
+  if pct_a < 95 { if pct_b < 95 { 1 } else { 0 } } else { 0 }
+}
+
+// check_quota -- the integer form of checkQuota: 1 iff the operation FITS the
+// device quota on all three dimensions, else 0. Compute and energy are checked
+// cumulatively (used + op <= limit); memory is checked against the limit alone
+// (peak semantics: the new op's allocation must fit regardless of current peak),
+// exactly as the .res `computeOk && memOk && energyOk`. Energy is in mJ on both
+// the used and the limit side.
+pub fn check_quota(
+  used_compute: Int,
+  op_compute: Int,
+  limit_compute: Int,
+  op_memory: Int,
+  limit_memory: Int,
+  used_energy_mj: Int,
+  op_energy_mj: Int,
+  limit_energy_mj: Int,
+) -> Int {
+  let compute_ok = used_compute + op_compute <= limit_compute;
+  let mem_ok = op_memory <= limit_memory;
+  let energy_ok = used_energy_mj + op_energy_mj <= limit_energy_mj;
+  if compute_ok {
+    if mem_ok {
+      if energy_ok { 1 } else { 0 }
+    } else { 0 }
+  } else { 0 }
+}

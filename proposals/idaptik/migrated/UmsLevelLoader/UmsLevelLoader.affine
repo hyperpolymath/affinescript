@@ -1,0 +1,115 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// UmsLevelLoader -- the UMS level-decode validation core, the pure-integer brain
+// extracted from idaptik src/shared/UmsLevelLoader.res. Per the DESIGN-VISION
+// ("AffineScript is the brain, JS/Pixi the senses; they pass primitives across
+// the wasm boundary"), the JS host keeps the JSON, every Dict lookup, all the
+// item/subtype/condition STRINGS, the record assembly, and the FeaturePacks/wasm-
+// handle routing. AffineScript owns only the integer/enum validation decisions
+// the decoder makes once the strings are classified to ordinals: the item-kind
+// band predicate, the (kind, subtype) arm membership, the nullary/capacity
+// discriminants, the condition normalisation + its validity predicate, the
+// covert-link floor, and the patrol-radius default (in milli-units).
+//
+// This file IS the contract the existing host bridge
+// (UmsLevelLoaderCoprocessorBridge.js) links against: it expects is_valid_kind /
+// subtype_in_band / is_nullary_kind / requires_capacity / normalise_condition /
+// is_valid_condition / floor_covert_links / resolve_patrol_radius_milli, mirroring
+// UmsLevelLoaderCoprocessor.res. The float-INPUT helpers toIntTrunc(float) and
+// cableLengthPresent(float) are pure float truncation / a `== 0.0` test, NOT
+// integer-expressible as an i32->i32 kernel; per the migration rule they stay
+// host-side (Float.toInt and the `len == 0.0 ? absent` check), so they are
+// intentionally NOT exported here.
+//
+// Re-decomposition notes (NOT a transliteration):
+//   * UmsLevelLoader.res decodes string-keyed JSON arms (Some("Cable") => ...).
+//     The string classification IS senses-work; the BRAIN is the ordinal-shaped
+//     membership the arms encode. The host maps "Cable"/"Ethernet"/"Good" to the
+//     Inventory.itemKind / itemCondition declaration-order ordinals before calling.
+//   * No module state: every kernel is a pure function of explicit Int params.
+//   * patrolRadius is a float (.res default 200.0); it crosses as integer milli-
+//     units (200.0 -> 200000) per the "floats -> x1000 when integer-expressible"
+//     rule, so resolve_patrol_radius_milli is the integer form of resolvePatrolRadius.
+//
+//## itemKind ordinals (mirror of Inventory.itemKind declaration order)
+//   0 Cable   1 Adapter   2 Tool   3 Module   4 Storage   5 Consumable
+//   6 Keycard 7 Radio
+//## itemCondition ordinals (mirror of Inventory.itemCondition declaration order)
+//   0 Pristine   1 Good   2 Worn   3 Damaged   4 Broken
+// Keycard (6) carries a STRING level and Radio (7) is nullary, so neither has an
+// integer subtype: subtype_in_band reports 0 for both (the host owns the Keycard
+// string and the Radio nullary arm). normalise_condition DECLARES the loss for an
+// out-of-band condition by folding it to Good (1), mirroring the .res
+// `decodeCondition(...)->Option.getOr(Good)` fallback (a controlled collapse, not
+// a sentinel).
+
+// The number of canonical itemKind tags.
+pub fn kind_count() -> Int { 8 }
+
+// The number of canonical itemCondition values.
+pub fn condition_count() -> Int { 5 }
+
+// Whether a kind ordinal names a real itemKind tag: 1 when 0..7, else 0.
+pub fn is_valid_kind(kind: Int) -> Int {
+  if kind < 0 { 0 } else { if kind > 7 { 0 } else { 1 } }
+}
+
+// Whether a kind is nullary (needs no subtype): 1 for Radio (7), else 0. Mirrors
+// the .res `Some("Radio") => Some(Radio)` arm (no subtype lookup).
+pub fn is_nullary_kind(kind: Int) -> Int {
+  if kind == 7 { 1 } else { 0 }
+}
+
+// Whether a kind requires an int capacity: 1 for Storage (4), else 0. Mirrors the
+// .res Storage arm pairing the subtype with `getInt(dict, "capacity")`.
+pub fn requires_capacity(kind: Int) -> Int {
+  if kind == 4 { 1 } else { 0 }
+}
+
+// Whether a (kind, subtype) ordinal pair is an accepted itemKind arm: 1 when the
+// subtype is within the kind's declared subtype band, else 0. Per-kind bands
+// (mirroring the .res subtype switch arms):
+//   Cable(0)      subtype 0..5   (6 arms)
+//   Adapter(1)    subtype 0..3   (4 arms)
+//   Tool(2)       subtype 0..5   (6 arms)
+//   Module(3)     subtype 0..3   (4 arms)
+//   Storage(4)    subtype 0..1   (2 arms: USBDrive, SDCard)
+//   Consumable(5) subtype 0..3   (4 arms)
+//   Keycard(6)    -- string level, no integer subtype -> 0
+//   Radio(7)      -- nullary, no subtype             -> 0
+pub fn subtype_in_band(kind: Int, subtype: Int) -> Int {
+  if subtype < 0 { return 0; }
+  if kind == 0 { if subtype <= 5 { return 1; } else { return 0; } }
+  if kind == 1 { if subtype <= 3 { return 1; } else { return 0; } }
+  if kind == 2 { if subtype <= 5 { return 1; } else { return 0; } }
+  if kind == 3 { if subtype <= 3 { return 1; } else { return 0; } }
+  if kind == 4 { if subtype <= 1 { return 1; } else { return 0; } }
+  if kind == 5 { if subtype <= 3 { return 1; } else { return 0; } }
+  0
+}
+
+// Condition validity predicate: 1 when the ordinal is 0..4, else 0.
+pub fn is_valid_condition(condition: Int) -> Int {
+  if condition < 0 { 0 } else { if condition > 4 { 0 } else { 1 } }
+}
+
+// Normalise a condition ordinal: identity on the valid 0..4 band, folding any
+// out-of-band ordinal to Good (1) -- the .res decodeCondition `Option.getOr(Good)`
+// fallback. This is a DECLARED collapse over the condition ordinal, not a sentinel.
+pub fn normalise_condition(condition: Int) -> Int {
+  if is_valid_condition(condition) == 1 { condition } else { 1 }
+}
+
+// numberOfCovertLinks floor: never below zero (the .res floorCovertLinks). A
+// negative parsed count is folded up to 0.
+pub fn floor_covert_links(n: Int) -> Int {
+  if n < 0 { 0 } else { n }
+}
+
+// Guard patrolRadius default, in milli-units (the .res 200.0 default scaled by
+// 1000 -> 200000). present == 0 means the field was absent -> the default; any
+// non-zero present means the parsed value (already in milli-units) is used.
+pub fn resolve_patrol_radius_milli(present: Int, value_milli: Int) -> Int {
+  if present == 0 { 200000 } else { value_milli }
+}

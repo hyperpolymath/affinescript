@@ -1,0 +1,114 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// MoletaireHunger -- the hunger-classification co-processor, the pure-integer core
+// extracted from idaptik src/app/companions/MoletaireHunger.res (the gravity-based
+// hunger system for the Moletaire companion). Per the DESIGN-VISION ("AffineScript
+// is the brain, JS/Pixi the senses; only primitives cross the wasm boundary") and
+// the host binding contract (MoletaireHungerCoprocessor.res / its Bridge.js), the
+// kernel never sees the world model: the host keeps the edibleObject array, the
+// hungerConfig records, the gravity float maths and every world position. Hunger
+// crosses the boundary in MILLI-UNITS -- the host passes round(hunger * 1000) as an
+// i32, exactly as the binding header prescribes ("Hunger crosses in milli-units:
+// pass round(hunger *. 1000.0) as an Int, since the f64 boundary truncates",
+// MoletaireHungerCoprocessor.res:9-12). Every export is i32 -> i32 (scalar ABI).
+//
+//## Why this split, not a port of MoletaireHunger.res
+// MoletaireHunger.res entangles (a) the gravity/pull FLOAT maths (calculatePull,
+// calculateTotalPull, calculateHungerRate, res:121-219 -- inverse-square law,
+// hunger multipliers, force capping), (b) the discrete hunger STATE classification
+// (getBehaviour over the threshold bands, res:241-253), (c) the HUD band index
+// (hungerDisplayString, res:256-270, read as its 0..5 band), (d) the indicator
+// colour (hungerColor, res:273-283), and (e) the two objective-risk predicates
+// (willEatObjective res:293-294, objectiveAtRisk res:298-299). Only (b)-(e) are
+// integer decisions over the hunger scalar; (a) is continuous float physics and
+// stays host-side (the binding does not even expose it). This file is the verified
+// core of the five integer kernels the host binding already contracts for
+// (MoletaireHungerCoprocessor.res:45-57: behaviour / displayBand / hungerColour /
+// willEatObjective / objectiveAtRisk), over the milli-unit hunger scalar.
+//
+//## Hunger scalar + threshold encoding (the header contract for the JS host)
+// Hunger is a milli-unit i32: 0 = full, 1000 = maximally starving (the host's
+// 0.0..1.0 float * 1000). The .res thresholds become integer milli-unit cuts,
+// preserving the original strict-comparison boundary semantics exactly:
+//   peckish      = 0.4 -> 400      (res:92  -- also the hungry cut, res:95)
+//   starving     = 0.8 -> 800      (res:99)
+//   objective-eat= 0.9 -> 900      (res:104)
+// plus the display-only cuts 0.1->100 and 0.6->600 (res:257,262).
+//
+//## behaviour-state encoding (declaration order of `hungerBehaviour`, res:226-237)
+//   code  state         getBehaviour branch (res:241-253)
+//     0   Cooperative   hunger <= 400 (full player control)
+//     1   Resisting     400 < hunger <= 800 (periodic input override)
+//     2   Devouring     hunger > 800 AND an edible is nearby (locked on, eats)
+//     3   Wandering     hunger > 800 AND no edible nearby (aimless, needs rescue)
+//
+//## display-band encoding (order of hungerDisplayString's strings, res:256-270)
+//     0 FULL (<100)  1 CONTENT (<400)  2 PECKISH (<600)  3 HUNGRY (<800)
+//     4 STARVING (<900)  5 RAVENOUS (>=900)
+
+//## behaviour -- the discrete hunger behaviour state for a hunger scalar + edible flag.
+// The integer core of MoletaireHunger.getBehaviour (res:241-253). The host passes
+// hunger in milli-units and the nearby-edible flag as 0/1 (any non-zero counts as
+// "present", so a stray host encoding still resolves a definite branch). Above the
+// starving cut (hunger > 800) the mole is Devouring(2) when something is edible
+// nearby else Wandering(3); above the hungry cut (hunger > 400) it is Resisting(1);
+// otherwise Cooperative(0). Note the boundary is STRICT (> 800, > 400) exactly as
+// the .res source, so hunger == 800 is Resisting and hunger == 400 is Cooperative.
+pub fn behaviour(hunger_milli: Int, has_edible: Int) -> Int {
+  if hunger_milli > 800 {
+    if has_edible != 0 { return 2; }   // Devouring -- locked onto a nearby edible
+    return 3;                          // Wandering -- starving, nothing nearby
+  }
+  if hunger_milli > 400 { return 1; }  // Resisting -- periodic input override
+  0                                    // Cooperative -- full player control
+}
+
+//## display_band -- the HUD hunger-band index 0..5 for a hunger scalar.
+// The integer core of MoletaireHunger.hungerDisplayString (res:256-270), read as
+// the index of the band string in declaration order. The cuts are STRICT-less-than
+// on the milli-unit scalar, faithful to the .res `<` chain: FULL below 100, CONTENT
+// below 400, PECKISH below 600, HUNGRY below 800, STARVING below 900, RAVENOUS at
+// or above 900. Total over all i32 inputs (a negative hunger is below 100 -> FULL,
+// the well-fed endpoint; a hunger above 1000 is at-or-above 900 -> RAVENOUS).
+pub fn display_band(hunger_milli: Int) -> Int {
+  if hunger_milli < 100 { return 0; }   // FULL
+  if hunger_milli < 400 { return 1; }   // CONTENT
+  if hunger_milli < 600 { return 2; }   // PECKISH
+  if hunger_milli < 800 { return 3; }   // HUNGRY
+  if hunger_milli < 900 { return 4; }   // STARVING
+  5                                     // RAVENOUS
+}
+
+//## hunger_colour -- the 24-bit RGB hunger-indicator colour for a hunger scalar.
+// The integer core of MoletaireHunger.hungerColor (res:273-283): green when
+// well-fed (below the peckish cut 400), yellow-green when peckish (below 600),
+// orange when hungry (below the starving cut 800), red when starving (at or above
+// 800). The cuts are the same STRICT-less-than milli-unit boundaries as the .res
+// `<` chain. Total over all i32 inputs; each of the four bands maps to a distinct
+// hex so the colour map never collides. Values mirror res:274-282 exactly.
+pub fn hunger_colour(hunger_milli: Int) -> Int {
+  if hunger_milli < 400 { return 4521796; }   // 0x44ff44 -- green (well-fed)
+  if hunger_milli < 600 { return 11206468; }  // 0xaaff44 -- yellow-green (peckish)
+  if hunger_milli < 800 { return 16755268; }  // 0xffaa44 -- orange (hungry)
+  16729156                                    // 0xff4444 -- red (starving)
+}
+
+//## will_eat_objective -- whether the mole eats a mission objective on contact.
+// The integer core of MoletaireHunger.willEatObjective (res:293-294): the mole
+// WILL eat the objective once hunger exceeds the objective-eat cut (0.9 -> 900).
+// STRICT-greater, faithful to the .res `>`, so hunger == 900 does NOT yet eat it.
+// Returns 1 = will eat (mission fail risk), 0 = safe.
+pub fn will_eat_objective(hunger_milli: Int) -> Int {
+  if hunger_milli > 900 { 1 } else { 0 }
+}
+
+//## objective_at_risk -- whether the objective is at risk soon (warning indicator).
+// The integer core of MoletaireHunger.objectiveAtRisk (res:298-299): the objective
+// is flagged at risk once hunger exceeds the starving cut (0.8 -> 800), slightly
+// below the actual eat cut so the warning fires before the mole eats it.
+// STRICT-greater, faithful to the .res `>`. Returns 1 = at risk (flash the icon),
+// 0 = not yet.
+pub fn objective_at_risk(hunger_milli: Int) -> Int {
+  if hunger_milli > 800 { 1 } else { 0 }
+}
