@@ -1,0 +1,26 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// #554 precision guard. `read_ref` takes a `ref` parameter but returns a
+// *value* (`*a`), not a borrow — so its return-borrow summary is empty and
+// the call-argument borrow is still released at call end (pre-existing
+// behaviour). The argument `a` therefore stays movable afterwards. Must
+// pass: the fix must scope strictly to callees that actually return a
+// borrow of a parameter.
+
+module BorrowCalleeValueReturnOk;
+
+fn read_ref(ref a: Int) -> Int {
+  return *a;
+}
+
+fn consume(own v: Int) -> Int {
+  return v;
+}
+
+fn main() -> Int {
+  let a: Int = 7;
+  let y = read_ref(a);
+  let _g = consume(a);
+  return y;
+}

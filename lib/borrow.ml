@@ -53,6 +53,21 @@ type move_record = {
 type fn_signature = {
   fn_name : string;
   fn_param_ownerships : ownership option list;
+
+  (** Parameter indices whose borrow may flow out through the function's
+      return value — the function's *return-borrow summary*. Non-empty
+      exactly when some return position yields a borrow rooted at a
+      [ref]/[mut] (caller-owned) parameter (directly [&p] / [return p], or
+      through a let-bound ref-local chain).  A call [let r = f(a, b)] where
+      [i] is in this set means the result [r] borrows argument [i] — the
+      borrow-graph edge that was previously missing, letting a use of the
+      moved argument through [r] slip past (#554).  Computed syntactically
+      from the body (name-based) at signature-build time; the
+      interprocedural-through-call-result case (a return whose origin is
+      itself another ref-returning call result bound to a local) is the
+      documented residual that true Polonius origins (ADR-022 / #553)
+      close. *)
+  fn_ret_borrow_params : int list;
 }
 
 (** Borrow checker context with function signatures *)
@@ -107,6 +122,20 @@ type state = {
       *lambda* span (the capture site) rather than at a downstream "used
       multiple times" diagnostic.  CORE-01 pt3 Slice D / #177. *)
   mutable linear_bindings : Symbol.symbol_id list;
+
+  (** Escaping borrows produced by the most-recently-checked call
+      expression whose callee has a non-empty return-borrow summary.  A call
+      [f(a)] whose result borrows [a] keeps that argument borrow *live* on
+      [state.borrows] (not released at call end) and stashes it here so the
+      immediately-following [record_ref_binding] can claim it as the result
+      binder's ref-graph edge ([let r = f(a)] → [r] borrows [a]), subjecting
+      it to the same NLL last-use expiry and return-escape checks as
+      [let r = &a].  An *unclaimed* escaping borrow (the result flowed into
+      an aggregate, was dereferenced, or discarded) behaves exactly like an
+      unclaimed plain `&` borrow: it simply lingers on [state.borrows] until
+      lexical block exit.  This list is only a hand-off pointer for the claim
+      step; the borrows it names live or die on [state.borrows]. #554. *)
+  mutable result_borrows : borrow list;
 }
 
 (** Borrow checker errors *)
@@ -154,6 +183,183 @@ let param_ownership (p : param) : ownership option =
   | Some _ as o -> o
   | None -> ty_ownership p.p_ty
 
+(** Compute a function's *return-borrow summary*: the set of parameter
+    indices whose borrow may be returned (see [fn_ret_borrow_params]).
+
+    Purely syntactic and name-based (no symbol table needed, so it can run
+    at signature-build time).  A return position contributes parameter [i]
+    when its value is a borrow rooted at the [ref]/[mut] parameter at index
+    [i] — either [&p] / [&mut p] for such a [p], the bare [return p] of a
+    [ref]/[mut] parameter (returning the reference propagates the caller's
+    borrow), or a let-bound ref-local that was itself seeded from one of
+    those.  Borrows of by-value/[own] parameters or locals are NOT included:
+    those are return-escapes the in-function [check_return_escape] already
+    rejects, so the function never type-checks and its summary is moot.
+
+    Sound direction: the summary may *over*-approximate origins (e.g. across
+    branches, or a local shadowing a parameter name) — over-approximation
+    only ever keeps more argument borrows alive at call sites, never fewer,
+    so it cannot reintroduce a use-after-move false negative.  Bodies of
+    nested lambdas are skipped (a [return] there is the lambda's, not this
+    function's).  #554. *)
+let compute_ret_borrow_params (fd : fn_decl) : int list =
+  let param_idx : (string, int) Hashtbl.t = Hashtbl.create 8 in
+  let ref_param : (string, unit) Hashtbl.t = Hashtbl.create 8 in
+  List.iteri (fun i (p : param) ->
+    Hashtbl.replace param_idx p.p_name.name i;
+    (match param_ownership p with
+     | Some Ref | Some Mut -> Hashtbl.replace ref_param p.p_name.name ()
+     | _ -> ())
+  ) fd.fd_params;
+  (* name -> param-index set a let-bound ref-local may borrow *)
+  let local_origins : (string, int list) Hashtbl.t = Hashtbl.create 8 in
+  let result = ref [] in
+  let add_origins l =
+    List.iter (fun i -> if not (List.mem i !result) then result := i :: !result) l
+  in
+  let rec peel = function ExprSpan (e, _) -> peel e | e -> e in
+  let rec root_name (e : expr) : string option =
+    match peel e with
+    | ExprVar id -> Some id.name
+    | ExprField (b, _) | ExprIndex (b, _) | ExprTupleIndex (b, _) -> root_name b
+    | _ -> None
+  in
+  (* Param indices a ref-source expression borrows, [] if none.  [local_origins]
+     is consulted BEFORE [ref_param] so a local that shadows a parameter name
+     (its entry, possibly [], was set by [record_let]) wins — otherwise a
+     value-local shadowing a ref-param would be spuriously treated as a
+     returned borrow of that param (false positive). *)
+  let origins_of_ref_source (e : expr) : int list =
+    match peel e with
+    | ExprUnary ((OpRef | OpMutRef), inner) ->
+      (match root_name inner with
+       | Some n ->
+         (match Hashtbl.find_opt local_origins n with
+          | Some l -> l
+          | None ->
+            (match Hashtbl.find_opt param_idx n with Some i -> [i] | None -> []))
+       | None -> [])
+    | ExprVar id ->
+      (match Hashtbl.find_opt local_origins id.name with
+       | Some l -> l
+       | None ->
+         if Hashtbl.mem ref_param id.name then
+           (match Hashtbl.find_opt param_idx id.name with Some i -> [i] | None -> [])
+         else [])
+    | _ -> []
+  in
+  (* Always record the binding (even to []) so a shadowing value-local masks
+     the parameter it shadows for the rest of the scan. *)
+  let record_let (pat : pattern) (value : expr) : unit =
+    match pat with
+    | PatVar id -> Hashtbl.replace local_origins id.name (origins_of_ref_source value)
+    | _ -> ()
+  in
+  (* [walk_tail] visits an expression in *return/tail* position: its value, if
+     a ref-source, is a return origin, and so are the tails of any [if]/[match]/
+     block it resolves to.  [walk_expr] visits a non-tail expression: it only
+     harvests explicit [return]s and threads [let]-bindings into [local_origins].
+     Splitting the two is what lets a borrow returned via a bare [match]/[if]
+     arm tail (e.g. `match k { _ => &x }`) register as an origin. *)
+  let rec walk_tail (e : expr) : unit =
+    add_origins (origins_of_ref_source e);
+    match e with
+    | ExprSpan (e, _) -> walk_tail e
+    | ExprReturn (Some r) -> walk_tail r
+    | ExprReturn None -> ()
+    | ExprLet lb ->
+      walk_expr lb.el_value;
+      record_let lb.el_pat lb.el_value;
+      (match lb.el_body with Some b -> walk_tail b | None -> ())
+    | ExprBlock blk -> walk_block_tail blk
+    | ExprIf ei ->
+      walk_expr ei.ei_cond; walk_tail ei.ei_then;
+      (match ei.ei_else with Some e -> walk_tail e | None -> ())
+    | ExprMatch em ->
+      walk_expr em.em_scrutinee;
+      List.iter (fun arm ->
+        (match arm.ma_guard with Some g -> walk_expr g | None -> ());
+        walk_tail arm.ma_body) em.em_arms
+    | ExprHandle eh ->
+      walk_expr eh.eh_body;
+      List.iter (fun arm ->
+        match arm with HandlerReturn (_, b) | HandlerOp (_, _, b) -> walk_tail b)
+        eh.eh_handlers
+    | ExprTry et ->
+      walk_block_tail et.et_body;
+      (match et.et_catch with
+       | Some arms -> List.iter (fun arm -> walk_tail arm.ma_body) arms
+       | None -> ());
+      (match et.et_finally with Some b -> walk_block_tail b | None -> ())
+    | _ -> walk_expr e
+  and walk_expr (e : expr) : unit =
+    match e with
+    | ExprSpan (e, _) -> walk_expr e
+    (* A returned value is in tail/return position no matter where the
+       [return] textually sits, so it must be walked as a TAIL — otherwise a
+       borrow returned via [return if c { &x } else { &x };] (or match/block)
+       is missed and the #554 stamp is bypassed by the idiomatic spelling.
+       Found by second-pass adversarial verification. *)
+    | ExprReturn (Some r) -> walk_tail r
+    | ExprReturn None -> ()
+    | ExprLet lb ->
+      walk_expr lb.el_value;
+      record_let lb.el_pat lb.el_value;
+      (match lb.el_body with Some b -> walk_expr b | None -> ())
+    | ExprBlock blk -> walk_block blk
+    | ExprIf ei ->
+      walk_expr ei.ei_cond; walk_expr ei.ei_then;
+      (match ei.ei_else with Some e -> walk_expr e | None -> ())
+    | ExprMatch em ->
+      walk_expr em.em_scrutinee;
+      List.iter (fun arm ->
+        (match arm.ma_guard with Some g -> walk_expr g | None -> ());
+        walk_expr arm.ma_body) em.em_arms
+    | ExprApp (f, args) -> walk_expr f; List.iter walk_expr args
+    | ExprBinary (a, _, b) -> walk_expr a; walk_expr b
+    | ExprUnary (_, e) -> walk_expr e
+    | ExprField (b, _) | ExprTupleIndex (b, _) | ExprRowRestrict (b, _) -> walk_expr b
+    | ExprIndex (a, b) -> walk_expr a; walk_expr b
+    | ExprTuple es | ExprArray es -> List.iter walk_expr es
+    | ExprRecord r ->
+      List.iter (fun (_, eo) -> match eo with Some e -> walk_expr e | None -> ()) r.er_fields;
+      (match r.er_spread with Some e -> walk_expr e | None -> ())
+    | ExprHandle eh ->
+      walk_expr eh.eh_body;
+      List.iter (fun arm ->
+        match arm with HandlerReturn (_, b) | HandlerOp (_, _, b) -> walk_expr b)
+        eh.eh_handlers
+    | ExprTry et ->
+      walk_block et.et_body;
+      (match et.et_catch with
+       | Some arms -> List.iter (fun arm -> walk_expr arm.ma_body) arms
+       | None -> ());
+      (match et.et_finally with Some b -> walk_block b | None -> ())
+    | ExprResume (Some e) -> walk_expr e
+    (* Lambda bodies are skipped: a return there belongs to the lambda. *)
+    | _ -> ()
+  and walk_stmt (s : stmt) : unit =
+    match s with
+    | StmtLet sl -> walk_expr sl.sl_value; record_let sl.sl_pat sl.sl_value
+    | StmtExpr e -> walk_expr e
+    | StmtAssign (l, _, r) -> walk_expr l; walk_expr r
+    | StmtWhile (c, b) -> walk_expr c; walk_block b
+    | StmtFor (_, it, b) -> walk_expr it; walk_block b
+  and walk_block (blk : block) : unit =
+    (* non-tail block: only explicit returns inside it reach the fn return *)
+    List.iter walk_stmt blk.blk_stmts;
+    match blk.blk_expr with Some e -> walk_expr e | None -> ()
+  and walk_block_tail (blk : block) : unit =
+    (* block in tail position: its value expression is in tail position *)
+    List.iter walk_stmt blk.blk_stmts;
+    match blk.blk_expr with Some e -> walk_tail e | None -> ()
+  in
+  (match fd.fd_body with
+   | FnBlock blk -> walk_block_tail blk
+   | FnExpr e -> walk_tail e
+   | FnExtern -> ());
+  List.sort_uniq compare !result
+
 (** Create a new borrow checker context *)
 let create_context () : context =
   {
@@ -171,6 +377,7 @@ let create () : state =
     block_local_syms = [];
     callee_owned_params = [];
     linear_bindings = [];
+    result_borrows = [];
   }
 
 (** Mirror of [Quantity.quantity_of_ty_annotation]: returns [QOne] when the
@@ -196,6 +403,7 @@ let add_fn_signature (ctx : context) (fd : fn_decl) : unit =
   let sig_ = {
     fn_name = fd.fd_name.name;
     fn_param_ownerships = List.map param_ownership fd.fd_params;
+    fn_ret_borrow_params = compute_ret_borrow_params fd;
   } in
   Hashtbl.replace ctx.fn_sigs fd.fd_name.name sig_
 
@@ -591,13 +799,26 @@ let record_ref_binding (state : state) (symbols : Symbol.t)
     (pat : pattern) (value : expr) : unit =
   match pat with
   | PatVar id ->
-    begin match
-      ref_source_borrow state symbols value,
-      lookup_symbol_by_name symbols id.name
-    with
-    | Some b, Some sym ->
-      state.ref_bindings <- (sym.Symbol.sym_id, b) :: state.ref_bindings
-    | _ -> ()
+    begin match lookup_symbol_by_name symbols id.name with
+    | None -> ()
+    | Some sym ->
+      let rec peel = function ExprSpan (e, _) -> peel e | e -> e in
+      begin match peel value with
+      | ExprApp _ when state.result_borrows <> [] ->
+        (* [let r = f(a)] where the call result borrows one or more of its
+           arguments: claim those escaping borrows (left live by the
+           [ExprApp] handler) as r's ref-graph edges, so NLL last-use expiry
+           and return-escape treat r exactly like [let r = &a]. #554. *)
+        List.iter (fun b ->
+          state.ref_bindings <- (sym.Symbol.sym_id, b) :: state.ref_bindings)
+          state.result_borrows;
+        state.result_borrows <- []
+      | _ ->
+        begin match ref_source_borrow state symbols value with
+        | Some b -> state.ref_bindings <- (sym.Symbol.sym_id, b) :: state.ref_bindings
+        | None -> ()
+        end
+      end
     end
   | _ -> ()
 
@@ -841,6 +1062,18 @@ let rec check_expr (ctx : context) (state : state) (symbols : Symbol.t) (expr : 
         end
       | _ -> List.map (fun _ -> None) args  (* Higher-order call, assume no ownership *)
     in
+    (* The callee's return-borrow summary: argument indices whose borrow
+       flows out through the result.  Empty for value-returning and for
+       higher-order/unknown callees — so nothing below changes for them,
+       which is what keeps the whole valid corpus unaffected. #554. *)
+    let ret_origins =
+      match unwrap_callee func with
+      | ExprVar fn_id ->
+        (match Hashtbl.find_opt ctx.fn_sigs fn_id.name with
+         | Some sig_ -> sig_.fn_ret_borrow_params
+         | None -> [])
+      | _ -> []
+    in
     (* Check each argument according to parameter ownership.
 
        Ref/Mut argument borrows are *temporary*: they exist for the duration
@@ -851,9 +1084,12 @@ let rec check_expr (ctx : context) (state : state) (symbols : Symbol.t) (expr : 
        could not be enforced at use sites without spuriously rejecting the
        perfectly valid `f(mut x); g(x)`.  We collect the borrows created
        here and end them after the fold. CORE-01 / #177. *)
-    let* call_borrows =
-      List.fold_left2 (fun acc arg param_own ->
-        let* created = acc in
+    (* [escaping] = argument borrows the result carries out (indices in
+       [ret_origins]); [temp] = ordinary call-argument borrows released when
+       the call completes (the pre-existing behaviour). *)
+    let* (escaping, temp) =
+      List.fold_left2 (fun acc (i, arg) param_own ->
+        let* (esc, tmp) = acc in
         (* First check the argument expression itself *)
         let* () = check_expr ctx state symbols arg in
         (* Then check ownership constraints *)
@@ -864,34 +1100,42 @@ let rec check_expr (ctx : context) (state : state) (symbols : Symbol.t) (expr : 
           | Some place ->
             let span = expr_span arg in
             let* () = record_move state place span in
-            Ok created
-          | None -> Ok created  (* literals etc. are fine *)
+            Ok (esc, tmp)
+          | None -> Ok (esc, tmp)  (* literals etc. are fine *)
           end
         | Some Ref ->
-          (* Borrowed parameter - temporary shared borrow *)
+          (* Borrowed parameter - shared borrow; escaping iff returned *)
           begin match expr_to_place symbols arg with
           | Some place ->
             let span = expr_span arg in
             let* b = record_borrow state place Shared span in
-            Ok (b :: created)
-          | None -> Ok created
+            if List.mem i ret_origins then Ok (b :: esc, tmp)
+            else Ok (esc, b :: tmp)
+          | None -> Ok (esc, tmp)
           end
         | Some Mut ->
-          (* Mutable borrow - temporary exclusive borrow *)
+          (* Mutable borrow - exclusive borrow; escaping iff returned *)
           begin match expr_to_place symbols arg with
           | Some place ->
             let span = expr_span arg in
             let* b = record_borrow state place Exclusive span in
-            Ok (b :: created)
-          | None -> Ok created
+            if List.mem i ret_origins then Ok (b :: esc, tmp)
+            else Ok (esc, b :: tmp)
+          | None -> Ok (esc, tmp)
           end
         | None ->
           (* No ownership annotation - just check usage *)
-          Ok created
-      ) (Ok []) args param_ownerships
+          Ok (esc, tmp)
+      ) (Ok ([], [])) (List.mapi (fun i a -> (i, a)) args) param_ownerships
     in
-    (* Release the temporary call-argument borrows. *)
-    List.iter (fun b -> end_borrow state b) call_borrows;
+    (* Release the temporary (non-escaping) call-argument borrows.  The
+       escaping ones stay live on [state.borrows] — exactly like a plain `&`
+       borrow — and are offered to the result binder via
+       [state.result_borrows]; if the result is not bound to a ref-binder
+       they linger on [state.borrows] until block exit (the conservative,
+       `&`-symmetric outcome). #554. *)
+    List.iter (fun b -> end_borrow state b) temp;
+    state.result_borrows <- escaping;
     Ok ()
 
   | ExprLambda lam ->
@@ -1386,6 +1630,10 @@ and check_block (ctx : context) (state : state) (symbols : Symbol.t) (blk : bloc
   state.borrows <- borrows_at_entry;
   state.block_local_syms <- block_locals_at_entry;
   state.ref_bindings <- ref_bindings_at_entry;
+  (* Any escaping call-result borrow not claimed by a ref-binder lingered on
+     [state.borrows] (like a plain `&` borrow) and is dropped by the restore
+     above; clear the transient pointer too. #554. *)
+  state.result_borrows <- [];
   Ok ()
 
 and check_stmt (ctx : context) (state : state) (symbols : Symbol.t) (stmt : stmt) : unit result =
@@ -1753,6 +2001,28 @@ let check_program (symbols : Symbol.t) (program : program) : unit result =
    `let`-expressions; [ExprLambda] then rejects free-vars whose
    sym-id is in that set with [LinearCapturedByClosure].
 
+   Callee-returned-borrow soundness (2026-06-14, #554): a call whose
+   result borrows one of its arguments now registers that borrow-graph
+   edge.  Each function carries a *return-borrow summary*
+   ([fn_ret_borrow_params], computed by [compute_ret_borrow_params]):
+   the parameter indices whose borrow may flow out through the return
+   value (a returned [&p] / [return p] for a [ref]/[mut] parameter [p],
+   directly, via a let-bound ref-local chain, or via an [if]/[match]/block
+   *tail* in return position — see [walk_tail]).  At a call site the
+   argument borrows named by the summary are kept *live* instead of being
+   released at call end.  They behave in every respect like a plain `&`
+   borrow: [record_ref_binding] claims a directly-bound result as the
+   binder's ref-graph edge ([let r = pick(a)] → NLL last-use governs it),
+   and an unclaimed result (flowed into a tuple/record/array, dereferenced,
+   or discarded) simply lingers on [state.borrows] until lexical block exit.
+   So [let r = pick(a); consume(a); *r] and the aggregate form
+   [let t = (pick(a), 0); consume(a); *(t.0)] are both [MoveWhileBorrowed],
+   while NLL still accepts the legitimate reorderings.  Closes the
+   probe-verified false negative behind the CORE-01 stamp; adversarially
+   re-verified across fields/paths, &mut, branches/loops, reassignment,
+   multi-arg, and aggregates (the aggregate + assign-path + branch-tail-
+   summary holes a first cut missed were all found and closed).
+
    Still deferred:
    - Origin/region variables (true Polonius surface) — a region
      var on each [TyRef]/[TyMut] with subset constraints and a
@@ -1761,6 +2031,33 @@ let check_program (symbols : Symbol.t) (program : program) : unit result =
      (docs/decisions/0022-polonius-origin-variables.adoc) for the
      M1-M4 migration plan; lexical checker is the merge oracle
      through M3.
+   - #554 residuals (all strictly smaller than the original hole; closed
+     properly by the Polonius origins above, #553):
+       (a) *interprocedural-through-call-result* — the summary is
+           intraprocedural and does not chase a returned borrow whose origin
+           is itself ANOTHER ref-returning call result bound to a local,
+           e.g. [fn wrap(x: ref Int) -> ref Int { let t = pick(x); return t; }];
+           so [let r = wrap(a); consume(a); *r] slips through.  A summary
+           fixpoint over the call graph would close it.
+       (b) *branch-merged / copied-out claim* — a borrow threaded through an
+           [if]/[match] arm or block tail at the BIND site
+           ([let r = if c { pick(a) } else { pick(b) }], [let r = { pick(a) }]),
+           or copied out of its binder into an aggregate before the binder's
+           last use ([let r = pick(a); let t = (r, 0); …]), is not protected,
+           because the arm-merge / block-exit drops the branch-local borrow
+           and NLL expires the binder at the copy site.  This is NOT a new
+           asymmetry: the lexical checker treats the byte-identical plain-`&`
+           programs ([let r = if c { &a } else { &b }], [let t = (r, 0)] with
+           [r = &a]) identically (both accept) — it is the same pre-existing
+           through-branch / copy-out lexical limitation, inherited by the
+           call-result path, not introduced by it.
+       (c) *reassignment precision* (over-rejection, not a soundness hole):
+           [r = pick(b)] reassigning an existing ref-binder does not release
+           the binder's OLD loan (the [&p] reborrow path does, via
+           [is_reborrow_source]); a later use of the old target may be
+           spuriously rejected.  Rare; conservative direction.
+   - Tighter integration with the quantity checker for captured
+     linears (Slice D).
    - Tighter integration with the quantity checker for captured
      linears (Slice D).
 *)

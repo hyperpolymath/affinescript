@@ -1,0 +1,29 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// #554 — soundness regression. A use-after-move through a callee-returned
+// borrow must be rejected. `pick` returns a borrow of its `ref` (caller-
+// owned) parameter, so `let r = pick(a)` makes `r` borrow `a`; moving `a`
+// (into the `own` parameter of `consume`) while `r` is still live — its
+// last use `*r` comes later — must raise MoveWhileBorrowed. Pre-fix this
+// passed the full pipeline ("Type checking passed") because the borrow
+// graph had no edge from `r` to `a`: the loan returned by `pick` was
+// invisible.
+
+module BorrowCalleeReturnedBorrowUam;
+
+fn pick(ref x: Int) -> ref Int {
+  return &x;
+}
+
+fn consume(own v: Int) -> Int {
+  return v;
+}
+
+fn main() -> Int {
+  let a: Int = 7;
+  let r = pick(a);
+  let _gone = consume(a);
+  let v = *r;
+  return v;
+}

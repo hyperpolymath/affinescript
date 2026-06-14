@@ -1,0 +1,28 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// #554 — aggregate-storage variant (found by adversarial verification). A
+// callee-returned borrow stored into a tuple (record / array behave the
+// same) must keep the aliased argument borrowed: storing `pick(b)` into a
+// tuple, moving `b`, then reading `*(pair.0)` is a use-after-move and must
+// be rejected. A first cut released unclaimed escaping borrows at statement
+// end, which silently dropped protection here; the borrow now lingers like
+// a plain `&` borrow until block exit.
+
+module BorrowCalleeReturnedBorrowAggregate;
+
+fn pick(ref x: Int) -> ref Int {
+  return &x;
+}
+
+fn consume(own v: Int) -> Int {
+  return v;
+}
+
+fn main() -> Int {
+  let b: Int = 9;
+  let pair = (pick(b), 0);
+  let _gone = consume(b);
+  let v = *(pair.0);
+  return v;
+}
