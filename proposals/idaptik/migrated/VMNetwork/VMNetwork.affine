@@ -1,0 +1,107 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// VMNetwork -- the causal-ordering co-processor, the pure-integer core extracted
+// from idaptik src/app/multiplayer/VMNetwork.res (Tier 5 multi-VM networking).
+// Per the DESIGN-VISION ("AffineScript is the brain, JS/Pixi the senses; only
+// primitives cross the wasm boundary") and the SHAPE-A note on the host binding
+// (VMNetworkCoprocessor.res / VMNetworkCoprocessorBridge.js), the model never
+// lives in wasm: the host keeps the deviceVMs dict, the instructionLog, the
+// per-device register files and the WebSocket transport, and -- critically --
+// does ALL string work itself. The host alone parses the wire port string
+// ("net:<ip>:<sub>", "covert:<id>", everything else), the device IPs, the
+// instruction text. The kernel sees only scalars: a Lamport clock value, a
+// register cell with its write timestamp, the consumed/undone flags, and a
+// pre-decoded port-channel ordinal. Every export is i32 -> i32 (scalar ABI).
+//
+//## Why this split, not a port of VMNetwork.res
+// VMNetwork.res entangles (a) the Lamport arithmetic (tick = time+1, sync =
+// max(local,remote)+1 -- res:61-89), (b) the causal-undo gate (refuse undo when
+// the last instruction's output was consumed by another VM -- res:240-256),
+// (c) the cross-VM register reconciliation the header advertises as "last-
+// writer-wins register reconciliation", and (d) a great deal of string-keyed
+// routing (routePortMessage's String.startsWith("net:")/("covert:") branch,
+// res:150-188, plus the Dict-by-deviceId/IP plumbing). Only (a)(b)(c) are
+// integer decisions; (d) is a STRING sense and stays host-side. The host
+// decodes the port prefix to a channel ordinal BEFORE calling the kernel, so no
+// string ever crosses. This file is the verified core of the six kernels the
+// host binding (VMNetworkCoprocessor.res:41-56) already contracts for, with the
+// canonical names the bridge JS requires (VMNetworkCoprocessorBridge.js:99-107:
+// tick / sync / merge_timestamp / merge_register / can_undo / route_kind).
+//
+//## Channel-ordinal encoding (the header contract for the JS host)
+// The host decodes the routed-port prefix to exactly one of these ordinals
+// (mirror of VMNetworkCoprocessorBridge.js CHANNEL, and of routePortMessage's
+// prefix branch) and hands route_kind the ordinal, never the string:
+//   ordinal  channel   meaning (routePortMessage branch)
+//     0      NET       "net:<ip>:<sub>"  -> deliver to target device by IP
+//     1      COVERT    "covert:<id>"     -> deliver through the covert link
+//     2      LOCAL     (any other port)  -> no cross-VM routing
+// The encoding is LOSSLESS over its closed 0..2 band: three channels map to
+// three routing classes with no collision. A prefix ordinal outside 0..2 is
+// not a routed channel: route_kind returns the OUT-OF-BAND SENTINEL -1 (declared
+// here, never an in-band class, so no in-band collision is introduced -- this is
+// a sentinel, not a clamp; assail PA-AFF-001 stays clean).
+
+//## tick -- advance the Lamport clock by one on a local VM event.
+// The integer core of VMNetwork.tick (res:61-74): the host owns the clock cell;
+// the kernel only computes the advanced stamp `time + 1`. Causal ordering needs
+// every local event to strictly increase the clock, so this is unconditional.
+pub fn tick(time: Int) -> Int {
+  time + 1
+}
+
+//## sync -- merge a remote clock on receive: max(local, remote) + 1.
+// The integer core of VMNetwork.sync (res:76-89): on receiving a remote stamp,
+// the merged clock is one past the later of the two, so the local clock never
+// runs backwards and always dominates anything it has seen (Lamport receive
+// rule). The host owns the clock cell; the kernel computes the merged stamp.
+pub fn sync(local: Int, remote: Int) -> Int {
+  if local > remote { local + 1 } else { remote + 1 }
+}
+
+//## merge_timestamp -- the surviving Lamport stamp of a reconciled register cell.
+// The header's "last-writer-wins register reconciliation": when two VMs hold the
+// same register, the cell that survives is the LATER write, so its stamp is the
+// max of the two write stamps. Ties keep the local stamp (they are equal, so the
+// choice is immaterial to the value -- see merge_register's strict-greater gate).
+pub fn merge_timestamp(local_ts: Int, remote_ts: Int) -> Int {
+  if remote_ts > local_ts { remote_ts } else { local_ts }
+}
+
+//## merge_register -- last-writer-wins register value.
+// Companion to merge_timestamp (host binding VMNetworkCoprocessor.res:49-50):
+// the reconciled register takes the REMOTE value only when the remote write is
+// strictly later (remote_ts > local_ts); on a tie or an older remote write the
+// local value stands. Strict-greater (not >=) makes the tie deterministic and
+// keeps the local writer authoritative for its own concurrent writes.
+pub fn merge_register(local_val: Int, local_ts: Int, remote_val: Int, remote_ts: Int) -> Int {
+  if remote_ts > local_ts { remote_val } else { local_val }
+}
+
+//## can_undo -- the causal-undo gate.
+// The integer core of undoOnDevice's refusal predicate (res:240-256): undo of
+// the last instruction is permitted iff its output was NEITHER consumed by
+// another VM's RECV NOR already undone. The host passes the two record flags as
+// 0/1 (instr.consumed ? 1 : 0, instr.undone ? 1 : 0) and refuses undo when this
+// returns 0 (res:252: `canUndo(...) != 1`). Returns 1 = may undo, 0 = refuse.
+// Any flag value other than 0 is treated as "set" (truthy), so a stray non-0/1
+// host encoding fails safe to refusal rather than fabricating permission.
+pub fn can_undo(consumed: Int, undone: Int) -> Int {
+  if consumed != 0 { return 0; }
+  if undone != 0 { return 0; }
+  1
+}
+
+//## route_kind -- classify a routed port by its decoded channel ordinal.
+// The integer core of routePortMessage (res:150-188) AFTER the host has parsed
+// the port string into a channel ordinal. It canonicalises the routing class for
+// a defined channel (identity on the closed 0..2 band: NET->0, COVERT->1,
+// LOCAL->2) and reports the out-of-band SENTINEL -1 for any prefix that is not a
+// routed channel. -1 is not an in-band class, so an unrecognised prefix can
+// never be confused with a real routing target (sentinel, not clamp).
+pub fn route_kind(prefix: Int) -> Int {
+  if prefix < 0 { return -1; }   // out of band: not a routed channel
+  if prefix > 2 { return -1; }   // out of band: not a routed channel
+  prefix                         // NET=0 / COVERT=1 / LOCAL=2: identity routing class
+}
