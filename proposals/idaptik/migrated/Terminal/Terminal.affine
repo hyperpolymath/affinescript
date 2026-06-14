@@ -1,0 +1,226 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// Terminal -- the terminal command-processor co-processor, the pure-integer
+// core extracted from idaptik src/app/devices/Terminal.res. Per the
+// DESIGN-VISION ("AffineScript is the brain, JS/Pixi the senses; they pass
+// primitives across the wasm boundary"), the JS host keeps EVERY string: the
+// command-line tokeniser (String.split / trim / startsWith / slice), the SSH
+// host parser, path concatenation, the per-line Pixi Text objects, the output
+// formatting, and the %raw keydown handler. ALL string parsing is a host sense
+// and stays in ReScript. AffineScript owns only the integer logic that the
+// original module computes around those strings:
+//
+//   * the command taxonomy as a closed integer band (after the host tokenises a
+//     command string to a command CODE) -- validity, feature-gating, count;
+//   * the SSH-session-stack bounds (top index, empty test, push/pop depth) --
+//     the host holds the actual sshSession records, keyed by the depth this
+//     core computes;
+//   * the output ring-buffer eviction count (Terminal.res:55 while-loop);
+//   * the maxLines geometry from the pixel height (Terminal.res:1064), in
+//     milli-units because the floats are ratios of pixels;
+//   * the cursor-blink accumulator state machine (Terminal.res:1108), the
+//     accumulator carried in milli-seconds;
+//   * the backspace length clamp (Terminal.res:967), len-1 floored at 0.
+//
+// Re-decomposition (NOT transliteration): the ReScript `handleBuiltInCommand`
+// is one 700-line string `switch`. That switch IS a host sense -- the host
+// tokenises and dispatches on the string. What the brain contributes is the
+// *shape* of the command space: a contiguous 0..N-1 band whose upper segment is
+// feature-gated. The string switch becomes a range test plus a gate test. No
+// strings cross the boundary; no module state survives (the sshStack length,
+// the line count, the blink accumulator and the input length are all explicit
+// Int parameters -- the host owns the arrays and passes their measured sizes).
+//
+//## Command-code encoding (the header contract for the JS host)
+// The host tokenises `cmd` (Terminal.res:932) to one of these canonical codes.
+// The order mirrors the `switch cmd` arms in handleBuiltInCommand; codes 0..16
+// are the always-available builtins, codes 17..23 are the invertible-
+// programming pack (gated by FeaturePacks.isInvertibleProgrammingEnabled at
+// Terminal.res:592/599/609/619/627/698/902). Any token the host cannot map is
+// passed as -1 ("command not found", Terminal.res:916).
+//
+//   code  command     code  command       code  command
+//     0   help          8   reboot         16   pbx
+//     1   clear         9   scan          ----  -- gated pack below --
+//     2   pwd          10   crack          17   vm
+//     3   ls           11   ssh            18   puzzle
+//     4   cd           12   ping           19   send
+//     5   cat          13   exit           20   recv
+//     6   mkdir        14   shutdown       21   coproc
+//     7   rm           15   covert         22   vmnet
+//                                          23   undo
+//   (cp folds onto the same ungated band as its siblings; the host maps it to a
+//    free always-available code -- it is not separately gated. The taxonomy
+//    boundary the brain certifies is "ungated 0..16 vs gated 17..23", which is
+//    the only integer distinction the dispatcher makes.)
+//
+// The encoding is LOSSLESS over the dispatch decision: distinct command codes
+// stay distinct, and is_command_available is the exact predicate the ReScript
+// `if FeaturePacks.isInvertibleProgrammingEnabled()` guard computes. A code
+// outside 0..23 is not a command: is_valid_command reports 0 and
+// canonicalise_command returns the out-of-band sentinel -1 -- never an in-band
+// code, so out-of-band input can never collide with a real command (this is a
+// sentinel, not a clamp; assail stays clean).
+
+// ---------------------------------------------------------------------------
+// Command taxonomy
+// ---------------------------------------------------------------------------
+
+// The number of always-available (ungated) builtin commands: codes 0..16.
+pub fn ungated_command_count() -> Int { 17 }
+
+// The total number of canonical command codes, ungated plus the gated
+// invertible-programming pack (codes 17..23): 24 codes, 0..23.
+pub fn command_count() -> Int { 24 }
+
+// Whether a host integer names a defined command code. 1 = valid, 0 = out of
+// band. Mirrors "did the tokeniser produce a known command" (Terminal.res:932,
+// where an unknown token falls to the `_` arm at 907).
+pub fn is_valid_command(code: Int) -> Int {
+  if code < 0 { 0 } else { if code > 23 { 0 } else { 1 } }
+}
+
+// Whether a command code belongs to the feature-gated invertible-programming
+// pack (codes 17..23: vm, puzzle, send, recv, coproc, vmnet, undo). 1 = gated,
+// 0 = ungated-or-invalid.
+pub fn is_gated_command(code: Int) -> Int {
+  if is_valid_command(code) == 0 { 0 } else { if code < 17 { 0 } else { 1 } }
+}
+
+// Whether a command code may run, given the invertible-programming feature
+// flag. This is the exact predicate the ReScript `if
+// FeaturePacks.isInvertibleProgrammingEnabled()` guard computes at
+// Terminal.res:592/599/609/619/627/698/902: an ungated command always runs; a
+// gated command runs only when the flag is on; an invalid code never runs.
+// `feature_on` is the host-passed boolean (1 = enabled, else 0).
+// 1 = available (host dispatches the command), 0 = "command not found".
+pub fn is_command_available(code: Int, feature_on: Int) -> Int {
+  if is_valid_command(code) == 0 {
+    0
+  } else {
+    if is_gated_command(code) == 0 {
+      1
+    } else {
+      if feature_on == 1 { 1 } else { 0 }
+    }
+  }
+}
+
+// Canonicalise a host command integer: identity on a valid 0..23 code, the
+// out-of-band sentinel -1 otherwise. -1 is not an in-band code, so an
+// unrecognised token can never be confused with a real command (sentinel, not
+// a clamp).
+pub fn canonicalise_command(code: Int) -> Int {
+  if is_valid_command(code) == 1 { code } else { -1 }
+}
+
+// ---------------------------------------------------------------------------
+// SSH session-stack bounds (Terminal.res:199-209, 478-510)
+// ---------------------------------------------------------------------------
+
+// The index of the active SSH session given a stack of `depth` sessions: the
+// top index `depth - 1` when SSH'd, or the out-of-band sentinel -1 when the
+// stack is empty (local terminal -- getActiveState falls through to the local
+// deviceState, Terminal.res:206). The host indexes its sshStack array with this.
+pub fn ssh_active_index(depth: Int) -> Int {
+  if depth > 0 { depth - 1 } else { -1 }
+}
+
+// Whether the terminal is inside an SSH session (Terminal.res:200/478): the
+// `Array.length(terminal.sshStack) > 0` test. 1 = remote (SSH'd), 0 = local.
+pub fn ssh_is_remote(depth: Int) -> Int {
+  if depth > 0 { 1 } else { 0 }
+}
+
+// The stack depth after pushing one SSH session (Terminal.res:418): depth + 1.
+// Bounded below at 0 so a negative host measurement cannot produce depth 0.
+pub fn ssh_push_depth(depth: Int) -> Int {
+  if depth < 0 { 1 } else { depth + 1 }
+}
+
+// The stack depth after popping one SSH session on `exit` (Terminal.res:487):
+// depth - 1, floored at 0 (you cannot pop below empty; the ReScript guards the
+// pop behind `length > 0` at 478, so the floor is the same invariant made
+// total).
+pub fn ssh_pop_depth(depth: Int) -> Int {
+  if depth > 0 { depth - 1 } else { 0 }
+}
+
+// After an `exit` pop, whether the terminal is still in a (nested) SSH session
+// and must restore the previous host's prompt rather than the local prompt
+// (Terminal.res:494). Given the depth BEFORE the pop, the post-pop depth is
+// ssh_pop_depth(depth); this returns 1 iff that residual depth is still > 0.
+pub fn ssh_prompt_is_remote_after_exit(depth: Int) -> Int {
+  if ssh_pop_depth(depth) > 0 { 1 } else { 0 }
+}
+
+// ---------------------------------------------------------------------------
+// Output ring buffer (Terminal.res:55-62)
+// ---------------------------------------------------------------------------
+
+// How many of the oldest output lines to evict so the buffer fits maxLines.
+// Mirrors the `while Array.length(terminal.outputLines) > terminal.maxLines`
+// drop-front loop (Terminal.res:55): the excess is line_count - max_lines when
+// positive, else 0. The host destroys exactly this many head Text objects and
+// slices them off (Terminal.res:58-59). max_lines is treated as >= 0.
+pub fn output_evict_count(line_count: Int, max_lines: Int) -> Int {
+  let cap = if max_lines < 0 { 0 } else { max_lines };
+  if line_count > cap { line_count - cap } else { 0 }
+}
+
+// ---------------------------------------------------------------------------
+// maxLines geometry (Terminal.res:1063-1064), milli-units
+// ---------------------------------------------------------------------------
+
+// The number of visible output lines a terminal of `height_mpx` (pixel height
+// in milli-pixels, i.e. host height *1000) can show, leaving 30px for the input
+// line and padding, at the fixed 16px lineHeight (Terminal.res:1063). The
+// ReScript computes `Float.toInt((height -. 30.0) /. lineHeight)`; we mirror it
+// in milli-units: usable = height_mpx - 30000, divided by the lineHeight 16000,
+// truncated toward zero. Floored at 0 so a sub-30px terminal yields no lines
+// rather than a negative count.
+//
+// lineHeight is the constant 16.0 (Terminal.res:1063); we inline it as 16000
+// milli-px rather than take it as a parameter because it is not host-tunable in
+// the source (it is a `let` literal, never a field set by the caller).
+pub fn max_lines(height_mpx: Int) -> Int {
+  let usable = height_mpx - 30000;
+  if usable <= 0 { 0 } else { usable / 16000 }
+}
+
+// ---------------------------------------------------------------------------
+// Cursor-blink state machine (Terminal.res:1108-1114), milli-seconds
+// ---------------------------------------------------------------------------
+
+// The cursor-blink accumulator advanced by one frame. `blink_ms` is the carried
+// accumulator and `delta_ms` the frame delta, both in milli-seconds (the
+// ReScript floats *1000). When the accumulator crosses the 0.5s threshold
+// (500 ms, Terminal.res:1110) it resets to 0; otherwise it accumulates.
+// Returns the next accumulator value -- the host keeps no other timer state.
+pub fn cursor_blink_next(blink_ms: Int, delta_ms: Int) -> Int {
+  let advanced = blink_ms + delta_ms;
+  if advanced > 500 { 0 } else { advanced }
+}
+
+// Whether this frame's accumulation toggles the cursor visibility
+// (Terminal.res:1110-1112): 1 iff blink_ms + delta_ms crosses 500 ms. The host
+// flips its showCursor boolean and redraws the input line exactly when this is
+// 1. Same threshold as cursor_blink_next so the two stay in lock-step.
+pub fn cursor_should_toggle(blink_ms: Int, delta_ms: Int) -> Int {
+  if blink_ms + delta_ms > 500 { 1 } else { 0 }
+}
+
+// ---------------------------------------------------------------------------
+// Backspace length clamp (Terminal.res:964-969)
+// ---------------------------------------------------------------------------
+
+// The new input length after a Backspace: len - 1, floored at 0. The ReScript
+// slices `~start=0, ~end=String.length(currentInput) - 1` (Terminal.res:965);
+// on an already-empty input that end is -1, which the host slice treats as
+// empty -- we make the invariant explicit so the length the host trims to is
+// never negative. (The string content is the host's; the brain only computes
+// the resulting length so the host can slice without an underflow.)
+pub fn backspace_len(len: Int) -> Int {
+  if len > 0 { len - 1 } else { 0 }
+}
