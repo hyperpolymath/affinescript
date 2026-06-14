@@ -1,0 +1,35 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// #554 reassigned-local summary (found by round-3 adversarial review). When a
+// returned ref-local is reassigned (`let mut t = pick(y); t = pick(x)`), the
+// return-borrow summary must UNION the origins so it does not go stale on the
+// initial binding. `wrap` here ultimately returns a borrow of `x`, so the
+// summary must include parameter 0; `let r = wrap(a, b); consume(a); *r` is a
+// use-after-move on `a` and must be rejected (the summary walker unions the
+// reassigned local's origins, conservatively).
+
+module BorrowCalleeReturnedBorrowReassignSummary;
+
+fn pick(ref x: Int) -> ref Int {
+  return &x;
+}
+
+fn wrap(ref x: Int, ref y: Int) -> ref Int {
+  let mut t = pick(y);
+  t = pick(x);
+  return t;
+}
+
+fn consume(own v: Int) -> Int {
+  return v;
+}
+
+fn main() -> Int {
+  let a: Int = 1;
+  let b: Int = 2;
+  let r = wrap(a, b);
+  let _gone = consume(a);
+  let v = *r;
+  return v;
+}

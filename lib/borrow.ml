@@ -361,7 +361,22 @@ let compute_ret_borrow_params (lookup : string -> int list option)
     match s with
     | StmtLet sl -> walk_expr sl.sl_value; record_let sl.sl_pat sl.sl_value
     | StmtExpr e -> walk_expr e
-    | StmtAssign (l, _, r) -> walk_expr l; walk_expr r
+    | StmtAssign (l, _, r) ->
+      walk_expr l; walk_expr r;
+      (* A whole-var reassignment may change which parameters a ref-local
+         borrows.  UNION the new origins into the local's set (rather than
+         replace) so the flow-insensitive summary never *drops* a possible
+         origin — conservative, so [let mut t = pick(y); t = pick(x); return t]
+         summarises {x,y} not the stale {y}, closing the reassigned-local
+         false negative.  #554 round-3. *)
+      (match peel l with
+       | ExprVar id ->
+         let prior =
+           match Hashtbl.find_opt local_origins id.name with Some x -> x | None -> []
+         in
+         Hashtbl.replace local_origins id.name
+           (List.sort_uniq compare (prior @ origins_of_ref_source r))
+       | _ -> ())
     | StmtWhile (c, b) -> walk_expr c; walk_block b
     | StmtFor (_, it, b) -> walk_expr it; walk_block b
   and walk_block (blk : block) : unit =
@@ -1793,10 +1808,22 @@ and check_stmt (ctx : context) (state : state) (symbols : Symbol.t) (stmt : stmt
               when not rhs_is_self_binder
                 && is_reborrow_source state symbols rhs
                 && List.mem_assoc binder_sym state.ref_bindings ->
-              let old_borrow = List.assoc binder_sym state.ref_bindings in
-              end_borrow state old_borrow;
-              state.ref_bindings <-
-                List.filter (fun (s, _) -> s <> binder_sym) state.ref_bindings;
+              (* Ref-count the released loan(s) by [b_id]: only [end_borrow] an
+                 old borrow if no surviving ref-binding (e.g. a [let r2 = r]
+                 alias) still holds it — mirrors [expire_dead_ref_bindings] and
+                 the #554 (c) call-result reassign block.  Pre-fix this ended
+                 the borrow unconditionally, so [let r2 = r; r = &b] dropped the
+                 loan [r2] still names and accepted a later use-after-move of
+                 the old target.  (Found by #554 round-3 adversarial review;
+                 the bug predates #554 but the (c) block made the asymmetry
+                 visible.) *)
+              let old_entries, remaining =
+                List.partition (fun (s, _) -> s = binder_sym) state.ref_bindings
+              in
+              List.iter (fun (_, ob) ->
+                if not (List.exists (fun (_, b') -> b'.b_id = ob.b_id) remaining)
+                then end_borrow state ob) old_entries;
+              state.ref_bindings <- remaining;
               Some binder_sym
             | _ -> None
           in
@@ -2111,6 +2138,12 @@ let check_program (symbols : Symbol.t) (program : program) : unit result =
      loan (ref-counted by [b_id]) and rebinds to the escaping call result,
      so a later use of the old target is no longer spuriously rejected —
      symmetric with the plain-`&` Slice-B reborrow.
+   - *round-3 hardening* — the Slice-B `&` reassign path now ref-counts the
+     released loan by [b_id] too, so [let r2 = r; r = &b] keeps the borrow
+     [r2] still aliases (a *pre-existing* soundness bug the (c) block exposed
+     by being more correct); and the summary walker UNIONs a reassigned
+     ref-local's origins, so [let mut t = pick(y); t = pick(x); return t]
+     summarises {x,y} rather than the stale {y}.
 
    Still deferred:
    - Origin/region variables (true Polonius surface) — a region
@@ -2133,6 +2166,20 @@ let check_program (symbols : Symbol.t) (program : program) : unit result =
      same pre-existing through-branch / copy-out lexical limitation,
      inherited by the call-result path, not introduced by it.  A true
      flow-sensitive borrow graph (Polonius) discharges it uniformly.
+   - #554 minor residuals (round-3, both low-severity; Polonius #553 closes
+     them):
+       * *Divergent self/mutual recursion with no base case* — a function
+         whose only ref-return is its own recursive call (e.g.
+         [fn f(ref x) -> ref Int { let t = f(x); return t; }]) gets an empty
+         summary (the fixpoint cannot bootstrap an origin from a purely
+         self-transitive return), so a use-after-move through its result is
+         accepted.  Unreachable in practice: such a function never returns,
+         so the use never executes.  Any *terminating* recursion has a
+         non-recursive return path, which IS summarised.
+       * *Reassign inside a loop body to an outer borrow* —
+         [let mut r = pick(a); while … { r = pick(b) } consume(b); *r] is
+         accepted because the loop-body block drops its borrows at block exit
+         (predates #554, `&`-symmetric).
    - Tighter integration with the quantity checker for captured
      linears (Slice D).
 *)

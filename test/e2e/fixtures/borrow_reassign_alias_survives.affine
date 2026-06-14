@@ -1,0 +1,27 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// Slice-B reassign ref-count (pre-existing soundness bug, found by #554
+// round-3 adversarial review). When a ref-binder is reassigned (`r = &b`),
+// its OLD loan must only be released if no surviving alias still holds it.
+// Here `let r2 = r` aliases `a`'s borrow into `r2`; after `r = &b`, `r2` still
+// borrows `a`, so moving `a` and then reading `*r2` is a use-after-move and
+// must be rejected. Pre-fix the Slice-B path ended the old borrow
+// unconditionally and the move slipped past.
+
+module BorrowReassignAliasSurvives;
+
+fn consume(own v: Int) -> Int {
+  return v;
+}
+
+fn main() -> Int {
+  let mut a: Int = 1;
+  let mut b: Int = 2;
+  let mut r = &a;
+  let r2 = r;
+  r = &b;
+  let _gone = consume(a);
+  let v = *r2;
+  return v;
+}

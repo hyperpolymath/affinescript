@@ -5277,6 +5277,33 @@ let test_borrow_callee_returned_borrow_reassign_old_ok () =
                     target `a` must be movable again, got: "
                    ^ Borrow.format_borrow_error e)
 
+(* Slice-B reassign ref-count (pre-existing soundness bug found by #554
+   round-3): `let r2 = r; r = &b` must NOT drop the loan `r2` still aliases,
+   so a later move of the old target is rejected. *)
+let test_borrow_reassign_alias_survives () =
+  match borrow_result (fixture "borrow_reassign_alias_survives.affine") with
+  | Error (Borrow.MoveWhileBorrowed _) -> ()
+  | Error e ->
+    Alcotest.fail ("Slice-B alias ref-count: expected MoveWhileBorrowed (r2 \
+                    still borrows `a` after `r = &b`), got: "
+                   ^ Borrow.format_borrow_error e)
+  | Ok () ->
+    Alcotest.fail "Slice-B alias regressed: reassigning `r` dropped the borrow \
+                   the `let r2 = r` alias still held — use-after-move accepted"
+
+(* #554 reassigned-local summary (found by round-3): a returned ref-local that
+   is reassigned must union its origins so the summary does not go stale. *)
+let test_borrow_callee_returned_borrow_reassign_summary () =
+  match borrow_result (fixture "borrow_callee_returned_borrow_reassign_summary.affine") with
+  | Error (Borrow.MoveWhileBorrowed _) -> ()
+  | Error e ->
+    Alcotest.fail ("#554 reassigned-local summary: expected MoveWhileBorrowed \
+                    (the reassigned local's origin must be unioned into the \
+                    summary), got: " ^ Borrow.format_borrow_error e)
+  | Ok () ->
+    Alcotest.fail "#554 reassigned-local summary regressed: the summary went \
+                   stale on the initial binding — use-after-move accepted"
+
 let borrow_tests = [
   Alcotest.test_case "BorrowOutlivesOwner: &local escapes its block"
     `Quick test_borrow_outlives_owner;
@@ -5352,6 +5379,10 @@ let borrow_tests = [
     `Quick test_borrow_callee_returned_borrow_interproc;
   Alcotest.test_case "#554 (c): reassign to call result releases old loan (precision)"
     `Quick test_borrow_callee_returned_borrow_reassign_old_ok;
+  Alcotest.test_case "Slice-B: reassign ref-counts old loan vs surviving alias"
+    `Quick test_borrow_reassign_alias_survives;
+  Alcotest.test_case "#554: reassigned returned ref-local unions summary origins"
+    `Quick test_borrow_callee_returned_borrow_reassign_summary;
 ]
 
 (* ============================================================================
