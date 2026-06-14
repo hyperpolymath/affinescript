@@ -52,8 +52,32 @@ The same type-channel pattern that closed the string wall applies. Either:
   Smaller surface but introduces a type channel into codegen that does not yet
   exist there.
 
-The f64 instructions already exist in `lib/wasm.ml` (`F64Const` is emitted for
-float literals today); only the binop dispatch is missing.
+*Scope correction (2026-06-14, after investigation).* This is bigger than "add
+a binop arm". The f64 *instructions* all exist in `lib/wasm.ml` (`F64Add`,
+`F64Lt`, …; `F64Const` is already emitted for float literals), but the codegen's
+*value model is i32-only*, so the fix needs f64 value-type tracking end to end:
+
+. *Params* — `codegen.ml` `TopFn` lowers `ft_params = List.map (fun _ -> I32)
+  fd.fd_params` (line ~2995). A `Float` param is declared `i32`, so an f64 arg
+  cannot even arrive. Lower each param from its annotation via the existing
+  `TyCon "Float" -> F64` mapping (line ~170).
+. *Results* — `ft_results = [I32]` (line ~2996). Lower from `fd.fd_ret_ty` so a
+  `Float`-returning fn declares an `f64` result.
+. *Locals* — `alloc_local` (line ~181) tracks only `(name, idx)`; the function's
+  locals are emitted all-`i32`. Binding a float value (`let y = x + 1.0`) would
+  `LocalSet` an f64 into an i32 slot → validation failure. Locals must carry a
+  `val_type`, threaded through `alloc_local` and the locals-emission.
+. *Binop dispatch* — the `ExprFloatBinary` elaboration (mirrors slices 8b/9/10):
+  `synth` records `Float`-typed binop nodes (three sites: the arith branch's
+  `Float` case, the `comparison` branch's `Float` case, and the `==`/`!=` else
+  branch when operands are `Float`); elaboration rewrites to `ExprFloatBinary`;
+  codegen lowers to the f64 family (arith → f64 value; comparison → i32 bool).
+
+Items 1–2 are small; item 3 (typed locals) is the load-bearing change and the
+main validation-risk surface; item 4 is the string-wall pattern again. A
+*narrow first slice* (params + returns + comparisons + stack-flowing arith,
+erroring on float `let`-bindings until typed locals land) makes `Float -> Int`
+classifiers like `band_of` compile without item 3, but is partial.
 
 == Harness readiness
 
