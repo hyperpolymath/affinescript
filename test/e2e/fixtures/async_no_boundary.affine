@@ -1,0 +1,15 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// Issue #556 regression fixture (POSITIVE / no-over-rejection). `noop` is
+// declared `Async` but performs no async call at all, so there is no
+// continuation to mis-order — synchronous lowering is correct and must not
+// trip the #556 fence (the guard keys on an actual async-prim call, not the
+// effect row alone).
+fn noop(u: Int) -> Int / { Async } {
+  return u + 1;
+}
+
+fn main() -> Int {
+  return noop(7);
+}
