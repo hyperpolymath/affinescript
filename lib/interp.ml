@@ -150,6 +150,12 @@ let rec eval (env : env) (expr : expr) : value result =
        never sees this wasm-only elaboration. *)
     eval env (ExprBinary (left, op, right))
 
+  | ExprFloatBinary (left, op, right) ->
+    (* Float wall: re-dispatch to the original Float `ExprBinary` — the
+       interpreter evaluates float ops directly and never sees this wasm-only
+       elaboration. *)
+    eval env (ExprBinary (left, op, right))
+
   | ExprBinary (left, op, right) ->
     let* left_val = eval env left in
     let* right_val = eval env right in

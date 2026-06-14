@@ -27,6 +27,14 @@ type context = {
   globals : global list;             (** global variables *)
   locals : (string * int) list;      (** local variable name to index map *)
   next_local : int;                  (** next available local index *)
+  local_types : (int * value_type) list;
+  (** Float wall: local index -> wasm value type, for indices whose value is
+      f64 (Float params and Float-bound `let`s). Indices absent here default to
+      i32. Drives the typed [f_locals] emission so a float bound to a local is
+      declared f64 rather than failing wasm validation. *)
+  fn_ret_types : (string * value_type) list;
+  (** Float wall: function name -> wasm result value type, so a call site
+      `let x = f(...)` can infer whether x is f64. *)
   loop_depth : int;                  (** current loop nesting depth *)
   func_indices : (string * int) list;
   (** Top-level name environment shared by functions and constants.
@@ -95,6 +103,8 @@ let create_context () : context = {
   globals = [];
   locals = [];
   next_local = 0;
+  local_types = [];
+  fn_ret_types = [];
   loop_depth = 0;
   func_indices = [];
   lambda_funcs = [];
@@ -418,6 +428,41 @@ let gen_literal (ctx : context) (lit : literal) : (context * instr) result =
         Ok (ctx', I32Const (Int32.of_int offset))
     end
 
+(** Float wall: structurally infer the wasm value type an expression yields,
+    AFTER elaboration (Float ops are [ExprFloatBinary]). Used to decide whether
+    a `let`-bound local must be declared f64. Conservative — anything not seen
+    to be f64 defaults to i32, matching the pre-float-wall world. *)
+let rec expr_val_type (ctx : context) (e : expr) : value_type =
+  match e with
+  | ExprLit (LitFloat _) -> F64
+  | ExprFloatBinary (_, (OpAdd | OpSub | OpMul | OpDiv), _) -> F64
+  | ExprFloatBinary (_, _, _) -> I32          (* comparisons yield Bool/i32 *)
+  | ExprUnary (OpNeg, e1) -> expr_val_type ctx e1
+  | ExprSpan (e1, _) -> expr_val_type ctx e1
+  | ExprVar id ->
+    (match lookup_local ctx id.name with
+     | Ok idx ->
+       (match List.assoc_opt idx ctx.local_types with Some t -> t | None -> I32)
+     | Error _ -> I32)
+  | ExprApp (ExprVar id, _) ->
+    (match List.assoc_opt id.name ctx.fn_ret_types with Some t -> t | None -> I32)
+  | ExprIf r -> expr_val_type ctx r.ei_then
+  | ExprBlock blk ->
+    (match blk.blk_expr with Some e1 -> expr_val_type ctx e1 | None -> I32)
+  | ExprLet lb ->
+    (match lb.el_body with Some e1 -> expr_val_type ctx e1 | None -> I32)
+  | _ -> I32
+
+(** Float wall: run-length-encode local value types (in index order) into the
+    wasm [local] group list (default i32). *)
+let rle_locals (vts : value_type list) : local list =
+  List.fold_right (fun vt acc ->
+    match acc with
+    | { l_count; l_type } :: rest when l_type = vt ->
+      { l_count = l_count + 1; l_type = vt } :: rest
+    | _ -> { l_count = 1; l_type = vt } :: acc)
+    vts []
+
 (** Generate code for binary operation *)
 let gen_binop (op : binary_op) : instr =
   match op with
@@ -731,6 +776,25 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
     in
     Ok (ctxB, code)
 
+  | ExprFloatBinary (left, op, right) ->
+    (* Float wall: lower a Float binop to the f64 instruction family. Arith
+       (+,-,*,/) yields an f64 value; the six comparisons yield an i32 bool.
+       Operands are f64 (float literals -> F64Const, Float params -> f64 param
+       slots, nested ExprFloatBinary arith -> f64), so this validates. *)
+    let* (ctx1, left_code)  = gen_expr ctx  left  in
+    let* (ctx2, right_code) = gen_expr ctx1 right in
+    let* f64_op = match op with
+      | OpAdd -> Ok F64Add | OpSub -> Ok F64Sub
+      | OpMul -> Ok F64Mul | OpDiv -> Ok F64Div
+      | OpLt  -> Ok F64Lt  | OpLe  -> Ok F64Le
+      | OpGt  -> Ok F64Gt  | OpGe  -> Ok F64Ge
+      | OpEq  -> Ok F64Eq  | OpNe  -> Ok F64Ne
+      | _ -> Error (UnsupportedFeature
+               "Float wall: only + - * / and the six comparisons lower to f64; \
+                Float OpMod / bitwise are unsupported")
+    in
+    Ok (ctx2, left_code @ right_code @ [f64_op])
+
   | ExprBinary (left, op, right) ->
     let* (ctx', left_code) = gen_expr ctx left in
     let* (ctx'', right_code) = gen_expr ctx' right in
@@ -805,6 +869,15 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
   | ExprLet lb ->
     let* (ctx', rhs_code) = gen_expr ctx lb.el_value in
     let* (ctx'', pat_code) = gen_pattern_bind ctx' lb.el_pat in
+    (* Float wall: record a float-bound local's f64 type (see StmtLet). *)
+    let ctx'' = match lb.el_pat with
+      | PatVar id ->
+        (match lookup_local ctx'' id.name with
+         | Ok idx when expr_val_type ctx'' lb.el_value = F64 ->
+           { ctx'' with local_types = (idx, F64) :: ctx''.local_types }
+         | _ -> ctx'')
+      | _ -> ctx''
+    in
     begin match lb.el_body with
       | Some body ->
         let* (ctx_final, body_code) = gen_expr ctx'' body in
@@ -2362,6 +2435,12 @@ and gen_stmt (ctx : context) (stmt : stmt) : (context * instr list) result =
           | None -> layout_from_rhs ()
         in
         let (ctx'', idx) = alloc_local ctx' id.name in
+        (* Float wall: a float-bound local must be declared f64 (else a LocalSet
+           of an f64 into an i32 slot fails wasm validation). *)
+        let ctx'' = match expr_val_type ctx'' sl.sl_value with
+          | F64 -> { ctx'' with local_types = (idx, F64) :: ctx''.local_types }
+          | _ -> ctx''
+        in
         let ctx_with_layout = match layout_opt with
           | Some layout ->
             { ctx'' with field_layouts = (id.name, layout) :: ctx''.field_layouts }
@@ -2871,7 +2950,12 @@ let () =
 
 let gen_function (ctx : context) (fd : fn_decl) : (context * func) result =
   (* Create fresh context for function scope, but preserve lambda_funcs and next_lambda_id *)
-  let fn_ctx = { ctx with locals = []; next_local = 0; loop_depth = 0 } in
+  (* Float wall: reset [local_types] too — local indices restart at 0 per
+     function, so a previous function's f64-local entries must not leak (else a
+     later function's i32 local at the same index is mis-declared f64). Keep
+     [fn_ret_types]: it is module-level (cross-function call inference). *)
+  let fn_ctx = { ctx with locals = []; next_local = 0; loop_depth = 0;
+                          local_types = [] } in
 
   (* Parameters become locals 0..n-1. When a parameter's declared type
      names a known struct, register its field layout under the parameter
@@ -2879,6 +2963,11 @@ let gen_function (ctx : context) (fd : fn_decl) : (context * func) result =
      rather than defaulting to 0. *)
   let (ctx_with_params, _) = List.fold_left (fun (c, _) param ->
     let (c', idx) = alloc_local c param.p_name.name in
+    (* Float wall: record the param's wasm value type (Float -> F64) so body
+       val-type inference and the f_locals emission see f64 params. *)
+    let c' = { c' with local_types =
+      (idx, (match type_to_wasm param.p_ty with Ok t -> t | Error _ -> I32))
+      :: c'.local_types } in
     let c'' =
       match struct_name_of_ty param.p_ty with
       | Some sname ->
@@ -2929,11 +3018,13 @@ let gen_function (ctx : context) (fd : fn_decl) : (context * func) result =
 
   (* Compute additional locals (beyond parameters) *)
   let local_count = ctx_final.next_local - param_count in
-  let locals = if local_count > 0 then
-    [{ l_count = local_count; l_type = I32 }]
-  else
-    []
+  (* Float wall: declare each non-param local with its tracked value type
+     (default i32), so a float-bound local is f64; RLE into local groups. *)
+  let local_vts = List.init (max 0 local_count) (fun i ->
+    let idx = param_count + i in
+    match List.assoc_opt idx ctx_final.local_types with Some t -> t | None -> I32)
   in
+  let locals = rle_locals local_vts in
 
   (* Create function (type index will be set by gen_decl) *)
   let func = {
@@ -2955,13 +3046,14 @@ let intern_func_type (types : func_type list) (ft : func_type) : int * func_type
   in
   find_idx 0 types
 
-(** Build a WASM-side [func_type] for a top-level function declaration, mirroring
-    the convention used by [gen_decl TopFn]: every param is i32, the result is
-    [i32]. Used both for local fn types and for imported fn types so that calls
-    through either path agree on signature. *)
+(** Build a WASM-side [func_type] for a top-level function declaration. Params
+    and result follow the AffineScript type via [type_to_wasm] (Float wall:
+    `Float` -> F64, everything else -> i32). Used by [gen_decl TopFn] AND by
+    call/import sites so every path agrees on the signature. *)
 let func_type_of_fn_decl (fd : fn_decl) : func_type =
-  let params = List.map (fun _ -> I32) fd.fd_params in
-  let results = [I32] in
+  let vt ty = match type_to_wasm ty with Ok t -> t | Error _ -> I32 in
+  let params = List.map (fun p -> vt p.p_ty) fd.fd_params in
+  let results = match fd.fd_ret_ty with Some ty -> [vt ty] | None -> [I32] in
   { ft_params = params; ft_results = results }
 
 let gen_decl (ctx : context) (decl : top_level) : context result =
@@ -2992,9 +3084,9 @@ let gen_decl (ctx : context) (decl : top_level) : context result =
 
   | TopFn fd ->
     (* Create function type *)
-    let param_types = List.map (fun _ -> I32) fd.fd_params in
-    let result_type = [I32] in
-    let func_type = { ft_params = param_types; ft_results = result_type } in
+    (* Float wall: params/results follow the AS type (Float -> F64) via the
+       shared builder, so the definition signature matches call/import sites. *)
+    let func_type = func_type_of_fn_decl fd in
 
     (* Add type to types list *)
     let type_idx = List.length ctx.types in
@@ -3022,6 +3114,10 @@ let gen_decl (ctx : context) (decl : top_level) : context result =
       func_indices = ctx_with_type.func_indices @ [(fd.fd_name.name, func_idx)];
       ownership_annots = ctx_with_type.ownership_annots @ [(func_idx, param_kinds, ret_kind)];
       fn_ret_structs = fn_ret_structs';
+      (* Float wall: record this fn's result value type for call-site inference. *)
+      fn_ret_types = (fd.fd_name.name,
+        (match func_type.ft_results with t :: _ -> t | [] -> I32))
+        :: ctx_with_type.fn_ret_types;
     } in
 
     (* Generate function with correct type index *)

@@ -4117,6 +4117,22 @@ let test_stringwall_rel_lowers_after_elaboration () =
          "slice 10: string `<`/`<=`/`>`/`>=` should lower to wasm after elaboration, got: %s"
          msg)
 
+(* Float wall: Float binops (+ - * / and the six comparisons) type-check but
+   gen_binop returns only the i32 family. The float fixture exercises Float
+   params/returns/locals/arith/comparisons, which must compile after the
+   ExprFloatBinary elaboration rather than emitting i32 ops on f64 operands. *)
+let test_floatwall_lowers_to_f64 () =
+  match run_frontend (fixture "float_wall.affine") with
+  | Error e -> Alcotest.failf "frontend failed on float_wall.affine: %s" e
+  | Ok (prog, _resolve_ctx) ->
+    let elaborated = Affinescript.Typecheck.elaborate_string_concat prog in
+    (match wasm_codegen elaborated with
+     | Ok _ -> ()
+     | Error msg ->
+       Alcotest.failf
+         "float wall: Float binops should lower to the f64 family after elaboration, got: %s"
+         msg)
+
 let stringwall_concat_guard_tests = [
   Alcotest.test_case "string `++` is rejected (not silently miscompiled)"
     `Quick test_stringwall_concat_guard_rejects_string;
@@ -4128,6 +4144,8 @@ let stringwall_concat_guard_tests = [
     `Quick test_stringwall_eq_lowers_after_elaboration;
   Alcotest.test_case "string `<`/`<=`/`>`/`>=` lowers to wasm after elaboration (slice 10)"
     `Quick test_stringwall_rel_lowers_after_elaboration;
+  Alcotest.test_case "Float binops lower to the f64 family after elaboration (float wall)"
+    `Quick test_floatwall_lowers_to_f64;
 ]
 
 (* ---- STDLIB-04b: Throws extern `error<T>` (Refs #329) ----

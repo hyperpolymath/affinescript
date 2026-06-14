@@ -1,0 +1,70 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+= Float wall — implementation (2026-06-14)
+:toc: macro
+
+toc::[]
+
+== Summary
+
+The "float wall" (see `EVIDENCE-float-wall-finding.adoc`) is closed. `Float`
+binary operations now lower to the f64 instruction family, and `Float` values
+flow correctly through function parameters, results, and locals. Built in two
+verified stages, mirroring the string-wall type-channel pattern.
+
+== Stage 1 — params, results, and binop dispatch
+
+* *`ExprFloatBinary of expr * binary_op * expr`* (`ast.ml`): a dedicated node for
+  a `Float`-typed binop, introduced by the post-typecheck elaboration like
+  `ExprStringEq`/`ExprStringRel`.
+* *typecheck* records `Float`-typed binop nodes into `float_binop_sites` at the
+  three synth sites (arith branch's `Float` case, `comparison` branch's `Float`
+  case, and the `==`/`!=` else branch when operands are `Float`);
+  `elaborate_string_concat` rewrites them to `ExprFloatBinary`.
+* *codegen* lowers `ExprFloatBinary` to the f64 family: arithmetic
+  (`+ - * /`) → `F64Add`/`F64Sub`/`F64Mul`/`F64Div` (an f64 value); the six
+  comparisons (`< <= > >= == !=`) → `F64Lt`/`…`/`F64Ne` (an i32 bool).
+* *params/results* (`func_type_of_fn_decl`, used by both definitions and call
+  sites) now follow the AS type via `type_to_wasm` (`Float` → F64), so a `Float`
+  param is an f64 slot and a `Float`-returning fn declares an f64 result.
+
+Stage 1 makes `Float`-param classifiers, stack-flowing float arithmetic, and
+`Float`-returning functions compile — anything that does not bind a float to a
+named local.
+
+== Stage 2 — typed locals
+
+* *context* gains `local_types : (int * value_type) list` (local index → wasm
+  type, default i32) and `fn_ret_types : (string * value_type) list`.
+* *`expr_val_type`* structurally infers whether an expression yields f64 (float
+  literal, `ExprFloatBinary` arith, a tracked f64 local/param, an f64-returning
+  call, and the obvious congruences), defaulting to i32.
+* *`let` bindings* (`StmtLet`, `ExprLet`) record a float-bound local's index as
+  F64; *params* are recorded from their declared type.
+* *`gen_function`* emits `f_locals` by mapping each non-param local index to its
+  tracked type and run-length-encoding (`rle_locals`), instead of one i32 group.
+  Critically it resets `local_types` per function (indices restart at 0), so a
+  prior function's f64-local does not mis-type a later function's i32 local.
+
+== Verification
+
+* New e2e fixture `test/e2e/fixtures/float_wall.affine` + `test_e2e.ml`
+  (`test_floatwall_lowers_to_f64`). Executed value 11210 (out-of-band).
+* Behavioural (out-of-band, Deno): params, comparisons, stack arith, `Float`
+  returns, float locals, float-local chains, float-fn-call bindings, and mixed
+  int/float locals — all correct.
+* `proposals/nextgen-evangelist/affine-parity/examples/string_float_demo`
+  exercises the harness f64 arg pass-through with a real `band_of(Float)` brain
+  (8/8, alongside the String cases — 30/30 total).
+* *No regression*: 48,000+ int-brain parity cases across the idaptik corpus pass
+  unchanged (typed locals are inert for all-i32 functions — they RLE to a single
+  i32 group, identical to the previous emission).
+
+== Not in scope (follow-ons)
+
+* *Float unary negation* (`-x` on `Float`) still routes through `ExprUnary`/
+  `gen_unop` (i32 `0 - x`); a small parallel fix.
+* *Internal calls passing Float arguments*: the call-instruction type builders
+  (distinct from `func_type_of_fn_decl`) still assume i32 args, so an internal
+  `g(floatExpr)` call would mis-type. External entry points (the harness / JS)
+  are unaffected. `OpMod`/bitwise on `Float` are rejected loudly.
