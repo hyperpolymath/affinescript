@@ -1,0 +1,103 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+= Cluster C13 (logic-directory exhaustive sweep) — migration evidence (2026-06-14)
+:toc: macro
+
+[IMPORTANT]
+====
+*Verdict: 17 new integer brains extracted; the remainder are host-side senses
+or already-migrated.*
+
+This cluster exhaustively swept the eight brain-dense logic directories
+(`src/app/devices`, `src/app/player`, `src/app/combat`, `src/app/enemies`,
+`src/app/companions`, `src/app/multiplayer`, `src/shared`, `src/app/utils`,
+`src/engine/utils`) — 159 `.res` files. Each file is classified as one of:
+MIGRATED (a new `Int(...)->Int` brain extracted), ALREADY (brain extracted in
+an earlier cluster), or NO_NEW_BRAINS (host-side sense, FFI binding shim, or a
+float/string-input core that fails the integer-only parity-harness constraint).
+
+All 17 new brains were *independently re-verified* by the parent session:
+G1 compile, G2 differential parity (all cases pass against an independent JS
+oracle), G4 assail (zero high findings). Total brain count: 62 -> 79.
+====
+
+== Disposition summary
+
+[cols="3,1,1,1,1",options="header"]
+|===
+| Directory | Files | New brains | Already | No-brain
+| `src/app/devices`            | 35 | 0 |  9 | 26
+| `src/app/player`             | 22 | 1 |  7 | 14
+| `src/app/combat`+`enemies`   | 18 | 2 | 10 |  6
+| `src/app/companions`+`multiplayer` | 22 | 4 | 3 | 15
+| `src/shared`                 | 34 | 6 | 12 | 16
+| `src/app/utils`+`engine/utils` | 28 | 4 |  2 | 22
+| *Total*                      | *159* | *17* | *43* | *99*
+|===
+
+== New brains (17) — all G1/G2/G4 green
+
+[cols="2,1,4",options="header"]
+|===
+| Brain | G2 | Extracted logic (re-decomposed, not transliterated)
+| `PlayerSprite`         | 64/64     | frame_count, anim_speed_milli (x1000), state_to_anim, facing_scale_milli, is_valid_anim
+| `CombatResolve`        | 91/91     | rank-keyed stomp/charge outcome bands + knockdown durations (x1000 ms) + bounce velocities + body-block push direction
+| `ThreatClass`          | 77/77     | 13->3 detection-source -> threat-type classifier (Physical/Cyber/Both) over detection ordinals
+| `GameI18nCore`         | 58/58     | language_clamp / next_language / prev_language over 0..4 band + select_plural_form
+| `AlertPalette`         | 219/219   | (highContrast,mode,level) -> packed RGB accessibility alert-colour lookup
+| `PeerPort`             | 68/68     | candidate_port(base,slot)=base+slot*10000 over 0..5 + opposite-family peer_base_port selector
+| `AccessClamp`          | 44/44     | accessibility x1000 clamp sub-brains separated from float/settings modules
+| `Coprocessor`          | 2207/2207 | domain 0..9 band (count/clamp/valid) + resourceStats integer folds (accumulate_metric, increment_calls)
+| `Coprocessor_IO`       | 1758/1758 | path_byte_valid, mask_ascii, content_len, stat_hi/lo, write/read/list_compute (float energy/latency host-side)
+| `Kernel_Crypto`        | 170/170   | crypto-gate status selector (rate-limit 429 / quantum-route 402 / proceed 0) + max_concurrent + crack_strength_threshold
+| `Kernel_Quantum`       | 52/52     | quantum-gate status selector (decoherence / 5000ms cooldown -> 503 / proceed 0) + decoherence_limit_mj + cooldown_ms
+| `ResourceAccounting`   | 2537/2537 | record_compute / record_memory_peak / record_energy (mJ) / end_call / pct / has_capacity (95%) / check_quota 3-way
+| `UmsLevelLoader`       | 229/229   | decode validation: is_valid_kind, subtype_in_band, is_nullary_kind, requires_capacity, normalise_condition, floor_covert_links, resolve_patrol_radius_milli
+| `MoletaireCoprocessors`| 82/82     | GURPS 3-level augment ladder (level_value/colour/next + sensor_range + capability gates)
+| `MoletaireHunger`      | 133/133   | hunger-band classifier over milli-units (behaviour / display_band / will_eat_objective / objective_at_risk)
+| `LobbyManager`         | 577/577   | lobby state machine (connection/room/ready transitions, packed-mask ready_count, all_ready, can_start, state_to_color)
+| `MultiplayerClient`    | 85/85     | stateless session brain (conn_transition state machine, player_count_after, role_clamp, has_partner)
+|===
+
+== NO_NEW_BRAINS (99) — classification categories
+
+* *FFI binding shims (`*Coprocessor.res`, ~40):* pure `@module`/`@send external`
+  declarations wrapping an already-compiled `*.wasm` brain. Zero logic; these are
+  the host bridges the new brains drop into.
+* *Render-glue / PixiJS GUI orchestrators (~25):* device/screen/companion view
+  files whose numeric decisions already route through an existing
+  `*RenderLogicCoprocessor` (float ABI). Strings/floats/DOM senses.
+* *Float-physics / float-geometry cores (~12):* positions, velocities, gravity,
+  pixel coords, devicePixelRatio, atan2 — continuous, not integer-exact; fail the
+  Int-only parity constraint. (PlayerState, KeyboardAiming, PlayerGraphics,
+  TrajectoryPreview, FontScale, GetResolution, CameraFeed, etc.)
+* *String / JSON / wire-protocol cores (~12):* PhoenixSocket V2 framing,
+  BurbleAdapter voice I/O, GossamerFs `%raw` IPC, Kernel_IO path sandbox,
+  translation dictionaries, terminal command dispatch — string-input, host-side.
+* *Host state / orchestration / registration glue (~10):* mutable refs, singletons,
+  localStorage persistence, circular-dep break refs, backend registration, async
+  Promise routing.
+
+== ALREADY migrated (43)
+
+Brains extracted in earlier clusters whose source `.res` live in these dirs:
+CovertLink, FirewallDevice, GlobalNetworkData, LaptopState, NetworkManager,
+NetworkTransfer, NetworkZones, PowerManager, Terminal (devices); CriticalRoll,
+JessicaBackground, JessicaLoadout, PlayerAttributes, QCertifications, QPrograms,
+SkillRank (player); HitboxGeom, PlayerHp, Detection, DualAlert, SecurityAi,
+DifficultyScale, Distraction, Drone, GuardNPC, SecurityDog (combat/enemies);
+Moletaire, VMMessageBus, VMNetwork (companions/multiplayer); Coprocessor_Compute,
+Coprocessor_Security, DLCLoader, DeviceType, Diagnostics, GameEvent, Inventory,
+Kernel, Kernel_Compute, PortNames, PuzzleFormat, RetryPolicy (shared); Maths,
+Random (utils).
+
+== Method note
+
+Brains stay `Int(...)->Int` because the parity harness passes integer arguments
+only; float quantities are carried as x1000 milli-units where integer-exact, else
+kept host-side. The string-wall compiler fixes (slices 8b/9/10) make string
+`==`/`!=`/`<`/`++` work in `.affine`, but string-*input* logic still stays
+host-side here for parity-testability, so this sweep remains integer-brain work.
+Several brains (ThreatClass, AlertPalette, the Coprocessor/Kernel/Resource set)
+are residual sub-brains that earlier clusters scoped out as "routing" — this
+sweep recovered them as separable pure-integer kernels.

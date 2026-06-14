@@ -1,0 +1,118 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// PlayerSprite -- the player animation-decision co-processor, the pure-integer
+// core extracted from idaptik src/app/player/PlayerSprite.res (the `spr_*`
+// kernels the PlayerRenderLogicCoprocessorBridge.js already names). Per the
+// DESIGN-VISION ("AffineScript is the brain, JS/Pixi the senses; they pass
+// primitives across the wasm boundary"), the JS host keeps every AnimatedSprite
+// call, the dict of placeholder frames, the texture array, the hex palette and
+// the float damage-flash timer; AffineScript owns only the discrete frame-count
+// / animation-speed / state-to-animation / facing-flip decisions, which are
+// total functions over small integer bands.
+//
+// RE-DECOMPOSITION (not transliteration): the ReScript original keys four
+// switches on two variants -- `animationId` (8 constructors) and
+// `PlayerState.visualState` (6 constructors). PlayerSprite.res already pins the
+// ordinal encodings it sends across the boundary (animOrdinal / stateOrdinal /
+// animFromOrdinal), so the variants ARE these dense integers and no string
+// crosses. We collapse each switch to a flat sequence of guarded returns (the
+// same shape SkillRank.affine uses) so the wasm backend's parser stays within
+// its nesting tolerance. The one float in the source set -- animSpeed, a frames-
+// per-tick rate in 0.04..0.20 -- is exactly representable in milli-units (x1000,
+// so 40..200), so it stays in the brain as anim_speed_milli; the host divides by
+// 1000. The remaining float kernels in the bridge (gfx_* geometry in pixels,
+// traj_* arc maths, damage alpha/flash over a float timer) are genuinely
+// continuous and stay host-side / belong to the float render-logic and CombatFx
+// co-processors -- they are NOT part of this integer brain.
+//
+//## animationId encoding (the header contract for the JS host)
+//   code  animation        frames  speed(milli)
+//     0   Idle               4         50
+//     1   Walk               8        150
+//     2   Jump               4        100
+//     3   Interact           4        120
+//     4   Crouch             2         40
+//     5   Stunned            4        200
+//     6   ChargingJump       2         80
+//     7   Sprint             8        200
+//
+//## visualState encoding (state_to_anim input)
+//   code  visualState      -> animationId code
+//     0   Idle             -> 0  (Idle)
+//     1   Walking          -> 1  (Walk)
+//     2   Sprinting        -> 7  (Sprint)
+//     3   Crouching        -> 4  (Crouch)
+//     4   Jumping          -> 2  (Jump)
+//     5   ChargingJump     -> 6  (ChargingJump)
+//
+// An animationId outside 0..7 is no animation: frame_count reports 0 and
+// anim_speed_milli returns the out-of-band sentinel -1. A visualState outside
+// 0..5 returns the sentinel -1 from state_to_anim. These sentinels are never an
+// in-band code, so out-of-band input can never collide with a real decision.
+
+//## Frame count for an animation
+// frameCount(anim): the number of placeholder/sheet frames for an animationId
+// ordinal (0..7). Off-domain indices yield 0, a sentinel the JS host can treat
+// as "no such animation".
+pub fn frame_count(anim: Int) -> Int {
+  if anim == 0 { return 4; }
+  if anim == 1 { return 8; }
+  if anim == 2 { return 4; }
+  if anim == 3 { return 4; }
+  if anim == 4 { return 2; }
+  if anim == 5 { return 4; }
+  if anim == 6 { return 2; }
+  if anim == 7 { return 8; }
+  0
+}
+
+//## Animation speed in milli-units (frames per tick x 1000)
+// animSpeed(anim): the per-animation playback rate. The ReScript source carries
+// it as a float in 0.04..0.20; here it is x1000 (40..200), exactly representable
+// as Int, and the host divides by 1000. Off-domain indices yield the out-of-band
+// sentinel -1 (a real speed is always positive, so -1 is unambiguous).
+pub fn anim_speed_milli(anim: Int) -> Int {
+  if anim == 0 { return 50; }
+  if anim == 1 { return 150; }
+  if anim == 2 { return 100; }
+  if anim == 3 { return 120; }
+  if anim == 4 { return 40; }
+  if anim == 5 { return 200; }
+  if anim == 6 { return 80; }
+  if anim == 7 { return 200; }
+  -1
+}
+
+//## Map a visualState ordinal to its animationId ordinal
+// stateToAnim(state): the gameplay-state -> animation decision. visualState
+// 0..5 maps onto the animationId band per the header table; off-domain states
+// yield the out-of-band sentinel -1 (the host's animFromOrdinal default of Idle
+// covers the fallthrough, but the brain reports the miss honestly).
+pub fn state_to_anim(state: Int) -> Int {
+  if state == 0 { return 0; }
+  if state == 1 { return 1; }
+  if state == 2 { return 7; }
+  if state == 3 { return 4; }
+  if state == 4 { return 2; }
+  if state == 5 { return 6; }
+  -1
+}
+
+//## Horizontal flip scale in milli-units (x1000)
+// facingScaleX(isLeft): the sprite mirror decision. The ReScript call passes 0
+// for left-facing and 1 otherwise; left flips to -1.0, else +1.0. Here that is
+// x1000: input 0 -> -1000, any other input -> 1000. The host divides by 1000 to
+// recover the +/-1.0 scale.
+pub fn facing_scale_milli(is_left: Int) -> Int {
+  if is_left == 0 { return -1000; }
+  1000
+}
+
+//## Whether an animationId names a defined animation
+// 1 = valid (0..7), 0 = out of band. A convenience guard for the host.
+pub fn is_valid_anim(anim: Int) -> Int {
+  if anim < 0 { return 0; }
+  if anim > 7 { return 0; }
+  1
+}

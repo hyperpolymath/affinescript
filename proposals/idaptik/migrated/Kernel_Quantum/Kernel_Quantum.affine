@@ -1,0 +1,66 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// Kernel_Quantum -- the quantum-domain kernel GATE, the pure-integer brain
+// extracted from idaptik src/shared/Kernel_Quantum.res. Per the DESIGN-VISION
+// ("AffineScript is the brain, JS/Pixi the senses; they pass primitives across
+// the wasm boundary"), the JS host keeps the per-device `dict<float>`
+// last-quantum-op timestamps, the device-id STRINGS, the Date.now() wall clock,
+// every executionResult message, the Promise dispatch, the [QUANTUM AUDIT] log,
+// and the registry walk. AffineScript owns only the integer GATE decision the
+// handler makes before dispatch: which status the two enforcement layers
+// (decoherence energy guard; per-device cooldown) select.
+//
+// Re-decomposition notes (NOT a transliteration):
+//   * Kernel_Quantum.res is async and float-clocked (Date.now, maxEnergy : float).
+//     The async + clock + message framing is senses-work; the BRAIN is the
+//     synchronous integer status selection. The host reads the device's
+//     accumulated energy and the elapsed-since-last-op interval and passes both as
+//     integers before calling the brain.
+//   * ENERGY crosses as integer milli-Joules (1 J = 1000 mJ): the .res guard is
+//     `maxEnergy > 50.0` J; scaled, that is `energy_mj > 50000`. TIME crosses as
+//     integer milliseconds (the .res cooldown is already 5000.0 ms; Date.now
+//     deltas are whole-ms). This is the migration rule "floats -> x1000 / integer
+//     ms when integer-expressible".
+//   * No module state: the energy total, the elapsed interval and the "has a prior
+//     op" flag are explicit Int params; the brain owns only the comparisons.
+//   * Wall-clock IS a sense (per the multiplayer-determinism model), so the
+//     host computes `now - last`; the brain receives the already-computed elapsed.
+//   * "no QPU backend" (status 404) is registry state the host owns; 0 means
+//     "proceed to dispatch", and the host resolves 404 itself if the Quantum
+//     domain is empty.
+//
+//## Status encoding (the header contract for the JS host)
+//   503  unavailable  -- decoherence (energy over limit) OR cooldown still active
+//     0  proceed      -- dispatch to the Quantum backend
+// Both 503 paths mirror the .res `status: 503` resolutions (decoherence guard and
+// cooldown check); 0 is the `| Some(b) => b.execute(...)` dispatch arm.
+
+// The cumulative-energy decoherence limit in milli-Joules (.res `maxEnergy > 50.0`
+// J, scaled by 1000). Above this the device cannot maintain qubit coherence.
+pub fn decoherence_limit_mj() -> Int { 50000 }
+
+// The per-device cooldown period in milliseconds (.res quantumCooldownMs). This
+// must elapse between successful quantum ops.
+pub fn cooldown_ms() -> Int { 5000 }
+
+// The quantum-gate status selector. Inputs:
+//   energy_mj  -- the device's cumulative energy use in milli-Joules.
+//   elapsed_ms -- ms since the device's last successful quantum op (host-computed
+//                 now - last); ignored when has_last == 0.
+//   has_last   -- 1 if the device has a prior quantum op on record (last > 0.0),
+//                 else 0 (first op is never cooldown-gated).
+// Returns 503 (decoherence or cooldown) or 0 (proceed to dispatch), mirroring the
+// .res control flow exactly:
+//   1. energy_mj > 50000                          -> 503 (decoherence)
+//   2. elapsed_ms < 5000 && has_last == 1         -> 503 (cooldown)
+//   3. otherwise                                  -> 0
+pub fn quantum_status(energy_mj: Int, elapsed_ms: Int, has_last: Int) -> Int {
+  if energy_mj > decoherence_limit_mj() {
+    503
+  } else {
+    if has_last == 1 {
+      if elapsed_ms < cooldown_ms() { 503 } else { 0 }
+    } else { 0 }
+  }
+}

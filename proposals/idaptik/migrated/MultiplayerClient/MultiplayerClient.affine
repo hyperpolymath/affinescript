@@ -1,0 +1,128 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// MultiplayerClient -- the multiplayer-session co-processor, the pure-integer core
+// extracted from idaptik src/app/multiplayer/MultiplayerClient.res (the high-level
+// co-op multiplayer client wrapping PhoenixSocket). Per the DESIGN-VISION
+// ("AffineScript is the brain, JS/Pixi the senses; only primitives cross the wasm
+// boundary") and the host binding contract (MultiplayerClientCoprocessor.res), the
+// model never lives in wasm: the host keeps the PhoenixSocket, the gameChannel, the
+// coopPlayers dict, the chatHistory, every JSON payload, the player-id and
+// session-id strings, and every channel push/parse. The kernel is "the pure
+// connection/session state-machine, player-list counter, role-enum and partner-
+// predicate kernels the ReScript side calls across the boundary in i32 primitives"
+// (MultiplayerClientCoprocessor.res:5-8). Every export is i32 -> i32 (scalar ABI).
+//
+//## Why this split, not a port of MultiplayerClient.res
+// MultiplayerClient.res is overwhelmingly STRING/JSON/socket I/O: the V2 payload
+// builders (makePayload, jsonString, res:84-119), every channel handler that parses
+// player_id / role / device_id / instruction / connection_id out of JSON
+// (setupChannelHandlers, res:201-355), every outbound push (sendPosition /
+// sendVMExecute / sendChat / ..., res:421-584) and the terminal formatters
+// (formatStatus, formatChat, res:606-636). NONE of that crosses. What survives as
+// the integer brain are four stateless decisions the binding contracts for: the
+// connection/session STATE MACHINE (connect/disconnect/joinSession/leaveSession set
+// client.state, res:173-409), the co-op player-LIST COUNTER (the coopPlayers dict
+// grows on player:joined, shrinks on player:left, clears on leaveSession,
+// res:213-412), the ROLE enum decode/clamp (roleFromString, res:77-82), and the
+// PARTNER predicate (getCoopPartner non-empty, res:592-594). The diff harness
+// vm/tests/multiplayerclient_diff.ts proves parity over a 17-step connect/join/
+// move/leave lifecycle against the compiled oracle (binding res:13-15).
+//
+//## multiplayerState encoding (declaration order of `multiplayerState`, res:33-37)
+//   code  state        meaning
+//     0   Offline      not connected to the sync server
+//     1   InLobby      connected, not in a game session
+//     2   InSession    in a game session (host keeps the session-id string)
+//
+//## connection/session event encoding (CONN_EVENT, binding res:30-37)
+//   0 SOCKET_CONNECTED      socket open      -> InLobby   (connect, res:173-176)
+//   1 SOCKET_DISCONNECTED   socket closed    -> Offline   (connect/disconnect, res:177-196)
+//   2 JOIN_SESSION          joined a session -> InSession (joinSession, res:396)
+//   3 LEAVE_SESSION         left a session   -> InLobby   (leaveSession, res:409)
+// Each defined event sets an ABSOLUTE target state (the .res assignments are
+// unconditional). An undefined event is a no-op and returns the state UNCHANGED, so
+// a stray host event can never knock the machine into a fabricated state.
+//
+//## player-list event encoding (PLAYER_EVENT, binding res:40-45)
+//   0 PLAYER_JOINED   a co-op player joined -> count + 1            (res:213)
+//   1 PLAYER_LEFT     a co-op player left   -> max(0, count - 1)    (res:223)
+//   2 SESSION_LEFT    left the session      -> 0 (clear all)        (res:411-412)
+// The count is floored at 0 (binding res:62-63): a PLAYER_LEFT at count 0 stays 0.
+//
+//## playerRole encoding (declaration order of `playerRole`, res:15-17)
+//   0 Q (primary: VM/hack/navigate)   1 Observer (support: cameras/intel)
+
+//## The number of multiplayer-session states (Offline / InLobby / InSession).
+pub fn state_count() -> Int { 3 }
+
+//## conn_transition -- advance the connection/session state machine.
+// The integer core of the four state assignments in MultiplayerClient.res
+// (connect res:173-186, disconnect res:188-197, joinSession res:396, leaveSession
+// res:409). Each defined CONN_EVENT moves the machine to its absolute target
+// regardless of the prior state (faithful to the .res's unconditional `client.state
+// = ...`): SOCKET_CONNECTED -> InLobby(1), SOCKET_DISCONNECTED -> Offline(0),
+// JOIN_SESSION -> InSession(2), LEAVE_SESSION -> InLobby(1). An undefined event is a
+// no-op and returns `state` unchanged (the machine never invents a state from an
+// unrecognised event; the Connecting case of the .res is likewise a no-op,
+// res:181).
+pub fn conn_transition(state: Int, event: Int) -> Int {
+  if event == 0 { return 1; }   // SOCKET_CONNECTED    -> InLobby
+  if event == 1 { return 0; }   // SOCKET_DISCONNECTED -> Offline
+  if event == 2 { return 2; }   // JOIN_SESSION        -> InSession
+  if event == 3 { return 1; }   // LEAVE_SESSION       -> InLobby
+  state                         // undefined event: no-op
+}
+
+//## player_count_after -- the co-op player-list size after a lifecycle event.
+// The integer core of the coopPlayers dict's growth/shrink/clear (binding
+// res:62-63): PLAYER_JOINED grows the list by one (Dict.set on a new pid,
+// res:213), PLAYER_LEFT shrinks it by one FLOORED AT 0 (Dict.delete, res:223 --
+// never negative), SESSION_LEFT clears the whole list to 0 (leaveSession's
+// forEach-delete, res:411-412). The host passes the current size and the event; the
+// kernel returns the new size to store back. An undefined event leaves the size
+// unchanged (no phantom growth). A negative incoming count is treated as the empty
+// list (floored to 0) before applying the event, so the size stays a valid count.
+pub fn player_count_after(count: Int, event: Int) -> Int {
+  let mut c = count;
+  if c < 0 { c = 0; }
+  if event == 0 { return c + 1; }            // PLAYER_JOINED
+  if event == 1 {                            // PLAYER_LEFT (floored at 0)
+    if c <= 0 { return 0; }
+    return c - 1;
+  }
+  if event == 2 { return 0; }                // SESSION_LEFT (clear)
+  c                                          // undefined event: unchanged
+}
+
+//## role_from_string -- decode a playerRole from the "is exactly observer" flag.
+// The integer core of MultiplayerClient.roleFromString (res:77-82): the host
+// resolves whether the role string equals "observer" (the only non-default), and
+// the kernel turns that flag into the role ordinal -- Observer(1) when the flag is
+// set, Q(0) otherwise (res:80, `| _ => Q`). Any non-zero flag counts as observer,
+// mirroring the binding's bool argument (res:65-66). The string compare itself is a
+// host SENSE; only the resolved flag crosses.
+pub fn role_from_string(is_observer: Int) -> Int {
+  if is_observer != 0 { 1 } else { 0 }
+}
+
+//## role_clamp -- canonicalise a role ordinal onto the two-value band.
+// The integer core of the binding's roleClamp (res:68-69): "0 Q, anything else
+// Observer". Q is the single canonical value 0; every other ordinal (including
+// out-of-band) collapses to Observer(1). This mirrors roleFromString's `_ => Q`
+// defaulting in the opposite polarity: there is no third role, so any non-Q input
+// is read as Observer. Total over all i32 inputs; the two roles are distinct (0 vs
+// 1) so no collision.
+pub fn role_clamp(role: Int) -> Int {
+  if role == 0 { 0 } else { 1 }
+}
+
+//## has_partner -- whether at least one co-op partner is present.
+// The integer core of MultiplayerClient.getCoopPartner non-empty (res:592-594) /
+// the binding's hasPartner (res:71-72): the coopPlayers dict holds the OTHER
+// players (self is never inserted), so a partner exists iff the list is non-empty.
+// Returns 1 when count > 0, else 0. A non-positive count is an empty list and
+// returns 0.
+pub fn has_partner(count: Int) -> Int {
+  if count > 0 { 1 } else { 0 }
+}

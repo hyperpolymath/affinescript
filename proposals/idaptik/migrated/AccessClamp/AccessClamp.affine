@@ -1,0 +1,68 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// AccessClamp -- the accessibility-preference range-clamp co-processor, the
+// pure-integer core extracted from src/app/utils/AccessibilitySettings.res
+// `setFontScale` and `setGameSpeed` (the font-scale clamp is the same bound the
+// FontScaleCoprocessor.res bridge documents as `clampScale`, 0.75..2.0). Per the
+// DESIGN-VISION ("AffineScript is the brain, JS/Pixi the senses; only primitives
+// cross the wasm boundary") the JS host keeps the cached refs, the localStorage
+// persistence and the live PixiJS multiply (px * scale); AffineScript owns only
+// the integer range-clamp arithmetic.
+//
+// The ReScript clamps a Float preference with `Math.max(lo, Math.min(hi, v))`.
+// Float cannot cross the scalar-i32 boundary, so the preference crosses in
+// MILLI-UNITS: the JS caller passes round(scale * 1000) and reads back an integer
+// milli-value it divides by 1000. The bounds become integer milli-bounds and the
+// clamp is exact (the ReScript bounds 0.75 / 2.0 / 0.25 / 1.0 are all multiples of
+// 0.001, so the milli-domain loses nothing).
+//
+//## Font-scale bound (setFontScale: Math.max(0.75, Math.min(2.0, scale)))
+//   milli range [750 .. 2000]   (0.75x .. 2.0x text size)
+//## Game-speed bound (setGameSpeed: Math.max(0.25, Math.min(1.0, speed)))
+//   milli range [250 .. 1000]   (0.25x very-slow .. 1.0x normal)
+//
+// This is a genuine CLAMP (saturating to the nearest in-band bound), not a
+// sentinel: an out-of-range preference is pinned to the lo or hi bound exactly as
+// the ReScript Math.max/Math.min does, never to a sentinel. The clamp is total
+// and idempotent over the integer milli-domain.
+
+// The font-scale lower / upper milli-bounds (0.75 / 2.0 * 1000).
+pub fn font_scale_min_milli() -> Int { 750 }
+pub fn font_scale_max_milli() -> Int { 2000 }
+
+// The game-speed lower / upper milli-bounds (0.25 / 1.0 * 1000).
+pub fn game_speed_min_milli() -> Int { 250 }
+pub fn game_speed_max_milli() -> Int { 1000 }
+
+// A generic saturating clamp of v into [lo, hi]. Mirrors Math.max(lo,
+// Math.min(hi, v)): clamp UP to lo first conceptually, but the ReScript applies
+// min(hi, v) then max(lo, ...) -- when lo <= hi the two orders agree, and the
+// preference bounds always satisfy lo <= hi, so the single form below is exact.
+fn clamp_range(v: Int, lo: Int, hi: Int) -> Int {
+  if v < lo { lo } else { if v > hi { hi } else { v } }
+}
+
+// Clamp a font-scale milli-value into [750, 2000] (AccessibilitySettings
+// setFontScale's range bound; the FontScaleCoprocessor `clampScale`).
+pub fn clamp_font_scale_milli(scale_milli: Int) -> Int {
+  clamp_range(scale_milli, 750, 2000)
+}
+
+// Clamp a game-speed milli-value into [250, 1000] (AccessibilitySettings
+// setGameSpeed's range bound).
+pub fn clamp_game_speed_milli(speed_milli: Int) -> Int {
+  clamp_range(speed_milli, 250, 1000)
+}
+
+// Whether a font-scale milli-value is already in-band (no clamp would change it).
+// 1 = in [750,2000], 0 = would be saturated. Lets the host skip a redundant
+// write when the preference is already valid.
+pub fn font_scale_in_band(scale_milli: Int) -> Int {
+  if scale_milli < 750 { 0 } else { if scale_milli > 2000 { 0 } else { 1 } }
+}
+
+// Whether a game-speed milli-value is already in-band (no clamp would change it).
+pub fn game_speed_in_band(speed_milli: Int) -> Int {
+  if speed_milli < 250 { 0 } else { if speed_milli > 1000 { 0 } else { 1 } }
+}

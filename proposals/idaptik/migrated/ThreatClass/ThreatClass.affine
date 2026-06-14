@@ -1,0 +1,129 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// ThreatClass -- the detection-source threat classifier, the pure-integer brain
+// extracted from src/app/enemies/DualAlertBridge.res (classifyThreat). The
+// ReScript bridge is otherwise a pure routing shim over mutable JS services
+// (reportDetection, triggerPhysical/triggerCyber); the existing DualAlert.affine
+// header rightly noted the trigger-CONVERSION half (sourceToPhysicalTrigger /
+// sourceToCyberTrigger -> option<...> feeding service calls) stays host-side. But
+// the classifyThreat map itself is a total, string-free 13 -> 3 enum function:
+// it reads the detection source's variant ORDINAL and returns the threat-type
+// ordinal, with no string and no service handle ever crossing. That is a genuine,
+// previously-overlooked integer brain, separable from both the DualAlert level
+// machine and the host routing.
+//
+// Per the DESIGN-VISION ("AffineScript is the brain, JS/Pixi the senses; only
+// primitives cross the wasm boundary"), the host keeps the detectionSource
+// constructors and their string payloads (the device / IP ids) and every service
+// mutation; AffineScript owns only "is this source a physical, cyber, or both
+// threat?" -- which the host then uses to decide which trigger(s) to fire.
+//
+//## Detection-source ordinal encoding (from DetectionSystem.res variant order)
+//   code  source            code  source            code  source
+//     0   GuardSight          5   CanaryTripped       10   DistractionExpired
+//     1   GuardHearing        6   PortScanDetected    11   ContactDamage
+//     2   DogDetection        7   CrackFailed         12   ManualAlert
+//     3   DogHearing          8   FirewallBlock
+//     4   CameraMotion        9   CovertLinkProbe
+// The 13 valid codes are 0..12; the encoding is lossless. Out-of-band input
+// clamps to the nearest valid ordinal (0 or 12) before classification, so an
+// unknown source resolves as GuardSight's physical class rather than crashing.
+//
+//## Threat-type band (the result contract for the JS host)
+//   0  PhysicalThreat   -- a body in the building (guards, dogs, distraction, contact)
+//   1  CyberThreat      -- a network intrusion (canary, port scan, crack, firewall, link)
+//   2  BothThreats      -- physical presence detected via cyber means (camera, manual)
+
+enum Source {
+  GuardSight, GuardHearing, DogDetection, DogHearing, CameraMotion,
+  CanaryTripped, PortScanDetected, CrackFailed, FirewallBlock, CovertLinkProbe,
+  DistractionExpired, ContactDamage, ManualAlert, InvalidSource(Int)
+}
+
+fn source_of(code: Int) -> Source {
+  if code == 0 { return GuardSight; }
+  if code == 1 { return GuardHearing; }
+  if code == 2 { return DogDetection; }
+  if code == 3 { return DogHearing; }
+  if code == 4 { return CameraMotion; }
+  if code == 5 { return CanaryTripped; }
+  if code == 6 { return PortScanDetected; }
+  if code == 7 { return CrackFailed; }
+  if code == 8 { return FirewallBlock; }
+  if code == 9 { return CovertLinkProbe; }
+  if code == 10 { return DistractionExpired; }
+  if code == 11 { return ContactDamage; }
+  if code == 12 { return ManualAlert; }
+  InvalidSource(code)
+}
+
+// @clamp:declared -- out-of-band source clamps to nearest valid ordinal (0 or 12).
+// Controlled-loss by design: the 13 valid codes 0..12 are injective; only the
+// out-of-band InvalidSource(v) is squashed, never an in-band code.
+fn clamp_source_ordinal(v: Int) -> Int {
+  if v < 0 { return 0; }
+  12
+}
+
+fn source_ordinal_of(s: Source) -> Int {
+  match s {
+    GuardSight => 0,
+    GuardHearing => 1,
+    DogDetection => 2,
+    DogHearing => 3,
+    CameraMotion => 4,
+    CanaryTripped => 5,
+    PortScanDetected => 6,
+    CrackFailed => 7,
+    FirewallBlock => 8,
+    CovertLinkProbe => 9,
+    DistractionExpired => 10,
+    ContactDamage => 11,
+    ManualAlert => 12,
+    InvalidSource(v) => clamp_source_ordinal(v)
+  }
+}
+
+//## Number of canonical detection sources.
+pub fn source_count() -> Int { 13 }
+
+//## Source ordinal (canonicalise a host integer to a valid source code).
+pub fn source_value(code: Int) -> Int {
+  source_ordinal_of(source_of(code))
+}
+
+//## Threat classification (classifyThreat).
+// Returns the threat-type band: 0 Physical, 1 Cyber, 2 Both. Mirrors the
+// DualAlertBridge.res switch exactly:
+//   guard/dog (sight+hearing), distraction-expired, contact -> Physical
+//   canary, port-scan, crack-failed, firewall, covert-link  -> Cyber
+//   camera-motion, manual-alert                              -> Both
+pub fn classify_threat(source: Int) -> Int {
+  let s = source_ordinal_of(source_of(source));
+  if s == 4 { return 2; }
+  if s == 12 { return 2; }
+  if s == 5 { return 1; }
+  if s == 6 { return 1; }
+  if s == 7 { return 1; }
+  if s == 8 { return 1; }
+  if s == 9 { return 1; }
+  0
+}
+
+//## Does this source raise a physical alert? (1 = yes)
+// Physical iff the threat class is Physical(0) or Both(2). Lets the host gate the
+// triggerPhysical call without re-deriving the class.
+pub fn raises_physical(source: Int) -> Int {
+  let t = classify_threat(source);
+  if t == 1 { return 0; }
+  1
+}
+
+//## Does this source raise a cyber alert? (1 = yes)
+// Cyber iff the threat class is Cyber(1) or Both(2).
+pub fn raises_cyber(source: Int) -> Int {
+  let t = classify_threat(source);
+  if t == 0 { return 0; }
+  1
+}

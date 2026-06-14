@@ -1,0 +1,163 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// CombatResolve -- the physical-combat resolution core, the pure-integer brain
+// extracted from src/app/combat/Combat.res. The ReScript original is a per-frame
+// collision dispatcher (`update`) that mutates Player / SecurityDog / GuardNPC
+// records directly and routes AABB overlap tests through the already-migrated
+// HitboxGeom co-processor. Per the DESIGN-VISION ("AffineScript is the brain,
+// JS/Pixi the senses; only primitives cross the wasm boundary"), the host KEEPS:
+// every mutable entity record and velocity field, the float AABB geometry
+// (delegated to HitboxGeom), the per-frame iteration over dogs/guards, the
+// guard-x dodge repositioning, and all the bounce-velocity writes. The brain owns
+// ONLY the deterministic rank-keyed combat-outcome bands and their integer
+// magnitudes -- the stomp dispatch, the charge dispatch, the per-rank knockdown
+// duration, the tuning velocity literals, and the body-block push direction.
+//
+// This is DISTINCT from GuardNPC.affine: that brain owns the guard
+// detection/suspicion/pursuit decision ladder; this brain owns what happens when
+// the PLAYER physically hits a guard (stomp/charge/body-block). The two never
+// overlap -- GuardNPC has no stomp/charge/knockdown-duration bands.
+//
+//## Rank ordinal encoding (shared with GuardNPC.affine; the host contract)
+//   code  rank             code  rank
+//     0   BasicGuard         4   EliteGuard
+//     1   SecurityGuard      5   SecurityChief
+//     2   AntiHacker         6   RivalHacker
+//     3   Sentinel           7   Assassin
+// Out-of-band ranks clamp to the nearest valid ordinal (0 or 7), so an unknown
+// rank resolves as the BasicGuard "normal" path rather than crashing.
+//
+//## Float boundary: velocities and durations cross as integers / MILLI-UNITS
+// The Tuning velocities are already integral px/s literals (-180, -250, -200,
+// +80), so they cross verbatim. The knockdown durations are seconds (1.5, 3.0);
+// they cross as MILLISECONDS (round(seconds * 1000) -> 1500, 3000), the same
+// milli-convention PlayerHp.affine uses for its timers. No float crosses.
+
+// =========================================================================
+// Rank taxonomy (mirrors GuardNPC.affine's 0..7 band)
+// =========================================================================
+
+enum Rank {
+  BasicGuard, SecurityGuard, AntiHacker, Sentinel, EliteGuard, SecurityChief,
+  RivalHacker, Assassin, InvalidRank(Int)
+}
+
+fn rank_of(code: Int) -> Rank {
+  if code == 0 { return BasicGuard; }
+  if code == 1 { return SecurityGuard; }
+  if code == 2 { return AntiHacker; }
+  if code == 3 { return Sentinel; }
+  if code == 4 { return EliteGuard; }
+  if code == 5 { return SecurityChief; }
+  if code == 6 { return RivalHacker; }
+  if code == 7 { return Assassin; }
+  InvalidRank(code)
+}
+
+// @clamp:declared -- out-of-band rank clamps to nearest valid ordinal (0 or 7).
+// Controlled-loss by design: the 8 valid codes 0..7 are injective; only the
+// out-of-band InvalidRank(v) is squashed, never an in-band code.
+fn clamp_rank_ordinal(v: Int) -> Int {
+  if v < 0 { return 0; }
+  7
+}
+
+fn rank_ordinal_of(r: Rank) -> Int {
+  match r {
+    BasicGuard => 0,
+    SecurityGuard => 1,
+    AntiHacker => 2,
+    Sentinel => 3,
+    EliteGuard => 4,
+    SecurityChief => 5,
+    RivalHacker => 6,
+    Assassin => 7,
+    InvalidRank(v) => clamp_rank_ordinal(v)
+  }
+}
+
+// =========================================================================
+// Tuning velocity literals (Combat.Tuning; integral px/s, sign = direction)
+// =========================================================================
+
+//## Upward bounce after a head-stomp (negative = up).
+pub fn head_stomp_bounce() -> Int { 0 - 180 }
+//## Upward bounce after a body-stomp (negative = up).
+pub fn body_stomp_bounce() -> Int { 0 - 250 }
+//## Upward bounce after stomping a guard (negative = up).
+pub fn guard_stomp_bounce() -> Int { 0 - 200 }
+//## Horizontal push-back magnitude when walking into a solid body.
+pub fn body_block_pushback() -> Int { 80 }
+//## Knockdown duration (ms) for elite ranks (SecurityChief / EliteGuard).
+pub fn elite_knockdown_ms() -> Int { 1500 }
+//## Knockdown duration (ms) for normal ranks.
+pub fn normal_knockdown_ms() -> Int { 3000 }
+
+// =========================================================================
+// Stomp dispatch (Combat.res update, guard HeadKO|BodyBounce arm, 336-370)
+// =========================================================================
+//
+// On a successful stomp the guard's rank selects the outcome:
+//   Assassin   -> dodges sideways and throws the player off   (band 3)
+//   Sentinel   -> armored; player bounces off, no knockdown   (band 2)
+//   Chief/Elite-> bounce + ELITE knockdown (1.5 s)            (band 1)
+//   all others -> bounce + NORMAL knockdown (3.0 s)           (band 0)
+
+//## Stomp outcome band for a rank.
+//   0 NormalKnockdown   1 EliteKnockdown   2 ArmoredBounce   3 AssassinDodge
+pub fn stomp_outcome(rank: Int) -> Int {
+  let r = rank_ordinal_of(rank_of(rank));
+  if r == 7 { return 3; }
+  if r == 3 { return 2; }
+  if r == 4 { return 1; }
+  if r == 5 { return 1; }
+  0
+}
+
+// =========================================================================
+// Charge dispatch (Combat.res update, guard Knockdown arm, 379-393)
+// =========================================================================
+//
+// On a sprint-charge that connects, the rank selects the outcome:
+//   Sentinel / Assassin -> immune; player bounces back        (band 2)
+//   Chief / EliteGuard  -> ELITE knockdown (1.5 s)            (band 1)
+//   all others          -> NORMAL knockdown (3.0 s)           (band 0)
+
+//## Charge outcome band for a rank.
+//   0 NormalKnockdown   1 EliteKnockdown   2 Immune
+pub fn charge_outcome(rank: Int) -> Int {
+  let r = rank_ordinal_of(rank_of(rank));
+  if r == 3 { return 2; }
+  if r == 7 { return 2; }
+  if r == 4 { return 1; }
+  if r == 5 { return 1; }
+  0
+}
+
+//## Knockdown duration (ms) a rank receives WHEN it is knocked down.
+// SecurityChief(5) / EliteGuard(4) get the short elite duration; every other
+// rank gets the normal duration. The host applies this only when the stomp /
+// charge outcome is one of the knockdown bands (0 or 1); for the armored /
+// immune / dodge bands no duration is consumed.
+pub fn knockdown_duration_ms(rank: Int) -> Int {
+  let r = rank_ordinal_of(rank_of(rank));
+  if r == 4 { return 1500; }
+  if r == 5 { return 1500; }
+  3000
+}
+
+// =========================================================================
+// Solid body-block push direction (Combat.res checkBodyBlock, 219-225)
+// =========================================================================
+
+//## Push-back direction when the player walks into a solid body.
+// The ReScript compares centres: player centre left of the entity centre pushes
+// the player LEFT (-pushback), otherwise RIGHT (+pushback). Centres cross as
+// integers (the host already has rect.x and rect.w as fixed-point, so it passes
+// the integer centre 2*x+w or any consistent scaling -- only the ordering
+// matters). Boundary follows the ReScript strict `<`: equal centres push right.
+pub fn body_block_direction(player_center: Int, entity_center: Int) -> Int {
+  if player_center < entity_center { return 0 - 80; }
+  80
+}
