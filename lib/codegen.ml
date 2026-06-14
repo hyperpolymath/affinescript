@@ -1002,14 +1002,24 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
         in
         Ok (ctx_with_heap, code)
 
-      | ExprVar id when id.name = "string_length" && List.length args = 1 ->
+      | ExprVar id when (id.name = "string_length" || id.name = "len")
+                        && List.length args = 1 ->
         (* STDLIB-04e (#332) wasm-backend lowering. AS string layout is
            `[len: i32][bytes...]` at the pointer the arg evaluates to —
            reading the length is one i32.load at offset 0. The interp
            binding (lib/interp.ml) was wired in #362; this handler is
            the codegen sibling so tests/codegen/*.affine fixtures that
            call string_length (env_at / arg_at / env_count_and_at) can
-           compile end-to-end. *)
+           compile end-to-end.
+
+           `len` (the polymorphic length, issue #135) lowers identically:
+           AS arrays share the same `[len: i32][elems...]` header (the
+           list-concat handler above relies on exactly this), so reading
+           length is the same single i32.load whether `len` is applied to a
+           String or an array. Sharing the arm unblocks the stdlib string
+           layer (starts_with/ends_with/substring/split/join, which call
+           `len` on both strings and arrays) for the wasm backend — the
+           string-wall slice-8 residual flagged in the migration ledger. *)
         let* (ctx_with_arg, arg_code) = gen_expr ctx (List.hd args) in
         Ok (ctx_with_arg, arg_code @ [I32Load (2, 0)])
 
