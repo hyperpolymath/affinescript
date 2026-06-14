@@ -1,0 +1,74 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// DeviceTypes -- the device/security colour-lookup co-processor, the pure-integer
+// core extracted from src/app/devices/types/DeviceTypes.res `getDeviceColor` and
+// `getSecurityColor`. The .res file is mostly type DEFINITIONS (the `deviceType`
+// and `securityLevel` variants, the `deviceInfo` record carrying name/ipAddress
+// STRINGS, and the `device` interface of unit->record closures); those stay
+// host-side. The two colour getters are the only computation, and both are pure
+// integer tables (an enum band in, a 24-bit packed RGB integer out) with no host
+// delegation -- exactly the AlertPalette shape.
+//
+// NOTE this is NOT the already-migrated DeviceType brain. That one captured the
+// shared/src 12-kind device TAXONOMY (Laptop/Desktop/Server/Router/Switch/... as
+// a 0..11 validity band). This brain captures the idaptik app-side 8-kind device
+// COLOUR table plus the 4-level security COLOUR table -- different variants,
+// different content, no overlap. Per the DESIGN-VISION the JS host keeps every
+// STRING (device name, IP) and every Pixi object; AffineScript owns only these
+// two integer tables, given an enum code returns the packed colour.
+//
+//## Device-type colour encoding (devCode, the header contract for the JS host)
+//   code  device         RGB         code  device          RGB
+//     0   Laptop         0x2196F3       4   Terminal        0x4CAF50
+//     1   Router         0xFF9800       5   PowerStation    0xFFEB3B
+//     2   Server         0x9C27B0       6   UPS             0x795548
+//     3   IotCamera      0xF44336       7   Firewall        0xE53935
+// The codes follow the `deviceType` variant declaration order. The ReScript
+// switch has explicit arms for all eight kinds and NO catch-all, so an out-of-
+// band code is not a device type: get_device_colour returns the out-of-band
+// sentinel -1 (never an in-band colour, so no colour collision is introduced;
+// this is a sentinel, not a clamp -- assail stays clean).
+//
+//## Security-level colour encoding (secCode)
+//   code  level    RGB           code  level    RGB
+//     0   Open     0x00ff00         2   Medium   0xff9800
+//     1   Weak     0xffff00         3   Strong   0xff0000
+// Codes follow the `securityLevel` variant order; the switch is total over the
+// four levels with no catch-all, so an out-of-band code returns -1.
+//
+// All in-band outputs are 24-bit RGB integers (0..0xFFFFFF = 16777215), well
+// inside i32; every row is distinct, and -1 is the sole out-of-band value.
+//
+// PURE: integers only, no floats, no strings, no records, no effects, no I/O.
+
+// The number of device kinds in the colour table.
+pub fn device_type_count() -> Int { 8 }
+
+// The number of security levels in the colour table.
+pub fn security_level_count() -> Int { 4 }
+
+// Packed 24-bit RGB colour for a device-type code (0..7), mirroring
+// getDeviceColor. Out-of-band -> -1 (not a device type; matches the switch having
+// no catch-all). Flat early-return per band, decimal mirrors of the hex source.
+pub fn get_device_colour(dev_code: Int) -> Int {
+  if dev_code == 0 { return 2201331; }   // 0x2196F3 Laptop (blue)
+  if dev_code == 1 { return 16750592; }  // 0xFF9800 Router (orange)
+  if dev_code == 2 { return 10233776; }  // 0x9C27B0 Server (purple)
+  if dev_code == 3 { return 16007990; }  // 0xF44336 IotCamera (red)
+  if dev_code == 4 { return 5025616; }   // 0x4CAF50 Terminal (green)
+  if dev_code == 5 { return 16771899; }  // 0xFFEB3B PowerStation (yellow)
+  if dev_code == 6 { return 7951688; }   // 0x795548 UPS (brown)
+  if dev_code == 7 { return 15022389; }  // 0xE53935 Firewall (dark red)
+  -1
+}
+
+// Packed 24-bit RGB colour for a security-level code (0..3), mirroring
+// getSecurityColor. Out-of-band -> -1 (matches the switch having no catch-all).
+pub fn get_security_colour(sec_code: Int) -> Int {
+  if sec_code == 0 { return 65280; }     // 0x00ff00 Open (green)
+  if sec_code == 1 { return 16776960; }  // 0xffff00 Weak (yellow)
+  if sec_code == 2 { return 16750592; }  // 0xff9800 Medium (orange)
+  if sec_code == 3 { return 16711680; }  // 0xff0000 Strong (red)
+  -1
+}

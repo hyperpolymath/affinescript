@@ -1,0 +1,64 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+= Cluster C15 (straggler leaves) — migration evidence + corpus-sweep capstone (2026-06-14)
+:toc: macro
+
+[IMPORTANT]
+====
+*Verdict: 3 new integer brains; sweep complete. Every non-test idaptik `.res`
+source file is now classified.*
+
+This cluster closes the residual leaves the C13/C14 directory sweeps did not
+assign: `src/app/screens/{main,hub}`, `vm/wasm/src`, and
+`src/app/devices/{types,common}` — 8 `.res` files. All 3 new brains
+independently re-verified (G1 compile, G2 parity all-pass, G4 assail clean).
+Total brain count: 91 -> 94.
+====
+
+== Ledger (8 files)
+
+[cols="2,1,3",options="header"]
+|===
+| File | Verdict | Detail
+| `screens/main/Bouncer.res`   | NO_NEW_BRAINS | float-input core (Random.float bounds, position/speed vs bounds), Motion anim — senses
+| `screens/main/Logo.res`      | MIGRATED `Logo` (17/17) | directionFromInt: random Int -> compass band (i%4 -> NE/NW/SE/SW 0..3)
+| `screens/main/MainScreen.res`| NO_NEW_BRAINS | PixiJS menu UI (FancyButton, navigation, float layout) — senses
+| `screens/hub/MainHubScreen.res` | MIGRATED `MainHubScreen` (176/176) | sidebar-nav dispatch: hub_nav_action (Website/Quit/0..8 content), hub_panel_visible over 9 panels, hub_quit_panel_visible. 991 LOC otherwise senses
+| `vm/wasm/src/WasmVm.res`     | NO_NEW_BRAINS | wasm-VM driver: string register API, opcode dispatch delegated to the Zig wasm — senses
+| `vm/wasm/src/bindings.res`   | NO_NEW_BRAINS | FFI marshalling: string<->index register map, @send externs, Int/Float boundary — senses
+| `devices/types/DeviceTypes.res` | MIGRATED `DeviceTypes` (24/24) | getDeviceColor (8-kind -> 24-bit RGB) + getSecurityColor (4-level -> RGB) colour tables; distinct from the DeviceType taxonomy brain
+| `devices/common/DeviceWindow.res` | NO_NEW_BRAINS | float-input core (close-btn X, drag deltas) already routed through DevicesRenderLogicCoprocessor — senses
+|===
+
+`docs/affinescript-migration/templates/*.res` is a migration *template*, not game
+source, and is excluded.
+
+== Corpus-sweep capstone (C13 + C14 + C15)
+
+[cols="2,1,1,1,1",options="header"]
+|===
+| Cluster | Files | New brains | Already | No-brain
+| C13 (logic dirs)   | 159 | 17 |  43 |  99
+| C14 (sense-heavy)  | 148 | 12 |  45 |  91
+| C15 (stragglers)   |   8 |  3 |   0 |   5
+| *This session*     | *315* | *32* | *88* | *195*
+|===
+
+*Outcome.* Every non-test idaptik `.res` source file is now accounted for as one
+of: a verified `Int(...)->Int` brain (corpus 62 -> *94*), a brain already
+extracted in an earlier cluster, or a documented `NO_NEW_BRAINS` host-side sense.
+The 195 `NO_NEW_BRAINS` files are FFI binding shims, PixiJS render-glue,
+float-domain cores (physics/geometry/animation), string/JSON/HTTP/wire-protocol
+cores, and orchestration/host-state glue — none of which admit a separable
+integer brain under the integer-only parity-harness ABI.
+
+*Method invariant.* Every brain is pure `Int(...)->Int`, no module state, floats
+carried as x1000 milli-units / permille where integer-exact (else host-side),
+guarded with `-1` out-of-band sentinels, authored in the flat early-`return N;`
+idiom, and gated three ways (compile -> differential parity vs an independent JS
+oracle -> assail). `total` is a reserved word and is avoided.
+
+*Not in scope.* This corpus is a demonstration + compiler-stress proof that lives
+in the affinescript repo. Wiring these wasm brains back into the running idaptik
+game (host bindings, replacing the `.res` consumers) is a separate downstream
+effort and is not part of this sweep.

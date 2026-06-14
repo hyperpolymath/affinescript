@@ -1,0 +1,51 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// Logo -- the bouncing-logo direction-selection co-processor, the pure-integer
+// core extracted from src/app/screens/main/Logo.res `directionFromInt`. The Logo
+// module is otherwise wholly senses: a Pixi Sprite, a float `speed`, a random
+// texture STRING, and the four float bound getters (left/right/top/bottom, each
+// a half-width/half-height multiply). Per the DESIGN-VISION ("AffineScript is the
+// brain, JS/Pixi the senses; only primitives cross the wasm boundary"), every
+// Sprite, every float, and the texture path STAY host-side.
+//
+// The one separable integer decision is the direction selection. The ReScript is
+//   let directionFromInt = (i: int): direction =>
+//     switch mod(i, 4) { | 0 => NE | 1 => NW | 2 => SE | _ => SW }
+// a fold of a random Int (Random.int(0,3) at the call site) onto one of four
+// compass directions. The `direction` variant is closed and ordered, so we
+// re-decompose it as the canonical 0..3 integer the constructor order implies:
+// the variant IS the integer; no direction value crosses the boundary, only its
+// code. The host maps the returned 0..3 code back to its own NE/NW/SE/SW arms
+// for setDirection (which mutates the float sprite position -- senses).
+//
+//## Direction encoding (the header contract for the JS host)
+//   code  direction
+//     0   NE  (north-east: +x, -y)
+//     1   NW  (north-west: -x, -y)
+//     2   SE  (south-east: +x, +y)
+//     3   SW  (south-west: -x, +y)
+// The encoding is LOSSLESS: four distinct directions map to four distinct codes.
+//
+// The selection reduces an arbitrary Int onto this 0..3 band by `i mod 4`. The
+// ReScript `_ => SW` catch-all means index 3 AND any residue the switch did not
+// name; since `mod(i,4)` over non-negative i is exactly {0,1,2,3}, the `_` arm
+// is reached only by residue 3 (= SW). The call site only ever feeds a
+// Random.int(0,3) so i is non-negative; for a defensive negative input we mirror
+// the host's truncated `mod` (the sign of the residue follows the dividend) by
+// folding it back into 0..3, so the band stays total and collision-free over all
+// Int -- assail stays clean (a band fold, never a -1 sentinel).
+//
+// PURE: integers only, no floats, no strings, no sprites, no effects, no I/O.
+
+// The number of compass directions in the closed band.
+pub fn logo_direction_count() -> Int { 4 }
+
+// Select a direction code (0..3) for a host integer, mirroring directionFromInt's
+// `mod(i, 4)` switch. For non-negative i this is the bare residue; a negative i
+// is folded back into 0..3 (add the modulus once, since |residue| < 4 for the
+// truncated remainder) so the result is always an in-band code, never negative.
+pub fn logo_direction_from_int(i: Int) -> Int {
+  let r = i % 4;
+  if r < 0 { r + 4 } else { r }
+}
