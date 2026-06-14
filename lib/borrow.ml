@@ -202,7 +202,8 @@ let param_ownership (p : param) : ownership option =
     so it cannot reintroduce a use-after-move false negative.  Bodies of
     nested lambdas are skipped (a [return] there is the lambda's, not this
     function's).  #554. *)
-let compute_ret_borrow_params (fd : fn_decl) : int list =
+let compute_ret_borrow_params (lookup : string -> int list option)
+    (fd : fn_decl) : int list =
   let param_idx : (string, int) Hashtbl.t = Hashtbl.create 8 in
   let ref_param : (string, unit) Hashtbl.t = Hashtbl.create 8 in
   List.iteri (fun i (p : param) ->
@@ -229,7 +230,7 @@ let compute_ret_borrow_params (fd : fn_decl) : int list =
      (its entry, possibly [], was set by [record_let]) wins — otherwise a
      value-local shadowing a ref-param would be spuriously treated as a
      returned borrow of that param (false positive). *)
-  let origins_of_ref_source (e : expr) : int list =
+  let rec origins_of_ref_source (e : expr) : int list =
     match peel e with
     | ExprUnary ((OpRef | OpMutRef), inner) ->
       (match root_name inner with
@@ -246,6 +247,24 @@ let compute_ret_borrow_params (fd : fn_decl) : int list =
          if Hashtbl.mem ref_param id.name then
            (match Hashtbl.find_opt param_idx id.name with Some i -> [i] | None -> [])
          else [])
+    | ExprApp (f, args) ->
+      (* Interprocedural: a call whose result borrows the callee's parameter
+         [i] makes OUR function borrow whatever argument [i] resolves to in our
+         frame.  [lookup] returns the callee's *current* return-borrow summary,
+         driven to a fixpoint by [build_context], so a function that returns
+         another ref-returning call's result (e.g.
+         [wrap(ref x){ let t = pick(x); return t }]) inherits the origin.
+         #554 residual (a). *)
+      (match root_name f with
+       | Some fname ->
+         (match lookup fname with
+          | Some callee_sum ->
+            List.concat_map (fun i ->
+              match List.nth_opt args i with
+              | Some arg -> origins_of_ref_source arg
+              | None -> []) callee_sum
+          | None -> [])
+       | None -> [])
     | _ -> []
   in
   (* Always record the binding (even to []) so a shadowing value-local masks
@@ -403,18 +422,51 @@ let add_fn_signature (ctx : context) (fd : fn_decl) : unit =
   let sig_ = {
     fn_name = fd.fd_name.name;
     fn_param_ownerships = List.map param_ownership fd.fd_params;
-    fn_ret_borrow_params = compute_ret_borrow_params fd;
+    (* Standalone use: intraprocedural only (no callee summaries available).
+       [build_context] recomputes interprocedurally via a fixpoint. *)
+    fn_ret_borrow_params = compute_ret_borrow_params (fun _ -> None) fd;
   } in
   Hashtbl.replace ctx.fn_sigs fd.fd_name.name sig_
 
-(** Build context from program *)
+(** Build context from program.
+
+    Return-borrow summaries ([fn_ret_borrow_params]) are computed
+    *interprocedurally* by a monotone fixpoint: each signature is seeded with
+    an empty summary, then every function's summary is recomputed against the
+    callees' current summaries until none change.  [compute_ret_borrow_params]
+    resolves a returned call result through the callee's summary, so a
+    function that returns another ref-returning call's result eventually
+    inherits the origin.  Origins only grow and are bounded by arity, so the
+    loop terminates.  #554 (interprocedural residual (a)). *)
 let build_context (program : program) : context =
   let ctx = create_context () in
-  List.iter (fun decl ->
-    match decl with
-    | TopFn fd -> add_fn_signature ctx fd
-    | _ -> ()
-  ) program.prog_decls;
+  let fds =
+    List.filter_map (function TopFn fd -> Some fd | _ -> None) program.prog_decls
+  in
+  List.iter (fun (fd : fn_decl) ->
+    Hashtbl.replace ctx.fn_sigs fd.fd_name.name {
+      fn_name = fd.fd_name.name;
+      fn_param_ownerships = List.map param_ownership fd.fd_params;
+      fn_ret_borrow_params = [];
+    }) fds;
+  let lookup name =
+    match Hashtbl.find_opt ctx.fn_sigs name with
+    | Some s -> Some s.fn_ret_borrow_params
+    | None -> None
+  in
+  let changed = ref true in
+  while !changed do
+    changed := false;
+    List.iter (fun (fd : fn_decl) ->
+      let new_sum = compute_ret_borrow_params lookup fd in
+      match Hashtbl.find_opt ctx.fn_sigs fd.fd_name.name with
+      | Some s when new_sum <> s.fn_ret_borrow_params ->
+        Hashtbl.replace ctx.fn_sigs fd.fd_name.name
+          { s with fn_ret_borrow_params = new_sum };
+        changed := true
+      | _ -> ()
+    ) fds
+  done;
   ctx
 
 (** Generate a fresh borrow ID *)
@@ -1761,6 +1813,31 @@ and check_stmt (ctx : context) (state : state) (symbols : Symbol.t) (stmt : stmt
                   (binder_sym, new_b) :: state.ref_bindings
               | None -> ())
            | None -> ());
+          (* #554 residual (c): [r = f(b)] reassigning an existing ref-binder
+             to a call whose result borrows [b].  The `&p`/ref-var reborrow
+             path above does not fire ([is_reborrow_source] only matches those
+             shapes), so release the binder's OLD loan here (ref-counted by
+             [b_id] so a borrow another binder still aliases is kept) and
+             rebind it to the escaping call-result borrows — mirroring
+             [record_ref_binding]'s claim and the Slice-B `&` reborrow, so a
+             later use of the old target is no longer spuriously rejected. *)
+          (match root_var place with
+           | Some binder_sym ->
+             let rec peel = function ExprSpan (x, _) -> peel x | x -> x in
+             (match peel rhs with
+              | ExprApp _ when state.result_borrows <> [] ->
+                let old, remaining =
+                  List.partition (fun (s, _) -> s = binder_sym) state.ref_bindings
+                in
+                List.iter (fun (_, ob) ->
+                  if not (List.exists (fun (_, b') -> b'.b_id = ob.b_id) remaining)
+                  then end_borrow state ob) old;
+                state.ref_bindings <-
+                  List.fold_left (fun acc b -> (binder_sym, b) :: acc)
+                    remaining state.result_borrows;
+                state.result_borrows <- []
+              | _ -> ())
+           | None -> ());
           Ok ()
         end
     | None ->
@@ -2023,6 +2100,18 @@ let check_program (symbols : Symbol.t) (program : program) : unit result =
    multi-arg, and aggregates (the aggregate + assign-path + branch-tail-
    summary holes a first cut missed were all found and closed).
 
+   Follow-up (also #554) closed two of the three named residuals:
+   - *interprocedural-through-call-result* — [compute_ret_borrow_params] now
+     resolves a returned call result through the callee's summary, and
+     [build_context] drives all summaries to a monotone fixpoint, so
+     [fn wrap(x: ref Int) -> ref Int { let t = pick(x); return t; }] inherits
+     pick's origin and [let r = wrap(a); consume(a); *r] is rejected
+     (transitively, through any depth of wrappers).
+   - *reassignment precision* — [r = f(b)] now releases the binder's prior
+     loan (ref-counted by [b_id]) and rebinds to the escaping call result,
+     so a later use of the old target is no longer spuriously rejected —
+     symmetric with the plain-`&` Slice-B reborrow.
+
    Still deferred:
    - Origin/region variables (true Polonius surface) — a region
      var on each [TyRef]/[TyMut] with subset constraints and a
@@ -2031,33 +2120,19 @@ let check_program (symbols : Symbol.t) (program : program) : unit result =
      (docs/decisions/0022-polonius-origin-variables.adoc) for the
      M1-M4 migration plan; lexical checker is the merge oracle
      through M3.
-   - #554 residuals (all strictly smaller than the original hole; closed
-     properly by the Polonius origins above, #553):
-       (a) *interprocedural-through-call-result* — the summary is
-           intraprocedural and does not chase a returned borrow whose origin
-           is itself ANOTHER ref-returning call result bound to a local,
-           e.g. [fn wrap(x: ref Int) -> ref Int { let t = pick(x); return t; }];
-           so [let r = wrap(a); consume(a); *r] slips through.  A summary
-           fixpoint over the call graph would close it.
-       (b) *branch-merged / copied-out claim* — a borrow threaded through an
-           [if]/[match] arm or block tail at the BIND site
-           ([let r = if c { pick(a) } else { pick(b) }], [let r = { pick(a) }]),
-           or copied out of its binder into an aggregate before the binder's
-           last use ([let r = pick(a); let t = (r, 0); …]), is not protected,
-           because the arm-merge / block-exit drops the branch-local borrow
-           and NLL expires the binder at the copy site.  This is NOT a new
-           asymmetry: the lexical checker treats the byte-identical plain-`&`
-           programs ([let r = if c { &a } else { &b }], [let t = (r, 0)] with
-           [r = &a]) identically (both accept) — it is the same pre-existing
-           through-branch / copy-out lexical limitation, inherited by the
-           call-result path, not introduced by it.
-       (c) *reassignment precision* (over-rejection, not a soundness hole):
-           [r = pick(b)] reassigning an existing ref-binder does not release
-           the binder's OLD loan (the [&p] reborrow path does, via
-           [is_reborrow_source]); a later use of the old target may be
-           spuriously rejected.  Rare; conservative direction.
-   - Tighter integration with the quantity checker for captured
-     linears (Slice D).
+   - #554 remaining residual (closed properly by the Polonius origins
+     above, #553): *branch-merged / copied-out claim* — a borrow threaded
+     through an [if]/[match] arm or block tail at the BIND site
+     ([let r = if c { pick(a) } else { pick(b) }], [let r = { pick(a) }]),
+     or copied out of its binder into an aggregate before the binder's last
+     use ([let r = pick(a); let t = (r, 0); …]), is not protected, because
+     the arm-merge / block-exit drops the branch-local borrow and NLL
+     expires the binder at the copy site.  This is NOT a new asymmetry: the
+     byte-identical plain-`&` programs ([let r = if c { &a } else { &b }],
+     [let t = (r, 0)] with [r = &a]) behave identically (both accept) — the
+     same pre-existing through-branch / copy-out lexical limitation,
+     inherited by the call-result path, not introduced by it.  A true
+     flow-sensitive borrow graph (Polonius) discharges it uniformly.
    - Tighter integration with the quantity checker for captured
      linears (Slice D).
 *)

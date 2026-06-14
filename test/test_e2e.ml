@@ -5250,6 +5250,33 @@ let test_borrow_callee_returned_borrow_return_stmt () =
                    a `return <branch>;` statement was not recorded in the \
                    return-borrow summary — use-after-move accepted"
 
+(* #554 residual (a) closed — interprocedural-through-call-result. `wrap`
+   returns `pick(x)`'s result bound to a local; the summary fixpoint over the
+   call graph must give `wrap` pick's origin, so the use-after-move through
+   `wrap`'s result is rejected (transitively, at any wrapper depth). *)
+let test_borrow_callee_returned_borrow_interproc () =
+  match borrow_result (fixture "borrow_callee_returned_borrow_interproc.affine") with
+  | Error (Borrow.MoveWhileBorrowed _) -> ()
+  | Error e ->
+    Alcotest.fail ("#554 interprocedural: expected MoveWhileBorrowed (the \
+                    summary fixpoint must give `wrap` pick's return-borrow \
+                    origin), got: " ^ Borrow.format_borrow_error e)
+  | Ok () ->
+    Alcotest.fail "#554 interprocedural regressed: a function returning \
+                   another ref-returning call's result did not inherit the \
+                   origin — use-after-move accepted"
+
+(* #554 residual (c) closed — reassigning a ref-binder to a call result
+   releases the OLD loan, so the previously-borrowed target is movable again
+   (symmetric with the plain-`&` Slice-B reborrow). Must pass. *)
+let test_borrow_callee_returned_borrow_reassign_old_ok () =
+  match borrow_result (fixture "borrow_callee_returned_borrow_reassign_old_ok.affine") with
+  | Ok () -> ()
+  | Error e ->
+    Alcotest.fail ("#554 reassign-old precision: after `r = other(b)` the old \
+                    target `a` must be movable again, got: "
+                   ^ Borrow.format_borrow_error e)
+
 let borrow_tests = [
   Alcotest.test_case "BorrowOutlivesOwner: &local escapes its block"
     `Quick test_borrow_outlives_owner;
@@ -5321,6 +5348,10 @@ let borrow_tests = [
     `Quick test_borrow_callee_returned_borrow_match_arm;
   Alcotest.test_case "#554 summary: `return if/match {..};` statement form is tracked"
     `Quick test_borrow_callee_returned_borrow_return_stmt;
+  Alcotest.test_case "#554 (a): interprocedural-through-call-result via summary fixpoint"
+    `Quick test_borrow_callee_returned_borrow_interproc;
+  Alcotest.test_case "#554 (c): reassign to call result releases old loan (precision)"
+    `Quick test_borrow_callee_returned_borrow_reassign_old_ok;
 ]
 
 (* ============================================================================

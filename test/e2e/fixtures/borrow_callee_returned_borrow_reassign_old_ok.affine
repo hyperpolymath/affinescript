@@ -1,0 +1,33 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// #554 residual (c) closed — reassignment releases the OLD loan. After
+// `r = other(b)` rebinds `r`, the previously-borrowed `a` (from the initial
+// `r = pick(a)`) is no longer held by `r`, so moving `a` must be ACCEPTED.
+// This mirrors the plain-`&` Slice-B behaviour (`r = &b` releases the old
+// borrow on `a`); before the fix the call-result path left the old loan
+// dangling and spuriously rejected the move.
+
+module BorrowCalleeReturnedBorrowReassignOldOk;
+
+fn pick(ref x: Int) -> ref Int {
+  return &x;
+}
+
+fn other(ref y: Int) -> ref Int {
+  return &y;
+}
+
+fn consume(own v: Int) -> Int {
+  return v;
+}
+
+fn main() -> Int {
+  let a: Int = 1;
+  let b: Int = 2;
+  let mut r = pick(a);
+  r = other(b);
+  let _gone = consume(a);
+  let v = *r;
+  return v;
+}
