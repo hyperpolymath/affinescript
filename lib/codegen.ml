@@ -439,7 +439,15 @@ let gen_binop (op : binary_op) : instr =
   | OpBitXor -> I32Xor
   | OpShl -> I32Shl
   | OpShr -> I32ShrS
-  | OpConcat -> I32Add (* Placeholder *)
+  | OpConcat ->
+    (* Unreachable: `++` never reaches [gen_binop]. String `++` is lowered by
+       the [ExprStringConcat] arm (slice 8b) or rejected by the slice-8a guard;
+       list `++` is lowered by its own [ExprBinary (_, OpConcat, _)] arm; and
+       compound-assign only maps `+= -= *= /=`. The former placeholder returned
+       [I32Add], which would have *silently* summed two pointers if ever
+       reached — fail loudly instead so a regression surfaces immediately. *)
+    failwith "gen_binop: OpConcat must be lowered via ExprStringConcat or the \
+              list-concat arm, never through gen_binop"
 
 (** Generate code for unary operation *)
 let gen_unop (op : unary_op) : instr result =
