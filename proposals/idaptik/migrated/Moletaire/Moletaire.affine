@@ -1,0 +1,594 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// Moletaire -- the pure-integer behaviour brain re-decomposed from
+// src/app/companions/Moletaire.res (1317 LOC) together with the level-keyed
+// effect ladders of MoletaireCoprocessors.res and the thresholds / rate /
+// gravity formulae of MoletaireHunger.res. Moletaire is a robotic mole
+// companion: an 11-state machine (Idle -> tunnel/surface -> dig trap /
+// sabotage / carry / distract / glide -> permadeath), a single equipment slot
+// (one of 7 items), a 5-coprocessor "bay" of GURPS-style 0..3 level ladders,
+// and a gravity-based hunger system that periodically wrests control from the
+// player toward edible objects.
+//
+// Per the DESIGN-VISION ("AffineScript is the brain, JS/Pixi the senses; only
+// primitives cross the wasm boundary") the host KEEPS every SENSE: the Pixi
+// Container/Graphics drawing and the hex palette, the item-id / cable-id /
+// sound-name STRINGS, the carried-items array, the Math.random eat-roll and
+// wander-direction, the Math.sqrt edible distances, the float positions /
+// depths / timers / hunger accumulation, the option<float> targets, the
+// pendingEvents queue, the async coprocessor handle and the FeaturePacks flag.
+// The brain owns ONLY the deterministic integer DECISIONS -- no strings, no
+// arrays, no floats, no promises, no module-level mutable state cross.
+//
+//## FLOAT BOUNDARY (rule: floors stay host-side). Every float the brain needs
+// is floored host-side to an Int scaled by 1000 (a "milli-unit"); the JS caller
+// passes round(value * 1000):
+//   * depths (0.0..1.0)        -> milli-depth   (0..1000, where 1000 == 1.0)
+//   * speeds (pixels/second)   -> milli-pixels/s (px x 1000)
+//   * hunger (0.0..1.0)        -> milli-units    (0..1000)
+//   * hunger rate / pull / dt  -> milli-units    (value x 1000)
+//   * distances (pixels)       -> milli-pixels   (px x 1000)
+//   * eat-chance / multipliers -> milli-factors  (1.0 -> 1000, 0.05 -> 50)
+// Speeds and per-coprocessor effect constants are integer-valued in the source
+// (200.0, 25.0, 1.15, 0.6, ...) so the brain returns them directly in milli;
+// only the runtime depth / hunger / distance / dt are floored by the host.
+// Every comparison and the rate / gravity formulae then run in exact integer
+// arithmetic, reproducing the ReScript float compares at the floored resolution
+// (strict `>` stays strict, `>=` stays `>=`).
+//
+//## State ordinal encoding (Moletaire.res stateOrdinal, header contract)
+//   code  state               code  state
+//     0   Idle                  6   Distracted
+//     1   MovingUnderground     7   Gliding
+//     2   MovingAboveGround     8   Crushed
+//     3   DiggingTrap           9   CaughtByDog
+//     4   SabotagingCable      10   Dead
+//     5   CarryingItem        out-of-band -> -1
+//
+//## Facing encoding            ## Equipment encoding (allEquipment order)
+//   0  Left   1  Right            0  Skateboard     4  Rucksack
+//                                 1  Glider         5  FlashCamera
+//## Coprocessor level             2  BatteringRam   6  PlasmaCutter
+//   0 Stock  1 Basic            out-of-band -> -1
+//   2 Enhanced  3 Overclocked
+//                              ## Vibration band    ## Hunger behaviour
+//                                 0  NoData            0  Cooperative
+//                                 1  DirectionOnly     1  Resisting
+//                                 2  DirAndIntent      2  Devouring
+//                                 3  FullProfile       3  Wandering
+
+// ===========================================================================
+// Closed-band taxonomies. Each ordinal set below is contiguous, so the host can
+// never address a phantom state / equipment / level / band.
+// ===========================================================================
+
+pub fn state_count() -> Int { 11 }
+pub fn equipment_count() -> Int { 7 }
+pub fn level_count() -> Int { 4 }
+pub fn vibration_count() -> Int { 4 }
+pub fn behaviour_count() -> Int { 4 }
+
+fn valid_state(s: Int) -> Int {
+  if s < 0 { return 0; }
+  if s > 10 { return 0; }
+  1
+}
+
+fn valid_equipment(e: Int) -> Int {
+  if e < 0 { return 0; }
+  if e > 6 { return 0; }
+  1
+}
+
+fn valid_level(lvl: Int) -> Int {
+  if lvl < 0 { return 0; }
+  if lvl > 3 { return 0; }
+  1
+}
+
+// ===========================================================================
+// Tuning constants (Moletaire.res `module Tuning`). Speeds in milli-pixels/s;
+// depth thresholds in milli-depth (0..1000); action durations in milliseconds.
+// The host reads these so it need not duplicate the magic numbers.
+// ===========================================================================
+
+pub fn underground_speed_mu() -> Int { 200000 }   // 200.0 px/s
+pub fn above_ground_speed_mu() -> Int { 25000 }    // 25.0 px/s
+pub fn skateboard_speed_mu() -> Int { 55000 }      // 55.0 px/s
+pub fn surface_threshold_mu() -> Int { 50 }        // 0.05 depth
+pub fn dog_detection_depth_mu() -> Int { 300 }     // 0.3 depth
+pub fn trap_dig_ms() -> Int { 4000 }               // 4.0 s
+pub fn cable_sabotage_ms() -> Int { 3000 }         // 3.0 s
+pub fn distraction_ms() -> Int { 5000 }            // 5.0 s
+pub fn base_carry_capacity() -> Int { 1 }
+pub fn rucksack_carry_capacity() -> Int { 3 }
+pub fn base_eat_chance_milli() -> Int { 50 }       // 0.05 base item-eat chance
+
+// ===========================================================================
+// Carry capacity: 3 with Rucksack (equipment 4) equipped, else 1.
+// (Moletaire.res getCarryCapacity.) equipped is the equipment ordinal, or -1
+// for an empty slot.
+// ===========================================================================
+pub fn carry_capacity(equipped: Int) -> Int {
+  if equipped == 4 { return 3; }
+  1
+}
+
+// can_give_item: the mole may accept an item iff alive and currently carrying
+// fewer than its capacity (Moletaire.res giveItem). alive / carried are the
+// host-side bool / array-length passed as ints; equipped sets the capacity.
+pub fn can_give_item(alive: Int, carried: Int, equipped: Int) -> Int {
+  if alive == 0 { return 0; }
+  let cap = carry_capacity(equipped);
+  if carried < cap { return 1; }
+  0
+}
+
+// ===========================================================================
+// Movement speed selection (Moletaire.res updateMovement `speed`). Returns the
+// milli-pixels/s speed for the current state, applying the PathOptimiser
+// efficiency multiplier (passed as a milli-factor, e.g. 1150 == 1.15) where the
+// source applies it. CarryingItem underground runs at 0.7x the underground
+// speed; above ground (CarryingItem or MovingAboveGround) the skateboard
+// (equipment 0) lifts the surface speed. underground is the host's
+// depth > surfaceThreshold test (1/0). Non-moving states return 0.
+//
+//   state        current state ordinal (0..10)
+//   equipped     equipment ordinal, or -1 for empty
+//   underground  1/0: depth > surfaceThreshold
+//   path_mult_milli  PathOptimiser efficiency, milli-factor (1000 == 1.0)
+// ===========================================================================
+pub fn movement_speed_mu(state: Int, equipped: Int, underground: Int, path_mult_milli: Int) -> Int {
+  // MovingUnderground (1): underground speed x path efficiency.
+  if state == 1 {
+    return (underground_speed_mu() * path_mult_milli) / 1000;
+  }
+  // MovingAboveGround (2): skateboard lifts surface speed.
+  if state == 2 {
+    if equipped == 0 { return skateboard_speed_mu(); }
+    return above_ground_speed_mu();
+  }
+  // CarryingItem (5): underground -> 0.7x underground x path; surface -> walk.
+  if state == 5 {
+    if underground != 0 {
+      let base = (underground_speed_mu() * 7) / 10;
+      return (base * path_mult_milli) / 1000;
+    }
+    return above_ground_speed_mu();
+  }
+  0
+}
+
+// ===========================================================================
+// Facing / direction signs (the `if dx > 0 { Right } else { Left }` and
+// `if dx > 0 { 1.0 } else { -1.0 }` idioms threaded throughout the source). The
+// host passes the floored horizontal delta (milli-pixels); only the sign
+// matters. facing: dx > 0 -> Right(1) else Left(0). direction: dx > 0 -> +1,
+// dx < 0 -> -1, dx == 0 -> 0 (matches MoletaireHunger.calculatePull's tri-state
+// direction; the simpler two-way Moletaire.res sites pass dx != 0).
+// ===========================================================================
+pub fn facing_for_delta(dx_mu: Int) -> Int {
+  if dx_mu > 0 { 1 } else { 0 }
+}
+
+pub fn direction_for_delta(dx_mu: Int) -> Int {
+  if dx_mu > 0 { return 1; }
+  if dx_mu < 0 { return -1; }
+  0
+}
+
+// ===========================================================================
+// Order gates (Moletaire.res orderMoveTo / orderDigTrap / orderSabotageCable /
+// launchGlider / useFlash). Each returns 1 (accepted) / 0 (refused), mirroring
+// the guard the command checks before mutating state. alive / depth / equipped
+// come from the host. depth_mu is milli-depth (0..1000).
+// ===========================================================================
+
+// orderDigTrap / orderSabotageCable: alive, not Dead(10), and underground past
+// depth 0.1 (100 mu). Both share this gate.
+pub fn can_dig(alive: Int, state: Int, depth_mu: Int) -> Int {
+  if alive == 0 { return 0; }
+  if state == 10 { return 0; }
+  if depth_mu > 100 { return 1; }
+  0
+}
+
+// orderMoveTo: alive and not Dead(10). Returns the state to enter:
+// MovingUnderground(1) when underground requested, else MovingAboveGround(2);
+// -1 when the order is refused (so the host leaves the state unchanged).
+pub fn order_move_state(alive: Int, state: Int, underground_requested: Int) -> Int {
+  if alive == 0 { return -1; }
+  if state == 10 { return -1; }
+  if underground_requested != 0 { return 1; }
+  2
+}
+
+// launchGlider: alive, Glider(1) equipped, and on the surface (depth <
+// surfaceThreshold). 1 = the glider launches (host sets Gliding + glide vars).
+pub fn can_launch_glider(alive: Int, equipped: Int, depth_mu: Int) -> Int {
+  if alive == 0 { return 0; }
+  if equipped != 1 { return 0; }
+  if depth_mu < surface_threshold_mu() { return 1; }
+  0
+}
+
+// useFlash: alive and FlashCamera(5) equipped.
+pub fn can_use_flash(alive: Int, equipped: Int) -> Int {
+  if alive == 0 { return 0; }
+  if equipped == 5 { return 1; }
+  0
+}
+
+// distractByWire: alive, not Dead(10)/DiggingTrap(3)/SabotagingCable(4), and the
+// loose wire within 200px (200000 mu) (Moletaire.res distractByWire). 1 = the
+// mole is pulled to Distracted.
+pub fn can_distract_by_wire(alive: Int, state: Int, wire_dist_mu: Int) -> Int {
+  if alive == 0 { return 0; }
+  if state == 10 { return 0; }
+  if state == 3 { return 0; }
+  if state == 4 { return 0; }
+  if wire_dist_mu < 200000 { return 1; }
+  0
+}
+
+// ===========================================================================
+// State machine (Moletaire.res updateState). Given the current state and the
+// floored timers, returns the next state ordinal. The host owns the float
+// movement integration; the brain owns the discrete transitions.
+//
+//   state              current state ordinal (0..10)
+//   action_timer_ms    DiggingTrap/SabotagingCable countdown (ms remaining)
+//   glide_progress_mu  Gliding progress in milli (0..1000, 1000 == 1.0)
+//   distract_timer_ms  Distracted countdown (ms remaining)
+//
+// Transition provenance (updateState):
+//   Idle(0): holds (movement handled by the movement kernel above).
+//   DiggingTrap(3): actionTimer <= 0 -> Idle(0), emit TrapTriggered; else hold.
+//   SabotagingCable(4): actionTimer <= 0 -> Idle(0), emit CableSabotaged; hold.
+//   Distracted(6): distractionTimer <= 0 -> Idle(0); else hold.
+//   Gliding(7): glideProgress >= 1.0 (1000) -> Idle(0); else hold.
+//   Crushed(8)/CaughtByDog(9): -> Dead(10) (permadeath finalised).
+//   Dead(10): absorbing.
+// Moving/Carrying states (1,2,5) are driven by movement_speed_mu / the host;
+// the brain holds them here (no timer-driven transition of their own).
+// ===========================================================================
+pub fn next_state(state: Int, action_timer_ms: Int, glide_progress_mu: Int, distract_timer_ms: Int) -> Int {
+  if valid_state(state) == 0 { return -1; }
+
+  // DiggingTrap (3) / SabotagingCable (4): action timer drains to Idle.
+  if state == 3 {
+    if action_timer_ms <= 0 { return 0; }
+    return 3;
+  }
+  if state == 4 {
+    if action_timer_ms <= 0 { return 0; }
+    return 4;
+  }
+
+  // Distracted (6): distraction timer drains to Idle.
+  if state == 6 {
+    if distract_timer_ms <= 0 { return 0; }
+    return 6;
+  }
+
+  // Gliding (7): progress reaches 1.0 -> Idle.
+  if state == 7 {
+    if glide_progress_mu >= 1000 { return 0; }
+    return 7;
+  }
+
+  // Crushed (8) / CaughtByDog (9): permadeath -> Dead (10).
+  if state == 8 { return 10; }
+  if state == 9 { return 10; }
+
+  // Idle(0), moving/carrying(1,2,5), Dead(10): hold.
+  state
+}
+
+// Item-delivery eat roll (Moletaire.res updateMovement arrival branch). On
+// arrival while CarryingItem, the mole eats the carried item with probability
+// base * StabilisationCore multiplier. The host supplies the floored
+// Math.random() roll in milli (0..999) and the StabilisationCore multiplier in
+// milli-factor; the brain returns 1 = item eaten (emit ItemEaten), 0 =
+// delivered (emit ItemDelivered). eatChance = 50 * mult / 1000 (milli).
+pub fn item_eaten(roll_milli: Int, stabilisation_mult_milli: Int) -> Int {
+  let eat_chance = (base_eat_chance_milli() * stabilisation_mult_milli) / 1000;
+  if roll_milli < eat_chance { return 1; }
+  0
+}
+
+// ===========================================================================
+// Coprocessor effect ladders (MoletaireCoprocessors.res). Each is a pure
+// level(0..3) -> effect switch; the verified brain replaces the ReScript
+// ladder. An out-of-band level yields the out-of-band sentinel -1 for the
+// integer-valued ladders, 0 for the boolean gates.
+// ===========================================================================
+
+// AudioSynthesiser: distinct sound count. Stock 0 / MK-I 3 / MK-II 6 / MK-III 10.
+pub fn audio_sound_count(level: Int) -> Int {
+  if valid_level(level) == 0 { return -1; }
+  if level == 0 { return 0; }
+  if level == 1 { return 3; }
+  if level == 2 { return 6; }
+  10
+}
+
+// AudioSynthesiser: voice mimicry available only at Overclocked (3).
+pub fn can_mimic_voice(level: Int) -> Int {
+  if level == 3 { return 1; }
+  0
+}
+
+// PathOptimiser: efficiency multiplier in milli-factor. Stock 1000 (1.0) /
+// MK-I 1150 (1.15) / MK-II 1300 (1.30) / MK-III 1500 (1.50).
+pub fn path_efficiency_milli(level: Int) -> Int {
+  if valid_level(level) == 0 { return -1; }
+  if level == 0 { return 1000; }
+  if level == 1 { return 1150; }
+  if level == 2 { return 1300; }
+  1500
+}
+
+// SignalProcessor: underground sensor range in grid cells. Stock 1 / MK-I 3 /
+// MK-II 5 / MK-III 8.
+pub fn sensor_range(level: Int) -> Int {
+  if valid_level(level) == 0 { return -1; }
+  if level == 0 { return 1; }
+  if level == 1 { return 3; }
+  if level == 2 { return 5; }
+  8
+}
+
+// SignalProcessor: vault weak-point detection only at Overclocked (3).
+pub fn can_detect_vault_weak_points(level: Int) -> Int {
+  if level == 3 { return 1; }
+  0
+}
+
+// VibrationAnalyser: information band. The level maps directly onto the
+// vibration ordinal (Stock 0 NoData ... MK-III 3 FullProfile).
+pub fn vibration_band(level: Int) -> Int {
+  if valid_level(level) == 0 { return -1; }
+  level
+}
+
+// StabilisationCore: item-eat-chance multiplier in milli-factor. Stock 1000
+// (1.0) / MK-I 600 (0.6) / MK-II 200 (0.2) / MK-III 50 (0.05).
+pub fn eat_chance_multiplier_milli(level: Int) -> Int {
+  if valid_level(level) == 0 { return -1; }
+  if level == 0 { return 1000; }
+  if level == 1 { return 600; }
+  if level == 2 { return 200; }
+  50
+}
+
+// StabilisationCore: fragile-item carry available at Enhanced (2) or higher.
+pub fn can_carry_fragile(level: Int) -> Int {
+  if level >= 2 { return 1; }
+  0
+}
+
+// scanAhead gate (Moletaire.res scanAhead): only underground and alive does the
+// SignalProcessor return its range; otherwise 0. underground is the host's
+// depth > surfaceThreshold test (1/0); level is the SignalProcessor level.
+pub fn scan_ahead(alive: Int, underground: Int, level: Int) -> Int {
+  if alive == 0 { return 0; }
+  if underground == 0 { return 0; }
+  sensor_range(level)
+}
+
+// playSynthSound validity (Moletaire.res playSynthSound): the requested sound
+// index is playable iff alive, the AudioSynthesiser supports at least one sound,
+// and 0 <= index < maxSounds. 1 = play that index (host looks the name up in its
+// string array), 0 = refused. max_sounds comes from audio_sound_count.
+pub fn can_play_sound(alive: Int, max_sounds: Int, sound_index: Int) -> Int {
+  if alive == 0 { return 0; }
+  if max_sounds <= 0 { return 0; }
+  if sound_index < 0 { return 0; }
+  if sound_index >= max_sounds { return 0; }
+  1
+}
+
+// ===========================================================================
+// Hunger system (MoletaireHunger.res). Thresholds in milli-units (0..1000).
+// ===========================================================================
+
+pub fn peckish_threshold_milli() -> Int { 400 }     // 0.4
+pub fn hungry_threshold_milli() -> Int { 400 }      // 0.4
+pub fn starving_threshold_milli() -> Int { 800 }    // 0.8
+pub fn objective_eat_threshold_milli() -> Int { 900 } // 0.9
+
+// getBehaviour (MoletaireHunger.getBehaviour): classify the hunger behaviour.
+// hunger > starving(800): Devouring(2) if an edible is nearby else Wandering(3).
+// hunger > hungry(400): Resisting(1). Otherwise Cooperative(0). has_nearby is
+// the host's "an edible is in range" flag (1/0).
+pub fn hunger_behaviour(hunger_milli: Int, has_nearby: Int) -> Int {
+  if hunger_milli > starving_threshold_milli() {
+    if has_nearby != 0 { return 2; }
+    return 3;
+  }
+  if hunger_milli > hungry_threshold_milli() { return 1; }
+  0
+}
+
+// willEatObjective: hunger above objectiveEat(900) -> the mole eats a carried
+// objective (mission fail). 1/0.
+pub fn will_eat_objective(hunger_milli: Int) -> Int {
+  if hunger_milli > objective_eat_threshold_milli() { return 1; }
+  0
+}
+
+// objectiveAtRisk: hunger above starving(800) -> warn (objective at risk). 1/0.
+pub fn objective_at_risk(hunger_milli: Int) -> Int {
+  if hunger_milli > starving_threshold_milli() { return 1; }
+  0
+}
+
+// isResistingControl band (Moletaire.res update hunger loop): the mole resists
+// player control only once hunger crosses the hungry threshold (400). 1/0.
+pub fn hunger_resists(hunger_milli: Int) -> Int {
+  if hunger_milli > hungry_threshold_milli() { return 1; }
+  0
+}
+
+// hungerColor band ordinal (MoletaireHunger.hungerColor). The host owns the hex
+// palette; the brain returns the band index:
+//   0  green  (< peckish 400)        2  orange (< starving 800)
+//   1  yellow-green (< 600)          3  red    (>= starving 800)
+pub fn hunger_color_band(hunger_milli: Int) -> Int {
+  if hunger_milli < peckish_threshold_milli() { return 0; }
+  if hunger_milli < 600 { return 1; }
+  if hunger_milli < starving_threshold_milli() { return 2; }
+  3
+}
+
+// hungerDisplayString band ordinal (MoletaireHunger.hungerDisplayString). The
+// host maps the band to its label string:
+//   0 FULL (<100)        2 PECKISH (<600)       4 STARVING (<objEat 900)
+//   1 CONTENT (<peckish) 3 HUNGRY (<starving)   5 RAVENOUS (>=900)
+pub fn hunger_display_band(hunger_milli: Int) -> Int {
+  if hunger_milli < 100 { return 0; }
+  if hunger_milli < peckish_threshold_milli() { return 1; }
+  if hunger_milli < 600 { return 2; }
+  if hunger_milli < starving_threshold_milli() { return 3; }
+  if hunger_milli < objective_eat_threshold_milli() { return 4; }
+  5
+}
+
+// ===========================================================================
+// Hunger rate (MoletaireHunger.calculateHungerRate). Returns the per-second
+// hunger increase in micro-units (rate-milli x 1000, see below), exact in
+// integer arithmetic. The ReScript form is
+//   baseRate * movementMult * accelerationMult * coprocMult * levelMult
+// with movementMult = 1.5 (moving) / 0.5 (still), accelerationMult =
+//   1.0 + currentHunger*0.5. To stay integer-exact the host passes every float
+// operand as a milli-factor (x1000):
+//   base_rate_milli   baseRate    x 1000  (e.g. 0.015 -> 15)
+//   is_moving         1/0
+//   hunger_milli      currentHunger x 1000 (0..1000)
+//   coproc_mult_milli coprocMult  x 1000
+//   level_mult_milli  levelMult   x 1000
+// movementMult is 1500/500; accelerationMult = 1000 + hunger_milli/2 (milli).
+// The result is returned in MICRO-units (rate x 1_000_000), which keeps three
+// extra fractional digits for the tiny per-second rates (~0.0225/s) the host
+// then multiplies by dt.
+//
+// ABI NOTE: AffineScript `Int` is i32 in the wasm ABI, so the naive five-factor
+// product (up to ~7e17) would overflow. We instead fold a `/1000` after each
+// milli-factor past the second, keeping every intermediate <= ~7.1e8 < 2^31:
+//   a = base * movement                 (<= 35*1500          = 52500)
+//   a = a * accel  / 1000               (<= 52500*1500/1000  = 78750)
+//   a = a * coproc / 1000               (<= 78750*3000/1000  = 236250)
+//   a = a * level  / 1000               (<= 236250*3000/1000 = 708750)
+// `a` then carries exactly the micro-unit rate (each `/1000` peels one milli
+// scale; base+movement leave a x1000^2 product, and the three later `/1000`
+// land it at x1000^2 == micro). The per-step truncation is the canonical
+// contract the oracle reproduces step for step.
+// ===========================================================================
+pub fn hunger_rate_micro(base_rate_milli: Int, is_moving: Int, hunger_milli: Int, coproc_mult_milli: Int, level_mult_milli: Int) -> Int {
+  let movement_milli = if is_moving != 0 { 1500 } else { 500 };
+  let accel_milli = 1000 + hunger_milli / 2;
+  let a1 = base_rate_milli * movement_milli;
+  let a2 = (a1 * accel_milli) / 1000;
+  let a3 = (a2 * coproc_mult_milli) / 1000;
+  (a3 * level_mult_milli) / 1000
+}
+
+// ===========================================================================
+// Gravity pull magnitude (MoletaireHunger.calculatePull). The signed pull is
+//   direction * cappedMagnitude
+// where magnitude = G * hungerMult / clampedDistSq, G = 5000, distSq clamped to
+// >= 100, magnitude capped at 200, and the piecewise hungerMult is
+//   hunger < peckish(0.4):   hunger/0.4 * 0.2
+//   hunger < starving(0.8):  0.2 + (hunger-0.4)/0.4 * 0.8
+//   else:                    1.0 + (hunger-0.8)/0.2 * 2.0
+// The host computes dx/dy/distSq (float) and floors distSq to milli-pixels^2;
+// the brain returns the SIGNED pull in milli-pixels/s (host applies * dt).
+//
+// hunger_mult_milli: the hungerMult as a milli-factor (0..3000), returned by
+//   hunger_mult_milli() below so the piecewise split is itself verified.
+// dist_sq_px: clampedDistSq floored to PLAIN px^2 by the host (the host applies
+//   the >= 100 px^2 clamp before calling). px^2 is the i32-safe unit here:
+//   milli-pixels^2 would overflow i32 for any realistic distance (5000px ->
+//   2.5e13), so unlike the linear distances elsewhere the SQUARED distance
+//   crosses unscaled. Distances up to ~46000px keep px^2 < 2^31.
+// direction: -1 / 0 / +1 from direction_for_delta(dx).
+//
+// magnitude(milli, x1000) = G(5000) * hungerMult_milli / dist_sq_px, capped at
+// 200000 milli (200 px/s). 5000*hungerMult_milli (<= 5000*3000 = 1.5e7) stays
+// i32-safe, and dist_sq_px >= 100 from the clamp. Verified bit-identical to a
+// BigInt G*mult/distSq reference across the swept distSq/mult grid.
+// ===========================================================================
+pub fn hunger_mult_milli(hunger_milli: Int) -> Int {
+  // hunger < peckish (400): hunger/0.4 * 0.2 = hunger * 0.5  (milli: hunger/2).
+  if hunger_milli < peckish_threshold_milli() {
+    return hunger_milli / 2;
+  }
+  // hunger < starving (800): 0.2 + (hunger-0.4)/0.4 * 0.8.
+  //   milli: 200 + (hunger-400) * 800 / 400 = 200 + (hunger-400)*2.
+  if hunger_milli < starving_threshold_milli() {
+    return 200 + (hunger_milli - 400) * 2;
+  }
+  // else: 1.0 + (hunger-0.8)/0.2 * 2.0.
+  //   milli: 1000 + (hunger-800) * 2000 / 200 = 1000 + (hunger-800)*10.
+  1000 + (hunger_milli - 800) * 10
+}
+
+pub fn hunger_pull_mu(direction: Int, hunger_mult_milli_in: Int, dist_sq_px: Int) -> Int {
+  if dist_sq_px <= 0 { return 0; }
+  // magnitude in milli-pixels/s; numerator 5000*mult <= 1.5e7 stays i32-safe.
+  let magnitude = (5000 * hunger_mult_milli_in) / dist_sq_px;
+  let capped = if magnitude > 200000 { 200000 } else { magnitude };
+  if direction > 0 { return capped; }
+  if direction < 0 { return -capped; }
+  0
+}
+
+// ===========================================================================
+// Underground-scan trigger band (Moletaire.res update scan loop). The
+// SignalProcessor underground scan only runs while MovingUnderground(1) or
+// DiggingTrap(3). 1 = run the scan this tick, 0 = skip. (The host owns the
+// scanTimer accumulation; this is the state gate it consults at expiry.)
+// ===========================================================================
+pub fn scan_runs(state: Int) -> Int {
+  if state == 1 { return 1; }
+  if state == 3 { return 1; }
+  0
+}
+
+// ===========================================================================
+// Query predicates (Moletaire.res isAlive / isUnderground / isIdle / isDigging
+// / isDistracted / isGliding / state classification). Pure integer
+// classification over the state ordinal and the floored depth.
+// ===========================================================================
+
+// isUnderground: depth > surfaceThreshold (50 mu).
+pub fn is_underground(depth_mu: Int) -> Int {
+  if depth_mu > surface_threshold_mu() { return 1; }
+  0
+}
+
+pub fn is_idle(state: Int) -> Int { if state == 0 { 1 } else { 0 } }
+
+// isDigging: DiggingTrap(3) or SabotagingCable(4).
+pub fn is_digging(state: Int) -> Int {
+  if state == 3 { return 1; }
+  if state == 4 { return 1; }
+  0
+}
+
+pub fn is_distracted(state: Int) -> Int { if state == 6 { 1 } else { 0 } }
+pub fn is_gliding(state: Int) -> Int { if state == 7 { 1 } else { 0 } }
+
+// isDead: Crushed(8), CaughtByDog(9), or Dead(10) -- the terminal band.
+pub fn is_dead(state: Int) -> Int {
+  if valid_state(state) == 0 { return 0; }
+  if state >= 8 { return 1; }
+  0
+}
+
+// Stomp / death-cause -> state (Moletaire.res crushMole / catchByDog). The host
+// writes one value back: crush -> Crushed(8), dog catch -> CaughtByDog(9).
+pub fn crush_state() -> Int { 8 }
+pub fn caught_by_dog_state() -> Int { 9 }
