@@ -1,0 +1,82 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// DLCLoader -- the DLC puzzle-pack normaliser co-processor, the pure-integer core
+// extracted from idaptik src/shared/DLCLoader.res. Per the DESIGN-VISION
+// ("AffineScript is the brain, JS/Pixi the senses; they pass primitives across
+// the wasm boundary"), the JS host keeps every PATH and JSON STRING, the
+// SafeJson.parse, every Dict read, and the whole difficulty/tier/id string
+// handling and serialiser. AffineScript owns only the integer decisions the
+// loader makes once the strings have been classified: the tier-ordinal band fold
+// and the two default-fallback selections (parMoves and the hint threshold).
+//
+// The ReScript original interleaves these integer choices with JSON.Classify,
+// Dict.get and String work. We re-decompose by lifting out exactly the numeric
+// decisions -- the tier 0..4 band, "absent vs explicit" selection -- and leaving
+// the string/JSON senses host-side. No strings cross the boundary: the host has
+// already turned "tier4"/"send"/an int field into an integer ordinal and a
+// present/explicit flag pair before it calls the brain. This file IS the
+// contract the existing host bridge (DLCLoaderCoprocessorBridge.js) already
+// links against: it expects the exports tier_clamp / tier_of_number / par_moves
+// / hint_threshold.
+//
+//## Tier-ordinal encoding (the header contract for the JS host)
+//   code  tier            code  tier
+//     0   Tier0             3   Tier3
+//     1   Tier1             4   Tier4
+//     2   Tier2
+// The taxonomy is a contiguous 0..4 band, so the band fold is one range test.
+// A tier ordinal outside 0..4 is not a defined tier: tier_clamp DECLARES the
+// loss by folding it to Tier0 (code 0) -- this mirrors parseTier's wildcard
+// (`| _ => Tier0`), a deliberate controlled collapse over the tier code, not a
+// sentinel. (echo-boundary boundary-tier.json certifies the in-band 0..4
+// round-trip; the out-of-band fold to 0 is the documented loss.)
+//
+//## Float handling (tier_of_number)
+// parseTier's Number arm truncates a JSON number toward zero (Float.toInt) then
+// folds onto 0..4. Per the migration rule "floats stay host-side", the toward-
+// zero truncation is the host's job: the scalar-i32 wasm ABI receives an i32, so
+// by the time tier_of_number runs the number is already the truncated integer
+// ordinal. tier_of_number is therefore the same band fold as tier_clamp over the
+// already-integral ordinal; both are kept as distinct exports because the host
+// bridge names both and the JS host passes a (truncated) number to one and an
+// ordinal to the other.
+
+// The number of canonical tiers in the band.
+pub fn tier_count() -> Int { 5 }
+
+// Fold an arbitrary tier ordinal onto the valid 0..4 band; an unrecognised
+// ordinal becomes Tier0 (0), matching parseTier's `| _ => Tier0` wildcard. This
+// is a DECLARED clamp (controlled loss over the tier code), not a sentinel.
+pub fn tier_clamp(ordinal: Int) -> Int {
+  if ordinal < 0 { return 0; }
+  if ordinal > 4 { return 0; }
+  ordinal
+}
+
+// Map a JSON number (already truncated toward zero by the host / the i32 ABI) to
+// a tier ordinal, folding onto 0..4 with Tier0 as the floor -- exactly what
+// parseTier's Number arm did. Identical band fold to tier_clamp; kept distinct
+// because the host bridge exposes both names.
+pub fn tier_of_number(n: Int) -> Int {
+  if n < 0 { return 0; }
+  if n > 4 { return 0; }
+  n
+}
+
+// Select parMoves: when the explicit optimal/par field is absent (present == 0)
+// fall back to the host-supplied fallback (maxMoves or the parMoves field);
+// otherwise take the explicit value. Mirrors `present == 1 ? explicit : fallback`
+// in parsePuzzleJson -- present is a flag, so any non-zero present means "given".
+pub fn par_moves(present: Int, explicit: Int, fallback: Int) -> Int {
+  if present == 0 { return fallback; }
+  explicit
+}
+
+// Select a hint threshold: the default 3 when none was present (present == 0),
+// otherwise the explicit threshold -- exactly as parseHints did
+// (`present == 1 ? explicit : 3`). present is a flag; any non-zero means "given".
+pub fn hint_threshold(present: Int, explicit: Int) -> Int {
+  if present == 0 { return 3; }
+  explicit
+}

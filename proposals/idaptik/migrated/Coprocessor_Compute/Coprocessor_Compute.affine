@@ -1,0 +1,171 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// Coprocessor_Compute -- the pure-integer scalar kernels of the idaptik compute
+// co-processor, the brain extracted from src/shared/Coprocessor_Compute.res. The
+// ReScript file is a backend registry whose `cmd*` wrappers marshal an
+// array<int> and return an executionResult record (status + data + metrics +
+// message). All of that -- the array<int> framing, the status-400/413 guards,
+// the resourceMetrics, every message string, and the FeaturePacks/wasm-handle
+// routing -- is the host's job (the senses). What crosses the wasm boundary is
+// only the SCALAR integer result of each deterministic kernel, exactly what the
+// `CoprocessorComputeCoprocessor.*` bridge (e.g. `gcd`, `isPrime`, `fib`) already
+// calls into. This brain is that bridge target: the integer arithmetic the
+// ReScript `| None =>` fallback paths spell out.
+//
+// Re-decomposition notes (NOT a transliteration):
+//   * The Promise is incidental -- every kernel is synchronous Int -> Int.
+//   * No module state. Each kernel is a pure function of explicit Int params.
+//   * Float-finished kernels stay host-side: sqrt-floor (Maths.sqrt), Math.pow
+//     fractional growth (the float Math.pow before the clamp), distance*100 (a
+//     sqrt), rand (Math.random). The brain owns only the integer-exact kernels.
+//   * Array-shaped kernels (factor, the Vector and Tensor backends) marshal an
+//     array<int> across the boundary; the host keeps that framing. This brain is
+//     the scalar i32 ABI surface, matching the established Maths.affine pattern.
+//   * `is_prime`'s ReScript bound `d <= floor(sqrt n)` is rephrased as the
+//     integer-exact `d*d <= n`; same primes, no float. `factor`/`shor` array
+//     output stays host-side but share this `d*d <= rem` trial-division spine.
+
+// Safe upper bound for pow results (Coprocessor_Compute.Maths.intMax = 2^30 - 1).
+// pow_clamped saturates here; the host framework treats this as the positive
+// 31-bit ceiling for every scalar kernel result.
+fn int_max() -> Int { 1073741823 }
+
+// |n| without a library call; the gcd/signal/thermal kernels take abs() of their
+// inputs in the ReScript (Array.get ... Some(v) => abs(v)).
+fn iabs(n: Int) -> Int {
+  if n < 0 { 0 - n } else { n }
+}
+
+// --- Maths backend: deterministic integer kernels -------------------------
+
+// gcd -- Euclidean greatest common divisor on absolute values, with the
+// ReScript guard that gcd(0,0)=0. Mirrors `euclidGcd` + the `cmdGcd` 0,0 case.
+// The host has already taken abs of a and b; we re-take it for total safety.
+pub fn gcd(a: Int, b: Int) -> Int {
+  let mut x = iabs(a);
+  let mut y = iabs(b);
+  while y != 0 {
+    let r = x % y;
+    x = y;
+    y = r;
+  }
+  x
+}
+
+// mod -- non-negative modulo (Coprocessor_Compute.Maths.cmdMod `| None` branch:
+// raw = a mod b; if raw < 0 then raw + |b|). The host owns the divisor==0 status
+// 400 guard, so this kernel assumes b != 0; b==0 is never dispatched here.
+pub fn mod_nonneg(dividend: Int, divisor: Int) -> Int {
+  if divisor == 0 { return 0; }
+  let raw = dividend % divisor;
+  if raw < 0 { raw + iabs(divisor) } else { raw }
+}
+
+// prime -- trial-division primality. Returns 1 prime, 0 composite/under-2.
+// Mirrors `Coprocessor_Compute.Maths.isPrime`, with the float sqrt bound replaced
+// by the integer-exact `d*d <= n`.
+pub fn is_prime(n: Int) -> Int {
+  if n < 2 { return 0; }
+  if n == 2 { return 1; }
+  if n % 2 == 0 { return 0; }
+  let mut d = 3;
+  let mut ok = 1;
+  while d * d <= n {
+    if n % d == 0 { ok = 0; }
+    d = d + 2;
+  }
+  ok
+}
+
+// fib -- iterative Fibonacci, clamped to n in 0..46 (fib(46)=1836311903 is the
+// largest that fits a 31-bit signed int; the ReScript cmdFib clamps n>46 to 46
+// and n<0 to 0). Mirrors the `cmdFib` `| None` iteration.
+pub fn fib(n: Int) -> Int {
+  let mut k = n;
+  if k < 0 { k = 0; }
+  if k > 46 { k = 46; }
+  if k == 0 { return 0; }
+  if k == 1 { return 1; }
+  let mut a = 0;
+  let mut b = 1;
+  let mut i = 2;
+  while i <= k {
+    let next = a + b;
+    a = b;
+    b = next;
+    i = i + 1;
+  }
+  b
+}
+
+// pow -- integer base^exp, clamped to [0, int_max]. Mirrors `cmdPow`: a negative
+// exp is treated as 0 (the host guard `| Some(v) if v >= 0 => v | _ => 0`), and
+// the result saturates at int_max on overflow and at 0 below zero. Overflow is
+// detected before it wraps: once the running product exceeds int_max we stop and
+// return the ceiling, matching `if raw > intMax then intMax`.
+pub fn pow_clamped(base: Int, exp: Int) -> Int {
+  let mut e = exp;
+  if e < 0 { e = 0; }
+  if e == 0 { return 1; }
+  let cap = int_max();
+  let mut acc = 1;
+  let mut i = 0;
+  let mut overflow = 0;
+  while i < e {
+    // Saturating multiply: detect overflow against the cap before it happens.
+    if base == 0 {
+      acc = 0;
+    } else {
+      let lim = cap / iabs(base);
+      if iabs(acc) > lim { overflow = 1; }
+      acc = acc * base;
+    }
+    i = i + 1;
+  }
+  if overflow == 1 { return cap; }
+  if acc > cap { return cap; }
+  if acc < 0 { return 0; }
+  acc
+}
+
+// --- Physics backend: integer fixed-point kernels -------------------------
+// Each mirrors the ReScript `| None =>` fallback (the host keeps the status-400
+// length/zero guards and the message strings).
+
+// signal -- free-space attenuation: loss = distance*atten/100; strength is the
+// non-negative remaining power. Mirrors `Physics.cmdSignal` `| None`. The host
+// has taken abs of distance and atten.
+pub fn signal(power: Int, distance: Int, attenuation: Int) -> Int {
+  let loss = iabs(distance) * iabs(attenuation) / 100;
+  if power > loss { power - loss } else { 0 }
+}
+
+// thermal -- temperature rise = watts*duration/heatCap. Mirrors
+// `Physics.cmdThermal` `| None`. The host owns the heatCap<=0 status-400 guard,
+// so heatCap > 0 here; heatCap==0 is never dispatched.
+pub fn thermal(watts: Int, duration: Int, heat_cap: Int) -> Int {
+  if heat_cap == 0 { return 0; }
+  iabs(watts) * iabs(duration) / heat_cap
+}
+
+// cablesag -- catenary sag approximation = weight*length^2/(8*tension). Mirrors
+// `Physics.cmdCablesag` `| None`. The host owns the tension<=0 status-400 guard,
+// so tension > 0 here.
+pub fn cablesag(length: Int, weight: Int, tension: Int) -> Int {
+  if tension == 0 { return 0; }
+  let l = iabs(length);
+  iabs(weight) * l * l / (8 * tension)
+}
+
+// power (watts) -- voltage*current. Mirrors `Physics.cmdPower` `| None` first
+// element.
+pub fn power_watts(voltage: Int, current: Int) -> Int {
+  voltage * current
+}
+
+// power (safety) -- circuit-breaker assessment: 1 SAFE when watts < 1500, else 0
+// OVERLOAD. Mirrors `Physics.cmdPower` `| None` second element.
+pub fn power_safe(watts: Int) -> Int {
+  if watts < 1500 { 1 } else { 0 }
+}

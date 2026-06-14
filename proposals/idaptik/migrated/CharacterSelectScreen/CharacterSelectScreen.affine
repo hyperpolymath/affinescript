@@ -1,0 +1,89 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// CharacterSelectScreen -- the pure-integer layout/format core extracted from
+// src/app/screens/CharacterSelectScreen.res. The screen itself is overwhelmingly
+// senses: Pixi Graphics card draws, Text styling, the 6-card grid render, the
+// confirm-button wiring, Storage.setString, and the attribute-bar geometry. Per
+// the DESIGN-VISION ("AffineScript is the brain, JS/Pixi the senses; only
+// primitives cross the wasm boundary"), every STRING (the class display names,
+// the descriptions, the "..." ellipsis literal, the stored "jessica-class"
+// value) and every Pixi object STAYS host-side. The per-background attribute-
+// bonus matrix that drawAttrBars folds is NOT duplicated here -- it already
+// lives in the JessicaBackground co-processor.
+//
+// Two separable integer decisions remain, and they are this brain:
+//
+//   1. Card-description TRUNCATION (lines 282-287 of the .res). The ReScript is
+//        if String.length(desc) > 45 { String.slice(desc, 0, 42) ++ "..." }
+//        else { desc }
+//      The string never crosses the boundary -- the host keeps `desc`, hands the
+//      brain only its LENGTH (an Int), and the brain returns the slice END index
+//      and an ellipsis flag. The host then slices [0, end) of its own string and
+//      appends "..." iff the flag is 1. AffineScript owns the cut arithmetic; the
+//      host owns the bytes. (String subscript / string == are avoided entirely --
+//      the brain sees a length, not a string, which is also why the v0.1.x wasm
+//      backend's broken string ops are never reached.)
+//
+//   2. Card-grid PLACEMENT (lines 245-246 of the .res). The ReScript is
+//        let col = mod(idx, 3)
+//        let row = idx / 3
+//      the 3-column row-major index math for the 3x2 card grid. The float pixel
+//      coordinates cx/cy that multiply these by (cardW+gap) STAY host-side (they
+//      are senses, and floats); the brain owns only the integer col/row, which is
+//      exactly the pure arithmetic the layout decision reduces to.
+//
+//## Truncation contract (the header contract for the JS host)
+//   THRESHOLD = 45 : a description longer than this is truncated.
+//   CUT       = 42 : the slice end index used when truncating (leaves room for
+//                    the 3-char "..." the host appends).
+//   csel_needs_ellipsis(len) -> 1 when len > 45, else 0.
+//   csel_slice_end(len)      -> 42 when len > 45, else len (no truncation: the
+//                               host slices its whole string, i.e. uses it as-is).
+//   A negative length is not a real string length; both kernels treat it as the
+//   no-truncation case (flag 0, end = len), so an off-domain input can never
+//   manufacture a spurious cut.
+//
+//## Grid contract (the second contract, for the card placement)
+//   COLS = 3 : the grid is 3 columns wide, row-major, matching JessicaBackground
+//              .all's 6 entries laid out 3x2.
+//   csel_card_col(idx) -> idx % 3   (the column, 0..2, for the idx-th card).
+//   csel_card_row(idx) -> idx / 3   (the row, 0-based, for the idx-th card).
+//   idx is a dense array index (0..5 for the six backgrounds) and is always
+//   non-negative in the .res forEach; the kernels are the bare arithmetic.
+//
+// PURE: integers only, no floats, no strings, no arrays, no effects, no I/O.
+
+//## Truncation threshold: the length above which a description is cut.
+pub fn csel_trunc_threshold() -> Int { 45 }
+
+//## Truncation cut: the slice end index used when a description is cut. Leaves
+// three characters of room for the host's "..." suffix (45 threshold - 3 dots).
+pub fn csel_trunc_cut() -> Int { 42 }
+
+//## Whether the host must append the "..." ellipsis: 1 when the description
+// length exceeds the threshold, else 0. A non-positive length is never longer
+// than the threshold, so it yields 0 (no truncation).
+pub fn csel_needs_ellipsis(len: Int) -> Int {
+  if len > 45 { 1 } else { 0 }
+}
+
+//## The slice end index the host applies to its description string: the fixed
+// CUT (42) when the string is over-long, otherwise the string's own length (a
+// no-op slice -- the host keeps the whole string). The host slices [0, end).
+pub fn csel_slice_end(len: Int) -> Int {
+  if len > 45 { 42 } else { len }
+}
+
+//## The grid is three columns wide (JessicaBackground.all's 6 cards as 3x2).
+pub fn csel_grid_cols() -> Int { 3 }
+
+//## The column (0..2) of the idx-th card in the row-major 3-column grid.
+pub fn csel_card_col(idx: Int) -> Int {
+  idx % 3
+}
+
+//## The row (0-based) of the idx-th card in the row-major 3-column grid.
+pub fn csel_card_row(idx: Int) -> Int {
+  idx / 3
+}
