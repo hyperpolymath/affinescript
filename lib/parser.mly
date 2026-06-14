@@ -1107,6 +1107,23 @@ expr_primary:
   | UNSAFE LBRACE ops = list(unsafe_op) RBRACE
     { ExprUnsafe ops }
 
+  /* #558: `assume(predicate)` is the removed refinement-assertion form
+     (spec.md §830; refinement / dependent types were removed 2026-04-10,
+     CORE-05 deferred post-v1). The `ASSUME` keyword token had no production,
+     so it surfaced a cryptic generic parse error. Reject it honestly and
+     deliberately instead — the predicate is parsed only so the error can
+     point at it, never enforced (there is no silent-accept path). The
+     refinement TYPE form `T where (P)` cannot be given the same fence without
+     regressing trait where-clauses (the shared `WHERE` token forces a
+     shift/reduce decision before the predicate is visible), so it still
+     surfaces a generic parse error. */
+  | ASSUME LPAREN expr RPAREN
+    { raise (Parser_errors.Parse_action_error
+        ("refinement assertion `assume(...)` is not supported in v1: \
+          refinement and dependent types were removed 2026-04-10 (CORE-05 \
+          is deferred post-v1); the predicate is parsed but never enforced. \
+          Refs #558.", $startpos, $endpos)) }
+
 /* expr_record_body / expr_record_rest: recursive parse of `{ f:v, ..spread }`
    record expressions.  Spread is lexed as ROW_VAR when it is a bare
    identifier (e.g. `..record`), or starts with DOTDOT when it is an

@@ -1,0 +1,11 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// Issue #558 (honest-rejection). `assume(predicate)` is the removed
+// refinement-assertion form (CORE-05 deferred post-v1). The parser must reject
+// it with a deliberate, named error — not a cryptic generic parse error — and
+// must never silently accept it.
+fn f(x: Int) -> Int {
+  assume(x > 0);
+  x
+}
