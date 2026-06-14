@@ -1,0 +1,9 @@
+// SPDX-License-Identifier: MPL-2.0
+// End-to-end test: generic function parsing (type parameters).
+// Renamed from refinement_types.affine (#558): the fixture exercises generic
+// functions, not refinement types — refinement/dependent types were removed
+// 2026-04-10. It contains no `where` clause and no refinement predicate.
+
+fn identity[T](x: T) -> T = x;
+
+fn apply[T, U](f: (T) -> U, x: T) -> U = f(x);

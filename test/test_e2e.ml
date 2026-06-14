@@ -173,12 +173,31 @@ let test_parse_dependent_types () =
     (* 1 type decl + 3 functions *)
     Alcotest.(check int) "declaration count" 4 (List.length prog.prog_decls)
 
-let test_parse_refinement_types () =
-  match parse_fixture (fixture "refinement_types.affine") with
+let test_parse_generic_functions () =
+  (* Renamed from test_parse_refinement_types (#558): the fixture exercises
+     generic functions, not refinement types (which were removed 2026-04-10
+     and never parsed silently). *)
+  match parse_fixture (fixture "generic_functions.affine") with
   | Error msg -> Alcotest.fail msg
   | Ok prog ->
     Alcotest.(check bool) "has declarations" true
       (List.length prog.prog_decls > 0)
+
+let test_parse_assume_rejected () =
+  (* #558 honest-rejection: `assume(predicate)` (the removed refinement-assert)
+     must fail with a deliberate, named parse error, never be silently
+     accepted. *)
+  match parse_fixture (fixture "assume_rejected.affine") with
+  | Ok _ ->
+      Alcotest.fail
+        "expected `assume(...)` to be rejected (Refs #558); got Ok — the \
+         removed refinement-assertion form is being silently accepted"
+  | Error msg ->
+      let mentions s =
+        try ignore (Str.search_forward (Str.regexp_string s) msg 0); true
+        with Not_found -> false in
+      Alcotest.(check bool) "error names the assume/refinement rejection" true
+        (mentions "assume" || mentions "refinement")
 
 let test_parse_traits () =
   match parse_fixture (fixture "traits.affine") with
@@ -251,7 +270,8 @@ let parse_tests = [
   Alcotest.test_case "arithmetic" `Quick test_parse_arithmetic;
   Alcotest.test_case "affine_basic" `Quick test_parse_affine_basic;
   Alcotest.test_case "dependent_types" `Quick test_parse_dependent_types;
-  Alcotest.test_case "refinement_types" `Quick test_parse_refinement_types;
+  Alcotest.test_case "generic_functions" `Quick test_parse_generic_functions;
+  Alcotest.test_case "assume() honest-rejection (#558)" `Quick test_parse_assume_rejected;
   Alcotest.test_case "traits" `Quick test_parse_traits;
   Alcotest.test_case "effects" `Quick test_parse_effects;
   Alcotest.test_case "ownership" `Quick test_parse_ownership;
