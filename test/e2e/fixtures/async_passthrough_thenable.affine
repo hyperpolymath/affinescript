@@ -1,0 +1,17 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// Issue #556 regression fixture (POSITIVE / no-over-rejection). `launch` is
+// `Async` but its async call is in TAIL position — the `Thenable` handle
+// flows straight out as the return value (the #205 convergence protocol; the
+// host, not the guest, awaits it). This is sound to lower synchronously and
+// must keep compiling: the #556 fence must NOT reject the pass-through shape.
+extern fn fetchHandle(u: Int) -> Int / { Async };
+
+fn launch(u: Int) -> Int / { Async } {
+  fetchHandle(u)
+}
+
+fn main() -> Int {
+  return 0;
+}

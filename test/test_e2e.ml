@@ -2269,6 +2269,50 @@ let handler_fence_tests = [
 ]
 
 (* ============================================================================
+   Issue #556: async CPS table-miss loud-fail fence
+   ============================================================================
+
+   gen_function previously fell through to synchronous `gen_expr` whenever the
+   ADR-013 CPS transform did not fire — even for an `Async` fn that performs an
+   async call whose result is consumed by a continuation. That silently ran the
+   continuation against an unsettled `Thenable` handle (a wrong value, no
+   diagnostic). The fence makes that case fail loudly, while still lowering the
+   sound shapes: the `let r = <async-call>; <cont>` base case (transformed), the
+   bare tail-return-`Thenable` pass-through (#205 convergence protocol), and an
+   `Async` fn that performs no async call at all. *)
+
+let test_async_wasm_loud_fail () =
+  match run_wasm_pipeline (fixture "async_sync_fallback.affine") with
+  | Ok _ ->
+      Alcotest.fail
+        "expected UnsupportedFeature for an un-lowerable async-consuming fn \
+         on core-WASM (Refs #556); got Ok — silent synchronous fallback has \
+         regressed"
+  | Error msg ->
+      Alcotest.(check bool) "error names the async fence" true
+        (contains_str "async function" msg)
+
+let test_async_passthrough_still_compiles () =
+  (* Tail-return-Thenable pass-through (#205): sound to lower synchronously;
+     the fence must not over-reject it. *)
+  match run_wasm_pipeline (fixture "async_passthrough_thenable.affine") with
+  | Error msg -> Alcotest.failf "async pass-through should compile, got: %s" msg
+  | Ok _ -> ()
+
+let test_async_no_boundary_still_compiles () =
+  (* `Async` row but no async call ⇒ no continuation to mis-order; must
+     compile (the guard keys on an actual async-prim call, not the row). *)
+  match run_wasm_pipeline (fixture "async_no_boundary.affine") with
+  | Error msg -> Alcotest.failf "async-rowed fn with no async call should compile, got: %s" msg
+  | Ok _ -> ()
+
+let async_fence_tests = [
+  Alcotest.test_case "wasm: async-consuming fn → loud UnsupportedFeature" `Quick test_async_wasm_loud_fail;
+  Alcotest.test_case "wasm: tail-return-Thenable pass-through compiles"   `Quick test_async_passthrough_still_compiles;
+  Alcotest.test_case "wasm: async row without async call compiles"        `Quick test_async_no_boundary_still_compiles;
+]
+
+(* ============================================================================
    Issue #555: interpreter resume soundness (multi-shot loud-fail)
    ============================================================================
 
@@ -5479,6 +5523,7 @@ let tests =
     ("E2E LSP Phase D", lsp_phase_d_tests);
     ("E2E Try/Catch/Finally", try_catch_tests);
     ("E2E Handler Fence (#555)", handler_fence_tests);
+    ("E2E Async Fence (#556)", async_fence_tests);
     ("E2E Resume Soundness (#555)", resume_soundness_tests);
     ("E2E Ownership Verify", tw_verify_tests);
     ("E2E Cmd Linearity", cmd_linear_tests);
