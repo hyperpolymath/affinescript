@@ -4081,6 +4081,25 @@ let test_stringwall_concat_lowers_after_elaboration () =
          "slice 8b: string `++` should lower to wasm after elaboration, got: %s"
          msg)
 
+(* Slice 9: String `==`/`!=` are polymorphic-equality nodes that
+   Typecheck.elaborate_string_concat rewrites to ExprStringEq (driven by the
+   string_eq_sites that synth records), so the wasm backend lowers them as a
+   byte comparison rather than the I32Eq *pointer* comparison correct only for
+   Int. Mirrors the slice-8b concat test: the full pipeline (frontend ->
+   elaborate -> codegen) must compile string `==`/`!=` rather than leaving a
+   silent pointer-comparison miscompile. *)
+let test_stringwall_eq_lowers_after_elaboration () =
+  match run_frontend (fixture "string_eq.affine") with
+  | Error e -> Alcotest.failf "frontend failed on string_eq.affine: %s" e
+  | Ok (prog, _resolve_ctx) ->
+    let elaborated = Affinescript.Typecheck.elaborate_string_concat prog in
+    (match wasm_codegen elaborated with
+     | Ok _ -> ()
+     | Error msg ->
+       Alcotest.failf
+         "slice 9: string `==`/`!=` should lower to wasm after elaboration, got: %s"
+         msg)
+
 let stringwall_concat_guard_tests = [
   Alcotest.test_case "string `++` is rejected (not silently miscompiled)"
     `Quick test_stringwall_concat_guard_rejects_string;
@@ -4088,6 +4107,8 @@ let stringwall_concat_guard_tests = [
     `Quick test_stringwall_concat_guard_allows_list;
   Alcotest.test_case "string `++` lowers to wasm after elaboration (slice 8b)"
     `Quick test_stringwall_concat_lowers_after_elaboration;
+  Alcotest.test_case "string `==`/`!=` lowers to wasm after elaboration (slice 9)"
+    `Quick test_stringwall_eq_lowers_after_elaboration;
 ]
 
 (* ---- STDLIB-04b: Throws extern `error<T>` (Refs #329) ----

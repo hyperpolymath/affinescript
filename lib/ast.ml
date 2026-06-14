@@ -152,6 +152,18 @@ type expr =
           byte concatenation rather than the list-element copy used for array
           `++`. The interpreter and non-wasm backends treat it as ordinary
           string concatenation. String-wall slice 8b. *)
+  | ExprStringEq of expr * expr * bool
+      (** String (dis)equality, `a == b` / `a != b` where both sides are
+          `String`. The [bool] is [true] for `!=` (the negated form). Like
+          {!ExprStringConcat}, this is not produced by the parser: it is
+          introduced by the post-typecheck elaboration
+          (see {!Typecheck.elaborate_string_concat}) that rewrites the String
+          case of polymorphic `==`/`!=` (`ExprBinary (_, (OpEq | OpNe), _)`)
+          into this node, so the wasm backend can lower it as a
+          length-prefixed byte comparison rather than the [I32Eq] pointer
+          comparison correct only for Int/Bool. The interpreter and non-wasm
+          backends treat it as ordinary string (dis)equality. String-wall
+          slice 9. *)
   | ExprUnary of unary_op * expr
   | ExprBlock of block
   | ExprReturn of expr option

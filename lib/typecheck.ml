@@ -756,6 +756,21 @@ let string_concat_sites : expr list ref = ref []
 (** Discard any recorded String-concat sites (e.g. before re-checking). *)
 let reset_string_concat_sites () : unit = string_concat_sites := []
 
+(** String-wall slice 9. Physical-identity record of the `==`/`!=` ([OpEq]/
+    [OpNe]) nodes whose operands typed as {b String}. Polymorphic equality
+    ([type_of_binop] gives `'a -> 'a -> Bool`) lets String `==` typecheck and
+    then fall to the [I32Eq] *pointer* comparison in codegen — wrong for the
+    `[len][utf8]` layout (two equal-valued strings at distinct addresses
+    compare unequal). Populated by {!synth}, consumed by
+    {!elaborate_string_concat} (which clears it) to rewrite exactly those
+    nodes into {!Ast.ExprStringEq} for the byte-comparison wasm lowering.
+    Same physical-identity ([List.memq]) discipline as
+    {!string_concat_sites}. *)
+let string_eq_sites : expr list ref = ref []
+
+(** Discard any recorded String-equality sites (e.g. before re-checking). *)
+let reset_string_eq_sites () : unit = string_eq_sites := []
+
 (** {1 Expression synthesis (mode ⇒)} *)
 
 (** Synthesize a type for an expression. *)
@@ -1108,6 +1123,17 @@ let rec synth (ctx : context) (expr : expr) : ty result =
       let (lhs_ty, rhs_ty, result_ty) = type_of_binop op in
       let* () = check ctx lhs lhs_ty in
       let* () = check ctx rhs rhs_ty in
+      (* String-wall slice 9: `==`/`!=` are polymorphic ('a -> 'a -> Bool),
+         so a String comparison lands here rather than in the [comparison]
+         branch. After the checks pin [lhs_ty], record the node (physical
+         identity) for elaboration to [ExprStringEq] — otherwise codegen
+         lowers it to [I32Eq], comparing string *pointers* not bytes. *)
+      (match op with
+       | OpEq | OpNe ->
+         (match repr lhs_ty with
+          | TCon "String" -> string_eq_sites := concat_node :: !string_eq_sites
+          | _ -> ())
+       | _ -> ());
       Ok result_ty
     end
 
@@ -1462,8 +1488,11 @@ let rec elab_expr (e : expr) : expr =
     let r' = elab_expr r in
     if List.memq e !string_concat_sites
     then ExprStringConcat (l', r')
+    else if List.memq e !string_eq_sites
+    then ExprStringEq (l', r', (match op with OpNe -> true | _ -> false))
     else ExprBinary (l', op, r')
   | ExprStringConcat (l, r) -> ExprStringConcat (elab_expr l, elab_expr r)
+  | ExprStringEq (l, r, neg) -> ExprStringEq (elab_expr l, elab_expr r, neg)
   | ExprSpan (e', sp) -> ExprSpan (elab_expr e', sp)
   | ExprLit _ | ExprVar _ | ExprVariant _ -> e
   | ExprField (base, fld) -> ExprField (elab_expr base, fld)
@@ -1554,12 +1583,16 @@ let elab_top = function
     recorded. Intended to run on the wasm-codegen path only (the interpreter
     and other backends handle String `++` directly). *)
 let elaborate_string_concat (program : program) : program =
+  (* Drives both the slice-8b String-`++` rewrite and the slice-9 String
+     `==`/`!=` rewrite — [elab_expr] consults both site lists, so one walk
+     (and the existing single wasm-path call site) covers both. *)
   let result =
-    match !string_concat_sites with
-    | [] -> program
+    match !string_concat_sites, !string_eq_sites with
+    | [], [] -> program
     | _ -> { program with prog_decls = List.map elab_top program.prog_decls }
   in
   reset_string_concat_sites ();
+  reset_string_eq_sites ();
   result
 
 (** {1 Declaration checking} *)

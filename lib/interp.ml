@@ -138,6 +138,12 @@ let rec eval (env : env) (expr : expr) : value result =
        `++` so the node has identical semantics in every backend. *)
     eval env (ExprBinary (left, OpConcat, right))
 
+  | ExprStringEq (left, right, negate) ->
+    (* String-wall slice 9: as with ExprStringConcat, the interpreter is the
+       oracle and never sees the wasm-only elaboration; handle it defensively
+       as the original `==`/`!=` so semantics match across every backend. *)
+    eval env (ExprBinary (left, (if negate then OpNe else OpEq), right))
+
   | ExprBinary (left, op, right) ->
     let* left_val = eval env left in
     let* right_val = eval env right in
