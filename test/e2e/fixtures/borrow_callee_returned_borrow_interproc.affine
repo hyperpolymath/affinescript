@@ -1,0 +1,33 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// #554 residual (a) closed — interprocedural-through-call-result. `wrap`
+// returns the result of another ref-returning call (`pick(x)`) bound to a
+// local, so `wrap`'s return-borrow summary must transitively inherit the
+// origin (parameter 0). The summary is computed by a monotone fixpoint over
+// the call graph (build_context), so `let r = wrap(a); consume(a); *r` is a
+// use-after-move and must be rejected — not silently accepted as it was
+// before the fixpoint landed.
+
+module BorrowCalleeReturnedBorrowInterproc;
+
+fn pick(ref x: Int) -> ref Int {
+  return &x;
+}
+
+fn wrap(ref x: Int) -> ref Int {
+  let t = pick(x);
+  return t;
+}
+
+fn consume(own v: Int) -> Int {
+  return v;
+}
+
+fn main() -> Int {
+  let a: Int = 7;
+  let r = wrap(a);
+  let _gone = consume(a);
+  let v = *r;
+  return v;
+}

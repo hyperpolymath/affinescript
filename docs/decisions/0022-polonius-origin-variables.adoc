@@ -6,7 +6,7 @@ Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 :toclevels: 2
 :icons: font
 
-Status:: Proposed
+Status:: Accepted (architecture ratified in PR #407 thread, 2026-05-27; staged implementation tracked in #553)
 Date:: 2026-05-26
 Issue:: https://github.com/hyperpolymath/affinescript/issues/177[CORE-01 #177]
 Series:: Settled-decisions ledger; companion entry in `.machine_readable/6a2/META.a2ml`.
@@ -36,7 +36,14 @@ type. The checker can prove what it sees locally; it cannot reason about:
 
 * Cross-function borrows that outlive a returned struct field. The current
   return-escape rule (`callee_owned_params`) is a name-set heuristic, not
-  a constraint discharge.
+  a constraint discharge. This residual is *soundness*, not merely
+  precision: issue #554 exhibited a probe-verified false negative
+  (`let r = pick(a); consume(a); *r` — a use-after-move through a
+  callee-returned borrow — accepted end-to-end). It was closed in the
+  lexical checker on 2026-06-14 by per-function return-borrow summaries
+  (`compute_ret_borrow_params`, `lib/borrow.ml`); the full constraint-based
+  discharge of the general interprocedural case remains this ADR's job
+  (#553), and its mechanized proof is #515.
 * True reborrows through indirection (`r2 = r1` where `r1` is itself a
   ref-binder, RHS is not a direct `&place`) — see the matching residual
   TODO immediately above the Polonius one (`record_ref_binding` does not

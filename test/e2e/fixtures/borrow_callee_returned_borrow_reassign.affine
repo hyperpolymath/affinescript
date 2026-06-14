@@ -1,0 +1,32 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// #554 — assign-path variant (found by adversarial verification). Re-binding
+// a mutable ref-binder to a callee-returned borrow (`r = other(b)`) must keep
+// `b` borrowed for the lifetime of `r`: moving `b` and then reading `*r` is a
+// use-after-move and must be rejected. The escaping borrow lingers on the
+// borrow set exactly as a plain `&b` would.
+
+module BorrowCalleeReturnedBorrowReassign;
+
+fn pick(ref x: Int) -> ref Int {
+  return &x;
+}
+
+fn other(ref y: Int) -> ref Int {
+  return &y;
+}
+
+fn consume(own v: Int) -> Int {
+  return v;
+}
+
+fn main() -> Int {
+  let a: Int = 1;
+  let b: Int = 2;
+  let mut r = pick(a);
+  r = other(b);
+  let _gone = consume(b);
+  let v = *r;
+  return v;
+}

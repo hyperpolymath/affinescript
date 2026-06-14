@@ -1,0 +1,30 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// #554 — summary-via-arm-tail variant (found by adversarial verification).
+// The return-borrow summary must recognise a borrow returned through a bare
+// `match` (or `if`) arm tail, not only a direct `return &x`. Here `pickm`
+// returns `&x` via both match arms, so a caller that moves the argument
+// while the result is live must be rejected. The summary walker treats
+// arm-tail positions as return positions (walk_tail).
+
+module BorrowCalleeReturnedBorrowMatchArm;
+
+fn pickm(ref x: Int, flag: Bool) -> ref Int {
+  match flag {
+    true => &x,
+    false => &x,
+  }
+}
+
+fn consume(own v: Int) -> Int {
+  return v;
+}
+
+fn main() -> Int {
+  let a: Int = 7;
+  let r = pickm(a, true);
+  let _gone = consume(a);
+  let v = *r;
+  return v;
+}

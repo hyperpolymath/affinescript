@@ -1,0 +1,27 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// #554 anti-over-rejection guard. Same shape as the use-after-move probe,
+// but `*r` is read BEFORE `a` is moved. Under NLL last-use, `r`'s borrow on
+// `a` is released after `let v = *r` (r's last mention), so moving `a`
+// afterwards is legal. Must pass — the #554 fix must not degrade into a
+// lexical-only over-rejection that keeps the callee-returned borrow alive
+// to block exit.
+
+module BorrowCalleeReturnedBorrowNllOk;
+
+fn pick(ref x: Int) -> ref Int {
+  return &x;
+}
+
+fn consume(own v: Int) -> Int {
+  return v;
+}
+
+fn main() -> Int {
+  let a: Int = 7;
+  let r = pick(a);
+  let v = *r;
+  let _gone = consume(a);
+  return v;
+}

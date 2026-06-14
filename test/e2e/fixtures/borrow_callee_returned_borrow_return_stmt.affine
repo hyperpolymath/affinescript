@@ -1,0 +1,28 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// #554 — return-STATEMENT-through-branch variant (found by second-pass
+// adversarial verification, and the most idiomatic spelling). A borrow
+// returned via `return if d { &x } else { &x };` must register in the
+// return-borrow summary just like the bare-tail form `if d { &x } else { &x }`.
+// The summary walker treats a returned value as a tail position regardless of
+// where the `return` keyword sits (walk_expr's ExprReturn delegates to
+// walk_tail). Moving the argument while the result is live must be rejected.
+
+module BorrowCalleeReturnedBorrowReturnStmt;
+
+fn pickr(ref x: Int, d: Bool) -> ref Int {
+  return if d { &x } else { &x };
+}
+
+fn consume(own v: Int) -> Int {
+  return v;
+}
+
+fn main() -> Int {
+  let a: Int = 7;
+  let r = pickr(a, true);
+  let _gone = consume(a);
+  let v = *r;
+  return v;
+}

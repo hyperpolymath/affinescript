@@ -5155,6 +5155,155 @@ let test_slice_d_captured_nonlinear_ok () =
                     spuriously rejected — the new rule must scope to \
                     @linear only: " ^ Borrow.format_borrow_error e)
 
+(* #554 — soundness: use-after-move through a callee-returned borrow.
+   `pick(ref x) -> ref Int` returns a borrow of its parameter, so
+   `let r = pick(a)` makes `r` borrow `a`.  Moving `a` while `r` is still
+   live must be rejected; pre-fix the borrow graph had no `r -> a` edge so
+   the move slipped past the full pipeline.  Three tests pin: (1) the
+   use-after-move is now caught (MoveWhileBorrowed); (2) the NLL-reordered
+   form (read `*r` before the move) still passes — no lexical over-
+   rejection; (3) a `ref`-param callee that returns a *value* leaves the
+   argument movable (empty return-borrow summary). *)
+let test_borrow_callee_returned_borrow_uam () =
+  match borrow_result (fixture "borrow_callee_returned_borrow_uam.affine") with
+  | Error (Borrow.MoveWhileBorrowed _) -> ()
+  | Error e ->
+    Alcotest.fail ("#554: expected MoveWhileBorrowed (move of `a` while the \
+                    callee-returned borrow held by `r` is live), got: "
+                   ^ Borrow.format_borrow_error e)
+  | Ok () ->
+    Alcotest.fail "#554 regressed: use-after-move through a callee-returned \
+                   borrow was accepted — the result binder did not borrow \
+                   the argument"
+
+let test_borrow_callee_returned_borrow_nll_ok () =
+  match borrow_result (fixture "borrow_callee_returned_borrow_nll_ok.affine") with
+  | Ok () -> ()
+  | Error e ->
+    Alcotest.fail ("#554 anti-over-rejection: reading `*r` before moving `a` \
+                    must pass under NLL last-use, got: "
+                   ^ Borrow.format_borrow_error e)
+
+let test_borrow_callee_value_return_ok () =
+  match borrow_result (fixture "borrow_callee_value_return_ok.affine") with
+  | Ok () -> ()
+  | Error e ->
+    Alcotest.fail ("#554 precision: a `ref`-param callee that returns a \
+                    *value* has an empty return-borrow summary, so the arg \
+                    stays movable, got: " ^ Borrow.format_borrow_error e)
+
+(* #554 hardening — three variants found by adversarial verification that a
+   first cut of the fix missed. All must be rejected: (1) the callee-returned
+   borrow stored into an aggregate (tuple) must still keep the arg borrowed;
+   (2) reassigning a mutable ref-binder to a callee-returned borrow must keep
+   the new target borrowed; (3) a borrow returned through a bare `match` arm
+   tail must register in the return-borrow summary. *)
+let test_borrow_callee_returned_borrow_aggregate () =
+  match borrow_result (fixture "borrow_callee_returned_borrow_aggregate.affine") with
+  | Error (Borrow.MoveWhileBorrowed _) -> ()
+  | Error e ->
+    Alcotest.fail ("#554 aggregate: expected MoveWhileBorrowed (move of `b` \
+                    while the borrow stored in the tuple is live), got: "
+                   ^ Borrow.format_borrow_error e)
+  | Ok () ->
+    Alcotest.fail "#554 aggregate regressed: a callee-returned borrow stored \
+                   into a tuple did not keep the argument borrowed — \
+                   use-after-move accepted"
+
+let test_borrow_callee_returned_borrow_reassign () =
+  match borrow_result (fixture "borrow_callee_returned_borrow_reassign.affine") with
+  | Error (Borrow.MoveWhileBorrowed _) -> ()
+  | Error e ->
+    Alcotest.fail ("#554 reassign: expected MoveWhileBorrowed (move of `b` \
+                    while `r = other(b)` holds its borrow), got: "
+                   ^ Borrow.format_borrow_error e)
+  | Ok () ->
+    Alcotest.fail "#554 reassign regressed: reassigning a ref-binder to a \
+                   callee-returned borrow did not keep the new target \
+                   borrowed — use-after-move accepted"
+
+let test_borrow_callee_returned_borrow_match_arm () =
+  match borrow_result (fixture "borrow_callee_returned_borrow_match_arm.affine") with
+  | Error (Borrow.MoveWhileBorrowed _) -> ()
+  | Error e ->
+    Alcotest.fail ("#554 match-arm summary: expected MoveWhileBorrowed (the \
+                    borrow returned via the match arm must be summarised), \
+                    got: " ^ Borrow.format_borrow_error e)
+  | Ok () ->
+    Alcotest.fail "#554 match-arm summary regressed: a borrow returned via a \
+                   bare match-arm tail was not recorded in the return-borrow \
+                   summary — use-after-move accepted"
+
+(* #554 — the idiomatic `return if/match { ... };` spelling. The returned
+   value is in tail position no matter where `return` sits, so the summary
+   must still record the arm-tail borrow. A first cut walked the returned
+   value as a non-tail expression and missed it. *)
+let test_borrow_callee_returned_borrow_return_stmt () =
+  match borrow_result (fixture "borrow_callee_returned_borrow_return_stmt.affine") with
+  | Error (Borrow.MoveWhileBorrowed _) -> ()
+  | Error e ->
+    Alcotest.fail ("#554 return-stmt summary: expected MoveWhileBorrowed (a \
+                    borrow returned via `return if d { &x } else { &x };` \
+                    must be summarised), got: " ^ Borrow.format_borrow_error e)
+  | Ok () ->
+    Alcotest.fail "#554 return-stmt summary regressed: a borrow returned via \
+                   a `return <branch>;` statement was not recorded in the \
+                   return-borrow summary — use-after-move accepted"
+
+(* #554 residual (a) closed — interprocedural-through-call-result. `wrap`
+   returns `pick(x)`'s result bound to a local; the summary fixpoint over the
+   call graph must give `wrap` pick's origin, so the use-after-move through
+   `wrap`'s result is rejected (transitively, at any wrapper depth). *)
+let test_borrow_callee_returned_borrow_interproc () =
+  match borrow_result (fixture "borrow_callee_returned_borrow_interproc.affine") with
+  | Error (Borrow.MoveWhileBorrowed _) -> ()
+  | Error e ->
+    Alcotest.fail ("#554 interprocedural: expected MoveWhileBorrowed (the \
+                    summary fixpoint must give `wrap` pick's return-borrow \
+                    origin), got: " ^ Borrow.format_borrow_error e)
+  | Ok () ->
+    Alcotest.fail "#554 interprocedural regressed: a function returning \
+                   another ref-returning call's result did not inherit the \
+                   origin — use-after-move accepted"
+
+(* #554 residual (c) closed — reassigning a ref-binder to a call result
+   releases the OLD loan, so the previously-borrowed target is movable again
+   (symmetric with the plain-`&` Slice-B reborrow). Must pass. *)
+let test_borrow_callee_returned_borrow_reassign_old_ok () =
+  match borrow_result (fixture "borrow_callee_returned_borrow_reassign_old_ok.affine") with
+  | Ok () -> ()
+  | Error e ->
+    Alcotest.fail ("#554 reassign-old precision: after `r = other(b)` the old \
+                    target `a` must be movable again, got: "
+                   ^ Borrow.format_borrow_error e)
+
+(* Slice-B reassign ref-count (pre-existing soundness bug found by #554
+   round-3): `let r2 = r; r = &b` must NOT drop the loan `r2` still aliases,
+   so a later move of the old target is rejected. *)
+let test_borrow_reassign_alias_survives () =
+  match borrow_result (fixture "borrow_reassign_alias_survives.affine") with
+  | Error (Borrow.MoveWhileBorrowed _) -> ()
+  | Error e ->
+    Alcotest.fail ("Slice-B alias ref-count: expected MoveWhileBorrowed (r2 \
+                    still borrows `a` after `r = &b`), got: "
+                   ^ Borrow.format_borrow_error e)
+  | Ok () ->
+    Alcotest.fail "Slice-B alias regressed: reassigning `r` dropped the borrow \
+                   the `let r2 = r` alias still held — use-after-move accepted"
+
+(* #554 reassigned-local summary (found by round-3): a returned ref-local that
+   is reassigned must union its origins so the summary does not go stale. *)
+let test_borrow_callee_returned_borrow_reassign_summary () =
+  match borrow_result (fixture "borrow_callee_returned_borrow_reassign_summary.affine") with
+  | Error (Borrow.MoveWhileBorrowed _) -> ()
+  | Error e ->
+    Alcotest.fail ("#554 reassigned-local summary: expected MoveWhileBorrowed \
+                    (the reassigned local's origin must be unioned into the \
+                    summary), got: " ^ Borrow.format_borrow_error e)
+  | Ok () ->
+    Alcotest.fail "#554 reassigned-local summary regressed: the summary went \
+                   stale on the initial binding — use-after-move accepted"
+
 let borrow_tests = [
   Alcotest.test_case "BorrowOutlivesOwner: &local escapes its block"
     `Quick test_borrow_outlives_owner;
@@ -5212,6 +5361,28 @@ let borrow_tests = [
     `Quick test_slice_d_captured_linear_param_rejected;
   Alcotest.test_case "Slice D anti-regression: non-linear capture still OK (#177 pt3)"
     `Quick test_slice_d_captured_nonlinear_ok;
+  Alcotest.test_case "#554: use-after-move through callee-returned borrow rejected"
+    `Quick test_borrow_callee_returned_borrow_uam;
+  Alcotest.test_case "#554 anti-over-rejection: NLL reorder of callee-returned borrow OK"
+    `Quick test_borrow_callee_returned_borrow_nll_ok;
+  Alcotest.test_case "#554 precision: value-returning ref-param callee leaves arg movable"
+    `Quick test_borrow_callee_value_return_ok;
+  Alcotest.test_case "#554 aggregate: callee-returned borrow stored in tuple keeps arg borrowed"
+    `Quick test_borrow_callee_returned_borrow_aggregate;
+  Alcotest.test_case "#554 reassign: r = call() keeps the new target borrowed"
+    `Quick test_borrow_callee_returned_borrow_reassign;
+  Alcotest.test_case "#554 summary: borrow returned via match-arm tail is tracked"
+    `Quick test_borrow_callee_returned_borrow_match_arm;
+  Alcotest.test_case "#554 summary: `return if/match {..};` statement form is tracked"
+    `Quick test_borrow_callee_returned_borrow_return_stmt;
+  Alcotest.test_case "#554 (a): interprocedural-through-call-result via summary fixpoint"
+    `Quick test_borrow_callee_returned_borrow_interproc;
+  Alcotest.test_case "#554 (c): reassign to call result releases old loan (precision)"
+    `Quick test_borrow_callee_returned_borrow_reassign_old_ok;
+  Alcotest.test_case "Slice-B: reassign ref-counts old loan vs surviving alias"
+    `Quick test_borrow_reassign_alias_survives;
+  Alcotest.test_case "#554: reassigned returned ref-local unions summary origins"
+    `Quick test_borrow_callee_returned_borrow_reassign_summary;
 ]
 
 (* ============================================================================
