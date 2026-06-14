@@ -785,6 +785,20 @@ let string_rel_sites : expr list ref = ref []
 (** Discard any recorded String-relational sites (e.g. before re-checking). *)
 let reset_string_rel_sites () : unit = string_rel_sites := []
 
+(** Float wall. Physical-identity record of the `Float`-typed binary-op nodes
+    (`+`/`-`/`*`/`/`, `<`/`<=`/`>`/`>=`, `==`/`!=`). They type-check (synth
+    dispatches `Float`) but codegen's [gen_binop] returns only the i32
+    instruction family, so an f64 operand reaches `i32.lt_s`/`i32.add`/… and
+    fails wasm validation. Populated by {!synth} (three sites: the arith
+    branch's `Float` case, the `comparison` branch's `Float` case, and the
+    `==`/`!=` else branch when the operands are `Float`); consumed by
+    {!elaborate_string_concat} (which clears it) to rewrite them into
+    {!Ast.ExprFloatBinary} for the f64 lowering. *)
+let float_binop_sites : expr list ref = ref []
+
+(** Discard any recorded Float-binop sites (e.g. before re-checking). *)
+let reset_float_binop_sites () : unit = float_binop_sites := []
+
 (** {1 Expression synthesis (mode ⇒)} *)
 
 (** Synthesize a type for an expression. *)
@@ -1079,6 +1093,9 @@ let rec synth (ctx : context) (expr : expr) : ty result =
       match repr lhs_ty with
       | TCon "Float" ->
         let* () = check ctx rhs ty_float in
+        (* Float wall: record this arith node so elaboration rewrites it to
+           ExprFloatBinary (codegen must emit f64 ops, not the i32 family). *)
+        float_binop_sites := concat_node :: !float_binop_sites;
         Ok ty_float
       | _ ->
         let (lhs_ty', rhs_ty, result_ty) = type_of_binop op in
@@ -1090,6 +1107,8 @@ let rec synth (ctx : context) (expr : expr) : ty result =
       match repr lhs_ty with
       | TCon "Float" ->
         let* () = check ctx rhs ty_float in
+        (* Float wall: relational Float comparison -> ExprFloatBinary (f64 cmp). *)
+        float_binop_sites := concat_node :: !float_binop_sites;
         Ok ty_bool
       | TCon "String" ->
         (* String relational ops are byte-wise lexicographic, matching
@@ -1152,6 +1171,7 @@ let rec synth (ctx : context) (expr : expr) : ty result =
        | OpEq | OpNe ->
          (match repr lhs_ty with
           | TCon "String" -> string_eq_sites := concat_node :: !string_eq_sites
+          | TCon "Float" -> float_binop_sites := concat_node :: !float_binop_sites
           | _ -> ())
        | _ -> ());
       Ok result_ty
@@ -1512,10 +1532,13 @@ let rec elab_expr (e : expr) : expr =
     then ExprStringEq (l', r', (match op with OpNe -> true | _ -> false))
     else if List.memq e !string_rel_sites
     then ExprStringRel (l', r', op)
+    else if List.memq e !float_binop_sites
+    then ExprFloatBinary (l', op, r')
     else ExprBinary (l', op, r')
   | ExprStringConcat (l, r) -> ExprStringConcat (elab_expr l, elab_expr r)
   | ExprStringEq (l, r, neg) -> ExprStringEq (elab_expr l, elab_expr r, neg)
   | ExprStringRel (l, r, op) -> ExprStringRel (elab_expr l, elab_expr r, op)
+  | ExprFloatBinary (l, op, r) -> ExprFloatBinary (elab_expr l, op, elab_expr r)
   | ExprSpan (e', sp) -> ExprSpan (elab_expr e', sp)
   | ExprLit _ | ExprVar _ | ExprVariant _ -> e
   | ExprField (base, fld) -> ExprField (elab_expr base, fld)
@@ -1610,13 +1633,15 @@ let elaborate_string_concat (program : program) : program =
      `==`/`!=` rewrite — [elab_expr] consults both site lists, so one walk
      (and the existing single wasm-path call site) covers both. *)
   let result =
-    match !string_concat_sites, !string_eq_sites, !string_rel_sites with
-    | [], [], [] -> program
+    match !string_concat_sites, !string_eq_sites, !string_rel_sites,
+          !float_binop_sites with
+    | [], [], [], [] -> program
     | _ -> { program with prog_decls = List.map elab_top program.prog_decls }
   in
   reset_string_concat_sites ();
   reset_string_eq_sites ();
   reset_string_rel_sites ();
+  reset_float_binop_sites ();
   result
 
 (** {1 Declaration checking} *)

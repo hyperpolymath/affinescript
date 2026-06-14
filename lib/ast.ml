@@ -175,6 +175,18 @@ type expr =
           signed-integer compare on the two `[len][utf8]` pointers (which is
           meaningless). The interpreter and non-wasm backends treat it as an
           ordinary string comparison. String-wall slice 10 (#458). *)
+  | ExprFloatBinary of expr * binary_op * expr
+      (** Float binary operation, `a <op> b` where both sides are `Float`:
+          arithmetic ([OpAdd] / [OpSub] / [OpMul] / [OpDiv], yielding `Float`)
+          or comparison ([OpLt] / [OpLe] / [OpGt] / [OpGe] / [OpEq] / [OpNe],
+          yielding `Bool`). Like {!ExprStringEq}, this is not produced by the
+          parser: it is introduced by the post-typecheck elaboration
+          (see {!Typecheck.elaborate_string_concat}) that rewrites the Float
+          case of these operators, so the wasm backend lowers them to the f64
+          instruction family (`F64Add`, `F64Lt`, …) instead of the i32 family
+          `gen_binop` returns — which would emit `i32.lt_s` on f64 operands and
+          fail wasm validation. The interpreter and non-wasm backends treat it
+          as the ordinary `Float` operation. The "float wall". *)
   | ExprUnary of unary_op * expr
   | ExprBlock of block
   | ExprReturn of expr option

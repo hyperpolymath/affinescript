@@ -15,3 +15,9 @@ pub fn classify(s: String) -> Int {
 pub fn str_cmp(a: String, b: String) -> Int {
   if a < b { -1 } else { if a == b { 0 } else { 1 } }
 }
+
+// Float wall: a Float-argument classifier — exercises the harness's f64 arg
+// pass-through (now that Float binop codegen lands).
+pub fn band_of(x: Float) -> Int {
+  if x < 10.0 { 0 } else { if x < 100.0 { 1 } else { 2 } }
+}

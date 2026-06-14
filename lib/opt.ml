@@ -90,6 +90,15 @@ let rec fold_constants_expr (expr : expr) : expr =
     else
       ExprStringRel (left', right', op)
 
+  (* Float wall: fold sub-expressions of a Float binop. *)
+  | ExprFloatBinary (left, op, right) ->
+    let left' = fold_constants_expr left in
+    let right' = fold_constants_expr right in
+    if left == left' && right == right' then
+      expr
+    else
+      ExprFloatBinary (left', op, right')
+
   | ExprUnary (op, operand) ->
     let operand' = fold_constants_expr operand in
     if operand == operand' then

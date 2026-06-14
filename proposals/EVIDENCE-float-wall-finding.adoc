@@ -3,6 +3,14 @@
 = Finding: the "float wall" — Float arith/compare codegen emits i32 ops (2026-06-14)
 :toc: macro
 
+[IMPORTANT]
+====
+*RESOLVED (2026-06-14).* The float wall is implemented — Float binops lower to
+the f64 family, and Float values flow through params/results/typed locals. See
+`EVIDENCE-float-wall-implementation.adoc`. This document is retained as the
+original finding + fix-shape analysis.
+====
+
 == Summary
 
 `Float`-typed binary operations (`+`, `-`, `*`, `/`, `<`, `<=`, `>`, `>=`, `==`)
