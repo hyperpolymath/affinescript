@@ -1,0 +1,91 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// MainHubScreen -- the sidebar-navigation dispatch co-processor, the pure-integer
+// core extracted from src/app/screens/hub/MainHubScreen.res. At 991 LOC the
+// screen is overwhelmingly senses: ParticleField, the nine Pixi content panels
+// with their Text/Graphics draws, every i18n STRING label, the Storage.setString
+// calls, the stance toggle, the %raw openExternal/closeApp glue, and the async
+// container fades. The play-time caption already routes through its own
+// VerisimProvenRenderLogic co-processor (host-side marshalling). Per the
+// DESIGN-VISION ("AffineScript is the brain, JS/Pixi the senses; only primitives
+// cross the wasm boundary"), every Pixi object, every string, and every effect
+// STAY host-side.
+//
+// The separable integer decision is the NAVIGATION DISPATCH -- the two pure
+// switches that decide what a sidebar selection does, with no string or float in
+// sight. The `navItem` variant is closed and ordered, so we re-decompose it as
+// the canonical 0..10 integer the declaration order implies: the variant IS the
+// integer; no navItem value crosses the boundary, only its code.
+//
+//## navItem encoding (the header contract for the JS host)
+//   code  item              code  item
+//     0   Campaign            6   ModWorkshop
+//     1   CoOp                7   Settings
+//     2   JessicaCustomise    8   Credits
+//     3   QCustomise          9   Website
+//     4   LevelChooser       10   Quit
+//     5   Training
+// Codes 0..8 are the nine content panels (the `allPanels` array, keyed by the
+// SAME navItem). Website (9) and Quit (10) carry no content panel.
+//
+// Two kernels capture the dispatch the .res spreads across its nav-button handler
+// (`Website => openExternal | _ => showPanel`) and `showPanel` (`Quit => show
+// quitPanel | _ => reveal the matching content panel`):
+//
+//   1. hub_nav_action(navCode) -- what a click on this nav item does:
+//        2 = open an external URL   (Website, code 9)
+//        1 = reveal the quit panel  (Quit, code 10)
+//        0 = reveal a content panel (codes 0..8)
+//      An out-of-band code is not a nav item; it returns the sentinel -1.
+//
+//   2. hub_panel_visible(navCode, panelCode) -- given the SELECTED nav item, is
+//      the panel keyed panelCode the one showPanel reveals? This is exactly the
+//      `Array.forEach(allPanels, ((id,panel)) => if id == item ...)` test: a
+//      content panel is visible iff its code equals the selected code AND both
+//      are in the 0..8 content band (Quit and Website reveal no content panel, so
+//      they make every content panel invisible). 1 = visible, 0 = hidden.
+//
+// Both kernels are total over all Int; -1 appears only as the nav-action out-of-
+// band sentinel (never an in-band action), and the visibility kernel is a pure
+// 0/1 predicate -- assail stays clean.
+//
+// PURE: integers only, no floats, no strings, no Pixi, no effects, no I/O.
+
+// The number of sidebar navigation items (Campaign..Quit).
+pub fn hub_nav_item_count() -> Int { 11 }
+
+// The number of content panels (the codes 0..8 that carry a panel).
+pub fn hub_content_panel_count() -> Int { 9 }
+
+// What activating the nav item `nav_code` does:
+//   2 open-external (Website), 1 show-quit (Quit), 0 show-content (0..8),
+//   -1 out-of-band sentinel. Mirrors the nav-button handler + showPanel dispatch.
+pub fn hub_nav_action(nav_code: Int) -> Int {
+  if nav_code < 0 { return -1; }
+  if nav_code > 10 { return -1; }
+  if nav_code == 9 { return 2; }
+  if nav_code == 10 { return 1; }
+  0
+}
+
+// Whether, with nav item `nav_code` selected, the content panel keyed
+// `panel_code` is the visible one. Mirrors showPanel's `if id == item` over the
+// nine-entry allPanels: visible iff equal AND both in the 0..8 content band.
+// 1 = visible, 0 = hidden.
+pub fn hub_panel_visible(nav_code: Int, panel_code: Int) -> Int {
+  if nav_code < 0 { return 0; }
+  if nav_code > 8 { return 0; }
+  if panel_code < 0 { return 0; }
+  if panel_code > 8 { return 0; }
+  if nav_code == panel_code { return 1; }
+  0
+}
+
+// Whether the quit-confirmation panel is visible with `nav_code` selected. Only
+// Quit (code 10) reveals it; every other selection (incl. out-of-band) hides it.
+// Mirrors showPanel's `Quit => setVisible(quitPanel, true)` after the blanket
+// hide. 1 = visible, 0 = hidden.
+pub fn hub_quit_panel_visible(nav_code: Int) -> Int {
+  if nav_code == 10 { 1 } else { 0 }
+}
