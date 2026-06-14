@@ -81,6 +81,15 @@ let rec fold_constants_expr (expr : expr) : expr =
     else
       ExprStringEq (left', right', neg)
 
+  (* String-wall slice 10: fold sub-expressions of a String relational op. *)
+  | ExprStringRel (left, right, op) ->
+    let left' = fold_constants_expr left in
+    let right' = fold_constants_expr right in
+    if left == left' && right == right' then
+      expr
+    else
+      ExprStringRel (left', right', op)
+
   | ExprUnary (op, operand) ->
     let operand' = fold_constants_expr operand in
     if operand == operand' then

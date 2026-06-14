@@ -164,6 +164,17 @@ type expr =
           comparison correct only for Int/Bool. The interpreter and non-wasm
           backends treat it as ordinary string (dis)equality. String-wall
           slice 9. *)
+  | ExprStringRel of expr * expr * binary_op
+      (** String relational comparison, `a < b` / `a <= b` / `a > b` /
+          `a >= b` where both sides are `String`. The [binary_op] is always
+          one of [OpLt] / [OpLe] / [OpGt] / [OpGe]. Like {!ExprStringEq}, this
+          is not produced by the parser: it is introduced by the post-typecheck
+          elaboration (see {!Typecheck.elaborate_string_concat}) that rewrites
+          the String case of the relational operators, so the wasm backend can
+          lower it as a byte-wise *lexicographic* comparison rather than the
+          signed-integer compare on the two `[len][utf8]` pointers (which is
+          meaningless). The interpreter and non-wasm backends treat it as an
+          ordinary string comparison. String-wall slice 10 (#458). *)
   | ExprUnary of unary_op * expr
   | ExprBlock of block
   | ExprReturn of expr option

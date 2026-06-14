@@ -771,6 +771,20 @@ let string_eq_sites : expr list ref = ref []
 (** Discard any recorded String-equality sites (e.g. before re-checking). *)
 let reset_string_eq_sites () : unit = string_eq_sites := []
 
+(** String-wall slice 10 (#458). Physical-identity record of the relational
+    ([OpLt] / [OpLe] / [OpGt] / [OpGe]) nodes whose operands typed as {b
+    String}. These typecheck in {!synth}'s [comparison] branch (returning
+    Bool), but codegen would otherwise lower them to a signed-integer compare
+    on the two `[len][utf8]` *pointers*, which is meaningless. Populated by
+    {!synth}, consumed by {!elaborate_string_concat} (which clears it) to
+    rewrite them into {!Ast.ExprStringRel} for the byte-wise lexicographic
+    wasm lowering. Same physical-identity ([List.memq]) discipline as
+    {!string_eq_sites}. *)
+let string_rel_sites : expr list ref = ref []
+
+(** Discard any recorded String-relational sites (e.g. before re-checking). *)
+let reset_string_rel_sites () : unit = string_rel_sites := []
+
 (** {1 Expression synthesis (mode ⇒)} *)
 
 (** Synthesize a type for an expression. *)
@@ -1082,6 +1096,12 @@ let rec synth (ctx : context) (expr : expr) : ty result =
            JS / Lua / Rust convention. Surfaced by #458 (was the
            rate-limiter for several TS→AS ports). *)
         let* () = check ctx rhs ty_string in
+        (* String-wall slice 10: record this relational node for elaboration
+           to ExprStringRel. The [comparison] branch only fires for
+           OpLt/OpLe/OpGt/OpGe, so every recorded node carries one of those
+           ops; without this, codegen lowers `<` to a signed compare of the
+           two string *pointers*. *)
+        string_rel_sites := concat_node :: !string_rel_sites;
         Ok ty_bool
       | _ ->
         let (lhs_ty', rhs_ty, result_ty) = type_of_binop op in
@@ -1490,9 +1510,12 @@ let rec elab_expr (e : expr) : expr =
     then ExprStringConcat (l', r')
     else if List.memq e !string_eq_sites
     then ExprStringEq (l', r', (match op with OpNe -> true | _ -> false))
+    else if List.memq e !string_rel_sites
+    then ExprStringRel (l', r', op)
     else ExprBinary (l', op, r')
   | ExprStringConcat (l, r) -> ExprStringConcat (elab_expr l, elab_expr r)
   | ExprStringEq (l, r, neg) -> ExprStringEq (elab_expr l, elab_expr r, neg)
+  | ExprStringRel (l, r, op) -> ExprStringRel (elab_expr l, elab_expr r, op)
   | ExprSpan (e', sp) -> ExprSpan (elab_expr e', sp)
   | ExprLit _ | ExprVar _ | ExprVariant _ -> e
   | ExprField (base, fld) -> ExprField (elab_expr base, fld)
@@ -1587,12 +1610,13 @@ let elaborate_string_concat (program : program) : program =
      `==`/`!=` rewrite — [elab_expr] consults both site lists, so one walk
      (and the existing single wasm-path call site) covers both. *)
   let result =
-    match !string_concat_sites, !string_eq_sites with
-    | [], [] -> program
+    match !string_concat_sites, !string_eq_sites, !string_rel_sites with
+    | [], [], [] -> program
     | _ -> { program with prog_decls = List.map elab_top program.prog_decls }
   in
   reset_string_concat_sites ();
   reset_string_eq_sites ();
+  reset_string_rel_sites ();
   result
 
 (** {1 Declaration checking} *)

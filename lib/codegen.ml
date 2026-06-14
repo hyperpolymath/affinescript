@@ -670,6 +670,59 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
     in
     Ok (ctx7, code)
 
+  | ExprStringRel (left, right, op) ->
+    (* String relational `a < b` / `<=` / `>` / `>=` (both `String`), #458.
+       String-wall slice 10. Byte-wise lexicographic, matching JS/Lua/Rust:
+       compare the common prefix byte-by-byte (UNSIGNED), and on a tie the
+       shorter string is the smaller. Computes cmp in {-1,0,1} into [res], then
+       maps the operator onto `res <signed-op> 0`. As in slice 9 the loop is
+       bounded at min(la,lb), so it never reads past either string's bytes. *)
+    let* (ctx1, left_code)  = gen_expr ctx  left  in
+    let* (ctx2, right_code) = gen_expr ctx1 right in
+    let (ctx3, pa)  = alloc_local ctx2 "__srl_a"   in
+    let (ctx4, pb)  = alloc_local ctx3 "__srl_b"   in
+    let (ctx5, la)  = alloc_local ctx4 "__srl_la"  in
+    let (ctx6, lb)  = alloc_local ctx5 "__srl_lb"  in
+    let (ctx7, n)   = alloc_local ctx6 "__srl_n"   in
+    let (ctx8, k)   = alloc_local ctx7 "__srl_k"   in
+    let (ctx9, ca)  = alloc_local ctx8 "__srl_ca"  in
+    let (ctxA, cb)  = alloc_local ctx9 "__srl_cb"  in
+    let (ctxB, res) = alloc_local ctxA "__srl_res" in
+    let final_op = match op with
+      | OpLt -> I32LtS | OpLe -> I32LeS
+      | OpGt -> I32GtS | OpGe -> I32GeS
+      | _    -> I32LtS  (* unreachable: only OpLt/OpLe/OpGt/OpGe are recorded *)
+    in
+    let code =
+      left_code @ [LocalSet pa] @ right_code @ [LocalSet pb] @
+      [ LocalGet pa; I32Load (2, 0); LocalSet la;
+        LocalGet pb; I32Load (2, 0); LocalSet lb;
+        (* n = min(la, lb): select la when (la < lb), else lb *)
+        LocalGet la; LocalGet lb; LocalGet la; LocalGet lb; I32LtS; Select;
+        LocalSet n;
+        I32Const 0l; LocalSet res;   (* default: common prefix so far is equal *)
+        I32Const 0l; LocalSet k;
+        Block (BtEmpty, [            (* OUTER (label 3 from inside the If) *)
+          Block (BtEmpty, [          (* INNER: break here → fall to length tiebreak *)
+            Loop (BtEmpty, [
+              LocalGet k; LocalGet n; I32GeS; BrIf 1;   (* k >= min → tiebreak *)
+              LocalGet pa; LocalGet k; I32Add; I32Load8U (0, 4); LocalSet ca;
+              LocalGet pb; LocalGet k; I32Add; I32Load8U (0, 4); LocalSet cb;
+              LocalGet ca; LocalGet cb; I32LtU;
+              If (BtEmpty, [ I32Const (-1l); LocalSet res; Br 3 ], []);  (* a<b *)
+              LocalGet ca; LocalGet cb; I32GtU;
+              If (BtEmpty, [ I32Const 1l; LocalSet res; Br 3 ], []);     (* a>b *)
+              LocalGet k; I32Const 1l; I32Add; LocalSet k;
+              Br 0 ]) ]);
+          (* prefixes equal over min(la,lb): the shorter string is the smaller *)
+          LocalGet la; LocalGet lb; I32LtS;
+          If (BtEmpty, [ I32Const (-1l); LocalSet res ],
+            [ LocalGet la; LocalGet lb; I32GtS;
+              If (BtEmpty, [ I32Const 1l; LocalSet res ], []) ]) ]);
+        LocalGet res; I32Const 0l; final_op ]
+    in
+    Ok (ctxB, code)
+
   | ExprBinary (left, op, right) ->
     let* (ctx', left_code) = gen_expr ctx left in
     let* (ctx'', right_code) = gen_expr ctx' right in

@@ -1,0 +1,22 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// PHASE-F string-wall slice 10 (#458) e2e fixture: String `<` / `<=` / `>` /
+// `>=` must lower to a byte-wise lexicographic comparison (via
+// Typecheck.elaborate_string_concat -> ExprStringRel) rather than the signed
+// compare of the two `[len][utf8]` pointers. Covers decisive-byte, prefix
+// ordering (shorter is less), equality via `>=`, empty strings, and a
+// built-vs-literal operand. Executed value (verified out-of-band): 11111.
+
+fn lt(a: String, b: String) -> Int { if a < b { 1 } else { 0 } }
+fn ge(a: String, b: String) -> Int { if a >= b { 1 } else { 0 } }
+
+fn main() -> Int {
+  let built = "a" ++ "b";          // "ab", distinct pointer
+  lt("abc", "abd")                 // 1  decisive byte (c < d)
+  + lt("ab", "abc") * 10           // 1  prefix: shorter is less
+  + ge("abc", "abc") * 100         // 1  equal
+  + lt("", "a") * 1000             // 1  empty < anything
+  + ge("ac", built) * 10000        // 1  "ac" >= "ab" (literal vs built)
+  + lt("abd", "abc") * 100000      // 0  reverse
+}
