@@ -1,0 +1,20 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// Issue #556 regression fixture (NEGATIVE). `get` is declared `Async` and
+// performs an async call (`getThenable`) whose result is consumed by a
+// continuation (`h + 0`), but the core-WASM CPS transform cannot fire here
+// (`thenableThen` is not importable). Lowering it synchronously would run
+// the continuation against an UNSETTLED handle — the silent miscompile #556
+// closes. The backend must now fail loudly with an UnsupportedFeature error.
+extern fn getThenable(u: Int) -> Int / { Async };
+
+fn get(u: Int) -> Int / { Async } {
+  let bumped = u + 1;
+  let h = getThenable(bumped);
+  return h + 0;
+}
+
+fn main() -> Int {
+  return get(7);
+}

@@ -2772,6 +2772,23 @@ let is_async_prim_call (e : expr) : bool =
 let mentions_async_prim (e : expr) : bool =
   Effect_sites.exists_call Effect_sites.is_async_call e
 
+(** ADR-013 / #556. An `Async` fn that the CPS transform did NOT recognise
+    is SOUND to lower synchronously in exactly one shape: its async boundary
+    is a bare tail call whose `Thenable` result flows straight out as the
+    return value (the #205 convergence protocol — the host, not the guest,
+    awaits the handle; e.g. `tests/codegen/http_thenable_skeleton.affine`).
+    Any other un-transformed `Async` body runs a continuation against an
+    unsettled handle, the silent miscompile #556 closes. Recognise the safe
+    pass-through: after peeling trivial block / `return` wrappers the tail is
+    itself an async-primitive call. *)
+let is_async_passthrough (body : expr) : bool =
+  let rec tail = function
+    | ExprBlock { blk_stmts = []; blk_expr = Some e } -> tail e
+    | ExprReturn (Some e) -> tail e
+    | e -> e
+  in
+  is_async_prim_call (tail body)
+
 (** Async-fn body recogniser (ADR-013 #225). Returns
     [Some (pre, binder, async_call, cont)] iff the body is, after
     trivial-block unwrapping, a sequence of zero or more simple
@@ -3013,6 +3030,30 @@ let gen_function (ctx : context) (fd : fn_decl) : (context * func) result =
     match async_base with
     | Some (pre, binder, call, cont, tt_idx) ->
       gen_async_base_case ctx_with_params pre binder call cont tt_idx
+    | None when fn_is_async fd
+                && mentions_async_prim body_expr
+                && not (is_async_passthrough body_expr) ->
+      (* #556: this `Async` fn performs an async call whose result is
+         consumed by a continuation, but the CPS transform did not fire
+         (`thenableThen` not importable on this backend, the body is not the
+         recognised `let r = <async-call>; <cont>` base case, or the effect
+         side-table missed the call site). Lowering it synchronously would
+         run the continuation against an UNSETTLED handle — a silent wrong
+         result. Fail loudly instead; the bare tail-return-`Thenable`
+         pass-through (#205) is still lowered by the `Some`/`gen_expr` arms.
+         This back-ports the #555/#566 "fail loud, never silent" fence to the
+         async path. *)
+      Error (UnsupportedFeature
+        (Printf.sprintf
+          "async function `%s` performs an async call whose result is used \
+           by a continuation, but it could not be lowered to the WASM CPS \
+           form (ADR-013): the `thenableThen` host import is not in scope, \
+           the body is not the recognised `let r = <async-call>; <cont>` \
+           base case, or the effect side-table missed this call site \
+           (Refs #556); lowering it synchronously would run the \
+           continuation before the async result settles. Use `--interp` / \
+           `-i`, or a backend where `thenableThen` is importable."
+          fd.fd_name.name))
     | None -> gen_expr ctx_with_params body_expr
   in
 
