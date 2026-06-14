@@ -1,0 +1,93 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+= String-wall slices 9–10 + completion capstone (2026-06-14)
+:toc: macro
+
+toc::[]
+
+== Context
+
+The "string wall" is the family of `String`-typed operations that the wasm
+backend lowered to integer ops on the underlying `[len: i32][utf8 bytes]`
+*pointer* rather than on the string's bytes. A `String` value is an i32 pointer
+into linear memory, so any pointer-level integer op gives a wrong answer for two
+equal-valued strings that live at distinct heap addresses (e.g. a literal vs a
+string built at runtime).
+
+Slices 1–7 established the byte-level string primitives (length, indexing,
+byte-scan helpers, `startsWith`/`contains`, the WASI `env_at`/`arg_at` string
+builders). Slice 8 split into 8a (a *sound-rejection guard* that loudly refused
+the syntactically-obvious string `++` cases codegen could not yet lower) and 8b
+(the type-directed `ExprStringConcat` lowering). This document records slices
+9 (equality) and 10 (relational) — which complete the wall — and the final
+hardening.
+
+== The type-channel pattern (shared by 8b / 9 / 10)
+
+Codegen is type-blind; it cannot tell from `a == b` whether `a` is `Int` or
+`String`. The fix routes the decision through the type checker, which *does*
+know:
+
+1. *`Typecheck.synth`* records the physical AST node (`List.memq` identity) of
+   every `String`-typed operator occurrence into a site list
+   (`string_concat_sites` / `string_eq_sites` / `string_rel_sites`).
+2. *`Typecheck.elaborate_string_concat`* (run on the wasm-codegen path only)
+   walks the program once and rewrites each recorded `ExprBinary` node into a
+   dedicated AST node.
+3. *Codegen* lowers the dedicated node with a real byte-level routine.
+
+This keeps the interpreter and non-wasm backends untouched (they never run the
+elaboration and handle the original `ExprBinary` directly), and it is
+*complete* — variable-to-variable cases are covered because the recording is
+type-directed, not syntactic.
+
+== Slice 9 — `==` / `!=` (`ExprStringEq`)
+
+* Equality is polymorphic (`type_of_binop` gives `'a -> 'a -> Bool`), so a
+  `String` `==` lands in `synth`'s general `else` branch; recorded there when
+  `repr lhs_ty = TCon "String"`.
+* `ExprStringEq (expr, expr, bool)` — the `bool` is `true` for `!=`.
+* Lowering: length guard, then a byte loop bounded by the (equal) length; `!=`
+  negates with `I32Eqz`. The loop runs only after lengths match, so it never
+  reads past either string.
+
+== Slice 10 — `<` / `<=` / `>` / `>=` (`ExprStringRel`)
+
+* Relational ops land in `synth`'s `comparison` branch (which already returns
+  `Bool` for `String` per #458); recorded there.
+* `ExprStringRel (expr, expr, binary_op)` carries the operator (always one of
+  `OpLt`/`OpLe`/`OpGt`/`OpGe`).
+* Lowering: byte-wise *lexicographic* compare — compare the common prefix
+  unsigned (`I32LtU`/`I32GtU`), and on a tie the shorter string is smaller; the
+  result `cmp ∈ {-1,0,1}` maps onto `cmp <signed-op> 0`. The loop is bounded at
+  `min(len_a, len_b)` (via `Select`), so it never reads out of bounds.
+
+== Final hardening
+
+`gen_binop`'s `| OpConcat -> I32Add (* Placeholder *)` arm — a latent landmine
+that would have silently summed two pointers — is now a `failwith` guard. It is
+provably unreachable (string `++` → `ExprStringConcat`/8a-guard; list `++` →
+its own arm; compound-assign maps only `+= -= *= /=`), so the change is pure
+defensive hardening: a regression that ever routed `++` through `gen_binop`
+surfaces as a loud failure instead of a wrong answer.
+
+== Verification
+
+* `test/e2e/fixtures/string_eq.affine`, `string_rel.affine` + the slice-9 /
+  slice-10 cases in `test/test_e2e.ml` (compile-after-elaboration).
+* Value checks (out-of-band, via Deno): equality and lexicographic ordering
+  verified across decisive-byte, prefix-ordering, empty-string, equality, and
+  built-vs-literal cases.
+* No regression: tens of thousands of `Int`-`==`/relational parity cases across
+  the idaptik migration corpus pass unchanged (only `String` operands are
+  recorded for elaboration; `Int`/`Bool`/`Float` are untouched).
+
+== Status
+
+*The string wall is complete.* `++`, `==`/`!=`, and `<`/`<=`/`>`/`>=` all lower
+correctly on the wasm target. The remaining string surface (interpolation,
+`format`, richer stdlib string functions) is additive, not a correctness wall.
+
+NOTE: the parity harness passes integer arguments only, so brains compiled for
+it remain `Int(...)->Int`; exercising these string ops with real `String`-input
+consumers needs the string/float test-harness extension (separate work item).

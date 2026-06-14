@@ -1,0 +1,17 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// Demo for affine-parity String argument support. `classify` exercises slice-9
+// String `==` against a literal; `str_cmp` exercises slice-9 + slice-10
+// comparing two RUNTIME-PROVIDED strings (pointer vs pointer) — the strongest
+// check that value (not pointer) comparison holds for JS-supplied strings.
+// (A Float case is omitted: float `<`/arithmetic codegen still emits i32 ops —
+// a separate "float wall" the harness is ready for once codegen is fixed.)
+
+pub fn classify(s: String) -> Int {
+  if s == "scan" { 1 } else { if s == "exit" { 2 } else { 0 } }
+}
+
+pub fn str_cmp(a: String, b: String) -> Int {
+  if a < b { -1 } else { if a == b { 0 } else { 1 } }
+}

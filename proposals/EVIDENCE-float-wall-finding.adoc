@@ -1,0 +1,89 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+= Finding: the "float wall" — Float arith/compare codegen emits i32 ops (2026-06-14)
+:toc: macro
+
+== Summary
+
+`Float`-typed binary operations (`+`, `-`, `*`, `/`, `<`, `<=`, `>`, `>=`, `==`)
+*type-check* but the wasm backend lowers them with **integer** instructions on
+f64 operands, producing a module that fails WebAssembly validation. This is the
+float analogue of the string wall (slices 8b/9/10): the type checker dispatches
+`Float` correctly, but `gen_binop` returns only the i32 instruction family.
+
+== Reproduction
+
+[source]
+----
+pub fn band_of(x: Float) -> Int {
+  if x < 10.0 { 0 } else { if x < 100.0 { 1 } else { 2 } }
+}
+----
+
+[source]
+----
+$ main.exe compile band_of.affine -o band_of.wasm      # compiles
+$ # instantiation fails:
+WebAssembly.instantiate(): Compiling function failed:
+  i32.lt_s[1] expected type i32, found f64.const of type f64
+----
+
+`codegen.ml gen_binop` maps `OpLt -> I32LtS`, `OpAdd -> I32Add`, etc., with no
+`Float` path; the `ExprBinary` lowering applies it to f64 operands.
+
+== Why it has never surfaced
+
+The entire idaptik migration corpus (94 brains) is `Int(...)->Int`: every float
+quantity is carried as a x1000 milli-unit / permille integer, precisely because
+float codegen does not work and the parity harness passes integer args. So no
+shipped artefact exercises float binops, and the gap stayed latent.
+
+== Shape of the fix (the float wall)
+
+The same type-channel pattern that closed the string wall applies. Either:
+
+* *Type-directed elaboration* (mirrors slices 8b/9/10): `synth` records
+  `Float`-typed binop nodes; an elaboration rewrites them to dedicated
+  `ExprFloatBinary` / `ExprFloatRel` nodes; codegen lowers those to the f64
+  instruction family (`F64Add`, `F64Lt`, …). Most faithful to the established
+  pattern.
+* *Operand-type threading at codegen*: give the `ExprBinary` lowering the
+  synthesised operand type so it can pick the i32 vs f64 instruction directly.
+  Smaller surface but introduces a type channel into codegen that does not yet
+  exist there.
+
+*Scope correction (2026-06-14, after investigation).* This is bigger than "add
+a binop arm". The f64 *instructions* all exist in `lib/wasm.ml` (`F64Add`,
+`F64Lt`, …; `F64Const` is already emitted for float literals), but the codegen's
+*value model is i32-only*, so the fix needs f64 value-type tracking end to end:
+
+. *Params* — `codegen.ml` `TopFn` lowers `ft_params = List.map (fun _ -> I32)
+  fd.fd_params` (line ~2995). A `Float` param is declared `i32`, so an f64 arg
+  cannot even arrive. Lower each param from its annotation via the existing
+  `TyCon "Float" -> F64` mapping (line ~170).
+. *Results* — `ft_results = [I32]` (line ~2996). Lower from `fd.fd_ret_ty` so a
+  `Float`-returning fn declares an `f64` result.
+. *Locals* — `alloc_local` (line ~181) tracks only `(name, idx)`; the function's
+  locals are emitted all-`i32`. Binding a float value (`let y = x + 1.0`) would
+  `LocalSet` an f64 into an i32 slot → validation failure. Locals must carry a
+  `val_type`, threaded through `alloc_local` and the locals-emission.
+. *Binop dispatch* — the `ExprFloatBinary` elaboration (mirrors slices 8b/9/10):
+  `synth` records `Float`-typed binop nodes (three sites: the arith branch's
+  `Float` case, the `comparison` branch's `Float` case, and the `==`/`!=` else
+  branch when operands are `Float`); elaboration rewrites to `ExprFloatBinary`;
+  codegen lowers to the f64 family (arith → f64 value; comparison → i32 bool).
+
+Items 1–2 are small; item 3 (typed locals) is the load-bearing change and the
+main validation-risk surface; item 4 is the string-wall pattern again. A
+*narrow first slice* (params + returns + comparisons + stack-flowing arith,
+erroring on float `let`-bindings until typed locals land) makes `Float -> Int`
+classifiers like `band_of` compile without item 3, but is partial.
+
+== Harness readiness
+
+`proposals/nextgen-evangelist/affine-parity` already accepts Float arguments
+(non-integer values in a `{ values: [...] }` spec pass through as wasm f64; the
+result is read as i32). The moment float binop codegen lands, float-input brains
+(physics thresholds, geometry classifications, the ~12 float-domain modules
+marked `NO_NEW_BRAINS` in cluster C13/C14 purely for the integer-only ABI)
+become compilable and parity-testable with no further harness work.
