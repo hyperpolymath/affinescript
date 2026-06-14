@@ -1,0 +1,132 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// VMMessageBus -- the message-routing co-processor, the pure-integer core
+// extracted from idaptik src/app/multiplayer/VMMessageBus.res (the bridge between
+// VM I/O ports and game/co-op events). Per the DESIGN-VISION ("AffineScript is
+// the brain, JS/Pixi the senses; only primitives cross the wasm boundary"), the
+// host keeps every STRING and every mutable buffer: the Dict<portName,[Int]>
+// output buffer (writePortOutput/readPortOutput, res:53-82), the coopOutbox
+// array, the inbound handler refs, and -- decisively -- ALL the string work in
+// classifyPort (res:96-114: the `port == "console"` literal compares and the
+// `String.startsWith(port, "covert:")` prefix test). String.startsWith on the
+// topic prefix is a host SENSE. The host parses the port string into an integer
+// message-kind code and the kernel does the integer dispatch over that code.
+// Every export is i32 -> i32 (scalar ABI).
+//
+//## Why this split, not a port of classifyPort / flushCoopOutbox
+// classifyPort is end-to-end string work (literal `==` and prefix `startsWith`)
+// -- exactly what AffineScript's canonical face cannot do soundly (broken string
+// subscript / string ==). So the host runs that parse and emits the matched
+// message-target ORDINAL. What survives as the integer brain are the routing
+// DECISIONS the message-target consumers and flushCoopOutbox make over the
+// closed enum bands: "is this target relayed to the co-op partner over the
+// WebSocket?", "is it a co-op channel / a covert channel?", and the per-coop-
+// event-kind "does this event call the multiplayer client?" dispatch
+// (flushCoopOutbox res:136-161, whose only non-sending arm is PortData). Those
+// are integer truth tables over the two enums; the string parse that produces
+// the ordinal is the host sense feeding them.
+//
+//## messageTarget encoding (the header contract for the JS host)
+// The host parses a port string to exactly one of these ordinals, in the
+// declaration order of the `messageTarget` variant (res:86-94), and hands the
+// kernel the ordinal -- never the string:
+//   code  target              port form (classifyPort branch)
+//     0   Console             "console"
+//     1   Display             "display"
+//     2   Firewall            "firewall"
+//     3   CoopSync            "coop:sync"
+//     4   CoopChat            "coop:chat"
+//     5   CoopItem            "coop:item"
+//     6   CovertLinkChannel   "covert:<id>"   (String.startsWith host sense)
+//     7   DevicePort          any other port  (the else arm)
+// The encoding is LOSSLESS over its closed 0..7 band. A target ordinal outside
+// 0..7 is not a message target: is_valid_target reports 0 and clamp_target
+// returns the OUT-OF-BAND SENTINEL -1 -- never an in-band code, so out-of-band
+// input cannot be confused with a real target (sentinel, not a clamp; assail
+// PA-AFF-001 stays clean).
+//
+//## coopEvent encoding (the header contract for the JS host)
+// The host tags each outgoing co-op event with one of these ordinals, in the
+// declaration order of the `coopEvent` variant (res:120-127):
+//   code  event                payload kind
+//     0   VMExecuted           {deviceId, instruction, args}
+//     1   VMUndone             {deviceId}
+//     2   StateSync            {deviceId, registers}
+//     3   PortData             {port, values}    -- routed via VM state sync, NOT sent
+//     4   CovertLinkFound      {connectionId}
+//     5   CovertLinkActivated  {connectionId}
+//     6   ChatSent             {message}
+// flushCoopOutbox sends every kind to MultiplayerClient EXCEPT PortData (res:148:
+// `| PortData(_) => ()` -- "Port data goes through VM state sync"). That single
+// exception is the only non-trivial integer decision in the drain loop.
+
+// The number of message-target classes in the routing taxonomy.
+pub fn message_target_count() -> Int { 8 }
+
+//## Whether a host integer names a defined message target. 1 = valid, 0 = out of band.
+pub fn is_valid_target(code: Int) -> Int {
+  if code < 0 { return 0; }
+  if code > 7 { return 0; }
+  1
+}
+
+//## Canonicalise a host target ordinal: identity on a valid 0..7 code, the
+// out-of-band SENTINEL -1 otherwise. -1 is not an in-band code, so an
+// unrecognised target can never be confused with a real one (sentinel, not a
+// clamp). Mirrors the closed `messageTarget` band of classifyPort.
+pub fn clamp_target(code: Int) -> Int {
+  if is_valid_target(code) == 1 { code } else { -1 }
+}
+
+//## Is this message target relayed to the co-op partner over the WebSocket?
+// The routing decision the co-op relay makes: only the three co-op channels --
+// CoopSync(3), CoopChat(4), CoopItem(5) -- cross to the partner via the
+// multiplayer client; Console/Display/Firewall (local game systems) and
+// CovertLinkChannel/DevicePort (handled by the in-VM covert link / device port
+// plumbing) stay local. Returns 1 = relay, 0 = local. Out-of-band target -> 0.
+pub fn relays_to_partner(target: Int) -> Int {
+  if target == 3 { return 1; }   // CoopSync
+  if target == 4 { return 1; }   // CoopChat
+  if target == 5 { return 1; }   // CoopItem
+  0
+}
+
+//## Is this target one of the co-op channels (coop:sync / coop:chat / coop:item)?
+// The closed CoopSync..CoopItem sub-band (3..5) of messageTarget. Lets the host
+// distinguish a co-op channel from the covert/device/local targets without a
+// second string parse. Returns 1 = co-op channel, 0 = not. Out-of-band -> 0.
+pub fn is_coop_channel(target: Int) -> Int {
+  if target < 3 { return 0; }
+  if target > 5 { return 0; }
+  1
+}
+
+//## Is this target the covert-link data channel ("covert:<id>")?
+// CovertLinkChannel(6) alone. The `String.startsWith(port, "covert:")` branch of
+// classifyPort, read as its ordinal. Returns 1 = covert channel, 0 = not.
+pub fn is_covert_channel(target: Int) -> Int {
+  if target == 6 { 1 } else { 0 }
+}
+
+// The number of co-op event kinds in the outbox taxonomy.
+pub fn coop_event_count() -> Int { 7 }
+
+//## Whether a host integer names a defined co-op event kind. 1 = valid, 0 = out of band.
+pub fn is_valid_event(kind: Int) -> Int {
+  if kind < 0 { return 0; }
+  if kind > 6 { return 0; }
+  1
+}
+
+//## Does this co-op event kind get sent to the multiplayer client on outbox drain?
+// THE flushCoopOutbox decision (res:136-161): the drain loop forwards every
+// event kind to MultiplayerClient EXCEPT PortData(3), whose data is routed via
+// VM state sync instead (res:148). So the predicate is "valid kind AND not
+// PortData". Returns 1 = send to client, 0 = do not. An out-of-band kind is not
+// a defined event and returns 0 (fails safe to "do not send").
+pub fn event_sends_to_client(kind: Int) -> Int {
+  if is_valid_event(kind) == 0 { return 0; }   // not a defined event kind
+  if kind == 3 { return 0; }                   // PortData: routed via VM state sync, not sent
+  1
+}

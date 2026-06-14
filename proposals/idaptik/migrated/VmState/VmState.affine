@@ -1,0 +1,97 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// VmState -- the flat-memory ADDRESSING core of the idaptik reversible VM, the
+// pure-integer slice extracted from vm/lib/ocaml/VmState.res. Per the
+// DESIGN-VISION ("AffineScript is the brain, JS/Pixi the senses; they pass
+// primitives across the wasm boundary"), VmState.res is almost entirely senses:
+// it is a flat `dict<int>` keyed by underscore-prefixed STRINGS (`_sp`, `_s:N`,
+// `_mem:N`, `_csp`, `_cs:N`, `_pin:PORT`, `_pout:PORT`, `_pi:PORT:N`,
+// `_po:PORT:N`), accessed through `Dict.get`/`Dict.set`, `Option.getOr`,
+// `Array.fromInitializer`, and `String.startsWith`. Every key string, the
+// mutable dict, the array materialisation, and the `isInternalKey` "_" test
+// stay host-side. The OPCODE pointer/value arithmetic (sp+/-1, additive
+// mem/port) is already its own cluster -- VmStack.affine, VmMemory.affine,
+// VmPort.affine. What is left for a brain, and not covered there, is the
+// INTROSPECTION addressing the dict layout implies:
+//
+//   * the size of the flat memory region (256 cells, addresses 0..255);
+//   * which integer addresses are in bounds;
+//   * the absolute address the i-th cell of a [start, length) range maps to
+//     (`getMemoryRange`: start + i);
+//   * how many port-input items remain unread (`getPortInputRemaining`:
+//     totalItems - readPointer), and how deep the stack-contents materialisation
+//     runs (`getStackContents` walks 0..sp-1, i.e. `sp` cells).
+//
+// We re-decompose these as scalar-int functions over explicit Int params (no
+// module state, no dict, no strings cross): the host parses the dict, hands the
+// brain the integers (sp, start, length, addr, ptr, totalItems), and renders the
+// result. "The address IS the integer."
+//
+//## Memory addressing contract (the header contract for the JS host)
+//   The flat memory region is `memory_size()` == 256 cells, addresses 0..255.
+//   is_valid_address(addr)        -> 1 iff 0 <= addr <= 255, else 0.
+//   clamp_address(addr)           -> addr if in band, else the out-of-band
+//                                    sentinel -1 (NOT a real address, so no
+//                                    in-band collision is introduced; assail
+//                                    stays clean -- same sentinel discipline as
+//                                    DeviceType.clamp_device_type).
+//   range_addr(start, i)          -> start + i  (absolute address of the i-th
+//                                    cell of a range beginning at `start`).
+//   range_addr_in_bounds(start, length, i) -> 1 iff 0 <= i < length AND the
+//                                    resulting absolute address start+i is a
+//                                    valid 0..255 cell, else 0. (Lets the host
+//                                    skip out-of-region reads up front.)
+//   stack_depth(sp)               -> max(sp, 0): how many slots getStackContents
+//                                    materialises (a negative sp reads nothing).
+//   port_input_remaining(total, ptr) -> max(total - ptr, 0): unread input items
+//                                    (clamped at 0 so an over-read pointer yields
+//                                    no items rather than a negative count).
+
+// The number of cells in the VM's flat memory region (VmState.res `memorySize`).
+pub fn memory_size() -> Int { 256 }
+
+// The highest valid memory address (memory_size - 1). The band is 0..255.
+pub fn max_address() -> Int { 255 }
+
+// Whether a host integer names a real memory cell. 1 = in band, 0 = out of band.
+pub fn is_valid_address(addr: Int) -> Int {
+  if addr < 0 { 0 } else { if addr > 255 { 0 } else { 1 } }
+}
+
+// Canonicalise a host integer address: identity on a valid 0..255 cell, the
+// out-of-band sentinel -1 otherwise. -1 is not a real address, so out-of-band
+// input can never be confused with an in-band cell (sentinel, not a clamp).
+pub fn clamp_address(addr: Int) -> Int {
+  if is_valid_address(addr) == 1 { addr } else { -1 }
+}
+
+// The absolute address of the i-th cell of a memory range that begins at
+// `start` (VmState.res getMemoryRange: `getMemory(state, start + i)`).
+pub fn range_addr(start: Int, i: Int) -> Int { start + i }
+
+// Whether the i-th cell of a [start, length) range is both inside the range
+// (0 <= i < length) AND a valid 0..255 memory cell. 1 = read it, 0 = skip.
+pub fn range_addr_in_bounds(start: Int, length: Int, i: Int) -> Int {
+  if i < 0 { return 0; }
+  if i >= length { return 0; }
+  is_valid_address(range_addr(start, i))
+}
+
+// How many stack slots getStackContents materialises for a given stack pointer:
+// it walks indices 0..sp-1, i.e. `sp` cells, clamped at 0 so a negative pointer
+// reads nothing rather than a negative length.
+pub fn stack_depth(sp: Int) -> Int {
+  if sp < 0 { return 0; }
+  sp
+}
+
+// How many port-input items remain unread (VmState.res getPortInputRemaining:
+// `totalItems - readPointer`), clamped at 0 so an over-advanced read pointer
+// yields no items rather than a negative count. Equivalent to max(count-ptr, 0):
+// when ptr >= count the buffer is fully read, so 0 items remain. (`count` is the
+// total item count; the bare name `total` is reserved, so we spell it `count`.)
+pub fn port_input_remaining(count: Int, ptr: Int) -> Int {
+  if ptr >= count { return 0; }
+  count - ptr
+}

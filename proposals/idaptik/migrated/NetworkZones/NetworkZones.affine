@@ -1,0 +1,102 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// NetworkZones -- the zone-category taxonomy + ISP-routing-class co-processor,
+// the pure-integer core extracted from src/app/devices/NetworkZones.res. Per the
+// DESIGN-VISION ("AffineScript is the brain, JS/Pixi the senses; only primitives
+// cross the wasm boundary"), the JS host keeps EVERY string: the subnet prefixes
+// and the String.startsWith IP-to-zone matching, the zone-id strings, the
+// per-zone canAccessZones string arrays and their membership tests, the display
+// names and security-level strings. AffineScript owns only the canonical integer
+// encoding of the eight zone categories and the routing-class decision that the
+// ReScript canRouteViaISP makes purely over those categories.
+//
+// The ReScript original is an 8-constructor variant `zoneCategory`; routing
+// (canRouteViaISP) branches first on the DESTINATION category -- a Service
+// destination is reachable through the ISP tier hierarchy, an ISP destination is
+// reachable as part of that hierarchy, and any other category is NOT ISP-routed
+// at all (returns false before any access-list check). We re-decompose the
+// variant as the canonical 0..7 integer the constructor order already implies,
+// so category validity is one range test and the routing-class is a closed band
+// switch over the destination category. The string access-list checks stay
+// host-side; the brain only decides WHICH class of routing applies, so the host
+// knows which checks to run. The variant IS the integer; no strings cross.
+//
+//## Zone-category encoding (the header contract for the JS host)
+//   code  category     code  category
+//     0   LAN            4   Management
+//     1   DMZ            5   SCADA
+//     2   Internal       6   ISP
+//     3   IoT            7   Service
+// Order is NetworkZones.res `zoneCategory`. The encoding is LOSSLESS: eight
+// distinct categories map to eight distinct codes, so the host round-trips
+// category <-> code with no collision. A code outside 0..7 is not a category:
+// is_valid_category reports 0 and clamp_category returns the out-of-band
+// sentinel -1 -- never an in-band code, so no in-band collision is introduced
+// (this is a sentinel, not a clamp; assail stays clean).
+//
+//## Routing-class encoding (the second header contract)
+// routing_class(dest_category) classifies the destination category by HOW the
+// host must test reachability via the ISP-tier mechanism (NetworkZones.res
+// canRouteViaISP):
+//     2  TIER_ENDPOINT   destination is a public Service (code 7): reachable if
+//                        the source can reach ANY ISP tier or "public". Host runs
+//                        the four isp-tier* + public access-list checks.
+//     1  TIER_MEMBER     destination is ISP infrastructure (code 6): reachable if
+//                        the source can reach this ISP id, a lower tier, or
+//                        "public". Host runs the dest-id + lower-tier + public
+//                        access-list checks.
+//     0  NOT_ROUTED      any other valid category (0..5): canRouteViaISP returns
+//                        false immediately; the host runs NO ISP-tier check.
+//    -1  NOT_A_CATEGORY  the destination code is out of band (not 0..7).
+// The class is exactly the branch canRouteViaISP takes; the brain replaces the
+// `destZone.category == Service` / `== ISP` / else cascade with one integer
+// switch so the host needs no category enum of its own.
+
+// The number of canonical zone categories in the taxonomy.
+pub fn category_count() -> Int { 8 }
+
+// The integer code of the LAN category (band floor, for host symmetry).
+pub fn lan_category() -> Int { 0 }
+
+// The integer code of the ISP category -- the category whose destinations are
+// ISP-tier MEMBERS (canRouteViaISP `destZone.category == ISP` arm).
+pub fn isp_category() -> Int { 6 }
+
+// The integer code of the Service category -- the category whose destinations
+// are ISP-tier ENDPOINTS (canRouteViaISP `destZone.category == Service` arm).
+pub fn service_category() -> Int { 7 }
+
+// Whether a host integer names a defined zone category. 1 = valid, 0 = out of
+// band. The eight categories form the contiguous closed band 0..7.
+pub fn is_valid_category(code: Int) -> Int {
+  if code < 0 { 0 } else { if code > 7 { 0 } else { 1 } }
+}
+
+// Canonicalise a host integer: identity on a valid 0..7 code, the out-of-band
+// sentinel -1 otherwise. -1 is not an in-band code, so out-of-band input can
+// never be confused with a real category (this is a sentinel, not a clamp).
+pub fn clamp_category(code: Int) -> Int {
+  if is_valid_category(code) == 1 { code } else { -1 }
+}
+
+// Classify a DESTINATION zone category by its ISP-tier routing class -- the pure
+// integer core of NetworkZones.res canRouteViaISP. Returns the routing-class
+// band 2 / 1 / 0 / -1 (see header). The host parses IPs to zones (strings) and
+// runs the per-class access-list string checks; the brain only says which class
+// applies, replacing the `category == Service` / `== ISP` / else cascade.
+pub fn routing_class(dest_category: Int) -> Int {
+  if is_valid_category(dest_category) == 0 { return -1; }
+  if dest_category == 7 { return 2; }
+  if dest_category == 6 { return 1; }
+  0
+}
+
+// Whether a destination category is reachable through the ISP-tier mechanism at
+// all (canRouteViaISP can return true only for these). 1 for Service or ISP
+// destinations, 0 for any other valid category, 0 for out-of-band. This is the
+// host's fast pre-check: if 0, skip every ISP-tier access-list test outright.
+pub fn is_isp_routable(dest_category: Int) -> Int {
+  let cls = routing_class(dest_category);
+  if cls > 0 { 1 } else { 0 }
+}
