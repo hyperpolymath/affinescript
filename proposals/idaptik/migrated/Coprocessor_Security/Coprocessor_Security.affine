@@ -1,0 +1,101 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// Coprocessor_Security -- the pure-integer scalar kernels of the idaptik security
+// co-processor, the brain extracted from src/shared/Coprocessor_Security.res. The
+// ReScript file is a five-backend registry (Crypto / Neural / Quantum / Audio /
+// Graphics) whose `cmd*` wrappers marshal an array<int> and return an
+// executionResult record. The array<int> framing, the status guards, the
+// resourceMetrics, every message string, the session-scoped entangleCounter, and
+// every Math.random / floating-point path (crack, grover, qrng, classify
+// regression, fingerprint ratios, anomaly stddev, evade noise) stay host-side --
+// those are senses, not brain. What crosses the wasm boundary is the
+// DETERMINISTIC scalar integer core: the LCG generator that drives keygen / noise
+// / scramble, and the XOR-fold / checksum bit-arithmetic that drives hash / sign /
+// verify.
+//
+// Re-decomposition notes (NOT a transliteration):
+//   * No module state; the entangleCounter ref is host-owned (it is a counter,
+//     not arithmetic). Every kernel here is a pure function of explicit Int args.
+//   * Array-shaped kernels (keygen's byte buffer, the XOR cipher, Fisher-Yates
+//     scramble, the DSP buffers, the Neural feature vectors) keep their array<int>
+//     framing host-side; the host calls `lcg_next` in its generation loop and
+//     `xor_fold_step` in its fold loop. This brain is the scalar i32 ABI spine,
+//     matching the Random.affine and Maths.affine pattern.
+//   * The LCG and the multiply-heavy steps run at the wasm i32 wraparound exactly
+//     as ReScript's `seed * 1664525 + ... & 0x7FFFFFFF` does after ToInt32; the
+//     parity oracle re-derives the .res mixing with Math.imul + |0, the
+//     established convention (see Random.affine).
+//   * Bitwise: ReScript Int.Bitwise.{lxor,land,lsr,lor,lsl} map to ^ & >> | << .
+
+// --- LCG generator (Crypto.lcgStep / Graphics.lcgStep, identical) ----------
+// Numerical-Recipes constants: a=1664525, c=1013904223, state masked to 31 bits.
+// This is the deterministic spine of keygen (the byte stream), noise (the pixel
+// pattern), and scramble/unscramble (the Fisher-Yates swap sequence -- its
+// reversibility depends on this being bit-exact).
+
+// next LCG state from a seed: (seed*a + c) masked to 31 bits.
+pub fn lcg_next(seed: Int) -> Int {
+  (seed * 1664525 + 1013904223) & 2147483647
+}
+
+// the byte emitted at a step: low 8 bits of the next state (lcgStep's 2nd tuple
+// element). The host seeds its loop with `s := lcg_next(s)` and reads this byte.
+pub fn lcg_byte(seed: Int) -> Int {
+  lcg_next(seed) & 255
+}
+
+// --- XOR-fold hash core (Crypto.xorFold / cmdHash / cmdSign) ---------------
+
+// one fold step: accumulator XOR the next value. `xorFold` is the left fold of
+// this over the array from acc=0; the host drives the loop and this kernel is the
+// step. (Named with the reserved-word guard: the running value is `acc`.)
+pub fn xor_fold_step(acc: Int, x: Int) -> Int {
+  acc ^ x
+}
+
+// big-endian byte `i` (0..3) of a 32-bit int (Crypto.intTo4Bytes element). i<0 or
+// i>3 yields 0. Mirrors land(lsr(n, 8*(3-i)), 0xFF).
+pub fn byte_at(n: Int, i: Int) -> Int {
+  if i < 0 { return 0; }
+  if i > 3 { return 0; }
+  let shift = (3 - i) * 8;
+  (n >> shift) & 255
+}
+
+// --- checksum split / recombine (Crypto.cmdSign / cmdVerify) ---------------
+
+// low byte of the 2-byte checksum sign appends (csLo = cs land 0xFF).
+pub fn checksum_lo(folded: Int) -> Int {
+  folded & 255
+}
+
+// high byte of the 2-byte checksum (csHi = lsr(cs, 8) land 0xFF).
+pub fn checksum_hi(folded: Int) -> Int {
+  (folded >> 8) & 255
+}
+
+// recombine the two stored bytes the way verify does: stored = csLo lor lsl(csHi,
+// 8). The host reads the trailing two bytes off the array and passes them here.
+pub fn checksum_combine(lo: Int, hi: Int) -> Int {
+  lo | (hi << 8)
+}
+
+// verify's gate: 1 PASS when the recomputed fold's low 16 bits equal the stored
+// checksum, 0 FAIL. Mirrors `valid = expected == stored` in cmdVerify, where
+// `stored` only ever holds 16 bits, so we compare the low 16 bits of the fold.
+// (expected is the full xor-fold; stored = combine(lo,hi) is 16-bit; the ReScript
+// sign writes exactly the low 16 bits, so an honest verify compares those.)
+pub fn verify_match(folded: Int, lo: Int, hi: Int) -> Int {
+  let stored = checksum_combine(lo, hi);
+  let expected = folded & 65535;
+  if expected == stored { 1 } else { 0 }
+}
+
+// --- crack key derivation (Crypto.cmdCrack success branch) -----------------
+// The crack ROLL is Math.random (host); but once the host decides success, the
+// derived key is the deterministic `target lxor strength` -- a pure integer
+// kernel worth pinning so the host need not re-implement the bit op.
+pub fn crack_key(target: Int, strength: Int) -> Int {
+  target ^ strength
+}

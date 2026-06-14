@@ -1,0 +1,137 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// InstructionParser -- the pure opcode-arity VALIDATION kernel re-decomposed
+// from vm/lib/ocaml/InstructionParser.res. The ReScript original entangles
+// three things: the char-by-char TEXT PARSE (String.trim / String.split /
+// String.toUpperCase / Int.fromString -- turning a command line into tokens and
+// an uppercased mnemonic), the per-opcode ARITY CHECK (the pile of
+// `if argCount == N` branches that decide whether a given mnemonic+count is a
+// well-formed instruction), and the CONSTRUCTION of an Instruction.t via the
+// per-op `*.make` smart constructors. Per the DESIGN-VISION ("AffineScript is
+// the brain, JS/Pixi the senses; only primitives cross the wasm boundary") and
+// the explicit migration note (text->opcode parsing is a STRING sense, stays
+// host-side), the tokeniser, the uppercasing, the Int.fromString of operand
+// text, the CALL resolver, and the helpText string are senses. They never
+// become integers and stay host-side.
+//
+//## Why this split, not a port of parse/parseInternal
+// parseInternal's first half is string work: trim, split on " ", drop empties,
+// uppercase tokens[0], count the rest. AffineScript's canonical face has broken
+// string subscripting / string == , so text parsing is precisely what must NOT
+// cross. The host does that parse, maps the uppercased mnemonic to its canonical
+// integer OPCODE (the same 0..22 band VmInstruction.affine owns -- see its
+// header), and counts the operands. What it then asks the kernel is the integer
+// core that survives: "is opcode OP with argCount N a well-formed parse?" -- the
+// truth table the `if argCount == N` / `if argCount >= 3` branches encode. On a
+// 1, the host runs the matching `*.make`; on a 0, it raises the same Error.
+//
+//## Opcode encoding (the header contract for the JS host) -- VmInstruction band
+// The host passes the opcode in the canonical VmInstruction.affine order (the
+// reversible VM's instruction-set band), so the two kernels agree and the host
+// keeps ONE opcode table:
+//   tier 0 (register arithmetic)        tier 2 (stack / memory)
+//     0 NOOP    5 FLIP   10 XOR           16 PUSH   18 LOAD
+//     1 ADD     6 ROL    11 MUL           17 POP    19 STORE
+//     2 SUB     7 ROR    12 DIV          tier 3 (subroutines)
+//     3 NEGATE  8 AND                     20 CALL
+//     4 SWAP    9 OR                     tier 4 (I/O channels)
+//   tier 1 (conditionals)                 21 SEND   22 RECV
+//    13 IFZERO 14 IFPOS 15 LOOP
+// NOTE on LOOP (15): InstructionParser.res has NO text form for LOOP -- the
+// header comment says "LOOP via programmatic API". So although 15 is a valid
+// VM opcode, it is NOT a parseable instruction: accepts_arg_count(15, _) = 0,
+// and min_arg_count(15) = -1 (no text arity exists). An opcode outside 0..22 is
+// likewise not parseable: both report the out-of-band sentinel (0 / -1), never
+// fabricating an in-band arity. (Sentinels declared here; assail stays clean.)
+//
+//## Operand-TYPE checks stay host-side (declared, not migrated)
+// Three ops additionally require an operand to be an INTEGER LITERAL: ROL/ROR's
+// optional <bits> (Int.fromString, .res:79/90), LOAD's <addr> (.res:166) and
+// STORE's <addr> (.res:175); CALL additionally needs a subroutine resolver
+// (.res:187). Those are string/context concerns the host already discharged
+// before it has an integer to pass -- so they are NOT part of the integer
+// arity contract. This kernel validates only the operand COUNT, which is the
+// integer decision the arity branches share.
+
+//## How many text operands a mnemonic needs, at minimum.
+// The canonical minimum operand count for a parseable opcode. For the fixed-
+// arity ops this IS the required count; for the variable ones it is the floor:
+//   ROL/ROR (6,7): 1 minimum, 2 maximum (optional <bits>)
+//   IFZERO/IFPOS (13,14): 3 minimum, unbounded (the body is the rest)
+// LOOP (15) and any out-of-band opcode have no text form -> sentinel -1.
+pub fn min_arg_count(op: Int) -> Int {
+  if op == 0 { return 0; }    // NOOP   takes no arguments
+  if op == 1 { return 2; }    // ADD <a> <b>
+  if op == 2 { return 2; }    // SUB <a> <b>
+  if op == 3 { return 1; }    // NEGATE <a>
+  if op == 4 { return 2; }    // SWAP <a> <b>
+  if op == 5 { return 1; }    // FLIP <a>
+  if op == 6 { return 1; }    // ROL <a> [bits]
+  if op == 7 { return 1; }    // ROR <a> [bits]
+  if op == 8 { return 3; }    // AND <a> <b> <c>
+  if op == 9 { return 3; }    // OR  <a> <b> <c>
+  if op == 10 { return 2; }   // XOR <a> <b>
+  if op == 11 { return 3; }   // MUL <a> <b> <c>
+  if op == 12 { return 4; }   // DIV <a> <b> <q> <r>
+  if op == 13 { return 3; }   // IF_ZERO <test> <exit> <instr...>
+  if op == 14 { return 3; }   // IF_POS  <test> <exit> <instr...>
+  if op == 16 { return 1; }   // PUSH <reg>
+  if op == 17 { return 1; }   // POP  <reg>
+  if op == 18 { return 2; }   // LOAD <reg> <addr>
+  if op == 19 { return 2; }   // STORE <addr> <reg>
+  if op == 20 { return 1; }   // CALL <name>
+  if op == 21 { return 2; }   // SEND <port> <reg>
+  if op == 22 { return 2; }   // RECV <port> <reg>
+  -1                          // LOOP (15) / out of band: no text arity
+}
+
+//## The largest operand count a mnemonic accepts, or -1 if unbounded.
+// Fixed-arity ops: equal to the minimum. ROL/ROR cap at 2 (the optional
+// <bits>). IFZERO/IFPOS have an UNBOUNDED tail (the body instruction is
+// joinWith(" ") of every token from index 3 on, .res:128/141) -> -1 here means
+// "no upper bound" for those two specifically. LOOP / out-of-band: also -1,
+// but min_arg_count is already -1 there, so the host reads "not parseable".
+// Distinguish the two -1 meanings via min_arg_count: min == -1 => not parseable;
+// min >= 0 && max == -1 => parseable with an unbounded tail.
+pub fn max_arg_count(op: Int) -> Int {
+  if op == 6 { return 2; }    // ROL <a> [bits]
+  if op == 7 { return 2; }    // ROR <a> [bits]
+  if op == 13 { return -1; }  // IF_ZERO: unbounded body tail
+  if op == 14 { return -1; }  // IF_POS:  unbounded body tail
+  // For every other parseable op the max equals the min (fixed arity).
+  // LOOP (15) and out-of-band fall through min_arg_count's -1.
+  min_arg_count(op)
+}
+
+//## Does opcode OP accept exactly argCount N operands as a well-formed parse?
+// THE brain: the integer core of parseInternal's per-opcode arity branches
+// (.res:33-212), read as a single truth table over (opcode, argCount).
+//   * fixed-arity op: N == min                        (e.g. ADD: N == 2)
+//   * ROL/ROR (6,7):  N == 1 || N == 2                (optional <bits>)
+//   * IF_ZERO/IF_POS (13,14): N >= 3                  (the `argCount >= 3` guard)
+//   * LOOP (15) / out-of-band opcode: 0               (no text form)
+// Returns 1 = a well-formed arity, 0 = the parse Error branch. A negative
+// argCount (a malformed host count) is never well-formed -> 0.
+pub fn accepts_arg_count(op: Int, arg_count: Int) -> Int {
+  if arg_count < 0 { return 0; }       // malformed count: never valid
+  let lo = min_arg_count(op);
+  if lo < 0 { return 0; }              // LOOP / out-of-band: not parseable
+  let hi = max_arg_count(op);
+  if hi < 0 {
+    // unbounded tail (IFZERO/IFPOS): valid iff at least the minimum
+    if arg_count >= lo { 1 } else { 0 }
+  } else {
+    // bounded: valid iff within [lo, hi] (covers fixed and ROL/ROR ranges)
+    if arg_count < lo { 0 } else { if arg_count > hi { 0 } else { 1 } }
+  }
+}
+
+//## Is opcode OP a text-parseable instruction at all (any arity)?
+// 1 if the parser has a mnemonic branch for OP, 0 otherwise. Exactly the ops
+// with a defined min arity. Lets the host distinguish "Unknown instruction"
+// (.res:214) from "right mnemonic, wrong operand count". LOOP (15) and any
+// opcode outside 0..22 report 0 -- there is no text command that yields them.
+pub fn is_parseable_opcode(op: Int) -> Int {
+  if min_arg_count(op) < 0 { 0 } else { 1 }
+}
