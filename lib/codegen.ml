@@ -623,6 +623,53 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
     in
     Ok (ctxA, code)
 
+  | ExprStringEq (left, right, negate) ->
+    (* String (dis)equality `a == b` / `a != b` (both `String`). String-wall
+       slice 9 — the type-directed lowering Typecheck.elaborate_string_concat
+       emits for the String case of polymorphic `==`/`!=`. Codegen for `==`
+       was [I32Eq] (gen_binop), comparing the two `[len][utf8]` *pointers*:
+       two equal-valued strings at distinct heap addresses (e.g. a literal vs
+       a built string) compared unequal — the root of the string-wall.
+
+       Layout (slices 1-7): `[len@+0][utf8 byte i @ +4+i]`. Equality =
+       lengths equal AND every byte equal. The byte loop runs ONLY after the
+       length check passes, so it never reads past either string's bytes
+       (no out-of-bounds linear-memory trap when lengths differ). Leaves one
+       i32 (1=equal / 0=not) on the stack; `!=` flips it with [I32Eqz]. *)
+    let* (ctx1, left_code)  = gen_expr ctx  left  in
+    let* (ctx2, right_code) = gen_expr ctx1 right in
+    let (ctx3, pa)  = alloc_local ctx2 "__seq_a"   in
+    let (ctx4, pb)  = alloc_local ctx3 "__seq_b"   in
+    let (ctx5, la)  = alloc_local ctx4 "__seq_la"  in
+    let (ctx6, k)   = alloc_local ctx5 "__seq_k"   in
+    let (ctx7, res) = alloc_local ctx6 "__seq_res" in
+    let byte_loop =
+      (* for k in 0..la: if a[k] != b[k] then res := 0; break.
+         Falls through with res unchanged (= 1) when all bytes match. *)
+      [ I32Const 0l; LocalSet k;
+        Block (BtEmpty, [ Loop (BtEmpty, [
+          LocalGet k; LocalGet la; I32GeS; BrIf 1;   (* k >= len → all matched *)
+          (* byte k of each: *(ptr + k) loaded at static +4 (skips len word) *)
+          LocalGet pa; LocalGet k; I32Add; I32Load8U (0, 4);
+          LocalGet pb; LocalGet k; I32Add; I32Load8U (0, 4);
+          I32Ne;
+          (* on mismatch: res := 0 and break the Block (label 2: If→Loop→Block) *)
+          If (BtEmpty, [ I32Const 0l; LocalSet res; Br 2 ], []);
+          LocalGet k; I32Const 1l; I32Add; LocalSet k;
+          Br 0 ]) ]) ]
+    in
+    let code =
+      left_code @ [LocalSet pa] @ right_code @ [LocalSet pb] @
+      [ LocalGet pa; I32Load (2, 0); LocalSet la;
+        I32Const 1l; LocalSet res;                 (* optimistic: equal *)
+        (* length check: differ → res := 0; equal → run the byte loop *)
+        LocalGet la; LocalGet pb; I32Load (2, 0); I32Ne;
+        If (BtEmpty, [ I32Const 0l; LocalSet res ], byte_loop);
+        LocalGet res ]
+      @ (if negate then [ I32Eqz ] else [])
+    in
+    Ok (ctx7, code)
+
   | ExprBinary (left, op, right) ->
     let* (ctx', left_code) = gen_expr ctx left in
     let* (ctx'', right_code) = gen_expr ctx' right in

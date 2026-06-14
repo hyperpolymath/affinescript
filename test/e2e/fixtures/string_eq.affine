@@ -1,0 +1,19 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// PHASE-F string-wall slice 9 e2e fixture: String `==` / `!=` must lower to a
+// byte comparison (via Typecheck.elaborate_string_concat -> ExprStringEq)
+// rather than the I32Eq *pointer* comparison that is correct only for Int.
+// Polymorphic equality lets String `==` typecheck and then fall to I32Eq, so
+// two equal-valued strings at distinct heap addresses compared unequal.
+// Covers var-vs-literal, built-vs-literal (distinct pointer, equal bytes),
+// and the negated `!=` form. Executed value (verified out-of-band): 3.
+
+fn eq(a: String, b: String) -> Int { if a == b { 1 } else { 0 } }
+
+fn main() -> Int {
+  let built = "sc" ++ "an";                         // distinct heap ptr, bytes "scan"
+  let vlit  = if built == "scan" { 1 } else { 0 };  // value eq, not pointer eq
+  let nlit  = if "foo" != "bar" { 1 } else { 0 };   // negated form
+  eq("exit", "exit") + vlit + nlit
+}

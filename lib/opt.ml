@@ -71,6 +71,16 @@ let rec fold_constants_expr (expr : expr) : expr =
     else
       ExprStringConcat (left', right')
 
+  (* String-wall slice 9: fold sub-expressions of a String `==`/`!=` (the node
+     itself isn't a constant). Introduced post-typecheck on the wasm path. *)
+  | ExprStringEq (left, right, neg) ->
+    let left' = fold_constants_expr left in
+    let right' = fold_constants_expr right in
+    if left == left' && right == right' then
+      expr
+    else
+      ExprStringEq (left', right', neg)
+
   | ExprUnary (op, operand) ->
     let operand' = fold_constants_expr operand in
     if operand == operand' then
