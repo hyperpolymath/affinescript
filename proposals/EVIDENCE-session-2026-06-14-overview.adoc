@@ -1,0 +1,69 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+= Session overview — idaptik migration corpus + string/float walls (2026-06-14)
+:toc: macro
+
+toc::[]
+
+This note consolidates one session's work so the repo carries a single honest
+record. Per-area detail lives in the linked evidence docs.
+
+== What was delivered (all merged to `main`)
+
+[cols="2,4,1",options="header"]
+|===
+| Area | Summary | PRs
+| Migration corpus
+| Exhaustive sweep + classification of the idaptik logic corpus into AffineScript
+  `Int(...)->Int` "brains" (compile -> differential parity vs an independent JS
+  oracle -> assail). **62 -> 94 brains.**
+| #584–#591
+| String wall
+| `==`/`!=` and `<`/`<=`/`>`/`>=` on `String` lowered to a *pointer* compare; now
+  byte-wise value / lexicographic compares via a type-directed elaboration
+  (`ExprStringEq` / `ExprStringRel`).
+| #587, #588
+| String-wall cleanup + test harness
+| Hardened the dead `OpConcat` placeholder; extended affine-parity to pass
+  **String** args (and **Float** via f64). Demo proves runtime-string compares.
+| #592
+| Float wall
+| `Float` binops lowered i32 ops on f64 operands (invalid wasm); now the f64
+  family + f64 params/results/typed-locals (`ExprFloatBinary`).
+| #593
+|===
+
+== Honest scope — what "migrated" does and does NOT mean
+
+* *Exhaustively classified, yes.* Every non-test idaptik `.res` source file is
+  accounted for: ~94 new brains, ~88 already-migrated (earlier clusters), ~195
+  documented `NO_NEW_BRAINS` host-side senses (render-glue, FFI shims,
+  string/JSON/wire cores, orchestration). The 195 *stay ReScript* — they have no
+  separable integer/float brain.
+* *Demonstration corpus, NOT the game.* The 94 brains live in
+  `proposals/idaptik/migrated/` as a proof-of-pattern + compiler stress-test.
+  *The idaptik game itself is not rewritten* — it still runs ReScript; the wasm
+  brains are not wired back in (host bindings + `.res`-consumer replacement is a
+  separate, larger downstream effort).
+* *Float tier newly unblocked, not yet swept.* The float wall makes the ~12
+  float-domain modules that were `NO_NEW_BRAINS` *only* for the integer-only ABI
+  now compilable. They have NOT been re-swept — that is the obvious next wave.
+
+== Compiler follow-ons (open)
+
+* *Float unary negation* (`-x`) still routes through `gen_unop` (i32).
+* *Internal calls passing `Float` args* — call-instruction type builders still
+  assume i32 args (external entry points unaffected).
+* *Soundness items remain* (not attempted this session): `#554` use-after-move
+  (Polonius residual `#553`), `#555` `handle` is a feature gap (its silent
+  mis-lowering is already a loud error), `#556` async sync-fallback, `#558`/`#559`.
+
+== Linked evidence
+
+* Migration: `proposals/idaptik/migrated/EVIDENCE-C13-logic-sweep.adoc`,
+  `…/EVIDENCE-C14-sense-sweep.adoc`, `…/EVIDENCE-C15-stragglers.adoc`
+  (per-file disposition + the corpus capstone).
+* String wall: `proposals/EVIDENCE-stringwall-slices9-10.adoc` (+ slices 1–8 in
+  the sibling `EVIDENCE-stringwall-slice{1..7}` / `DESIGN-string-concat`).
+* Float wall: `proposals/EVIDENCE-float-wall-finding.adoc` (finding + fix shape),
+  `proposals/EVIDENCE-float-wall-implementation.adoc` (the implementation).
