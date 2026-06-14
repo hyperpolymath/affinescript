@@ -280,11 +280,33 @@ let rec eval (env : env) (expr : expr) : value result =
                result of the entire `handle` expression.  This is correct for
                the common single-shot, tail-resume pattern.  Full multi-shot
                continuations require either OCaml 5 effects or a CPS transform. *)
+            (* #555: the shallow continuation is sound only for single-shot
+               tail-resume.  Multi-shot resume (calling `resume` more than
+               once) cannot be expressed without reified continuations and
+               previously produced a silently-wrong value — each call merely
+               returned its argument, so e.g. `resume(1) + resume(2)` yielded
+               `3` instead of running the continuation twice.  Count
+               invocations and fail loudly on the second call so a multi-shot
+               handler can never silently miscompute.  (Non-tail single-shot
+               resume — `let x = op(); x + 100` resuming to `5` rather than
+               `105` — remains a documented shallow-resume incompleteness: the
+               body has already unwound the bind chain, so the discarded
+               continuation is undetectable here without a CPS transform.) *)
+            let resume_count = ref 0 in
             let resume_fn = VBuiltin ("__resume__", fun resume_args ->
-              match resume_args with
-              | [v] -> Ok v
-              | []  -> Ok VUnit
-              | vs  -> Ok (VTuple vs)
+              incr resume_count;
+              if !resume_count > 1 then
+                Error (RuntimeError
+                  ("multi-shot resume is not supported by the tree-walking \
+                    interpreter: `resume` was called more than once in the \
+                    handler for effect `" ^ op_name ^ "` (Refs #555). Only \
+                    single-shot tail-resume is implemented; multi-shot \
+                    handlers require reified delimited continuations."))
+              else
+                match resume_args with
+                | [v] -> Ok v
+                | []  -> Ok VUnit
+                | vs  -> Ok (VTuple vs)
             ) in
             (* Bind effect argument values to handler patterns.
                Convention: all declared params first, then the continuation as

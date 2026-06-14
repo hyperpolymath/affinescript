@@ -2313,6 +2313,71 @@ let async_fence_tests = [
 ]
 
 (* ============================================================================
+   Issue #555: interpreter resume soundness (multi-shot loud-fail)
+   ============================================================================
+
+   The tree-walking interpreter models `resume` with an identity continuation,
+   correct only for single-shot tail-resume. Multi-shot resume (>1 call)
+   previously produced a silently-wrong value (each call merely returned its
+   argument); it must now fail loudly. Non-tail single-shot resume stays a
+   documented shallow-resume incompleteness (undetectable without a CPS
+   transform), pinned here as an executable fact. Unlike the existing
+   handler-fence tests, these actually APPLY `main` so the handler runs. *)
+
+let interp_main path =
+  let open Result in
+  let ( let* ) = bind in
+  let* (prog, _resolve_ctx) = run_frontend path in
+  let* env =
+    match Interp.eval_program prog with
+    | Ok env -> Ok env
+    | Error e -> Error (Value.show_eval_error e)
+  in
+  let* main_fn =
+    match Value.lookup_env "main" env with
+    | Ok f -> Ok f
+    | Error _ -> Error "no `main` binding"
+  in
+  match Interp.apply_function main_fn [] with
+  | Ok v -> Ok v
+  | Error e -> Error (Value.show_eval_error e)
+
+let test_resume_single_shot_tail () =
+  match interp_main (fixture "handle_resume_tail.affine") with
+  | Ok (Value.VInt 5) -> ()
+  | Ok v -> Alcotest.failf "single-shot tail-resume: expected VInt 5, got %s" (Value.show_value v)
+  | Error msg -> Alcotest.failf "single-shot tail-resume should evaluate, got error: %s" msg
+
+let test_resume_multishot_loud_fail () =
+  match interp_main (fixture "handle_resume_multishot.affine") with
+  | Ok v ->
+      Alcotest.failf
+        "expected a loud multi-shot resume error (Refs #555); got Ok %s — \
+         silent multi-shot miscompute has regressed" (Value.show_value v)
+  | Error msg ->
+      Alcotest.(check bool) "error names the multi-shot resume limit" true
+        (contains_str "multi-shot resume" msg)
+
+let test_resume_nontail_known_shallow () =
+  (* KNOWN shallow-resume incompleteness: the correct result is 105; the
+     shallow interpreter returns the resumed value 5. Flip to VInt 105 when
+     delimited continuations land (Refs #555). *)
+  match interp_main (fixture "handle_resume_nontail.affine") with
+  | Ok (Value.VInt 5) -> ()
+  | Ok (Value.VInt 105) ->
+      Alcotest.fail
+        "non-tail resume now returns 105 — delimited continuations appear to \
+         have landed; update this pin and the #555 CAPABILITY-MATRIX note"
+  | Ok v -> Alcotest.failf "non-tail resume: expected VInt 5 (known shallow), got %s" (Value.show_value v)
+  | Error msg -> Alcotest.failf "non-tail resume should evaluate (shallow), got error: %s" msg
+
+let resume_soundness_tests = [
+  Alcotest.test_case "interp: single-shot tail-resume evaluates to 5"   `Quick test_resume_single_shot_tail;
+  Alcotest.test_case "interp: multi-shot resume → loud failure"         `Quick test_resume_multishot_loud_fail;
+  Alcotest.test_case "interp: non-tail resume → 5 (KNOWN shallow #555)" `Quick test_resume_nontail_known_shallow;
+]
+
+(* ============================================================================
    Section: Stage 7 — typed-wasm Ownership Verifier (Tw_verify)
    ============================================================================
 
@@ -5459,6 +5524,7 @@ let tests =
     ("E2E Try/Catch/Finally", try_catch_tests);
     ("E2E Handler Fence (#555)", handler_fence_tests);
     ("E2E Async Fence (#556)", async_fence_tests);
+    ("E2E Resume Soundness (#555)", resume_soundness_tests);
     ("E2E Ownership Verify", tw_verify_tests);
     ("E2E Cmd Linearity", cmd_linear_tests);
     ("E2E Boundary Verify", tw_interface_tests);

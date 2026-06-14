@@ -1,0 +1,22 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// Issue #555 regression fixture (KNOWN INCOMPLETENESS). Non-tail single-shot
+// resume: `compute` performs `ask()` and then computes `x + 100`, so the
+// correct result is 105. The shallow tree-walking interpreter unwinds the body
+// at the perform and cannot replay the discarded continuation, so it returns
+// the resumed value 5 instead. This case is undetectable at runtime without a
+// CPS transform; the test pins the current shallow value (5) so a future
+// delimited-continuation implementation flips it to 105 deliberately.
+effect Ask { fn ask() -> Int; }
+
+fn compute() -> Int / Ask {
+  let x = ask();
+  x + 100
+}
+
+fn main() -> Int {
+  handle compute() {
+    ask() => resume(5)
+  }
+}
