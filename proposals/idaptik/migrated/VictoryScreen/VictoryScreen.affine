@@ -1,0 +1,100 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// VictoryScreen -- the pure-integer performance-grade brain extracted from
+// src/app/screens/VictoryScreen.res (calculateGrade). The screen itself is
+// senses: the green "OPERATION COMPLETE" overlay, the per-grade colour and
+// description STRINGS, the GameI18n.t lookups, the Pixi Text/Graphics draws,
+// the escape-key wiring and the continue-button navigation. Per the
+// DESIGN-VISION ("AffineScript is the brain, JS/Pixi the senses; only
+// primitives cross the wasm boundary"), every string and every Pixi object
+// stays host-side; AffineScript owns only the integer score arithmetic and
+// its banding to a grade ordinal. This is exactly the victoryScore /
+// gradeOrdinal pair the ScreensRunLoopLogicCoprocessor binding already names.
+//
+// RE-DECOMPOSITION. The ReScript runs a `ref(100)` mutable accumulator
+// (score := score.contents - ...). We re-decompose it as a single pure
+// expression over explicit Int params -- no module state, no ref. The only
+// non-Int input in the original is `timeElapsedSec : float`, used solely in
+// two threshold tests (`> 300.0`, `> 600.0`). Seconds granularity is all the
+// thresholds need, so the host truncates the float to whole seconds and hands
+// the brain an Int; the two comparisons then live INSIDE the brain (integer-
+// exact), keeping the whole decision -- and the grade banding -- on this side
+// of the boundary. The grade variant S/A/B/C/D is re-decomposed as its
+// descending 4..0 ordinal (the order the .res switch already implies); the
+// host maps the ordinal back to its colour/description strings.
+//
+//## Score contract (the header contract for the JS host)
+//   Base score is 100. Adjustments (from VictoryScreen.res calculateGrade):
+//     - alert        : score - alert * 15
+//     - time         : score - 10 if time_sec > 300, and a further - 10 if > 600
+//     - covert        : score + covert * 5
+//     - commands     : score - 5 if commands > 100
+//     - crit success : score + crit_succ * 3
+//     - crit failure : score - crit_fail * 5
+//   The score is NOT clamped (the .res does not clamp it either); the banding
+//   below treats anything below 40 as the floor grade D, so a negative score
+//   maps to D just as the .res `else` arm does.
+//
+//## Grade contract (the second contract, for the banding)
+//   victory_grade(score) : the grade ordinal for a score.
+//     score >= 95 -> 4 (S)
+//     score >= 80 -> 3 (A)
+//     score >= 60 -> 2 (B)
+//     score >= 40 -> 1 (C)
+//     otherwise   -> 0 (D)
+//   The bands are the .res thresholds verbatim. The host owns the 0..4 ->
+//   {colour, description, "S".."D"} maps; the brain owns the cut points.
+//
+// PURE: integers only, no floats, no strings, no arrays, no effects, no I/O.
+
+//## The base performance score before any penalties or bonuses.
+pub fn victory_base_score() -> Int { 100 }
+
+//## The whole-second elapsed-time penalty: 10 once past five minutes, a
+// further 10 once past ten minutes (so 0, 10 or 20). A non-positive time is
+// below both thresholds and yields 0.
+pub fn victory_time_penalty(time_sec: Int) -> Int {
+  let first = if time_sec > 300 { 10 } else { 0 };
+  let second = if time_sec > 600 { 10 } else { 0 };
+  first + second
+}
+
+//## The command-spam penalty: 5 once more than a hundred commands were run,
+// else 0. The .res tests `commandsExecuted > 100`.
+pub fn victory_command_penalty(commands: Int) -> Int {
+  if commands > 100 { 5 } else { 0 }
+}
+
+//## The full performance score from 100. Mirrors calculateGrade's accumulator
+// as one expression: base, minus alert and time and command penalties, plus
+// covert-link and critical-success bonuses, minus the critical-failure
+// penalty. Not clamped (the banding's floor grade absorbs a negative score).
+pub fn victory_score(alert: Int, time_sec: Int, commands: Int, covert: Int, crit_succ: Int, crit_fail: Int) -> Int {
+  let base = 100;
+  let after_alert = base - alert * 15;
+  let after_time = after_alert - victory_time_penalty(time_sec);
+  let after_covert = after_time + covert * 5;
+  let after_commands = after_covert - victory_command_penalty(commands);
+  let after_crit_succ = after_commands + crit_succ * 3;
+  after_crit_succ - crit_fail * 5
+}
+
+//## The grade ordinal (4 S, 3 A, 2 B, 1 C, 0 D) for a performance score,
+// using the .res thresholds 95 / 80 / 60 / 40 with D as the floor.
+pub fn victory_grade(score: Int) -> Int {
+  if score >= 95 { 4 } else {
+    if score >= 80 { 3 } else {
+      if score >= 60 { 2 } else {
+        if score >= 40 { 1 } else { 0 }
+      }
+    }
+  }
+}
+
+//## The grade ordinal computed directly from the raw run stats, composing
+// victory_score with victory_grade so the host can ask for the final grade in
+// one call (the gradeOrdinal kernel of the binding).
+pub fn victory_grade_of_stats(alert: Int, time_sec: Int, commands: Int, covert: Int, crit_succ: Int, crit_fail: Int) -> Int {
+  victory_grade(victory_score(alert, time_sec, commands, covert, crit_succ, crit_fail))
+}

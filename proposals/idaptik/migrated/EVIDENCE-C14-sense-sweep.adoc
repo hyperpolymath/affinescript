@@ -1,0 +1,91 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+= Cluster C14 (sense-heavy directory sweep) — migration evidence (2026-06-14)
+:toc: macro
+
+[IMPORTANT]
+====
+*Verdict: 12 new integer brains extracted; the remainder are host-side senses,
+FFI binding shims, or already-migrated.*
+
+This cluster completes the exhaustive corpus sweep begun in C13, covering the
+six remaining sense-heavy directory groups: `src/app/screens` (top-level),
+`src/app/screens/{training,locations}`, `vm/lib/ocaml`, `src/engine` +
+`shared/src`, `src/app/{verisimdb,proven}`, and the long-tail grab-bag
+(`narrative`, `tools`, `tea`, `pickups`, `pixi`, `burble`, `vm`, `bindings`,
+`idaptik-ums/src`, loose `src`/`src/app`). 148 `.res` files.
+
+All 12 new brains were *independently re-verified* by the parent session
+(G1 compile, G2 differential parity all-pass vs an independent JS oracle,
+G4 assail zero high findings). Total brain count: 79 -> 91.
+====
+
+== Disposition summary
+
+[cols="3,1,1,1,1",options="header"]
+|===
+| Directory group | Files | New | Already | No-brain
+| `src/app/screens` (top-level)        | 25 | 5 |  1 | 19
+| `screens/training`+`locations`       | 23 | 2 |  0 | 21
+| `vm/lib/ocaml`                       | 34 | 1 | 27 |  6
+| `src/engine`+`shared/src`            | 27 | 0 | 17 | 10
+| `src/app/verisimdb`+`proven`         | 16 | 3 |  0 | 13
+| long-tail grab-bag                   | 23 | 1 |  0 | 22
+| *Total*                              | *148* | *12* | *45* | *91*
+|===
+
+== New brains (12) — all G1/G2/G4 green
+
+[cols="2,1,4",options="header"]
+|===
+| Brain | G2 | Extracted logic
+| `VictoryScreen`         | 2430/2430 | performance-grade: victory_score (100 base, alert/time/command penalties, covert/crit bonuses) + S/A/B/C/D banding (4..0)
+| `PlayTimeSplit`         | 2040/2040 | total_minutes -> hours(/60)/minutes(%60)/has_hours (harness-Int form of the float-seconds render kernel)
+| `VeriSimError`          | 859/859   | HTTP status -> 20-category ordinal + is_retryable(category) + is_status_retryable
+| `MissionBriefing`       | 285/285   | difficulty/guard-count/threshold, objective-state predicates, completion + progress%, par-time & S-grade alert budget
+| `IntroScreen`           | 254/254   | tutorial paginator state machine: next_page (bounded), is_last_page, 1-based page_label
+| `InstructionCoprocessor`| 175/175   | opcode arity-and-reversibility taxonomy: count/valid/arity/tier/is_self_inverse/invert/invert_round_trip
+| `SkillTreeScreen`       | 114/114   | XP-threshold classification: rank 0..4 -> threshold, is_maxed, xp_fill_permille (0..1000)
+| `VeriSimModality`       | 80/80     | 8-member modality band (0..7) + 5-member drift-level ordinal (0..4) + drift_is_actionable/critical
+| `BalanceAnalyser`       | 68/68     | impact-level classification (Minor/Moderate/Major -> 0..2) + passes_impact + has_critical_issues
+| `LocationData`          | 61/61     | world-map attributes: location_count, environment_kind (idx -> ordinal), device_count
+| `AmbushObjective`       | 31/31     | 3-failed-ambush survival objective: is_objective_met (attempts>=3), clamped progress, remaining
+| `HighwayHits`           | 28/28     | hit-budget accounting (max 3, game_over, clamped remaining) + per-lane traffic-direction parity (+/-1)
+|===
+
+== NO_NEW_BRAINS (91) and ALREADY (45)
+
+* *Screens / locations (~40):* PixiJS lifecycle orchestrators, navigation, static
+  LocationData-record screens, i18n string menus, float layout/camera math.
+* *FFI binding shims + render-glue (~30):* `*Coprocessor.res`, Pixi/Motion/Sound
+  bindings (`Pixi.res` 321 externals), render-decision bridges (float ABI).
+* *Float-domain cores (~10):* SafeFloat/SafeAngle (NaN-guarded f64), Resize,
+  glitch-FX, training dt-physics state machines.
+* *String/JSON/HTTP cores (~15):* VeriSim HTTP/JSON FFI bridges, PhoenixSocket,
+  SafeJson, lore/DataFiles, terminal/editor IPC glue.
+* *Orchestration / host state (~10):* Main, GameLoop, GetEngine, VM orchestrator,
+  SubroutineRegistry, registries and circular-dep-breaker refs.
+* *VM instructions (23, ALREADY):* `Add.res`..`Xor.res` are each covered by the
+  migrated `Vm{Arith,Bitwise,MulDiv,Stack,Memory,Port,Control,Ancilla,Instruction}`
+  category brains (confirmed by reading each category `.affine`).
+* *`shared/src` (17, ALREADY):* a duplicate tree of `src/shared`; every brain was
+  already extracted (Coprocessor, Kernel_*, ResourceAccounting, DeviceType, ...).
+
+== Residual gap (closed in a follow-up)
+
+The screens sweep covered the top level and `training`/`locations`; the small
+`screens/main` (3), `screens/hub` (1), `vm/wasm/src` (2), and `devices/{types,
+common}` (2) leaves are swept separately. (`docs/.../templates/*.res` is a
+template, not source.)
+
+== Method note
+
+Brains stay `Int(...)->Int` (the parity harness passes integer arguments only);
+floats are carried as x1000 milli-units / permille where integer-exact, else
+host-side. Two recurring AffineScript authoring landmines were re-confirmed and
+worked around: `total` is a *reserved word* (use `acc`/`req_total`), and the flat
+early-`return N;` idiom (not deeply nested deferred-brace `if/else`) is the
+reliable many-branch style that stays G4-clean. Several brains are residual
+sub-brains earlier clusters scoped out (the Coprocessor/Kernel/Resource set,
+ThreatClass, the screen score/grade kernels), recovered here as separable
+pure-integer kernels matching the existing `*Coprocessor.res` host bridges.

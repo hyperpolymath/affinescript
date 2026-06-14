@@ -1,0 +1,85 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// PlayTimeSplit -- the play-time decomposition brain, the pure-integer core
+// extracted from idaptik src/app/verisimdb/SaveGame.res `formatPlayTime`
+// (SaveGame.res:257-266). Per the DESIGN-VISION ("AffineScript is the brain,
+// JS/Pixi the senses; only primitives cross the wasm boundary") the JS host
+// keeps the elapsed-seconds Float, the localStorage save metadata, the Pixi
+// Text draw, and the "Xh Ym" / "Ym" string interpolation; AffineScript owns
+// only the integer hour/minute decomposition of a whole-minute count and the
+// caption-branch flag.
+//
+//## Why this is the separable Int sub-brain (not the whole formatPlayTime)
+// formatPlayTime first does `totalMinutes = Float.toInt(seconds /. 60.0)` -- a
+// FLOAT input that cannot cross the scalar-i32 boundary, so that truncation
+// stays host-side (it is the canonical verisimprovenrenderlogic.wasm's
+// `play_time_total_minutes`, which takes Float). What is LEFT once total
+// minutes is in hand is pure Int->Int: hours = totalMinutes / 60, minutes =
+// totalMinutes % 60, and the "show hours?" branch hours > 0. That integer core
+// is lifted here and is exactly harness-compatible (every argument an Int).
+//
+//## Re-decomposition of SaveGame.formatPlayTime
+// The ReScript original computes, in order, on a non-negative play-time:
+//   totalMinutes = Float.toInt(seconds /. 60.0)   // host-side (Float in)
+//   hours        = totalMinutes / 60               // integer division
+//   minutes      = Int.mod(totalMinutes, 60)       // JS % remainder
+//   caption       = hours > 0 ? "{h}h {m}m" : "{m}m"
+// Integer `/` and `%` here truncate toward zero, matching ReScript's int `/`
+// and Int.mod for the NON-NEGATIVE minute counts a play-time ever produces. A
+// play-time is never negative (it accumulates from zero), so a negative input
+// is not a valid play-time: it is rejected with the out-of-band sentinel -1
+// rather than silently decomposed (a guard, per rule 5; -1 is never a valid
+// hour or minute component, so the host can tell a rejection from a real
+// value). The host owns the string assembly; the caption it builds from these
+// integer components is byte-identical to the ReScript original.
+//
+//## Boundary contract (the header the JS host relies on)
+//   play_time_minutes_valid(total_minutes) -> Int   1 if total_minutes >= 0 else 0
+//   play_time_hours(total_minutes) -> Int           total_minutes / 60, or -1 if invalid
+//   play_time_minutes(total_minutes) -> Int         total_minutes % 60, or -1 if invalid
+//   play_time_has_hours(total_minutes) -> Int       1 when hours > 0 else 0 (0 if invalid)
+// Every value crosses as i32 in and i32 out; no strings, dicts or effects cross.
+// The number of minutes in one hour, the single magic constant of the split.
+pub fn minutes_per_hour() -> Int { 60 }
+
+// Whether a whole-minute count names a valid (non-negative) play-time.
+// 1 = valid, 0 = out of band. A play-time accumulates from zero, so it is never
+// negative; a negative count is host error, not a real elapsed time.
+pub fn play_time_minutes_valid(total_minutes: Int) -> Int {
+  if total_minutes < 0 { 0 } else { 1 }
+}
+
+// Hours component of a play-time: total_minutes / 60 (integer division,
+// truncating toward zero). The out-of-band sentinel -1 on a negative count,
+// which is never a valid hours component, so the host distinguishes rejection
+// from a real value (a guard, not a clamp -- assail stays clean).
+pub fn play_time_hours(total_minutes: Int) -> Int {
+  if play_time_minutes_valid(total_minutes) == 1 {
+    total_minutes / 60
+  } else {
+    0 - 1
+  }
+}
+
+// Minutes component of a play-time: total_minutes % 60 (the JS remainder; for a
+// non-negative count this is the in-hour minute in 0..59). The out-of-band
+// sentinel -1 on a negative count.
+pub fn play_time_minutes(total_minutes: Int) -> Int {
+  if play_time_minutes_valid(total_minutes) == 1 {
+    total_minutes % 60
+  } else {
+    0 - 1
+  }
+}
+
+// Caption branch: 1 when the host should render "{h}h {m}m" (hours > 0), else 0
+// ("{m}m"). On an invalid (negative) count there are no hours to show, so 0.
+pub fn play_time_has_hours(total_minutes: Int) -> Int {
+  if play_time_minutes_valid(total_minutes) == 1 {
+    let hours = total_minutes / 60;
+    if hours > 0 { 1 } else { 0 }
+  } else {
+    0
+  }
+}

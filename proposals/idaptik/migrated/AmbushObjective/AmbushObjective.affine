@@ -1,0 +1,67 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// AmbushObjective -- the assassin-survival objective co-processor, the pure
+// integer core extracted from idaptik src/app/screens/training/AssassinTraining.res
+// (the onUpdate ambush-counter logic, res:144-161). Per the DESIGN-VISION
+// ("AffineScript is the brain, JS/Pixi the senses; only primitives cross the wasm
+// boundary"), the host keeps the guard array, the pulsing warning Text, the HUD
+// string formatting and the victory-delay float timer; AffineScript owns only the
+// integer objective accounting over the assassin's failed-ambush count.
+//
+//## Why this split, not a port of AssassinTraining.res
+// AssassinTraining.res entangles (a) the Text pulse `0.5 +. 0.5 *. sin(t*3)` and
+// every container/position float (res:140-141), (b) the victory-delay countdown
+// `victoryDelay -. dt` (res:164-169), (c) the HUD string interpolation
+// "Ambushes survived: N / 3" (res:150,160), and (d) the integer objective decision:
+// sum the per-guard `getAssassinKillAttempts` into `attempts`, declare victory once
+// `attempts >= 3` (res:152). Only (d) is an integer decision; (a)-(c) are float
+// physics, async timing and string rendering that stay host-side. This file is the
+// verified core of that one decision, plus the two display read-outs the HUD needs
+// (clamped progress, remaining-to-go) so the host never re-derives the 0..3 band.
+//
+//## Objective encoding (the header contract for the JS host)
+// The assassin demo is won by forcing THREE failed ambushes. `attempts` is the host's
+// summed `getAssassinKillAttempts` over the guard array (a non-negative i32 in normal
+// play). The target is the literal 3 from res:152 (`attempts >= 3`). Boundary is
+// GREATER-OR-EQUAL, faithful to the .res `>=`, so attempts == 3 already wins and
+// attempts == 2 does not. All read-outs are total over every i32 input: a negative
+// host count (malformed) reads as zero progress / full remaining / not-met, never an
+// out-of-band code, so a stray encoding cannot spuriously complete the objective.
+
+// The number of failed ambushes that complete the objective (AssassinTraining
+// res:152 -- the literal 3 in `attempts >= 3`). The single source of truth for the
+// band width; every read-out below is stated against it.
+pub fn ambush_target() -> Int { 3 }
+
+//## is_objective_met -- whether the survive-the-assassin objective is complete.
+// The integer core of AssassinTraining res:152 (`attempts >= 3`). Boundary is
+// GREATER-OR-EQUAL, faithful to the .res `>=`. Returns 1 = met (fire the victory
+// transition), 0 = not yet. Total over every i32: a negative count is below 3 -> 0.
+pub fn is_objective_met(attempts: Int) -> Int {
+  if attempts >= 3 { 1 } else { 0 }
+}
+
+//## ambushes_survived -- the clamped 0..3 progress for the HUD read-out.
+// The display value behind "Ambushes survived: N / 3" (res:150,160). The raw host
+// count is clamped onto the closed 0..3 band so the HUD never shows a negative or an
+// over-count: a malformed negative reads 0, anything at or past the target reads 3
+// (the objective is complete, no further progress is meaningful). The clamp is to an
+// IN-BAND value (0 or 3), never an out-of-band sentinel, so assail stays clean and
+// no in-band code is shadowed.
+pub fn ambushes_survived(attempts: Int) -> Int {
+  if attempts < 0 { return 0; }
+  if attempts > 3 { return 3; }
+  attempts
+}
+
+//## ambushes_remaining -- failed ambushes still needed to win.
+// The complement of progress: how many more failed ambushes the assassin must be
+// forced into. Defined as 3 minus the clamped progress, so it is total and never
+// negative: at or past the target it is 0 (objective met), at a malformed negative
+// count it is the full 3. Mirrors the HUD's "/ 3" denominator semantics exactly.
+pub fn ambushes_remaining(attempts: Int) -> Int {
+  if attempts < 0 { return 3; }
+  if attempts >= 3 { return 0; }
+  3 - attempts
+}

@@ -1,0 +1,141 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// InstructionCoprocessor -- the opcode arity-and-reversibility taxonomy of the
+// idaptik reversible VM, the pure-integer core behind the @send bridge declared
+// in vm/lib/ocaml/InstructionCoprocessor.res (whose ground-truth semantics live
+// in InstructionCoprocessorBridge.js's OPCODE table + the exported integer ops).
+// Per the DESIGN-VISION ("AffineScript is the brain, JS/Pixi the senses; they
+// pass primitives across the wasm boundary"), the JS host keeps every mnemonic
+// STRING ("ADD", "SUB", ...) and the operand-token arrays; AffineScript owns
+// only the canonical opcode encoding, the per-opcode operand count, the VM tier,
+// and the reversible pairing that Instruction.res's execute/invert closures
+// imply. Only integer opcodes cross the boundary; the strings never do.
+//
+// WHY THIS IS NOT VmInstruction.affine. The migrated VmInstruction brain encodes
+// the *tier-ordered* instruction set (NOOP=0, ADD=1, ..., 23 opcodes) and answers
+// count / validity / tier / tier-admission. THIS module is the distinct
+// co-processor surface the InstructionCoprocessorBridge.js exposes: it uses the
+// *register-arithmetic-first* encoding (ADD=0, SUB=1, ..., 22 opcodes, byte-
+// identical to VmCoprocessorBridge.OPCODE) and additionally answers the three
+// questions VmInstruction does not -- operand arity, self-inverse-ness, and the
+// structural inverse opcode -- which are the encoded form of the VM's
+// reversibility guarantee (Add.invert is Sub, Sub.invert is Add; Negate/Flip/
+// Swap/Xor/Noop are their own inverse). The two encodings are deliberately
+// different bands; a host that wants the tier-ordered view calls VmInstruction,
+// a host that drives this co-processor calls here. No strings cross either.
+//
+//## Opcode encoding (the header contract for the JS host)
+// The register-arithmetic band 0..12 is BYTE-IDENTICAL to VmCoprocessorBridge's
+// OPCODE table, so this module's encoding and the live VM dispatch agree; the
+// higher tiers extend it contiguously.
+//   opcode  mnemonic  tier  arity        opcode  mnemonic  tier  arity
+//      0    ADD         0     2             11    NOOP        0     0
+//      1    SUB         0     2             12    DIV         0     4
+//      2    NEGATE      0     1             13    IF_ZERO     1     3
+//      3    MUL         0     3             14    IF_POS      1     3
+//      4    AND         0     3             15    PUSH        2     1
+//      5    OR          0     3             16    POP         2     1
+//      6    XOR         0     2             17    LOAD        2     2
+//      7    FLIP        0     1             18    STORE       2     2
+//      8    SWAP        0     2             19    CALL        3     1
+//      9    ROL         0     1             20    SEND        4     2
+//     10    ROR         0     1             21    RECV        4     2
+// The encoding is LOSSLESS: 22 instructions map to 22 distinct opcodes, so the
+// host round-trips instruction <-> opcode with no collision. An opcode outside
+// 0..21 is not an instruction: every query below returns the out-of-band
+// sentinel -1, never an in-band value, so a malformed host opcode can never be
+// confused with a real instruction (sentinel, not clamp; assail stays clean).
+
+//## The opcode count (the closed band size).
+// The single source of truth for how many opcodes this co-processor recognises.
+pub fn opcode_count() -> Int { 22 }
+
+//## Validity: is this integer a recognised opcode (0..21)?
+// 1 for an in-band opcode, 0 otherwise. The defended boundary: the host marshals
+// a bare integer and this is the only gate on it.
+pub fn is_valid_opcode(op: Int) -> Int {
+  if op < 0 { return 0; }
+  if op > 21 { return 0; }
+  1
+}
+
+//## Operand arity: the operand count InstructionParser checks per mnemonic,
+// expressed purely as a function of the opcode. Flat guarded returns (no deep
+// nesting). An out-of-band opcode yields the sentinel -1 ("no such instruction").
+pub fn opcode_arity(op: Int) -> Int {
+  if op == 0 { return 2; }   // ADD
+  if op == 1 { return 2; }   // SUB
+  if op == 2 { return 1; }   // NEGATE
+  if op == 3 { return 3; }   // MUL
+  if op == 4 { return 3; }   // AND
+  if op == 5 { return 3; }   // OR
+  if op == 6 { return 2; }   // XOR
+  if op == 7 { return 1; }   // FLIP
+  if op == 8 { return 2; }   // SWAP
+  if op == 9 { return 1; }   // ROL
+  if op == 10 { return 1; }  // ROR
+  if op == 11 { return 0; }  // NOOP
+  if op == 12 { return 4; }  // DIV
+  if op == 13 { return 3; }  // IF_ZERO
+  if op == 14 { return 3; }  // IF_POS
+  if op == 15 { return 1; }  // PUSH
+  if op == 16 { return 1; }  // POP
+  if op == 17 { return 2; }  // LOAD
+  if op == 18 { return 2; }  // STORE
+  if op == 19 { return 1; }  // CALL
+  if op == 20 { return 2; }  // SEND
+  if op == 21 { return 2; }  // RECV
+  -1
+}
+
+//## Tier classification: which VM tier an opcode belongs to.
+// Tier 0 register arithmetic (0..12), Tier 1 conditionals (13..14), Tier 2
+// stack/memory (15..18), Tier 3 subroutines (19), Tier 4 I/O (20..21). An
+// out-of-band opcode yields -1.
+pub fn opcode_tier(op: Int) -> Int {
+  if op < 0 { return -1; }
+  if op <= 12 { return 0; }
+  if op <= 14 { return 1; }
+  if op <= 18 { return 2; }
+  if op == 19 { return 3; }
+  if op <= 21 { return 4; }
+  -1
+}
+
+//## Self-inverse predicate: is an opcode its own inverse?
+// The reversible-VM property lifted to the encoding. NEGATE, XOR, FLIP, SWAP,
+// NOOP are self-inverse (applying twice restores state); every other recognised
+// opcode pairs with a distinct inverse (ADD<->SUB, resolved by invert_opcode).
+// 1 for self-inverse, 0 otherwise, -1 for an out-of-band opcode.
+pub fn is_self_inverse(op: Int) -> Int {
+  if is_valid_opcode(op) == 0 { return -1; }
+  if op == 2 { return 1; }   // NEGATE
+  if op == 6 { return 1; }   // XOR
+  if op == 7 { return 1; }   // FLIP
+  if op == 8 { return 1; }   // SWAP
+  if op == 11 { return 1; }  // NOOP
+  0
+}
+
+//## The structural inverse opcode (the reversible pairing, by construction).
+// ADD<->SUB are the only non-self-inverse pair in the encoded set; every other
+// recognised opcode is returned unchanged (it is either self-inverse or its own
+// structural undo at this interface). Out-of-band opcode yields -1. This is the
+// opcode-level recovery of Instruction.res's invert closure.
+pub fn invert_opcode(op: Int) -> Int {
+  if is_valid_opcode(op) == 0 { return -1; }
+  if op == 0 { return 1; }   // ADD -> SUB
+  if op == 1 { return 0; }   // SUB -> ADD
+  op
+}
+
+//## Round trip: invert an opcode twice, expect the original.
+// Inverting twice must restore any recognised opcode (ADD->SUB->ADD; a
+// self-inverse op->op->op). This is the encoded form of the VM's reversibility
+// guarantee and what the differential harness exercises directly. Returns the
+// recovered opcode, or -1 for an out-of-band input.
+pub fn invert_round_trip(op: Int) -> Int {
+  if is_valid_opcode(op) == 0 { return -1; }
+  invert_opcode(invert_opcode(op))
+}

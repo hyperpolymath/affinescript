@@ -1,0 +1,82 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// HighwayHits -- the Frogger-crossing hit-budget + lane-traffic co-processor, the
+// pure integer core extracted from idaptik
+// src/app/screens/training/HighwayCrossingTraining.res. Per the DESIGN-VISION
+// ("AffineScript is the brain, JS/Pixi the senses; only primitives cross the wasm
+// boundary"), the host keeps every vehicle position, the nausea float meter, the
+// hop animation timers, the spawn-interval randomness and all Text rendering;
+// AffineScript owns only (1) the integer hit-budget accounting that decides
+// game-over and (2) the per-lane traffic-direction parity that the spawner and the
+// arrow renderer both read.
+//
+//## Why this split, not a port of HighwayCrossingTraining.res
+// HighwayCrossingTraining.res is overwhelmingly float physics: vehicle x = x +.
+// speed *. dt, the 0..1 nausea meter with its near-miss spikes and decay, hop
+// interpolation, swept-AABB collision (res:424-461), and the random spawn cadence.
+// None of that crosses. Two things ARE integer decisions: the hit budget -- the mole
+// has `Tuning.maxHits = 3` lives (res:78), each collision does `mole.hits = hits + 1`
+// then `if mole.hits >= maxHits { gameOver }` (res:791), and the HUD shows
+// `maxHits - hits` remaining (res:489); and the lane traffic direction -- lane `i`
+// runs right when `mod(i,2)==0` else left (res:564 for speed sign, res:344 for the
+// ">>>"/"<<<" arrow). This file is the verified core of just those two: the host
+// passes the running hit count / a lane index and reads back the budget verdict /
+// the direction sign. The ±1.0 float the host multiplies speed by is encoded here as
+// the integer sign ±1 (the host re-floats it); no float crosses.
+//
+//## Hit-budget encoding (the header contract for the JS host)
+// `hits` is the host's running collision count (a non-negative i32 in normal play,
+// 0 at spawn). The cap is the literal 3 from Tuning.maxHits (res:78). Game-over
+// boundary is GREATER-OR-EQUAL, faithful to the .res `>=` at res:791, so hits == 3
+// is over and hits == 2 is not. Remaining is the clamped `maxHits - hits` (res:489),
+// floored at 0 so a past-cap count never reads negative.
+//
+//## Lane-direction encoding (the second contract for the JS host)
+// A lane index `i` (0-based, 0..laneCount-1) maps to a traffic-direction SIGN:
+//   even i -> +1  (traffic moves RIGHT; res:564 `1.0`, res:344 ">>>")
+//   odd  i -> -1  (traffic moves LEFT;  res:564 `-1.0`, res:344 "<<<")
+// The host multiplies a positive base speed by this sign to get signed velocity, and
+// picks the arrow glyph by it. The parity is total over every i32 index (a negative
+// index still has a defined parity), so a stray host index always resolves to a
+// definite ±1 direction, never an out-of-band value.
+
+// The number of lanes on the highway (Tuning.laneCount, res:39). Provided so the
+// host can bound its lane loop against the same constant the direction parity
+// assumes.
+pub fn lane_count() -> Int { 5 }
+
+// The hit budget: collisions allowed before the run ends (Tuning.maxHits, res:78).
+// The single source of truth for the budget; the read-outs below are stated against
+// it.
+pub fn max_hits() -> Int { 3 }
+
+//## is_game_over -- whether the accumulated hits end the crossing.
+// The integer core of res:791 (`mole.hits >= Tuning.maxHits`). Boundary is
+// GREATER-OR-EQUAL, faithful to the .res `>=`. Returns 1 = over (fire the Defeat
+// transition), 0 = still crossing. Total over every i32: a negative count is below 3
+// -> 0.
+pub fn is_game_over(hits: Int) -> Int {
+  if hits >= 3 { 1 } else { 0 }
+}
+
+//## hits_remaining -- lives left for the HUD "Hits remaining" read-out (res:489).
+// The clamped `Tuning.maxHits - hits`: full budget at a malformed negative count,
+// floored at 0 once the cap is reached so the HUD never shows a negative. The clamp
+// targets the IN-BAND 0..3 range (0 or maxHits-attempts), never an out-of-band
+// sentinel, so assail stays clean and no in-band value is shadowed.
+pub fn hits_remaining(hits: Int) -> Int {
+  if hits < 0 { return 3; }
+  if hits >= 3 { return 0; }
+  3 - hits
+}
+
+//## lane_direction -- the traffic-direction sign for a lane index.
+// The integer core of the lane parity at res:564 / res:344: even lane index -> +1
+// (rightward), odd -> -1 (leftward). The host multiplies its positive base speed by
+// this sign and selects the ">>>"/"<<<" arrow by it. Computed by the low bit of the
+// index so it is total and parity-correct for negative indices too (a negative even
+// index is still rightward). Never returns 0, so "no direction" cannot occur.
+pub fn lane_direction(lane_index: Int) -> Int {
+  if (lane_index % 2) == 0 { 1 } else { -1 }
+}
