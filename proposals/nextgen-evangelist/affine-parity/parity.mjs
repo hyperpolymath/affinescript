@@ -17,15 +17,24 @@
 // which oracle.
 //
 //## ABI SCOPE (read this)
-// This runner handles the **scalar i32 ABI** only: every argument is an i32 and
-// every result is an i32. That is exactly the boundary the DESIGN-VISION
-// prescribes ("they pass primitives across the wasm boundary") and it covers
-// pure-integer co-processors such as SecurityRank. Array/string parameters use
-// a different convention -- `[len:i32 LE][utf8 bytes]` written into linear
-// memory plus an exported `__affine_alloc` -- and are a deliberate follow-on,
-// NOT implemented here. Exports taking [Int]/String params therefore can only be
-// invoked here in their nullary form (e.g. Kernel_IO's `main`, whose array
-// arguments are inlined inside the .affine source).
+// This runner handles i32 results over i32 / f64 / String arguments:
+//   * i32 args   -- swept as integer ranges/values (the original scalar ABI),
+//   * f64 args   -- any non-integer values in a `{ values: [...] }` spec are
+//                   passed through verbatim as wasm f64 (args are not coerced),
+//   * String args -- written into linear memory as `[len:i32 LE][utf8 bytes]`
+//                   and passed BY POINTER (an i32). The string layout matches
+//                   the compiler's (codegen `gen_literal`). The oracle still
+//                   receives the original JS string, not the pointer.
+// Every result is read back as an i32 (`| 0`).
+//
+// String scratch memory: after instantiation the runner grows the module's
+// linear memory by one page (64 KiB) and writes string args into that fresh
+// page (reset before each call). Because the page sits above all of the
+// module's data and bump-heap base, a read-only string consumer (the common
+// case -- a classifier that reads its String arg and returns an Int) never
+// collides with it. A module that *allocates heavily during the call* before
+// reading its String arg could in principle reach the scratch page; such cases
+// should size their sweeps modestly or write a bespoke driver.
 //
 //## CONFIG SHAPE
 // A config is a `.mjs` module with a default export:
@@ -126,9 +135,42 @@ function expandArgSpec(spec, paramIndex) {
     return out;
   }
   if (spec && Array.isArray(spec.values)) return spec.values.slice();
+  if (spec && Array.isArray(spec.strings)) return spec.strings.slice();
   throw new Error(
-    `arg spec #${paramIndex} must be a number, a [lo,hi] range, or { values: [...] }`,
+    `arg spec #${paramIndex} must be a number, a [lo,hi] range, { values: [...] }, or { strings: [...] }`,
   );
+}
+
+// Build a writer for String args. Grows the module's linear memory by one page
+// and bump-allocates `[len:i32 LE][utf8]` strings into it, 4-byte aligned, so
+// each is a valid AffineScript string the wasm can read by pointer. Returns
+// null when the module exports no memory (then String args are a usage error).
+function makeStringWriter(memory) {
+  if (!(memory instanceof WebAssembly.Memory)) return null;
+  const oldPages = memory.grow(1); // fresh page above all module data + heap
+  const base = oldPages * 65536;
+  const enc = new TextEncoder();
+  let bump = base;
+  return {
+    reset() {
+      bump = base;
+    },
+    write(s) {
+      const u = enc.encode(s);
+      const need = 4 + u.length;
+      // Grow if a long string would overrun the scratch page.
+      if (bump + need > memory.buffer.byteLength) {
+        memory.grow(Math.ceil(need / 65536) + 1);
+      }
+      const ptr = bump;
+      const dv = new DataView(memory.buffer); // re-read: grow detaches the buffer
+      dv.setInt32(ptr, u.length, true);
+      new Uint8Array(memory.buffer, ptr + 4, u.length).set(u);
+      bump = ptr + need;
+      bump += (4 - (bump & 3)) & 3; // 4-byte align the next string
+      return ptr;
+    },
+  };
 }
 
 // Cartesian product of a list of value-lists. [] -> [[]] (the single empty tuple).
@@ -141,7 +183,7 @@ function cartesian(lists) {
 
 // Run a single case (one export + its arg sweep + its oracle). Returns
 // { name, total, pass, failures: [{args, got, want}] }.
-function runCase(exports, kase, idx) {
+function runCase(exports, kase, idx, stringWriter) {
   const name = kase.name || kase.export || `case#${idx}`;
   const fn = exports[kase.export];
   if (typeof fn !== "function") {
@@ -159,7 +201,22 @@ function runCase(exports, kase, idx) {
   let pass = 0;
   const failures = [];
   for (const tuple of tuples) {
-    const got = fn(...tuple) | 0; // normalise to i32
+    // String args are written into scratch linear memory as [len][utf8] and
+    // passed by pointer; the oracle still sees the original JS string. i32 /
+    // f64 args pass through unchanged.
+    let wasmArgs = tuple;
+    if (tuple.some((v) => typeof v === "string")) {
+      if (!stringWriter) {
+        throw new Error(
+          `case "${name}" passes a String arg but the module exports no "memory"`,
+        );
+      }
+      stringWriter.reset();
+      wasmArgs = tuple.map((v) =>
+        typeof v === "string" ? stringWriter.write(v) : v
+      );
+    }
+    const got = fn(...wasmArgs) | 0; // normalise result to i32
     const want = kase.oracle(...tuple) | 0;
     if (got === want) {
       pass++;
@@ -206,12 +263,13 @@ export async function runParity(configPath, { verbose = false } = {}) {
   }
 
   const exports = await instantiate(outPath);
+  const stringWriter = makeStringWriter(exports.memory);
 
   let grandTotal = 0;
   let grandPass = 0;
   const results = [];
   cfg.cases.forEach((kase, i) => {
-    const r = runCase(exports, kase, i);
+    const r = runCase(exports, kase, i, stringWriter);
     results.push(r);
     grandTotal += r.total;
     grandPass += r.pass;
