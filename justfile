@@ -104,6 +104,29 @@ guard:
 doc-truth-bless:
     ./tools/check-doc-truthing.sh --update
 
+# ── Proofs ─────────────────────────────────────────────────────────────────────
+# Re-check the mechanised proofs against their proof assistants and fail on any
+# dangerous escape hatch (believe_me / assert_total / postulate / sorry / axiom).
+# Unfinished Idris2 `?` holes are reported as a warning, not a failure.
+
+# Check the Solo-core QTT metatheory (Idris2).
+proof-check-idris2:
+    ./tools/check-proofs.sh --idris2
+
+# Check the tropical-session-types proof (Lean 4).
+proof-check-lean:
+    ./tools/check-proofs.sh --lean
+
+# Check the echo-boundary certificates (Agda). Needs AFFINESCRIPT_ECHO_TYPES_DIR
+# and AGDA_STDLIB; skips with a message if either is unset (the proofs import
+# modules from the external echo-types repo + agda-stdlib).
+proof-check-agda:
+    ./tools/check-proofs.sh --agda
+
+# Check every mechanised proof in the repo.
+proof-check-all:
+    ./tools/check-proofs.sh --all
+
 # ── Compiler subcommands ──────────────────────────────────────────────────────
 
 # Run the lexer on a file
