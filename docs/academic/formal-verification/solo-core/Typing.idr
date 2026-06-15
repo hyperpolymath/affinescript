@@ -7,6 +7,11 @@
 -- context `g`, with `g`'s quantities exactly accounting for the
 -- uses of each bound variable inside `t`.
 --
+-- These are the RULES, stated as data constructors. The meta-
+-- theorems (progress, preservation, affine-preservation) are
+-- stated in `Soundness.idr` and will be proved in weeks 3-12 of
+-- Track F1.
+--
 -- Source of truth for the rule shapes:
 --   * docs/spec.md §3.1, §3.6 (T-Var, T-Lam, T-App, T-Let)
 --   * lib/quantity.ml — semiring operations and the "linear must
@@ -21,21 +26,6 @@
 -- formulation for which progress + preservation are provable,
 -- and is equivalent to the implementation's usage-walk for the
 -- Solo fragment. An explicit equivalence lemma is future work.
---
--- ENCODING NOTE (week-3 mechanisation, vs. the week-1-2 statement
--- form): two purely-presentational changes were needed to make the
--- judgement *provable* in Idris2, neither of which alters the set of
--- derivable judgements:
---
---   * The split contexts of T-App / T-Pair / T-Case / T-Let are now
---     **explicit** arguments (`(g1, g2 : Ctx) -> ...`). Idris2 erases
---     data-type indices, so without this the sub-contexts could not
---     be analysed inside the soundness proofs at all.
---
---   * The all-zero context of T-Var / T-Unit is expressed by the
---     analysable premise `IsZero g` (from ContextLemmas) rather than
---     the non-invertible computed index `ctxZero g0`. `IsZero g`
---     holds iff `g = ctxZero g`, so the rule is unchanged in meaning.
 
 module Typing
 
@@ -52,17 +42,19 @@ import ContextLemmas
 ------------------------------------------------------------
 
 ||| `HasVar g n a` says the de Bruijn variable `n` has type `a`
-||| in `g`, where `g` assigns quantity `One` to position `n` and
-||| quantity `Zero` to every other position. This is the T-Var
-||| rule in QTT: "using a variable once uses it exactly once, and
-||| uses nothing else".
+||| in `g`, where `g` is a context that assigns quantity `One`
+||| to position `n` and quantity `Zero` to every other position.
+||| This is the T-Var rule in QTT: "using a variable once uses
+||| it exactly once, and uses nothing else".
+|||
+||| `HVHere` carries an explicit `IsZero g` witness (rather than
+||| pinning the tail to the literal `ctxZero g`) so the
+||| substitution proof can analyse the surrounding erased context.
 public export
 data HasVar : Ctx -> Nat -> Ty -> Type where
-  ||| The variable is the most recently bound one: it sits at
-  ||| quantity `One` on top of an all-zero context.
-  HVHere  : (g : Ctx) -> IsZero g -> HasVar (Snoc g a One) Z a
-  ||| Skip a more recent binding, which must be unused (`Zero`).
-  HVThere : (g : Ctx) -> HasVar g n a -> HasVar (Snoc g b Zero) (S n) a
+  HVHere  : IsZero g -> HasVar (Snoc g a One) Z a
+  HVThere : HasVar g n a
+         -> HasVar (Snoc g b Zero) (S n) a
 
 ------------------------------------------------------------
 -- The typing judgement
@@ -79,33 +71,55 @@ data Has : Ctx -> Tm -> Ty -> Type where
        -> Has g (Var n) a
 
   ||| T-Unit: the unit term types in any all-zero context.
-  THUnit : IsZero g
-        -> Has g UnitT TUnit
+  THUnit : IsZero g -> Has g UnitT TUnit
 
   ||| T-Lam: introduce a binding with quantity `q` and type `a`,
   ||| type the body in the extended context. The resulting
   ||| function type `TArr q a b` records the quantity.
-  THLam : Has (Snoc g a q) t b
+  |||
+  ||| `q` and `a` are explicit RUNTIME arguments (not just erased
+  ||| indices) so the metatheory proofs can analyse the binder when
+  ||| they descend under it (Idris2 erases data-type implicit
+  ||| indices, but the substitution/weakening proofs must rebuild
+  ||| the crossed binder at runtime).
+  THLam : (q : Q) -> (a : Ty)
+       -> Has (Snoc g a q) t b
        -> Has g (Lam q a t) (TArr q a b)
 
   ||| T-App: the function is typed in `g1`, the argument in `g2`
   ||| scaled by the function's parameter quantity `q`, and the
   ||| whole application is typed in the pointwise sum
-  ||| `g1 + q * g2`.
-  THApp : (g1, g2 : Ctx) -> (q : Q)
+  ||| `g1 + q * g2`. `q` and the (UNscaled) argument context `g2` are
+  ||| explicit runtime arguments: scaling is not invertible, so the
+  ||| proofs need `g2` itself to split the argument's context.
+  THApp : (q : Q) -> (g2 : Ctx)
        -> Has g1 t1 (TArr q a b)
        -> Has g2 t2 a
-       -> ctxAdd g1 (ctxScale q g2) = Just g
+       -> AddCtx g1 (ctxScale q g2) g
        -> Has g (App t1 t2) b
 
-  ||| T-Pair: product introduction splits the context additively.
-  THPair : (g1, g2 : Ctx)
+  ||| T-Pair: MULTIPLICATIVE (tensor) product introduction. The two
+  ||| components are typed in SEPARATE contexts `g1` and `g2`, and the
+  ||| whole pair is typed in their pointwise sum `g1 + g2`, mirroring
+  ||| `THApp`'s `AddCtx` split (with no scaling, since neither
+  ||| component sits under a quantity annotation).
+  |||
+  ||| `g1` and `g2` are explicit RUNTIME arguments so the metatheory
+  ||| proofs can rebuild the two summand contexts when they descend
+  ||| into the components (the typed indices are erased).
+  |||
+  ||| Under this SPLIT rule preservation can no longer hold in the
+  ||| SAME context for the projection-beta steps — `Fst (Pair v1 v2)`
+  ||| steps to `v1`, which is typed only in the LEFT summand `g1`, a
+  ||| sub-context of the whole `g`. This is exactly the affine reading:
+  ||| preservation returns a reduct typed in a `Weaker` sub-context.
+  THPair : (g1 : Ctx) -> (g2 : Ctx)
         -> Has g1 t1 a
         -> Has g2 t2 b
-        -> ctxAdd g1 g2 = Just g
+        -> AddCtx g1 g2 g
         -> Has g (Pair t1 t2) (TPair a b)
 
-  ||| T-Fst: projection does not split (a single subterm).
+  ||| T-Fst: projection (single subterm, same context).
   THFst : Has g t (TPair a b)
        -> Has g (Fst t) a
 
@@ -123,12 +137,18 @@ data Has : Ctx -> Tm -> Ty -> Type where
   ||| T-Case: the scrutinee is typed in `g1`; each branch binds
   ||| the injected value with quantity One and is typed in `g2`
   ||| extended with that binder. Branches must agree on `g2` and
-  ||| on the result type. The whole `case` is typed in `g1 + g2`.
-  THCase : (g1, g2 : Ctx)
+  ||| on the result type. The whole `case` is typed in
+  ||| `g1 + g2`.
+  ||| `a` and `b` (the two summand types, hence the two branch
+  ||| binder types) and the scrutinee context `g1` are explicit
+  ||| runtime arguments so the proofs can descend under the branch
+  ||| binders and run the substitution lemma at the case-beta step
+  ||| (which substitutes the injected value, typed in `g1`).
+  THCase : (a : Ty) -> (b : Ty) -> (g1 : Ctx)
         -> Has g1 t (TSum a b)
         -> Has (Snoc g2 a One) tL c
         -> Has (Snoc g2 b One) tR c
-        -> ctxAdd g1 g2 = Just g
+        -> AddCtx g1 g2 g
         -> Has g (Case t tL tR) c
 
   ||| T-Let: bind `t1` with declared quantity `q`. The RHS is
@@ -136,8 +156,12 @@ data Has : Ctx -> Tm -> Ty -> Type where
   ||| to `g2` (the body's context). This is the usual QTT let
   ||| rule and matches how `lib/typecheck.ml` threads quantities
   ||| through `let` bindings.
-  THLet : (g1, g2 : Ctx) -> (q : Q)
+  ||| `q`, `a`, and the (UNscaled) RHS context `g1` are explicit
+  ||| runtime arguments: the proofs need `g1` to split the RHS's
+  ||| (scaled) context (scaling is not invertible). The body context
+  ||| `g2` is recovered at runtime from the additive-split witness.
+  THLet : (q : Q) -> (a : Ty) -> (g1 : Ctx)
        -> Has g1 t1 a
        -> Has (Snoc g2 a q) t2 b
-       -> ctxAdd (ctxScale q g1) g2 = Just g
+       -> AddCtx (ctxScale q g1) g2 g
        -> Has g (Let q t1 t2) b

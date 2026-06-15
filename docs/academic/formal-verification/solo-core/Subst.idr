@@ -1,18 +1,18 @@
 -- SPDX-License-Identifier: MPL-2.0
 -- SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 --
--- De Bruijn shifting and single-variable substitution for the Solo
--- core. These are the term-level operations that the small-step
--- reduction relation (Soundness.idr) uses in its beta/let/case rules,
--- and that the substitution lemma (SubstLemma.idr) proves type-safe.
+-- de Bruijn shifting and substitution for the Solo core.
 --
--- The formulation is the standard call-by-value de Bruijn one
--- (cf. TAPL ch. 6): `shift c t` lifts every free variable index >= c
--- by one; `subst j s t` replaces variable `j` by `s` inside `t`,
--- decrementing the free variables above `j` and lifting `s` past each
--- binder it crosses. `subst0` is the index-0 instance used by every
--- beta reduction. Everything is structurally recursive, so `%default
--- total` holds with no `assert_total`.
+-- Convention (matching Typing.idr's HasVar): `Var Z` is the
+-- innermost (top-of-snoc) binding; descending under a binder
+-- increments indices.
+--
+--   * `shift d c t`  — add `d` to every `Var` index >= cutoff `c`.
+--   * `subst j s t`  — replace `Var j` by `s`, decrement `Var k`
+--                      for `k > j`, leave `Var k` for `k < j`.
+--                      Going under a binder bumps `j` and shifts
+--                      `s` up by one.
+--   * `subst0 t v`   — the top-level beta substitution `t[v/0]`.
 
 module Subst
 
@@ -21,74 +21,85 @@ import Syntax
 %default total
 
 ------------------------------------------------------------
--- Variable shifting
+-- Index shifting helpers
 ------------------------------------------------------------
 
-||| `shiftVar c k` lifts a single de Bruijn index: indices `< c` are
-||| left alone (they are bound by binders crossed since the cutoff),
-||| indices `>= c` are incremented (they are free past the cutoff).
-public export
-shiftVar : (c : Nat) -> (k : Nat) -> Nat
-shiftVar Z      k     = S k
-shiftVar (S c)  Z     = Z
-shiftVar (S c)  (S k) = S (shiftVar c k)
-
-||| `shift c t` lifts every free variable of `t` whose index is `>= c`.
-||| The cutoff increases by one under each binder.
-public export
-shift : (c : Nat) -> Tm -> Tm
-shift c (Var k)      = Var (shiftVar c k)
-shift c UnitT        = UnitT
-shift c (Lam q a t)  = Lam q a (shift (S c) t)
-shift c (App t1 t2)  = App (shift c t1) (shift c t2)
-shift c (Pair t1 t2) = Pair (shift c t1) (shift c t2)
-shift c (Fst t)      = Fst (shift c t)
-shift c (Snd t)      = Snd (shift c t)
-shift c (Inl b t)    = Inl b (shift c t)
-shift c (Inr a t)    = Inr a (shift c t)
-shift c (Case s l r) = Case (shift c s) (shift (S c) l) (shift (S c) r)
-shift c (Let q e b)  = Let q (shift c e) (shift (S c) b)
-
-------------------------------------------------------------
--- Single-variable substitution
-------------------------------------------------------------
-
-||| `substVar j k s` is the variable case of substitution: replace
-||| index `k` while substituting for index `j` with `s`.
+||| `shiftVar d c n`: bump a single de Bruijn index `n` by `d` if it
+||| is at or above the cutoff `c`.
 |||
-||| * `k < j` — a more recently bound variable, unchanged.
-||| * `k = j` — the substituted variable; yields `s` lifted past the
-|||   `j` binders crossed to reach this occurrence.
-||| * `k > j` — a free variable above the hole, decremented by one
-|||   (its binder is gone).
+||| Defined by structural recursion on the cutoff and index together
+||| (rather than via a `Bool` test) so that it reduces cleanly when
+||| the cutoff is built up `Snoc`-by-`Snoc` in the proofs, and so
+||| `shiftVar 1 c` computes a literal `S _` definitionally.
+public export
+shiftVar : Nat -> Nat -> Nat -> Nat
+shiftVar d Z     n     = d + n
+shiftVar d (S c) Z     = Z
+shiftVar d (S c) (S n) = S (shiftVar d c n)
+
+------------------------------------------------------------
+-- Term shifting
+------------------------------------------------------------
+
+||| `shift d c t` — increment every free variable of `t` (index
+||| >= `c`) by `d`. Binders raise the cutoff.
+public export
+shift : Nat -> Nat -> Tm -> Tm
+shift d c (Var n)       = Var (shiftVar d c n)
+shift d c UnitT         = UnitT
+shift d c (Lam q a t)   = Lam q a (shift d (S c) t)
+shift d c (App t1 t2)   = App (shift d c t1) (shift d c t2)
+shift d c (Pair t1 t2)  = Pair (shift d c t1) (shift d c t2)
+shift d c (Fst t)       = Fst (shift d c t)
+shift d c (Snd t)       = Snd (shift d c t)
+shift d c (Inl b t)     = Inl b (shift d c t)
+shift d c (Inr a t)     = Inr a (shift d c t)
+shift d c (Case t tL tR) =
+  Case (shift d c t) (shift d (S c) tL) (shift d (S c) tR)
+shift d c (Let q t1 t2) = Let q (shift d c t1) (shift d (S c) t2)
+
+------------------------------------------------------------
+-- Substitution at an index
+------------------------------------------------------------
+
+||| `substVar j s n` — the result of substituting `s` for the
+||| variable `j` inside the single occurrence `Var n`.
 |||
-||| The single `shift 0` in the `S j / S k` case threads the
-||| past-binder lifting through the recursion, so callers of `subst`
-||| do *not* pre-shift `s` when descending under a binder.
+||| `n < j`  : untouched.
+||| `n == j` : becomes `s`.
+||| `n > j`  : decremented (the bound variable disappears).
 public export
-substVar : (j : Nat) -> (k : Nat) -> (s : Tm) -> Tm
-substVar Z      Z      s = s
-substVar Z      (S k)  s = Var k
-substVar (S j)  Z      s = Var Z
-substVar (S j)  (S k)  s = shift 0 (substVar j k s)
+substVar : Nat -> Tm -> Nat -> Tm
+substVar Z     s Z     = s
+substVar Z     s (S k) = Var k
+substVar (S j) s Z     = Var Z
+substVar (S j) s (S k) = shift 1 0 (substVar j s k)
 
-||| `subst j s t` replaces the free variable `j` in `t` by `s`.
+||| `subst j s t` — substitute `s` for the variable with index `j`
+||| in `t`, lowering the indices above `j`.
+|||
+||| The substituted term `s` is NOT pre-shifted when descending
+||| under a binder: instead `substVar` re-shifts the substituted
+||| value by exactly the binder-depth at which it lands (each `S/S`
+||| step in `substVar` applies one `shift 1 0`). This keeps the two
+||| operations in lock-step and avoids double-counting.
 public export
-subst : (j : Nat) -> (s : Tm) -> Tm -> Tm
-subst j s (Var k)      = substVar j k s
-subst j s UnitT        = UnitT
-subst j s (Lam q a t)  = Lam q a (subst (S j) s t)
-subst j s (App t1 t2)  = App (subst j s t1) (subst j s t2)
-subst j s (Pair t1 t2) = Pair (subst j s t1) (subst j s t2)
-subst j s (Fst t)      = Fst (subst j s t)
-subst j s (Snd t)      = Snd (subst j s t)
-subst j s (Inl b t)    = Inl b (subst j s t)
-subst j s (Inr a t)    = Inr a (subst j s t)
-subst j s (Case sc l r) = Case (subst j s sc) (subst (S j) s l) (subst (S j) s r)
-subst j s (Let q e b)  = Let q (subst j s e) (subst (S j) s b)
+subst : Nat -> Tm -> Tm -> Tm
+subst j s (Var n)        = substVar j s n
+subst j s UnitT          = UnitT
+subst j s (Lam q a t)    = Lam q a (subst (S j) s t)
+subst j s (App t1 t2)    = App (subst j s t1) (subst j s t2)
+subst j s (Pair t1 t2)   = Pair (subst j s t1) (subst j s t2)
+subst j s (Fst t)        = Fst (subst j s t)
+subst j s (Snd t)        = Snd (subst j s t)
+subst j s (Inl b t)      = Inl b (subst j s t)
+subst j s (Inr a t)      = Inr a (subst j s t)
+subst j s (Case t tL tR) =
+  Case (subst j s t) (subst (S j) s tL) (subst (S j) s tR)
+subst j s (Let q t1 t2)  =
+  Let q (subst j s t1) (subst (S j) s t2)
 
-||| Substitute for the most-recently-bound variable (index 0). This is
-||| the operation performed by every beta-style reduction.
+||| Top-level beta substitution `t[v/0]`.
 public export
 subst0 : Tm -> Tm -> Tm
-subst0 body v = subst Z v body
+subst0 t v = subst Z v t

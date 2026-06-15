@@ -25,18 +25,39 @@ records, arrays, modules, and the entire effect system. Those belong
 to *Duet* (traits + effects) and *Ensemble* (full language), which
 will be mechanized in later tracks.
 
-== Proof Goals (Track F1, Weeks 1–12)
+== Proof Goals (Track F1) — STATUS: PROVED
 
 . *Progress*: a closed, well-typed Solo term is either a value or
-  steps.
-. *Preservation*: reduction preserves typing.
-. *Affine preservation*: reduction preserves the quantity semiring
-  accounting — a term typed in context `Γ` steps to a term typed in
-  the same `Γ`, and `1`-quantity bindings are consumed exactly once.
+  steps. — *proved* (`Soundness.progress`, total, hole-free).
+. *Preservation* (affine): reduction preserves typing up to dropping
+  resources — the reduct is typed in a `Weaker` SUB-context `g' ≤ g`
+  (pointwise `qLe`, same shape/types). — *proved*
+  (`Soundness.preservation`).
+. *Affine preservation*: same statement (`Soundness.affinePreservation`).
 
-This file-set is the *week 1-2* deliverable: syntax, contexts,
-typing judgement, and *statements* (not proofs) of progress and
-preservation.
+All three are mechanically checked: `idris2 --check Soundness.idr`
+exits 0, every definition is `total`, and there is no `believe_me`,
+`assert_total`, `really_believe_me`, `postulate` or `?`-hole.
+
+[NOTE]
+====
+*Why the conclusion is a sub-context, not the same `Γ`.* The original
+week-1-2 statement asked for the reduct in the *same* `Γ` (and "`1`
+consumed exactly once" — a *linear* phrasing). Mechanisation showed
+that is *false* for the Solo core as designed: `TPair` introduces
+multiplicatively (`AddCtx g1 g2 g`, resources split) but is eliminated
+by the projections `Fst`/`Snd`. `Snd (Pair x y) → y` (with `x` linear)
+leaves `y` typed in a *smaller* context — the projected-away component's
+resources are dropped. Every β-rule preserves the context *exactly*
+(via the substitution lemma); only the two projections shrink it.
+
+Per the owner decision (2026-06-15) this is resolved the *affine* way —
+AffineScript is affine (the OCaml `q_le observed declared` check permits
+under-use), so dropping is legitimate and the honest theorem is the
+sub-context one above. The language is unchanged (split product +
+projections + eager CBV kept). See the per-rung discussion in
+`dev-notes/2026-06-15-affinescript-solo-core-preservation/`.
+====
 
 == Ground-Truth Rule
 
@@ -47,13 +68,22 @@ QTT. When the Idris2 formalisation and `lib/quantity.ml` +
 `lib/typecheck.ml` disagree, *the OCaml implementation is ground
 truth* until an ADR is filed that explicitly reverses this.
 
-Track F re-verifies weekly against Track A's test fixtures:
+Track F re-verifies against Track A's affine test fixtures (under
+`test/e2e/fixtures/`):
 
-* `examples/affine_basic.affine`
-* `examples/affine_violation.affine`
+* `affine_let_valid_sugar.affine`, `linear_arrow.affine` — accepted.
+* `linear_arrow_violation.affine`,
+  `slice_d_captured_linear_{param,let}_rejected.affine` — rejected.
+* `affine_violation.affine` (`fn double_use(x) = x + x`) — *accepted*
+  via the surface `check` because `x` is unannotated (quantity ω;
+  `qAdd One One = Omega`); the linear double-use is exercised
+  *programmatically* by `test_quantity_affine_violation` in
+  `test/test_e2e.ml`.
 
-If the mechanization and the compiler diverge on these fixtures, the
-proof is wrong, not the compiler.
+Verified 2026-06-15: the compiler accepts linear-used-once and
+ω-used-many, rejects linear-used-twice — consistent with the proven
+Solo rules. If the mechanization and the compiler ever diverge on
+these fixtures, the proof is wrong, not the compiler.
 ====
 
 == Files
@@ -75,25 +105,45 @@ proof is wrong, not the compiler.
 
 | `Typing.idr`
 | QTT-style typing judgement `Has : Ctx -> Tm -> Ty -> Type`.
-  Rules only; no meta-theorems yet.
+  Split contexts of T-App/T-Pair/T-Case/T-Let are explicit `AddCtx`
+  premises; T-Var/T-Unit use an analysable `IsZero` premise. (Encoding
+  change from the statement-only version so the judgement is provable
+  in Idris2 — same set of derivations.)
+
+| `ContextLemmas.idr`
+| The QTT context algebra: the inductive additive split `AddCtx`
+  (type-tracking, Maybe-free), `IsZero`, the scaling/commutativity/
+  associativity/interchange laws (reusing `Quantity.idr`), and the
+  `Weaker` sub-context order with its monotonicity lemmas.
+
+| `Subst.idr`
+| de Bruijn `shift` / single-variable `subst` / `subst0`.
+
+| `SubstLemma.idr`
+| Weakening (`weakenAt`) + the QTT substitution lemma
+  (`substGen` / `substLemma0`), proved by induction on the body's
+  typing derivation, generalised over a `cross` context of crossed
+  binders.
 
 | `Soundness.idr`
-| *Statements* of `progress` and `preservation` with
-  `?todo_progress` / `?todo_preservation` holes. Proofs are
-  weeks 3-12 work.
+| `Value`, the CBV `Step` relation (16 rules, spec §4.2-4.3), and the
+  *proved* `progress` / `preservation` / `affinePreservation`.
 |===
 
 == Status Block
 
 [source]
 ----
-Phase:       Track F1, week 1-2 (syntax + statements)
-Last sync:   2026-04-10
+Phase:       Track F1 COMPLETE — progress + (affine) preservation proved
+Last sync:   2026-06-15
 OCaml refs:  lib/quantity.ml, lib/types.ml, lib/typecheck.ml
 Spec refs:   docs/spec.md §3.1-3.6 (Solo-relevant rules only)
-Idris2 ver:  0.8.0 (verified locally)
-Dangerous:   none (no believe_me, no assert_total, no really_believe_me)
-Holes:       ?todo_progress, ?todo_preservation (intentional)
+Idris2 ver:  0.8.0 (verified locally; idris2 --check Soundness.idr exit 0)
+Dangerous:   none (no believe_me / assert_total / really_believe_me / postulate)
+Holes:       none (all definitions total)
+Decision:    preservation is AFFINE (reduct in a Weaker sub-context);
+             split product + projections kept (owner decision 2026-06-15)
+Check:       just proof-check-idris2
 ----
 
 == Out of Scope (Tracks F2, F3, …)
