@@ -7,11 +7,6 @@
 -- context `g`, with `g`'s quantities exactly accounting for the
 -- uses of each bound variable inside `t`.
 --
--- These are the RULES, stated as data constructors. The meta-
--- theorems (progress, preservation, affine-preservation) are
--- stated in `Soundness.idr` and will be proved in weeks 3-12 of
--- Track F1.
---
 -- Source of truth for the rule shapes:
 --   * docs/spec.md §3.1, §3.6 (T-Var, T-Lam, T-App, T-Let)
 --   * lib/quantity.ml — semiring operations and the "linear must
@@ -26,12 +21,28 @@
 -- formulation for which progress + preservation are provable,
 -- and is equivalent to the implementation's usage-walk for the
 -- Solo fragment. An explicit equivalence lemma is future work.
+--
+-- ENCODING NOTE (week-3 mechanisation, vs. the week-1-2 statement
+-- form): two purely-presentational changes were needed to make the
+-- judgement *provable* in Idris2, neither of which alters the set of
+-- derivable judgements:
+--
+--   * The split contexts of T-App / T-Pair / T-Case / T-Let are now
+--     **explicit** arguments (`(g1, g2 : Ctx) -> ...`). Idris2 erases
+--     data-type indices, so without this the sub-contexts could not
+--     be analysed inside the soundness proofs at all.
+--
+--   * The all-zero context of T-Var / T-Unit is expressed by the
+--     analysable premise `IsZero g` (from ContextLemmas) rather than
+--     the non-invertible computed index `ctxZero g0`. `IsZero g`
+--     holds iff `g = ctxZero g`, so the rule is unchanged in meaning.
 
 module Typing
 
 import Quantity
 import Syntax
 import Context
+import ContextLemmas
 
 %default total
 
@@ -41,15 +52,17 @@ import Context
 ------------------------------------------------------------
 
 ||| `HasVar g n a` says the de Bruijn variable `n` has type `a`
-||| in `g`, where `g` is a context that assigns quantity `One`
-||| to position `n` and quantity `Zero` to every other position.
-||| This is the T-Var rule in QTT: "using a variable once uses
-||| it exactly once, and uses nothing else".
+||| in `g`, where `g` assigns quantity `One` to position `n` and
+||| quantity `Zero` to every other position. This is the T-Var
+||| rule in QTT: "using a variable once uses it exactly once, and
+||| uses nothing else".
 public export
 data HasVar : Ctx -> Nat -> Ty -> Type where
-  HVHere  : HasVar (Snoc (ctxZero g) a One) Z a
-  HVThere : HasVar g n a
-         -> HasVar (Snoc g b Zero) (S n) a
+  ||| The variable is the most recently bound one: it sits at
+  ||| quantity `One` on top of an all-zero context.
+  HVHere  : (g : Ctx) -> IsZero g -> HasVar (Snoc g a One) Z a
+  ||| Skip a more recent binding, which must be unused (`Zero`).
+  HVThere : (g : Ctx) -> HasVar g n a -> HasVar (Snoc g b Zero) (S n) a
 
 ------------------------------------------------------------
 -- The typing judgement
@@ -65,8 +78,9 @@ data Has : Ctx -> Tm -> Ty -> Type where
   THVar : HasVar g n a
        -> Has g (Var n) a
 
-  ||| T-Unit: the unit term types in the all-zero context.
-  THUnit : Has (ctxZero g) UnitT TUnit
+  ||| T-Unit: the unit term types in any all-zero context.
+  THUnit : IsZero g
+        -> Has g UnitT TUnit
 
   ||| T-Lam: introduce a binding with quantity `q` and type `a`,
   ||| type the body in the extended context. The resulting
@@ -78,13 +92,15 @@ data Has : Ctx -> Tm -> Ty -> Type where
   ||| scaled by the function's parameter quantity `q`, and the
   ||| whole application is typed in the pointwise sum
   ||| `g1 + q * g2`.
-  THApp : Has g1 t1 (TArr q a b)
+  THApp : (g1, g2 : Ctx) -> (q : Q)
+       -> Has g1 t1 (TArr q a b)
        -> Has g2 t2 a
        -> ctxAdd g1 (ctxScale q g2) = Just g
        -> Has g (App t1 t2) b
 
   ||| T-Pair: product introduction splits the context additively.
-  THPair : Has g1 t1 a
+  THPair : (g1, g2 : Ctx)
+        -> Has g1 t1 a
         -> Has g2 t2 b
         -> ctxAdd g1 g2 = Just g
         -> Has g (Pair t1 t2) (TPair a b)
@@ -107,9 +123,9 @@ data Has : Ctx -> Tm -> Ty -> Type where
   ||| T-Case: the scrutinee is typed in `g1`; each branch binds
   ||| the injected value with quantity One and is typed in `g2`
   ||| extended with that binder. Branches must agree on `g2` and
-  ||| on the result type. The whole `case` is typed in
-  ||| `g1 + g2`.
-  THCase : Has g1 t (TSum a b)
+  ||| on the result type. The whole `case` is typed in `g1 + g2`.
+  THCase : (g1, g2 : Ctx)
+        -> Has g1 t (TSum a b)
         -> Has (Snoc g2 a One) tL c
         -> Has (Snoc g2 b One) tR c
         -> ctxAdd g1 g2 = Just g
@@ -120,7 +136,8 @@ data Has : Ctx -> Tm -> Ty -> Type where
   ||| to `g2` (the body's context). This is the usual QTT let
   ||| rule and matches how `lib/typecheck.ml` threads quantities
   ||| through `let` bindings.
-  THLet : Has g1 t1 a
+  THLet : (g1, g2 : Ctx) -> (q : Q)
+       -> Has g1 t1 a
        -> Has (Snoc g2 a q) t2 b
        -> ctxAdd (ctxScale q g1) g2 = Just g
        -> Has g (Let q t1 t2) b
