@@ -160,6 +160,27 @@ let t_extract_value_return_ok () =
   Alcotest.(check bool) "Polonius: no loan, no error" false pol;
   Alcotest.(check bool) "agrees with lexical verdict" lex pol
 
+(* M3 loan-vs-loan exclusivity (#553 ADR-022): two simultaneously-live `&mut`
+   borrows of the same place — the second `&mut x` reads `x` at its creation
+   point while the first is still live, so it conflicts. *)
+let t_extract_mutref_conflict () =
+  let (pol, lex) = polonius_vs_lexical "borrow_mutref_conflict.affine" in
+  Alcotest.(check bool) "Polonius flags &mut/&mut overlap" true pol;
+  Alcotest.(check bool) "agrees with lexical" lex pol
+
+(* a plain read of `x` while `&mut x` is live (use-while-exclusively-borrowed) *)
+let t_extract_mutref_use_while () =
+  let (pol, lex) = polonius_vs_lexical "borrow_mutref_use_while.affine" in
+  Alcotest.(check bool) "Polonius flags use-while-&mut-borrowed" true pol;
+  Alcotest.(check bool) "agrees with lexical" lex pol
+
+(* a SHARED `&x` does NOT forbid reads — `let a = &x; let y = x; *a` is valid
+   under both tiers (only `&mut` is exclusive). Guards against over-rejection. *)
+let t_extract_shared_read_ok () =
+  let (pol, lex) = polonius_vs_lexical "borrow_shared_read_ok.affine" in
+  Alcotest.(check bool) "Polonius accepts read-while-shared-borrowed" false pol;
+  Alcotest.(check bool) "agrees with lexical" lex pol
+
 (* expression-level branches (issue-draft 08 conditional-origin family): the RHS
    borrows the UNION of its arm sources. Polonius must now match the lexical fix. *)
 let t_extract_cond_if () =
@@ -288,12 +309,14 @@ let t_extract_reassign_uam () =
    increments land, entries graduate OFF this list; an allowlisted fixture that
    has started AGREEING is logged (prune it) but does not fail the gate. *)
 let known_divergences : (string * string) list =
-  [ (* unmodeled: borrow-vs-borrow conflicts — two simultaneously live borrows
-       violating shared-XOR-exclusive. The extractor models access-vs-loan
-       conflicts (move/write over a live loan), not loan-vs-loan. *)
-    "borrow_mutref_conflict.affine", "conflicting &mut/&mut borrows";
-    "borrow_mutref_use_while.affine", "use while &mut borrowed";
-    "borrow_use_while_excl.affine", "use while exclusively borrowed";
+  [ (* loan-vs-loan exclusivity (use-while-exclusively-borrowed) is now modeled
+       by the extractor (a direct read of a place while a live [&mut] loan
+       covers it is a conflict), so borrow_mutref_conflict / borrow_mutref_use_while
+       AGREE and were pruned. borrow_use_while_excl is the call-aliasing shape
+       (passing [x] to a [mut] param and reading [x] in the same call) — a
+       [mut]-param argument is not yet modeled as a call-scoped exclusive loan,
+       so it stays here. *)
+    "borrow_use_while_excl.affine", "mut-param-arg aliasing (call-scoped excl borrow not modeled)";
     (* unmodeled: return-escape / borrow-outlives-owner (no escape analysis) *)
     "borrow_outlives_owner.affine", "borrow-outlives-owner";
     "borrow_return_escape_local.affine", "return-escape (local)";
@@ -351,6 +374,9 @@ let tests =
     Alcotest.test_case "extract+solve: #554 UAM flagged, agrees with lexical" `Quick t_extract_uam;
     Alcotest.test_case "extract+solve: NLL-safe accepted, agrees with lexical" `Quick t_extract_nll_ok;
     Alcotest.test_case "extract+solve: value-return no error, agrees with lexical" `Quick t_extract_value_return_ok;
+    Alcotest.test_case "extract+solve: &mut/&mut overlap flagged (loan-vs-loan)" `Quick t_extract_mutref_conflict;
+    Alcotest.test_case "extract+solve: use-while-&mut-borrowed flagged" `Quick t_extract_mutref_use_while;
+    Alcotest.test_case "extract+solve: read-while-&-shared accepted (no over-reject)" `Quick t_extract_shared_read_ok;
     (* M3 branch extraction: conditional-origin family (issue-draft 08) *)
     Alcotest.test_case "extract+solve: if-bound UAM, agrees with lexical" `Quick t_extract_cond_if;
     Alcotest.test_case "extract+solve: block-bound UAM, agrees with lexical" `Quick t_extract_cond_block;

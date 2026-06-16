@@ -1,0 +1,13 @@
+// M3 anti-over-rejection (#553 ADR-022): a SHARED borrow does NOT forbid
+// concurrent reads of the borrowed place. `let a = &x; let y = x; *a` is valid
+// under both the lexical checker and the Polonius extractor — only `&mut` is
+// exclusive. The use-while-exclusively-borrowed rule must fire ONLY for `&mut`,
+// never for `&`, so this program must be accepted (pol = lex = false).
+module BorrowSharedReadOk;
+
+fn ok() -> Int {
+  let x = 5;
+  let a = &x;
+  let y = x;
+  *a + y
+}

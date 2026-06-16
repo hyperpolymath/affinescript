@@ -137,7 +137,13 @@ let moved_places (ctx : Borrow.context) (symbols : Symbol.t) (e : expr)
         | _ -> []) args)
     | None -> []) (apps e)
 
-type rloan = { rl_id : int; rl_place : Borrow.place; rl_binder : Symbol.symbol_id option }
+type rloan = {
+  rl_id : int;
+  rl_place : Borrow.place;
+  rl_binder : Symbol.symbol_id option;
+  rl_excl : bool;  (** [&mut] (exclusive) vs [&] (shared) — drives the
+                       use-while-exclusively-borrowed conflict rule. *)
+}
 
 (** Extract the Polonius facts for one (straight-line) function body. *)
 let extract_fn (ctx : Borrow.context) (symbols : Symbol.t) (fd : fn_decl) : PF.facts =
@@ -207,11 +213,11 @@ let extract_fn (ctx : Borrow.context) (symbols : Symbol.t) (fd : fn_decl) : PF.f
     in
     let record_binder_loans (pt : int) (sym : Symbol.symbol_id) (rhs : expr) : unit =
       let kp = kill_for sym pt (pt + 1) in
-      List.iter (fun (place, _excl) ->
+      List.iter (fun (place, excl) ->
         let l = fresh next_loan in
         borrow_at   := (l, pt) :: !borrow_at;
         loan_origin := (l, fresh next_origin) :: !loan_origin;
-        loans       := { rl_id = l; rl_place = place; rl_binder = Some sym } :: !loans;
+        loans       := { rl_id = l; rl_place = place; rl_binder = Some sym; rl_excl = excl } :: !loans;
         killed      := (l, kp) :: !killed)
         (rhs_borrows ctx symbols rhs @ alias_places rhs)
     in
@@ -373,6 +379,28 @@ let extract_fn (ctx : Borrow.context) (symbols : Symbol.t) (fd : fn_decl) : PF.f
     in
     List.iteri moves_stmt blk.blk_stmts;
     (match blk.blk_expr with Some e -> do_point nstmts e; moves_expr nstmts e | None -> ());
+    (* M3 loan-vs-loan: use-while-exclusively-borrowed. A direct read of a place
+       while an EXCLUSIVE [&mut] loan covering it is live is a conflict. This
+       single rule subsumes both diverging mutref shapes:
+         - a second overlapping borrow — [let b = &mut x] reads [x] at its
+           creation point while the first [&mut x] is still live;
+         - a plain read — [let y = x] (or [x] in any read position) while
+           [&mut x] is live.
+       The read at the exclusive loan's OWN birth point is the borrow creation
+       itself (not a conflicting use), so loans born at [pt] are excluded. Reads
+       THROUGH the borrow ([*a]) have root [a] (PlaceDeref → root of the holder),
+       never the borrowed-from root [x], so they never match. Emission is
+       liveness-gated by the solver ([loan_invalidated_at] requires the loan to
+       be live at the point), so NLL last-use shortening keeps valid code
+       accepted — only [&mut], never [&], triggers it. *)
+    List.iter (fun (v, pt) ->
+      List.iter (fun rl ->
+        if rl.rl_excl
+           && (match Borrow.root_var rl.rl_place with Some rv -> rv = v | None -> false)
+           && not (List.exists (fun (l, p) -> l = rl.rl_id && p = pt) !borrow_at)
+        then conflict_at := (rl.rl_id, pt) :: !conflict_at)
+        !loans)
+      !use_at;
     { PF.empty_facts with
       borrow_at = !borrow_at; loan_origin = !loan_origin;
       killed = !killed; cfg_edge = base_cfg @ !extra_edges; conflict_at = !conflict_at;
