@@ -1,76 +1,89 @@
-# AffineScript Complete Language Specification v2.0
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2024-2026 hyperpolymath (Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>)
+= AffineScript Complete Language Specification v2.0
 
-> **⚠ HONEST STATUS NOTE (2026-04-10 manhattan-recovery):**
->
-> This specification predates the 2026-04-10 thesis recovery and is **out of date**
-> with the current language scope. It still contains scattered references to
-> dependent types, refinement types, the `Nat` kind, `Vec[n, T]`, and other
-> features that have been **removed from AffineScript** and, where applicable,
-> deferred to the sibling Typed WASM project.
->
-> **The authoritative current scope lives in:**
-> - `.machine_readable/anchors/ANCHOR.a2ml` (canonical identity + thesis)
-> - `.machine_readable/6a2/META.a2ml` (architecture decision records)
-> - `~/Desktop/Frontier_Programming_Practices_AffineScript/AI.a2ml` (v2.0)
-> - `~/Desktop/Frontier_Programming_Practices_AffineScript/Human_Programming_Guide.adoc` (v2.0)
->
-> **The eight in-scope features (as of 2026-04-10) are:**
-> phantom types, immutable by default, row polymorphism, full type inference,
-> sound type system, effect tracking (no handlers — see ADR-004 extension point),
-> affine types (headline), and decidable-fragment refinement types (soft).
->
-> **Out of scope** (deferred or removed): linear strict types, full dependent types,
-> tropical types, algebraic effect handlers, unbounded refinement, units of measure,
-> shape-indexed vectors. The first four were bot scope creep, removed during
-> the 2026-04-10 Manhattan Recovery session.
->
-> The large standalone sections on dependent types, refinement type rules, and
-> length-indexed vectors have been excised from this document. Inline mentions
-> may still appear scattered through other sections and will be cleaned up in a
-> future full spec rewrite. **If this document disagrees with any of the above
-> authorities, the authorities win.**
+____
+*⚠ HONEST STATUS NOTE (2026-04-10 manhattan-recovery):*
 
-## Purpose
+This specification predates the 2026-04-10 thesis recovery and is *out
+of date* with the current language scope. It still contains scattered
+references to dependent types, refinement types, the `Nat` kind,
+`Vec++[++n, T++]++`, and other features that have been *removed from
+AffineScript* and, where applicable, deferred to the sibling Typed WASM
+project.
+
+*The authoritative current scope lives in:* -
+`.machine++_++readable/anchors/ANCHOR.a2ml` (canonical identity {plus}
+thesis) - `.machine++_++readable/6a2/META.a2ml` (architecture decision
+records) -
+`~/Desktop/Frontier++_++Programming++_++Practices++_++AffineScript/AI.a2ml`
+(v2.0) -
+`~/Desktop/Frontier++_++Programming++_++Practices++_++AffineScript/Human++_++Programming++_++Guide.adoc`
+(v2.0)
+
+*The eight in-scope features (as of 2026-04-10) are:* phantom types,
+immutable by default, row polymorphism, full type inference, sound type
+system, effect tracking (no handlers — see ADR-004 extension point),
+affine types (headline), and decidable-fragment refinement types (soft).
+
+*Out of scope* (deferred or removed): linear strict types, full
+dependent types, tropical types, algebraic effect handlers, unbounded
+refinement, units of measure, shape-indexed vectors. The first four were
+bot scope creep, removed during the 2026-04-10 Manhattan Recovery
+session.
+
+The large standalone sections on dependent types, refinement type rules,
+and length-indexed vectors have been excised from this document. Inline
+mentions may still appear scattered through other sections and will be
+cleaned up in a future full spec rewrite. *If this document disagrees
+with any of the above authorities, the authorities win.*
+____
+
+== Purpose
 
 This document specifies AffineScript, a programming language combining:
-- **Affine types** (Rust-style ownership, the headline novelty)
-- **Phantom types** and **row polymorphism** (extensible records, compile-time-only tagging)
-- **Immutable by default** with explicit mutation
-- **Full Hindley-Milner type inference** with quantities at function signatures
-- **Effect tracking** (function signatures declare what effects they can do; handler semantics deferred)
-- **Decidable-fragment refinement types** (soft commitment)
-- **Typed-WASM-first** compilation targeting the sibling Typed WASM project
+- *Affine types* (Rust-style ownership, the headline novelty) - *Phantom
+types* and *row polymorphism* (extensible records, compile-time-only
+tagging) - *Immutable by default* with explicit mutation - *Full
+Hindley-Milner type inference* with quantities at function signatures -
+*Effect tracking* (function signatures declare what effects they can do;
+handler semantics deferred) - *Decidable-fragment refinement types*
+(soft commitment) - *Typed-WASM-first* compilation targeting the sibling
+Typed WASM project
 
-This specification is an in-progress rewrite; sections below may still reflect the
-pre-recovery scope until the full spec rewrite lands.
+This specification is an in-progress rewrite; sections below may still
+reflect the pre-recovery scope until the full spec rewrite lands.
 
----
+'''''
 
-# PART 1: LEXICAL GRAMMAR
+= PART 1: LEXICAL GRAMMAR
 
-## 1.1 Character Classes
+== 1.1 Character Classes
 
-```ebnf
+[source,ebnf]
+----
 letter        = 'a'..'z' | 'A'..'Z' ;
 digit         = '0'..'9' ;
 alpha_num     = letter | digit | '_' ;
 hex_digit     = digit | 'a'..'f' | 'A'..'F' ;
 bin_digit     = '0' | '1' ;
 oct_digit     = '0'..'7' ;
-```
+----
 
-## 1.2 Whitespace and Comments
+== 1.2 Whitespace and Comments
 
-```ebnf
+[source,ebnf]
+----
 whitespace    = ' ' | '\t' | '\n' | '\r' ;
 line_comment  = '//' { any_char - '\n' } '\n' ;
 block_comment = '/*' { any_char } '*/' ;
 skip          = whitespace | line_comment | block_comment ;
-```
+----
 
-## 1.3 Identifiers
+== 1.3 Identifiers
 
-```ebnf
+[source,ebnf]
+----
 lower_ident   = ('a'..'z') { alpha_num } ;
 upper_ident   = ('A'..'Z') { alpha_num } ;
 ident         = lower_ident | upper_ident ;
@@ -80,11 +93,11 @@ row_var       = '..' lower_ident ;
 
 (* Type variables are lowercase, optionally with prime *)
 type_var      = lower_ident [ "'" ] ;
-```
+----
 
-## 1.4 Keywords
+== 1.4 Keywords
 
-```
+....
 fn        let       mut       own       ref
 type      struct    enum      trait     impl
 effect    handle    resume    handler
@@ -96,11 +109,12 @@ module    use       pub       as
 unsafe    assume    transmute forget
 Nat       Int       Bool      Float     String
 Type      Row
-```
+....
 
-## 1.5 Literals
+== 1.5 Literals
 
-```ebnf
+[source,ebnf]
+----
 int_lit       = [ '-' ] digit { digit }
               | '0x' hex_digit { hex_digit }
               | '0b' bin_digit { bin_digit }
@@ -118,11 +132,12 @@ escape_seq    = '\\' ( 'n' | 'r' | 't' | '\\' | '"' | "'" | '0'
 
 bool_lit      = 'true' | 'false' ;
 unit_lit      = '()' ;
-```
+----
 
-## 1.6 Operators and Punctuation
+== 1.6 Operators and Punctuation
 
-```ebnf
+[source,ebnf]
+----
 (* Arithmetic *)
 arith_op      = '+' | '-' | '*' | '/' | '%' ;
 
@@ -147,15 +162,16 @@ punct         = '(' | ')' | '{' | '}' | '[' | ']'
 
 (* Quantity annotations *)
 quantity      = '0' | '1' | 'ω' | 'omega' ;
-```
+----
 
----
+'''''
 
-# PART 2: SYNTACTIC GRAMMAR
+= PART 2: SYNTACTIC GRAMMAR
 
-## 2.1 Program Structure
+== 2.1 Program Structure
 
-```ebnf
+[source,ebnf]
+----
 program       = [ module_decl ] { import_decl } { top_level } ;
 
 top_level     = type_decl
@@ -164,11 +180,12 @@ top_level     = type_decl
               | impl_block
               | effect_decl
               | const_decl ;
-```
+----
 
-## 2.2 Module System
+== 2.2 Module System
 
-```ebnf
+[source,ebnf]
+----
 module_decl   = 'module' module_path ';' ;
 module_path   = upper_ident { '.' upper_ident } ;
 
@@ -182,11 +199,12 @@ import_item   = ident [ 'as' ident ] ;
 
 visibility    = [ 'pub' [ '(' pub_scope ')' ] ] ;
 pub_scope     = 'crate' | 'super' | module_path ;
-```
+----
 
-## 2.3 Type Declarations
+== 2.3 Type Declarations
 
-```ebnf
+[source,ebnf]
+----
 type_decl     = visibility 'type' upper_ident [ type_params ] '=' type_body ;
 
 type_params   = '[' type_param { ',' type_param } ']' ;
@@ -208,11 +226,12 @@ field_decl    = visibility ident ':' type_expr ;
 enum_body     = [ '|' ] variant { '|' variant } ;
 variant       = upper_ident [ '(' type_expr { ',' type_expr } ')' ]
                 [ ':' type_expr ] ;                (* GADT return type *)
-```
+----
 
-## 2.4 Type Expressions
+== 2.4 Type Expressions
 
-```ebnf
+[source,ebnf]
+----
 type_expr     = type_atom
               | fn_type
               | dependent_fn_type
@@ -261,11 +280,12 @@ effects       = effect_term { '+' effect_term } ;
 effect_term   = upper_ident [ '[' type_arg { ',' type_arg } ']' ]
               | effect_var ;
 effect_var    = lower_ident ;
-```
+----
 
-## 2.5 Natural Number Expressions (Type-Level)
+== 2.5 Natural Number Expressions (Type-Level)
 
-```ebnf
+[source,ebnf]
+----
 nat_expr      = nat_atom
               | nat_expr '+' nat_expr
               | nat_expr '-' nat_expr
@@ -276,19 +296,21 @@ nat_expr      = nat_atom
 nat_atom      = int_lit
               | ident                              (* type-level variable *)
               | '(' nat_expr ')' ;
-```
+----
 
-## 2.6 Effect Declarations
+== 2.6 Effect Declarations
 
-```ebnf
+[source,ebnf]
+----
 effect_decl   = visibility 'effect' upper_ident [ type_params ] '{' { effect_op } '}' ;
 
 effect_op     = 'fn' lower_ident '(' [ param_list ] ')' [ '->' type_expr ] ';' ;
-```
+----
 
-## 2.7 Trait Declarations
+== 2.7 Trait Declarations
 
-```ebnf
+[source,ebnf]
+----
 trait_decl    = visibility 'trait' upper_ident [ type_params ] [ ':' trait_bounds ]
                 '{' { trait_item } '}' ;
 
@@ -300,11 +322,12 @@ trait_item    = fn_sig ';'                         (* required method *)
 
 fn_sig        = visibility 'fn' lower_ident [ type_params ] '(' [ param_list ] ')'
                 [ '->' type_expr ] [ '/' effects ] ;
-```
+----
 
-## 2.8 Implementation Blocks
+== 2.8 Implementation Blocks
 
-```ebnf
+[source,ebnf]
+----
 impl_block    = 'impl' [ type_params ] [ trait_ref 'for' ] type_expr
                 [ where_clause ] '{' { impl_item } '}' ;
 
@@ -312,11 +335,12 @@ trait_ref     = upper_ident [ '[' type_arg { ',' type_arg } ']' ] ;
 
 impl_item     = fn_decl
               | 'type' upper_ident '=' type_expr ';' ;
-```
+----
 
-## 2.9 Function Declarations
+== 2.9 Function Declarations
 
-```ebnf
+[source,ebnf]
+----
 fn_decl       = visibility [ 'total' ] 'fn' lower_ident
                 [ type_params ]
                 '(' [ param_list ] ')'
@@ -335,11 +359,12 @@ constraint    = predicate
 trait_bound   = upper_ident [ '+' upper_ident ] ;
 
 fn_body       = block | '=' expr ;
-```
+----
 
-## 2.10 Expressions
+== 2.10 Expressions
 
-```ebnf
+[source,ebnf]
+----
 expr          = let_expr
               | if_expr
               | match_expr
@@ -407,23 +432,28 @@ primary_expr  = literal
 field_init    = ident [ ':' expr ] ;               (* shorthand: #{x} means #{x: x} *)
 
 literal       = int_lit | float_lit | char_lit | string_lit | bool_lit | unit_lit ;
-```
+----
 
-> **Record-literal syntax (`#{ … }`).** In *expression* position a bare
-> `{ … }` is always a **block**; record/struct construction uses the
-> `#{ … }` sigil — both anonymous (`#{ x: 1, y: 2 }`) and typed
-> (`Point #{ x: 1, y: 2 }`). This removes the block-vs-record ambiguity
-> by construction (and the struct-literal-in-`if`/`match`-scrutinee
-> hazard). Note the asymmetry: **type** positions (`fn f(r: {x: Int, ..s})`,
-> `type Box[T] = own { ptr: RawPtr[T] }`), **`struct` declaration bodies**,
-> and **record patterns** (`match r { { x, .. } => … }`) keep the plain
-> `{ … }` — only value construction takes `#{`. Migrating older sources:
-> rewrite each expression-position record literal `{`→`#{`; leave
-> declarations, type annotations, and patterns unchanged.
+____
+*Record-literal syntax (`++#{++ … }`).* In _expression_ position a bare
+`++{++ … }` is always a *block*; record/struct construction uses the
+`++#{++ … }` sigil — both anonymous (`++#{++ x: 1, y: 2 }`) and typed
+(`Point ++#{++ x: 1, y: 2 }`). This removes the block-vs-record
+ambiguity by construction (and the
+struct-literal-in-`if`/`match`-scrutinee hazard). Note the asymmetry:
+*type* positions (`fn f(r: ++{++x: Int, ..s})`,
+`type Box++[++T++]++ = own ++{++ ptr: RawPtr++[++T++]++ }`), *`struct`
+declaration bodies*, and *record patterns*
+(`match r ++{++ ++{++ x, .. } =++>++ … }`) keep the plain `++{++ … }` —
+only value construction takes `++#{++`. Migrating older sources: rewrite
+each expression-position record literal `++{++`→`++#{++`; leave
+declarations, type annotations, and patterns unchanged.
+____
 
-## 2.11 Patterns
+== 2.11 Patterns
 
-```ebnf
+[source,ebnf]
+----
 pattern       = '_'                                (* wildcard *)
               | ident                              (* binding *)
               | literal                            (* literal match *)
@@ -434,11 +464,12 @@ pattern       = '_'                                (* wildcard *)
               | ident '@' pattern ;                (* binding with sub-pattern *)
 
 field_pat     = ident [ ':' pattern ] ;
-```
+----
 
-## 2.12 Statements
+== 2.12 Statements
 
-```ebnf
+[source,ebnf]
+----
 statement     = let_stmt
               | expr_stmt
               | assign_stmt
@@ -450,42 +481,43 @@ expr_stmt     = expr ';' ;
 assign_stmt   = postfix_expr assign_op expr ';' ;
 while_stmt    = 'while' expr block ;
 for_stmt      = 'for' pattern 'in' expr block ;
-```
+----
 
----
+'''''
 
-# PART 3: TYPE SYSTEM
+= PART 3: TYPE SYSTEM
 
-## 3.1 Judgement Forms
+== 3.1 Judgement Forms
 
-```
+....
 Γ ⊢ e : τ / ε        Expression e has type τ with effects ε in context Γ
 Γ ⊢ τ : κ            Type τ has kind κ in context Γ
 Γ ⊢ e ↝ v            Expression e evaluates to value v (for type-level computation)
 Γ ⊢ P true           Predicate P is satisfied
 σ : Γ → Δ            Substitution σ maps context Γ to context Δ
-```
+....
 
-## 3.2 Kinds
+== 3.2 Kinds
 
-```
+....
 κ ::= Type           Proper types
     | Nat            Natural numbers (for dependent types)
     | Row            Row kinds (for row polymorphism)
     | Effect         Effect kinds
     | κ → κ          Kind-level functions
-```
+....
 
-## 3.3 Quantities (from QTT)
+== 3.3 Quantities (from QTT)
 
-```
+....
 q ::= 0              Erased (compile-time only, not present at runtime)
     | 1              Linear (must be used exactly once)
     | ω              Unrestricted (can be used any number of times)
-```
+....
 
-**Quantity algebra:**
-```
+*Quantity algebra:*
+
+....
 0 + q = q
 1 + 1 = ω
 1 + ω = ω
@@ -494,13 +526,15 @@ q ::= 0              Erased (compile-time only, not present at runtime)
 0 * q = 0
 1 * q = q
 ω * ω = ω
-```
+....
 
-**Erased (quantity 0) semantics:**
+*Erased (quantity 0) semantics:*
 
-Erased values exist only at compile time. They are computed during type checking and deleted before code generation.
+Erased values exist only at compile time. They are computed during type
+checking and deleted before code generation.
 
-```affinescript
+[source,affinescript]
+----
 // n is erased - no runtime cost
 fn replicate[0 n: Nat, T](value: T) -> Vec[n, T]
 
@@ -509,33 +543,35 @@ fn ok[0 n: Nat](v: Vec[n, Int]) -> Vec[n, Int] { v }
 
 // Invalid: cannot use erased value at runtime
 fn bad[0 n: Nat]() -> Nat { n }  // ERROR
-```
+----
 
-## 3.4 Effects
+== 3.4 Effects
 
 Effects are user-defined and extensible:
 
-```
+....
 ε ::= ∅              Pure (no effects)
     | E[τ₁,...,τₙ]   Named effect with type arguments
     | α              Effect variable
     | ε + ε          Effect union
-```
+....
 
-**Effect algebra:**
-```
+*Effect algebra:*
+
+....
 ε + ∅ = ε
 ε + ε = ε
 ε₁ + ε₂ = ε₂ + ε₁
-```
+....
 
-**Totality and Divergence:**
+*Totality and Divergence:*
 
-- Functions are **partial by default** - they may diverge (not terminate)
-- `total` functions must provably terminate and cannot have `Div` effect
-- Non-total functions implicitly include `Div` in their effect set
+* Functions are *partial by default* - they may diverge (not terminate)
+* `total` functions must provably terminate and cannot have `Div` effect
+* Non-total functions implicitly include `Div` in their effect set
 
-```affinescript
+[source,affinescript]
+----
 // Default: partial, may diverge
 fn serverLoop() -> Never {  // Implicitly / Div
   loop { handleRequest(); }
@@ -548,11 +584,11 @@ total fn factorial(n: Nat) -> Nat / Pure {
     _ => n * factorial(n - 1)  // Structural recursion - OK
   }
 }
-```
+----
 
-## 3.5 Type Syntax
+== 3.5 Type Syntax
 
-```
+....
 τ ::= α                          Type variable
     | C                          Type constructor (Nat, Int, Bool, etc.)
     | τ τ                        Type application
@@ -569,20 +605,22 @@ total fn factorial(n: Nat) -> Nat / Pure {
     | ρ , ρ                      Row concatenation
     | ρ \ ℓ                      Row restriction (remove field)
     | r                          Row variable
-```
+....
 
-## 3.6 Core Typing Rules
+== 3.6 Core Typing Rules
 
-### Variables
-```
+=== Variables
+
+....
 ────────────────────── (T-Var)
 Γ, x :q τ ⊢ x : τ / ∅
 
 (consumes q uses of x)
-```
+....
 
-### Functions
-```
+=== Functions
+
+....
 Γ, x :q τ₁ ⊢ e : τ₂ / ε
 ─────────────────────────────────────────── (T-Lam)
 Γ ⊢ fn(q x: τ₁) => e : (q x : τ₁) → τ₂ / ε
@@ -590,55 +628,56 @@ total fn factorial(n: Nat) -> Nat / Pure {
 Γ ⊢ e₁ : (q x : τ₁) → τ₂ / ε₁    Γ ⊢ e₂ : τ₁ / ε₂
 ───────────────────────────────────────────────────── (T-App)
 Γ ⊢ e₁(e₂) : τ₂[x ↦ e₂] / ε₁ + ε₂
-```
+....
 
-### Let Bindings
+=== Let Bindings
 
-Per ADR-002, the Let rule scales the value context by the binder's
+Per ADR-002, the Let rule scales the value context by the binder’s
 quantity, in the QTT-orthodox split-Γ form:
 
-```
+....
 Γ₁ ⊢ e₁ : τ₁ / ε₁    Γ₂, x :^q τ₁ ⊢ e₂ : τ₂ / ε₂
 ─────────────────────────────────────────────────── (T-Let)
         q·Γ₁ + Γ₂ ⊢ let x :^q = e₁ in e₂ : τ₂ / ε₁ + ε₂
-```
+....
 
-The scaling action `q·Γ₁` multiplies every variable's quantity in `Γ₁`
-by the binder's quantity `q`, using the semiring multiplication table
+The scaling action `q·Γ₁` multiplies every variable’s quantity in `Γ₁`
+by the binder’s quantity `q`, using the semiring multiplication table
 from §3.2. The two soundness consequences:
 
-- **`q = ω` (unrestricted)** scales every linear (1) usage in `Γ₁` to
-  unrestricted (ω). Concretely, a `@linear` variable consumed once in
-  `e₁` becomes "used multiple times" once viewed through the
-  `@unrestricted` binder, and the quantity checker rejects the
-  program. This is the rule that closes BUG-001
-  (ω-let smuggling linear values).
-- **`q = 0` (erased)** scales `Γ₁` to the zero context, which means
-  `e₁` carries no runtime obligations and may be erased at runtime.
-  This is the rule that closes BUG-002 (erasure failure).
+* *`q = ω` (unrestricted)* scales every linear (1) usage in `Γ₁` to
+unrestricted (ω). Concretely, a `@linear` variable consumed once in `e₁`
+becomes "`used multiple times`" once viewed through the `@unrestricted`
+binder, and the quantity checker rejects the program. This is the rule
+that closes BUG-001 (ω-let smuggling linear values).
+* *`q = 0` (erased)* scales `Γ₁` to the zero context, which means `e₁`
+carries no runtime obligations and may be erased at runtime. This is the
+rule that closes BUG-002 (erasure failure).
 
 When `q` is omitted in source, the rule defaults to `q = ω`
 (unrestricted), so unannotated lets are unchanged from textbook HM
 semantics for non-quantitative programs.
 
-#### Surface syntax (per ADR-007)
+==== Surface syntax (per ADR-007)
 
 Two surface forms are accepted; both parse to the same internal
-`el_quantity` field. The compiler emits the **Option C** form in
-diagnostics, the formatter rewrites Option B sugar to Option C
-unless `--keep-quantity-sugar` is set, and tutorials use Option C
-exclusively.
+`el++_++quantity` field. The compiler emits the *Option C* form in
+diagnostics, the formatter rewrites Option B sugar to Option C unless
+`--keep-quantity-sugar` is set, and tutorials use Option C exclusively.
 
-| QTT notation | Option C (primary) | Option B (sugar) |
-| --- | --- | --- |
-| `let x :^1 = e` | `@linear let x = e` | `let x :1 = e` |
-| `let x :^0 = e` | `@erased let x = e` | `let x :0 = e` |
-| `let x :^ω = e` | `@unrestricted let x = e` | `let x :ω = e` |
-| `let x = e` (q omitted) | `let x = e` | `let x = e` |
+[cols=",,",options="header",]
+|===
+|QTT notation |Option C (primary) |Option B (sugar)
+|`let x :^1 = e` |`@linear let x = e` |`let x :1 = e`
+|`let x :^0 = e` |`@erased let x = e` |`let x :0 = e`
+|`let x :^ω = e` |`@unrestricted let x = e` |`let x :ω = e`
+|`let x = e` (q omitted) |`let x = e` |`let x = e`
+|===
 
 Examples:
 
-```affinescript
+[source,affinescript]
+----
 // Option C primary form
 @linear let resource = acquire() in use_once(resource);
 @erased let _proof = expensive_term() in body_not_using_proof;
@@ -648,16 +687,17 @@ Examples:
 let resource :1 = acquire() in use_once(resource);
 let _proof :0 = expensive_term() in body_not_using_proof;
 let pure_value :ω = 42 in pure_value + pure_value;
-```
+----
 
 The same hybrid surface convention applies to function parameters
-(`@linear x: τ`), lambda parameters, and statement-position let
-bindings inside blocks. Sugar form on function parameters is reserved
-for a future extension and not currently accepted by the parser; only
-the `@`-attribute form is available there today.
+(`@linear x: τ`), lambda parameters, and statement-position let bindings
+inside blocks. Sugar form on function parameters is reserved for a
+future extension and not currently accepted by the parser; only the
+`@`-attribute form is available there today.
 
-### Records (Row Polymorphism)
-```
+=== Records (Row Polymorphism)
+
+....
 Γ ⊢ e₁ : τ₁ / ε₁  ...  Γ ⊢ eₙ : τₙ / εₙ
 ────────────────────────────────────────────────────── (T-Record)
 Γ ⊢ {ℓ₁: e₁, ..., ℓₙ: eₙ} : {ℓ₁: τ₁, ..., ℓₙ: τₙ} / ε₁ + ... + εₙ
@@ -673,13 +713,13 @@ the `@`-attribute form is available there today.
 Γ ⊢ e : {ℓ: τ, ρ} / ε
 ─────────────────────────── (T-Restrict)
 Γ ⊢ e \ ℓ : {ρ} / ε
-```
+....
 
-### Row Polymorphism and Ownership
+=== Row Polymorphism and Ownership
 
 Ownership distributes uniformly over row variables:
 
-```
+....
 Γ ⊢ e : ref {ℓ: τ, ..r} / ε
 ────────────────────────────── (T-BorrowRow)
 All fields in ..r are immutably borrowed
@@ -691,10 +731,11 @@ All fields in ..r are mutably borrowed (exclusive)
 Γ ⊢ e : own {ℓ: τ, ..r} / ε
 ────────────────────────────── (T-OwnRow)
 All fields in ..r are owned
-```
+....
 
-### Ownership
-```
+=== Ownership
+
+....
 Γ ⊢ e : own τ / ε    (e is consumed)
 ───────────────────────────────────── (T-Move)
 Γ ⊢ move e : own τ / ε
@@ -706,15 +747,11 @@ All fields in ..r are owned
 Γ ⊢ e : own τ / ε
 ─────────────────── (T-BorrowMut)
 Γ ⊢ mut e : mut τ / ε
-```
+....
 
-<!-- Refinement Types and Dependent Types sections removed 2026-04-10.
-     Dependent types are deferred to the sibling Typed WASM project.
-     Refinement types will return in a later phase with a clean foundation
-     not entangled with dependent-type arithmetic. See ANCHOR.a2ml for scope. -->
+=== Effect Typing
 
-### Effect Typing
-```
+....
 Γ ⊢ e : τ / ε₁    ε₁ ⊆ ε₂
 ────────────────────────── (T-SubEffect)
 Γ ⊢ e : τ / ε₂
@@ -722,15 +759,15 @@ All fields in ..r are owned
 effect E { fn op(x: τ₁) -> τ₂; }    Γ ⊢ e : τ₁ / ε
 ────────────────────────────────────────────────── (T-EffectOp)
 Γ ⊢ E.op(e) : τ₂ / E + ε
-```
+....
 
----
+'''''
 
-# PART 4: OPERATIONAL SEMANTICS
+= PART 4: OPERATIONAL SEMANTICS
 
-## 4.1 Values
+== 4.1 Values
 
-```
+....
 v ::= n                          Natural number
     | i                          Integer
     | f                          Float
@@ -743,11 +780,11 @@ v ::= n                          Natural number
     | [v₁, ..., vₙ]              Array value
     | ptr(a)                     Pointer (owned)
     | ref(a)                     Reference (borrowed)
-```
+....
 
-## 4.2 Evaluation Contexts
+== 4.2 Evaluation Contexts
 
-```
+....
 E ::= []
     | E e                        Function position
     | v E                        Argument position
@@ -759,11 +796,11 @@ E ::= []
     | if E then e₁ else e₂       Conditional
     | match E { ... }            Match scrutinee
     | handle E with { ... }      Effect handler
-```
+....
 
-## 4.3 Small-Step Reduction
+== 4.3 Small-Step Reduction
 
-```
+....
 (fn(x: τ) => e) v  →  e[x ↦ v]                    (β-reduction)
 
 let x = v in e  →  e[x ↦ v]                       (let-reduction)
@@ -780,21 +817,21 @@ match C(v₁,...,vₙ) { C(x₁,...,xₙ) => e, ... }    (match)
   →  e[x₁ ↦ v₁, ..., xₙ ↦ vₙ]
 
 [v₀, ..., vₙ][i]  →  vᵢ   (if 0 ≤ i ≤ n)         (array-index)
-```
+....
 
-## 4.4 Effect Handling Semantics
+== 4.4 Effect Handling Semantics
 
-```
+....
 handle (return v) with { return x => eᵣ, ... }   (handle-return)
   →  eᵣ[x ↦ v]
 
 handle E[op(v)] with { ..., op(x) => eₒₚ, ... }  (handle-op)
   →  eₒₚ[x ↦ v, resume ↦ fn(y) => handle E[y] with {...}]
-```
+....
 
-## 4.5 Ownership Semantics
+== 4.5 Ownership Semantics
 
-```
+....
 State σ = Map<Address, (Value, Ownership)>
 Ownership = Owned | Borrowed(n) | Moved
 
@@ -810,38 +847,47 @@ drop(ptr(a), σ) where σ(a) = (v, Owned):
 (* Use-after-move is a compile-time rejection *)
 use(ptr(a), σ) where σ(a) = (_, Moved):
   → ERROR
-```
+....
 
----
+'''''
 
-# PART 5: UNSAFE OPERATIONS
+= PART 5: UNSAFE OPERATIONS
 
-## 5.1 Unsafe Block
+== 5.1 Unsafe Block
 
 The `unsafe` block permits exactly the following operations:
 
-| Operation | Syntax | Description |
-|-----------|--------|-------------|
-| Raw read | `ptr.read()` | Read value through raw pointer |
-| Raw write | `ptr.write(v)` | Write value through raw pointer |
-| Pointer arithmetic | `ptr.offset(n)` | Offset pointer by n elements |
-| Transmute | `transmute[T, U](v)` | Reinterpret bits as different type |
-| Forget | `forget(owned)` | Leak owned value without destructor |
-| Assume | `assume(predicate)` | Assert refinement without proof |
+[width="100%",cols="35%,25%,40%",options="header",]
+|===
+|Operation |Syntax |Description
+|Raw read |`ptr.read()` |Read value through raw pointer
 
-## 5.2 Not Permitted in Unsafe
+|Raw write |`ptr.write(v)` |Write value through raw pointer
+
+|Pointer arithmetic |`ptr.offset(n)` |Offset pointer by n elements
+
+|Transmute |`transmute++[++T, U++]++(v)` |Reinterpret bits as different
+type
+
+|Forget |`forget(owned)` |Leak owned value without destructor
+
+|Assume |`assume(predicate)` |Assert refinement without proof
+|===
+
+== 5.2 Not Permitted in Unsafe
 
 Even within `unsafe`, the following remain prohibited:
 
-- Violating type safety (e.g., casting Int to function pointer)
-- Accessing private fields of other modules
-- Bypassing effect tracking
-- Creating invalid enum variants
-- Violating memory safety beyond raw pointer operations
+* Violating type safety (e.g., casting Int to function pointer)
+* Accessing private fields of other modules
+* Bypassing effect tracking
+* Creating invalid enum variants
+* Violating memory safety beyond raw pointer operations
 
-## 5.3 Examples
+== 5.3 Examples
 
-```affinescript
+[source,affinescript]
+----
 fn dangerousRead(ptr: RawPtr[Int]) -> Int / Pure {
   unsafe { ptr.read() }
 }
@@ -860,26 +906,29 @@ fn reinterpret(x: u32) -> f32 / Pure {
 fn leakResource(file: own File) -> () / Pure {
   unsafe { forget(file) }  // Memory leak, but no UB
 }
-```
+----
 
----
+'''''
 
-# PART 6: MEMORY MODEL
+= PART 6: MEMORY MODEL
 
-## 6.1 Allocation Strategy
+== 6.1 Allocation Strategy
 
-**Rule:** Values are stack-allocated unless they escape their scope.
+*Rule:* Values are stack-allocated unless they escape their scope.
 
-| Situation | Allocation |
-|-----------|------------|
-| Local `let` binding, not returned | Stack |
-| Returned from function | Heap (owned pointer) |
-| Captured by closure | Heap (moved into closure struct) |
-| Stored in growable collection | Heap |
-| Recursive type (e.g., linked list) | Heap for recursive part |
-| Behind `ref`/`mut` borrow | Inherits from referent |
+[cols=",",options="header",]
+|===
+|Situation |Allocation
+|Local `let` binding, not returned |Stack
+|Returned from function |Heap (owned pointer)
+|Captured by closure |Heap (moved into closure struct)
+|Stored in growable collection |Heap
+|Recursive type (e.g., linked list) |Heap for recursive part
+|Behind `ref`/`mut` borrow |Inherits from referent
+|===
 
-```affinescript
+[source,affinescript]
+----
 fn stackOnly() -> Int / Pure {
   let x = 42;           // Stack
   let r = #{a: 1, b: 2}; // Stack (doesn't escape)
@@ -890,11 +939,12 @@ fn needsHeap() -> own {x: Int} / Pure {
   let r = #{x: 42};  // Heap - returned (escapes)
   r
 }
-```
+----
 
-## 6.2 Explicit Boxing
+== 6.2 Explicit Boxing
 
-```affinescript
+[source,affinescript]
+----
 type Box[T] = own { ptr: RawPtr[T] }
 
 fn box[T](value: own T) -> own Box[T] / Pure {
@@ -906,37 +956,41 @@ fn unbox[T](b: own Box[T]) -> own T / Pure {
   unsafe { forget(b) };
   value
 }
-```
+----
 
-## 6.3 Drop Order
+== 6.3 Drop Order
 
 Values are dropped in reverse declaration order:
 
-```affinescript
+[source,affinescript]
+----
 fn example() -> () / IO {
   let a = open("a.txt")?;  // Dropped third
   let b = open("b.txt")?;  // Dropped second
   let c = open("c.txt")?;  // Dropped first
   // implicit: drop(c); drop(b); drop(a);
 }
-```
+----
 
-## 6.4 WASM Mapping
+== 6.4 WASM Mapping
 
-| AffineScript | WASM |
-|--------------|------|
-| Stack values | WASM locals, passed by value |
-| Heap values | WASM-GC `ref` types or linear memory |
-| Borrows | WASM `ref` (compiler proves no use-after-free) |
-| Closures | Struct with funcref + captured values |
+[cols=",",options="header",]
+|===
+|AffineScript |WASM
+|Stack values |WASM locals, passed by value
+|Heap values |WASM-GC `ref` types or linear memory
+|Borrows |WASM `ref` (compiler proves no use-after-free)
+|Closures |Struct with funcref {plus} captured values
+|===
 
----
+'''''
 
-# PART 7: STANDARD LIBRARY
+= PART 7: STANDARD LIBRARY
 
-## 7.1 Primitive Types
+== 7.1 Primitive Types
 
-```affinescript
+[source,affinescript]
+----
 type Nat = /* built-in natural numbers, 0, 1, 2, ... */
 type Int = /* built-in 64-bit signed integers */
 type Float = /* built-in 64-bit floats */
@@ -944,11 +998,12 @@ type Bool = true | false
 type String = /* built-in UTF-8 string */
 type Char = /* built-in Unicode scalar value */
 type Never = /* uninhabited type */
-```
+----
 
-## 7.2 Standard Effects
+== 7.2 Standard Effects
 
-```affinescript
+[source,affinescript]
+----
 effect IO {
   fn print(s: String);
   fn println(s: String);
@@ -975,11 +1030,12 @@ effect State[S] {
 // Div is special - indicates potential non-termination
 // Cannot be handled, only discharged at program boundary
 effect Div { }
-```
+----
 
-## 7.3 Option and Result
+== 7.3 Option and Result
 
-```affinescript
+[source,affinescript]
+----
 type Option[T] =
   | None
   | Some(T)
@@ -1019,16 +1075,12 @@ impl[T, E] Result[T, E] {
     }
   }
 }
-```
+----
 
-<!-- §7.4 Length-Indexed Vector removed 2026-04-10.
-     Length-indexed (dependent) vectors are deferred to the sibling Typed WASM
-     project. A non-dependent Vec[T] / List[T] example will be added in a future
-     spec revision. See ANCHOR.a2ml for scope. -->
+== 7.5 Core Traits
 
-## 7.5 Core Traits
-
-```affinescript
+[source,affinescript]
+----
 trait Eq {
   fn eq(ref self, other: ref Self) -> Bool / Pure;
 
@@ -1096,11 +1148,12 @@ trait Iterator {
 trait FromIterator[T] {
   fn fromIter[I: Iterator where I::Item = T](iter: I) -> Self / Pure;
 }
-```
+----
 
-## 7.6 Owned Resources
+== 7.6 Owned Resources
 
-```affinescript
+[source,affinescript]
+----
 type File = own { fd: Int }
 
 fn open(path: ref String) -> Result[own File, IOError] / IO + Exn[IOError]
@@ -1128,11 +1181,12 @@ fn withFile[T](
   close(file)?;
   result
 }
-```
+----
 
-## 7.7 Row-Polymorphic Functions
+== 7.7 Row-Polymorphic Functions
 
-```affinescript
+[source,affinescript]
+----
 // Get a field from any record that has it
 fn getX[..r](record: {x: Int, ..r}) -> Int / Pure {
   record.x
@@ -1159,15 +1213,16 @@ fn merge[..r, ..s](a: {..r}, b: {..s}) -> {..r, ..s} / Pure
 {
   {..a, ..b}
 }
-```
+----
 
----
+'''''
 
-# PART 8: EXAMPLE PROGRAMS
+= PART 8: EXAMPLE PROGRAMS
 
-## 8.1 Basic Arithmetic
+== 8.1 Basic Arithmetic
 
-```affinescript
+[source,affinescript]
+----
 fn add(a: Int, b: Int) -> Int / Pure {
   a + b
 }
@@ -1186,11 +1241,12 @@ total fn fibonacci(n: Nat) -> Nat / Pure {
     _ => fibonacci(n - 1) + fibonacci(n - 2)
   }
 }
-```
+----
 
-## 8.2 Safe Array Access
+== 8.2 Safe Array Access
 
-```affinescript
+[source,affinescript]
+----
 // Index must be less than length - proved at compile time
 total fn safeGet[n: Nat, T](
   arr: ref Vec[n, T],
@@ -1215,11 +1271,12 @@ total fn splitAt[n: Nat, m: Nat, T](
     }
   }
 }
-```
+----
 
-## 8.3 Effect Polymorphism
+== 8.3 Effect Polymorphism
 
-```affinescript
+[source,affinescript]
+----
 // Map is polymorphic in effects
 fn map[A, B, E](xs: List[A], f: A -> B / E) -> List[B] / E {
   match xs {
@@ -1243,11 +1300,12 @@ fn example() -> () / IO {
 total fn pureMap[A, B](xs: List[A], f: A -> B / Pure) -> List[B] / Pure {
   map(xs, f)
 }
-```
+----
 
-## 8.4 Resource Management
+== 8.4 Resource Management
 
-```affinescript
+[source,affinescript]
+----
 fn processFile(path: ref String) -> Result[String, IOError] / IO + Exn[IOError] {
   let file = open(path)?;
   try {
@@ -1267,11 +1325,12 @@ fn processFileSafe(path: ref String) -> Result[String, IOError] / IO + Exn[IOErr
     Ok(String.fromUtf8(buf[0..n]))
   })
 }
-```
+----
 
-## 8.5 State Effect
+== 8.5 State Effect
 
-```affinescript
+[source,affinescript]
+----
 fn counter() -> Int / State[Int] {
   let current = State.get();
   State.put(current + 1);
@@ -1292,11 +1351,12 @@ fn runCounter() -> (Int, Int, Int) / Pure {
   // Note: This simple handler doesn't actually thread state
   // A real implementation would need more sophisticated handling
 }
-```
+----
 
-## 8.6 Combining Features
+== 8.6 Combining Features
 
-```affinescript
+[source,affinescript]
+----
 // Buffer with compile-time capacity tracking + ownership
 type Buffer[capacity: Nat] = own {
   data: own [u8; capacity],
@@ -1331,11 +1391,12 @@ fn example() -> () / Pure {
   let buf = buf.write(ref " world")?;
   buf.free();
 }
-```
+----
 
-## 8.7 Traits and Generics
+== 8.7 Traits and Generics
 
-```affinescript
+[source,affinescript]
+----
 impl Eq for Int {
   fn eq(ref self, other: ref Int) -> Bool / Pure {
     *self == *other
@@ -1381,41 +1442,58 @@ fn printAny[T: Show](value: ref T) -> () / IO {
 fn sortBy[T, K: Ord](items: mut [T], key: (ref T) -> K / Pure) -> () / Pure {
   // Sorting implementation using Ord trait
 }
-```
+----
 
----
+'''''
 
-# PART 9: COMPILATION TO WASM
+= PART 9: COMPILATION TO WASM
 
-## 9.1 Type Mapping
+== 9.1 Type Mapping
 
-| AffineScript | WASM |
-|--------------|------|
-| `Nat`, `Int` | `i64` |
-| `Float` | `f64` |
-| `Bool` | `i32` (0 or 1) |
-| `Char` | `i32` (Unicode scalar) |
-| `String` | `(ref (array i8))` + length |
-| `{x: T, y: U}` | `(ref (struct (field $x T') (field $y U')))` |
-| `Vec[n, T]` | `(ref (array T'))` with length `n` |
-| `own T` | `(ref T')` (ownership tracked statically) |
-| `ref T` | `(ref T')` (borrowing tracked statically) |
-| `T -> U / ε` | `(ref (struct (field $func funcref) (field $env ...)))` |
-| `Option[T]` | Tagged union or nullable ref |
-| `A \| B(T)` | Tagged struct hierarchy |
+[width="100%",cols="70%,30%",options="header",]
+|===
+|AffineScript |WASM
+|`Nat`, `Int` |`i64`
 
-## 9.2 Ownership and Quantity Erasure
+|`Float` |`f64`
 
-Ownership and quantities are erased at runtime. They're purely compile-time disciplines:
+|`Bool` |`i32` (0 or 1)
 
-```affinescript
+|`Char` |`i32` (Unicode scalar)
+
+|`String` |`(ref (array i8))` {plus} length
+
+|`++{++x: T, y: U}` |`(ref (struct (field $x T') (field $y U')))`
+
+|`Vec++[++n, T++]++` |`(ref (array T'))` with length `n`
+
+|`own T` |`(ref T')` (ownership tracked statically)
+
+|`ref T` |`(ref T')` (borrowing tracked statically)
+
+|`T -++>++ U / ε`
+|`(ref (struct (field $func funcref) (field $env ...)))`
+
+|`Option++[++T++]++` |Tagged union or nullable ref
+
+|`A ++\++{vbar} B(T)` |Tagged struct hierarchy
+|===
+
+== 9.2 Ownership and Quantity Erasure
+
+Ownership and quantities are erased at runtime. They’re purely
+compile-time disciplines:
+
+[source,affinescript]
+----
 // Source
 fn useFile(own file: File) -> () / IO { close(file) }
 
 fn replicate[0 n: Nat, T](value: T) -> Vec[n, T] { ... }
-```
+----
 
-```wat
+[source,wat]
+----
 ;; WASM - no ownership marker, no n parameter
 (func $useFile (param $file (ref $File))
   (call $close (local.get $file)))
@@ -1423,57 +1501,63 @@ fn replicate[0 n: Nat, T](value: T) -> Vec[n, T] { ... }
 (func $replicate (param $value (ref $T)) (result (ref $Vec))
   ;; n is erased, known at compile time
   ...)
-```
+----
 
-## 9.3 Effect Compilation
+== 9.3 Effect Compilation
 
-Effects compile to either:
-1. **Direct style:** For effects handled in the same function
-2. **CPS transform:** For effects that cross function boundaries
+Effects compile to either: 1. *Direct style:* For effects handled in the
+same function 2. *CPS transform:* For effects that cross function
+boundaries
 
-```affinescript
+[source,affinescript]
+----
 // Source
 fn greet() -> () / IO {
   println("Hello");
 }
-```
+----
 
-```wat
+[source,wat]
+----
 ;; WASM - IO effect becomes direct call to runtime
 (func $greet
   (call $runtime_println (... "Hello" ...)))
-```
+----
 
-## 9.4 Row Polymorphism Compilation
+== 9.4 Row Polymorphism Compilation
 
 Monomorphize at call sites:
 
-```affinescript
+[source,affinescript]
+----
 fn getX[..r](rec: {x: Int, ..r}) -> Int { rec.x }
 
 let a = getX({x: 1, y: 2})
 let b = getX({x: 3, z: "hi"})
-```
+----
 
 Compiles to specialized functions:
 
-```wat
+[source,wat]
+----
 (func $getX_xy (param $rec (ref $struct_x_y)) (result i64)
   (struct.get $struct_x_y $x (local.get $rec)))
 
 (func $getX_xz (param $rec (ref $struct_x_z)) (result i64)
   (struct.get $struct_x_z $x (local.get $rec)))
-```
+----
 
-## 9.5 Closure Compilation
+== 9.5 Closure Compilation
 
-```affinescript
+[source,affinescript]
+----
 fn makeAdder(n: Int) -> (Int -> Int / Pure) / Pure {
   |x| x + n
 }
-```
+----
 
-```wat
+[source,wat]
+----
 (type $closure_adder (struct
   (field $func (ref $func_int_int))
   (field $n i64)))
@@ -1487,15 +1571,15 @@ fn makeAdder(n: Int) -> (Int -> Int / Pure) / Pure {
   (struct.new $closure_adder
     (ref.func $adder_impl)
     (local.get $n)))
-```
+----
 
----
+'''''
 
-# PART 10: IMPLEMENTATION GUIDE
+= PART 10: IMPLEMENTATION GUIDE
 
-## 10.1 Compiler Phases
+== 10.1 Compiler Phases
 
-```
+....
 Source Code
     │
     ▼
@@ -1547,114 +1631,98 @@ Source Code
 ┌──────────┐
 │WASM Emit │ → .wasm binary
 └──────────┘
-```
+....
 
-## 10.2 Key Implementation Challenges
+== 10.2 Key Implementation Challenges
 
-### Challenge 1: Bidirectional Type Checking
+=== Challenge 1: Bidirectional Type Checking
 
-```
+....
 infer(Γ, e) → (τ, ε)     Synthesize type from expression
 check(Γ, e, τ) → ε       Check expression against type
-```
+....
 
-Bidirectional checking threads through expression forms uniformly and gives
-better error messages than pure synthesis. Combined with full HM inference, it
-keeps annotation requirements low while maintaining soundness.
+Bidirectional checking threads through expression forms uniformly and
+gives better error messages than pure synthesis. Combined with full HM
+inference, it keeps annotation requirements low while maintaining
+soundness.
 
-<!-- Original Challenge 1 covered bidirectional + dependent types. Dependent
-     type machinery was removed 2026-04-10; the challenge is now plain
-     bidirectional checking over the simply-typed + affine + row subset. -->
+=== Challenge 2: Row Polymorphism Inference
 
-### Challenge 2: Row Polymorphism Inference
+Use row unification: - Row variables unify with partial rows - Track
+lacks constraints: `r ++\++ ℓ` means r doesn’t have field ℓ - Propagate
+constraints through function calls
 
-Use row unification:
-- Row variables unify with partial rows
-- Track lacks constraints: `r \ ℓ` means r doesn't have field ℓ
-- Propagate constraints through function calls
+=== Challenge 3: Borrow Checking
 
-### Challenge 3: Borrow Checking
+Similar to Rust’s borrow checker: - Build control flow graph - Track
+liveness of owned values - Verify borrows don’t outlive owners - Verify
+no aliasing of mutable borrows - Handle row variables uniformly
 
-Similar to Rust's borrow checker:
-- Build control flow graph
-- Track liveness of owned values
-- Verify borrows don't outlive owners
-- Verify no aliasing of mutable borrows
-- Handle row variables uniformly
+=== Challenge 4: Totality Checking
 
-### Challenge 4: Totality Checking
+For `total` functions: - Structural recursion: recursive calls on
+structurally smaller args - Well-founded recursion: prove termination
+metric decreases - Coverage: all pattern matches are exhaustive
 
-For `total` functions:
-- Structural recursion: recursive calls on structurally smaller args
-- Well-founded recursion: prove termination metric decreases
-- Coverage: all pattern matches are exhaustive
+=== Challenge 5: Effect Polymorphism
 
-### Challenge 5: Effect Polymorphism
+* Track effect variables through unification
+* Propagate effect constraints
+* Handle effect subtyping (ε₁ ⊆ ε₁ {plus} ε₂)
 
-- Track effect variables through unification
-- Propagate effect constraints
-- Handle effect subtyping (ε₁ ⊆ ε₁ + ε₂)
+=== Challenge 6: Trait Resolution
 
-### Challenge 6: Trait Resolution
+* Build trait impl database
+* Implement coherence checking (orphan rule, overlap)
+* Resolve associated types
+* Handle trait bounds in generics
 
-- Build trait impl database
-- Implement coherence checking (orphan rule, overlap)
-- Resolve associated types
-- Handle trait bounds in generics
+== 10.3 Suggested Implementation Order
 
-## 10.3 Suggested Implementation Order
+[arabic]
+. *Lexer {plus} Parser* (2-3 weeks)
+* Use parser combinator or generator
+* Build CST, then desugar to AST
+* Include module syntax
+. *Basic Type Checker* (3-4 weeks)
+* Simple types first (Int, Bool, functions)
+* Add records (non-polymorphic)
+* Add variants
+. *Module System* (1-2 weeks)
+* Name resolution across modules
+* Visibility checking
+* Import/export
+. *Ownership System* (2-3 weeks)
+* Add own/ref/mut modifiers
+* Implement linear type checking
+* Implement borrow checking
+. *Row Polymorphism* (2-3 weeks)
+* Add row variables
+* Implement row unification
+* Handle lacks constraints
+. *Traits* (2-3 weeks)
+* Trait declarations
+* Impl blocks
+* Trait bounds
+* Associated types
 
-1. **Lexer + Parser** (2-3 weeks)
-   - Use parser combinator or generator
-   - Build CST, then desugar to AST
-   - Include module syntax
+[arabic, start=8]
+. *Extensible Effects* (2-3 weeks)
+* Effect declarations
+* Effect polymorphism
+* Effect constraint propagation
+* Basic handlers (if desired)
+. *WASM Backend* (4-6 weeks)
+* Implement type mapping
+* Emit WASM-GC
+* Handle closures
+* Monomorphization
+* Generate JS glue
 
-2. **Basic Type Checker** (3-4 weeks)
-   - Simple types first (Int, Bool, functions)
-   - Add records (non-polymorphic)
-   - Add variants
+== 10.4 Testing Strategy
 
-3. **Module System** (1-2 weeks)
-   - Name resolution across modules
-   - Visibility checking
-   - Import/export
-
-4. **Ownership System** (2-3 weeks)
-   - Add own/ref/mut modifiers
-   - Implement linear type checking
-   - Implement borrow checking
-
-5. **Row Polymorphism** (2-3 weeks)
-   - Add row variables
-   - Implement row unification
-   - Handle lacks constraints
-
-6. **Traits** (2-3 weeks)
-   - Trait declarations
-   - Impl blocks
-   - Trait bounds
-   - Associated types
-
-<!-- Phase 7 "Dependent Types" removed 2026-04-10 — deferred to the sibling
-     Typed WASM project. Refinement types return in a later phase with a
-     clean foundation. -->
-
-8. **Extensible Effects** (2-3 weeks)
-   - Effect declarations
-   - Effect polymorphism
-   - Effect constraint propagation
-   - Basic handlers (if desired)
-
-9. **WASM Backend** (4-6 weeks)
-   - Implement type mapping
-   - Emit WASM-GC
-   - Handle closures
-   - Monomorphization
-   - Generate JS glue
-
-## 10.4 Testing Strategy
-
-```
+....
 tests/
 ├── lexer/              # Token output tests
 ├── parser/             # AST output tests
@@ -1671,15 +1739,15 @@ tests/
 ├── effects/            # Effect tracking tests
 ├── codegen/            # WASM output tests
 └── e2e/                # Full program tests
-```
+....
 
----
+'''''
 
-# PART 11: ERROR MESSAGES
+= PART 11: ERROR MESSAGES
 
-## 11.1 Ownership Errors
+== 11.1 Ownership Errors
 
-```
+....
 error[E0501]: cannot use `file` after move
   --> src/main.affine:10:5
    |
@@ -1690,9 +1758,9 @@ error[E0501]: cannot use `file` after move
    |          ^^^^ value used after move
    |
    = help: consider using `ref file` if you need to read without consuming
-```
+....
 
-```
+....
 error[E0502]: cannot borrow `x` as mutable because it is also borrowed as immutable
   --> src/main.affine:5:10
    |
@@ -1702,11 +1770,11 @@ error[E0502]: cannot borrow `x` as mutable because it is also borrowed as immuta
    |             ^^^^^ mutable borrow occurs here
  6 |     println(r);
    |             - immutable borrow later used here
-```
+....
 
-## 11.2 Type Errors
+== 11.2 Type Errors
 
-```
+....
 error[E0308]: mismatched types
   --> src/main.affine:5:12
    |
@@ -1715,9 +1783,9 @@ error[E0308]: mismatched types
    |
    = note: `head` requires a non-empty vector
    = help: the type `Vec[0, T]` is empty, so `head` cannot be called
-```
+....
 
-```
+....
 error[E0309]: refinement predicate not satisfied
   --> src/main.affine:8:15
    |
@@ -1725,11 +1793,11 @@ error[E0309]: refinement predicate not satisfied
    |                  ^^ cannot prove `10 < 5`
    |
    = note: array has length 5, but index is 10
-```
+....
 
-## 11.3 Effect Errors
+== 11.3 Effect Errors
 
-```
+....
 error[E0601]: effect not handled
   --> src/main.affine:3:5
    |
@@ -1738,9 +1806,9 @@ error[E0601]: effect not handled
    |
    = note: function `pureFunction` is declared as `/ Pure`
    = help: either add `IO` to the function's effects or handle it
-```
+....
 
-```
+....
 warning[W0602]: owned resource may leak on exception
   --> src/main.affine:8:5
    |
@@ -1753,11 +1821,11 @@ warning[W0602]: owned resource may leak on exception
    |
    = help: use `try`/`finally` to ensure resource is closed
    = help: or use `withFile` pattern for automatic cleanup
-```
+....
 
-## 11.4 Trait Errors
+== 11.4 Trait Errors
 
-```
+....
 error[E0401]: no implementation of trait `Show` for type `MyType`
   --> src/main.affine:5:5
    |
@@ -1771,11 +1839,11 @@ error[E0401]: no implementation of trait `Show` for type `MyType`
    |         // ...
    |     }
    | }
-```
+....
 
-## 11.5 Module Errors
+== 11.5 Module Errors
 
-```
+....
 error[E0701]: cannot find `Vec` in this scope
   --> src/main.affine:3:10
    |
@@ -1783,9 +1851,9 @@ error[E0701]: cannot find `Vec` in this scope
    |            ^^^ not found in this scope
    |
    = help: add `use Data.Vec::Vec;` at the top of the file
-```
+....
 
-```
+....
 error[E0702]: function `helper` is private
   --> src/main.affine:5:5
    |
@@ -1793,15 +1861,16 @@ error[E0702]: function `helper` is private
    |     ^^^^^^^^^^^^^^ private function
    |
    = note: `helper` is defined in `Utils` but not exported
-```
+....
 
----
+'''''
 
-# APPENDIX A: GRAMMAR SUMMARY
+= APPENDIX A: GRAMMAR SUMMARY
 
-## A.1 Complete EBNF Grammar (Consolidated)
+== A.1 Complete EBNF Grammar (Consolidated)
 
-```ebnf
+[source,ebnf]
+----
 (* === PROGRAM === *)
 program       = [ module_decl ] { import_decl } { top_level } ;
 top_level     = type_decl | fn_decl | trait_decl | impl_block | effect_decl | const_decl ;
@@ -1933,28 +2002,43 @@ UNARY_OP      = /[-!~&*]/ ;
 CMP_OP        = /[<>=!]=?/ ;
 ASSIGN_OP     = /=/ | /[+\-*\/]=/ ;
 PRIM_TYPE     = 'Nat' | 'Int' | 'Bool' | 'Float' | 'String' | 'Char' | 'Type' | 'Never' ;
-```
+----
 
----
+'''''
 
-# APPENDIX B: CHANGE LOG
+= APPENDIX B: CHANGE LOG
 
-## B.1 Version 2.0 Changes (from 1.0)
+== B.1 Version 2.0 Changes (from 1.0)
 
-| Change | Description |
-|--------|-------------|
-| Partial by default | Functions are partial by default; only `total` annotation exists |
-| Quantity 0 semantics | Erased values are compile-time only, fully specified |
-| Strict `unsafe` | Only 6 specific operations permitted |
-| Row + ownership | Ownership distributes uniformly over row variables |
-| Refinement effects | Predicates can have effects (warning if not Pure) |
-| Traits | Full specification added |
-| Modules | Hierarchical module system with visibility |
-| Memory model | Stack-by-default, heap-on-escape strategy |
-| Extensible effects | User-defined effects replace fixed set |
-| Row restriction | Value-level `\` operator for splitting records |
-| Effect handlers | `handle`/`with`/`resume` syntax added |
+[width="100%",cols="39%,61%",options="header",]
+|===
+|Change |Description
+|Partial by default |Functions are partial by default; only `total`
+annotation exists
 
----
+|Quantity 0 semantics |Erased values are compile-time only, fully
+specified
 
-*End of AffineScript Language Specification v2.0*
+|Strict `unsafe` |Only 6 specific operations permitted
+
+|Row {plus} ownership |Ownership distributes uniformly over row
+variables
+
+|Refinement effects |Predicates can have effects (warning if not Pure)
+
+|Traits |Full specification added
+
+|Modules |Hierarchical module system with visibility
+
+|Memory model |Stack-by-default, heap-on-escape strategy
+
+|Extensible effects |User-defined effects replace fixed set
+
+|Row restriction |Value-level `++\++` operator for splitting records
+
+|Effect handlers |`handle`/`with`/`resume` syntax added
+|===
+
+'''''
+
+_End of AffineScript Language Specification v2.0_
