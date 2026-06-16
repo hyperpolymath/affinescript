@@ -11,6 +11,7 @@
     yet wired) constraint extractor — the algorithmic heart, verified before the
     CFG-extraction + parallel-run-diff increments land. *)
 
+open Affinescript
 open Borrow_polonius
 
 let check_mem name p l = Alcotest.(check bool) name true (List.mem p l)
@@ -95,6 +96,43 @@ let t_empty () =
   Alcotest.(check (list int)) "empty errors" [] d.Types.errors;
   Alcotest.(check int) "empty liveness" 0 (List.length d.Types.loan_live_at)
 
+(* ── M3 (2/3) : end-to-end extraction from REAL programs, diffed vs lexical ───── *)
+(* The payoff: extract facts from an actual .affine fixture, run the solver, and
+   check its verdict AGREES with the lexical checker (Borrow.check_program) — the
+   zero-divergence property M3's parallel-run gate will enforce corpus-wide. Scope
+   is straight-line bodies (see Borrow_extract); these fixtures qualify. *)
+let polonius_vs_lexical path =
+  match Test_e2e.parse_fixture (Test_e2e.fixture path) with
+  | Error m -> Alcotest.fail ("parse: " ^ m)
+  | Ok prog ->
+    match Test_e2e.resolve_program prog with
+    | Error m -> Alcotest.fail ("resolve: " ^ m)
+    | Ok (rc, _) ->
+      let symbols = rc.symbols in
+      let ctx = Borrow.build_context prog in
+      let polonius_err = Borrow_extract.program_has_borrow_error ctx symbols prog in
+      let lexical_err =
+        match Borrow.check_program symbols prog with Error _ -> true | Ok () -> false in
+      (polonius_err, lexical_err)
+
+(* #554 straight-line use-after-move: both tiers must flag it *)
+let t_extract_uam () =
+  let (pol, lex) = polonius_vs_lexical "borrow_callee_returned_borrow_uam.affine" in
+  Alcotest.(check bool) "Polonius flags the use-after-move" true pol;
+  Alcotest.(check bool) "agrees with lexical verdict" lex pol
+
+(* NLL-reordered (read *r before the move): both tiers must accept *)
+let t_extract_nll_ok () =
+  let (pol, lex) = polonius_vs_lexical "borrow_callee_returned_borrow_nll_ok.affine" in
+  Alcotest.(check bool) "Polonius accepts the NLL-safe form" false pol;
+  Alcotest.(check bool) "agrees with lexical verdict" lex pol
+
+(* callee returns a VALUE (empty return-borrow summary) ⇒ arg movable, no error *)
+let t_extract_value_return_ok () =
+  let (pol, lex) = polonius_vs_lexical "borrow_callee_value_return_ok.affine" in
+  Alcotest.(check bool) "Polonius: no loan, no error" false pol;
+  Alcotest.(check bool) "agrees with lexical verdict" lex pol
+
 let tests =
   [
     Alcotest.test_case "rule1: liveness straight-line" `Quick t_live_straight;
@@ -107,4 +145,8 @@ let tests =
     Alcotest.test_case "two loans, one conflicts → one error" `Quick t_two_loans_one_conflicts;
     Alcotest.test_case "subset transitive closure (reborrow chaining)" `Quick t_subset_closure;
     Alcotest.test_case "empty facts → empty derived" `Quick t_empty;
+    (* M3 (2/3): extraction from real programs, diffed against the lexical checker *)
+    Alcotest.test_case "extract+solve: #554 UAM flagged, agrees with lexical" `Quick t_extract_uam;
+    Alcotest.test_case "extract+solve: NLL-safe accepted, agrees with lexical" `Quick t_extract_nll_ok;
+    Alcotest.test_case "extract+solve: value-return no error, agrees with lexical" `Quick t_extract_value_return_ok;
   ]

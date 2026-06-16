@@ -23,6 +23,7 @@
   affine_vscode_adapter_source
   ast
   borrow
+  borrow_extract
   c_codegen
   cafe_face
   codegen
@@ -101,7 +102,7 @@
   wasm_gc_encode
   wasi_runtime
   wgsl_codegen)
- (libraries str unix sedlex fmt menhirLib yojson)
+ (libraries str unix sedlex fmt menhirLib yojson borrow_polonius)
  ; Warnings 8 (partial-match) and 9 (missing-record-fields) are demoted from
  ; error to warning so that adding new AST variants (e.g. FnExtern, TyExtern)
  ; doesn't require updating every backend's match in lock-step. Critical

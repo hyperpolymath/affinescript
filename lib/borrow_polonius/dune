@@ -3,6 +3,7 @@
 ; behind a parallel-run diff against the lexical checker; M4 cuts over.
 (library
  (name borrow_polonius)
+ (public_name affinescript.borrow_polonius)
  (modes byte native)
  (preprocess
   (pps ppx_deriving.show ppx_deriving.eq)))
