@@ -239,9 +239,25 @@ let rec gen_expr ctx (expr : expr) : string =
   | ExprIndex (arr, idx) ->
       Printf.sprintf "(%s)[%s]" (gen_expr ctx arr) (gen_expr ctx idx)
   | ExprSpan (inner, _) -> gen_expr ctx inner
-  | ExprHandle { eh_body; eh_handlers = _ } -> gen_expr ctx eh_body
-  | ExprResume (Some e) -> gen_expr ctx e
-  | ExprResume None     -> "((void)0)"
+  | ExprHandle _ ->
+      (* #555: compiling the body and dropping every handler arm (the previous
+         behaviour) was a silent wrong-value miscompile — `handle 41 { return(v)
+         => v + 1 }` emitted 41 instead of 42, and a `perform` would never
+         dispatch to its arm.  The C backend has no handler-dispatch / CPS
+         transform, so fail loudly (matching the WASM, WasmGC, Deno-ESM and
+         JS-text backends) rather than emit wrong code; use the interpreter
+         (`--interp` / `-i`) for algebraic effects. *)
+      failwith
+        "effect handler (handle { ... }) in the C backend — handler arms \
+         cannot be dispatched (requires a CPS transform; Refs #555); \
+         use `--interp` / `-i`"
+  | ExprResume _ ->
+      (* `resume` is only meaningful inside a handler arm; the enclosing
+         `handle` already fails above.  Fail consistently rather than emit a
+         silent argument passthrough (issue #555). *)
+      failwith
+        "`resume` expression in the C backend — only valid inside a `handle` \
+         block (Refs #555); use `--interp` / `-i`"
   | ExprRecord { er_fields; _ } ->
       let fs = List.map (fun (id, e_opt) ->
         let v = match e_opt with Some e -> gen_expr ctx e | None -> mangle id.name in

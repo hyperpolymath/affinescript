@@ -2281,11 +2281,38 @@ let test_handle_deno_loud_fail () =
       Alcotest.(check bool) "error names the handler fence" true
         (contains_str "effect handler" msg)
 
+let test_handle_c_loud_fail () =
+  let result =
+    let open Result in
+    let ( let* ) = bind in
+    let* (prog, resolve_ctx) = run_frontend (fixture "handle_return_arm.affine") in
+    C_codegen.codegen_c prog resolve_ctx.symbols
+  in
+  match result with
+  | Ok _ ->
+      Alcotest.fail
+        "expected loud failure for handle on the C backend (Refs #555); \
+         got Ok — silent arm-drop has regressed"
+  | Error msg ->
+      Alcotest.(check bool) "error names the handler fence" true
+        (contains_str "effect handler" msg)
+
+(* NOTE: the Lean and Why3 text backends are experimental stubs whose
+   block-lowering only emits `let` bindings — a `return` statement (and thus
+   any expression it wraps, including `handle`) is silently dropped, so
+   `fn main() -> Int { return handle ... }` emits `def main : Int := ()`.
+   That is a *broader* incompleteness than #555 (they miscompile far more than
+   handlers), so a handle-specific fence there would be misleading. They are
+   flagged separately rather than fenced here; the reachable #555 codegen
+   holes were the production backends (WASM / WasmGC / Deno-ESM / JS-text)
+   and C, all fenced + tested above. *)
+
 let handler_fence_tests = [
   Alcotest.test_case "interp: return-arm handle still evaluates" `Quick test_handle_interp_still_works;
   Alcotest.test_case "wasm: handle → loud UnsupportedFeature"     `Quick test_handle_wasm_loud_fail;
   Alcotest.test_case "js-text: handle → loud failure"             `Quick test_handle_js_loud_fail;
   Alcotest.test_case "deno-esm: handle → loud failure"            `Quick test_handle_deno_loud_fail;
+  Alcotest.test_case "c: handle → loud failure"                   `Quick test_handle_c_loud_fail;
 ]
 
 (* ============================================================================
