@@ -202,6 +202,17 @@ type expr =
           that `synth` typed as `Float`; the wasm backend loads it with an
           8-byte stride and `f64.load`. The interpreter re-dispatches to the
           ordinary {!ExprIndex}. *)
+  | ExprFloatTuple of expr list
+      (** Tuple literal whose fields are *all* `Float` (homogeneous). Laid out
+          with 8-byte f64 cells (no length header, offset `i*8`). Produced only
+          by the elaboration from an {!ExprTuple} that `synth` typed all-`Float`.
+          A *mixed* tuple (e.g. `(Int, Float)`) is NOT rewritten — its
+          type-dependent field offsets are not yet handled, so it keeps loud-
+          failing (issue-draft 05). *)
+  | ExprFloatTupleIndex of expr * int
+      (** `t.i` whose tuple is all-`Float` — 8-byte f64 load at offset `i*8`.
+          Dual of {!ExprFloatTuple}; re-dispatched to {!ExprTupleIndex} by the
+          interpreter. *)
   | ExprUnary of unary_op * expr
   | ExprBlock of block
   | ExprReturn of expr option

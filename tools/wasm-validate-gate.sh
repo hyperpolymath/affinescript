@@ -110,12 +110,20 @@ run () {  # <label> <src> <token>   — must execute on wasmtime and print <toke
 val "Array[Float] param read"  'fn rd(i: Int, a: Array[Float]) -> Float { a[i] }'
 val "Array[Float] construct"   'fn main() -> Int { let a: Array[Float] = [1.0, 2.5]; 0 }'
 val "Array[Float] write"       'fn k(i: Int, mut o: Array[Float], a: Array[Float]) -> Unit { o[i] = a[i]; }'
+val "all-Float tuple t.i"      'fn proj() -> Float { let t: (Float, Float) = (1.0, 2.0); t.0 }'
 run "Array[Float] read round-trip" \
   'fn main() -> Int { let a: Array[Float] = [1.0, 2.5, 4.0]; if a[1] > 2.0 { println("FARR_OK"); 0 } else { println("FARR_BAD"); 1 } }' \
   'FARR_OK'
 run "Array[Float] write round-trip" \
   'fn main() -> Int { let s: Array[Float] = [3.5, 7.25]; let mut d: Array[Float] = [0.0, 0.0]; d[1] = s[0]; if d[1] > 3.0 { println("WRITE_OK"); 0 } else { println("WRITE_BAD"); 1 } }' \
   'WRITE_OK'
+val "nested Array[Array[Float]]" 'fn h(a: Array[Array[Float]]) -> Float { a[0][1] }'
+run "all-Float tuple round-trip" \
+  'fn main() -> Int { let t: (Float, Float) = (1.5, 9.5); if t.1 > t.0 { println("FTUP_OK"); 0 } else { println("FTUP_BAD"); 1 } }' \
+  'FTUP_OK'
+run "Array of all-Float tuples round-trip" \
+  'fn main() -> Int { let a: Array[(Float, Float)] = [(1.0, 2.0), (3.0, 4.0)]; let p: (Float, Float) = a[1]; if p.0 > 2.5 { println("AFT_OK"); 0 } else { println("AFT_BAD"); 1 } }' \
+  'AFT_OK'
 
 echo "── Float-in-heap still-unhandled shapes must LOUD-FAIL (issue-draft 05) ──"
 rej () {  # <label> <src>
@@ -128,8 +136,8 @@ rej () {  # <label> <src>
     bad "$1 — failed, but not via the Float-heap guard: $(tail -1 "$tmp/.r")"
   fi
 }
-rej "Float tuple literal"       'fn f() -> Float { let t: (Float, Float) = (1.0, 2.0); t.0 }'
-rej "Array of Float-tuples"     'fn f(a: Array[(Float, Float)]) -> Unit { }'
+rej "mixed (Int, Float) tuple"  'fn f() -> Float { let t: (Int, Float) = (1, 2.0); t.1 }'
+rej "record with Float field"   'fn f(r: {x: Float, y: Float}) -> Float { r.x }'
 
 echo
 printf '%s passed, %s failed, %s skipped (allowlisted carve-outs)\n' "$pass" "$fail" "$skip"

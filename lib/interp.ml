@@ -165,6 +165,14 @@ let rec eval (env : env) (expr : expr) : value result =
     (* Float heap wall: re-dispatch to the ordinary index. *)
     eval env (ExprIndex (arr, idx))
 
+  | ExprFloatTuple elements ->
+    (* Float heap wall: re-dispatch to the ordinary tuple. *)
+    eval env (ExprTuple elements)
+
+  | ExprFloatTupleIndex (tup, i) ->
+    (* Float heap wall: re-dispatch to the ordinary tuple index. *)
+    eval env (ExprTupleIndex (tup, i))
+
   | ExprBinary (left, op, right) ->
     let* left_val = eval env left in
     let* right_val = eval env right in

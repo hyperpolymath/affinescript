@@ -71,7 +71,7 @@ let rec visit_expr (visit : expr -> unit) (e : expr) : unit =
     List.iter go_arm m.em_arms
   | ExprLambda l -> go_expr l.elam_body
   | ExprField (e, _) | ExprTupleIndex (e, _) | ExprRowRestrict (e, _)
-  | ExprSpan (e, _) | ExprUnary (_, e) ->
+  | ExprSpan (e, _) | ExprUnary (_, e) | ExprFloatTupleIndex (e, _) ->
     go_expr e
   | ExprIndex (a, b) | ExprBinary (a, _, b) | ExprStringConcat (a, b)
   | ExprStringEq (a, b, _) | ExprStringRel (a, b, _) | ExprFloatBinary (a, _, b)
@@ -82,7 +82,8 @@ let rec visit_expr (visit : expr -> unit) (e : expr) : unit =
        (which sees the original ExprBinary) and the wasm backend. *)
     go_expr a;
     go_expr b
-  | ExprTuple es | ExprArray es | ExprFloatArray es -> List.iter go_expr es
+  | ExprTuple es | ExprArray es | ExprFloatArray es | ExprFloatTuple es ->
+    List.iter go_expr es
   | ExprRecord r ->
     List.iter
       (fun (_, eo) -> match eo with Some e -> go_expr e | None -> ())

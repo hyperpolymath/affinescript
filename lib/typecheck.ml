@@ -974,8 +974,12 @@ let rec synth (ctx : context) (expr : expr) : ty result =
     end
 
   (* Tuple *)
-  | ExprTuple exprs ->
+  | ExprTuple exprs as tup_node ->
     let* tys = synth_list ctx exprs in
+    (* Float heap wall: an all-`Float` tuple lays out 8-byte f64 cells. Mixed
+       tuples keep the i32 path (type-dependent offsets not yet handled). *)
+    if tys <> [] && List.for_all (fun t -> match repr t with TCon "Float" -> true | _ -> false) tys
+    then float_heap_sites := tup_node :: !float_heap_sites;
     Ok (TTuple tys)
 
   (* Array *)
@@ -1067,12 +1071,18 @@ let rec synth (ctx : context) (expr : expr) : ty result =
     end
 
   (* Tuple indexing *)
-  | ExprTupleIndex (tup, idx) ->
+  | ExprTupleIndex (tup, idx) as tidx_node ->
     let* tup_ty = synth ctx tup in
     begin match repr tup_ty with
       | TTuple tys ->
-        if idx >= 0 && idx < List.length tys then
+        if idx >= 0 && idx < List.length tys then begin
+          (* Float heap wall: record `t.i` only when the WHOLE tuple is all-
+             `Float`, so the 8-byte `i*8` offset the f64 load uses is valid (a
+             mixed tuple's offsets depend on preceding field sizes). *)
+          if List.for_all (fun t -> match repr t with TCon "Float" -> true | _ -> false) tys
+          then float_heap_sites := tidx_node :: !float_heap_sites;
           Ok (List.nth tys idx)
+        end
         else
           Error (TupleIndexOutOfBounds { index = idx; length = List.length tys })
       | _ ->
@@ -1579,14 +1589,24 @@ let rec elab_expr (e : expr) : expr =
                 em_arms = List.map elab_arm r.em_arms }
   | ExprLambda r -> ExprLambda { r with elam_body = elab_expr r.elam_body }
   | ExprApp (f, args) -> ExprApp (elab_expr f, List.map elab_expr args)
-  | ExprTupleIndex (e1, i) -> ExprTupleIndex (elab_expr e1, i)
+  | ExprTupleIndex (e1, i) ->
+    (* Float heap wall: rewrite an all-`Float` tuple's `t.i` into the f64 load. *)
+    if List.memq e !float_heap_sites
+    then ExprFloatTupleIndex (elab_expr e1, i)
+    else ExprTupleIndex (elab_expr e1, i)
+  | ExprFloatTupleIndex (e1, i) -> ExprFloatTupleIndex (elab_expr e1, i)
   | ExprIndex (a, i) ->
     (* Float heap wall: rewrite a `Float`-yielding index into the f64 load. *)
     if List.memq e !float_heap_sites
     then ExprFloatIndex (elab_expr a, elab_expr i)
     else ExprIndex (elab_expr a, elab_expr i)
   | ExprFloatIndex (a, i) -> ExprFloatIndex (elab_expr a, elab_expr i)
-  | ExprTuple es -> ExprTuple (List.map elab_expr es)
+  | ExprTuple es ->
+    (* Float heap wall: rewrite an all-`Float` tuple into 8-byte f64 cells. *)
+    if List.memq e !float_heap_sites
+    then ExprFloatTuple (List.map elab_expr es)
+    else ExprTuple (List.map elab_expr es)
+  | ExprFloatTuple es -> ExprFloatTuple (List.map elab_expr es)
   | ExprArray es ->
     (* Float heap wall: rewrite an [Float]-element array into 8-byte f64 cells. *)
     if List.memq e !float_heap_sites

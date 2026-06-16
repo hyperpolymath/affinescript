@@ -90,14 +90,27 @@ codegen-local fix unsafe). New constructors (`Ast.ExprFloatArray`,
 **Arrays DONE** (`Array[Float]`, incl. nested `Array[Array[Float]]`): construct,
 read `a[i]`, and write `a[i] = e` all validate *and* round-trip the f64 correctly
 on wasmtime (`FARR_OK` / `WRITE_OK`). `guard_no_heap_float`'s `Array` case is
-lifted accordingly; `just wasm-validate` now pins five positive Array[Float]
-checks + the still-unhandled loud-fails. 477 tests green.
+lifted accordingly.
 
-**Still loud-failing (next increments):** `Float` **tuples** (reproducer (b)),
-`Float` **records**, captured `Float` in closures, and `Array` of float-bearing
-aggregates. Compound assignment (`a[i] += x`) to a float element also loud-fails
-(rare; rewrite as `a[i] = a[i] + x`). The architecture (record→elaborate→lower)
-is proven; these are more of the same pattern.
+**All-`Float` tuples DONE** (reproducer (b)): `(Float, …, Float)` construct +
+`t.i` read via `Ast.ExprFloatTuple` / `Ast.ExprFloatTupleIndex` (8-byte f64
+cells, no length header, offset `i*8`). Validates + round-trips (`FTUP_OK`).
+Composition falls out for free: **`Array[(Float, Float)]`** (array of i32
+pointers to f64-tuples) construct + `a[i].0` read also round-trips (`AFT_OK`).
+A *mixed* tuple (`(Int, Float)`) keeps loud-failing — its field offsets are
+type-dependent and not yet computed. `guard`'s `TyTuple` case lifts only for
+all-scalar-`Float` tuples.
+
+`just wasm-validate` pins **9 positive** Float-in-heap checks (incl. 4 wasmtime
+round-trips) + the loud-fails. 477 tests green.
+
+**Still loud-failing (next increments):** `Float` **records** (heterogeneous
+fields → type-dependent offsets, the same problem as mixed tuples), **mixed
+Int/Float tuples**, and captured `Float` in **closures**. Compound assignment
+(`a[i] += x`) to a float element also loud-fails (rare; rewrite as
+`a[i] = a[i] + x`). The architecture (record→elaborate→lower) is proven; the
+remaining shapes need a richer per-field offset/cell-kind record rather than the
+membership-set marker used so far.
 
 ## Related
 
