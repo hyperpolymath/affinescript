@@ -1,0 +1,17 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// issue-draft 08 — partial: only one branch borrows `a` (the other borrows
+// `b`). Moving `a` must still be rejected, because the union of branch origins
+// includes `a`.
+fn pick(ref x: Int) -> ref Int { return &x; }
+fn consume(own v: Int) -> Int { return v; }
+
+fn main() -> Int {
+  let a: Int = 7;
+  let b: Int = 9;
+  let c: Bool = true;
+  let r = if c { pick(a) } else { pick(b) };
+  let _g = consume(a);
+  return *r;
+}

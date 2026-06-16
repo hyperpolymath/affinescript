@@ -5433,6 +5433,74 @@ let test_borrow_callee_returned_borrow_reassign_summary () =
     Alcotest.fail "#554 reassigned-local summary regressed: the summary went \
                    stale on the initial binding — use-after-move accepted"
 
+(* issue-draft 08 — conditional-origin borrow escape. A borrow bound through an
+   `if`/`match`/block value carries the argument borrow out of the construct; a
+   later move of that argument while the binder is live is a use-after-move.
+   Pre-fix, the branch/block lexical restore swallowed the escaping borrow and
+   the `if`/`match` join intersected the per-branch records away, so the move
+   was accepted. The fix re-publishes the UNION of branch/tail escaping borrows.
+   Four reject-cases (if / block / multi-arm match / partial) and two anti-over-
+   rejection accept-cases (NLL use-before-move; unrelated move). *)
+let test_borrow_cond_origin_if_uam () =
+  match borrow_result (fixture "borrow_cond_origin_if_uam.affine") with
+  | Error (Borrow.MoveWhileBorrowed _) -> ()
+  | Error e ->
+    Alcotest.fail ("cond-origin if: expected MoveWhileBorrowed (move of `a` \
+                    while the if-bound borrow held by `r` is live), got: "
+                   ^ Borrow.format_borrow_error e)
+  | Ok () ->
+    Alcotest.fail "cond-origin if regressed: a borrow bound through `if` did \
+                   not keep the argument borrowed — use-after-move accepted"
+
+let test_borrow_cond_origin_block_uam () =
+  match borrow_result (fixture "borrow_cond_origin_block_uam.affine") with
+  | Error (Borrow.MoveWhileBorrowed _) -> ()
+  | Error e ->
+    Alcotest.fail ("cond-origin block: expected MoveWhileBorrowed (block value \
+                    carries the borrow of `a` out), got: "
+                   ^ Borrow.format_borrow_error e)
+  | Ok () ->
+    Alcotest.fail "cond-origin block regressed: `let r = { pick(a) }` dropped \
+                   the borrow of `a` — use-after-move accepted"
+
+let test_borrow_cond_origin_match_uam () =
+  match borrow_result (fixture "borrow_cond_origin_match_uam.affine") with
+  | Error (Borrow.MoveWhileBorrowed _) -> ()
+  | Error e ->
+    Alcotest.fail ("cond-origin match: expected MoveWhileBorrowed (union of \
+                    arm-escaping borrows keeps `a` borrowed), got: "
+                   ^ Borrow.format_borrow_error e)
+  | Ok () ->
+    Alcotest.fail "cond-origin match regressed: a multi-arm match value did \
+                   not keep the argument borrowed — use-after-move accepted"
+
+let test_borrow_cond_origin_partial_uam () =
+  match borrow_result (fixture "borrow_cond_origin_partial_uam.affine") with
+  | Error (Borrow.MoveWhileBorrowed _) -> ()
+  | Error e ->
+    Alcotest.fail ("cond-origin partial: expected MoveWhileBorrowed (one branch \
+                    borrows `a`, so the union includes `a`), got: "
+                   ^ Borrow.format_borrow_error e)
+  | Ok () ->
+    Alcotest.fail "cond-origin partial regressed: moving `a` borrowed in only \
+                   one branch was accepted — union of origins dropped `a`"
+
+let test_borrow_cond_origin_nll_ok () =
+  match borrow_result (fixture "borrow_cond_origin_nll_ok.affine") with
+  | Ok () -> ()
+  | Error e ->
+    Alcotest.fail ("cond-origin anti-over-rejection: reading `*r` before moving \
+                    `a` must pass under NLL last-use, got: "
+                   ^ Borrow.format_borrow_error e)
+
+let test_borrow_cond_origin_unrelated_ok () =
+  match borrow_result (fixture "borrow_cond_origin_unrelated_ok.affine") with
+  | Ok () -> ()
+  | Error e ->
+    Alcotest.fail ("cond-origin precision: moving an unrelated value `d` (not in \
+                    the {a,b} origin union) must stay legal, got: "
+                   ^ Borrow.format_borrow_error e)
+
 let borrow_tests = [
   Alcotest.test_case "BorrowOutlivesOwner: &local escapes its block"
     `Quick test_borrow_outlives_owner;
@@ -5512,6 +5580,18 @@ let borrow_tests = [
     `Quick test_borrow_reassign_alias_survives;
   Alcotest.test_case "#554: reassigned returned ref-local unions summary origins"
     `Quick test_borrow_callee_returned_borrow_reassign_summary;
+  Alcotest.test_case "issue-08 cond-origin: borrow through `if` keeps arg borrowed"
+    `Quick test_borrow_cond_origin_if_uam;
+  Alcotest.test_case "issue-08 cond-origin: borrow through block keeps arg borrowed"
+    `Quick test_borrow_cond_origin_block_uam;
+  Alcotest.test_case "issue-08 cond-origin: borrow through multi-arm match keeps arg borrowed"
+    `Quick test_borrow_cond_origin_match_uam;
+  Alcotest.test_case "issue-08 cond-origin: partial (one branch) move still rejected"
+    `Quick test_borrow_cond_origin_partial_uam;
+  Alcotest.test_case "issue-08 cond-origin anti-over-rejection: NLL use-before-move OK"
+    `Quick test_borrow_cond_origin_nll_ok;
+  Alcotest.test_case "issue-08 cond-origin precision: unrelated move stays legal"
+    `Quick test_borrow_cond_origin_unrelated_ok;
 ]
 
 (* ============================================================================
