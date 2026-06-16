@@ -52,8 +52,10 @@ else
   bad "llc lowering failed"
 fi
 
-if "$GCC" "$tmp/h.o" -o "$tmp/h" >"$tmp/.link" 2>&1; then
-  ok "link via $GCC"
+# -no-pie: the runtime references glibc globals (e.g. @stdin) with absolute
+# R_RISCV_HI20 relocations, which a PIE forbids; a non-PIE executable allows them.
+if "$GCC" -no-pie "$tmp/h.o" -o "$tmp/h" >"$tmp/.link" 2>&1; then
+  ok "link via $GCC -no-pie"
 else
   bad "link failed: $(tail -1 "$tmp/.link")"
 fi

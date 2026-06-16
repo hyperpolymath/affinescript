@@ -110,11 +110,14 @@ AffineScript  --(lib/llvm_codegen.ml)-->  LLVM IR (.ll, triple=aarch64-linux-and
   `define i32 @main()` returning `0`. **Verified end-to-end: AffineScript → LLVM
   IR → x86 native binary prints `Hello, AffineScript!` and exits 0** (`just
   native-run`). This is the native tier's link+run completion, host-arch-verified.
-* *RISC-V run* (`just riscv-run-validate`, `tools/riscv-run-gate.sh`): compiles
-  `examples/hello.affine` → riscv64 (rv64gc/lp64d) → links via
-  `riscv64-linux-gnu-gcc` → runs under `qemu-riscv64`, asserting stdout. Skips
-  cleanly until `sudo apt install gcc-riscv64-linux-gnu qemu-user` provides the
-  cross-toolchain (codegen + object already verified; only link+run await it).
+* *RISC-V run — VERIFIED end-to-end (2026-06-16).* `just riscv-run-validate`
+  (`tools/riscv-run-gate.sh`) compiles `examples/hello.affine` → riscv64
+  (rv64gc/lp64d) → links via `riscv64-linux-gnu-gcc -no-pie` → runs under
+  `qemu-riscv64`: **prints `Hello, AffineScript!`, exit 0** (4/4). `-no-pie` is
+  required because the runtime references glibc globals (`@stdin`) with absolute
+  `R_RISCV_HI20` relocations a PIE forbids. The gate SKIPS cleanly on hosts
+  without `gcc-riscv64-linux-gnu` + `qemu-user`. So AffineScript now runs natively
+  on RISC-V — the downstream collaboration's request, met end-to-end.
 
 == Verification
 
