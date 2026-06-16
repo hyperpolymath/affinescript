@@ -1,0 +1,29 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2024-2026 hyperpolymath (Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>)
+= Lesson 8: Generic Types
+
+== Type Parameters
+
+Write functions that work with any type:
+
+[source,affinescript]
+----
+fn identity[T](x: T) -> T {
+  return x;
+}
+----
+
+== Generic Data Structures
+
+[source,affinescript]
+----
+type Box[T] = {
+  value: T
+};
+
+fn make_box[T](x: T) -> Box[T] {
+  return { value: x };
+}
+----
+
+Next: link:lesson-09-modules.adoc[Lesson 9: Modules]

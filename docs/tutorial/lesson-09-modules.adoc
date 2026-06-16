@@ -1,0 +1,38 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2024-2026 hyperpolymath (Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>)
+= Lesson 9: Modules and Imports
+
+== Module Declaration
+
+[source,affinescript]
+----
+module math.geometry;
+
+pub fn area(radius: Float) -> Float {
+  return 3.14 * radius * radius;
+}
+----
+
+== Importing
+
+[source,affinescript]
+----
+use math.geometry;
+
+fn main() -> Float {
+  return geometry.area(5.0);
+}
+----
+
+== Selective Imports
+
+[source,affinescript]
+----
+use math.geometry::{area, circumference};
+
+fn main() -> Float {
+  return area(5.0) + circumference(5.0);
+}
+----
+
+Next: link:lesson-10-building.adoc[Lesson 10: Building Real Programs]

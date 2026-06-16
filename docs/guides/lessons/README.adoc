@@ -1,0 +1,142 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2024-2026 hyperpolymath (Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>)
+= AffineScript in 10 Lessons
+
+*Learn AffineScript from zero to hero in 10 progressive lessons.*
+
+Each lesson builds on the previous one. Complete them in order for the
+best experience.
+
+'''''
+
+== Course Overview
+
+[width="100%",cols="29%,24%,20%,27%",options="header",]
+|===
+|Lesson |Topic |Time |Status
+|link:01-hello-affinescript.adoc[1] |*Hello AffineScript* - Variables,
+types, arithmetic |15 min |✅ Complete
+
+|2 |*Functions & Pattern Matching* - Define functions, match expressions
+|20 min |🔄 In Progress
+
+|3 |*Affine Types Basics* - Ownership, move semantics |25 min |📝
+Planned
+
+|4 |*Borrowing & References* - `own` vs `ref` keywords |25 min |📝
+Planned
+
+|5 |*Dependent Types* - Length-indexed vectors, type-level computation
+|30 min |📝 Planned
+
+|6 |*Refinement Types* - Compile-time constraints, safe division |25 min
+|📝 Planned
+
+|7 |*Effect System* - Tracking I/O, exceptions, purity |30 min |📝
+Planned
+
+|8 |*Row Polymorphism* - Structural typing, flexible records |25 min |📝
+Planned
+
+|9 |*Error Handling* - `Option`, `Result`, try/catch |30 min |📝 Planned
+
+|10 |*Building Real Programs* - Putting it all together |40 min |📝
+Planned
+|===
+
+*Total time:* ~4.5 hours
+
+'''''
+
+== Prerequisites
+
+* Basic programming experience (any language)
+* Familiarity with variables, functions, types
+* No prior functional programming knowledge required
+
+'''''
+
+== How to Use These Lessons
+
+=== Option 1: Read Online
+
+Each lesson is a markdown file you can read on GitHub.
+
+=== Option 2: Interactive Playground
+
+[arabic]
+. Open the link:../../../playground/test.html[Playground]
+. Load the lesson example (e.g., `examples/lessons/01++_++hello.affine`)
+. Follow along by running code as you read
+
+=== Option 3: Clone and Experiment
+
+[source,bash]
+----
+git clone https://github.com/hyperpolymath/affinescript
+cd affinescript
+./affinescript examples/lessons/01_hello.affine
+----
+
+'''''
+
+== What You’ll Learn
+
+By the end of this course, you’ll understand:
+
+✅ *Basic Syntax* - Variables, functions, types ✅ *Affine Types* -
+Resource safety without complexity ✅ *Dependent Types* - Compile-time
+correctness proofs ✅ *Refinement Types* - Constrained values (non-zero,
+positive, etc.) ✅ *Effect System* - Track side effects in types ✅ *Row
+Polymorphism* - Flexible structural typing ✅ *Error Handling* - Option,
+Result, exceptions
+
+And you’ll be able to: - Write type-safe, memory-safe programs - Prove
+correctness at compile time - Build real applications with confidence
+
+'''''
+
+== Learning Path
+
+=== Beginner Track (Lessons 1-2)
+
+Start here if you’re new to AffineScript or typed languages.
+
+=== Intermediate Track (Lessons 3-6)
+
+Core type system features. This is where AffineScript shines.
+
+=== Advanced Track (Lessons 7-10)
+
+Real-world programming with effects, errors, and composition.
+
+'''''
+
+== Additional Resources
+
+* *link:../WHAT-MAKES-IT-BRILLIANT.adoc[What Makes AffineScript
+Brilliant]* - Why learn this language?
+* *link:../../specs/affinescript-spec.md[Language Specification]* -
+Complete formal spec
+* *link:../../../playground/test.html[Playground]* - Try it in your
+browser
+* *link:../../../examples/[Examples]* - More code samples
+
+'''''
+
+== Get Help
+
+* *Questions?* Open an issue on
+https://github.com/hyperpolymath/affinescript/issues[GitHub]
+* *Found a bug in lessons?* PRs welcome!
+* *Want to contribute?* See
+link:../../../CONTRIBUTING.md[CONTRIBUTING.md]
+
+'''''
+
+== Start Learning!
+
+*Ready?* → link:01-hello-affinescript.adoc[Lesson 1: Hello AffineScript →]
+
+*Not sure if this is for you?* → link:../WHAT-MAKES-IT-BRILLIANT.adoc[What
+Makes It Brilliant]

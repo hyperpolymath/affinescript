@@ -1,0 +1,48 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2024-2026 hyperpolymath (Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>)
+= Lesson 2: Functions and Ownership
+
+Learn how AffineScript’s ownership system works with functions.
+
+== Function Basics
+
+Functions require explicit return statements:
+
+[source,affinescript]
+----
+fn add(x: Int, y: Int) -> Int {
+  return x + y;
+}
+----
+
+== Ownership Modes
+
+=== Owned Parameters (own)
+
+Function takes ownership:
+
+[source,affinescript]
+----
+fn consume(own x: Int) -> Int {
+  return x;
+}
+let value = 42;
+let result = consume(value);  // value moved
+// value cannot be used here!
+----
+
+=== Shared Borrows (ref)
+
+Function borrows without taking ownership:
+
+[source,affinescript]
+----
+fn read(ref x: Int) -> Int {
+  return x;
+}
+let value = 42;
+let result = read(value);
+let also = value;  // OK - still valid!
+----
+
+Next: link:lesson-03-data.adoc[Lesson 3: Data Structures]
