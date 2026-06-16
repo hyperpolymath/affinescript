@@ -150,6 +150,13 @@ android-validate:
 compile-android FILE OUT:
     AFFINESCRIPT_LLVM_TRIPLE=aarch64-linux-android dune exec affinescript -- compile {{FILE}} -o {{OUT}}
 
+# Prove the AffineScript <-> typed-wasm contract across repos: AffineScript
+# emits the typedwasm.ownership carrier; the sibling typed-wasm Rust verifier
+# (tw-verify) consumes it. Asserts both verifiers agree (clean -> 0, drop -> 1).
+# Set TYPED_WASM_DIR if hyperpolymath/typed-wasm is not at ../../typed-wasm.
+typed-wasm-validate:
+    ./tools/typed-wasm-roundtrip-gate.sh
+
 # ── Compiler subcommands ──────────────────────────────────────────────────────
 
 # Run the lexer on a file
