@@ -1,0 +1,21 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// ADR-022 M3 statement-level control flow — anti-over-rejection. `r`'s last use
+// (`*r`) comes BEFORE the `if`, so under NLL last-use the borrow of `a` has
+// expired by the time the branch moves `a`. The move is therefore legal. Both
+// tiers must accept; the extractor's per-binder kill point (last-use + 1) keeps
+// the loan dead at the branch point even though the move is nested.
+fn pick(ref x: Int) -> ref Int { return &x; }
+fn consume(own v: Int) -> Int { return v; }
+
+fn main() -> Int {
+  let a: Int = 7;
+  let c: Bool = true;
+  let r = pick(a);
+  let v = *r;
+  if c {
+    consume(a);
+  };
+  return v;
+}

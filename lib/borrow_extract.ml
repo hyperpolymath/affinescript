@@ -10,15 +10,30 @@
     {!Borrow.compute_last_use_index} — so the derived facts agree with the lexical
     verdict *by construction*, which is what M3's zero-divergence diff needs.
 
-    SCOPE (bounded, honest): straight-line function bodies — a sequence of
-    [StmtLet]/[StmtExpr]/[StmtAssign] with a linear CFG (point [i] = statement
-    [i]; the tail expression is point [n]). Branch/loop CFG ([if]/[match]/[while]),
-    field/index sub-places, and reborrow [subset] chains are NOT modelled yet
-    (later M3 increments). Borrow sources handled: [&p] / [&mut p], and a call
-    whose return-borrow summary borrows an argument ([let r = pick(a)] — #554).
-    Moves: arguments passed to [own] parameters. This module is NOT wired into
-    [bin/main.ml]; the parallel-run diff against the lexical checker is increment
-    3/3. *)
+    SCOPE (bounded, honest). The CFG is still the linear chain over the
+    function body's TOP-LEVEL statements (point [i] = statement [i]; the tail
+    expression is point [n]) — but extraction now DESCENDS into nested block
+    statements (the bodies of [if]/[match] arms and explicit [{ … }] blocks
+    written in statement position), recording the loans they create and the
+    moves they perform AT THE ENCLOSING TOP-LEVEL POINT. This is exactly the
+    granularity {!Borrow.compute_last_use_index} uses — it attributes every
+    mention, however deeply nested, to the index of the enclosing top-level
+    statement — so a loan's kill point (binder last-use + 1) and a nested move's
+    conflict point line up with the lexical checker by construction. The win:
+    a use-after-move written as a STATEMENT inside a branch
+    ([let r = pick(a); if c { consume(a); } … *r]) is now seen, where before the
+    branch body's statements were invisible (apps/rhs_borrows stop at block
+    tails). Loop BACK-EDGES are still NOT modelled — the lexical checker's
+    2-iteration unrolling (Slice C', #177) of [while]/[for] is not mirrored, so a
+    cross-iteration conflict is out of scope (a loop body is descended for the
+    loans/moves visible WITHIN one iteration, which is sound but not the
+    multi-iteration semantics); that is the next increment. Field/index
+    sub-places and reborrow [subset] chains remain unmodelled too.
+
+    Borrow sources handled: [&p] / [&mut p], and a call whose return-borrow
+    summary borrows an argument ([let r = pick(a)] — #554). Moves: arguments
+    passed to [own] parameters. This module is NOT wired into [bin/main.ml]; the
+    parallel-run diff against the lexical checker is increment 3/3. *)
 
 open Ast
 module PF = Borrow_polonius.Types
@@ -109,45 +124,98 @@ let extract_fn (ctx : Borrow.context) (symbols : Symbol.t) (fd : fn_decl) : PF.f
     let loans = ref [] in
     let borrow_at = ref [] and loan_origin = ref []
     and killed = ref [] and conflict_at = ref [] in
-    (* pass 1 — record each loan at its creation point + its kill at last-use+1 *)
-    List.iteri (fun i s ->
+    (* a binder's loan dies at its last-use + 1 (NLL); [compute_last_use_index]
+       keys by symbol regardless of nesting, so a nested [let] binder's kill
+       point is found the same way as a top-level one. *)
+    let kill_point_of (id : ident) (fallback : int) : int =
+      match Borrow.lookup_symbol_by_name symbols id.name with
+      | Some sym ->
+        (match Hashtbl.find_opt last_use sym.Symbol.sym_id with
+         | Some k -> k + 1 | None -> fallback)
+      | None -> fallback
+    in
+    let record_let_loans (pt : int) (id : ident) (rhs : expr) : unit =
+      (* a branchy RHS may borrow several places (union over arms); each becomes
+         its own loan, all born at [pt] and killed at the binder's last use *)
+      let kp = kill_point_of id (pt + 1) in
+      List.iter (fun (place, _excl) ->
+        let l = fresh next_loan in
+        borrow_at   := (l, pt) :: !borrow_at;
+        loan_origin := (l, fresh next_origin) :: !loan_origin;
+        loans       := { rl_id = l; rl_place = place } :: !loans;
+        killed      := (l, kp) :: !killed)
+        (rhs_borrows ctx symbols rhs)
+    in
+    (* PASS 1 — loans. Record each let's loans at the enclosing top-level point,
+       descending through nested branch/block STATEMENTS (their tail expressions
+       are accounted by the enclosing let's [rhs_borrows], so we only recurse into
+       statement position here — no double counting). *)
+    let rec loans_stmt pt s =
       match s with
       | StmtLet sl ->
-        (match sl.sl_pat with
-         | PatVar id ->
-           (* a branchy RHS may borrow several places (union over arms); each
-              becomes its own loan, all killed at the binder's last use *)
-           let kill_point =
-             match Borrow.lookup_symbol_by_name symbols id.name with
-             | Some sym ->
-               (match Hashtbl.find_opt last_use sym.Symbol.sym_id with
-                | Some k -> k + 1 | None -> i + 1)
-             | None -> i + 1
-           in
-           List.iter (fun (place, _excl) ->
-             let l = fresh next_loan in
-             borrow_at   := (l, i) :: !borrow_at;
-             loan_origin := (l, fresh next_origin) :: !loan_origin;
-             loans       := { rl_id = l; rl_place = place } :: !loans;
-             killed      := (l, kill_point) :: !killed)
-             (rhs_borrows ctx symbols sl.sl_value)
-         | _ -> ())
-      | _ -> ()) blk.blk_stmts;
-    (* pass 2 — a move of a place overlapping a loan's place conflicts there *)
-    let do_point i e =
+        (match sl.sl_pat with PatVar id -> record_let_loans pt id sl.sl_value | _ -> ());
+        loans_expr pt sl.sl_value
+      | StmtExpr e -> loans_expr pt e
+      | StmtAssign (l, _, r) -> loans_expr pt l; loans_expr pt r
+      | StmtWhile (c, b) -> loans_expr pt c; loans_block pt b
+      | StmtFor (_, it, b) -> loans_expr pt it; loans_block pt b
+    and loans_expr pt e =
+      match peel e with
+      | ExprIf ei ->
+        loans_expr pt ei.ei_cond; loans_expr pt ei.ei_then;
+        (match ei.ei_else with Some e -> loans_expr pt e | None -> ())
+      | ExprMatch em ->
+        loans_expr pt em.em_scrutinee;
+        List.iter (fun a -> loans_expr pt a.ma_body) em.em_arms
+      | ExprBlock blk -> loans_block pt blk
+      | ExprApp (f, args) -> loans_expr pt f; List.iter (loans_expr pt) args
+      | ExprUnary (_, x) -> loans_expr pt x
+      | ExprBinary (a, _, b) | ExprIndex (a, b) -> loans_expr pt a; loans_expr pt b
+      | ExprField (b, _) | ExprTupleIndex (b, _) -> loans_expr pt b
+      | ExprTuple xs | ExprArray xs -> List.iter (loans_expr pt) xs
+      | _ -> ()
+    (* a nested block's STATEMENTS are the new surface; its tail value is carried
+       OUT and already counted by the enclosing let's [rhs_borrows]. *)
+    and loans_block pt blk = List.iter (loans_stmt pt) blk.blk_stmts in
+    List.iteri loans_stmt blk.blk_stmts;
+    (* PASS 2 — a move of a place overlapping a loan's place conflicts there.
+       Mirror the same descent so a move written as a nested branch/block
+       statement conflicts at the enclosing top-level point. *)
+    let do_point pt e =
       List.iter (fun mp ->
         List.iter (fun rl ->
           if Borrow.places_overlap mp rl.rl_place then
-            conflict_at := (rl.rl_id, i) :: !conflict_at) !loans)
+            conflict_at := (rl.rl_id, pt) :: !conflict_at) !loans)
         (moved_places ctx symbols e)
     in
-    List.iteri (fun i s ->
+    let rec moves_stmt pt s =
       match s with
-      | StmtLet sl -> do_point i sl.sl_value
-      | StmtExpr e -> do_point i e
-      | StmtAssign (l, _, r) -> do_point i l; do_point i r
-      | _ -> ()) blk.blk_stmts;
-    (match blk.blk_expr with Some e -> do_point nstmts e | None -> ());
+      | StmtLet sl -> do_point pt sl.sl_value; moves_expr pt sl.sl_value
+      | StmtExpr e -> do_point pt e; moves_expr pt e
+      | StmtAssign (l, _, r) -> do_point pt l; do_point pt r; moves_expr pt l; moves_expr pt r
+      | StmtWhile (c, b) -> do_point pt c; moves_expr pt c; moves_block pt b
+      | StmtFor (_, it, b) -> do_point pt it; moves_expr pt it; moves_block pt b
+    and moves_expr pt e =
+      match peel e with
+      | ExprIf ei ->
+        moves_expr pt ei.ei_cond; moves_expr pt ei.ei_then;
+        (match ei.ei_else with Some e -> moves_expr pt e | None -> ())
+      | ExprMatch em ->
+        moves_expr pt em.em_scrutinee;
+        List.iter (fun a -> moves_expr pt a.ma_body) em.em_arms
+      | ExprBlock blk -> moves_block pt blk
+      | ExprApp (f, args) -> moves_expr pt f; List.iter (moves_expr pt) args
+      | ExprUnary (_, x) -> moves_expr pt x
+      | ExprBinary (a, _, b) | ExprIndex (a, b) -> moves_expr pt a; moves_expr pt b
+      | ExprField (b, _) | ExprTupleIndex (b, _) -> moves_expr pt b
+      | ExprTuple xs | ExprArray xs -> List.iter (moves_expr pt) xs
+      | _ -> ()
+    and moves_block pt blk =
+      List.iter (moves_stmt pt) blk.blk_stmts;
+      (match blk.blk_expr with Some e -> do_point pt e; moves_expr pt e | None -> ())
+    in
+    List.iteri moves_stmt blk.blk_stmts;
+    (match blk.blk_expr with Some e -> do_point nstmts e; moves_expr nstmts e | None -> ());
     { PF.empty_facts with
       borrow_at = !borrow_at; loan_origin = !loan_origin;
       killed = !killed; cfg_edge; conflict_at = !conflict_at }

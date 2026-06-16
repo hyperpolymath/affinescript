@@ -165,6 +165,40 @@ let t_extract_cond_unrelated_ok () =
   Alcotest.(check bool) "Polonius accepts unrelated move (not in {a,b})" false pol;
   Alcotest.(check bool) "agrees with lexical" lex pol
 
+(* ── M3 statement-level control flow: moves/borrows written as STATEMENTS inside
+      branch bodies (not arm tails). The extractor now descends nested block
+      statements; each must still agree with the lexical checker. ─────────────── *)
+
+(* use-after-move via a `consume(a)` STATEMENT inside an if-then body, loan live *)
+let t_extract_stmt_if_uam () =
+  let (pol, lex) = polonius_vs_lexical "borrow_stmt_if_uam.affine" in
+  Alcotest.(check bool) "Polonius flags branch-statement UAM" true pol;
+  Alcotest.(check bool) "agrees with lexical" lex pol
+
+(* r's last use precedes the branch ⇒ loan dead at the nested move ⇒ accept *)
+let t_extract_stmt_if_nll_ok () =
+  let (pol, lex) = polonius_vs_lexical "borrow_stmt_if_nll_ok.affine" in
+  Alcotest.(check bool) "Polonius accepts NLL-safe branch move" false pol;
+  Alcotest.(check bool) "agrees with lexical" lex pol
+
+(* move lives in the ELSE arm's statement body *)
+let t_extract_stmt_else_uam () =
+  let (pol, lex) = polonius_vs_lexical "borrow_stmt_else_uam.affine" in
+  Alcotest.(check bool) "Polonius flags else-arm-statement UAM" true pol;
+  Alcotest.(check bool) "agrees with lexical" lex pol
+
+(* move is a statement inside a match-arm BODY block (not the arm tail) *)
+let t_extract_stmt_match_uam () =
+  let (pol, lex) = polonius_vs_lexical "borrow_stmt_match_uam.affine" in
+  Alcotest.(check bool) "Polonius flags match-arm-statement UAM" true pol;
+  Alcotest.(check bool) "agrees with lexical" lex pol
+
+(* the nested move is of an UNborrowed place ⇒ no conflict ⇒ accept *)
+let t_extract_stmt_branch_unrelated_ok () =
+  let (pol, lex) = polonius_vs_lexical "borrow_stmt_branch_unrelated_ok.affine" in
+  Alcotest.(check bool) "Polonius accepts unrelated nested move" false pol;
+  Alcotest.(check bool) "agrees with lexical" lex pol
+
 let tests =
   [
     Alcotest.test_case "rule1: liveness straight-line" `Quick t_live_straight;
@@ -188,4 +222,10 @@ let tests =
     Alcotest.test_case "extract+solve: partial-branch UAM, agrees with lexical" `Quick t_extract_cond_partial;
     Alcotest.test_case "extract+solve: cond NLL-safe accepted, agrees with lexical" `Quick t_extract_cond_nll_ok;
     Alcotest.test_case "extract+solve: cond unrelated move ok, agrees with lexical" `Quick t_extract_cond_unrelated_ok;
+    (* M3 statement-level control flow: moves/borrows as statements in branch bodies *)
+    Alcotest.test_case "extract+solve: if-stmt UAM, agrees with lexical" `Quick t_extract_stmt_if_uam;
+    Alcotest.test_case "extract+solve: if-stmt NLL-safe accepted, agrees with lexical" `Quick t_extract_stmt_if_nll_ok;
+    Alcotest.test_case "extract+solve: else-arm-stmt UAM, agrees with lexical" `Quick t_extract_stmt_else_uam;
+    Alcotest.test_case "extract+solve: match-arm-stmt UAM, agrees with lexical" `Quick t_extract_stmt_match_uam;
+    Alcotest.test_case "extract+solve: unrelated nested move ok, agrees with lexical" `Quick t_extract_stmt_branch_unrelated_ok;
   ]

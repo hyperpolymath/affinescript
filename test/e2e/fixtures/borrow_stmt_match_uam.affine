@@ -1,0 +1,21 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// ADR-022 M3 statement-level control flow — the move is a STATEMENT inside a
+// `match` arm body (a block), not an arm tail. `r` borrows `a`; consuming `a`
+// inside an arm while `r` is live is a use-after-move. The extractor descends
+// match-arm bodies' statements, so it agrees with the lexical MoveWhileBorrowed.
+fn pick(ref x: Int) -> ref Int { return &x; }
+fn consume(own v: Int) -> Int { return v; }
+
+fn main() -> Int {
+  let a: Int = 7;
+  let k: Bool = true;
+  let r = pick(a);
+  match k {
+    true => { consume(a); },
+    false => { let _z = 0; },
+  };
+  let v = *r;
+  return v;
+}

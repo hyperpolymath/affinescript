@@ -1,0 +1,22 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// ADR-022 M3 statement-level control flow — the move lives in the ELSE arm's
+// statement body (not the then arm). Moves are unioned across arms by the
+// lexical checker, and the extractor descends both arms, so the conflict at the
+// enclosing point still fires while `r`'s loan on `a` is live.
+fn pick(ref x: Int) -> ref Int { return &x; }
+fn consume(own v: Int) -> Int { return v; }
+
+fn main() -> Int {
+  let a: Int = 7;
+  let c: Bool = true;
+  let r = pick(a);
+  if c {
+    let _k = 1;
+  } else {
+    consume(a);
+  };
+  let v = *r;
+  return v;
+}

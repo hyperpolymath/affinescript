@@ -1,0 +1,21 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// ADR-022 M3 statement-level control flow — anti-over-rejection. The move
+// inside the branch is of `b`, which nothing borrows; `r` borrows `a`. A sound
+// checker must NOT flag this. Confirms the extractor's branch descent conflicts
+// only on the borrowed place, not on every nested move.
+fn pick(ref x: Int) -> ref Int { return &x; }
+fn consume(own v: Int) -> Int { return v; }
+
+fn main() -> Int {
+  let a: Int = 7;
+  let b: Int = 9;
+  let c: Bool = true;
+  let r = pick(a);
+  if c {
+    consume(b);
+  };
+  let v = *r;
+  return v;
+}
