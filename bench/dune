@@ -35,7 +35,9 @@
   bench_lex
   bench_parse
   bench_typecheck
-  bench_codegen))
+  bench_codegen
+  bench_scaling
+  bench_vm))
 
 (rule
  (alias bench)

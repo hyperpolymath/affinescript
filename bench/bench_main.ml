@@ -1,35 +1,22 @@
 (* SPDX-License-Identifier: MPL-2.0 *)
 (* AffineScript microbenchmark runner.
 
-   Visibility-only — no merge gate.  See
-   docs/standards/TESTING.adoc §"Bench standards" for the policy.
+   Visibility-only — no merge gate (docs/standards/TESTING.adoc §"Bench
+   standards"). The numbers are wall-clock and printed directly to stdout.
 
-   We register each phase under an alcotest "bench" suite so the
-   harness gives consistent setup/teardown framing.  The actual
-   measurements are wall-clock and emitted via `Printf.printf` to
-   stdout — alcotest assertions check only that the bench ran to
-   completion (the assertion is `pass`, the value is in the
-   printout).  Switch to alcotest-bench / Bechamel when a calibrated
-   baseline + ratchet policy lands. *)
-
-let with_section name f =
-  Printf.printf "\n";
-  Printf.printf "════════════════════════════════════════════════════\n";
-  Printf.printf "  AffineScript microbench — %s\n" name;
-  Printf.printf "════════════════════════════════════════════════════\n%!";
-  f ();
-  Printf.printf "\n%!"
-
-let bench_case label fn =
-  Alcotest.test_case label `Slow (fun () ->
-    fn ();
-    Alcotest.(check pass) (Printf.sprintf "%s ran to completion" label) () ())
+   NOTE (2026-06-16): the previous runner wrapped each bench in [Alcotest.run],
+   which CAPTURES per-test stdout into a log file — so the measurements were
+   computed but never reached the console ("visibility-only" benches that were
+   not actually visible). This runner calls each [run ()] directly. *)
 
 let () =
-  with_section "phases" (fun () ->
-    Alcotest.run ~and_exit:false "affinescript-bench" [
-      ("lex",       [ bench_case "lex sweep"       Bench_lex.run ]);
-      ("parse",     [ bench_case "parse sweep"     Bench_parse.run ]);
-      ("typecheck", [ bench_case "typecheck sweep" Bench_typecheck.run ]);
-      ("codegen",   [ bench_case "codegen sweep"   Bench_codegen.run ]);
-    ])
+  Printf.printf "\n════════════════════════════════════════════════════\n";
+  Printf.printf "  AffineScript microbench\n";
+  Printf.printf "════════════════════════════════════════════════════\n%!";
+  Bench_lex.run ();
+  Bench_parse.run ();
+  Bench_typecheck.run ();
+  Bench_codegen.run ();
+  Bench_scaling.run ();
+  Bench_vm.run ();
+  Printf.printf "\n%!"

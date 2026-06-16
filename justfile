@@ -250,8 +250,7 @@ panic:
 
 # Run microbenchmarks (lex / parse / typecheck / codegen sweeps)
 bench:
-    dune build @bench --force
-    dune runtest @bench --force
+    dune exec bench/bench_main.exe
 
 # Archive the current bench output to bench-runs/<UTC-timestamp>.log
 bench-record:
