@@ -1,0 +1,102 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+= ADR-0024: Native Android target via ARM64 (LLVM aarch64), not JVM/Kotlin
+Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+:toc:
+:toclevels: 2
+:icons: font
+
+Status:: Accepted (owner decision 2026-06-16). Spine implemented + gated; downstream link/packaging staged.
+Date:: 2026-06-16
+Series:: Settled-decisions ledger. Companion: ADR-0019 (compiler distribution); the targeting-strategy decision (wasm = portability, VM = semantics, native = performance).
+
+== Context
+
+AffineScript needs a *native* Android story — "one step back from native is
+not the goal; native is." Three target shapes were considered:
+
+[cols="1,3"]
+|===
+| Shape | Assessment
+
+| AffineScript -> JVM/Kotlin bytecode (`.dex`)
+| Rejected. The estate `CLAUDE.md` *bans Kotlin/Swift for mobile* and mandates
+  a Rust-first / native posture; a JVM-bytecode backend re-enters exactly the
+  managed-runtime lane the policy excludes.
+
+| AffineScript -> wasm in a WebView
+| Already covered by the portability tier (wasm runs everywhere, incl. Android
+  WebView / embedded wasmtime). This is the *universal* path, not the *native*
+  one — it is one step back from native by construction.
+
+| **AffineScript -> ARM64 native (LLVM aarch64)**
+| **Chosen.** Reuses the existing `lib/llvm_codegen.ml` backend, emits a real
+  AArch64 object, links to a JNI `.so` shipped in the APK, hosted by a
+  *Gossamer* shell (estate-standard; *not* Tauri). Truest native APK; no
+  managed runtime; aligns with the Rust-first/native policy.
+|===
+
+This sits inside the already-ratified targeting strategy: **wasm = universal
+portability backbone; the VM = semantics engine (effects/exceptions/runtime
+resource discipline); native (this ADR) = the performance tier.** The three are
+complementary, not competing.
+
+== Decision
+
+Compile to Android via the LLVM backend, cross-targeting the
+`aarch64-linux-android` triple, then link a JNI shared object packaged into an
+APK whose UI shell is Gossamer.
+
+[source]
+----
+AffineScript  --(lib/llvm_codegen.ml)-->  LLVM IR (.ll, triple=aarch64-linux-android)
+              --(llc / clang -c)-------->  AArch64 object (.o)          [PROVEN]
+              --(NDK clang + bionic)---->  JNI shared object (.so)      [NDK-gated]
+              --(Gossamer + aapt2)------>  APK (.so in jniLibs/arm64-v8a)[downstream]
+----
+
+== What is implemented (this ADR's spine)
+
+* `lib/llvm_codegen.ml` target triple is now a parameter, not a hard-coded
+  constant. `AFFINESCRIPT_LLVM_TRIPLE=aarch64-linux-android` makes the backend
+  emit Android-targeted IR; the default remains `x86_64-unknown-linux-gnu`
+  (zero behaviour change for existing callers). The IR is target-independent —
+  *the same `.ll` was verified to lower to both x86-64 and aarch64 objects.*
+* Verified end-to-end (2026-06-16): `fn add(a: Int, b: Int) -> Int { a + b }`
+  -> `.ll` (Android triple) -> `llc -filetype=obj` -> *ELF 64-bit AArch64*
+  object with genuine ARM64 (`add x0, x0, x1` / `ret`). No `llc` triple
+  override needed — the IR is self-describing.
+* `just android-validate` (`tools/android-aarch64-gate.sh`) pins the spine.
+
+== What is staged (deliberately not done here)
+
+* **`--target <triple>` CLI flag** — the ergonomic front-end for the env var.
+  Clean cmdliner `Arg` addition (mirror `--wasm-gc` at `bin/main.ml:1211`);
+  deferred only to keep the spine change low-risk.
+* **NDK link step** — producing the actual `.so` needs the Android NDK
+  (bionic libc, `crt`, `-landroid`/`-llog`). Not installed in the current
+  environment (`ANDROID_NDK_HOME` unset). The codegen + object steps do not
+  need it; the link does.
+* **JNI entrypoint + runtime** — a `JNI_OnLoad` / `Java_..._native` shim and an
+  aarch64 build of the AffineScript runtime (`runtime/`). Today the LLVM
+  backend declares libc (`puts`/`malloc`/`memcpy`); on Android these resolve
+  against bionic.
+* **Gossamer packaging** — `GossamerActivity`/`GossamerBridge` host + `aapt2`
+  APK assembly with the `.so` under `jniLibs/arm64-v8a/`.
+
+== Consequences
+
+* The native path inherits the **`Float`-through-heap defect (issue-draft 05,
+  task #8)** and it matters *more* here than for wasm: native code has no
+  `wasm-tools validate` equivalent to catch a malformed object, so the
+  type-directed heap-layout fix is a prerequisite for trusting native numeric
+  code. Fix #8 before shipping native float-heavy programs.
+* Adding `aarch64-apple-ios` (and others) is now a one-line triple change —
+  the parameterisation generalises beyond Android.
+* No new managed-runtime dependency; consistent with the Kotlin/Swift ban.
+
+== Verification
+
+`just android-validate` — 2 passed, 0 failed (2026-06-16).
+`just build` + `dune runtest` green after the triple parameterisation (no
+regression; default triple preserved).

@@ -140,6 +140,16 @@ wasm-validate:
 coprocessor-validate:
     ./tools/coprocessor-gate.sh
 
+# Verify the AffineScript -> LLVM IR -> AArch64 object native spine (ADR-0024,
+# the native Android target). Skips if llc is absent.
+android-validate:
+    ./tools/android-aarch64-gate.sh
+
+# Compile FILE to Android-targeted LLVM IR (aarch64-linux-android triple).
+# Lower to an object with: llc -filetype=obj OUT -o OUT.o  (NDK links the .so).
+compile-android FILE OUT:
+    AFFINESCRIPT_LLVM_TRIPLE=aarch64-linux-android dune exec affinescript -- compile {{FILE}} -o {{OUT}}
+
 # ── Compiler subcommands ──────────────────────────────────────────────────────
 
 # Run the lexer on a file
