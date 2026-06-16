@@ -50,7 +50,7 @@ let mangle s =
 let rec scalar_ok (te : type_expr) : unit =
   match te with
   | TyCon id when id.name = "Float" || id.name = "Int" -> ()
-  | TyOwn t | TyRef t | TyMut t -> scalar_ok t
+  | TyOwn t | TyRef (_, t) | TyMut (_, t) -> scalar_ok t
   | _ -> unsupported "Faust kernels accept only Int/Float scalars"
 
 (* ============================================================================

@@ -543,8 +543,8 @@ let rec lower_type_expr (ctx : context) (te : type_expr) : ty =
     ) fields REmpty in
     TRecord row
   | TyOwn te -> TOwn (lower_type_expr ctx te)
-  | TyRef te -> TRef (lower_type_expr ctx te)
-  | TyMut te -> TMut (lower_type_expr ctx te)
+  | TyRef (_, te) -> TRef (lower_type_expr ctx te)
+  | TyMut (_, te) -> TMut (lower_type_expr ctx te)
   | TyHole ->
     fresh_tyvar ctx.level
 

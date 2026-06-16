@@ -38,7 +38,7 @@ let rec ml_type = function
   | TyCon id -> mangle_ty id.name
   | TyTuple [] -> "unit"
   | TyTuple ts -> "(" ^ String.concat " * " (List.map ml_type ts) ^ ")"
-  | TyOwn t | TyRef t | TyMut t -> ml_type t
+  | TyOwn t | TyRef (_, t) | TyMut (_, t) -> ml_type t
   | _ -> "_"
 
 let ret_type = function

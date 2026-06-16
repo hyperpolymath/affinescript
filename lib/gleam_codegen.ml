@@ -24,7 +24,7 @@ let rec gleam_type = function
   | TyCon id -> mangle id.name
   | TyTuple [] -> "Nil"
   | TyTuple ts -> "#(" ^ String.concat ", " (List.map gleam_type ts) ^ ")"
-  | TyOwn t | TyRef t | TyMut t -> gleam_type t
+  | TyOwn t | TyRef (_, t) | TyMut (_, t) -> gleam_type t
   | _ -> "Dynamic"
 
 let ret_type = function None -> "Nil" | Some t -> gleam_type t

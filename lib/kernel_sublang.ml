@@ -69,7 +69,7 @@ let pick_entry ?(names = default_entry_names) (program : program) : fn_decl =
 
 let rec strip_ownership (te : type_expr) : type_expr =
   match te with
-  | TyOwn t | TyRef t | TyMut t -> strip_ownership t
+  | TyOwn t | TyRef (_, t) | TyMut (_, t) -> strip_ownership t
   | t -> t
 
 (** Accept [Unit] either as the named type or as the empty tuple, since

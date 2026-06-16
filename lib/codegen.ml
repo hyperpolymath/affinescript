@@ -97,7 +97,7 @@ let ( let* ) = Result.bind
    an aggregate*. The interpreter (-i), the Julia backend (-julia), and the GPU
    kernel backends (WGSL/CUDA/Metal/OpenCL) all lower f64 aggregates correctly. *)
 let rec ty_strip_own (te : type_expr) : type_expr =
-  match te with TyOwn t | TyRef t | TyMut t -> ty_strip_own t | t -> t
+  match te with TyOwn t | TyRef (_, t) | TyMut (_, t) -> ty_strip_own t | t -> t
 
 let rec ty_mentions_float (te : type_expr) : bool =
   match ty_strip_own te with
@@ -211,7 +211,7 @@ let rec struct_name_of_ty (ty : type_expr) : string option =
   match ty with
   | TyCon id -> Some id.name
   | TyApp (id, _) -> Some id.name
-  | TyOwn inner | TyRef inner | TyMut inner -> struct_name_of_ty inner
+  | TyOwn inner | TyRef (_, inner) | TyMut (_, inner) -> struct_name_of_ty inner
   | _ -> None
 
 (** Extract ownership kind from an optional return type expression *)

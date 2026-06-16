@@ -119,7 +119,7 @@ let rec llvm_type (te : type_expr) : string =
   | TyCon id                         -> "%" ^ id.name
   | TyTuple [] -> "void"   (* the empty tuple () is Unit, same as TyCon "Unit" *)
   | TyTuple ts -> "{ " ^ String.concat ", " (List.map llvm_type ts) ^ " }"
-  | TyOwn t | TyRef t | TyMut t -> llvm_type t
+  | TyOwn t | TyRef (_, t) | TyMut (_, t) -> llvm_type t
   | _ -> unsupported "type not supported in LLVM backend"
 
 let ret_type = function None -> "void" | Some t -> llvm_type t

@@ -39,8 +39,16 @@ type borrow = {
   b_kind : borrow_kind;
   b_span : Span.t;
   b_id : int;
+  b_origin : Ast.origin_var;   (* ADR-022 M1: the origin (region) this loan flows into.
+                              Until the elaborator is wired (M2), every loan uses
+                              [default_origin] — the single global origin — so the
+                              Polonius solver's verdicts reduce to the lexical ones. *)
 }
 [@@deriving show]
+
+(** ADR-022 M1: the single global origin. M2 replaces this with [fresh_origin ()]
+    at each borrow site. *)
+let default_origin : Ast.origin_var = 0
 
 (** Move record for tracking move sites *)
 type move_record = {
@@ -597,6 +605,7 @@ let record_borrow (state : state) (place : place) (kind : borrow_kind)
       b_kind = kind;
       b_span = span;
       b_id = fresh_id state;
+      b_origin = default_origin;
     } in
     match find_conflicting_borrow state new_borrow with
     | Some conflict -> Error (ConflictingBorrow (new_borrow, conflict))
@@ -926,7 +935,7 @@ let returned_borrow (state : state) (symbols : Symbol.t)
             places_overlap b.b_place target) state.borrows with
           | Some b -> b
           | None -> { b_place = target; b_kind = Shared;
-                      b_span = expr_span e; b_id = -1 })
+                      b_span = expr_span e; b_id = -1; b_origin = default_origin })
   | None ->
     (match peel e with
      | ExprVar id ->
@@ -1740,7 +1749,7 @@ and check_block (ctx : context) (state : state) (symbols : Symbol.t) (blk : bloc
                 | Some b -> b
                 | None ->
                   { b_place = target; b_kind = Shared;
-                    b_span = expr_span tail; b_id = -1 }
+                    b_span = expr_span tail; b_id = -1; b_origin = default_origin }
               in
               Error (BorrowOutlivesOwner (b, owner))
             | _ -> Ok ()

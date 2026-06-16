@@ -49,6 +49,12 @@ type type_param = {
 }
 [@@deriving show, eq]
 
+(** Abstract origin (region) variable — ADR-022. Opaque to source syntax;
+    inserted by the borrow checker / elaborator. Fresh-int identity, pretty-printed
+    'o0, 'o1, … M1 plants [None] at every site (the single global origin), so the
+    Polonius solver's verdicts reduce to the lexical checker's. *)
+type origin_var = int [@@deriving show, eq]
+
 (** Type expressions *)
 type type_expr =
   | TyVar of ident                                   (** Type variable *)
@@ -58,8 +64,8 @@ type type_expr =
   | TyTuple of type_expr list                        (** (T, U, V) *)
   | TyRecord of row_field list * ident option        (** {x: T, ..r} *)
   | TyOwn of type_expr                               (** own T *)
-  | TyRef of type_expr                               (** ref T *)
-  | TyMut of type_expr                               (** mut T *)
+  | TyRef of origin_var option * type_expr           (** ref T — ADR-022 M1: origin defaults None *)
+  | TyMut of origin_var option * type_expr           (** mut T — ADR-022 M1: origin defaults None *)
   | TyHole                                           (** _ - infer *)
 
 and type_arg =
