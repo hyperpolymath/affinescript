@@ -14,6 +14,7 @@
 type point  = int [@@deriving show, eq]  (** a program point (CFG node) *)
 type loan   = int [@@deriving show, eq]  (** a loan / borrow identity (mirrors [Borrow.borrow.b_id]) *)
 type origin = int [@@deriving show, eq]  (** an origin / region variable (mirrors [Ast.origin_var]) *)
+type var    = int [@@deriving show, eq]  (** a movable variable (mirrors [Borrow.root_var]'s symbol id) *)
 
 (** Input facts (ADR-022 §"Algorithm sketch"). *)
 type facts = {
@@ -26,16 +27,28 @@ type facts = {
                                                   under shared-XOR-exclusive — the [check_use] rule,
                                                   hoisted out of the imperative checker (ADR-022 rule 2).
                                                   Populated by M3 extraction. *)
+  (* ── plain use-after-move of an owned value (the lexical [state.moved] /
+        [check_use] rule, distinct from loan conflicts). A variable [V] moved at
+        [move_at(V,P)] is in moved-state on every CFG path forward until a whole-
+        place [reinit_at(V,P)] revives it; a [use_at(V,P)] reaching a moved-state
+        point is a use-after-move error. This is what catches [consume(a);
+        consume(a)] and the loop equivalent — cases with no loan involved that the
+        loan-conflict rules above are blind to. *)
+  move_at     : (var * point) list;           (** owned value [V] is moved out at [P] *)
+  use_at      : (var * point) list;           (** [V] is read at [P] (a move arg is also a use) *)
+  reinit_at   : (var * point) list;           (** whole-place write to [V] at [P] revives it *)
 }
 [@@deriving show, eq]
 
 let empty_facts : facts =
-  { borrow_at = []; loan_origin = []; subset = []; killed = []; cfg_edge = []; conflict_at = [] }
+  { borrow_at = []; loan_origin = []; subset = []; killed = []; cfg_edge = [];
+    conflict_at = []; move_at = []; use_at = []; reinit_at = [] }
 
-(** Derived facts + the verdict (ADR-022 rules 1–3). *)
+(** Derived facts + the verdict (ADR-022 rules 1–3 + the use-after-move rule). *)
 type derived = {
   loan_live_at        : (loan * point) list;   (** least fixed point over [cfg_edge] minus [killed] *)
   loan_invalidated_at : (loan * point) list;   (** an access at [P] conflicts with a live loan *)
-  errors              : point list;            (** points carrying an invalidated-at error *)
+  moved_in            : (var * point) list;    (** [V] is in moved-state on entry to [P] (fwd dataflow) *)
+  errors              : point list;            (** points carrying an invalidation OR a use-after-move *)
 }
 [@@deriving show, eq]

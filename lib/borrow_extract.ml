@@ -30,6 +30,17 @@
     multi-iteration semantics); that is the next increment. Field/index
     sub-places and reborrow [subset] chains remain unmodelled too.
 
+    PLAIN USE-AFTER-MOVE (no loan) is now modelled too, via the
+    [move_at]/[use_at]/[reinit_at] facts and the solver's forward moved-state
+    dataflow: a value moved into an [own] parameter is [move_at] (and a use), a
+    whole-place write [x = e] is [reinit_at] (revives it), and every variable
+    read is [use_at] — so [consume(a); consume(a)] is flagged where the loan
+    rules see nothing. A use reached by a move with no intervening reinit is the
+    error. Bound: cross-iteration use-after-move in loops still needs the loop
+    body's second iteration to be a DISTINCT CFG point (the [move_at]/[use_at]
+    here collapse a loop body to one point, so iter-1-move → iter-2-use does not
+    yet surface); that is the loop-unrolling increment.
+
     Borrow sources handled: [&p] / [&mut p], and a call whose return-borrow
     summary borrows an argument ([let r = pick(a)] — #554). Moves: arguments
     passed to [own] parameters. This module is NOT wired into [bin/main.ml]; the
@@ -178,21 +189,61 @@ let extract_fn (ctx : Borrow.context) (symbols : Symbol.t) (fd : fn_decl) : PF.f
        OUT and already counted by the enclosing let's [rhs_borrows]. *)
     and loans_block pt blk = List.iter (loans_stmt pt) blk.blk_stmts in
     List.iteri loans_stmt blk.blk_stmts;
-    (* PASS 2 — a move of a place overlapping a loan's place conflicts there.
-       Mirror the same descent so a move written as a nested branch/block
-       statement conflicts at the enclosing top-level point. *)
+    (* PASS 2 — moves/uses/reinits for both the loan-conflict rule and the plain
+       use-after-move rule, descending the same way as pass 1. A move of a place
+       overlapping a loan's place conflicts there; a move is ALSO recorded as a
+       [move_at] + [use_at] (a moved arg is a use of the value), and every read of
+       a variable is a [use_at], so [consume(a); consume(a)] surfaces as a
+       use-after-move even with no loan involved. *)
+    let move_at = ref [] and use_at = ref [] and reinit_at = ref [] in
+    (* root vars read directly in [e] — mirrors [apps]'s recursion (into
+       call/operator/branch sub-expressions and block TAILS), stopping at block
+       statements (the statement recursion visits those at their own point). *)
+    let rec record_uses pt e =
+      (match Borrow.expr_to_place symbols (peel e) with
+       | Some p -> (match Borrow.root_var p with
+                    | Some v -> use_at := (v, pt) :: !use_at | None -> ())
+       | None -> ());
+      match peel e with
+      | ExprApp (f, args) -> record_uses pt f; List.iter (record_uses pt) args
+      | ExprUnary (_, x) -> record_uses pt x
+      | ExprBinary (a, _, b) | ExprIndex (a, b) -> record_uses pt a; record_uses pt b
+      | ExprField (b, _) | ExprTupleIndex (b, _) -> record_uses pt b
+      | ExprTuple xs | ExprArray xs -> List.iter (record_uses pt) xs
+      | ExprIf ei ->
+        record_uses pt ei.ei_cond; record_uses pt ei.ei_then;
+        (match ei.ei_else with Some e -> record_uses pt e | None -> ())
+      | ExprMatch em ->
+        record_uses pt em.em_scrutinee;
+        List.iter (fun a -> record_uses pt a.ma_body) em.em_arms
+      | ExprBlock blk -> (match blk.blk_expr with Some t -> record_uses pt t | None -> ())
+      | _ -> ()
+    in
     let do_point pt e =
+      record_uses pt e;
       List.iter (fun mp ->
+        (match Borrow.root_var mp with
+         | Some v -> move_at := (v, pt) :: !move_at; use_at := (v, pt) :: !use_at
+         | None -> ());
         List.iter (fun rl ->
           if Borrow.places_overlap mp rl.rl_place then
             conflict_at := (rl.rl_id, pt) :: !conflict_at) !loans)
         (moved_places ctx symbols e)
     in
+    (* a whole-place write [x = e] (LHS is a bare variable) revives [x]; a
+       sub-place write [x.f = e] / [x[i] = e] instead READS the parent place. *)
+    let record_assign_lhs pt lhs =
+      match Borrow.expr_to_place symbols (peel lhs) with
+      | Some (Borrow.PlaceVar _ as p) ->
+        (match Borrow.root_var p with Some v -> reinit_at := (v, pt) :: !reinit_at | None -> ())
+      | _ -> do_point pt lhs  (* sub-place write reads the parent (+ any nested moves) *)
+    in
     let rec moves_stmt pt s =
       match s with
       | StmtLet sl -> do_point pt sl.sl_value; moves_expr pt sl.sl_value
       | StmtExpr e -> do_point pt e; moves_expr pt e
-      | StmtAssign (l, _, r) -> do_point pt l; do_point pt r; moves_expr pt l; moves_expr pt r
+      | StmtAssign (l, _, r) ->
+        record_assign_lhs pt l; do_point pt r; moves_expr pt l; moves_expr pt r
       | StmtWhile (c, b) -> do_point pt c; moves_expr pt c; moves_block pt b
       | StmtFor (_, it, b) -> do_point pt it; moves_expr pt it; moves_block pt b
     and moves_expr pt e =
@@ -218,7 +269,8 @@ let extract_fn (ctx : Borrow.context) (symbols : Symbol.t) (fd : fn_decl) : PF.f
     (match blk.blk_expr with Some e -> do_point nstmts e; moves_expr nstmts e | None -> ());
     { PF.empty_facts with
       borrow_at = !borrow_at; loan_origin = !loan_origin;
-      killed = !killed; cfg_edge; conflict_at = !conflict_at }
+      killed = !killed; cfg_edge; conflict_at = !conflict_at;
+      move_at = !move_at; use_at = !use_at; reinit_at = !reinit_at }
   | _ -> PF.empty_facts
 
 let function_decls (program : program) : fn_decl list =

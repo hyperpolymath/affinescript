@@ -81,6 +81,47 @@ let compute_live (f : facts) : (loan * point) list =
   loop ();
   dedup !live
 
+(** Forward least-fixpoint moved-state dataflow (the use-after-move rule).
+
+    [moved_out(V,P)] = [move_at(V,P)] ∨ ([moved_in(V,P)] ∧ ¬[reinit_at(V,P)]);
+    [moved_in(V,P)]  = ∃Q. [cfg_edge(Q,P)] ∧ [moved_out(V,Q)].
+
+    A move makes [V] moved on exit from its point; the state then flows forward
+    along the CFG, surviving every point that does not re-initialise [V]. Returns
+    [moved_in] (moved-state on ENTRY), which is what a [use_at] is checked against
+    — so the move site itself (where [V] is not yet moved on entry) is not flagged,
+    but a later use, or a second move (which is also a use), is. Monotone over the
+    finite [var × point] space ⇒ terminates; same shape/cost as {!compute_live}. *)
+let compute_moved_in (f : facts) : (var * point) list =
+  let reinit_at v p = mem_pair v p f.reinit_at in
+  let moved_in = ref [] and moved_out = ref [] in
+  let work = ref [] in
+  let add_out v p =
+    if not (mem_pair v p !moved_out) then begin
+      moved_out := (v, p) :: !moved_out;
+      work := (v, p) :: !work
+    end
+  in
+  let add_in v p =
+    if not (mem_pair v p !moved_in) then begin
+      moved_in := (v, p) :: !moved_in;
+      (* moved-state survives into [P]'s exit unless [P] re-initialises [V] *)
+      if not (reinit_at v p) then add_out v p
+    end
+  in
+  (* seed: a move makes [V] moved-out at the move point regardless of anything *)
+  List.iter (fun (v, p) -> add_out v p) f.move_at;
+  let rec loop () =
+    match !work with
+    | [] -> ()
+    | (v, p) :: rest ->
+      work := rest;
+      List.iter (fun (p1, q) -> if p1 = p then add_in v q) f.cfg_edge;
+      loop ()
+  in
+  loop ();
+  dedup !moved_in
+
 (** Run the solver over the input [facts]. *)
 let solve (f : facts) : derived =
   let loan_live_at = compute_live f in
@@ -88,6 +129,12 @@ let solve (f : facts) : derived =
   let loan_invalidated_at =
     List.filter (fun (l, q) -> mem_pair l q f.conflict_at) loan_live_at |> dedup
   in
-  (* rule 3: the points carrying any invalidation *)
-  let errors = dedup (List.map snd loan_invalidated_at) in
-  { loan_live_at; loan_invalidated_at; errors }
+  (* use-after-move: a use of [V] at a point where [V] is already in moved-state *)
+  let moved_in = compute_moved_in f in
+  let uam_errors =
+    List.filter_map (fun (v, p) -> if mem_pair v p moved_in then Some p else None)
+      f.use_at
+  in
+  (* rule 3 + UAM: the points carrying any invalidation or use-after-move *)
+  let errors = dedup (List.map snd loan_invalidated_at @ uam_errors) in
+  { loan_live_at; loan_invalidated_at; moved_in; errors }

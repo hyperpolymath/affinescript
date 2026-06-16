@@ -1,0 +1,16 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// ADR-022 M3 plain use-after-move — anti-over-rejection. A whole-place write
+// `a = 9` between the two moves REVIVES `a`, so the second `consume(a)` is
+// legal. The solver's reinit_at fact kills the moved-state, mirroring the
+// lexical checker's clear-on-rewrite (#399 / is_whole_place_write). Both accept.
+fn consume(own v: Int) -> Int { return v; }
+
+fn main() -> Int {
+  let mut a: Int = 7;
+  let _g1 = consume(a);
+  a = 9;
+  let _g2 = consume(a);
+  return 0;
+}

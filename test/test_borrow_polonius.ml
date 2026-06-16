@@ -89,6 +89,33 @@ let t_subset_closure () =
   check_mem "transitive (1,3)" (1, 3) c;
   check_nmem "no spurious (3,1)" (3, 1) c
 
+(* ── use-after-move (plain, loan-free) forward moved-state dataflow ───────────── *)
+
+(* var 1 moved at point 0, used again at point 1 ⇒ moved_in@1 ⇒ error(1).
+   The move at 0 is also a use, but moved_in@0 is false (nothing moved it yet). *)
+let t_uam_double_move () =
+  let d = Solve.solve
+    { Types.empty_facts with
+      cfg_edge = [(0, 1)]; move_at = [(1, 0)]; use_at = [(1, 0); (1, 1)] } in
+  check_mem  "moved_in@1" (1, 1) d.Types.moved_in;
+  check_nmem "not moved_in@0" (1, 0) d.Types.moved_in;
+  Alcotest.(check (list int)) "use-after-move error at 1" [1] d.Types.errors
+
+(* a whole-place reinit between move and second use revives the var ⇒ no error *)
+let t_uam_reinit_revives () =
+  let d = Solve.solve
+    { Types.empty_facts with
+      cfg_edge = [(0, 1); (1, 2)];
+      move_at = [(1, 0)]; reinit_at = [(1, 1)]; use_at = [(1, 0); (1, 2)] } in
+  check_nmem "not moved_in@2 (revived)" (1, 2) d.Types.moved_in;
+  Alcotest.(check (list int)) "no use-after-move error" [] d.Types.errors
+
+(* a use of a NEVER-moved var is never an error (reads are always emitted) *)
+let t_uam_use_without_move_ok () =
+  let d = Solve.solve
+    { Types.empty_facts with cfg_edge = [(0, 1)]; use_at = [(1, 0); (1, 1)] } in
+  Alcotest.(check (list int)) "no error without a move" [] d.Types.errors
+
 (* ── degenerate ───────────────────────────────────────────────────────────────── *)
 
 let t_empty () =
@@ -199,6 +226,20 @@ let t_extract_stmt_branch_unrelated_ok () =
   Alcotest.(check bool) "Polonius accepts unrelated nested move" false pol;
   Alcotest.(check bool) "agrees with lexical" lex pol
 
+(* ── plain use-after-move from REAL programs (no loan), diffed vs lexical ──────── *)
+
+(* `consume(a); consume(a)` — second move reads moved `a`; both tiers flag it *)
+let t_extract_uam_double_move () =
+  let (pol, lex) = polonius_vs_lexical "borrow_uam_double_move.affine" in
+  Alcotest.(check bool) "Polonius flags the plain use-after-move" true pol;
+  Alcotest.(check bool) "agrees with lexical" lex pol
+
+(* a whole-place rewrite between moves revives the var; both tiers accept *)
+let t_extract_uam_reinit_ok () =
+  let (pol, lex) = polonius_vs_lexical "borrow_uam_reinit_ok.affine" in
+  Alcotest.(check bool) "Polonius accepts reinit-revived move" false pol;
+  Alcotest.(check bool) "agrees with lexical" lex pol
+
 let tests =
   [
     Alcotest.test_case "rule1: liveness straight-line" `Quick t_live_straight;
@@ -209,6 +250,9 @@ let tests =
     Alcotest.test_case "CTR/NLL: conflict after last-use kill is sound (no error)"
       `Quick t_nll_conflict_after_kill_ok;
     Alcotest.test_case "two loans, one conflicts → one error" `Quick t_two_loans_one_conflicts;
+    Alcotest.test_case "UAM: double move → moved-state use error" `Quick t_uam_double_move;
+    Alcotest.test_case "UAM: reinit revives (no error)" `Quick t_uam_reinit_revives;
+    Alcotest.test_case "UAM: use without move is fine" `Quick t_uam_use_without_move_ok;
     Alcotest.test_case "subset transitive closure (reborrow chaining)" `Quick t_subset_closure;
     Alcotest.test_case "empty facts → empty derived" `Quick t_empty;
     (* M3 (2/3): extraction from real programs, diffed against the lexical checker *)
@@ -228,4 +272,7 @@ let tests =
     Alcotest.test_case "extract+solve: else-arm-stmt UAM, agrees with lexical" `Quick t_extract_stmt_else_uam;
     Alcotest.test_case "extract+solve: match-arm-stmt UAM, agrees with lexical" `Quick t_extract_stmt_match_uam;
     Alcotest.test_case "extract+solve: unrelated nested move ok, agrees with lexical" `Quick t_extract_stmt_branch_unrelated_ok;
+    (* M3 plain use-after-move (loan-free) from real programs *)
+    Alcotest.test_case "extract+solve: plain double-move flagged, agrees with lexical" `Quick t_extract_uam_double_move;
+    Alcotest.test_case "extract+solve: reinit-revived move ok, agrees with lexical" `Quick t_extract_uam_reinit_ok;
   ]
