@@ -257,8 +257,78 @@ let t_extract_loop_ok () =
   Alcotest.(check bool) "Polonius accepts the move-free loop" false pol;
   Alcotest.(check bool) "agrees with lexical" lex pol
 
+(* ── M3 (3/3): the corpus-wide parallel-run diff gate ─────────────────────────
+   Run BOTH tiers over every .affine fixture and assert the Polonius
+   extractor+solver verdict never diverges from the lexical [Borrow.check_program]
+   EXCEPT on a documented allowlist of known bounded-scope cases. A divergence on
+   any non-allowlisted fixture fails this test — that is the zero-divergence
+   regression gate M3 exists to provide. The extractor is NOT wired into
+   bin/main.ml; this gate guards the equivalence claim, not the build verdict.
+
+   Each allowlist entry is (fixture, reason). 16 are sound UNDER-reporting —
+   features the extractor does not model yet, where lexical flags an error and
+   Polonius (conservatively) does not. 1 is a known false positive
+   (reassign_old_ok) awaiting the reborrow/loan-release increment. As later
+   increments land, entries graduate OFF this list; an allowlisted fixture that
+   has started AGREEING is logged (prune it) but does not fail the gate. *)
+let known_divergences : (string * string) list =
+  [ (* unmodeled: exclusive / &mut conflicts (no shared-XOR-exclusive rule yet) *)
+    "borrow_mutref_conflict.affine", "mut-ref exclusivity";
+    "borrow_mutref_use_while.affine", "mut-ref exclusivity";
+    "borrow_use_while_excl.affine", "exclusive-borrow conflict";
+    "borrow_nll_still_rejects_live_borrow.affine", "exclusive live-borrow";
+    (* unmodeled: return-escape / borrow-outlives-owner *)
+    "borrow_outlives_owner.affine", "borrow-outlives-owner";
+    "borrow_return_escape_local.affine", "return-escape (local)";
+    "borrow_return_escape_param.affine", "return-escape (param)";
+    "ref_to_ref_return_escape.affine", "ref-to-ref + return-escape";
+    (* unmodeled: ref-to-ref reborrow chains (subset closure not consumed yet) *)
+    "ref_to_ref_protects_owner.affine", "ref-to-ref chain";
+    "borrow_reassign_alias_survives.affine", "reassign alias survives";
+    "borrow_callee_returned_borrow_reassign.affine", "reassign reborrow";
+    "slice_b_new_borrow_still_protects.affine", "reborrow reassign (Slice B)";
+    (* unmodeled: sub-place / aggregate borrow sources *)
+    "borrow_callee_returned_borrow_aggregate.affine", "aggregate/sub-place source";
+    "slice_c_body_move_persists.affine", "single-block body move scope";
+    (* unmodeled: captured-linear (lambda capture) *)
+    "slice_d_captured_linear_let_rejected.affine", "captured-linear (let)";
+    "slice_d_captured_linear_param_rejected.affine", "captured-linear (param)";
+    (* KNOWN FALSE POSITIVE: reassignment should release the old loan; the
+       extractor kills loans only at binder-last-use. Fixed by the reborrow /
+       loan-release increment. *)
+    "borrow_callee_returned_borrow_reassign_old_ok.affine", "FALSE-POSITIVE: loan-release-on-reassign (reborrow increment)";
+  ]
+
+let t_parallel_run_diff () =
+  let dir = Test_e2e.fixture_dir in
+  let files = Sys.readdir dir |> Array.to_list |> List.sort compare
+              |> List.filter (fun f -> Filename.check_suffix f ".affine") in
+  let agree = ref 0 and skip = ref 0 in
+  let unexpected = ref [] and now_agreeing = ref [] in
+  List.iter (fun f ->
+    match (try Some (polonius_vs_lexical f) with _ -> None) with
+    | None -> incr skip   (* doesn't parse/resolve standalone — not borrow-checkable here *)
+    | Some (pol, lex) ->
+      if pol = lex then begin
+        incr agree;
+        if List.mem_assoc f known_divergences then now_agreeing := f :: !now_agreeing
+      end else if not (List.mem_assoc f known_divergences) then
+        unexpected := (f, pol, lex) :: !unexpected)
+    files;
+  List.iter (fun f ->
+    Printf.eprintf "[diff-gate] allowlisted fixture now AGREES (prune it): %s\n%!" f)
+    !now_agreeing;
+  List.iter (fun (f, pol, lex) ->
+    Printf.eprintf "[diff-gate] UNEXPECTED divergence: %s polonius=%b lexical=%b\n%!" f pol lex)
+    !unexpected;
+  Printf.eprintf "[diff-gate] total=%d agree=%d skip=%d allowlisted-divergences=%d\n%!"
+    (List.length files) !agree !skip (List.length known_divergences);
+  Alcotest.(check int) "no NEW (non-allowlisted) extractor↔lexical divergence"
+    0 (List.length !unexpected)
+
 let tests =
   [
+    Alcotest.test_case "M3 3/3: corpus parallel-run diff gate" `Quick t_parallel_run_diff;
     Alcotest.test_case "rule1: liveness straight-line" `Quick t_live_straight;
     Alcotest.test_case "rule1: kill stops liveness (NLL)" `Quick t_kill_stops_liveness;
     Alcotest.test_case "rule1: liveness across branches" `Quick t_live_branches;

@@ -109,8 +109,13 @@ let compute_moved_in (f : facts) : (var * point) list =
       if not (reinit_at v p) then add_out v p
     end
   in
-  (* seed: a move makes [V] moved-out at the move point regardless of anything *)
-  List.iter (fun (v, p) -> add_out v p) f.move_at;
+  (* seed: a move makes [V] moved-out at the move point — UNLESS the same point
+     also re-initialises [V]. At top-level-statement point granularity a loop body
+     like [drop_int(x); x = 42] collapses the move and the reviving rewrite onto
+     one point; letting reinit dominate the exit-state is conservative toward
+     ACCEPTANCE (it can only suppress an error, never invent one), which keeps the
+     false-positive direction — rejecting valid code — off the table. *)
+  List.iter (fun (v, p) -> if not (reinit_at v p) then add_out v p) f.move_at;
   let rec loop () =
     match !work with
     | [] -> ()
@@ -132,7 +137,12 @@ let solve (f : facts) : derived =
   (* use-after-move: a use of [V] at a point where [V] is already in moved-state *)
   let moved_in = compute_moved_in f in
   let uam_errors =
-    List.filter_map (fun (v, p) -> if mem_pair v p moved_in then Some p else None)
+    List.filter_map (fun (v, p) ->
+      (* a use of [V] where [V] is moved on entry AND not revived at this very
+         point is the error; a same-point reinit is assumed (conservatively) to
+         precede the use, so it is not flagged. *)
+      if mem_pair v p moved_in && not (mem_pair v p f.reinit_at)
+      then Some p else None)
       f.use_at
   in
   (* rule 3 + UAM: the points carrying any invalidation or use-after-move *)
