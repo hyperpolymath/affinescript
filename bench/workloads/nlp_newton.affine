@@ -1,0 +1,12 @@
+// SPDX-License-Identifier: MPL-2.0
+// NLP workload — Newton's method (Babylonian) for integer sqrt: the non-linear
+// iterative refinement x := (x + n/x)/2 converging to floor(sqrt n). Pure Int →
+// runs everywhere. Proven-style: asserts isqrt(144) = 12 and prints a verdict.
+fn iter(n: Int, x: Int, k: Int) -> Int {
+  if k <= 0 { x } else { iter(n, (x + n / x) / 2, k - 1) }
+}
+fn isqrt(n: Int) -> Int { iter(n, n, 20) }
+fn main() -> Int {
+  if isqrt(144) == 12 { println("NLP_NEWTON_OK"); 0 }
+  else { println("NLP_NEWTON_WRONG"); 1 }
+}

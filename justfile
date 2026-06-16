@@ -182,6 +182,12 @@ compile-riscv FILE OUT:
 riscv-run-validate:
     ./tools/riscv-run-gate.sh
 
+# Per-backend RUNTIME bench over real, correctness-checked workloads (LP tropical
+# min-plus + NLP Newton): compile to wasm (validate) and native (run + assert the
+# verdict token + time). The proven-style "assert the answer, not just ran".
+workload-bench:
+    ./tools/workload-bench.sh
+
 # ── Compiler subcommands ──────────────────────────────────────────────────────
 
 # Run the lexer on a file
