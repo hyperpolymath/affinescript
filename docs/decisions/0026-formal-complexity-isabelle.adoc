@@ -1,0 +1,268 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+= ADR-0026: Formal verification of compiler-phase complexity bounds in Isabelle/HOL
+Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+:toc:
+:toclevels: 2
+:icons: font
+
+Status:: *Proposed* (awaiting owner sign-off)
+Date:: 2026-06-16
+Series:: Settled-decisions ledger. Companion to ADR-0025 (semantics VM — shares the tropical `(ℕ∪{∞}, min, +)` cost semiring). Scoping/design doc, not an implementation commitment.
+
+== Context
+
+=== The empirical finding that prompts this
+
+The scaling bench (`bench/bench_scaling.ml`, `just bench`) measured the compile
+pipeline — parse → resolve → wasm-codegen — over generated programs of `N`
+trivial functions and found the per-function cost is *not* flat. It climbs from
+~4.4 µs/func at `n=100` to ~80 µs/func at `n=5000`; the 1000→5000 step (5× input)
+costs ~32× the time, i.e. empirically *super-linear ≈ O(n²)* (log₅ 32 ≈ 2.15).
+Recorded in `issues-drafts/07-superlinear-compile-scaling.md`. The prime suspect
+is a full-program scan repeated per item — a `List.assoc`/`List.nth` symbol table
+in `lib/resolve.ml` re-walked per reference.
+
+This is a concrete, measured instance of the compiler's *implemented* complexity
+diverging from its *intended* complexity. Resolution is morally an O(n) or
+O(n log n) pass; the implementation is quadratic.
+
+=== What we already have informally
+
+`docs/academic/mathematical-foundations/complexity-analysis.md` is a
+*hand-written, prose-and-pencil* complexity/decidability analysis. Its claims are
+of the form "type checking the simply-typed fragment is O(n)", "row polymorphism
+is O(n²) worst case, O(n) typical", "borrow checking is O(n²) (linear with good
+data structures)", "effect inference is O(n²)", with one-line "visited once,
+constant-time operations" justifications. It is a *theoretical* document (its own
+header says so) about the *type system* and decision procedures — it is **not**
+machine-checked, and it does **not** cover the front-end pipeline phases
+(lex/parse/resolve/codegen) whose constants the bench just measured. The two
+artefacts are disjoint in coverage and in rigour.
+
+=== Why Isabelle, and why it is already in reach
+
+Isabelle/HOL is *already an estate prover* — 101 `.thy` files exist. The relevant
+ones live in `hyperpolymath/tropical-resource-typing`, where the tropical
+`(min, +)` semiring — the *same* semiring the ADR-0025 VM M1 cost-meter uses — is
+already formalised. Concrete witnesses of the existing Isabelle style and depth
+there:
+
+* `Tropical_v2.thy` — the scalar semiring: `trop_add`, `trop_mul`, with
+  `trop_add_idem`, `trop_add_assoc`, `trop_mul_assoc`, `trop_distrib_left`,
+  `zero_tropical`.
+* `Tropical_Kleene.thy` — `theorem trop_mat_star_eq_sum_pow`,
+  `theorem trop_mat_star_equation`, `theorem trop_mat_star_least_prefixpoint`,
+  `lemma trop_mat_pow_n_le_star` — a genuine fixed-point / closure development.
+* `Tropical_Matrices_Clean.thy` — `trop_mat_mul_c_assoc`,
+  `trop_mat_mul_c_id_left/right`, `walks_c` (shortest-walk semantics).
+* `Tropical_Ordinal.thy` — `tropO_distrib_left/right`, ordinal-graded variant.
+
+So the prover, the proof idiom, and the cost algebra are all present in one repo.
+
+Crucially, Isabelle's *Archive of Formal Proofs* (AFP) carries best-in-class
+*running-time* verification machinery that the estate's primary prover matrix
+(Coq / Idris2 / Lean / Agda) does not match for this specific purpose:
+
+* the **Akra–Bazzi master theorem** (`Akra_Bazzi`) — closed-form bounds for
+  divide-and-conquer recurrences;
+* **Amortized_Complexity** — verified amortized analysis (Nipkow et al.);
+* the **"Functional Algorithms, Verified!"** time-bound line — running-time
+  functions paired with the algorithm and proved against it;
+* **Imperative-HOL with time / Time_Monad** — a monadic step-counting discipline
+  for proving concrete step bounds of imperative/functional code.
+
+This is the entire justification for the scope decision below: we reach for
+Isabelle *because of the AFP time-bound tooling*, not as a general prover swap.
+
+== Decision (proposed)
+
+Open a **formal complexity-bounds track** that machine-checks the asymptotic
+complexity *class* of AffineScript compiler phases in Isabelle/HOL, using the AFP
+running-time tooling, with its natural home in `tropical-resource-typing` (where
+Isabelle + the cost semiring already live). The track is *complementary* to the
+empirical bench, not a replacement for it.
+
+=== (a) What to prove — phases and target bounds
+
+For each front-end phase, prove an *upper bound on a step-counting model of the
+phase as a function of program size `n`* (n = number of declarations / AST nodes,
+made precise per phase):
+
+[cols="1,2,3"]
+|===
+| Phase | Intended bound | Notes / model
+
+| Lex | O(n) | single left-to-right pass; the cleanest first target.
+| Parse | O(n) | for the LL/recursive-descent core; pratt/precedence climbing is still linear in token count. Backtracking, if any, must be bounded explicitly or the bound is false.
+| Resolve | *O(n)* or *O(n log n)* | **the phase the bench implicates.** A hashed/sorted symbol table gives O(n) (or O(n log n) with an ordered map). The current `List.assoc` model would prove O(n²) — which is the point.
+| Typecheck (annotated core) | O(n) | matches the informal doc's Theorem 2.1/2.2 for the annotated simply-typed fragment. Inference with let-polymorphism is explicitly *out of scope* for the first pass (its worst case is DEXPTIME; not a linear-pass claim).
+| Codegen (wasm) | O(n) | per-declaration emission with O(1) table lookups; an `assoc`/`nth` function index would again be O(n²).
+|===
+
+We prove *upper bounds* (`≤ c · f(n)`), not tight Θ bounds, unless a matching
+lower bound is separately and explicitly established. We do **not** attempt to
+prove anything about phases the informal doc itself marks undecidable or
+super-polynomial (nonlinear refinements, impredicative higher-rank, full HM
+worst case). The track is about the *linear-ish front-end pipeline*, which is
+exactly where the bench found drift.
+
+=== (b) Which AFP tooling
+
+* **Time_Monad / Imperative-HOL-with-time** — the workhorse for the single-pass
+  phases (lex, parse-core, resolve, codegen). Write the phase as a function in a
+  step-counting monad; prove its running-time function is `≤ c·n` (or `c·n·log n`)
+  by structural induction over the input. This is the lightest-weight option and
+  the right starting point.
+* **Amortized_Complexity** — if a phase uses a structure whose per-operation cost
+  is uneven but whose *aggregate* cost over the pass is linear (e.g. a growable
+  table, a worklist), amortized analysis gives the honest aggregate bound.
+* **Akra–Bazzi (`Akra_Bazzi`)** — reserved for any genuinely *divide-and-conquer*
+  phase (none of the current front-end phases obviously are; this is on hand for
+  future passes such as a balanced-merge or a tree-balancing transform). Listed so
+  the toolbox is complete, not because resolve needs it.
+
+The likely first concrete artefact is a `Resolve_Time.thy` modelling resolution
+with a verified finite map and proving its step function is `O(n)` — directly
+contradicting the current `List.assoc` implementation's behaviour.
+
+=== (c) Model ↔ OCaml faithfulness — stated honestly
+
+Isabelle proves a bound about a *model*, written in Isabelle's logic, of the
+phase. The shipping phase is hand-written OCaml (`lib/resolve.ml`,
+`lib/codegen.ml`, …). The gap between them is real and must not be glossed. Two
+options, with trade-offs:
+
+. **Model-with-stated-gap (recommended first).** Hand-transcribe the phase's
+  *algorithm and data-structure choices* into Isabelle, prove the bound there,
+  and record an explicit, written *faithfulness obligation*: "this Isabelle model
+  corresponds to `lib/resolve.ml` as of commit `<sha>` in that it uses a hashed
+  table looked up once per reference; if the OCaml diverges (e.g. reverts to an
+  assoc list) the proof no longer describes it." Cheap, fast, honest. *Risk:* the
+  proof can silently stop describing the code; mitigated by tying the obligation
+  to the bench (below) and to a named commit.
+. **Extraction (Isabelle → SML/OCaml/Haskell/Scala).** Isabelle can *export* the
+  verified algorithm. We could make the proven-correct model the *source of
+  truth* and generate the resolve/codegen table machinery, eliminating the gap by
+  construction. *Trade-off:* extracted code is idiomatically alien, integrates
+  awkwardly with the existing hand-tuned OCaml pipeline, drags in Isabelle's
+  numeric/collection preludes, and the *constants* of extracted code are not the
+  constants of the hand-written code — so it buys asymptotic faithfulness at a
+  real ergonomic and possibly constant-factor cost. Reserve extraction for a
+  phase where the faithfulness guarantee is worth that price; do not adopt it
+  wholesale.
+
+Either way the deliverable is *the asymptotic class*, machine-checked. Neither
+option proves anything about wall-clock constants — see (d).
+
+=== (d) Relationship to the empirical bench — complementary, not redundant
+
+The two are orthogonal and *both necessary*:
+
+* The **formal proof** establishes the asymptotic *class* — that the modelled
+  algorithm is O(n), independent of machine, input distribution, or allocator. It
+  cannot tell you the µs/func constant.
+* The **bench** establishes the *constants and the actual implemented curve* on
+  real hardware over real inputs. It cannot tell you the asymptotic class with
+  certainty (it infers it from a handful of points).
+
+Pointedly: had a machine-checked "resolve is O(n)" proof existed *and been tied
+to the implementation*, today's O(n²) would have been flagged as **the
+implementation failing to meet its intended/proven bound** — either at the
+faithfulness boundary (the OCaml diverged from the proven model) or, under
+extraction, prevented outright. The proof states the contract; the bench detects
+the breach; together they localise it. The intended steady state: the formal
+bound is the *spec*, the bench is the *regression gate* (promoted to a baselined
+Six-Sigma gate once linear, per `docs/TESTING-AND-BENCH-MATRIX.adoc`), and a
+divergence between them is the alarm.
+
+=== (e) Estate-prover scope decision
+
+The estate's *primary* prover matrix is Coq / Idris2 / Lean / Agda (per the
+standards testing taxonomy). Isabelle is used estate-wide but is **not** in that
+primary matrix, so reaching for it here is a deliberate scope decision. It is
+justified narrowly and specifically by the AFP running-time tooling
+(Akra–Bazzi / Amortized_Complexity / Time_Monad), which the primary-matrix
+provers do not match for *verified running-time analysis*. This ADR does **not**
+propose promoting Isabelle into the primary matrix, nor migrating any existing
+proof off it; it proposes using Isabelle *for this one purpose* where it is
+strongest.
+
+The natural home is **`hyperpolymath/tropical-resource-typing`**, because:
+
+* Isabelle is already the prover there (101 `.thy` files; the tropical semiring
+  development cited above);
+* the cost semiring is shared with the ADR-0025 VM cost-meter, so a running-time
+  result can be *expressed in the same `(min, +)` grade* the rest of the cost
+  story already uses;
+* it keeps the front-end complexity proofs out of the AffineScript compiler repo
+  (which has *no* mechanised proofs today — the proof programme #513–#521 is
+  filed but unstarted) and avoids implying Isabelle adoption *into* that repo.
+
+The AffineScript repo's contribution is the *faithfulness obligation* doc and the
+bench gate; the proofs themselves live next to the semiring they use.
+
+=== (f) Phased plan — start with one phase
+
+[cols="1,4"]
+|===
+| Phase | Deliverable
+
+| *F1* | **One phase, end-to-end.** Pick **resolve** (the phase the bench
+implicates). In `tropical-resource-typing`, model resolution over a verified
+finite map in the Time_Monad, prove the step function is `O(n)`, and write the
+explicit faithfulness obligation against `lib/resolve.ml` at a named commit. This
+alone is the proof of concept: a machine-checked statement that resolution *should*
+be linear, sitting beside the bench that shows the *current* code is not.
+| *F2* | Fix the implementation (replace the `List.assoc`/`List.nth` scan with a
+`Hashtbl`, per the issue draft), confirm the bench goes flat, and confirm the
+fixed OCaml now matches the F1 model's data-structure choice — closing the
+faithfulness gap by agreement rather than extraction.
+| *F3* | Extend to **lex** and **codegen** (the other two phases the bench times),
+same Time_Monad pattern.
+| *F4* | **Annotated-core typecheck** O(n) — connects to the informal doc's
+Theorem 2.1/2.2 and begins machine-checking that document's claims (the
+explicit long-term aim: turn `complexity-analysis.md`'s prose theorems into
+machine-checked ones, phase by phase, never claiming more than is proved).
+| *(later, optional)* | Evaluate **extraction** for a single phase where the
+faithfulness guarantee justifies the ergonomic cost. Decision deferred; not part
+of this proposal's commitment.
+|===
+
+Each phase is independently shippable and independently valuable. F1 is the gate:
+if F1 doesn't pay for itself, the track stops there.
+
+== Consequences
+
+* **What we gain.** A machine-checked *specification* of front-end phase
+  complexity, in the same prover and the same cost algebra the VM cost-meter uses;
+  a principled alarm (proof = contract, bench = breach detector) for exactly the
+  class of regression just discovered; and a path to upgrade
+  `complexity-analysis.md` from prose to mechanised, claim by claim.
+* **What this does *not* deliver — stated to avoid over-claiming.** A formal
+  asymptotic bound says *nothing* about constants, wall-clock time, allocator
+  behaviour, or cache effects — the bench owns those. It is only as good as the
+  *model's faithfulness* to the OCaml (option (c.i)) unless extraction is used
+  (option (c.ii)), and even extraction preserves only the class, not the
+  constants. It covers only the phases proved; an O(n) proof for resolve says
+  nothing about codegen. It explicitly does *not* tackle the undecidable /
+  super-polynomial fragments the informal doc already flags.
+* **Scope cost.** This reaches outside the primary prover matrix into Isabelle —
+  a deliberate, narrowly-justified exception, not a precedent for general Isabelle
+  adoption. It adds proof-maintenance burden in `tropical-resource-typing` and a
+  faithfulness obligation that must be kept honest against the compiler source.
+* **Sequencing.** The pragmatic fix to issue-draft 07 (swap `List.assoc` for
+  `Hashtbl`) does **not** wait on this track — F2 *confirms* the fix against a
+  proven bound; it does not block it. The formal track's value is durable
+  (preventing the *next* such regression), not a prerequisite for the immediate
+  performance fix.
+
+== Open questions (for owner sign-off)
+
+. Is the Isabelle scope exception acceptable for this purpose, given the AFP
+  time-bound justification? (Primary matrix stays Coq/Idris2/Lean/Agda.)
+. Home in `tropical-resource-typing` confirmed, or a fresh repo preferred?
+. F1 on **resolve** (bench-implicated) — agreed, or start with the simpler
+  **lex** to de-risk the tooling first?
+. Faithfulness strategy: start with *model-with-stated-gap* (c.i) and defer
+  extraction (c.ii) — agreed?
