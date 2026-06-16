@@ -21,7 +21,8 @@ type ownership_kind =
 (** Code generation context *)
 type context = {
   types : func_type list;            (** type section *)
-  funcs : func list;                 (** function definitions *)
+  funcs : func list;                 (** function definitions (cons-accumulated, reversed at emission) *)
+  num_funcs : int;                   (** length of [funcs] — O(1) index assignment (issue-draft 07; List.length per fn was O(n²)) *)
   exports : export list;             (** exports *)
   imports : import list;             (** imports *)
   globals : global list;             (** global variables *)
@@ -149,6 +150,7 @@ let import_func_count (ctx : context) : int =
 let create_context () : context = {
   types = [];
   funcs = [];
+  num_funcs = 0;
   exports = [];
   imports = [];
   globals = [];
@@ -3201,7 +3203,7 @@ let gen_decl (ctx : context) (decl : top_level) : context result =
     let ctx_with_type = { ctx with types = ctx.types @ [func_type] } in
 
     (* Determine function index before generating *)
-    let func_idx = import_func_count ctx_with_type + List.length ctx_with_type.funcs in
+    let func_idx = import_func_count ctx_with_type + ctx_with_type.num_funcs in
 
     (* Stage 2: Extract ownership annotations for typed-wasm [typedwasm.ownership] section *)
     let param_kinds = List.map ownership_kind_of_param fd.fd_params in
@@ -3219,8 +3221,13 @@ let gen_decl (ctx : context) (decl : top_level) : context result =
       | None -> ctx_with_type.fn_ret_structs
     in
     let ctx_with_func_idx = { ctx_with_type with
-      func_indices = ctx_with_type.func_indices @ [(fd.fd_name.name, func_idx)];
-      ownership_annots = ctx_with_type.ownership_annots @ [(func_idx, param_kinds, ret_kind)];
+      (* cons, not @-append: append is O(len) → O(n²) over n functions
+         (issue-draft 07). func_indices is a name→idx lookup (order-irrelevant);
+         ownership_annots is reversed once at emission (build_ownership_section).
+         func_idx is computed from List.length (order-independent), so indices
+         are unchanged. *)
+      func_indices = (fd.fd_name.name, func_idx) :: ctx_with_type.func_indices;
+      ownership_annots = (func_idx, param_kinds, ret_kind) :: ctx_with_type.ownership_annots;
       fn_ret_structs = fn_ret_structs';
       (* Float wall: record this fn's result value type for call-site inference. *)
       fn_ret_types = (fd.fd_name.name,
@@ -3245,7 +3252,11 @@ let gen_decl (ctx : context) (decl : top_level) : context result =
     in
     (* Use ctx_after_gen to preserve any lambda_funcs created during generation *)
     Ok { ctx_after_gen with
-         funcs = ctx_after_gen.funcs @ [func_with_type];
+         (* cons, not @-append (issue-draft 07: O(n²)). funcs is reversed once
+            at emission (all_funcs below); func_idx came from List.length so the
+            final index = insert order is preserved by the reverse. *)
+         funcs = func_with_type :: ctx_after_gen.funcs;
+         num_funcs = ctx_after_gen.num_funcs + 1;
          exports = ctx_after_gen.exports @ export
        }
 
@@ -3514,7 +3525,7 @@ let generate_module ?loader (prog : program) : wasm_module result =
   (* Merge regular functions and lambda functions *)
   let num_regular_funcs = List.length ctx'.funcs in
   let import_offset = import_func_count ctx' in
-  let all_funcs = ctx'.funcs @ ctx'.lambda_funcs in
+  let all_funcs = List.rev ctx'.funcs @ ctx'.lambda_funcs in  (* funcs is cons-accumulated; restore index order *)
 
   (* Create function table if there are lambdas *)
   let (tables, elems) = if List.length ctx'.lambda_funcs > 0 then
@@ -3605,7 +3616,7 @@ let generate_module ?loader (prog : program) : wasm_module result =
   in
 
   (* Stage 2: Build [typedwasm.ownership] custom section from collected annotations *)
-  let ownership_payload = build_ownership_section ctx'.ownership_annots in
+  let ownership_payload = build_ownership_section (List.rev ctx'.ownership_annots) in  (* cons-accumulated; restore entry order *)
   let custom_sections = if Bytes.length ownership_payload > 0 then
     [("typedwasm.ownership", ownership_payload)]
   else

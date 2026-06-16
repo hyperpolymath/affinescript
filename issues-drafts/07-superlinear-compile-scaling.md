@@ -44,3 +44,25 @@ the bench to a baselined Six-Sigma gate once linear (`docs/TESTING-AND-BENCH-MAT
 
 This is the first defect found by closing the "large-input scaling unmeasured"
 gap — the bench paid for itself on its first run.
+
+## Update (2026-06-16) — phase-split localisation + partial fix (6.5×)
+
+Phase-split timing (`bench_scaling.ml` now times parse/resolve/codegen
+separately) shows **parse and resolve are flat (linear)** — the quadratic is
+entirely in **`lib/codegen.ml`** (not resolve, as first guessed). Two confirmed
+O(n²) sources found and fixed:
+
+1. **`@`-append accumulation per function** — `gen_decl` appended to `funcs`,
+   `func_indices`, `ownership_annots` with `xs @ [x]` (O(len) each) → O(n²). Fixed:
+   cons (O(1)) + `List.rev` once at emission (`all_funcs`, `build_ownership_section`).
+   Indices preserved (they come from `List.length`, order-independent).
+2. **`List.length ctx.funcs` per function** (index assignment, codegen.ml:3204) →
+   O(n²). Fixed: an O(1) `num_funcs` counter field on the context.
+
+Result (codegen, n=5000): **453 ms → 70 ms (~6.5×)**; 477 tests + `wasm-validate`
+green (byte-identical indices). **Residual:** codegen is still mildly
+super-linear (~1→14 µs/func, 100→5000) — a third, smaller source remains. Ruled
+out by inspection: `intern_func_type` (dedups identical signatures), `exports`
+(empty for non-pub), `Effect_sites` (Hashtbl, O(n)). Localising the residual
+needs a profiler (`ocaml-landmarks` / `perf`), not static reading — deferred.
+The ADR-0026 F1 (Isabelle "resolve/codegen is O(n)") proof is the durable guard.
