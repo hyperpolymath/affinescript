@@ -1,0 +1,113 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath (Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>)
+= AffineScript Repo Tidy-Up Ledger — 2026-06-16
+:toc:
+
+Ground-truthed record of the comprehensive repo tidy-up (task #12,
+AUDIT-FIRST, owner-approved batches). Captures what was done, what was
+deliberately held, and the open owner-gated flags so a later session does
+not re-discover them cold.
+
+== Batches completed
+
+[cols="1,3,1",options="header"]
+|===
+| Batch | Scope | Disposition
+
+| A | `.gitignore` out.wasm | No-op — already ignored.
+| C | README dedup | `README.md` (677-line stale broken duplicate of
+  `README.adoc`) deleted (`ea4d864`). Deletion-only, per owner.
+| B | docs `.md` → `.adoc` (~62 files) | Done across 8 signed commits
+  (`2ba8141` pilot → `4747e9d` link/attribution pass). See below.
+|===
+
+=== Batch B conversion method (reusable)
+
+. `pandoc -f markdown -t asciidoc FILE | sed -E '/^==+ /s/^=//'` — the
+  `sed` demotes every heading one level so the top `#` becomes a single
+  `=` document title.
+. Prepend the two-line header (the form that satisfies the strict
+  pre-commit hook *without editing the hook*):
++
+[source]
+----
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: <year(s)> hyperpolymath (Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>)
+----
+. `git rm` the `.md`, `git add` the `.adoc`, commit signed (`-S`).
+
+Verified clean across the corpus: zero LaTeX math (academic docs are
+prose + code blocks), code fences preserved verbatim, intra-doc links
+repointed `.md` → `.adoc`.
+
+== Held back — do NOT convert/touch without explicit owner action
+
+[cols="2,3",options="header"]
+|===
+| File | Reason
+
+| `docs/PROOF-NEEDS.md` | Owner-gated / parked (modified in working tree;
+  never commit without owner SPDX + sign).
+| `docs/reference/ABI-FFI.md` | Uninstantiated RSR template (`{{PROJECT}}`
+  placeholders, "delete this line" instruction). Format-converting broken
+  placeholder content forward would mask that it needs instantiation.
+| `docs/governance/LICENSING-GUIDE.md` | Licence-adjacent. Owner-only per
+  the no-automated-licence-edits directive — even a format-only pass.
+| `docs/governance/SECURITY.md`, `docs/governance/CODE_OF_CONDUCT.md` |
+  Community-health files — `.md` by name per CLAUDE.md DOC-FORMAT
+  exception. Correct to leave.
+|===
+
+== Finding: attribution drift caught by the strict pre-commit hook
+
+Four *pre-existing* `.adoc` files predated the hook ever checking them and
+carried owner-attribution drift (no literal
+`Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>` string):
+
+* `docs/NAVIGATION.adoc` — was `2024-2026 Hyperpolymath Contributors`
+* `docs/README.adoc` — was `2024-2026 Hyperpolymath Contributors`
+* `docs/standards/PANIC-ATTACK.adoc` — was `2026 hyperpolymath`
+* `docs/standards/TESTING.adoc` — was `2026 hyperpolymath`
+
+They surfaced only when the batch-B link pass needed to stage them (to
+repoint links to the now-`.adoc` standards docs), which tripped the hook.
+Per explicit owner authorization (extending the batch-B SPDX/attribution
+exception to these touched files), each was reconciled to the canonical
+`hyperpolymath (Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>)` form,
+preserving its existing copyright year (`4747e9d`). The hook then passed
+unmodified — it did its job as a load-bearing attribution-drift detector.
+
+NOTE: This was a one-off, owner-authorized reconciliation of files already
+being touched. It does not authorize a sweep. Any *other* attribution
+drift remains owner-only / manual.
+
+== Open owner-gated flags (not actioned)
+
+* `SECURITY.md` (both `docs/governance/SECURITY.md` and the repo-root copy)
+  is an *uninstantiated* RSR template — `{{OWNER}}`, `{{REPO}}`,
+  `{{SECURITY_EMAIL}}`, `{{PGP_FINGERPRINT}}`, `{{PGP_KEY_URL}}`,
+  `{{WEBSITE}}`, `{{CURRENT_YEAR}}` are still literal placeholders. Needs
+  instantiation or an explicit "leave as template" decision.
+* `docs/reference/ABI-FFI.md` — `{{PROJECT}}` template; instantiate or
+  remove.
+* `docs/governance/LICENSING-GUIDE.md` — awaiting owner manual format pass.
+* `SECURITY.md:388` links to `README.md` for contact info — that root
+  `README.md` was deleted in batch C, so the link now dangles. Folded into
+  the SECURITY.md instantiation decision above.
+* `AFFIRMATION.adoc:117` carries a note about a "legacy README.md" that is
+  now stale after the batch-C deletion (owner-gated file — left untouched).
+
+== Pre-existing dangling doc links (left verbatim, NOT masked)
+
+Targets that were never created; repointing them to `.adoc` would only
+move the dangle. Left as-is so the gap stays visible:
+
+* `docs/tutorial/lesson-10-building.adoc` → `../reference/index.md`,
+  `../stdlib/index.md`
+* `docs/guides/lessons/01-hello-affinescript.adoc` →
+  `02-functions-and-patterns.md`
+* `docs/guides/lessons/README.adoc` → `../../specs/affinescript-spec.md`
+  (community-health `CONTRIBUTING.md` link correctly kept `.md`)
+* `docs/academic/README.adoc` → `white-papers/type-system.md`,
+  `white-papers/effect-system.md`
+* `docs/alib/README.adoc` → `../specs/affinescript-spec.md`
