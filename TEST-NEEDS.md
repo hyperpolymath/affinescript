@@ -61,12 +61,20 @@ PBT/FUZ/MUT and baselined benches (below).
 | Proof check — **Agda echo** | **47.8 s** (≈all of `proof-check-all`'s 47 s — cubical + 22 boundary certs) |
 | Gates (each) | wasm 138 ms · coprocessor 47 ms · android 46 ms · typed-wasm 15 ms · riscv-run 102 ms |
 
-**Benches: GAP.** `bench/bench_{lex,parse,typecheck,codegen}.ml` run (4 cases) but
-are **visibility-only — emit no ns/op metrics**, are not baselined, and the
-`just bench` recipe's second command is broken (`@bench` mismatch). No Six-Sigma
-classification, no per-backend runtime bench, no VM step-rate bench (the VM has
-deterministic cost-metering but no wall-clock harness). The test corpus maxes at
-114 lines, so **large-input/scaling performance is unmeasured**.
+**Benches: partial (2026-06-16 — harness fixed).** `just bench` now runs +
+prints real numbers (the alcotest wrapper was swallowing stdout; the recipe's
+second command was broken — both fixed). Phase numbers: lex ~7–10 M tok/s; parse
+~0.02 ms/iter; typecheck ~0.01 ms/iter; codegen ~0.01 ms/iter (small inputs).
+Added: **`bench_scaling`** (generated N-function programs) and **`bench_vm`**
+(Solo CESK step-rate, ~3.5e7 steps/s, exactly linear 3n+1 steps).
+
+⚠ **FINDING (issue-draft 07):** the scaling bench shows compile time is
+**super-linear ≈O(n²)** — 4.4 µs/func at n=100 but 80 µs/func at n=5000 (5×
+input → ~32× time). Invisible on the 114-line corpus. Localise (likely
+`resolve.ml`/`codegen.ml` per-item full scan) and fix to flat-µs/func.
+
+Still GAP: Six-Sigma baselining; per-backend *runtime* bench (real workloads —
+see the planned LP/NLP suite); promotion to a gating threshold.
 
 ## Remaining gaps (priority order)
 
