@@ -125,7 +125,7 @@ let moved_places (ctx : Borrow.context) (symbols : Symbol.t) (e : expr)
         | _ -> []) args)
     | None -> []) (apps e)
 
-type rloan = { rl_id : int; rl_place : Borrow.place }
+type rloan = { rl_id : int; rl_place : Borrow.place; rl_binder : Symbol.symbol_id option }
 
 (** Extract the Polonius facts for one (straight-line) function body. *)
 let extract_fn (ctx : Borrow.context) (symbols : Symbol.t) (fd : fn_decl) : PF.facts =
@@ -177,16 +177,31 @@ let extract_fn (ctx : Borrow.context) (symbols : Symbol.t) (fd : fn_decl) : PF.f
       match next_reassign with Some r -> min r last_use_kill | None -> last_use_kill
     in
     (* create one loan per place a binder's RHS value borrows (union over branch
-       arms), all born at [pt] and held by binder [sym]. *)
+       arms), all born at [pt] and held by binder [sym]. A bare ref-var RHS
+       [let r2 = r1] is a reborrow ALIAS: r2 holds a fresh loan on every place r1
+       already borrows, so the owner stays protected until BOTH binders die
+       (each loan has its own [kill_for] lifetime) — mirrors the lexical
+       checker's ref-counted ref-binding graph. *)
+    let alias_places (rhs : expr) : (Borrow.place * bool) list =
+      match peel rhs with
+      | ExprVar id ->
+        (match Borrow.lookup_symbol_by_name symbols id.name with
+         | Some s ->
+           List.filter_map (fun rl ->
+             if rl.rl_binder = Some s.Symbol.sym_id then Some (rl.rl_place, false) else None)
+             !loans
+         | None -> [])
+      | _ -> []
+    in
     let record_binder_loans (pt : int) (sym : Symbol.symbol_id) (rhs : expr) : unit =
       let kp = kill_for sym pt (pt + 1) in
       List.iter (fun (place, _excl) ->
         let l = fresh next_loan in
         borrow_at   := (l, pt) :: !borrow_at;
         loan_origin := (l, fresh next_origin) :: !loan_origin;
-        loans       := { rl_id = l; rl_place = place } :: !loans;
+        loans       := { rl_id = l; rl_place = place; rl_binder = Some sym } :: !loans;
         killed      := (l, kp) :: !killed)
-        (rhs_borrows ctx symbols rhs)
+        (rhs_borrows ctx symbols rhs @ alias_places rhs)
     in
     let record_let_loans (pt : int) (id : ident) (rhs : expr) : unit =
       match Borrow.lookup_symbol_by_name symbols id.name with
@@ -276,12 +291,22 @@ let extract_fn (ctx : Borrow.context) (symbols : Symbol.t) (fd : fn_decl) : PF.f
         (moved_places ctx symbols e)
     in
     (* a whole-place write [x = e] (LHS is a bare variable) revives [x]; a
-       sub-place write [x.f = e] / [x[i] = e] instead READS the parent place. *)
+       sub-place write [x.f = e] / [x[i] = e] instead READS the parent place.
+       EITHER way, writing to a place a live loan covers is a conflict — the
+       lexical assign-while-borrowed / UseWhileExclusivelyBorrowed rule (a binder
+       reassignment [r = &y] is exempt automatically: [r] is never a loan PLACE,
+       only a holder). *)
     let record_assign_lhs pt lhs =
       match Borrow.expr_to_place symbols (peel lhs) with
-      | Some (Borrow.PlaceVar _ as p) ->
-        (match Borrow.root_var p with Some v -> reinit_at := (v, pt) :: !reinit_at | None -> ())
-      | _ -> do_point pt lhs  (* sub-place write reads the parent (+ any nested moves) *)
+      | Some p ->
+        List.iter (fun rl ->
+          if Borrow.places_overlap p rl.rl_place then
+            conflict_at := (rl.rl_id, pt) :: !conflict_at) !loans;
+        (match p with
+         | Borrow.PlaceVar _ ->
+           (match Borrow.root_var p with Some v -> reinit_at := (v, pt) :: !reinit_at | None -> ())
+         | _ -> do_point pt lhs)  (* sub-place write reads the parent (+ nested moves) *)
+      | None -> do_point pt lhs
     in
     let rec moves_stmt pt s =
       match s with

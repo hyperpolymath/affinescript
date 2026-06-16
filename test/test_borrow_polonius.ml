@@ -288,21 +288,17 @@ let t_extract_reassign_uam () =
    increments land, entries graduate OFF this list; an allowlisted fixture that
    has started AGREEING is logged (prune it) but does not fail the gate. *)
 let known_divergences : (string * string) list =
-  [ (* unmodeled: exclusive / &mut conflicts (no shared-XOR-exclusive rule yet) *)
-    "borrow_mutref_conflict.affine", "mut-ref exclusivity";
-    "borrow_mutref_use_while.affine", "mut-ref exclusivity";
-    "borrow_use_while_excl.affine", "exclusive-borrow conflict";
-    "borrow_nll_still_rejects_live_borrow.affine", "exclusive live-borrow";
-    (* unmodeled: return-escape / borrow-outlives-owner *)
+  [ (* unmodeled: borrow-vs-borrow conflicts — two simultaneously live borrows
+       violating shared-XOR-exclusive. The extractor models access-vs-loan
+       conflicts (move/write over a live loan), not loan-vs-loan. *)
+    "borrow_mutref_conflict.affine", "conflicting &mut/&mut borrows";
+    "borrow_mutref_use_while.affine", "use while &mut borrowed";
+    "borrow_use_while_excl.affine", "use while exclusively borrowed";
+    (* unmodeled: return-escape / borrow-outlives-owner (no escape analysis) *)
     "borrow_outlives_owner.affine", "borrow-outlives-owner";
     "borrow_return_escape_local.affine", "return-escape (local)";
     "borrow_return_escape_param.affine", "return-escape (param)";
     "ref_to_ref_return_escape.affine", "ref-to-ref + return-escape";
-    (* unmodeled: ref-to-ref reborrow chains — an ALIAS [let r2 = r1] holding the
-       same loan (the subset closure is computed but not yet consumed here) *)
-    "ref_to_ref_protects_owner.affine", "ref-to-ref alias chain";
-    "borrow_reassign_alias_survives.affine", "reassign alias survives";
-    "slice_b_new_borrow_still_protects.affine", "ref-to-ref alias (Slice B)";
     (* unmodeled: sub-place / aggregate borrow sources *)
     "borrow_callee_returned_borrow_aggregate.affine", "aggregate/sub-place source";
     "slice_c_body_move_persists.affine", "single-block body move scope";
