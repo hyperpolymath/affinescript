@@ -202,17 +202,22 @@ type expr =
           that `synth` typed as `Float`; the wasm backend loads it with an
           8-byte stride and `f64.load`. The interpreter re-dispatches to the
           ordinary {!ExprIndex}. *)
-  | ExprFloatTuple of expr list
-      (** Tuple literal whose fields are *all* `Float` (homogeneous). Laid out
-          with 8-byte f64 cells (no length header, offset `i*8`). Produced only
-          by the elaboration from an {!ExprTuple} that `synth` typed all-`Float`.
-          A *mixed* tuple (e.g. `(Int, Float)`) is NOT rewritten — its
-          type-dependent field offsets are not yet handled, so it keeps loud-
-          failing (issue-draft 05). *)
-  | ExprFloatTupleIndex of expr * int
-      (** `t.i` whose tuple is all-`Float` — 8-byte f64 load at offset `i*8`.
-          Dual of {!ExprFloatTuple}; re-dispatched to {!ExprTupleIndex} by the
-          interpreter. *)
+  | ExprCellTuple of (expr * bool) list
+      (** Tuple literal that contains at least one `Float` field. Laid out with
+          *uniform 8-byte cells* (no length header, field `i` at offset `i*8`):
+          the bool flags an f64 cell (`f64.store`) vs an i32 cell (`i32.store`,
+          which writes the low 4 bytes of the 8-byte slot). Uniform-8 keeps the
+          offset `i*8` independent of the mix of field types, so a mixed
+          `(Int, Float)` works without per-field offset accumulation. Produced
+          only by the elaboration from an {!ExprTuple} that `synth` typed with a
+          `Float` somewhere (issue-draft 05). An all-non-float tuple keeps the
+          4-byte {!ExprTuple} layout. The interpreter re-dispatches to {!ExprTuple}. *)
+  | ExprCellTupleIndex of expr * int * bool
+      (** `t.i` on a float-bearing (uniform-8) tuple: load field `i` at offset
+          `i*8`, as f64 if the bool is set else i32. Every access to such a tuple
+          is rewritten (not just the float fields), since the whole tuple uses
+          8-byte cells. Dual of {!ExprCellTuple}; re-dispatched to
+          {!ExprTupleIndex} by the interpreter. *)
   | ExprUnary of unary_op * expr
   | ExprBlock of block
   | ExprReturn of expr option

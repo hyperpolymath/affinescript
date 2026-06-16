@@ -108,26 +108,24 @@ let rec ty_mentions_float (te : type_expr) : bool =
       List.exists (fun (rf : row_field) -> ty_mentions_float rf.rf_ty) fields
   | _ -> false
 
-let ty_is_scalar_float (te : type_expr) : bool =
-  match ty_strip_own te with TyCon id -> id.name = "Float" | _ -> false
-
 let rec ty_float_in_heap (te : type_expr) : bool =
   match ty_strip_own te with
   | TyApp (id, args) when id.name = "Array" ->
-      (* Array[Float] is now handled: the Float heap wall lowers the literal to
+      (* Array[Float] is handled: the Float heap wall lowers the literal to
          [ExprFloatArray] (8-byte f64 cells) and each `Float`-yielding index to
-         [ExprFloatIndex] (8-byte f64 load), so it no longer transits a 4-byte
-         cell. Only flag arrays whose ELEMENT is itself a still-unhandled float
-         aggregate (e.g. Array[(Float, Float)]); Array[Float] and nested
-         Array[Array[Float]] are fine (issue-draft 05). *)
+         [ExprFloatIndex]. Only flag arrays whose ELEMENT is itself a still-
+         unhandled float aggregate (e.g. Array of Float records); Array[Float],
+         nested Array[Array[Float]], and Array[(Float,Float)] are fine. *)
       List.exists (function TyArg t -> ty_float_in_heap t) args
-  | TyTuple ts ->
-      (* An all-`Float` tuple is now handled (8-byte f64 cells,
-         ExprFloatTuple/ExprFloatTupleIndex). Only flag a tuple that mixes a
-         float with non-floats (or nests a float aggregate) — its field offsets
-         are type-dependent and not yet lowered (issue-draft 05). *)
-      List.exists ty_mentions_float ts && not (List.for_all ty_is_scalar_float ts)
+  | TyTuple _ ->
+      (* Tuples are fully handled: a float-bearing tuple uses uniform 8-byte
+         cells (ExprCellTuple/ExprCellTupleIndex), per-cell i32/f64 op, so field
+         offsets stay i*8 regardless of the field-type mix. Any unhandled INNER
+         aggregate (e.g. a Float record field) loud-fails at its own
+         construction site, not here (issue-draft 05). *)
+      false
   | TyRecord (fields, _) ->
+      (* Records are NOT yet handled — still loud-fail. *)
       List.exists (fun (rf : row_field) -> ty_mentions_float rf.rf_ty) fields
   | _ -> false
 
@@ -505,7 +503,7 @@ let rec expr_val_type (ctx : context) (e : expr) : value_type =
   | ExprFloatBinary (_, (OpAdd | OpSub | OpMul | OpDiv), _) -> F64
   | ExprFloatBinary (_, _, _) -> I32          (* comparisons yield Bool/i32 *)
   | ExprFloatIndex _ -> F64                   (* Float heap wall: a[i] : Float *)
-  | ExprFloatTupleIndex _ -> F64              (* Float heap wall: t.i : Float *)
+  | ExprCellTupleIndex (_, _, is_f64) -> if is_f64 then F64 else I32  (* t.i cell *)
   | ExprUnary (OpNeg, e1) -> expr_val_type ctx e1
   | ExprSpan (e1, _) -> expr_val_type ctx e1
   | ExprVar id ->
@@ -1999,22 +1997,25 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
     (* Complete code: allocate, save to temp, store elements, return pointer *)
     Ok (ctx_final, alloc_code @ save_code @ store_code @ [LocalGet temp_idx])
 
-  | ExprFloatTuple elements ->
-    (* Float heap wall (issue-draft 05): all-`Float` tuple — 8-byte f64 cells,
-       no length header (tuples are fixed-size), field i at offset i*8. Mirrors
-       [ExprTuple] but for f64. Produced only by the elaboration. *)
-    let num_elements = List.length elements in
+  | ExprCellTuple cells ->
+    (* Float heap wall (issue-draft 05): float-bearing tuple — UNIFORM 8-byte
+       cells (no length header), field i at offset i*8. Per-cell op: f64.store
+       for a Float field, i32.store (low 4 bytes of the 8-byte slot) otherwise.
+       Uniform-8 keeps offsets independent of the field-type mix, so a mixed
+       (Int, Float) needs no per-field accumulation. Produced by the elaboration. *)
+    let num_elements = List.length cells in
     let size_in_bytes = num_elements * 8 in
     let (ctx_with_heap, alloc_code) = gen_heap_alloc ctx size_in_bytes in
-    let (ctx_with_temp, temp_idx) = alloc_local ctx_with_heap "__ftup_ptr" in
+    let (ctx_with_temp, temp_idx) = alloc_local ctx_with_heap "__ctup_ptr" in
     let save_code = [LocalSet temp_idx] in
-    let* (ctx_final, store_code) = List.fold_left (fun acc (idx, elem_expr) ->
+    let* (ctx_final, store_code) = List.fold_left (fun acc (idx, (elem_expr, is_f64)) ->
       let* (ctx_acc, code_acc) = acc in
       let* (ctx', elem_code) = gen_expr ctx_acc elem_expr in
       let offset = idx * 8 in
-      let store_instrs = [ LocalGet temp_idx ] @ elem_code @ [ F64Store (3, offset) ] in
+      let store = if is_f64 then F64Store (3, offset) else I32Store (2, offset) in
+      let store_instrs = [ LocalGet temp_idx ] @ elem_code @ [ store ] in
       Ok (ctx', code_acc @ store_instrs)
-    ) (Ok (ctx_with_temp, [])) (List.mapi (fun i e -> (i, e)) elements) in
+    ) (Ok (ctx_with_temp, [])) (List.mapi (fun i c -> (i, c)) cells) in
     Ok (ctx_final, alloc_code @ save_code @ store_code @ [LocalGet temp_idx])
 
   | ExprArray elements ->
@@ -2168,12 +2169,13 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
 
     Ok (ctx', tuple_code @ load_code)
 
-  | ExprFloatTupleIndex (tuple_expr, index) ->
-    (* Float heap wall: t.i : Float — all-`Float` tuple, f64 load at offset i*8
-       (no length header), matching [ExprFloatTuple] (issue-draft 05). *)
+  | ExprCellTupleIndex (tuple_expr, index, is_f64) ->
+    (* Float heap wall: t.i on a uniform-8 float-bearing tuple — load field i at
+       offset i*8, f64 if the field is Float else i32 (issue-draft 05). *)
     let* (ctx', tuple_code) = gen_expr ctx tuple_expr in
     let offset = index * 8 in
-    Ok (ctx', tuple_code @ [F64Load (3, offset)])
+    let load = if is_f64 then F64Load (3, offset) else I32Load (2, offset) in
+    Ok (ctx', tuple_code @ [load])
 
   | ExprIndex (array_expr, index_expr) ->
     (* Generate code for array (gets pointer) *)

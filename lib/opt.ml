@@ -111,15 +111,15 @@ let rec fold_constants_expr (expr : expr) : expr =
     if arr == arr' && idx == idx' then expr
     else ExprFloatIndex (arr', idx')
 
-  | ExprFloatTuple elements ->
-    let elements' = List.map fold_constants_expr elements in
-    if List.for_all2 (==) elements elements' then expr
-    else ExprFloatTuple elements'
+  | ExprCellTuple cells ->
+    let cells' = List.map (fun (e, k) -> (fold_constants_expr e, k)) cells in
+    if List.for_all2 (fun (e, _) (e', _) -> e == e') cells cells' then expr
+    else ExprCellTuple cells'
 
-  | ExprFloatTupleIndex (tup, i) ->
+  | ExprCellTupleIndex (tup, i, k) ->
     let tup' = fold_constants_expr tup in
     if tup == tup' then expr
-    else ExprFloatTupleIndex (tup', i)
+    else ExprCellTupleIndex (tup', i, k)
 
   | ExprUnary (op, operand) ->
     let operand' = fold_constants_expr operand in

@@ -124,6 +124,13 @@ run "all-Float tuple round-trip" \
 run "Array of all-Float tuples round-trip" \
   'fn main() -> Int { let a: Array[(Float, Float)] = [(1.0, 2.0), (3.0, 4.0)]; let p: (Float, Float) = a[1]; if p.0 > 2.5 { println("AFT_OK"); 0 } else { println("AFT_BAD"); 1 } }' \
   'AFT_OK'
+val "mixed (Int, Float) tuple"  'fn f() -> Float { let t: (Int, Float) = (1, 2.0); t.1 }'
+run "mixed (Int, Float) round-trip" \
+  'fn main() -> Int { let t: (Int, Float) = (7, 3.5); if t.1 > 3.0 { println("MIX_OK"); t.0 } else { println("MIX_BAD"); 1 } }' \
+  'MIX_OK'
+run "mixed (Float, Int) round-trip" \
+  'fn main() -> Int { let t: (Float, Int) = (2.5, 9); if t.0 > 2.0 { println("FI_OK"); t.1 } else { println("FI_BAD"); 1 } }' \
+  'FI_OK'
 
 echo "── Float-in-heap still-unhandled shapes must LOUD-FAIL (issue-draft 05) ──"
 rej () {  # <label> <src>
@@ -136,7 +143,6 @@ rej () {  # <label> <src>
     bad "$1 — failed, but not via the Float-heap guard: $(tail -1 "$tmp/.r")"
   fi
 }
-rej "mixed (Int, Float) tuple"  'fn f() -> Float { let t: (Int, Float) = (1, 2.0); t.1 }'
 rej "record with Float field"   'fn f(r: {x: Float, y: Float}) -> Float { r.x }'
 
 echo

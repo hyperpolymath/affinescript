@@ -814,6 +814,20 @@ let float_heap_sites : expr list ref = ref []
 (** Discard any recorded Float-heap sites (e.g. before re-checking). *)
 let reset_float_heap_sites () : unit = float_heap_sites := []
 
+(** Float heap wall — heterogeneous tuples. A tuple with at least one scalar
+    `Float` field is laid out with uniform 8-byte cells (see {!Ast.ExprCellTuple}).
+    These two physical-identity *maps* carry the per-cell kinds (a set is not
+    enough): [cell_tuple_sites] maps an [ExprTuple] node to its per-field "is f64
+    cell?" flags (for construction); [cell_tuple_index_sites] maps an
+    [ExprTupleIndex] node to whether the accessed field is f64 (for the load).
+    `synth` populates both; {!elaborate_string_concat} consumes ([List.assq]) and
+    clears them. A field that is itself a float aggregate is stored as an i32
+    pointer (flag = false), so only *scalar* `Float` fields flag an f64 cell. *)
+let cell_tuple_sites : (expr * bool list) list ref = ref []
+let reset_cell_tuple_sites () : unit = cell_tuple_sites := []
+let cell_tuple_index_sites : (expr * bool) list ref = ref []
+let reset_cell_tuple_index_sites () : unit = cell_tuple_index_sites := []
+
 (** {1 Expression synthesis (mode ⇒)} *)
 
 (** Synthesize a type for an expression. *)
@@ -976,10 +990,12 @@ let rec synth (ctx : context) (expr : expr) : ty result =
   (* Tuple *)
   | ExprTuple exprs as tup_node ->
     let* tys = synth_list ctx exprs in
-    (* Float heap wall: an all-`Float` tuple lays out 8-byte f64 cells. Mixed
-       tuples keep the i32 path (type-dependent offsets not yet handled). *)
-    if tys <> [] && List.for_all (fun t -> match repr t with TCon "Float" -> true | _ -> false) tys
-    then float_heap_sites := tup_node :: !float_heap_sites;
+    (* Float heap wall: a tuple with any scalar `Float` field uses uniform 8-byte
+       cells (ExprCellTuple). Record the per-field "is f64 cell?" flags (scalar
+       Float → f64; anything else, incl. pointers to float aggregates → i32). *)
+    let cell_kinds = List.map (fun t -> match repr t with TCon "Float" -> true | _ -> false) tys in
+    if List.exists Fun.id cell_kinds
+    then cell_tuple_sites := (tup_node, cell_kinds) :: !cell_tuple_sites;
     Ok (TTuple tys)
 
   (* Array *)
@@ -1076,11 +1092,16 @@ let rec synth (ctx : context) (expr : expr) : ty result =
     begin match repr tup_ty with
       | TTuple tys ->
         if idx >= 0 && idx < List.length tys then begin
-          (* Float heap wall: record `t.i` only when the WHOLE tuple is all-
-             `Float`, so the 8-byte `i*8` offset the f64 load uses is valid (a
-             mixed tuple's offsets depend on preceding field sizes). *)
-          if List.for_all (fun t -> match repr t with TCon "Float" -> true | _ -> false) tys
-          then float_heap_sites := tidx_node :: !float_heap_sites;
+          (* Float heap wall: if the tuple has ANY scalar `Float` field it uses
+             uniform 8-byte cells, so EVERY access (not just float fields) must
+             be rewritten to the i*8 layout. Record whether the accessed field
+             is itself f64 (→ f64 load) or i32. *)
+          if List.exists (fun t -> match repr t with TCon "Float" -> true | _ -> false) tys
+          then begin
+            let accessed_is_float =
+              match repr (List.nth tys idx) with TCon "Float" -> true | _ -> false in
+            cell_tuple_index_sites := (tidx_node, accessed_is_float) :: !cell_tuple_index_sites
+          end;
           Ok (List.nth tys idx)
         end
         else
@@ -1590,11 +1611,11 @@ let rec elab_expr (e : expr) : expr =
   | ExprLambda r -> ExprLambda { r with elam_body = elab_expr r.elam_body }
   | ExprApp (f, args) -> ExprApp (elab_expr f, List.map elab_expr args)
   | ExprTupleIndex (e1, i) ->
-    (* Float heap wall: rewrite an all-`Float` tuple's `t.i` into the f64 load. *)
-    if List.memq e !float_heap_sites
-    then ExprFloatTupleIndex (elab_expr e1, i)
-    else ExprTupleIndex (elab_expr e1, i)
-  | ExprFloatTupleIndex (e1, i) -> ExprFloatTupleIndex (elab_expr e1, i)
+    (* Float heap wall: rewrite a float-bearing tuple's `t.i` into the cell load. *)
+    (match List.assq_opt e !cell_tuple_index_sites with
+     | Some is_f64 -> ExprCellTupleIndex (elab_expr e1, i, is_f64)
+     | None -> ExprTupleIndex (elab_expr e1, i))
+  | ExprCellTupleIndex (e1, i, k) -> ExprCellTupleIndex (elab_expr e1, i, k)
   | ExprIndex (a, i) ->
     (* Float heap wall: rewrite a `Float`-yielding index into the f64 load. *)
     if List.memq e !float_heap_sites
@@ -1602,11 +1623,11 @@ let rec elab_expr (e : expr) : expr =
     else ExprIndex (elab_expr a, elab_expr i)
   | ExprFloatIndex (a, i) -> ExprFloatIndex (elab_expr a, elab_expr i)
   | ExprTuple es ->
-    (* Float heap wall: rewrite an all-`Float` tuple into 8-byte f64 cells. *)
-    if List.memq e !float_heap_sites
-    then ExprFloatTuple (List.map elab_expr es)
-    else ExprTuple (List.map elab_expr es)
-  | ExprFloatTuple es -> ExprFloatTuple (List.map elab_expr es)
+    (* Float heap wall: rewrite a float-bearing tuple into uniform 8-byte cells. *)
+    (match List.assq_opt e !cell_tuple_sites with
+     | Some kinds -> ExprCellTuple (List.map2 (fun el k -> (elab_expr el, k)) es kinds)
+     | None -> ExprTuple (List.map elab_expr es))
+  | ExprCellTuple kes -> ExprCellTuple (List.map (fun (el, k) -> (elab_expr el, k)) kes)
   | ExprArray es ->
     (* Float heap wall: rewrite an [Float]-element array into 8-byte f64 cells. *)
     if List.memq e !float_heap_sites
@@ -1687,17 +1708,23 @@ let elaborate_string_concat (program : program) : program =
   (* Drives both the slice-8b String-`++` rewrite and the slice-9 String
      `==`/`!=` rewrite — [elab_expr] consults both site lists, so one walk
      (and the existing single wasm-path call site) covers both. *)
+  let any_sites =
+    !string_concat_sites <> [] || !string_eq_sites <> [] || !string_rel_sites <> []
+    || !float_binop_sites <> [] || !float_heap_sites <> []
+    || !cell_tuple_sites <> [] || !cell_tuple_index_sites <> []
+  in
   let result =
-    match !string_concat_sites, !string_eq_sites, !string_rel_sites,
-          !float_binop_sites, !float_heap_sites with
-    | [], [], [], [], [] -> program
-    | _ -> { program with prog_decls = List.map elab_top program.prog_decls }
+    if any_sites
+    then { program with prog_decls = List.map elab_top program.prog_decls }
+    else program
   in
   reset_string_concat_sites ();
   reset_string_eq_sites ();
   reset_string_rel_sites ();
   reset_float_binop_sites ();
   reset_float_heap_sites ();
+  reset_cell_tuple_sites ();
+  reset_cell_tuple_index_sites ();
   result
 
 (** {1 Declaration checking} *)
