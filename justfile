@@ -127,6 +127,19 @@ proof-check-agda:
 proof-check-all:
     ./tools/check-proofs.sh --all
 
+# ── WASM validation ────────────────────────────────────────────────────────────
+# Compile the positive corpus to core wasm and run `wasm-tools validate` on
+# every module. Closes the test_e2e.ml:601 blind spot (codegen-did-not-raise
+# != emitted-valid-wasm). Hard-fails on any silent-invalid emission.
+wasm-validate:
+    ./tools/wasm-validate-gate.sh
+
+# Compile canonical kernels to every coprocessor/accelerator backend
+# (WGSL/SPIR-V/CUDA/Metal/OpenCL/MLIR/ONNX/Faust/Verilog/LLVM) and check the
+# emission — validating with naga / SPIR-V magic where a tool is on PATH.
+coprocessor-validate:
+    ./tools/coprocessor-gate.sh
+
 # ── Compiler subcommands ──────────────────────────────────────────────────────
 
 # Run the lexer on a file
