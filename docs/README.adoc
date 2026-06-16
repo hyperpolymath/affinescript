@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-// SPDX-FileCopyrightText: 2024-2026 Hyperpolymath Contributors
+// SPDX-FileCopyrightText: 2024-2026 hyperpolymath (Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>)
 
 = AffineScript Documentation Directory
 
@@ -56,9 +56,9 @@ docs/
 
 **For understanding project direction and decisions.**
 
-* link:standards/ROADMAP.md[Roadmap] - Development roadmap and milestones
-* link:standards/DECISIONS.md[Architecture Decisions] - Key design choices
-* link:standards/RELEASE.md[Release Process] - How releases are made
+* link:standards/ROADMAP.adoc[Roadmap] - Development roadmap and milestones
+* link:standards/DECISIONS.adoc[Architecture Decisions] - Key design choices
+* link:standards/RELEASE.adoc[Release Process] - How releases are made
 * link:standards/PALIMPSEST.adoc[Palimpsest Integration] - License integration
 * link:standards/TESTING.adoc[Testing Standards] - Test taxonomy, gate baseline, PR expectations
 * link:standards/PANIC-ATTACK.adoc[Panic-Attack Policy] - Security-scan SOP and finding disposition
@@ -85,10 +85,10 @@ docs/
 → Follow link:governance/SECURITY.md[Security Policy]
 
 **...understand design decisions**
-→ See link:standards/DECISIONS.md[Architecture Decisions]
+→ See link:standards/DECISIONS.adoc[Architecture Decisions]
 
 **...check the roadmap**
-→ Review link:standards/ROADMAP.md[Roadmap]
+→ Review link:standards/ROADMAP.adoc[Roadmap]
 
 **...see test coverage**
 → Browse link:CAPABILITY-MATRIX.adoc[Capability Matrix] (live) or link:standards/TESTING.adoc[Testing Standards] (taxonomy + gates)

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-// SPDX-FileCopyrightText: 2026 hyperpolymath
+// SPDX-FileCopyrightText: 2026 hyperpolymath (Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>)
 = AffineScript Panic-Attack Policy
 :toc: macro
 :toclevels: 3
@@ -160,7 +160,7 @@ CI installs it during the weekly workflow via the same published crate.
 
 * link:TESTING.adoc[TESTING.adoc] — testing standards (this doc
   is referenced from there as the security-scan policy).
-* link:RELEASE.md[RELEASE.md] — release-cut checklist
+* link:RELEASE.adoc[RELEASE.adoc] — release-cut checklist
   (pre-release panic-attack invocation).
 * `hyperpolymath/road-skate`'s `docs/governance/MAINTENANCE-CHECKLIST.adoc` —
   estate-wide maintenance axes that mandate the scanner.
