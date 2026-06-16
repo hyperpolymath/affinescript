@@ -144,6 +144,16 @@ type state = {
       lexical block exit.  This list is only a hand-off pointer for the claim
       step; the borrows it names live or die on [state.borrows]. #554. *)
   mutable result_borrows : borrow list;
+
+  (** ADR-022 M2: fresh-origin counter. Each real borrow site gets its own
+      origin variable (vs M1's single [default_origin]). *)
+  mutable next_origin : int;
+
+  (** ADR-022 M2: the [loan_origin(L, O)] side-table — loan [b_id] ↦ its fresh
+      origin. Emitted at borrow creation; *nothing consumes it yet* (the lexical
+      checker still drives every verdict). It is the input the Polonius solver
+      ([Borrow_polonius]) will read once M3 wires constraint extraction in. *)
+  mutable loan_origins : (int * Ast.origin_var) list;
 }
 
 (** Borrow checker errors *)
@@ -420,6 +430,8 @@ let create () : state =
     callee_owned_params = [];
     linear_bindings = [];
     result_borrows = [];
+    next_origin = 1;   (* 0 is reserved as default_origin (the M1 global origin) *)
+    loan_origins = [];
   }
 
 (** Mirror of [Quantity.quantity_of_ty_annotation]: returns [QOne] when the
@@ -497,6 +509,13 @@ let fresh_id (state : state) : int =
   let id = state.next_id in
   state.next_id <- id + 1;
   id
+
+(** ADR-022 M2: generate a fresh origin (region) variable. One per real borrow
+    site, replacing M1's single [default_origin]. *)
+let fresh_origin (state : state) : Ast.origin_var =
+  let o = state.next_origin in
+  state.next_origin <- o + 1;
+  o
 
 (** Check if a type is Copy (doesn't need to be moved) *)
 let rec is_copy_type (ty_opt : type_expr option) : bool =
@@ -600,12 +619,19 @@ let record_borrow (state : state) (place : place) (kind : borrow_kind)
     match mut_check with
     | Error _ as err -> err
     | Ok () ->
+    let b_id = fresh_id state in
+    (* ADR-022 M2: each real borrow site gets a fresh origin, and we record the
+       [loan_origin(L, O)] fact in the side-table. This is the only consumer of
+       [fresh_origin]; the side-table is NOT yet read by any verdict (M3 wires it
+       into the Polonius solver), so this is behaviour-preserving. *)
+    let b_origin = fresh_origin state in
+    state.loan_origins <- (b_id, b_origin) :: state.loan_origins;
     let new_borrow = {
       b_place = place;
       b_kind = kind;
       b_span = span;
-      b_id = fresh_id state;
-      b_origin = default_origin;
+      b_id;
+      b_origin;
     } in
     match find_conflicting_borrow state new_borrow with
     | Some conflict -> Error (ConflictingBorrow (new_borrow, conflict))
