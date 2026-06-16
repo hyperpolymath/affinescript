@@ -19,4 +19,5 @@ let () =
       ("Deno builtins ↔ stdlib decls consistency", Test_deno_builtins_consistency.tests);
       ("Stdlib algebraic laws (batch 1)", Test_stdlib_laws.tests);
       ("Solo CESK (VM M1, ADR-0025)", Test_solo_cesk.tests);
+      ("Polonius solver (ADR-022 M3)", Test_borrow_polonius.tests);
     ] @ Test_e2e.tests @ Test_stdlib_aot.tests)

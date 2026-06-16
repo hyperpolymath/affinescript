@@ -1,6 +1,6 @@
 (test
  (name test_main)
- (libraries affinescript alcotest str unix)
+ (libraries affinescript borrow_polonius alcotest str unix)
  (deps
   (source_tree golden)
   (source_tree e2e)

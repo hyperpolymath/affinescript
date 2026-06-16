@@ -22,11 +22,15 @@ type facts = {
   subset      : (origin * origin * point) list; (** [O1 ⊆ O2] holds at point [P] *)
   killed      : (loan * point) list;          (** loan [L] is killed at [P] (base moved / scope end) *)
   cfg_edge    : (point * point) list;         (** control-flow edge [P1 → P2] *)
+  conflict_at : (loan * point) list;          (** an access at [P] conflicts with loan [L]'s kind
+                                                  under shared-XOR-exclusive — the [check_use] rule,
+                                                  hoisted out of the imperative checker (ADR-022 rule 2).
+                                                  Populated by M3 extraction. *)
 }
 [@@deriving show, eq]
 
 let empty_facts : facts =
-  { borrow_at = []; loan_origin = []; subset = []; killed = []; cfg_edge = [] }
+  { borrow_at = []; loan_origin = []; subset = []; killed = []; cfg_edge = []; conflict_at = [] }
 
 (** Derived facts + the verdict (ADR-022 rules 1–3). *)
 type derived = {
