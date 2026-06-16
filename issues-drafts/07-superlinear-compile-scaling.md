@@ -61,8 +61,29 @@ O(n²) sources found and fixed:
 
 Result (codegen, n=5000): **453 ms → 70 ms (~6.5×)**; 477 tests + `wasm-validate`
 green (byte-identical indices). **Residual:** codegen is still mildly
-super-linear (~1→14 µs/func, 100→5000) — a third, smaller source remains. Ruled
-out by inspection: `intern_func_type` (dedups identical signatures), `exports`
-(empty for non-pub), `Effect_sites` (Hashtbl, O(n)). Localising the residual
-needs a profiler (`ocaml-landmarks` / `perf`), not static reading — deferred.
-The ADR-0026 F1 (Isabelle "resolve/codegen is O(n)") proof is the durable guard.
+super-linear (~1→14 µs/func, 100→5000) — a third, smaller source remains.
+
+## Update (2026-06-16, cont.) — residual localised and FIXED (now flat/linear)
+
+The "ruled out by inspection" note above was **wrong about `intern_func_type`**.
+It *does* dedup — but the regular **`TopFn` path never called it**. Only the
+`extern fn` path (codegen.ml:3178) interned; the ordinary function path
+(codegen.ml:3202-3203) did `type_idx = List.length ctx.types` +
+`types = ctx.types @ [func_type]` **unconditionally**, so `ctx.types` grew by
+one **per function** — both ops O(len) per decl → the residual O(n²). The
+scaling bench masked it from static reasoning because every generated function
+has the *identical* `(Int)->Int` signature, yet each still extended the list.
+
+Fix: route the regular `TopFn` path through `intern_func_type` too (one-line
+change). Interning never reorders existing entries (equal type → existing index,
+new type → appended at the same end position), so all previously-assigned type
+indices are preserved; bonus is a smaller, canonical Wasm type section.
+
+Result (codegen): **n=5000 70 ms → 8 ms** (~8.6× further; **~50× vs the original
+401 ms**), and the curve is now **flat — 0.8 → 1.6 µs/func across n=100→5000**
+(2× over 50× input = noise, not a trend). 477 tests + `wasm-validate` (21/0/5)
+green. **Caveat:** interning is O(#distinct-signatures) per decl; a program with
+a unique signature for every function would re-introduce a (milder) quadratic —
+a `Hashtbl`-keyed interner would make it true O(1). Deferred (pathological case;
+real programs reuse signatures). The ADR-0026 F1 Isabelle proof is the durable
+guard. **This issue is now resolved for the common case; closing candidate.**

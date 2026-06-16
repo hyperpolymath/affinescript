@@ -3198,9 +3198,17 @@ let gen_decl (ctx : context) (decl : top_level) : context result =
        shared builder, so the definition signature matches call/import sites. *)
     let func_type = func_type_of_fn_decl fd in
 
-    (* Add type to types list *)
-    let type_idx = List.length ctx.types in
-    let ctx_with_type = { ctx with types = ctx.types @ [func_type] } in
+    (* Intern the type (dedup) rather than always-append. The old always-append
+       path grew [ctx.types] by one PER FUNCTION, so both [List.length] and
+       [@ [func_type]] were O(len) per decl → the residual O(n²) (issue-draft 07;
+       the extern path above already interned). Interning keeps [types] at the
+       number of DISTINCT signatures (2 for the scaling bench, small for real
+       programs) and yields a smaller, canonical Wasm type section. It never
+       reorders existing entries — equal type → existing index, new type →
+       appended at the end (exactly where the old code put it) — so every
+       previously-assigned type index is preserved. *)
+    let (type_idx, types_after) = intern_func_type ctx.types func_type in
+    let ctx_with_type = { ctx with types = types_after } in
 
     (* Determine function index before generating *)
     let func_idx = import_func_count ctx_with_type + ctx_with_type.num_funcs in
