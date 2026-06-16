@@ -240,6 +240,23 @@ let t_extract_uam_reinit_ok () =
   Alcotest.(check bool) "Polonius accepts reinit-revived move" false pol;
   Alcotest.(check bool) "agrees with lexical" lex pol
 
+(* ── loop unrolling: iter-1 move reaching an iter-2 use (2-iteration model) ────── *)
+
+(* the canonical Slice-C' soundness fixture: the loop body moves `x` and never
+   rebinds it, so iteration 2 reads a moved value. The lexical checker flags it
+   via its 2-iteration pass; the extractor's loop unrolling (a fresh iter-2 CFG
+   point) makes the iter-1 move_at reach the iter-2 use_at, so both agree. *)
+let t_extract_loop_move () =
+  let (pol, lex) = polonius_vs_lexical "slice_c_prime_loop_move_persists.affine" in
+  Alcotest.(check bool) "Polonius flags cross-iteration use-after-move" true pol;
+  Alcotest.(check bool) "agrees with lexical" lex pol
+
+(* a loop body that moves nothing ⇒ unrolling must not invent an error *)
+let t_extract_loop_ok () =
+  let (pol, lex) = polonius_vs_lexical "borrow_uam_loop_ok.affine" in
+  Alcotest.(check bool) "Polonius accepts the move-free loop" false pol;
+  Alcotest.(check bool) "agrees with lexical" lex pol
+
 let tests =
   [
     Alcotest.test_case "rule1: liveness straight-line" `Quick t_live_straight;
@@ -275,4 +292,7 @@ let tests =
     (* M3 plain use-after-move (loan-free) from real programs *)
     Alcotest.test_case "extract+solve: plain double-move flagged, agrees with lexical" `Quick t_extract_uam_double_move;
     Alcotest.test_case "extract+solve: reinit-revived move ok, agrees with lexical" `Quick t_extract_uam_reinit_ok;
+    (* M3 loop unrolling: cross-iteration use-after-move (2-iteration model) *)
+    Alcotest.test_case "extract+solve: loop cross-iter UAM flagged, agrees with lexical" `Quick t_extract_loop_move;
+    Alcotest.test_case "extract+solve: move-free loop ok, agrees with lexical" `Quick t_extract_loop_ok;
   ]

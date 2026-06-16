@@ -36,10 +36,15 @@
     whole-place write [x = e] is [reinit_at] (revives it), and every variable
     read is [use_at] — so [consume(a); consume(a)] is flagged where the loan
     rules see nothing. A use reached by a move with no intervening reinit is the
-    error. Bound: cross-iteration use-after-move in loops still needs the loop
-    body's second iteration to be a DISTINCT CFG point (the [move_at]/[use_at]
-    here collapse a loop body to one point, so iter-1-move → iter-2-use does not
-    yet surface); that is the loop-unrolling increment.
+    error. CROSS-ITERATION use-after-move in loops is handled by unrolling: a
+    [while]/[for] body's move/use/reinit facts are emitted a SECOND time at a
+    fresh CFG point with edges [pt → p2 → pt+1], mirroring the lexical checker's
+    2-iteration approximation (Slice C' / #177), so an iter-1 move reaches an
+    iter-2 use. (Loan facts are not unrolled — a borrow conflict in a loop
+    already manifests at iteration 1, so the loan rules agree without it.) The
+    point granularity is still coarse — [compute_last_use_index] collapses a loop
+    body to its enclosing top-level index, so loan kill points inside a loop are
+    conservative — but verdicts match the lexical checker on the corpus.
 
     Borrow sources handled: [&p] / [&mut p], and a call whose return-borrow
     summary borrows an argument ([let r = pick(a)] — #554). Moves: arguments
@@ -128,9 +133,11 @@ let extract_fn (ctx : Borrow.context) (symbols : Symbol.t) (fd : fn_decl) : PF.f
   | FnBlock blk ->
     let last_use = Borrow.compute_last_use_index symbols blk in
     let nstmts = List.length blk.blk_stmts in
-    (* linear CFG: point i → i+1 for i in 0 .. nstmts-1 (tail is point nstmts) *)
-    let cfg_edge = List.init (max 0 nstmts) (fun i -> (i, i + 1)) in
+    (* linear CFG spine: point i → i+1 for i in 0 .. nstmts-1 (tail is point
+       nstmts). Loop unrolling (below) appends extra points/edges past [nstmts]. *)
+    let base_cfg = List.init (max 0 nstmts) (fun i -> (i, i + 1)) in
     let next_loan = ref 0 and next_origin = ref 0 in
+    let next_point = ref (nstmts + 1) and extra_edges = ref [] in
     let fresh r = let n = !r in incr r; n in
     let loans = ref [] in
     let borrow_at = ref [] and loan_origin = ref []
@@ -244,8 +251,24 @@ let extract_fn (ctx : Borrow.context) (symbols : Symbol.t) (fd : fn_decl) : PF.f
       | StmtExpr e -> do_point pt e; moves_expr pt e
       | StmtAssign (l, _, r) ->
         record_assign_lhs pt l; do_point pt r; moves_expr pt l; moves_expr pt r
-      | StmtWhile (c, b) -> do_point pt c; moves_expr pt c; moves_block pt b
-      | StmtFor (_, it, b) -> do_point pt it; moves_expr pt it; moves_block pt b
+      (* loop unrolling for the use-after-move rule: a loop body runs ≥0 times,
+         so an iter-1 move can reach an iter-2 use. We mirror the lexical
+         checker's 2-iteration approximation (Slice C' / #177) by emitting the
+         body's move/use/reinit facts a SECOND time at a fresh CFG point, with
+         edges [pt → p2] (continue to iter 2) and [p2 → pt+1] (exit after iter 2);
+         the spine edge [pt → pt+1] already serves as exit-after-iter-1. Loan
+         facts are NOT unrolled — those already agree with the lexical checker at
+         iteration 1 (a borrow conflict in a loop manifests on the first pass). *)
+      | StmtWhile (c, b) ->
+        do_point pt c; moves_expr pt c; moves_block pt b;
+        let p2 = fresh next_point in
+        extra_edges := (pt, p2) :: (p2, pt + 1) :: !extra_edges;
+        do_point p2 c; moves_expr p2 c; moves_block p2 b
+      | StmtFor (_, it, b) ->
+        do_point pt it; moves_expr pt it; moves_block pt b;
+        let p2 = fresh next_point in
+        extra_edges := (pt, p2) :: (p2, pt + 1) :: !extra_edges;
+        do_point p2 it; moves_expr p2 it; moves_block p2 b
     and moves_expr pt e =
       match peel e with
       | ExprIf ei ->
@@ -269,7 +292,7 @@ let extract_fn (ctx : Borrow.context) (symbols : Symbol.t) (fd : fn_decl) : PF.f
     (match blk.blk_expr with Some e -> do_point nstmts e; moves_expr nstmts e | None -> ());
     { PF.empty_facts with
       borrow_at = !borrow_at; loan_origin = !loan_origin;
-      killed = !killed; cfg_edge; conflict_at = !conflict_at;
+      killed = !killed; cfg_edge = base_cfg @ !extra_edges; conflict_at = !conflict_at;
       move_at = !move_at; use_at = !use_at; reinit_at = !reinit_at }
   | _ -> PF.empty_facts
 
