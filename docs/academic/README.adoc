@@ -1,0 +1,131 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2024-2026 hyperpolymath (Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>)
+= AffineScript Academic Documentation
+
+This directory contains formal academic documentation for the
+AffineScript programming language, including proofs, specifications,
+white papers, and mechanized verification.
+
+== Document Index
+
+=== Proofs and Metatheory
+
+[width="100%",cols="34%,41%,25%",options="header",]
+|===
+|Document |Description |Status
+|link:proofs/type-soundness.adoc[Type System Soundness] |Progress and
+preservation theorems |Complete
+
+|link:proofs/quantitative-types.adoc[Quantitative Type Theory] |Linearity
+and quantity proofs |Complete
+
+|link:proofs/effect-soundness.adoc[Effect Soundness] |Algebraic effects
+metatheory |Complete
+
+|link:proofs/ownership-soundness.adoc[Ownership Soundness] |Affine/linear
+type safety |Complete
+
+|link:proofs/row-polymorphism.adoc[Row Polymorphism] |Extensible records
+metatheory |Complete
+
+|link:proofs/dependent-types.adoc[Dependent Types] |Indexed types and
+refinements |Complete
+|===
+
+=== White Papers
+
+[width="100%",cols="44%,56%",options="header",]
+|===
+|Document |Description
+|link:white-papers/language-design.adoc[Language Design] |Design rationale
+and related work
+
+|link:white-papers/type-system.md[Type System Design] |Bidirectional
+typing with quantities
+
+|link:white-papers/effect-system.md[Effect System Design] |Algebraic
+effects and handlers
+|===
+
+=== Formal Verification
+
+[width="100%",cols="34%,41%,25%",options="header",]
+|===
+|Document |Description |Status
+|link:formal-verification/operational-semantics.adoc[Operational
+Semantics] |Small-step semantics |Complete
+
+|link:formal-verification/denotational-semantics.adoc[Denotational
+Semantics] |Domain-theoretic model |Complete
+
+|link:formal-verification/axiomatic-semantics.adoc[Axiomatic Semantics]
+|Hoare logic for AffineScript |Complete
+|===
+
+=== Mathematical Foundations
+
+[width="100%",cols="44%,56%",options="header",]
+|===
+|Document |Description
+|link:mathematical-foundations/categorical-semantics.adoc[Categorical
+Semantics] |Category theory models
+
+|link:mathematical-foundations/logic-foundations.adoc[Logic Foundations]
+|Curry-Howard and proof theory
+
+|link:mathematical-foundations/complexity-analysis.adoc[Complexity
+Analysis] |Decidability and complexity bounds
+|===
+
+=== Mechanized Proofs
+
+[width="100%",cols="34%,41%,25%",options="header",]
+|===
+|Document |Description |Status
+|link:mechanized/coq/README.adoc[Coq Formalization] |Coq proof development
+|Stub
+
+|link:mechanized/lean/README.adoc[Lean Formalization] |Lean 4 proof
+development |Stub
+
+|link:mechanized/agda/README.adoc[Agda Formalization] |Agda proof
+development |Stub
+|===
+
+== Citation
+
+[source,bibtex]
+----
+@misc{affinescript2024,
+  title = {AffineScript: A Quantitative Dependently-Typed Language with Algebraic Effects},
+  author = {AffineScript Contributors},
+  year = {2024},
+  howpublished = {\url{https://github.com/hyperpolymath/affinescript}}
+}
+----
+
+== Status Legend
+
+* *Complete*: Theoretical content complete, pending implementation
+verification
+* *Stub*: Placeholder awaiting implementation of corresponding compiler
+component
+* *TODO*: Section identified but not yet written
+
+== Dependencies on Implementation
+
+Many proofs in this documentation depend on compiler components that are
+not yet implemented. These are marked with `++[++IMPL-DEP++]++` tags
+throughout the documents, indicating which compiler phase must be
+completed before the proof can be fully verified against the
+implementation.
+
+[cols=",",options="header",]
+|===
+|Proof Area |Required Implementation
+|Type soundness |Type checker
+|Effect soundness |Effect inference
+|Ownership soundness |Borrow checker
+|Termination |Termination checker
+|Refinement verification |SMT integration
+|===

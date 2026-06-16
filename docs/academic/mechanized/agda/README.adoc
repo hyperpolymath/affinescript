@@ -1,12 +1,15 @@
-# AffineScript Agda Formalization
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2024-2026 hyperpolymath (Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>)
+= AffineScript Agda Formalization
 
-**Status**: Stub / Planned
+*Status*: Stub / Planned
 
-This directory will contain the mechanized Agda proof development for AffineScript's metatheory.
+This directory will contain the mechanized Agda proof development for
+AffineScript’s metatheory.
 
-## Planned Structure
+== Planned Structure
 
-```
+....
 agda/
 ├── AffineScript.agda          -- Main module
 ├── Syntax/
@@ -32,16 +35,17 @@ agda/
 └── Ownership/
     ├── Model.agda             -- Ownership model
     └── Borrowing.agda         -- Borrow checking
-```
+....
 
-## Dependencies
+== Dependencies
 
-- Agda 2.6.4+
-- agda-stdlib 2.0+
+* Agda 2.6.4{plus}
+* agda-stdlib 2.0{plus}
 
-## Building
+== Building
 
-```bash
+[source,bash]
+----
 # Check all modules
 agda --safe AffineScript.agda
 
@@ -50,31 +54,32 @@ agda --html AffineScript.agda
 
 # Check with flags
 agda --without-K --safe AffineScript.agda
-```
+----
 
-## TODO
+== TODO
 
-### Phase 1: Core Language
+=== Phase 1: Core Language
 
-- [ ] Intrinsically-typed syntax
-- [ ] Substitution via categories
-- [ ] Progress and preservation
+* [ ] Intrinsically-typed syntax
+* [ ] Substitution via categories
+* [ ] Progress and preservation
 
-### Phase 2: Quantities
+=== Phase 2: Quantities
 
-- [ ] Semiring structure
-- [ ] Graded contexts
-- [ ] Quantity erasure
+* [ ] Semiring structure
+* [ ] Graded contexts
+* [ ] Quantity erasure
 
-### Phase 3: Effects
+=== Phase 3: Effects
 
-- [ ] Effect algebras
-- [ ] Free monad interpretation
-- [ ] Handler correctness
+* [ ] Effect algebras
+* [ ] Free monad interpretation
+* [ ] Handler correctness
 
-## Example Structure
+== Example Structure
 
-```agda
+[source,agda]
+----
 -- Syntax/Types.agda
 module Syntax.Types where
 
@@ -136,27 +141,28 @@ preservation : ∀ {τ} {e e' : Term 0 [] τ}
 preservation {e' = e'} _ = e'
 
 -- With intrinsically-typed syntax, preservation is "free"!
-```
+----
 
-## Intrinsic vs Extrinsic Typing
+== Intrinsic vs Extrinsic Typing
 
-Agda is particularly well-suited for **intrinsically-typed** representations where:
-- Terms are indexed by their types
-- Ill-typed terms are not representable
-- Preservation is automatic
+Agda is particularly well-suited for *intrinsically-typed*
+representations where: - Terms are indexed by their types - Ill-typed
+terms are not representable - Preservation is automatic
 
 This makes many proofs trivial but requires more effort upfront.
 
-## Advantages of Agda
+== Advantages of Agda
 
-1. **Dependent types**: Natural for indexed syntax
-2. **Pattern matching**: Clean proof style
-3. **Mixfix operators**: Readable syntax
-4. **Unicode support**: Mathematical notation
-5. **Cubical Agda**: Univalence if needed
+[arabic]
+. *Dependent types*: Natural for indexed syntax
+. *Pattern matching*: Clean proof style
+. *Mixfix operators*: Readable syntax
+. *Unicode support*: Mathematical notation
+. *Cubical Agda*: Univalence if needed
 
-## References
+== References
 
-1. Programming Language Foundations in Agda (Wadler et al.)
-2. Agda standard library documentation
-3. Type Theory and Formal Proof (Nederpelt & Geuvers)
+[arabic]
+. Programming Language Foundations in Agda (Wadler et al.)
+. Agda standard library documentation
+. Type Theory and Formal Proof (Nederpelt & Geuvers)

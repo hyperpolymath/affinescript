@@ -1,12 +1,15 @@
-# AffineScript Lean 4 Formalization
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2024-2026 hyperpolymath (Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>)
+= AffineScript Lean 4 Formalization
 
-**Status**: Stub / Planned
+*Status*: Stub / Planned
 
-This directory will contain the mechanized Lean 4 proof development for AffineScript's metatheory.
+This directory will contain the mechanized Lean 4 proof development for
+AffineScript’s metatheory.
 
-## Planned Structure
+== Planned Structure
 
-```
+....
 lean/
 ├── AffineScript.lean      -- Main entry point
 ├── Syntax.lean            -- Abstract syntax definitions
@@ -19,17 +22,18 @@ lean/
 ├── Ownership.lean         -- Ownership model
 ├── Rows.lean              -- Row polymorphism
 └── lakefile.lean          -- Build configuration
-```
+....
 
-## Dependencies
+== Dependencies
 
-- Lean 4.x
-- Mathlib4 (for mathematical structures)
-- Std4 (standard library)
+* Lean 4.x
+* Mathlib4 (for mathematical structures)
+* Std4 (standard library)
 
-## Building
+== Building
 
-```bash
+[source,bash]
+----
 # Initialize lake project
 lake init AffineScript
 
@@ -38,31 +42,32 @@ lake build
 
 # Check proofs
 lake env lean AffineScript.lean
-```
+----
 
-## TODO
+== TODO
 
-### Phase 1: Core Definitions
+=== Phase 1: Core Definitions
 
-- [ ] Syntax with well-scoped indices
-- [ ] Typing judgments as inductive families
-- [ ] Decidable type checking
+* [ ] Syntax with well-scoped indices
+* [ ] Typing judgments as inductive families
+* [ ] Decidable type checking
 
-### Phase 2: Metatheory
+=== Phase 2: Metatheory
 
-- [ ] Substitution lemmas
-- [ ] Progress and preservation
-- [ ] Type safety corollary
+* [ ] Substitution lemmas
+* [ ] Progress and preservation
+* [ ] Type safety corollary
 
-### Phase 3: Advanced Features
+=== Phase 3: Advanced Features
 
-- [ ] Quantitative type theory
-- [ ] Effect typing
-- [ ] Ownership verification
+* [ ] Quantitative type theory
+* [ ] Effect typing
+* [ ] Ownership verification
 
-## Example Structure
+== Example Structure
 
-```lean
+[source,lean]
+----
 -- Syntax.lean
 inductive Ty : Type where
   | unit : Ty
@@ -142,17 +147,19 @@ theorem preservation {Γ e e' τ}
   | appR _ _ ih =>
     cases ht with
     | app h₁ h₂ => exact .app h₁ (ih h₂)
-```
+----
 
-## Advantages of Lean 4
+== Advantages of Lean 4
 
-1. **Decidable type checking**: Can compute types
-2. **Metaprogramming**: Powerful tactic framework
-3. **Performance**: Compiled tactics
-4. **Interoperability**: Can call external tools
+[arabic]
+. *Decidable type checking*: Can compute types
+. *Metaprogramming*: Powerful tactic framework
+. *Performance*: Compiled tactics
+. *Interoperability*: Can call external tools
 
-## References
+== References
 
-1. Theorem Proving in Lean 4
-2. Mathematics in Lean
-3. Lean 4 Metaprogramming
+[arabic]
+. Theorem Proving in Lean 4
+. Mathematics in Lean
+. Lean 4 Metaprogramming

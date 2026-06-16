@@ -1,57 +1,58 @@
-# Type Inference Algorithm Specification
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2024-2026 hyperpolymath (Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>)
+= Type Inference Algorithm Specification
 
-**Document Version**: 1.0
-**Last Updated**: 2024
-**Status**: Complete specification `[IMPL-DEP: type-checker]`
+*Document Version*: 1.0 *Last Updated*: 2024 *Status*: Complete
+specification `++[++IMPL-DEP: type-checker++]++`
 
-## Abstract
+== Abstract
 
-This document specifies the complete type inference algorithm for AffineScript, covering bidirectional type checking, unification, constraint solving, and inference for quantities, effects, rows, and refinements.
+This document specifies the complete type inference algorithm for
+AffineScript, covering bidirectional type checking, unification,
+constraint solving, and inference for quantities, effects, rows, and
+refinements.
 
-## 1. Introduction
+== 1. Introduction
 
-AffineScript's type inference combines:
-1. Bidirectional type checking (local type inference)
-2. Hindley-Milner style polymorphism
-3. Row unification for records and effects
-4. Quantity inference
-5. Effect inference
-6. SMT-based refinement checking
+AffineScript’s type inference combines: 1. Bidirectional type checking
+(local type inference) 2. Hindley-Milner style polymorphism 3. Row
+unification for records and effects 4. Quantity inference 5. Effect
+inference 6. SMT-based refinement checking
 
-## 2. Algorithm Overview
+== 2. Algorithm Overview
 
-### 2.1 High-Level Structure
+=== 2.1 High-Level Structure
 
-```
+....
 infer(Γ, e) : (τ, ε, C)
-```
+....
 
-Returns:
-- τ: The inferred type
-- ε: The inferred effect
-- C: Constraint set to be solved
+Returns: - τ: The inferred type - ε: The inferred effect - C: Constraint
+set to be solved
 
-### 2.2 Phases
+=== 2.2 Phases
 
-1. **Elaboration**: Parse to untyped AST
-2. **Constraint generation**: Traverse AST, generate constraints
-3. **Constraint solving**: Unify types, solve rows
-4. **Quantity checking**: Verify usage patterns
-5. **Effect inference**: Compute effect signatures
-6. **Refinement checking**: Discharge to SMT
+[arabic]
+. *Elaboration*: Parse to untyped AST
+. *Constraint generation*: Traverse AST, generate constraints
+. *Constraint solving*: Unify types, solve rows
+. *Quantity checking*: Verify usage patterns
+. *Effect inference*: Compute effect signatures
+. *Refinement checking*: Discharge to SMT
 
-## 3. Bidirectional Type Checking
+== 3. Bidirectional Type Checking
 
-### 3.1 Judgments
+=== 3.1 Judgments
 
-```
+....
 Γ ⊢ e ⇒ τ    (synthesis: infer type of e)
 Γ ⊢ e ⇐ τ    (checking: check e has type τ)
-```
+....
 
-### 3.2 Algorithm
+=== 3.2 Algorithm
 
-```ocaml
+[source,ocaml]
+----
 type result = (typ * effect * constraints)
 
 (* Synthesis: infer type *)
@@ -146,13 +147,14 @@ and check (ctx : context) (e : expr) (τ : typ) : (effect * constraints) =
       (* Subsumption *)
       let (τ', ε, c) = synth ctx e in
       (ε, c @ [(τ', τ)])  (* generate constraint τ' <: τ *)
-```
+----
 
-## 4. Constraint Solving
+== 4. Constraint Solving
 
-### 4.1 Constraint Types
+=== 4.1 Constraint Types
 
-```ocaml
+[source,ocaml]
+----
 type constraint =
   | Eq of typ * typ                    (* τ₁ = τ₂ *)
   | Sub of typ * typ                   (* τ₁ <: τ₂ *)
@@ -161,11 +163,12 @@ type constraint =
   | QuantEq of quantity * quantity     (* π₁ = π₂ *)
   | Lacks of row * label               (* ρ lacks l *)
   | Valid of predicate                 (* ⊨ φ (SMT) *)
-```
+----
 
-### 4.2 Unification
+=== 4.2 Unification
 
-```ocaml
+[source,ocaml]
+----
 let rec unify (subst : substitution) (c : constraint) : substitution =
   match c with
   | Eq (TyVar α, τ) when not (occurs α τ) ->
@@ -211,11 +214,12 @@ let rec unify (subst : substitution) (c : constraint) : substitution =
       (* Defer to SMT *)
       if smt_check φ then subst
       else raise (RefinementError φ)
-```
+----
 
-### 4.3 Row Unification
+=== 4.3 Row Unification
 
-```ocaml
+[source,ocaml]
+----
 let rec unify_rows (subst : substitution) (r1 : row) (r2 : row) : substitution =
   match (apply_row subst r1, apply_row subst r2) with
   | (RowEmpty, RowEmpty) ->
@@ -237,11 +241,12 @@ let rec unify_rows (subst : substitution) (r1 : row) (r2 : row) : substitution =
 
   | (RowEmpty, RowExtend _) | (RowExtend _, RowEmpty) ->
       raise (RowMismatch (r1, r2))
-```
+----
 
-### 4.4 Effect Unification
+=== 4.4 Effect Unification
 
-```ocaml
+[source,ocaml]
+----
 let rec unify_effects (subst : substitution) (ε1 : effect) (ε2 : effect) : substitution =
   match (apply_eff subst ε1, apply_eff subst ε2) with
   | (EffPure, EffPure) -> subst
@@ -252,36 +257,39 @@ let rec unify_effects (subst : substitution) (ε1 : effect) (ε2 : effect) : sub
       unify_effect_sets subst es1 es2
   | _ ->
       raise (EffectMismatch (ε1, ε2))
-```
+----
 
-## 5. Generalization
+== 5. Generalization
 
-### 5.1 Let-Generalization
+=== 5.1 Let-Generalization
 
-```ocaml
+[source,ocaml]
+----
 let generalize (ctx : context) (τ : typ) : scheme =
   let free_in_ctx = free_tyvars_ctx ctx in
   let free_in_type = free_tyvars τ in
   let generalizable = SetDiff free_in_type free_in_ctx in
   Forall (Set.elements generalizable, τ)
-```
+----
 
-### 5.2 Instantiation
+=== 5.2 Instantiation
 
-```ocaml
+[source,ocaml]
+----
 let instantiate (scheme : scheme) : typ =
   match scheme with
   | Forall (vars, τ) ->
       let fresh_vars = List.map (fun _ -> fresh_tyvar ()) vars in
       let subst = List.combine vars fresh_vars in
       apply_subst subst τ
-```
+----
 
-## 6. Quantity Inference
+== 6. Quantity Inference
 
-### 6.1 Usage Analysis
+=== 6.1 Usage Analysis
 
-```ocaml
+[source,ocaml]
+----
 type usage = Zero | One | Many
 
 let rec analyze_usage (x : var) (e : expr) : usage =
@@ -299,11 +307,12 @@ let combine u1 u2 =
   match (u1, u2) with
   | (Zero, u) | (u, Zero) -> u
   | _ -> Many
-```
+----
 
-### 6.2 Quantity Constraints
+=== 6.2 Quantity Constraints
 
-```ocaml
+[source,ocaml]
+----
 let check_quantity (expected : quantity) (actual : usage) : bool =
   match (expected, actual) with
   | (QZero, Zero) -> true
@@ -311,13 +320,14 @@ let check_quantity (expected : quantity) (actual : usage) : bool =
   | (QOne, Zero) -> true    (* Affine: can drop *)
   | (QOmega, _) -> true
   | _ -> false
-```
+----
 
-## 7. Effect Inference
+== 7. Effect Inference
 
-### 7.1 Effect Collection
+=== 7.1 Effect Collection
 
-```ocaml
+[source,ocaml]
+----
 let rec collect_effects (e : expr) : effect =
   match e with
   | Perform (op, _) -> EffSingleton (effect_of_op op)
@@ -331,13 +341,14 @@ let rec collect_effects (e : expr) : effect =
       let ε_call = effect_of_call f in
       EffUnion [ε_f; ε_a; ε_call]
   | _ -> fold_effects EffUnion EffPure collect_effects e
-```
+----
 
-## 8. Refinement Checking
+== 8. Refinement Checking
 
-### 8.1 VC Generation
+=== 8.1 VC Generation
 
-```ocaml
+[source,ocaml]
+----
 let rec generate_vc (ctx : context) (e : expr) (τ : typ) : predicate list =
   match (e, τ) with
   | (_, TyRefine (base, φ)) ->
@@ -352,11 +363,12 @@ let rec generate_vc (ctx : context) (e : expr) (τ : typ) : predicate list =
       generate_vc else_ctx else_ τ
 
   | _ -> []
-```
+----
 
-### 8.2 SMT Discharge
+=== 8.2 SMT Discharge
 
-```ocaml
+[source,ocaml]
+----
 let check_refinements (vcs : predicate list) : unit =
   List.iter (fun vc ->
     let smt_query = translate_to_smt vc in
@@ -365,13 +377,14 @@ let check_refinements (vcs : predicate list) : unit =
     | Smt.Invalid model -> raise (RefinementViolation (vc, model))
     | Smt.Unknown -> raise (RefinementTimeout vc)
   ) vcs
-```
+----
 
-## 9. Complete Algorithm
+== 9. Complete Algorithm
 
-### 9.1 Main Entry Point
+=== 9.1 Main Entry Point
 
-```ocaml
+[source,ocaml]
+----
 let type_check (program : program) : typed_program =
   (* Phase 1: Parse *)
   let ast = parse program in
@@ -399,55 +412,65 @@ let type_check (program : program) : typed_program =
   borrow_check resolved_ast;
 
   resolved_ast
-```
+----
 
-## 10. Correctness
+== 10. Correctness
 
-### 10.1 Soundness
+=== 10.1 Soundness
 
-**Theorem 10.1 (Inference Soundness)**: If `type_check(e) = τ` then `⊢ e : τ`.
+*Theorem 10.1 (Inference Soundness)*: If `type++_++check(e) = τ` then
+`⊢ e : τ`.
 
-### 10.2 Completeness
+=== 10.2 Completeness
 
-**Theorem 10.2 (Inference Completeness)**: If `⊢ e : τ` then `type_check(e)` succeeds with a type τ' such that τ is an instance of τ'.
+*Theorem 10.2 (Inference Completeness)*: If `⊢ e : τ` then
+`type++_++check(e)` succeeds with a type τ’ such that τ is an instance
+of τ’.
 
-### 10.3 Principal Types
+=== 10.3 Principal Types
 
-**Theorem 10.3 (Principal Types)**: The algorithm computes principal types.
+*Theorem 10.3 (Principal Types)*: The algorithm computes principal
+types.
 
-## 11. Complexity Analysis
+== 11. Complexity Analysis
 
-| Phase | Complexity |
-|-------|------------|
-| Parsing | O(n) |
-| Constraint generation | O(n) |
-| Unification | O(n²) worst, O(n) typical |
-| Quantity checking | O(n) |
-| Effect inference | O(n) |
-| Refinement checking | Depends on SMT |
-| Borrow checking | O(n²) worst |
+[cols=",",options="header",]
+|===
+|Phase |Complexity
+|Parsing |O(n)
+|Constraint generation |O(n)
+|Unification |O(n²) worst, O(n) typical
+|Quantity checking |O(n)
+|Effect inference |O(n)
+|Refinement checking |Depends on SMT
+|Borrow checking |O(n²) worst
+|===
 
-## 12. Implementation Notes
+== 12. Implementation Notes
 
 See `lib/` for OCaml implementation (pending).
 
-```ocaml
+[source,ocaml]
+----
 (* lib/infer.mli *)
 module Infer : sig
   val infer : Context.t -> Ast.expr -> (Ast.typ * Ast.effect) result
   val check : Context.t -> Ast.expr -> Ast.typ -> Ast.effect result
   val elaborate : Ast.program -> TypedAst.program result
 end
-```
+----
 
-## 13. References
+== 13. References
 
-1. Dunfield, J., & Krishnaswami, N. (2021). Bidirectional Typing. *ACM Computing Surveys*.
-2. Pottier, F., & Rémy, D. (2005). The Essence of ML Type Inference. *ATTAPL*.
-3. Vytiniotis, D., et al. (2011). OutsideIn(X): Modular Type Inference with Local Assumptions. *JFP*.
+[arabic]
+. Dunfield, J., & Krishnaswami, N. (2021). Bidirectional Typing. _ACM
+Computing Surveys_.
+. Pottier, F., & Rémy, D. (2005). The Essence of ML Type Inference.
+_ATTAPL_.
+. Vytiniotis, D., et al. (2011). OutsideIn(X): Modular Type Inference
+with Local Assumptions. _JFP_.
 
----
+'''''
 
-**Document Metadata**:
-- Implementation: `lib/infer.ml` (pending)
-- Dependencies: Parser, AST, SMT interface
+*Document Metadata*: - Implementation: `lib/infer.ml` (pending) -
+Dependencies: Parser, AST, SMT interface
