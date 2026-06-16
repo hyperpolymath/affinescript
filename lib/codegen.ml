@@ -86,6 +86,57 @@ type 'a result = ('a, codegen_error) Result.t
 (** Result bind operator *)
 let ( let* ) = Result.bind
 
+(* issue-draft 05 / task #8 — Float-through-heap guard.
+   The core-wasm backend stores every heap cell (array element, tuple element,
+   record field) as a uniform 4-byte i32 slot. A Float is f64 (8 bytes), so any
+   Float that transits the heap is mismodeled: invalid wasm on load, silent
+   32-of-64-bit truncation on store. Until the type-directed heap layout lands
+   (task #8) we reject such a value loudly rather than emit corrupt bytes.
+   Scalar Float (which stays in an f64 local) is unaffected — only Float *inside
+   an aggregate*. The interpreter (-i), the Julia backend (-julia), and the GPU
+   kernel backends (WGSL/CUDA/Metal/OpenCL) all lower f64 aggregates correctly. *)
+let rec ty_strip_own (te : type_expr) : type_expr =
+  match te with TyOwn t | TyRef t | TyMut t -> ty_strip_own t | t -> t
+
+let rec ty_mentions_float (te : type_expr) : bool =
+  match ty_strip_own te with
+  | TyCon id -> id.name = "Float"
+  | TyApp (_, args) -> List.exists (function TyArg t -> ty_mentions_float t) args
+  | TyTuple ts -> List.exists ty_mentions_float ts
+  | TyRecord (fields, _) ->
+      List.exists (fun (rf : row_field) -> ty_mentions_float rf.rf_ty) fields
+  | _ -> false
+
+let ty_float_in_heap (te : type_expr) : bool =
+  match ty_strip_own te with
+  | TyApp (id, args) when id.name = "Array" ->
+      List.exists (function TyArg t -> ty_mentions_float t) args
+  | TyTuple ts -> List.exists ty_mentions_float ts
+  | TyRecord (fields, _) ->
+      List.exists (fun (rf : row_field) -> ty_mentions_float rf.rf_ty) fields
+  | _ -> false
+
+let float_in_heap_msg (what : string) : string =
+  Printf.sprintf
+    "Float inside %s is not supported by the core-wasm backend: its uniform \
+     4-byte heap cells truncate f64 (issue-draft 05). Use the interpreter (-i), \
+     the Julia backend (-julia), or a GPU kernel backend (e.g. -o foo.wgsl) — \
+     all lower f64 aggregates correctly. Type-directed heap layout is task #8."
+    what
+
+let guard_no_heap_float (te : type_expr) : unit result =
+  if ty_float_in_heap te
+  then Error (UnsupportedFeature (float_in_heap_msg "an aggregate (Array/tuple/record)"))
+  else Ok ()
+
+let guard_fn_no_heap_float (fd : fn_decl) : unit result =
+  let* () =
+    List.fold_left
+      (fun acc (p : param) -> let* () = acc in guard_no_heap_float p.p_ty)
+      (Ok ()) fd.fd_params
+  in
+  match fd.fd_ret_ty with Some t -> guard_no_heap_float t | None -> Ok ()
+
 (** Count imported functions (for index offsets) *)
 let import_func_count (ctx : context) : int =
   List.fold_left (fun acc imp ->
@@ -452,6 +503,15 @@ let rec expr_val_type (ctx : context) (e : expr) : value_type =
   | ExprLet lb ->
     (match lb.el_body with Some e1 -> expr_val_type ctx e1 | None -> I32)
   | _ -> I32
+
+(* Companion to [guard_no_heap_float] for aggregate *literals*, whose element
+   types are not annotated: reject if any element lowers to f64 (issue-draft 05
+   / task #8). Conservative — only catches statically-known f64 elements. *)
+let guard_no_float_elems (ctx : context) (elems : expr list) (what : string)
+    : unit result =
+  if List.exists (fun e -> expr_val_type ctx e = F64) elems
+  then Error (UnsupportedFeature (float_in_heap_msg ("a " ^ what ^ " literal")))
+  else Ok ()
 
 (** Float wall: run-length-encode local value types (in index order) into the
     wasm [local] group list (default i32). *)
@@ -1889,6 +1949,7 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
     Ok (ctx_final, scrutinee_code @ [LocalSet temp_idx] @ arms_code)
 
   | ExprTuple elements ->
+    let* () = guard_no_float_elems ctx elements "tuple" in
     (* Tuple layout in memory: [elem0: I32][elem1: I32][elem2: I32]... *)
     (* No length field - tuple size is fixed at creation *)
     let num_elements = List.length elements in
@@ -1921,6 +1982,7 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
     Ok (ctx_final, alloc_code @ save_code @ store_code @ [LocalGet temp_idx])
 
   | ExprArray elements ->
+    let* () = guard_no_float_elems ctx elements "array" in
     (* Array layout in memory: [length: I32][elem0: I32][elem1: I32]... *)
     let num_elements = List.length elements in
     let size_in_bytes = 4 + (num_elements * 4) in  (* 4 for length + 4 per element *)
@@ -1959,6 +2021,10 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
     Ok (ctx_final, alloc_code @ save_code @ length_code @ store_code @ [LocalGet temp_idx])
 
   | ExprRecord rec_expr ->
+    let* () =
+      guard_no_float_elems ctx
+        (List.map (fun (id, eopt) -> match eopt with Some e -> e | None -> ExprVar id)
+           rec_expr.er_fields) "record" in
     (* Allocate memory for record fields *)
     let num_fields = List.length rec_expr.er_fields in
     let size_in_bytes = num_fields * 4 in  (* Each field is 4 bytes (I32) *)
@@ -2966,6 +3032,7 @@ let () =
          end)
 
 let gen_function (ctx : context) (fd : fn_decl) : (context * func) result =
+  let* () = guard_fn_no_heap_float fd in
   (* Create fresh context for function scope, but preserve lambda_funcs and next_lambda_id *)
   (* Float wall: reset [local_types] too — local indices restart at 0 per
      function, so a previous function's f64-local entries must not leak (else a

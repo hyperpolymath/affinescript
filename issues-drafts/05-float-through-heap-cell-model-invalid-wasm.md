@@ -64,6 +64,14 @@ invalid module; store → 32-bit truncation of a 64-bit value.
 Recommended: ship (2) now for safety, then (1) as the durable fix. Both are
 gated by `just wasm-validate`.
 
+**Status (2026-06-16): interim secure fix (2) LANDED.** `lib/codegen.ml` now
+raises `UnsupportedFeature` when a `Float` would transit a heap cell — guarded at
+function param/return types (`guard_fn_no_heap_float`) and at Array/tuple/record
+*literals* (`guard_no_float_elems`). Silent corruption / invalid emission is gone;
+scalar `Float` and `Int` aggregates are untouched. `just wasm-validate` now pins
+the loud-fail (two `rej` cases). **The real fix (1) — type-directed heap layout —
+remains open as task #8.**
+
 ## Related
 
 Not the same as the deliberate carve-outs #555 (effect handlers) / #556 (async

@@ -80,6 +80,23 @@ for f in $corpus; do
   fi
 done
 
+# Float-through-heap must LOUD-FAIL, not emit (issue-draft 05 / task #8). These
+# were silent-invalid/corrupt before the guard landed; pin the honest reject so
+# it cannot silently regress (the corpus itself has no Float aggregates).
+echo "── Float-through-heap loud-fail (issue-draft 05) ──"
+rej () {  # <label> <src>
+  printf '%s\n' "$2" > "$tmp/rej.affine"
+  if "$BIN" compile "$tmp/rej.affine" -o "$tmp/rej.wasm" >"$tmp/.r" 2>&1; then
+    bad "$1 — emitted instead of loud-failing (Float-heap guard regressed!)"
+  elif grep -q 'UnsupportedFeature' "$tmp/.r"; then
+    ok "$1 — loud-fails (UnsupportedFeature)"
+  else
+    bad "$1 — failed, but not via the Float-heap guard: $(tail -1 "$tmp/.r")"
+  fi
+}
+rej "Array[Float] param"  'fn rd(i: Int, a: Array[Float]) -> Float { a[i] }'
+rej "Float tuple literal" 'fn f() -> Float { let t: (Float, Float) = (1.0, 2.0); t.0 }'
+
 echo
 printf '%s passed, %s failed, %s skipped (allowlisted carve-outs)\n' "$pass" "$fail" "$skip"
 [ "$fail" -eq 0 ]
