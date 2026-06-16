@@ -105,20 +105,36 @@ field's kind. `guard`'s `TyTuple` case fully lifted.
 `just wasm-validate` pins **12 positive** Float-in-heap checks (incl. 7 wasmtime
 round-trips) + the loud-fails. 477 tests green.
 
-**Still loud-failing (next increment, task #8):**
+**Closed `Float` records DONE.** A *closed* float-bearing record uses the
+uniform-8 layout with fields ordered **by name** (`Ast.ExprCellRecord` /
+`Ast.ExprCellField`), so construction and by-name access derive identical
+offsets independent of literal-vs-type order — verified by the
+`#{b:2.0, a:1.0}` → `REC_ORDER_OK` round-trip and mixed `REC_MIX_OK`. The
+unification subtlety is handled: a field access only takes the cell path when
+`repr obj_ty` is a **closed** `TRecord` (open/polymorphic rows and record
+literals with a spread keep loud-failing; `guard`'s `TyRecord` case lifts only
+when the row var is `None`).
 
-* **`Float` records.** Designed: a *closed* float-bearing record gets the same
-  uniform-8 layout with fields ordered **by name** (so construct and by-name
-  access derive identical offsets without depending on literal-vs-type order).
-  Blocker handled by design: at a field access the checker unifies against a
-  *fresh* rest-row, so the full layout is only safe when `repr obj_ty` is a
-  **closed** `TRecord`; an open/polymorphic row must keep loud-failing. Value
-  round-trips are mandatory (a wrong offset is silent corruption, not an invalid
-  module).
-* **Captured `Float` in closures** — the closure env stores captures at `i*4`
-  (`lib/codegen.ml` env-build); needs the same per-cell treatment.
+Also fixed: `find_free_vars` (codegen, runs on the post-elaborate tree) now
+traverses `ExprFloatBinary` and all the new cell nodes, so a variable captured
+only inside a float expression is no longer missed.
+
+**Still loud-failing (task #8) — now CLEAN `UnsupportedFeature` rejects:**
+
+* **`Float` in closures** (captured `Float`, `Float` parameter, or `Float`
+  result). This is a *calling-convention* gap, not a cell-layout one: the
+  closure ABI uses uniform 4-byte env/parameter cells and i32 lambda
+  param/result/local types. Full support needs an f64-aware closure ABI (env
+  cells, lambda signature, and the matching `CallIndirect` type) — larger than
+  the aggregate-cell work here. Now loud-fails cleanly (was `UnboundVariable`).
 * Compound assignment (`a[i] += x`) to a float element (rare; rewrite as
   `a[i] = a[i] + x`).
+* Open/polymorphic float records and float-record spreads.
+
+**Summary:** every `Float` that transits a heap **aggregate** (array, tuple
+— all/mixed, record — closed) now lowers correctly and is wasmtime-verified;
+the residual rejects are the closure calling convention + two narrow cases,
+all honest loud-fails (no silent corruption).
 
 ## Related
 

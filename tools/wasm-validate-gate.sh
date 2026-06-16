@@ -151,6 +151,7 @@ rej () {  # <label> <src>
   fi
 }
 rej "Float array compound-assign" 'fn k(i: Int, mut a: Array[Float]) -> Unit { a[i] += 1.0; }'
+rej "closure capturing a Float"   'fn main() -> Int { let s: Float = 2.5; let f = fn(x: Float) => x * s; if f(2.0) > 4.0 { 0 } else { 1 } }'
 
 echo
 printf '%s passed, %s failed, %s skipped (allowlisted carve-outs)\n' "$pass" "$fail" "$skip"

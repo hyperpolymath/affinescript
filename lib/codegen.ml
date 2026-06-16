@@ -426,6 +426,21 @@ let rec find_free_vars (bound_vars : string list) (expr : expr) : string list =
     find_free_vars bound_vars e1 @ find_free_vars bound_vars e2
   | ExprVariant _ -> []
   | ExprSpan (e, _) -> find_free_vars bound_vars e
+  (* Float-wall elaboration nodes (codegen runs on the post-elaborate tree, so
+     these CAN appear here): traverse them exactly like their pre-elaboration
+     forms, else a variable captured only inside a float expression is missed
+     and the closure mis-lowers to UnboundVariable. *)
+  | ExprFloatBinary (a, _, b) ->
+    find_free_vars bound_vars a @ find_free_vars bound_vars b
+  | ExprFloatArray exprs -> List.concat (List.map (find_free_vars bound_vars) exprs)
+  | ExprFloatIndex (a, b) ->
+    find_free_vars bound_vars a @ find_free_vars bound_vars b
+  | ExprCellTuple cells ->
+    List.concat (List.map (fun (e, _) -> find_free_vars bound_vars e) cells)
+  | ExprCellTupleIndex (e, _, _) -> find_free_vars bound_vars e
+  | ExprCellRecord fields ->
+    List.concat (List.map (fun (_, e, _) -> find_free_vars bound_vars e) fields)
+  | ExprCellField (e, _, _) -> find_free_vars bound_vars e
   | _ -> []  (* Other expressions *)
 
 (** Remove duplicates from list *)
@@ -974,6 +989,28 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
     let captured_vars = List.filter (fun name ->
       List.mem_assoc name ctx.locals
     ) (dedup all_free) in
+
+    (* Float wall: f64 in a closure — a captured Float, a Float parameter, or a
+       Float result — needs an f64-aware closure calling convention (env cells,
+       lambda param/result/local types, and the matching CallIndirect type),
+       which the uniform-4-byte-i32 closure ABI does not yet provide. Loud-fail
+       honestly rather than emit invalid wasm or mis-lower (issue-draft 05, task
+       #8 closures). Conservative: any of the three triggers rejects. *)
+    let* () =
+      let captures_float = List.exists (fun name ->
+        match lookup_local ctx name with
+        | Ok idx -> (match List.assoc_opt idx ctx.local_types with Some F64 -> true | _ -> false)
+        | Error _ -> false) captured_vars in
+      let param_float = List.exists (fun p -> ty_mentions_float p.p_ty) lam.elam_params in
+      let body_float = (expr_val_type ctx lam.elam_body = F64) in
+      if captures_float || param_float || body_float
+      then Error (UnsupportedFeature
+        "Float in a closure (captured Float, Float parameter, or Float result) is \
+         not yet supported by the core-wasm backend: the closure ABI uses uniform \
+         4-byte env/parameter cells (issue-draft 05, task #8 closures). Use the \
+         interpreter (-i) or the Julia backend (-julia).")
+      else Ok ()
+    in
 
     let lambda_id = ctx.next_lambda_id in
 
