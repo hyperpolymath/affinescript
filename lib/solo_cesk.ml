@@ -46,20 +46,40 @@ type term =
   | Inr of term
   | Case of term * quantity * term * term    (** case s of inl x^q ⇒ l | inr y^q ⇒ r *)
   | Let of quantity * term * term            (** let x^q = rhs in body *)
+  (* ── M2 (ADR-0025): deep algebraic effects + multi-shot resume (#555). ──────── *)
+  | Perform of int * term                    (** perform op^i arg — raise effect op [i] with [arg] *)
+  | Handle of term * handler                 (** handle body with { return … | op_i … } *)
+  | Resume of term * term                    (** resume k arg — re-enter a captured continuation *)
+
+(** A deep effect handler. [h_ret] is the [return x^q ⇒ body] clause run when the
+    handled body returns normally. Each op clause [(op, arg_q, resume_q, body)]
+    handles [perform op v]: its [body] sees de Bruijn 0 = the operation argument
+    [v] (quantity [arg_q]) and de Bruijn 1 = the resumption [k] (quantity
+    [resume_q]); [resume_q = Omega] permits the *multi-shot* re-entry. Deep: the
+    captured resumption re-installs this handler, so a [perform] inside the
+    resumed computation is caught here again. *)
+and handler = {
+  h_ret : quantity * term;
+  h_ops : (int * quantity * quantity * term) list;
+}
 
 (* ── VM-native tagged values (Q2). ───────────────────────────────────────────── *)
+(* [value], [binding]/[qenv], [frame] and [kont] are ONE recursive group: a
+   captured continuation is itself a first-class [value] ([VCont of kont]), and a
+   frame closes over an [qenv] of [value]s — so the knot must be tied together. *)
 type value =
   | VUnit
   | VClos of qenv * quantity * term          (** closure: captured env, param quantity, body *)
   | VPair of value * value
   | VInl of value
   | VInr of value
+  | VCont of kont                             (** M2: a reified resumption — DATA, hence multi-shot *)
 
 and binding = { v : value; q : quantity; mutable used : int }
 and qenv = binding list                       (** de Bruijn: index 0 = most recent binding *)
 
 (* ── Continuation frames — defunctionalised (Q1): data, not closures. ─────────── *)
-type frame =
+and frame =
   | KAppFn of qenv * term                     (** evaluated f; next eval arg in this env *)
   | KAppArg of value                          (** have the closure; evaluating the arg *)
   | KPair1 of qenv * term                     (** evaluated fst; next eval snd *)
@@ -70,8 +90,13 @@ type frame =
   | KInr
   | KCase of qenv * quantity * term * term
   | KLet of qenv * quantity * term
+  (* ── M2 effect frames. ─────────────────────────────────────────────────────── *)
+  | KHandle of qenv * handler                 (** a handler boundary on the stack (deep) *)
+  | KPerform of int                           (** evaluating a perform's argument; op label *)
+  | KResumeFn of qenv * term                  (** evaluated the resumption; next eval its arg *)
+  | KResumeArg of kont                         (** have the captured cont; evaluating the value to inject *)
 
-type kont = frame list
+and kont = frame list
 
 type control = Eval of term | Ret of value
 
@@ -86,6 +111,7 @@ let default_config = { enforce = true; budget = None }
 exception Affine_violation of string
 exception Stuck of string                     (** ill-typed at runtime — impossible on well-typed terms *)
 exception Infeasible of int                   (** tropical cost budget exceeded *)
+exception Unhandled_effect of int             (** M2: [perform op] with no enclosing handler for [op] *)
 
 (** Dereference a de Bruijn variable, enforcing the affine bound when [enforce]. *)
 let deref cfg env n =
@@ -100,6 +126,26 @@ let deref cfg env n =
     b.v
 
 let bind v q env = { v; q; used = 0 } :: env
+
+(** Search the continuation for the nearest handler of [op]. Returns
+    [(captured, henv, arg_q, res_q, body, krest)] where [captured] is the
+    delimited continuation up to AND INCLUDING that handler frame — so resuming
+    re-installs the handler (DEEP handlers: a [perform] inside the resumed
+    computation is caught here again) — [henv] is the handler's captured env,
+    [(arg_q, res_q, body)] is the matching op clause, and [krest] is the
+    continuation *beyond* the handler (what the whole [handle] returns into). An
+    inner handler that does not handle [op] is part of the delimited
+    continuation, so it stays installed in the resumption. Raises
+    {!Unhandled_effect} if no handler matches. *)
+let rec find_handler op (k : kont) (acc : frame list)
+  : kont * qenv * quantity * quantity * term * kont =
+  match k with
+  | [] -> raise (Unhandled_effect op)
+  | (KHandle (henv, h) as hf) :: rest ->
+    (match List.find_opt (fun (o, _, _, _) -> o = op) h.h_ops with
+     | Some (_, arg_q, res_q, body) -> (List.rev (hf :: acc), henv, arg_q, res_q, body, rest)
+     | None -> find_handler op rest (hf :: acc))
+  | f :: rest -> find_handler op rest (f :: acc)
 
 (** One CESK transition. Cost rises by 1 per step (the tropical grade; (ℕ∪{∞},min,+)
     accumulates by [+]). Each clause below is one Solo small-step rule. *)
@@ -119,6 +165,10 @@ let step cfg (st : state) : state =
   | Eval (Inr e), _            -> { ctrl = Eval e; env = st.env; k = KInr :: st.k; cost }
   | Eval (Case (s, q, l, r)), _-> { ctrl = Eval s; env = st.env; k = KCase (st.env, q, l, r) :: st.k; cost }
   | Eval (Let (q, rhs, body)), _ -> { ctrl = Eval rhs; env = st.env; k = KLet (st.env, q, body) :: st.k; cost }
+  (* M2: effect constructs push their frames, then evaluate left-to-right *)
+  | Eval (Perform (op, arg)), _ -> { ctrl = Eval arg; env = st.env; k = KPerform op :: st.k; cost }
+  | Eval (Handle (body, h)), _  -> { ctrl = Eval body; env = st.env; k = KHandle (st.env, h) :: st.k; cost }
+  | Eval (Resume (kt, at)), _   -> { ctrl = Eval kt; env = st.env; k = KResumeFn (st.env, at) :: st.k; cost }
   (* refocus: a value meets the top frame of the continuation *)
   | Ret v, KAppFn (env, a) :: k -> { ctrl = Eval a; env; k = KAppArg v :: k; cost }
   | Ret v, KAppArg (VClos (cenv, q, body)) :: k -> { ctrl = Eval body; env = bind v q cenv; k; cost }
@@ -134,6 +184,22 @@ let step cfg (st : state) : state =
   | Ret (VInr v), KCase (env, q, _, r) :: k -> { ctrl = Eval r; env = bind v q env; k; cost }
   | Ret _, KCase _ :: _        -> raise (Stuck "case on a non-sum")
   | Ret v, KLet (env, q, body) :: k -> { ctrl = Eval body; env = bind v q env; k; cost }
+  (* ── M2: effect refocus rules. ─────────────────────────────────────────────── *)
+  (* handled body returned normally → run the handler's [return] clause *)
+  | Ret v, KHandle (henv, h) :: k ->
+    let (rq, rbody) = h.h_ret in { ctrl = Eval rbody; env = bind v rq henv; k; cost }
+  (* perform: find the nearest handler for [op]; bind arg (de Bruijn 0) and the
+     reified resumption (de Bruijn 1); run the op clause with the handler's own
+     continuation [krest].  The resumption re-installs the handler (deep). *)
+  | Ret v, KPerform op :: k ->
+    let (captured, henv, arg_q, res_q, body, krest) = find_handler op k [] in
+    { ctrl = Eval body; env = bind v arg_q (bind (VCont captured) res_q henv); k = krest; cost }
+  (* resume: evaluate the continuation expr, then its argument *)
+  | Ret (VCont kc), KResumeFn (env, at) :: k -> { ctrl = Eval at; env; k = KResumeArg kc :: k; cost }
+  | Ret _, KResumeFn _ :: _    -> raise (Stuck "resume of a non-continuation")
+  (* inject the value into the captured continuation and run it; [kc] is data, so
+     this same [VCont] may be resumed again — MULTI-SHOT (#555). *)
+  | Ret v, KResumeArg kc :: k  -> { ctrl = Ret v; env = st.env; k = kc @ k; cost }
   | Ret _, []                  -> st                                     (* final; run/1 detects *)
 
 (** Run a closed Solo term to a value, returning (value, cost). [fuel] guards runaway
@@ -152,3 +218,4 @@ let rec show_value = function
   | VPair (a, b) -> "(" ^ show_value a ^ ", " ^ show_value b ^ ")"
   | VInl v -> "inl " ^ show_value v
   | VInr v -> "inr " ^ show_value v
+  | VCont _ -> "<cont>"

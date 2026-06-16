@@ -69,6 +69,55 @@ let t_deterministic () =
   Alcotest.(check string) "value stable" (show_value v1) (show_value v2);
   Alcotest.(check int) "cost stable" c1 c2
 
+(* ── M2 : deep effect handlers + multi-shot resume (#555) ─────────────────────── *)
+(* These are the FIRST runtime handler tests in the repo (ADR-0025 M2 noted "zero
+   exist today"). Op labels are ints; an op clause body sees de Bruijn 0 = the
+   operation argument, 1 = the resumption [k]. *)
+let raises_unhandled (t : term) () =
+  match run t with
+  | exception Unhandled_effect _ -> ()
+  | (v, _) -> Alcotest.failf "expected Unhandled_effect, got %s" (show_value v)
+
+(* handle (return ()) with { return x ⇒ x }  — the return clause fires *)
+let t_handle_return =
+  runs_to (Handle (TUnit, { h_ret = (One, Var 0); h_ops = [] })) "()"
+
+(* handle (perform op0 ()) with { return x⇒x | op0(_) k ⇒ resume k (inl ()) }
+   single-shot: the op clause resumes once; the injected value flows back to the
+   handled body's value, then through the return clause. *)
+let t_handle_single_shot =
+  runs_to
+    (Handle (Perform (0, TUnit),
+       { h_ret = (One, Var 0);
+         h_ops = [ (0, One, One, Resume (Var 1, Inl TUnit)) ] }))
+    "inl ()"
+
+(* MULTI-SHOT: op0(_) k ⇒ (resume k (inl ()), resume k (inr ())).  The SAME
+   reified continuation is resumed twice — only possible because [k] is data.
+   resume quantity is ω (the resumption is used twice). Result pairs both runs. *)
+let t_handle_multi_shot =
+  runs_to
+    (Handle (Perform (0, TUnit),
+       { h_ret = (One, Var 0);
+         h_ops = [ (0, One, Omega,
+                    Pair (Resume (Var 1, Inl TUnit), Resume (Var 1, Inr TUnit))) ] }))
+    "(inl (), inr ())"
+
+(* DEEP: let _ = perform op0 (inl ()) in perform op0 (inr ()), handled by
+   { op0(arg) k ⇒ resume k arg }. The SECOND perform sits inside the resumed
+   computation and must be caught by the SAME handler (deep) — if it weren't, it
+   would raise Unhandled_effect. Final value is the second perform's argument. *)
+let t_handle_deep =
+  runs_to
+    (Handle (
+       Let (Omega, Perform (0, Inl TUnit), Perform (0, Inr TUnit)),
+       { h_ret = (One, Var 0);
+         h_ops = [ (0, One, One, Resume (Var 1, Var 0)) ] }))
+    "inr ()"
+
+(* perform with no enclosing handler ⇒ Unhandled_effect (loud, not silent). *)
+let t_perform_unhandled = raises_unhandled (Perform (0, TUnit))
+
 let tests =
   [
     Alcotest.test_case "β-reduction" `Quick t_beta;
@@ -90,4 +139,10 @@ let tests =
     Alcotest.test_case "PER: cost accumulates" `Quick t_cost_positive;
     Alcotest.test_case "PER: budget exceeded → Infeasible" `Quick t_budget_infeasible;
     Alcotest.test_case "determinism (value + cost)" `Quick t_deterministic;
+    (* M2 — deep effect handlers + multi-shot resume (#555) *)
+    Alcotest.test_case "M2: handler return clause fires" `Quick t_handle_return;
+    Alcotest.test_case "M2: single-shot resume" `Quick t_handle_single_shot;
+    Alcotest.test_case "M2: MULTI-SHOT resume (resume k twice)" `Quick t_handle_multi_shot;
+    Alcotest.test_case "M2: deep handler (perform inside resumption)" `Quick t_handle_deep;
+    Alcotest.test_case "M2: unhandled effect → Unhandled_effect" `Quick t_perform_unhandled;
   ]
