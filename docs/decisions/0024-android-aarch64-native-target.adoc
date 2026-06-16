@@ -93,6 +93,15 @@ AffineScript  --(lib/llvm_codegen.ml)-->  LLVM IR (.ll, triple=aarch64-linux-and
   code. Fix #8 before shipping native float-heavy programs.
 * Adding `aarch64-apple-ios` (and others) is now a one-line triple change —
   the parameterisation generalises beyond Android.
+* *Downstream consumer — RISC-V (recorded 2026-06-16).* A RISC-V collaboration
+  wants native AffineScript. Because the triple is parameterised, this is already
+  served at the codegen spine: `AFFINESCRIPT_LLVM_TRIPLE=riscv64-unknown-linux-gnu`
+  emits a real ELF RV64 object (`add a0,a0,a1`/`ret`) — *verified, zero code
+  change*, pinned by `just android-validate`. The remaining work is the runtime +
+  link story for `riscv64-linux` (a standard cross-toolchain — simpler than
+  Android's NDK/APK path, no WebView/shell). This is the payoff of a generic
+  spine: a new target customer is a one-line change, not a project — so we serve
+  the request without reordering the roadmap around it.
 * No new managed-runtime dependency; consistent with the Kotlin/Swift ban.
 
 == Verification

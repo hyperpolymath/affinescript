@@ -36,7 +36,7 @@ BIN="$REPO/_build/default/bin/main.exe"
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 printf 'fn add(a: Int, b: Int) -> Int { a + b }\n' > "$tmp/spine.affine"
 
-echo "── Android aarch64 native-codegen spine (ADR-0024) ──"
+echo "── Native-codegen spine: aarch64 + riscv64 (ADR-0024) ──"
 
 if AFFINESCRIPT_LLVM_TRIPLE=aarch64-linux-android "$BIN" compile "$tmp/spine.affine" -o "$tmp/spine.ll" >/dev/null 2>&1 \
    && grep -q 'target triple = "aarch64-linux-android"' "$tmp/spine.ll"; then
@@ -53,6 +53,20 @@ if llc -filetype=obj "$tmp/spine.ll" -o "$tmp/spine.o" >/dev/null 2>&1; then
   esac
 else
   bad "llc failed to lower the Android-triple IR"
+fi
+
+# RISC-V downstream (ADR-0024 Consequences): same parameterised triple, no code
+# change — proves the native spine is multi-target, not Android-specific.
+if AFFINESCRIPT_LLVM_TRIPLE=riscv64-unknown-linux-gnu "$BIN" compile "$tmp/spine.affine" -o "$tmp/spine-rv.ll" >/dev/null 2>&1 \
+   && grep -q 'target triple = "riscv64-unknown-linux-gnu"' "$tmp/spine-rv.ll" \
+   && llc -filetype=obj "$tmp/spine-rv.ll" -o "$tmp/spine-rv.o" >/dev/null 2>&1; then
+  desc="$(file "$tmp/spine-rv.o" 2>/dev/null)"
+  case "$desc" in
+    *"RISC-V"*) ok "riscv64 triple -> RISC-V object (downstream: RISC-V native)" ;;
+    *)          bad "riscv64 object is not RISC-V: $desc" ;;
+  esac
+else
+  bad "riscv64 native spine failed"
 fi
 
 echo
