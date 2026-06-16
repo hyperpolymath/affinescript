@@ -828,6 +828,40 @@ let reset_cell_tuple_sites () : unit = cell_tuple_sites := []
 let cell_tuple_index_sites : (expr * bool) list ref = ref []
 let reset_cell_tuple_index_sites () : unit = cell_tuple_index_sites := []
 
+(** Float heap wall — float-bearing records (closed rows only). Uniform 8-byte
+    cells, fields placed by name sorted ascending (see {!Ast.ExprCellRecord}).
+    [cell_record_sites] maps an [ExprRecord] node to its per-field
+    [(field_name, is_f64)]; [cell_field_sites] maps an [ExprField] access node to
+    the accessed field's [(byte_offset, is_f64)] (offset = sorted-name position ×
+    8, computed from the CLOSED record row — an open/polymorphic row is left on
+    the i32 path and loud-fails via the guard). Same physical-identity ([List.assq])
+    discipline; consumed/cleared by {!elaborate_string_concat}. *)
+let cell_record_sites : (expr * (string * bool) list) list ref = ref []
+let reset_cell_record_sites () : unit = cell_record_sites := []
+let cell_field_sites : (expr * (int * bool)) list ref = ref []
+let reset_cell_field_sites () : unit = cell_field_sites := []
+
+(** A closed record row's fields as [(name, ty)], or [None] if the row is open
+    (ends in a row variable) — in which case the heap layout cannot be fixed. *)
+let rec closed_row_fields (row : row) : (string * ty) list option =
+  match repr_row row with
+  | REmpty -> Some []
+  | RExtend (l, t, rest) ->
+    (match closed_row_fields rest with Some fs -> Some ((l, t) :: fs) | None -> None)
+  | RVar _ -> None
+
+(** Sorted-by-name (offset, is_f64) layout for a closed float-bearing record:
+    cell i (in ascending-name order) at byte offset i*8, f64 iff scalar Float.
+    Returns [None] unless the row is closed AND has at least one scalar Float. *)
+let record_cell_layout (row : row) : (string * (int * bool)) list option =
+  match closed_row_fields row with
+  | None -> None
+  | Some fields ->
+    let sorted = List.sort (fun (a, _) (b, _) -> String.compare a b) fields in
+    let is_f t = match repr t with TCon "Float" -> true | _ -> false in
+    if not (List.exists (fun (_, t) -> is_f t) sorted) then None
+    else Some (List.mapi (fun i (name, t) -> (name, (i * 8, is_f t))) sorted)
+
 (** {1 Expression synthesis (mode ⇒)} *)
 
 (** Synthesize a type for an expression. *)
@@ -1019,7 +1053,7 @@ let rec synth (ctx : context) (expr : expr) : ty result =
     end
 
   (* Record literal *)
-  | ExprRecord { er_fields; er_spread = _ } ->
+  | ExprRecord { er_fields; er_spread } as rec_node ->
     let* field_tys = List.fold_left (fun acc (({ name; _ } : ident), expr_opt) ->
       let* fields = acc in
       let* ty = begin match expr_opt with
@@ -1031,10 +1065,19 @@ let rec synth (ctx : context) (expr : expr) : ty result =
     let row = List.fold_right (fun (name, ty) acc ->
       RExtend (name, ty, acc)
     ) field_tys REmpty in
+    (* Float heap wall: a float-bearing record literal (closed, no spread) lays
+       out uniform 8-byte cells, fields sorted by name. Record per-field f64
+       flags. A spread (`{..r, x: 1.0}`) adds fields not in this row, so the
+       layout would be incomplete — skip it (keeps loud-failing). *)
+    (match er_spread, record_cell_layout row with
+     | None, Some layout ->
+       let kinds = List.map (fun (name, (_off, is_f64)) -> (name, is_f64)) layout in
+       cell_record_sites := (rec_node, kinds) :: !cell_record_sites
+     | _ -> ());
     Ok (TRecord row)
 
   (* Field access — first try record-field projection, then trait method lookup *)
-  | ExprField (obj, { name = field; _ }) ->
+  | ExprField (obj, { name = field; _ }) as field_node ->
     let* obj_ty = synth ctx obj in
     (* Auto-deref reference/owned wrappers before record projection
        (issue #122 v2): `c.field` where `c : ref/own/mut S` projects the
@@ -1051,7 +1094,22 @@ let rec synth (ctx : context) (expr : expr) : ty result =
     let rest_row = fresh_rowvar ctx.level in
     let expected_record = TRecord (RExtend (field, field_ty, rest_row)) in
     begin match Unify.unify (repr obj_ty_deref) expected_record with
-    | Ok () -> Ok field_ty
+    | Ok () ->
+      (* Float heap wall: if obj is a CLOSED float-bearing record, `r.field`
+         loads from the sorted-by-name uniform-8 layout (every field access on
+         such a record is rewritten, since the whole record uses 8-byte cells).
+         An open row yields no layout → stays on the i32 path / loud-fails. *)
+      (match repr obj_ty_deref with
+       | TRecord row ->
+         (match record_cell_layout row with
+          | Some layout ->
+            (match List.assoc_opt field layout with
+             | Some (offset, is_f64) ->
+               cell_field_sites := (field_node, (offset, is_f64)) :: !cell_field_sites
+             | None -> ())
+          | None -> ())
+       | _ -> ());
+      Ok field_ty
     | Error _ ->
       (* Record projection failed — try trait method dispatch.
          We search all registered impls for a method named [field]
@@ -1597,7 +1655,12 @@ let rec elab_expr (e : expr) : expr =
   | ExprFloatBinary (l, op, r) -> ExprFloatBinary (elab_expr l, op, elab_expr r)
   | ExprSpan (e', sp) -> ExprSpan (elab_expr e', sp)
   | ExprLit _ | ExprVar _ | ExprVariant _ -> e
-  | ExprField (base, fld) -> ExprField (elab_expr base, fld)
+  | ExprField (base, fld) ->
+    (* Float heap wall: rewrite `r.f` on a closed float-bearing record. *)
+    (match List.assq_opt e !cell_field_sites with
+     | Some (offset, is_f64) -> ExprCellField (elab_expr base, offset, is_f64)
+     | None -> ExprField (elab_expr base, fld))
+  | ExprCellField (base, off, k) -> ExprCellField (elab_expr base, off, k)
   | ExprLet r ->
     ExprLet { r with el_value = elab_expr r.el_value;
                      el_body = Option.map elab_expr r.el_body }
@@ -1635,10 +1698,20 @@ let rec elab_expr (e : expr) : expr =
     else ExprArray (List.map elab_expr es)
   | ExprFloatArray es -> ExprFloatArray (List.map elab_expr es)
   | ExprRecord r ->
-    ExprRecord
-      { er_fields =
-          List.map (fun (id, eo) -> (id, Option.map elab_expr eo)) r.er_fields;
-        er_spread = Option.map elab_expr r.er_spread }
+    (* Float heap wall: rewrite a closed float-bearing record literal. *)
+    (match List.assq_opt e !cell_record_sites with
+     | Some kinds ->
+       ExprCellRecord (List.map (fun (id, eo) ->
+         let v = match eo with Some ex -> elab_expr ex | None -> ExprVar id in
+         let is_f64 = match List.assoc_opt id.name kinds with Some b -> b | None -> false in
+         (id, v, is_f64)) r.er_fields)
+     | None ->
+       ExprRecord
+         { er_fields =
+             List.map (fun (id, eo) -> (id, Option.map elab_expr eo)) r.er_fields;
+           er_spread = Option.map elab_expr r.er_spread })
+  | ExprCellRecord fs ->
+    ExprCellRecord (List.map (fun (id, ex, k) -> (id, elab_expr ex, k)) fs)
   | ExprRowRestrict (e1, id) -> ExprRowRestrict (elab_expr e1, id)
   | ExprUnary (op, e1) -> ExprUnary (op, elab_expr e1)
   | ExprBlock b -> ExprBlock (elab_block b)
@@ -1712,6 +1785,7 @@ let elaborate_string_concat (program : program) : program =
     !string_concat_sites <> [] || !string_eq_sites <> [] || !string_rel_sites <> []
     || !float_binop_sites <> [] || !float_heap_sites <> []
     || !cell_tuple_sites <> [] || !cell_tuple_index_sites <> []
+    || !cell_record_sites <> [] || !cell_field_sites <> []
   in
   let result =
     if any_sites
@@ -1725,6 +1799,8 @@ let elaborate_string_concat (program : program) : program =
   reset_float_heap_sites ();
   reset_cell_tuple_sites ();
   reset_cell_tuple_index_sites ();
+  reset_cell_record_sites ();
+  reset_cell_field_sites ();
   result
 
 (** {1 Declaration checking} *)

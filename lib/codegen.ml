@@ -124,9 +124,12 @@ let rec ty_float_in_heap (te : type_expr) : bool =
          aggregate (e.g. a Float record field) loud-fails at its own
          construction site, not here (issue-draft 05). *)
       false
-  | TyRecord (fields, _) ->
-      (* Records are NOT yet handled — still loud-fail. *)
-      List.exists (fun (rf : row_field) -> ty_mentions_float rf.rf_ty) fields
+  | TyRecord (fields, rowvar) ->
+      (* Closed float-bearing records are handled: sorted-by-name uniform-8 cells
+         (ExprCellRecord/ExprCellField). An OPEN record row (has a row variable)
+         cannot have its layout fixed, so it still loud-fails. Nested float
+         aggregates in fields self-handle at their own sites. *)
+      rowvar <> None && List.exists (fun (rf : row_field) -> ty_mentions_float rf.rf_ty) fields
   | _ -> false
 
 let float_in_heap_msg (what : string) : string =
@@ -504,6 +507,7 @@ let rec expr_val_type (ctx : context) (e : expr) : value_type =
   | ExprFloatBinary (_, _, _) -> I32          (* comparisons yield Bool/i32 *)
   | ExprFloatIndex _ -> F64                   (* Float heap wall: a[i] : Float *)
   | ExprCellTupleIndex (_, _, is_f64) -> if is_f64 then F64 else I32  (* t.i cell *)
+  | ExprCellField (_, _, is_f64) -> if is_f64 then F64 else I32       (* r.f cell *)
   | ExprUnary (OpNeg, e1) -> expr_val_type ctx e1
   | ExprSpan (e1, _) -> expr_val_type ctx e1
   | ExprVar id ->
@@ -2127,6 +2131,31 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
     (* But we already consumed the address from stack when storing, so push it again *)
     Ok (ctx_final, alloc_code @ save_code @ store_code @ [LocalGet temp_idx])
 
+  | ExprCellRecord fields ->
+    (* Float heap wall (issue-draft 05): closed float-bearing record — uniform
+       8-byte cells, fields placed by NAME sorted ascending so this matches the
+       offsets baked into [ExprCellField] at elaborate time. Per-cell op: f64 for
+       a Float field, i32 (low 4 bytes) otherwise. Produced only by elaboration. *)
+    let num_fields = List.length fields in
+    let size_in_bytes = num_fields * 8 in
+    let (ctx_with_heap, alloc_code) = gen_heap_alloc ctx size_in_bytes in
+    let (ctx_with_temp, temp_idx) = alloc_local ctx_with_heap "__crec_ptr" in
+    let save_code = [LocalSet temp_idx] in
+    let sorted_names =
+      List.sort String.compare (List.map (fun ((id : ident), _, _) -> id.name) fields) in
+    let pos_of name =
+      let rec idx i = function
+        | [] -> 0 | x :: _ when x = name -> i | _ :: r -> idx (i + 1) r in
+      idx 0 sorted_names in
+    let* (ctx_final, store_code) = List.fold_left (fun acc ((id : ident), fexpr, is_f64) ->
+      let* (ctx_acc, code_acc) = acc in
+      let* (ctx', fcode) = gen_expr ctx_acc fexpr in
+      let offset = (pos_of id.name) * 8 in
+      let store = if is_f64 then F64Store (3, offset) else I32Store (2, offset) in
+      Ok (ctx', code_acc @ [LocalGet temp_idx] @ fcode @ [store])
+    ) (Ok (ctx_with_temp, [])) fields in
+    Ok (ctx_final, alloc_code @ save_code @ store_code @ [LocalGet temp_idx])
+
   | ExprField (record_expr, field) ->
     (* Generate code for record expression (gets pointer) *)
     let* (ctx', record_code) = gen_expr ctx record_expr in
@@ -2154,6 +2183,13 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
     ] in
 
     Ok (ctx', record_code @ load_code)
+
+  | ExprCellField (record_expr, offset, is_f64) ->
+    (* Float heap wall: r.f on a closed float-bearing (uniform-8, sorted-by-name)
+       record — load at the baked byte offset, f64 if the field is Float else i32. *)
+    let* (ctx', record_code) = gen_expr ctx record_expr in
+    let load = if is_f64 then F64Load (3, offset) else I32Load (2, offset) in
+    Ok (ctx', record_code @ [load])
 
   | ExprTupleIndex (tuple_expr, index) ->
     (* Generate code for tuple expression (gets pointer) *)

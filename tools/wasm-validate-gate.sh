@@ -131,6 +131,13 @@ run "mixed (Int, Float) round-trip" \
 run "mixed (Float, Int) round-trip" \
   'fn main() -> Int { let t: (Float, Int) = (2.5, 9); if t.0 > 2.0 { println("FI_OK"); t.1 } else { println("FI_BAD"); 1 } }' \
   'FI_OK'
+val "closed Float record r.f"   'fn f(r: {x: Float, y: Float}) -> Float { r.x }'
+run "Float record round-trip (literal order != name order)" \
+  'fn main() -> Int { let r = #{ b: 2.0, a: 1.0 }; if r.a < r.b { println("REC_ORDER_OK"); 0 } else { println("REC_ORDER_BAD"); 1 } }' \
+  'REC_ORDER_OK'
+run "mixed Float/Int record round-trip" \
+  'fn main() -> Int { let r = #{ value: 3.5, count: 7 }; if r.value > 3.0 { println("REC_MIX_OK"); r.count } else { println("REC_MIX_BAD"); 1 } }' \
+  'REC_MIX_OK'
 
 echo "── Float-in-heap still-unhandled shapes must LOUD-FAIL (issue-draft 05) ──"
 rej () {  # <label> <src>
@@ -143,7 +150,7 @@ rej () {  # <label> <src>
     bad "$1 — failed, but not via the Float-heap guard: $(tail -1 "$tmp/.r")"
   fi
 }
-rej "record with Float field"   'fn f(r: {x: Float, y: Float}) -> Float { r.x }'
+rej "Float array compound-assign" 'fn k(i: Int, mut a: Array[Float]) -> Unit { a[i] += 1.0; }'
 
 echo
 printf '%s passed, %s failed, %s skipped (allowlisted carve-outs)\n' "$pass" "$fail" "$skip"

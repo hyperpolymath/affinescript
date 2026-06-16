@@ -121,6 +121,16 @@ let rec fold_constants_expr (expr : expr) : expr =
     if tup == tup' then expr
     else ExprCellTupleIndex (tup', i, k)
 
+  | ExprCellRecord fields ->
+    let fields' = List.map (fun (id, e, k) -> (id, fold_constants_expr e, k)) fields in
+    if List.for_all2 (fun (_, e, _) (_, e', _) -> e == e') fields fields' then expr
+    else ExprCellRecord fields'
+
+  | ExprCellField (r, off, k) ->
+    let r' = fold_constants_expr r in
+    if r == r' then expr
+    else ExprCellField (r', off, k)
+
   | ExprUnary (op, operand) ->
     let operand' = fold_constants_expr operand in
     if operand == operand' then

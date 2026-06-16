@@ -218,6 +218,19 @@ type expr =
           is rewritten (not just the float fields), since the whole tuple uses
           8-byte cells. Dual of {!ExprCellTuple}; re-dispatched to
           {!ExprTupleIndex} by the interpreter. *)
+  | ExprCellRecord of (ident * expr * bool) list
+      (** Record literal that contains at least one `Float` field, on a CLOSED
+          row. Uniform 8-byte cells; fields are placed by **field name sorted
+          ascending** (not literal order), so construction here and {!ExprCellField}
+          access derive identical offsets from the names alone — independent of
+          literal-vs-type field order. The bool flags an f64 cell. Produced only
+          by the elaboration from an {!ExprRecord} that `synth` typed float-bearing
+          and closed (issue-draft 05). Re-dispatched to {!ExprRecord} by the interpreter. *)
+  | ExprCellField of expr * int * bool
+      (** `r.f` on a float-bearing (uniform-8, sorted-by-name) record: load at the
+          given byte offset (the field's sorted-name position × 8, baked at
+          elaborate from the closed row), as f64 if the bool is set else i32.
+          Dual of {!ExprCellRecord}; re-dispatched to {!ExprField} by the interpreter. *)
   | ExprUnary of unary_op * expr
   | ExprBlock of block
   | ExprReturn of expr option

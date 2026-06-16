@@ -71,7 +71,8 @@ let rec visit_expr (visit : expr -> unit) (e : expr) : unit =
     List.iter go_arm m.em_arms
   | ExprLambda l -> go_expr l.elam_body
   | ExprField (e, _) | ExprTupleIndex (e, _) | ExprRowRestrict (e, _)
-  | ExprSpan (e, _) | ExprUnary (_, e) | ExprCellTupleIndex (e, _, _) ->
+  | ExprSpan (e, _) | ExprUnary (_, e) | ExprCellTupleIndex (e, _, _)
+  | ExprCellField (e, _, _) ->
     go_expr e
   | ExprIndex (a, b) | ExprBinary (a, _, b) | ExprStringConcat (a, b)
   | ExprStringEq (a, b, _) | ExprStringRel (a, b, _) | ExprFloatBinary (a, _, b)
@@ -84,6 +85,7 @@ let rec visit_expr (visit : expr -> unit) (e : expr) : unit =
     go_expr b
   | ExprTuple es | ExprArray es | ExprFloatArray es -> List.iter go_expr es
   | ExprCellTuple cells -> List.iter (fun (e, _) -> go_expr e) cells
+  | ExprCellRecord fields -> List.iter (fun (_, e, _) -> go_expr e) fields
   | ExprRecord r ->
     List.iter
       (fun (_, eo) -> match eo with Some e -> go_expr e | None -> ())
