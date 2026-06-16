@@ -108,10 +108,16 @@ let rec ty_mentions_float (te : type_expr) : bool =
       List.exists (fun (rf : row_field) -> ty_mentions_float rf.rf_ty) fields
   | _ -> false
 
-let ty_float_in_heap (te : type_expr) : bool =
+let rec ty_float_in_heap (te : type_expr) : bool =
   match ty_strip_own te with
   | TyApp (id, args) when id.name = "Array" ->
-      List.exists (function TyArg t -> ty_mentions_float t) args
+      (* Array[Float] is now handled: the Float heap wall lowers the literal to
+         [ExprFloatArray] (8-byte f64 cells) and each `Float`-yielding index to
+         [ExprFloatIndex] (8-byte f64 load), so it no longer transits a 4-byte
+         cell. Only flag arrays whose ELEMENT is itself a still-unhandled float
+         aggregate (e.g. Array[(Float, Float)]); Array[Float] and nested
+         Array[Array[Float]] are fine (issue-draft 05). *)
+      List.exists (function TyArg t -> ty_float_in_heap t) args
   | TyTuple ts -> List.exists ty_mentions_float ts
   | TyRecord (fields, _) ->
       List.exists (fun (rf : row_field) -> ty_mentions_float rf.rf_ty) fields
@@ -490,6 +496,7 @@ let rec expr_val_type (ctx : context) (e : expr) : value_type =
   | ExprLit (LitFloat _) -> F64
   | ExprFloatBinary (_, (OpAdd | OpSub | OpMul | OpDiv), _) -> F64
   | ExprFloatBinary (_, _, _) -> I32          (* comparisons yield Bool/i32 *)
+  | ExprFloatIndex _ -> F64                   (* Float heap wall: a[i] : Float *)
   | ExprUnary (OpNeg, e1) -> expr_val_type ctx e1
   | ExprSpan (e1, _) -> expr_val_type ctx e1
   | ExprVar id ->
@@ -2022,6 +2029,35 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
     (* Complete code: allocate, save to temp, store length, store elements, return pointer *)
     Ok (ctx_final, alloc_code @ save_code @ length_code @ store_code @ [LocalGet temp_idx])
 
+  | ExprFloatArray elements ->
+    (* Float heap wall (issue-draft 05, durable fix). An array whose elements
+       typed as `Float`: 4-byte length header then 8-byte f64 cells with
+       `f64.store` (8-byte stride). Mirrors [ExprArray] but for f64 so the value
+       is no longer truncated through a 4-byte cell. The length stays at offset
+       0 (i32) so `len`/bounds code is layout-compatible with i32 arrays; only
+       the element stride and opcode differ. Produced only by
+       Typecheck.elaborate_string_concat (never the parser). The f64 ops carry
+       alignment hint 3 (the max wasm allows for an 8-byte access); the actual
+       4+i*8 address need not be 8-aligned — the hint does not affect validity. *)
+    let num_elements = List.length elements in
+    let size_in_bytes = 4 + (num_elements * 8) in
+    let (ctx_with_heap, alloc_code) = gen_heap_alloc ctx size_in_bytes in
+    let (ctx_with_temp, temp_idx) = alloc_local ctx_with_heap "__farr_ptr" in
+    let save_code = [LocalSet temp_idx] in
+    let length_code = [
+      LocalGet temp_idx;
+      I32Const (Int32.of_int num_elements);
+      I32Store (2, 0);
+    ] in
+    let* (ctx_final, store_code) = List.fold_left (fun acc (idx, elem_expr) ->
+      let* (ctx_acc, code_acc) = acc in
+      let* (ctx', elem_code) = gen_expr ctx_acc elem_expr in
+      let offset = 4 + (idx * 8) in
+      let store_instrs = [ LocalGet temp_idx ] @ elem_code @ [ F64Store (3, offset) ] in
+      Ok (ctx', code_acc @ store_instrs)
+    ) (Ok (ctx_with_temp, [])) (List.mapi (fun i e -> (i, e)) elements) in
+    Ok (ctx_final, alloc_code @ save_code @ length_code @ store_code @ [LocalGet temp_idx])
+
   | ExprRecord rec_expr ->
     let* () =
       guard_no_float_elems ctx
@@ -2128,6 +2164,23 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
     ] in
 
     (* Complete code: array_ptr, index, calculate offset, add to base, load *)
+    Ok (ctx_after_idx, array_code @ index_code @ offset_calc @ load_code)
+
+  | ExprFloatIndex (array_expr, index_expr) ->
+    (* Float heap wall: a[i] : Float — dual of [ExprFloatArray]. 8-byte stride,
+       offset 4 + i*8, `f64.load` (alignment hint 3). *)
+    let* (ctx_after_arr, array_code) = gen_expr ctx array_expr in
+    let* (ctx_after_idx, index_code) = gen_expr ctx_after_arr index_expr in
+    let offset_calc = [
+      I32Const 8l;        (* 8-byte f64 cell *)
+      I32Mul;             (* index * 8 *)
+      I32Const 4l;        (* skip 4-byte length header *)
+      I32Add;             (* offset = 4 + (index * 8) *)
+    ] in
+    let load_code = [
+      I32Add;             (* base_ptr + offset *)
+      F64Load (3, 0);     (* load f64 *)
+    ] in
     Ok (ctx_after_idx, array_code @ index_code @ offset_calc @ load_code)
 
   | ExprVariant (_type_name, variant_name) ->
@@ -2623,6 +2676,35 @@ and gen_stmt (ctx : context) (stmt : stmt) : (context * instr list) result =
               LocalGet temp_val;   (* Load result *)
               I32Store (2, 0)      (* Store result *)
             ])
+        end
+      | ExprFloatIndex (arr_expr, idx_expr) ->
+        (* Float heap wall: arr[i] = expr where arr : Array[Float]. 8-byte f64
+           cell at offset 4 + i*8, matching [ExprFloatArray] construction and
+           [ExprFloatIndex] reads (issue-draft 05). The LHS reached here because
+           StmtAssign synths it, so a `Float`-yielding index was recorded and
+           elaborated to [ExprFloatIndex] (the i32 [ExprIndex] arm above never
+           sees a float array). *)
+        let* (ctx', arr_code) = gen_expr ctx arr_expr in
+        let* (ctx'', idx_code) = gen_expr ctx' idx_expr in
+        begin match op with
+          | AssignEq ->
+            let* (ctx''', rhs_code) = gen_expr ctx'' rhs in
+            Ok (ctx''', arr_code @ idx_code @ [
+              I32Const 8l;
+              I32Mul;              (* idx * 8 *)
+              I32Const 4l;
+              I32Add;              (* idx*8 + 4 (skip length header) *)
+              I32Add;              (* arr + 4 + idx*8 *)
+            ] @ rhs_code @ [
+              F64Store (3, 0)      (* store f64 *)
+            ])
+          | AssignAdd | AssignSub | AssignMul | AssignDiv ->
+            (* Honest loud-fail: f64 compound-assign to an array element is not
+               yet lowered (the i32 [gen_binop] family would mistype the f64).
+               Rare; write `a[i] = a[i] <op> x`. Matches the #555/#556 policy. *)
+            Error (UnsupportedFeature
+              "compound assignment (+= -= *= /=) to a Float array element is not \
+               yet lowered to wasm (issue-draft 05); rewrite as `a[i] = a[i] <op> x`.")
         end
       | _ ->
         Error (UnsupportedFeature "Assignment to this expression type not yet supported")

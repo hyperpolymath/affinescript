@@ -799,6 +799,21 @@ let float_binop_sites : expr list ref = ref []
 (** Discard any recorded Float-binop sites (e.g. before re-checking). *)
 let reset_float_binop_sites () : unit = float_binop_sites := []
 
+(** Float heap wall (issue-draft 05, durable fix). Physical-identity record of
+    the heap nodes whose *cell* type is `Float`: an [ExprArray] whose element
+    typed as `Float` (→ {!Ast.ExprFloatArray}, 8-byte f64 cells) and an
+    [ExprIndex] whose result typed as `Float` (→ {!Ast.ExprFloatIndex}, 8-byte
+    f64 load). Because `synth` sees every node's *checked* type, recording is
+    total — every Float construction and every Float-yielding access is caught,
+    regardless of how the array flowed there — so codegen never has to guess a
+    cell width (the gap that forced the interim loud-fail). Same physical-
+    identity ([List.memq]) discipline and same-program-object soundness as
+    {!float_binop_sites}; consumed and cleared by {!elaborate_string_concat}. *)
+let float_heap_sites : expr list ref = ref []
+
+(** Discard any recorded Float-heap sites (e.g. before re-checking). *)
+let reset_float_heap_sites () : unit = float_heap_sites := []
+
 (** {1 Expression synthesis (mode ⇒)} *)
 
 (** Synthesize a type for an expression. *)
@@ -964,7 +979,7 @@ let rec synth (ctx : context) (expr : expr) : ty result =
     Ok (TTuple tys)
 
   (* Array *)
-  | ExprArray exprs ->
+  | ExprArray exprs as arr_node ->
     begin match exprs with
       | [] ->
         let elem_ty = fresh_tyvar ctx.level in
@@ -975,6 +990,11 @@ let rec synth (ctx : context) (expr : expr) : ty result =
           let* () = acc in
           check ctx e first_ty
         ) (Ok ()) rest in
+        (* Float heap wall: an [Float]-element array literal must lay out 8-byte
+           f64 cells — record it for rewrite to {!Ast.ExprFloatArray}. *)
+        (match repr first_ty with
+         | TCon "Float" -> float_heap_sites := arr_node :: !float_heap_sites
+         | _ -> ());
         Ok (TApp (TCon "Array", [first_ty]))
     end
 
@@ -1064,11 +1084,16 @@ let rec synth (ctx : context) (expr : expr) : ty result =
     end
 
   (* Array indexing *)
-  | ExprIndex (arr, idx_expr) ->
+  | ExprIndex (arr, idx_expr) as idx_node ->
     let* arr_ty = synth ctx arr in
     let* () = check ctx idx_expr ty_int in
     let elem_ty = fresh_tyvar ctx.level in
     let* () = unify_or_err arr_ty (TApp (TCon "Array", [elem_ty])) in
+    (* Float heap wall: a `Float`-yielding index must load an 8-byte f64 cell —
+       record it for rewrite to {!Ast.ExprFloatIndex}. *)
+    (match repr elem_ty with
+     | TCon "Float" -> float_heap_sites := idx_node :: !float_heap_sites
+     | _ -> ());
     Ok elem_ty
 
   (* Binary operators
@@ -1555,9 +1580,19 @@ let rec elab_expr (e : expr) : expr =
   | ExprLambda r -> ExprLambda { r with elam_body = elab_expr r.elam_body }
   | ExprApp (f, args) -> ExprApp (elab_expr f, List.map elab_expr args)
   | ExprTupleIndex (e1, i) -> ExprTupleIndex (elab_expr e1, i)
-  | ExprIndex (a, i) -> ExprIndex (elab_expr a, elab_expr i)
+  | ExprIndex (a, i) ->
+    (* Float heap wall: rewrite a `Float`-yielding index into the f64 load. *)
+    if List.memq e !float_heap_sites
+    then ExprFloatIndex (elab_expr a, elab_expr i)
+    else ExprIndex (elab_expr a, elab_expr i)
+  | ExprFloatIndex (a, i) -> ExprFloatIndex (elab_expr a, elab_expr i)
   | ExprTuple es -> ExprTuple (List.map elab_expr es)
-  | ExprArray es -> ExprArray (List.map elab_expr es)
+  | ExprArray es ->
+    (* Float heap wall: rewrite an [Float]-element array into 8-byte f64 cells. *)
+    if List.memq e !float_heap_sites
+    then ExprFloatArray (List.map elab_expr es)
+    else ExprArray (List.map elab_expr es)
+  | ExprFloatArray es -> ExprFloatArray (List.map elab_expr es)
   | ExprRecord r ->
     ExprRecord
       { er_fields =
@@ -1634,14 +1669,15 @@ let elaborate_string_concat (program : program) : program =
      (and the existing single wasm-path call site) covers both. *)
   let result =
     match !string_concat_sites, !string_eq_sites, !string_rel_sites,
-          !float_binop_sites with
-    | [], [], [], [] -> program
+          !float_binop_sites, !float_heap_sites with
+    | [], [], [], [], [] -> program
     | _ -> { program with prog_decls = List.map elab_top program.prog_decls }
   in
   reset_string_concat_sites ();
   reset_string_eq_sites ();
   reset_string_rel_sites ();
   reset_float_binop_sites ();
+  reset_float_heap_sites ();
   result
 
 (** {1 Declaration checking} *)

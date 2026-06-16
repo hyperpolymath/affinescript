@@ -187,6 +187,21 @@ type expr =
           `gen_binop` returns — which would emit `i32.lt_s` on f64 operands and
           fail wasm validation. The interpreter and non-wasm backends treat it
           as the ordinary `Float` operation. The "float wall". *)
+  | ExprFloatArray of expr list
+      (** Array literal whose element type is `Float`. Like {!ExprFloatBinary},
+          not produced by the parser: the post-typecheck elaboration
+          (see {!Typecheck.elaborate_string_concat}) rewrites an {!ExprArray}
+          that `synth` typed with a `Float` element into this node, so the wasm
+          backend lays the array out with 8-byte `f64` cells and `f64.store`
+          (8-byte stride) instead of the uniform 4-byte i32 cells that would
+          truncate f64 (issue-draft 05, durable heap fix). The interpreter and
+          non-wasm backends treat it as the ordinary array. The "float heap wall". *)
+  | ExprFloatIndex of expr * expr
+      (** `a[i]` whose result type is `Float` — the dual of {!ExprFloatArray} on
+          the read side. Introduced by the same elaboration from an {!ExprIndex}
+          that `synth` typed as `Float`; the wasm backend loads it with an
+          8-byte stride and `f64.load`. The interpreter re-dispatches to the
+          ordinary {!ExprIndex}. *)
   | ExprUnary of unary_op * expr
   | ExprBlock of block
   | ExprReturn of expr option

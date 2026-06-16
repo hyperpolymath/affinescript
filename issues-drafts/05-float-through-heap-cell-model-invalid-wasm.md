@@ -72,6 +72,33 @@ scalar `Float` and `Int` aggregates are untouched. `just wasm-validate` now pins
 the loud-fail (two `rej` cases). **The real fix (1) — type-directed heap layout —
 remains open as task #8.**
 
+## Update (2026-06-16, cont.) — durable fix (1) for ARRAYS landed via the Float wall
+
+The durable fix is being delivered type-directed and *complete-by-construction*
+through the existing **Float-wall elaboration** (the same mechanism that makes
+scalar `Float` arithmetic work): `synth` (the real typechecker) records the heap
+nodes whose *cell* type is `Float`, and `elaborate_string_concat` rewrites those
+exact nodes into specialized AST constructors that codegen lowers with f64 ops.
+Because `synth` sees *every* node's checked type, recording is total — every
+`Float` construction and every `Float`-yielding access is caught no matter how the
+array flowed there — so codegen never guesses a cell width (the gap that made a
+codegen-local fix unsafe). New constructors (`Ast.ExprFloatArray`,
+`Ast.ExprFloatIndex`) lay out a 4-byte length header + **8-byte f64 cells**
+(`f64.load`/`f64.store`, 8-byte stride, alignment hint 3); recorded in
+`Typecheck.float_heap_sites`.
+
+**Arrays DONE** (`Array[Float]`, incl. nested `Array[Array[Float]]`): construct,
+read `a[i]`, and write `a[i] = e` all validate *and* round-trip the f64 correctly
+on wasmtime (`FARR_OK` / `WRITE_OK`). `guard_no_heap_float`'s `Array` case is
+lifted accordingly; `just wasm-validate` now pins five positive Array[Float]
+checks + the still-unhandled loud-fails. 477 tests green.
+
+**Still loud-failing (next increments):** `Float` **tuples** (reproducer (b)),
+`Float` **records**, captured `Float` in closures, and `Array` of float-bearing
+aggregates. Compound assignment (`a[i] += x`) to a float element also loud-fails
+(rare; rewrite as `a[i] = a[i] + x`). The architecture (record→elaborate→lower)
+is proven; these are more of the same pattern.
+
 ## Related
 
 Not the same as the deliberate carve-outs #555 (effect handlers) / #556 (async

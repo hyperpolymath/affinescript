@@ -99,6 +99,18 @@ let rec fold_constants_expr (expr : expr) : expr =
     else
       ExprFloatBinary (left', op, right')
 
+  (* Float heap wall: fold sub-expressions, preserving the f64 lowering node. *)
+  | ExprFloatArray elements ->
+    let elements' = List.map fold_constants_expr elements in
+    if List.for_all2 (==) elements elements' then expr
+    else ExprFloatArray elements'
+
+  | ExprFloatIndex (arr, idx) ->
+    let arr' = fold_constants_expr arr in
+    let idx' = fold_constants_expr idx in
+    if arr == arr' && idx == idx' then expr
+    else ExprFloatIndex (arr', idx')
+
   | ExprUnary (op, operand) ->
     let operand' = fold_constants_expr operand in
     if operand == operand' then

@@ -80,10 +80,44 @@ for f in $corpus; do
   fi
 done
 
-# Float-through-heap must LOUD-FAIL, not emit (issue-draft 05 / task #8). These
-# were silent-invalid/corrupt before the guard landed; pin the honest reject so
-# it cannot silently regress (the corpus itself has no Float aggregates).
-echo "── Float-through-heap loud-fail (issue-draft 05) ──"
+# Float-in-HEAP: arrays are now type-directed (8-byte f64 cells via the Float
+# heap wall — ExprFloatArray/ExprFloatIndex, issue-draft 05 durable fix); they
+# must VALIDATE and round-trip the f64 value. Tuples/records remain unhandled
+# and must still LOUD-FAIL (no silent corruption). Pin both so neither regresses.
+echo "── Float-in-heap: Array[Float] type-directed layout (issue-draft 05) ──"
+val () {  # <label> <src>   — must compile to VALID wasm
+  printf '%s\n' "$2" > "$tmp/val.affine"
+  if "$BIN" compile "$tmp/val.affine" -o "$tmp/val.wasm" >"$tmp/.r" 2>&1; then
+    if wasm-tools validate "$tmp/val.wasm" >"$tmp/.v" 2>&1; then
+      ok "$1 — validates ($(wc -c <"$tmp/val.wasm" | tr -d ' ') B)"
+    else
+      bad "$1 — emitted INVALID wasm: $(head -1 "$tmp/.v")"
+    fi
+  else
+    bad "$1 — failed to compile (Float-array layout regressed?): $(tail -1 "$tmp/.r")"
+  fi
+}
+run () {  # <label> <src> <token>   — must execute on wasmtime and print <token>
+  command -v wasmtime >/dev/null 2>&1 || { note "$1 — wasmtime not on PATH (value round-trip skipped)"; return; }
+  printf '%s\n' "$2" > "$tmp/run.affine"
+  if "$BIN" compile "$tmp/run.affine" -o "$tmp/run.wasm" >/dev/null 2>&1 \
+     && wasmtime "$tmp/run.wasm" 2>/dev/null | grep -q "$3"; then
+    ok "$1 — f64 round-trips through heap ('$3')"
+  else
+    bad "$1 — f64 heap round-trip wrong (expected '$3')"
+  fi
+}
+val "Array[Float] param read"  'fn rd(i: Int, a: Array[Float]) -> Float { a[i] }'
+val "Array[Float] construct"   'fn main() -> Int { let a: Array[Float] = [1.0, 2.5]; 0 }'
+val "Array[Float] write"       'fn k(i: Int, mut o: Array[Float], a: Array[Float]) -> Unit { o[i] = a[i]; }'
+run "Array[Float] read round-trip" \
+  'fn main() -> Int { let a: Array[Float] = [1.0, 2.5, 4.0]; if a[1] > 2.0 { println("FARR_OK"); 0 } else { println("FARR_BAD"); 1 } }' \
+  'FARR_OK'
+run "Array[Float] write round-trip" \
+  'fn main() -> Int { let s: Array[Float] = [3.5, 7.25]; let mut d: Array[Float] = [0.0, 0.0]; d[1] = s[0]; if d[1] > 3.0 { println("WRITE_OK"); 0 } else { println("WRITE_BAD"); 1 } }' \
+  'WRITE_OK'
+
+echo "── Float-in-heap still-unhandled shapes must LOUD-FAIL (issue-draft 05) ──"
 rej () {  # <label> <src>
   printf '%s\n' "$2" > "$tmp/rej.affine"
   if "$BIN" compile "$tmp/rej.affine" -o "$tmp/rej.wasm" >"$tmp/.r" 2>&1; then
@@ -94,8 +128,8 @@ rej () {  # <label> <src>
     bad "$1 — failed, but not via the Float-heap guard: $(tail -1 "$tmp/.r")"
   fi
 }
-rej "Array[Float] param"  'fn rd(i: Int, a: Array[Float]) -> Float { a[i] }'
-rej "Float tuple literal" 'fn f() -> Float { let t: (Float, Float) = (1.0, 2.0); t.0 }'
+rej "Float tuple literal"       'fn f() -> Float { let t: (Float, Float) = (1.0, 2.0); t.0 }'
+rej "Array of Float-tuples"     'fn f(a: Array[(Float, Float)]) -> Unit { }'
 
 echo
 printf '%s passed, %s failed, %s skipped (allowlisted carve-outs)\n' "$pass" "$fail" "$skip"

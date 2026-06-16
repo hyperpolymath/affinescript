@@ -156,6 +156,15 @@ let rec eval (env : env) (expr : expr) : value result =
        elaboration. *)
     eval env (ExprBinary (left, op, right))
 
+  | ExprFloatArray elements ->
+    (* Float heap wall: re-dispatch to the ordinary array — [VArray] holds boxed
+       float values, with no wasm cell model to mismodel. *)
+    eval env (ExprArray elements)
+
+  | ExprFloatIndex (arr, idx) ->
+    (* Float heap wall: re-dispatch to the ordinary index. *)
+    eval env (ExprIndex (arr, idx))
+
   | ExprBinary (left, op, right) ->
     let* left_val = eval env left in
     let* right_val = eval env right in
