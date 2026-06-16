@@ -133,6 +133,38 @@ let t_extract_value_return_ok () =
   Alcotest.(check bool) "Polonius: no loan, no error" false pol;
   Alcotest.(check bool) "agrees with lexical verdict" lex pol
 
+(* expression-level branches (issue-draft 08 conditional-origin family): the RHS
+   borrows the UNION of its arm sources. Polonius must now match the lexical fix. *)
+let t_extract_cond_if () =
+  let (pol, lex) = polonius_vs_lexical "borrow_cond_origin_if_uam.affine" in
+  Alcotest.(check bool) "Polonius flags if-bound UAM" true pol;
+  Alcotest.(check bool) "agrees with lexical" lex pol
+
+let t_extract_cond_block () =
+  let (pol, lex) = polonius_vs_lexical "borrow_cond_origin_block_uam.affine" in
+  Alcotest.(check bool) "Polonius flags block-bound UAM" true pol;
+  Alcotest.(check bool) "agrees with lexical" lex pol
+
+let t_extract_cond_match () =
+  let (pol, lex) = polonius_vs_lexical "borrow_cond_origin_match_uam.affine" in
+  Alcotest.(check bool) "Polonius flags match-bound UAM" true pol;
+  Alcotest.(check bool) "agrees with lexical" lex pol
+
+let t_extract_cond_partial () =
+  let (pol, lex) = polonius_vs_lexical "borrow_cond_origin_partial_uam.affine" in
+  Alcotest.(check bool) "Polonius flags partial-branch UAM (union has a)" true pol;
+  Alcotest.(check bool) "agrees with lexical" lex pol
+
+let t_extract_cond_nll_ok () =
+  let (pol, lex) = polonius_vs_lexical "borrow_cond_origin_nll_ok.affine" in
+  Alcotest.(check bool) "Polonius accepts NLL-safe cond-bound" false pol;
+  Alcotest.(check bool) "agrees with lexical" lex pol
+
+let t_extract_cond_unrelated_ok () =
+  let (pol, lex) = polonius_vs_lexical "borrow_cond_origin_unrelated_ok.affine" in
+  Alcotest.(check bool) "Polonius accepts unrelated move (not in {a,b})" false pol;
+  Alcotest.(check bool) "agrees with lexical" lex pol
+
 let tests =
   [
     Alcotest.test_case "rule1: liveness straight-line" `Quick t_live_straight;
@@ -149,4 +181,11 @@ let tests =
     Alcotest.test_case "extract+solve: #554 UAM flagged, agrees with lexical" `Quick t_extract_uam;
     Alcotest.test_case "extract+solve: NLL-safe accepted, agrees with lexical" `Quick t_extract_nll_ok;
     Alcotest.test_case "extract+solve: value-return no error, agrees with lexical" `Quick t_extract_value_return_ok;
+    (* M3 branch extraction: conditional-origin family (issue-draft 08) *)
+    Alcotest.test_case "extract+solve: if-bound UAM, agrees with lexical" `Quick t_extract_cond_if;
+    Alcotest.test_case "extract+solve: block-bound UAM, agrees with lexical" `Quick t_extract_cond_block;
+    Alcotest.test_case "extract+solve: match-bound UAM, agrees with lexical" `Quick t_extract_cond_match;
+    Alcotest.test_case "extract+solve: partial-branch UAM, agrees with lexical" `Quick t_extract_cond_partial;
+    Alcotest.test_case "extract+solve: cond NLL-safe accepted, agrees with lexical" `Quick t_extract_cond_nll_ok;
+    Alcotest.test_case "extract+solve: cond unrelated move ok, agrees with lexical" `Quick t_extract_cond_unrelated_ok;
   ]

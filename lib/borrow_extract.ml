@@ -37,15 +37,25 @@ let rec apps (e : expr) : (string * expr list) list =
   | ExprIndex (a, b) -> apps a @ apps b
   | ExprField (b, _) | ExprTupleIndex (b, _) -> apps b
   | ExprTuple xs | ExprArray xs -> List.concat_map apps xs
+  (* expression-level branches: a move in any arm is a (conservative) conflict *)
+  | ExprIf ei ->
+    apps ei.ei_cond @ apps ei.ei_then
+    @ (match ei.ei_else with Some e -> apps e | None -> [])
+  | ExprMatch em ->
+    apps em.em_scrutinee @ List.concat_map (fun a -> apps a.ma_body) em.em_arms
+  | ExprBlock blk -> (match blk.blk_expr with Some e -> apps e | None -> [])
   | _ -> []
 
-(** The borrow a let-RHS produces, if any: [(borrowed place, exclusive?)]. *)
-let rhs_borrow (ctx : Borrow.context) (symbols : Symbol.t) (e : expr)
-  : (Borrow.place * bool) option =
+(** All borrows a let-RHS *value* may carry out, as [(place, exclusive?)] — the
+    UNION over expression-level branches, mirroring the lexical checker's
+    [value_escaping] (issue-draft 08). Base sources: [&p] / [&mut p], and a call
+    whose return-borrow summary borrows an argument. An [if]/[match]/block RHS
+    contributes the union of its arm/tail sources, so
+    [let r = if c { pick(a) } else { pick(b) }] borrows both [a] and [b]. *)
+let rec rhs_borrows (ctx : Borrow.context) (symbols : Symbol.t) (e : expr)
+  : (Borrow.place * bool) list =
   let place_of inner excl =
-    match Borrow.expr_to_place symbols inner with
-    | Some p -> Some (p, excl) | None -> None
-  in
+    match Borrow.expr_to_place symbols inner with Some p -> [ (p, excl) ] | None -> [] in
   match peel e with
   | ExprUnary (OpRef, inner)    -> place_of inner false
   | ExprUnary (OpMutRef, inner) -> place_of inner true
@@ -54,16 +64,21 @@ let rhs_borrow (ctx : Borrow.context) (symbols : Symbol.t) (e : expr)
      | ExprVar id ->
        (match Hashtbl.find_opt ctx.Borrow.fn_sigs id.name with
         | Some sg ->
-          (* take the first returned-borrow parameter (bounded: one origin) *)
-          (match sg.Borrow.fn_ret_borrow_params with
-           | i :: _ ->
-             (match List.nth_opt args i with
-              | Some arg -> place_of arg false
-              | None -> None)
-           | [] -> None)
-        | None -> None)
-     | _ -> None)
-  | _ -> None
+          List.filter_map (fun i ->
+            match List.nth_opt args i with
+            | Some arg ->
+              (match Borrow.expr_to_place symbols arg with Some p -> Some (p, false) | None -> None)
+            | None -> None)
+            sg.Borrow.fn_ret_borrow_params
+        | None -> [])
+     | _ -> [])
+  (* expression-level branches: union the arm/tail sources (sound: over-approx) *)
+  | ExprIf ei ->
+    rhs_borrows ctx symbols ei.ei_then
+    @ (match ei.ei_else with Some e -> rhs_borrows ctx symbols e | None -> [])
+  | ExprMatch em -> List.concat_map (fun a -> rhs_borrows ctx symbols a.ma_body) em.em_arms
+  | ExprBlock blk -> (match blk.blk_expr with Some t -> rhs_borrows ctx symbols t | None -> [])
+  | _ -> []
 
 (** Places moved by [e]: arguments passed to [own] parameters of called funcs. *)
 let moved_places (ctx : Borrow.context) (symbols : Symbol.t) (e : expr)
@@ -98,20 +113,24 @@ let extract_fn (ctx : Borrow.context) (symbols : Symbol.t) (fd : fn_decl) : PF.f
     List.iteri (fun i s ->
       match s with
       | StmtLet sl ->
-        (match sl.sl_pat, rhs_borrow ctx symbols sl.sl_value with
-         | PatVar id, Some (place, _excl) ->
-           let l = fresh next_loan in
-           borrow_at   := (l, i) :: !borrow_at;
-           loan_origin := (l, fresh next_origin) :: !loan_origin;
-           loans       := { rl_id = l; rl_place = place } :: !loans;
-           (match Borrow.lookup_symbol_by_name symbols id.name with
-            | Some sym ->
-              let lu = match Hashtbl.find_opt last_use sym.Symbol.sym_id with
-                | Some k -> k | None -> i in
-              killed := (l, lu + 1) :: !killed
-            | None ->
-              (* binder unresolved → kill immediately after creation *)
-              killed := (l, i + 1) :: !killed)
+        (match sl.sl_pat with
+         | PatVar id ->
+           (* a branchy RHS may borrow several places (union over arms); each
+              becomes its own loan, all killed at the binder's last use *)
+           let kill_point =
+             match Borrow.lookup_symbol_by_name symbols id.name with
+             | Some sym ->
+               (match Hashtbl.find_opt last_use sym.Symbol.sym_id with
+                | Some k -> k + 1 | None -> i + 1)
+             | None -> i + 1
+           in
+           List.iter (fun (place, _excl) ->
+             let l = fresh next_loan in
+             borrow_at   := (l, i) :: !borrow_at;
+             loan_origin := (l, fresh next_origin) :: !loan_origin;
+             loans       := { rl_id = l; rl_place = place } :: !loans;
+             killed      := (l, kill_point) :: !killed)
+             (rhs_borrows ctx symbols sl.sl_value)
          | _ -> ())
       | _ -> ()) blk.blk_stmts;
     (* pass 2 — a move of a place overlapping a loan's place conflicts there *)
