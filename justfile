@@ -157,6 +157,31 @@ compile-android FILE OUT:
 typed-wasm-validate:
     ./tools/typed-wasm-roundtrip-gate.sh
 
+# Compile FILE to a native executable via the LLVM backend and run it on the
+# host: AffineScript -> LLVM IR -> clang -> a.out -> run. (Verified: prints +
+# exits 0. For riscv64, see `riscv-run-validate`.)
+native-run FILE:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ll="$(mktemp --suffix=.ll)"; exe="$(mktemp)"
+    dune exec affinescript -- compile "{{FILE}}" -o "$ll"
+    clang "$ll" -o "$exe" 2>/dev/null
+    "$exe"
+
+# Compile FILE to a riscv64 native object (rv64gc / lp64d hard-float ABI).
+compile-riscv FILE OUT:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ll="$(mktemp --suffix=.ll)"
+    AFFINESCRIPT_LLVM_TRIPLE=riscv64-unknown-linux-gnu dune exec affinescript -- compile "{{FILE}}" -o "$ll"
+    llc -mtriple=riscv64-linux-gnu -mattr=+m,+a,+f,+d,+c -target-abi=lp64d -filetype=obj "$ll" -o "{{OUT}}"
+    echo "wrote {{OUT}}"
+
+# AffineScript -> riscv64 -> link -> RUN under qemu. Skips without the
+# cross-toolchain: sudo apt install gcc-riscv64-linux-gnu qemu-user
+riscv-run-validate:
+    ./tools/riscv-run-gate.sh
+
 # ── Compiler subcommands ──────────────────────────────────────────────────────
 
 # Run the lexer on a file

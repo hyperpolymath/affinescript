@@ -117,6 +117,7 @@ let rec llvm_type (te : type_expr) : string =
   | TyCon id when id.name = "Unit"   -> "void"
   | TyCon id when id.name = "String" -> "ptr"  (* C-style nul-terminated *)
   | TyCon id                         -> "%" ^ id.name
+  | TyTuple [] -> "void"   (* the empty tuple () is Unit, same as TyCon "Unit" *)
   | TyTuple ts -> "{ " ^ String.concat ", " (List.map llvm_type ts) ^ " }"
   | TyOwn t | TyRef t | TyMut t -> llvm_type t
   | _ -> unsupported "type not supported in LLVM backend"
@@ -517,9 +518,15 @@ let gen_function (buf : Buffer.t) (fd : fn_decl) : unit =
     | FnExpr e -> e
     | FnBlock b -> ExprBlock b
   in
-  let ret_ty = ret_type fd.fd_ret_ty in
+  (* The entry point `main` becomes a C-runtime-compatible `i32 main()` returning
+     0, so the emitted module links into a runnable native executable (crt0
+     expects `int main`). All other functions keep their declared type; `()`/Unit
+     lowers to `void` (see llvm_type). *)
+  let is_entry = fd.fd_name.name = "main" in
+  let ret_ty = if is_entry then "i32" else ret_type fd.fd_ret_ty in
   let (rv, _) = gen_expr st body_expr in
-  if ret_ty = "void" then emit_line st "  ret void"
+  if is_entry then emit_line st "  ret i32 0"
+  else if ret_ty = "void" then emit_line st "  ret void"
   else emit_line st (Printf.sprintf "  ret %s %s" ret_ty rv);
   let params_str = String.concat ", "
     (List.map (fun (p : param) ->
