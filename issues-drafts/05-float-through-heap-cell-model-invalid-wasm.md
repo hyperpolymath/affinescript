@@ -92,25 +92,33 @@ read `a[i]`, and write `a[i] = e` all validate *and* round-trip the f64 correctl
 on wasmtime (`FARR_OK` / `WRITE_OK`). `guard_no_heap_float`'s `Array` case is
 lifted accordingly.
 
-**All-`Float` tuples DONE** (reproducer (b)): `(Float, …, Float)` construct +
-`t.i` read via `Ast.ExprFloatTuple` / `Ast.ExprFloatTupleIndex` (8-byte f64
-cells, no length header, offset `i*8`). Validates + round-trips (`FTUP_OK`).
-Composition falls out for free: **`Array[(Float, Float)]`** (array of i32
-pointers to f64-tuples) construct + `a[i].0` read also round-trips (`AFT_OK`).
-A *mixed* tuple (`(Int, Float)`) keeps loud-failing — its field offsets are
-type-dependent and not yet computed. `guard`'s `TyTuple` case lifts only for
-all-scalar-`Float` tuples.
+**Tuples DONE — all-`Float` AND mixed** (reproducer (b)): a tuple with any
+scalar `Float` field uses a **uniform 8-byte cell** layout (`Ast.ExprCellTuple` /
+`Ast.ExprCellTupleIndex`): field `i` at offset `i*8` regardless of the field-type
+mix, per-cell op (`f64` for a `Float` field, `i32` — low 4 bytes — otherwise).
+Uniform-8 sidesteps type-dependent offset accumulation, so `(Int, Float)` and
+`(Float, Int)` both round-trip (`MIX_OK` / `FI_OK`), as do all-`Float` (`FTUP_OK`)
+and **`Array[(Float, Float)]`** (`AFT_OK`). `synth` records per-field cell kinds
+(construct) and, for *every* access to a float-bearing tuple, the accessed
+field's kind. `guard`'s `TyTuple` case fully lifted.
 
-`just wasm-validate` pins **9 positive** Float-in-heap checks (incl. 4 wasmtime
+`just wasm-validate` pins **12 positive** Float-in-heap checks (incl. 7 wasmtime
 round-trips) + the loud-fails. 477 tests green.
 
-**Still loud-failing (next increments):** `Float` **records** (heterogeneous
-fields → type-dependent offsets, the same problem as mixed tuples), **mixed
-Int/Float tuples**, and captured `Float` in **closures**. Compound assignment
-(`a[i] += x`) to a float element also loud-fails (rare; rewrite as
-`a[i] = a[i] + x`). The architecture (record→elaborate→lower) is proven; the
-remaining shapes need a richer per-field offset/cell-kind record rather than the
-membership-set marker used so far.
+**Still loud-failing (next increment, task #8):**
+
+* **`Float` records.** Designed: a *closed* float-bearing record gets the same
+  uniform-8 layout with fields ordered **by name** (so construct and by-name
+  access derive identical offsets without depending on literal-vs-type order).
+  Blocker handled by design: at a field access the checker unifies against a
+  *fresh* rest-row, so the full layout is only safe when `repr obj_ty` is a
+  **closed** `TRecord`; an open/polymorphic row must keep loud-failing. Value
+  round-trips are mandatory (a wrong offset is silent corruption, not an invalid
+  module).
+* **Captured `Float` in closures** — the closure env stores captures at `i*4`
+  (`lib/codegen.ml` env-build); needs the same per-cell treatment.
+* Compound assignment (`a[i] += x`) to a float element (rare; rewrite as
+  `a[i] = a[i] + x`).
 
 ## Related
 
