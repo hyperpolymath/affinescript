@@ -257,6 +257,22 @@ let t_extract_loop_ok () =
   Alcotest.(check bool) "Polonius accepts the move-free loop" false pol;
   Alcotest.(check bool) "agrees with lexical" lex pol
 
+(* ── reassignment loan release (reborrow): old loan dies at the rebind ─────────── *)
+
+(* `let mut r = pick(a); r = other(b); consume(a)` — reassigning r RELEASES its
+   loan on a, so moving a is legal. Was a FALSE POSITIVE (Polonius kept a's loan
+   live to r's last use); the reassignment-kill fix makes both tiers accept. *)
+let t_extract_reassign_old_ok () =
+  let (pol, lex) = polonius_vs_lexical "borrow_callee_returned_borrow_reassign_old_ok.affine" in
+  Alcotest.(check bool) "Polonius accepts move after reassignment releases loan" false pol;
+  Alcotest.(check bool) "agrees with lexical" lex pol
+
+(* the move-while-still-bound counterpart must still be flagged by both tiers *)
+let t_extract_reassign_uam () =
+  let (pol, lex) = polonius_vs_lexical "borrow_callee_returned_borrow_reassign.affine" in
+  Alcotest.(check bool) "Polonius flags move while reassigned loan live" true pol;
+  Alcotest.(check bool) "agrees with lexical" lex pol
+
 (* ── M3 (3/3): the corpus-wide parallel-run diff gate ─────────────────────────
    Run BOTH tiers over every .affine fixture and assert the Polonius
    extractor+solver verdict never diverges from the lexical [Borrow.check_program]
@@ -282,21 +298,17 @@ let known_divergences : (string * string) list =
     "borrow_return_escape_local.affine", "return-escape (local)";
     "borrow_return_escape_param.affine", "return-escape (param)";
     "ref_to_ref_return_escape.affine", "ref-to-ref + return-escape";
-    (* unmodeled: ref-to-ref reborrow chains (subset closure not consumed yet) *)
-    "ref_to_ref_protects_owner.affine", "ref-to-ref chain";
+    (* unmodeled: ref-to-ref reborrow chains — an ALIAS [let r2 = r1] holding the
+       same loan (the subset closure is computed but not yet consumed here) *)
+    "ref_to_ref_protects_owner.affine", "ref-to-ref alias chain";
     "borrow_reassign_alias_survives.affine", "reassign alias survives";
-    "borrow_callee_returned_borrow_reassign.affine", "reassign reborrow";
-    "slice_b_new_borrow_still_protects.affine", "reborrow reassign (Slice B)";
+    "slice_b_new_borrow_still_protects.affine", "ref-to-ref alias (Slice B)";
     (* unmodeled: sub-place / aggregate borrow sources *)
     "borrow_callee_returned_borrow_aggregate.affine", "aggregate/sub-place source";
     "slice_c_body_move_persists.affine", "single-block body move scope";
     (* unmodeled: captured-linear (lambda capture) *)
     "slice_d_captured_linear_let_rejected.affine", "captured-linear (let)";
     "slice_d_captured_linear_param_rejected.affine", "captured-linear (param)";
-    (* KNOWN FALSE POSITIVE: reassignment should release the old loan; the
-       extractor kills loans only at binder-last-use. Fixed by the reborrow /
-       loan-release increment. *)
-    "borrow_callee_returned_borrow_reassign_old_ok.affine", "FALSE-POSITIVE: loan-release-on-reassign (reborrow increment)";
   ]
 
 let t_parallel_run_diff () =
@@ -365,4 +377,7 @@ let tests =
     (* M3 loop unrolling: cross-iteration use-after-move (2-iteration model) *)
     Alcotest.test_case "extract+solve: loop cross-iter UAM flagged, agrees with lexical" `Quick t_extract_loop_move;
     Alcotest.test_case "extract+solve: move-free loop ok, agrees with lexical" `Quick t_extract_loop_ok;
+    (* M3 reborrow: reassignment releases the old loan *)
+    Alcotest.test_case "extract+solve: reassign releases old loan (was false +), agrees" `Quick t_extract_reassign_old_ok;
+    Alcotest.test_case "extract+solve: move while reassigned loan live flagged, agrees" `Quick t_extract_reassign_uam;
   ]

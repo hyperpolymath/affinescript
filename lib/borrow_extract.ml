@@ -145,17 +145,41 @@ let extract_fn (ctx : Borrow.context) (symbols : Symbol.t) (fd : fn_decl) : PF.f
     (* a binder's loan dies at its last-use + 1 (NLL); [compute_last_use_index]
        keys by symbol regardless of nesting, so a nested [let] binder's kill
        point is found the same way as a top-level one. *)
-    let kill_point_of (id : ident) (fallback : int) : int =
-      match Borrow.lookup_symbol_by_name symbols id.name with
-      | Some sym ->
-        (match Hashtbl.find_opt last_use sym.Symbol.sym_id with
-         | Some k -> k + 1 | None -> fallback)
-      | None -> fallback
+    (* reassignment points per ref-binder symbol: a whole-place write [r = e]
+       (possibly nested in a branch/loop, attributed to its enclosing top-level
+       point) ENDS the loan [r] currently holds — mirrors the lexical checker's
+       ref-binding release on reassignment (Slice B / #554 residual c). *)
+    let reassign_pts : (Symbol.symbol_id, int list) Hashtbl.t = Hashtbl.create 8 in
+    let add_reassign sym pt =
+      Hashtbl.replace reassign_pts sym (pt :: (try Hashtbl.find reassign_pts sym with Not_found -> [])) in
+    let rec scan_reassign pt s =
+      match s with
+      | StmtAssign (l, _, _) ->
+        (match Borrow.expr_to_place symbols (peel l) with
+         | Some (Borrow.PlaceVar _ as p) ->
+           (match Borrow.root_var p with Some v -> add_reassign v pt | None -> ())
+         | _ -> ())
+      | StmtWhile (_, b) | StmtFor (_, _, b) -> List.iter (scan_reassign pt) b.blk_stmts
+      | _ -> ()
     in
-    let record_let_loans (pt : int) (id : ident) (rhs : expr) : unit =
-      (* a branchy RHS may borrow several places (union over arms); each becomes
-         its own loan, all born at [pt] and killed at the binder's last use *)
-      let kp = kill_point_of id (pt + 1) in
+    List.iteri scan_reassign blk.blk_stmts;
+    (* the loan a binder holds dies at the EARLIER of its next reassignment after
+       birth or its NLL last-use + 1. [compute_last_use_index] keys by symbol
+       regardless of nesting, so a nested binder's last use is found the same way. *)
+    let kill_for (sym : Symbol.symbol_id) (birth_pt : int) (fallback : int) : int =
+      let last_use_kill =
+        match Hashtbl.find_opt last_use sym with Some k -> k + 1 | None -> fallback in
+      let next_reassign =
+        (try Hashtbl.find reassign_pts sym with Not_found -> [])
+        |> List.filter (fun p -> p > birth_pt)
+        |> List.fold_left (fun acc p -> match acc with None -> Some p | Some m -> Some (min m p)) None
+      in
+      match next_reassign with Some r -> min r last_use_kill | None -> last_use_kill
+    in
+    (* create one loan per place a binder's RHS value borrows (union over branch
+       arms), all born at [pt] and held by binder [sym]. *)
+    let record_binder_loans (pt : int) (sym : Symbol.symbol_id) (rhs : expr) : unit =
+      let kp = kill_for sym pt (pt + 1) in
       List.iter (fun (place, _excl) ->
         let l = fresh next_loan in
         borrow_at   := (l, pt) :: !borrow_at;
@@ -163,6 +187,11 @@ let extract_fn (ctx : Borrow.context) (symbols : Symbol.t) (fd : fn_decl) : PF.f
         loans       := { rl_id = l; rl_place = place } :: !loans;
         killed      := (l, kp) :: !killed)
         (rhs_borrows ctx symbols rhs)
+    in
+    let record_let_loans (pt : int) (id : ident) (rhs : expr) : unit =
+      match Borrow.lookup_symbol_by_name symbols id.name with
+      | Some sym -> record_binder_loans pt sym.Symbol.sym_id rhs
+      | None -> ()
     in
     (* PASS 1 — loans. Record each let's loans at the enclosing top-level point,
        descending through nested branch/block STATEMENTS (their tail expressions
@@ -174,7 +203,16 @@ let extract_fn (ctx : Borrow.context) (symbols : Symbol.t) (fd : fn_decl) : PF.f
         (match sl.sl_pat with PatVar id -> record_let_loans pt id sl.sl_value | _ -> ());
         loans_expr pt sl.sl_value
       | StmtExpr e -> loans_expr pt e
-      | StmtAssign (l, _, r) -> loans_expr pt l; loans_expr pt r
+      | StmtAssign (l, _, r) ->
+        (* reborrow: [r = <borrowing rhs>] mints a fresh loan on the new source,
+           held by [r] and born at this point (the old loan was killed here by
+           [kill_for]). Only for whole-place ref-binder targets. *)
+        (match Borrow.expr_to_place symbols (peel l) with
+         | Some (Borrow.PlaceVar _ as p) ->
+           (match Borrow.root_var p with
+            | Some v -> record_binder_loans pt v r | None -> ())
+         | _ -> ());
+        loans_expr pt l; loans_expr pt r
       | StmtWhile (c, b) -> loans_expr pt c; loans_block pt b
       | StmtFor (_, it, b) -> loans_expr pt it; loans_block pt b
     and loans_expr pt e =
