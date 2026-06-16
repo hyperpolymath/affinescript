@@ -2316,6 +2316,91 @@ let handler_fence_tests = [
 ]
 
 (* ============================================================================
+   Issue #559: trait coherence — overlapping impls must be rejected
+   ============================================================================
+
+   `Trait.check_coherence` was a no-op stub (TODO) and unwired, so two impls of
+   the same trait for the same (or unifiable) self type were silently accepted
+   and method resolution picked whichever impl came first. `check_all_coherence`
+   now runs in `check_program` after every impl is registered and rejects any
+   pair of impls whose self types unify. *)
+
+let tc_source src =
+  let prog = Parse_driver.parse_string ~file:"<test>" src in
+  match resolve_program prog with
+  | Error msg -> Error msg
+  | Ok (ctx, _) ->
+    (match Typecheck.check_program ctx.symbols prog with
+     | Ok _ -> Ok ()
+     | Error e -> Error (Typecheck.format_type_error e))
+
+let test_coherence_duplicate_rejected () =
+  let src = {|
+trait Greet { fn greet() -> Int; }
+struct Person { age: Int }
+impl Greet for Person { fn greet() -> Int = 1; }
+impl Greet for Person { fn greet() -> Int = 2; }
+fn main() -> Int = 0;
+|} in
+  match tc_source src with
+  | Ok () ->
+      Alcotest.fail "#559: two impls of Greet for Person must be rejected as \
+                     overlapping; the checker accepted them"
+  | Error msg ->
+      Alcotest.(check bool) "error names trait coherence" true
+        (contains_str "coherence" msg)
+
+let test_coherence_distinct_types_ok () =
+  let src = {|
+trait Greet { fn greet() -> Int; }
+struct Person { age: Int }
+struct Robot { id: Int }
+impl Greet for Person { fn greet() -> Int = 1; }
+impl Greet for Robot { fn greet() -> Int = 2; }
+fn main() -> Int = 0;
+|} in
+  match tc_source src with
+  | Ok () -> ()
+  | Error msg ->
+      Alcotest.failf "#559: impls of Greet for two DISTINCT types must be \
+                      accepted (no overlap), got error: %s" msg
+
+let test_coherence_distinct_generic_args_ok () =
+  (* Coherence must not over-reject: impls for the SAME generic head but
+     distinct concrete args (`Pair[Int,Bool]` vs `Pair[Bool,Int]`) do not
+     overlap and must both be accepted. *)
+  let src = {|
+trait Greet { fn greet() -> Int; }
+enum Pair[A, B] { Mk(A, B) }
+impl Greet for Pair[Int, Bool] { fn greet() -> Int = 1; }
+impl Greet for Pair[Bool, Int] { fn greet() -> Int = 2; }
+fn main() -> Int = 0;
+|} in
+  match tc_source src with
+  | Ok () -> ()
+  | Error msg ->
+      Alcotest.failf "#559: impls for Pair[Int,Bool] vs Pair[Bool,Int] do not \
+                      overlap and must be accepted, got error: %s" msg
+
+(* KNOWN LIMITATION (#559): generic-subsumption overlap — a blanket/generic
+   impl `impl[T] Greet for Box[T]` overlapping a specific `impl Greet for
+   Box[Int]` — is NOT yet detected. The coherence check itself instantiates
+   impl type params and would catch it, but generic *impl* handling has its
+   own separate immaturities (e.g. `impl[T] ... for Box[T]` currently trips a
+   spurious "Trait not found" before coherence runs), so this case rides on a
+   prerequisite that is not yet solid. The soundness-critical hole #559 named
+   — silently accepting overlapping *concrete* impls — IS fixed and covered by
+   the rejected/accepted tests above. Generic-subsumption coherence is tracked
+   as follow-up, not pinned here as an executable accept (it would mis-document
+   a moving target). *)
+
+let coherence_tests = [
+  Alcotest.test_case "duplicate impl (same self type) → rejected"    `Quick test_coherence_duplicate_rejected;
+  Alcotest.test_case "impls for distinct types → accepted"           `Quick test_coherence_distinct_types_ok;
+  Alcotest.test_case "distinct generic args → accepted (no over-reject)" `Quick test_coherence_distinct_generic_args_ok;
+]
+
+(* ============================================================================
    Issue #556: async CPS table-miss loud-fail fence
    ============================================================================
 
@@ -5652,6 +5737,7 @@ let tests =
     ("E2E Handler Fence (#555)", handler_fence_tests);
     ("E2E Async Fence (#556)", async_fence_tests);
     ("E2E Resume Soundness (#555)", resume_soundness_tests);
+    ("E2E Trait Coherence (#559)", coherence_tests);
     ("E2E Ownership Verify", tw_verify_tests);
     ("E2E Cmd Linearity", cmd_linear_tests);
     ("E2E Boundary Verify", tw_interface_tests);

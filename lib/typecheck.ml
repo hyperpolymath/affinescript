@@ -123,6 +123,10 @@ type type_error =
       (** `break` / `continue` used outside any enclosing loop body
           (issue #459). The string carries the keyword name for the
           error message. *)
+  | TraitCoherenceError of string
+      (** Two impls of the same trait have overlapping (unifiable) self
+          types, so method resolution would be ambiguous (#559). The string
+          is the human-readable overlap description. *)
 
 (* Known exports of stdlib/prelude.affine. Mirrors the same list in
    lib/face.ml — when an UnboundVariable fires at type-check time with
@@ -198,6 +202,12 @@ let show_type_error = function
       "`%s` used outside a loop body (#459). `break` and `continue` must be \
        lexically enclosed by a `while` or `for` loop."
       kw
+  | TraitCoherenceError msg ->
+    Printf.sprintf
+      "Trait coherence violation (#559): %s. Two implementations whose self \
+       types can unify would make method resolution ambiguous; remove or \
+       narrow one of the overlapping impls."
+      msg
 
 let format_type_error = show_type_error
 
@@ -2438,6 +2448,13 @@ let check_program ?(import_types : (string, scheme) Hashtbl.t option)
       Ok ()
     | _ -> Ok ()
   ) (Ok ()) prog.prog_decls in
+  (* #559: trait coherence — now that every impl is registered, reject
+     overlapping impls of the same trait (self types that unify). Done before
+     the check pass so an ambiguous instance base is reported up front. *)
+  let* () = match Trait.check_all_coherence ctx.trait_registry with
+    | Ok () -> Ok ()
+    | Error re -> Error (TraitCoherenceError (Trait.show_resolution_error re))
+  in
   (* Check pass: verify all declarations *)
   let result = List.fold_left (fun acc decl ->
     let* () = acc in
