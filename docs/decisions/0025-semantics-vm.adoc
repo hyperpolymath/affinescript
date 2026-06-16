@@ -1,0 +1,103 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+= ADR-0025: A semantics VM — the engine for what wasm cannot express
+Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+:toc:
+:toclevels: 2
+:icons: font
+
+Status:: *Proposed* — awaiting owner sign-off before implementation.
+Date:: 2026-06-16
+Series:: Settled-decisions ledger. Sits under the targeting-strategy decision (wasm = portability · VM = semantics · native = performance). Companion: ADR-0024 (Android native).
+
+== Context
+
+The targeting strategy (ratified 2026-06-16) assigns each tier one job:
+
+* *wasm* — universal portability. Runs on every mobile/desktop OS via WebView
+  or embedded runtime. Carries ~82% of the surface language (measured: 28/34 of
+  the positive corpus validate; `just wasm-validate`).
+* *native (ARM64/LLVM)* — performance (ADR-0024).
+* *this VM* — *semantics*. The home for exactly the constructs core wasm 1.0
+  *cannot* express, which the coverage sweep pinpointed:
+
+[cols="1,3"]
+|===
+| Construct | Why wasm can't (today) | Today's behaviour
+
+| Multi-shot algebraic effects + `resume` | needs reified, re-entrant continuations | #555 — wasm silently drops arms; interp does *shallow single-shot tail-resume only* (`interp.ml:248-263`)
+| Exceptions / `try`/`catch` | needs the wasm exception-handling proposal | loud-fails -> "use -i / -julia"
+| Runtime affine/linear enforcement | wasm has no resource semantics | not enforced at runtime
+| Tropical cost-metering | no metering primitive | absent
+|===
+
+The VM is *not* a portability mechanism (wasm is) and *not* a performance tier
+(native is). Building a bytecode VM to "reach mobile" would reinvent what wasm
+already gives us. Its sole justification is *semantic completeness + being the
+executable reference for the metatheory*.
+
+== Decision (proposed)
+
+Grow today's tree-walking `lib/interp.ml` into a **bytecode VM** whose runtime
+model makes the four constructs above first-class:
+
+. *Reified continuations.* Compile to a bytecode with an explicit operand stack
+  and an explicit *continuation/frame stack*, so a captured continuation is a
+  first-class value. This is the substrate multi-shot `resume` requires and that
+  a direct tree-walker cannot give cheaply — `resume k v` re-enters a *copy* of
+  `k`, and `k` may be resumed again.
+. *Handler stack.* A dynamic stack of installed effect handlers; `perform`
+  searches it, capturing the delimited continuation up to the matching handler
+  (deep handlers). Exceptions are the degenerate single-shot, non-resumable case
+  — modelled as a handler that discards its continuation.
+. *Runtime resource discipline.* Each heap value carries its QTT kind; the VM
+  optionally enforces affine (`≤1`) / linear (`=1`) use dynamically — the
+  executable mirror of `lib/quantity.ml` and the Solo-core proofs.
+. *Cost metering.* Each instruction carries a tropical cost grade
+  (`(ℕ∪{∞}, min, +)`); the VM accumulates a running cost, enabling budgets and
+  `∞ = infeasible`. Aligns with the tropical-session-types Lean proof + the
+  echo-types cost work.
+. *Proof-oracle mode.* The VM can run the Solo/Duet operational semantics
+  directly, so the mechanised `Step` relation has an executable witness — a
+  differential oracle against the compiler.
+
+The bytecode is an *internal* artifact (not a shipped target like wasm); its
+value is control over evaluation order and continuation capture.
+
+== Phasing (each phase independently shippable + gated)
+
+[cols="1,4"]
+|===
+| Phase | Deliverable
+
+| *M1* | Bytecode ISA + VM loop reaching *parity* with `interp.ml` on the e2e interpreter corpus (a differential test: tree-walker vs VM agree on every existing fixture). No new semantics yet — just the substrate.
+| *M2* | Deep effect handlers + *multi-shot* `resume` (closes #555 at the VM tier; the loud-fail messages already route here). Runtime handler tests — *zero exist today*.
+| *M3* | Exceptions / `try`/`catch` (single-shot handler specialisation).
+| *M4* | Runtime affine/linear enforcement + tropical cost metering (opt-in flags; off by default for speed).
+| *M5* | Proof-oracle mode: execute the Solo `Step` relation; differential check vs the compiler.
+|===
+
+== Consequences
+
+* The "use the interpreter" escape hatch the compiler *already prints* for
+  effects/exceptions becomes *true and complete* rather than partial.
+* Gives the metatheory an executable oracle — strengthens the proof story
+  beyond type-checking the `.idr`/`.lean`/`.agda` files.
+* Does *not* compete with wasm or native; complements them. A program that is
+  effect/exception-heavy runs on the VM; a hot numeric kernel compiles native or
+  to a GPU backend; a portable artifact ships as wasm. Same front-end.
+* Cost: a bytecode VM is a real subsystem. M1 alone is multi-week. Hence
+  design-first and per-phase gating.
+
+== Open questions for sign-off
+
+. *Bytecode vs CPS-converted tree-walker.* A CPS/free-monad interpreter in OCaml
+  could also give multi-shot resume with less machinery, at some speed cost. The
+  bytecode buys speed + a cleaner cost-metering hook. Confirm bytecode is wanted.
+. *Value representation.* Share the wasm backend's value encoding, or a VM-native
+  tagged representation? (Proposal: VM-native — the VM optimises for
+  continuation capture, not linear-memory layout.)
+. *Scope of M1 parity.* Is interp-parity the right M1 bar, or should M1 target a
+  reduced core (Solo) first to pair with the proofs?
+. *Default enforcement.* Runtime affine/cost checks off-by-default (speed) with
+  a `--strict` flag, or on-by-default (safety)?
