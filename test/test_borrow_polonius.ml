@@ -299,9 +299,6 @@ let known_divergences : (string * string) list =
     "borrow_return_escape_local.affine", "return-escape (local)";
     "borrow_return_escape_param.affine", "return-escape (param)";
     "ref_to_ref_return_escape.affine", "ref-to-ref + return-escape";
-    (* unmodeled: sub-place / aggregate borrow sources *)
-    "borrow_callee_returned_borrow_aggregate.affine", "aggregate/sub-place source";
-    "slice_c_body_move_persists.affine", "single-block body move scope";
     (* unmodeled: captured-linear (lambda capture) *)
     "slice_d_captured_linear_let_rejected.affine", "captured-linear (let)";
     "slice_d_captured_linear_param_rejected.affine", "captured-linear (param)";

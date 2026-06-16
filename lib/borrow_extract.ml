@@ -109,6 +109,18 @@ let rec rhs_borrows (ctx : Borrow.context) (symbols : Symbol.t) (e : expr)
     @ (match ei.ei_else with Some e -> rhs_borrows ctx symbols e | None -> [])
   | ExprMatch em -> List.concat_map (fun a -> rhs_borrows ctx symbols a.ma_body) em.em_arms
   | ExprBlock blk -> (match blk.blk_expr with Some t -> rhs_borrows ctx symbols t | None -> [])
+  (* aggregate literals carry their elements' borrows OUT — [let pair = (pick(b),
+     0)] makes [pair] hold the borrow of [b] (it lives inside element 0). *)
+  | ExprTuple xs | ExprArray xs -> List.concat_map (rhs_borrows ctx symbols) xs
+  | ExprRecord r ->
+    List.concat_map (fun (_, eo) -> match eo with Some e -> rhs_borrows ctx symbols e | None -> [])
+      r.er_fields
+  (* try/catch value is its body tail or a catch-arm tail — union them *)
+  | ExprTry et ->
+    (match et.et_body.blk_expr with Some t -> rhs_borrows ctx symbols t | None -> [])
+    @ (match et.et_catch with
+       | Some arms -> List.concat_map (fun a -> rhs_borrows ctx symbols a.ma_body) arms
+       | None -> [])
   | _ -> []
 
 (** Places moved by [e]: arguments passed to [own] parameters of called funcs. *)
@@ -239,6 +251,10 @@ let extract_fn (ctx : Borrow.context) (symbols : Symbol.t) (fd : fn_decl) : PF.f
         loans_expr pt em.em_scrutinee;
         List.iter (fun a -> loans_expr pt a.ma_body) em.em_arms
       | ExprBlock blk -> loans_block pt blk
+      | ExprTry et ->
+        loans_block pt et.et_body;
+        (match et.et_catch with Some arms -> List.iter (fun a -> loans_expr pt a.ma_body) arms | None -> ());
+        (match et.et_finally with Some b -> loans_block pt b | None -> ())
       | ExprApp (f, args) -> loans_expr pt f; List.iter (loans_expr pt) args
       | ExprUnary (_, x) -> loans_expr pt x
       | ExprBinary (a, _, b) | ExprIndex (a, b) -> loans_expr pt a; loans_expr pt b
@@ -341,6 +357,10 @@ let extract_fn (ctx : Borrow.context) (symbols : Symbol.t) (fd : fn_decl) : PF.f
         moves_expr pt em.em_scrutinee;
         List.iter (fun a -> moves_expr pt a.ma_body) em.em_arms
       | ExprBlock blk -> moves_block pt blk
+      | ExprTry et ->
+        moves_block pt et.et_body;
+        (match et.et_catch with Some arms -> List.iter (fun a -> moves_expr pt a.ma_body) arms | None -> ());
+        (match et.et_finally with Some b -> moves_block pt b | None -> ())
       | ExprApp (f, args) -> moves_expr pt f; List.iter (moves_expr pt) args
       | ExprUnary (_, x) -> moves_expr pt x
       | ExprBinary (a, _, b) | ExprIndex (a, b) -> moves_expr pt a; moves_expr pt b
