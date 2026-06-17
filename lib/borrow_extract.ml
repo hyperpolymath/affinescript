@@ -401,6 +401,85 @@ let extract_fn (ctx : Borrow.context) (symbols : Symbol.t) (fd : fn_decl) : PF.f
         then conflict_at := (rl.rl_id, pt) :: !conflict_at)
         !loans)
       !use_at;
+    (* M3 call-aliasing (mut-param argument). The lexical checker folds a call's
+       arguments left-to-right: a [mut] parameter's argument takes a CALL-SCOPED
+       EXCLUSIVE borrow ([record_borrow … Exclusive]) and every SUBSEQUENT
+       argument's read trips [find_aliasing_exclusive] — so [mut_then_read(x, x)]
+       is rejected, while the borrow's release after the call keeps
+       [just_mut(x); read_int(x)] accepted. We mirror that exactly: per call,
+       fold the args in order; mint a call-scoped exclusive loan (born at the
+       enclosing point [pt], killed at [pt+1] so it never reaches the next
+       statement) for each [mut]-param arg that denotes a place, and emit a
+       conflict for any LATER arg of the SAME call whose place overlaps an
+       exclusive loan minted by an EARLIER arg. Order- and call-scoped, matching
+       the fold: it cannot fire across statements, and (over-approximating only
+       toward MORE real same-call conflicts the lexical checker also sees) cannot
+       introduce a false positive. These loans are emitted as raw facts only — not
+       pushed onto [!loans] — so the generic use-while rule above and the move
+       passes are unaffected; the solver needs just [borrow_at]/[killed]/
+       [conflict_at] to invalidate them. *)
+    let process_call pt fname args =
+      match Hashtbl.find_opt ctx.Borrow.fn_sigs fname with
+      | None -> ()
+      | Some sg ->
+        let owns = sg.Borrow.fn_param_ownerships in
+        ignore (List.fold_left (fun excls (i, arg) ->
+          let ap = Borrow.expr_to_place symbols (peel arg) in
+          (match ap with
+           | Some p ->
+             List.iter (fun rl ->
+               if Borrow.places_overlap p rl.rl_place then
+                 conflict_at := (rl.rl_id, pt) :: !conflict_at) excls
+           | None -> ());
+          match (List.nth_opt owns i, ap) with
+          | (Some (Some Mut), Some p) ->
+            let l = fresh next_loan in
+            borrow_at   := (l, pt) :: !borrow_at;
+            loan_origin := (l, fresh next_origin) :: !loan_origin;
+            killed      := (l, pt + 1) :: !killed;
+            { rl_id = l; rl_place = p; rl_binder = None; rl_excl = true } :: excls
+          | _ -> excls)
+          [] (List.mapi (fun i a -> (i, a)) args))
+    in
+    let call_here pt e =
+      match peel e with
+      | ExprApp (f, args) ->
+        (match peel f with ExprVar id -> process_call pt id.name args | _ -> ())
+      | _ -> ()
+    in
+    let rec alias_stmt pt s =
+      match s with
+      | StmtLet sl -> alias_expr pt sl.sl_value
+      | StmtExpr e -> alias_expr pt e
+      | StmtAssign (l, _, r) -> alias_expr pt l; alias_expr pt r
+      | StmtWhile (c, b) -> alias_expr pt c; alias_block pt b
+      | StmtFor (_, it, b) -> alias_expr pt it; alias_block pt b
+    and alias_expr pt e =
+      call_here pt e;
+      match peel e with
+      | ExprApp (f, args) -> alias_expr pt f; List.iter (alias_expr pt) args
+      | ExprUnary (_, x) -> alias_expr pt x
+      | ExprBinary (a, _, b) | ExprIndex (a, b) -> alias_expr pt a; alias_expr pt b
+      | ExprField (b, _) | ExprTupleIndex (b, _) -> alias_expr pt b
+      | ExprTuple xs | ExprArray xs -> List.iter (alias_expr pt) xs
+      | ExprIf ei ->
+        alias_expr pt ei.ei_cond; alias_expr pt ei.ei_then;
+        (match ei.ei_else with Some e -> alias_expr pt e | None -> ())
+      | ExprMatch em ->
+        alias_expr pt em.em_scrutinee;
+        List.iter (fun a -> alias_expr pt a.ma_body) em.em_arms
+      | ExprBlock blk -> alias_block pt blk
+      | ExprTry et ->
+        alias_block pt et.et_body;
+        (match et.et_catch with Some arms -> List.iter (fun a -> alias_expr pt a.ma_body) arms | None -> ());
+        (match et.et_finally with Some b -> alias_block pt b | None -> ())
+      | _ -> ()
+    and alias_block pt blk =
+      List.iter (alias_stmt pt) blk.blk_stmts;
+      (match blk.blk_expr with Some e -> alias_expr pt e | None -> ())
+    in
+    List.iteri alias_stmt blk.blk_stmts;
+    (match blk.blk_expr with Some e -> alias_expr nstmts e | None -> ());
     { PF.empty_facts with
       borrow_at = !borrow_at; loan_origin = !loan_origin;
       killed = !killed; cfg_edge = base_cfg @ !extra_edges; conflict_at = !conflict_at;
