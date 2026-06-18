@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // SPDX-FileCopyrightText: 2024-2026 Jonathan D.A. Jewell (hyperpolymath)
 = AffineScript Faces — Design & Implementation Reference
+Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 :toc: macro
 :toclevels: 2
 :source-highlighter: rouge
@@ -71,15 +72,64 @@ The compiler is face-agnostic throughout. The two face-aware layers are:
 | `--face pseudocode` or `--face pseudo`
 | `.pseudoaff`
 | Beta (2026-04-11)
+
+| Lucid (PureScript / Haskell)
+| `--face lucid`
+| `.lucidaff`
+| Beta (2026-06)
+
+| Cafe (CoffeeScript)
+| `--face cafe` or `--face coffee`
+| `.cafeaff`
+| Beta (2026-06)
 |===
+
+=== Brand-surface repos
+
+Each non-canonical face has a brand-surface repo — examples, community docs,
+migration guides, and a `bin/<face>` shim that injects `--face`. The compiler,
+type checker, borrow checker, and codegen live only here in affinescript; the
+brand repos carry no compiler.
+
+[cols="1,2,2", options="header"]
+|===
+| Face | Brand repo | Transformer
+
+| RattleScript (Python)      | `hyperpolymath/rattlescript` | `lib/python_face.ml`
+| JaffaScript (JS / TS)      | `hyperpolymath/jaffascript`  | `lib/js_face.ml`
+| PseudoScript (pseudocode)  | `hyperpolymath/pseudoscript` | `lib/pseudocode_face.ml`
+| LucidScript (PureScript)   | `hyperpolymath/lucidscript`  | `lib/lucid_face.ml`
+| CafeScripto (CoffeeScript) | `hyperpolymath/cafescripto`  | `lib/cafe_face.ml`
+|===
+
+=== Same-cube grounding
+
+The "different faces, same cube" claim is grounded by
+`hyperpolymath/invariant-path` (the `faces` profile + `scripts/verify-same-cube.sh`),
+which compiles one program written in every face to typed-wasm and compares the
+modules. Per-face snapshot stability is covered separately by
+`tools/run_face_transformer_tests.sh` (currently 6/6 green).
+
+*Known transformer-consistency item (grounded 2026-06-18):* on the `greet`
+corpus the six faces compile to *two* wasm modules — `{canonical, jaffa, cafe}`
+vs `{rattle, pseudo, lucid}` — because the transformers disagree on
+trailing-statement lowering (statement `{ println(x); }` vs tail-expression
+`{ println(x) }`). The programs are observationally identical (same output,
+same unit return) but the wasm is not byte-identical. Making the transformers
+agree on trailing-statement lowering would yield byte-level same-cube.
 
 == Roadmap Faces
 
-These faces are on the roadmap but have not been designed in detail. The
-face architecture makes implementation cheap once the surface mapping is
-settled; the bottleneck is design, not code.
+ActionScript-face remains on the roadmap (CoffeeScript has since shipped as
+CafeScripto — see Active Faces above). The face architecture makes
+implementation cheap once the surface mapping is settled; the bottleneck is
+design, not code.
 
-=== CoffeeScript-face (strategic priority)
+=== CoffeeScript-face — SHIPPED as CafeScripto
+
+NOTE: This face is now *established* (`lib/cafe_face.ml`, `--face cafe`; see the
+Active Faces table and `hyperpolymath/cafescripto`). The design notes below are
+retained as historical reference; only ActionScript-face remains on the roadmap.
 
 *Rationale:* CoffeeScript has a loyal displaced community that never loved
 JavaScript and were forced away when the ecosystem moved on. Their syntax
