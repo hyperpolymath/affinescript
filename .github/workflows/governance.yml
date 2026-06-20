@@ -1,19 +1,20 @@
 # SPDX-License-Identifier: MPL-2.0
-# governance.yml — single wrapper calling the shared estate governance bundle
-# in hyperpolymath/standards. Replaces ~8 duplicated per-repo governance
-# workflows (verisimiser#59 estate rollout). Load-bearing build/security
-# workflows (rust-ci, codeql, dependabot, release, secret-scanner, scorecard)
-# stay standalone in this repo.
+#
+# Standalone governance gate. Previously a thin caller of
+# `hyperpolymath/standards/.github/workflows/governance-reusable.yml@main`;
+# that cross-repo dependency (a) coupled this repo's CI to another repo's
+# moving `@main` and (b) startup-failed because a `concurrency:` block in a
+# reusable-workflow caller, when the reusable also declares concurrency on the
+# same key, is rejected at run-creation (the BP008 class — see
+# spark-theatre-gate.yml's note). This self-contained version runs the repo's
+# own conservative, delta-aware checks (tools/ci/governance-standalone.sh) and
+# is a normal workflow, so the concurrency block is safe to keep.
 name: Governance
 on:
   push:
     branches: [main, master]
   pull_request:
   workflow_dispatch:
-# Estate guardrail: cancel superseded runs so re-pushes / rebased PR
-# updates do not pile up queued runs against the shared account-wide
-# Actions concurrency pool. Applied only to read-only check workflows
-# (no publish/mutation), so cancelling a superseded run is always safe.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -21,4 +22,17 @@ permissions:
   contents: read
 jobs:
   governance:
-    uses: hyperpolymath/standards/.github/workflows/governance-reusable.yml@main
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Fetch base ref (DOC-FORMAT delta)
+        if: github.event_name == 'pull_request'
+        run: git fetch --no-tags origin "+refs/heads/${GITHUB_BASE_REF}:refs/remotes/origin/${GITHUB_BASE_REF}"
+      - name: Run governance gate
+        env:
+          GITHUB_BASE_REF: ${{ github.base_ref }}
+        run: ./tools/ci/governance-standalone.sh

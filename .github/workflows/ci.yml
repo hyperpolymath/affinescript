@@ -1,4 +1,18 @@
 # SPDX-License-Identifier: MPL-2.0
+#
+# Standalone CI: no dependency on third-party actions or external-repo
+# reusable workflows. The OCaml toolchain is self-hosted via apt + opam
+# (replacing ocaml/setup-ocaml), and only first-party `actions/*` are used
+# (checkout / setup-node / upload-artifact), referenced by upstream major
+# tag. dune-project requires OCaml >= 4.14, satisfied by the runner's apt
+# OCaml (ocaml-system), with a base-compiler fallback.
+#
+# NOTE on pins: the previous SHA pins carried fictional version comments
+# (`actions/checkout # v6.0.3`, `actions/upload-artifact # v7.0.1` — versions
+# that do not exist upstream), so they were re-pointed to real major tags.
+# Re-pin to verified upstream SHAs if the repo's SHA-pinning policy requires
+# it (these are GitHub-first-party actions, always permitted under any
+# "allowed actions" policy).
 name: CI
 on:
   push:
@@ -9,27 +23,36 @@ permissions:
   contents: read
 # Actions concurrency pool. Applied only to read-only check workflows
 # (no publish/mutation), so cancelling a superseded run is always safe.
+# Safe here: this is a normal workflow (not a reusable-workflow caller),
+# so there is no caller/reusable concurrency stacking (the BP008 startup
+# failure class).
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 25
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-      - name: Set up OCaml
-        uses: ocaml/setup-ocaml@e32b06a3e831ff2fbc6f08cf35be2085e3918014 # v3
-        with:
-          ocaml-compiler: "5.1"
+        uses: actions/checkout@v4
+      - name: Set up OCaml toolchain (self-hosted; replaces ocaml/setup-ocaml)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends opam ocaml
+          opam init --bare --disable-sandboxing --yes
+          # Prefer the runner's system OCaml (>= 4.14 satisfies dune-project)
+          # for an instant switch; fall back to a pinned base compiler.
+          opam switch create . ocaml-system --no-install --yes \
+            || opam switch create . ocaml-base-compiler.4.14.2 --no-install --yes
+          opam exec -- ocaml -version
       - name: Set up Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v4
+        uses: actions/setup-node@v4
         with:
           node-version: "20"
       - name: Install dependencies
-        run: opam install . --deps-only --with-test --with-doc
+        run: opam install . --deps-only --with-test --with-doc --yes
       - name: Install tree-sitter CLI (for res-to-affine walker tests)
         # Same rationale as the migration-assistant job (see below):
         # npm distribution is the fast CI install (~5 s). The walker
@@ -72,21 +95,25 @@ jobs:
         run: opam exec -- dune build @fmt
   lint:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 25
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-      - name: Set up OCaml
-        uses: ocaml/setup-ocaml@e32b06a3e831ff2fbc6f08cf35be2085e3918014 # v3
-        with:
-          ocaml-compiler: "5.1"
+        uses: actions/checkout@v4
+      - name: Set up OCaml toolchain (self-hosted; replaces ocaml/setup-ocaml)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends opam ocaml
+          opam init --bare --disable-sandboxing --yes
+          opam switch create . ocaml-system --no-install --yes \
+            || opam switch create . ocaml-base-compiler.4.14.2 --no-install --yes
+          opam exec -- ocaml -version
       - name: Install dependencies
         # Match the build job: `dune build` compiles everything including
         # test/ (which depends on alcotest, with-test) and the @doc target
         # below (which depends on odoc, with-doc). Without these flags, lint
         # fails on missing alcotest before it ever reaches the doc step.
-        run: opam install . --deps-only --with-test --with-doc
+        run: opam install . --deps-only --with-test --with-doc --yes
       - name: Build
         run: opam exec -- dune build
       - name: Lint with odoc
@@ -97,17 +124,21 @@ jobs:
     # §"Bench standards". Does NOT block merge. Promotion to a
     # ratcheted gate requires a calibrated baseline first.
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 25
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-      - name: Set up OCaml
-        uses: ocaml/setup-ocaml@e32b06a3e831ff2fbc6f08cf35be2085e3918014 # v3
-        with:
-          ocaml-compiler: "5.1"
+        uses: actions/checkout@v4
+      - name: Set up OCaml toolchain (self-hosted; replaces ocaml/setup-ocaml)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends opam ocaml
+          opam init --bare --disable-sandboxing --yes
+          opam switch create . ocaml-system --no-install --yes \
+            || opam switch create . ocaml-base-compiler.4.14.2 --no-install --yes
+          opam exec -- ocaml -version
       - name: Install dependencies
-        run: opam install . --deps-only --with-test --with-doc
+        run: opam install . --deps-only --with-test --with-doc --yes
       - name: Build bench targets
         run: opam exec -- dune build @bench --force
         continue-on-error: true
@@ -133,7 +164,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload bench log
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@v4
         with:
           name: bench-output
           path: bench-output.log
@@ -143,17 +174,21 @@ jobs:
     # docs/standards/TESTING.adoc §"Coverage (visibility-only)".
     # No merge-blocking floor today.
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 25
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-      - name: Set up OCaml
-        uses: ocaml/setup-ocaml@e32b06a3e831ff2fbc6f08cf35be2085e3918014 # v3
-        with:
-          ocaml-compiler: "5.1"
+        uses: actions/checkout@v4
+      - name: Set up OCaml toolchain (self-hosted; replaces ocaml/setup-ocaml)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends opam ocaml
+          opam init --bare --disable-sandboxing --yes
+          opam switch create . ocaml-system --no-install --yes \
+            || opam switch create . ocaml-base-compiler.4.14.2 --no-install --yes
+          opam exec -- ocaml -version
       - name: Install dependencies
-        run: opam install . --deps-only --with-test --with-doc
+        run: opam install . --deps-only --with-test --with-doc --yes
       - name: Run tests with bisect_ppx instrumentation
         run: |
           opam exec -- dune runtest --force --instrument-with bisect_ppx
@@ -178,7 +213,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload coverage HTML
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@v4
         with:
           name: coverage-html
           path: _coverage
@@ -203,9 +238,9 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@v4
       - name: Set up Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v4
+        uses: actions/setup-node@v4
         with:
           node-version: "20"
       - name: Install test runner dependencies
@@ -248,9 +283,9 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@v4
       - name: Set up Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v4
+        uses: actions/setup-node@v4
         with:
           node-version: "20"
       - name: Install tree-sitter CLI
