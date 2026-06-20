@@ -345,61 +345,16 @@ let flatten_imports (loader : t) (prog : program) : program =
         ) select
     ) prog.prog_imports
   in
-  (* #138: type declarations are a SEPARATE namespace from fn/const bindings,
-     so they get their own dedup table — a local `fn Foo` must not suppress an
-     imported `type Foo`, and vice versa. Imported public types are inlined too
-     so the prog_decls-iterating backends (Deno / JS / Julia / C / Rust / ...)
-     register their constructors exactly as they would for a local type;
-     without this, applying an imported constructor (`Some`/`None` from
-     `use prelude::{Option, Some, None}`) can reach codegen with no type in
-     scope. Local types win over imported ones, and a type reachable through
-     more than one path is carried only once. The Wasm backend gets the same
-     registration natively in [Codegen.gen_imports]. *)
-  let local_type_names =
-    List.filter_map (function
-      | TopType td -> Some td.td_name.name
-      | _ -> None
-    ) prog.prog_decls
-  in
-  let type_already_in = Hashtbl.create 16 in
-  List.iter (fun n -> Hashtbl.add type_already_in n ()) local_type_names;
-  let imported_types =
-    List.concat_map (fun imp ->
-      let path_strs path = List.map (fun (id : ident) -> id.name) path in
-      let mod_path = match imp with
-        | ImportSimple (p, _) | ImportList (p, _) | ImportGlob p -> path_strs p
-      in
-      match Hashtbl.find_opt loader.loaded mod_path with
-      | None -> []
-      | Some lm ->
-        let public_types = List.filter_map (function
-          | TopType td when td.td_vis = Public || td.td_vis = PubCrate -> Some td
-          | _ -> None
-        ) lm.mod_program.prog_decls in
-        (* `use M::{..}` selects a type when the list names the type itself or
-           any of its constructors; `use M` / `use M::*` bring all public
-           types (the resolver still gates what is referenceable). *)
-        let selected = match imp with
-          | ImportGlob _ | ImportSimple _ -> public_types
-          | ImportList (_, items) ->
-            let wanted = List.map (fun (it : import_item) -> it.ii_name.name) items in
-            List.filter (fun td ->
-              List.mem td.td_name.name wanted ||
-              (match td.td_body with
-               | TyEnum variants ->
-                 List.exists (fun vd -> List.mem vd.vd_name.name wanted) variants
-               | _ -> false)
-            ) public_types
-        in
-        List.filter_map (fun td ->
-          if Hashtbl.mem type_already_in td.td_name.name then None
-          else begin
-            Hashtbl.add type_already_in td.td_name.name ();
-            Some (TopType td)
-          end
-        ) selected
-    ) prog.prog_imports
-  in
-  (* Types precede imported fns/consts and all local decls so the single-pass
-     codegen registers an imported type before any function that uses it. *)
-  { prog with prog_decls = imported_types @ imported_decls @ prog.prog_decls }
+  (* #138 follow-up: imported TYPE decls are intentionally NOT inlined here.
+     An earlier #138 revision carried imported public [TopType]s so the
+     prog_decls-iterating backends could register their constructors — but the
+     non-Wasm backends (Deno-ESM / JS / Julia / C / Rust / ...) already emit
+     the Option/Result constructors from a built-in runtime preamble, so
+     carrying the prelude types declared `Some`/`None`/`Ok`/`Err` twice
+     (`SyntaxError: Identifier 'Some' has already been declared` when the
+     emitted Deno-ESM module is run under node). The Wasm backend learns
+     imported variant tags natively via [Codegen.gen_imports] (it consumes the
+     original, un-flattened [prog]); the other backends rely on their preamble.
+     Re-introducing type-carrying for *user-defined* cross-module enums would
+     need per-backend constructor dedup first. *)
+  { prog with prog_decls = imported_decls @ prog.prog_decls }
