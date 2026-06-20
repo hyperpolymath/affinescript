@@ -61,6 +61,37 @@ let pipeline_to_deno (prog : Ast.program) : (string, string) result =
            | Error e -> Error (Printf.sprintf "deno-codegen: %s" e)
            | Ok js -> Ok js)))
 
+(** Full AOT pipeline to the core-Wasm backend: resolve -> typecheck ->
+    borrow -> [Codegen.generate_module] (loader-aware). Mirrors
+    [pipeline_to_deno] but targets the backend whose cross-module constructor
+    linking (#138) the test below regression-locks. The Wasm path feeds the
+    original (un-flattened) [prog] to codegen and resolves imported decls
+    natively via [Codegen.gen_imports]. *)
+let pipeline_to_wasm (prog : Ast.program) : (Wasm.wasm_module, string) result =
+  let ld = loader () in
+  match Resolve.resolve_program_with_loader prog ld with
+  | Error (e, sp) ->
+    Error (Printf.sprintf "resolve: %s @ %s"
+             (Resolve.show_resolve_error e) (Span.show sp))
+  | Ok (rctx, itc) ->
+    (match
+       Typecheck.check_program
+         ~import_types:itc.Typecheck.name_types rctx.symbols prog
+     with
+     | Error e ->
+       Error (Printf.sprintf "typecheck: %s" (Typecheck.format_type_error e))
+     | Ok _ ->
+       (match Borrow.check_program rctx.symbols prog with
+        | Error e ->
+          Error (Printf.sprintf "borrow: %s" (Borrow.format_borrow_error e))
+        | Ok () ->
+          let optimized = Opt.fold_constants_program prog in
+          (match Codegen.generate_module ~loader:ld optimized with
+           | Error e ->
+             Error (Printf.sprintf "wasm-codegen: %s"
+                      (Codegen.show_codegen_error e))
+           | Ok m -> Ok m)))
+
 let parse_file_safe path =
   try Ok (Parse_driver.parse_file path)
   with
@@ -140,6 +171,61 @@ let integration_tests =
   [ Alcotest.test_case "string+option+collections together" `Quick
       test_multi_module_integration ]
 
+(* ---- #138: cross-module constructor linking on the core-Wasm backend ----
+
+   A consumer that imports prelude's Option/Result and APPLIES their
+   constructors must reach a runnable artifact. The front-end resolves
+   `Some`/`None`/`Ok`/`Err` through the module path, so `check` passes; before
+   the #138 codegen fix [Codegen.gen_imports] dropped the imported TYPE decls,
+   so the Wasm backend had no variant tag for `Some` and raised
+   [UnboundVariable "...Some"] at codegen. This feeds the imported-constructor
+   decl shape to all three [variant_tags] consumers in [Codegen]: construction
+   with an argument (`Some(x)`, `Ok`/`Err`), the zero-arg form (`None`), and
+   constructor patterns (`match`). It is the Wasm counterpart to the #137
+   Deno-path integration above. *)
+let imported_ctors_src = {|
+module xmod_ctors;
+use prelude::{ Option, Some, None, Result, Ok, Err };
+
+pub fn wrap(x: Int) -> Option<Int> { Some(x) }
+pub fn empty() -> Option<Int> { None }
+
+pub fn unwrap_or(o: Option<Int>, d: Int) -> Int {
+  match o {
+    Some(v) => v,
+    None => d,
+  }
+}
+
+pub fn divide(a: Int, b: Int) -> Result<Int, Int> {
+  if b == 0 { Err(0) } else { Ok(a / b) }
+}
+|}
+
+let test_imported_constructors_wasm () =
+  match Parse_driver.parse_string ~file:"<xmod_ctors>" imported_ctors_src with
+  | exception e ->
+    Alcotest.failf "imported-ctors parse raised: %s" (Printexc.to_string e)
+  | prog ->
+    (match pipeline_to_wasm prog with
+     | Ok m ->
+       let names =
+         List.map (fun (e : Wasm.export) -> e.Wasm.e_name) m.Wasm.exports in
+       List.iter
+         (fun fn ->
+            Alcotest.(check bool)
+              (Printf.sprintf "Wasm module exports %s" fn)
+              true (List.mem fn names))
+         [ "wrap"; "empty"; "unwrap_or"; "divide" ]
+     | Error m ->
+       Alcotest.failf
+         "imported prelude constructors must codegen to Wasm (#138): %s" m)
+
+let xmod_constructor_tests =
+  [ Alcotest.test_case "imported Option/Result constructors -> Wasm" `Quick
+      test_imported_constructors_wasm ]
+
 let tests =
   [ ("STAGE-A AOT smoke (#136)", aot_smoke_tests);
-    ("STAGE-A multi-module integration (#137)", integration_tests) ]
+    ("STAGE-A multi-module integration (#137)", integration_tests);
+    ("cross-module constructor linking, Wasm (#138)", xmod_constructor_tests) ]
