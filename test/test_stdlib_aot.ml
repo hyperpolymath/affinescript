@@ -225,7 +225,49 @@ let xmod_constructor_tests =
   [ Alcotest.test_case "imported Option/Result constructors -> Wasm" `Quick
       test_imported_constructors_wasm ]
 
+(* ---- Deno-ESM: no duplicate Option/Result constructor declaration --------
+
+   The Deno-ESM runtime preamble already declares Some/None/Ok/Err. A module
+   that *declares* `type Option`/`type Result` (e.g. stdlib/prelude.affine)
+   must not re-emit those consts, or the emitted module crashes under node
+   with `SyntaxError: Identifier 'Some' has already been declared`. The #136
+   AOT smoke never caught this (it only checks the output is non-empty, never
+   runs it), so this asserts the foundational constructor is declared exactly
+   once. Counterpart guard for the codegen-deno run-under-node CI step. *)
+let local_option_src = {|
+module localopt;
+pub type Option<T> = Some(T) | None
+pub fn wrap(x: Int) -> Option<Int> { Some(x) }
+pub fn empty() -> Option<Int> { None }
+|}
+
+let count_substr (needle : string) (hay : string) : int =
+  let re = Str.regexp_string needle in
+  let rec loop pos acc =
+    match Str.search_forward re hay pos with
+    | exception Not_found -> acc
+    | i -> loop (i + String.length needle) (acc + 1)
+  in
+  loop 0 0
+
+let test_deno_no_duplicate_option_ctor () =
+  match Parse_driver.parse_string ~file:"<localopt>" local_option_src with
+  | exception e ->
+    Alcotest.failf "local-option parse raised: %s" (Printexc.to_string e)
+  | prog ->
+    (match pipeline_to_deno prog with
+     | Error m -> Alcotest.failf "deno codegen failed: %s" m
+     | Ok js ->
+       Alcotest.(check int)
+         "`const Some` declared exactly once (preamble only, not re-emitted)"
+         1 (count_substr "const Some" js))
+
+let deno_dup_ctor_tests =
+  [ Alcotest.test_case "declared Option does not duplicate preamble ctor (Deno)"
+      `Quick test_deno_no_duplicate_option_ctor ]
+
 let tests =
   [ ("STAGE-A AOT smoke (#136)", aot_smoke_tests);
     ("STAGE-A multi-module integration (#137)", integration_tests);
-    ("cross-module constructor linking, Wasm (#138)", xmod_constructor_tests) ]
+    ("cross-module constructor linking, Wasm (#138)", xmod_constructor_tests);
+    ("Deno-ESM no duplicate Option/Result constructor", deno_dup_ctor_tests) ]
