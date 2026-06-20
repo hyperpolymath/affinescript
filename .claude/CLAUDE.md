@@ -230,24 +230,35 @@ not the log content. The fast paths for an agent are:
   `gh run view --log-failed <run-id>`; do not loop trying to scrape
   the UI.
 
-### Known-failing baseline checks
+### Known-failing baseline checks — updated 2026-06-20
 
-These checks currently fail on *every* PR for repo-wide reasons, not
-because of any individual PR's changes. Do not waste turns
-investigating them on a per-PR basis:
+Historically these failed on *every* PR for repo-wide reasons. Most are now
+resolved; kept here with current status so agents don't re-investigate:
 
-* `vscode-smoke` — npm 404 on `@hyperpolymath/affine-vscode` (the
-  in-editor harness depends on a not-yet-published npm package).
-* `migration-assistant` — was fixed by #342, but any branch created
-  from a base older than #342 will still see it red until rebased.
-* `governance / Language / package anti-pattern policy` — flags the
-  approved TypeScript exemptions (`affinescript-deno-test/*.ts`,
-  `editors/vscode/test/*.js`, etc., all documented in this file's
-  exemptions tables); the check has no allowlist for them.
-* The Hypatia security-scan bot comment — 143 findings; the bulk are
-  the same TypeScript exemption hits + pre-existing root files. A
-  real new finding will show as a *delta* in the count; otherwise
-  ignore.
+* `vscode-smoke` — **now passes**. Self-contained since the codegen-embed fix
+  (skips cleanly when the optional `@hyperpolymath/affine-vscode` npm package
+  is absent). The old "npm 404 fails every PR" no longer holds.
+* `migration-assistant` — **passes on current `main`**; only red on branches
+  based before #342. Rebase to clear.
+* `governance` — replaced (#603/#604) by a self-contained local gate
+  (`tools/ci/governance-standalone.sh`); the old estate
+  `Language / package anti-pattern policy` sub-check (from the
+  `hyperpolymath/standards` reusable) no longer runs.
+* The Hypatia security-scan bot *comment* — ~43–71 findings depending on scan
+  scope; the bulk are the documented TypeScript/JS exemptions + pre-existing
+  root files. A real new finding shows as a *delta in your changed files*;
+  otherwise ignore. (The Hypatia *check run* gates separately and is green.)
+
+**CI is now standalone and green on `main` (since #604 / `c7922cf`).** Two
+`startup_failure` classes bit `ci` / `governance` / `secret-scanner` for days
+(and `main` itself) — worth knowing so they aren't reintroduced:
+
+1. The repo's Actions "allowed actions" policy **rejects tag-pinned action
+   refs at run-creation** (a `startup_failure` with zero jobs). **Pin every
+   `uses:` to a full commit SHA** — `actions/foo@v4` will fail to start.
+2. A reusable-workflow *caller* that declares `concurrency:` on the same key
+   the reusable also declares is rejected at run-creation (BP008 — see
+   `.github/workflows/spark-theatre-gate.yml`).
 
 If a check from this list *changes status* on a PR (e.g.
 `vscode-smoke` suddenly passes, or Hypatia surfaces a new class of
