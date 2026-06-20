@@ -3339,7 +3339,65 @@ let gen_imports (loader : Module_loader.t) (imports : import_decl list) (ctx : c
            | _ -> None
          ) lm.mod_program.prog_decls)
   in
+  (* #138: register the constructor tags (and struct field layouts) of
+     imported PUBLIC types. [gen_imports] is the WASM backend's native
+     cross-module import path; it historically wired up only [TopFn]
+     (-> wasm import) and [TopConst] (-> global), silently dropping imported
+     TYPES. Codegen learns variant tags ONLY from [TopType] decls (see
+     [gen_decl]/[variant_tags]), and the WASM compile path feeds the original
+     (un-flattened) [prog] to [generate_module], so applying an imported
+     constructor such as [Some]/[None] from `use prelude::{Option, Some, None}`
+     raised [UnboundVariable] at codegen even though resolve + typecheck
+     passed. We reuse the local-type registration in [gen_decl] so imported
+     and local types share exactly one code path; the non-WASM backends get
+     the same decls inlined via [Module_loader.flatten_imports]. *)
+  let register_imported_types ctx =
+    (* Dedup imported types by name across all imports (a type may be reachable
+       through more than one path). Local [TopType]s — registered afterwards by
+       the [prog_decls] fold in [generate_module] — are prepended after these,
+       so they win on the first-match [List.assoc] lookup. *)
+    let seen = Hashtbl.create 8 in
+    let path_strs path = List.map (fun (id : ident) -> id.name) path in
+    List.fold_left (fun acc imp ->
+      let* ctx = acc in
+      let p = match imp with
+        | ImportSimple (path, _) | ImportList (path, _) | ImportGlob path ->
+          path_strs path
+      in
+      match Module_loader.load_module loader p with
+      | Error _ -> Ok ctx
+      | Ok lm ->
+        let public_types = List.filter_map (function
+          | TopType td when td.td_vis = Public || td.td_vis = PubCrate -> Some td
+          | _ -> None
+        ) lm.mod_program.prog_decls in
+        (* `use M::{..}` selects a type when the list names the type itself or
+           any of its constructors (so `use prelude::{Some}` works without also
+           naming `Option`); `use M` / `use M::*` bring all public types. *)
+        let selected = match imp with
+          | ImportGlob _ | ImportSimple _ -> public_types
+          | ImportList (_, items) ->
+            let wanted = List.map (fun (it : import_item) -> it.ii_name.name) items in
+            List.filter (fun td ->
+              List.mem td.td_name.name wanted ||
+              (match td.td_body with
+               | TyEnum variants ->
+                 List.exists (fun vd -> List.mem vd.vd_name.name wanted) variants
+               | _ -> false)
+            ) public_types
+        in
+        List.fold_left (fun acc td ->
+          let* ctx = acc in
+          if Hashtbl.mem seen td.td_name.name then Ok ctx
+          else begin
+            Hashtbl.add seen td.td_name.name ();
+            gen_decl ctx (TopType td)
+          end
+        ) (Ok ctx) selected
+    ) (Ok ctx) imports
+  in
   let entries = List.concat_map expand_import imports in
+  let* ctx = register_imported_types ctx in
   List.fold_left (fun acc e ->
     let* ctx = acc in
     process_one ctx e
