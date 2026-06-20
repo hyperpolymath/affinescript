@@ -7,12 +7,10 @@
 # OCaml >= 4.14, satisfied by the runner's apt OCaml (ocaml-system), with a
 # base-compiler fallback.
 #
-# NOTE on pins: first-party `actions/*` stay SHA-pinned (repo SHA-pinning
+# NOTE on pins: first-party `actions/*` are SHA-pinned (repo SHA-pinning
 # policy + Hypatia workflow_audit + the "allowed actions" policy that rejects
-# tag refs at run-creation). The SHAs are unchanged from the prior ci.yml;
-# only the fictional version *comments* (`# v6.0.3`, `# v7.0.1` — versions
-# that do not exist upstream) were corrected. checkout's SHA is the same one
-# scorecard-enforcer.yml labels `# v4`.
+# tag refs at run-creation). `actions/checkout` is v7.0.0 (`9c091bb…`, bumped
+# by Dependabot in #605); `setup-node` / `upload-artifact` remain v4.
 name: CI
 on:
   push:
@@ -36,7 +34,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v4
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - name: Set up OCaml toolchain (self-hosted; replaces ocaml/setup-ocaml)
         run: |
           sudo apt-get update
@@ -99,7 +97,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v4
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - name: Set up OCaml toolchain (self-hosted; replaces ocaml/setup-ocaml)
         run: |
           sudo apt-get update
@@ -128,7 +126,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v4
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - name: Set up OCaml toolchain (self-hosted; replaces ocaml/setup-ocaml)
         run: |
           sudo apt-get update
@@ -178,7 +176,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v4
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - name: Set up OCaml toolchain (self-hosted; replaces ocaml/setup-ocaml)
         run: |
           sudo apt-get update
@@ -238,7 +236,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v4
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v4
         with:
@@ -283,7 +281,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v4
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v4
         with:
