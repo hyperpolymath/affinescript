@@ -518,6 +518,26 @@ let async_transform_hook
   : (context -> expr -> (context * instr list) result option) ref
   = ref (fun _ _ -> None)
 
+(* #607: box a zero-argument variant as a heap [tag] so that EVERY variant
+   value is uniformly a heap pointer (args-variants are [tag][field...]).
+   Previously zero-arg variants were raw i32 tags while args-variants were
+   pointers, so a `match` over a value that can be either form (Option/Result)
+   mis-read one as the other — e.g. `match None { Some(v) => v, None => d }`
+   dereferenced the raw tag `1` as a pointer and returned garbage instead of
+   `d`. Leaves the variant pointer on the stack. The match side
+   (gen_pattern's zero-arg PatCon) dereferences `[ptr+0]` to read the tag, to
+   stay symmetric with this representation. *)
+let gen_box_zero_arg_variant (ctx : context) (tag : int) : (context * instr list) =
+  let (ctx1, alloc_code) = gen_heap_alloc ctx 4 in
+  let (ctx2, ptr) = alloc_local ctx1 "__zvariant_ptr" in
+  (ctx2,
+   alloc_code @ [
+     LocalTee ptr;
+     I32Const (Int32.of_int tag);
+     I32Store (2, 0);
+     LocalGet ptr;
+   ])
+
 (** Generate code for an expression, returning instructions and updated context *)
 let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
   match expr with
@@ -536,7 +556,10 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
            arm body of the form `Uninitialised => Initialised` fails with
            UnboundVariable even though the parser accepts it. *)
         begin match List.assoc_opt id.name ctx.variant_tags with
-          | Some tag -> Ok (ctx, [I32Const (Int32.of_int tag)])
+          | Some tag ->
+            (* #607: heap-box the zero-arg variant (uniform pointer rep). *)
+            let (ctx_box, box_code) = gen_box_zero_arg_variant ctx tag in
+            Ok (ctx_box, box_code)
           | None ->
             (* Top-level const bindings are stored in func_indices with a
                negative sentinel: actual global index = -(k+1). *)
@@ -2067,14 +2090,16 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
     (* For now, use variant name directly to find tag *)
     begin match List.assoc_opt variant_name.name ctx.variant_tags with
       | Some tag ->
-        (* Zero-argument variant: just return the tag as an integer *)
-        Ok (ctx, [I32Const (Int32.of_int tag)])
+        (* #607: heap-box the zero-arg variant (uniform pointer rep). *)
+        let (ctx_box, box_code) = gen_box_zero_arg_variant ctx tag in
+        Ok (ctx_box, box_code)
       | None ->
         (* Tag not found - assign a new sequential tag based on name *)
         (* This is a fallback for when type declarations aren't processed *)
         let tag = List.length ctx.variant_tags in
         let ctx' = { ctx with variant_tags = (variant_name.name, tag) :: ctx.variant_tags } in
-        Ok (ctx', [I32Const (Int32.of_int tag)])
+        let (ctx_box, box_code) = gen_box_zero_arg_variant ctx' tag in
+        Ok (ctx_box, box_code)
     end
 
   | ExprRowRestrict (base, _field) ->
@@ -2204,8 +2229,12 @@ and gen_pattern (ctx : context) (scrutinee_local : int) (pat : pattern)
       (* Zero-argument constructor: compare scrutinee to tag *)
       begin match List.assoc_opt con.name ctx.variant_tags with
         | Some tag ->
+          (* #607: zero-arg variants are heap-boxed as [tag]; deref [ptr+0] to
+             read the tag, symmetric with construction (and with the args path
+             below, which also loads the tag from offset 0). *)
           let test_code = [
-            LocalGet scrutinee_local;  (* Get scrutinee (should be tag) *)
+            LocalGet scrutinee_local;     (* variant pointer *)
+            I32Load (2, 0);               (* load tag from [ptr+0] *)
             I32Const (Int32.of_int tag);  (* Expected tag *)
             I32Eq  (* Compare *)
           ] in
@@ -2216,6 +2245,7 @@ and gen_pattern (ctx : context) (scrutinee_local : int) (pat : pattern)
           let ctx' = { ctx with variant_tags = (con.name, tag) :: ctx.variant_tags } in
           let test_code = [
             LocalGet scrutinee_local;
+            I32Load (2, 0);
             I32Const (Int32.of_int tag);
             I32Eq
           ] in
