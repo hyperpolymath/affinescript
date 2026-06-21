@@ -61,6 +61,31 @@ let pipeline_to_deno (prog : Ast.program) : (string, string) result =
            | Error e -> Error (Printf.sprintf "deno-codegen: %s" e)
            | Ok js -> Ok js)))
 
+(** Same pipeline, JS (non-ESM) backend. Shares the Some/None/Ok/Err runtime
+    preamble with Deno-ESM, so it has the same duplicate-constructor surface. *)
+let pipeline_to_js (prog : Ast.program) : (string, string) result =
+  let ld = loader () in
+  match Resolve.resolve_program_with_loader prog ld with
+  | Error (e, sp) ->
+    Error (Printf.sprintf "resolve: %s @ %s"
+             (Resolve.show_resolve_error e) (Span.show sp))
+  | Ok (rctx, itc) ->
+    (match
+       Typecheck.check_program
+         ~import_types:itc.Typecheck.name_types rctx.symbols prog
+     with
+     | Error e ->
+       Error (Printf.sprintf "typecheck: %s" (Typecheck.format_type_error e))
+     | Ok _ ->
+       (match Borrow.check_program rctx.symbols prog with
+        | Error e ->
+          Error (Printf.sprintf "borrow: %s" (Borrow.format_borrow_error e))
+        | Ok () ->
+          let flat = Module_loader.flatten_imports ld prog in
+          (match Js_codegen.codegen_js flat rctx.symbols with
+           | Error e -> Error (Printf.sprintf "js-codegen: %s" e)
+           | Ok js -> Ok js)))
+
 (** Full AOT pipeline to the core-Wasm backend: resolve -> typecheck ->
     borrow -> [Codegen.generate_module] (loader-aware). Mirrors
     [pipeline_to_deno] but targets the backend whose cross-module constructor
@@ -262,12 +287,26 @@ let test_deno_no_duplicate_option_ctor () =
          "`const Some` declared exactly once (preamble only, not re-emitted)"
          1 (count_substr "const Some" js))
 
-let deno_dup_ctor_tests =
+let test_js_no_duplicate_option_ctor () =
+  match Parse_driver.parse_string ~file:"<localopt>" local_option_src with
+  | exception e ->
+    Alcotest.failf "local-option parse raised: %s" (Printexc.to_string e)
+  | prog ->
+    (match pipeline_to_js prog with
+     | Error m -> Alcotest.failf "js codegen failed: %s" m
+     | Ok js ->
+       Alcotest.(check int)
+         "`const Some` declared exactly once (preamble only, not re-emitted)"
+         1 (count_substr "const Some" js))
+
+let dup_ctor_tests =
   [ Alcotest.test_case "declared Option does not duplicate preamble ctor (Deno)"
-      `Quick test_deno_no_duplicate_option_ctor ]
+      `Quick test_deno_no_duplicate_option_ctor;
+    Alcotest.test_case "declared Option does not duplicate preamble ctor (JS)"
+      `Quick test_js_no_duplicate_option_ctor ]
 
 let tests =
   [ ("STAGE-A AOT smoke (#136)", aot_smoke_tests);
     ("STAGE-A multi-module integration (#137)", integration_tests);
     ("cross-module constructor linking, Wasm (#138)", xmod_constructor_tests);
-    ("Deno-ESM no duplicate Option/Result constructor", deno_dup_ctor_tests) ]
+    ("Deno-ESM / JS no duplicate Option/Result constructor", dup_ctor_tests) ]
