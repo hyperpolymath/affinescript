@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR AGPL-3.0-or-later
+// SPDX-License-Identifier: MIT OR MPL-2.0
 // In-editor smoke harness driver for #139.
 //
 // Downloads a pinned VS Code, launches it with this extension folder loaded

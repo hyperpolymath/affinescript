@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR AGPL-3.0-or-later
+// SPDX-License-Identifier: MIT OR MPL-2.0
 // Mocha entry point that the extension host invokes via
 // --extensionTestsPath. Discovers *.test.js files in this directory.
 
