@@ -9,7 +9,7 @@
 | File extension | `.affine` (plus face dialects) | `.eph` |
 | Build | `dune-project` at root | `Cargo.toml` at root |
 | Type checker | `lib/borrow.ml` (OCaml) | `ephapax-linear/src/{linear,affine}.rs` (Rust) |
-| Proofs | None mechanized (programme filed: #513–#521, unstarted); soundness arguments live in `lib/borrow.ml` + `docs/CAPABILITY-MATRIX.adoc`. CORE-01/#177 CLOSED 2026-05-30; known hole #554; Polonius residual #553 | `formal/Semantics.v` (Coq), `src/abi/Ephapax/…` (Idris2) |
+| Proofs | None mechanized (programme filed: #513–#521, unstarted); soundness arguments live in `lib/borrow.ml` + `docs/CAPABILITY-MATRIX.adoc`; soundness-hole status is the test-anchored `docs/SOUNDNESS.adoc` (CORE-01/#177 CLOSED 2026-05-30; #554 FIXED; Polonius #553 test-only/unwired) | `formal/Semantics.v` (Coq), `src/abi/Ephapax/…` (Idris2) |
 
 **The trap.** Ephapax is internally dyadic — it contains `ephapax-linear` and `ephapax-affine` *sublanguages* inside one Rust crate. **The `ephapax-affine` sublanguage is NOT AffineScript.** The word `affine` is shared because both type systems happen to be substructural-logic-family — that's a logic-family fact, not a project relationship.
 
@@ -208,22 +208,21 @@ Action (gitbot): Never use GitHub's "close issue" API directly; only close via P
 Practical guidance for agents (Claude / other) operating in this repo,
 captured from parallel-bot session experience. Read once; saves turns.
 
-### Known soundness items (2026-06-11 survey — read before claiming soundness)
+### Known soundness items — canonical in docs/SOUNDNESS.adoc
 
-Execution-verified, open, and load-bearing for any "is this sound?" answer:
+Soundness-hole status lives in *one* test-anchored place, `docs/SOUNDNESS.adoc`,
+and is enforced by `tools/check-soundness-ledger.sh`. **Do not restate per-issue
+status here** — a dated survey block in this file is exactly what went stale (it
+listed #554/#555/#556/#558/#559 as open long after they were fixed/fenced/removed,
+which produced a stale "is it sound?" answer). Ground-truth from
+`docs/SOUNDNESS.adoc` and the running compiler before claiming anything.
 
-* **#554** — the borrow checker ACCEPTS use-after-move through a
-  callee-returned borrow (`let r = pick(a); consume(a); *r` passes).
-  Do not state "the soundness gap closed with CORE-01" — #177 closed,
-  this hole remains. Polonius residual: #553 (ADR-022, 0% implemented).
-* **#555** — `handle` is silently mis-lowered on core-WASM / JS-text /
-  Deno-ESM (arms dropped; interpreter 42 vs wasm 41 on an effects-free
-  return-arm program). Interpreter handler dispatch is shallow
-  single-shot tail-resume only. Zero runtime handler tests exist.
-* **#556** — Async CPS table-miss silently lowers synchronously.
-* **#558** — refinement-type predicates parse but are silently not
-  enforced. **#559** — trait coherence not checked.
-* v1 release-readiness ledger (tiers + estate cross-refs): **#563**.
+Convenience snapshot (may lag — `docs/SOUNDNESS.adoc` wins): as of 2026-06,
+#554 fixed, #555 fenced loud on every compiled backend (one pinned interpreter
+non-tail-resume residual), #556 fixed, #558 removed, #559 fixed for concrete
+overlaps, #553 Polonius test-only/unwired. Closing these implementation holes is
+not the same as proving soundness (metatheory still prose — `docs/PROOF-NEEDS.adoc`).
+v1 release-readiness ledger: **#563**.
 
 ### CI signal reliability
 

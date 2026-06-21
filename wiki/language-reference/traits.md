@@ -1,15 +1,17 @@
 # Traits
 
 > **⚠️ Current state: `partial`.**
-> Registry, `TopTrait`/`TopImpl`, unification-based `find_impl`, and
-> impl-satisfies-trait are wired into the typechecker. **Missing today:**
-> associated-type substitution in method bodies, where-clause
-> supertraits, coherence checking. The surface and runtime guarantees
-> described below may overstate current enforcement — cross-check with
+> Registry, `TopTrait`/`TopImpl`, unification-based `find_impl`,
+> impl-satisfies-trait, and **coherence checking** (issue #559 — overlapping
+> impls whose self types unify are rejected) are wired into the typechecker.
+> **Missing today:** associated-type substitution in method bodies,
+> where-clause supertraits, and generic-subsumption overlap (#559 follow-up).
+> The surface and runtime guarantees described below may overstate current
+> enforcement — cross-check with
 > [`docs/CAPABILITY-MATRIX.adoc`](../../docs/CAPABILITY-MATRIX.adoc)
-> row "Traits", and see CORE-04 in
-> [`docs/TECH-DEBT.adoc`](../../docs/TECH-DEBT.adoc) for the remaining
-> work.
+> row "Traits", the soundness ledger
+> [`docs/SOUNDNESS.adoc`](../../docs/SOUNDNESS.adoc) (#559 row), and CORE-04 in
+> [`docs/TECH-DEBT.adoc`](../../docs/TECH-DEBT.adoc) for the remaining work.
 
 Traits define shared behavior that types can implement. They enable polymorphism and code reuse.
 

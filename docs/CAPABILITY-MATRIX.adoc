@@ -82,18 +82,17 @@ estate re-audit + ReScript residue (#229) follow separately.
 `Never`/bottom, block divergence. Enforced on every check/compile/eval path.
 
 |Effect system |partial |Pure/impure separation + effect polymorphism
-enforced. Handlers: interpreter dispatch is *shallow single-shot
-tail-resume only* (`resume(v)` returns `v` as the whole handle result,
-discarding post-perform code — in-code admission at `interp.ml:248-263`);
-WasmGC dispatch is `UnsupportedFeature` (loud); core-WASM, JS-text and
-Deno-ESM *silently drop handler arms* — execution-verified divergence on
-an effects-free return-arm program, tracked as #555 (decision: back-port
-the WasmGC loud failure). The #225 CPS line closed the *async slice*
-only; its table-miss fallback silently lowers synchronously (#556).
+enforced. Handlers: *every compiled backend* (core-WASM, WasmGC, Deno-ESM,
+JS-text, C) now *fails loud* (`UnsupportedFeature`) instead of silently
+dropping handler arms — the execution-verified return-arm divergence (#555)
+is closed. Interpreter dispatch is shallow single-shot tail-resume; multi-shot
+now fails loud; the one non-tail single-shot residual is pinned by a test. The
+#225 CPS async table-miss *fails loud*, not silently synchronous (#556 closed).
+Full status + test anchors: link:SOUNDNESS.adoc[SOUNDNESS.adoc].
 
 |Borrow checker |*partial — full CORE-01 slice stack landed, #177
-CLOSED 2026-05-30; one known soundness hole (#554); Polonius residual
-(#553)* |
+CLOSED 2026-05-30; the #554 soundness hole is now FIXED; Polonius
+residual (#553) is M1–M3, test-only/unwired — see link:SOUNDNESS.adoc[SOUNDNESS.adoc]* |
 Place/borrow/move infra + use-after-move, conflicting-borrow,
 move-while-borrowed, lambda-capture. *CORE-01 part 1* (PR #240, Refs #177,
 gate 263/263): borrow-graph validation wired — `BorrowOutlivesOwner` now
@@ -129,13 +128,12 @@ true Polonius origin/region variables on `TyRef`/`TyMut` with subset
 constraints + datalog-style loan-live-at-point solver — ADR-022,
 tracked as #553 (design ratified in-thread, 0% implemented; M1 sketch
 at branch `core-01/polonius-m1-sketch`); quantity-checker tightening
-for captured linears. *Known soundness hole (execution-verified):*
-use-after-move through a *callee-returned borrow* passes the full
-pipeline (#554) — call-arg borrows are released at call end and call
-results never register as borrow sources, so `let r = pick(a);
-consume(a); *r` is accepted. This is the loan-propagation class
-Polonius (#553) resolves; until then the checker is unsound on this
-shape, not merely imprecise.
+for captured linears. *Former soundness hole (#554) — now FIXED:*
+use-after-move through a *callee-returned borrow* (`let r = pick(a);
+consume(a); *r`) is now rejected as `MoveWhileBorrowed`, with hardening +
+anti-over-rejection fixtures. The per-issue, test-anchored status (and the
+Polonius #553 extractor's test-only standing) lives in
+link:SOUNDNESS.adoc[SOUNDNESS.adoc].
 
 |Quantity / affine types |*enforced* |QTT semiring in `lib/quantity.ml`,
 invoked inside the standard CLI pipeline. `@linear`/`@erased`/`@unrestricted`
@@ -146,11 +144,16 @@ Linear arrows enforced.
 `resume`. `let mut` mutation path has known baseline gaps.
 
 |Traits |partial |Registry, `TopTrait`/`TopImpl`, unification-based
-`find_impl`, impl-satisfies-trait. Missing: associated-type substitution in
-method bodies, where-clause supertraits, coherence checking.
+`find_impl`, impl-satisfies-trait, and *coherence checking* (#559 — overlapping
+impls whose self types unify are rejected; wired in `typecheck.ml`
+`check_all_coherence`). Missing: associated-type substitution in method bodies,
+where-clause supertraits, generic-subsumption overlap (#559 follow-up). See
+link:SOUNDNESS.adoc[SOUNDNESS.adoc].
 
-|Dependent / refinement types |parse-only |`TRefined` parses; predicates do
-not reduce; no SMT/decision procedure.
+|Dependent / refinement types |*removed (v1)* |Withdrawn 2026-04-10 rather than
+shipped parse-only-and-unenforced (#558): no `TRefined` node remains,
+`assume(...)` is rejected at parse, `T where (P)` is a parse error — you cannot
+write an unenforced predicate. See link:SOUNDNESS.adoc[SOUNDNESS.adoc].
 
 |Row polymorphism |partial |Records + effect rows in typecheck/unify; not
 fully exercised end-to-end.
@@ -224,12 +227,16 @@ A few primitives remain `extern` builtins.
 
 == What AffineScript is NOT (anti-over-claim)
 
-* Not "production-ready". Alpha. CORE-01 (#177) closed 2026-05-30, but the
-  borrow checker has one known, execution-verified soundness hole —
-  use-after-move through a callee-returned borrow (#554; Polonius residual
-  #553) — and effect handlers are silently mis-lowered on three backends
-  (#555) with a silently-synchronous async fallback (#556). The v1
-  release-readiness ledger is #563.
+* Not "production-ready". Alpha. CORE-01 (#177) closed 2026-05-30. The
+  base-language soundness holes tracked through 2026-06 are now fixed, fenced,
+  or removed — #554 (use-after-move via a callee-returned borrow) is rejected,
+  #555 (effect handlers) fail loud on every compiled backend, #556 (async
+  fallback) fails loud, #558 (refinements) were removed — with one pinned
+  interpreter residual. The per-issue, test-anchored ledger is
+  link:SOUNDNESS.adoc[SOUNDNESS.adoc]. Closing these *implementation* holes is
+  not the same as *proving* soundness: the metatheory remains prose
+  (link:PROOF-NEEDS.adoc[PROOF-NEEDS.adoc]). The v1 release-readiness ledger
+  is #563.
 * Not "N production backends". One reference target (WASM), two solid JS-host
   targets (Deno-ESM, Node-CJS), the rest experimental.
 * typed-wasm is *not* an AffineScript subsystem. It is a separate,
@@ -252,6 +259,9 @@ any capability change; `STATE.a2ml` mirrors, it does not lead.
 
 == See also
 
+* link:SOUNDNESS.adoc[SOUNDNESS.adoc] — the single source of truth for
+  soundness-hole status (test-anchored). This matrix owns *feature readiness*;
+  the ledger owns *soundness holes*.
 * link:ECOSYSTEM.adoc[ECOSYSTEM.adoc] — the spine, the real AS↔typed-wasm
   contract, the satellite registry, the Stage A–E definitions, INT-01..12.
 * link:TECH-DEBT.adoc[TECH-DEBT.adoc] — the coordination ledger.

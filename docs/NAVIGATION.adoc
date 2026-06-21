@@ -72,7 +72,9 @@ This guide helps you navigate the AffineScript repository structure.
 
 **Guides:**
 
-* link:CAPABILITY-MATRIX.adoc[Capability Matrix] - **Live** per-component readiness (authoritative)
+* link:CAPABILITY-MATRIX.adoc[Capability Matrix] - **Live** per-component readiness (authoritative for feature readiness)
+* link:SOUNDNESS.adoc[Soundness Ledger] - **Live** test-anchored soundness-hole status (authoritative for "is it sound?"; the matrix links here). *Start here for soundness questions.*
+* link:PROOF-NEEDS.adoc[Proof-Needs Inventory] - what must be *proven* (mostly unmechanised); distinct from the soundness ledger above
 * link:guides/TESTING-REPORT.adoc[Testing Report] - *RETIRED* (redirects to standards/TESTING.adoc + CAPABILITY-MATRIX.adoc)
 
 == Build System
@@ -187,6 +189,7 @@ affinescript/
 │   ├── TECH-DEBT.adoc             # Coordination ledger (CORE/STDLIB/INT/DOC)
 │   ├── ECOSYSTEM.adoc             # Spine + AS↔typed-wasm contract
 │   ├── KNOWN-ISSUES.md            # Tracked issues backlog
+│   ├── SOUNDNESS.adoc            # Soundness-hole status — test-anchored SSOT (start here)
 │   ├── PROOF-NEEDS.adoc           # Proof obligations inventory (P-/F-/K- series)
 │   ├── EXPLAINME.adoc             # Receipts backing README claims
 │   ├── architecture/              # Compiler / backend internals

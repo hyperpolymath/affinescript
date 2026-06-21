@@ -259,9 +259,11 @@ merged (#241). Post-#228 estate re-audit DONE — true #229 scope is
 authoritative ledger + language-grounded canonical map + ESC-01..03
 escalations: link:RESCRIPT-ELIMINATION.adoc[RESCRIPT-ELIMINATION.adoc]
 |CORE-04 |Traits: associated-type substitution, where-clause supertraits,
-coherence checking. |S2 |partial
-|CORE-05 |Dependent/refinement types: predicate reduction / SMT. |S3
-|parse-only
+generic-subsumption overlap. (Concrete-overlap coherence DONE — #559, see
+link:SOUNDNESS.adoc[SOUNDNESS.adoc].) |S2 |partial
+|CORE-05 |Dependent/refinement types: *removed in v1* (#558) — withdrawn, not
+shipped unenforced. See link:SOUNDNESS.adoc[SOUNDNESS.adoc]. |S3
+|removed
 |===
 
 == Section C — STDLIB

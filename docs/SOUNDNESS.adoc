@@ -1,0 +1,222 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2024-2026 hyperpolymath (Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>)
+= AffineScript Soundness Ledger
+:toc: macro
+:toclevels: 3
+:icons: font
+// Freshness stamp — update both when you re-ground-truth (see "Keeping this honest").
+:ground-truth-sha: d55e22c
+:ground-truth-date: 2026-06-21
+
+[IMPORTANT]
+====
+*This document is the single source of truth for the status of AffineScript's
+known soundness holes.* If any other document — `README.adoc`,
+`docs/CAPABILITY-MATRIX.adoc`, `docs/PROOF-NEEDS.adoc`, `.claude/CLAUDE.md`, a
+dated `STATE-*.adoc` snapshot, the wiki — disagrees with this ledger about
+whether a hole is open, fixed, fenced, or removed, *this ledger wins* and the
+other document is drift to be corrected.
+
+It is *test-anchored*: every row names the fixture or test that proves its
+claim, and `tools/check-soundness-ledger.sh` (wired into `just check` + CI)
+fails the build if any named fixture goes missing or if a status surface stops
+pointing here. That binding is what stops this ledger going stale silently:
+you cannot change a soundness behaviour without changing a test this ledger is
+nailed to.
+====
+
+Ground-truthed at `{ground-truth-sha}` on {ground-truth-date} by source
+inspection at the cited `file:line` anchors, with `dune build` and
+`dune runtest` green. The status words below are deliberate; read them
+precisely.
+
+toc::[]
+
+== Why this file exists
+
+Soundness status used to live in ~6 places that drifted independently — the
+capability matrix, a survey block in `.claude/CLAUDE.md`, dated `STATE-*`
+snapshots, session handoffs, the wiki. A reader (human or agent) who happened
+to open the stale one got a stale answer, in the *dangerous* direction:
+"this hole is still open" long after it was fixed, or — worse in principle —
+the reverse. This file is the structural fix:
+
+. *One surface.* Soundness-hole status is stated here and nowhere else. Other
+  docs may *summarise* and then link here; they may not maintain a competing
+  per-issue ledger. The gate enforces the back-link.
+. *Anchored to tests.* Each claim cites the executable artefact that proves it.
+  Prose detached from tests is what rots; prose nailed to a fixture cannot
+  drift without the fixture (and the gate) noticing.
+. *Stamped.* The freshness attributes above record the commit and date this was
+  last reconciled against the running compiler.
+
+== Status vocabulary
+
+[cols="1,4"]
+|===
+|Term |Meaning
+
+|*fixed*
+|The previously-unsound behaviour is gone. The program that used to be wrongly
+ accepted is now rejected, or the wrong result is now the right one.
+
+|*loud-fail*
+|The construct is not implementable on this path, but it *errors at
+ compile-time or run-time* — it never silently emits a plausible-wrong value.
+ "Fail loud, never silent" is the governing rule.
+
+|*removed*
+|The feature whose surface could not be honestly enforced was withdrawn from
+ the language, so there is no unenforced surface left to mislead anyone.
+
+|*residual (pinned)*
+|A known-incorrect behaviour still exists, but an executable test pins it, so
+ it cannot regress unnoticed and *will* alarm (the test flips to failing) the
+ day it is fixed.
+
+|*open (tracked)*
+|A known gap with no fix yet, tracked by an issue. Stated here so it cannot be
+ mistaken for a guarantee.
+
+|*partial*
+|Implemented and load-bearing for common cases; the named residual is the gap.
+|===
+
+== The ledger
+
+[cols="1,3,1,2",options="header"]
+|===
+|Issue |Soundness claim (current behaviour) |Status |Proven in code
+
+|*#554* / #177
+|Use-after-move through a *callee-returned borrow* is rejected.
+ `let r = pick(a); consume(a); *r` no longer type-checks — it is reported as
+ `MoveWhileBorrowed`. CORE-01 (#177) closed; this was its last execution-verified
+ hole.
+|*fixed*
+|`test/e2e/fixtures/borrow_callee_returned_borrow_uam.affine` (+ the
+ `borrow_callee_returned_borrow_{aggregate,interproc,match_arm,return_stmt}.affine`
+ hardening variants and `borrow_callee_value_return_ok.affine` anti-over-rejection)
+
+|*#555* (codegen)
+|`handle` / `resume` on *every compiled backend* (core-WASM, WasmGC, Deno-ESM,
+ JS-text, C) fails loud with `UnsupportedFeature` instead of silently dropping
+ handler arms. The old failure — compile the body, drop the arms, lower
+ `resume` as a pass-through (42 in the interpreter vs 41 in wasm) — is gone.
+|*loud-fail*
+|`test/e2e/fixtures/handle_return_arm.affine`; `lib/codegen.ml` `ExprHandle` /
+ `ExprResume` arms; `lib/codegen_deno.ml`
+
+|*#555* (interp, multi-shot)
+|Calling `resume` more than once in a handler fails loud (it cannot be
+ expressed without reified continuations, and previously returned a
+ silently-wrong value).
+|*loud-fail*
+|`test/e2e/fixtures/handle_resume_multishot.affine`; `lib/interp.ml` resume
+ invocation counter
+
+|*#555* (interp, non-tail single-shot)
+|`let x = op(); x + 100` resuming to `5` returns `5`, not `105`: the shallow
+ tree-walking continuation has already unwound the bind chain. This is the one
+ genuinely-still-silent shape, on the *interpreter* path only. It needs a CPS
+ rewrite of `eval` (blocked: OCaml 4.14 has no native effect handlers and the
+ interpreter must stay `js_of_ocaml`-compatible — owner-steer item).
+|*residual (pinned)*
+|`test/e2e/fixtures/handle_resume_nontail.affine` +
+ `test_resume_nontail_known_shallow` (asserts the wrong-but-known value; flips
+ to failing the day delimited continuations land)
+
+|*#556*
+|Async CPS table-miss fails loud instead of silently lowering synchronously.
+|*loud-fail*
+|`test/e2e/fixtures/async_sync_fallback.affine` (+ `async_no_boundary.affine`,
+ `async_passthrough_thenable.affine`)
+
+|*#558*
+|Refinement / dependent types were *removed* in v1 (2026-04-10). There is no
+ `TRefined` node for the checker to silently ignore; `assume(...)` is rejected
+ at parse and `T where (P)` is a parse error. You cannot write an unenforced
+ predicate.
+|*removed*
+|`test/e2e/fixtures/assume_rejected.affine` + `test_parse_assume_rejected`
+
+|*#559*
+|Overlapping trait impls whose self types unify are rejected as a coherence
+ violation, before the check pass, so an ambiguous instance base is reported up
+ front.
+|*fixed*
+|`lib/typecheck.ml` `check_all_coherence` call; `lib/trait.ml`
+ `check_coherence` / `check_all_coherence`; the Trait-Coherence suite in
+ `test/test_e2e.ml`
+
+|*#559* (generic subsumption)
+|Generic-subsumption overlap — `impl[T] Greet for Box[T]` overlapping
+ `impl Greet for Box[Int]` — is *not yet* detected; generic-impl registration
+ must be fixed first. Concrete overlaps (above) are caught.
+|*open (tracked)*
+|Documented in the coherence test block in `test/test_e2e.ml`
+
+|*#553* (Polonius)
+|The Polonius extractor (ADR-022) is implemented through M3 but is
+ *TEST-ONLY / unwired* — it gates no production verdict. The lexical
+ `lib/borrow.ml` is the production checker; the extractor is diffed against it
+ over the fixture corpus with a shrinking allowlist (7 known divergences).
+|*partial*
+|`test/test_borrow_polonius.ml` (parallel-run diff gate + `known_divergences`)
+|===
+
+== Still open — read before claiming "sound"
+
+The implementation holes above are closed, but honesty requires naming what is
+*not* a guarantee:
+
+* *Interpreter non-tail resume* (#555 residual, pinned) — see the ledger row.
+* *Stub backends drop `return`.* The Lean and Why3 *experimental* code
+  generators drop `return` statements wholesale — a broader codegen-honesty gap
+  than #555, flagged but not yet fenced. Treat all non-reference backends as
+  experimental (see `docs/CAPABILITY-MATRIX.adoc`).
+* *Generic-subsumption coherence* (#559 follow-up) — see the ledger row.
+
+== Closed holes are not proofs
+
+Closing an *implementation* hole is not the same as having *metatheory*. The
+soundness *arguments* for the holes above (`docs/academic/proofs/*.adoc`, the
+comments in `lib/borrow.ml`) remain `prose`, and the `Solo` core fragment's
+`progress` / `preservation` are still `?todo`. Mechanisation has *started* — a
+Wave-0 codegen-preservation seed (`formal/K1_CodegenPreservation.v`, axiom-free
+Coq/Rocq, minimal nat/bool fragment) landed via #620 — but it does not yet cover
+any hole in this ledger. The proof obligations, their rigour tiers, and their
+(mostly `prose` / `absent`) status are catalogued in `docs/PROOF-NEEDS.adoc`
+(umbrella issue #513). The one-line distinction:
+
+[quote]
+The compiler now fails loud on these shapes and the residuals are pinned by
+tests — but the soundness arguments are still paper proofs, not machine-checked.
+
+The v1 release-readiness ledger is issue #563.
+
+== Keeping this honest (how to update)
+
+. *Ground-truth by running the tool.* Reproduce the behaviour against the
+  built compiler (`dune build && dune runtest`, `dune exec affinescript -- …`).
+  Never edit a status here from another doc — that is how drift starts.
+. *Change the row, change the anchor.* If you fix or break a hole, update the
+  status word *and* its anchoring fixture/test in the same change. The gate
+  (`tools/check-soundness-ledger.sh`) fails if a named
+  `test/e2e/fixtures/*.affine` anchor no longer exists.
+. *Bump the stamp.* Update `:ground-truth-sha:` and `:ground-truth-date:` above
+  to the commit you verified against.
+. *Do not fork the ledger.* If another doc needs to mention soundness status,
+  it links here; it does not copy the table. The gate checks the back-links
+  from `README.adoc`, `docs/CAPABILITY-MATRIX.adoc`, `docs/PROOF-NEEDS.adoc`,
+  `docs/NAVIGATION.adoc`, and `.claude/CLAUDE.md`.
+
+== See also
+
+* link:CAPABILITY-MATRIX.adoc[CAPABILITY-MATRIX.adoc] — authoritative *feature
+  readiness* (this ledger owns *soundness-hole* status; the matrix links here).
+* link:PROOF-NEEDS.adoc[PROOF-NEEDS.adoc] — what must be *proven*, at what
+  rigour, with what (mostly unmechanised) status.
+* link:reports/HANDOFF-2026-06-17-soundness.adoc[reports/HANDOFF-2026-06-17-soundness.adoc],
+  link:reports/TIDY-UP-LEDGER-2026-06-16.adoc[reports/TIDY-UP-LEDGER-2026-06-16.adoc]
+  — the dated session reports this ledger consolidates (historical inputs).

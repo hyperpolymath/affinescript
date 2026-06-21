@@ -89,6 +89,14 @@ jobs:
         # "production-ready" / stdlib-% phrase beyond tools/doc-overclaims.allow).
         # See tools/check-doc-truthing.sh.
         run: ./tools/check-doc-truthing.sh
+      - name: Soundness-ledger anti-staleness gate
+        # docs/SOUNDNESS.adoc is the single source of truth for soundness-hole
+        # status. This gate fails if the ledger loses its primacy declaration or
+        # freshness stamp, if any test fixture it names as an anchor goes
+        # missing, or if a status surface (README / CAPABILITY-MATRIX /
+        # PROOF-NEEDS / NAVIGATION / CLAUDE.md) stops linking back to it.
+        # See tools/check-soundness-ledger.sh.
+        run: ./tools/check-soundness-ledger.sh
       - name: Check formatting
         run: opam exec -- dune build @fmt
   lint:

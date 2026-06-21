@@ -86,14 +86,18 @@ defect but **none has a stated proof obligation** whose discharge would have
 caught it or would prevent regression — that linkage is itself a gap (see
 <<missed>>).
 
-* **#554** — borrow checker *accepts* use-after-move through a callee-returned
-  borrow (`let r = pick(a); consume(a); *r` typechecks). Polonius residual: #553
-  (ADR-022, 0% implemented). CORE-01/#177 closed 2026-05-30 did **not** close this.
-* **#555** — `handle` is mis-lowered on core-WASM / JS-text / Deno-ESM (effect
-  arms dropped); interpreter dispatch is shallow single-shot tail-resume only.
-* **#556** — async CPS table-miss silently lowers synchronously.
-* **#558** — refinement-type predicates parse but are silently *not enforced*.
-* **#559** — trait coherence is *not checked*.
+These were the execution-verified *implementation* holes. As of 2026-06 their
+implementation status is closed and now tracked, test-anchored, in
+link:SOUNDNESS.adoc[docs/SOUNDNESS.adoc] — #554 *fixed* (UAM via callee-returned
+borrow rejected), #555 *fenced loud* on every compiled backend (one pinned
+interpreter residual), #556 *fixed*, #558 *removed* (refinements withdrawn, not
+left unenforced), #559 *fixed* for concrete overlaps, #553 Polonius M1–M3 but
+test-only/unwired. **That does not discharge the proof obligations below.**
+Closing a hole means the implementation no longer exhibits the counterexample;
+it does *not* mean the property is mechanically proven. The obligations these
+holes motivate — most pointedly that the borrow proof must now be *stated to
+reject the (now-fixed) #554 program* as a negative test — remain `prose` or
+`absent`. Implementation truth: SOUNDNESS.adoc. Proof truth: this file.
 
 v1 readiness ledger: #563. Proof programme umbrella: #513.
 ====
@@ -159,15 +163,19 @@ obligations. They are the "we might have missed" half of the brief.
 | #513 must-have 8
 
 | P-9
-| **Refinement enforcement = proof obligation.** #558 is simultaneously a bug
-  *and* the missing obligation "refinement predicates are checked." Drawing that
-  equivalence is itself the catalogue gap.
-| L | `absent`
+| **Refinement enforcement = proof obligation.** #558 was simultaneously a bug
+  *and* the missing obligation "refinement predicates are checked." *Withdrawn:*
+  the refinement/dependent surface was *removed* in v1, so there is no unenforced
+  predicate left to prove about (see link:SOUNDNESS.adoc[SOUNDNESS.adoc]).
+  Retained for history; reopen only if refinements return.
+| L | `absent` (withdrawn)
 | #558
 
 | P-10
-| **Trait coherence.** At most one instance resolves per (trait, type); #559 is
-  the open counterexample.
+| **Trait coherence.** At most one instance resolves per (trait, type). The
+  *implementation* now rejects concrete overlaps (#559, see
+  link:SOUNDNESS.adoc[SOUNDNESS.adoc]); generic-subsumption overlap is the open
+  follow-up. The *proof* that resolution is unique remains unwritten.
 | L | `absent`
 | #559; #513 high-priority
 |===
