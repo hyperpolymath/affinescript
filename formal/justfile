@@ -2,15 +2,23 @@
 # Coq/Rocq proof checks for the AffineScript `formal/` track.
 # (Mustfile/justfile per estate policy — no Makefiles.)
 
-# Type-check every proof and assert it closes under no axioms.
+# Type-check every proof in dependency order (F-1 Requires K-1) and assert
+# none depends on an axiom or Admitted.
 check:
     #!/usr/bin/env bash
     set -euo pipefail
-    out="$(coqc K1_CodegenPreservation.v)"
-    printf '%s\n' "$out"
-    grep -q "Closed under the global context" <<<"$out" \
-      || { echo "::error:: K-1 proof depends on an axiom / Admitted"; exit 1; }
-    echo "OK: K-1 fragment mechanized, no axioms."
+    all=""
+    for f in K1_CodegenPreservation K1Let_CodegenPreservation \
+             F1_TransformerPreservation Siblings_Stated; do
+      echo "== coqc $f.v =="
+      o="$(coqc -Q . ASFormal "$f.v")"
+      printf '%s\n' "$o"
+      all+="$o"$'\n'
+    done
+    if printf '%s' "$all" | grep -q "Axioms:"; then
+      echo "::error:: a proof depends on an axiom / Admitted"; exit 1
+    fi
+    echo "OK: K-1, K1Let, F-1 mechanized (no axioms); P-2/P-3/F-3/F-4 stated."
 
 # Remove Coq build artifacts.
 clean:

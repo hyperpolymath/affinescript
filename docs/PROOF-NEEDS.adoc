@@ -68,9 +68,11 @@ than the prose corpus suggests:
   `TypeSafety.v` is example lemmas about list length, not AffineScript. Not
   core-metatheory.
 * **`formal/`** — the directory #513 names as the mechanized-proof target now
-  **exists** (Coq/Rocq 8.18). It holds the Wave-0 **K-1 seed**
-  (`formal/K1_CodegenPreservation.v`) — a complete, axiom-free
-  codegen-preservation proof for a minimal nat/bool fragment (see <<outstanding>>).
+  **exists** (Coq/Rocq 8.18), axiom-free throughout: `K1_CodegenPreservation.v`
+  (K-1, minimal fragment) + `K1Let_CodegenPreservation.v` (K-1 grown with
+  variables/`let`/environment) + `F1_TransformerPreservation.v` (F-1, composing
+  on K-1) are mechanized; `Siblings_Stated.v` states P-2/P-3/F-3/F-4 as
+  parametric propositions (see <<outstanding>>, <<faces>>).
 * **Research tracks** (not core soundness): `docs/academic/tropical-session-types/`
   (Lean), `proposals/echo-types/EchoEncodingFaithfulness.agda`,
   `proposals/idaptik/migrated/**/*Boundary.agda` (echo-types loss-with-residue,
@@ -222,8 +224,8 @@ cover them.
   well-typed face-`F` programs `p`. This is the *front-end* analogue of the
   backend keystone K-1; together they give end-to-end "same cube". Needs the
   AffineScript AST + wasm semantics formalised.
-| XL | `absent`
-| new
+| XL | `partial`
+| mechanized fragment: `formal/F1_TransformerPreservation.v` (composes on K-1)
 
 | F-2
 | **Same-cube cross-face agreement (observational).** Any two faces compiling
@@ -242,8 +244,8 @@ cover them.
   jaffa→Js, pseudo→Pseudocode, lucid→Lucid, cafe→Cafe, +brand names) is a
   *function* (no name maps to two faces); and dispatch `--face` > pragma >
   extension is confluent (same source ⇒ same face). Face analogue of P-7.
-| M | `absent`
-| new; `lib/face_pragma.ml`
+| M | `stated`
+| Coq statement: `formal/Siblings_Stated.v` (F3); `lib/face_pragma.ml`
 
 | F-4
 | **Error-vocabulary faithfulness (simulation).** Each `Face.format_*_for_face`
@@ -252,8 +254,8 @@ cover them.
   is a total simulation of the canonical error algebra (exhaustiveness is
   OCaml-checked; *semantic* faithfulness is not), so a face can never make error
   *X* read as a different error *Y*.
-| M | `absent`
-| new; `lib/face.ml`
+| M | `stated`
+| Coq statement: `formal/Siblings_Stated.v` (F4); `lib/face.ml`
 
 | F-5
 | **`render_ty` faithfulness / non-collision.** The per-face type renaming
@@ -317,10 +319,10 @@ F-1 (full transformer preservation) is non-trivial rather than a formality.
 | Wave | Items | Gates
 
 | 0
-| *In progress.* DONE: `formal/` stood up (Coq/Rocq); **K-1 seed mechanized**
-  (`K1_CodegenPreservation.v`, axiom-free). NEXT: *state* P-2, P-3 (rejecting
-  #554), F-1, F-3, F-4 as signatures, mirroring solo-core; cross-link
-  `CAPABILITY-MATRIX.adoc` rows (K-4).
+| *Substantially done.* `formal/` stood up (Coq); **K-1 mechanized** + **grown**
+  (variables/`let`); **F-1 mechanized** (composes on K-1); **P-2/P-3/F-3/F-4
+  stated** as Coq signatures. All axiom-free. NEXT: grow K-1 with `if`;
+  discharge a stated sibling; cross-link `CAPABILITY-MATRIX.adoc` rows (K-4).
 | —
 
 | 1
