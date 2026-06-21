@@ -1,0 +1,49 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2024-2026 hyperpolymath (Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>)
+= Lesson 10: Building Real Programs
+
+== Project Structure
+
+....
+my-project/
+├── src/
+│   ├── main.affine
+│   ├── lib.affine
+│   └── util.affine
+├── tests/
+│   └── test_main.affine
+└── affinescript.toml
+....
+
+== Testing
+
+[source,affinescript]
+----
+fn test_addition() -> TestResult {
+  let result = add(2, 3);
+  assert_eq(result, 5, "2 + 3 should equal 5");
+  return Pass;
+}
+----
+
+== Compilation
+
+[source,bash]
+----
+# Check types and borrow checker
+affinescript check src/main.affine
+
+# Compile to WebAssembly
+affinescript compile src/main.affine -o output.wasm
+
+# Run with interpreter
+affinescript eval src/main.affine
+----
+
+== Next Steps
+
+* Read the link:../reference/index.md[Language Reference]
+* Explore link:../stdlib/index.md[Standard Library]
+* Join the community at github.com/hyperpolymath/affinescript
+
+Congratulations! You’ve completed the AffineScript tutorial!

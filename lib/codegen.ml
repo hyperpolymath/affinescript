@@ -21,7 +21,8 @@ type ownership_kind =
 (** Code generation context *)
 type context = {
   types : func_type list;            (** type section *)
-  funcs : func list;                 (** function definitions *)
+  funcs : func list;                 (** function definitions (cons-accumulated, reversed at emission) *)
+  num_funcs : int;                   (** length of [funcs] — O(1) index assignment (issue-draft 07; List.length per fn was O(n²)) *)
   exports : export list;             (** exports *)
   imports : import list;             (** imports *)
   globals : global list;             (** global variables *)
@@ -86,6 +87,72 @@ type 'a result = ('a, codegen_error) Result.t
 (** Result bind operator *)
 let ( let* ) = Result.bind
 
+(* issue-draft 05 / task #8 — Float-through-heap guard.
+   The core-wasm backend stores every heap cell (array element, tuple element,
+   record field) as a uniform 4-byte i32 slot. A Float is f64 (8 bytes), so any
+   Float that transits the heap is mismodeled: invalid wasm on load, silent
+   32-of-64-bit truncation on store. Until the type-directed heap layout lands
+   (task #8) we reject such a value loudly rather than emit corrupt bytes.
+   Scalar Float (which stays in an f64 local) is unaffected — only Float *inside
+   an aggregate*. The interpreter (-i), the Julia backend (-julia), and the GPU
+   kernel backends (WGSL/CUDA/Metal/OpenCL) all lower f64 aggregates correctly. *)
+let rec ty_strip_own (te : type_expr) : type_expr =
+  match te with TyOwn t | TyRef (_, t) | TyMut (_, t) -> ty_strip_own t | t -> t
+
+let rec ty_mentions_float (te : type_expr) : bool =
+  match ty_strip_own te with
+  | TyCon id -> id.name = "Float"
+  | TyApp (_, args) -> List.exists (function TyArg t -> ty_mentions_float t) args
+  | TyTuple ts -> List.exists ty_mentions_float ts
+  | TyRecord (fields, _) ->
+      List.exists (fun (rf : row_field) -> ty_mentions_float rf.rf_ty) fields
+  | _ -> false
+
+let rec ty_float_in_heap (te : type_expr) : bool =
+  match ty_strip_own te with
+  | TyApp (id, args) when id.name = "Array" ->
+      (* Array[Float] is handled: the Float heap wall lowers the literal to
+         [ExprFloatArray] (8-byte f64 cells) and each `Float`-yielding index to
+         [ExprFloatIndex]. Only flag arrays whose ELEMENT is itself a still-
+         unhandled float aggregate (e.g. Array of Float records); Array[Float],
+         nested Array[Array[Float]], and Array[(Float,Float)] are fine. *)
+      List.exists (function TyArg t -> ty_float_in_heap t) args
+  | TyTuple _ ->
+      (* Tuples are fully handled: a float-bearing tuple uses uniform 8-byte
+         cells (ExprCellTuple/ExprCellTupleIndex), per-cell i32/f64 op, so field
+         offsets stay i*8 regardless of the field-type mix. Any unhandled INNER
+         aggregate (e.g. a Float record field) loud-fails at its own
+         construction site, not here (issue-draft 05). *)
+      false
+  | TyRecord (fields, rowvar) ->
+      (* Closed float-bearing records are handled: sorted-by-name uniform-8 cells
+         (ExprCellRecord/ExprCellField). An OPEN record row (has a row variable)
+         cannot have its layout fixed, so it still loud-fails. Nested float
+         aggregates in fields self-handle at their own sites. *)
+      rowvar <> None && List.exists (fun (rf : row_field) -> ty_mentions_float rf.rf_ty) fields
+  | _ -> false
+
+let float_in_heap_msg (what : string) : string =
+  Printf.sprintf
+    "Float inside %s is not supported by the core-wasm backend: its uniform \
+     4-byte heap cells truncate f64 (issue-draft 05). Use the interpreter (-i), \
+     the Julia backend (-julia), or a GPU kernel backend (e.g. -o foo.wgsl) — \
+     all lower f64 aggregates correctly. Type-directed heap layout is task #8."
+    what
+
+let guard_no_heap_float (te : type_expr) : unit result =
+  if ty_float_in_heap te
+  then Error (UnsupportedFeature (float_in_heap_msg "an aggregate (Array/tuple/record)"))
+  else Ok ()
+
+let guard_fn_no_heap_float (fd : fn_decl) : unit result =
+  let* () =
+    List.fold_left
+      (fun acc (p : param) -> let* () = acc in guard_no_heap_float p.p_ty)
+      (Ok ()) fd.fd_params
+  in
+  match fd.fd_ret_ty with Some t -> guard_no_heap_float t | None -> Ok ()
+
 (** Count imported functions (for index offsets) *)
 let import_func_count (ctx : context) : int =
   List.fold_left (fun acc imp ->
@@ -98,6 +165,7 @@ let import_func_count (ctx : context) : int =
 let create_context () : context = {
   types = [];
   funcs = [];
+  num_funcs = 0;
   exports = [];
   imports = [];
   globals = [];
@@ -143,7 +211,7 @@ let rec struct_name_of_ty (ty : type_expr) : string option =
   match ty with
   | TyCon id -> Some id.name
   | TyApp (id, _) -> Some id.name
-  | TyOwn inner | TyRef inner | TyMut inner -> struct_name_of_ty inner
+  | TyOwn inner | TyRef (_, inner) | TyMut (_, inner) -> struct_name_of_ty inner
   | _ -> None
 
 (** Extract ownership kind from an optional return type expression *)
@@ -358,6 +426,21 @@ let rec find_free_vars (bound_vars : string list) (expr : expr) : string list =
     find_free_vars bound_vars e1 @ find_free_vars bound_vars e2
   | ExprVariant _ -> []
   | ExprSpan (e, _) -> find_free_vars bound_vars e
+  (* Float-wall elaboration nodes (codegen runs on the post-elaborate tree, so
+     these CAN appear here): traverse them exactly like their pre-elaboration
+     forms, else a variable captured only inside a float expression is missed
+     and the closure mis-lowers to UnboundVariable. *)
+  | ExprFloatBinary (a, _, b) ->
+    find_free_vars bound_vars a @ find_free_vars bound_vars b
+  | ExprFloatArray exprs -> List.concat (List.map (find_free_vars bound_vars) exprs)
+  | ExprFloatIndex (a, b) ->
+    find_free_vars bound_vars a @ find_free_vars bound_vars b
+  | ExprCellTuple cells ->
+    List.concat (List.map (fun (e, _) -> find_free_vars bound_vars e) cells)
+  | ExprCellTupleIndex (e, _, _) -> find_free_vars bound_vars e
+  | ExprCellRecord fields ->
+    List.concat (List.map (fun (_, e, _) -> find_free_vars bound_vars e) fields)
+  | ExprCellField (e, _, _) -> find_free_vars bound_vars e
   | _ -> []  (* Other expressions *)
 
 (** Remove duplicates from list *)
@@ -437,6 +520,9 @@ let rec expr_val_type (ctx : context) (e : expr) : value_type =
   | ExprLit (LitFloat _) -> F64
   | ExprFloatBinary (_, (OpAdd | OpSub | OpMul | OpDiv), _) -> F64
   | ExprFloatBinary (_, _, _) -> I32          (* comparisons yield Bool/i32 *)
+  | ExprFloatIndex _ -> F64                   (* Float heap wall: a[i] : Float *)
+  | ExprCellTupleIndex (_, _, is_f64) -> if is_f64 then F64 else I32  (* t.i cell *)
+  | ExprCellField (_, _, is_f64) -> if is_f64 then F64 else I32       (* r.f cell *)
   | ExprUnary (OpNeg, e1) -> expr_val_type ctx e1
   | ExprSpan (e1, _) -> expr_val_type ctx e1
   | ExprVar id ->
@@ -452,6 +538,15 @@ let rec expr_val_type (ctx : context) (e : expr) : value_type =
   | ExprLet lb ->
     (match lb.el_body with Some e1 -> expr_val_type ctx e1 | None -> I32)
   | _ -> I32
+
+(* Companion to [guard_no_heap_float] for aggregate *literals*, whose element
+   types are not annotated: reject if any element lowers to f64 (issue-draft 05
+   / task #8). Conservative — only catches statically-known f64 elements. *)
+let guard_no_float_elems (ctx : context) (elems : expr list) (what : string)
+    : unit result =
+  if List.exists (fun e -> expr_val_type ctx e = F64) elems
+  then Error (UnsupportedFeature (float_in_heap_msg ("a " ^ what ^ " literal")))
+  else Ok ()
 
 (** Float wall: run-length-encode local value types (in index order) into the
     wasm [local] group list (default i32). *)
@@ -917,6 +1012,28 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
     let captured_vars = List.filter (fun name ->
       List.mem_assoc name ctx.locals
     ) (dedup all_free) in
+
+    (* Float wall: f64 in a closure — a captured Float, a Float parameter, or a
+       Float result — needs an f64-aware closure calling convention (env cells,
+       lambda param/result/local types, and the matching CallIndirect type),
+       which the uniform-4-byte-i32 closure ABI does not yet provide. Loud-fail
+       honestly rather than emit invalid wasm or mis-lower (issue-draft 05, task
+       #8 closures). Conservative: any of the three triggers rejects. *)
+    let* () =
+      let captures_float = List.exists (fun name ->
+        match lookup_local ctx name with
+        | Ok idx -> (match List.assoc_opt idx ctx.local_types with Some F64 -> true | _ -> false)
+        | Error _ -> false) captured_vars in
+      let param_float = List.exists (fun p -> ty_mentions_float p.p_ty) lam.elam_params in
+      let body_float = (expr_val_type ctx lam.elam_body = F64) in
+      if captures_float || param_float || body_float
+      then Error (UnsupportedFeature
+        "Float in a closure (captured Float, Float parameter, or Float result) is \
+         not yet supported by the core-wasm backend: the closure ABI uses uniform \
+         4-byte env/parameter cells (issue-draft 05, task #8 closures). Use the \
+         interpreter (-i) or the Julia backend (-julia).")
+      else Ok ()
+    in
 
     let lambda_id = ctx.next_lambda_id in
 
@@ -1912,6 +2029,7 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
     Ok (ctx_final, scrutinee_code @ [LocalSet temp_idx] @ arms_code)
 
   | ExprTuple elements ->
+    let* () = guard_no_float_elems ctx elements "tuple" in
     (* Tuple layout in memory: [elem0: I32][elem1: I32][elem2: I32]... *)
     (* No length field - tuple size is fixed at creation *)
     let num_elements = List.length elements in
@@ -1943,7 +2061,29 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
     (* Complete code: allocate, save to temp, store elements, return pointer *)
     Ok (ctx_final, alloc_code @ save_code @ store_code @ [LocalGet temp_idx])
 
+  | ExprCellTuple cells ->
+    (* Float heap wall (issue-draft 05): float-bearing tuple — UNIFORM 8-byte
+       cells (no length header), field i at offset i*8. Per-cell op: f64.store
+       for a Float field, i32.store (low 4 bytes of the 8-byte slot) otherwise.
+       Uniform-8 keeps offsets independent of the field-type mix, so a mixed
+       (Int, Float) needs no per-field accumulation. Produced by the elaboration. *)
+    let num_elements = List.length cells in
+    let size_in_bytes = num_elements * 8 in
+    let (ctx_with_heap, alloc_code) = gen_heap_alloc ctx size_in_bytes in
+    let (ctx_with_temp, temp_idx) = alloc_local ctx_with_heap "__ctup_ptr" in
+    let save_code = [LocalSet temp_idx] in
+    let* (ctx_final, store_code) = List.fold_left (fun acc (idx, (elem_expr, is_f64)) ->
+      let* (ctx_acc, code_acc) = acc in
+      let* (ctx', elem_code) = gen_expr ctx_acc elem_expr in
+      let offset = idx * 8 in
+      let store = if is_f64 then F64Store (3, offset) else I32Store (2, offset) in
+      let store_instrs = [ LocalGet temp_idx ] @ elem_code @ [ store ] in
+      Ok (ctx', code_acc @ store_instrs)
+    ) (Ok (ctx_with_temp, [])) (List.mapi (fun i c -> (i, c)) cells) in
+    Ok (ctx_final, alloc_code @ save_code @ store_code @ [LocalGet temp_idx])
+
   | ExprArray elements ->
+    let* () = guard_no_float_elems ctx elements "array" in
     (* Array layout in memory: [length: I32][elem0: I32][elem1: I32]... *)
     let num_elements = List.length elements in
     let size_in_bytes = 4 + (num_elements * 4) in  (* 4 for length + 4 per element *)
@@ -1981,7 +2121,40 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
     (* Complete code: allocate, save to temp, store length, store elements, return pointer *)
     Ok (ctx_final, alloc_code @ save_code @ length_code @ store_code @ [LocalGet temp_idx])
 
+  | ExprFloatArray elements ->
+    (* Float heap wall (issue-draft 05, durable fix). An array whose elements
+       typed as `Float`: 4-byte length header then 8-byte f64 cells with
+       `f64.store` (8-byte stride). Mirrors [ExprArray] but for f64 so the value
+       is no longer truncated through a 4-byte cell. The length stays at offset
+       0 (i32) so `len`/bounds code is layout-compatible with i32 arrays; only
+       the element stride and opcode differ. Produced only by
+       Typecheck.elaborate_string_concat (never the parser). The f64 ops carry
+       alignment hint 3 (the max wasm allows for an 8-byte access); the actual
+       4+i*8 address need not be 8-aligned — the hint does not affect validity. *)
+    let num_elements = List.length elements in
+    let size_in_bytes = 4 + (num_elements * 8) in
+    let (ctx_with_heap, alloc_code) = gen_heap_alloc ctx size_in_bytes in
+    let (ctx_with_temp, temp_idx) = alloc_local ctx_with_heap "__farr_ptr" in
+    let save_code = [LocalSet temp_idx] in
+    let length_code = [
+      LocalGet temp_idx;
+      I32Const (Int32.of_int num_elements);
+      I32Store (2, 0);
+    ] in
+    let* (ctx_final, store_code) = List.fold_left (fun acc (idx, elem_expr) ->
+      let* (ctx_acc, code_acc) = acc in
+      let* (ctx', elem_code) = gen_expr ctx_acc elem_expr in
+      let offset = 4 + (idx * 8) in
+      let store_instrs = [ LocalGet temp_idx ] @ elem_code @ [ F64Store (3, offset) ] in
+      Ok (ctx', code_acc @ store_instrs)
+    ) (Ok (ctx_with_temp, [])) (List.mapi (fun i e -> (i, e)) elements) in
+    Ok (ctx_final, alloc_code @ save_code @ length_code @ store_code @ [LocalGet temp_idx])
+
   | ExprRecord rec_expr ->
+    let* () =
+      guard_no_float_elems ctx
+        (List.map (fun (id, eopt) -> match eopt with Some e -> e | None -> ExprVar id)
+           rec_expr.er_fields) "record" in
     (* Allocate memory for record fields *)
     let num_fields = List.length rec_expr.er_fields in
     let size_in_bytes = num_fields * 4 in  (* Each field is 4 bytes (I32) *)
@@ -2018,6 +2191,31 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
     (* But we already consumed the address from stack when storing, so push it again *)
     Ok (ctx_final, alloc_code @ save_code @ store_code @ [LocalGet temp_idx])
 
+  | ExprCellRecord fields ->
+    (* Float heap wall (issue-draft 05): closed float-bearing record — uniform
+       8-byte cells, fields placed by NAME sorted ascending so this matches the
+       offsets baked into [ExprCellField] at elaborate time. Per-cell op: f64 for
+       a Float field, i32 (low 4 bytes) otherwise. Produced only by elaboration. *)
+    let num_fields = List.length fields in
+    let size_in_bytes = num_fields * 8 in
+    let (ctx_with_heap, alloc_code) = gen_heap_alloc ctx size_in_bytes in
+    let (ctx_with_temp, temp_idx) = alloc_local ctx_with_heap "__crec_ptr" in
+    let save_code = [LocalSet temp_idx] in
+    let sorted_names =
+      List.sort String.compare (List.map (fun ((id : ident), _, _) -> id.name) fields) in
+    let pos_of name =
+      let rec idx i = function
+        | [] -> 0 | x :: _ when x = name -> i | _ :: r -> idx (i + 1) r in
+      idx 0 sorted_names in
+    let* (ctx_final, store_code) = List.fold_left (fun acc ((id : ident), fexpr, is_f64) ->
+      let* (ctx_acc, code_acc) = acc in
+      let* (ctx', fcode) = gen_expr ctx_acc fexpr in
+      let offset = (pos_of id.name) * 8 in
+      let store = if is_f64 then F64Store (3, offset) else I32Store (2, offset) in
+      Ok (ctx', code_acc @ [LocalGet temp_idx] @ fcode @ [store])
+    ) (Ok (ctx_with_temp, [])) fields in
+    Ok (ctx_final, alloc_code @ save_code @ store_code @ [LocalGet temp_idx])
+
   | ExprField (record_expr, field) ->
     (* Generate code for record expression (gets pointer) *)
     let* (ctx', record_code) = gen_expr ctx record_expr in
@@ -2046,6 +2244,13 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
 
     Ok (ctx', record_code @ load_code)
 
+  | ExprCellField (record_expr, offset, is_f64) ->
+    (* Float heap wall: r.f on a closed float-bearing (uniform-8, sorted-by-name)
+       record — load at the baked byte offset, f64 if the field is Float else i32. *)
+    let* (ctx', record_code) = gen_expr ctx record_expr in
+    let load = if is_f64 then F64Load (3, offset) else I32Load (2, offset) in
+    Ok (ctx', record_code @ [load])
+
   | ExprTupleIndex (tuple_expr, index) ->
     (* Generate code for tuple expression (gets pointer) *)
     let* (ctx', tuple_code) = gen_expr ctx tuple_expr in
@@ -2059,6 +2264,14 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
     ] in
 
     Ok (ctx', tuple_code @ load_code)
+
+  | ExprCellTupleIndex (tuple_expr, index, is_f64) ->
+    (* Float heap wall: t.i on a uniform-8 float-bearing tuple — load field i at
+       offset i*8, f64 if the field is Float else i32 (issue-draft 05). *)
+    let* (ctx', tuple_code) = gen_expr ctx tuple_expr in
+    let offset = index * 8 in
+    let load = if is_f64 then F64Load (3, offset) else I32Load (2, offset) in
+    Ok (ctx', tuple_code @ [load])
 
   | ExprIndex (array_expr, index_expr) ->
     (* Generate code for array (gets pointer) *)
@@ -2083,6 +2296,23 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
     ] in
 
     (* Complete code: array_ptr, index, calculate offset, add to base, load *)
+    Ok (ctx_after_idx, array_code @ index_code @ offset_calc @ load_code)
+
+  | ExprFloatIndex (array_expr, index_expr) ->
+    (* Float heap wall: a[i] : Float — dual of [ExprFloatArray]. 8-byte stride,
+       offset 4 + i*8, `f64.load` (alignment hint 3). *)
+    let* (ctx_after_arr, array_code) = gen_expr ctx array_expr in
+    let* (ctx_after_idx, index_code) = gen_expr ctx_after_arr index_expr in
+    let offset_calc = [
+      I32Const 8l;        (* 8-byte f64 cell *)
+      I32Mul;             (* index * 8 *)
+      I32Const 4l;        (* skip 4-byte length header *)
+      I32Add;             (* offset = 4 + (index * 8) *)
+    ] in
+    let load_code = [
+      I32Add;             (* base_ptr + offset *)
+      F64Load (3, 0);     (* load f64 *)
+    ] in
     Ok (ctx_after_idx, array_code @ index_code @ offset_calc @ load_code)
 
   | ExprVariant (_type_name, variant_name) ->
@@ -2590,6 +2820,35 @@ and gen_stmt (ctx : context) (stmt : stmt) : (context * instr list) result =
               I32Store (2, 0)      (* Store result *)
             ])
         end
+      | ExprFloatIndex (arr_expr, idx_expr) ->
+        (* Float heap wall: arr[i] = expr where arr : Array[Float]. 8-byte f64
+           cell at offset 4 + i*8, matching [ExprFloatArray] construction and
+           [ExprFloatIndex] reads (issue-draft 05). The LHS reached here because
+           StmtAssign synths it, so a `Float`-yielding index was recorded and
+           elaborated to [ExprFloatIndex] (the i32 [ExprIndex] arm above never
+           sees a float array). *)
+        let* (ctx', arr_code) = gen_expr ctx arr_expr in
+        let* (ctx'', idx_code) = gen_expr ctx' idx_expr in
+        begin match op with
+          | AssignEq ->
+            let* (ctx''', rhs_code) = gen_expr ctx'' rhs in
+            Ok (ctx''', arr_code @ idx_code @ [
+              I32Const 8l;
+              I32Mul;              (* idx * 8 *)
+              I32Const 4l;
+              I32Add;              (* idx*8 + 4 (skip length header) *)
+              I32Add;              (* arr + 4 + idx*8 *)
+            ] @ rhs_code @ [
+              F64Store (3, 0)      (* store f64 *)
+            ])
+          | AssignAdd | AssignSub | AssignMul | AssignDiv ->
+            (* Honest loud-fail: f64 compound-assign to an array element is not
+               yet lowered (the i32 [gen_binop] family would mistype the f64).
+               Rare; write `a[i] = a[i] <op> x`. Matches the #555/#556 policy. *)
+            Error (UnsupportedFeature
+              "compound assignment (+= -= *= /=) to a Float array element is not \
+               yet lowered to wasm (issue-draft 05); rewrite as `a[i] = a[i] <op> x`.")
+        end
       | _ ->
         Error (UnsupportedFeature "Assignment to this expression type not yet supported")
     end
@@ -3000,6 +3259,7 @@ let () =
          end)
 
 let gen_function (ctx : context) (fd : fn_decl) : (context * func) result =
+  let* () = guard_fn_no_heap_float fd in
   (* Create fresh context for function scope, but preserve lambda_funcs and next_lambda_id *)
   (* Float wall: reset [local_types] too — local indices restart at 0 per
      function, so a previous function's f64-local entries must not leak (else a
@@ -3163,12 +3423,20 @@ let gen_decl (ctx : context) (decl : top_level) : context result =
        shared builder, so the definition signature matches call/import sites. *)
     let func_type = func_type_of_fn_decl fd in
 
-    (* Add type to types list *)
-    let type_idx = List.length ctx.types in
-    let ctx_with_type = { ctx with types = ctx.types @ [func_type] } in
+    (* Intern the type (dedup) rather than always-append. The old always-append
+       path grew [ctx.types] by one PER FUNCTION, so both [List.length] and
+       [@ [func_type]] were O(len) per decl → the residual O(n²) (issue-draft 07;
+       the extern path above already interned). Interning keeps [types] at the
+       number of DISTINCT signatures (2 for the scaling bench, small for real
+       programs) and yields a smaller, canonical Wasm type section. It never
+       reorders existing entries — equal type → existing index, new type →
+       appended at the end (exactly where the old code put it) — so every
+       previously-assigned type index is preserved. *)
+    let (type_idx, types_after) = intern_func_type ctx.types func_type in
+    let ctx_with_type = { ctx with types = types_after } in
 
     (* Determine function index before generating *)
-    let func_idx = import_func_count ctx_with_type + List.length ctx_with_type.funcs in
+    let func_idx = import_func_count ctx_with_type + ctx_with_type.num_funcs in
 
     (* Stage 2: Extract ownership annotations for typed-wasm [typedwasm.ownership] section *)
     let param_kinds = List.map ownership_kind_of_param fd.fd_params in
@@ -3186,8 +3454,13 @@ let gen_decl (ctx : context) (decl : top_level) : context result =
       | None -> ctx_with_type.fn_ret_structs
     in
     let ctx_with_func_idx = { ctx_with_type with
-      func_indices = ctx_with_type.func_indices @ [(fd.fd_name.name, func_idx)];
-      ownership_annots = ctx_with_type.ownership_annots @ [(func_idx, param_kinds, ret_kind)];
+      (* cons, not @-append: append is O(len) → O(n²) over n functions
+         (issue-draft 07). func_indices is a name→idx lookup (order-irrelevant);
+         ownership_annots is reversed once at emission (build_ownership_section).
+         func_idx is computed from List.length (order-independent), so indices
+         are unchanged. *)
+      func_indices = (fd.fd_name.name, func_idx) :: ctx_with_type.func_indices;
+      ownership_annots = (func_idx, param_kinds, ret_kind) :: ctx_with_type.ownership_annots;
       fn_ret_structs = fn_ret_structs';
       (* Float wall: record this fn's result value type for call-site inference. *)
       fn_ret_types = (fd.fd_name.name,
@@ -3212,7 +3485,11 @@ let gen_decl (ctx : context) (decl : top_level) : context result =
     in
     (* Use ctx_after_gen to preserve any lambda_funcs created during generation *)
     Ok { ctx_after_gen with
-         funcs = ctx_after_gen.funcs @ [func_with_type];
+         (* cons, not @-append (issue-draft 07: O(n²)). funcs is reversed once
+            at emission (all_funcs below); func_idx came from List.length so the
+            final index = insert order is preserved by the reverse. *)
+         funcs = func_with_type :: ctx_after_gen.funcs;
+         num_funcs = ctx_after_gen.num_funcs + 1;
          exports = ctx_after_gen.exports @ export
        }
 
@@ -3539,7 +3816,7 @@ let generate_module ?loader (prog : program) : wasm_module result =
   (* Merge regular functions and lambda functions *)
   let num_regular_funcs = List.length ctx'.funcs in
   let import_offset = import_func_count ctx' in
-  let all_funcs = ctx'.funcs @ ctx'.lambda_funcs in
+  let all_funcs = List.rev ctx'.funcs @ ctx'.lambda_funcs in  (* funcs is cons-accumulated; restore index order *)
 
   (* Create function table if there are lambdas *)
   let (tables, elems) = if List.length ctx'.lambda_funcs > 0 then
@@ -3630,7 +3907,7 @@ let generate_module ?loader (prog : program) : wasm_module result =
   in
 
   (* Stage 2: Build [typedwasm.ownership] custom section from collected annotations *)
-  let ownership_payload = build_ownership_section ctx'.ownership_annots in
+  let ownership_payload = build_ownership_section (List.rev ctx'.ownership_annots) in  (* cons-accumulated; restore entry order *)
   let custom_sections = if Bytes.length ownership_payload > 0 then
     [("typedwasm.ownership", ownership_payload)]
   else

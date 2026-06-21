@@ -24,7 +24,7 @@ let rec lean_type = function
   | TyCon id when id.name = "String" -> "String"
   | TyCon id when id.name = "Unit"  -> "Unit"
   | TyCon id -> mangle id.name
-  | TyOwn t | TyRef t | TyMut t -> lean_type t
+  | TyOwn t | TyRef (_, t) | TyMut (_, t) -> lean_type t
   | _ -> "Int"
 
 let ret_type = function None -> "Unit" | Some t -> lean_type t

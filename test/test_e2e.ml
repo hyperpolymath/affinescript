@@ -2281,11 +2281,123 @@ let test_handle_deno_loud_fail () =
       Alcotest.(check bool) "error names the handler fence" true
         (contains_str "effect handler" msg)
 
+let test_handle_c_loud_fail () =
+  let result =
+    let open Result in
+    let ( let* ) = bind in
+    let* (prog, resolve_ctx) = run_frontend (fixture "handle_return_arm.affine") in
+    C_codegen.codegen_c prog resolve_ctx.symbols
+  in
+  match result with
+  | Ok _ ->
+      Alcotest.fail
+        "expected loud failure for handle on the C backend (Refs #555); \
+         got Ok — silent arm-drop has regressed"
+  | Error msg ->
+      Alcotest.(check bool) "error names the handler fence" true
+        (contains_str "effect handler" msg)
+
+(* NOTE: the Lean and Why3 text backends are experimental stubs whose
+   block-lowering only emits `let` bindings — a `return` statement (and thus
+   any expression it wraps, including `handle`) is silently dropped, so
+   `fn main() -> Int { return handle ... }` emits `def main : Int := ()`.
+   That is a *broader* incompleteness than #555 (they miscompile far more than
+   handlers), so a handle-specific fence there would be misleading. They are
+   flagged separately rather than fenced here; the reachable #555 codegen
+   holes were the production backends (WASM / WasmGC / Deno-ESM / JS-text)
+   and C, all fenced + tested above. *)
+
 let handler_fence_tests = [
   Alcotest.test_case "interp: return-arm handle still evaluates" `Quick test_handle_interp_still_works;
   Alcotest.test_case "wasm: handle → loud UnsupportedFeature"     `Quick test_handle_wasm_loud_fail;
   Alcotest.test_case "js-text: handle → loud failure"             `Quick test_handle_js_loud_fail;
   Alcotest.test_case "deno-esm: handle → loud failure"            `Quick test_handle_deno_loud_fail;
+  Alcotest.test_case "c: handle → loud failure"                   `Quick test_handle_c_loud_fail;
+]
+
+(* ============================================================================
+   Issue #559: trait coherence — overlapping impls must be rejected
+   ============================================================================
+
+   `Trait.check_coherence` was a no-op stub (TODO) and unwired, so two impls of
+   the same trait for the same (or unifiable) self type were silently accepted
+   and method resolution picked whichever impl came first. `check_all_coherence`
+   now runs in `check_program` after every impl is registered and rejects any
+   pair of impls whose self types unify. *)
+
+let tc_source src =
+  let prog = Parse_driver.parse_string ~file:"<test>" src in
+  match resolve_program prog with
+  | Error msg -> Error msg
+  | Ok (ctx, _) ->
+    (match Typecheck.check_program ctx.symbols prog with
+     | Ok _ -> Ok ()
+     | Error e -> Error (Typecheck.format_type_error e))
+
+let test_coherence_duplicate_rejected () =
+  let src = {|
+trait Greet { fn greet() -> Int; }
+struct Person { age: Int }
+impl Greet for Person { fn greet() -> Int = 1; }
+impl Greet for Person { fn greet() -> Int = 2; }
+fn main() -> Int = 0;
+|} in
+  match tc_source src with
+  | Ok () ->
+      Alcotest.fail "#559: two impls of Greet for Person must be rejected as \
+                     overlapping; the checker accepted them"
+  | Error msg ->
+      Alcotest.(check bool) "error names trait coherence" true
+        (contains_str "coherence" msg)
+
+let test_coherence_distinct_types_ok () =
+  let src = {|
+trait Greet { fn greet() -> Int; }
+struct Person { age: Int }
+struct Robot { id: Int }
+impl Greet for Person { fn greet() -> Int = 1; }
+impl Greet for Robot { fn greet() -> Int = 2; }
+fn main() -> Int = 0;
+|} in
+  match tc_source src with
+  | Ok () -> ()
+  | Error msg ->
+      Alcotest.failf "#559: impls of Greet for two DISTINCT types must be \
+                      accepted (no overlap), got error: %s" msg
+
+let test_coherence_distinct_generic_args_ok () =
+  (* Coherence must not over-reject: impls for the SAME generic head but
+     distinct concrete args (`Pair[Int,Bool]` vs `Pair[Bool,Int]`) do not
+     overlap and must both be accepted. *)
+  let src = {|
+trait Greet { fn greet() -> Int; }
+enum Pair[A, B] { Mk(A, B) }
+impl Greet for Pair[Int, Bool] { fn greet() -> Int = 1; }
+impl Greet for Pair[Bool, Int] { fn greet() -> Int = 2; }
+fn main() -> Int = 0;
+|} in
+  match tc_source src with
+  | Ok () -> ()
+  | Error msg ->
+      Alcotest.failf "#559: impls for Pair[Int,Bool] vs Pair[Bool,Int] do not \
+                      overlap and must be accepted, got error: %s" msg
+
+(* KNOWN LIMITATION (#559): generic-subsumption overlap — a blanket/generic
+   impl `impl[T] Greet for Box[T]` overlapping a specific `impl Greet for
+   Box[Int]` — is NOT yet detected. The coherence check itself instantiates
+   impl type params and would catch it, but generic *impl* handling has its
+   own separate immaturities (e.g. `impl[T] ... for Box[T]` currently trips a
+   spurious "Trait not found" before coherence runs), so this case rides on a
+   prerequisite that is not yet solid. The soundness-critical hole #559 named
+   — silently accepting overlapping *concrete* impls — IS fixed and covered by
+   the rejected/accepted tests above. Generic-subsumption coherence is tracked
+   as follow-up, not pinned here as an executable accept (it would mis-document
+   a moving target). *)
+
+let coherence_tests = [
+  Alcotest.test_case "duplicate impl (same self type) → rejected"    `Quick test_coherence_duplicate_rejected;
+  Alcotest.test_case "impls for distinct types → accepted"           `Quick test_coherence_distinct_types_ok;
+  Alcotest.test_case "distinct generic args → accepted (no over-reject)" `Quick test_coherence_distinct_generic_args_ok;
 ]
 
 (* ============================================================================
@@ -5433,6 +5545,74 @@ let test_borrow_callee_returned_borrow_reassign_summary () =
     Alcotest.fail "#554 reassigned-local summary regressed: the summary went \
                    stale on the initial binding — use-after-move accepted"
 
+(* issue-draft 08 — conditional-origin borrow escape. A borrow bound through an
+   `if`/`match`/block value carries the argument borrow out of the construct; a
+   later move of that argument while the binder is live is a use-after-move.
+   Pre-fix, the branch/block lexical restore swallowed the escaping borrow and
+   the `if`/`match` join intersected the per-branch records away, so the move
+   was accepted. The fix re-publishes the UNION of branch/tail escaping borrows.
+   Four reject-cases (if / block / multi-arm match / partial) and two anti-over-
+   rejection accept-cases (NLL use-before-move; unrelated move). *)
+let test_borrow_cond_origin_if_uam () =
+  match borrow_result (fixture "borrow_cond_origin_if_uam.affine") with
+  | Error (Borrow.MoveWhileBorrowed _) -> ()
+  | Error e ->
+    Alcotest.fail ("cond-origin if: expected MoveWhileBorrowed (move of `a` \
+                    while the if-bound borrow held by `r` is live), got: "
+                   ^ Borrow.format_borrow_error e)
+  | Ok () ->
+    Alcotest.fail "cond-origin if regressed: a borrow bound through `if` did \
+                   not keep the argument borrowed — use-after-move accepted"
+
+let test_borrow_cond_origin_block_uam () =
+  match borrow_result (fixture "borrow_cond_origin_block_uam.affine") with
+  | Error (Borrow.MoveWhileBorrowed _) -> ()
+  | Error e ->
+    Alcotest.fail ("cond-origin block: expected MoveWhileBorrowed (block value \
+                    carries the borrow of `a` out), got: "
+                   ^ Borrow.format_borrow_error e)
+  | Ok () ->
+    Alcotest.fail "cond-origin block regressed: `let r = { pick(a) }` dropped \
+                   the borrow of `a` — use-after-move accepted"
+
+let test_borrow_cond_origin_match_uam () =
+  match borrow_result (fixture "borrow_cond_origin_match_uam.affine") with
+  | Error (Borrow.MoveWhileBorrowed _) -> ()
+  | Error e ->
+    Alcotest.fail ("cond-origin match: expected MoveWhileBorrowed (union of \
+                    arm-escaping borrows keeps `a` borrowed), got: "
+                   ^ Borrow.format_borrow_error e)
+  | Ok () ->
+    Alcotest.fail "cond-origin match regressed: a multi-arm match value did \
+                   not keep the argument borrowed — use-after-move accepted"
+
+let test_borrow_cond_origin_partial_uam () =
+  match borrow_result (fixture "borrow_cond_origin_partial_uam.affine") with
+  | Error (Borrow.MoveWhileBorrowed _) -> ()
+  | Error e ->
+    Alcotest.fail ("cond-origin partial: expected MoveWhileBorrowed (one branch \
+                    borrows `a`, so the union includes `a`), got: "
+                   ^ Borrow.format_borrow_error e)
+  | Ok () ->
+    Alcotest.fail "cond-origin partial regressed: moving `a` borrowed in only \
+                   one branch was accepted — union of origins dropped `a`"
+
+let test_borrow_cond_origin_nll_ok () =
+  match borrow_result (fixture "borrow_cond_origin_nll_ok.affine") with
+  | Ok () -> ()
+  | Error e ->
+    Alcotest.fail ("cond-origin anti-over-rejection: reading `*r` before moving \
+                    `a` must pass under NLL last-use, got: "
+                   ^ Borrow.format_borrow_error e)
+
+let test_borrow_cond_origin_unrelated_ok () =
+  match borrow_result (fixture "borrow_cond_origin_unrelated_ok.affine") with
+  | Ok () -> ()
+  | Error e ->
+    Alcotest.fail ("cond-origin precision: moving an unrelated value `d` (not in \
+                    the {a,b} origin union) must stay legal, got: "
+                   ^ Borrow.format_borrow_error e)
+
 let borrow_tests = [
   Alcotest.test_case "BorrowOutlivesOwner: &local escapes its block"
     `Quick test_borrow_outlives_owner;
@@ -5512,6 +5692,18 @@ let borrow_tests = [
     `Quick test_borrow_reassign_alias_survives;
   Alcotest.test_case "#554: reassigned returned ref-local unions summary origins"
     `Quick test_borrow_callee_returned_borrow_reassign_summary;
+  Alcotest.test_case "issue-08 cond-origin: borrow through `if` keeps arg borrowed"
+    `Quick test_borrow_cond_origin_if_uam;
+  Alcotest.test_case "issue-08 cond-origin: borrow through block keeps arg borrowed"
+    `Quick test_borrow_cond_origin_block_uam;
+  Alcotest.test_case "issue-08 cond-origin: borrow through multi-arm match keeps arg borrowed"
+    `Quick test_borrow_cond_origin_match_uam;
+  Alcotest.test_case "issue-08 cond-origin: partial (one branch) move still rejected"
+    `Quick test_borrow_cond_origin_partial_uam;
+  Alcotest.test_case "issue-08 cond-origin anti-over-rejection: NLL use-before-move OK"
+    `Quick test_borrow_cond_origin_nll_ok;
+  Alcotest.test_case "issue-08 cond-origin precision: unrelated move stays legal"
+    `Quick test_borrow_cond_origin_unrelated_ok;
 ]
 
 (* ============================================================================
@@ -5545,6 +5737,7 @@ let tests =
     ("E2E Handler Fence (#555)", handler_fence_tests);
     ("E2E Async Fence (#556)", async_fence_tests);
     ("E2E Resume Soundness (#555)", resume_soundness_tests);
+    ("E2E Trait Coherence (#559)", coherence_tests);
     ("E2E Ownership Verify", tw_verify_tests);
     ("E2E Cmd Linearity", cmd_linear_tests);
     ("E2E Boundary Verify", tw_interface_tests);

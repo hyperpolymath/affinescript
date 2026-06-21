@@ -156,6 +156,37 @@ let rec eval (env : env) (expr : expr) : value result =
        elaboration. *)
     eval env (ExprBinary (left, op, right))
 
+  | ExprFloatArray elements ->
+    (* Float heap wall: re-dispatch to the ordinary array — [VArray] holds boxed
+       float values, with no wasm cell model to mismodel. *)
+    eval env (ExprArray elements)
+
+  | ExprFloatIndex (arr, idx) ->
+    (* Float heap wall: re-dispatch to the ordinary index. *)
+    eval env (ExprIndex (arr, idx))
+
+  | ExprCellTuple cells ->
+    (* Float heap wall: re-dispatch to the ordinary tuple (drop cell kinds). *)
+    eval env (ExprTuple (List.map fst cells))
+
+  | ExprCellTupleIndex (tup, i, _) ->
+    (* Float heap wall: re-dispatch to the ordinary tuple index. *)
+    eval env (ExprTupleIndex (tup, i))
+
+  | ExprCellRecord fields ->
+    (* Float heap wall: re-dispatch to the ordinary record (drop cell kinds). *)
+    eval env (ExprRecord { er_fields = List.map (fun (id, e, _) -> (id, Some e)) fields;
+                           er_spread = None })
+
+  | ExprCellField (rec_e, _, _) ->
+    (* Float heap wall: re-dispatch — but the interpreter needs the field NAME,
+       which this wasm-only node has dropped in favour of a byte offset. The
+       interpreter never sees this node in practice (it evaluates the pre-
+       elaboration tree); fail loudly if that assumption is ever violated. *)
+    ignore rec_e;
+    Error (RuntimeError "ExprCellField is a wasm-only elaboration; the interpreter \
+                         evaluates the pre-elaboration ExprField")
+
   | ExprBinary (left, op, right) ->
     let* left_val = eval env left in
     let* right_val = eval env right in

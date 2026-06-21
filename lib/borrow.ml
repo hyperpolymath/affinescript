@@ -39,8 +39,16 @@ type borrow = {
   b_kind : borrow_kind;
   b_span : Span.t;
   b_id : int;
+  b_origin : Ast.origin_var;   (* ADR-022 M1: the origin (region) this loan flows into.
+                              Until the elaborator is wired (M2), every loan uses
+                              [default_origin] — the single global origin — so the
+                              Polonius solver's verdicts reduce to the lexical ones. *)
 }
 [@@deriving show]
+
+(** ADR-022 M1: the single global origin. M2 replaces this with [fresh_origin ()]
+    at each borrow site. *)
+let default_origin : Ast.origin_var = 0
 
 (** Move record for tracking move sites *)
 type move_record = {
@@ -136,6 +144,16 @@ type state = {
       lexical block exit.  This list is only a hand-off pointer for the claim
       step; the borrows it names live or die on [state.borrows]. #554. *)
   mutable result_borrows : borrow list;
+
+  (** ADR-022 M2: fresh-origin counter. Each real borrow site gets its own
+      origin variable (vs M1's single [default_origin]). *)
+  mutable next_origin : int;
+
+  (** ADR-022 M2: the [loan_origin(L, O)] side-table — loan [b_id] ↦ its fresh
+      origin. Emitted at borrow creation; *nothing consumes it yet* (the lexical
+      checker still drives every verdict). It is the input the Polonius solver
+      ([Borrow_polonius]) will read once M3 wires constraint extraction in. *)
+  mutable loan_origins : (int * Ast.origin_var) list;
 }
 
 (** Borrow checker errors *)
@@ -412,6 +430,8 @@ let create () : state =
     callee_owned_params = [];
     linear_bindings = [];
     result_borrows = [];
+    next_origin = 1;   (* 0 is reserved as default_origin (the M1 global origin) *)
+    loan_origins = [];
   }
 
 (** Mirror of [Quantity.quantity_of_ty_annotation]: returns [QOne] when the
@@ -489,6 +509,13 @@ let fresh_id (state : state) : int =
   let id = state.next_id in
   state.next_id <- id + 1;
   id
+
+(** ADR-022 M2: generate a fresh origin (region) variable. One per real borrow
+    site, replacing M1's single [default_origin]. *)
+let fresh_origin (state : state) : Ast.origin_var =
+  let o = state.next_origin in
+  state.next_origin <- o + 1;
+  o
 
 (** Check if a type is Copy (doesn't need to be moved) *)
 let rec is_copy_type (ty_opt : type_expr option) : bool =
@@ -592,11 +619,19 @@ let record_borrow (state : state) (place : place) (kind : borrow_kind)
     match mut_check with
     | Error _ as err -> err
     | Ok () ->
+    let b_id = fresh_id state in
+    (* ADR-022 M2: each real borrow site gets a fresh origin, and we record the
+       [loan_origin(L, O)] fact in the side-table. This is the only consumer of
+       [fresh_origin]; the side-table is NOT yet read by any verdict (M3 wires it
+       into the Polonius solver), so this is behaviour-preserving. *)
+    let b_origin = fresh_origin state in
+    state.loan_origins <- (b_id, b_origin) :: state.loan_origins;
     let new_borrow = {
       b_place = place;
       b_kind = kind;
       b_span = span;
-      b_id = fresh_id state;
+      b_id;
+      b_origin;
     } in
     match find_conflicting_borrow state new_borrow with
     | Some conflict -> Error (ConflictingBorrow (new_borrow, conflict))
@@ -855,6 +890,24 @@ let rec is_reborrow_source (state : state) (symbols : Symbol.t)
      | None -> false)
   | _ -> false
 
+(** The borrows the *value* of [e] carries out, computed AFTER [e] has been
+    checked.  Calls and the compound value forms ([if]/[match]/block) funnel
+    their escaping borrows through [state.result_borrows] (the [ExprApp] handler
+    sets it; the compound handlers re-publish their branch/tail union into it);
+    a direct [&p]/[&mut p] or ref-var value is recovered structurally via
+    [ref_source_borrow].  Anything else carries none.
+
+    Crucially this dispatches on the *shape of [e]* rather than blindly trusting
+    [state.result_borrows], so a stale channel left by an earlier sibling
+    statement (e.g. an unbound `pick(b);` before a `&a` tail) cannot be
+    mis-attributed to this value.  Conditional-origin borrow escape
+    (issue-draft 08). *)
+let value_escaping (state : state) (symbols : Symbol.t) (e : expr) : borrow list =
+  let rec peel = function ExprSpan (x, _) -> peel x | x -> x in
+  match peel e with
+  | ExprApp _ | ExprIf _ | ExprMatch _ | ExprBlock _ -> state.result_borrows
+  | _ -> (match ref_source_borrow state symbols e with Some b -> [b] | None -> [])
+
 (** Record a borrow-graph edge for [let <pat> = <ref-source>].
 
     [<ref-source>] is either a direct [&p]/[&mut p] *or* another ref-binder
@@ -871,11 +924,17 @@ let record_ref_binding (state : state) (symbols : Symbol.t)
     | Some sym ->
       let rec peel = function ExprSpan (e, _) -> peel e | e -> e in
       begin match peel value with
-      | ExprApp _ when state.result_borrows <> [] ->
+      | (ExprApp _ | ExprIf _ | ExprMatch _ | ExprBlock _)
+        when state.result_borrows <> [] ->
         (* [let r = f(a)] where the call result borrows one or more of its
            arguments: claim those escaping borrows (left live by the
            [ExprApp] handler) as r's ref-graph edges, so NLL last-use expiry
-           and return-escape treat r exactly like [let r = &a]. #554. *)
+           and return-escape treat r exactly like [let r = &a]. #554.
+           Extended (issue-draft 08) to [if]/[match]/block values: those
+           handlers now re-publish the union of their branch/tail escaping
+           borrows into [state.result_borrows], so [let r = if c { pick(a) }
+           else { pick(a) }] claims the borrow of [a] exactly as the direct
+           call form does — closing the conditional-origin escape. *)
         List.iter (fun b ->
           state.ref_bindings <- (sym.Symbol.sym_id, b) :: state.ref_bindings)
           state.result_borrows;
@@ -902,7 +961,7 @@ let returned_borrow (state : state) (symbols : Symbol.t)
             places_overlap b.b_place target) state.borrows with
           | Some b -> b
           | None -> { b_place = target; b_kind = Shared;
-                      b_span = expr_span e; b_id = -1 })
+                      b_span = expr_span e; b_id = -1; b_origin = default_origin })
   | None ->
     (match peel e with
      | ExprVar id ->
@@ -1357,6 +1416,7 @@ let rec check_expr (ctx : context) (state : state) (symbols : Symbol.t) (expr : 
     let* () = check_expr ctx state symbols ei.ei_then in
     let then_borrows = state.borrows in
     let then_moved = state.moved in
+    let then_escaping = value_escaping state symbols ei.ei_then in
     (* Restore state for else branch *)
     state.borrows <- saved_borrows;
     state.moved <- saved_moved;
@@ -1368,12 +1428,29 @@ let rec check_expr (ctx : context) (state : state) (symbols : Symbol.t) (expr : 
     (* Merge branch states: borrows must be from both branches, moves from either *)
     let else_borrows = state.borrows in
     let else_moved = state.moved in
+    let else_escaping = match ei.ei_else with
+      | Some e -> value_escaping state symbols e
+      | None -> []
+    in
     (* A borrow is active after if-then-else only if active in both branches *)
     state.borrows <- List.filter (fun b ->
       List.exists (fun b' -> b.b_id = b'.b_id) then_borrows
     ) else_borrows;
     (* A place is moved after if-then-else if moved in either branch *)
     state.moved <- then_moved @ else_moved;
+    (* The *value* of the [if] is one branch tail or the other, so the borrows
+       it carries out are the UNION of the branches' escaping borrows — not the
+       b_id-intersection above (each branch mints a distinct borrow record for
+       the same origin, so the intersection would wrongly drop both).  Re-publish
+       them so [let r = if c { pick(a) } else { pick(a) }] tracks the borrow of
+       [a] and a later move of [a] is caught.  Conservative: union can only keep
+       MORE borrows live, never fewer, so it cannot introduce a false negative.
+       Conditional-origin escape, issue-draft 08. *)
+    let merged_escaping = then_escaping @ else_escaping in
+    let to_add = List.filter (fun b ->
+      not (List.exists (fun c -> c.b_id = b.b_id) state.borrows)) merged_escaping in
+    state.borrows <- to_add @ state.borrows;
+    state.result_borrows <- merged_escaping;
     Ok ()
 
   | ExprMatch em ->
@@ -1396,16 +1473,22 @@ let rec check_expr (ctx : context) (state : state) (symbols : Symbol.t) (expr : 
           | None   -> Ok ())
           (fun () -> check_expr ctx state symbols arm.ma_body)
       in
-      (r, state.borrows, state.moved)
+      (* Borrows the arm's value carries out (its tail is in value position),
+         captured before the next arm resets the state. *)
+      let esc = match r with
+        | Ok () -> value_escaping state symbols arm.ma_body
+        | Error _ -> []
+      in
+      (r, state.borrows, state.moved, esc)
     ) em.em_arms in
     (* Propagate the first error, or merge successful states *)
-    let errors = List.filter_map (fun (r, _, _) ->
+    let errors = List.filter_map (fun (r, _, _, _) ->
       match r with Error e -> Some e | Ok () -> None) arm_results in
     begin match errors with
     | e :: _ -> Error e
     | [] ->
       (* Borrows: active after match only if active in ALL arms *)
-      let all_borrows = List.map (fun (_, bs, _) -> bs) arm_results in
+      let all_borrows = List.map (fun (_, bs, _, _) -> bs) arm_results in
       let merged_borrows = match all_borrows with
         | [] -> base_borrows
         | first :: rest ->
@@ -1416,7 +1499,7 @@ let rec check_expr (ctx : context) (state : state) (symbols : Symbol.t) (expr : 
           ) first rest
       in
       (* Moves: conservative union — moved in any arm *)
-      let all_moves = List.concat_map (fun (_, _, ms) ->
+      let all_moves = List.concat_map (fun (_, _, ms, _) ->
         List.filter (fun mr ->
           not (List.exists (fun base_mr ->
             places_overlap mr.m_place base_mr.m_place
@@ -1431,6 +1514,17 @@ let rec check_expr (ctx : context) (state : state) (symbols : Symbol.t) (expr : 
       ) [] all_moves in
       state.borrows <- merged_borrows;
       state.moved   <- base_moved @ unique_moves;
+      (* The match value is one arm tail, so the borrows it carries out are the
+         UNION across arms (mirroring [ExprIf]; the per-arm b_id-intersection of
+         [merged_borrows] would drop the distinct-but-same-origin escaping
+         records).  Re-publish so [let r = match k { _ => pick(a) }] tracks the
+         borrow of [a].  Conditional-origin escape, issue-draft 08. *)
+      let merged_escaping =
+        List.concat_map (fun (_, _, _, esc) -> esc) arm_results in
+      let to_add = List.filter (fun b ->
+        not (List.exists (fun c -> c.b_id = b.b_id) state.borrows)) merged_escaping in
+      state.borrows <- to_add @ state.borrows;
+      state.result_borrows <- merged_escaping;
       Ok ()
     end
 
@@ -1681,7 +1775,7 @@ and check_block (ctx : context) (state : state) (symbols : Symbol.t) (blk : bloc
                 | Some b -> b
                 | None ->
                   { b_place = target; b_kind = Shared;
-                    b_span = expr_span tail; b_id = -1 }
+                    b_span = expr_span tail; b_id = -1; b_origin = default_origin }
               in
               Error (BorrowOutlivesOwner (b, owner))
             | _ -> Ok ()
@@ -1690,6 +1784,26 @@ and check_block (ctx : context) (state : state) (symbols : Symbol.t) (blk : bloc
       end
     | None -> Ok ()
   in
+  (* The block's *value* is its tail expression.  Borrows that value carries
+     out — a call's escaping borrows funnelled through [state.result_borrows],
+     or a direct `&p` / ref-var tail — must SURVIVE the lexical restore below so
+     a ref-binder [let r = { ... }] can claim them, exactly as for [let r =
+     f(a)].  Borrows rooted at a *block-local* owner do NOT escape (the owner
+     dies here): the `&local` tail is already rejected as [BorrowOutlivesOwner]
+     above, and a call-result borrow of a local dies with it.  Compute the
+     survivors now, BEFORE the restore wipes them.  Conditional-origin escape:
+     without this, [let r = { pick(a) }] silently dropped the borrow of [a] and
+     a later move of [a] was accepted (issue-draft 08). *)
+  let tail_escaping =
+    match blk.blk_expr with
+    | Some tail ->
+      List.filter (fun b ->
+        match root_var b.b_place with
+        | Some owner -> not (symbols_declared_here owner)
+        | None -> true)
+        (value_escaping state symbols tail)
+    | None -> []
+  in
   (* End borrows for places bound in this block: restore to pre-block borrows,
      keeping only those that existed before the block (i.e., borrow outer-scope
      variables that the block merely uses — these are unaffected).
@@ -1697,10 +1811,16 @@ and check_block (ctx : context) (state : state) (symbols : Symbol.t) (blk : bloc
   state.borrows <- borrows_at_entry;
   state.block_local_syms <- block_locals_at_entry;
   state.ref_bindings <- ref_bindings_at_entry;
-  (* Any escaping call-result borrow not claimed by a ref-binder lingered on
-     [state.borrows] (like a plain `&` borrow) and is dropped by the restore
-     above; clear the transient pointer too. #554. *)
-  state.result_borrows <- [];
+  (* Re-publish the escaping tail borrows past the restore: re-add only those
+     not already live on [state.borrows] (avoid a duplicate record for an outer
+     `&`/ref-var the block merely forwards), and offer the full set to the
+     binder via [state.result_borrows].  An unclaimed escaping borrow lingers to
+     the enclosing block's exit and is dropped there — the conservative,
+     `&`-symmetric outcome. #554 / issue-draft 08. *)
+  let to_add = List.filter (fun b ->
+    not (List.exists (fun c -> c.b_id = b.b_id) state.borrows)) tail_escaping in
+  state.borrows <- to_add @ state.borrows;
+  state.result_borrows <- tail_escaping;
   Ok ()
 
 and check_stmt (ctx : context) (state : state) (symbols : Symbol.t) (stmt : stmt) : unit result =
@@ -1852,7 +1972,8 @@ and check_stmt (ctx : context) (state : state) (symbols : Symbol.t) (stmt : stmt
            | Some binder_sym ->
              let rec peel = function ExprSpan (x, _) -> peel x | x -> x in
              (match peel rhs with
-              | ExprApp _ when state.result_borrows <> [] ->
+              | (ExprApp _ | ExprIf _ | ExprMatch _ | ExprBlock _)
+                when state.result_borrows <> [] ->
                 let old, remaining =
                   List.partition (fun (s, _) -> s = binder_sym) state.ref_bindings
                 in

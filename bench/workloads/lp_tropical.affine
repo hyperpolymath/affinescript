@@ -1,0 +1,16 @@
+// SPDX-License-Identifier: MPL-2.0
+// LP workload — tropical (min,+) shortest path. Linear programming over the
+// tropical semiring (the same (min,+) algebra as the VM cost-meter and the
+// tropical-resource-typing Isabelle development): relax candidate paths with
+// min/+. Pure Int → runs on every backend (no Float-heap). Proven-style:
+// asserts the known optimum min(10, 4+3+2) = 9 and prints a verdict token.
+fn tmin(a: Int, b: Int) -> Int { if a < b { a } else { b } }
+fn shortest() -> Int {
+  let direct = 10;
+  let via = 4 + 3 + 2;
+  tmin(direct, via)
+}
+fn main() -> Int {
+  if shortest() == 9 { println("LP_TROPICAL_OK"); 0 }
+  else { println("LP_TROPICAL_WRONG"); 1 }
+}

@@ -99,8 +99,8 @@ let register_trait (registry : trait_registry) (trait_decl : trait_decl) : unit 
             | TyArrow (a, _q, b, _eff) ->
               TArrow (lower_simple a, QOmega, lower_simple b, EPure)
             | TyOwn te' -> TOwn (lower_simple te')
-            | TyRef te' -> TRef (lower_simple te')
-            | TyMut te' -> TMut (lower_simple te')
+            | TyRef (_, te') -> TRef (lower_simple te')
+            | TyMut (_, te') -> TMut (lower_simple te')
             | TyRecord (fields, _) ->
               let row = List.fold_right (fun (rf : row_field) acc ->
                 RExtend (rf.rf_name.name, lower_simple rf.rf_ty, acc)
@@ -144,8 +144,8 @@ let register_trait (registry : trait_registry) (trait_decl : trait_decl) : unit 
             | TyArrow (a, _q, b, _eff) ->
               TArrow (lower_simple a, QOmega, lower_simple b, EPure)
             | TyOwn te' -> TOwn (lower_simple te')
-            | TyRef te' -> TRef (lower_simple te')
-            | TyMut te' -> TMut (lower_simple te')
+            | TyRef (_, te') -> TRef (lower_simple te')
+            | TyMut (_, te') -> TMut (lower_simple te')
             | TyRecord (fields, _) ->
               let row = List.fold_right (fun (rf : row_field) acc ->
                 RExtend (rf.rf_name.name, lower_simple rf.rf_ty, acc)
@@ -420,21 +420,55 @@ let find_method_for_type (registry : trait_registry) (self_ty : ty) (method_name
   in
   search_impls impls
 
-(** Check for overlapping implementations *)
+(** Check for overlapping implementations of [trait_name] (#559).
+
+    Two impls overlap when some type could satisfy BOTH — i.e. their self
+    types unify after each is instantiated with fresh unification variables
+    for its own type parameters.  Overlap makes method resolution ambiguous
+    ([find_impl] would return whichever impl happens to come first), so it is
+    a coherence violation and must be rejected.
+
+    Each candidate is given a freshly-instantiated self type via
+    {!fresh_impl_self_ty} so that one impl's generic parameters cannot leak
+    into another; the unification side-effects land only on those fresh
+    variables, which are discarded with each pair.  Concrete (parameter-free)
+    self types carry no unification variables, so unifying them never mutates
+    the registry's stored types. *)
 let check_coherence (registry : trait_registry) (trait_name : string) : unit result =
   match Hashtbl.find_opt registry.impls trait_name with
   | None -> Ok ()
   | Some impls ->
-    (* TODO: Check for overlapping impls *)
-    (* For now, just ensure no duplicate self types *)
+    let fresh_var () =
+      let id = !Types.next_tyvar in
+      Types.next_tyvar := id + 1;
+      TVar (ref (Unbound (id, 0)))
+    in
     let rec check_pairs = function
       | [] -> Ok ()
-      | _impl :: rest ->
-        (* Check if any impl in rest has same self_ty *)
-        (* TODO: Proper unification check *)
-        check_pairs rest
+      | impl :: rest ->
+        let rec check_against = function
+          | [] -> Ok ()
+          | other :: more ->
+            let s1 = fresh_impl_self_ty impl fresh_var in
+            let s2 = fresh_impl_self_ty other fresh_var in
+            (match Unify.unify s1 s2 with
+             | Ok () -> Error (OverlappingImpl (trait_name, impl.ti_self_ty))
+             | Error _ -> check_against more)
+        in
+        (match check_against rest with
+         | Ok () -> check_pairs rest
+         | err -> err)
     in
     check_pairs impls
+
+(** Run {!check_coherence} for every trait that has registered impls (#559).
+    Returns the first overlap found, if any. *)
+let check_all_coherence (registry : trait_registry) : unit result =
+  Hashtbl.fold (fun trait_name _impls acc ->
+    match acc with
+    | Error _ -> acc
+    | Ok () -> check_coherence registry trait_name
+  ) registry.impls (Ok ())
 
 (** Standard library traits - automatically registered *)
 let register_stdlib_traits (registry : trait_registry) : unit =

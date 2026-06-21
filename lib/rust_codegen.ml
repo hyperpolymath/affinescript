@@ -32,7 +32,7 @@ let rec rust_type = function
   | TyCon id -> mangle id.name
   | TyTuple [] -> "()"
   | TyTuple ts -> "(" ^ String.concat ", " (List.map rust_type ts) ^ ")"
-  | TyOwn t | TyRef t | TyMut t -> rust_type t
+  | TyOwn t | TyRef (_, t) | TyMut (_, t) -> rust_type t
   | _ -> "()"
 
 let rec gen_expr (e : expr) : string =
@@ -200,7 +200,7 @@ let rec is_copyable = function
   | TyCon id when id.name = "Int" || id.name = "Float" || id.name = "Bool"
               || id.name = "Char" || id.name = "Unit" -> true
   | TyTuple ts -> List.for_all is_copyable ts
-  | TyOwn t | TyRef t | TyMut t -> is_copyable t
+  | TyOwn t | TyRef (_, t) | TyMut (_, t) -> is_copyable t
   | _ -> false
 
 let emit_struct (name : string) (fields : (string * type_expr) list) : string =

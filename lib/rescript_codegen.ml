@@ -35,7 +35,7 @@ let rec res_type = function
   | TyCon id -> res_mangle_ty id.name
   | TyTuple [] -> "unit"
   | TyTuple ts -> "(" ^ String.concat ", " (List.map res_type ts) ^ ")"
-  | TyOwn t | TyRef t | TyMut t -> res_type t
+  | TyOwn t | TyRef (_, t) | TyMut (_, t) -> res_type t
   | _ -> "_"
 
 let ret_type = function None -> "unit" | Some t -> res_type t

@@ -30,7 +30,7 @@ let rec why3_type = function
   | TyCon id when id.name = "Float" -> "real"
   | TyCon id when id.name = "Unit"  -> "unit"
   | TyCon id -> mangle id.name
-  | TyOwn t | TyRef t | TyMut t -> why3_type t
+  | TyOwn t | TyRef (_, t) | TyMut (_, t) -> why3_type t
   | _ -> "int"
 
 let ret_type = function None -> "unit" | Some t -> why3_type t

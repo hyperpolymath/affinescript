@@ -104,7 +104,6 @@ theorem tropical_session_soundness (s : Session) (c : TropicalBudget)
   | eval_recv _ ih =>
       unfold tropicalGrade tropicalSeq
       rw [ih]
-      simp
   | eval_spec _ _ ih1 ih2 =>
       unfold tropicalGrade tropicalPar
       rw [ih1, ih2]
@@ -136,12 +135,17 @@ theorem budget_strictly_bounds_billing (s : Session) :
       simp [tropicalGrade, linearBilling]
   | send s' ih =>
       unfold tropicalGrade tropicalSeq linearBilling
+      -- `TropicalBudget` is an abbrev for `Nat`; unfold it everywhere so that
+      -- omega sees a uniform set of `Nat` atoms in the goal and the IH.
+      simp only [TropicalBudget] at *
       omega
   | recv s' ih =>
       unfold tropicalGrade tropicalSeq linearBilling
+      simp only [TropicalBudget] at *
       omega
   | spec_branch s1 s2 ih1 ih2 =>
       unfold tropicalGrade tropicalPar linearBilling
+      simp only [TropicalBudget] at *
       -- Lean 4's Presburger arithmetic solver automatically proves that
       -- max(A, B) ≤ A + B for all natural numbers.
       omega

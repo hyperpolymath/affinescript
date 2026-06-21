@@ -60,8 +60,16 @@ pub fn parse_sources(manifest: &Manifest) -> Vec<ResourceSite> {
         };
 
         // Read the source file contents; if unavailable, skip gracefully.
-        let content = match std::fs::read_to_string(&source.path) {
-            Ok(c) => c,
+        // Limit reads to 5MB to prevent unbounded allocation.
+        let content = match std::fs::File::open(&source.path) {
+            Ok(mut file) => {
+                use std::io::Read;
+                let mut buf = String::new();
+                match file.take(5 * 1024 * 1024).read_to_string(&mut buf) {
+                    Ok(_) => buf,
+                    Err(_) => continue,
+                }
+            }
             Err(_) => continue,
         };
 

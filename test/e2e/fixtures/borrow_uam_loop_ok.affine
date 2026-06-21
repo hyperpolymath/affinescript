@@ -1,0 +1,16 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// ADR-022 M3 loop unrolling — anti-over-rejection. The loop body moves nothing
+// (only reads and re-initialises locals), so the 2-iteration unrolling must not
+// invent a use-after-move. Confirms the extra iter-2 CFG point adds no false
+// positive. Both tiers accept.
+fn main() -> Int {
+  let mut i = 0;
+  let mut s = 0;
+  while i < 3 {
+    s = s + i;
+    i = i + 1;
+  }
+  return s;
+}

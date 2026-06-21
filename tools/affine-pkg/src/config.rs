@@ -120,7 +120,10 @@ impl Config {
     pub fn load_global() -> anyhow::Result<Self> {
         match global_config_path() {
             Some(path) if path.exists() => {
-                let content = std::fs::read_to_string(&path)?;
+                use std::io::Read;
+                let file = std::fs::File::open(&path)?;
+                let mut content = String::new();
+                file.take(1024 * 1024).read_to_string(&mut content)?;
                 Ok(toml::from_str(&content)?)
             }
             _ => Ok(Self::default()),
@@ -143,7 +146,10 @@ impl Config {
     pub fn load_local(project_root: impl AsRef<Path>) -> anyhow::Result<Option<Self>> {
         let path = project_root.as_ref().join(".affine").join("config.toml");
         if path.exists() {
-            let content = std::fs::read_to_string(&path)?;
+            use std::io::Read;
+            let file = std::fs::File::open(&path)?;
+            let mut content = String::new();
+            file.take(1024 * 1024).read_to_string(&mut content)?;
             Ok(Some(toml::from_str(&content)?))
         } else {
             Ok(None)
@@ -188,7 +194,10 @@ impl Credentials {
     pub fn load() -> anyhow::Result<Self> {
         match credentials_path() {
             Some(path) if path.exists() => {
-                let content = std::fs::read_to_string(&path)?;
+                use std::io::Read;
+                let file = std::fs::File::open(&path)?;
+                let mut content = String::new();
+                file.take(1024 * 1024).read_to_string(&mut content)?;
                 Ok(toml::from_str(&content)?)
             }
             _ => Ok(Self::default()),

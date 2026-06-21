@@ -1,0 +1,132 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+= AffineScript Test + Bench Matrix (CRG-aligned)
+Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+:toc: macro
+:toclevels: 3
+:icons: font
+
+[IMPORTANT]
+====
+This maps AffineScript's testing + benchmarking onto the *estate-canonical*
+taxonomy — it does NOT invent a generic one. Authorities, in order:
+
+* `standards/testing-and-benchmarking/TESTING-TAXONOMY.adoc` — the canonical
+  *16 test categories + 14 aspects + Six-Sigma bench model + CRG/TRG/RSR
+  readiness mapping* (single source of truth, v1.1.0).
+* `proven` — the reusable *implementation model* we copy rather than rewrite
+  (`tests/e2e.sh` proof-chain harness; `prop_`/`e2e_`/`aspect_` naming; the
+  structural-vs-runtime E2E split; `symbol-audit.sh` interop guard; cargo-fuzz
+  FFI-boundary fuzzing; Criterion benches; two-tier build; honest gap ledgers).
+* `docs/standards/TESTING.adoc` — AffineScript's local kinds + the merge gate
+  (`dune runtest`); live counts in `docs/CAPABILITY-MATRIX.adoc`.
+
+*Honesty convention (from proven):* a category is marked GAP or `N/A (reason)` —
+never faked. "A placeholder fuzz file is worse than no fuzz at all."
+====
+
+toc::[]
+
+== CRG test categories — current coverage
+
+Status: *covered* / *partial* / *GAP* / *N-A*. "This session" = the 8 gates added 2026-06-16.
+
+[cols="1,1,4"]
+|===
+|Category |Status |Where / gap
+
+|*UT* Unit |covered |`test/test_<module>.ml` (alcotest): lexer, effect_sites, qualified_paths, module_mut, …
+|*P2P* Point-to-point (seam) |partial |`just typed-wasm-validate` (AffineScript producer ↔ typed-wasm Rust `tw-verify` FFI seam — this session); else sparse. GAP: parser↔typecheck, typecheck↔codegen seam tests as named P2P.
+|*E2E* End-to-end |covered |`test/test_e2e.ml` (full pipeline) + `just native-run` / `riscv-run-validate` / `wasm-validate` (source → artifact → run/validate — this session).
+|*BLD* Build |covered |`just build` / `dune build` in CI from clean checkout.
+|*EXE* Execution/runtime |partial |interp tests + `native-run` + `riscv-run` (real execution). GROWS with VM M1 (CESK execution + differential-vs-interp).
+|*REF* Reflexive |GAP |no `just doctor`/self-diagnostic. Candidate: a `just selfcheck` running all gates + reporting.
+|*LCY* Lifecycle |partial |compile-time resource lifecycle = the affine/borrow checker tests. Runtime lifecycle = VM M1 (`--unchecked` off → affine enforced at run).
+|*SMK* Smoke |covered |`tools/run_codegen_wasm_tests.sh`, `run_codegen_deno_tests.sh`, `affinescript-deno-test/`, vscode host smoke. (MUST stay <30 s.)
+|*PBT* Property-based |GAP |**priority.** Targets: quantity-semiring laws (`lib/quantity.ml` ↔ the proven Idris2 laws), lex→parse→pp round-trip, codegen determinism. Tool: `qcheck`/`crowbar` (OCaml). MUST: 1000+ cases, regression files committed.
+|*MUT* Mutation |GAP |`cargo-mutants`-equivalent absent for OCaml; track as deferred (low priority until PBT lands).
+|*FUZ* Fuzz |GAP |**priority.** Boundary-focused (per proven): fuzz the lexer/parser (untrusted source) + the wasm/native codegen emission. Tool: `crowbar`/AFL via `afl-persistent`, or cargo-fuzz on the runtime crate. NO placeholders.
+|*CTR* Contract/invariant |partial |`just guard` (doc-truthing), `just proof-check-all` (the proofs *are* invariants), the contractile system. GAP: runtime contract assertions.
+|*REG* Regression |covered |`test/e2e/fixtures/` + the "deferred regression test" discipline (STATE.a2ml `regression-test-status`).
+|*CHS* Chaos |N-A (mostly) |compiler, not a service. The parser's error-recovery is the nearest analog (partially tested).
+|*CMP* Compatibility |partial |typed-wasm `typedwasm.ownership` v1 carrier stability (this session's round-trip pins it). GAP: a version-matrix (old .ll / old carrier).
+|*PRF* Proof regression |covered |`just proof-check-all` (Idris2 Solo + Lean tropical + Agda echo — all green this session) + the dangerous-primitive scan (`believe_me`/`sorry`/`postulate`/`axiom`).
+|===
+
+== The 14 aspects — current coverage
+
+[cols="1,1,4"]
+|===
+|Aspect |Status |Evidence / gap
+
+|*DEP* Dependability |covered |the 8 gates + the `dune runtest` merge gate.
+|*SEC* Security |partial |Float-heap *loud-fail* (no silent corruption), affine/linear enforcement, proof dangerous-primitive scan, SPDX/owner pre-commit hook, `/security-review`. GAP: adversarial-input aspect tests, dependency audit.
+|*USA* Usability |partial |error messages route to fixes (the loud-fails name `-i`/`-julia`/GPU). GAP: measured task-completion.
+|*IOP* Interoperability |covered |**strong this session** — typed-wasm cross-repo, 9 coprocessor backends, native ABI (x86/aarch64/riscv64). See §Interop ledger.
+|*SAF* Safety |covered |proof totality + dangerous-primitive ban + the affine discipline; no `Obj.magic` in release paths.
+|*PER* Performance |partial |`bench/bench_<phase>.ml` (microbench, *visibility-only*). GAP: Six-Sigma baselining + per-backend + comparison tables. See §Benches.
+|*FUN* Functionality |covered |the e2e + fixture + conformance corpus.
+|*VER* Versability |partial |typed-wasm v1 carrier; SemVer. GAP: migration/version-matrix tests.
+|*ACC* Accessibility |GAP |the multi-*face* surfaces are an accessibility win, but no WCAG/ADJUST checks, CLI-a11y, or error-clarity tests. Candidate: error-message clarity assertions.
+|*MNT* Maintainability |partial |modular OCaml + the doc-truthing over-claim ratchet.
+|*PRI* Privacy |N-A |compiler collects/transmits nothing. (Justified N/A.)
+|*OBS* Observability |partial |`error_formatter`, `--json` diagnostics. GAP: structured logs/metrics for long runs (VM).
+|*RPR* Reproducibility |partial |deterministic codegen (stable string ordering) + proof replay (`proof-check`). GAP: reproducible-build hash.
+|*PRT* Portability |covered |native x86-64 + aarch64 + riscv64 (verified) + wasm-everywhere; the `--target` flag.
+|===
+
+== Benchmarks (Six-Sigma model)
+
+Adopt the standards Six-Sigma classification: *Unacceptable* (>50% regression OR
+absolute breach → hard fail) / *Acceptable* (20–50% → soft fail, reviewer ok) /
+*Ordinary* (±20% / ±2σ → pass) / *Extraordinary* (>20% better → flag + rebaseline).
+Baseline = mean of last 10 main runs, versioned per minor bump.
+
+* *Have:* `bench/bench_{lex,parse,typecheck,codegen}.ml` (`just bench`) — compile-time per phase, visibility-only.
+* *Adopt from proven:* Criterion-style `benchmark_group` per phase with `black_box`; metrics = ns/op + ops/sec + peak memory (massif); **comparison-against-alternative** tables (e.g. our wasm vs a hand-written wasm); JSON+MD result emission (the `k9-bench.sh` pattern).
+* *GAP:* baselining/regression gate; runtime benches per backend (wasm exec, native exec, VM step-rate); the VM's tropical cost-meter as a first-class bench axis.
+
+== Interoperability ledger
+
+The multi-backend/multi-repo conformance surface, and how each is checked:
+
+[cols="2,3"]
+|===
+|Seam |Check
+
+|AffineScript → typed-wasm (`typedwasm.ownership` carrier) |`just typed-wasm-validate` — Rust `tw-verify` agrees bit-exactly (this session). ✓
+|AffineScript → 9 coprocessor backends |`just coprocessor-validate` — WGSL (naga), SPIR-V (magic), CUDA/Metal/OpenCL/ONNX/Faust/Verilog/MLIR emit. ✓
+|AffineScript → native ABI (x86/aarch64/riscv64) |`just android-validate` (objects) + `riscv-run-validate` (qemu run). ✓
+|*Adopt from proven:* per-backend **symbol/export audit** |a manifest of expected exports per artifact (`.wasm` exports, ELF symbols, GPU kernel entries) audited via `nm -D`/`wasm-tools` — makes ABI/export drift a red check. *GAP — highest-value next interop guard.*
+|*Adopt from proven:* differential **conformance matrix** |one golden spec-vector set; every backend runs it and must agree (mirror `ALIB-CONFORMANCE.adoc` table + its `⚠ not-yet-executed` honesty). *GAP.*
+|===
+
+== Risk-transfer ledger
+
+Where a risk is *deliberately shifted* (per the V1-GATE "risk-surface" framing —
+declare the surface, demand matching evidence). Each transfer is honest + gated:
+
+[cols="2,3"]
+|===
+|Risk |Transfer + where it lands
+
+|Float-through-heap silent corruption |→ **loud-fail** `UnsupportedFeature` (issue-draft 05); risk moves to "explicit reject + use `-i`/`-julia`/GPU". Gated by `wasm-validate`.
+|Affine `own` vs typed-wasm L10 linear |→ documented mismatch (issue-draft 06); risk = over-rejection on legal drops, transferred to a future v2 carrier (`Affine` kind). Advisory at compile; fatal at `verify`.
+|Effects/exceptions on core wasm |→ carved out (#555/#556), routed to the interpreter / VM M1. Risk = "not on wasm" made explicit, not silent.
+|RISC-V native link |→ `-no-pie` (absolute-reloc vs PIE); risk surfaced + pinned by `riscv-run-validate`.
+|Borrow-checker hole #554 / Polonius #553 |→ tracked debt; risk = unsound-on-one-shape, declared in `.claude/CLAUDE.md` "Known soundness items".
+|===
+
+== Reuse-from-proven plan (do these before anything generic)
+
+. *Port `tests/e2e.sh`* → a 5-section AffineScript proof-chain harness: ① `proof-check-all`, ② backend build + artifact-exists, ③ **dangerous-pattern grep gate** (ban unsafe escape hatches in `.affine`/codegen), ④ property-test build, ⑤ backend/target coverage %. PASS/FAIL/SKIP counters, `exit $FAIL`. (Generalises the 8 gates into one chain.)
+. *Naming:* `prop_*` (PBT), `e2e_*` split into *structural* (no artifact needed — ABI/size/constant checks) vs *runtime*, `aspect_*` (SEC/boundary).
+. *Symbol-audit* per backend (the cheapest high-value interop guard).
+. *cargo-fuzz/ClusterFuzzLite* on the boundary (lexer/parser + codegen emission), per-PR 5-min + weekly 30-min; corpus gitignored; toolchain SHA-pinned. NO placeholders.
+. *`TEST-NEEDS.md`* ledger for AffineScript: per-category PASS/N-A counts + an explicit *Remaining Gaps* list (this matrix is its seed).
+
+== Applying this going forward
+
+* *VM M1* lands with: UT (CESK step), EXE (differential-vs-interp — proven's structural/runtime split), CTR (affine enforcement on by default = a runtime invariant test), PBT (semiring/step properties), PER (step-rate + cost-meter bench). Its proof-oracle role *is* the PRF coupling.
+* *Native tier* gains the symbol-audit (IOP) + a conformance vector run across x86/aarch64/riscv64 (CMP/PRT).
+* Each new component declares its row here + in `TEST-NEEDS.md`, honestly.

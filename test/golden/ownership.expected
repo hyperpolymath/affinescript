@@ -39,7 +39,7 @@
                 file = "test/golden/ownership.affine" }
               };
             p_ty =
-            (Ast.TyRef
+            (Ast.TyRef (None,
                (Ast.TyCon
                   { Ast.name = "Int";
                     span =
@@ -47,7 +47,8 @@
                       { Span.line = 2; col = 37; offset = 64 };
                       end_pos = { Span.line = 2; col = 41; offset = 68 };
                       file = "test/golden/ownership.affine" }
-                    }))
+                    })
+               ))
             };
           { Ast.p_quantity = None; p_ownership = None;
             p_name =
@@ -58,7 +59,7 @@
                 file = "test/golden/ownership.affine" }
               };
             p_ty =
-            (Ast.TyMut
+            (Ast.TyMut (None,
                (Ast.TyCon
                   { Ast.name = "Bool";
                     span =
@@ -66,7 +67,8 @@
                       { Span.line = 2; col = 49; offset = 76 };
                       end_pos = { Span.line = 2; col = 53; offset = 80 };
                       file = "test/golden/ownership.affine" }
-                    }))
+                    })
+               ))
             }
           ];
         fd_ret_ty = (Some (Ast.TyTuple [])); fd_eff = None; fd_where = [];

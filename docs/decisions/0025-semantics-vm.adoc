@@ -1,0 +1,126 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+= ADR-0025: A semantics VM — the engine for what wasm cannot express
+Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+:toc:
+:toclevels: 2
+:icons: font
+
+Status:: *Accepted* (owner sign-off 2026-06-16). M1 implementation commenced.
+Date:: 2026-06-16
+Series:: Settled-decisions ledger. Sits under the targeting-strategy decision (wasm = portability · VM = semantics · native = performance). Companion: ADR-0024 (Android native).
+
+== Context
+
+The targeting strategy (ratified 2026-06-16) assigns each tier one job:
+
+* *wasm* — universal portability. Runs on every mobile/desktop OS via WebView
+  or embedded runtime. Carries ~82% of the surface language (measured: 28/34 of
+  the positive corpus validate; `just wasm-validate`).
+* *native (ARM64/LLVM)* — performance (ADR-0024).
+* *this VM* — *semantics*. The home for exactly the constructs core wasm 1.0
+  *cannot* express, which the coverage sweep pinpointed:
+
+[cols="1,3"]
+|===
+| Construct | Why wasm can't (today) | Today's behaviour
+
+| Multi-shot algebraic effects + `resume` | needs reified, re-entrant continuations | #555 — wasm silently drops arms; interp does *shallow single-shot tail-resume only* (`interp.ml:248-263`)
+| Exceptions / `try`/`catch` | needs the wasm exception-handling proposal | loud-fails -> "use -i / -julia"
+| Runtime affine/linear enforcement | wasm has no resource semantics | not enforced at runtime
+| Tropical cost-metering | no metering primitive | absent
+|===
+
+The VM is *not* a portability mechanism (wasm is) and *not* a performance tier
+(native is). Building a bytecode VM to "reach mobile" would reinvent what wasm
+already gives us. Its sole justification is *semantic completeness + being the
+executable reference for the metatheory*.
+
+== Decision (proposed)
+
+Grow today's tree-walking `lib/interp.ml` into a **CESK abstract machine** — a
+small-step machine whose state is explicit: *(C)ontrol · (E)nvironment ·
+(K)ontinuation · (S)tore* — making these constructs first-class:
+
+[IMPORTANT]
+====
+*Direction of travel (expressly recorded).* The CESK machine is *where we are
+taking it now*; a flat **bytecode VM remains the stated destination**. A CESK
+machine is exactly one defunctionalisation away from bytecode (Reynolds'
+*Definitional Interpreters* / Danvy's correspondence): when execution speed or a
+JIT-able instruction stream is wanted, we defunctionalise the machine into a
+bytecode ISA *without changing its semantics*. We build CESK first because it
+keeps the reified, serialisable, multi-shot continuation we need now, drops the
+cost of an instruction set + compiler, and is the most faithful executable mirror
+of the Solo `Step` relation — but the bytecode VM is the destination this is on
+the road to.
+====
+
+. *Reified, defunctionalised continuations.* The *(K)ontinuation* is an explicit
+  list of frames — *data, not host closures* — so a captured continuation is a
+  first-class, copyable, serialisable value. This is the substrate multi-shot
+  `resume` needs: `resume k v` re-enters a *copy* of `k`, and `k` may be resumed
+  again. Because K is data, a frozen machine state *is* a Baton — the
+  bag-of-actions resumable-computation unit — with no separate bytecode stream.
+. *Handler stack.* A dynamic stack of installed effect handlers; `perform`
+  searches it, capturing the delimited continuation up to the matching handler
+  (deep handlers). Exceptions are the degenerate single-shot, non-resumable case
+  — modelled as a handler that discards its continuation.
+. *Runtime resource discipline.* Each value carries its QTT kind on its tag; the
+  machine enforces affine (`≤1`) / linear (`=1`) use dynamically **by default**
+  (`--unchecked` opts out) — the executable mirror of `lib/quantity.ml` and the
+  Solo-core proofs.
+. *Cost metering.* Each machine transition carries a tropical cost grade
+  (`(ℕ∪{∞}, min, +)`); the machine accumulates a running cost **by default**,
+  enabling budgets and `∞ = infeasible`. Aligns with the tropical-session-types
+  Lean proof + the echo-types cost work.
+. *Proof-oracle mode.* The CESK transitions *are* the mechanised small-step
+  `Step` relation, so the Solo/Duet semantics gain an executable witness and a
+  differential oracle against the compiler — from M1, not M5 (see phasing).
+
+Values use a **VM-native tagged representation** (GC'd, QTT kind on the tag), not
+the wasm linear-memory encoding: the machine optimises for continuation capture,
+and a boxed-f64 value sidesteps the core-wasm Float-through-heap defect
+(issue-draft 05) entirely — making the VM the *correct* executor for the
+float-aggregate programs the wasm backend now loud-fails.
+
+== Phasing (each phase independently shippable + gated)
+
+[cols="1,4"]
+|===
+| Phase | Deliverable
+
+| *M1* | *Solo-core CESK machine* — STLC + unit + products + sums + `let` + QTT quantities (the exact fragment `Soundness.idr` mechanises), with reified continuations, VM-native tagged values, and affine enforcement on by default. Paired 1:1 with the proofs: a differential oracle checks the CESK transitions against the Solo `Step` relation *from M1*. NOT full parity — `interp.ml` keeps serving real programs meanwhile.
+| *M2* | Deep effect handlers + *multi-shot* `resume` (closes #555 at the VM tier; the loud-fail messages already route here). Runtime handler tests — *zero exist today*.
+| *M3* | Exceptions / `try`/`catch` (single-shot handler specialisation).
+| *M4* | Harden runtime affine/linear enforcement + tropical cost metering — *on by default* per decision Q4, with an `--unchecked` escape for speed.
+| *M5* | Extend the differential oracle to Duet (effects / `resume` in the proofs).
+| *(direction)* | Defunctionalise the CESK machine into a flat **bytecode VM** — the stated destination — when execution speed or a JIT-able instruction stream is wanted. Semantics-preserving by construction (Reynolds/Danvy).
+|===
+
+== Consequences
+
+* The "use the interpreter" escape hatch the compiler *already prints* for
+  effects/exceptions becomes *true and complete* rather than partial.
+* Gives the metatheory an executable oracle — strengthens the proof story
+  beyond type-checking the `.idr`/`.lean`/`.agda` files.
+* Does *not* compete with wasm or native; complements them. A program that is
+  effect/exception-heavy runs on the VM; a hot numeric kernel compiles native or
+  to a GPU backend; a portable artifact ships as wasm. Same front-end.
+* Cost: even a CESK machine is a real subsystem; M1 alone is multi-week. Hence
+  design-first and per-phase gating. The eventual bytecode VM is further still —
+  which is exactly why CESK comes first.
+
+== Decisions (signed off 2026-06-16)
+
+. *Substrate:* a **CESK abstract machine** (defunctionalised continuations over
+  the AST), expressly chosen as the *step toward* a flat bytecode VM — the stated
+  destination it defunctionalises into. Not the full bytecode VM yet; not a
+  CPS/host-closure tree-walker.
+. *Value representation:* **VM-native tagged** (GC'd, QTT kind on the tag), not
+  the wasm linear-memory encoding.
+. *M1 scope:* the **reduced Solo core**, paired with the mechanised proofs — not
+  full `interp.ml` parity. `interp.ml` keeps serving real programs until the
+  machine grows to supersede it.
+. *Enforcement:* runtime affine/linear + cost checks **on by default**, with an
+  `--unchecked` escape.

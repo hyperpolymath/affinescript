@@ -1,0 +1,102 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2024-2026 hyperpolymath (Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>)
+= Effect Handler Implementation
+
+== Status Sync (2026-04-12)
+
+This document tracks the implementation status of algebraic effects in
+AffineScript and is aligned with `.machine++_++readable/6a2/STATE.a2ml`.
+
+== Syntax (Current Parser Form)
+
+=== Effect Declaration
+
+[source,affinescript]
+----
+effect Console {
+  fn print(s: String) -> ();
+  fn read() -> String;
+}
+----
+
+=== Effect Annotation in Function Types
+
+[source,affinescript]
+----
+fn greet() -{Console}-> String {
+  Console.print("Hello!");
+  Console.read()
+}
+----
+
+=== Effect Handlers
+
+[source,affinescript]
+----
+handle greet() {
+  print(s) => {
+    resume("ok")
+  },
+  read() => {
+    resume("Alice")
+  },
+  return(x) => x
+}
+----
+
+== Current Implementation
+
+=== Implemented
+
+[arabic]
+. Effect declarations and operation signatures.
+. Effect operations as builtins that raise `PerformEffect`.
+. Handler operation matching (`HandlerOp`).
+. Return-arm handling (`HandlerReturn`).
+. `resume` plumbing in the interpreter path.
+
+=== Backend Caveats
+
+[arabic]
+. *Interpreter path*: effect handlers are implemented and usable.
+. *WASM 1.0 backend*: handler lowering is partial; advanced handler
+semantics do not fully map to backend continuations.
+. *WASM GC backend*: `handle` / `resume` are currently rejected with
+`UnsupportedFeature` where continuation semantics are required.
+
+== Technical Notes
+
+The interpreter represents effect operations via:
+
+[source,ocaml]
+----
+type eval_error =
+  | ...
+  | PerformEffect of string * value list
+----
+
+Handler evaluation catches `PerformEffect`, selects a matching arm, and
+evaluates the arm body in the handler context.
+
+== Not Yet Complete
+
+[arabic]
+. Full continuation semantics in Wasm backends without relying on
+interpreter behavior.
+. A backend strategy for multi-resume semantics when needed.
+. End-to-end parity between interpreter and all codegen targets for
+advanced handler/control-flow combinations.
+
+== Testing
+
+See:
+
+* `test/e2e/fixtures/effects.affine`
+* `test/test++_++e2e.ml`
+
+Run:
+
+[source,bash]
+----
+dune runtest
+----

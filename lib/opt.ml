@@ -99,6 +99,38 @@ let rec fold_constants_expr (expr : expr) : expr =
     else
       ExprFloatBinary (left', op, right')
 
+  (* Float heap wall: fold sub-expressions, preserving the f64 lowering node. *)
+  | ExprFloatArray elements ->
+    let elements' = List.map fold_constants_expr elements in
+    if List.for_all2 (==) elements elements' then expr
+    else ExprFloatArray elements'
+
+  | ExprFloatIndex (arr, idx) ->
+    let arr' = fold_constants_expr arr in
+    let idx' = fold_constants_expr idx in
+    if arr == arr' && idx == idx' then expr
+    else ExprFloatIndex (arr', idx')
+
+  | ExprCellTuple cells ->
+    let cells' = List.map (fun (e, k) -> (fold_constants_expr e, k)) cells in
+    if List.for_all2 (fun (e, _) (e', _) -> e == e') cells cells' then expr
+    else ExprCellTuple cells'
+
+  | ExprCellTupleIndex (tup, i, k) ->
+    let tup' = fold_constants_expr tup in
+    if tup == tup' then expr
+    else ExprCellTupleIndex (tup', i, k)
+
+  | ExprCellRecord fields ->
+    let fields' = List.map (fun (id, e, k) -> (id, fold_constants_expr e, k)) fields in
+    if List.for_all2 (fun (_, e, _) (_, e', _) -> e == e') fields fields' then expr
+    else ExprCellRecord fields'
+
+  | ExprCellField (r, off, k) ->
+    let r' = fold_constants_expr r in
+    if r == r' then expr
+    else ExprCellField (r', off, k)
+
   | ExprUnary (op, operand) ->
     let operand' = fold_constants_expr operand in
     if operand == operand' then

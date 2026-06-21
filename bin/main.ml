@@ -490,7 +490,7 @@ let repl_cmd_fn () =
     compilation errors.  With [--wasm-gc], targets the WebAssembly GC
     proposal instead of WASM 1.0 linear memory. *)
 let compile_file face json wasm_gc vscode_ext vscode_adapter vscode_no_lc
-    deno_esm path output =
+    deno_esm target path output =
   let face = resolve_face ~quiet:json face path in
   if json then begin
     let diags = ref [] in
@@ -635,7 +635,7 @@ let compile_file face json wasm_gc vscode_ext vscode_adapter vscode_no_lc
                 else if is_rust then ("Rust", "E0813",
                   Affinescript.Rust_codegen.codegen_rust flat_prog resolve_ctx.symbols)
                 else if is_llvm then ("LLVM", "E0814",
-                  Affinescript.Llvm_codegen.codegen_llvm flat_prog resolve_ctx.symbols)
+                  Affinescript.Llvm_codegen.codegen_llvm ?triple:target flat_prog resolve_ctx.symbols)
                 else if is_verilog then ("Verilog", "E0815",
                   Affinescript.Verilog_codegen.codegen_verilog flat_prog resolve_ctx.symbols)
                 else if is_gleam then ("Gleam", "E0816",
@@ -874,7 +874,7 @@ let compile_file face json wasm_gc vscode_ext vscode_adapter vscode_no_lc
                 else if is_rust then ("Rust",
                   Affinescript.Rust_codegen.codegen_rust flat_prog resolve_ctx.symbols)
                 else if is_llvm then ("LLVM",
-                  Affinescript.Llvm_codegen.codegen_llvm flat_prog resolve_ctx.symbols)
+                  Affinescript.Llvm_codegen.codegen_llvm ?triple:target flat_prog resolve_ctx.symbols)
                 else if is_verilog then ("Verilog",
                   Affinescript.Verilog_codegen.codegen_verilog flat_prog resolve_ctx.symbols)
                 else if is_gleam then ("Gleam",
@@ -1207,6 +1207,14 @@ let path_arg =
 
 let output_arg =
   Arg.(value & opt string "out.wasm" & info ["o"; "output"] ~docv:"FILE" ~doc:"Output file")
+
+let target_arg =
+  Arg.(value & opt (some string) None & info ["target"] ~docv:"TRIPLE"
+    ~doc:"LLVM target triple for native (.ll) output. Overrides the \
+          AFFINESCRIPT_LLVM_TRIPLE env var; default is x86_64-unknown-linux-gnu. \
+          Accepts a full triple verbatim (e.g. riscv64-unknown-linux-gnu) or a \
+          shorthand: x86_64, aarch64/arm64, aarch64-android/android, riscv64, \
+          riscv32, ios. Any value containing '-' is treated as a full triple.")
 
 let wasm_gc_arg =
   Arg.(value & flag & info ["wasm-gc"]
@@ -1598,7 +1606,7 @@ let compile_cmd =
   let info = Cmd.info "compile" ~doc in
   Cmd.v info Term.(ret (const compile_file $ face_arg $ json_arg $ wasm_gc_arg
     $ vscode_ext_arg $ vscode_adapter_arg $ vscode_no_lc_arg $ deno_esm_arg
-    $ path_arg $ output_arg))
+    $ target_arg $ path_arg $ output_arg))
 
 let fmt_cmd =
   let doc = "Format a file" in

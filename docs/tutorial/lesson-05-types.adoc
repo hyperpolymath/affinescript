@@ -1,0 +1,29 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2024-2026 hyperpolymath (Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>)
+= Lesson 5: Types and Inference
+
+== Type Annotations
+
+Always specify parameter and return types:
+
+[source,affinescript]
+----
+fn identity(x: Int) -> Int {
+  return x;
+}
+----
+
+== Type Inference
+
+Let bindings infer types:
+
+[source,affinescript]
+----
+fn main() -> Int {
+  let x = 42;        // x: Int inferred
+  let y = x + 10;    // y: Int inferred
+  return y;
+}
+----
+
+Next: link:lesson-06-errors.adoc[Lesson 6: Error Handling]

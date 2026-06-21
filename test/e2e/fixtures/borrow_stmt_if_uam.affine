@@ -1,0 +1,23 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// ADR-022 M3 statement-level control flow — use-after-move written as a
+// STATEMENT inside an `if` body. `r` borrows `a` (return-borrow summary of
+// `pick`); the move of `a` lives in the then-branch as a bare statement, while
+// `r` is still live (its last use `*r` comes after the branch). The lexical
+// checker flags MoveWhileBorrowed; the Polonius extractor must agree now that
+// it descends into nested branch statements (before, the branch body's
+// statements were invisible — apps/rhs_borrows stop at block tails).
+fn pick(ref x: Int) -> ref Int { return &x; }
+fn consume(own v: Int) -> Int { return v; }
+
+fn main() -> Int {
+  let a: Int = 7;
+  let c: Bool = true;
+  let r = pick(a);
+  if c {
+    consume(a);
+  };
+  let v = *r;
+  return v;
+}

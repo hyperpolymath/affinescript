@@ -1,0 +1,259 @@
+////
+  PARKED DRAFT — no SPDX/owner header yet.
+  The strict pre-commit hook requires:
+      SPDX-License-Identifier: MPL-2.0
+      SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+  Owner adds that header MANUALLY (no automated licence edits), then commits
+  SIGNED (-S id_ed25519_signing). Do NOT --no-verify. Until then this file
+  lives in the working tree only.
+////
+= AFFIRMATION — AffineScript, as of 2026-06-16
+:toc: macro
+:toclevels: 2
+
+_the No-Bullshit file: what we affirm was true and checkable at this moment_
+
+[NOTE]
+====
+*Genre.* An *affirmation* is a solemn declaration of the truth of a statement,
+made by someone who _declines to swear an oath_. That is exactly what this is:
+our truth-as-best-believed at a stamped instant — binding on our honesty, not a
+claim of infallibility. It is not the README and not the EXPLAINME:
+
+[cols="1,3,2",options="header"]
+|===
+| File | Answers | Tense
+| `README`      | _Where is this going, and why?_ — state of thinking, steering, intent | future / aspirational
+| `EXPLAINME`   | _How is it built, and what's the evidence?_ — engineering underpinnings | descriptive / mechanism
+| *`AFFIRMATION`* (this file) | _What can we honestly affirm was *true and checkable* at a stamped moment?_ | a frozen instant, falsifiable
+|===
+
+Every repo in the estate may carry one (`AFFIRMATION.adoc`). It is deliberately
+small, dated, and signed, so a reader can hold us to exactly what we affirmed,
+when we affirmed it.
+====
+
+toc::[]
+
+== What this is, and how it is designed to work
+
+*What it is.* A short, dated, jointly-signed snapshot of what we can _honestly
+and verifiably_ claim about this repo at one exact commit. Nothing here is
+marketing and nothing is a promise about the future — both of those live in the
+README. This file is the receipt.
+
+*How it is designed to work.* Three moving parts make it trustworthy:
+
+. *Ground truth, not memory.* Every claim below was produced by _running the
+  tool in the session that wrote this file_ (build, tests, proof checkers). If a
+  status doc or a memory said otherwise, the live run wins and we flag the
+  contradiction.
+. *A frozen anchor.* The file names the exact commit SHA, branch, UTC timestamp,
+  and toolchain (see <<Verifiable anchor>>), so "true" always means "true _at
+  this point_". Move the SHA and the file becomes a draft until re-run.
+. *A real signature.* It is landed by a *signed git commit*; that signature over
+  this content at the anchored SHA is what makes the affirmation tamper-evident
+  and attributable — not the prose alone.
+
+*We are fallible.* We can be wrong, stale, or simply mistaken about our own
+work. This file is our best honest belief, not a proof of its own correctness.
+Treat it as a falsifiable claim, not gospel.
+
+== The epistemic contract (read this before you trust _or_ attack)
+
+This document records our *best joint belief* at the timestamp below. It is
+*not a guarantee of correctness.* We may be wrong. We may be deluded. We may
+have missed something — a hole, a stale doc, a proof that checks a calculus we
+then fail to match in the implementation.
+
+*No intentional overclaim.* That is the only guarantee here: we have not
+_knowingly_ inflated anything. Where something is tested-but-not-proved, we say
+so. Where a proof covers an idealised core and _not_ the production code, we say
+so. Where something is refuted or vacuous, we say so. If you find an honest
+claim here that turns out false, that is an error to be fixed — not a lie.
+
+*Standing invitation to refute.* You are _invited_ to bulldoze any claim in this
+file. We want that. But the fair form of the attack is:
+
+. Read this file at the stamped commit.
+. Reproduce (or fail to reproduce) the checks in <<reproduce,Reproduce it yourself>>.
+. _Then_ tell us where the discrepancy is, against the artefact as it stood at
+  this moment — so we can either justify it or concede it on the record.
+
+An attack that skips steps 1–2 is attacking a strawman of a different date.
+
+*No fights before the facts are cleared up.* We are not interested in a dispute
+over a claim until the discrepancy has actually been checked against the
+artefact at this commit and we have had the chance to either justify it or
+concede it on the record. Good faith both ways: bring a reproducible
+discrepancy and we will fix the claim, the doc, or the code — promptly and
+without defensiveness. The goal is a corrected record, not a won argument.
+
+== Verifiable anchor
+
+[cols="1,3"]
+|===
+| *Repo*        | `hyperpolymath/affinescript` (the OCaml compiler — *not* ephapax)
+| *Branch*      | `feat/solo-core-metatheory-proofs`
+| *Commit (HEAD)* | `4ed413f4ded5d83813f303854f4b28823847a7b1`
+| *Permalink*   | https://github.com/hyperpolymath/affinescript/tree/4ed413f4ded5d83813f303854f4b28823847a7b1
+| *Verified (UTC)* | 2026-06-16T12:17:10Z
+| *Working-tree delta at verification* | `docs/PROOF-NEEDS.md` modified; untracked `issues-drafts/08-conditional-origin-borrow-escape.md`, `stdlib/SafeHex.affine`, this file. None affect the build/test/proof results below; the green results are HEAD + this delta.
+| *Toolchain*   | OCaml 4.14.2 · dune 3.22.2 · Idris2 0.8.0 · Lean 4.13.0
+|===
+
+[IMPORTANT]
+If you are reading this at a _later_ commit, the claims may have drifted.
+Re-run <<reproduce>> and write a fresh affirmation; do not trust a stale one.
+
+== Companion documents and repo metadata (cross-check)
+
+This affirmation should be read against the repo's own public claims. Where they
+drift from what we verified, we say so here rather than quietly leave the reader
+to find out.
+
+* *`README.adoc`* — link:README.adoc[_"AffineScript: A Practical Language for
+  Resource-Safe Systems"_]. The README sells the vision; this file is its
+  receipt for one moment. (A legacy `README.md` also exists; `README.adoc` is
+  canonical per the estate DOC-FORMAT rule.)
+* *`EXPLAINME.adoc`* — *currently absent.* The estate trio
+  (README / EXPLAINME / AFFIRMATION) is therefore incomplete for this repo:
+  there is no dedicated "prove every README claim with code paths" document yet.
+  Noted as a gap, not glossed.
+* *GitHub repo description* — _"The effect row is the abstraction; the backend
+  picks the mechanism. An affine-typed language compiling to verifiable typed
+  WebAssembly and Deno."_ Honest caveat: "_verifiable_ typed WebAssembly" is
+  aspirational at the typed-wasm boundary today — the `own` → ownership mapping
+  is known-wrong (no `Affine` kind upstream, mis-mapped to Linear), so the
+  emitted ownership section is not yet faithful.
+* *GitHub topics* — `affine-types`, `algebraic-effects`, `borrow-checker`,
+  `compiler`, `effect-system`, `formal-verification`, `linear-types`, `ocaml`,
+  `programming-language`. Cross-check: `formal-verification` is now _earned_
+  (Idris2 Solo-core progress+preservation + Lean tropical, green — see below);
+  `linear-types` is loose — the language is *affine* (≤1 use), not strictly
+  linear (exactly-once), and the `own` kind is affine.
+
+== The honest state (one breath)
+
+*AffineScript is a working research compiler for an affine / quantitative-typed
+language that compiles to WebAssembly — real, runnable, and now backed by a
+small but genuinely machine-checked metatheory core — yet still pre-1.0, with
+the implementation _not_ proved to match that core, and with effects, async, and
+refinements still partial or unenforced.*
+
+=== What is solid (and how we checked)
+
+* *Front-to-back pipeline runs.* parse → typecheck → borrow-check → elaborate →
+  codegen → wasm, plus a tree-walking interpreter. `just build` exits 0;
+  `just test` (`dune runtest`) exits 0 — *483 tests*; 114+ `.affine` fixtures
+  under `test/`.
+* *There IS mechanised metatheory — verified green this moment.*
+  `just proof-check-all` → *4 passed, 0 failed, 1 skipped*:
+** *Idris2 — Solo-core QTT metatheory: progress + preservation, fully proved,
+   `%default total`, no holes, no `believe_me`/`assert_total`/postulates.* The
+   crux is the QTT substitution lemma (`SubstLemma.substLemma0`); the affine
+   SPLIT product rule means preservation lands in a `Weaker` sub-context.
+   (`docs/academic/formal-verification/solo-core/`.)
+** *Lean 4 — tropical session types proof: passes, no dangerous tactics.*
+** Agda echo-boundary certificates: *SKIPPED* — environment only (needs
+   `AFFINESCRIPT_ECHO_TYPES_DIR`); not a failure, but not evidence either.
+* *Canonical borrow hole #554 is closed and tested* (return-borrow summary +
+  call-graph fixpoint), including transitive + hardening variants.
+* *The conditional-origin borrow-escape hole is closed and tested* (commit
+  `4ed413f`): a use-after-move via a borrow bound through an `if`/`match`/block
+  value is now caught.  14 unsound forms reject; 7 safe forms (NLL
+  use-before-move, unrelated move) pass; 6 hardening fixtures
+  (`test/e2e/fixtures/borrow_cond_origin_*`).
+* *Float-through-heap is durably fixed for all heap aggregates* (arrays, tuples
+  uniform/mixed, closed records), wasmtime round-trip verified.
+* *Compile-time complexity is back to linear* (the O(n²) codegen residuals are
+  gone, bench-evidenced).
+
+=== The honest nuance you must not lose
+
+The Idris2 proof establishes soundness of an *idealised Solo core calculus*. It
+does *not* prove that the OCaml implementation (`lib/borrow.ml`,
+`lib/codegen.ml`, …) _refines_ that calculus. "Proved core" + "tested
+implementation" is exactly that — two things, with an unverified bridge between
+them. Anyone claiming "AffineScript is proven sound" full-stop is overclaiming.
+
+=== Known-incomplete but honestly fenced (loud failure, never silent miscompile)
+
+* f64 in closures (calling-convention gap), float array compound-assign, and
+  open/polymorphic record rows — these *refuse to compile*, they do not produce
+  wrong code.
+
+=== Outstanding / weak / refuted (no spin)
+
+* *No silent soundness hole is currently known.* The conditional-origin
+  borrow escape found by adversarial probing this session was *fixed and tested*
+  (see Solid, above; commit `4ed413f`). This is an absence-of-evidence claim,
+  not evidence-of-absence: more probing may surface others — exactly what the
+  epistemic contract invites.
+* *Effect-handler lowering (#555) and async CPS (#556): Refuted* — backends
+  silently drop handler arms / lower async synchronously.
+* *Refinement types: vacuous* (parse but unenforced). *Trait coherence:
+  unchecked.* *typed-wasm `own` mapping: known-wrong* (no `Affine` kind upstream
+  → mis-mapped to Linear).
+* *`docs/PROOF-NEEDS.md` and `.claude/CLAUDE.md` are themselves partly stale* at
+  this commit: both still say there are no mechanised proofs, which the proof
+  run above *refutes*. Correcting those is owner-gated (SPDX header) and pending.
+
+[#reproduce]
+== Reproduce it yourself
+
+From the repo root, at the commit above:
+
+[source,sh]
+----
+just build            # expect exit 0
+just test             # expect exit 0 (dune runtest)
+just proof-check-all  # expect: 4 passed, 0 failed, 1 skipped
+----
+
+For the proofs individually:
+
+[source,sh]
+----
+just proof-check-idris2   # Solo-core progress + preservation (no holes)
+just proof-check-lean     # tropical session types
+# Agda is skipped unless AFFINESCRIPT_ECHO_TYPES_DIR points at echo-types/proofs/agda
+----
+
+To see the open hole bite (it is _currently accepted_ — that's the bug): see the
+reproducer table in `issues-drafts/08-conditional-origin-borrow-escape.md`.
+
+== One-line characterisation (quote this)
+
+[quote]
+____
+"A real, runnable affine-typed → WASM research compiler with a *machine-checked
+Solo core* (Idris2 progress+preservation, no holes) and a tested — _not yet
+proved-to-match_ — implementation; conservative loud-failures at the edges; one
+known open borrow hole on the fix queue; effects/async/refinements still
+partial. Serious research artifact, not a production language. No intentional
+overclaim."
+____
+
+== Joint attestation
+
+We, the undersigned, assert that *to the best of our joint belief at the
+timestamp above, every claim in this file is true and was checked as described*
+— with no intentional overclaim, and with the open gaps stated rather than
+hidden.
+
+* *Engineering party (AI):* Claude Opus 4.8 (`claude-opus-4-8[1m]`) — ran the
+  build, test, and proof checks recorded here on 2026-06-16T11:41:06Z and stands
+  behind the wording above as a faithful report of those runs.
+* *Owner / maintainer:* Jonathan D.A. Jewell — _signs by committing this file
+  with `-S` (`id_ed25519_signing`); the git commit signature over this content,
+  at the commit SHA recorded above, is the cryptographic form of this
+  affirmation._
++
+Signed-off-date: ____________________  (fill on signing)
+
+[TIP]
+The authoritative, tamper-evident signature is the *signed git commit* that
+lands this file. If the SHA in <<Verifiable anchor>> matches the parent of that
+commit and the commit verifies, this affirmation is anchored. If they don't
+match, treat the file as a draft.

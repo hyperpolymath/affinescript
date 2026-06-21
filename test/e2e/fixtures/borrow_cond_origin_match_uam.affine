@@ -1,0 +1,17 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// issue-draft 08 — borrow bound through a multi-arm `match` (scrutinee is NOT
+// the moved var, so the catch is real origin tracking, not the incidental
+// single-arm scrutinee effect). The match value is one arm tail or another;
+// the union of arm-escaping borrows must keep `a` borrowed.
+fn pick(ref x: Int) -> ref Int { return &x; }
+fn consume(own v: Int) -> Int { return v; }
+
+fn main() -> Int {
+  let a: Int = 7;
+  let k: Int = 0;
+  let r = match k { 0 => pick(a), _ => pick(a) };
+  let _g = consume(a);
+  return *r;
+}

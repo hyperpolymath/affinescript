@@ -1,0 +1,17 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// ADR-022 M3 plain use-after-move — no loan involved. `a` is moved into the
+// first `consume`, then read again by the second `consume`. The lexical checker
+// flags this via its `state.moved` set; the Polonius extractor now emits
+// move_at/use_at facts and the solver's forward moved-state dataflow flags the
+// second use, so the two tiers agree on a case the loan-conflict rules are blind
+// to.
+fn consume(own v: Int) -> Int { return v; }
+
+fn main() -> Int {
+  let a: Int = 7;
+  let _g1 = consume(a);
+  let _g2 = consume(a);
+  return 0;
+}

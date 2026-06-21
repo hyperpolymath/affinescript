@@ -1,0 +1,157 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath (Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>)
+= AffineScript Repo Tidy-Up Ledger — 2026-06-16
+:toc:
+
+Ground-truthed record of the comprehensive repo tidy-up (task #12,
+AUDIT-FIRST, owner-approved batches). Captures what was done, what was
+deliberately held, and the open owner-gated flags so a later session does
+not re-discover them cold.
+
+== Batches completed
+
+[cols="1,3,1",options="header"]
+|===
+| Batch | Scope | Disposition
+
+| A | `.gitignore` out.wasm | No-op — already ignored.
+| C | README dedup | `README.md` (677-line stale broken duplicate of
+  `README.adoc`) deleted (`ea4d864`). Deletion-only, per owner.
+| B | docs `.md` → `.adoc` (~62 files) | Done across 8 signed commits
+  (`2ba8141` pilot → `4747e9d` link/attribution pass). See below.
+|===
+
+=== Batch B conversion method (reusable)
+
+. `pandoc -f markdown -t asciidoc FILE | sed -E '/^==+ /s/^=//'` — the
+  `sed` demotes every heading one level so the top `#` becomes a single
+  `=` document title.
+. Prepend the two-line header (the form that satisfies the strict
+  pre-commit hook *without editing the hook*):
++
+[source]
+----
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: <year(s)> hyperpolymath (Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>)
+----
+. `git rm` the `.md`, `git add` the `.adoc`, commit signed (`-S`).
+
+Verified clean across the corpus: zero LaTeX math (academic docs are
+prose + code blocks), code fences preserved verbatim, intra-doc links
+repointed `.md` → `.adoc`.
+
+== Held back — do NOT convert/touch without explicit owner action
+
+[cols="2,3",options="header"]
+|===
+| File | Reason
+
+| `docs/PROOF-NEEDS.md` | Owner-gated / parked (modified in working tree;
+  never commit without owner SPDX + sign).
+| `docs/reference/ABI-FFI.md` | Uninstantiated RSR template (`{{PROJECT}}`
+  placeholders, "delete this line" instruction). Format-converting broken
+  placeholder content forward would mask that it needs instantiation.
+| `docs/governance/LICENSING-GUIDE.md` | Licence-adjacent. Owner-only per
+  the no-automated-licence-edits directive — even a format-only pass.
+| `docs/governance/SECURITY.md`, `docs/governance/CODE_OF_CONDUCT.md` |
+  Community-health files — `.md` by name per CLAUDE.md DOC-FORMAT
+  exception. Correct to leave.
+|===
+
+== Finding: attribution drift caught by the strict pre-commit hook
+
+Four *pre-existing* `.adoc` files predated the hook ever checking them and
+carried owner-attribution drift (no literal
+`Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>` string):
+
+* `docs/NAVIGATION.adoc` — was `2024-2026 Hyperpolymath Contributors`
+* `docs/README.adoc` — was `2024-2026 Hyperpolymath Contributors`
+* `docs/standards/PANIC-ATTACK.adoc` — was `2026 hyperpolymath`
+* `docs/standards/TESTING.adoc` — was `2026 hyperpolymath`
+
+They surfaced only when the batch-B link pass needed to stage them (to
+repoint links to the now-`.adoc` standards docs), which tripped the hook.
+Per explicit owner authorization (extending the batch-B SPDX/attribution
+exception to these touched files), each was reconciled to the canonical
+`hyperpolymath (Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>)` form,
+preserving its existing copyright year (`4747e9d`). The hook then passed
+unmodified — it did its job as a load-bearing attribution-drift detector.
+
+NOTE: This was a one-off, owner-authorized reconciliation of files already
+being touched. It does not authorize a sweep. Any *other* attribution
+drift remains owner-only / manual.
+
+== Open owner-gated flags (not actioned)
+
+* `SECURITY.md` (both `docs/governance/SECURITY.md` and the repo-root copy)
+  is an *uninstantiated* RSR template — `{{OWNER}}`, `{{REPO}}`,
+  `{{SECURITY_EMAIL}}`, `{{PGP_FINGERPRINT}}`, `{{PGP_KEY_URL}}`,
+  `{{WEBSITE}}`, `{{CURRENT_YEAR}}` are still literal placeholders. Needs
+  instantiation or an explicit "leave as template" decision.
+* `docs/reference/ABI-FFI.md` — `{{PROJECT}}` template; instantiate or
+  remove.
+* `docs/governance/LICENSING-GUIDE.md` — awaiting owner manual format pass.
+* `SECURITY.md:388` links to `README.md` for contact info — that root
+  `README.md` was deleted in batch C, so the link now dangles. Folded into
+  the SECURITY.md instantiation decision above.
+* `AFFIRMATION.adoc:117` carries a note about a "legacy README.md" that is
+  now stale after the batch-C deletion (owner-gated file — left untouched).
+
+== Pre-existing dangling doc links (left verbatim, NOT masked)
+
+Targets that were never created; repointing them to `.adoc` would only
+move the dangle. Left as-is so the gap stays visible:
+
+* `docs/tutorial/lesson-10-building.adoc` → `../reference/index.md`,
+  `../stdlib/index.md`
+* `docs/guides/lessons/01-hello-affinescript.adoc` →
+  `02-functions-and-patterns.md`
+* `docs/guides/lessons/README.adoc` → `../../specs/affinescript-spec.md`
+  (community-health `CONTRIBUTING.md` link correctly kept `.md`)
+* `docs/academic/README.adoc` → `white-papers/type-system.md`,
+  `white-papers/effect-system.md`
+* `docs/alib/README.adoc` → `../specs/affinescript-spec.md`
+
+== Soundness survey correction (2026-06-16) — canonical CLAUDE.md is STALE
+
+The `.claude/CLAUDE.md` "Known soundness items (2026-06-11 survey)" section
+(and the disambiguation-table Proofs cell) are STALE. Ground-truthed below by
+running the build + full test suite (528 tests green). The canonical survey
+was NOT edited in place: `.claude/CLAUDE.md` carries no SPDX/owner header, so
+committing an edit trips the strict pre-commit hook, and adding a licence
+header to it is an owner-only decision. Owner to fold these corrections into
+CLAUDE.md manually (with the header) when convenient.
+
+[cols="1,3",options="header"]
+|===
+| Item | Corrected status (2026-06-16)
+
+| **#554** | FIXED. Use-after-move through a callee-returned borrow is now
+  REJECTED (`MoveWhileBorrowed`); aggregate / ref-reassign / match-tail
+  hardening + anti-over-rejection cases asserted
+  (`test_borrow_callee_returned_borrow_*`). #177 closed. issue-draft 08
+  (conditional-origin escape) also FIXED. (Survey still says "this hole
+  remains" — wrong.)
+| **#553 / Polonius** | M1–M3 implemented, NOT "0% implemented". Loan-vs-loan
+  exclusivity now modeled (allowlist 7 divergences: return-escape ×4,
+  captured-linear ×2, call-aliasing ×1). Still TEST-ONLY / unwired — gates no
+  production verdict.
+| **#555** | Codegen FENCED on every reachable backend (WASM, WasmGC,
+  Deno-ESM, JS-text, C) — no more silent arm-drop. Interp: tail-resume
+  correct, multi-shot loud-fails, non-tail single-shot still silently returns
+  the resumed value (residual; needs delimited continuations — blocked on
+  OCaml 4.14 / js_of_ocaml). Runtime handler tests now exist. (Survey says
+  "zero runtime handler tests exist" — wrong.)
+| **#556** | FIXED. Async CPS table-miss fails loud, not silent sync fallback.
+| **#558** | N/A (closed). Refinement & dependent types removed in v1
+  (2026-04-10); `assume(...)` rejected, `T where (P)` parse-errors — no
+  silent-unenforcement path. (Survey says "parsed but silently not enforced"
+  — no longer applicable.)
+| **#559** | FIXED (concrete overlaps). Trait coherence implemented + wired in
+  `check_program`; overlapping impls whose self types unify are rejected.
+  Follow-up: generic-subsumption overlap.
+|===
+
+Session commits (signed, branch `feat/solo-core-metatheory-proofs`,
+unpushed): `bc061ad` (#555 C fence), `2b3f63c` (#559 coherence),
+`3a531e1` (M3 loan-vs-loan).

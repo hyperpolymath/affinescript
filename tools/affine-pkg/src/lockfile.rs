@@ -99,7 +99,11 @@ impl Lockfile {
 
     /// Load lockfile from path
     pub fn load(path: impl AsRef<Path>) -> anyhow::Result<Self> {
-        let content = std::fs::read_to_string(path)?;
+        use std::io::Read;
+        let file = std::fs::File::open(path)?;
+        let mut content = String::new();
+        // Limit to 10MB
+        file.take(10 * 1024 * 1024).read_to_string(&mut content)?;
         let lockfile: Lockfile = toml::from_str(&content)?;
         Ok(lockfile)
     }

@@ -49,6 +49,12 @@ type type_param = {
 }
 [@@deriving show, eq]
 
+(** Abstract origin (region) variable — ADR-022. Opaque to source syntax;
+    inserted by the borrow checker / elaborator. Fresh-int identity, pretty-printed
+    'o0, 'o1, … M1 plants [None] at every site (the single global origin), so the
+    Polonius solver's verdicts reduce to the lexical checker's. *)
+type origin_var = int [@@deriving show, eq]
+
 (** Type expressions *)
 type type_expr =
   | TyVar of ident                                   (** Type variable *)
@@ -58,8 +64,8 @@ type type_expr =
   | TyTuple of type_expr list                        (** (T, U, V) *)
   | TyRecord of row_field list * ident option        (** {x: T, ..r} *)
   | TyOwn of type_expr                               (** own T *)
-  | TyRef of type_expr                               (** ref T *)
-  | TyMut of type_expr                               (** mut T *)
+  | TyRef of origin_var option * type_expr           (** ref T — ADR-022 M1: origin defaults None *)
+  | TyMut of origin_var option * type_expr           (** mut T — ADR-022 M1: origin defaults None *)
   | TyHole                                           (** _ - infer *)
 
 and type_arg =
@@ -187,6 +193,50 @@ type expr =
           `gen_binop` returns — which would emit `i32.lt_s` on f64 operands and
           fail wasm validation. The interpreter and non-wasm backends treat it
           as the ordinary `Float` operation. The "float wall". *)
+  | ExprFloatArray of expr list
+      (** Array literal whose element type is `Float`. Like {!ExprFloatBinary},
+          not produced by the parser: the post-typecheck elaboration
+          (see {!Typecheck.elaborate_string_concat}) rewrites an {!ExprArray}
+          that `synth` typed with a `Float` element into this node, so the wasm
+          backend lays the array out with 8-byte `f64` cells and `f64.store`
+          (8-byte stride) instead of the uniform 4-byte i32 cells that would
+          truncate f64 (issue-draft 05, durable heap fix). The interpreter and
+          non-wasm backends treat it as the ordinary array. The "float heap wall". *)
+  | ExprFloatIndex of expr * expr
+      (** `a[i]` whose result type is `Float` — the dual of {!ExprFloatArray} on
+          the read side. Introduced by the same elaboration from an {!ExprIndex}
+          that `synth` typed as `Float`; the wasm backend loads it with an
+          8-byte stride and `f64.load`. The interpreter re-dispatches to the
+          ordinary {!ExprIndex}. *)
+  | ExprCellTuple of (expr * bool) list
+      (** Tuple literal that contains at least one `Float` field. Laid out with
+          *uniform 8-byte cells* (no length header, field `i` at offset `i*8`):
+          the bool flags an f64 cell (`f64.store`) vs an i32 cell (`i32.store`,
+          which writes the low 4 bytes of the 8-byte slot). Uniform-8 keeps the
+          offset `i*8` independent of the mix of field types, so a mixed
+          `(Int, Float)` works without per-field offset accumulation. Produced
+          only by the elaboration from an {!ExprTuple} that `synth` typed with a
+          `Float` somewhere (issue-draft 05). An all-non-float tuple keeps the
+          4-byte {!ExprTuple} layout. The interpreter re-dispatches to {!ExprTuple}. *)
+  | ExprCellTupleIndex of expr * int * bool
+      (** `t.i` on a float-bearing (uniform-8) tuple: load field `i` at offset
+          `i*8`, as f64 if the bool is set else i32. Every access to such a tuple
+          is rewritten (not just the float fields), since the whole tuple uses
+          8-byte cells. Dual of {!ExprCellTuple}; re-dispatched to
+          {!ExprTupleIndex} by the interpreter. *)
+  | ExprCellRecord of (ident * expr * bool) list
+      (** Record literal that contains at least one `Float` field, on a CLOSED
+          row. Uniform 8-byte cells; fields are placed by **field name sorted
+          ascending** (not literal order), so construction here and {!ExprCellField}
+          access derive identical offsets from the names alone — independent of
+          literal-vs-type field order. The bool flags an f64 cell. Produced only
+          by the elaboration from an {!ExprRecord} that `synth` typed float-bearing
+          and closed (issue-draft 05). Re-dispatched to {!ExprRecord} by the interpreter. *)
+  | ExprCellField of expr * int * bool
+      (** `r.f` on a float-bearing (uniform-8, sorted-by-name) record: load at the
+          given byte offset (the field's sorted-name position × 8, baked at
+          elaborate from the closed row), as f64 if the bool is set else i32.
+          Dual of {!ExprCellRecord}; re-dispatched to {!ExprField} by the interpreter. *)
   | ExprUnary of unary_op * expr
   | ExprBlock of block
   | ExprReturn of expr option

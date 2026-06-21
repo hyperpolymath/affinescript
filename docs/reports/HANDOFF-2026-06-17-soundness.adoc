@@ -1,0 +1,264 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath (Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>)
+= AffineScript Soundness Work — Handoff for the Next Session (2026-06-17)
+:toc:
+:toclevels: 3
+
+Read this file first, then `git log --oneline -12` and run the test suite.
+This is a curated handoff — enough to continue the soundness / Polonius-M3
+work without re-deriving the map. It is NOT exhaustive repo documentation.
+
+== 0. Your mission, and how to work
+
+You are continuing a *soundness-first* pass on the AffineScript compiler
+(OCaml). The standing owner directive is **"holes before anything else"**:
+soundness holes (silent miscompiles, use-after-move / borrow false-negatives,
+unchecked invariants) are fixed HEAD-ON before any feature / VM / perf / doc
+work. After each fix, keep adversarially probing for more.
+
+Five load-bearing working rules (these override any "just keep going" flow):
+
+. **Ground-truth by running the tool.** Never trust a status doc (including
+  `.claude/CLAUDE.md`). Run `dune build` / `dune runtest` / the compiler and
+  read the actual result. Multiple "known holes" this session turned out
+  already-fixed or closed; one doc said "0% implemented" for code that was at
+  M3. Verify before you claim, and before you start work.
+. **Stop-first when revert-cost > ~2 min.** Build locally + commit (signed)
+  freely. But before anything outward-facing (push, PR) or any large/risky
+  change (e.g. an architecture-level rewrite), surface a short plan and get a
+  go-ahead. Do not push; the owner pushes.
+. **NO automated licence / SPDX / attribution edits — ever.** File-by-file,
+  owner-only, even when policy-correct. This bit us repeatedly; see §3.
+. **ALWAYS sign commits** with `-S` (the hook + owner both require it). Ensure
+  `ssh-agent` has `id_ed25519_signing` (sign key `kVP7…`; `id_ed25519` is
+  AUTH-ONLY, never sign with it). Commit/push only when it makes sense; branch
+  off, never commit straight to `main`.
+. **The parallel-run gate is your safety net** for borrow-checker work — see
+  §7.2. Any false-positive you introduce makes a currently-agreeing fixture
+  diverge and the gate fails immediately. Use it; run the full suite after
+  every extractor change.
+
+== 1. Repo identity — this is AffineScript, NOT ephapax
+
+`hyperpolymath/affinescript`, an OCaml compiler. It is **not**
+`hyperpolymath/ephapax` (a separate Rust language). They share only the
+compile target (`hyperpolymath/typed-wasm`). The word "affine" is a
+logic-family coincidence. Before applying any prior memory/snippet, check
+which project it was about. (`.claude/CLAUDE.md` §"Disambiguation" has the
+full table.)
+
+* Production borrow/affine checker: `lib/borrow.ml` (lexical, used in
+  `bin/main.ml` via `Borrow.check_program`).
+* Type checker: `lib/typecheck.ml`. Parser: `lib/parser.mly`. Interpreter:
+  `lib/interp.ml`. AST: `lib/ast.ml`.
+* Build: `dune-project` at root (OCaml `>= 4.14`).
+
+== 2. Environment & commands
+
+* OCaml **4.14.2** — *no native effect handlers* (matters for #555, §7.1). The
+  interpreter must also stay `js_of_ocaml`-compatible (jsoo `>= 5.0` is a dep).
+* Build: `dune build`. Test: `dune runtest` (use `--force` to re-run when
+  cached; 528 tests as of this handoff).
+* Run the compiler: `dune exec affinescript -- <args>`. Interpreter subcommand
+  is `eval FILE` (it prints nothing for a pure `Int` return — tests inspect
+  the value via `Interp.eval_program` / `Interp.apply_function` instead). The
+  flag is NOT `-i`; `eval` is the subcommand.
+* Codegen targets are selected in `bin/main.ml` (~line 490-660): core-WASM
+  (`Codegen`), WasmGC (`Codegen_gc`), Deno-ESM (`Codegen_deno`), JS-text
+  (`Js_codegen`), C (`C_codegen`), plus ~20 experimental backends
+  (`*_codegen.ml`) and source "faces" (`*_face.ml`).
+* Agda proofs (if you touch them): the stdlib path in `~/.agda/libraries` is
+  dangling; use `AGDA_STDLIB=/home/hyperpolymath/developer/worktrees/agda-stdlib-tweak/src`.
+  Blanket "Agda FAIL" is usually an env artifact, not a proof defect.
+
+== 3. The pre-commit hook — read before EVERY commit
+
+`.git/hooks/pre-commit` is a deliberately-kept attribution-drift detector. For
+this repo (MPL branch) it checks every *staged* file matching
+`\.(zig|ex|idr|eph|py|js|ts|rs|c|h|adoc|md)$` (diff-filter ACM) for BOTH:
+
+* `SPDX-License-Identifier: MPL-2.0`, AND
+* the literal owner string `Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>`.
+
+Consequences you must internalise:
+
+* `.ml` and `.affine` files are **NOT** checked — most compiler + test +
+  fixture work commits with no header friction.
+* `.adoc` / `.md` files ARE checked. The header form that PASSES without
+  editing the hook (proven this session):
++
+[source]
+----
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: <year(s)> hyperpolymath (Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>)
+----
+* `.claude/CLAUDE.md` is tracked but has **no header**, so you cannot commit an
+  edit to it without adding one — and adding a licence header is an *owner-only*
+  decision (see §5). Do not edit-and-commit CLAUDE.md; record corrections in a
+  ledger you own instead (that is exactly what was done this session).
+* Never `--no-verify`, never weaken the hook. If a pre-existing tracked file
+  has attribution drift, that is the hook working — surface it, don't auto-fix.
+
+== 4. File map (the bits you'll actually touch)
+
+[cols="2,3",options="header"]
+|===
+| Path | What it is
+
+| `lib/borrow.ml` | PRODUCTION borrow/affine checker (lexical). Soundness
+  verdicts come from here. `expr_to_place`, `places_overlap`, `root_var`,
+  `check_program`, the `BorrowOutlivesOwner` / return-escape machinery.
+| `lib/borrow_extract.ml` | The Polonius *extractor* (ADR-022 M3). TEST-ONLY,
+  unwired from `bin/main.ml`; gates no production verdict. Emits datalog facts
+  (`borrow_at`/`killed`/`cfg_edge`/`conflict_at`/`move_at`/`use_at`/
+  `reinit_at`) from a function body. `rloan` now has `rl_excl`.
+| `lib/borrow_polonius/{types,solve}.ml` | The naive-datalog solver:
+  `compute_live`, `compute_moved_in`, `solve`. Loan liveness + UAM dataflow.
+| `lib/typecheck.ml` | Type checker. `check_program` (forward pass registers
+  traits/impls, then the check pass). `type_error` + `show_type_error`.
+  Trait-coherence call is wired here.
+| `lib/trait.ml` | Trait registry, impl satisfaction, method resolution,
+  `check_coherence` / `check_all_coherence` (now implemented).
+| `lib/interp.ml` | Tree-walking interpreter. Effect handler dispatch
+  (`ExprHandle`/`PerformEffect`/`resume`) ~line 282-385. Shallow single-shot.
+| `lib/codegen*.ml` | Backends. `ExprHandle`/`ExprResume` must fail loud, not
+  drop arms (#555). `Async` CPS fence is in `lib/codegen.ml` (#556).
+| `test/test_e2e.ml` | Main E2E suite (parse→resolve→typecheck→codegen→interp).
+  Handler-fence, resume-soundness, async-fence, trait-coherence tests live here.
+| `test/test_borrow_polonius.ml` | Polonius solver + extractor tests + the
+  corpus parallel-run diff gate + the `known_divergences` allowlist.
+| `test/e2e/fixtures/*.affine` | Test programs (not hook-checked).
+| `docs/reports/TIDY-UP-LEDGER-2026-06-16.adoc` | Tidy-up + the ground-truthed
+  soundness-survey correction (since CLAUDE.md is stale).
+|===
+
+== 5. Current soundness ground-truth (the CLAUDE.md survey is STALE)
+
+`.claude/CLAUDE.md` §"Known soundness items (2026-06-11 survey)" and the
+disambiguation-table Proofs cell are OUT OF DATE. Do not quote them. The
+test-verified status (528 tests green) — also in the tidy-ledger §"Soundness
+survey correction" — is:
+
+* **#554 — FIXED.** Use-after-move through a callee-returned borrow is REJECTED
+  (`let r = pick(a); consume(a); *r` → `MoveWhileBorrowed`), with hardening +
+  anti-over-rejection tests. #177 closed. issue-draft 08 (conditional-origin
+  escape) also FIXED.
+* **#555 — codegen FENCED everywhere reachable** (WASM/WasmGC/Deno-ESM/JS-text/
+  C all fail loud on `handle`/`resume`). Interp: tail-resume correct; multi-shot
+  loud-fails; **non-tail single-shot still silently returns the resumed value**
+  (residual — §7.1). Runtime handler tests now exist. Lean/Why3 are stub
+  backends that drop `return` statements wholesale (broader gap, flagged).
+* **#556 — FIXED.** Async CPS table-miss fails loud, not silent sync fallback.
+* **#558 — N/A (closed).** Refinement & dependent types were removed in v1
+  (2026-04-10); `assume(...)` is rejected and `T where (P)` parse-errors — no
+  refinement-type node for the checker to silently ignore.
+* **#559 — FIXED (concrete overlaps).** Trait coherence implemented + wired;
+  overlapping impls whose self types unify are rejected. Generic-subsumption
+  overlap is follow-up.
+* **#553 / Polonius** — M1–M3 implemented (NOT "0%"); TEST-ONLY / unwired;
+  allowlist down to **7** divergences.
+
+== 6. What this session did (branch `feat/solo-core-metatheory-proofs`, unpushed)
+
+Newest first:
+
+* `414e664` docs(ledger): record ground-truthed soundness-survey correction.
+* `3a531e1` feat(ADR-022 M3): model loan-vs-loan exclusivity in the extractor
+  (allowlist 9→7; both mutref fixtures now agree).
+* `2b3f63c` fix(#559): implement + wire trait coherence checking.
+* `bc061ad` fix(#555): C backend fails loud on handle/resume.
+* `aa1b73f` + the batch-B series (`2ba8141`…`5bb6149`, `4747e9d`): docs
+  `.md`→`.adoc` conversion + tidy-up (separate workstream; see the ledger).
+
+Everything is local + signed. Nothing pushed. 528 tests green.
+
+== 7. Open work — prioritized, with exact next steps
+
+=== 7.1 #555 residual — delimited-continuation interpreter (BLOCKED, needs owner steer)
+
+The interpreter's non-tail single-shot resume (`let x = ask(); x + 100` with
+`ask() => resume(5)`) silently returns `5` instead of `105` — pinned by
+`test_resume_nontail_known_shallow` in `test_e2e.ml`. The correct fix is real
+delimited continuations, but OCaml 4.14 has no native effect handlers and the
+interpreter must stay `js_of_ocaml`-compatible, so it means a **CPS rewrite of
+`eval`** — pervasive and risky against 528 tests + the jsoo build. This is an
+architecture-level change: *surface a plan and get a go-ahead before starting*
+(stop-first). Do NOT silently begin a CPS rewrite.
+
+=== 7.2 Polonius M3 — remaining divergences (the most tractable head-on work)
+
+The extractor (`lib/borrow_extract.ml`) is diffed against the lexical checker
+over every borrow-checkable fixture by the corpus gate
+(`t_parallel_run_diff` in `test_borrow_polonius.ml`). The `known_divergences`
+allowlist currently has **7** entries in 3 classes. Closing one = make the
+extractor agree, then prune the entry; the gate proves no false-positive crept
+into the other ~100 fixtures.
+
+. **return-escape / borrow-outlives-owner (4)**: `borrow_outlives_owner`,
+  `borrow_return_escape_local`, `borrow_return_escape_param`,
+  `ref_to_ref_return_escape`. The extractor has no escape analysis; the lexical
+  checker rejects these via `BorrowOutlivesOwner` / the return-borrow summary.
+  Next step: model a borrow whose place is rooted at a function-local / by-value
+  param and which escapes via `return` (or a returned aggregate) as an error
+  fact. Mirror `lib/borrow.ml`'s escape logic; gate by the same liveness.
+. **captured-linear (2)**: `slice_d_captured_linear_let_rejected`,
+  `slice_d_captured_linear_param_rejected`. Needs lambda-capture analysis in
+  the extractor (a linear/affine value captured by a closure is consumed).
+. **call-aliasing mut-param-arg (1)**: `borrow_use_while_excl`
+  (`mut_then_read(x, x)`). Model a `mut`-param argument as a call-scoped
+  EXCLUSIVE loan born at the call point, then the existing use-while-excl rule
+  (just added) flags the other `x` arg. This is probably the smallest of the
+  three — good warm-up.
+
+Pattern that worked this session (loan-vs-loan, `3a531e1`): add the minimal
+fact-emission to the extractor, run the FULL suite, then prune the allowlist
+entry only after the gate stays green. Keep `&` (shared) vs `&mut` (exclusive)
+distinct — over-rejecting valid code is the cardinal sin.
+
+=== 7.3 #559 follow-up — generic-subsumption coherence
+
+`impl[T] Greet for Box[T]` overlapping `impl Greet for Box[Int]` is not yet
+detected. The coherence check itself would catch it (it instantiates impl type
+params via `fresh_impl_self_ty`), but generic *impl* handling has separate
+immaturities — `impl[T] … for Box[T]` currently trips a spurious "Trait not
+found" before coherence runs. Fix generic-impl registration first, then this
+follows. (Documented in the coherence test block in `test_e2e.ml`.)
+
+=== 7.4 Owner-manual items (do NOT auto-do)
+
+* Update the `.claude/CLAUDE.md` survey from §5 (needs an owner-authored header
+  first — §3).
+* Uninstantiated RSR templates: `SECURITY.md` (root + `docs/governance/`),
+  `docs/reference/ABI-FFI.md` (`{{PLACEHOLDER}}`s).
+* `docs/governance/LICENSING-GUIDE.md` format conversion (licence-adjacent).
+* `docs/PROOF-NEEDS.md` is owner-gated/parked (shows as modified in the tree —
+  do not commit it).
+
+== 8. Methods that paid off (reuse them)
+
+* **Ground-truth first.** Each "hole" got reproduced/checked by running before
+  touching code. Half were already fixed or closed — you'll waste effort if you
+  trust the survey.
+* **Delegate broad reads.** An `Explore` agent audited ~18 codegen backends for
+  silent `ExprHandle` handling in one shot — cheap, kept context clean.
+* **Fail loud, never silent.** The whole #555/#556 philosophy: a backend that
+  can't implement a construct must error, not emit a plausible-wrong value.
+  When you add a new declaration/expression shape, feed it to EVERY consumer
+  (parse/resolve/typecheck/interp/each codegen) and assert each either handles
+  or loudly rejects it.
+* **Liveness-gated fact emission.** For borrow work, emit the conflict fact and
+  let the solver's `loan_live_at` decide — that gives NLL correctness for free
+  and avoids over-rejection.
+* **Pin known incompleteness as an executable test** (e.g.
+  `test_resume_nontail_known_shallow`) rather than leaving it silent.
+
+== 9. Suggested first moves
+
+. `git status` (expect clean apart from parked `docs/PROOF-NEEDS.md`), then
+  `git log --oneline -12`, then `dune build && dune runtest` (expect 528 OK).
+. Read this file + the tidy-ledger §"Soundness survey correction".
+. Pick up §7.2 call-aliasing (`borrow_use_while_excl`) as the smallest M3
+  increment, OR ask the owner whether to take on the #555 CPS-interpreter
+  rewrite (§7.1) — that one needs a go-ahead.
+. Keep adversarially probing: after any fix, look for the next hole. The owner
+  values honest "here's what's still broken" over a tidy but false "done".

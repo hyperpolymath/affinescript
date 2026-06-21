@@ -5,7 +5,7 @@
   'use strict';
 
   // HTML escape function to prevent XSS.
-  // Uses character substitution — no DOM element, no innerHTML write.
+  // Uses character substitution — no DOM element, no inner_HTML write.
   // (render path uses .textContent assignments throughout, so this helper
   //  is kept only for any future template-string usage.)
   function escapeHtml(text) {

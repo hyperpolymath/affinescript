@@ -1,0 +1,9 @@
+; ADR-022 M1: the Polonius-style loan solver lives in its own library, created
+; but NOT yet wired into `affinescript` (nothing depends on it). M3 wires it in
+; behind a parallel-run diff against the lexical checker; M4 cuts over.
+(library
+ (name borrow_polonius)
+ (public_name affinescript.borrow_polonius)
+ (modes byte native)
+ (preprocess
+  (pps ppx_deriving.show ppx_deriving.eq)))

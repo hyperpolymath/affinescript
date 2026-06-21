@@ -1,0 +1,98 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+
+module SafeHex;
+
+use prelude::{Result, Ok, Err, Option, Some, None};
+
+pub fn encode_byte(v: Int) -> String {
+  let nibble_hi = (v >> 4) & 15;
+  let nibble_lo = v & 15;
+  let hex = "0123456789abcdef";
+  string_sub(hex, nibble_hi, 1) ++ string_sub(hex, nibble_lo, 1)
+}
+
+pub fn encode_bytes(bytes: [Int]) -> Result<String, String> {
+  let mut result = "";
+  for b in bytes {
+    if b < 0 || b > 255 {
+      return Err("byte out of range");
+    }
+    result = result ++ encode_byte(b);
+  }
+  Ok(result)
+}
+
+pub fn decode_hex(hex: String) -> Result<[Int], String> {
+  let n = len(hex);
+  if n % 2 != 0 {
+    return Err("odd length hex string");
+  }
+  let mut result = [];
+  let mut i = 0;
+  while i < n {
+    let hi = hex_char_val(string_get(hex, i));
+    let lo = hex_char_val(string_get(hex, i + 1));
+    if hi < 0 || lo < 0 {
+      return Err("invalid hex character");
+    }
+    result = result ++ [hi * 16 + lo];
+    i = i + 2;
+  }
+  Ok(result)
+}
+
+fn hex_char_val(c: Char) -> Int {
+  let code = char_to_int(c);
+  if code >= 48 && code <= 57 {
+    code - 48
+  } else if code >= 97 && code <= 102 {
+    code - 87
+  } else if code >= 65 && code <= 70 {
+    code - 55
+  } else {
+    0 - 1
+  }
+}
+
+pub fn encode_string(s: String) -> String {
+  let n = len(s);
+  let mut result = "";
+  let mut i = 0;
+  while i < n {
+    let code = char_to_int(string_get(s, i));
+    result = result ++ encode_byte(code & 255);
+    i = i + 1;
+  }
+  result
+}
+
+pub fn decode_string(hex: String) -> Result<String, String> {
+  match decode_hex(hex) {
+    Ok(bytes) => {
+      let mut result = "";
+      for b in bytes {
+        result = result ++ show(int_to_char(b));
+      }
+      Ok(result)
+    },
+    Err(e) => Err(e)
+  }
+}
+
+pub fn constant_time_equal(a: String, b: String) -> Bool {
+  let la = len(a);
+  let lb = len(b);
+  if la != lb {
+    return false;
+  }
+  let mut diff = 0;
+  let mut i = 0;
+  while i < la {
+    let ca = char_to_int(string_get(a, i));
+    let cb = char_to_int(string_get(b, i));
+    diff = diff | (ca ^ cb);
+    i = i + 1;
+  }
+  diff == 0
+}

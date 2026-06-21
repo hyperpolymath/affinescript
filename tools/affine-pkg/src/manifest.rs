@@ -195,7 +195,11 @@ pub struct Workspace {
 impl Manifest {
     /// Load manifest from file
     pub fn load(path: impl AsRef<Path>) -> anyhow::Result<Self> {
-        let content = std::fs::read_to_string(path)?;
+        use std::io::Read;
+        let file = std::fs::File::open(path)?;
+        let mut content = String::new();
+        // Limit to 5MB
+        file.take(5 * 1024 * 1024).read_to_string(&mut content)?;
         let manifest: Manifest = toml::from_str(&content)?;
         Ok(manifest)
     }

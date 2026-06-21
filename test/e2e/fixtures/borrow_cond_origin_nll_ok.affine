@@ -1,0 +1,17 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// issue-draft 08 anti-over-rejection — reading `*r` BEFORE moving `a` must pass
+// under NLL last-use: the conditional-origin borrow expires at `r`'s last use,
+// so the subsequent move of `a` is legal.
+fn pick(ref x: Int) -> ref Int { return &x; }
+fn consume(own v: Int) -> Int { return v; }
+
+fn main() -> Int {
+  let a: Int = 7;
+  let c: Bool = true;
+  let r = if c { pick(a) } else { pick(a) };
+  let x: Int = *r;
+  let _g = consume(a);
+  return x;
+}

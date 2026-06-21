@@ -1,0 +1,14 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// issue-draft 08 — borrow bound through a plain block `{ pick(a) }`. The block
+// value carries the borrow of `a` out; the lexical restore must not drop it.
+fn pick(ref x: Int) -> ref Int { return &x; }
+fn consume(own v: Int) -> Int { return v; }
+
+fn main() -> Int {
+  let a: Int = 7;
+  let r = { pick(a) };
+  let _g = consume(a);
+  return *r;
+}

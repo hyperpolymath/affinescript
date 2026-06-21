@@ -104,6 +104,90 @@ guard:
 doc-truth-bless:
     ./tools/check-doc-truthing.sh --update
 
+# ── Proofs ─────────────────────────────────────────────────────────────────────
+# Re-check the mechanised proofs against their proof assistants and fail on any
+# dangerous escape hatch (believe_me / assert_total / postulate / sorry / axiom).
+# Unfinished Idris2 `?` holes are reported as a warning, not a failure.
+
+# Check the Solo-core QTT metatheory (Idris2).
+proof-check-idris2:
+    ./tools/check-proofs.sh --idris2
+
+# Check the tropical-session-types proof (Lean 4).
+proof-check-lean:
+    ./tools/check-proofs.sh --lean
+
+# Check the echo-boundary certificates (Agda). Needs AFFINESCRIPT_ECHO_TYPES_DIR
+# and AGDA_STDLIB; skips with a message if either is unset (the proofs import
+# modules from the external echo-types repo + agda-stdlib).
+proof-check-agda:
+    ./tools/check-proofs.sh --agda
+
+# Check every mechanised proof in the repo.
+proof-check-all:
+    ./tools/check-proofs.sh --all
+
+# ── WASM validation ────────────────────────────────────────────────────────────
+# Compile the positive corpus to core wasm and run `wasm-tools validate` on
+# every module. Closes the test_e2e.ml:601 blind spot (codegen-did-not-raise
+# != emitted-valid-wasm). Hard-fails on any silent-invalid emission.
+wasm-validate:
+    ./tools/wasm-validate-gate.sh
+
+# Compile canonical kernels to every coprocessor/accelerator backend
+# (WGSL/SPIR-V/CUDA/Metal/OpenCL/MLIR/ONNX/Faust/Verilog/LLVM) and check the
+# emission — validating with naga / SPIR-V magic where a tool is on PATH.
+coprocessor-validate:
+    ./tools/coprocessor-gate.sh
+
+# Verify the AffineScript -> LLVM IR -> AArch64 object native spine (ADR-0024,
+# the native Android target). Skips if llc is absent.
+android-validate:
+    ./tools/android-aarch64-gate.sh
+
+# Compile FILE to Android-targeted LLVM IR (aarch64-linux-android triple).
+# Lower to an object with: llc -filetype=obj OUT -o OUT.o  (NDK links the .so).
+compile-android FILE OUT:
+    AFFINESCRIPT_LLVM_TRIPLE=aarch64-linux-android dune exec affinescript -- compile {{FILE}} -o {{OUT}}
+
+# Prove the AffineScript <-> typed-wasm contract across repos: AffineScript
+# emits the typedwasm.ownership carrier; the sibling typed-wasm Rust verifier
+# (tw-verify) consumes it. Asserts both verifiers agree (clean -> 0, drop -> 1).
+# Set TYPED_WASM_DIR if hyperpolymath/typed-wasm is not at ../../typed-wasm.
+typed-wasm-validate:
+    ./tools/typed-wasm-roundtrip-gate.sh
+
+# Compile FILE to a native executable via the LLVM backend and run it on the
+# host: AffineScript -> LLVM IR -> clang -> a.out -> run. (Verified: prints +
+# exits 0. For riscv64, see `riscv-run-validate`.)
+native-run FILE:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ll="$(mktemp --suffix=.ll)"; exe="$(mktemp)"
+    dune exec affinescript -- compile "{{FILE}}" -o "$ll"
+    clang "$ll" -o "$exe" 2>/dev/null
+    "$exe"
+
+# Compile FILE to a riscv64 native object (rv64gc / lp64d hard-float ABI).
+compile-riscv FILE OUT:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ll="$(mktemp --suffix=.ll)"
+    AFFINESCRIPT_LLVM_TRIPLE=riscv64-unknown-linux-gnu dune exec affinescript -- compile "{{FILE}}" -o "$ll"
+    llc -mtriple=riscv64-linux-gnu -mattr=+m,+a,+f,+d,+c -target-abi=lp64d -filetype=obj "$ll" -o "{{OUT}}"
+    echo "wrote {{OUT}}"
+
+# AffineScript -> riscv64 -> link -> RUN under qemu. Skips without the
+# cross-toolchain: sudo apt install gcc-riscv64-linux-gnu qemu-user
+riscv-run-validate:
+    ./tools/riscv-run-gate.sh
+
+# Per-backend RUNTIME bench over real, correctness-checked workloads (LP tropical
+# min-plus + NLP Newton): compile to wasm (validate) and native (run + assert the
+# verdict token + time). The proven-style "assert the answer, not just ran".
+workload-bench:
+    ./tools/workload-bench.sh
+
 # ── Compiler subcommands ──────────────────────────────────────────────────────
 
 # Run the lexer on a file
@@ -172,8 +256,7 @@ panic:
 
 # Run microbenchmarks (lex / parse / typecheck / codegen sweeps)
 bench:
-    dune build @bench --force
-    dune runtest @bench --force
+    dune exec bench/bench_main.exe
 
 # Archive the current bench output to bench-runs/<UTC-timestamp>.log
 bench-record:

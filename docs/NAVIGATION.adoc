@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-// SPDX-FileCopyrightText: 2024-2026 Hyperpolymath Contributors
+// SPDX-FileCopyrightText: 2024-2026 hyperpolymath (Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>)
 
 = AffineScript Repository Navigation Guide
 
@@ -58,9 +58,9 @@ This guide helps you navigate the AffineScript repository structure.
 
 **Standards and planning:**
 
-* link:standards/ROADMAP.md[Roadmap] - Development roadmap
-* link:standards/DECISIONS.md[Decisions] - Architecture decisions
-* link:standards/RELEASE.md[Release Process] - Release procedures
+* link:standards/ROADMAP.adoc[Roadmap] - Development roadmap
+* link:standards/DECISIONS.adoc[Decisions] - Architecture decisions
+* link:standards/RELEASE.adoc[Release Process] - Release procedures
 * link:standards/PALIMPSEST.adoc[Palimpsest Integration] - License integration
 * link:standards/TESTING.adoc[Testing Standards] - Test taxonomy, gate baseline, PR expectations
 * link:standards/PANIC-ATTACK.adoc[Panic-Attack Policy] - Security-scan SOP and finding disposition
@@ -149,8 +149,8 @@ just fmt             # Format code
 
 1. Read link:governance/CONTRIBUTING.adoc[Contributing Guide]
 2. Check link:governance/CODE_OF_CONDUCT.md[Code of Conduct]
-3. Review link:standards/DECISIONS.md[Architecture Decisions]
-4. Follow link:standards/ROADMAP.md[Development Roadmap]
+3. Review link:standards/DECISIONS.adoc[Architecture Decisions]
+4. Follow link:standards/ROADMAP.adoc[Development Roadmap]
 
 == Directory Tree Overview
 

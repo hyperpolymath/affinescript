@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MPL-2.0
-// SPDX-FileCopyrightText: 2026 hyperpolymath
+// SPDX-FileCopyrightText: 2026 hyperpolymath (Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>)
 = AffineScript Testing Standards
 :toc: macro
 :toclevels: 3
@@ -206,7 +206,7 @@ Axis 3 — *audit: systems > compliance > effects*) it runs:
   (`.github/workflows/panic-attack.yml`).  Findings are surfaced
   but do not block per-PR merges.
 * Before every release cut, manually, per
-  link:RELEASE.md[RELEASE.md].
+  link:RELEASE.adoc[RELEASE.adoc].
 * Ad hoc per `just panic`.
 
 Findings disposition lives in
@@ -224,5 +224,5 @@ silent suppression is not permitted.
   AffineScript ↔ typed-wasm contract, the satellite registry.
 * link:PANIC-ATTACK.adoc[PANIC-ATTACK.adoc] — security scan policy
   and finding-disposition vocabulary.
-* link:RELEASE.md[RELEASE.md] — release-cut checklist (the
+* link:RELEASE.adoc[RELEASE.adoc] — release-cut checklist (the
   pre-release panic-attack invocation lives there).

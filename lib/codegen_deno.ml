@@ -964,7 +964,7 @@ let resolve_var ctx (name : string) : string =
    nominal [Int] constructor counts; type variables / applications do not. *)
 let rec type_head_is_int : type_expr -> bool = function
   | TyCon id -> id.name = "Int"
-  | TyOwn t | TyRef t | TyMut t -> type_head_is_int t
+  | TyOwn t | TyRef (_, t) | TyMut (_, t) -> type_head_is_int t
   | _ -> false
 
 (* Is [t] an [Array<Int>] (surface `[Int]`, which the parser desugars to
@@ -972,7 +972,7 @@ let rec type_head_is_int : type_expr -> bool = function
    element reads as integers (#478). *)
 let rec type_is_int_array : type_expr -> bool = function
   | TyApp (id, [ TyArg elem ]) -> id.name = "Array" && type_head_is_int elem
-  | TyOwn t | TyRef t | TyMut t -> type_is_int_array t
+  | TyOwn t | TyRef (_, t) | TyMut (_, t) -> type_is_int_array t
   | _ -> false
 
 (* Simple-variable pattern name, if [pat] binds exactly one name. *)
@@ -1556,7 +1556,7 @@ let gen_function ctx (fd : fn_decl) : unit =
 let rec type_expr_name : type_expr -> string option = function
   | TyCon id | TyVar id -> Some id.name
   | TyApp (id, _)       -> Some id.name
-  | TyOwn t | TyRef t | TyMut t -> type_expr_name t
+  | TyOwn t | TyRef (_, t) | TyMut (_, t) -> type_expr_name t
   | _ -> None
 
 (* The struct (if any, among [known]) that [fd]'s first parameter is typed
