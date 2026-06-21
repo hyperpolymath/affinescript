@@ -5,6 +5,12 @@
 
 This guide helps you navigate the AffineScript repository structure.
 
+== Start here — by audience
+
+* *New users* — link:tutorial/lesson-01-hello.adoc[tutorial (lessons 1–10)], link:guides/warmup/[runnable warm-ups], link:../wiki/language-reference/[language reference].
+* *Developers / contributors* — this guide, link:../wiki/compiler/architecture.md[compiler architecture], link:decisions/[ADRs], link:governance/CONTRIBUTING.adoc[contributing].
+* *Maintainers* — link:governance/MAINTAINERS.adoc[maintainers], link:standards/RELEASE.adoc[release process], link:../.machine_readable/6a2/PLAYBOOK.a2ml[ops playbook], link:SOUNDNESS.adoc[soundness ledger].
+
 == Quick Start Files (Root Level)
 
 [cols="1,3"]

@@ -1,0 +1,58 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2024-2026 hyperpolymath (Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>)
+= Lesson 1: Hello, AffineScript
+
+The first stop in the tutorial series (lessons 1–10). For runnable, self-contained
+snippets covering the same early ground, see the
+link:../guides/warmup/[warm-up programs] (`*.affine` files you can `eval` directly).
+
+== Your first program
+
+[source,affinescript]
+----
+fn main() -> Int {
+  println("Hello, AffineScript!");
+  return 0;
+}
+----
+
+A program is a set of declarations; `main` is the entry point. Functions use explicit
+`return`, and statements end with `;`.
+
+== Running it
+
+AffineScript type-, effect-, and borrow-checks ahead of time, then compiles to
+WebAssembly (it also has a tree-walking interpreter for quick runs):
+
+[source,sh]
+----
+affinescript check   hello.affine   # static checks only (types, effects, borrows)
+affinescript eval    hello.affine   # check, then run via the interpreter
+affinescript compile hello.affine   # check, then emit WebAssembly (-o out.wasm)
+----
+
+Install by building from source — `dune build bin/main.exe` (entry point
+`_build/default/bin/main.exe`); prebuilt per-platform binaries are attached to tagged
+link:https://github.com/hyperpolymath/affinescript/releases[releases].
+
+== What you'll learn
+
+[cols="1,4"]
+|===
+| Lesson | Topic
+
+| link:lesson-02-functions.adoc[2] | Functions and ownership (`own` / `ref` / `mut`)
+| link:lesson-03-data.adoc[3] | Data: records, enums, tuples
+| link:lesson-04-patterns.adoc[4] | Pattern matching
+| link:lesson-05-types.adoc[5] | The type system
+| link:lesson-06-errors.adoc[6] | Errors and `Result`
+| link:lesson-07-effects.adoc[7] | Effects and handlers
+| link:lesson-08-generics.adoc[8] | Generics
+| link:lesson-09-modules.adoc[9] | Modules and imports
+| link:lesson-10-building.adoc[10] | Building a complete program
+|===
+
+For the full language reference, see link:../../wiki/language-reference/[wiki/language-reference];
+for authoritative feature status, link:../CAPABILITY-MATRIX.adoc[docs/CAPABILITY-MATRIX.adoc].
+
+Next: link:lesson-02-functions.adoc[Lesson 2 — Functions and Ownership].
