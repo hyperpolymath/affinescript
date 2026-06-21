@@ -1,5 +1,5 @@
 ;; SPDX-License-Identifier: MPL-2.0
-;; Copyright (c) {{CURRENT_YEAR}} hyperpolymath (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+;; Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
 ;;
 ;; Guix package definition for AffineScript-Vite
 ;;
@@ -64,8 +64,6 @@
     ;; TODO: Add runtime dependencies
     ))
   (home-page "https://github.com/hyperpolymath/AffineScript-Vite")
-  (synopsis "{{PROJECT_PURPOSE}}")
+  (synopsis "Official Vite plugin for AffineScript — compiles .as/.affine to WASM + JS with HMR")
   (description "RSR-compliant project. See README.adoc for details.")
-  (license (list
-            ;; MPL-2.0 extends MPL-2.0
-            mpl2.0)))
+  (license mpl2.0))
