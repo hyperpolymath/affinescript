@@ -45,3 +45,9 @@ cicd_rules/banned_language_file:tools/res-to-affine/test/fixtures/phase3c.res
 # an inert no-op under the scanner's `grep -qxF` whole-line match.
 cicd_rules/vlang_detected:formal/K1_CodegenPreservation.v
 cicd_rules/banned_language_file:formal/K1_CodegenPreservation.v
+cicd_rules/vlang_detected:formal/K1Let_CodegenPreservation.v
+cicd_rules/banned_language_file:formal/K1Let_CodegenPreservation.v
+cicd_rules/vlang_detected:formal/F1_TransformerPreservation.v
+cicd_rules/banned_language_file:formal/F1_TransformerPreservation.v
+cicd_rules/vlang_detected:formal/Siblings_Stated.v
+cicd_rules/banned_language_file:formal/Siblings_Stated.v

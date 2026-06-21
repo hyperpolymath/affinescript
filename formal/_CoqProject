@@ -1,2 +1,5 @@
 -Q . ASFormal
 K1_CodegenPreservation.v
+K1Let_CodegenPreservation.v
+F1_TransformerPreservation.v
+Siblings_Stated.v
