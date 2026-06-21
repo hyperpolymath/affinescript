@@ -7,7 +7,7 @@
     "./marshal": "./marshal.js",
     "./runtime": "./runtime.js"
   },
-  "license": "AGPL-3.0-or-later",
+  "license": "MPL-2.0",
   "tasks": {
     "test": "deno test --allow-read --allow-write loader_test.js"
   },

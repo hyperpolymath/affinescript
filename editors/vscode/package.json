@@ -4,7 +4,7 @@
   "description": "Language support for AffineScript - affine types, effects, and dependent types",
   "version": "0.1.0",
   "publisher": "hyperpolymath",
-  "license": "AGPL-3.0-or-later",
+  "license": "MPL-2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/hyperpolymath/affinescript"

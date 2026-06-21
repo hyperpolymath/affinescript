@@ -673,18 +673,21 @@ ____
 
 == License
 
-This repository is documented and distributed under AGPL-3.0-or-later.
+This repository's core technology — the compiler, runtime, standard library,
+tooling, and editor integrations — is licensed under MPL-2.0; documentation and
+prose under CC-BY-SA-4.0.
 
-The broader Palimpsest-MPL licensing layer applies to associated ecosystem technology including:
-
-- Gossamer
-- Burble
-- AffineScript deployment/tooling layers where applicable
+Game content remains under AGPL-3.0-or-later (the `proposals/idaptik/` migration
+and the game-specific `examples/`), and the foundational technologies (Gossamer,
+Burble) under the Palimpsest-MPL layer. See
+link:docs/governance/LICENSING-GUIDE.md[docs/governance/LICENSING-GUIDE.md] for
+the full three-tier breakdown.
 
 See also:
 
-- AGPL-3.0-or-later: https://www.gnu.org/licenses/agpl-3.0.html
-- PMPL-1.0: https://github.com/hyperpolymath/palimpsest-license
+- MPL-2.0 (core technology): https://www.mozilla.org/en-US/MPL/2.0/
+- AGPL-3.0-or-later (game content): https://www.gnu.org/licenses/agpl-3.0.html
+- PMPL-1.0 (foundational): https://github.com/hyperpolymath/palimpsest-license
 
 == Final Positioning Summary
 
