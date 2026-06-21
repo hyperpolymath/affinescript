@@ -187,7 +187,7 @@ affinescript/
 │   ├── TECH-DEBT.adoc             # Coordination ledger (CORE/STDLIB/INT/DOC)
 │   ├── ECOSYSTEM.adoc             # Spine + AS↔typed-wasm contract
 │   ├── KNOWN-ISSUES.md            # Tracked issues backlog
-│   ├── PROOF-NEEDS.md             # Proof obligations index
+│   ├── PROOF-NEEDS.adoc           # Proof obligations inventory (P-/F-/K- series)
 │   ├── EXPLAINME.adoc             # Receipts backing README claims
 │   ├── architecture/              # Compiler / backend internals
 │   ├── governance/                # Licensing, security, community

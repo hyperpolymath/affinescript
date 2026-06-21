@@ -613,6 +613,26 @@ let async_transform_hook
   : (context -> expr -> (context * instr list) result option) ref
   = ref (fun _ _ -> None)
 
+(* #607: box a zero-argument variant as a heap [tag] so that EVERY variant
+   value is uniformly a heap pointer (args-variants are [tag][field...]).
+   Previously zero-arg variants were raw i32 tags while args-variants were
+   pointers, so a `match` over a value that can be either form (Option/Result)
+   mis-read one as the other — e.g. `match None { Some(v) => v, None => d }`
+   dereferenced the raw tag `1` as a pointer and returned garbage instead of
+   `d`. Leaves the variant pointer on the stack. The match side
+   (gen_pattern's zero-arg PatCon) dereferences `[ptr+0]` to read the tag, to
+   stay symmetric with this representation. *)
+let gen_box_zero_arg_variant (ctx : context) (tag : int) : (context * instr list) =
+  let (ctx1, alloc_code) = gen_heap_alloc ctx 4 in
+  let (ctx2, ptr) = alloc_local ctx1 "__zvariant_ptr" in
+  (ctx2,
+   alloc_code @ [
+     LocalTee ptr;
+     I32Const (Int32.of_int tag);
+     I32Store (2, 0);
+     LocalGet ptr;
+   ])
+
 (** Generate code for an expression, returning instructions and updated context *)
 let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
   match expr with
@@ -631,7 +651,10 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
            arm body of the form `Uninitialised => Initialised` fails with
            UnboundVariable even though the parser accepts it. *)
         begin match List.assoc_opt id.name ctx.variant_tags with
-          | Some tag -> Ok (ctx, [I32Const (Int32.of_int tag)])
+          | Some tag ->
+            (* #607: heap-box the zero-arg variant (uniform pointer rep). *)
+            let (ctx_box, box_code) = gen_box_zero_arg_variant ctx tag in
+            Ok (ctx_box, box_code)
           | None ->
             (* Top-level const bindings are stored in func_indices with a
                negative sentinel: actual global index = -(k+1). *)
@@ -2297,14 +2320,16 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
     (* For now, use variant name directly to find tag *)
     begin match List.assoc_opt variant_name.name ctx.variant_tags with
       | Some tag ->
-        (* Zero-argument variant: just return the tag as an integer *)
-        Ok (ctx, [I32Const (Int32.of_int tag)])
+        (* #607: heap-box the zero-arg variant (uniform pointer rep). *)
+        let (ctx_box, box_code) = gen_box_zero_arg_variant ctx tag in
+        Ok (ctx_box, box_code)
       | None ->
         (* Tag not found - assign a new sequential tag based on name *)
         (* This is a fallback for when type declarations aren't processed *)
         let tag = List.length ctx.variant_tags in
         let ctx' = { ctx with variant_tags = (variant_name.name, tag) :: ctx.variant_tags } in
-        Ok (ctx', [I32Const (Int32.of_int tag)])
+        let (ctx_box, box_code) = gen_box_zero_arg_variant ctx' tag in
+        Ok (ctx_box, box_code)
     end
 
   | ExprRowRestrict (base, _field) ->
@@ -2434,8 +2459,12 @@ and gen_pattern (ctx : context) (scrutinee_local : int) (pat : pattern)
       (* Zero-argument constructor: compare scrutinee to tag *)
       begin match List.assoc_opt con.name ctx.variant_tags with
         | Some tag ->
+          (* #607: zero-arg variants are heap-boxed as [tag]; deref [ptr+0] to
+             read the tag, symmetric with construction (and with the args path
+             below, which also loads the tag from offset 0). *)
           let test_code = [
-            LocalGet scrutinee_local;  (* Get scrutinee (should be tag) *)
+            LocalGet scrutinee_local;     (* variant pointer *)
+            I32Load (2, 0);               (* load tag from [ptr+0] *)
             I32Const (Int32.of_int tag);  (* Expected tag *)
             I32Eq  (* Compare *)
           ] in
@@ -2446,6 +2475,7 @@ and gen_pattern (ctx : context) (scrutinee_local : int) (pat : pattern)
           let ctx' = { ctx with variant_tags = (con.name, tag) :: ctx.variant_tags } in
           let test_code = [
             LocalGet scrutinee_local;
+            I32Load (2, 0);
             I32Const (Int32.of_int tag);
             I32Eq
           ] in
@@ -2511,37 +2541,41 @@ and gen_pattern (ctx : context) (scrutinee_local : int) (pat : pattern)
       Ok (ctx_final, full_code, [])
 
   | PatTuple sub_patterns ->
-    (* Tuple pattern: (a, b, c) *)
-    (* scrutinee is a pointer to [elem0: i32][elem1: i32][elem2: i32]... *)
+    (* Tuple pattern: (p0, p1, ...). scrutinee is a pointer to
+       [elem0: i32][elem1: i32]...  Each element is loaded into a temp local
+       and matched RECURSIVELY against its sub-pattern, so nested patterns
+       (literals, constructors, tuples) work — not just var/wildcard.
 
-    (* Bind each element to sub-pattern *)
-    let rec bind_elements ctx_acc offset patterns =
+       Stack discipline: every [gen_pattern] result leaves exactly one bool
+       (net) and its binds are net-zero (see the PatVar/PatLit/PatCon cases),
+       so each element's test bool ANDs cleanly with the accumulator. The
+       per-element load is itself net-zero (LocalGet +1, I32Load 0, LocalSet
+       -1), so it never disturbs the accumulated bool. Binds register in the
+       threaded ctx via [alloc_local] (same mechanism PatCon args use), so the
+       returned binding list stays [] and the arm body resolves names via ctx. *)
+    let rec match_elements ctx_acc idx patterns ~first =
       match patterns with
-      | [] -> Ok (ctx_acc, [])
+      | [] ->
+        (* Empty tuple, or no elements left: an empty match is vacuously true
+           only when it is the whole pattern (first); otherwise the caller has
+           already left the accumulated bool on the stack. *)
+        if first then Ok (ctx_acc, [I32Const 1l]) else Ok (ctx_acc, [])
       | pat :: rest ->
-        begin match pat with
-          | PatVar id ->
-            (* Allocate local for this element *)
-            let (ctx', elem_idx) = alloc_local ctx_acc id.name in
-            (* Load element from tuple *)
-            let load_code = [
-              LocalGet scrutinee_local;
-              I32Load (2, offset);
-              LocalSet elem_idx;
-            ] in
-            let* (ctx_final, rest_code) = bind_elements ctx' (offset + 4) rest in
-            Ok (ctx_final, load_code @ rest_code)
-          | PatWildcard _ ->
-            (* Skip this element *)
-            bind_elements ctx_acc (offset + 4) rest
-          | _ ->
-            Error (UnsupportedFeature "Only variable and wildcard patterns supported in tuple patterns")
-        end
+        let (ctx1, elem_tmp) =
+          alloc_local ctx_acc (Printf.sprintf "__tuple_elem_%d" idx) in
+        let load_elem = [
+          LocalGet scrutinee_local;
+          I32Load (2, idx * 4);
+          LocalSet elem_tmp;
+        ] in
+        let* (ctx2, sub_test, _sub_binds) = gen_pattern ctx1 elem_tmp pat in
+        (* For every element after the first, AND its bool with the running
+           accumulator already on the stack. *)
+        let combine = if first then [] else [I32And] in
+        let* (ctx3, rest_code) = match_elements ctx2 (idx + 1) rest ~first:false in
+        Ok (ctx3, load_elem @ sub_test @ combine @ rest_code)
     in
-
-    let* (ctx_final, binding_code) = bind_elements ctx 0 sub_patterns in
-    (* Tuple patterns always match (no tag to check) *)
-    let match_code = binding_code @ [I32Const 1l] in
+    let* (ctx_final, match_code) = match_elements ctx 0 sub_patterns ~first:true in
     Ok (ctx_final, match_code, [])
 
   | PatRecord (field_pats, _has_wildcard) ->
@@ -3616,7 +3650,65 @@ let gen_imports (loader : Module_loader.t) (imports : import_decl list) (ctx : c
            | _ -> None
          ) lm.mod_program.prog_decls)
   in
+  (* #138: register the constructor tags (and struct field layouts) of
+     imported PUBLIC types. [gen_imports] is the WASM backend's native
+     cross-module import path; it historically wired up only [TopFn]
+     (-> wasm import) and [TopConst] (-> global), silently dropping imported
+     TYPES. Codegen learns variant tags ONLY from [TopType] decls (see
+     [gen_decl]/[variant_tags]), and the WASM compile path feeds the original
+     (un-flattened) [prog] to [generate_module], so applying an imported
+     constructor such as [Some]/[None] from `use prelude::{Option, Some, None}`
+     raised [UnboundVariable] at codegen even though resolve + typecheck
+     passed. We reuse the local-type registration in [gen_decl] so imported
+     and local types share exactly one code path; the non-WASM backends get
+     the same decls inlined via [Module_loader.flatten_imports]. *)
+  let register_imported_types ctx =
+    (* Dedup imported types by name across all imports (a type may be reachable
+       through more than one path). Local [TopType]s — registered afterwards by
+       the [prog_decls] fold in [generate_module] — are prepended after these,
+       so they win on the first-match [List.assoc] lookup. *)
+    let seen = Hashtbl.create 8 in
+    let path_strs path = List.map (fun (id : ident) -> id.name) path in
+    List.fold_left (fun acc imp ->
+      let* ctx = acc in
+      let p = match imp with
+        | ImportSimple (path, _) | ImportList (path, _) | ImportGlob path ->
+          path_strs path
+      in
+      match Module_loader.load_module loader p with
+      | Error _ -> Ok ctx
+      | Ok lm ->
+        let public_types = List.filter_map (function
+          | TopType td when td.td_vis = Public || td.td_vis = PubCrate -> Some td
+          | _ -> None
+        ) lm.mod_program.prog_decls in
+        (* `use M::{..}` selects a type when the list names the type itself or
+           any of its constructors (so `use prelude::{Some}` works without also
+           naming `Option`); `use M` / `use M::*` bring all public types. *)
+        let selected = match imp with
+          | ImportGlob _ | ImportSimple _ -> public_types
+          | ImportList (_, items) ->
+            let wanted = List.map (fun (it : import_item) -> it.ii_name.name) items in
+            List.filter (fun td ->
+              List.mem td.td_name.name wanted ||
+              (match td.td_body with
+               | TyEnum variants ->
+                 List.exists (fun vd -> List.mem vd.vd_name.name wanted) variants
+               | _ -> false)
+            ) public_types
+        in
+        List.fold_left (fun acc td ->
+          let* ctx = acc in
+          if Hashtbl.mem seen td.td_name.name then Ok ctx
+          else begin
+            Hashtbl.add seen td.td_name.name ();
+            gen_decl ctx (TopType td)
+          end
+        ) (Ok ctx) selected
+    ) (Ok ctx) imports
+  in
   let entries = List.concat_map expand_import imports in
+  let* ctx = register_imported_types ctx in
   List.fold_left (fun acc e ->
     let* ctx = acc in
     process_one ctx e

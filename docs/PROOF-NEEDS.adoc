@@ -1,0 +1,359 @@
+// SPDX-License-Identifier: CC-BY-SA-4.0
+// SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell (hyperpolymath)
+= AffineScript — Proof-Needs Inventory
+Jonathan D.A. Jewell
+:toc: left
+:toclevels: 3
+:sectnums:
+:sectnumlevels: 2
+
+This is the single document that enumerates *what AffineScript must prove*, at
+*what rigour*, with *what current status*. It is deliberately honest about the
+gap between the soundness *arguments* the project relies on (prose in
+`docs/academic/proofs/`, the borrow-checker comments in `lib/borrow.ml`,
+`docs/CAPABILITY-MATRIX.adoc`) and the soundness *proofs* that are actually
+mechanized today (almost none — see <<status>>).
+
+It supersedes the previous near-empty `PROOF-NEEDS.md`, which recorded only the
+2026-03-29 template-ABI cleanup (preserved in <<history>>).
+
+[IMPORTANT]
+====
+This inventory is a *catalogue of obligations*, not a relicensing or a code
+change. Filing it does not assert any obligation is discharged. Each row's
+*Status* column is the ground truth; "stated", "prose", and "absent" all mean
+**not proven**.
+====
+
+[#vocab]
+== Status & rigour vocabulary
+
+[cols="1,4"]
+|===
+| Term | Meaning
+
+| `absent`     | No artifact exists. Not even a statement.
+| `stated`     | The theorem is written as a type/lemma signature, but the body is a hole (`?todo`, `Admitted`, `sorry`). Proves nothing.
+| `prose`      | A paper argument exists (markdown). Convincing-to-a-human, machine-unchecked.
+| `partial`    | A restricted case is machine-checked; the general theorem is not.
+| `mechanized` | Fully machine-checked under a `--safe`-equivalent discipline (no postulates/axioms/`Admitted`).
+|===
+
+Rigour tiers (effort, mirroring the umbrella issue #513): `S` small ·
+`M` medium · `L` large · `XL` extra-large.
+
+[#status]
+== 1. Current mechanization status — the "afresh" baseline
+
+A fresh sweep of the repo (2026-06-20) finds the mechanized core is *thinner*
+than the prose corpus suggests:
+
+* **`docs/academic/formal-verification/solo-core/`** — the only core-language
+  formalisation. Covers the *Solo* fragment only: STLC + Unit + Product + Sum +
+  `let` + QTT quantities `{0, 1, ω}`. `Syntax/Context/Quantity/Typing` are
+  populated; **`Soundness.idr` is statements-only** — `data Step` has *no
+  constructors* ("intentionally omitted until week 3"), and
+  `progress = ?todo_progress`, `preservation = ?todo_preservation`. Status:
+  `stated`. It proves nothing yet. Solo *excludes* traits, effects, rows,
+  refinements, dependent types, ownership/borrowing, records, arrays, modules,
+  and `unsafe`.
+* **`docs/academic/proofs/*.md`** — seven prose proofs (type-soundness,
+  ownership-soundness, effect-soundness, quantitative-types, dependent-types,
+  row-polymorphism, coherence-parametricity) plus DB-theory notes. Status:
+  `prose`. None mechanized.
+* **`docs/academic/mechanized/{agda,coq,lean}/README.md`** — explicit
+  *"Status: Stub / Planned"* placeholders. No proof content.
+* **`affinescript-vite/verification/proofs/{agda,coq,lean4,idris2}/`** — RSR
+  *templates* ("Replace with your project's domain-specific proofs"); the Coq
+  `TypeSafety.v` is example lemmas about list length, not AffineScript. Not
+  core-metatheory.
+* **`formal/`** — the directory #513 names as the mechanized-proof target
+  **does not exist**.
+* **Research tracks** (not core soundness): `docs/academic/tropical-session-types/`
+  (Lean), `proposals/echo-types/EchoEncodingFaithfulness.agda`,
+  `proposals/idaptik/migrated/**/*Boundary.agda` (echo-types loss-with-residue,
+  a *different* project living in `proposals/`).
+
+[WARNING]
+====
+**Known soundness *holes* (execution-verified, open).** These are bugs that
+*falsify* the corresponding prose proof's assumptions. Each is tracked as a
+defect but **none has a stated proof obligation** whose discharge would have
+caught it or would prevent regression — that linkage is itself a gap (see
+<<missed>>).
+
+* **#554** — borrow checker *accepts* use-after-move through a callee-returned
+  borrow (`let r = pick(a); consume(a); *r` typechecks). Polonius residual: #553
+  (ADR-022, 0% implemented). CORE-01/#177 closed 2026-05-30 did **not** close this.
+* **#555** — `handle` is mis-lowered on core-WASM / JS-text / Deno-ESM (effect
+  arms dropped); interpreter dispatch is shallow single-shot tail-resume only.
+* **#556** — async CPS table-miss silently lowers synchronously.
+* **#558** — refinement-type predicates parse but are silently *not enforced*.
+* **#559** — trait coherence is *not checked*.
+
+v1 readiness ledger: #563. Proof programme umbrella: #513.
+====
+
+[#missed]
+== 2. Proof obligations missed before (pre-faces, uncatalogued)
+
+These predate the faces work; they were simply never written down as
+obligations. They are the "we might have missed" half of the brief.
+
+[cols="1,3,1,1,2"]
+|===
+| ID | Obligation | Rigour | Status | Notes / issue
+
+| P-1
+| **The inventory itself.** No document enumerated proof needs; `PROOF-NEEDS.md`
+  held only a cleanup note. (Closed by *this* file.)
+| S | `mechanized`
+| —
+
+| P-2
+| **Solo progress + preservation.** Discharge the two holes in `Soundness.idr`:
+  give `Step` its constructors and prove
+  `progress`/`preservation`/`affinePreservation`.
+| XL | `stated`
+| #513 must-have 1; solo-core Track F1 wks 3–12
+
+| P-3
+| **Borrow-graph soundness.** A well-typed program never observes a moved/aliased
+  value. Must *exclude* the #554 counterexample (callee-returned borrow).
+| XL | `prose`
+| #513 must-have 2; counterexample #554; #553
+
+| P-4
+| **QTT affine usage.** Quantities `{0,1,ω}` are respected: `1`-vars used exactly
+  once, `0`-vars erased, semiring laws hold.
+| L | `prose`
+| #513 must-have 3; prose `quantitative-types.md`
+
+| P-5
+| **HM inference soundness + principality.** Inferred types are well-typed and
+  principal.
+| L | `prose`
+| #513 must-have 4; prose `inference-algorithm.md`
+
+| P-6
+| **Effect-row soundness.** A function performs no effect outside its row; row
+  unification is sound. *Blocked* — the backend (#555) does not implement the
+  semantics this proof would assume (see <<outstanding>>).
+| M | `prose`
+| #513 must-have 5; blocked on #555
+
+| P-7
+| **Name-resolution determinism.** Resolution is a deterministic total function
+  of the program.
+| M | `absent`
+| #513 must-have 6
+
+| P-8
+| **Parser conformance.** The grammar accepts exactly the documented language
+  (property-tested).
+| M | `absent`
+| #513 must-have 8
+
+| P-9
+| **Refinement enforcement = proof obligation.** #558 is simultaneously a bug
+  *and* the missing obligation "refinement predicates are checked." Drawing that
+  equivalence is itself the catalogue gap.
+| L | `absent`
+| #558
+
+| P-10
+| **Trait coherence.** At most one instance resolves per (trait, type); #559 is
+  the open counterexample.
+| L | `absent`
+| #559; #513 high-priority
+|===
+
+[#outstanding]
+== 3. Additional needs arising from outstanding work
+
+The work in flight changes which obligations are *load-bearing* and which are
+*blocked*.
+
+* **K-1 — Codegen WASM semantic-preservation is the keystone (#513 must-have 7).**
+  `⟦compile(p)⟧_wasm = ⟦p⟧_source` for the operational semantics. This is the
+  single obligation every *face* and every *aLib conformer* ultimately rests on:
+  prove the backend preserves meaning once, and front-end face theorems
+  (<<faces>>) compose into end-to-end correctness. Rigour `XL`. Status `prose`
+  (`operational-semantics.md` / `denotational-semantics.md` are the inputs).
+* **K-2 — Effect-soundness is *blocked*, not merely unproven.** P-6 cannot be
+  honestly *stated against the current backend* because #555 drops handler arms
+  on three of the codegen targets. The obligation must be split: (a) prove
+  soundness against the *interpreter's intended* handler semantics, then (b)
+  prove the lowered targets refine that semantics — which (b) currently *fails*.
+  This makes #555 a proof-blocking defect, not just a runtime bug.
+* **K-3 — Borrow soundness must be stated to *reject* #554.** Any mechanized P-3
+  must take the #554 program as a *negative* test (must not typecheck). Without
+  Polonius (#553) the current checker cannot; so P-3's statement should be
+  written now even though its proof waits on #553.
+* **K-4 — `CAPABILITY-MATRIX.adoc` rows are latent obligations.** Every row not
+  marked `enforced` (effects `partial`, refinements `declared-but-unwired`, …)
+  is a place where a prose proof presumes behaviour the implementation does not
+  deliver. The matrix should cross-link each such row to its P-/F- obligation
+  here.
+
+[#faces]
+== 4. New proof needs from the *faces* work
+
+The faces architecture (ADR-010: surface transformers `lib/<face>_face.ml` +
+error-vocabulary formatter `lib/face.ml` + pragma detector `lib/face_pragma.ml`;
+"different faces, same cube") introduces obligations that are **entirely absent
+from #513's 8 must-haves and 12 high-priority items.** This is the core
+discovery of the review: the proof programme predates faces and never grew to
+cover them.
+
+[cols="1,3,1,1,2"]
+|===
+| ID | Obligation | Rigour | Status | Seed / issue
+
+| F-1
+| **Transformer semantics-preservation — the *real* same-cube theorem.** For
+  each face `F` with surface→canonical transform `T_F`, the typed-wasm
+  denotation is preserved: `⟦T_F(p)⟧_wasm = ⟦T_canonical(canon(p))⟧_wasm` for all
+  well-typed face-`F` programs `p`. This is the *front-end* analogue of the
+  backend keystone K-1; together they give end-to-end "same cube". Needs the
+  AffineScript AST + wasm semantics formalised.
+| XL | `absent`
+| new
+
+| F-2
+| **Same-cube cross-face agreement (observational).** Any two faces compiling
+  the same abstract program emit observationally-equivalent wasm (same effect
+  trace, same return). *Partially mechanized*: `invariant-path/proofs/SameCube.agda`
+  (`--safe`) proves the unit-returning-tail case, which is exactly where the two
+  lowering classes the verifier found still agree.
+| L | `partial`
+| `SameCube.agda` (inv-path #33); **divergence instance #601**
+
+| F-3
+| **Face pragma detection is total + deterministic + confluent.**
+  `Face_pragma.detect_in_source` returns exactly one face (or falls through to
+  the canonical default) for every input; it is independent of bytes past the
+  first code token; the alias table (`parse_face_name`: rattle→Python,
+  jaffa→Js, pseudo→Pseudocode, lucid→Lucid, cafe→Cafe, +brand names) is a
+  *function* (no name maps to two faces); and dispatch `--face` > pragma >
+  extension is confluent (same source ⇒ same face). Face analogue of P-7.
+| M | `absent`
+| new; `lib/face_pragma.ml`
+
+| F-4
+| **Error-vocabulary faithfulness (simulation).** Each `Face.format_*_for_face`
+  preserves the *referent* of the canonical error: same error class, same
+  offending identifier, same fix-direction. Formally: the per-face translation
+  is a total simulation of the canonical error algebra (exhaustiveness is
+  OCaml-checked; *semantic* faithfulness is not), so a face can never make error
+  *X* read as a different error *Y*.
+| M | `absent`
+| new; `lib/face.ml`
+
+| F-5
+| **`render_ty` faithfulness / non-collision.** The per-face type renaming
+  (`Option[T]`→`Maybe T` (Lucid), `→ T?` (Cafe), `→ T \| null` (Js);
+  `Unit`→`None`/`null`/`nothing`; `Bool`→…) is an *injective, invertible*
+  renaming of canonical type names, and never collapses two distinct canonical
+  types to one face string inside a single message (e.g. Js maps both `Unit` and
+  `Option[T]` into "null"-shaped text — show this is unambiguous in context).
+| S | `absent`
+| new; `lib/face.ml` `render_ty`
+
+| F-6
+| **Preview round-trip totality.** The `preview-{python,js,pseudocode,lucid,cafe}`
+  subcommands are total, and parsing the preview of `p` under face `F` yields a
+  program denotationally equal to `p` (`parse_F ∘ preview_F ≈ id` up to
+  denotation). If faces are "the same cube", the preview path must round-trip.
+| M | `absent`
+| new
+
+| F-7
+| **Face confluence with canonicalisation.** An explicit pragma is never
+  silently overridden in a way that changes denotation; resolving a face and
+  then canonicalising commutes (`canon ∘ T_F = canon ∘ T_canonical ∘ surface_F`).
+  Ties F-1 and F-3 together.
+| M | `absent`
+| new
+|===
+
+[NOTE]
+====
+**Why F-2 is `partial`, not done.** Grounding `examples/same-cube/greet`
+against a real build split the six faces into *two* wasm classes —
+`{canonical, jaffa, cafe}` emit a trailing call as a *statement* (`{ a; }`),
+`{rattle, pseudo, lucid}` as a *tail expression* (`{ a }`). For a
+unit-returning action these are observationally identical (proven in
+`SameCube.agda`); for a *value-returning* tail they genuinely diverge in result
+type. That concrete divergence is filed as **#601** and is the precise reason
+F-1 (full transformer preservation) is non-trivial rather than a formality.
+====
+
+== 5. Adjacent repositories (same cube, wider lens)
+
+* **aggregate-library (aLib) — cross-*cube* conformance, not cross-*face*.**
+  Faces unify *syntax* over one cube; aLib unifies a *library API* over *many*
+  cubes. Its YAML conformance vectors are a property-test obligation (each
+  conformer satisfies every vector — the aLib analogue of P-8), and its spec
+  "Properties" sections (commutativity, associativity, identity, …) are exactly
+  the *stdlib algebraic-law* obligations #513 lists as high-priority. The
+  AffineScript reference conformer (`aggregate-library/src/affinescript/ALib.affine`)
+  is where those laws become AffineScript proof obligations.
+* **invariant-path — the same-cube *harness*.** `proofs/SameCube.agda` is the
+  first mechanized faces proof (seed of F-2); `scripts/verify-same-cube.sh`
+  compiles every face to wasm and sha256-compares as the empirical (test-tier)
+  companion. Treat these as the F-2 home until a `formal/` faces track exists in
+  this repo.
+
+== 6. Recommended sequencing
+
+[cols="1,4,1"]
+|===
+| Wave | Items | Gates
+
+| 0 (now)
+| Stand up `formal/` (the #513 target dir). *State* — without proving — P-2,
+  P-3 (rejecting #554), F-1, F-3, F-4 as signatures/holes, mirroring the
+  solo-core skeleton style. Cross-link `CAPABILITY-MATRIX.adoc` rows (K-4).
+| —
+
+| 1
+| Discharge solo-core P-2 (progress+preservation). Mechanize F-3/F-5 (small,
+  self-contained OCaml-property obligations; no semantics needed).
+| Wave 0
+
+| 2
+| K-1 codegen preservation skeleton → unblocks F-1, F-2-full, F-6. Split P-6 per
+  K-2 and surface #555 as proof-blocking.
+| Wave 1; #555
+
+| 3
+| Extend solo-core to Duet (traits+effects: P-6, P-10) then Ensemble (P-4 full,
+  refinements P-9, borrowing P-3-full pending #553).
+| Wave 2; #553
+|===
+
+[#xref]
+== Appendix A — relationship to #513 / #563
+
+* **#513** (proof-programme umbrella) supplies P-2…P-10 and K-1. This document
+  *adds* the faces obligations F-1…F-7 and the aLib law-conformance obligation,
+  which #513 does not mention, and links the open soundness holes
+  (#554/#555/#556/#558/#559) to the obligations they falsify.
+* **#563** (v1 readiness ledger) tracks the holes as release blockers; the
+  `Status` column here should stay consistent with that ledger.
+* When `formal/` lands, each `P-`/`F-` ID should become a module name or lemma
+  label so the catalogue and the mechanization share one namespace.
+
+[#history]
+== Appendix B — historical note (preserved)
+
+*Template ABI Cleanup (2026-03-29).* The template ABI was removed — it was
+creating a false impression of formal verification. The removed files
+(`Types.idr`, `Layout.idr`, `Foreign.idr`) contained only RSR template
+scaffolding with unresolved `{{PROJECT}}`/`{{AUTHOR}}` placeholders and no
+domain-specific proofs. When this project needs formal ABI verification, create
+domain-specific Idris2 proofs following the pattern in repos like `typed-wasm`,
+`proven`, `echidna`, or `boj-server`. (The same caution applies to the
+`affinescript-vite/verification/proofs/` *templates* surveyed in <<status>>:
+they are scaffolding, not metatheory.)

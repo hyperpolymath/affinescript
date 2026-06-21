@@ -218,7 +218,8 @@ type context = {
 |Visibility checking |✅ |Public/PubCrate filtering
 |Symbol registration |✅ |Symbols added to table
 |Type information transfer |✅ |*FIXED*
-|Re-exports |❌ |Not implemented
+|Cross-module constructor codegen |✅ |Directly-imported enum constructors (`use prelude::++{++Option, Some, None++}++`) lower on every backend (++#++138)
+|Re-exports (transitive) |❌ |A module surfacing names it itself imported (`use option` → prelude's `Option`) — not implemented
 |Nested modules |❌ |Not implemented
 |===
 
@@ -434,3 +435,30 @@ re-export module exists.
 |===
 
 No code change in ++#++132 (decision {plus} documentation only).
+
+=== ++#++138 codegen follow-up (2026-06-20)
+
+Removing the `b895374` seeded `Some/None/Ok/Err` builtins (front-end half of
+++#++138) correctly routed those constructors through the module path, so
+`check` passes — but it surfaced a codegen gap: a consumer that imports
+prelude's `Option`/`Result` and applies their constructors type-checked yet
+failed to compile, because the backends learn variant tags only from `TopType`
+decls and imported types never reached them.
+
+* *Core-Wasm backend* (`Codegen.gen_imports`): wired up only `TopFn`
+(→ wasm import) and `TopConst` (→ global); imported types were dropped. It now
+also registers the constructor tags / struct layouts of imported public types,
+reusing the local-type registration in `gen_decl`.
+* *Other backends* (Deno / JS / Julia / C / Rust / …):
+`Module_loader.flatten_imports` now inlines imported public `TopType` decls (a
+separate namespace from fn/const, local-wins, deduped) so the
+`prog_decls`-iterating codegens see them.
+
+Scope: *directly-imported* constructors lower on every backend. *Transitive
+re-export* (a module re-exposing constructors it itself imported) remains
+unimplemented — see the status table above. Unrelated and still open: the
+core-Wasm pattern-codegen gap for tuple patterns (`UnsupportedFeature "Only
+variable and wildcard patterns supported in tuple patterns"`, which
+`stdlib/option.affine` / `result.affine` hit) and the mixed-representation match
+of a zero-arg variant against a constructor-with-args arm — both reproduce with
+purely local enums and are independent of cross-module linking.
