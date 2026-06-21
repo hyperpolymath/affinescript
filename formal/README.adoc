@@ -41,17 +41,55 @@ cannot mistake it. Coq has no `v.mod` manifest, so `vmod_detected` never fires.
 | **mechanized**, axiom-free
 
 | `Siblings_Stated.v`
-| **P-2, P-3, F-3, F-4** — progress/preservation, borrow soundness (rejecting
-  #554), pragma determinism, error-vocabulary faithfulness
-| **stated** (parametric propositions; not yet proven)
+| **P-2, P-3, F-3, F-4** — the obligation *statements* (parametric propositions)
+| **stated** — and now discharged for concrete models below
+
+| `P2_Progress.v`
+| **P-2** — progress + preservation (nat/bool/`add`/`if`, small-step)
+| **mechanized**, axiom-free
+
+| `P3_BorrowSound.v`
+| **P-3** — borrow soundness + the #554 witness rejected
+| **mechanized**, axiom-free
+
+| `F3_PragmaDecidable.v`
+| **F-3** — pragma locality + alias-table functionality
+| **mechanized**, axiom-free
+
+| `F4_ErrorFaithful.v`
+| **F-4** — error rendering preserves class + referent
+| **mechanized**, axiom-free
 |===
 
 All mechanized theorems report *Closed under the global context* under `Print
 Assumptions` — no `Admitted`, no axioms — honouring the estate rule that
-load-bearing proofs be constructive and complete. `Siblings_Stated.v` proves
-nothing: it records the obligation shapes as `Definition ... : Prop` over
-section `Variable`s (discharged at `End` into closed, universally-quantified
-props), the Coq analogue of solo-core's statement-only Idris2 skeleton.
+load-bearing proofs be constructive and complete. `Siblings_Stated.v` records
+the obligation shapes as `Definition ... : Prop` over section `Variable`s
+(discharged at `End` into closed, universally-quantified props); the
+`P2_/P3_/F3_/F4_` files give concrete models and prove those propositions hold,
+each ending in a `*_discharged : Siblings_Stated.<name> … := <proof>` line that
+type-checks the concrete proof against the stated obligation.
+
+== Mechanized siblings (P-2, P-3, F-3, F-4)
+
+Each is proven for a deliberately small concrete model — enough to discharge
+the stated obligation and pin its meaning, not the full language:
+
+* **P-2** (`P2_Progress.v`) — a simply-typed first-order calculus
+  (nat/bool/`add`/`if`), small-step, call-by-value, with the standard
+  canonical-forms / progress / preservation development. Functions, binders,
+  products/sums and the QTT quantities are the next increments (codegen
+  preservation *with* `let`/variables is already in `K1Let_…`).
+* **P-3** (`P3_BorrowSound.v`) — a one-resource borrow calculus; proves the
+  precise validity checker is sound and **rejects the #554 witness**
+  (`[OBorrow; OMove; OUseRef]`), matching `lib/borrow.ml`'s post-#554-fix
+  behaviour. Full P-3 needs the real borrow graph + Polonius (#553).
+* **F-3** (`F3_PragmaDecidable.v`) — the alias table is a function, and
+  detection factors through the scanned region, so it cannot depend on bytes
+  past the pragma.
+* **F-4** (`F4_ErrorFaithful.v`) — the face renderer preserves an error's
+  *class* and *referent*, changing only vocabulary, so no face can make error
+  X read as a different error Y.
 
 == K-1 and its growth
 

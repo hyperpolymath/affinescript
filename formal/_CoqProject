@@ -1,5 +1,9 @@
 -Q . ASFormal
 K1_CodegenPreservation.v
 K1Let_CodegenPreservation.v
-F1_TransformerPreservation.v
 Siblings_Stated.v
+F1_TransformerPreservation.v
+F3_PragmaDecidable.v
+F4_ErrorFaithful.v
+P3_BorrowSound.v
+P2_Progress.v

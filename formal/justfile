@@ -2,14 +2,16 @@
 # Coq/Rocq proof checks for the AffineScript `formal/` track.
 # (Mustfile/justfile per estate policy — no Makefiles.)
 
-# Type-check every proof in dependency order (F-1 Requires K-1) and assert
-# none depends on an axiom or Admitted.
+# Type-check every proof in dependency order (F-1 Requires K-1; the F-/P-
+# discharge proofs Require Siblings_Stated) and assert none depends on an
+# axiom or Admitted.
 check:
     #!/usr/bin/env bash
     set -euo pipefail
     all=""
-    for f in K1_CodegenPreservation K1Let_CodegenPreservation \
-             F1_TransformerPreservation Siblings_Stated; do
+    for f in K1_CodegenPreservation K1Let_CodegenPreservation Siblings_Stated \
+             F1_TransformerPreservation F3_PragmaDecidable F4_ErrorFaithful \
+             P3_BorrowSound P2_Progress; do
       echo "== coqc $f.v =="
       o="$(coqc -Q . ASFormal "$f.v")"
       printf '%s\n' "$o"
@@ -18,7 +20,7 @@ check:
     if printf '%s' "$all" | grep -q "Axioms:"; then
       echo "::error:: a proof depends on an axiom / Admitted"; exit 1
     fi
-    echo "OK: K-1, K1Let, F-1 mechanized (no axioms); P-2/P-3/F-3/F-4 stated."
+    echo "OK: K-1/K1Let/F-1 + P-2/P-3/F-3/F-4 mechanized; no axioms."
 
 # Remove Coq build artifacts.
 clean:

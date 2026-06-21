@@ -51,3 +51,11 @@ cicd_rules/vlang_detected:formal/F1_TransformerPreservation.v
 cicd_rules/banned_language_file:formal/F1_TransformerPreservation.v
 cicd_rules/vlang_detected:formal/Siblings_Stated.v
 cicd_rules/banned_language_file:formal/Siblings_Stated.v
+cicd_rules/vlang_detected:formal/F3_PragmaDecidable.v
+cicd_rules/banned_language_file:formal/F3_PragmaDecidable.v
+cicd_rules/vlang_detected:formal/F4_ErrorFaithful.v
+cicd_rules/banned_language_file:formal/F4_ErrorFaithful.v
+cicd_rules/vlang_detected:formal/P3_BorrowSound.v
+cicd_rules/banned_language_file:formal/P3_BorrowSound.v
+cicd_rules/vlang_detected:formal/P2_Progress.v
+cicd_rules/banned_language_file:formal/P2_Progress.v

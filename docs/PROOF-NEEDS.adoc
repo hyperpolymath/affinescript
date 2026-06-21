@@ -71,8 +71,9 @@ than the prose corpus suggests:
   **exists** (Coq/Rocq 8.18), axiom-free throughout: `K1_CodegenPreservation.v`
   (K-1, minimal fragment) + `K1Let_CodegenPreservation.v` (K-1 grown with
   variables/`let`/environment) + `F1_TransformerPreservation.v` (F-1, composing
-  on K-1) are mechanized; `Siblings_Stated.v` states P-2/P-3/F-3/F-4 as
-  parametric propositions (see <<outstanding>>, <<faces>>).
+  on K-1) are mechanized; `Siblings_Stated.v` states P-2/P-3/F-3/F-4, now
+  **discharged for concrete models** in `P2_Progress.v` / `P3_BorrowSound.v` /
+  `F3_PragmaDecidable.v` / `F4_ErrorFaithful.v` (see <<outstanding>>, <<faces>>).
 * **Research tracks** (not core soundness): `docs/academic/tropical-session-types/`
   (Lean), `proposals/echo-types/EchoEncodingFaithfulness.agda`,
   `proposals/idaptik/migrated/**/*Boundary.agda` (echo-types loss-with-residue,
@@ -122,14 +123,18 @@ obligations. They are the "we might have missed" half of the brief.
 | **Solo progress + preservation.** Discharge the two holes in `Soundness.idr`:
   give `Step` its constructors and prove
   `progress`/`preservation`/`affinePreservation`.
-| XL | `stated`
-| #513 must-have 1; solo-core Track F1 wks 3–12
+| XL | `partial`
+| #513 must-have 1; solo-core (Idris2) `stated`; **small-step progress +
+  preservation mechanized** for a first-order nat/bool/`add`/`if` fragment in
+  `formal/P2_Progress.v`
 
 | P-3
 | **Borrow-graph soundness.** A well-typed program never observes a moved/aliased
   value. Must *exclude* the #554 counterexample (callee-returned borrow).
-| XL | `prose`
-| #513 must-have 2; counterexample #554; #553
+| XL | `partial`
+| #513 must-have 2; **mechanized** for a one-resource model in
+  `formal/P3_BorrowSound.v` (sound checker rejects the #554 witness); #554 fixed
+  (SOUNDNESS.adoc), Polonius #553
 
 | P-4
 | **QTT affine usage.** Quantities `{0,1,ω}` are respected: `1`-vars used exactly
@@ -252,8 +257,9 @@ cover them.
   jaffa→Js, pseudo→Pseudocode, lucid→Lucid, cafe→Cafe, +brand names) is a
   *function* (no name maps to two faces); and dispatch `--face` > pragma >
   extension is confluent (same source ⇒ same face). Face analogue of P-7.
-| M | `stated`
-| Coq statement: `formal/Siblings_Stated.v` (F3); `lib/face_pragma.ml`
+| M | `partial`
+| **mechanized** for a model: `formal/F3_PragmaDecidable.v` (discharges the
+  Siblings_Stated F3 statements); `lib/face_pragma.ml`
 
 | F-4
 | **Error-vocabulary faithfulness (simulation).** Each `Face.format_*_for_face`
@@ -262,8 +268,9 @@ cover them.
   is a total simulation of the canonical error algebra (exhaustiveness is
   OCaml-checked; *semantic* faithfulness is not), so a face can never make error
   *X* read as a different error *Y*.
-| M | `stated`
-| Coq statement: `formal/Siblings_Stated.v` (F4); `lib/face.ml`
+| M | `partial`
+| **mechanized** for a model: `formal/F4_ErrorFaithful.v` (discharges the
+  Siblings_Stated F4 statement); `lib/face.ml`
 
 | F-5
 | **`render_ty` faithfulness / non-collision.** The per-face type renaming
@@ -327,10 +334,13 @@ F-1 (full transformer preservation) is non-trivial rather than a formality.
 | Wave | Items | Gates
 
 | 0
-| *Substantially done.* `formal/` stood up (Coq); **K-1 mechanized** + **grown**
-  (variables/`let`); **F-1 mechanized** (composes on K-1); **P-2/P-3/F-3/F-4
-  stated** as Coq signatures. All axiom-free. NEXT: grow K-1 with `if`;
-  discharge a stated sibling; cross-link `CAPABILITY-MATRIX.adoc` rows (K-4).
+| **Done.** `formal/` stood up (Coq); **K-1 mechanized** + **grown**
+  (variables/`let`); **F-1 mechanized** (composes on K-1); and **P-2/P-3/F-3/F-4
+  mechanized** for concrete models (small-step progress+preservation; borrow
+  soundness rejecting #554; pragma locality + alias functionality; error
+  faithfulness). 11 closure reports, all axiom-free. NEXT (Wave 1): grow each
+  model toward the real language — `if`/functions/QTT in P-2, the real borrow
+  graph in P-3 — and cross-link `CAPABILITY-MATRIX.adoc` rows (K-4).
 | —
 
 | 1
