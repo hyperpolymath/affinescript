@@ -1,0 +1,50 @@
+# SPDX-License-Identifier: MPL-2.0
+#
+# Local reusable backing `governance-baseline.yml`. Its single job is named
+# "Validate Hypatia baseline" so that, when called from a job with id
+# `governance`, GitHub reports the check context
+# `governance / Validate Hypatia baseline` — the estate-standard name pinned by
+# branch protection.
+#
+# It is a genuine (if lightweight) gate: when a `.hypatia-baseline.json` is
+# present it must be well-formed JSON, and any baseline entry that points at a
+# now-absent file is surfaced as a warning. With no baseline file present
+# (this repo's preferred state) it passes with a notice. Uses `jq` only — no
+# npm (npm is banned in this repo; `jq` ships on the runner).
+#
+# Deliberately declares NO `concurrency:` — see the BP008 note in the caller.
+name: Governance Baseline (impl)
+on:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  validate:
+    name: Validate Hypatia baseline
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Validate .hypatia-baseline.json (if present)
+        run: |
+          set -euo pipefail
+          if [ ! -f .hypatia-baseline.json ]; then
+            echo "::notice::No .hypatia-baseline.json present — nothing to validate."
+            exit 0
+          fi
+          echo "Found .hypatia-baseline.json — verifying it is well-formed JSON."
+          if ! jq empty .hypatia-baseline.json; then
+            echo "::error file=.hypatia-baseline.json::.hypatia-baseline.json is not valid JSON."
+            exit 1
+          fi
+          echo "Scanning for stale baseline entries (referenced files that no longer exist)."
+          stale=0
+          while IFS= read -r f; do
+            if [ -n "$f" ] && [ ! -e "$f" ]; then
+              echo "::warning file=.hypatia-baseline.json::Stale baseline entry: $f no longer exists."
+              stale=$((stale + 1))
+            fi
+          done < <(jq -r '.. | objects | .file? // empty' .hypatia-baseline.json 2>/dev/null || true)
+          echo "Stale entries: ${stale} (warnings only, non-blocking)."
+          echo "Baseline validation passed."

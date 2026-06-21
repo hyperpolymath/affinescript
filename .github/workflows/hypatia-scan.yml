@@ -6,8 +6,12 @@ name: Hypatia Security Scan
 on:
   push:
     branches: [main, master, develop]
+  # No `branches:` filter: this job emits the required check
+  # `hypatia / Hypatia Neurosymbolic Analysis` (and drives the `Hypatia`
+  # app check), so it must run on PRs against EVERY base. A required check
+  # whose workflow is branch-filtered is never created and sits forever at
+  # "Expected — Waiting for status to be reported".
   pull_request:
-    branches: [main, master]
   schedule:
     - cron: '0 0 * * 0'
   workflow_dispatch:
