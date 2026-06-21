@@ -43,7 +43,8 @@ const __as_walkRecursive = (root) => {
 };
 const __as_regexMatch = (s, pat) => new RegExp(pat).test(String(s));
 const __as_wasmInstance = (bytes) =>
-  new WebAssembly.Instance(new WebAssembly.Module(bytes)).exports;
+  new WebAssembly.Instance(new WebAssembly.Module(bytes),
+    { wasi_snapshot_preview1: { fd_write: () => 0 } }).exports;
 const __as_wasmCall = (exports, name, args) => Number(exports[name](...(args || [])));
 // ---- WasmValue (Deno.affine #455 — Tier 1 #5, Option B) ----
 // Opaque tagged value crossing the AS/JS boundary as `{ kind, v }`.
@@ -127,9 +128,20 @@ const __as_pixiContainerNew = () => new globalThis.__as_pixi.Container();
 const __as_pixiContainerAddChild = (p, c) => { p.addChild(c); return 0; };
 const __as_pixiContainerRemoveChild = (p, c) => { p.removeChild(c); return 0; };
 const __as_pixiContainerSetPosition = (c, x, y) => { c.x = x; c.y = y; return 0; };
+const __as_pixiContainerSetScale = (c, x, y) => { c.scale.set(x, y); return 0; };
+const __as_pixiContainerSetPivot = (c, x, y) => { c.pivot.set(x, y); return 0; };
+const __as_pixiContainerSetRotation = (c, rad) => { c.rotation = rad; return 0; };
+const __as_pixiContainerSetAlpha = (c, a) => { c.alpha = a; return 0; };
+const __as_pixiContainerSetZIndex = (c, z) => { c.zIndex = z; return 0; };
+const __as_pixiContainerSetSortableChildren = (c, v) => { c.sortableChildren = v; return 0; };
+const __as_pixiContainerSetEventMode = (c, mode) => { c.eventMode = mode; return 0; };
+const __as_pixiContainerSetCursor = (c, cursor) => { c.cursor = cursor; return 0; };
 const __as_pixiContainerSetVisible = (c, v) => { c.visible = v; return 0; };
+const __as_pixiContainerOn = (c, event, handler) => { c.on(event, handler); return 0; };
+const __as_pixiContainerOff = (c, event, handler) => { c.off(event, handler); return 0; };
 const __as_pixiContainerDestroy = (c) => { c.destroy(); return 0; };
 const __as_pixiSpriteFrom = (t) => new globalThis.__as_pixi.Sprite(t);
+const __as_pixiSpriteSetAnchor = (s, x, y) => { s.anchor.set(x, y); return 0; };
 // Upcasts are identity — PIXI's class hierarchy makes Sprite/Graphics/
 // Text actual Container subclasses, so the JS object is the same.
 const __as_pixiSpriteAsContainer = (s) => s;
@@ -182,6 +194,52 @@ const __as_pixiSoundPause = (s) => { s.pause(); return 0; };
 const __as_pixiSoundResume = (s) => { s.resume(); return 0; };
 const __as_pixiSoundSetVolume = (s, vol) => { s.volume = vol; return 0; };
 const __as_pixiSoundSetLoop = (s, loop) => { s.loop = loop; return 0; };
+// ---- Ipc (bindings #9): web-platform MessageChannel/MessagePort ----
+// Uses standard web globals (MessageChannel, structuredClone) — no
+// consumer-side init required. Available unmodified in Deno, Node 16+,
+// browsers, and Web Workers.
+const __as_messageChannelNew = () => new MessageChannel();
+const __as_messageChannelPort1 = (ch) => ch.port1;
+const __as_messageChannelPort2 = (ch) => ch.port2;
+const __as_messagePortPostMessage = (p, data) => { p.postMessage(data); return 0; };
+const __as_messagePortOnMessage = (p, handler) => { p.onmessage = handler; return 0; };
+const __as_messagePortStart = (p) => { p.start(); return 0; };
+const __as_messagePortClose = (p) => { p.close(); return 0; };
+const __as_targetPostMessage = (t, msg) => { t.postMessage(msg); return 0; };
+const __as_structuredCloneValue = (v) => structuredClone(v);
+// ---- Canvas (bindings #8): HTML5 Canvas 2D rendering context ----
+// `canvas` arg is the consumer-supplied HTMLCanvasElement; helpers
+// dispatch directly to the standard CanvasRenderingContext2D
+// methods. Available unmodified in browsers, jsdom-under-Deno,
+// idaptik's WebView host, and any DOM emulator.
+const __as_canvasGetContext2D = (canvas) => canvas.getContext("2d");
+const __as_canvasFillStyle = (ctx, color) => { ctx.fillStyle = color; return 0; };
+const __as_canvasStrokeStyle = (ctx, color) => { ctx.strokeStyle = color; return 0; };
+const __as_canvasLineWidth = (ctx, w) => { ctx.lineWidth = w; return 0; };
+const __as_canvasGlobalAlpha = (ctx, a) => { ctx.globalAlpha = a; return 0; };
+const __as_canvasFillRect = (ctx, x, y, w, h) => { ctx.fillRect(x, y, w, h); return 0; };
+const __as_canvasStrokeRect = (ctx, x, y, w, h) => { ctx.strokeRect(x, y, w, h); return 0; };
+const __as_canvasClearRect = (ctx, x, y, w, h) => { ctx.clearRect(x, y, w, h); return 0; };
+const __as_canvasBeginPath = (ctx) => { ctx.beginPath(); return 0; };
+const __as_canvasClosePath = (ctx) => { ctx.closePath(); return 0; };
+const __as_canvasMoveTo = (ctx, x, y) => { ctx.moveTo(x, y); return 0; };
+const __as_canvasLineTo = (ctx, x, y) => { ctx.lineTo(x, y); return 0; };
+const __as_canvasArc = (ctx, x, y, r, s, e) => { ctx.arc(x, y, r, s, e); return 0; };
+const __as_canvasFill = (ctx) => { ctx.fill(); return 0; };
+const __as_canvasStroke = (ctx) => { ctx.stroke(); return 0; };
+const __as_canvasSave = (ctx) => { ctx.save(); return 0; };
+const __as_canvasRestore = (ctx) => { ctx.restore(); return 0; };
+const __as_canvasTranslate = (ctx, x, y) => { ctx.translate(x, y); return 0; };
+const __as_canvasRotate = (ctx, rad) => { ctx.rotate(rad); return 0; };
+const __as_canvasScale = (ctx, x, y) => { ctx.scale(x, y); return 0; };
+const __as_canvasFont = (ctx, font) => { ctx.font = font; return 0; };
+const __as_canvasTextAlign = (ctx, align) => { ctx.textAlign = align; return 0; };
+const __as_canvasTextBaseline = (ctx, baseline) => { ctx.textBaseline = baseline; return 0; };
+const __as_canvasFillText = (ctx, text, x, y) => { ctx.fillText(text, x, y); return 0; };
+const __as_canvasStrokeText = (ctx, text, x, y) => { ctx.strokeText(text, x, y); return 0; };
+const __as_canvasMeasureText = (ctx, text) => ctx.measureText(text);
+const __as_canvasDrawImage = (ctx, img, x, y) => { ctx.drawImage(img, x, y); return 0; };
+const __as_canvasDrawImageScaled = (ctx, img, x, y, w, h) => { ctx.drawImage(img, x, y, w, h); return 0; };
 // `++` is overloaded (string concat / array concat); `a + b` would
 // stringify arrays. Dispatch on shape so stdlib/string.affine's
 // `result ++ [x]` and `a ++ b` are both correct.
@@ -194,6 +252,8 @@ const __as_strGet = (s, i) => String(s)[i];
 const __as_strFind = (s, n) => String(s).indexOf(n);
 const __as_charToInt = (c) => String(c).codePointAt(0);
 const __as_intToChar = (n) => String.fromCodePoint(n);
+const __as_strCharCodeAt = (s, i) => (i >= 0 && i < s.length ? s.charCodeAt(i) : -1);
+const __as_strFromCharCode = (n) => String.fromCharCode(n & 0xff);
 const __as_parseInt = (s) => {
   const n = parseInt(String(s), 10);
   return Number.isNaN(n) ? None : Some(n);
@@ -269,6 +329,115 @@ const __as_hpmJsonEscapeString = (s) => {
   }
   return out;
 };
+// ---- Sqlite (db-theory #1a / stdlib/Sqlite.affine): SQL via host adapter ----
+// Host JS environment must expose globalThis.__as_sqlite, a namespace
+// implementing the small adapter contract below. Consumers init once
+// (Deno):
+//   import * as s from "jsr:@db/sqlite";
+//   globalThis.__as_sqlite = {
+//     open: (p) => new s.Database(p),
+//     close: (db) => db.close(),
+//     execute: (db, sql) => db.exec(sql),
+//     query: (db, sql, params) => db.prepare(sql).all(...params),
+//     queryOne: (db, sql, params) => db.prepare(sql).get(...params),
+//     queryInt: (db, sql, params) => db.prepare(sql).value(...params),
+//   };
+// or (Node + better-sqlite3): adapt the same shape. The smoke harness
+// installs an in-memory mock that implements the same contract.
+//
+// Parameter marshalling is intentionally simple: the AffineScript side
+// hands the adapter a JSON-encoded `params` string (`"[]"` for none);
+// rows + single-row results come back as JSON strings for caller-side
+// decoding via `json::parse`. This matches the existing 6-extern
+// stdlib/Sqlite.affine surface; richer typed bindings (prepared
+// statements, schema introspection, bulk I/O) land in db-theory #1b.
+const __as_dbOpen = (path) => globalThis.__as_sqlite.open(path);
+const __as_dbClose = (h) => { globalThis.__as_sqlite.close(h); return 0; };
+const __as_dbExecute = (h, sql) => { globalThis.__as_sqlite.execute(h, sql); return 0; };
+const __as_dbQuery = (h, sql, paramsJson) => {
+  const params = paramsJson === "" || paramsJson === "[]" ? [] : JSON.parse(paramsJson);
+  const rows = globalThis.__as_sqlite.query(h, sql, params);
+  return JSON.stringify(rows);
+};
+const __as_dbQueryOne = (h, sql, paramsJson) => {
+  const params = paramsJson === "" || paramsJson === "[]" ? [] : JSON.parse(paramsJson);
+  const row = globalThis.__as_sqlite.queryOne(h, sql, params);
+  return JSON.stringify(row);
+};
+const __as_dbQueryInt = (h, sql, paramsJson) => {
+  const params = paramsJson === "" || paramsJson === "[]" ? [] : JSON.parse(paramsJson);
+  const v = globalThis.__as_sqlite.queryInt(h, sql, params);
+  return Number(v) | 0;
+};
+// ---- Sqlite prepared statements (db-theory #1b) ----
+// Layered on top of the convenience surface above. The host adapter
+// gains nine extra methods (`prepare`, `bindInt`, `bindText`, `bindNull`,
+// `step`, `columnCount`, `columnInt`, `columnText`, `reset`, `finalize`);
+// the smoke harness's mock implements them, and both `jsr:@db/sqlite`
+// and `better-sqlite3` provide direct one-line wrappers (each library
+// already exposes a `prepare()` + iterator-style step + typed column
+// accessors). Bind-index convention is sqlite3's 1-indexed; column-index
+// convention is 0-indexed (matches both adapter libraries).
+const __as_dbPrepare      = (h, sql) => globalThis.__as_sqlite.prepare(h, sql);
+const __as_dbBindInt      = (s, idx, v) => { globalThis.__as_sqlite.bindInt(s, idx, v); return 0; };
+const __as_dbBindText     = (s, idx, v) => { globalThis.__as_sqlite.bindText(s, idx, v); return 0; };
+const __as_dbBindNull     = (s, idx) => { globalThis.__as_sqlite.bindNull(s, idx); return 0; };
+const __as_dbStep         = (s) => (globalThis.__as_sqlite.step(s) ? 1 : 0);
+const __as_dbColumnCount  = (s) => Number(globalThis.__as_sqlite.columnCount(s)) | 0;
+const __as_dbColumnInt    = (s, idx) => {
+  const v = globalThis.__as_sqlite.columnInt(s, idx);
+  return v == null ? 0 : (Number(v) | 0);
+};
+const __as_dbColumnText   = (s, idx) => {
+  const v = globalThis.__as_sqlite.columnText(s, idx);
+  return v == null ? "" : String(v);
+};
+const __as_dbReset        = (s) => { globalThis.__as_sqlite.reset(s); return 0; };
+const __as_dbFinalize     = (s) => { globalThis.__as_sqlite.finalize(s); return 0; };
+// ---- Sqlite schema introspection + bulk I/O + error inspection (db-theory #1c) ----
+// Five more adapter methods (`schemaTables`, `schemaColumns`,
+// `tableExists`, `importCsv`, `exportCsv`, `lastError`); each
+// real-world adapter (jsr:@db/sqlite, better-sqlite3) backs them with
+// a one-liner over `PRAGMA table_info` / a `Database.prepare()`
+// iterator / a `fs.writeFileSync(..., csv)` call.
+const __as_dbSchemaTables  = (h) => String(globalThis.__as_sqlite.schemaTables(h));
+const __as_dbSchemaColumns = (h, table) => String(globalThis.__as_sqlite.schemaColumns(h, table));
+const __as_dbTableExists   = (h, table) => Boolean(globalThis.__as_sqlite.tableExists(h, table));
+const __as_dbImportCsv     = (h, table, path, hasHeader) =>
+  Number(globalThis.__as_sqlite.importCsv(h, table, path, Boolean(hasHeader))) | 0;
+const __as_dbExportCsv     = (h, sql, paramsJson, path) => {
+  const params = paramsJson === "" || paramsJson === "[]" ? [] : JSON.parse(paramsJson);
+  return Number(globalThis.__as_sqlite.exportCsv(h, sql, params, path)) | 0;
+};
+const __as_dbLastError     = (h) => {
+  const v = globalThis.__as_sqlite.lastError(h);
+  return v == null ? "" : String(v);
+};
+// ---- Sqlite transactions (db-theory #2) ----
+// `Tx` is an opaque handle; the host adapter is required to
+// invalidate it on `commit` / `rollback` so that subsequent calls
+// throw a host-side `Error` (the affine type system's
+// at-most-one-use guarantee is enforced statically on the AS side;
+// this host invariant catches FFI-side aliasing bugs in tests).
+const __as_txBegin       = (h) => globalThis.__as_sqlite.txBegin(h);
+const __as_txCommit      = (t) => { globalThis.__as_sqlite.txCommit(t); return 0; };
+const __as_txRollback    = (t) => { globalThis.__as_sqlite.txRollback(t); return 0; };
+const __as_txSavepoint   = (t, n) => { globalThis.__as_sqlite.txSavepoint(t, n); return 0; };
+const __as_txRelease     = (t, n) => { globalThis.__as_sqlite.txRelease(t, n); return 0; };
+const __as_txRollbackTo  = (t, n) => { globalThis.__as_sqlite.txRollbackTo(t, n); return 0; };
+const __as_txDb          = (t) => globalThis.__as_sqlite.txDb(t);
+const __as_txIsLive      = (t) => (globalThis.__as_sqlite.txIsLive(t) ? 1 : 0);
+// ---- Sqlite aggregation (db-theory #3 / stdlib/Aggregate.affine) ----
+// Each scalar aggregator delegates to a host adapter method that runs
+// the SQL, expects a single-row result, and unwraps column 0. `groupBy`
+// / `groupCount` return JSON strings (caller parses).
+const __as_dbCount       = (h, sql, params) => Number(globalThis.__as_sqlite.aggCount(h, sql, params)) | 0;
+const __as_dbSum         = (h, sql, params) => Number(globalThis.__as_sqlite.aggSum(h, sql, params)) | 0;
+const __as_dbMinInt      = (h, sql, params) => Number(globalThis.__as_sqlite.aggMinInt(h, sql, params)) | 0;
+const __as_dbMaxInt      = (h, sql, params) => Number(globalThis.__as_sqlite.aggMaxInt(h, sql, params)) | 0;
+const __as_dbAvg         = (h, sql, params) => Number(globalThis.__as_sqlite.aggAvg(h, sql, params));
+const __as_dbGroupBy     = (h, sql, params) => String(globalThis.__as_sqlite.groupBy(h, sql, params));
+const __as_dbGroupCount  = (h, table, keyCol) => String(globalThis.__as_sqlite.groupCount(h, table, keyCol));
 const __as_httpFetch = async (url, method, headers, bodyOpt) => {
   const init = { method, headers: __as_httpHeadersToObject(headers) };
   if (bodyOpt && bodyOpt.tag === "Some") init.body = bodyOpt.value;

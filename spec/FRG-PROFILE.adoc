@@ -170,8 +170,9 @@ For AffineScript, the following FRG tightening applies:
 * No formalisation directory.
 * No qualifying-prover encoding of the AST or typing judgment.
 * No preservation or progress statement.
-* No PROOF-NEEDS.md (this is a real gap — TRG and FRG conventions
-  expect this even at low grades to enumerate what's open).
+* (PROOF-NEEDS: met 2026-06-20.) `docs/PROOF-NEEDS.adoc` now enumerates the
+  open obligations (P-1…P-10 pre-faces, F-1…F-7 faces, K-1…K-4 outstanding)
+  per TRG/FRG convention — what remains open is the prover encoding above.
 * No banned-construct lint (there's nothing to lint, but the lint
   config should be added to CI in anticipation).
 
@@ -183,7 +184,7 @@ For AffineScript, the following FRG tightening applies:
 * Encode typing judgment.
 * Encode operational semantics.
 * State preservation and progress theorems (no closure yet).
-* Author PROOF-NEEDS.md listing the open obligations.
+* [DONE 2026-06-20] Author `docs/PROOF-NEEDS.adoc` listing the open obligations.
 * Wire CI to build the formalisation.
 
 *Realistic timeline estimate:* 2-4 months given that affinescript's
@@ -205,8 +206,10 @@ dependent/refinement aspirations).
 * *Medium:* If the README "Honest status sync" block is replaced
   with claims that overstate formal-foundations work — risks F.
 * *Catastrophic:* Implementation typechecker silently accepts
-  programs the (future) formal judgment rejects, without
-  PROOF-NEEDS.md tracking the gap — would risk F if maintained.
+  programs the (future) formal judgment rejects, without tracking
+  the gap. This is now live — #554 (use-after-move via a
+  callee-returned borrow) is exactly such a case — but it IS tracked
+  in `docs/PROOF-NEEDS.adoc` (P-3 / K-3), which keeps it out of F.
 
 == Iteration history
 
@@ -215,6 +218,7 @@ dependent/refinement aspirations).
 | Date | Grade | Notes
 
 | 2026-05-28 | E (pragmatic) | Initial FRG assessment. Strict reading = X (no formal/). Pragmatic E based on conformance corpus + operational typechecker + honest README status block. Recommend adopting strict X until qualifying-prover mechanisation lands.
+| 2026-06-20 | E (pragmatic) | `docs/PROOF-NEEDS.adoc` authored — open obligations enumerated (P-/F-/K- series), closing the "no PROOF-NEEDS" honest gap and completing path-to-D step 6. Grade unchanged (still no `formal/` prover encoding). Faces obligations F-1…F-7 newly catalogued.
 |===
 
 == Review cycle

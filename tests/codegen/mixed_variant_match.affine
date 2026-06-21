@@ -1,0 +1,26 @@
+// SPDX-License-Identifier: MPL-2.0
+// #607 regression: a `match` over a value that can be a zero-argument variant
+// (`Non`) or an argument-carrying variant (`Som`) must read the tag the same
+// way for both. Before the fix, zero-arg variants were raw i32 tags while
+// args-variants were heap pointers, so the `Non` value (raw tag) was
+// dereferenced as a pointer in the `Som(v)` arm and matched the wrong arm —
+// `unwrap_or(Non, 99)` returned garbage instead of 99.
+//
+// Self-contained (declares its own enum, no stdlib import) so the wasm-codegen
+// harness needs no AFFINESCRIPT_STDLIB.
+module mixed_variant_match;
+
+type Opt = Som(Int) | Non
+
+fn unwrap_or(o: Opt, d: Int) -> Int {
+  match o {
+    Som(v) => v,
+    Non => d,
+  }
+}
+
+// Encodes two cases in one result: the zero-arg arm (Non -> 99) and the
+// args arm (Som(7) -> 7).  Expected: 99*100 + 7 = 9907.
+pub fn main() -> Int {
+  unwrap_or(Non, 99) * 100 + unwrap_or(Som(7), 5)
+}

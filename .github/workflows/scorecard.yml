@@ -1,16 +1,42 @@
-# SPDX-License-Identifier: PMPL-1.0-or-later
-name: OSSF Scorecard
-
+# SPDX-License-Identifier: MPL-2.0
+#
+# Standalone OpenSSF Scorecard. Previously a thin caller of
+# `hyperpolymath/standards/.github/workflows/scorecard-reusable.yml`; that
+# cross-repo dependency had a persistent startup_failure history (see the
+# prior note in this file's git history). This self-contained version calls
+# `ossf/scorecard-action` directly — mirroring the already-direct sibling
+# `scorecard-enforcer.yml` — so there is no external-repo workflow dependency.
+# `ossf/scorecard-action` / `github/codeql-action` stay SHA-pinned (third-party
+# actions); they match the pins used in scorecard-enforcer.yml.
+name: Scorecards supply-chain security
 on:
-  push:
-    branches: [main, master]
+  branch_protection_rule:
   schedule:
-    - cron: '0 4 * * *'
-  workflow_dispatch:
-
+    - cron: '23 4 * * 1'
+  push:
+    branches: [main]
 permissions:
   contents: read
-
 jobs:
-  scorecard:
-    uses: hyperpolymath/standards/.github/workflows/scorecard-reusable.yml@5a93d9d57cc04de4002d6d0ecd336fc7a8698910
+  analysis:
+    name: Scorecard analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      security-events: write
+      id-token: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Run analysis
+        uses: ossf/scorecard-action@4eaacf0543bb3f2c246792bd56e8cdeffafb205a # v2.4.3
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          publish_results: true
+      - name: Upload SARIF to code-scanning
+        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v3
+        with:
+          sarif_file: results.sarif

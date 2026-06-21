@@ -345,4 +345,16 @@ let flatten_imports (loader : t) (prog : program) : program =
         ) select
     ) prog.prog_imports
   in
+  (* #138 follow-up: imported TYPE decls are intentionally NOT inlined here.
+     An earlier #138 revision carried imported public [TopType]s so the
+     prog_decls-iterating backends could register their constructors — but the
+     non-Wasm backends (Deno-ESM / JS / Julia / C / Rust / ...) already emit
+     the Option/Result constructors from a built-in runtime preamble, so
+     carrying the prelude types declared `Some`/`None`/`Ok`/`Err` twice
+     (`SyntaxError: Identifier 'Some' has already been declared` when the
+     emitted Deno-ESM module is run under node). The Wasm backend learns
+     imported variant tags natively via [Codegen.gen_imports] (it consumes the
+     original, un-flattened [prog]); the other backends rely on their preamble.
+     Re-introducing type-carrying for *user-defined* cross-module enums would
+     need per-backend constructor dedup first. *)
   { prog with prog_decls = imported_decls @ prog.prog_decls }

@@ -1685,7 +1685,18 @@ let gen_type_decl ctx (td : type_decl) : unit =
   match td.td_body with
   | TyEnum variants ->
       let exp = if visibility_is_public td.td_vis then "export " else "" in
+      (* The runtime preamble (see [prelude]) already declares the foundational
+         Option/Result constructors Some/None/Ok/Err. Re-emitting them here for
+         a program that *declares* `type Option`/`type Result` (e.g.
+         stdlib/prelude.affine) redeclared the same `const` and crashed the
+         emitted module under node with `SyntaxError: Identifier 'Some' has
+         already been declared`. Skip any variant the preamble already provides.
+         (The #136 AOT smoke never caught this — it only checks the output is
+         non-empty, never runs it.) *)
+      let preamble_ctors = [ "Some"; "None"; "Ok"; "Err" ] in
       List.iter (fun (vd : variant_decl) ->
+        if List.mem vd.vd_name.name preamble_ctors then ()
+        else begin
         let name = mangle vd.vd_name.name in
         let arity = List.length vd.vd_fields in
         if arity = 0 then
@@ -1703,6 +1714,7 @@ let gen_type_decl ctx (td : type_decl) : unit =
                "%sconst %s = (%s) => ({ tag: \"%s\", values: [%s] });"
                exp name (String.concat ", " ps) vd.vd_name.name
                (String.concat ", " ps))
+        end
       ) variants;
       emit ctx "\n"
   | TyStruct _ | TyAlias _ | TyExtern ->
