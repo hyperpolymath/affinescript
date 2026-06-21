@@ -126,16 +126,19 @@ arity-checked code never gets stuck). That is the first real foundation stone.
 
 | `RealAst.v`
 | The real source `expr`/`stmt`/`program` inductives (faithful to `lib/ast.ml`),
-  per-fragment.
-| planned (S0)
+  per-fragment. (R1's `rexpr` core lives inline in `RealCompile.v`; split out as
+  the fragment grows.)
+| R1 inline
 
 | `RealAstSem.v`
 | The reference dynamic semantics (mirrors `lib/interp.ml`), per-fragment.
-| planned (S0)
+  (R1's `eval` lives inline in `RealCompile.v`.)
+| R1 inline
 
 | `RealCompile.v`
-| The real `compile` (port of `lib/codegen.ml`), per-fragment.
-| planned (K-1/R1)
+| The real `compile` (port of `lib/codegen.ml`) + (for R1) the source `rexpr`
+  core, reference `eval`, and the preservation theorem `compile_correct`.
+| **R1 landed**
 
 | `RealPreservation.v`
 | `⟦compile p⟧ = ⟦p⟧` — the real K-1, per-fragment; then re-chains
@@ -157,11 +160,14 @@ next. The rung names are stable references the `PROOF-NEEDS.adoc` rows will cite
   `wexec` + arity soundness. (`RealWasm.v`)
 | The toy stack machine's *target* — real names now.
 
-| **R1**
-| Source side S0+S1: `ExprLit`/`ExprVar`/`ExprLet`/`ExprBinary` (int/bool) →
-  `RealAst.v` + `RealAstSem.v`; `compile` for them (`RealCompile.v`); locals
-  (`LocalGet/Set/Tee`) + i64 in `RealWasm.v`. First real `⟦compile p⟧=⟦p⟧`.
-| Subsumes **K1** and **K1Let** on real objects.
+| **R1** ✅
+| Source `ExprLit`/`ExprVar`/`ExprLet`/`ExprBinary` (int/bool), resolved to
+  de Bruijn levels — `rexpr` + reference `eval` + `compile` + the preservation
+  theorem `compile_correct` (`RealCompile.v`); **locals** (`LocalGet`/`LocalSet`)
+  + comparison ops added to `RealWasm.v`. First real `⟦compile p⟧=⟦p⟧`, run from
+  the zero-initialised locals array (`compile_program_correct`). (`LocalTee`/i64
+  fold in with R2/R-wrap.)
+| **Subsumes K1 and K1Let on real objects.**
 
 | **R2**
 | Structured control: `Block/Loop/If/Br/BrIf/Return`; `ExprIf`/`ExprMatch`/
@@ -269,9 +275,15 @@ already has the front-end scaffolding (`F1_TransformerPreservation.v`,
 == 8. Status
 
 * **R0 landed** — `RealWasm.v`: real `instr`/`value_type` names, `wexec`,
-  `wcheck`, `wexec_sound` (arity-checked code never traps), axiom-free.
-* Next: **R1** — stand up `RealAst.v` + `RealAstSem.v` + `RealCompile.v` for the
-  int/bool/let/binary fragment and prove the first real `⟦compile p⟧ = ⟦p⟧`,
-  adding locals + i64 to `RealWasm.v`.
+  `wcheck`, `wexec_sound` (arity-checked, local-free code never traps), axiom-free.
+* **R1 landed** — `RealWasm.v` grown with **locals** (`LocalGet`/`LocalSet`) +
+  comparison ops; `RealCompile.v` gives the resolved int/bool/`let`/binary source
+  `rexpr`, the reference `eval`, the `compile` to real wasm, and the **first real
+  `⟦compile p⟧ = ⟦p⟧`** — `compile_correct` (env↔locals agreement, fresh-slot
+  allocation, low-slot preservation) + `compile_program_correct`. Axiom-free.
+  Retires `K1`/`K1Let` on real objects.
+* Next: **R2** — structured control (`Block`/`Loop`/`If`/`Br`/`Return`,
+  `ExprIf`/`ExprMatch`/`while`) on a fuel-indexed `wexec`; this is the rung that
+  settles #601 concretely.
 
 Tracked against `docs/PROOF-NEEDS.adoc` §6 Wave 3 and #513.
