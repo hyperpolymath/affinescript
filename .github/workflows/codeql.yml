@@ -3,8 +3,11 @@ name: CodeQL Security Analysis
 on:
   push:
     branches: [main, master]
+  # No `branches:` filter: this job emits the required check
+  # `analyze (actions, none)`, so it must run on PRs against EVERY base —
+  # a required check whose workflow is filtered out is never created and
+  # sits forever at "Expected — Waiting for status to be reported".
   pull_request:
-    branches: [main, master]
   schedule:
     - cron: '0 6 1 * *'
 # Estate guardrail: cancel superseded runs so re-pushes / rebased PR

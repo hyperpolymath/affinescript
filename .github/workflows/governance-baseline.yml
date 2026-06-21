@@ -1,0 +1,47 @@
+# SPDX-License-Identifier: MPL-2.0
+#
+# Required-check bridge: re-emits the estate-standard governance check context
+# `governance / Validate Hypatia baseline` on EVERY pull request.
+#
+# Why this exists
+# ---------------
+# Branch protection pins `governance / Validate Hypatia baseline` as a required
+# status check. That exact context name is produced by the shared
+# `hyperpolymath/standards` governance *reusable* — the check name of a
+# reusable job is `<caller-job-id> / <reusable-job-name>`, i.e.
+# `governance` + "Validate Hypatia baseline".
+#
+# This repo migrated its governance gate OFF that reusable to a standalone job
+# (`governance.yml` -> tools/ci/governance-standalone.sh, #603/#604) to escape
+# the cross-repo `@main` coupling and the BP008 reusable-caller startup
+# failure. The standalone job emits the context `governance` instead, so the
+# pinned `governance / Validate Hypatia baseline` was never reported again and
+# sat permanently at "Expected — Waiting for status to be reported".
+#
+# This workflow reproduces JUST that context name through a *local* reusable
+# (no cross-repo coupling, so none of the BP008 risk that motivated #603/#604),
+# leaving the standalone `governance.yml` gate untouched. It is additive: the
+# repo now emits both `governance` and `governance / Validate Hypatia baseline`.
+#
+# The cleaner long-term fix is to repoint the branch-protection pin to the
+# emitted name (`governance`); this bridge makes the merge box go green without
+# requiring repo-admin access to edit branch protection.
+name: Governance Baseline
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+# Caller-side concurrency only. The local reusable deliberately declares NO
+# concurrency block: a reusable that declares concurrency on the same computed
+# key as its caller is rejected at run-creation (the BP008 class).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  # Job id MUST be `governance` so the reusable's job surfaces as the required
+  # context `governance / Validate Hypatia baseline`.
+  governance:
+    uses: ./.github/workflows/governance-baseline-impl.yml
