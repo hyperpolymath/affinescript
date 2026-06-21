@@ -97,6 +97,13 @@ jobs:
         # PROOF-NEEDS / NAVIGATION / CLAUDE.md) stops linking back to it.
         # See tools/check-soundness-ledger.sh.
         run: ./tools/check-soundness-ledger.sh
+      - name: Capability-matrix test-anchor gate
+        # docs/CAPABILITY-MATRIX.adoc anchors each feature-readiness claim to an
+        # executable test ("== Test anchors"). This gate fails if that section
+        # disappears or if any test it names goes missing — so a "works" status
+        # row cannot outlive the test that backs it.
+        # See tools/check-capability-anchors.sh.
+        run: ./tools/check-capability-anchors.sh
       - name: Check formatting
         run: opam exec -- dune build @fmt
   lint:

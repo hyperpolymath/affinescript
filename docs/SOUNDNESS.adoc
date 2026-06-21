@@ -120,7 +120,7 @@ the reverse. This file is the structural fix:
  tree-walking continuation has already unwound the bind chain. This is the one
  genuinely-still-silent shape, on the *interpreter* path only. It needs a CPS
  rewrite of `eval` (blocked: OCaml 4.14 has no native effect handlers and the
- interpreter must stay `js_of_ocaml`-compatible — owner-steer item).
+ interpreter must stay `js_of_ocaml`-compatible — owner-steer item). Tracked: #623.
 |*residual (pinned)*
 |`test/e2e/fixtures/handle_resume_nontail.affine` +
  `test_resume_nontail_known_shallow` (asserts the wrong-but-known value; flips
@@ -170,11 +170,12 @@ the reverse. This file is the structural fix:
 The implementation holes above are closed, but honesty requires naming what is
 *not* a guarantee:
 
-* *Interpreter non-tail resume* (#555 residual, pinned) — see the ledger row.
+* *Interpreter non-tail resume* (#555 residual, pinned; tracked as #623) — see
+  the ledger row.
 * *Stub backends drop `return`.* The Lean and Why3 *experimental* code
   generators drop `return` statements wholesale — a broader codegen-honesty gap
-  than #555, flagged but not yet fenced. Treat all non-reference backends as
-  experimental (see `docs/CAPABILITY-MATRIX.adoc`).
+  than #555, flagged but not yet fenced (tracked as #624). Treat all
+  non-reference backends as experimental (see `docs/CAPABILITY-MATRIX.adoc`).
 * *Generic-subsumption coherence* (#559 follow-up) — see the ledger row.
 
 == Closed holes are not proofs
@@ -182,12 +183,13 @@ The implementation holes above are closed, but honesty requires naming what is
 Closing an *implementation* hole is not the same as having *metatheory*. The
 soundness *arguments* for the holes above (`docs/academic/proofs/*.adoc`, the
 comments in `lib/borrow.ml`) remain `prose`, and the `Solo` core fragment's
-`progress` / `preservation` are still `?todo`. Mechanisation has *started* — a
-Wave-0 codegen-preservation seed (`formal/K1_CodegenPreservation.v`, axiom-free
-Coq/Rocq, minimal nat/bool fragment) landed via #620 — but it does not yet cover
-any hole in this ledger. The proof obligations, their rigour tiers, and their
-(mostly `prose` / `absent`) status are catalogued in `docs/PROOF-NEEDS.adoc`
-(umbrella issue #513). The one-line distinction:
+`progress` / `preservation` are still `?todo`. Mechanisation has *started* — an
+axiom-free Coq/Rocq `formal/` track (codegen-preservation: K-1
+`K1_CodegenPreservation.v`, K-1-with-`let` `K1Let_CodegenPreservation.v`, and
+the F-1 transformer-preservation composition; #620/#621) — but it does not yet
+cover any hole in this ledger. The proof obligations, their rigour tiers, and
+their (mostly `prose` / `absent`) status are catalogued in
+`docs/PROOF-NEEDS.adoc` (umbrella issue #513). The one-line distinction:
 
 [quote]
 The compiler now fails loud on these shapes and the residuals are pinned by
