@@ -70,7 +70,7 @@ than the prose corpus suggests:
   `TypeSafety.v` is example lemmas about list length, not AffineScript. Not
   core-metatheory.
 * **`formal/`** — the directory #513 names as the mechanized-proof target now
-  **exists** (Coq/Rocq 8.18), axiom-free throughout — **14 files, 23 `Print
+  **exists** (Coq/Rocq 8.18), axiom-free throughout — **15 files, 26 `Print
   Assumptions` closure reports**, all "Closed under the global context". Codegen
   keystone: `K1_CodegenPreservation.v` (K-1 minimal) +
   `K1Let_CodegenPreservation.v` (K-1 grown with variables/`let`/environment).
@@ -79,7 +79,8 @@ than the prose corpus suggests:
   in `P2_Progress.v` (first-order) + `P2_Stlc.v` (STLC with functions + the
   substitution lemma, funext-free) / `P3_BorrowSound.v` (single-bit) +
   `P3_BorrowGraph.v` (multi-resource loan graph) / `F3_PragmaDecidable.v` /
-  `F4_ErrorFaithful.v`. Affine/QTT layer: `QttSemiring.v` (`{0,1,ω}`) +
+  `F4_ErrorFaithful.v` / `F5_RenderFaithful.v` (render non-collision).
+  Affine/QTT layer: `QttSemiring.v` (`{0,1,ω}`) +
   `AffineUsage.v` (`λx.x` affine, `λx. x x` not) + `QttTyping.v` (quantitative
   typing, `usage x t = Γ x` sound) + `QttDynamic.v` (the dynamic half:
   β-reduction preserves the usage profile). See <<outstanding>>, <<faces>>.
@@ -302,8 +303,13 @@ cover them.
   renaming of canonical type names, and never collapses two distinct canonical
   types to one face string inside a single message (e.g. Js maps both `Unit` and
   `Option[T]` into "null"-shaped text — show this is unambiguous in context).
-| S | `absent`
-| new; `lib/face.ml` `render_ty`
+| S | `partial`
+| **mechanized** for the vocabulary model: `formal/F5_RenderFaithful.v` proves
+  every face's renaming is injective (`render_inj` — no two canonical types
+  collapse onto one string), incl. the Js/Cafe "null"/"?" overlap
+  (`js_no_collapse`, `cafe_no_collapse`, `option_never_atom`). Faithful to the
+  whole-string Unit/Bool match + canonical-inner Option rewrite; models the
+  name vocabulary, not raw OCaml strings. `lib/face.ml` `render_ty`
 
 | F-6
 | **Preview round-trip totality.** The `preview-{python,js,pseudocode,lucid,cafe}`
@@ -367,8 +373,9 @@ F-1 (full transformer preservation) is non-trivial rather than a formality.
 | **Done.** Grew the models toward the real language: **P-2 → STLC with functions
   + the substitution lemma** (`P2_Stlc.v`, funext-free); **P-3 → a multi-resource
   borrow graph** (`P3_BorrowGraph.v`: loan edges, liveness, move-locality,
-  multi-resource #554 rejected). *Leftover:* F-5 (small, self-contained
-  `render_ty` injectivity) and the K-4 `CAPABILITY-MATRIX` cross-link.
+  multi-resource #554 rejected); **F-5 → `render_ty` non-collision**
+  (`F5_RenderFaithful.v`: every face's renaming injective). *Leftover:* the K-4
+  `CAPABILITY-MATRIX` cross-link.
 | Wave 0
 
 | 2
