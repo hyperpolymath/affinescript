@@ -6,4 +6,5 @@ F1_TransformerPreservation.v
 F3_PragmaDecidable.v
 F4_ErrorFaithful.v
 P3_BorrowSound.v
+P3_BorrowGraph.v
 P2_Progress.v
