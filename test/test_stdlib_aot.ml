@@ -305,8 +305,44 @@ let dup_ctor_tests =
     Alcotest.test_case "declared Option does not duplicate preamble ctor (JS)"
       `Quick test_js_no_duplicate_option_ctor ]
 
+(* ---- WASM: nested patterns inside a tuple pattern --------------------------
+
+   The core-Wasm backend previously rejected any tuple sub-pattern that wasn't
+   a plain variable or wildcard (`UnsupportedFeature "Only variable and
+   wildcard patterns supported in tuple patterns"` — what stdlib/option.affine
+   hit). gen_pattern now recurses per element, so literals/constructors/nested
+   tuples work. This asserts such a program reaches a Wasm module; runtime
+   correctness (correct arm selection + binding) is verified under node in the
+   PR's manual check. *)
+let nested_tuple_src = {|
+module nested_tuple;
+pub fn classify(a: Int, b: Int) -> Int {
+  let t = (a, b);
+  match t {
+    (0, y) => y,
+    (x, 0) => x + 100,
+    (x, y) => x + y,
+  }
+}
+|}
+
+let test_nested_tuple_patterns_wasm () =
+  match Parse_driver.parse_string ~file:"<nested_tuple>" nested_tuple_src with
+  | exception e ->
+    Alcotest.failf "nested-tuple parse raised: %s" (Printexc.to_string e)
+  | prog ->
+    (match pipeline_to_wasm prog with
+     | Ok _ -> ()
+     | Error m ->
+       Alcotest.failf "nested tuple patterns must codegen to Wasm: %s" m)
+
+let tuple_pattern_tests =
+  [ Alcotest.test_case "nested (literal/var) tuple patterns -> Wasm" `Quick
+      test_nested_tuple_patterns_wasm ]
+
 let tests =
   [ ("STAGE-A AOT smoke (#136)", aot_smoke_tests);
     ("STAGE-A multi-module integration (#137)", integration_tests);
     ("cross-module constructor linking, Wasm (#138)", xmod_constructor_tests);
-    ("Deno-ESM / JS no duplicate Option/Result constructor", dup_ctor_tests) ]
+    ("Deno-ESM / JS no duplicate Option/Result constructor", dup_ctor_tests);
+    ("Wasm nested tuple patterns", tuple_pattern_tests) ]

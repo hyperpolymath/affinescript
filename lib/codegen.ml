@@ -2281,37 +2281,41 @@ and gen_pattern (ctx : context) (scrutinee_local : int) (pat : pattern)
       Ok (ctx_final, full_code, [])
 
   | PatTuple sub_patterns ->
-    (* Tuple pattern: (a, b, c) *)
-    (* scrutinee is a pointer to [elem0: i32][elem1: i32][elem2: i32]... *)
+    (* Tuple pattern: (p0, p1, ...). scrutinee is a pointer to
+       [elem0: i32][elem1: i32]...  Each element is loaded into a temp local
+       and matched RECURSIVELY against its sub-pattern, so nested patterns
+       (literals, constructors, tuples) work — not just var/wildcard.
 
-    (* Bind each element to sub-pattern *)
-    let rec bind_elements ctx_acc offset patterns =
+       Stack discipline: every [gen_pattern] result leaves exactly one bool
+       (net) and its binds are net-zero (see the PatVar/PatLit/PatCon cases),
+       so each element's test bool ANDs cleanly with the accumulator. The
+       per-element load is itself net-zero (LocalGet +1, I32Load 0, LocalSet
+       -1), so it never disturbs the accumulated bool. Binds register in the
+       threaded ctx via [alloc_local] (same mechanism PatCon args use), so the
+       returned binding list stays [] and the arm body resolves names via ctx. *)
+    let rec match_elements ctx_acc idx patterns ~first =
       match patterns with
-      | [] -> Ok (ctx_acc, [])
+      | [] ->
+        (* Empty tuple, or no elements left: an empty match is vacuously true
+           only when it is the whole pattern (first); otherwise the caller has
+           already left the accumulated bool on the stack. *)
+        if first then Ok (ctx_acc, [I32Const 1l]) else Ok (ctx_acc, [])
       | pat :: rest ->
-        begin match pat with
-          | PatVar id ->
-            (* Allocate local for this element *)
-            let (ctx', elem_idx) = alloc_local ctx_acc id.name in
-            (* Load element from tuple *)
-            let load_code = [
-              LocalGet scrutinee_local;
-              I32Load (2, offset);
-              LocalSet elem_idx;
-            ] in
-            let* (ctx_final, rest_code) = bind_elements ctx' (offset + 4) rest in
-            Ok (ctx_final, load_code @ rest_code)
-          | PatWildcard _ ->
-            (* Skip this element *)
-            bind_elements ctx_acc (offset + 4) rest
-          | _ ->
-            Error (UnsupportedFeature "Only variable and wildcard patterns supported in tuple patterns")
-        end
+        let (ctx1, elem_tmp) =
+          alloc_local ctx_acc (Printf.sprintf "__tuple_elem_%d" idx) in
+        let load_elem = [
+          LocalGet scrutinee_local;
+          I32Load (2, idx * 4);
+          LocalSet elem_tmp;
+        ] in
+        let* (ctx2, sub_test, _sub_binds) = gen_pattern ctx1 elem_tmp pat in
+        (* For every element after the first, AND its bool with the running
+           accumulator already on the stack. *)
+        let combine = if first then [] else [I32And] in
+        let* (ctx3, rest_code) = match_elements ctx2 (idx + 1) rest ~first:false in
+        Ok (ctx3, load_elem @ sub_test @ combine @ rest_code)
     in
-
-    let* (ctx_final, binding_code) = bind_elements ctx 0 sub_patterns in
-    (* Tuple patterns always match (no tag to check) *)
-    let match_code = binding_code @ [I32Const 1l] in
+    let* (ctx_final, match_code) = match_elements ctx 0 sub_patterns ~first:true in
     Ok (ctx_final, match_code, [])
 
   | PatRecord (field_pats, _has_wildcard) ->
