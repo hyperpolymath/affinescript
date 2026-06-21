@@ -8,8 +8,8 @@ Jonathan D.A. Jewell
 This directory is the machine-checked home for the proof obligations
 catalogued in `docs/PROOF-NEEDS.adoc`, and is the `formal/` target directory
 issue #513 names for mechanized proofs. Prover: **Coq/Rocq 8.18** — chosen for
-K-1 because the typed-WASM target semantics interoperate with `typed-wasm` and
-ephapax, both of which use Coq (`Semantics.v`).
+the codegen/K-1 track because the typed-WASM target semantics interoperate with
+`typed-wasm` and ephapax, both of which use Coq (`Semantics.v`).
 
 [IMPORTANT]
 .`.v` here is Coq, not V-lang
@@ -29,54 +29,79 @@ cannot mistake it. Coq has no `v.mod` manifest, so `vmod_detected` never fires.
 | File | Obligation | Status
 
 | `K1_CodegenPreservation.v`
-| **K-1** — codegen → typed-WASM semantic-preservation
-| **mechanized** for a minimal fragment (no `Admitted`, no axioms). The full
-  obligation remains open — see <<scope>>.
+| **K-1** — codegen → typed-WASM preservation (minimal fragment)
+| **mechanized**, axiom-free
+
+| `K1Let_CodegenPreservation.v`
+| **K-1, grown** — adds variables, `let`, and an environment
+| **mechanized**, axiom-free
+
+| `F1_TransformerPreservation.v`
+| **F-1** — face transformer semantics-preservation (composes on K-1)
+| **mechanized**, axiom-free
+
+| `Siblings_Stated.v`
+| **P-2, P-3, F-3, F-4** — progress/preservation, borrow soundness (rejecting
+  #554), pragma determinism, error-vocabulary faithfulness
+| **stated** (parametric propositions; not yet proven)
 |===
 
-== What `K1_CodegenPreservation.v` proves
+All mechanized theorems report *Closed under the global context* under `Print
+Assumptions` — no `Admitted`, no axioms — honouring the estate rule that
+load-bearing proofs be constructive and complete. `Siblings_Stated.v` proves
+nothing: it records the obligation shapes as `Definition ... : Prop` over
+section `Variable`s (discharged at `End` into closed, universally-quantified
+props), the Coq analogue of solo-core's statement-only Idris2 skeleton.
 
-A complete, axiom-free compiler-correctness theorem for a minimal two-type
-AffineScript fragment (nat + bool, with `add` and `and`) compiled to a small
-stack machine that stands in for typed-WASM:
+== K-1 and its growth
+
+`K1_CodegenPreservation.v` proves, for a minimal two-type fragment (nat + bool,
+`add` + `and`) compiled to a small stack machine:
 
 [source,coq]
 ----
 Definition K1_preservation : Prop :=
   forall e v, seval e = Some v -> wexec (compile e) [] = Some [obs v].
-
-Theorem k1_preservation_holds : K1_preservation.   (* proven *)
+Theorem k1_preservation_holds : K1_preservation.        (* proven *)
 ----
 
-i.e. whenever the source big-step evaluates to a value `v`, the compiled code
-run on the empty operand stack yields exactly the corresponding wasm value
-`[obs v]`. `Print Assumptions k1_preservation_holds` reports *Closed under the
-global context* — the proof rests on no axioms, honouring the estate rule that
-load-bearing proofs be constructive and complete (no `Admitted`, no
-`postulate`). This mirrors how `invariant-path/proofs/SameCube.agda` grounds
-F-2 with a real `--safe` proof rather than a stated hole.
+`K1Let_CodegenPreservation.v` re-proves the same shape for a **grown** fragment
+with de Bruijn **variables** and **`let`**, evaluated under an environment; the
+target machine gains a *locals* register and compilation balances
+`IBind`/`IUnbind`. `if`/structured control is the next increment (it needs a
+target control construct + a termination measure, deliberately out of scope
+here).
 
-[#scope]
+== F-1 composes on K-1
+
+`F1_TransformerPreservation.v` models a face surface `fexp` with parser sugar,
+a transform `elaborate : fexp -> sexp` (the `T_F` of ADR-010), and the face's
+own semantics `feval`. It proves the transform preserves meaning
+(`feval f = seval (elaborate f)`) and then *chains K-1* to get end-to-end
+codegen preservation, plus the cross-face same-cube corollary (faces landing on
+the same canonical AST emit identical code). The observational version for the
+trailing-statement/tail split is mechanized separately in
+`invariant-path/proofs/SameCube.agda` (F-2).
+
 == Scope (honest)
 
-This is the **Wave-0 seed** of K-1, not the discharged obligation. The fragment
-is deliberately tiny: no functions, binders, effects, ownership, traits, or
-the real instruction set. The full theorem needs the real AffineScript AST and
-the real typed-WASM operational semantics; expanding this core is the analogue
-of solo-core's Duet/Ensemble tracks expanding the Solo fragment. Tracked in
-`docs/PROOF-NEEDS.adoc` (K-1) and #513 (must-have 7).
-
-The faces twin **F-1** (transformer semantics-preservation) composes *on top
-of* K-1: prove the backend preserves meaning once here, and each
-`lib/<face>_face.ml` front-end transform need only preserve the canonical AST
-denotation for the same-cube result to follow end-to-end.
+These are Wave-0 seeds, not the discharged obligations. The fragments are
+deliberately small; the full theorems need the real AffineScript AST and the
+real typed-WASM operational semantics, expanded the way solo-core's
+Duet/Ensemble tracks expand Solo. Tracked in `docs/PROOF-NEEDS.adoc` and #513.
 
 == Checking
 
 [source,sh]
 ----
-just -f formal/justfile check        # or:  cd formal && coqc K1_CodegenPreservation.v
+just -f formal/justfile check
+# or, by hand (F-1 Requires K-1, so compile K-1 first):
+cd formal
+for f in K1_CodegenPreservation K1Let_CodegenPreservation \
+         F1_TransformerPreservation Siblings_Stated; do
+  coqc -Q . ASFormal "$f.v"
+done
 ----
 
 Requires Coq 8.18+ (`apt install coq`, or opam `coq`). The `check` recipe fails
-if the proof ever starts depending on an axiom or `Admitted`.
+if any proof depends on an axiom or `Admitted`.
