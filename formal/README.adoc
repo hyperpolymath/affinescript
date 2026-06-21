@@ -84,6 +84,11 @@ cannot mistake it. Coq has no `v.mod` manifest, so `vmod_detected` never fires.
 | **P-4** (Wave 3) — quantitative typing fusing all three: the typing context
   tracks usage, proven sound (`usage x t = Γ x`)
 | **mechanized**, axiom-free
+
+| `QttDynamic.v`
+| **P-4** (Wave 3) — the *dynamic* half: β-reduction preserves the usage profile;
+  QTT scaling law; ties back to `usage_soundness`
+| **mechanized**, axiom-free
 |===
 
 All mechanized theorems report *Closed under the global context* under `Print
@@ -152,9 +157,20 @@ The quantities `{0,1,ω}` and their algebra are what make AffineScript *affine*:
   against occurrence counts. Corollary: a term typed in a singleton context uses
   that variable exactly once.
 
-The remaining step is the *dynamic* half: operational progress + preservation
-that PRESERVES the quantity accounting under reduction (a quantitative
-substitution lemma over `P2_Stlc.v`).
+* **`QttDynamic.v`** (Wave 3) — the *dynamic* half. A small-step β-reduction on
+  the QTT terms with the headline `step_preserves_usage`: `t → t'` implies
+  `usage z t' = usage z t` for every `z`, so the quantity accounting is a
+  *dynamic invariant*. Adds the QTT *scaling* law
+  `usage z (subst x v b) = usage z b + usage x b · usage z v` (via the new
+  `qof_mult` ×-homomorphism), an affine-no-increase corollary, and
+  `qtt_context_preserved`, which composes the dynamic invariant with
+  `usage_soundness` so a well-typed term's QTT context stays valid across a
+  step. β substitutes a closed value (the closed-program convention `P2_Stlc.v`
+  also uses), so it is capture-/axiom-free.
+
+The remaining step is the full operational development on the *real* AST: the
+quantity-preserving substitution lemma generalised past the binder-free fragment
+and the closed-value convention.
 
 == K-1 and its growth
 
