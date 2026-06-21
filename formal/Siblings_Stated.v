@@ -16,11 +16,13 @@
      * NOTHING is claimed proven — these are signatures, the Coq analogue of
        solo-core's statement-only Idris2 skeleton.
 
-   Each becomes a real theorem once its abstracted pieces are given concrete
-   models: the Solo calculus (P-2), `lib/borrow.ml`'s graph (P-3),
-   `lib/face_pragma.ml` (F-3), `lib/face.ml` (F-4). F-1 is already discharged
-   in F1_TransformerPreservation.v; K-1 in K1_CodegenPreservation.v (and the
-   grown K1Let_CodegenPreservation.v).
+   Each is now DISCHARGED for a concrete model (small fragments, not the full
+   language): P-2 in P2_Progress.v, P-3 in P3_BorrowSound.v, F-3 in
+   F3_PragmaDecidable.v, F-4 in F4_ErrorFaithful.v — each ending in a
+   `*_discharged : <this statement> ... := <proof>` line. F-1 is discharged in
+   F1_TransformerPreservation.v; K-1 in K1_CodegenPreservation.v (and the grown
+   K1Let_CodegenPreservation.v). Growing these models toward the real language
+   (functions/QTT for P-2, the real borrow graph for P-3) is Wave 1.
 
    `.v` is Coq, not V-lang — see formal/README.adoc and .hypatia-ignore.
 *)
