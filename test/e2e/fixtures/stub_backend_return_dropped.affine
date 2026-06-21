@@ -1,0 +1,12 @@
+// Early (non-tail) `return`. The experimental Lean/Why3 backends drop it:
+// lean_codegen.ml `gen_block` skips `StmtReturn`, lowering this body to `:= ()`
+// (both returns vanish). Pinned by `test_stub_backend_return_xfail` (Refs #624).
+// The desired end-state is a loud failure on this shape; until then the pin
+// fails-as-expected. Do not "fix" this fixture to make a pin pass — read
+// docs/SOUNDNESS.adoc first.
+fn early(x: Int) -> Int {
+  return 1;
+  return 2;
+}
+
+fn main() -> Int = early(0);

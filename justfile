@@ -99,6 +99,7 @@ guard:
     ./tools/check-no-extension-ts.sh
     ./tools/check-doc-truthing.sh
     ./tools/check-soundness-ledger.sh
+    ./tools/check-capability-anchors.sh
 
 # Re-baseline the doc-truthing over-claim ledger after a deliberate, legitimate
 # change (e.g. a new dated roadmap milestone). Commit the .allow diff.

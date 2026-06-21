@@ -35,6 +35,11 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          # Full history so the soundness-ledger gate (property 4) can resolve
+          # :ground-truth-sha: and diff soundness paths against it. A shallow
+          # clone makes property 4 fail closed ("stamp not present").
+          fetch-depth: 0
       - name: Set up OCaml toolchain (self-hosted; replaces ocaml/setup-ocaml)
         run: |
           sudo apt-get update
@@ -97,6 +102,13 @@ jobs:
         # PROOF-NEEDS / NAVIGATION / CLAUDE.md) stops linking back to it.
         # See tools/check-soundness-ledger.sh.
         run: ./tools/check-soundness-ledger.sh
+      - name: Capability-matrix test-anchor gate
+        # docs/CAPABILITY-MATRIX.adoc anchors each feature-readiness claim to an
+        # executable test ("== Test anchors"). This gate fails if that section
+        # disappears or if any test it names goes missing — so a "works" status
+        # row cannot outlive the test that backs it.
+        # See tools/check-capability-anchors.sh.
+        run: ./tools/check-capability-anchors.sh
       - name: Check formatting
         run: opam exec -- dune build @fmt
   lint:
