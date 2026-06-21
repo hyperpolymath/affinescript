@@ -1,0 +1,116 @@
+// SPDX-License-Identifier: MPL-2.0
+= Required status checks: the "Expected — Waiting" trap
+:toc: macro
+:icons: font
+
+[NOTE]
+====
+*Sketch / operational note* (seeded 2026-06-21). Captures a CI failure class
+that blocked merges across the estate and the rule that prevents it. Pairs with
+the machine entry in `.machine_readable/6a2/PLAYBOOK.a2ml` (`[ci-required-checks]`).
+====
+
+toc::[]
+
+== The symptom
+
+A PR's merge box lists a *required* check stuck at:
+
+  Expected — Waiting for status to be reported
+
+This is **not** a failure and **not** "still running". It means a required
+status-check *context name* was *never reported* on the head commit, so the
+gate never resolves and the PR is blocked indefinitely — visually
+indistinguishable from a slow job.
+
+On affinescript the server states it plainly on push:
+
+  - 4 of 4 required status checks are expected.
+
+== Root cause
+
+Branch protection pins required checks by *exact context string*, but the CI
+only emits some of those strings *conditionally*. Any required-but-unproduced
+context becomes a permanent "Expected". Three mechanisms produce it:
+
+[cols="1,2,3",options="header"]
+|===
+| Mechanism | Example context | Why it isn't emitted
+
+| *Branch-filtered workflow*
+| `analyze (actions, none)`, `hypatia / Hypatia Neurosymbolic Analysis`
+| The workflow's `on.pull_request.branches` filter excludes the PR's base, so
+  the workflow never runs and the check is *never created*. (A *skipped job* via
+  `if:` reports neutral and does **not** block; a *filtered-out workflow*
+  reports nothing and **does** block.)
+
+| *Renamed / migrated job*
+| `governance / Validate Hypatia baseline`
+| The pinned name was the `hyperpolymath/standards` governance *reusable* job
+  (`<caller-job-id> / <reusable-job-name>`). affinescript migrated to a
+  standalone `governance` job (#603/#604), which emits `governance` instead —
+  the pinned name is orphaned and can never report.
+
+| *External app check*
+| `Hypatia`
+| Posted by a GitHub App, not a repo workflow. The repo cannot force it to
+  appear; it is absent on forks / when the app doesn't post for that SHA.
+|===
+
+== The rule (guardrail)
+
+[IMPORTANT]
+====
+A context may be marked *Required* only if it is emitted **unconditionally on
+every PR that can target the protected branch**. Pin to job names your own
+workflows emit unconditionally — never to reusable-workflow job names that can
+change out from under you on a SHA bump, nor to app checks.
+====
+
+Corollaries:
+
+* Required check-producing workflows must **not** carry an
+  `on.pull_request.branches` filter (the `push:` filter is fine).
+* If a required check is produced by a reusable whose job name you do not
+  control, either vendor a *local* reusable that emits the pinned name, or
+  repoint the pin to a name you do emit.
+* App checks should be advisory, or backed by an always-running workflow job,
+  unless the app guarantees a check on every PR.
+
+== Diagnosing a stuck PR
+
+. `pull_request_read` → `get_check_runs`: list the *names actually produced* on
+  the head commit.
+. Compare against the *required* names in branch protection.
+. Any required name **not** in the produced list is the culprit. Classify it by
+  the table above (filtered workflow / renamed job / app check).
+
+== What was done (2026-06-21)
+
+* *#645 (merged)* — affinescript: de-gated `codeql.yml` + `hypatia-scan.yml`
+  `pull_request` triggers; added a local reusable
+  (`governance-baseline.yml` + `governance-baseline-impl.yml`) that re-emits
+  `governance / Validate Hypatia baseline` without the cross-repo coupling that
+  #603/#604 removed. All four required checks now report green.
+* Sibling de-gates: `hyperpolymath/hypatia#518`, `hyperpolymath/gitbot-fleet#308`,
+  `hyperpolymath/.git-private-farm#83`.
+* *Follow-ups* — pin reconciliation (admin) `hyperpolymath/affinescript#650`;
+  `Hypatia` app-check reliability `hyperpolymath/hypatia#519`.
+
+== Required-vs-emitted, across the estate
+
+`⚠` marks the same latent trap (a required producer gated to `main`/`master`).
+
+[cols="1,1,1,1,1",options="header"]
+|===
+| Repo | `analyze (actions, none)` | `hypatia / …Neurosymbolic` | `Hypatia` app | `governance / Validate Hypatia baseline`
+
+| affinescript | emitted (de-gated #645) | emitted (de-gated #645) | posts | bridged #645 (standalone emits `governance`)
+| hypatia | emitted, was gated ⚠ | emitted, was gated ⚠ | posts | native (reusable) + 7 siblings
+| gitbot-fleet | emitted, was gated ⚠ | absent on #307 ⚠ | absent on #307 ⚠ | native (reusable)
+| .git-private-farm | was gated ⚠ | was gated ⚠ | rides scan | reusable, governance itself was gated ⚠
+|===
+
+Only affinescript's *required pins* are API-confirmed; the others' emitted
+truth is from live runs, but their pin lists need branch-protection (admin)
+access to diff exactly — tracked in `#650`.

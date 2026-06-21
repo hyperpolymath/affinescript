@@ -59,3 +59,16 @@ last-updated = "2026-05-26"
 #
 # Token rotation: rotate NPM_TOKEN after any wire-up where the token
 # value transited a session transcript.
+
+[ci-required-checks]
+# A required status check must be emitted UNCONDITIONALLY on every PR that can
+# target the protected branch. Otherwise the unproduced context sits forever at
+# "Expected — Waiting for status to be reported" — a silent merge block.
+# Causes: (1) a producing workflow with an on.pull_request.branches filter;
+# (2) a pin naming a renamed/migrated job (e.g. a standards reusable job name);
+# (3) an external GitHub App check that doesn't post on every PR.
+# Diagnosed + fixed 2026-06-21 (#645). Human doc: docs/ci/required-checks.adoc.
+rule = "required-check implies emitted on every PR base (no pull_request.branches filter)"
+diagnosed = "2026-06-21"
+reference = "docs/ci/required-checks.adoc"
+tracking-issue = "650"
