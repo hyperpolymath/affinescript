@@ -139,6 +139,27 @@ The "no Node.js / no Bun" rules in the language policy table have two approved e
 
 Browsers and Cloudflare Workers are NOT supported and never will be (the shim's purpose — fetch, save to disk, exec a native binary — cannot be done in a sandboxed JS runtime). The JSR runtime-compatibility checkboxes for this package should be: Deno ✅, Bun ✅, Node ✅, Workers ❌, Browsers ❌.
 
+### Formal-methods Coq `.v` (NOT V-lang)
+
+The `formal/` directory holds **Coq/Rocq 8.18** proof scripts — mechanized
+metatheory for the obligations in `docs/PROOF-NEEDS.adoc` (Wave-0 seed: K-1
+codegen→typed-WASM preservation, `formal/K1_CodegenPreservation.v`). Coq uses
+the `.v` extension, **shared with Verilog and the estate-banned V-lang** (→
+Zig). Coq `.v` is **not** V-lang and is **not** a policy violation:
+
+- The estate vlang ban (`cicd_rules/vlang_detected`, matches `*.v`) carries an
+  estate-wide `path_allow_prefixes` carve-out for "Coq proof scripts"; V-lang's
+  `v.mod` manifest (`cicd_rules/vmod_detected`) does not exist for Coq.
+- `formal/*.v` is exempted explicitly in `.hypatia-ignore` so a future sweep
+  cannot conflate the two `.v`. Prover choice is Coq (typed-wasm / ephapax
+  interop, both Coq); solo-core's separate skeleton stays Idris2.
+- Load-bearing proofs here must be **complete**: no `Admitted`, no axioms
+  (`Print Assumptions` must report "Closed under the global context"),
+  paralleling the Agda "no postulates in load-bearing tracks" rule;
+  `formal/justfile`'s `check` recipe enforces it.
+
+Do not "migrate", rewrite, or delete `formal/*.v` as if it were V-lang.
+
 ### Package Management
 
 - **Primary**: Guix (guix.scm)

@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: MPL-2.0
+# Coq/Rocq proof checks for the AffineScript `formal/` track.
+# (Mustfile/justfile per estate policy — no Makefiles.)
+
+# Type-check every proof and assert it closes under no axioms.
+check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    out="$(coqc K1_CodegenPreservation.v)"
+    printf '%s\n' "$out"
+    grep -q "Closed under the global context" <<<"$out" \
+      || { echo "::error:: K-1 proof depends on an axiom / Admitted"; exit 1; }
+    echo "OK: K-1 fragment mechanized, no axioms."
+
+# Remove Coq build artifacts.
+clean:
+    rm -f *.vo *.vok *.vos *.glob .*.aux .coqdeps.d
