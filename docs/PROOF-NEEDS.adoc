@@ -70,7 +70,7 @@ than the prose corpus suggests:
   `TypeSafety.v` is example lemmas about list length, not AffineScript. Not
   core-metatheory.
 * **`formal/`** — the directory #513 names as the mechanized-proof target now
-  **exists** (Coq/Rocq 8.18), axiom-free throughout — **13 files, 22 `Print
+  **exists** (Coq/Rocq 8.18), axiom-free throughout — **14 files, 23 `Print
   Assumptions` closure reports**, all "Closed under the global context". Codegen
   keystone: `K1_CodegenPreservation.v` (K-1 minimal) +
   `K1Let_CodegenPreservation.v` (K-1 grown with variables/`let`/environment).
@@ -81,7 +81,8 @@ than the prose corpus suggests:
   `P3_BorrowGraph.v` (multi-resource loan graph) / `F3_PragmaDecidable.v` /
   `F4_ErrorFaithful.v`. Affine/QTT layer: `QttSemiring.v` (`{0,1,ω}`) +
   `AffineUsage.v` (`λx.x` affine, `λx. x x` not) + `QttTyping.v` (quantitative
-  typing, `usage x t = Γ x` sound). See <<outstanding>>, <<faces>>.
+  typing, `usage x t = Γ x` sound) + `QttDynamic.v` (the dynamic half:
+  β-reduction preserves the usage profile). See <<outstanding>>, <<faces>>.
 * **Research tracks** (not core soundness): `docs/academic/tropical-session-types/`
   (Lean), `proposals/echo-types/EchoEncodingFaithfulness.agda`,
   `proposals/idaptik/migrated/**/*Boundary.agda` (echo-types loss-with-residue,
@@ -151,12 +152,15 @@ obligations. They are the "we might have missed" half of the brief.
 | **QTT affine usage.** Quantities `{0,1,ω}` are respected: `1`-vars used exactly
   once, `0`-vars erased, semiring laws hold.
 | L | `partial`
-| #513 must-have 3; **mechanized** across three files: `formal/QttSemiring.v`
+| #513 must-have 3; **mechanized** across four files: `formal/QttSemiring.v`
   (`{0,1,ω}` laws + occurrence homomorphism), `formal/AffineUsage.v` (`λx.x`
-  affine, `λx. x x` not), and `formal/QttTyping.v` — a quantitative type system
-  whose usage context Γ is proven to track usage exactly
-  (`usage x t = Γ x`). The *dynamic* half (operational progress+preservation
-  preserving the quantity accounting under reduction) remains; prose
+  affine, `λx. x x` not), `formal/QttTyping.v` — a quantitative type system whose
+  usage context Γ is proven to track usage exactly (`usage x t = Γ x`) — and
+  `formal/QttDynamic.v`, the *dynamic* half: β-reduction **preserves the usage
+  profile** (`t → t' ⇒ ∀z, usage z t' = usage z t`), with the QTT scaling law
+  (`qof_mult`) and `qtt_context_preserved` composing it with `usage_soundness`.
+  The full operational development on the *real* AST (substitution lemma past the
+  binder-free / closed-value fragment) is the remaining lift; prose
   `quantitative-types.md`
 
 | P-5
@@ -368,11 +372,13 @@ F-1 (full transformer preservation) is non-trivial rather than a formality.
 | Wave 0
 
 | 2
-| **Done (static).** The affine/QTT layer — **`QttSemiring.v`** (`{0,1,ω}` laws +
+| **Done.** The affine/QTT layer — **`QttSemiring.v`** (`{0,1,ω}` laws +
   occurrence homomorphism), **`AffineUsage.v`** (`λx.x` affine, `λx. x x` not),
-  **`QttTyping.v`** (quantitative typing, `usage x t = Γ x` sound). *Leftover:*
-  the *dynamic* half — a quantitative substitution lemma over `P2_Stlc.v` that
-  carries the quantity accounting through reduction.
+  **`QttTyping.v`** (static quantitative typing, `usage x t = Γ x` sound), and
+  **`QttDynamic.v`** — the *dynamic* half: β-reduction preserves the usage
+  profile (`step_preserves_usage`), the QTT scaling law, and `qtt_context_preserved`
+  tying it back to `usage_soundness`. *Leftover:* generalise the dynamic
+  development past the binder-free / closed-value fragment onto the real AST.
 | Wave 1
 
 | 3
