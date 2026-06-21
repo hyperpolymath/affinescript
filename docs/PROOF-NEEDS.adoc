@@ -12,7 +12,7 @@ This is the single document that enumerates *what AffineScript must prove*, at
 gap between the soundness *arguments* the project relies on (prose in
 `docs/academic/proofs/`, the borrow-checker comments in `lib/borrow.ml`,
 `docs/CAPABILITY-MATRIX.adoc`) and the soundness *proofs* that are actually
-mechanized today: a growing axiom-free Coq core (13 files) that pins each
+mechanized today: a growing axiom-free Coq core (18 files) that pins each
 obligation on a deliberately *small model* — no full-language theorem is
 discharged yet (see <<status>>).
 
@@ -70,7 +70,7 @@ than the prose corpus suggests:
   `TypeSafety.v` is example lemmas about list length, not AffineScript. Not
   core-metatheory.
 * **`formal/`** — the directory #513 names as the mechanized-proof target now
-  **exists** (Coq/Rocq 8.18), axiom-free throughout — **17 files, 29 `Print
+  **exists** (Coq/Rocq 8.18), axiom-free throughout — **18 files, 31 `Print
   Assumptions` closure reports**, all "Closed under the global context". Codegen
   keystone: `K1_CodegenPreservation.v` (K-1 minimal) +
   `K1Let_CodegenPreservation.v` (K-1 grown with variables/`let`/environment).
@@ -85,7 +85,8 @@ than the prose corpus suggests:
   typing, `usage x t = Γ x` sound) + `QttDynamic.v` (the dynamic half:
   β-reduction preserves the usage profile). Real lift (`REAL-LIFT.adoc`):
   `RealWasm.v` (real `lib/wasm.ml` IR — i32 core + locals) + `RealCompile.v`
-  (R1: the first real `⟦compile p⟧ = ⟦p⟧`). See <<outstanding>>, <<faces>>.
+  (R1: the first real `⟦compile p⟧ = ⟦p⟧`). Record rows: `Rows.v` (P-11 —
+  progress + preservation for extensible records). See <<outstanding>>, <<faces>>.
 * **Research tracks** (not core soundness): `docs/academic/tropical-session-types/`
   (Lean), `proposals/echo-types/EchoEncodingFaithfulness.agda`,
   `proposals/idaptik/migrated/**/*Boundary.agda` (echo-types loss-with-residue,
@@ -207,6 +208,16 @@ obligations. They are the "we might have missed" half of the brief.
   follow-up. The *proof* that resolution is unique remains unwritten.
 | L | `absent`
 | #559; #513 high-priority
+
+| P-11
+| **Record-row soundness.** Well-typed record operations never get stuck: a
+  selection of a present label always reduces, and extension/restriction
+  preserve typing over a `lacks`-checked row (no duplicate labels). Distinct
+  from P-6 *effect*-row soundness.
+| M | `mechanized`
+| `formal/Rows.v` — progress + preservation for STLC + extensible records
+  (empty/extend/select/restrict), funext-free, axiom-free. Wave W0
+  (monomorphic rows); row-*variable* polymorphism is the W1 increment
 |===
 
 [#outstanding]
