@@ -108,9 +108,9 @@ Every row in this table is in scope for the gate. There are no soundness-relevan
 | `test/test_borrow_polonius.ml` (parallel-run diff gate + `known_divergences`, count pinned at 7)
 
 | #555-stub / #560
-| The Lean and Why3 experimental backends drop `return` statements wholesale — a silent-wrong-value shape, the same _category_ as the #555 codegen hole but on the stub-backend path. Not yet fenced. The fixture asserts the *current wrong behaviour* and the backends are gated `experimental` so no production verdict depends on them.
-| `residual (pinned)`
-| `test/e2e/fixtures/stub_backend_return_dropped.affine` + `test_stub_backend_return_xfail` (asserts the drop; flips to failing the day the backends fail loud or are removed). See _Still open_.
+| The Lean and Why3 experimental backends drop `return` statements wholesale — a silent-wrong-value shape, the same _category_ as the #555 codegen hole but on the stub-backend path. Not yet fenced, and not yet pinned by a fixture; the backends are gated `experimental` so no production verdict depends on them.
+| `open (tracked)`
+| Tracked by #560 — not yet pinned by a fixture/test; the planned anchor (an xfail asserting the drop, flipping the day the backends fail loud or are removed) is the follow-up. The `experimental` gating is the only current fence. See _Still open_.
 |===
 
 == Still open — read before claiming "sound"
@@ -118,7 +118,7 @@ Every row in this table is in scope for the gate. There are no soundness-relevan
 The implementation holes marked `fixed` / `loud-fail` / `removed` above are closed. Honesty requires naming what is *not* a guarantee. Each item here is a row in the table above, restated for the hurried reader — not a separate list:
 
 * *Interpreter non-tail resume* (#555, `residual (pinned)`) — the `5`-not-`105` shape. Silent on the interpreter path; pinned.
-* *Stub backends drop `return`* (#555-stub / #560, `residual (pinned)`) — Lean and Why3 drop `return` wholesale. Silent-wrong-value, broader than #555 codegen, fenced only by `experimental` gating and a pinning fixture, not by a loud failure. Treat all non-reference backends as experimental (see `docs/CAPABILITY-MATRIX.adoc`).
+* *Stub backends drop `return`* (#555-stub / #560, `open (tracked)`) — Lean and Why3 drop `return` wholesale. Silent-wrong-value, broader than #555 codegen, fenced only by `experimental` gating (not yet pinned by a fixture, nor by a loud failure). Treat all non-reference backends as experimental (see `docs/CAPABILITY-MATRIX.adoc`).
 * *Generic-subsumption coherence* (#559 generic, `open (tracked)`) — concrete overlaps caught; generic-impl overlaps not yet detected.
 
 If you are deciding whether AffineScript is "sound enough" for a use, these three rows are the answer, and the metatheory caveat below applies to *all* of them.
