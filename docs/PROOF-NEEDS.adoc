@@ -142,8 +142,12 @@ obligations. They are the "we might have missed" half of the brief.
 | P-4
 | **QTT affine usage.** Quantities `{0,1,ω}` are respected: `1`-vars used exactly
   once, `0`-vars erased, semiring laws hold.
-| L | `prose`
-| #513 must-have 3; prose `quantitative-types.md`
+| L | `partial`
+| #513 must-have 3; **semiring + affine-usage mechanized** in
+  `formal/QttSemiring.v` (`{0,1,ω}` laws + occurrence homomorphism) and
+  `formal/AffineUsage.v` (`λx.x` affine, `λx. x x` not). The full *typed* QTT
+  calculus (context splitting, progress+preservation tracking quantities)
+  remains; prose `quantitative-types.md`
 
 | P-5
 | **HM inference soundness + principality.** Inferred types are well-typed and

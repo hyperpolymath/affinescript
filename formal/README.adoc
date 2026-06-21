@@ -69,6 +69,16 @@ cannot mistake it. Coq has no `v.mod` manifest, so `vmod_detected` never fires.
 | `F4_ErrorFaithful.v`
 | **F-4** — error rendering preserves class + referent
 | **mechanized**, axiom-free
+
+| `QttSemiring.v`
+| **P-4** (Wave 2) — the QTT quantity semiring `{0,1,ω}`: operations, semiring
+  + order laws, occurrence-count homomorphism
+| **mechanized**, axiom-free
+
+| `AffineUsage.v`
+| **P-4** (Wave 2) — affine usage over the semiring: `λx.x` affine, `λx. x x`
+  not (variable totals `ω`)
+| **mechanized**, axiom-free
 |===
 
 All mechanized theorems report *Closed under the global context* under `Print
@@ -113,6 +123,26 @@ the stated obligation and pin its meaning, not the full language:
 * **F-4** (`F4_ErrorFaithful.v`) — the face renderer preserves an error's
   *class* and *referent*, changing only vocabulary, so no face can make error
   X read as a different error Y.
+
+== Wave 2: the affine/QTT layer (P-4)
+
+The quantities `{0,1,ω}` and their algebra are what make AffineScript *affine*:
+
+* **`QttSemiring.v`** — the multiplicity semiring: `qplus` (context addition,
+  with `1 + 1 = ω`) and `qmult` (scaling), all semiring + order laws by
+  exhaustive case analysis, and the homomorphism
+  `qof (m + n) = qplus (qof m) (qof n)` (occurrence counts add under QTT
+  addition).
+* **`AffineUsage.v`** — reads a variable's multiplicity as `qof (count x t)`,
+  proves usage composes under the semiring through application
+  (`usage x (app f a) = qplus (usage x f) (usage x a)`), and defines affine
+  well-formedness. Payoff: `λx.x` is affine; `λx. x x` is **not** — its variable
+  totals `ω`, exceeding the affine bound. The mechanized statement of "a linear
+  value may not be duplicated".
+
+The full *typed* QTT calculus — context splitting `Γ = Γ₁ + Γ₂`, progress +
+preservation tracking quantities, on top of `P2_Stlc.v` — is the next
+increment.
 
 == K-1 and its growth
 
