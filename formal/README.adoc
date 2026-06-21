@@ -94,6 +94,11 @@ cannot mistake it. Coq has no `v.mod` manifest, so `vmod_detected` never fires.
 | **F-5** — `render_ty` per-face type renaming is injective (no two canonical
   types collapse onto one displayed string), incl. the Js/Cafe "null"/"?" overlap
 | **mechanized**, axiom-free
+
+| `RealWasm.v`
+| **Real lift R0** (`REAL-LIFT.adoc`) — the real `lib/wasm.ml` IR (i32 core):
+  `wexec` + arity checker + soundness (`wexec_sound`: checked code never traps)
+| **mechanized**, axiom-free
 |===
 
 All mechanized theorems report *Closed under the global context* under `Print
@@ -215,12 +220,26 @@ the same canonical AST emit identical code). The observational version for the
 trailing-statement/tail split is mechanized separately in
 `invariant-path/proofs/SameCube.agda` (F-2).
 
+== The real lift (R0)
+
+`RealWasm.v` is the first foundation stone of the *real lift* — replacing the
+toy stack machine with the actual `lib/wasm.ml` IR. R0 covers the pure i32
+numeric core (real `instr` / `value_type` names), a stack-machine `wexec`, an
+arity checker `wcheck`, and the soundness theorem `wexec_sound`: arity-checked
+code never gets stuck — the target-side invariant the real K-1 preservation
+proof rests on. The full plan — the fragment ladder R0 → R1 → R2 → R-mem →
+R-float → R-str → R-call → R-wrap → R-eff, the Coq module structure, and the
+strategy for each hard part (loops/termination, linear memory, floats, the
+elaboration nodes, effects) — is `formal/REAL-LIFT.adoc`.
+
 == Scope (honest)
 
-These are Wave-0 seeds, not the discharged obligations. The fragments are
+These are Wave-0/1 seeds, not the discharged obligations. The fragments are
 deliberately small; the full theorems need the real AffineScript AST and the
 real typed-WASM operational semantics, expanded the way solo-core's
-Duet/Ensemble tracks expand Solo. Tracked in `docs/PROOF-NEEDS.adoc` and #513.
+Duet/Ensemble tracks expand Solo. That expansion has **begun** — see the real
+lift above (`RealWasm.v`, R0) and the plan in `formal/REAL-LIFT.adoc`. Tracked
+in `docs/PROOF-NEEDS.adoc` and #513.
 
 == Checking
 

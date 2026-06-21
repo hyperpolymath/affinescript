@@ -1,0 +1,277 @@
+// SPDX-License-Identifier: CC-BY-SA-4.0
+// SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell (hyperpolymath)
+= The Real Lift — from toy seeds to the real AffineScript AST + typed-WASM
+Jonathan D.A. Jewell
+:toc: left
+:toclevels: 3
+:sectnums:
+:sectnumlevels: 2
+
+This is the engineering plan for the single largest remaining body of proof work
+in `docs/PROOF-NEEDS.adoc` §6 Wave 3: replacing the deliberately-small models the
+`formal/` track proves today with the *real* objects, so that K-1 / F-1 / F-2 and
+the dynamic halves of P-2 / P-4 become discharged obligations rather than
+meaning-pinning seeds.
+
+It is grounded in the actual compiler: the source AST is `lib/ast.ml`, the target
+IR is `lib/wasm.ml`, the compiler is `lib/codegen.ml` (+ `lib/codegen_gc.ml`),
+and the reference dynamic semantics is `lib/interp.ml`.
+
+[IMPORTANT]
+====
+The lift is **XL** (CompCert-scale for a substantial language). It is delivered
+as a *ladder* of strict-superset fragments, each fully mechanized and axiom-free
+before the next — the way `K1 → K1Let` already grew, and the way solo-core's
+`Solo → Duet → Ensemble` is meant to expand. No milestone lands with an
+`Admitted`.
+====
+
+== 1. The theorem
+
+For the real compiler `compile : Ast.program → Wasm.wasm_module` and the real
+operational semantics on each side:
+
+[source]
+----
+⟦ compile(p) ⟧_wasm  =  ⟦ p ⟧_source          (for every well-typed p)
+----
+
+K-1 is the backend half; F-1 (`⟦T_F(p)⟧ = ⟦T_canonical(canon(p))⟧`) composes the
+face transformers on top of it; F-2 (#601) is the observational corollary across
+faces. All three collapse to "grow K-1 onto the real objects, then re-chain the
+existing F-1/F-2 scaffolding."
+
+== 2. The two real objects (what we are formalising)
+
+=== 2.1 Source — `lib/ast.ml`
+
+The real `expr` has ~30 constructors. Grouped by the order the ladder tackles
+them:
+
+[cols="1,3"]
+|===
+| Group | Constructors
+
+| Core values/binding
+| `ExprLit` (Int/Float/Bool/Char/String/Unit), `ExprVar`, `ExprLet`
+  (carries `el_quantity : quantity option` — the QTT multiplicity), `ExprBlock`,
+  `stmt` (`StmtLet`/`StmtExpr`/`StmtAssign`/`StmtWhile`/`StmtFor`)
+
+| Control
+| `ExprIf`, `ExprMatch` (+ `match_arm`, guards), `ExprReturn`, `ExprBreak`,
+  `ExprContinue`
+
+| Functions
+| `ExprLambda` (+ `param` with `p_quantity`/`p_ownership`), `ExprApp`,
+  top-level `fn_decl` (`FnBlock`/`FnExpr`/`FnExtern`)
+
+| Aggregates (heap)
+| `ExprTuple`/`ExprTupleIndex`, `ExprArray`/`ExprIndex`, `ExprRecord`/`ExprField`/`ExprRowRestrict`
+
+| Operators
+| `ExprBinary` (`binary_op`), `ExprUnary` (`unary_op`, incl. `OpRef`/`OpMutRef`/`OpDeref`)
+
+| Elaboration nodes (post-typecheck, backend-only — `Typecheck.elaborate_string_concat`)
+| `ExprStringConcat`/`ExprStringEq`/`ExprStringRel` (the "string wall"),
+  `ExprFloatBinary`/`ExprFloatArray`/`ExprFloatIndex` (the "float wall"),
+  `ExprCellTuple`/`ExprCellTupleIndex`/`ExprCellRecord`/`ExprCellField`
+  (uniform-8 float-bearing layout)
+
+| Effects
+| `ExprHandle` (+ `handler_arm`), `ExprResume`, `ExprTry`, effect rows on
+  `TyArrow`
+
+| Unsafe
+| `ExprUnsafe` (`UnsafeRead`/`Write`/`Offset`/`Transmute`/`Forget`)
+|===
+
+The type layer (`type_expr`) carries the substructural data the proofs care
+about: `quantity` `{QZero,QOne,QOmega}` (→ already mechanized in `QttSemiring.v`),
+`ownership` `{Own,Ref,Mut}`, `origin_var` (ADR-022 Polonius regions, → P-3 /
+`P3_BorrowGraph.v`), effect rows (→ P-6, blocked on #555), and record rows.
+
+=== 2.2 Target — `lib/wasm.ml`
+
+A faithful WebAssembly-1.0 IR: `value_type {I32,I64,F32,F64}`, ~150 `instr`
+constructors (numeric i32/i64/f32/f64, `LocalGet/Set/Tee`, `GlobalGet/Set`, the
+load/store family with align+offset, `Block/Loop/If/Br/BrIf/Return/Call/CallIndirect`,
+`MemorySize/Grow`), and a `wasm_module` with `funcs`/`mems`/`tables`/`globals`/
+`exports`/`imports`/`elems`/`datas`/`custom_sections`. The
+`typedwasm.ownership` custom section carries `TyOwn/TyRef/TyMut` to the binary
+for typed-wasm Level-7/10 verification — the seam where P-3 (borrow soundness)
+connects to the target.
+
+=== 2.3 The gap from the toy K-1
+
+`K1_CodegenPreservation.v` invents an ad-hoc stack machine; `RealWasm.v`
+(this directory, milestone **R0**, below) re-targets the *actual* `instr` /
+`value_type` names with a stack-arity soundness theorem (`wexec_sound`:
+arity-checked code never gets stuck). That is the first real foundation stone.
+
+== 3. Coq module structure
+
+[cols="1,3,1"]
+|===
+| Module | Contents | Status
+
+| `RealWasm.v`
+| Target IR (real `instr`/`value_type` names) + stack-machine `wexec` +
+  arity checker `wcheck` + soundness `wexec_sound`.
+| **R0 landed**
+
+| `RealWasmSem.v`
+| The full target operational semantics as the ladder reaches control/memory:
+  fuel-indexed step relation, linear-memory model, frame/locals.
+| planned (R2+)
+
+| `RealAst.v`
+| The real source `expr`/`stmt`/`program` inductives (faithful to `lib/ast.ml`),
+  per-fragment.
+| planned (S0)
+
+| `RealAstSem.v`
+| The reference dynamic semantics (mirrors `lib/interp.ml`), per-fragment.
+| planned (S0)
+
+| `RealCompile.v`
+| The real `compile` (port of `lib/codegen.ml`), per-fragment.
+| planned (K-1/R1)
+
+| `RealPreservation.v`
+| `⟦compile p⟧ = ⟦p⟧` — the real K-1, per-fragment; then re-chains
+  `F1_TransformerPreservation.v` and the `SameCube` F-2 story.
+| planned
+|===
+
+== 4. The fragment ladder
+
+Each rung is a strict superset; each is fully proven (axiom-free) before the
+next. The rung names are stable references the `PROOF-NEEDS.adoc` rows will cite.
+
+[cols="1,3,2"]
+|===
+| Rung | Adds | Retires / advances
+
+| **R0** ✅
+| Pure i32 numeric stack core (`I32Const`, add/sub/mul/and/or/xor, `eqz`, drop);
+  `wexec` + arity soundness. (`RealWasm.v`)
+| The toy stack machine's *target* — real names now.
+
+| **R1**
+| Source side S0+S1: `ExprLit`/`ExprVar`/`ExprLet`/`ExprBinary` (int/bool) →
+  `RealAst.v` + `RealAstSem.v`; `compile` for them (`RealCompile.v`); locals
+  (`LocalGet/Set/Tee`) + i64 in `RealWasm.v`. First real `⟦compile p⟧=⟦p⟧`.
+| Subsumes **K1** and **K1Let** on real objects.
+
+| **R2**
+| Structured control: `Block/Loop/If/Br/BrIf/Return`; `ExprIf`/`ExprMatch`/
+  `while`/`for`/`break`/`continue`. Needs a **fuel-indexed** `wexec` (loops may
+  diverge) and the matching source semantics.
+| Closes the toy K-1's "`if`/control is the next increment" gap. Lets **F-2**
+  (#601) be settled *concretely*: the statement-tail vs expression-tail lowerings
+  become two real `instr` sequences whose `wexec` agreement (unit) / divergence
+  (value-returning) is a theorem, not a prose observation.
+
+| **R-mem**
+| Linear memory: load/store family, `MemorySize/Grow`, a byte-addressed memory
+  model; `ExprTuple`/`ExprArray`/`ExprRecord` + indexing/field access.
+| Heap layout — the precondition for strings and the "cell" elaboration nodes.
+
+| **R-float**
+| `F64` (then `F32`) lane; the float-wall elaboration nodes
+  (`ExprFloatBinary`/`FloatArray`/`FloatIndex`, `ExprCellTuple`/`CellRecord`/`CellField`,
+  uniform-8 layout). Float model: an abstract IEEE carrier with deterministic ops
+  first (defer Flocq/NaN-bit fidelity to R-float-exact).
+| The "float wall" / "float heap wall" become preservation lemmas.
+
+| **R-str**
+| The string wall: `ExprStringConcat`/`StringEq`/`StringRel` over the
+  `[len][utf8]` byte layout (lengths-prefixed compare/concat).
+| String-wall slices 8b/9/10 (#458) as preservation lemmas.
+
+| **R-call**
+| `Call`/`CallIndirect` + `tables`/`elems`; multi-function `program`; `ExprApp`
+  to top-level `fn_decl`; closures (the indirect-dispatch path).
+| Whole-program K-1.
+
+| **R-wrap**
+| Replace `Z` i32 with mod-2^32 semantics (normalise at each op); i64 mod-2^64.
+| Bit-exact integer fidelity.
+
+| **R-eff**
+| Effects/handlers (`ExprHandle`/`Resume`/`Try`, effect rows) via CPS lowering.
+  **Gated on #555 / K-2**: prove against the interpreter's *intended* handler
+  semantics, then show the lowered targets refine it (the part that currently
+  fails on three backends).
+| **P-6** effect-row soundness; the #555 proof-blocking defect.
+|===
+
+The source-side rungs S0…Sn track the target rungs one-for-one (each `RealAst`/
+`RealAstSem` increment matches the `RealWasm`/`RealCompile` increment it is
+proven against).
+
+== 5. Hard parts and the strategy for each
+
+* **Loops & termination.** Wasm `Loop` can diverge, so `wexec` cannot stay a
+  structural fixpoint past R1. Strategy: **fuel-indexed** big-step
+  (`wexec : nat → …`) with the standard "more fuel never changes a `Some`
+  result" monotonicity lemma; preservation is stated up to fuel. (Same device
+  the source `while`/`for` semantics will use.)
+* **Linear memory.** Model memory as `Z → byte` (or a finite map) + a bound;
+  load/store mirror `lib/wasm.ml`'s align/offset. The allocator
+  (`runtime/src/alloc.rs`) is modelled abstractly (a bump pointer in a global) —
+  enough for the deterministic layout the elaboration nodes assume.
+* **Floats.** Start with an *abstract* IEEE carrier: opaque `f64` with the
+  arithmetic/compare ops as deterministic uninterpreted functions, so R-float
+  proves *layout/dispatch* preservation without a NaN-bit model. A later
+  R-float-exact swaps in Flocq if bit-fidelity is ever load-bearing.
+* **The elaboration nodes.** `ExprStringConcat`/`Float*`/`Cell*` are introduced
+  by `Typecheck.elaborate_string_concat` *after* typing. The proof must include
+  that elaboration as part of `compile` (source semantics is on the
+  pre-elaboration AST; the elaboration must be shown meaning-preserving — itself
+  a clean lemma per node).
+* **Borrowing / QTT at the seam.** `origin_var` + the `typedwasm.ownership`
+  custom section connect to typed-wasm Level-7/10. P-3 (`P3_BorrowGraph.v`) and
+  P-4 (`QttTyping.v`/`QttDynamic.v`) are the *static+dynamic* discipline; the
+  lift shows `compile` preserves the multiplicity/ownership facts into the custom
+  section (a refinement, not a re-proof).
+* **Effects.** The genuinely hardest, and *blocked*: do it last (R-eff), only
+  after #555 is resolved per K-2.
+
+== 6. Reuse: typed-WASM, don't reinvent
+
+`hyperpolymath/typed-wasm` and `ephapax` both have Coq (`Semantics.v`). The
+target operational semantics (`RealWasmSem.v`) and `value_type`/`instr` encoding
+should be *imported or aligned* with typed-wasm's, not independently reinvented —
+the compile target is the one genuinely shared surface across the estate
+(per `.claude/CLAUDE.md`'s disambiguation table). The `typedwasm.ownership`
+custom section is the contracted hand-off point; the `crates/typed-wasm-verify/`
+verifier crate is the executable companion to the Coq semantics.
+
+== 7. Sequencing & effort
+
+[cols="1,3,1"]
+|===
+| Phase | Rungs | Size
+
+| First-order K-1 | R0 ✅ → R1 → R2 | M (multi-week)
+| Heap & data | R-mem → R-float → R-str | M–L
+| Whole program | R-call → R-wrap | M
+| The long tail | R-eff (after #555), generics/traits, `unsafe` | L–XL
+|===
+
+"First-order K-1" (R0→R2) is the natural first *publishable* milestone: it
+discharges K-1 for the nat/bool/let/if/control fragment on the **real** AST and
+**real** wasm IR, retires `K1`/`K1Let`, and settles #601 concretely. The estate
+already has the front-end scaffolding (`F1_TransformerPreservation.v`,
+`SameCube.agda`) waiting to re-chain onto it.
+
+== 8. Status
+
+* **R0 landed** — `RealWasm.v`: real `instr`/`value_type` names, `wexec`,
+  `wcheck`, `wexec_sound` (arity-checked code never traps), axiom-free.
+* Next: **R1** — stand up `RealAst.v` + `RealAstSem.v` + `RealCompile.v` for the
+  int/bool/let/binary fragment and prove the first real `⟦compile p⟧ = ⟦p⟧`,
+  adding locals + i64 to `RealWasm.v`.
+
+Tracked against `docs/PROOF-NEEDS.adoc` §6 Wave 3 and #513.

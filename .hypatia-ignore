@@ -73,3 +73,5 @@ cicd_rules/vlang_detected:formal/QttDynamic.v
 cicd_rules/banned_language_file:formal/QttDynamic.v
 cicd_rules/vlang_detected:formal/F5_RenderFaithful.v
 cicd_rules/banned_language_file:formal/F5_RenderFaithful.v
+cicd_rules/vlang_detected:formal/RealWasm.v
+cicd_rules/banned_language_file:formal/RealWasm.v
