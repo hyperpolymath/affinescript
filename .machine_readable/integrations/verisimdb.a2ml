@@ -18,7 +18,7 @@ destination = "verisimdb-data/feeds/affinescript/"
 [proof-obligations]
 # AffineScript has no standalone I2 proofs yet (type soundness is in TypeLL + Ephapax).
 # When AffineScript grows its own Idris2 proof, register it here.
-# See: PROOF-NEEDS.md in repo root
+# See: docs/PROOF-NEEDS.adoc (P-/F-/K- obligation series)
 standalone-proofs = []
 related-proofs = [
   "ephapax: linear type preservation (uses similar Split-Γ)",
