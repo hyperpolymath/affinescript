@@ -1,28 +1,16 @@
-# SPDX-License-Identifier: MPL-2.0
-name: Scorecards supply-chain security
+# SPDX-License-Identifier: PMPL-1.0-or-later
+name: OSSF Scorecard
+
 on:
-  branch_protection_rule:
-  schedule:
-    - cron: '23 4 * * 1'
   push:
-    branches: [main]
-# Workflow-level permissions are read-only. The job that calls the
-# reusable upgrades to the writes required by `ossf/scorecard-action`.
-# Job-level permissions REPLACE workflow-level for the job, so a bare
-# `permissions: read-all` at workflow level + writes at job level is
-# equivalent to `contents: read` at workflow level — both yield the
-# same effective set at the job. We match the canonical caller in
-# `hyperpolymath/standards/.github/workflows/scorecard-reusable.yml`
-# (and the known-good sibling julia-professional-registry/scorecard.yml)
-# to eliminate the prior `read-all` / `contents: read` divergence as a
-# possible cause of the persistent `startup_failure` (every run since
-# adoption — see PR #457's test-plan delta).
+    branches: [main, master]
+  schedule:
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+
 permissions:
   contents: read
+
 jobs:
-  analysis:
-    permissions:
-      security-events: write
-      id-token: write
-    uses: hyperpolymath/standards/.github/workflows/scorecard-reusable.yml@e03686486e11b662834d7090dffae54c3e96fd59
-    secrets: inherit
+  scorecard:
+    uses: hyperpolymath/standards/.github/workflows/scorecard-reusable.yml@5a93d9da1bbf6ca9eb4eec89e900c733f114c995
