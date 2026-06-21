@@ -45,7 +45,12 @@ cannot mistake it. Coq has no `v.mod` manifest, so `vmod_detected` never fires.
 | **stated** — and now discharged for concrete models below
 
 | `P2_Progress.v`
-| **P-2** — progress + preservation (nat/bool/`add`/`if`, small-step)
+| **P-2** — progress + preservation (nat/bool/`add`/`if`, first-order)
+| **mechanized**, axiom-free
+
+| `P2_Stlc.v`
+| **P-2, grown** — STLC with *functions* + the substitution lemma; progress +
+  preservation (funext-free)
 | **mechanized**, axiom-free
 
 | `P3_BorrowSound.v`
@@ -82,9 +87,14 @@ the stated obligation and pin its meaning, not the full language:
 
 * **P-2** (`P2_Progress.v`) — a simply-typed first-order calculus
   (nat/bool/`add`/`if`), small-step, call-by-value, with the standard
-  canonical-forms / progress / preservation development. Functions, binders,
-  products/sums and the QTT quantities are the next increments (codegen
-  preservation *with* `let`/variables is already in `K1Let_…`).
+  canonical-forms / progress / preservation development.
+* **P-2, grown** (`P2_Stlc.v`) — the Wave-1 increment: the **simply-typed
+  lambda calculus** with functions, binders, and the **substitution lemma**
+  (the thing the first-order version lacked). Full progress + preservation,
+  **funext-free** — contexts are compared only on a term's *free* variables
+  (`context_invariance`), so it uses no `functional_extensionality` and stays
+  axiom-free. The QTT/affine quantities (substructural context splitting) are
+  the next increment.
 * **P-3** (`P3_BorrowSound.v`) — a one-resource borrow calculus; proves the
   precise validity checker is sound and **rejects the #554 witness**
   (`[OBorrow; OMove; OUseRef]`), matching `lib/borrow.ml`'s post-#554-fix
