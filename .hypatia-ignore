@@ -75,3 +75,10 @@ cicd_rules/vlang_detected:formal/F5_RenderFaithful.v
 cicd_rules/banned_language_file:formal/F5_RenderFaithful.v
 cicd_rules/vlang_detected:formal/RealWasm.v
 cicd_rules/banned_language_file:formal/RealWasm.v
+# Rows.v — record-row soundness scaffold (Wave-W0). Authored without a Coq
+# toolchain, so it is UNVERIFIED and deliberately NOT in formal/_CoqProject;
+# it is still a Coq proof script in the tree and must be exempted from the
+# V-lang ban like its siblings (the ignore matcher is fixed-string per-file,
+# not a glob, so a new .v needs its own lines).
+cicd_rules/vlang_detected:formal/Rows.v
+cicd_rules/banned_language_file:formal/Rows.v
