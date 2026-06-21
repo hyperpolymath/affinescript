@@ -4,7 +4,7 @@
 // Freshness stamp — a real main-ancestor commit (survives squash-merge); advance
 // it (and --reseal) in any change that touches a soundness path. See "Keeping
 // this honest" and tools/check-soundness-ledger.sh (property 4).
-:ground-truth-sha: dd6c19e
+:ground-truth-sha: 65c2ae3
 :ground-truth-date: 2026-06-21
 :stamp-verified-by: tools/check-soundness-ledger.sh
 :toc: macro
@@ -59,13 +59,11 @@ Anchored to tests:: Each claim cites the executable artefact that proves it. The
 gate verifies the artefact *exists*.
 
 Content-bound:: The gate also verifies the artefact still *says what it said*:
-each fixture and pinned-test anchor is pinned to a content digest in
-`tools/soundness-anchors.sha256`, so a fixture cannot have its assertion eroded —
-weakened, re-baselined, or silently re-scoped — without the digest mismatching
-and the build failing. (Suite-file anchors such as `test/test_borrow_polonius.ml`
-are existence- and stamp-checked but not digest-bound: a whole-file hash is too
-coarse to be a meaningful content seal.) Prose nailed to a fixture *by name only*
-can still rot if the fixture's meaning drifts; prose nailed *by content* cannot.
+each anchor — fixture, pinned-test body, and suite file — is pinned to a content
+digest in `tools/soundness-anchors.sha256`, so an anchor cannot have its assertion
+eroded — weakened, re-baselined, or silently re-scoped — without the digest
+mismatching and the build failing. Prose nailed to a fixture *by name only* can
+still rot if the fixture's meaning drifts; prose nailed *by content* cannot.
 
 Stamped, and the stamp is enforced:: The freshness attribute records the
 main-ancestor commit this was last reconciled against. The gate fails if `HEAD`
@@ -200,21 +198,19 @@ corpus with a shrinking allowlist (7 known divergences).
 count pinned at 7)
 
 | #555-stub / #624
-| The Lean and Why3 experimental backends drop `return` statements wholesale
-(`lean_codegen.ml` `gen_block` skips `StmtReturn`, so `fn f(){ return 1; … }`
-lowers to `:= ()`) — a silent-wrong-value shape, the same _category_ as the #555
-codegen hole but on the stub-backend path. Not yet fenced. The backends are
-`experimental` so no production verdict depends on them; the agreed remedy (#624)
-is to fail loud. (NB: #628 tracked this as "#560"; that issue is actually
-variable-string wasm ops — #624 is the correct tracker, and this change supplies
-the pin #628 could not.)
-| `residual (pinned)`
+| The Lean and Why3 experimental backends now FAIL LOUD on an early `return`
+instead of silently dropping it. Previously `gen_block` skipped the `return`
+statements, so `fn f(){ return 1; … }` lowered to `:= ()`; now a
+`Ast.fn_body_contains_return` fence makes `codegen_lean` / `codegen_why3` return
+`Error`. Fixed via #624. (NB: #628 tracked this as "#560"; that issue is actually
+variable-string wasm ops — #624 is the correct tracker. This change supplies the
+loud fence #628 could not, so the row is now `loud-fail` (it was previously a
+pinned residual).)
+| `loud-fail`
 | `test/e2e/fixtures/stub_backend_return_dropped.affine` +
-`test_stub_backend_return_xfail` (xfail: asserts the desired loud failure —
-`Lean_codegen.codegen_lean` returning `Error` — on an early-`return` program;
-currently fails-as-expected because the backend silently returns `Ok`; flips to
-an unexpected pass the day the backend fails loud or is removed). See _Still
-open_.
+`test_stub_backend_return_fenced` (positive check: asserts
+`Lean_codegen.codegen_lean` returns `Error` on the early-`return` program — it was
+`Ok`; the check would fail if the silent drop regressed).
 |===
 
 == Still open — read before claiming "sound"
@@ -226,14 +222,14 @@ row in the table above, restated for the hurried reader — not a separate list:
 * *Interpreter non-tail resume* (#555 / #623, `residual (pinned)`) — the
 `5`-not-`105` shape. Silent on the interpreter path; pinned by
 `test_resume_nontail_xfail`.
-* *Stub backends drop `return`* (#555-stub / #624, `residual (pinned)`) — Lean and
-Why3 drop `return` wholesale. Silent-wrong-value, broader than #555 codegen,
-fenced only by `experimental` gating and a pinning xfail, not by a loud failure.
-Treat all non-reference backends as experimental (see
-`docs/CAPABILITY-MATRIX.adoc`).
+(Stub backends dropping `return` (#555-stub / #624) is now `loud-fail` — Lean and
+Why3 reject an early `return` instead of silently dropping it — so it is no longer
+a "still open" residual. Treat all non-reference backends as experimental anyway,
+see `docs/CAPABILITY-MATRIX.adoc`.)
 
-If you are deciding whether AffineScript is "sound enough" for a use, these two
-rows are the answer, and the metatheory caveat below applies to *both*.
+If you are deciding whether AffineScript is "sound enough" for a use, the
+interpreter non-tail resume row above is the one remaining residual, and the
+metatheory caveat below applies to it.
 
 === Pinned-residual discipline
 

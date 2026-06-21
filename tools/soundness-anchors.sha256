@@ -2,12 +2,13 @@
 # Soundness anchor digests for docs/SOUNDNESS.adoc — DO NOT hand-edit.
 # Regenerate: tools/check-soundness-ledger.sh --reseal
 # Format: <sha256>  <kind:locator>. FIXTURE = file hash; TEST = the
-# test's function-body hash. SUITE anchors are existence-checked only.
+# test's function-body hash; SUITE = whole-file hash.
 0d3623cf36a67860106d64bb32d30633978bb426d4ddd77ecc2bf6e48e1b7263  fixture:test/e2e/fixtures/borrow_callee_returned_borrow_uam.affine
-20f7fd48892f586fccba9bf549ff4db8ccaf97304b37052f45c0f283c324da41  test:test_resume_nontail_xfail
 5b84a4f71aa65f9aa9383e31c0cb624291c4f9d0de7cca4a0ea6a76fe85aea35  fixture:test/e2e/fixtures/handle_resume_nontail.affine
 68f0f4ad2462f146b87f491b7456aff9a56b77397344d22c62f4f4ff5ca6e3ae  fixture:test/e2e/fixtures/assume_rejected.affine
-a391d19e0190938ed0ccb4a495d8aac2f178bbe2b15f9723f64b16064f973bb6  test:test_stub_backend_return_xfail
+7f416f186a15511ec5c64d2b96bfffbdf9e7c8c0879951d56c80e46129e2ea48  test:test_stub_backend_return_fenced
+80541ee00580b4dccee4657cbd31d11a1ddaa18cc49813b48f686c9509f314dc  suite:test/test_borrow_polonius.ml
+874a5531cd8bc402adf4b66277b21b15d921efe06a7128ea6583bcd6e55781ba  test:test_resume_nontail_xfail
 ac1da10c3206605304f11e869f6aa07acba57f6f8248bb2dfacca19984f86c31  test:test_coherence_duplicate_rejected
 b76c7824a9b1570d66752359a28d75ebdfaedb5de5ad68c343a0a2c26ad4221c  fixture:test/e2e/fixtures/async_sync_fallback.affine
 c743b86cfc50512e5867ddd792b4b4273b5bfb6f40205b4a07019031d7e7b102  fixture:test/e2e/fixtures/handle_resume_multishot.affine
