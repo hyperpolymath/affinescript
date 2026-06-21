@@ -167,7 +167,9 @@ For AffineScript, the following FRG tightening applies:
 
 == What is NOT yet met (honest gaps)
 
-* No formalisation directory.
+* `formal/` now exists *(met 2026-06-21)* — Coq/Rocq 8.18, holding the
+  mechanized K-1 codegen-preservation seed. (The *typing-judgment* encoding and
+  *type*-preservation/progress below remain open.)
 * No qualifying-prover encoding of the AST or typing judgment.
 * No preservation or progress statement.
 * (PROOF-NEEDS: met 2026-06-20.) `docs/PROOF-NEEDS.adoc` now enumerates the
@@ -178,7 +180,8 @@ For AffineScript, the following FRG tightening applies:
 
 == Path to next grade (D — preservation stated)
 
-* Create `formal/` directory.
+* [DONE 2026-06-21] Create `formal/` directory (Coq/Rocq; holds the K-1
+  codegen-preservation seed).
 * Encode AST in a qualifying prover (Rocq is the natural choice
   for compatibility with ephapax / typed-wasm).
 * Encode typing judgment.
@@ -219,6 +222,7 @@ dependent/refinement aspirations).
 
 | 2026-05-28 | E (pragmatic) | Initial FRG assessment. Strict reading = X (no formal/). Pragmatic E based on conformance corpus + operational typechecker + honest README status block. Recommend adopting strict X until qualifying-prover mechanisation lands.
 | 2026-06-20 | E (pragmatic) | `docs/PROOF-NEEDS.adoc` authored — open obligations enumerated (P-/F-/K- series), closing the "no PROOF-NEEDS" honest gap and completing path-to-D step 6. Grade unchanged (still no `formal/` prover encoding). Faces obligations F-1…F-7 newly catalogued.
+| 2026-06-21 | E (pragmatic) | `formal/` stood up (Coq/Rocq 8.18) with the mechanized **K-1 codegen-preservation seed** (`K1_CodegenPreservation.v`, axiom-free; `Print Assumptions` closed) — closes the "no formalisation directory" gap. Grade still E: D needs *type*-preservation/progress stated for the affine calculus itself (K-1 is codegen-preservation for a minimal fragment, a distinct theorem).
 |===
 
 == Review cycle

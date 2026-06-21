@@ -32,3 +32,16 @@ cicd_rules/banned_language_file:tools/res-to-affine/test/fixtures/partial1.res
 cicd_rules/banned_language_file:tools/res-to-affine/test/fixtures/phase3.res
 cicd_rules/banned_language_file:tools/res-to-affine/test/fixtures/phase3b.res
 cicd_rules/banned_language_file:tools/res-to-affine/test/fixtures/phase3c.res
+#
+# ─── Coq/Rocq proof scripts (.v is NOT V-lang) ──────────────────────
+#
+# `.v` is shared by Coq, Verilog and the estate-banned V-lang (→ Zig).
+# The vlang ban is detected on `*.v` via cicd_rules/vlang_detected, with an
+# estate-wide path_allow_prefixes carve-out for "Coq proof scripts". The
+# AffineScript `formal/` track (obligation K-1, see docs/PROOF-NEEDS.adoc)
+# is Coq 8.18 — not V-lang, not Verilog. Exempt it explicitly so a future
+# sweep cannot mis-flag it. (Coq ships no `v.mod`, so vmod_detected never
+# fires.) Both rule names are listed for robustness; the non-matching one is
+# an inert no-op under the scanner's `grep -qxF` whole-line match.
+cicd_rules/vlang_detected:formal/K1_CodegenPreservation.v
+cicd_rules/banned_language_file:formal/K1_CodegenPreservation.v
