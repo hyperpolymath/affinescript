@@ -225,6 +225,38 @@ db-theory triplet — `Sqlite.affine` (#522 / #524 / #525), `Transaction.affine`
 group-by + aggregation primitives) — are the current authoring frontier.
 A few primitives remain `extern` builtins.
 
+== Test anchors
+
+Every enforcement claim in the tables above is anchored to an executable test,
+mirroring the link:SOUNDNESS.adoc[soundness ledger]. This makes the claims
+*falsifiable*: `tools/check-capability-anchors.sh` (wired into `just check` +
+CI) extracts every `test/…` path named below and fails the build if any has
+gone missing — so a `works` / `enforced` row cannot keep its status after its
+test is deleted or renamed without this section (and CI) noticing.
+
+[cols="2,4",options="header"]
+|===
+|Component (row above) |Anchoring test(s)
+
+|Lexer |`test/test_lexer.ml`
+|Parser / AST / Name resolution |`test/test_e2e.ml`, `test/test_qualified_paths.ml`
+|Type checker |`test/test_e2e.ml`, `test/test_slash_effect_row.ml`
+|Effect system |`test/test_effects.ml`, `test/test_effect_sites.ml`; fixtures `test/e2e/fixtures/handle_return_arm.affine`, `test/e2e/fixtures/handle_resume_tail.affine`
+|Borrow checker |`test/test_borrow_polonius.ml`; fixtures `test/e2e/fixtures/borrow_callee_returned_borrow_uam.affine`, `test/e2e/fixtures/borrow_callee_value_return_ok.affine`
+|Quantity / affine (QTT) |`test/test_e2e.ml`; fixtures `test/e2e/fixtures/linear_arrow_violation.affine`, `test/e2e/fixtures/affine_violation.affine`, `test/e2e/fixtures/erased_violation.affine`
+|Interpreter |`test/test_e2e.ml`, `test/test_solo_cesk.ml`, `test/test_module_mut.ml`
+|Traits (incl. #559 coherence) |`test/test_e2e.ml` (Trait-Coherence suite)
+|Stdlib (AOT + laws) |`test/test_stdlib_aot.ml`, `test/test_stdlib_laws.ml`
+|typed-wasm isolation |`test/test_tw_isolation.ml`
+|Codegen (golden snapshots) |`test/test_golden.ml`
+|Deno / JS host backends |`test/test_deno_builtins_consistency.ml`, `test/test_int_div_js.ml`
+|Solo core (executable metatheory) |`test/test_solo_cesk.ml`
+|===
+
+NOTE: this anchors *feature-readiness* claims. *Soundness-hole* anchors live in
+their own ledger (link:SOUNDNESS.adoc[SOUNDNESS.adoc]), gated by
+`tools/check-soundness-ledger.sh`.
+
 == What AffineScript is NOT (anti-over-claim)
 
 * Not "production-ready". Alpha. CORE-01 (#177) closed 2026-05-30. The

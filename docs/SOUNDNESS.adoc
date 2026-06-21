@@ -1,33 +1,78 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2024-2026 hyperpolymath (Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>)
 = AffineScript Soundness Ledger
-:ground-truth-sha: d55e22c
+// Freshness stamp — a real main-ancestor commit (survives squash-merge); advance
+// it (and --reseal) in any change that touches a soundness path. See "Keeping
+// this honest" and tools/check-soundness-ledger.sh (property 4).
+:ground-truth-sha: dd6c19e
 :ground-truth-date: 2026-06-21
-:stamp-verified-by: tools/check-soundness-ledger.sh --verify-stamp
+:stamp-verified-by: tools/check-soundness-ledger.sh
 :toc: macro
 :toclevels: 2
+:icons: font
 
 [IMPORTANT]
 ====
-This document is the single source of truth for the status of AffineScript's known soundness holes. If any other document — `README.adoc`, `docs/CAPABILITY-MATRIX.adoc`, `docs/PROOF-NEEDS.adoc`, `.claude/CLAUDE.md`, a dated `STATE-*.adoc` snapshot, the wiki — disagrees with this ledger about whether a hole is open, fixed, fenced, or removed, *this ledger wins and the other document is drift to be corrected*.
+*This document is the single source of truth for the status of AffineScript's
+known soundness holes.* If any other document — `README.adoc`,
+`docs/CAPABILITY-MATRIX.adoc`, `docs/PROOF-NEEDS.adoc`, `.claude/CLAUDE.md`, a
+dated `STATE-*.adoc` snapshot, the wiki — disagrees with this ledger about
+whether a hole is open, fixed, fenced, or removed, *this ledger wins and the
+other document is drift to be corrected*.
 ====
 
-This ledger is *test-anchored* and *content-bound*: every row names the fixture or test that proves its claim, and `tools/check-soundness-ledger.sh` (wired into `just check` + CI) fails the build if any named fixture goes missing, if a status surface stops pointing here, *or if a named anchor's content hash no longer matches the digest this ledger was reconciled against*. That third binding is what stops the ledger going stale silently in the one direction the old design could not catch: a fixture that survives but has its assertion quietly weakened underneath it.
+This ledger is *test-anchored* and *content-bound*: every row names the fixture
+or test that proves its claim, and `tools/check-soundness-ledger.sh` (wired into
+`just check` + CI) fails the build if any named anchor goes missing, if a status
+surface stops pointing here, if a named anchor's *content hash* drifts from the
+digest manifest (`tools/soundness-anchors.sha256`), if a soundness path moved
+since the freshness stamp without the stamp being advanced, or if a
+`residual (pinned)` / `open (tracked)` row lacks a live, currently-failing pin.
+Those bindings are what stop the ledger going stale silently — including in the
+one direction the name-only design could not catch: a fixture that survives but
+has its assertion quietly weakened underneath it.
 
-Ground-truthed at `d55e22c` on 2026-06-21 by source inspection at the cited `file:line` anchors, with `dune build` and `dune runtest` green, and the anchor-digest manifest (`tools/soundness-anchors.sha256`) regenerated and committed in the same change. The status words below are deliberate; read them precisely.
+Ground-truthed at `{ground-truth-sha}` on {ground-truth-date} by source
+inspection at the cited `file:line` anchors, with `dune build` and
+`dune runtest` green, and the anchor-digest manifest regenerated
+(`tools/check-soundness-ledger.sh --reseal`) in the same change. The status
+words below are deliberate; read them precisely.
 
 toc::[]
 
 == Why this file exists
 
-Soundness status used to live in ~6 places that drifted independently — the capability matrix, a survey block in `.claude/CLAUDE.md`, dated `STATE-*` snapshots, session handoffs, the wiki. A reader (human or agent) who happened to open the stale one got a stale answer, in the *dangerous* direction: "this hole is still open" long after it was fixed, or — worse in principle — the reverse. This file is the structural fix, resting on four load-bearing mechanisms, each enforced by the gate rather than asserted in prose:
+Soundness status used to live in ~6 places that drifted independently — the
+capability matrix, a survey block in `.claude/CLAUDE.md`, dated `STATE-*`
+snapshots, session handoffs, the wiki. A reader (human or agent) who happened to
+open the stale one got a stale answer, in the *dangerous* direction: "this hole
+is still open" long after it was fixed, or — worse in principle — the reverse.
+This file is the structural fix, resting on four mechanisms, *each enforced by
+the gate rather than asserted in prose*:
 
 [horizontal]
-One surface:: Soundness-hole status is stated here and nowhere else. Other docs may summarise and then link here; they may not maintain a competing per-issue ledger. The gate enforces the back-link.
+One surface:: Soundness-hole status is stated here and nowhere else. Other docs
+may summarise and link here; they may not maintain a competing per-issue ledger.
+The gate enforces the back-link.
 
-Anchored to tests:: Each claim cites the executable artefact that proves it. The gate verifies the artefact *exists*.
+Anchored to tests:: Each claim cites the executable artefact that proves it. The
+gate verifies the artefact *exists*.
 
-Content-bound:: The gate also verifies the artefact still *says what it said*: each anchor is pinned to a content digest in `tools/soundness-anchors.sha256`, so a fixture cannot have its assertion eroded — weakened, re-baselined, or silently re-scoped — without the digest mismatching and the build failing. Prose nailed to a fixture *by name only* can still rot if the fixture's meaning drifts out from under it; prose nailed to a fixture *by content* cannot.
+Content-bound:: The gate also verifies the artefact still *says what it said*:
+each fixture and pinned-test anchor is pinned to a content digest in
+`tools/soundness-anchors.sha256`, so a fixture cannot have its assertion eroded —
+weakened, re-baselined, or silently re-scoped — without the digest mismatching
+and the build failing. (Suite-file anchors such as `test/test_borrow_polonius.ml`
+are existence- and stamp-checked but not digest-bound: a whole-file hash is too
+coarse to be a meaningful content seal.) Prose nailed to a fixture *by name only*
+can still rot if the fixture's meaning drifts; prose nailed *by content* cannot.
 
-Stamped, and the stamp is enforced:: The freshness attributes above record the commit this was last reconciled against. The gate fails if `HEAD` has touched any anchored fixture, any cited `lib/*.ml` soundness path, or this ledger's table since `:ground-truth-sha:` without the stamp being advanced in the same change. The stamp records when the file last *actually matched* the compiler, not merely when someone last claimed to check.
+Stamped, and the stamp is enforced:: The freshness attribute records the
+main-ancestor commit this was last reconciled against. The gate fails if `HEAD`
+has touched any anchored fixture, any cited `lib/*.ml` soundness path, or this
+ledger's table since `:ground-truth-sha:` without the stamp being advanced in the
+same change. The stamp records when the file last *actually matched* the
+compiler, not merely when someone last claimed to check.
 
 == Status vocabulary
 
@@ -36,19 +81,28 @@ Stamped, and the stamp is enforced:: The freshness attributes above record the c
 | Term | Meaning
 
 | `fixed`
-| The previously-unsound behaviour is gone. The program that used to be wrongly accepted is now rejected, or the wrong result is now the right one.
+| The previously-unsound behaviour is gone. The program that used to be wrongly
+accepted is now rejected, or the wrong result is now the right one.
 
 | `loud-fail`
-| The construct is not implementable on this path, but it errors at compile-time or run-time — it never silently emits a plausible-wrong value. "Fail loud, never silent" is the governing rule.
+| The construct is not implementable on this path, but it errors at compile-time
+or run-time — it never silently emits a plausible-wrong value. "Fail loud, never
+silent" is the governing rule.
 
 | `removed`
-| The feature whose surface could not be honestly enforced was withdrawn from the language, so there is no unenforced surface left to mislead anyone.
+| The feature whose surface could not be honestly enforced was withdrawn from the
+language, so there is no unenforced surface left to mislead anyone.
 
 | `residual (pinned)`
-| A known-incorrect behaviour still exists, but an executable test pins it, so it cannot regress unnoticed and will alarm (the test flips to failing) the day it is fixed.
+| A known-incorrect behaviour still exists, but an *xfail* test pins it: the test
+asserts the *desired* behaviour, currently fails (the bug is present), and is
+caught by the xfail harness as a tolerated expected-failure. It flips to an
+*unexpected pass* — failing the build with a distinct "is the hole fixed?"
+message — the day the hole is fixed.
 
 | `open (tracked)`
-| A known gap with no fix yet, tracked by an issue. Stated here so it cannot be mistaken for a guarantee.
+| A known gap with no fix yet, tracked by an issue. Stated here so it cannot be
+mistaken for a guarantee. Pinned the same way as `residual (pinned)`.
 
 | `partial`
 | Implemented and load-bearing for common cases; the named residual is the gap.
@@ -56,88 +110,174 @@ Stamped, and the stamp is enforced:: The freshness attributes above record the c
 
 == The ledger
 
-Every row in this table is in scope for the gate. There are no soundness-relevant holes outside this table; the "still open" prose below is a reader's digest *of these rows*, not an additional, separately-maintained list.
+Every row in this table is in scope for the gate. There are no soundness-relevant
+holes outside this table; the "still open" prose below is a reader's digest *of
+these rows*, not a separately-maintained list.
 
 [cols="1,4,1,3",options="header"]
 |===
 | Issue | Soundness claim (current behaviour) | Status | Proven in code
 
 | #554 / #177
-| Use-after-move through a callee-returned borrow is rejected. `let r = pick(a); consume(a); *r` no longer type-checks — it is reported as `MoveWhileBorrowed`. CORE-01 (#177) closed; this was its last execution-verified hole.
+| Use-after-move through a callee-returned borrow is rejected.
+`let r = pick(a); consume(a); *r` no longer type-checks — it is reported as
+`MoveWhileBorrowed`. CORE-01 (#177) closed; this was its last execution-verified
+hole.
 | `fixed`
-| `test/e2e/fixtures/borrow_callee_returned_borrow_uam.affine` (+ the `borrow_callee_returned_borrow_{aggregate,interproc,match_arm,return_stmt}.affine` hardening variants and `borrow_callee_value_return_ok.affine` anti-over-rejection)
+| `test/e2e/fixtures/borrow_callee_returned_borrow_uam.affine` (+ the
+`borrow_callee_returned_borrow_aggregate.affine`,
+`borrow_callee_returned_borrow_interproc.affine`,
+`borrow_callee_returned_borrow_match_arm.affine`,
+`borrow_callee_returned_borrow_return_stmt.affine` hardening variants and
+`borrow_callee_value_return_ok.affine` anti-over-rejection)
 
 | #555 (codegen)
-| `handle` / `resume` on every compiled backend (core-WASM, WasmGC, Deno-ESM, JS-text, C) fails loud with `UnsupportedFeature` instead of silently dropping handler arms. The old failure — compile the body, drop the arms, lower `resume` as a pass-through (42 in the interpreter vs 41 in wasm) — is gone.
+| `handle` / `resume` on every compiled backend (core-WASM, WasmGC, Deno-ESM,
+JS-text, C) fails loud with `UnsupportedFeature` instead of silently dropping
+handler arms. The old failure — compile the body, drop the arms, lower `resume`
+as a pass-through (42 in the interpreter vs 41 in wasm) — is gone.
 | `loud-fail`
-| `test/e2e/fixtures/handle_return_arm.affine`; `lib/codegen.ml` `ExprHandle` / `ExprResume` arms; `lib/codegen_deno.ml`
+| `test/e2e/fixtures/handle_return_arm.affine`; `lib/codegen.ml` `ExprHandle` /
+`ExprResume` arms; `lib/codegen_deno.ml`
 
 | #555 (interp, multi-shot)
-| Calling `resume` more than once in a handler fails loud (it cannot be expressed without reified continuations, and previously returned a silently-wrong value).
+| Calling `resume` more than once in a handler fails loud (it cannot be expressed
+without reified continuations, and previously returned a silently-wrong value).
 | `loud-fail`
-| `test/e2e/fixtures/handle_resume_multishot.affine`; `lib/interp.ml` resume invocation counter
+| `test/e2e/fixtures/handle_resume_multishot.affine`; `lib/interp.ml` resume
+invocation counter
 
-| #555 (interp, non-tail single-shot)
-| `let x = op(); x + 100` resuming to `5` returns `5`, not `105`: the shallow tree-walking continuation has already unwound the bind chain. This is the one genuinely-still-silent shape, on the interpreter path only. It needs a CPS rewrite of `eval` (blocked: OCaml 4.14 has no native effect handlers and the interpreter must stay `js_of_ocaml`-compatible — owner-steer item).
+| #555 (interp, non-tail single-shot) / #623
+| `let x = op(); x + 100` resuming to `5` returns `5`, not `105`: the shallow
+tree-walking continuation has already unwound the bind chain. This is the one
+genuinely-still-silent shape, on the interpreter path only. It needs a CPS
+rewrite of `eval` (blocked: OCaml 4.14 has no native effect handlers and the
+interpreter must stay `js_of_ocaml`-compatible — owner-steer item, #623).
 | `residual (pinned)`
-| `test/e2e/fixtures/handle_resume_nontail.affine` + `test_resume_nontail_known_shallow` (asserts the wrong-but-known value; flips to failing the day delimited continuations land). See _Pinned-residual discipline_ below.
+| `test/e2e/fixtures/handle_resume_nontail.affine` + `test_resume_nontail_xfail`
+(xfail: asserts the correct `105`; currently fails-as-expected; flips to an
+unexpected pass the day delimited continuations land). See _Pinned-residual
+discipline_.
 
 | #556
 | Async CPS table-miss fails loud instead of silently lowering synchronously.
 | `loud-fail`
-| `test/e2e/fixtures/async_sync_fallback.affine` (+ `async_no_boundary.affine`, `async_passthrough_thenable.affine`)
+| `test/e2e/fixtures/async_sync_fallback.affine` (+ `async_no_boundary.affine`,
+`async_passthrough_thenable.affine`)
 
 | #558
-| Refinement / dependent types were removed in v1 (2026-04-10). There is no `TRefined` node for the checker to silently ignore; `assume(…)` is rejected at parse and `T where (P)` is a parse error. You cannot write an unenforced predicate.
+| Refinement / dependent types were removed in v1 (2026-04-10). There is no
+`TRefined` node for the checker to silently ignore; `assume(…)` is rejected at
+parse and `T where (P)` is a parse error. You cannot write an unenforced
+predicate.
 | `removed`
 | `test/e2e/fixtures/assume_rejected.affine` + `test_parse_assume_rejected`
 
 | #559 (concrete)
-| Overlapping trait impls whose self types unify are rejected as a coherence violation, before the check pass, so an ambiguous instance base is reported up front.
+| Overlapping trait impls whose self types unify are rejected as a coherence
+violation, before the check pass, so an ambiguous instance base is reported up
+front.
 | `fixed`
-| `lib/typecheck.ml` `check_all_coherence` call; `lib/trait.ml` `check_coherence` / `check_all_coherence`; the Trait-Coherence suite in `test/test_e2e.ml`
+| `lib/typecheck.ml` `check_all_coherence` call; `lib/trait.ml` `check_coherence`
+/ `check_all_coherence`; `test_coherence_duplicate_rejected`
 
 | #559 (generic subsumption)
-| Generic-subsumption overlap — `impl[T] Greet for Box[T]` overlapping `impl Greet for Box[Int]` — is *not yet detected*; generic-impl registration must be fixed first. Concrete overlaps (above) are caught.
-| `open (tracked)`
-| Pinned by `test_coherence_generic_subsumption_xfail` (expected-fail; flips to passing the day detection lands) in the coherence block of `test/test_e2e.ml`
+| Generic-subsumption overlap — `impl[T] Greet for Box[T]` overlapping
+`impl Greet for Box[Int]` — *is* detected and rejected as a coherence violation
+(the unification-based check instantiates the generic head: `Box[T]` unifies with
+`Box[Int]`). Ground-truthed 2026-06-21 against the running compiler — this row
+was previously, wrongly, marked "not yet detected".
+| `fixed`
+| `test_coherence_generic_subsumption_rejected`
 
 | #553 (Polonius)
-| The Polonius extractor (ADR-022) is implemented through M3 but is TEST-ONLY / unwired — it gates no production verdict. The lexical `lib/borrow.ml` is the production checker; the extractor is diffed against it over the fixture corpus with a shrinking allowlist (7 known divergences).
+| The Polonius extractor (ADR-022) is implemented through M3 but is
+TEST-ONLY / unwired — it gates no production verdict. The lexical `lib/borrow.ml`
+is the production checker; the extractor is diffed against it over the fixture
+corpus with a shrinking allowlist (7 known divergences).
 | `partial`
-| `test/test_borrow_polonius.ml` (parallel-run diff gate + `known_divergences`, count pinned at 7)
+| `test/test_borrow_polonius.ml` (parallel-run diff gate + `known_divergences`,
+count pinned at 7)
 
-| #555-stub / #560
-| The Lean and Why3 experimental backends drop `return` statements wholesale — a silent-wrong-value shape, the same _category_ as the #555 codegen hole but on the stub-backend path. Not yet fenced, and not yet pinned by a fixture; the backends are gated `experimental` so no production verdict depends on them.
-| `open (tracked)`
-| Tracked by #560 — not yet pinned by a fixture/test; the planned anchor (an xfail asserting the drop, flipping the day the backends fail loud or are removed) is the follow-up. The `experimental` gating is the only current fence. See _Still open_.
+| #555-stub / #624
+| The Lean and Why3 experimental backends drop `return` statements wholesale
+(`lean_codegen.ml` `gen_block` skips `StmtReturn`, so `fn f(){ return 1; … }`
+lowers to `:= ()`) — a silent-wrong-value shape, the same _category_ as the #555
+codegen hole but on the stub-backend path. Not yet fenced. The backends are
+`experimental` so no production verdict depends on them; the agreed remedy (#624)
+is to fail loud. (NB: #628 tracked this as "#560"; that issue is actually
+variable-string wasm ops — #624 is the correct tracker, and this change supplies
+the pin #628 could not.)
+| `residual (pinned)`
+| `test/e2e/fixtures/stub_backend_return_dropped.affine` +
+`test_stub_backend_return_xfail` (xfail: asserts the desired loud failure —
+`Lean_codegen.codegen_lean` returning `Error` — on an early-`return` program;
+currently fails-as-expected because the backend silently returns `Ok`; flips to
+an unexpected pass the day the backend fails loud or is removed). See _Still
+open_.
 |===
 
 == Still open — read before claiming "sound"
 
-The implementation holes marked `fixed` / `loud-fail` / `removed` above are closed. Honesty requires naming what is *not* a guarantee. Each item here is a row in the table above, restated for the hurried reader — not a separate list:
+The implementation holes marked `fixed` / `loud-fail` / `removed` above are
+closed. Honesty requires naming what is *not* a guarantee. Each item here is a
+row in the table above, restated for the hurried reader — not a separate list:
 
-* *Interpreter non-tail resume* (#555, `residual (pinned)`) — the `5`-not-`105` shape. Silent on the interpreter path; pinned.
-* *Stub backends drop `return`* (#555-stub / #560, `open (tracked)`) — Lean and Why3 drop `return` wholesale. Silent-wrong-value, broader than #555 codegen, fenced only by `experimental` gating (not yet pinned by a fixture, nor by a loud failure). Treat all non-reference backends as experimental (see `docs/CAPABILITY-MATRIX.adoc`).
-* *Generic-subsumption coherence* (#559 generic, `open (tracked)`) — concrete overlaps caught; generic-impl overlaps not yet detected.
+* *Interpreter non-tail resume* (#555 / #623, `residual (pinned)`) — the
+`5`-not-`105` shape. Silent on the interpreter path; pinned by
+`test_resume_nontail_xfail`.
+* *Stub backends drop `return`* (#555-stub / #624, `residual (pinned)`) — Lean and
+Why3 drop `return` wholesale. Silent-wrong-value, broader than #555 codegen,
+fenced only by `experimental` gating and a pinning xfail, not by a loud failure.
+Treat all non-reference backends as experimental (see
+`docs/CAPABILITY-MATRIX.adoc`).
 
-If you are deciding whether AffineScript is "sound enough" for a use, these three rows are the answer, and the metatheory caveat below applies to *all* of them.
+If you are deciding whether AffineScript is "sound enough" for a use, these two
+rows are the answer, and the metatheory caveat below applies to *both*.
 
 === Pinned-residual discipline
 
-A `residual (pinned)` row carries a fixture that asserts a *known-wrong* value. The pin is doing two jobs: it stops the wrong behaviour regressing further, and it is meant to *flip to failing* the day the hole is fixed, prompting whoever fixed it to update this ledger.
+A `residual (pinned)` / `open (tracked)` row carries an *xfail* test that asserts
+the *desired* behaviour and currently fails because the hole is present. The
+xfail harness (`test/xfail/test_xfail_pins.ml`) tolerates that expected failure
+and reports `XFAIL-OK`; if the assertion ever *passes*, the harness reports
+`XPASS`, exits non-zero, and the gate surfaces a distinct "pin for #N is passing
+— is the hole fixed? update the row" message.
 
-That second job is a *social* guarantee wearing a mechanical costume. The test mechanically fails on the fixing change; but it relies on the engineer reading that failure as "good — now advance the ledger row to `fixed`" rather than "annoying — bump the expected value and move on." The gate cannot tell those two apart. So: *when a `*_xfail` or `*_known_*` test starts failing, the correct first move is to open this ledger, not to edit the expected value.* This is the one place the anti-drift machinery hands off to a human, and it is named here so the hand-off is deliberate rather than accidental.
+That second job is a *social* guarantee wearing a mechanical costume. The harness
+mechanically catches the flip; but it relies on the engineer reading `XPASS` as
+"good — now advance the ledger row to `fixed`" rather than "annoying — silence
+it". The gate cannot tell those apart. So: *when an `*_xfail` pin reports `XPASS`,
+the correct first move is to open this ledger, not to silence the test.* This is
+the one place the anti-drift machinery hands off to a human, and it is named here
+so the hand-off is deliberate.
 
 == Closed holes are not proofs
 
-Closing an implementation hole is not the same as having metatheory. The soundness arguments for the holes above (`docs/academic/proofs/*.adoc`, the comments in `lib/borrow.ml`) remain *prose*, and the Solo core fragment's progress / preservation are still `?todo`. Mechanisation has *started* — a Wave-0 codegen-preservation seed (`formal/K1_CodegenPreservation.v`, axiom-free Coq/Rocq, minimal nat/bool fragment) landed via #620 — but *it does not yet cover any hole in this ledger*. The proof obligations, their rigour tiers, and their (mostly prose / absent) status are catalogued in `docs/PROOF-NEEDS.adoc` (umbrella issue #513).
+Closing an implementation hole is not the same as having metatheory. The
+soundness arguments for the holes above (`docs/academic/proofs/*.adoc`, the
+comments in `lib/borrow.ml`) remain *prose*, and the Solo core fragment's
+`Soundness.idr` progress / preservation are still `?todo`. Mechanisation has
+*grown substantially* — the axiom-free Coq/Rocq `formal/` track now covers the
+Wave-0 codegen-preservation seed (K-1 `K1_CodegenPreservation.v`, K-1-with-`let`
+`K1Let_CodegenPreservation.v`), the F-1 transformer-preservation composition, and
+the four Wave-0 siblings P-2 (progress), P-3 (borrow-graph, with loan edges +
+move-locality), F-3 and F-4 (#620–#627). These target core/fragment metatheory;
+*none yet covers a hole in this ledger* — they are not the full AffineScript
+borrow checker / interpreter / backends. The obligations, their rigour tiers, and
+their exact status are catalogued in `docs/PROOF-NEEDS.adoc` (umbrella #513).
 
-The one distinction to carry away, stated so the polish of *this ledger* is not mistaken for the rigour of the *metatheory*:
+The one distinction to carry away, stated so the polish of *this ledger* is not
+mistaken for the rigour of the *metatheory*:
 
 [NOTE]
 ====
-The compiler now fails loud on these shapes and the residuals are pinned by tests — so the *bookkeeping* about soundness is mechanically enforced and current. The soundness *arguments* are still paper proofs, not machine-checked. A green gate here means "the status table is honest and the fixtures still say what they said," **not** "AffineScript is proven sound."
+The compiler now fails loud on these shapes and the residuals are pinned by
+tests — so the *bookkeeping* about soundness is mechanically enforced and
+current. The soundness *arguments* for the holes in this ledger are still paper
+proofs or fragment proofs, not a machine-checked guarantee about the whole
+language. A green gate here means "the status table is honest and the fixtures
+still say what they said," *not* "AffineScript is proven sound".
 ====
 
 The v1 release-readiness ledger is issue #563.
@@ -145,13 +285,30 @@ The v1 release-readiness ledger is issue #563.
 == Keeping this honest (how to update)
 
 [arabic]
-. *Ground-truth by running the tool.* Reproduce the behaviour against the built compiler (`dune build && dune runtest`, `dune exec affinescript — …`). Never edit a status here from another doc — that is how drift starts.
-. *Change the row, change the anchor, change the digest.* If you fix or break a hole, update the status word, its anchoring fixture/test, *and* regenerate `tools/soundness-anchors.sha256` (`tools/check-soundness-ledger.sh --reseal`) in the same change. The gate fails if a named anchor no longer exists *or* if its content digest drifts from the manifest without a reseal.
-. *Bump the stamp, in the same change.* Update `:ground-truth-sha:` and `:ground-truth-date:` to the commit you verified against. The gate fails if a soundness path moved since the stamp without the stamp advancing.
-. *Do not fork the ledger.* If another doc needs to mention soundness status, it links here; it does not copy the table. The gate checks the back-links from `README.adoc`, `docs/CAPABILITY-MATRIX.adoc`, `docs/PROOF-NEEDS.adoc`, `docs/NAVIGATION.adoc`, and `.claude/CLAUDE.md`.
+. *Ground-truth by running the tool.* Reproduce the behaviour against the built
+compiler (`dune build && dune runtest`, `dune exec affinescript -- …`). Never
+edit a status here from another doc — that is how drift starts. If the compiler
+disagrees with a row, *the compiler wins* and the row is corrected (that is how
+the #559-generic row above was fixed).
+. *Change the row, change the anchor, change the digest.* If you fix or break a
+hole, update the status word, its anchoring fixture/test, *and* regenerate
+`tools/soundness-anchors.sha256` (`tools/check-soundness-ledger.sh --reseal`) in
+the same change. The gate fails if a named anchor no longer exists *or* if its
+content digest drifts from the manifest without a reseal.
+. *Bump the stamp, in the same change.* Update `:ground-truth-sha:` (to a real
+main-ancestor commit you verified against) and `:ground-truth-date:`. The gate
+fails if a soundness path moved since the stamp without the stamp advancing.
+. *Do not fork the ledger.* If another doc needs to mention soundness status, it
+links here; it does not copy the table. The gate checks the back-links from
+`README.adoc`, `docs/CAPABILITY-MATRIX.adoc`, `docs/PROOF-NEEDS.adoc`,
+`docs/NAVIGATION.adoc`, and `.claude/CLAUDE.md`.
 
 == See also
 
-* `CAPABILITY-MATRIX.adoc` — authoritative feature readiness (this ledger owns soundness-hole status; the matrix links here).
-* `PROOF-NEEDS.adoc` — what must be proven, at what rigour, with what (mostly unmechanised) status.
-* `reports/HANDOFF-2026-06-17-soundness.adoc`, `reports/TIDY-UP-LEDGER-2026-06-16.adoc` — the dated session reports this ledger consolidates (historical inputs).
+* link:CAPABILITY-MATRIX.adoc[CAPABILITY-MATRIX.adoc] — authoritative feature
+readiness (this ledger owns soundness-hole status; the matrix links here).
+* link:PROOF-NEEDS.adoc[PROOF-NEEDS.adoc] — what must be proven, at what rigour,
+with what status (now including the mechanized Wave-0 `formal/` track).
+* link:reports/HANDOFF-2026-06-17-soundness.adoc[reports/HANDOFF-2026-06-17-soundness.adoc],
+link:reports/TIDY-UP-LEDGER-2026-06-16.adoc[reports/TIDY-UP-LEDGER-2026-06-16.adoc]
+— the dated session reports this ledger consolidates (historical inputs).

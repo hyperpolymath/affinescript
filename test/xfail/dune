@@ -1,0 +1,5 @@
+(test
+ (name test_xfail_pins)
+ (libraries affinescript)
+ (deps
+  (source_tree ../e2e)))

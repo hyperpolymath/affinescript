@@ -2382,22 +2382,35 @@ fn main() -> Int = 0;
       Alcotest.failf "#559: impls for Pair[Int,Bool] vs Pair[Bool,Int] do not \
                       overlap and must be accepted, got error: %s" msg
 
-(* KNOWN LIMITATION (#559): generic-subsumption overlap — a blanket/generic
-   impl `impl[T] Greet for Box[T]` overlapping a specific `impl Greet for
-   Box[Int]` — is NOT yet detected. The coherence check itself instantiates
-   impl type params and would catch it, but generic *impl* handling has its
-   own separate immaturities (e.g. `impl[T] ... for Box[T]` currently trips a
-   spurious "Trait not found" before coherence runs), so this case rides on a
-   prerequisite that is not yet solid. The soundness-critical hole #559 named
-   — silently accepting overlapping *concrete* impls — IS fixed and covered by
-   the rejected/accepted tests above. Generic-subsumption coherence is tracked
-   as follow-up, not pinned here as an executable accept (it would mis-document
-   a moving target). *)
+(* #559 generic-subsumption: a blanket impl `impl[T] Greet for Box[T]`
+   overlapping a specific `impl Greet for Box[Int]` IS detected and rejected.
+   The unification-based coherence check instantiates the generic head — Box[T]
+   unifies with Box[Int] — so the overlap is caught by the same machinery as the
+   concrete case. (Ground-truthed 2026-06-21 against the running compiler; an
+   earlier note here wrongly claimed this was undetected — corrected per the
+   docs/SOUNDNESS.adoc "compiler is ground truth" rule.) *)
+let test_coherence_generic_subsumption_rejected () =
+  let src = {|
+trait Greet { fn greet() -> Int; }
+enum Box[T] { Mk(T) }
+impl[T] Greet for Box[T] { fn greet() -> Int = 1; }
+impl Greet for Box[Int] { fn greet() -> Int = 2; }
+fn main() -> Int = 0;
+|} in
+  match tc_source src with
+  | Ok () ->
+      Alcotest.fail "#559 generic subsumption: impl[T] Box[T] overlapping \
+                     Box[Int] must be rejected as overlapping; the checker \
+                     accepted them — the hole has regressed"
+  | Error msg ->
+      Alcotest.(check bool) "error names trait coherence" true
+        (contains_str "coherence" msg)
 
 let coherence_tests = [
   Alcotest.test_case "duplicate impl (same self type) → rejected"    `Quick test_coherence_duplicate_rejected;
   Alcotest.test_case "impls for distinct types → accepted"           `Quick test_coherence_distinct_types_ok;
   Alcotest.test_case "distinct generic args → accepted (no over-reject)" `Quick test_coherence_distinct_generic_args_ok;
+  Alcotest.test_case "generic subsumption (impl[T] Box[T] vs Box[Int]) → rejected" `Quick test_coherence_generic_subsumption_rejected;
 ]
 
 (* ============================================================================
@@ -2490,23 +2503,16 @@ let test_resume_multishot_loud_fail () =
       Alcotest.(check bool) "error names the multi-shot resume limit" true
         (contains_str "multi-shot resume" msg)
 
-let test_resume_nontail_known_shallow () =
-  (* KNOWN shallow-resume incompleteness: the correct result is 105; the
-     shallow interpreter returns the resumed value 5. Flip to VInt 105 when
-     delimited continuations land (Refs #555). *)
-  match interp_main (fixture "handle_resume_nontail.affine") with
-  | Ok (Value.VInt 5) -> ()
-  | Ok (Value.VInt 105) ->
-      Alcotest.fail
-        "non-tail resume now returns 105 — delimited continuations appear to \
-         have landed; update this pin and the #555 CAPABILITY-MATRIX note"
-  | Ok v -> Alcotest.failf "non-tail resume: expected VInt 5 (known shallow), got %s" (Value.show_value v)
-  | Error msg -> Alcotest.failf "non-tail resume should evaluate (shallow), got error: %s" msg
+(* The non-tail single-shot resume residual (#555 / #623) is pinned as an xfail
+   in test/xfail/test_xfail_pins.ml (test_resume_nontail_xfail): it asserts the
+   CORRECT result (105) and fails-as-expected while the shallow interpreter
+   returns 5, flipping to a loud XPASS the day delimited continuations land.
+   Anchored from docs/SOUNDNESS.adoc. Kept out of this passing suite so there is
+   one pin convention, not two. *)
 
 let resume_soundness_tests = [
   Alcotest.test_case "interp: single-shot tail-resume evaluates to 5"   `Quick test_resume_single_shot_tail;
   Alcotest.test_case "interp: multi-shot resume → loud failure"         `Quick test_resume_multishot_loud_fail;
-  Alcotest.test_case "interp: non-tail resume → 5 (KNOWN shallow #555)" `Quick test_resume_nontail_known_shallow;
 ]
 
 (* ============================================================================
