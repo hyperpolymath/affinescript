@@ -22,9 +22,8 @@
 # Anchors are named in the ledger table's column 4 ("Proven in code"). From the
 # table region of docs/SOUNDNESS.adoc we extract three anchor kinds:
 #   FIXTURE  test/e2e/fixtures/<name>.affine   -> digest = sha256 of the file
-#   SUITE    test/<name>.ml                    -> existence + stamp only
-#                                                 (a whole-file digest is too
-#                                                 coarse to content-bind)
+#   SUITE    test/<name>.ml                    -> digest = sha256 of the whole
+#                                                 file (a suite is its own unit)
 #   TEST     backtick-quoted `test_<name>`     -> digest = sha256 of the test's
 #            function body, extracted from its `let <name> ` line to the next
 #            top-level `let ` in whichever single test/**/*.ml defines it.
@@ -114,16 +113,19 @@ hash_anchor() {
         grab && index($0,"let ")==1 {exit}
         grab {print}
       ' "$file" | sha256sum | cut -d' ' -f1 ;;
+    suite)
+      [ -f "$loc" ] || die "anchor ${a}: suite file not found"
+      sha256sum "$loc" | cut -d' ' -f1 ;;
     *) die "internal: hash_anchor on non-digest kind: ${a}" ;;
   esac
 }
 
-# --- the digest manifest (fixtures + test bodies; not suite files) ----------
+# --- the digest manifest (fixtures + test bodies + suite files) -------------
 generate_manifest() {
   local a
   while IFS= read -r a; do
     [ -z "$a" ] && continue
-    case "$a" in fixture:*|test:*) printf '%s  %s\n' "$(hash_anchor "$a")" "$a" ;; esac
+    case "$a" in fixture:*|test:*|suite:*) printf '%s  %s\n' "$(hash_anchor "$a")" "$a" ;; esac
   done < <(extract_anchors) | LC_ALL=C sort
 }
 
@@ -137,7 +139,7 @@ if [ "${1:-}" = "--reseal" ]; then
     echo "# Soundness anchor digests for docs/SOUNDNESS.adoc — DO NOT hand-edit."
     echo "# Regenerate: tools/check-soundness-ledger.sh --reseal"
     echo "# Format: <sha256>  <kind:locator>. FIXTURE = file hash; TEST = the"
-    echo "# test's function-body hash. SUITE anchors are existence-checked only."
+    echo "# test's function-body hash; SUITE = whole-file hash."
     generate_manifest
   } > "$MANIFEST"
   echo "OK: resealed ${MANIFEST} ($(grep -cvE '^#' "$MANIFEST") anchors)."
@@ -208,6 +210,21 @@ check_stamp() {
       return 1
     fi
   fi
+  # Freshness vs main (best-effort; skipped if origin/main is absent, e.g. a
+  # shallow CI checkout): if this branch is BEHIND main on a soundness path, the
+  # ledger may be stale relative to a change not yet rebased in. Fires only when
+  # main actually moved a soundness path under you — never for a fresh branch.
+  if git rev-parse --verify -q origin/main >/dev/null 2>&1; then
+    local mb; mb="$(git merge-base HEAD origin/main 2>/dev/null || true)"
+    if [ -n "$mb" ]; then
+      local behind; behind="$(git diff --name-only "$mb" origin/main -- "$LEDGER" "${SOUNDNESS_LIB_PATHS[@]}" 2>/dev/null || true)"
+      if [ -n "$behind" ]; then
+        note "ERROR (property 4): main moved a soundness path under this branch; rebase onto origin/main and re-verify the ledger:"
+        printf '%s\n' "$behind" | sed 's/^/    /' >&2
+        return 1
+      fi
+    fi
+  fi
 }
 
 # ---- Property 5: pin-liveness (xfail harness) ------------------------------
@@ -221,7 +238,9 @@ pinned_row_pins() {
     END { emit() }
     function emit() {
       if (row=="") return
-      if (row ~ /residual \(pinned\)/ || row ~ /open \(tracked\)/) {
+      # Match the STATUS CELL (a line that is `| `status``), not a prose mention
+      # of the status word elsewhere in the row.
+      if (row ~ /\n\| `residual \(pinned\)`/ || row ~ /\n\| `open \(tracked\)`/) {
         if (match(row, /test_[A-Za-z0-9_]+_xfail/)) print substr(row, RSTART, RLENGTH)
         else if (match(row, /test_[A-Za-z0-9_]+/)) print substr(row, RSTART, RLENGTH)
         else print "NOPIN"

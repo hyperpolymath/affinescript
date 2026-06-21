@@ -91,6 +91,13 @@ and gen_block (blk : block) : string =
 
 let gen_function (fd : fn_decl) : string =
   let name = mangle fd.fd_name.name in
+  (* #624: fail loud on `return` rather than silently drop it (see lean_codegen). *)
+  if fn_body_contains_return fd.fd_body then
+    failwith
+      (Printf.sprintf
+         "Why3 backend does not support `return` (in `%s`, Refs #624): early \
+          returns would silently drop control flow; rewrite as a tail expression"
+         fd.fd_name.name);
   let params = match fd.fd_params with
     | [] -> "()"
     | _  -> String.concat " " (List.map (fun (p : param) ->

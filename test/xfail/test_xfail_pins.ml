@@ -1,38 +1,32 @@
 (* SPDX-License-Identifier: MPL-2.0 *)
 (* SPDX-FileCopyrightText: 2024-2026 hyperpolymath (Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>) *)
 
-(** xfail pin harness for the soundness ledger (docs/SOUNDNESS.adoc, property 5).
+(** Soundness pin harness for docs/SOUNDNESS.adoc (property 5).
 
-    Each pin asserts the DESIRED behaviour of a known soundness hole. Because the
-    hole is still present, the assertion currently FAILS — which is the expected
-    state, reported as [XFAIL-OK]. The day the hole is fixed, the assertion
-    PASSES, which is unexpected and reported as [XPASS]: the process exits
-    non-zero (so [dune runtest] and the gate both go red) with a message telling
-    the engineer to update the ledger row rather than silence the pin.
+    Two kinds of executable soundness-row check live here:
 
-    Polarity / fail-closed contract:
-      - pin body raises [Xfail] when the desired behaviour is NOT met (hole
-        present)         -> XFAIL-OK (exit 0 contribution)
-      - pin body returns normally (desired behaviour met, hole gone)
-                          -> XPASS    (exit 1)
-      - pin body raises ANY OTHER exception (parse error, missing fixture, …)
-                          -> XERROR   (exit 1) — pin infrastructure is broken,
-                             so we fail closed rather than mistake it for an
-                             expected failure.
+    - [pins] — *xfail* pins for `residual (pinned)` rows. Each asserts the
+      DESIRED behaviour; because the hole is still present the assertion fails,
+      which is expected and reported [XFAIL-OK]. The day the hole is fixed it
+      passes — reported [XPASS], non-zero exit — telling the engineer to update
+      the ledger row rather than silence the pin. (Fail-closed: any OTHER
+      exception is [XERROR], also non-zero — broken pin infrastructure must not
+      masquerade as an expected failure.)
+
+    - [fences] — positive checks for `loud-fail` rows: the hole is closed by a
+      loud failure, and the check asserts that loud failure still holds (it
+      passes now and would fail if the silent behaviour regressed).
 
     The shell gate (tools/check-soundness-ledger.sh, property 5) runs this
-    executable, asserts every pin named by a `residual (pinned)` / `open
-    (tracked)` ledger row reports XFAIL-OK, and surfaces XPASS as the distinct
-    "is the hole fixed?" alarm. *)
+    executable and asserts every pin named by a `residual (pinned)` / `open
+    (tracked)` row reports XFAIL-OK; XPASS is surfaced as the distinct "is the
+    hole fixed?" alarm. The exe exits non-zero on any XPASS / XERROR / fence
+    failure, so `dune runtest` catches them too. *)
 
 open Affinescript
 
 exception Xfail of string
 
-(* Locate test/e2e/fixtures across the run contexts we care about:
-   AFFINE_FIXTURES override (the gate sets this), the dune-test sandbox
-   (cwd = _build/default/test/xfail, fixtures at ../e2e/fixtures via the
-   source_tree dep), cwd = test/, and cwd = repo root. Fail closed if none. *)
 let fixtures_dir =
   let cands =
     (match Sys.getenv_opt "AFFINE_FIXTURES" with Some d -> [ d ] | None -> [])
@@ -56,7 +50,7 @@ let resolve_symbols prog =
   | Ok (rctx, _) -> rctx.symbols
   | Error (e, _) -> failwith ("resolve: " ^ Resolve.show_resolve_error e)
 
-(* ---- Pin: #555 / #623 — interpreter non-tail single-shot resume ----------
+(* ---- xfail pin: #555 / #623 — interpreter non-tail single-shot resume -----
    `let x = op(); x + 100` with `op() => resume(5)` should yield 105 once the
    continuation is reified; the shallow tree-walking interpreter yields 5. *)
 let test_resume_nontail_xfail () =
@@ -82,25 +76,29 @@ let test_resume_nontail_xfail () =
     raise
       (Xfail ("non-tail resume returned " ^ Value.show_value other ^ ", not 105"))
 
-(* ---- Pin: #555-stub / #624 — Lean backend drops `return` ------------------
-   The agreed remedy (#624) is to fail loud on early `return`; today
-   `codegen_lean` returns Ok and silently lowers the body to `:= ()`. *)
-let test_stub_backend_return_xfail () =
+(* ---- fence: #555-stub / #624 — Lean backend fails loud on `return` ---------
+   Fixed: `codegen_lean` now returns Error on an early `return` (the
+   fn_body_contains_return fence) instead of silently lowering to `:= ()`. This
+   positive check asserts the loud failure holds; it would fail if the silent
+   drop regressed. *)
+let test_stub_backend_return_fenced () =
   let path = fixture "stub_backend_return_dropped.affine" in
   let prog = parse path in
   let symbols = resolve_symbols prog in
   match Lean_codegen.codegen_lean prog symbols with
-  | Error _ -> () (* desired met -> XPASS: the backend now fails loud *)
+  | Error _ -> () (* desired loud failure holds *)
   | Ok _ ->
-    raise
-      (Xfail
-         "Lean_codegen.codegen_lean returned Ok; early `return` silently dropped")
+    failwith
+      "Lean_codegen.codegen_lean returned Ok on an early `return` — the #624 \
+       loud fence regressed to a silent drop"
 
 let pins =
   [ ("test_resume_nontail_xfail",
-     "#555/#623 interp non-tail resume -> 5 not 105", test_resume_nontail_xfail);
-    ("test_stub_backend_return_xfail",
-     "#555-stub/#624 Lean drops `return`", test_stub_backend_return_xfail) ]
+     "#555/#623 interp non-tail resume -> 5 not 105", test_resume_nontail_xfail) ]
+
+let fences =
+  [ ("test_stub_backend_return_fenced",
+     "#555-stub/#624 Lean fails loud on `return`", test_stub_backend_return_fenced) ]
 
 let () =
   let bad = ref false in
@@ -117,5 +115,13 @@ let () =
         bad := true;
         Printf.printf "XERROR %s -- pin infrastructure failed: %s\n" name m)
     pins;
+  List.iter
+    (fun (name, reason, body) ->
+      match try `Ok (body ()) with e -> `Err (Printexc.to_string e) with
+      | `Ok () -> Printf.printf "FENCE-OK %s -- %s\n" name reason
+      | `Err m ->
+        bad := true;
+        Printf.printf "FENCE-FAIL %s -- loud failure regressed: %s\n" name m)
+    fences;
   flush stdout;
   if !bad then exit 1 else exit 0
