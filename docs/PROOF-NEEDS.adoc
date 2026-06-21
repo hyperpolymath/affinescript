@@ -12,7 +12,9 @@ This is the single document that enumerates *what AffineScript must prove*, at
 gap between the soundness *arguments* the project relies on (prose in
 `docs/academic/proofs/`, the borrow-checker comments in `lib/borrow.ml`,
 `docs/CAPABILITY-MATRIX.adoc`) and the soundness *proofs* that are actually
-mechanized today (almost none — see <<status>>).
+mechanized today: a growing axiom-free Coq core (13 files) that pins each
+obligation on a deliberately *small model* — no full-language theorem is
+discharged yet (see <<status>>).
 
 It supersedes the previous near-empty `PROOF-NEEDS.md`, which recorded only the
 2026-03-29 template-ABI cleanup (preserved in <<history>>).
@@ -68,12 +70,18 @@ than the prose corpus suggests:
   `TypeSafety.v` is example lemmas about list length, not AffineScript. Not
   core-metatheory.
 * **`formal/`** — the directory #513 names as the mechanized-proof target now
-  **exists** (Coq/Rocq 8.18), axiom-free throughout: `K1_CodegenPreservation.v`
-  (K-1, minimal fragment) + `K1Let_CodegenPreservation.v` (K-1 grown with
-  variables/`let`/environment) + `F1_TransformerPreservation.v` (F-1, composing
-  on K-1) are mechanized; `Siblings_Stated.v` states P-2/P-3/F-3/F-4, now
-  **discharged for concrete models** in `P2_Progress.v` / `P3_BorrowSound.v` /
-  `F3_PragmaDecidable.v` / `F4_ErrorFaithful.v` (see <<outstanding>>, <<faces>>).
+  **exists** (Coq/Rocq 8.18), axiom-free throughout — **13 files, 22 `Print
+  Assumptions` closure reports**, all "Closed under the global context". Codegen
+  keystone: `K1_CodegenPreservation.v` (K-1 minimal) +
+  `K1Let_CodegenPreservation.v` (K-1 grown with variables/`let`/environment).
+  Faces front-end: `F1_TransformerPreservation.v` (F-1, composing on K-1).
+  `Siblings_Stated.v` states P-2/P-3/F-3/F-4, **discharged for concrete models**
+  in `P2_Progress.v` (first-order) + `P2_Stlc.v` (STLC with functions + the
+  substitution lemma, funext-free) / `P3_BorrowSound.v` (single-bit) +
+  `P3_BorrowGraph.v` (multi-resource loan graph) / `F3_PragmaDecidable.v` /
+  `F4_ErrorFaithful.v`. Affine/QTT layer: `QttSemiring.v` (`{0,1,ω}`) +
+  `AffineUsage.v` (`λx.x` affine, `λx. x x` not) + `QttTyping.v` (quantitative
+  typing, `usage x t = Γ x` sound). See <<outstanding>>, <<faces>>.
 * **Research tracks** (not core soundness): `docs/academic/tropical-session-types/`
   (Lean), `proposals/echo-types/EchoEncodingFaithfulness.agda`,
   `proposals/idaptik/migrated/**/*Boundary.agda` (echo-types loss-with-residue,
@@ -207,8 +215,9 @@ The work in flight changes which obligations are *load-bearing* and which are
   (<<faces>>) compose into end-to-end correctness. Rigour `XL`. Status `partial`
   (was `prose`): a Wave-0 mechanized seed — `formal/K1_CodegenPreservation.v`
   (Coq, no axioms) — proves preservation for a minimal nat/bool · add/and
-  fragment compiled to a stack machine; the real AffineScript AST + real
-  typed-WASM operational semantics remain the open obligation.
+  fragment compiled to a stack machine — `K1Let_CodegenPreservation.v` grows it
+  with de Bruijn variables, `let`, and an environment; the real AffineScript AST
+  + real typed-WASM operational semantics remain the open obligation.
 * **K-2 — Effect-soundness is *blocked*, not merely unproven.** P-6 cannot be
   honestly *stated against the current backend* because #555 drops handler arms
   on three of the codegen targets. The obligation must be split: (a) prove
@@ -216,9 +225,10 @@ The work in flight changes which obligations are *load-bearing* and which are
   prove the lowered targets refine that semantics — which (b) currently *fails*.
   This makes #555 a proof-blocking defect, not just a runtime bug.
 * **K-3 — Borrow soundness must be stated to *reject* #554.** Any mechanized P-3
-  must take the #554 program as a *negative* test (must not typecheck). Without
-  Polonius (#553) the current checker cannot; so P-3's statement should be
-  written now even though its proof waits on #553.
+  must take the #554 program as a *negative* test (must not typecheck). *Done in
+  the model:* `P3_BorrowSound.v` and `P3_BorrowGraph.v` reject the #554 witness
+  (`[OBorrow; OMove; OUseRef]`); the full-language negative test still waits on
+  Polonius (#553), which the real-checker statement needs to reject it in general.
 * **K-4 — `CAPABILITY-MATRIX.adoc` rows are latent obligations.** Every row not
   marked `enforced` (effects `partial`, refinements `declared-but-unwired`, …)
   is a place where a prose proof presumes behaviour the implementation does not
@@ -343,29 +353,37 @@ F-1 (full transformer preservation) is non-trivial rather than a formality.
 | Wave | Items | Gates
 
 | 0
-| **Done.** `formal/` stood up (Coq); **K-1 mechanized** + **grown**
-  (variables/`let`); **F-1 mechanized** (composes on K-1); and **P-2/P-3/F-3/F-4
-  mechanized** for concrete models (small-step progress+preservation; borrow
-  soundness rejecting #554; pragma locality + alias functionality; error
-  faithfulness). 11 closure reports, all axiom-free. NEXT (Wave 1): grow each
-  model toward the real language — `if`/functions/QTT in P-2, the real borrow
-  graph in P-3 — and cross-link `CAPABILITY-MATRIX.adoc` rows (K-4).
+| **Done.** `formal/` stood up (Coq); **K-1 mechanized**; **F-1 mechanized**
+  (composes on K-1); **P-2/P-3/F-3/F-4 mechanized** for concrete models
+  (small-step progress+preservation; borrow soundness rejecting #554; pragma
+  locality + alias functionality; error faithfulness). The axiom-free seed.
 | —
 
 | 1
-| Discharge solo-core P-2 (progress+preservation). Mechanize F-3/F-5 (small,
-  self-contained OCaml-property obligations; no semantics needed).
+| **Done.** Grew the models toward the real language: **P-2 → STLC with functions
+  + the substitution lemma** (`P2_Stlc.v`, funext-free); **P-3 → a multi-resource
+  borrow graph** (`P3_BorrowGraph.v`: loan edges, liveness, move-locality,
+  multi-resource #554 rejected). *Leftover:* F-5 (small, self-contained
+  `render_ty` injectivity) and the K-4 `CAPABILITY-MATRIX` cross-link.
 | Wave 0
 
 | 2
-| K-1 codegen preservation skeleton → unblocks F-1, F-2-full, F-6. Split P-6 per
-  K-2 and surface #555 as proof-blocking.
-| Wave 1; #555
+| **Done (static).** The affine/QTT layer — **`QttSemiring.v`** (`{0,1,ω}` laws +
+  occurrence homomorphism), **`AffineUsage.v`** (`λx.x` affine, `λx. x x` not),
+  **`QttTyping.v`** (quantitative typing, `usage x t = Γ x` sound). *Leftover:*
+  the *dynamic* half — a quantitative substitution lemma over `P2_Stlc.v` that
+  carries the quantity accounting through reduction.
+| Wave 1
 
 | 3
-| Extend solo-core to Duet (traits+effects: P-6, P-10) then Ensemble (P-4 full,
-  refinements P-9, borrowing P-3-full pending #553).
-| Wave 2; #553
+| **The real lift (open — the bulk of the remaining work).** Replace the toy
+  objects with the real ones: formalise the **real AffineScript AST** and the
+  **real typed-WASM operational semantics**, then re-prove K-1/F-1/F-2 against
+  them (this is what makes K-1/F-1 `XL`, and what actually resolves #601). Then
+  the still-`prose`/`absent` obligations: P-5 (inference), P-6 (effects — blocked
+  on #555/K-2), P-7 (resolution), P-8 (parser), P-10 (coherence); faces F-6/F-7;
+  full-language borrowing (P-3) pending #553.
+| Wave 2; #555; #553
 |===
 
 [#xref]
