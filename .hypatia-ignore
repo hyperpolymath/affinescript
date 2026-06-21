@@ -63,3 +63,7 @@ cicd_rules/vlang_detected:formal/P3_BorrowGraph.v
 cicd_rules/banned_language_file:formal/P3_BorrowGraph.v
 cicd_rules/vlang_detected:formal/P2_Stlc.v
 cicd_rules/banned_language_file:formal/P2_Stlc.v
+cicd_rules/vlang_detected:formal/QttSemiring.v
+cicd_rules/banned_language_file:formal/QttSemiring.v
+cicd_rules/vlang_detected:formal/AffineUsage.v
+cicd_rules/banned_language_file:formal/AffineUsage.v
