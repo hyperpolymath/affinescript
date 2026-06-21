@@ -34,7 +34,13 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - name: Create the release (idempotent)
+      - name: Create the release as a draft (idempotent)
+        # Immutable releases (enabled on this repo) forbid adding assets to a
+        # *published* release — the v0.2.0 build legs hit "HTTP 422: Cannot
+        # upload assets to an immutable release", so it shipped source-only.
+        # Fix: create the release as a DRAFT (still mutable); the build legs
+        # upload binaries into the draft and the checksums job publishes it
+        # last, sealing it atomically with all assets attached.
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -42,7 +48,7 @@ jobs:
           if gh release view "$tag" >/dev/null 2>&1; then
             echo "release $tag already exists; reusing"
           else
-            gh release create "$tag" --generate-notes --verify-tag --title "$tag"
+            gh release create "$tag" --draft --generate-notes --verify-tag --title "$tag"
           fi
   build:
     needs: prepare
@@ -75,8 +81,14 @@ jobs:
         # LSP serverInfo, ONNX producer_version).
         run: |
           v="${GITHUB_REF_NAME#v}"
-          sed -i "s/^let value = .*/let value = \"$v\"/" lib/version.ml
-          sed -i "s/^(version .*)/(version $v)/" .build/dune-project
+          # Use `sed -i.bak` (backup-suffix attached): both GNU sed (Linux) and
+          # BSD sed (macOS) accept it. Bare `sed -i "s/..."` makes BSD sed treat
+          # the script as the backup suffix and the filename as a command, dying
+          # with "extra characters at the end of l command" — which is exactly
+          # why the v0.2.0 macOS legs failed before building anything.
+          sed -i.bak "s/^let value = .*/let value = \"$v\"/" lib/version.ml
+          sed -i.bak "s/^(version .*)/(version $v)/" .build/dune-project
+          rm -f lib/version.ml.bak .build/dune-project.bak
           echo "Baked version: $v"
           grep '^let value' lib/version.ml
           grep '^(version' .build/dune-project
@@ -107,3 +119,7 @@ jobs:
           ( cd dl && sha256sum affinescript-* | sort -k2 > SHA256SUMS )
           cat dl/SHA256SUMS
           gh release upload "$tag" --repo "$GITHUB_REPOSITORY" dl/SHA256SUMS --clobber
+          # Seal the release last. Under immutable releases assets can only be
+          # added while the release is a draft, so publish only once all four
+          # assets (three binaries + SHA256SUMS) are attached.
+          gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false --latest
