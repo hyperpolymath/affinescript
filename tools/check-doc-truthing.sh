@@ -55,11 +55,14 @@ MATRIX="docs/CAPABILITY-MATRIX.adoc"
 
 # Docs that historically over-claim and MUST carry a pointer back at $MATRIX
 # (DOC-04). Each must mention CAPABILITY-MATRIX.adoc somewhere in its body.
+# Listed as extension-less stems and resolved to whichever of .adoc/.md is
+# present (.adoc preferred), so a .md<->.adoc migration (DOC-FORMAT) does not
+# break this presence check the way a hard-coded extension would.
 BANNERED_DOCS=(
-  "README.adoc"
-  "docs/architecture/BACKEND-IMPLEMENTATION.md"
-  "docs/reference/COMPILER-CAPABILITIES.md"
-  "docs/history/ALPHA-1-RELEASE-NOTES.md"
+  "README"
+  "docs/architecture/BACKEND-IMPLEMENTATION"
+  "docs/reference/COMPILER-CAPABILITIES"
+  "docs/history/ALPHA-1-RELEASE-NOTES"
 )
 
 # The machine-readable mirror (DOC-05): it follows the matrix, it does not
@@ -142,9 +145,15 @@ else
 fi
 
 # --- 2. Every over-claiming doc still points back at the matrix (DOC-04) -----
-for doc in "${BANNERED_DOCS[@]}"; do
-  if [ ! -f "$doc" ]; then
-    note "ERROR: bannered doc is missing: $doc"
+for stem in "${BANNERED_DOCS[@]}"; do
+  # Resolve the stem to whichever extension is present (.adoc preferred), so a
+  # .md<->.adoc migration does not trip the presence check.
+  doc=""
+  for ext in adoc md; do
+    if [ -f "$stem.$ext" ]; then doc="$stem.$ext"; break; fi
+  done
+  if [ -z "$doc" ]; then
+    note "ERROR: bannered doc is missing: $stem.{adoc,md}"
     note "       If it was intentionally removed, drop it from BANNERED_DOCS"
     note "       in this guard. Otherwise restore the file + its banner."
     fail=1
