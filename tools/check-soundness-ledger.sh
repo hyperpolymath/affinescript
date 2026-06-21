@@ -253,8 +253,21 @@ check_pins() {
   local pins; pins="$(pinned_row_pins)"
   [ -n "$pins" ] || { note "ERROR (property 5): no 'residual (pinned)'/'open (tracked)' rows found (fail closed)"; return 1; }
   printf '%s\n' "$pins" | grep -q '^NOPIN$' && { note "ERROR (property 5): a pinned/open row names no test_* pin (fail closed)"; return 1; }
-  dune build "$XFAIL_EXE" >/dev/null 2>&1 || { note "ERROR (property 5): cannot build ${XFAIL_EXE}"; return 1; }
-  local report; report="$(AFFINE_FIXTURES="$PWD/test/e2e/fixtures" "_build/default/${XFAIL_EXE}" 2>&1 || true)"
+  # Run the pin harness. CI builds it in the `dune build` / `dune runtest` steps
+  # before this gate, so prefer the pre-built binary and do NOT assume a bare
+  # `dune` is on PATH (in CI dune is reached via `opam exec --`, not bare). Only
+  # build if the exe is missing (e.g. a standalone local run), with whatever dune
+  # is available. Fail closed if it still isn't there.
+  local exe="_build/default/${XFAIL_EXE}"
+  if [ ! -x "$exe" ]; then
+    if command -v dune >/dev/null 2>&1; then
+      dune build "$XFAIL_EXE" >/dev/null 2>&1 || true
+    elif command -v opam >/dev/null 2>&1; then
+      opam exec -- dune build "$XFAIL_EXE" >/dev/null 2>&1 || true
+    fi
+  fi
+  [ -x "$exe" ] || { note "ERROR (property 5): pin harness ${exe} not built (run dune build first)"; return 1; }
+  local report; report="$(AFFINE_FIXTURES="$PWD/test/e2e/fixtures" "$exe" 2>&1 || true)"
   local pin r=0
   while IFS= read -r pin; do
     [ -z "$pin" ] && continue
