@@ -535,7 +535,15 @@ let gen_type_decl ctx (td : type_decl) : unit =
      and `Type::Variant` references both work. Structs and aliases are erased. *)
   match td.td_body with
   | TyEnum variants ->
+      (* The runtime preamble already declares Some/None/Ok/Err; re-emitting
+         them for a program that declares `type Option`/`type Result` (e.g.
+         stdlib/prelude.affine) redeclares the same const (SyntaxError under
+         node). Skip the preamble-provided constructors. Mirrors the Deno-ESM
+         fix (#606). *)
+      let preamble_ctors = [ "Some"; "None"; "Ok"; "Err" ] in
       List.iter (fun (vd : variant_decl) ->
+        if List.mem vd.vd_name.name preamble_ctors then ()
+        else begin
         let name = mangle vd.vd_name.name in
         let arity = List.length vd.vd_fields in
         if arity = 0 then
@@ -550,6 +558,7 @@ let gen_type_decl ctx (td : type_decl) : unit =
             (Printf.sprintf "const %s = (%s) => ({ tag: \"%s\", values: [%s] });"
                name (String.concat ", " params)
                vd.vd_name.name (String.concat ", " params))
+        end
       ) variants;
       emit ctx "\n"
   | TyStruct _ | TyAlias _ ->
