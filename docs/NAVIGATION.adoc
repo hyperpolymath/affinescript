@@ -75,6 +75,7 @@ This guide helps you navigate the AffineScript repository structure.
 * link:CAPABILITY-MATRIX.adoc[Capability Matrix] - **Live** per-component readiness (authoritative for feature readiness)
 * link:SOUNDNESS.adoc[Soundness Ledger] - **Live** test-anchored soundness-hole status (authoritative for "is it sound?"; the matrix links here). *Start here for soundness questions.*
 * link:PROOF-NEEDS.adoc[Proof-Needs Inventory] - what must be *proven* (mostly unmechanised); distinct from the soundness ledger above
+* link:INTERP-CESK-PORT.adoc[Interpreter CESK Port Plan] - engineering plan to close the #623 non-tail-resume residual (ADR-0025 M2); the one remaining silent soundness hole the ledger names
 * link:guides/TESTING-REPORT.adoc[Testing Report] - *RETIRED* (redirects to standards/TESTING.adoc + CAPABILITY-MATRIX.adoc)
 
 == Build System

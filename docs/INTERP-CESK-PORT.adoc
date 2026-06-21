@@ -1,0 +1,333 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+= Interpreter CESK Port — closing the non-tail-resume residual (#623)
+Jonathan D.A. Jewell
+:toc: left
+:toclevels: 3
+:sectnums:
+:sectnumlevels: 2
+
+This is the engineering plan to port the production tree-walking interpreter
+`lib/interp.ml` onto a *CESK abstract machine with reified, defunctionalised
+continuations*, so that `resume` re-enters the handled computation instead of
+merely returning a value. It closes the one remaining *silent* soundness hole in
+the language — the interpreter non-tail single-shot resume residual, #623 /
+link:SOUNDNESS.adoc[SOUNDNESS.adoc] row "#555 (interp, non-tail single-shot)" —
+and delivers milestone *M2* of link:decisions/0025-semantics-vm.adoc[ADR-0025]
+for the *real* interpreter surface (not only the Solo core).
+
+It is grounded in the actual compiler:
+
+* the target being ported is `lib/interp.ml` — a `Result`-monad tree-walker
+  (`eval : env -> expr -> value result`);
+* the value/error domain is `lib/value.ml` (`value`, `eval_error`,
+  `'a result = ('a, eval_error) Result.t`);
+* the *proven template* is `lib/solo_cesk.ml` — the Solo-core CESK machine that
+  already implements deep handlers + multi-shot + non-tail resume, axiom-compatible
+  with `docs/academic/formal-verification/solo-core/Soundness.idr`;
+* the governing decision is ADR-0025 (owner sign-off 2026-06-16), whose *M2* is
+  exactly "deep effect handlers + multi-shot `resume`… the loud-fail messages
+  already route here".
+
+[IMPORTANT]
+====
+This port is *interpreter-tier* work. It does **not** touch the wasm / wasm-GC /
+native backends — those cannot express reified continuations without the wasm
+exception-handling / typed-continuations proposals and correctly *loud-fail*
+today (ADR-0025; `docs/CAPABILITY-MATRIX.adoc`). The interpreter is the language's
+*reference semantics*; closing the hole here closes it where correctness is
+defined. The backends remain experimental and loud per ADR-0025.
+====
+
+== 1. The defect being closed
+
+=== 1.1 The shape
+
+`docs/SOUNDNESS.adoc` names it precisely:
+
+[source,affinescript]
+----
+// handle a `get()` effect; the handler resumes with 5
+let x = get();   // perform `get`
+x + 100          // continuation: "add 100 to whatever get() resumed with"
+----
+
+Expected: `resume(5)` re-enters the body at the bind, so `x = 5` and the `handle`
+yields `105`. Actual (tree-walker): the `handle` yields `5`. The continuation
+`x + 100` is silently dropped. This is the *one genuinely-still-silent* shape in
+the language (interpreter path only); everything else on the soundness ledger is
+`fixed` / `loud-fail` / `removed`.
+
+=== 1.2 Why the tree-walker structurally cannot fix it in place
+
+The interpreter models a performed effect as a `Result` *error* that unwinds the
+OCaml call stack to the nearest handler (`lib/interp.ml`):
+
+[source,ocaml]
+----
+(* an effect operation, when called, raises: *)
+Error (PerformEffect (op_name, args))         (* interp.ml ~1218 *)
+
+(* ExprHandle catches it after eval of the body has already returned: *)
+| ExprHandle eh ->
+  begin match eval env eh.eh_body with        (* interp.ml ~287 *)
+    | Error (PerformEffect (op_name, args)) -> (* ...select arm... *)
+----
+
+By the time `ExprHandle` sees `PerformEffect`, `eval eh.eh_body` has *already
+returned* — the OCaml frames that represented "the rest of the body after
+`get()`" (`x + 100`) have been unwound and discarded. The continuation no longer
+exists. The `resume` builtin can therefore only do one thing: return its argument
+as the value of the whole `handle` (`interp.ml ~327`):
+
+[source,ocaml]
+----
+let resume_fn = VBuiltin ("__resume__", fun resume_args ->
+  ... match resume_args with [v] -> Ok v | ...)   (* returns v; cannot re-enter *)
+----
+
+That is correct for *tail* resume (`op() => resume(...)` as the body's tail) and
+silently wrong for *non-tail* resume (a bind chain after the `perform`). The
+multi-shot case is already *fenced loud* (`interp.ml ~329`, a call-counter that
+errors on the second `resume`), because returning the argument twice is even more
+obviously wrong. The non-tail single-shot case cannot be fenced the same way:
+nothing local tells `resume` that a discarded continuation existed.
+
+The fix is not a patch to `ExprHandle`. It is a change of *evaluation strategy*:
+the continuation must be **reified as data** so it survives the `perform` and can
+be re-entered. That is a CESK machine.
+
+=== 1.3 Why not OCaml 5 native effect handlers
+
+OCaml 5's `effect`/`continuation` would express this directly. It is unavailable
+to us: the interpreter must compile under `js_of_ocaml` (the in-browser / editor
+playground path), and must build on OCaml 4.14. `js_of_ocaml`'s support for
+native effects is partial and the estate pins 4.14 for the toolchain. A
+*defunctionalised* continuation — a list of frames that is ordinary data — needs
+no runtime support at all and runs identically native and under jsoo. This is
+exactly why `lib/solo_cesk.ml` was built defunctionalised rather than in CPS over
+host closures (ADR-0025 Q1).
+
+== 2. The proven template — `lib/solo_cesk.ml`
+
+The hard part is already built and (for the Solo fragment) proof-coupled. The
+Solo-core CESK machine reifies the continuation as a `frame list` and re-installs
+it on `resume`:
+
+[source,ocaml]
+----
+(* solo_cesk.ml: perform finds the nearest handler, capturing the delimited
+   continuation up to AND INCLUDING that handler — so resume re-installs it. *)
+| Ret v, KPerform op :: k ->
+  let (captured, henv, arg_q, res_q, body, krest) = find_handler op k [] in
+  { ctrl = Eval body;
+    env  = bind v arg_q (bind (VCont captured) res_q henv);   (* k is DATA *)
+    k    = krest; cost }
+
+(* resume injects a value into the captured continuation and runs it; because
+   `kc` is data, the SAME VCont may be resumed again — multi-shot. *)
+| Ret v, KResumeArg kc :: k -> { ctrl = Ret v; env = st.env; k = kc @ k; cost }
+----
+
+`VCont of kont` makes a captured continuation a first-class value;
+`find_handler` walks the frame stack to the matching `KHandle`, returning the
+delimited slice; `kc @ k` re-enters it. This is precisely the mechanism the
+tree-walker lacks. The port's job is to bring `interp.ml`'s *full surface* up to
+this machine, not to invent the machine.
+
+== 3. The gap from `solo_cesk.ml` to `interp.ml`
+
+`solo_cesk.ml` deliberately covers only the reduced Solo core (ADR-0025 M1
+scope). The production interpreter is much larger. The port must close these
+gaps:
+
+[cols="1,3,3"]
+|===
+| Concern | `solo_cesk.ml` (M1) | `interp.ml` (port target)
+
+| Term surface
+| ~12 `term` constructors (STLC + unit + ⊗ + ⊕ + let + 3 effect nodes), de Bruijn
+| ~30 `expr` constructors + `stmt` + `block`, *named* environment, literals of
+  6 base types, records/rows, arrays, tuples, variants, match, try/catch, builtins
+
+| Value domain
+| 6-constructor `value` (`VUnit`/`VClos`/`VPair`/`VInl`/`VInr`/`VCont`)
+| `value.ml`: `VUnit`/`VBool`/`VInt`/`VFloat`/`VChar`/`VString`/`VTuple`/`VArray`/
+  `VRecord`/`VVariant`/`VClosure`/`VBuiltin`/`VRef`/`VMut`/`VOwn`
+
+| Store (S)
+| *elided* — "Solo is pure, so the (S)tore is trivial and elided until
+  effects/mutation arrive at M2"
+| **required** — `VRef`/`VMut`/`VOwn`, `StmtAssign`, `while`/`for` mutation need a
+  real heap. This is the (S) the port must add.
+
+| Errors
+| OCaml exceptions (`Stuck`/`Affine_violation`/`Unhandled_effect`)
+| `Result` + `eval_error` (`TypeMismatch`/`RuntimeError`/`PerformEffect`/…) — the
+  machine's `Stuck` maps onto `Error (RuntimeError …)`
+
+| Effect operation surface
+| `Perform (op:int, arg)` — integer-labelled, single arg
+| `PerformEffect (op:string, args:value list)` — string-labelled, multi-arg,
+  registered as builtins; `ExprHandle` arms (`HandlerOp`/`HandlerReturn`),
+  `ExprResume` keyword, `ExprTry`/catch/finally
+|===
+
+Net: the port is `solo_cesk.ml`'s machine *grown to the real value/term surface
+and given the store S*. It is M1+M2 of ADR-0025 fused onto the production
+interpreter, because the production interpreter cannot ship the M2 effect
+machine without simultaneously carrying its existing (stateful) M1 surface.
+
+== 4. The port, staged so `dune runtest` stays green at every step
+
+Each stage is independently shippable and CI-gated. The governing safety net is a
+**differential oracle**: the new machine and the existing tree-walker are run
+against the whole positive fixture corpus and must agree — until Stage M2-3, where
+they are *designed* to diverge on the non-tail fixture (the machine is right, the
+walker is wrong) and the oracle flips to asserting the machine.
+
+The new machine lands as a *new module* (`lib/cesk.ml` — the full-surface
+production CESK, distinct from `solo_cesk.ml`, the Solo-core proof oracle). The
+tree-walker stays the default until M2-4, exactly as ADR-0025 directs
+("`interp.ml` keeps serving real programs until the machine grows to supersede
+it").
+
+[cols="1,4,2"]
+|===
+| Stage | Deliverable | Gate
+
+| *M2-0*
+| Scaffold `lib/cesk.ml`: `control`/`env`/`kont`/`store`/`state` types, the
+  `value` re-used from `value.ml`, an empty `step` covering literals + `var` +
+  `let`. A `run` driver and an `eval_via_cesk : env -> expr -> value result`
+  wrapper that maps `Stuck → Error (RuntimeError …)`. Behind `--cesk` (off by
+  default). Differential oracle harness comparing `eval` vs `eval_via_cesk`.
+| `dune runtest` green; oracle green on the pure-literal fixtures.
+
+| *M2-1*
+| Port the **pure fragment** by defunctionalising every `let* x = eval … in …`
+  in `interp.ml` into a frame: `ExprIf`/`ExprBinary`/`ExprUnary`/`ExprApp`/
+  `ExprLambda`/`ExprBlock`/`ExprTuple`/`ExprRecord`/`ExprArray` + field/index/
+  match. Each interpreter recursion point becomes one `frame` constructor; each
+  `Ok v` continuation becomes a `Ret v` refocus rule. No effects, no store yet.
+| Oracle green across all *pure* fixtures (no `mut`, no `handle`).
+
+| *M2-2*
+| Add the **store (S)**: `VRef`/`VMut`/`VOwn`, a `store` (int-keyed heap),
+  `StmtAssign`, `while`/`for`, `OpRef`/`OpMutRef`/`OpDeref`. The machine state
+  becomes the full `(C,E,K,S)`. Affine/linear runtime enforcement stays *off* in
+  the interpreter port (it is ADR-0025 M4, opt-in) — parity with today's
+  interpreter is the contract here.
+| Oracle green across all *stateful* fixtures (mutation, loops, refs).
+
+| *M2-3* — **closes #623**
+| Port effects with **reified continuations**, transcribing `solo_cesk.ml`'s
+  `KHandle`/`KPerform`/`KResume*` frames and `find_handler` onto the
+  string-labelled, multi-arg, `Result`-shaped surface. `ExprHandle` installs a
+  `KHandle` boundary; the effect builtins push `KPerform`; `ExprResume` re-enters
+  the captured `VCont`. Non-tail resume now re-enters the bind chain → `105`.
+  Multi-shot now genuinely supported (the `VCont` is data) — retire the
+  `interp.ml` multi-shot loud-fence on the CESK path. `ExprTry`/catch is the
+  single-shot, non-resumable specialisation (ADR-0025 M3 folds in here).
+| The xfail pin `test_resume_nontail_xfail` flips **XFAIL→XPASS** (see §5).
+  New runtime handler fixtures (ADR-0025 notes "*zero exist today*") added and
+  green. Oracle *intentionally diverges* on `handle_resume_nontail.affine` — the
+  oracle is updated to assert the CESK value (`105`) there.
+
+| *M2-4*
+| Make `lib/cesk.ml` the **default** evaluator; keep the tree-walker one release
+  behind `--legacy-interp` as an escape; then decommission `interp.ml`'s `eval`
+  tree (or reduce it to a thin re-export). Update `bin/` entry points and the
+  jsoo build.
+| Full `dune runtest` green on the CESK path as default; jsoo build green.
+|===
+
+== 5. What flips, concretely (the ledger consequences)
+
+When Stage M2-3 lands, these change in lock-step — they are the *acceptance
+criteria*, enforced by the soundness-ledger gate (`tools/check-soundness-ledger.sh`):
+
+. `test/e2e/fixtures/handle_resume_nontail.affine` evaluates to `105`, not `5`.
+. `test/xfail/test_xfail_pins.ml`'s `test_resume_nontail_xfail` (which asserts the
+  *correct* `105` and today fails-as-expected) reports **XPASS** — the harness's
+  "unexpected pass" signal. Per the *Pinned-residual discipline* in
+  `docs/SOUNDNESS.adoc`, an XPASS is the trigger to *promote* the pin to an
+  ordinary positive regression test and retire the residual.
+. `docs/SOUNDNESS.adoc`: the row "#555 (interp, non-tail single-shot) / #623"
+  moves `residual (pinned)` → `fixed`; the *Still open* section's "the one
+  remaining residual" sentence is removed (there is then *no* silent hole on the
+  interpreter path). The `:ground-truth-sha:` stamp is refreshed.
+. `docs/SOUNDNESS.adoc`: the row "#555 (interp, multi-shot)" moves `loud-fail` →
+  `fixed`/supported on the CESK path (multi-shot is now expressible).
+. ADR-0025's *M2* is delivered for the production interpreter; `docs/ROADMAP.adoc`
+  and `docs/EFFECTS-IMPLEMENTATION.adoc` "Not Yet Complete" items 1–3 close for
+  the interpreter tier.
+
+Because the gate is content-bound (sha256 manifest) and stamp-enforced, the
+ledger edit and the test flip must be in the *same* PR — the gate fails if the
+row says `fixed` while the pin still reports XFAIL, or vice-versa. That coupling
+is deliberate: it is the anti-staleness property this whole subsystem exists for.
+
+== 6. Design notes for the capture, on the real surface
+
+* *Named environments, not de Bruijn.* `interp.ml` binds by name (`extend_env`,
+  `lookup_env`); the CESK port keeps that — frames close over the *named* `env`,
+  exactly as `solo_cesk.ml`'s frames close over a `qenv`. No de Bruijn conversion.
+* *String-labelled, multi-arg effects.* `find_handler` matches `op_name : string`
+  against `HandlerOp` arm names (today's `interp.ml ~302` logic), and binds the
+  arm's parameter patterns to `args : value list` plus the reified continuation —
+  reusing the existing `match_pattern` / `__resume__` plumbing, but with
+  `__resume__` now bound to a `VCont` (data) instead of a return-the-arg builtin.
+* *The store survives capture.* A captured `VCont` closes over the continuation
+  frames but **not** a snapshot of the store — the store is threaded through the
+  machine state, so a resumed continuation observes store writes made between
+  capture and resume (the standard, and correct, semantics for mutable state under
+  delimited control). Multi-shot resumes therefore share the heap; this matches
+  OCaml-5-effects semantics and is the behaviour the runtime handler tests must
+  pin.
+* *`Stuck` ⇒ `Error (RuntimeError …)`.* The machine's "no rule applies" cases
+  (the analogue of `solo_cesk.ml`'s `Stuck`) are surfaced as the interpreter's
+  existing `eval_error`, so callers see no new error vocabulary (F-4 faithfulness
+  is preserved).
+
+== 7. Non-goals and risks
+
+* *Non-goal: backends.* wasm/native effect lowering stays loud-fail (ADR-0025).
+  This plan does not change `docs/CAPABILITY-MATRIX.adoc`'s backend rows.
+* *Non-goal: runtime affine enforcement.* ADR-0025 M4 (affine/linear + tropical
+  cost *on by default*) is a *separate* milestone; the interpreter port keeps
+  today's "enforced statically, not dynamically" contract so it is a pure
+  semantics-preserving refactor plus the resume fix.
+* *Risk: performance.* A CESK `step` loop is slower than direct tree-walk for
+  pure code. Mitigation: the pure fragment can keep a fast in-frame refocus; and
+  per ADR-0025 the VM tier is the *semantics* tier, not the performance tier
+  (native is). Acceptable.
+* *Risk: corpus coverage.* The oracle is only as good as the fixtures. ADR-0025
+  flags that *zero* runtime handler tests exist today; M2-3 must add them
+  (single-shot tail, single-shot non-tail, multi-shot, nested/deep handlers,
+  handler-over-mutation) *before* claiming the hole closed.
+* *Risk: scope of the refactor.* Defunctionalising ~30 `expr` constructors is
+  large. It is staged (M2-0…M2-4) precisely so no single PR is unreviewable and
+  `dune runtest` is never red.
+
+== 8. Sequencing & effort
+
+[cols="1,3,1"]
+|===
+| Phase | Stages | Size
+
+| Machine + pure surface | M2-0 → M2-1 | M (multi-week)
+| State | M2-2 | S–M
+| Effects (closes #623) | M2-3 | M — the payload milestone
+| Cutover | M2-4 | S
+|===
+
+M2-3 is the milestone that retires the last silent soundness hole; M2-0…M2-2 are
+the semantics-preserving runway that makes M2-3 a localised, oracle-checked
+change rather than a big-bang rewrite. The Solo-core machine (`solo_cesk.ml`) is
+the executable reference for the effect rules; the differential oracle is the
+safety net for the surface growth.
+
+Tracked against ADR-0025 (M2), `docs/SOUNDNESS.adoc` (the #623 / non-tail row),
+and `docs/PROOF-NEEDS.adoc` (P-6 effect-row soundness, whose *blocked* status is
+on #555 — this port is the interpreter-tier half of unblocking it).

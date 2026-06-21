@@ -98,6 +98,12 @@ float-aggregate programs the wasm backend now loud-fails.
 | *(direction)* | Defunctionalise the CESK machine into a flat **bytecode VM** — the stated destination — when execution speed or a JIT-able instruction stream is wanted. Semantics-preserving by construction (Reynolds/Danvy).
 |===
 
+The *engineering plan* to execute *M2* against the production interpreter
+(`lib/interp.ml`) — staged so `dune runtest` stays green at every step, and
+closing the #623 non-tail-resume residual the soundness ledger names — is
+link:../INTERP-CESK-PORT.adoc[`docs/INTERP-CESK-PORT.adoc`]. `lib/solo_cesk.ml`
+is the M1 Solo-core machine that plan transcribes onto the full surface.
+
 == Consequences
 
 * The "use the interpreter" escape hatch the compiler *already prints* for
