@@ -79,6 +79,11 @@ cannot mistake it. Coq has no `v.mod` manifest, so `vmod_detected` never fires.
 | **P-4** (Wave 2) — affine usage over the semiring: `λx.x` affine, `λx. x x`
   not (variable totals `ω`)
 | **mechanized**, axiom-free
+
+| `QttTyping.v`
+| **P-4** (Wave 3) — quantitative typing fusing all three: the typing context
+  tracks usage, proven sound (`usage x t = Γ x`)
+| **mechanized**, axiom-free
 |===
 
 All mechanized theorems report *Closed under the global context* under `Print
@@ -139,10 +144,17 @@ The quantities `{0,1,ω}` and their algebra are what make AffineScript *affine*:
   well-formedness. Payoff: `λx.x` is affine; `λx. x x` is **not** — its variable
   totals `ω`, exceeding the affine bound. The mechanized statement of "a linear
   value may not be duplicated".
+* **`QttTyping.v`** (Wave 3 capstone) — a **quantitative type system** fusing all
+  three: `qtt Γ t A` where the usage context Γ tracks quantities (`Q_App` adds
+  `Γ₁ + Γ₂`, `Q_Lam` binds at the used multiplicity). The capstone theorem
+  `usage_soundness : qtt Γ t A → ∀x, usage x t = Γ x` proves the typing context
+  records *exactly* the QTT usage — the static quantity discipline is sound
+  against occurrence counts. Corollary: a term typed in a singleton context uses
+  that variable exactly once.
 
-The full *typed* QTT calculus — context splitting `Γ = Γ₁ + Γ₂`, progress +
-preservation tracking quantities, on top of `P2_Stlc.v` — is the next
-increment.
+The remaining step is the *dynamic* half: operational progress + preservation
+that PRESERVES the quantity accounting under reduction (a quantitative
+substitution lemma over `P2_Stlc.v`).
 
 == K-1 and its growth
 

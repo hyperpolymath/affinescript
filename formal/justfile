@@ -12,7 +12,7 @@ check:
     for f in K1_CodegenPreservation K1Let_CodegenPreservation Siblings_Stated \
              F1_TransformerPreservation F3_PragmaDecidable F4_ErrorFaithful \
              P3_BorrowSound P3_BorrowGraph P2_Progress P2_Stlc \
-             QttSemiring AffineUsage; do
+             QttSemiring AffineUsage QttTyping; do
       echo "== coqc $f.v =="
       o="$(coqc -Q . ASFormal "$f.v")"
       printf '%s\n' "$o"

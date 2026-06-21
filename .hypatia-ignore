@@ -67,3 +67,5 @@ cicd_rules/vlang_detected:formal/QttSemiring.v
 cicd_rules/banned_language_file:formal/QttSemiring.v
 cicd_rules/vlang_detected:formal/AffineUsage.v
 cicd_rules/banned_language_file:formal/AffineUsage.v
+cicd_rules/vlang_detected:formal/QttTyping.v
+cicd_rules/banned_language_file:formal/QttTyping.v
