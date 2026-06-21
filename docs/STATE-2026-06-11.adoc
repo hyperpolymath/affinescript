@@ -12,6 +12,16 @@ feature readiness; TECH-DEBT is the ledger; this document is narrative.
 Trigger for this re-emit: stage-status change (CORE-01 closed) + the
 2026-06-11 whole-picture survey findings.
 
+[IMPORTANT]
+====
+*Dated snapshot — do not read soundness status from here.* This is a narrative
+record as of 2026-06-11. Its soundness-hole claims (#554/#555/#556/#558/#559)
+described that day's state and are now *superseded*: #554 fixed, #555 fenced
+loud, #556 fixed, #558 removed, #559 fixed (concrete overlaps). The live,
+test-anchored single source of truth is link:SOUNDNESS.adoc[docs/SOUNDNESS.adoc].
+Dated snapshots are capped, not rewritten.
+====
+
 == What changed since 2026-05-26
 
 * *CORE-01 (#177) CLOSED 2026-05-30* via PR #473 after the full slice

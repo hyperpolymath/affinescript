@@ -150,8 +150,9 @@ form `@erased/@linear/@unrestricted` accepted)
 (`Quantity.check++_++program++_++quantities` runs in standard CLI
 pipeline)
 * ⚠️ *Borrow Checker:* Live gate with ongoing Phase 3 work
-* ⚠️ *Dependent / Refinement Types:* parse-only — `TRefined` AST node
-exists but predicates do not reduce
+* ❌ *Dependent / Refinement Types:* removed in v1 (#558) — withdrawn rather
+than shipped unenforced; `assume(...)` is rejected at parse. See
+link:../SOUNDNESS.adoc[docs/SOUNDNESS.adoc]
 * ✅ *WASM Codegen:* Primary backend (feature gaps remain for advanced
 effect-handler lowering)
 * ✅ *Julia Codegen:* Phase 1 (basic types)

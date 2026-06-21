@@ -31,13 +31,21 @@ link:https://github.com/hyperpolymath/nextgen-languages/blob/main/docs/disambigu
 
 [IMPORTANT]
 ====
-*Authoritative status lives in link:docs/CAPABILITY-MATRIX.adoc[docs/CAPABILITY-MATRIX.adoc].*
-Where this README's prose implies broader maturity than that matrix states,
-the matrix wins. AffineScript is *alpha*: CORE-01 (#177) closed
-2026-05-30, but one known base-language soundness hole remains
-(use-after-move via a callee-returned borrow, issue #554; Polonius
-residual #553) and effect handlers are silently mis-lowered on three
-backends (#555). The v1 release-readiness ledger is issue #563.
+*Authoritative status lives in link:docs/CAPABILITY-MATRIX.adoc[docs/CAPABILITY-MATRIX.adoc]
+(feature readiness) and link:docs/SOUNDNESS.adoc[docs/SOUNDNESS.adoc]
+(soundness-hole status — test-anchored, the single source of truth for what is
+fixed / fenced / removed / residual).* Where this README's prose implies
+broader maturity than those state, they win. AffineScript is *alpha*: CORE-01
+(#177) closed 2026-05-30, and the base-language soundness holes tracked through
+2026-06 are now fixed, fenced, or removed — use-after-move via a callee-returned
+borrow (#554) is rejected, effect handlers (#555) fail loud on every compiled
+backend rather than silently dropping arms, the async sync-fallback (#556) fails
+loud, and refinement predicates (#558) were removed rather than left unenforced.
+One pinned interpreter residual remains; see
+link:docs/SOUNDNESS.adoc[docs/SOUNDNESS.adoc] for the per-issue ledger. Closing
+these *implementation* holes is not the same as *proving* soundness — the
+metatheory is still prose (link:docs/PROOF-NEEDS.adoc[docs/PROOF-NEEDS.adoc]).
+The v1 release-readiness ledger is issue #563.
 typed-wasm is a *separate*
 language-agnostic target (`hyperpolymath/typed-wasm`), not an AffineScript
 subsystem — see link:docs/ECOSYSTEM.adoc[docs/ECOSYSTEM.adoc].
@@ -50,7 +58,7 @@ Write software where the compiler helps enforce resource lifecycles, protocol st
 
 [NOTE]
 ====
-Honest status sync (2026-04-12): affine/QTT and borrow checking are wired into the standard CLI paths today (`check`, `compile`, `eval`) and gate user programs. Dependent/refinement features are still parse-first in places, and some backend features remain incomplete, especially around effect-handler lowering in Wasm targets. See link:docs/CAPABILITY-MATRIX.adoc[docs/CAPABILITY-MATRIX.adoc] for the authoritative per-feature status (`.machine_readable/6a2/STATE.a2ml` mirrors that matrix; it does not lead).
+Honest status sync (2026-06-21): affine/QTT and borrow checking are wired into the standard CLI paths today (`check`, `compile`, `eval`) and gate user programs. Refinement/dependent-type surface was *removed* in v1 rather than left parse-only-and-unenforced (#558); effect-handler lowering on the compiled backends now *fails loud* rather than silently dropping arms (#555). See link:docs/CAPABILITY-MATRIX.adoc[docs/CAPABILITY-MATRIX.adoc] for authoritative per-feature status and link:docs/SOUNDNESS.adoc[docs/SOUNDNESS.adoc] for soundness-hole status (`.machine_readable/6a2/STATE.a2ml` mirrors the matrix; it does not lead).
 ====
 
 == What AffineScript Is

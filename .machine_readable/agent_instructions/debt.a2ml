@@ -53,7 +53,7 @@ discovered = "2026-04-11"
 
 [[debt.could]]
 component = "lib/typecheck.ml"
-issue = "Associated type substitution in method bodies and where-clause supertrait enforcement not yet implemented in traits. Coherence checking absent."
+issue = "Associated type substitution in method bodies and where-clause supertrait enforcement not yet implemented in traits. Concrete-overlap coherence checking DONE (#559, typecheck.ml check_all_coherence); generic-subsumption overlap is the follow-up. Authoritative: docs/SOUNDNESS.adoc."
 effort = "hard"
 impact = "medium"
 discovered = "2026-04-11"

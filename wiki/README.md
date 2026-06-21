@@ -12,11 +12,14 @@ algebraic effects, and a typed-WebAssembly compilation target.
 > [`docs/CAPABILITY-MATRIX.adoc`](../docs/CAPABILITY-MATRIX.adoc) for live
 > per-feature readiness and [`docs/TECH-DEBT.adoc`](../docs/TECH-DEBT.adoc)
 > for the coordination ledger. AffineScript is **alpha** today: CORE-01
-> (#177) closed 2026-05-30, but one known borrow-checker soundness hole
-> remains (#554; Polonius residual #553) and effect handlers are silently
-> mis-lowered outside the interpreter (#555) — `handle`/`resume` examples
-> in these pages run correctly **only** under `--interp` (single-shot
-> tail-resume) until #555 lands. Dated narrative:
+> (#177) closed 2026-05-30, and the base-language soundness holes tracked
+> through 2026-06 are now fixed, fenced, or removed — #554 (use-after-move
+> via a callee-returned borrow) is rejected, and effect handlers (#555) now
+> **fail loud** on every compiled backend rather than dropping arms. `handle`/
+> `resume` examples in these pages still execute only under `--interp`
+> (single-shot tail-resume); the compiled backends reject them loudly. The
+> single source of truth for soundness-hole status is the test-anchored
+> [`docs/SOUNDNESS.adoc`](../docs/SOUNDNESS.adoc). Dated narrative:
 > [`docs/STATE-2026-06-11.adoc`](../docs/STATE-2026-06-11.adoc) ·
 > v1 release-readiness ledger: #563.
 
@@ -46,7 +49,7 @@ or `parse-only` today.**
 - [Effects](language-reference/effects.md) — Algebraic effect system
 - [Traits](language-reference/traits.md) — Type classes *(currently `partial`)*
 - [Modules](language-reference/modules.md) — Module system
-- [Dependent Types](language-reference/dependent-types.md) — Indexed and refined types *(currently `parse-only`)*
+- [Dependent Types](language-reference/dependent-types.md) — Indexed and refined types *(REMOVED in v1 — #558; page is historical)*
 - [Row Polymorphism](language-reference/rows.md) — Extensible records
 
 ### Compiler
@@ -157,7 +160,7 @@ greet({name: "Bob", role: "Admin", active: true})
 
 Records + effect rows in typecheck/unify. Not fully exercised end-to-end yet.
 
-### Dependent Types *(parse-only — not enforced)*
+### Dependent Types *(REMOVED in v1 — historical; see #558 / [`docs/SOUNDNESS.adoc`](../docs/SOUNDNESS.adoc))*
 
 ```affine
 // Length-indexed vectors — SYNTAX PARSES, but predicates do not
