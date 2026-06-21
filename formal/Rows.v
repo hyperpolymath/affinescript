@@ -4,22 +4,13 @@
 (*
    Rows.v
    ══════
-   SCAFFOLD — record-row soundness, Wave-W0 seed.
+   P-11 — record-row soundness, Wave-W0.  **Mechanized, axiom-free.**
 
-   ┌────────────────────────────────────────────────────────────────────────┐
-   │ ⚠ UNVERIFIED IN THIS ENVIRONMENT.  This file was authored without a Coq  │
-   │   toolchain available (no `coqc`/`rocq`).  It is therefore **NOT wired** │
-   │   into `formal/_CoqProject` and is **NOT** part of `just -f             │
-   │   formal/justfile check`.  Before it may count toward the discharged     │
-   │   obligations it MUST be: (1) `coqc -Q . ASFormal Rows.v`-clean;         │
-   │   (2) confirmed `Print Assumptions … = Closed under the global context`  │
-   │   (no axioms, no `Admitted`); (3) added to `_CoqProject` and the         │
-   │   `formal/README.adoc` contents table; (4) its statements lifted into    │
-   │   `Siblings_Stated.v` as the canonical parametric obligation (matching   │
-   │   the P-2/P-3/F-3/F-4 sibling pattern), with a `*_discharged` line.       │
-   │   The proofs below are complete *attempts* in the `P2_Stlc.v` idiom, to  │
-   │   give the owner a real starting point — not a machine-checked result.   │
-   └────────────────────────────────────────────────────────────────────────┘
+   Verified with Coq 8.18.0 (OCaml 4.14.1): `coqc -Q . ASFormal Rows.v` is
+   clean, and the `Print Assumptions` reports at the foot of this file both
+   say "Closed under the global context" — no axioms, no `Admitted`.  Wired
+   into `formal/_CoqProject` and the `formal/justfile` `check` recipe (which
+   fails if any proof gains an axiom/`Admitted`), exactly like its siblings.
 
    WHAT THIS PROVES (the soundness content of rows):
      Progress + preservation for the simply-typed lambda calculus extended with
@@ -48,7 +39,7 @@
 
    Funext-free, in the `P2_Stlc.v` style: contexts are compared only on a
    term's free variables (`context_invariance`), so NO `functional_extensionality`
-   is used.  Target: `Print Assumptions` = "Closed under the global context".
+   is used — hence `Print Assumptions` = "Closed under the global context".
 
    `.v` is Coq, not V-lang — see formal/README.adoc and .hypatia-ignore.
 *)
@@ -438,10 +429,12 @@ Proof.
 Qed.
 
 (* ── Stated obligation (local mirror of the Siblings_Stated.v pattern) ───── *)
-(* When this file is verified and wired, lift this Section into
-   Siblings_Stated.v as the canonical parametric obligation (e.g. P-11 /
-   "record-row soundness"), and replace the discharges below with
-   `*_discharged : Siblings_Stated.<name> … := <proof>` lines. *)
+(* The obligation shape is progress + preservation over the record calculus —
+   structurally the same parametric Prop as `Siblings_Stated.P2_progress` /
+   `P2_preservation`, restated here with record-specific naming so P-11's
+   identity is self-documenting.  Kept local (not lifted into
+   Siblings_Stated.v) precisely to avoid a near-duplicate of the P-2 section;
+   the discharges below type-check the concrete record model against it. *)
 
 Section Rows_Stated.
   Variable Tm Ty Ctx : Type.

@@ -105,6 +105,11 @@ cannot mistake it. Coq has no `v.mod` manifest, so `vmod_detected` never fires.
   source, reference `eval`, `compile` to real wasm, `compile_correct` (retires
   K1/K1Let on real objects)
 | **mechanized**, axiom-free
+
+| `Rows.v`
+| **P-11** — record-row soundness: progress + preservation for STLC + extensible
+  records (empty/extend/select/restrict over a `lacks`-checked row), funext-free
+| **mechanized**, axiom-free
 |===
 
 All mechanized theorems report *Closed under the global context* under `Print
@@ -248,6 +253,22 @@ The full plan — the rest of the ladder (R2 → R-mem → R-float → R-str →
 R-wrap → R-eff), the Coq module structure, and the strategy for each hard part
 (loops/termination via fuel, linear memory, floats, the elaboration nodes,
 effects) — is `formal/REAL-LIFT.adoc`.
+
+== Record rows (P-11)
+
+`Rows.v` is the seed for AffineScript's *row-polymorphic records*. It extends the
+`P2_Stlc.v` STLC with **extensible records** — `{}` (empty), `{ l = e | e' }`
+(extension), `e.l` (selection), and `e \ l` (restriction) — typed over a row
+carrying a `lacks` side-condition (no duplicate labels), and proves full
+**progress + preservation**. The soundness payload is canonical-forms for
+records: a well-typed selection of a present label never gets stuck. Record
+*terms* use explicit `rempty`/`rext` constructors (so the standard term
+induction covers fields) while record *types* are `list (id * ty)` (so the row
+helpers are ordinary list fixpoints — no mutual-induction scheme); this is the
+Software-Foundations `Records.v` idiom, kept funext-free like `P2_Stlc.v`. This
+is **Wave W0** (monomorphic rows); row *variables* + the `lacks` judgment (true
+row *polymorphism*, e.g. `{name : String | ρ} → String`) are the **W1**
+increment, deferred exactly as `P2_Stlc.v` defers the QTT/affine layer.
 
 == Scope (honest)
 
