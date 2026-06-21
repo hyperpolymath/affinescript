@@ -61,6 +61,22 @@ Write software where the compiler helps enforce resource lifecycles, protocol st
 Honest status sync (2026-06-21): affine/QTT and borrow checking are wired into the standard CLI paths today (`check`, `compile`, `eval`) and gate user programs. Refinement/dependent-type surface was *removed* in v1 rather than left parse-only-and-unenforced (#558); effect-handler lowering on the compiled backends now *fails loud* rather than silently dropping arms (#555). See link:docs/CAPABILITY-MATRIX.adoc[docs/CAPABILITY-MATRIX.adoc] for authoritative per-feature status and link:docs/SOUNDNESS.adoc[docs/SOUNDNESS.adoc] for soundness-hole status (`.machine_readable/6a2/STATE.a2ml` mirrors the matrix; it does not lead).
 ====
 
+== Start here — by audience
+
+[cols="1,4"]
+|===
+| You are a… | Start here
+
+| **New user / learning the language**
+| link:docs/tutorial/lesson-01-hello.adoc[Tutorial (lessons 1–10)] · link:docs/guides/warmup/[runnable warm-ups] · link:wiki/language-reference/[language reference]
+
+| **Developer / compiler contributor**
+| link:docs/NAVIGATION.adoc[Repository map] · link:wiki/compiler/architecture.md[compiler architecture] · link:docs/decisions/[ADRs] · link:docs/CAPABILITY-MATRIX.adoc[capability matrix]
+
+| **Maintainer / releaser**
+| link:docs/governance/MAINTAINERS.adoc[Maintainers] · link:docs/governance/CONTRIBUTING.adoc[contributing] · link:.machine_readable/6a2/PLAYBOOK.a2ml[ops playbook] · link:docs/SOUNDNESS.adoc[soundness ledger]
+|===
+
 == What AffineScript Is
 
 AffineScript is a practical programming language for building software where the hard problems are not just “does it parse?” or “does it type-check?”, but:
