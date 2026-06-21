@@ -132,9 +132,11 @@ obligations. They are the "we might have missed" half of the brief.
 | **Borrow-graph soundness.** A well-typed program never observes a moved/aliased
   value. Must *exclude* the #554 counterexample (callee-returned borrow).
 | XL | `partial`
-| #513 must-have 2; **mechanized** for a one-resource model in
-  `formal/P3_BorrowSound.v` (sound checker rejects the #554 witness); #554 fixed
-  (SOUNDNESS.adoc), Polonius #553
+| #513 must-have 2; **mechanized** for a single-bit model
+  (`formal/P3_BorrowSound.v`) and a *multi-resource borrow graph* with loan
+  edges + liveness (`formal/P3_BorrowGraph.v`: soundness, completeness,
+  move-locality, multi-resource #554 rejected). #554 fixed (SOUNDNESS.adoc);
+  full P-3 needs `lib/borrow.ml`'s CFG + Polonius #553
 
 | P-4
 | **QTT affine usage.** Quantities `{0,1,ω}` are respected: `1`-vars used exactly

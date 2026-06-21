@@ -59,3 +59,5 @@ cicd_rules/vlang_detected:formal/P3_BorrowSound.v
 cicd_rules/banned_language_file:formal/P3_BorrowSound.v
 cicd_rules/vlang_detected:formal/P2_Progress.v
 cicd_rules/banned_language_file:formal/P2_Progress.v
+cicd_rules/vlang_detected:formal/P3_BorrowGraph.v
+cicd_rules/banned_language_file:formal/P3_BorrowGraph.v

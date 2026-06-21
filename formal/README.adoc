@@ -49,7 +49,12 @@ cannot mistake it. Coq has no `v.mod` manifest, so `vmod_detected` never fires.
 | **mechanized**, axiom-free
 
 | `P3_BorrowSound.v`
-| **P-3** — borrow soundness + the #554 witness rejected
+| **P-3** — borrow soundness + the #554 witness rejected (single-bit model)
+| **mechanized**, axiom-free
+
+| `P3_BorrowGraph.v`
+| **P-3, grown** — multi-resource borrow *graph* (loan edges + liveness);
+  soundness, completeness, move-locality, multi-resource #554 rejected
 | **mechanized**, axiom-free
 
 | `F3_PragmaDecidable.v`
@@ -83,7 +88,15 @@ the stated obligation and pin its meaning, not the full language:
 * **P-3** (`P3_BorrowSound.v`) — a one-resource borrow calculus; proves the
   precise validity checker is sound and **rejects the #554 witness**
   (`[OBorrow; OMove; OUseRef]`), matching `lib/borrow.ml`'s post-#554-fix
-  behaviour. Full P-3 needs the real borrow graph + Polonius (#553).
+  behaviour.
+* **P-3, grown** (`P3_BorrowGraph.v`) — the Wave-1 increment: a *multi-resource*
+  borrow **graph** with explicit loan edges (reference ↦ borrowed resource) and
+  per-resource liveness; a deref is valid iff its loan target is still live
+  (the Polonius-style, #553, reading). Proves soundness, completeness, and
+  **move-locality** — moving resource `b` cannot change the validity of a deref
+  borrowing some `a ≠ b` (the genuine borrow-graph property) — and rejects the
+  multi-resource #554 program. Still needs the real `lib/borrow.ml` CFG /
+  mutable borrows / aliasing for full P-3.
 * **F-3** (`F3_PragmaDecidable.v`) — the alias table is a function, and
   detection factors through the scanned region, so it cannot depend on bytes
   past the pragma.
