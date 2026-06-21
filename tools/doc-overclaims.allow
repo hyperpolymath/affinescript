@@ -11,13 +11,13 @@
 docs/ROADMAP.adoc	* Production-ready toolchain
 docs/ROADMAP.adoc	|Production ready
 docs/STATE-2026-05-26.adoc	|*Phase 3 (Q3 2026)* |Production ready |*1.0* |requires Stage E (typed-wasm contract widening — cross-repo)
-docs/architecture/BACKEND-IMPLEMENTATION.md	> *production-ready*. One reference target (WASM); Deno-ESM/Node-CJS solid;
+docs/architecture/BACKEND-IMPLEMENTATION.adoc	_code-generators exist_, not _production-ready_. One reference target
 docs/bindings-roadmap.adoc	|Production backend default; pairs with SQLite for dev.
-docs/guides/WHAT-MAKES-IT-BRILLIANT.md	**Q: When will it be production-ready?**
-docs/history/ALPHA-1-RELEASE-NOTES.md	- Production-ready
-docs/history/ALPHA-1-RELEASE-NOTES.md	- Production-ready compiler
-docs/history/PHASE3-ASSESSMENT.md	- Row polymorphism is production-ready! ✅
-docs/history/PHASE3-COMPLETE.md	- **Production-ready** type system
-docs/history/PHASE3-SESSION-SUMMARY.md	- ✅ Row polymorphism is production-ready
-docs/history/PHASE3-SESSION-SUMMARY.md	| Row Polymorphism | 100% ✅ | Production ready |
-docs/standards/ROADMAP.md	This roadmap outlines the path from current state (lexer + parser) to a complete, production-ready language.
+docs/guides/WHAT-MAKES-IT-BRILLIANT.adoc	*Q: When will it be production-ready?* A: Aiming for compiler {plus}
+docs/history/ALPHA-1-RELEASE-NOTES.adoc	* Production-ready
+docs/history/ALPHA-1-RELEASE-NOTES.adoc	* Production-ready compiler
+docs/history/PHASE3-ASSESSMENT.adoc	*Good News:* - Row polymorphism is production-ready! ✅ - Effect
+docs/history/PHASE3-COMPLETE.adoc	*Lambda scope bug fixed* (bonus!) - *Production-ready* type system
+docs/history/PHASE3-SESSION-SUMMARY.adoc	Key accomplishments: - ✅ Row polymorphism is production-ready - ✅
+docs/history/PHASE3-SESSION-SUMMARY.adoc	|Row Polymorphism |100% ✅ |Production ready
+docs/standards/ROADMAP.adoc	to a complete, production-ready language.
