@@ -70,7 +70,7 @@ than the prose corpus suggests:
   `TypeSafety.v` is example lemmas about list length, not AffineScript. Not
   core-metatheory.
 * **`formal/`** — the directory #513 names as the mechanized-proof target now
-  **exists** (Coq/Rocq 8.18), axiom-free throughout — **14 files, 23 `Print
+  **exists** (Coq/Rocq 8.18), axiom-free throughout — **16 files, 27 `Print
   Assumptions` closure reports**, all "Closed under the global context". Codegen
   keystone: `K1_CodegenPreservation.v` (K-1 minimal) +
   `K1Let_CodegenPreservation.v` (K-1 grown with variables/`let`/environment).
@@ -79,7 +79,8 @@ than the prose corpus suggests:
   in `P2_Progress.v` (first-order) + `P2_Stlc.v` (STLC with functions + the
   substitution lemma, funext-free) / `P3_BorrowSound.v` (single-bit) +
   `P3_BorrowGraph.v` (multi-resource loan graph) / `F3_PragmaDecidable.v` /
-  `F4_ErrorFaithful.v`. Affine/QTT layer: `QttSemiring.v` (`{0,1,ω}`) +
+  `F4_ErrorFaithful.v` / `F5_RenderFaithful.v` (render non-collision).
+  Affine/QTT layer: `QttSemiring.v` (`{0,1,ω}`) +
   `AffineUsage.v` (`λx.x` affine, `λx. x x` not) + `QttTyping.v` (quantitative
   typing, `usage x t = Γ x` sound) + `QttDynamic.v` (the dynamic half:
   β-reduction preserves the usage profile). See <<outstanding>>, <<faces>>.
@@ -220,8 +221,13 @@ The work in flight changes which obligations are *load-bearing* and which are
   (was `prose`): a Wave-0 mechanized seed — `formal/K1_CodegenPreservation.v`
   (Coq, no axioms) — proves preservation for a minimal nat/bool · add/and
   fragment compiled to a stack machine — `K1Let_CodegenPreservation.v` grows it
-  with de Bruijn variables, `let`, and an environment; the real AffineScript AST
-  + real typed-WASM operational semantics remain the open obligation.
+  with de Bruijn variables, `let`, and an environment. The **real lift** onto the
+  real AffineScript AST + real typed-WASM semantics is scoped in
+  `formal/REAL-LIFT.adoc` (fragment ladder R0→R-eff); its first stone is
+  **landed** — `formal/RealWasm.v` (R0) re-targets the *actual* `lib/wasm.ml`
+  `instr`/`value_type` with a stack-arity soundness theorem (checked code never
+  traps). R1 (real `RealAst`/`RealAstSem`/`RealCompile` for the int/bool/let
+  fragment) is the first real `⟦compile p⟧ = ⟦p⟧`.
 * **K-2 — Effect-soundness is *blocked*, not merely unproven.** P-6 cannot be
   honestly *stated against the current backend* because #555 drops handler arms
   on three of the codegen targets. The obligation must be split: (a) prove
@@ -302,8 +308,13 @@ cover them.
   renaming of canonical type names, and never collapses two distinct canonical
   types to one face string inside a single message (e.g. Js maps both `Unit` and
   `Option[T]` into "null"-shaped text — show this is unambiguous in context).
-| S | `absent`
-| new; `lib/face.ml` `render_ty`
+| S | `partial`
+| **mechanized** for the vocabulary model: `formal/F5_RenderFaithful.v` proves
+  every face's renaming is injective (`render_inj` — no two canonical types
+  collapse onto one string), incl. the Js/Cafe "null"/"?" overlap
+  (`js_no_collapse`, `cafe_no_collapse`, `option_never_atom`). Faithful to the
+  whole-string Unit/Bool match + canonical-inner Option rewrite; models the
+  name vocabulary, not raw OCaml strings. `lib/face.ml` `render_ty`
 
 | F-6
 | **Preview round-trip totality.** The `preview-{python,js,pseudocode,lucid,cafe}`
@@ -367,8 +378,9 @@ F-1 (full transformer preservation) is non-trivial rather than a formality.
 | **Done.** Grew the models toward the real language: **P-2 → STLC with functions
   + the substitution lemma** (`P2_Stlc.v`, funext-free); **P-3 → a multi-resource
   borrow graph** (`P3_BorrowGraph.v`: loan edges, liveness, move-locality,
-  multi-resource #554 rejected). *Leftover:* F-5 (small, self-contained
-  `render_ty` injectivity) and the K-4 `CAPABILITY-MATRIX` cross-link.
+  multi-resource #554 rejected); **F-5 → `render_ty` non-collision**
+  (`F5_RenderFaithful.v`: every face's renaming injective). *Leftover:* the K-4
+  `CAPABILITY-MATRIX` cross-link.
 | Wave 0
 
 | 2
@@ -382,13 +394,16 @@ F-1 (full transformer preservation) is non-trivial rather than a formality.
 | Wave 1
 
 | 3
-| **The real lift (open — the bulk of the remaining work).** Replace the toy
-  objects with the real ones: formalise the **real AffineScript AST** and the
-  **real typed-WASM operational semantics**, then re-prove K-1/F-1/F-2 against
-  them (this is what makes K-1/F-1 `XL`, and what actually resolves #601). Then
+| **The real lift (the bulk of the remaining work) — scoped + started.** Replace
+  the toy objects with the real ones: formalise the **real AffineScript AST** and
+  the **real typed-WASM operational semantics**, then re-prove K-1/F-1/F-2 against
+  them (this is what makes K-1/F-1 `XL`, and what actually resolves #601). Planned
+  as a strict-superset *fragment ladder* in `formal/REAL-LIFT.adoc`
+  (R0→R1→R2→R-mem→R-float→R-str→R-call→R-wrap→R-eff); **R0 landed**
+  (`formal/RealWasm.v` — real `lib/wasm.ml` IR, i32 core, arity soundness). Then
   the still-`prose`/`absent` obligations: P-5 (inference), P-6 (effects — blocked
-  on #555/K-2), P-7 (resolution), P-8 (parser), P-10 (coherence); faces F-6/F-7;
-  full-language borrowing (P-3) pending #553.
+  on #555/K-2, = rung R-eff), P-7 (resolution), P-8 (parser), P-10 (coherence);
+  faces F-6/F-7; full-language borrowing (P-3) pending #553.
 | Wave 2; #555; #553
 |===
 
