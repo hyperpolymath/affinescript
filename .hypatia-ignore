@@ -82,3 +82,5 @@ cicd_rules/banned_language_file:formal/RealWasm.v
 # not a glob, so a new .v needs its own lines).
 cicd_rules/vlang_detected:formal/Rows.v
 cicd_rules/banned_language_file:formal/Rows.v
+cicd_rules/vlang_detected:formal/RealCompile.v
+cicd_rules/banned_language_file:formal/RealCompile.v

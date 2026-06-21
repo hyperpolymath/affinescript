@@ -13,7 +13,7 @@ check:
              F1_TransformerPreservation F3_PragmaDecidable F4_ErrorFaithful \
              P3_BorrowSound P3_BorrowGraph P2_Progress P2_Stlc \
              QttSemiring AffineUsage QttTyping QttDynamic \
-             F5_RenderFaithful RealWasm; do
+             F5_RenderFaithful RealWasm RealCompile; do
       echo "== coqc $f.v =="
       o="$(coqc -Q . ASFormal "$f.v")"
       printf '%s\n' "$o"
