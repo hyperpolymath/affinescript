@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 //
 // SkillAbilities -- the ability-unlock decision co-processor, extracted from
 // src/app/player/SkillAbilities.res. The ReScript original is a registry of 34

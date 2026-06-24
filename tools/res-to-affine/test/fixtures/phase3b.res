@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MPL-2.0
 // Phase 3 slice 2 fixture: record types (-> struct) and generics.
 //   type point   = {x: int, y: int}  -> struct Point { x: Int, y: Int }
 //   type box<'a> = {value: 'a}       -> struct Box[A] { value: A }

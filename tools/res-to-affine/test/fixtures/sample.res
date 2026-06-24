@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MPL-2.0
 // Synthetic fixture exercising every Phase-1 anti-pattern. Not a real
 // ReScript program; the scanner is line-based so it doesn't care.
 

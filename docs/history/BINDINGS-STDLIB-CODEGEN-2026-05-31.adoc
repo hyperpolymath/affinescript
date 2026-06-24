@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: CC-BY-SA-4.0
 = Bindings/stdlib roadmap closeout + hex/base64 + Int-division codegen fix
 :toc:
 :date: 2026-05-31

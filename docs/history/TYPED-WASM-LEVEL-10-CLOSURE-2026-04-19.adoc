@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: CC-BY-SA-4.0
 = typed-wasm Level 10 CLI closure + three codegen bug fixes
 :toc:
 :date: 2026-04-19

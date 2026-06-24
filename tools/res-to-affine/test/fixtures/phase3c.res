@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MPL-2.0
 // Phase 3 slice 3 fixture: module-level `let <id> = <literal>` -> `const`.
 //   let answer = 42       -> const answer: Int = 42;
 //   let pi = 3.14         -> const pi: Float = 3.14;

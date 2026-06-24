@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 //
 // Diagnostics -- the device-health band classifier + registry sanity check, the
 // pure-integer core extracted from idaptik shared/src/Diagnostics.res. The

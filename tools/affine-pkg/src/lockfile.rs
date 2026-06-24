@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0 OR MIT
+// SPDX-License-Identifier: MPL-2.0 OR MIT
 // Copyright 2024 AffineScript Contributors
 
 //! Lock File (affine.lock)

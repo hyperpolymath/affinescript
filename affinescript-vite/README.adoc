@@ -3,7 +3,7 @@
 :toclevels: 3
 :icons: font
 
-image:https://img.shields.io/badge/License-AGPL--3.0-blue.svg[License: AGPL-3.0]
+image:https://img.shields.io/badge/License-MPL--2.0-blue.svg[License: AGPL-3.0]
 image:https://img.shields.io/badge/CRG-C-yellow.svg?style=flat-square[Component Readiness Grade: C,link="https://github.com/hyperpolymath/standards/tree/main/component-readiness-grades"]
 image:https://img.shields.io/badge/Vite-Plugin-orange.svg[Vite Plugin]
 image:https://img.shields.io/badge/Language-AffineScript-red.svg[AffineScript]

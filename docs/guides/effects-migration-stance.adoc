@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: CC-BY-SA-4.0
 = AffineScript: Effects Migration Stance
 :author: Jonathan D.A. Jewell (hyperpolymath)
 :revdate: 2026-05-02

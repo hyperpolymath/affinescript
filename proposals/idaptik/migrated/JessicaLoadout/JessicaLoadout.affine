@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 //
 // JessicaLoadout -- the loadout selection/validation co-processor, the pure
 // integer core extracted from src/app/player/JessicaLoadout.res. Per the

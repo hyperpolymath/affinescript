@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 //
 // SkillRank -- the player skill-rank progression co-processor, extracted from
 // src/app/player/JessicaBackground.res. The ReScript original keys the rank

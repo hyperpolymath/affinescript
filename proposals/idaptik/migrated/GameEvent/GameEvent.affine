@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 //
 // GameEvent -- the cross-component event taxonomy co-processor, the pure-integer
 // core extracted from idaptik shared/src/GameEvent.res. The ReScript original is

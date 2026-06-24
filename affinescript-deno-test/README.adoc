@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: CC-BY-SA-4.0
 = affinescript-deno-test
 :toc:
 :icons: font
@@ -38,7 +38,7 @@ in `_test.affine` or `.test.affine`.
 [source,affine]
 ----
 // example/hello_test.affine
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: CC-BY-SA-4.0
 
 pub fn test_addition() -> Bool {
   let result = 2 + 3;

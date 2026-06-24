@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 //
 // Kernel -- the resource-aware scheduler gate + domain router, the pure-integer
 // core extracted from idaptik shared/src/Kernel.res `execute`. The ReScript

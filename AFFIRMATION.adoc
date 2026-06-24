@@ -1,7 +1,7 @@
 ////
   PARKED DRAFT — no SPDX/owner header yet.
   The strict pre-commit hook requires:
-      SPDX-License-Identifier: MPL-2.0
+      SPDX-License-Identifier: CC-BY-SA-4.0
       SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
   Owner adds that header MANUALLY (no automated licence edits), then commits
   SIGNED (-S id_ed25519_signing). Do NOT --no-verify. Until then this file

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: CC-BY-SA-4.0
 // (MPL-2.0 is the automatic legal fallback until PMPL is formally recognised)
 = AffineScript — Show Me The Receipts
 :toc:

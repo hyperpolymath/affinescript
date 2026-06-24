@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 //
 // VmMulDiv -- the reversible integer multiply/divide opcodes of the idaptik VM,
 // the pure-integer core extracted from vm/lib/ocaml/{Mul,Div}.res. Per the

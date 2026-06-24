@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 //
 // VmControl -- the control-flow opcodes IF_POS/IF_ZERO/LOOP of the idaptik VM,
 // the pure-integer core from vm/lib/ocaml/{IfPos,IfZero,Loop}.res. The branch

@@ -1,5 +1,5 @@
 # Proof Status — {{PROJECT}}
-<!-- SPDX-License-Identifier: MPL-2.0 -->
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
 <!-- Template: rsr-template-repo/PROOF-STATUS.md -->
 <!-- Tracks proof completion. Requirements defined in PROOF-NEEDS.md -->
 

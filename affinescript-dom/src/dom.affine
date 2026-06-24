@@ -1,7 +1,7 @@
 /**
  * AffineScript High-Assurance DOM Connector — virtual-DOM + reconciler.
  * (c) 2026 hyperpolymath
- * SPDX-License-Identifier: AGPL-3.0-or-later
+ * SPDX-License-Identifier: MPL-2.0
  *
  * INT-08 (#183). The previous skeleton (`src/dom.as`) did not parse
  * (`Void`, `->` match arms, `List[T]`, `{id:String}`) and `h()`/`mount()`

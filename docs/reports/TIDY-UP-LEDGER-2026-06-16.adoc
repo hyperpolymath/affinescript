@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: CC-BY-SA-4.0
 // SPDX-FileCopyrightText: 2026 hyperpolymath (Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>)
 = AffineScript Repo Tidy-Up Ledger — 2026-06-16
 :toc:
@@ -31,7 +31,7 @@ not re-discover them cold.
 +
 [source]
 ----
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: CC-BY-SA-4.0
 // SPDX-FileCopyrightText: <year(s)> hyperpolymath (Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>)
 ----
 . `git rm` the `.md`, `git add` the `.adoc`, commit signed (`-S`).

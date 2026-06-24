@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0 OR MIT
+// SPDX-License-Identifier: MPL-2.0 OR MIT
 // AffineScript Documentation Search
 
 (function() {

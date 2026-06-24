@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MPL-2.0
 // Synthetic fixture for the two anti-patterns that were explicitly
 // deferred from Phase 1 entirely because they need real AST:
 //   1. inline-callback-record — 3+ inline function values in a single

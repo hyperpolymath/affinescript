@@ -1,4 +1,4 @@
-<!-- SPDX-License-Identifier: MPL-2.0 -->
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
 <!-- Copyright (c) {{CURRENT_YEAR}} hyperpolymath (hyperpolymath) <j.d.a.jewell@open.ac.uk> -->
 <!-- Authoritative source: docs/AI-CONVENTIONS.md -->
 

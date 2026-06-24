@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: CC-BY-SA-4.0
 = INT-02 loader-bridge acceptance harness (#179)
 
 Proves the host-agnostic loader (`packages/affine-js/loader.js`) on

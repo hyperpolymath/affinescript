@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: CC-BY-SA-4.0
 = affine-parity -- a generic differential-parity harness runner for AffineScript wasm
 :toc: macro
 :toclevels: 2

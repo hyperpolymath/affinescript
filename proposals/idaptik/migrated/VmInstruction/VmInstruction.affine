@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 //
 // VmInstruction -- the instruction-set taxonomy of the idaptik reversible VM,
 // the pure-integer core behind vm/lib/ocaml/Instruction.res. The ReScript
