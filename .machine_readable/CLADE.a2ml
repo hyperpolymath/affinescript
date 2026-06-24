@@ -36,3 +36,24 @@ headline-feature = "affine-types-with-javascript-ergonomics"
 
 [thesis]
 one-sentence = "AffineScript is JavaScript-ergonomic correctness: the developer experience of the -script family raised to a higher correctness floor through affine types, compiling to Typed WASM."
+
+# Lifecycle status (added by clade-status-backfill; see gv-clade-index ADR 0006).
+# Identity (uuid) and status are SEPARATE layers: uuid is immortal; phase is a
+# mutable pointer. No phase is terminal (extinct -> active is a legal "Gitassic
+# Park" transition on the same uuid). A rename is NOT a phase change — the old
+# prefixed-name goes to aliases[], uuid and phase are untouched.
+[status]
+# One of: reserved incubating active dormant | merged superseded archived extinct
+phase = "active"
+since = "2025-09-12"
+present = true
+aliases = []
+merged-into = ""
+superseded-by = ""
+successors = []
+ended = ""
+
+[[status.history]]
+phase = "active"
+since = "2025-09-12"
+note = "backfilled default — correct if the true phase differs"
