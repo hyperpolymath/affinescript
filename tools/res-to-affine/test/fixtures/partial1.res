@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MPL-2.0
 // #488 partial-port fixture: module-top-level functions -> `fn` skeletons
 // with switch->match, pipe desugaring, if/else, blocks, array/record literals,
 // and best-effort expression translation. Output is NOT expected to

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 //
 // DeviceType -- the device-type taxonomy co-processor, the pure-integer core
 // extracted from idaptik shared/src/DeviceType.res. Per the DESIGN-VISION

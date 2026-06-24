@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 //
 // Maths -- the pure-integer math utilities of the idaptik engine, the brain
 // extracted from src/engine/utils/Maths.res. The ReScript original is Float

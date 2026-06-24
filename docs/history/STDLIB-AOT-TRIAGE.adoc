@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: CC-BY-SA-4.0
 // SPDX-FileCopyrightText: 2024-2026 hyperpolymath (Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>)
 = Stdlib AOT triage — ++#++135 punch list
 

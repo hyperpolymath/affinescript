@@ -1,4 +1,4 @@
-<!-- SPDX-License-Identifier: MPL-2.0 -->
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
 <!-- SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell -->
 
 # `res-to-affine` — Phase-1 corpus run (2026-05-21)

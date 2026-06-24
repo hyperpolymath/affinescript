@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 //
 // PortNames -- the coprocessor-domain port taxonomy co-processor, the
 // pure-integer core behind public/assets/wasm/portnames.wasm that

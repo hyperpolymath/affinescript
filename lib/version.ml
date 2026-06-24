@@ -1,4 +1,4 @@
-(* SPDX-License-Identifier: MIT OR AGPL-3.0-or-later *)
+(* SPDX-License-Identifier: MPL-2.0 OR AGPL-3.0-or-later *)
 (* Single source of truth for the compiler version string.
  *
  * Replaces the five hardcoded "0.1.0" sites that used to drift behind

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT OR AGPL-3.0-or-later
+// SPDX-License-Identifier: MPL-2.0 OR AGPL-3.0-or-later
 // SPDX-FileCopyrightText: 2026 hyperpolymath
 //
 // #255 regression: while + for-count len + index.

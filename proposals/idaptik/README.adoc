@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: CC-BY-SA-4.0
 // SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 = Proposal: idaptik coprocessor migration — two worked, verified ports + one honest non-port
 :toc: macro
@@ -74,7 +74,7 @@ sandbox; the explicit "next byte is `/` (47)" check keeps it out.
 
 [source,affine]
 ----
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: CC-BY-SA-4.0
 //
 // Kernel_IO.affine -- pure-integer device sandbox check, re-decomposed from
 // shared/src/Kernel_IO.res. The .res decoded ASCII bytes to a String then used

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 //
 // Kernel_Compute -- the compute-domain scheduler gate, the pure-integer core
 // extracted from idaptik shared/src/Kernel_Compute.res `handleCompute`. The

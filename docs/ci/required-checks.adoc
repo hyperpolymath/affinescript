@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: CC-BY-SA-4.0
 = Required status checks: the "Expected — Waiting" trap
 :toc: macro
 :icons: font

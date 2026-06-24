@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 //
 // Random -- the deterministic seeded-PRNG brain of the idaptik engine, the pure
 // i32 core extracted from src/engine/utils/Random.res (xmur3 seed hash +

@@ -1,5 +1,5 @@
 = Formal Verification Proofs
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: CC-BY-SA-4.0
 
 This directory contains formal proofs organised by proof assistant.
 

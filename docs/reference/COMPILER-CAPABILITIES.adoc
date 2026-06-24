@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: CC-BY-SA-4.0
 // SPDX-FileCopyrightText: 2024-2026 hyperpolymath (Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>)
 = AffineScript Compiler Capabilities Analysis
 
@@ -437,5 +437,5 @@ Implementation will proceed through Alpha-2, Beta, and 1.0 releases.
 browsers. For future-proof design, plan for native and GPU backends
 coming in later releases.
 
-SPDX-License-Identifier: MPL-2.0 SPDX-FileCopyrightText: 2026 Jonathan
+SPDX-License-Identifier: CC-BY-SA-4.0 SPDX-FileCopyrightText: 2026 Jonathan
 D.A. Jewell

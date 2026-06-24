@@ -1,5 +1,5 @@
 # Proof Requirements — {{PROJECT}}
-<!-- SPDX-License-Identifier: MPL-2.0 -->
+<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
 <!-- Template: rsr-template-repo/PROOF-NEEDS.md -->
 <!-- Authoritative master list: ~/Desktop/PROOF-REQUIREMENTS-MASTER.md -->
 

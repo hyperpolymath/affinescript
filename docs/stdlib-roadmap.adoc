@@ -510,4 +510,4 @@ the *same* PR that lands the change; do not let the table drift.
 
 == License
 
-SPDX-License-Identifier: MPL-2.0
+SPDX-License-Identifier: CC-BY-SA-4.0

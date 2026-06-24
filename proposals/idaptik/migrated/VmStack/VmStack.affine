@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 //
 // VmStack -- the stack opcodes PUSH/POP of the idaptik VM, the pure-integer core
 // from vm/lib/ocaml/{Push,Pop}.res. The stack (slots `_s:N`, pointer `_sp`)

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-License-Identifier: MPL-2.0
 //
 // PuzzleFormat -- the puzzle difficulty/tier taxonomy co-processor, the
 // pure-integer core extracted from idaptik shared/src/PuzzleFormat.res (the

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MPL-2.0
 // Synthetic fixture for Phase 3 slice 1: structural type-declaration
 // translation. The first three type declarations are fully structural
 // and #228-independent, so the walker's --translate path renders them

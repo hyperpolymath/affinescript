@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: MPL-2.0
 // Tree-sitter grammar for AffineScript
 
 module.exports = grammar({

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: CC-BY-SA-4.0
 // SPDX-FileCopyrightText: 2026 hyperpolymath (Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>)
 = AffineScript Soundness Work — Handoff for the Next Session (2026-06-17)
 :toc:
@@ -77,7 +77,7 @@ full table.)
 this repo (MPL branch) it checks every *staged* file matching
 `\.(zig|ex|idr|eph|py|js|ts|rs|c|h|adoc|md)$` (diff-filter ACM) for BOTH:
 
-* `SPDX-License-Identifier: MPL-2.0`, AND
+* `SPDX-License-Identifier: CC-BY-SA-4.0`, AND
 * the literal owner string `Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>`.
 
 Consequences you must internalise:
@@ -89,7 +89,7 @@ Consequences you must internalise:
 +
 [source]
 ----
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: CC-BY-SA-4.0
 // SPDX-FileCopyrightText: <year(s)> hyperpolymath (Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>)
 ----
 * `.claude/CLAUDE.md` is tracked but has **no header**, so you cannot commit an
