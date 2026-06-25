@@ -52,6 +52,10 @@ jobs:
           fi
   build:
     needs: prepare
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     strategy:
       fail-fast: false
       matrix:
@@ -98,6 +102,10 @@ jobs:
         run: |
           install -m 0755 _build/default/bin/main.exe \
             "affinescript-${{ matrix.target }}"
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with:
+          subject-path: 'affinescript-${{ matrix.target }}'
       - name: Upload the binary to the release
         env:
           GH_TOKEN: ${{ github.token }}
