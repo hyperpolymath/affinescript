@@ -23,6 +23,7 @@ on:
       - 'affine-vscode-v*'
 permissions:
   contents: read
+  id-token: write # npm provenance via GitHub OIDC
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -54,7 +55,7 @@ jobs:
           echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > "${HOME}/.npmrc"
       - name: Publish to npm
         working-directory: packages/affine-vscode
-        run: npm publish --access public
+        run: npm publish --provenance --access public
       - name: Clean up npm auth
         if: always()
         run: rm -f "${HOME}/.npmrc"
