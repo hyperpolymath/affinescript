@@ -188,9 +188,17 @@ next. The rung names are stable references the `PROOF-NEEDS.adoc` rows will cite
   and its lowering's `cexec` ends with an **empty value stack** (the unit tail) —
   a theorem — versus the expression tail, which keeps its value on the stack.
 
-| **R-mem**
-| Linear memory: load/store family, `MemorySize/Grow`, a byte-addressed memory
-  model; `ExprTuple`/`ExprArray`/`ExprRecord` + indexing/field access.
+| **R-mem** ⏳ (kernel landed)
+| Linear memory. **Done (`RealMem.v`):** `I32Load`/`I32Store` added to the real
+  `instr` (zero blast radius); a **word-addressed** memory (`mem := list Z`, cell
+  = i32) with a structural memory executor `mexec` (straight-line ⇒ no fuel) +
+  `mexec_app`; a bump allocator (`base = current size`); and the heap round-trips
+  — store→load (`mexec_store_then_load`) and a 2-cell **tuple build+project**
+  (`mexec_pair_build_proj`: `field i at base+i`, both projections) — reusing
+  `set_nth`'s get-after-set. **Remaining:** `MemorySize`/`Grow` as a runtime
+  allocator instruction, byte-granular layout, control-bearing field
+  expressions (combine `mexec` with the R2-loops `cexec`), and the full source
+  `ExprTuple`/`ExprArray`/`ExprRecord` + indexing/field-access compile-correctness.
 | Heap layout — the precondition for strings and the "cell" elaboration nodes.
 
 | **R-float**
@@ -324,8 +332,16 @@ already has the front-end scaffolding (`F1_TransformerPreservation.v`,
   terminating `while` lowered to `Block[Loop[…;BrIf 1;…;Br 0]]` simulates the
   reference run, ending with an **empty value stack** — the unit/statement tail,
   settling **#601** concretely. Axiom-free; 19 files / 33 closure reports.
-* Next: **R-mem** — linear memory (load/store, byte model) for tuples/arrays/
-  records; then R-float / R-str / R-call per the ladder. (`for`/`break`/
-  `continue` and a general source-divergence model reuse the R2-loops `cexec`.)
+* **R-mem kernel landed** — `RealWasm.v` grown with `I32Load`/`I32Store` (zero
+  blast radius). `RealMem.v` gives a word-addressed memory (`mem := list Z`), a
+  *structural* memory executor `mexec` (straight-line ⇒ no fuel) + `mexec_app`, a
+  bump allocator, and the heap round-trips: store→load (`mexec_store_then_load`)
+  and the 2-cell tuple build+project (`mexec_pair_build_proj`, `field i at
+  base+i`), reusing `set_nth`'s get-after-set. Axiom-free; 20 files / 35 closure
+  reports. **Remaining R-mem:** runtime `MemorySize`/`Grow`, byte layout,
+  control-bearing fields (fuse `mexec` with `cexec`), full source
+  tuple/array/record compile-correctness.
+* Next: finish R-mem (above), then **R-float** / **R-str** / **R-call** per the
+  ladder.
 
 Tracked against `docs/PROOF-NEEDS.adoc` §6 Wave 3 and #513.

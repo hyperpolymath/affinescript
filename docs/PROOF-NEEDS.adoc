@@ -12,7 +12,7 @@ This is the single document that enumerates *what AffineScript must prove*, at
 gap between the soundness *arguments* the project relies on (prose in
 `docs/academic/proofs/`, the borrow-checker comments in `lib/borrow.ml`,
 `docs/CAPABILITY-MATRIX.adoc`) and the soundness *proofs* that are actually
-mechanized today: a growing axiom-free Coq core (19 files) that pins each
+mechanized today: a growing axiom-free Coq core (20 files) that pins each
 obligation on a deliberately *small model* — no full-language theorem is
 discharged yet (see <<status>>).
 
@@ -70,7 +70,7 @@ than the prose corpus suggests:
   `TypeSafety.v` is example lemmas about list length, not AffineScript. Not
   core-metatheory.
 * **`formal/`** — the directory #513 names as the mechanized-proof target now
-  **exists** (Coq/Rocq 8.18), axiom-free throughout — **19 files, 33 `Print
+  **exists** (Coq/Rocq 8.18), axiom-free throughout — **20 files, 35 `Print
   Assumptions` closure reports**, all "Closed under the global context". Codegen
   keystone: `K1_CodegenPreservation.v` (K-1 minimal) +
   `K1Let_CodegenPreservation.v` (K-1 grown with variables/`let`/environment).
@@ -90,7 +90,11 @@ than the prose corpus suggests:
   branch-aware executor `cexec` over backward jumps, a source `while`/`seq`/`set`
   statement language, and `compile_stmt_correct` — the lowered terminating
   `while` simulates the reference run, settling the #601 value-returning-tail
-  question concretely: the statement tail leaves an empty value stack).
+  question concretely: the statement tail leaves an empty value stack) +
+  `RealMem.v` (R-mem: word-addressed linear memory with `I32Load`/`I32Store`, a
+  structural memory executor `mexec`, a bump allocator, and the store→load /
+  2-cell tuple-layout round-trips — `field i at base+i` proved via `set_nth`'s
+  get-after-set; the heap precondition for arrays/records/strings/floats).
   Record rows: `Rows.v` (P-11 — progress + preservation for extensible records).
   See <<outstanding>>, <<faces>>.
 * **Research tracks** (not core soundness): `docs/academic/tropical-session-types/`
