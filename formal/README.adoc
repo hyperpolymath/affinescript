@@ -96,14 +96,15 @@ cannot mistake it. Coq has no `v.mod` manifest, so `vmod_detected` never fires.
 | **mechanized**, axiom-free
 
 | `RealWasm.v`
-| **Real lift R0+R1** (`REAL-LIFT.adoc`) — the real `lib/wasm.ml` IR: i32 core +
-  locals (`LocalGet`/`LocalSet`) + comparisons; `wexec`, `wexec_sound`
+| **Real lift R0+R1+R2** (`REAL-LIFT.adoc`) — the real `lib/wasm.ml` IR: i32 core
+  + locals + comparisons + structured control (`IfElse`); fuel-indexed `wexec`
+  with monotonicity (`wexec_mono`) + additive sequencing (`wexec_app_some`)
 | **mechanized**, axiom-free
 
 | `RealCompile.v`
-| **Real lift R1** — the first *real* `⟦compile p⟧ = ⟦p⟧`: resolved int/bool/`let`
-  source, reference `eval`, `compile` to real wasm, `compile_correct` (retires
-  K1/K1Let on real objects)
+| **Real lift R1+R2** — the first *real* `⟦compile p⟧ = ⟦p⟧`: resolved
+  int/bool/`let`/binop/**if** source, reference `eval`, `compile` to real wasm,
+  `compile_correct` (retires K1/K1Let on real objects)
 | **mechanized**, axiom-free
 
 | `Rows.v`
@@ -231,28 +232,33 @@ the same canonical AST emit identical code). The observational version for the
 trailing-statement/tail split is mechanized separately in
 `invariant-path/proofs/SameCube.agda` (F-2).
 
-== The real lift (R0 → R1)
+== The real lift (R0 → R2)
 
 The *real lift* replaces the toy stack machine with the actual `lib/wasm.ml` IR
 and the toy source with the real (resolved) AST, climbing a strict-superset
-fragment ladder. Two rungs are down:
+fragment ladder. Three rungs are down:
 
 * **R0** (`RealWasm.v`) — the pure i32 numeric core (real `instr` / `value_type`
-  names), a stack-machine `wexec`, an arity checker `wcheck`, and `wexec_sound`:
-  arity-checked, local-free code never gets stuck.
+  names) and a stack-machine `wexec`.
 * **R1** (`RealWasm.v` grown with **locals** + comparisons; `RealCompile.v`) —
   the **first real `⟦compile p⟧ = ⟦p⟧`**. The source is the resolved
   (de Bruijn-level) int/bool/`let`/binary core of `lib/ast.ml`; `eval` is the
   reference semantics; `compile` lowers `let` to `LocalSet` into a pre-sized
   locals array. `compile_correct` carries an env↔locals *agreement* invariant
-  with fresh-slot allocation and low-slot preservation through the induction;
-  `compile_program_correct` runs a closed program from the zero-initialised
-  array. This **retires `K1`/`K1Let` on real objects**.
+  with fresh-slot allocation and low-slot preservation through the induction.
+  This **retires `K1`/`K1Let` on real objects**.
+* **R2** (`RealWasm.v` grown with structured control `IfElse`; `RealCompile.v`
+  grown with `RIf`) — conditionals. Because `instr` now nests `list instr`, the
+  structural `wexec` is rejected by the guard checker, so `wexec` is now
+  **fuel-indexed**; the clean `wexec_seq` is replaced by `wexec_mono`
+  (more fuel never loses a result) + `wexec_app_some` (additive sequencing). The
+  preservation theorem is stated **existentially in the fuel**; the branch taken
+  by `if` is run with monotonically-padded fuel.
 
-The full plan — the rest of the ladder (R2 → R-mem → R-float → R-str → R-call →
-R-wrap → R-eff), the Coq module structure, and the strategy for each hard part
-(loops/termination via fuel, linear memory, floats, the elaboration nodes,
-effects) — is `formal/REAL-LIFT.adoc`.
+The full plan — the rest of the ladder (R2-loops → R-mem → R-float → R-str →
+R-call → R-wrap → R-eff), the Coq module structure, and the strategy for each
+hard part (backward jumps `Loop`/`Br` reuse the fuel device; linear memory,
+floats, the elaboration nodes, effects) — is `formal/REAL-LIFT.adoc`.
 
 == Record rows (P-11)
 
@@ -276,8 +282,8 @@ These are Wave-0/1 seeds, not the discharged obligations. The fragments are
 deliberately small; the full theorems need the real AffineScript AST and the
 real typed-WASM operational semantics, expanded the way solo-core's
 Duet/Ensemble tracks expand Solo. That expansion has **begun** — see the real
-lift above (`RealWasm.v`, R0) and the plan in `formal/REAL-LIFT.adoc`. Tracked
-in `docs/PROOF-NEEDS.adoc` and #513.
+lift above (`RealWasm.v` / `RealCompile.v`, R0→R2) and the plan in
+`formal/REAL-LIFT.adoc`. Tracked in `docs/PROOF-NEEDS.adoc` and #513.
 
 == Checking
 
