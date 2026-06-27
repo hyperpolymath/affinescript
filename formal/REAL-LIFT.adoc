@@ -169,18 +169,24 @@ next. The rung names are stable references the `PROOF-NEEDS.adoc` rows will cite
   fold in with R2/R-wrap.)
 | **Subsumes K1 and K1Let on real objects.**
 
-| **R2** ✅ (conditionals)
-| Structured control. **Done:** the `IfElse` instruction (lib/wasm.ml's `If`) +
-  `RIf` source (`ExprIf`), value-returning. Because `instr` now nests
-  `list instr`, the structural `wexec` is guard-rejected, so `wexec` became
-  **fuel-indexed** (`wexec_mono` + `wexec_app_some` replace the clean
-  `wexec_seq`; the theorem is existential in the fuel). **Remaining (R2-loops):**
-  `Loop`/`Br`/`BrIf` + `while`/`for`/`break`/`continue` — backward jumps reuse
-  the same fuel device, plus a source divergence model.
-| Closed the toy K-1's "`if`/control is the next increment" gap. The remaining
-  value-returning-tail story lets **F-2** (#601) be settled *concretely*: the
-  statement-tail vs expression-tail lowerings become two real `instr` sequences
-  whose `wexec` agreement (unit) / divergence (value-returning) is a theorem.
+| **R2** ✅ (conditionals + loops)
+| Structured control. **Done (conditionals):** the `IfElse` instruction
+  (lib/wasm.ml's `If`) + `RIf` source (`ExprIf`), value-returning. Because
+  `instr` now nests `list instr`, the structural `wexec` is guard-rejected, so
+  `wexec` became **fuel-indexed** (`wexec_mono` + `wexec_app_some` replace the
+  clean `wexec_seq`; the theorem is existential in the fuel). **Done (R2-loops,
+  `RealLoop.v`):** the `Block`/`Loop`/`Br`/`BrIf` instructions + a *branch-aware*
+  executor `cexec` (outcome = Normal / Branch k / Trap) that handles the
+  backward jump (a `Loop` consumed by `Br 0` re-enters, reusing the same fuel
+  device), the R2 expression compiler lifted into it (`cexec_compile`), a source
+  `while`/`seq`/`set` statement language, and `compile_stmt_correct` — a
+  terminating `while`'s lowering (`Block[Loop[…;BrIf 1;…;Br 0]]`) simulates the
+  reference `run_stmt`. (`for`/`break`/`continue` reuse the same machinery; an
+  RLet-scratch / general source divergence model is the residual.)
+| Closed the toy K-1's "`if`/control is the next increment" gap, then the loop
+  gap. **F-2** (#601) is now settled *concretely*: a `while` is a *statement*,
+  and its lowering's `cexec` ends with an **empty value stack** (the unit tail) —
+  a theorem — versus the expression tail, which keeps its value on the stack.
 
 | **R-mem**
 | Linear memory: load/store family, `MemorySize/Grow`, a byte-addressed memory
@@ -222,14 +228,25 @@ proven against).
 
 == 5. Hard parts and the strategy for each
 
-* **Nested control & termination — DONE for conditionals (R2).** Because `instr`
-  nests `list instr` (the `IfElse` branches), even *forward* structured control
-  defeats Coq's structural guard checker — so `wexec` is already **fuel-indexed**
-  as of R2 (`wexec : nat → …`), with the standard monotonicity lemma
-  (`wexec_mono`: more fuel never changes a `Some` result) and an additive
-  sequencing lemma (`wexec_app_some`) replacing the structural `wexec_seq`;
-  preservation is stated existentially in the fuel. Backward jumps (`Loop`/`Br`,
-  and the source `while`/`for`) reuse the very same device — that is R2-loops.
+* **Nested control & termination — DONE for conditionals *and* loops (R2 +
+  R2-loops).** Because `instr` nests `list instr` (the `IfElse`/`Block`/`Loop`
+  branches), even *forward* structured control defeats Coq's structural guard
+  checker — so `wexec` is **fuel-indexed** as of R2 (`wexec : nat → …`), with the
+  standard monotonicity lemma (`wexec_mono`) and additive sequencing
+  (`wexec_app_some`) replacing the structural `wexec_seq`; preservation is
+  existential in the fuel. Backward jumps (`Loop`/`Br`, and the source
+  `while`/`for`) reuse the very same device — that is R2-loops (`RealLoop.v`),
+  **done**: a `Loop` consumed by `Br 0` recurses with decremented fuel, so the
+  loop stays a structural `Fixpoint`. Because the R2 `wexec` returns
+  `option (locals×stack)` and so cannot express "branched to label k", R2-loops
+  introduces a branch-aware `cexec` (outcome = `ONormal`/`OBranch k`/`OTrap`)
+  with its own `cexec_mono` + `cexec_app_normal`; the R2 expression compiler is
+  re-proved into it (`cexec_compile`), and `compile_stmt_correct` shows a
+  terminating source `while` simulates its `Block[Loop[…]]` lowering. The
+  guard-checker also rejects a *mutual* `instr`/`list instr` "branch-free"
+  predicate (list recursion only decreases on the spine), which is why the
+  bridge is the direct `cexec_compile` re-proof rather than a `wexec`→`cexec`
+  lift over a `branchfree` flag.
 * **Linear memory.** Model memory as `Z → byte` (or a finite map) + a bound;
   load/store mirror `lib/wasm.ml`'s align/offset. The allocator
   (`runtime/src/alloc.rs`) is modelled abstractly (a bump pointer in a global) —
@@ -297,7 +314,18 @@ already has the front-end scaffolding (`F1_TransformerPreservation.v`,
   in the fuel. (The R1 arity lemma `wexec_sound`/`wcheck` was retired in the fuel
   refactor; it can be restated over fuel later, but is not load-bearing —
   `compile_correct` is.) Axiom-free.
-* Next: **R2-loops** — `Loop`/`Br` + source `while`/`for` on the same fuel
-  device; this is the rung that settles #601 concretely.
+* **R2-loops landed** — `RealWasm.v` grown with `Block`/`Loop`/`Br`/`BrIf`
+  (faithful lib/wasm.ml structured control), zero blast radius on the proven
+  `wexec`. `RealLoop.v` adds the branch-aware executor `cexec` (outcome
+  `ONormal`/`OBranch k`/`OTrap`; a `Br 0` to a `Loop` re-enters via decremented
+  fuel) with `cexec_mono` + `cexec_app_normal`, lifts the R2 expression compiler
+  into it (`cexec_compile`), defines a source `while`/`seq`/`set` statement
+  language (`run_stmt`/`compile_stmt`), and proves `compile_stmt_correct`: a
+  terminating `while` lowered to `Block[Loop[…;BrIf 1;…;Br 0]]` simulates the
+  reference run, ending with an **empty value stack** — the unit/statement tail,
+  settling **#601** concretely. Axiom-free; 19 files / 33 closure reports.
+* Next: **R-mem** — linear memory (load/store, byte model) for tuples/arrays/
+  records; then R-float / R-str / R-call per the ladder. (`for`/`break`/
+  `continue` and a general source-divergence model reuse the R2-loops `cexec`.)
 
 Tracked against `docs/PROOF-NEEDS.adoc` §6 Wave 3 and #513.

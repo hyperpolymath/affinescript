@@ -107,6 +107,13 @@ cannot mistake it. Coq has no `v.mod` manifest, so `vmod_detected` never fires.
   `compile_correct` (retires K1/K1Let on real objects)
 | **mechanized**, axiom-free
 
+| `RealLoop.v`
+| **Real lift R2-loops** — `Block`/`Loop`/`Br`/`BrIf` + a branch-aware executor
+  `cexec`; source `while`/`seq`/`set` statements; `compile_stmt_correct` (a
+  terminating `while`'s `Block[Loop[…]]` lowering simulates `run_stmt`,
+  empty-stack unit tail — settles #601)
+| **mechanized**, axiom-free
+
 | `Rows.v`
 | **P-11** — record-row soundness: progress + preservation for STLC + extensible
   records (empty/extend/select/restrict over a `lacks`-checked row), funext-free
@@ -232,11 +239,11 @@ the same canonical AST emit identical code). The observational version for the
 trailing-statement/tail split is mechanized separately in
 `invariant-path/proofs/SameCube.agda` (F-2).
 
-== The real lift (R0 → R2)
+== The real lift (R0 → R2-loops)
 
 The *real lift* replaces the toy stack machine with the actual `lib/wasm.ml` IR
 and the toy source with the real (resolved) AST, climbing a strict-superset
-fragment ladder. Three rungs are down:
+fragment ladder. Four rungs are down:
 
 * **R0** (`RealWasm.v`) — the pure i32 numeric core (real `instr` / `value_type`
   names) and a stack-machine `wexec`.
@@ -254,11 +261,21 @@ fragment ladder. Three rungs are down:
   (more fuel never loses a result) + `wexec_app_some` (additive sequencing). The
   preservation theorem is stated **existentially in the fuel**; the branch taken
   by `if` is run with monotonically-padded fuel.
+* **R2-loops** (`RealWasm.v` grown with `Block`/`Loop`/`Br`/`BrIf`; `RealLoop.v`)
+  — backward jumps. The R2 `wexec` can't express "branched to label k", so a
+  branch-aware executor `cexec` (outcome `ONormal`/`OBranch k`/`OTrap`) handles
+  the structured control: a `Loop` consumed by `Br 0` re-enters with decremented
+  fuel, staying a structural `Fixpoint`. The R2 expression compiler is re-proved
+  into `cexec` (`cexec_compile`), and a source `while`/`seq`/`set` statement
+  language is lowered to `Block[Loop[…;BrIf 1;…;Br 0]]`; `compile_stmt_correct`
+  proves a terminating `while` simulates the reference `run_stmt`, ending with an
+  **empty value stack** — settling the #601 value-returning-tail question
+  (statement tail = unit) concretely.
 
-The full plan — the rest of the ladder (R2-loops → R-mem → R-float → R-str →
-R-call → R-wrap → R-eff), the Coq module structure, and the strategy for each
-hard part (backward jumps `Loop`/`Br` reuse the fuel device; linear memory,
-floats, the elaboration nodes, effects) — is `formal/REAL-LIFT.adoc`.
+The full plan — the rest of the ladder (R-mem → R-float → R-str → R-call →
+R-wrap → R-eff), the Coq module structure, and the strategy for each hard part
+(linear memory, floats, the elaboration nodes, effects) — is
+`formal/REAL-LIFT.adoc`.
 
 == Record rows (P-11)
 

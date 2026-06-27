@@ -12,7 +12,7 @@ This is the single document that enumerates *what AffineScript must prove*, at
 gap between the soundness *arguments* the project relies on (prose in
 `docs/academic/proofs/`, the borrow-checker comments in `lib/borrow.ml`,
 `docs/CAPABILITY-MATRIX.adoc`) and the soundness *proofs* that are actually
-mechanized today: a growing axiom-free Coq core (18 files) that pins each
+mechanized today: a growing axiom-free Coq core (19 files) that pins each
 obligation on a deliberately *small model* — no full-language theorem is
 discharged yet (see <<status>>).
 
@@ -70,7 +70,7 @@ than the prose corpus suggests:
   `TypeSafety.v` is example lemmas about list length, not AffineScript. Not
   core-metatheory.
 * **`formal/`** — the directory #513 names as the mechanized-proof target now
-  **exists** (Coq/Rocq 8.18), axiom-free throughout — **18 files, 31 `Print
+  **exists** (Coq/Rocq 8.18), axiom-free throughout — **19 files, 33 `Print
   Assumptions` closure reports**, all "Closed under the global context". Codegen
   keystone: `K1_CodegenPreservation.v` (K-1 minimal) +
   `K1Let_CodegenPreservation.v` (K-1 grown with variables/`let`/environment).
@@ -84,10 +84,15 @@ than the prose corpus suggests:
   `AffineUsage.v` (`λx.x` affine, `λx. x x` not) + `QttTyping.v` (quantitative
   typing, `usage x t = Γ x` sound) + `QttDynamic.v` (the dynamic half:
   β-reduction preserves the usage profile). Real lift (`REAL-LIFT.adoc`):
-  `RealWasm.v` (real `lib/wasm.ml` IR — i32 core + locals + structured `IfElse`,
-  fuel-indexed `wexec`) + `RealCompile.v` (R1+R2: the first real
-  `⟦compile p⟧ = ⟦p⟧`, incl. `if`). Record rows: `Rows.v` (P-11 — progress +
-  preservation for extensible records). See <<outstanding>>, <<faces>>.
+  `RealWasm.v` (real `lib/wasm.ml` IR — i32 core + locals + structured `IfElse`
+  + `Block`/`Loop`/`Br`/`BrIf`, fuel-indexed `wexec`) + `RealCompile.v` (R1+R2:
+  the first real `⟦compile p⟧ = ⟦p⟧`, incl. `if`) + `RealLoop.v` (R2-loops: a
+  branch-aware executor `cexec` over backward jumps, a source `while`/`seq`/`set`
+  statement language, and `compile_stmt_correct` — the lowered terminating
+  `while` simulates the reference run, settling the #601 value-returning-tail
+  question concretely: the statement tail leaves an empty value stack).
+  Record rows: `Rows.v` (P-11 — progress + preservation for extensible records).
+  See <<outstanding>>, <<faces>>.
 * **Research tracks** (not core soundness): `docs/academic/tropical-session-types/`
   (Lean), `proposals/echo-types/EchoEncodingFaithfulness.agda`,
   `proposals/idaptik/migrated/**/*Boundary.agda` (echo-types loss-with-residue,

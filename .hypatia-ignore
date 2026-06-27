@@ -83,3 +83,7 @@ cicd_rules/vlang_detected:formal/Rows.v
 cicd_rules/banned_language_file:formal/Rows.v
 cicd_rules/vlang_detected:formal/RealCompile.v
 cicd_rules/banned_language_file:formal/RealCompile.v
+# RealLoop.v — REAL-LIFT rung R2-loops (Loop/Br/BrIf + source while). Coq proof
+# script, wired into formal/_CoqProject; exempt from the V-lang ban.
+cicd_rules/vlang_detected:formal/RealLoop.v
+cicd_rules/banned_language_file:formal/RealLoop.v
