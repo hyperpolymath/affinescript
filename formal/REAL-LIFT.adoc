@@ -169,14 +169,18 @@ next. The rung names are stable references the `PROOF-NEEDS.adoc` rows will cite
   fold in with R2/R-wrap.)
 | **Subsumes K1 and K1Let on real objects.**
 
-| **R2**
-| Structured control: `Block/Loop/If/Br/BrIf/Return`; `ExprIf`/`ExprMatch`/
-  `while`/`for`/`break`/`continue`. Needs a **fuel-indexed** `wexec` (loops may
-  diverge) and the matching source semantics.
-| Closes the toy K-1's "`if`/control is the next increment" gap. Lets **F-2**
-  (#601) be settled *concretely*: the statement-tail vs expression-tail lowerings
-  become two real `instr` sequences whose `wexec` agreement (unit) / divergence
-  (value-returning) is a theorem, not a prose observation.
+| **R2** ✅ (conditionals)
+| Structured control. **Done:** the `IfElse` instruction (lib/wasm.ml's `If`) +
+  `RIf` source (`ExprIf`), value-returning. Because `instr` now nests
+  `list instr`, the structural `wexec` is guard-rejected, so `wexec` became
+  **fuel-indexed** (`wexec_mono` + `wexec_app_some` replace the clean
+  `wexec_seq`; the theorem is existential in the fuel). **Remaining (R2-loops):**
+  `Loop`/`Br`/`BrIf` + `while`/`for`/`break`/`continue` — backward jumps reuse
+  the same fuel device, plus a source divergence model.
+| Closed the toy K-1's "`if`/control is the next increment" gap. The remaining
+  value-returning-tail story lets **F-2** (#601) be settled *concretely*: the
+  statement-tail vs expression-tail lowerings become two real `instr` sequences
+  whose `wexec` agreement (unit) / divergence (value-returning) is a theorem.
 
 | **R-mem**
 | Linear memory: load/store family, `MemorySize/Grow`, a byte-addressed memory
@@ -218,11 +222,14 @@ proven against).
 
 == 5. Hard parts and the strategy for each
 
-* **Loops & termination.** Wasm `Loop` can diverge, so `wexec` cannot stay a
-  structural fixpoint past R1. Strategy: **fuel-indexed** big-step
-  (`wexec : nat → …`) with the standard "more fuel never changes a `Some`
-  result" monotonicity lemma; preservation is stated up to fuel. (Same device
-  the source `while`/`for` semantics will use.)
+* **Nested control & termination — DONE for conditionals (R2).** Because `instr`
+  nests `list instr` (the `IfElse` branches), even *forward* structured control
+  defeats Coq's structural guard checker — so `wexec` is already **fuel-indexed**
+  as of R2 (`wexec : nat → …`), with the standard monotonicity lemma
+  (`wexec_mono`: more fuel never changes a `Some` result) and an additive
+  sequencing lemma (`wexec_app_some`) replacing the structural `wexec_seq`;
+  preservation is stated existentially in the fuel. Backward jumps (`Loop`/`Br`,
+  and the source `while`/`for`) reuse the very same device — that is R2-loops.
 * **Linear memory.** Model memory as `Z → byte` (or a finite map) + a bound;
   load/store mirror `lib/wasm.ml`'s align/offset. The allocator
   (`runtime/src/alloc.rs`) is modelled abstractly (a bump pointer in a global) —
@@ -274,16 +281,23 @@ already has the front-end scaffolding (`F1_TransformerPreservation.v`,
 
 == 8. Status
 
-* **R0 landed** — `RealWasm.v`: real `instr`/`value_type` names, `wexec`,
-  `wcheck`, `wexec_sound` (arity-checked, local-free code never traps), axiom-free.
+* **R0 landed** — `RealWasm.v`: real `instr`/`value_type` names + a stack-machine
+  `wexec`, axiom-free.
 * **R1 landed** — `RealWasm.v` grown with **locals** (`LocalGet`/`LocalSet`) +
   comparison ops; `RealCompile.v` gives the resolved int/bool/`let`/binary source
   `rexpr`, the reference `eval`, the `compile` to real wasm, and the **first real
   `⟦compile p⟧ = ⟦p⟧`** — `compile_correct` (env↔locals agreement, fresh-slot
-  allocation, low-slot preservation) + `compile_program_correct`. Axiom-free.
-  Retires `K1`/`K1Let` on real objects.
-* Next: **R2** — structured control (`Block`/`Loop`/`If`/`Br`/`Return`,
-  `ExprIf`/`ExprMatch`/`while`) on a fuel-indexed `wexec`; this is the rung that
-  settles #601 concretely.
+  allocation, low-slot preservation) + `compile_program_correct`. Retires
+  `K1`/`K1Let` on real objects.
+* **R2 landed (conditionals)** — `RealWasm.v` grown with the structured `IfElse`
+  instruction; this forced `wexec` to become **fuel-indexed** (the nested
+  `list instr` defeats the structural guard checker), with `wexec_mono` +
+  `wexec_app_some` replacing `wexec_seq`. `RealCompile.v` grows `compile` with
+  `RIf`; `compile_correct` now covers value-returning `if`, stated existentially
+  in the fuel. (The R1 arity lemma `wexec_sound`/`wcheck` was retired in the fuel
+  refactor; it can be restated over fuel later, but is not load-bearing —
+  `compile_correct` is.) Axiom-free.
+* Next: **R2-loops** — `Loop`/`Br` + source `while`/`for` on the same fuel
+  device; this is the rung that settles #601 concretely.
 
 Tracked against `docs/PROOF-NEEDS.adoc` §6 Wave 3 and #513.

@@ -84,9 +84,10 @@ than the prose corpus suggests:
   `AffineUsage.v` (`λx.x` affine, `λx. x x` not) + `QttTyping.v` (quantitative
   typing, `usage x t = Γ x` sound) + `QttDynamic.v` (the dynamic half:
   β-reduction preserves the usage profile). Real lift (`REAL-LIFT.adoc`):
-  `RealWasm.v` (real `lib/wasm.ml` IR — i32 core + locals) + `RealCompile.v`
-  (R1: the first real `⟦compile p⟧ = ⟦p⟧`). Record rows: `Rows.v` (P-11 —
-  progress + preservation for extensible records). See <<outstanding>>, <<faces>>.
+  `RealWasm.v` (real `lib/wasm.ml` IR — i32 core + locals + structured `IfElse`,
+  fuel-indexed `wexec`) + `RealCompile.v` (R1+R2: the first real
+  `⟦compile p⟧ = ⟦p⟧`, incl. `if`). Record rows: `Rows.v` (P-11 — progress +
+  preservation for extensible records). See <<outstanding>>, <<faces>>.
 * **Research tracks** (not core soundness): `docs/academic/tropical-session-types/`
   (Lean), `proposals/echo-types/EchoEncodingFaithfulness.agda`,
   `proposals/idaptik/migrated/**/*Boundary.agda` (echo-types loss-with-residue,
@@ -236,14 +237,15 @@ The work in flight changes which obligations are *load-bearing* and which are
   fragment compiled to a stack machine — `K1Let_CodegenPreservation.v` grows it
   with de Bruijn variables, `let`, and an environment. The **real lift** onto the
   real AffineScript AST + real typed-WASM semantics is scoped in
-  `formal/REAL-LIFT.adoc` (fragment ladder R0→R-eff); **R0 + R1 landed**.
-  `formal/RealWasm.v` (R0) re-targets the *actual* `lib/wasm.ml`
-  `instr`/`value_type` (i32 core + locals) with a stack-arity soundness theorem;
-  `formal/RealCompile.v` (R1) gives the **first real `⟦compile p⟧ = ⟦p⟧`** —
-  resolved int/bool/`let`/binary source, reference `eval`, `compile` to real
-  wasm, `compile_correct` (env↔locals agreement) + `compile_program_correct`,
-  retiring `K1`/`K1Let` on real objects. R2 (structured control, fuel-indexed) is
-  next, and is the rung that settles #601 concretely.
+  `formal/REAL-LIFT.adoc` (fragment ladder R0→R-eff); **R0 + R1 + R2 landed**.
+  `formal/RealWasm.v` re-targets the *actual* `lib/wasm.ml` `instr`/`value_type`
+  (i32 core + locals + structured `IfElse`); `formal/RealCompile.v` gives the
+  **first real `⟦compile p⟧ = ⟦p⟧`** — resolved int/bool/`let`/binary/**if**
+  source, reference `eval`, `compile` to real wasm, `compile_correct` (env↔locals
+  agreement, existential-fuel) + `compile_program_correct`, retiring `K1`/`K1Let`
+  on real objects. R2's conditionals forced `wexec` to become **fuel-indexed**
+  (nested `list instr` defeats the structural guard checker); R2-loops
+  (`Loop`/`Br`, value-returning tails) is next and settles #601 concretely.
 * **K-2 — Effect-soundness is *blocked*, not merely unproven.** P-6 cannot be
   honestly *stated against the current backend* because #555 drops handler arms
   on three of the codegen targets. The obligation must be split: (a) prove
@@ -415,10 +417,11 @@ F-1 (full transformer preservation) is non-trivial rather than a formality.
   the **real typed-WASM operational semantics**, then re-prove K-1/F-1/F-2 against
   them (this is what makes K-1/F-1 `XL`, and what actually resolves #601). Planned
   as a strict-superset *fragment ladder* in `formal/REAL-LIFT.adoc`
-  (R0→R1→R2→R-mem→R-float→R-str→R-call→R-wrap→R-eff); **R0 + R1 landed**
-  (`formal/RealWasm.v` — real `lib/wasm.ml` IR, i32 core + locals;
-  `formal/RealCompile.v` — the first real `⟦compile p⟧ = ⟦p⟧`, retiring K1/K1Let
-  on real objects). **R2** (structured control, fuel-indexed) is next and settles
+  (R0→R1→R2→R-mem→R-float→R-str→R-call→R-wrap→R-eff); **R0 + R1 + R2 landed**
+  (`formal/RealWasm.v` — real `lib/wasm.ml` IR, i32 core + locals + structured
+  `IfElse`, fuel-indexed `wexec`; `formal/RealCompile.v` — the first real
+  `⟦compile p⟧ = ⟦p⟧` incl. value-returning `if`, retiring K1/K1Let on real
+  objects). **R2-loops** (`Loop`/`Br`, value-returning tails) is next and settles
   #601 concretely. Then the still-`prose`/`absent` obligations: P-5 (inference),
   P-6 (effects — blocked on #555/K-2, = rung R-eff), P-7 (resolution), P-8
   (parser), P-10 (coherence); faces F-6/F-7; full-language borrowing (P-3)
