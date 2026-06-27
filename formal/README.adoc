@@ -114,6 +114,12 @@ cannot mistake it. Coq has no `v.mod` manifest, so `vmod_detected` never fires.
   empty-stack unit tail — settles #601)
 | **mechanized**, axiom-free
 
+| `RealMem.v`
+| **Real lift R-mem (kernel)** — `I32Load`/`I32Store`; word-addressed memory +
+  structural executor `mexec`; bump allocator; store→load and 2-cell
+  tuple build+project round-trips (`field i at base+i`)
+| **mechanized**, axiom-free
+
 | `Rows.v`
 | **P-11** — record-row soundness: progress + preservation for STLC + extensible
   records (empty/extend/select/restrict over a `lacks`-checked row), funext-free
@@ -239,11 +245,11 @@ the same canonical AST emit identical code). The observational version for the
 trailing-statement/tail split is mechanized separately in
 `invariant-path/proofs/SameCube.agda` (F-2).
 
-== The real lift (R0 → R2-loops)
+== The real lift (R0 → R-mem)
 
 The *real lift* replaces the toy stack machine with the actual `lib/wasm.ml` IR
 and the toy source with the real (resolved) AST, climbing a strict-superset
-fragment ladder. Four rungs are down:
+fragment ladder. Five rungs are down (R-mem in kernel form):
 
 * **R0** (`RealWasm.v`) — the pure i32 numeric core (real `instr` / `value_type`
   names) and a stack-machine `wexec`.
@@ -271,8 +277,17 @@ fragment ladder. Four rungs are down:
   proves a terminating `while` simulates the reference `run_stmt`, ending with an
   **empty value stack** — settling the #601 value-returning-tail question
   (statement tail = unit) concretely.
+* **R-mem** (kernel) (`RealWasm.v` grown with `I32Load`/`I32Store`; `RealMem.v`)
+  — linear memory. A **word-addressed** heap (`mem := list Z`, cell = i32) with a
+  *structural* executor `mexec` (memory ops are straight-line, so no fuel) +
+  `mexec_app`, a bump allocator (`base = current size`), and the heap round-trips:
+  store→load (`mexec_store_then_load`) and a 2-cell tuple build+project
+  (`mexec_pair_build_proj` — `field i at base+i`, both projections), all reusing
+  `set_nth`'s get-after-set. Remaining R-mem: runtime `memory.grow`, byte layout,
+  control-bearing fields (fuse `mexec` with `cexec`), and the full source
+  tuple/array/record compile-correctness.
 
-The full plan — the rest of the ladder (R-mem → R-float → R-str → R-call →
+The full plan — the rest of the ladder (finish R-mem → R-float → R-str → R-call →
 R-wrap → R-eff), the Coq module structure, and the strategy for each hard part
 (linear memory, floats, the elaboration nodes, effects) — is
 `formal/REAL-LIFT.adoc`.
