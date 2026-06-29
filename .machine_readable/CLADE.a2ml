@@ -4,7 +4,7 @@
 # See: https://github.com/hyperpolymath/gv-clade-index
 
 [identity]
-uuid = "b3f82c1a-4e9d-4b7a-a831-6c2d5e9f0a14"
+uuid = "e3bdbfbc-7385-53b3-885a-4797a8dc0ef8"
 primary-forge = "github"
 primary-owner = "hyperpolymath"
 canonical-name = "affinescript"
