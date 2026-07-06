@@ -1,0 +1,74 @@
+# SPDX-License-Identifier: MPL-2.0
+# Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+#
+# PLAYBOOK.a2ml — Operational playbook
+[metadata]
+version = "0.1.0"
+last-updated = "2026-05-26"
+
+[deployment]
+# method = "gitops"  # gitops | manual | ci-triggered
+# target = "container"  # container | binary | library | wasm
+
+[incident-response]
+# 1. Check .machine_readable/STATE.a2ml for current status
+# 2. Review recent commits and CI results
+# 3. Run `just validate` to check compliance
+# 4. Run `just security` to audit for vulnerabilities
+
+[release-process]
+# 1. Update version in STATE.a2ml, META.a2ml
+# 2. Run `just release-preflight` (validate + quality + security + maint-hard-pass)
+# 3. Tag and push
+
+[maintenance-operations]
+# Baseline audit: just maint-audit
+# Hard release gate: just maint-hard-pass
+
+[npm-publish]
+# Runbook for publishing a @hyperpolymath/* package to npm (lineage from
+# issue #104, first applied to @hyperpolymath/affine-vscode@0.1.0
+# on 2026-05-26).
+#
+# Prerequisites (one-time per estate, completed 2026-05-26):
+#   * npm org `hyperpolymath` exists on registry.npmjs.org (free public tier)
+#   * Repo secret NPM_TOKEN holds an automation token with read+write
+#     access to the @hyperpolymath/* scope
+#
+# Per-package workflow:
+#   1. packages/<pkg>/package.json
+#        "name": "@hyperpolymath/<pkg>"
+#        "version": "X.Y.Z"
+#        "license": "MPL-2.0"
+#        "publishConfig": { "access": "public" }
+#        "repository": { "type": "git", "url": "...", "directory": "packages/<pkg>" }
+#        "files": [...]   # explicit allowlist; never publish the whole tree
+#   2. .github/workflows/<pkg>-publish.yml
+#        on push tag '<pkg>-v*'
+#        - verify GITHUB_REF_NAME (minus '<pkg>-v') == package.json version
+#        - write ${HOME}/.npmrc from secrets.NPM_TOKEN, then npm publish --access public
+#        - rm -f ${HOME}/.npmrc (always)
+#      Mirror affine-vscode-publish.yml's shape.
+#   3. Tag push (signed, at origin/main):
+#        git tag -s <pkg>-vX.Y.Z origin/main -m "<pkg> X.Y.Z — npm publish (Refs #N)"
+#        git push origin <pkg>-vX.Y.Z
+#   4. Verify: npm view @hyperpolymath/<pkg>@X.Y.Z
+#
+# Tag naming: distinct prefix per package so they never collide with the
+# OCaml compiler's `v*` Release-workflow tags. e.g. affine-vscode-v*.
+#
+# Token rotation: rotate NPM_TOKEN after any wire-up where the token
+# value transited a session transcript.
+
+[ci-required-checks]
+# A required status check must be emitted UNCONDITIONALLY on every PR that can
+# target the protected branch. Otherwise the unproduced context sits forever at
+# "Expected — Waiting for status to be reported" — a silent merge block.
+# Causes: (1) a producing workflow with an on.pull_request.branches filter;
+# (2) a pin naming a renamed/migrated job (e.g. a standards reusable job name);
+# (3) an external GitHub App check that doesn't post on every PR.
+# Diagnosed + fixed 2026-06-21 (#645). Human doc: docs/ci/required-checks.adoc.
+rule = "required-check implies emitted on every PR base (no pull_request.branches filter)"
+diagnosed = "2026-06-21"
+reference = "docs/ci/required-checks.adoc"
+tracking-issue = "650"
