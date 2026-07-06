@@ -9,7 +9,7 @@ Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 Status:: Accepted (architecture ratified in PR #407 thread, 2026-05-27; staged implementation tracked in #553)
 Date:: 2026-05-26
 Issue:: https://github.com/hyperpolymath/affinescript/issues/177[CORE-01 #177]
-Series:: Settled-decisions ledger; companion entry in `.machine_readable/6a2/META.a2ml`.
+Series:: Settled-decisions ledger; companion entry in `.machine_readable/descriptiles/META.a2ml`.
 
 == Context
 
@@ -339,7 +339,7 @@ At each milestone:
   binding), #396 (Slice C′ loop soundness), #397 (Slice D captured-linears).
 * `docs/STATE-2026-05-26.adoc` §"Dominant cost item" / §"Critical path".
 * `docs/CAPABILITY-MATRIX.adoc` CORE-01 row.
-* `.machine_readable/6a2/META.a2ml [[adr]] id="ADR-022"`.
+* `.machine_readable/descriptiles/META.a2ml [[adr]] id="ADR-022"`.
 * `docs/specs/SETTLED-DECISIONS.adoc` (section to be added on ratification).
 * Polonius reference: Niko Matsakis, "An alias-based formulation of the
   borrow checker", 2018 (the `subset/3` + `loan_live_at/2` shape, naive

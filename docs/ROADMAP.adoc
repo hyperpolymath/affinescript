@@ -18,7 +18,7 @@ order:
   *Ecosystem Integration Track* INT-01..12.
 * `docs/TECH-DEBT.adoc` — the coordination ledger (DOC/CORE/STDLIB/INT/SAT).
 
-`.machine_readable/6a2/STATE.a2ml` mirrors these; it does not lead, and is
+`.machine_readable/descriptiles/STATE.a2ml` mirrors these; it does not lead, and is
 currently flagged stale (DOC-05, issue #176).
 ====
 

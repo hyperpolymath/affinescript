@@ -360,7 +360,7 @@ have real modules, or stay flat-and-deduplicated?
 
 **Decision: real modules with qualified paths.** Not a flat de-duplicated
 prelude. Status: **accepted, settled** (ADR-011 in
-`.machine_readable/6a2/META.a2ml`; ledger entry in
+`.machine_readable/descriptiles/META.a2ml`; ledger entry in
 `docs/specs/SETTLED-DECISIONS.adoc`).
 
 ### Rationale

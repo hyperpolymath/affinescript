@@ -13,7 +13,7 @@ readiness.* Where any other document (`README.adoc`,
 `docs/architecture/BACKEND-IMPLEMENTATION.md`,
 `docs/reference/COMPILER-CAPABILITIES.md`,
 `docs/history/ALPHA-1-RELEASE-NOTES.md`, `docs/ROADMAP.adoc`,
-`.machine_readable/6a2/STATE.a2ml`)
+`.machine_readable/descriptiles/STATE.a2ml`)
 disagrees with this matrix, *this matrix wins* and the other document is drift
 to be corrected. Reconstructed and verified 2026-05-19 against
 `origin/main`@dc5b817 with the compiler as oracle. Tracks issue

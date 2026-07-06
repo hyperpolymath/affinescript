@@ -149,4 +149,4 @@ not a typed-wasm gap.
 * Submodule bumps: `nextgen-languages@61f69e5`, `nextgen-languages@24a3205`
 * Sibling doc commit: `developer-ecosystem@b7fbe5f` (deno-test README + regression)
 * `KNOWN-ISSUES.md` — flipped to RESOLVED with root-cause summary retained for history
-* `.machine_readable/6a2/STATE.a2ml` — session-note-2026-04-19-a
+* `.machine_readable/descriptiles/STATE.a2ml` — session-note-2026-04-19-a

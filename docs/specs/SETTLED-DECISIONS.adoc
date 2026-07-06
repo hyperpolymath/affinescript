@@ -7,7 +7,7 @@ Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 
 This document records design decisions that are fully settled. Each entry
 gives the decision, the reasoning, and a pointer to the full ADR in
-`.machine_readable/6a2/META.a2ml`.
+`.machine_readable/descriptiles/META.a2ml`.
 
 These are not open questions. Do not reopen them without amending the ADR.
 
@@ -153,7 +153,7 @@ the machinery the compiler (`module_loader.ml`, `module`/`use`/`::`
 grammar) and the newer stdlib files (Core, Deno, Vscode, …) already use.
 
 Settles issue #132; gates #133/#135/#137/#138. Full ADR in
-`.machine_readable/6a2/META.a2ml` (ADR-011).
+`.machine_readable/descriptiles/META.a2ml` (ADR-011).
 
 == Grammar Changes Are Correctness Assertions; Parser-Conflict Disclosure (ADR-012)
 
@@ -210,7 +210,7 @@ full raw output. Nothing is suppressed at the parser-generator level
 build is byte-for-byte unchanged and fully transparent on demand.
 
 Settles the disposition of issue #215 residual families. Full ADR in
-`.machine_readable/6a2/META.a2ml` (ADR-012).
+`.machine_readable/descriptiles/META.a2ml` (ADR-012).
 
 == Async on WasmGC: Transparent CPS Continuation Transform (ADR-013)
 
@@ -242,7 +242,7 @@ The `Thenable`-handle + `thenableThen` continuation protocol is the
 agreed async ABI for the typed-wasm convergence layer; Ephapax is a
 co-stakeholder (typed-wasm ADR-004). Delivered as 4 incremental,
 gated PRs. Full design in `docs/specs/async-on-wasm-cps.adoc`; full ADR
-in `.machine_readable/6a2/META.a2ml` (ADR-013).
+in `.machine_readable/descriptiles/META.a2ml` (ADR-013).
 
 == Module-Qualified Type/Effect Path Separator (ADR-014)
 
@@ -268,7 +268,7 @@ The grammar PR unblocks *parsing*; most estate parse failures clear with
 zero consumer churn (genuine ReScript-surface residue is #229).
 
 This decision is settled; do not reopen without amending the ADR. Full
-ADR in `.machine_readable/6a2/META.a2ml` (ADR-014); ledger CORE-03 in
+ADR in `.machine_readable/descriptiles/META.a2ml` (ADR-014); ledger CORE-03 in
 `docs/TECH-DEBT.adoc`.
 
 == WASI Preview2 / WASM Component-Model Migration (ADR-015)
@@ -322,7 +322,7 @@ native-preview2 cleanup that replaces the on-demand preview1 shims
 emitted by S4a/S4b/S6b with direct `wasi:*` calls.
 
 This decision is settled; do not reopen without amending the ADR. Full
-ADR in `.machine_readable/6a2/META.a2ml` (ADR-015); ledger INT-03 in
+ADR in `.machine_readable/descriptiles/META.a2ml` (ADR-015); ledger INT-03 in
 `docs/TECH-DEBT.adoc`; roadmap in `docs/ECOSYSTEM.adoc`.
 
 == Effect-Threaded Async-Boundary Detection (ADR-016)
@@ -356,7 +356,7 @@ triggers the transform; *S4* retire the hardcoded set (fallback kept
 for table-miss only).
 
 This decision is settled; do not reopen without amending the ADR. Full
-ADR in `.machine_readable/6a2/META.a2ml` (ADR-016); ledger #234 /
+ADR in `.machine_readable/descriptiles/META.a2ml` (ADR-016); ledger #234 /
 CORE-02 in `docs/TECH-DEBT.adoc`.
 
 == ReScript Block-Module Disposition: One Module Per File (ADR-017)
@@ -390,7 +390,7 @@ loader-bridge territory), tracked in `RESCRIPT-ELIMINATION.adoc` Tier-4
 and the INT-02 ledger, never conflated with this disposition.
 
 This decision is settled; do not reopen without amending the ADR. Full
-ADR in `.machine_readable/6a2/META.a2ml` (ADR-017); #229 canonical map in
+ADR in `.machine_readable/descriptiles/META.a2ml` (ADR-017); #229 canonical map in
 `docs/RESCRIPT-ELIMINATION.adoc`; escalation issue #262.
 
 == No Raw/FFI Escape: Typed `extern` Is the Only Host Bridge (ADR-018)
@@ -423,7 +423,7 @@ parts of `burble`) port under this doctrine; per-file execution is the
 #229 per-repo work.
 
 This decision is settled; do not reopen without amending the ADR. Full
-ADR in `.machine_readable/6a2/META.a2ml` (ADR-018); #229 canonical map in
+ADR in `.machine_readable/descriptiles/META.a2ml` (ADR-018); #229 canonical map in
 `docs/RESCRIPT-ELIMINATION.adoc`; escalation issue #245.
 
 == Compiler Distribution: GitHub Releases Binaries + Thin Deno/JSR Shim (ADR-019)
@@ -456,6 +456,6 @@ tests, publish owner-gated via the existing manual JSR workflow; *S4*
 wire INT-10 `affinescript-lsp` onto the shim.
 
 This decision is settled; do not reopen without amending the ADR. Full
-ADR in `.machine_readable/6a2/META.a2ml` (ADR-019) and the per-file
+ADR in `.machine_readable/descriptiles/META.a2ml` (ADR-019) and the per-file
 decision record link:../decisions/0019-compiler-distribution.adoc[docs/decisions/0019-compiler-distribution.adoc];
 ledger #260 / INT-10 in `docs/TECH-DEBT.adoc`.

@@ -8,7 +8,7 @@ Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 == Status
 
 ACCEPTED (owner-approved 2026-05-18). Recorded as ADR-013
-(`SETTLED-DECISIONS.adoc` + `.machine_readable/6a2/META.a2ml`). The
+(`SETTLED-DECISIONS.adoc` + `.machine_readable/descriptiles/META.a2ml`). The
 async ABI section is mirrored into the typed-wasm convergence layer
 with an Ephapax co-stakeholder review flag (typed-wasm ADR-004 —
 tracked separately). Implementation proceeds as the 4-PR plan below,

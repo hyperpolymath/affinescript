@@ -4,7 +4,7 @@
 
 Project metadata and AI agent configuration files live under `.machine_readable/`. All metadata files use the `.a2ml` extension; the `.scm` extension is reserved for Guix (`guix.scm`, `.guix-channel`).
 
-## Core 6a2 metadata (`.machine_readable/6a2/`)
+## Core descriptiles metadata (`.machine_readable/descriptiles/`)
 
 - **STATE.a2ml** - Current project state, progress, blockers, next actions, session notes
 - **ECOSYSTEM.a2ml** - Position in ecosystem, relationships to sibling projects
@@ -29,7 +29,7 @@ Project metadata and AI agent configuration files live under `.machine_readable/
 
 ## Workflow
 
-1. Read `.machine_readable/6a2/*.a2ml` files at session start
+1. Read `.machine_readable/descriptiles/*.a2ml` files at session start
 2. Check `STATE.a2ml` for current phase, blockers, next actions
 3. Follow patterns and constraints from `AGENTIC.a2ml`
 4. Follow methodology gates from `agent_instructions/methodology.a2ml`

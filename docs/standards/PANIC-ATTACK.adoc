@@ -130,7 +130,7 @@ opened    : YYYY-MM-DD
 == Session-note history
 
 The most recent ad-hoc panic-attack audit was logged in
-`.machine_readable/6a2/STATE.a2ml`, session-note 2026-04-11
+`.machine_readable/descriptiles/STATE.a2ml`, session-note 2026-04-11
 (end-of-Affinatea-stage-6 batch):
 
 * 1 High — `search.js` `innerHTML` → false positive but

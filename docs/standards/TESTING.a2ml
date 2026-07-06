@@ -133,7 +133,7 @@ target-file = "docs/TECH-DEBT.adoc"
 # one of the recognised reasons.
 
 [deferred-regression-test]
-recorded-in = ".machine_readable/6a2/STATE.a2ml"
+recorded-in = ".machine_readable/descriptiles/STATE.a2ml"
 recorded-field = "[[closed-bug]].regression-test-status"
 unblock-condition-required = true
 

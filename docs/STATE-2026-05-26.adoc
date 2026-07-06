@@ -157,7 +157,7 @@ This is important and routinely misunderstood:
 Canonical disambiguation:
 https://github.com/hyperpolymath/nextgen-languages/blob/main/docs/disambiguation/ephapax-vs-affinescript.md
 
-Repo-level hooks landed 2026-05-26: README admonitions in affinescript (PR #393), ephapax (ephapax#152), typed-wasm (typed-wasm#73); CLAUDE.md disambiguation sections; `.machine_readable/6a2/AGENTIC.a2ml` `[disambiguation]` blocks; hypatia DR001 advisory rule (hypatia#347).
+Repo-level hooks landed 2026-05-26: README admonitions in affinescript (PR #393), ephapax (ephapax#152), typed-wasm (typed-wasm#73); CLAUDE.md disambiguation sections; `.machine_readable/descriptiles/AGENTIC.a2ml` `[disambiguation]` blocks; hypatia DR001 advisory rule (hypatia#347).
 
 == Distance to 1.0 (per ROADMAP timeline)
 

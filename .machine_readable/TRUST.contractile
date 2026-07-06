@@ -26,7 +26,7 @@
     (deny "push without confirmation in the same session")
     (deny "add a language feature not in ANCHOR.a2ml thesis")
     (deny "reverse any ADR (ADR-001 through ADR-010) without a new ADR")
-    (deny "delete or overwrite the 6a2/ core files (STATE/META/ECOSYSTEM/AGENTIC/NEUROSYM/PLAYBOOK)")
+    (deny "delete or overwrite the descriptiles/ core files (STATE/META/ECOSYSTEM/AGENTIC/NEUROSYM/PLAYBOOK)")
     (deny "modify IDApTIK without explicit instruction (AGPL — separate repo, separate session)")
   )
 

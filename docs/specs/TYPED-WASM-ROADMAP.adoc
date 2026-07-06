@@ -394,7 +394,7 @@ Pragmatic order, smallest-blast-radius first:
 * link:../TECH-DEBT.adoc[../TECH-DEBT.adoc] — CONV-01..05 ledger
   units; INT-12 entry.
 * link:../ECOSYSTEM.adoc[../ECOSYSTEM.adoc] — A–E spine.
-* `.machine_readable/6a2/META.a2ml` — ADR-020 / ADR-021 (proposed,
+* `.machine_readable/descriptiles/META.a2ml` — ADR-020 / ADR-021 (proposed,
   pending owner ratification).
 * link:TYPED-WASM-ROADMAP.a2ml[TYPED-WASM-ROADMAP.a2ml] —
   machine-readable companion.

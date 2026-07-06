@@ -7,7 +7,7 @@
 ====
 *Sketch / operational note* (seeded 2026-06-21). Captures a CI failure class
 that blocked merges across the estate and the rule that prevents it. Pairs with
-the machine entry in `.machine_readable/6a2/PLAYBOOK.a2ml` (`[ci-required-checks]`).
+the machine entry in `.machine_readable/descriptiles/PLAYBOOK.a2ml` (`[ci-required-checks]`).
 ====
 
 toc::[]

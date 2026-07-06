@@ -159,7 +159,7 @@ ledger entry*, never by silent drift.
 * link:TYPED-WASM-ROADMAP.adoc[TYPED-WASM-ROADMAP.adoc] — widening
   tranches; this ledger is the apparatus that makes tranche D land
   safely.
-* `.machine_readable/6a2/META.a2ml` — ADR-020 (accepted), ADR-021
+* `.machine_readable/descriptiles/META.a2ml` — ADR-020 (accepted), ADR-021
   (accepted).
 * link:TYPED-WASM-COORDINATION-LEDGER.a2ml[TYPED-WASM-COORDINATION-LEDGER.a2ml]
   — machine-readable companion.
