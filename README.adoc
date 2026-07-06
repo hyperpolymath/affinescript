@@ -27,7 +27,7 @@ Early and experimental. This is *v0.2*: the architecture is settled, the
 implementation and the metatheory are partial and still moving. It is suitable
 for experimentation, teaching, and small sound components -- not yet for
 production. What is proven, what is implemented, and what is still prose are
-stated plainly below and tracked in `SOUNDNESS-LEDGER.adoc`.
+stated plainly below and tracked in `docs/SOUNDNESS.adoc`.
 
 == What you get
 
@@ -142,7 +142,7 @@ risk here, and it is not yet solved.
 Soundness is *partially mechanised, and honestly tracked.* An initial,
 axiom-free, machine-checked result for code-generation preservation exists
 (Coq/Rocq). A number of residuals remain open; they are recorded -- not hidden
--- in `SOUNDNESS-LEDGER.adoc`, which states for each claim whether it is
+-- in `docs/SOUNDNESS.adoc`, which states for each claim whether it is
 mechanised or still argued in prose.
 
 The ledger is the source of truth for what currently holds. This README
@@ -192,7 +192,7 @@ totality cut, and a WebAssembly target -- rather than any one ingredient.
 == Documentation
 
 // TODO: link the design notes and the examples directory once locations are stable.
-* Soundness status: `SOUNDNESS-LEDGER.adoc`
+* Soundness status: `docs/SOUNDNESS.adoc`
 
 == License
 
