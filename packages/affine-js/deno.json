@@ -5,13 +5,17 @@
     ".": "./mod.js",
     "./loader": "./loader.js",
     "./marshal": "./marshal.js",
-    "./runtime": "./runtime.js"
+    "./runtime": "./runtime.js",
+    "./sandbox": "./sandbox.js"
   },
   "license": "MPL-2.0",
   "tasks": {
-    "test": "deno test --allow-read --allow-write loader_test.js"
+    "test": "deno test --allow-read --allow-write loader_test.js sandbox_test.js"
   },
   "publish": {
-    "exclude": ["loader_test.js"]
+    "exclude": [
+      "loader_test.js",
+      "sandbox_test.js"
+    ]
   }
 }
