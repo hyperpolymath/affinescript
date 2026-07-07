@@ -84,10 +84,10 @@ no further significant ReScript → AffineScript work is tractable.
 |idaptik `src/app/multiplayer/PhoenixSocket.res` + LobbyManager; needed for any multiplayer / sync-server feature.
 
 |7
-|*DOM* — re-verify the reconciler runs end-to-end (the `for-in` / `while` codegen gap, issue #255, is fixed)
-|`●` / `◯` #255-fixed; re-verify runtime
+|*DOM* — reconciler runs end-to-end (verified 2026-07-07, `affinescript-dom/e2e/run.sh`; the `for-in` / `while` codegen gap, issue #255, is fixed)
+|`●` verified
 |`affinescript-dom`
-|187-line virtual-DOM + reconciler exists and compiles. The wasm loop-codegen defect (#255) that blocked its runtime is *fixed* (PR #257, issue closed 2026-05-19); end-to-end runtime remains to be re-verified. *Was not a binding gap — a codegen bug, now resolved.*
+|187-line virtual-DOM + reconciler exists, compiles, and *runs*: verified end-to-end 2026-07-07 (`affinescript-dom/e2e/run.sh` — mount, attr patch, text update, surplus-child removal against an Int-handle host DOM, mutation log asserted). The wasm loop-codegen defect (#255) that blocked it was fixed in PR #257. *Was not a binding gap — a codegen bug, now resolved and runtime-proven.*
 
 |8
 |*WebGL / Canvas2D context* (HTMLCanvasElement, getContext, drawImage, fillRect, transform stack)

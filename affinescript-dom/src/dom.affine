@@ -15,12 +15,13 @@
  *
  * GATE: this module compiles end-to-end (resolve → typecheck → codegen
  * → wasm), the same bar as the Stage-C stdlib AOT suite. RUNTIME is
- * blocked by #255 — a pre-existing wasm-codegen defect where `for-in` /
- * `while` loop bodies never execute in the compiled module (so
- * `vnode_len`, the attr loops, and the child reconcile loop iterate
- * zero times). The reconciler logic here is correct AffineScript; it
- * will run once #255 lands. No runtime e2e harness is shipped until
- * then (a harness that cannot pass would be dishonest).
+ * verified end-to-end (2026-07-07): #255 — the wasm loop-codegen defect
+ * that blocked it — was fixed in PR #257 (closed 2026-05-19), and
+ * `../e2e/run.sh` now drives this reconciler against a real Int-handle
+ * host DOM: mount, in-place attr patch (add + remove), in-place text
+ * update, and surplus-child removal, with the mutation log asserted.
+ * `vnode_len`, the attr loops, and the `while` child-reconcile loop all
+ * execute in the compiled wasm.
  *
  * Codegen note: AffineScript codegen is single-pass in source
  * declaration order (lib/codegen.ml `func_indices`), so a function may
