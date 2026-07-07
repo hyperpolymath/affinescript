@@ -148,8 +148,10 @@ The contract is *narrower than older prose claimed* and is exactly this:
 |`affinescript-dom` |reconciler (compiles) |INT-08 (#183): `src/dom.as`
 (non-parsing 39-line stub) renamed to canonical `src/dom.affine` and
 replaced with a real VDOM + render + mount + minimal-mutation
-reconciler that compiles end-to-end. Runtime gated on #255 (pre-existing
-wasm loop-codegen defect).
+reconciler that compiles end-to-end. The #255 wasm loop-codegen defect that
+gated its runtime is *FIXED* (PR #257; issue closed 2026-05-19), so the
+runtime is no longer blocked by it; end-to-end DOM runtime remains to be
+re-verified.
 
 |`affinescript-pixijs` |skeleton |Migration-prerequisite scaffold (#56).
 
@@ -168,8 +170,8 @@ canonical `affinescript tea-bridge` + a re-entrancy fixture.
 shipped + closed 2026-05-31 as `packages/affine-js/loader.js` — already
 host-agnostic (Deno/Node/browser parity). Whether the satellite repo
 still earns its keep (vs. folding into `affine-js`) is the open question
-in #489; revisit when INT-08 reconciler runtime (#183) unblocks (#255)
-and dictates any DOM-specific loader surface.
+in #489; revisit when INT-08 reconciler runtime (#183) is re-verified (#255
+loop-codegen fixed via #257) and dictates any DOM-specific loader surface.
 
 |`affinescript-cadre` |scaffold |Was imaginary until #175. Router/navigation
 satellite (internal `lib/tea_router.ml` contract exists).
@@ -268,16 +270,18 @@ shipped (`TeaApp`/`parseTeaLayout`, Linear-msg enforced); INT-01 dep
 cleared (#253). Router/nav = separate INT-09
 |INT-08 |DOM reconciler in `affinescript-dom` |#183 |reconciler
 implemented + compiles (resolve→typecheck→codegen→wasm); `.as`→`.affine`
-corrected. INT-02 dep cleared. Runtime BLOCKED by #255 (wasm
-loop-codegen defect, pre-existing)
+corrected. INT-02 dep cleared. #255 (wasm loop-codegen defect) that gated
+the runtime is FIXED (PR #257, closed 2026-05-19); runtime to be re-verified
+end-to-end
 |INT-09 |`affinescript-cadre` router/navigation runtime |ledger-only
 |planned (blocked by INT-07)
 |INT-10 |LSP distribution (`affinescript-lsp`) |#282 |unblocked —
 distribution decided (ADR-019: Releases + thin Deno/JSR shim, #260).
 Consumes the shim once #260 S2/S3 land
 |INT-11 |Browser host parity (DOM loader + reconciler end-to-end) |
-ledger-only |planned (INT-02 dep cleared 2026-05-31 via #179; still
-blocked by INT-08 runtime via #255). Satellite-repo question = #489.
+ledger-only |planned (INT-02 dep cleared 2026-05-31 via #179; #255 that
+gated INT-08 runtime is fixed via #257 — pending INT-08 runtime
+re-verification). Satellite-repo question = #489.
 |INT-12 |typed-wasm convergence: AffineScript-emitted fixtures into the
 typed-wasm cross-compat suite (closes the Stage-E runway) |ledger-only |
 planned (Stage E; coordinates with `hyperpolymath/typed-wasm` C5.1)

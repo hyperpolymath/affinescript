@@ -423,7 +423,8 @@ licence in root `LICENSE`).
 |INT-07 |`affinescript-tea` runtime |S2 |#182 runtime + run loop shipped
 (TeaApp/parseTeaLayout, Linear-msg enforced); INT-01 cleared (#253)
 |INT-08 |DOM reconciler |S2 |#183 implemented + compiles; `.as`→`.affine`
-fixed; runtime blocked by #255 (wasm loop-codegen defect)
+fixed; #255 (wasm loop-codegen defect) that gated the runtime is fixed
+(PR #257, closed 2026-05-19) — runtime to be re-verified end-to-end
 |INT-10 |`affinescript-lsp` distribution |S2 |**DONE end-to-end live**
 (#282, ADR-019 S4): LSP resolves the compiler via `AFFINESCRIPT_COMPILER`
 → `affinescript` on `PATH` → the `@hyperpolymath/affinescript` shim
