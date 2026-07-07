@@ -67,7 +67,7 @@ BANNERED_DOCS=(
 
 # The machine-readable mirror (DOC-05): it follows the matrix, it does not
 # lead. These keys assert that contract in-band.
-STATE_FILE=".machine_readable/6a2/STATE.a2ml"
+STATE_FILE=".machine_readable/descriptiles/STATE.a2ml"
 STATE_KEYS=(
   "authoritative-status-doc"
   "drift-flag"

@@ -9,7 +9,7 @@ Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 Status:: Accepted
 Date:: 2026-05-19 (accepted); implementation S1–S4 landed 2026-05-20
 Issue:: https://github.com/hyperpolymath/affinescript/issues/260[INT-04 #260] (split from https://github.com/hyperpolymath/affinescript/issues/181[#181])
-Series:: Settled-decisions ledger; companion entry in `.machine_readable/6a2/META.a2ml [[adr]] id="ADR-019"`; narrative in `docs/specs/SETTLED-DECISIONS.adoc` §"Compiler Distribution".
+Series:: Settled-decisions ledger; companion entry in `.machine_readable/descriptiles/META.a2ml [[adr]] id="ADR-019"`; narrative in `docs/specs/SETTLED-DECISIONS.adoc` §"Compiler Distribution".
 
 == Context
 
@@ -125,7 +125,7 @@ tag-time bake step (#297/#300).
   this record.
 * `docs/PACKAGING.adoc` §"The compiler itself — decided (ADR-019 / #260)".
 * `docs/TECH-DEBT.adoc` INT-04 / INT-10 rows.
-* `.machine_readable/6a2/META.a2ml [[adr]] id="ADR-019"` — the machine record.
+* `.machine_readable/descriptiles/META.a2ml [[adr]] id="ADR-019"` — the machine record.
 * `.github/workflows/release.yml` (S2 producer), `.github/workflows/publish-jsr.yml`
   (owner-gated shim publish), `packages/affinescript-cli/` (the shim).
 

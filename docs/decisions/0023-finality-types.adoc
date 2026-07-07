@@ -9,7 +9,7 @@ Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 Status:: Draft (stub — design-only; no implementation authorised by this document)
 Date:: 2026-06-11
 Issue:: https://github.com/hyperpolymath/affinescript/issues/554[#554 (soundness gate)], https://github.com/hyperpolymath/affinescript/issues/553[#553 (ADR-022 sequencing)]
-Series:: Settled-decisions ledger; companion entry to be added to `.machine_readable/6a2/META.a2ml` at ratification.
+Series:: Settled-decisions ledger; companion entry to be added to `.machine_readable/descriptiles/META.a2ml` at ratification.
 
 == The hard question, on page one
 

@@ -2,7 +2,7 @@
 
 Thank you for your interest in AffineScript — a practical language for resource-safe systems, compiling to typed WebAssembly. This guide covers how to set up a working tree, file useful bugs, and submit changes.
 
-For the language itself, start from [`README.adoc`](README.adoc). For project state, blockers, and next-actions, see [`.machine_readable/6a2/STATE.a2ml`](.machine_readable/6a2/STATE.a2ml).
+For the language itself, start from [`README.adoc`](README.adoc). For project state, blockers, and next-actions, see [`.machine_readable/descriptiles/STATE.a2ml`](.machine_readable/descriptiles/STATE.a2ml).
 
 ---
 
@@ -75,7 +75,7 @@ affinescript/
 ### Suggesting Features
 
 **Before suggesting:**
-1. Skim [`docs/ROADMAP.adoc`](docs/ROADMAP.adoc) and `.machine_readable/6a2/STATE.a2ml`.
+1. Skim [`docs/ROADMAP.adoc`](docs/ROADMAP.adoc) and `.machine_readable/descriptiles/STATE.a2ml`.
 2. Search existing issues and discussions.
 
 **When suggesting:** use the [feature request template](.github/ISSUE_TEMPLATE/feature_request.md) and include:

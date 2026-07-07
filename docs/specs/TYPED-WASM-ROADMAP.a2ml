@@ -298,5 +298,5 @@ current-spec = "docs/specs/TYPED-WASM-INTERFACE.adoc"
 ledger = "docs/TECH-DEBT.adoc"
 ecosystem = "docs/ECOSYSTEM.adoc"
 settled-decisions = "docs/specs/SETTLED-DECISIONS.adoc"
-adr-store = ".machine_readable/6a2/META.a2ml"
+adr-store = ".machine_readable/descriptiles/META.a2ml"
 proposed-adrs = ["ADR-020 (schema versioning)", "ADR-021 (multi-producer coordination model)"]

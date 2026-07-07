@@ -61,7 +61,7 @@ thesis:
 
 authorities:
   scope-statement:
-    - ".machine_readable/6a2/META.a2ml (ADRs)"
+    - ".machine_readable/descriptiles/META.a2ml (ADRs)"
     - "~/Desktop/Frontier_Programming_Practices_AffineScript/AI.a2ml (v2.0)"
 
   human-guide:

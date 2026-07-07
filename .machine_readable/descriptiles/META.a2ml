@@ -483,10 +483,10 @@ consequences = """
   form across format passes.
 """
 references = [
-  ".machine_readable/6a2/STATE.a2ml [track-a-manhattan]",
-  ".machine_readable/6a2/STATE.a2ml [[open-bug]] BUG-001",
-  ".machine_readable/6a2/STATE.a2ml [[open-bug]] BUG-002",
-  ".machine_readable/6a2/META.a2ml [[adr]] ADR-002 (scaled Let rule)",
+  ".machine_readable/descriptiles/STATE.a2ml [track-a-manhattan]",
+  ".machine_readable/descriptiles/STATE.a2ml [[open-bug]] BUG-001",
+  ".machine_readable/descriptiles/STATE.a2ml [[open-bug]] BUG-002",
+  ".machine_readable/descriptiles/META.a2ml [[adr]] ADR-002 (scaled Let rule)",
   "lib/ast.ml ExprLet (lines 105-111), StmtLet (lines 170-176)",
   "lib/lexer.ml (ZERO/ONE never emitted)",
   "lib/parser.mly quantity rule (lines 180-183)",

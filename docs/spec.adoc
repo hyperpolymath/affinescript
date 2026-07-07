@@ -14,7 +14,7 @@ project.
 
 *The authoritative current scope lives in:* -
 `.machine++_++readable/anchors/ANCHOR.a2ml` (canonical identity {plus}
-thesis) - `.machine++_++readable/6a2/META.a2ml` (architecture decision
+thesis) - `.machine++_++readable/descriptiles/META.a2ml` (architecture decision
 records) -
 `~/Desktop/Frontier++_++Programming++_++Practices++_++AffineScript/AI.a2ml`
 (v2.0) -

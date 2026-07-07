@@ -67,7 +67,7 @@ state-since = "2026-05-24"
 owner = "@hyperpolymath"
 
 [queue-entry.adr]
-local = { repo = "hyperpolymath/affinescript", id = "ADR-020", status = "accepted", file = ".machine_readable/6a2/META.a2ml" }
+local = { repo = "hyperpolymath/affinescript", id = "ADR-020", status = "accepted", file = ".machine_readable/descriptiles/META.a2ml" }
 mirror-typed-wasm = { repo = "hyperpolymath/typed-wasm", status = "to-be-filed" }
 mirror-ephapax = { repo = "hyperpolymath/ephapax", status = "to-be-filed" }
 
@@ -115,8 +115,8 @@ items = ["sister-repo ADR mirrors", "verifier-parse-support PRs in typed-wasm + 
 # ──────────────────────────────────────────────────────────────────────────────
 
 [cross-references]
-adr-020 = ".machine_readable/6a2/META.a2ml [[adr]] id=ADR-020"
-adr-021 = ".machine_readable/6a2/META.a2ml [[adr]] id=ADR-021"
+adr-020 = ".machine_readable/descriptiles/META.a2ml [[adr]] id=ADR-020"
+adr-021 = ".machine_readable/descriptiles/META.a2ml [[adr]] id=ADR-021"
 interface-spec = "docs/specs/TYPED-WASM-INTERFACE.adoc"
 roadmap = "docs/specs/TYPED-WASM-ROADMAP.adoc"
 human-companion = "docs/specs/TYPED-WASM-COORDINATION-LEDGER.adoc"

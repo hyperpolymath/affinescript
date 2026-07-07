@@ -145,7 +145,7 @@ test is not.
 
 To declare a deferred regression test, add a `regression-test-status
 = "deferred — <reason>"` field to the bug's `[[closed-bug]]` record
-in `.machine_readable/6a2/STATE.a2ml`.  Use one of these reasons:
+in `.machine_readable/descriptiles/STATE.a2ml`.  Use one of these reasons:
 
 * `observability` — no side-effecting builtin or harness reaches
   the bug's failure mode (e.g. BUG-003's eval order requires

@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: 2024-2026 hyperpolymath (Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>)
 ____
 Historical snapshot from 2026-01-23. Superseded by
-.machine++_++readable/6a2/STATE.a2ml. Retained for audit trail only.
+.machine++_++readable/descriptiles/STATE.a2ml. Retained for audit trail only.
 ____
 
 = Type Checker Completion Report

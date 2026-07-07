@@ -18,7 +18,7 @@ Actions queue drain.
 == What this session actually did
 
 1. Drafted **ADR-022** at `docs/decisions/0022-polonius-origin-variables.adoc`
-   + a structured `[[adr]]` block in `.machine_readable/6a2/META.a2ml`,
+   + a structured `[[adr]]` block in `.machine_readable/descriptiles/META.a2ml`,
    shipped as draft PR **#398**.
 2. Cut a minimal **M1 sketch** for ADR-022 (`origin_var option` on
    `TyRef`/`TyMut` + a `lib/borrow_polonius/` sublibrary skeleton) — kept
