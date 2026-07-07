@@ -1,0 +1,30 @@
+# face: python
+# SPDX-License-Identifier: MPL-2.0
+#
+# End-to-end proof (2026-07-07) that a *face-authored* program compiles
+# through the Python face → canonical → typecheck → wasm and RUNS with the
+# right answer. This is the README's headline claim ("faces are the product")
+# exercised for real, not just parsed.
+#
+# Recursion, not a loop: the Python face currently drops the trailing `;` on
+# the last statement of a while/for body (issue #683), so face-authored loops
+# don't yet compile. Recursion's tail line is a value expression, which the
+# face handles correctly — so this proves the face→wasm path without waiting
+# on #683. (Variable names also avoid the `total` soft-keyword collision,
+# issue #682.)
+
+def fac(n: Int) -> Int:
+    if n == 0:
+        1
+    else:
+        n * fac(n - 1)
+
+def sum_to(n: Int) -> Int:
+    if n == 0:
+        0
+    else:
+        n + sum_to(n - 1)
+
+def main() -> Int:
+    # fac(5)=120, sum_to(100)=5050  ->  120 + 5050 = 5170
+    fac(5) + sum_to(100)
