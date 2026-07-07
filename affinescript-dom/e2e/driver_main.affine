@@ -1,0 +1,29 @@
+// SPDX-License-Identifier: MPL-2.0
+// e2e driver `main` for the DOM reconciler. NOT standalone: `run.sh`
+// concatenates `../src/dom.affine` + this file (codegen is single-pass in
+// declaration order, so `main` must come after the functions it calls).
+//
+// Exercises every loop-bearing path (the #255 class): render's attr +
+// children loops, patch_attrs' add + remove loops (via attr_has), and the
+// `while` child-reconcile loop (in-place text patch at i=0, surplus-child
+// removal at i=1).
+//
+// Affine detail: `mount` consumes its tree, so the reconcile call gets a
+// freshly built copy — reusing `old_tree` would be a use-after-move type
+// error. The discipline the module sells is load-bearing in its own test.
+fn main() -> Int {
+  let old_tree = h("div", [("id", "app"), ("class", "old")],
+                   [text("hello"), h("span", [], [text("x")])]);
+  let ok = mount("#root", old_tree);
+  if ok {
+    let parent = dom_query_selector("#root");
+    let old_node = dom_child_at(parent, 0);
+    let old_v = h("div", [("id", "app"), ("class", "old")],
+                  [text("hello"), h("span", [], [text("x")])]);
+    let new_v = h("div", [("id", "app"), ("title", "t2")],
+                  [text("world")]);
+    reconcile(parent, old_node, old_v, new_v)
+  } else {
+    0 - 1
+  }
+}
