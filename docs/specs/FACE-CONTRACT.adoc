@@ -1,0 +1,226 @@
+// SPDX-License-Identifier: CC-BY-SA-4.0
+// SPDX-FileCopyrightText: 2024-2026 Jonathan D.A. Jewell (hyperpolymath)
+= AffineScript Face Contract — the normative binding between faces and the canonical
+Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+:toc: macro
+:toclevels: 2
+
+Status: DRAFT (2026-07-08) — Milestone A keystone of the face-sealing plan.
+
+This document is the *single normative source* for how a language _face_ binds to
+the canonical AffineScript compiler. Where `docs/specs/faces.adoc` describes the
+_design_ of the face architecture (ADR-010), this document fixes the _contract_:
+the roster, the file/pragma model, the CLI names, the shim protocol, the canonical
+pin, and the conformance + proof obligations every face must meet. Brand-surface
+repos link here rather than restating any of it.
+
+toc::[]
+
+== The face roster (normative)
+
+A _face_ earns a place on this roster only if it serves a *distinct, living surface
+community* whose idioms map meaningfully onto AffineScript's affine/linear +
+effect + typed-wasm semantics. Near-duplicate surfaces and dead-runtime dialects
+do not qualify as standalone faces (see <<actionscript>>).
+
+[cols="1,2,1,1", options="header"]
+|===
+| Brand | Source language | `--face` | Status
+
+| (canonical)   | AffineScript itself   | `canonical` | Stable (default)
+| RattleScript  | Python                | `rattle`    | Shipped
+| JaffaScript   | JavaScript            | `jaffa`     | Shipped
+| ProperScript  | TypeScript (+ AS3 preset) | `proper` | *New — planned*
+| RealScript    | ReScript              | `real`      | *New — planned*
+| CafeScripto   | CoffeeScript          | `cafe`      | Shipped
+| LucidScript   | PureScript / Haskell  | `lucid`     | Shipped
+| PseudoScript  | pseudocode            | `pseudo`    | Shipped
+|===
+
+=== The naming decoder ring
+
+Each brand name is a lateral pun on its source language — either a *synonym*
+(`cafe`≈coffee, `lucid`≈pure) or an *associative leap* (`rattle`→snake→Python,
+`jaffa`→Java). The two new ECMAScript-descended faces form a coherent trio with
+JaffaScript:
+
+* *JaffaScript* — raw JavaScript, untyped.
+* *ProperScript* — TypeScript, now typed _properly_. TypeScript's types are
+  structural and erased; routed through the affine core + typed-wasm they become
+  sound. "The TypeScript that is finally typed properly."
+* *RealScript* — ReScript, whose ML-family types were _real_ (sound,
+  non-nullable, no `any`) all along. The name is a homophone tribute
+  (Re→Real), not a corrective.
+
+ProperScript and RealScript are the "typed twins" of the JaffaScript family.
+
+== Binding model: one extension, a pragma per face
+
+*Ratified (supersedes the `.pyaff/.jsaff/...` prose in older docs).* Every face
+shares the canonical `.affine` file extension. The active face is selected, in
+priority order:
+
+. an explicit `--face <name>` flag (always wins), then
+. a first-line `face:` pragma in the source, then
+. canonical (default).
+
+The legacy per-face extensions (`.pyaff`, `.jsaff`, `.pseudoaff`, …) and the
+`--face pyaff|jsaff|pseudoaff` spellings are *deprecated* (the compiler already
+emits a deprecation warning for them, `bin/main.ml`). New material MUST use
+`.affine` + pragma.
+
+.Pragma grammar
+The pragma is the file's first meaningful line, written in that face's own comment
+syntax, of the form `<comment> face: <long-name>`:
+
+[source]
+----
+# face: rattlescript      (Python-style comment)
+// face: jaffascript      (JS-style comment)
+// face: properscript
+// face: realscript
+-- face: pseudoscript     (or lucidscript)
+# face: cafescripto
+----
+
+== Face identity table (normative)
+
+[cols="1,1,1,2,1", options="header"]
+|===
+| Brand | `--face` short | pragma long | transformer + `Face` variant | brand repo
+
+| RattleScript | `rattle`, `python`       | `rattlescript` | `lib/python_face.ml` · `Face.Python`     | `hyperpolymath/rattlescript`
+| JaffaScript  | `jaffa`, `js`, `javascript` | `jaffascript` | `lib/js_face.ml` · `Face.Js`          | `hyperpolymath/jaffascript`
+| ProperScript | `proper`, `typescript`   | `properscript` | `lib/proper_face.ml`* · `Face.Proper`*  | `hyperpolymath/properscript`*
+| RealScript   | `real`, `rescript`       | `realscript`   | `lib/real_face.ml`* · `Face.Real`*      | `hyperpolymath/realscript`*
+| CafeScripto  | `cafe`, `coffee`         | `cafescripto`  | `lib/cafe_face.ml` · `Face.Cafe`        | `hyperpolymath/cafescripto`
+| LucidScript  | `lucid`                  | `lucidscript`  | `lib/lucid_face.ml` · `Face.Lucid`      | `hyperpolymath/lucidscript`
+| PseudoScript | `pseudo`, `pseudocode`   | `pseudoscript` | `lib/pseudocode_face.ml` · `Face.Pseudocode` | `hyperpolymath/pseudoscript`
+|===
+
+`*` = does not exist yet; created under Part 2 of the plan. The CLI already
+accepts the brand short aliases `rattle`/`jaffa` alongside the canonical
+`python`/`js` names; it MUST be extended to accept `proper`/`real` (and
+`typescript`/`rescript`) once those `Face` variants land. Note: `bin/main.ml`
+already carries partial `is_rescript` error-vocabulary plumbing that RealScript
+will absorb.
+
+== Shim protocol (hardened)
+
+Each brand repo ships a `bin/<short>` shim carrying *no compiler* — it locates the
+canonical `affinescript` binary and injects `--face <short>`. The shim MUST resolve
+the binary in this order and fail with an actionable message if none is found:
+
+. `--affinescript <path>` / `$AFFINESCRIPT`, else
+. `affinescript` on `$PATH`, else
+. the sibling canonical checkout
+  (`../γ-affinescript/affinescript/_build/default/bin/main.exe`), else
+. print: `affinescript not found — install via opam, or set $AFFINESCRIPT`.
+
+This replaces the current bare-`affinescript` shims, which fail with a raw
+`command not found`.
+
+== Canonical pin
+
+Every brand repo pins the canonical compiler as a *git submodule* (the mechanism
+RattleScript already uses) and bumps it via `just update-affinescript`. No brand
+repo floats against "whatever is on `$PATH`". All language, face, and bug-fix
+changes flow through a single submodule-pointer bump, so a face can never silently
+drift from the compiler it targets.
+
+[[actionscript]]
+== ActionScript: welcomed in, but not a standalone face
+
+*Decision (2026-07-08): ActionScript is NOT a standalone face.* It is folded into
+ProperScript as a migration preset. This retires the "ActionScript-face (strategic
+priority)" roadmap item in `docs/specs/faces.adoc §194`.
+
+*Why not a face.* A face must serve a distinct, living surface community. AS3 fails
+both halves: its surface is an ECMAScript-4 dialect (`var x:Type`,
+`function f():R`, classes, packages) that is essentially *JaffaScript +
+ProperScript already*, and its runtime (Flash) died in 2020, so there is no
+community writing new AS3 to rehome. Its `-Script` is native (like TypeScript /
+JavaScript), the tell that it is a product name, not a face-brand.
+
+*But the door is open.* Flash / Flex / AIR developers were displaced by platform
+death, not language quality, and they are genuinely welcome. Their on-ramp is
+*ProperScript plus an AS3-idioms migration preset* — `extends` → traits,
+`package { … }` stripped, `trace(x)` → `IO.println(x)`, `Number`/`int` → `Float`/
+`Int`, `Array.<T>`/`Vector.<T>` → `Array[T]`, `null` → `()`. The mapping already
+drafted in `faces.adoc §194` is retargeted from a hypothetical `action_face` onto
+this preset.
+
+*Honest scope.* A dedicated `action_face` with its own brand repo is deferred
+indefinitely. This is a one-person, unfunded project; the resource-responsible
+choice is a preset that reuses the ProperScript machinery, not a whole face we
+cannot maintain. It will be reassessed only if a funded AS3 cohort materialises.
+
+== Conformance obligations
+
+A face is _conformant_ only when all of the following are green:
+
+. *Snapshot* — `tools/run_face_transformer_tests.sh` (the face's
+  `tests/faces/hello-<x>.expected.txt` matches its `preview-<x>` output).
+. *Round-trip parse* — the face's examples parse via the normal
+  pragma-auto-detecting pipeline.
+. *Same-cube* — `hyperpolymath/invariant-path/scripts/verify-same-cube.sh`
+  places the face in the *single* canonical wasm equivalence class.
++
+[IMPORTANT]
+This gate is *currently RED (exit 1)*: the six existing faces split into two
+wasm classes — `{lucid, pseudo, rattle}` (tail-expression) vs
+`{cafe, canonical, jaffa}` (statement) — because terminator-free faces guess a
+unit-typed trailing call as a tail expression and drop the `;`
+(canonical issue *#601*). Closing it (Milestone B) is a plan deliverable, via a
+post-typecheck tail-normalisation pass, so the text transformer's guess no longer
+reaches codegen.
+
+Same-cube MUST be promoted from an external script to a *required CI check* in the
+canonical repo, and each brand repo MUST run a per-face conformance gate against
+its pinned submodule.
+
+== Proof obligations
+
+The canonical core is being proved against the real `lib/ast.ml` / `lib/wasm.ml`
+denotation (the "real lift"). The faces must ride that same rigour. Current status
+(`docs/PROOF-NEEDS.adoc`):
+
+[cols="1,3,1", options="header"]
+|===
+| Obligation | Statement | Status
+
+| F-1 | every `lib/<face>_face.ml` transform preserves the typed-wasm denotation | *partial* (toy model only)
+| F-2 | tail/statement normalisation preserves denotation | *partial* (unit-tail case, `SameCube.agda`)
+| F-6 | preview round-trip totality (transform always yields parseable canonical) | *absent*
+| F-7 | face/canon confluence (all faces of one program reach one canonical AST) | *absent*
+|===
+
+Sealing the connection "for real" (Milestone D) means moving F-1 to per-face
+preservation against the real AST, generalising F-2 to the normalisation pass of
+#601, and discharging F-6/F-7. Until then the real transformers are grounded by
+tests only; this table is the honest statement of that gap.
+
+== Open implementation tasks (tracked by the plan)
+
+* *P1.2* — add `proper`/`real` (+ `typescript`/`rescript`) to the CLI `--face`
+  alias table and `Face` variant type.
+* *P2 (js_face split)* — JaffaScript narrows to plain JavaScript; ProperScript
+  gets its own transformer + TS-idiom error vocabulary (interfaces→traits, `type`,
+  `as`, generics→type params, `| null` unions). `lib/js_face.ml`'s current
+  "JS/TS" double duty is split.
+* *Create brand repos* `properscript` and `realscript` (brand-surface only, per
+  this contract).
+* *Span fidelity* (ADR-010 §4) — error spans map back to original face source,
+  not transformed canonical text.
+* *Path* — `lucidscript` + `cafescripto` currently live under `γ-languages/`;
+  ratify or relocate to match the flat `repos/` siblings.
+* *AFFIRMATION* — absent from all brand repos; add if RSR-required.
+
+== Provenance
+
+* Roster + names ratified in session 2026-07-08 (RattleScript/JaffaScript/
+  CafeScripto/LucidScript/PseudoScript pre-existing; ProperScript, RealScript, and
+  the ActionScript fold-in decided this session).
+* Supersedes: `.pyaff`-style extensions; the ActionScript standalone-face roadmap
+  item (`faces.adoc §194`).
+* Companion design doc: `docs/specs/faces.adoc` (ADR-010).
