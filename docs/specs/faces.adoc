@@ -120,16 +120,19 @@ agree on trailing-statement lowering would yield byte-level same-cube.
 
 == Roadmap Faces
 
-ActionScript-face remains on the roadmap (CoffeeScript has since shipped as
-CafeScripto — see Active Faces above). The face architecture makes
-implementation cheap once the surface mapping is settled; the bottleneck is
-design, not code.
+ActionScript is *no longer a roadmap face*. As of 2026-07-08 it has been folded
+into ProperScript (the TypeScript face) as an AS3-idioms migration preset — see
+`docs/specs/FACE-CONTRACT.adoc`, "ActionScript: welcomed in, but not a standalone
+face". The surface mapping retained in the section below now describes that
+preset, not a standalone `action_face`. No standalone faces remain on the
+roadmap; the two new faces (ProperScript / TypeScript, RealScript / ReScript) are
+tracked as active planned work in the Face Contract, not here.
 
 === CoffeeScript-face — SHIPPED as CafeScripto
 
 NOTE: This face is now *established* (`lib/cafe_face.ml`, `--face cafe`; see the
 Active Faces table and `hyperpolymath/cafescripto`). The design notes below are
-retained as historical reference; only ActionScript-face remains on the roadmap.
+retained as historical reference. No standalone faces remain on the roadmap.
 
 *Rationale:* CoffeeScript has a loyal displaced community that never loved
 JavaScript and were forced away when the ecosystem moved on. Their syntax
@@ -191,9 +194,18 @@ WASM output.
 
 *File:* `lib/coffee_face.ml`, `--face coffee` / `--face coffeescript`
 
-=== ActionScript-face (strategic priority)
+=== ActionScript — ProperScript AS3 migration preset (not a standalone face)
 
-*Rationale:* ActionScript 3 was a capable, statically-typed OO language
+NOTE: *Decision 2026-07-08* (`docs/specs/FACE-CONTRACT.adoc`): ActionScript is not
+a standalone face. AS3's surface is an ECMAScript-4 dialect essentially covered by
+JaffaScript (JavaScript) + ProperScript (TypeScript), and its runtime (Flash) is
+dead, so there is no living community to rehome into a dedicated face. Flash /
+Flex / AIR developers are genuinely welcome — their on-ramp is ProperScript
+(`--face proper`) plus the AS3-idioms preset described by the mapping below. A
+dedicated `action_face` is deferred indefinitely as a resource-responsible choice
+for a solo, unfunded project.
+
+*Rationale (historical):* ActionScript 3 was a capable, statically-typed OO language
 with a loyal community (Flash game developers, Flex/AIR developers). It was
 killed by platform death (Flash end-of-life), not by language quality.
 AS3 developers are comfortable with explicit types, classes, and access
@@ -253,7 +265,8 @@ modifiers — all of which map naturally to AffineScript concepts.
 - Event model (`addEventListener`) — emit a hint pointing to effects.
 - `Vector.<T>` vs `Array.<T>` — both map to `Array[T]`?
 
-*File:* `lib/action_face.ml`, `--face action` / `--face actionscript`
+*Realised as:* an AS3-idioms preset / migration guide under ProperScript
+(`--face proper`), not a standalone `lib/action_face.ml`.
 
 == Python Face Details
 
