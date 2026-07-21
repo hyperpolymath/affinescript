@@ -9,3 +9,10 @@ updates:
     labels:
       - "dependencies"
       - "github-actions"
+    # Batch this ecosystem into a single PR. Ungrouped, Dependabot
+    # opens one PR per dependency, and each PR re-fires every
+    # workflow in the repo.
+    groups:
+      github-actions:
+        patterns:
+          - "*"
