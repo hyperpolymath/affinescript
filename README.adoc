@@ -112,7 +112,14 @@ AffineScript is one setting of a more general machine.
   the thing this design is built to avoid.)
 * *Faces to core.* Many surfaces, one core AST, one proof.
 
-// TODO: link the SystemET / Anytype design notes once they have stable locations.
+The design notes now have stable homes:
+link:https://github.com/hyperpolymath/systemet[systemet] (the theory: layer
+meanings, gates, proof obligations) and
+link:https://github.com/hyperpolymath/anytype[anytype] (the kernel: a
+parameterised graded checker). AffineScript's `{0,1,ω}` quantity semiring
+(`lib/quantity.ml`) is one instantiation of anytype's L2 grade-algebra
+interface — the same checking rules under a different algebra give a
+different discipline.
 
 == Where this fits
 
