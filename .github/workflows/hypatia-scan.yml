@@ -25,5 +25,5 @@ permissions:
   pull-requests: write
 jobs:
   hypatia:
-    uses: hyperpolymath/standards/.github/workflows/hypatia-scan-reusable.yml@5fa7a834e015f22c14d2de592ccc369caefa318a
+    uses: hyperpolymath/standards/.github/workflows/hypatia-scan-reusable.yml@81dbf2dd854b1444fd6236fa2352474383b2c2b9
     secrets: inherit
