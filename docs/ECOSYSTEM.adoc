@@ -167,8 +167,8 @@ target.
 Linear-msg invariant; reuses the INT-02 loader. 9 Deno tests vs the
 canonical `affinescript tea-bridge` + a re-entrancy fixture.
 
-|`affinescript-cadre` |scaffold |Was imaginary until #175. Router/navigation
-satellite (internal `lib/tea_router.ml` contract exists).
+|`affinescript-cadre` |runtime |Cadre Router navigation satellite wrapper.
+Consumes `lib/tea_router.ml` generated WASM module.
 
 |`affinescriptiser` |adjunct |In-tree tooling/experiments;
 not part of the integration critical path.
@@ -269,7 +269,7 @@ the runtime is FIXED (PR #257, closed 2026-05-19); runtime VERIFIED
 end-to-end 2026-07-07 via `affinescript-dom/e2e/run.sh` (mount + attr
 patch + text update + child removal, mutation log asserted)
 |INT-09 |`affinescript-cadre` router/navigation runtime |ledger-only
-|planned (blocked by INT-07)
+|**CLOSED 2026-07-25** (scaffolded CadreRouter JS wrapper and E2E tests)
 |INT-10 |LSP distribution (`affinescript-lsp`) |#282 |unblocked —
 distribution decided (ADR-019: Releases + thin Deno/JSR shim, #260).
 Consumes the shim once #260 S2/S3 land
