@@ -1,2 +1,10 @@
 .hypatia-ignore
 flake.nix
+
+PROOF-NEEDS.adoc           # (Estate drift remediation #83)
+PROOF-STATUS.adoc          # (Estate drift remediation #83)
+READINESS.adoc             # (Estate drift remediation #83)
+TEST-NEEDS.adoc            # (Estate drift remediation #83)
+TOPOLOGY.adoc              # (Estate drift remediation #83)
+llm-warmup-dev.adoc        # (Estate drift remediation #83)
+llm-warmup-user.adoc       # (Estate drift remediation #83)
