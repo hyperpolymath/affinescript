@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 // e2e host for dom_drive.wasm — Int-handle DOM, mutation log, assertions.
-import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readBytes, buildImportObject } from '../../packages/affine-js/loader.js';
+
+// Simple assert for browser host parity
+const assert = {
+  equal: (a, b, msg) => { if (a !== b) throw new Error(`Assertion failed: ${a} !== ${b}. ${msg||''}`); },
+  ok: (a, msg) => { if (!a) throw new Error(`Assertion failed: not truthy. ${msg||''}`); }
+};
 
 let inst = null;
 const readString = (ptr) => {
@@ -38,10 +43,16 @@ const dump = (h, d = 0) => {
   return ['  '.repeat(d) + line, ...n.children.flatMap((c) => dump(c, d + 1))].join('\n');
 };
 
-const bytes = await readFile(process.argv[2]);
-const { instance } = await WebAssembly.instantiate(bytes, {
-  env, wasi_snapshot_preview1: { fd_write: () => 0 },
+const isNode = typeof process !== 'undefined' && process.argv;
+const wasmPath = isNode ? process.argv[2] : './dom_drive.wasm';
+
+const bytes = await readBytes(wasmPath, { base: import.meta.url });
+const importObject = buildImportObject(env, {
+  imports: {
+    wasi_snapshot_preview1: { fd_write: () => 0 }
+  }
 });
+const { instance } = await WebAssembly.instantiate(bytes, importObject);
 inst = instance;
 
 const ret = inst.exports.main();

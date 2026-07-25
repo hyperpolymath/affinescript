@@ -274,9 +274,9 @@ patch + text update + child removal, mutation log asserted)
 distribution decided (ADR-019: Releases + thin Deno/JSR shim, #260).
 Consumes the shim once #260 S2/S3 land
 |INT-11 |Browser host parity (`affine-js` loader + `affinescript-dom` reconciler end-to-end) |
-ledger-only |planned (INT-02 dep cleared 2026-05-31 via #179; INT-08
-runtime verified end-to-end 2026-07-07 under Node — browser-host parity
-is the remaining leg). Satellite-repo question resolved (#489 closed via Option A: folded into `affine-js`).
+**CLOSED 2026-07-25** |Browser verification harness (`browser_test.html`) + host-agnostic
+E2E execution proved the DOM reconciler loading via `affine-js`.
+Satellite-repo question resolved (#489 closed via Option A).
 |INT-12 |typed-wasm convergence: AffineScript-emitted fixtures into the
 typed-wasm cross-compat suite (closes the Stage-E runway) |ledger-only |
 planned (Stage E; coordinates with `hyperpolymath/typed-wasm` C5.1)
