@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>AffineScript DOM Reconciler - Browser Test</title>
+  <style>
+    body { font-family: system-ui, sans-serif; padding: 2rem; }
+    #status { font-weight: bold; padding: 1rem; border-radius: 4px; }
+    .success { background: #d4edda; color: #155724; }
+    .error { background: #f8d7da; color: #721c24; }
+    pre { background: #f8f9fa; padding: 1rem; overflow-x: auto; }
+  </style>
+</head>
+<body>
+  <h1>AffineScript DOM Reconciler E2E Test</h1>
+  <div id="status">Running tests...</div>
+  
+  <h3>Logs</h3>
+  <pre id="logs"></pre>
+
+  <script type="module">
+    const statusEl = document.getElementById('status');
+    const logsEl = document.getElementById('logs');
+    
+    // Capture console.log to show on page
+    const originalLog = console.log;
+    console.log = (...args) => {
+      originalLog(...args);
+      logsEl.textContent += args.join(' ') + '\n';
+    };
+
+    try {
+      // Import the host-agnostic mjs script
+      await import('./dom_host.mjs');
+      statusEl.textContent = '✅ ALL ASSERTIONS PASS — reconciler ran end-to-end in the browser!';
+      statusEl.className = 'success';
+    } catch (err) {
+      console.error(err);
+      statusEl.textContent = '❌ TEST FAILED: ' + err.message;
+      statusEl.className = 'error';
+    }
+  </script>
+</body>
+</html>
