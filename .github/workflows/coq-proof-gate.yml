@@ -1,0 +1,96 @@
+# SPDX-License-Identifier: MPL-2.0
+# Coq/Rocq proof gate for the `formal/` mechanised-metatheory track (issue #513).
+#
+# This gate is deliberately FAIL-CLOSED. It does NOT probe for the prover and
+# skip when absent — the container guarantees `coqc` exists, so a missing
+# prover is an infrastructure failure, not a silent pass.
+#
+# `formal/justfile` remains the single source of truth for the proof list and
+# its dependency order; this workflow parses that list rather than duplicating
+# it, and fails if any `formal/*.v` on disk is not named there.
+name: Coq Proof Gate
+on:
+  pull_request:
+    paths:
+      - 'formal/**'
+      - '.github/workflows/coq-proof-gate.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'formal/**'
+      - '.github/workflows/coq-proof-gate.yml'
+  workflow_dispatch:
+permissions: read-all
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  coq-proofs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container:
+      # coqorg/coq:8.20 — pinned by digest. `formal/README.adoc` documents 8.18;
+      # the corpus was verified to check clean on 8.20.1 (deprecation warnings
+      # for `app_length` only, no errors).
+      image: coqorg/coq@sha256:e50d77c4c5a9aa0d76ae1b343d79c5f922da3a75054b79c5dc635895438e4674
+      options: --user root
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Record prover version
+        run: coqc --version
+
+      - name: Extract the ordered proof list from formal/justfile
+        id: list
+        run: |
+          set -euo pipefail
+          cd formal
+          list="$(sed -n '/for f in /,/; do/p' justfile \
+                  | tr '\n' ' ' \
+                  | sed 's/.*for f in //; s/; do.*//; s/\\//g' \
+                  | tr -s ' ')"
+          if [ -z "${list// /}" ]; then
+            echo "::error::could not parse the proof list out of formal/justfile"
+            exit 1
+          fi
+          echo "count=$(printf '%s' "$list" | wc -w)"
+          echo "list=$list" >> "$GITHUB_OUTPUT"
+
+      - name: Guard — every formal/*.v must be wired into the gate
+        env:
+          LIST: ${{ steps.list.outputs.list }}
+        run: |
+          set -euo pipefail
+          cd formal
+          missing=0
+          for f in *.v; do
+            b="${f%.v}"
+            case " $LIST " in
+              *" $b "*) ;;
+              *) echo "::error file=formal/$f::proof file is not listed in formal/justfile — it would never be checked"; missing=1 ;;
+            esac
+          done
+          [ "$missing" -eq 0 ] || exit 1
+          echo "all on-disk proofs are wired into the gate"
+
+      - name: Type-check every proof and reject any axiom / Admitted
+        env:
+          LIST: ${{ steps.list.outputs.list }}
+        run: |
+          set -euo pipefail
+          cd formal
+          all=""
+          for f in $LIST; do
+            echo "== coqc $f.v =="
+            o="$(coqc -Q . ASFormal "$f.v")"
+            printf '%s\n' "$o"
+            all+="$o"$'\n'
+          done
+          # `Print Assumptions` emits "Axioms:" when a theorem depends on an
+          # axiom or an `Admitted` proof; "Closed under the global context"
+          # is the clean result.
+          if printf '%s' "$all" | grep -q "Axioms:"; then
+            echo "::error::a proof depends on an axiom / Admitted"
+            exit 1
+          fi
+          echo "OK: all proofs mechanised; no axioms."
