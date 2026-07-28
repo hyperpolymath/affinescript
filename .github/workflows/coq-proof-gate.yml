@@ -28,6 +28,13 @@ jobs:
   coq-proofs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # The image ships bash 5.2, but GitHub fell back to `sh -e {0}` (dash) on
+    # the first run, which rejects `set -o pipefail` and the bash-only string
+    # operations below. Declare the shell explicitly rather than depending on
+    # the runner's detection.
+    defaults:
+      run:
+        shell: bash
     container:
       # coqorg/coq:8.20 — pinned by digest. `formal/README.adoc` documents 8.18;
       # the corpus was verified to check clean on 8.20.1 (deprecation warnings
@@ -36,6 +43,23 @@ jobs:
       options: --user root
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The coqorg images install Coq into an opam switch owned by the `coq`
+      # user and put it on PATH via an ENTRYPOINT wrapper. GitHub Actions
+      # overrides the entrypoint for job containers, so that wrapper never
+      # runs and `coqc` is not on PATH — the switch has to be added by hand.
+      # Globbed rather than hard-coded so an image bump does not silently
+      # break the gate; fails loudly if the switch cannot be located.
+      - name: Put the image's opam switch on PATH
+        run: |
+          set -euo pipefail
+          sw="$(ls -d /home/coq/.opam/*/bin 2>/dev/null | head -1 || true)"
+          if [ -z "$sw" ] || [ ! -x "$sw/coqc" ]; then
+            echo "::error::could not locate coqc in the image's opam switch"
+            exit 1
+          fi
+          echo "$sw" >> "$GITHUB_PATH"
+          echo "added $sw to PATH"
 
       - name: Record prover version
         run: coqc --version
