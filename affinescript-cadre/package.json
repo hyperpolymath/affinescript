@@ -1,0 +1,12 @@
+{
+  "name": "@hyperpolymath/affinescript-cadre",
+  "version": "0.1.0",
+  "description": "Router and Navigation runtime for AffineScript",
+  "type": "module",
+  "main": "src/CadreRouter.js",
+  "scripts": {
+    "test": "./e2e/run.sh"
+  },
+  "author": "Jonathan D.A. Jewell",
+  "license": "MPL-2.0"
+}
