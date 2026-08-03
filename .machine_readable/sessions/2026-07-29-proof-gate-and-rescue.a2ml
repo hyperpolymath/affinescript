@@ -1,0 +1,143 @@
+# SPDX-License-Identifier: MPL-2.0
+# SPDX-FileCopyrightText: 2026 hyperpolymath
+#
+# Session record — 2026-07-29 — Coq proof gate wired + stranded work rescued
+#
+# Human-readable companions:
+#   docs/ci/COQ-PROOF-GATE.adoc              (the gate: design, gotchas, falsifiers)
+#   dev-notes/affinescript-sitrep-2026-07-29.md  (estate-local, not in this repo)
+
+[metadata]
+schema           = "a2ml/session-record/v1"
+session-date     = "2026-07-29"
+session-topic    = "wire the formal/ Coq proof gate into CI; rescue feature work from a deleted checkout"
+repo             = "hyperpolymath/affinescript"
+human-companion  = "docs/ci/COQ-PROOF-GATE.adoc"
+prs              = [708, 709, 711]
+
+# ── Outcome 1: the Coq proof gate ──────────────────────────────────────
+# 20 machine-checked proofs existed in formal/ with a real fail-closed
+# runner in formal/justfile, but NO workflow invoked them. Now gated.
+
+[proof-gate]
+workflow                = ".github/workflows/coq-proof-gate.yml"
+corpus-path             = "formal/"
+corpus-size             = 20
+source-of-truth         = "formal/justfile"
+list-parsed-not-copied  = true
+fail-closed             = true
+prover-in-ci            = "8.20.1"
+prover-documented       = "8.18"
+prover-pin-reconciled   = false
+container-digest        = "sha256:e50d77c4c5a9aa0d76ae1b343d79c5f922da3a75054b79c5dc635895438e4674"
+all-proofs-axiom-free   = true
+assumptions-result      = "Closed under the global context"
+tracking-issue          = 513
+
+[[proof-gate.falsifier]]
+id       = "unwired-proof-file"
+method   = "add formal/ZZ_Falsifier.v not named in formal/justfile"
+fires    = true
+guards   = "completeness"
+
+[[proof-gate.falsifier]]
+id       = "axiom-dependent-theorem"
+method   = "prove a goal via `Axiom cheat : forall P : Prop, P`"
+fires    = true
+guards   = "Print Assumptions / grep Axioms:"
+
+# Two container faults, each cost one red CI run. Both are properties of
+# coqorg/* images under GitHub Actions and will recur on any new Coq job.
+
+[[proof-gate.gotcha]]
+id          = "entrypoint-overridden"
+symptom     = "coqc: not found"
+cause       = "coqorg installs Coq into the `coq` user's opam switch and exposes it via ENTRYPOINT; GitHub Actions overrides the entrypoint for job containers"
+remedy      = "add /home/coq/.opam/*/bin to GITHUB_PATH, globbed not hard-coded, failing loudly if absent"
+
+[[proof-gate.gotcha]]
+id          = "shell-fell-back-to-dash"
+symptom     = "set: Illegal option -o pipefail"
+cause       = "GitHub used `sh -e {0}` despite the image shipping bash 5.2"
+remedy      = "declare defaults.run.shell: bash explicitly"
+
+# ── Outcome 2: rescue of stranded work ─────────────────────────────────
+# An estate reorg renamed the working checkout to *.DUPLICATE-superseded-*
+# and then DELETED it mid-session. It held 9 commits present nowhere else.
+# The rename judged duplicates by directory identity, not by git rev-list.
+
+[rescue]
+trigger                 = "checkout renamed *.DUPLICATE-superseded-2026-07-27 then deleted mid-session"
+misjudgement            = "duplicate decided by directory identity rather than `git rev-list` — the directory marked superseded held 9 unpushed commits; the one kept held 0"
+estate-wide             = "the same rename was reported backwards in all 8 affected repos"
+commits-at-risk         = 9
+commits-recovered-to-main = 3
+recovered-via           = "git bundle taken before deletion"
+cherry-pick-needed      = false
+cherry-pick-avoided-because = "the 3 feature commits were a contiguous linear chain whose base parent was origin/main, so branching preserved original SHAs, authorship and dates"
+pr                      = 708
+
+[[rescue.commit]]
+sha    = "220d7ca"
+kind   = "feature"
+subject = "docs: resolve INT-02 satellite scope deferral"
+closes = 489
+
+[[rescue.commit]]
+sha    = "70ca15e"
+kind   = "feature"
+subject = "feat(dom): browser host parity execution harness (INT-11)"
+
+[[rescue.commit]]
+sha    = "e959636"
+kind   = "feature"
+subject = "feat(cadre): scaffold router navigation runtime wrapper (INT-09)"
+
+# ── Outcome 3: sweep damage found and reverted (uncommitted only) ──────
+
+[[sweep-damage]]
+id        = "gitattributes-language-declaration-deleted"
+file      = ".gitattributes"
+detail    = "the uncommitted tree deleted `*.affine text eol=lf linguist-language=AffineScript` — the single line making GitHub recognise 493 .affine files as the project's own language, and enforcing LF on them"
+state     = "reverted-in-working-tree"
+severity  = "high"
+advice    = "never `git commit -a` in this repo while an estate sweep is active"
+
+[[sweep-damage]]
+id        = "gitignore-foreign-template-entries"
+file      = ".gitignore"
+detail    = "11 additions from another repo's template: composer/*.beam, composer/build/, /target/, *.db*, .cache/, /exports/*. Neither composer/ nor target/ exists; ai-cli-crash-capture/ is TRACKED (5 files) so ignoring it is a no-op"
+state     = "reverted-in-working-tree"
+severity  = "low"
+
+[[sweep-damage]]
+id        = "patch-ecosystem-py-escape-corruption"
+file      = "docs/patch_ecosystem.py"
+detail    = "arrived via the `merge rogue duplicate repository` commit. Its search strings contain literal BEL/TAB/CR/BS where \\a \\t \\r \\b were interpreted by a non-raw Python string — `affinescript` reads as `ffinescript`, `readBytes` as `eadBytes`. The strings can never match the file, so the script runs, exits 0, and changes nothing"
+state     = "still-present-on-main"
+severity  = "medium"
+fingerprint = "a leading letter missing after a would-be backslash escape; grep the estate for this shape — it produces scripts that appear to succeed"
+
+# ── Outcome 4: main was left red by a partial merge ────────────────────
+
+[incident-partial-merge]
+pr-that-broke-main = 709
+detail   = "PR #709 squash-merged the pre-fix revision of the workflow; the verified fix (af7c38c) was on the branch but not in the squash, so main received a gate that fails with `coqc: not found`"
+red-since = "ed4e223"
+repair-pr = 711
+repair-verified = "workflow_dispatch green on the branch: 20/20 proofs, completeness guard passed, no axioms"
+lesson   = "after a squash merge, re-check that the merged tree contains the fix — a green PR check can belong to a superseded commit"
+
+# ── Method notes worth not re-deriving ─────────────────────────────────
+
+[[method-note]]
+id     = "always-fetch-before-judging-divergence"
+detail = "a stale remote-tracking ref reported `ahead 16`; after `git fetch` the true figure was 9. Origin had already absorbed 7 via PRs."
+
+[[method-note]]
+id     = "a-red-run-is-not-a-red-branch"
+detail = "resolve which commit a CI run belongs to before calling a branch red; a failure observed in a stale duplicate checkout belonged to a superseded commit while main was green."
+
+[[method-note]]
+id     = "bundle-verify-is-not-restore"
+detail = "`git bundle verify` proves internal consistency, not that the bundle restores what you wanted. Clone it and assert the expected SHA."

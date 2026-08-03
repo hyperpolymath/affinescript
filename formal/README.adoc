@@ -11,6 +11,19 @@ issue #513 names for mechanized proofs. Prover: **Coq/Rocq 8.18** — chosen for
 the codegen/K-1 track because the typed-WASM target semantics interoperate with
 `typed-wasm` and ephapax, both of which use Coq (`Semantics.v`).
 
+[NOTE]
+.CI gates on 8.20.1, not 8.18
+====
+Since 2026-07-29 these proofs are gated in CI by
+`.github/workflows/coq-proof-gate.yml`, whose pinned container provides
+**Coq 8.20.1**. The whole corpus was verified to check clean on 8.20.1; the
+only friction is a deprecation warning (`app_length` -> `length_app`, deprecated
+since 8.20) from `RealCompile.v`, `RealLoop.v` and `RealMem.v`. No errors.
+
+Reconciling this documented 8.18 pin with the 8.20 gating version is
+outstanding. See `docs/ci/COQ-PROOF-GATE.adoc`.
+====
+
 [IMPORTANT]
 .`.v` here is Coq, not V-lang
 ====
