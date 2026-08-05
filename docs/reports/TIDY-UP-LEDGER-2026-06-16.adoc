@@ -48,7 +48,7 @@ repointed `.md` → `.adoc`.
 
 | `docs/PROOF-NEEDS.md` | Owner-gated / parked (modified in working tree;
   never commit without owner SPDX + sign).
-| `docs/reference/ABI-FFI.md` | Uninstantiated RSR template (`{{PROJECT}}`
+| `docs/reference/ABI-FFI.md` | Uninstantiated RSR template (`AFFINESCRIPT`
   placeholders, "delete this line" instruction). Format-converting broken
   placeholder content forward would mask that it needs instantiation.
 | `docs/governance/LICENSING-GUIDE.md` | Licence-adjacent. Owner-only per
@@ -84,11 +84,11 @@ drift remains owner-only / manual.
 == Open owner-gated flags (not actioned)
 
 * `SECURITY.md` (both `docs/governance/SECURITY.md` and the repo-root copy)
-  is an *uninstantiated* RSR template — `{{OWNER}}`, `{{REPO}}`,
+  is an *uninstantiated* RSR template — `hyperpolymath`, `affinescript`,
   `{{SECURITY_EMAIL}}`, `{{PGP_FINGERPRINT}}`, `{{PGP_KEY_URL}}`,
-  `{{WEBSITE}}`, `{{CURRENT_YEAR}}` are still literal placeholders. Needs
+  `{{WEBSITE}}`, `2026` are still literal placeholders. Needs
   instantiation or an explicit "leave as template" decision.
-* `docs/reference/ABI-FFI.md` — `{{PROJECT}}` template; instantiate or
+* `docs/reference/ABI-FFI.md` — `AFFINESCRIPT` template; instantiate or
   remove.
 * `docs/governance/LICENSING-GUIDE.md` — awaiting owner manual format pass.
 * `SECURITY.md:388` links to `README.md` for contact info — that root

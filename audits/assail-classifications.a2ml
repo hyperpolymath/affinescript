@@ -67,7 +67,7 @@ schema_version = "1.0.0"
   ;
   ; The two flake.nix files below live in vendored subtrees with their
   ; own upstream repos. The affinescriptiser/flake.nix that panic-attack
-  ; ALSO flagged was an unfilled scaffold leftover (had {{PROJECT_NAME}}
+  ; ALSO flagged was an unfilled scaffold leftover (had AffineScript
   ; placeholders) — deleted in this PR rather than suppressed.
 
   (classification

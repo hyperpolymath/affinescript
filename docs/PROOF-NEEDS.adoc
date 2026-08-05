@@ -456,7 +456,7 @@ F-1 (full transformer preservation) is non-trivial rather than a formality.
 *Template ABI Cleanup (2026-03-29).* The template ABI was removed — it was
 creating a false impression of formal verification. The removed files
 (`Types.idr`, `Layout.idr`, `Foreign.idr`) contained only RSR template
-scaffolding with unresolved `{{PROJECT}}`/`{{AUTHOR}}` placeholders and no
+scaffolding with unresolved `AFFINESCRIPT`/`Jonathan D.A. Jewell` placeholders and no
 domain-specific proofs. When this project needs formal ABI verification, create
 domain-specific Idris2 proofs following the pattern in repos like `typed-wasm`,
 `proven`, `echidna`, or `boj-server`. (The same caution applies to the
