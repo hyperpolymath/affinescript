@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: MPL-2.0
+# This workflow is managed by gh actions-lock.
 #
 # Release (ADR-019 / #260 S2). On a `v*` tag: build the AffineScript
 # compiler for each supported platform, attach the raw per-platform
@@ -33,7 +34,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
       - name: Create the release as a draft (idempotent)
         # Immutable releases (enabled on this repo) forbid adding assets to a
         # *published* release — the v0.2.0 build legs hit "HTTP 422: Cannot
@@ -70,9 +71,9 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
       - name: Set up OCaml
-        uses: ocaml/setup-ocaml@15d660006c1d3110d77c34b7faa3bddefe8b82f0 # v3
+        uses: ocaml/setup-ocaml@v3.7.0
         with:
           ocaml-compiler: "5.1"
       - name: Install dependencies
@@ -103,7 +104,7 @@ jobs:
           install -m 0755 _build/default/bin/main.exe \
             "affinescript-${{ matrix.target }}"
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        uses: actions/attest-build-provenance@v4.1.1
         with:
           subject-path: 'affinescript-${{ matrix.target }}'
       - name: Upload the binary to the release

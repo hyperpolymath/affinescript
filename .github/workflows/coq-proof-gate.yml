@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: MPL-2.0
+# This workflow is managed by gh actions-lock.
 # Coq/Rocq proof gate for the `formal/` mechanised-metatheory track (issue #513).
 #
 # This gate is deliberately FAIL-CLOSED. It does NOT probe for the prover and
@@ -42,7 +43,7 @@ jobs:
       image: coqorg/coq@sha256:e50d77c4c5a9aa0d76ae1b343d79c5f922da3a75054b79c5dc635895438e4674
       options: --user root
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
 
       # The coqorg images install Coq into an opam switch owned by the `coq`
       # user and put it on PATH via an ENTRYPOINT wrapper. GitHub Actions

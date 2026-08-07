@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: MPL-2.0
+# This workflow is managed by gh actions-lock.
 #
 # Standalone governance gate. Previously a thin caller of
 # `hyperpolymath/standards/.github/workflows/governance-reusable.yml@main`;
@@ -26,7 +27,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
       - name: Fetch base ref (DOC-FORMAT delta)
