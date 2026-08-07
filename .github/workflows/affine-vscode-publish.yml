@@ -1,3 +1,4 @@
+# This workflow is managed by gh actions-lock.
 # SPDX-License-Identifier: MPL-2.0
 # Publishes @hyperpolymath/affine-vscode to npm on a scoped tag push.
 #
@@ -33,7 +34,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
       - name: Verify tag matches package version
         working-directory: packages/affine-vscode
         run: |
