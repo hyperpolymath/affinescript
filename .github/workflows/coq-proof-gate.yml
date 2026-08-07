@@ -1,5 +1,5 @@
-# This workflow is managed by gh actions-lock.
 # SPDX-License-Identifier: MPL-2.0
+# This workflow is managed by gh actions-lock.
 # Coq/Rocq proof gate for the `formal/` mechanised-metatheory track (issue #513).
 #
 # This gate is deliberately FAIL-CLOSED. It does NOT probe for the prover and

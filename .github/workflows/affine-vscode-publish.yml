@@ -1,5 +1,5 @@
-# This workflow is managed by gh actions-lock.
 # SPDX-License-Identifier: MPL-2.0
+# This workflow is managed by gh actions-lock.
 # Publishes @hyperpolymath/affine-vscode to npm on a scoped tag push.
 #
 # This repo is Deno-first (see CLAUDE.md). The npm publish here is a

@@ -1,5 +1,5 @@
-# This workflow is managed by gh actions-lock.
 # SPDX-License-Identifier: MPL-2.0
+# This workflow is managed by gh actions-lock.
 #
 # Standalone governance gate. Previously a thin caller of
 # `hyperpolymath/standards/.github/workflows/governance-reusable.yml@main`;

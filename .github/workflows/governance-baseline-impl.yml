@@ -1,5 +1,5 @@
-# This workflow is managed by gh actions-lock.
 # SPDX-License-Identifier: MPL-2.0
+# This workflow is managed by gh actions-lock.
 #
 # Local reusable backing `governance-baseline.yml`. Its single job is named
 # "Validate Hypatia baseline" so that, when called from a job with id

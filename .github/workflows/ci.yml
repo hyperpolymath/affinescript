@@ -1,5 +1,5 @@
-# This workflow is managed by gh actions-lock.
 # SPDX-License-Identifier: MPL-2.0
+# This workflow is managed by gh actions-lock.
 #
 # Standalone CI: no dependency on third-party actions or external-repo
 # reusable workflows. The OCaml toolchain is self-hosted via apt + opam
