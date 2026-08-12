@@ -114,7 +114,15 @@
  (flags
   (:standard -w -8-9))
  (preprocess
-  (pps ppx_deriving.show ppx_deriving.eq ppx_deriving.ord sedlex.ppx)))
+  (pps ppx_deriving.show ppx_deriving.eq ppx_deriving.ord sedlex.ppx))
+ ; Without this stanza `dune runtest --instrument-with bisect_ppx` has nothing
+ ; to attach to: dune instruments nothing, the tests run uninstrumented, and no
+ ; .coverage files are written. `bisect-ppx-report summary` then fails with
+ ; "no *.coverage files found" — and because the CI step that calls it carries
+ ; `continue-on-error: true`, that failure was swallowed and the coverage job
+ ; went green while measuring nothing.
+ (instrumentation
+  (backend bisect_ppx)))
 
 (menhir
  (modules parser)

@@ -1,0 +1,125 @@
+// SPDX-License-Identifier: CC-BY-SA-4.0
+// SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell (hyperpolymath)
+= The Coq Proof Gate
+:toc: left
+:toclevels: 3
+
+Workflow: `.github/workflows/coq-proof-gate.yml` +
+Proof corpus: `formal/` (20 `.v` files) +
+Local runner: `formal/justfile` (`just check`) +
+Tracking issue: #513 (umbrella), #514–#521 (individual obligations)
+
+== What it does
+
+Type-checks every Coq/Rocq proof in `formal/` and **fails if any theorem
+depends on an axiom or an `Admitted` proof**.
+
+This is the mechanised half of the proof programme catalogued in
+`docs/PROOF-NEEDS.adoc`. Until 2026-07-29 the corpus existed and checked
+clean, but **no workflow invoked it** — a `grep` for coq/rocq across
+`.github/workflows/` returned nothing. The proofs were real; the assurance
+was simply being discarded.
+
+== Design decisions
+
+=== It is fail-closed
+
+The gate does *not* probe for the prover and skip when it is absent. The
+pinned container guarantees `coqc`, so a missing prover is an infrastructure
+failure, not a silent pass.
+
+This matters because the sibling script `tools/check-proofs.sh` takes the
+opposite approach for Idris2/Lean/Agda — it gates each on
+`command -v … || { note "SKIP"; return; }` and exits `0` with zero provers
+present. That script reports "N passed, N failed, N skipped" and is green on a
+machine with no provers at all. Do not model new gates on it.
+
+=== `formal/justfile` remains the single source of truth
+
+The proof list *and its dependency order* live in `formal/justfile`. The
+workflow parses that list rather than restating it, so the two cannot drift.
+
+A completeness guard then fails the run if any `formal/*.v` on disk is **not**
+named in the justfile. Adding a proof without wiring it is therefore a loud
+failure rather than a silent omission.
+
+=== The axiom check
+
+Each proof ends with `Print Assumptions <theorem>`. Coq emits:
+
+* `Closed under the global context` — clean; the theorem depends on nothing
+  outside the kernel
+* `Axioms:` followed by a list — the theorem rests on an axiom or an
+  `Admitted` proof
+
+The gate greps the accumulated output for `Axioms:`. As of 2026-07-29 all 20
+files report `Closed under the global context`.
+
+== Container gotchas (both cost a red run before being found)
+
+[IMPORTANT]
+====
+These two are properties of `coqorg/*` images under GitHub Actions
+specifically. They will bite again on any new Coq job.
+====
+
+. **The entrypoint never runs.** The `coqorg` images install Coq into an opam
+  switch owned by the `coq` user and put it on `PATH` via an `ENTRYPOINT`
+  wrapper. GitHub Actions *overrides* the entrypoint for job containers, so the
+  wrapper never executes and `coqc` is not on `PATH` — the failure reads simply
+  `coqc: not found`. The workflow adds the switch explicitly, **globbed**
+  (`/home/coq/.opam/*/bin`) rather than hard-coded, so an image bump cannot
+  silently break it, and fails loudly if it cannot be located.
+
+. **The shell is not bash unless you say so.** GitHub fell back to
+  `sh -e {0}` (dash), which rejects `set -o pipefail` and the bash-only string
+  operations the gate uses. The image *does* ship bash 5.2, so the job declares
+  `defaults.run.shell: bash` rather than relying on runner detection.
+
+== Prover version
+
+[cols="1,2"]
+|===
+| `formal/README.adoc` documents | Coq/Rocq **8.18**
+| The pinned CI container is | `coqorg/coq@sha256:e50d77c4…` → **8.20.1**
+|===
+
+The corpus was verified to check clean on 8.20.1. The only friction is a
+deprecation warning — `app_length` is deprecated since 8.20 in favour of
+`length_app` — raised by `RealCompile.v`, `RealLoop.v` and `RealMem.v`. No
+errors. Reconciling the documented pin with the gating version is outstanding.
+
+== Running it locally
+
+Requires `coqc` on `PATH` (any 8.18–8.20):
+
+[source,console]
+----
+$ cd formal && just check
+----
+
+Expect, on success:
+
+----
+OK: K-1/K1Let/F-1 + P-2/P-3/F-3/F-4 mechanized; no axioms.
+----
+
+A cold run takes over two minutes; the workflow allows `timeout-minutes: 30`.
+
+== Verifying the gate can actually fail
+
+Both guards were falsifier-tested rather than assumed:
+
+[cols="2,1"]
+|===
+| Falsifier | Result
+
+| Add an unwired `formal/ZZ_Falsifier.v`
+| completeness guard fires, run fails
+
+| Add a theorem proved via `Axiom cheat : forall P : Prop, P`
+| `Print Assumptions` emits `Axioms:`, grep catches it, run fails
+|===
+
+Re-run these if the gate is ever refactored. A proof gate that has never been
+observed to fail is not evidence of anything.
