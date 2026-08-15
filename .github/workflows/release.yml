@@ -73,7 +73,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7.0.1
       - name: Set up OCaml
-        uses: ocaml/setup-ocaml@v3.7.0
+        uses: ocaml/setup-ocaml@v3.7.1
         with:
           ocaml-compiler: "5.1"
       - name: Install dependencies
@@ -104,7 +104,7 @@ jobs:
           install -m 0755 _build/default/bin/main.exe \
             "affinescript-${{ matrix.target }}"
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v4.1.1
+        uses: actions/attest-build-provenance@v4.2.2
         with:
           subject-path: 'affinescript-${{ matrix.target }}'
       - name: Upload the binary to the release
