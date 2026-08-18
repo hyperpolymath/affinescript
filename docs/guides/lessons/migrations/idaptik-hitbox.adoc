@@ -8,9 +8,9 @@ NOTE: First-ever `.res → .affine` translation in the IDApTIK migration. Picked
 because it is small, pure, and has no transitive imports — a reasonable
 proof-of-pattern target. The lessons below generalise to other small leaves.
 
-== The original (28 lines, ReScript)
+== The original (28 lines, )
 
-[source,rescript]
+[source,]
 ----
 type rect = { x: float, y: float, w: float, h: float }
 
@@ -56,7 +56,7 @@ not.
 
 === 1. Labelled arguments → semantic struct types
 
-The ReScript original disambiguates positional floats with labels:
+The  original disambiguates positional floats with labels:
 
 ----
 contains(r, ~pointX, ~pointY)
@@ -76,7 +76,7 @@ expected. The work the labels were doing informally is now done formally.
 This is the
 xref:../../frontier-programming-practices/AI.a2ml#branded-identifiers[branded-identifiers
 pattern] from the AI scope statement, applied to function signatures rather
-than newtype-style aliases. **Whenever you see ReScript labelled args of the
+than newtype-style aliases. **Whenever you see  labelled args of the
 same primitive type, ask whether they want to be a struct.**
 
 === 2. The faithful-but-monolithic version was discarded
@@ -117,7 +117,7 @@ decision criteria suggest reaching for `Result` only when absence has a reason
 
 == A real complication: AffineScript v0.1.0 cannot type Float arithmetic
 
-The original ReScript uses `float` because in-game collision needs sub-pixel
+The original  uses `float` because in-game collision needs sub-pixel
 precision. The natural translation would use `Float`:
 
 [source,affinescript]
@@ -164,9 +164,9 @@ honest version of the same compromise.
 
 == What this lesson covers, generalised
 
-When translating any small ReScript leaf:
+When translating any small  leaf:
 
-. **Look at the labels first.** ReScript labelled args of the same primitive
+. **Look at the labels first.**  labelled args of the same primitive
   type often want to become struct types. The compiler will then enforce what
   the labels merely suggested.
 . **Look at the types second.** A single record type often wants to fission

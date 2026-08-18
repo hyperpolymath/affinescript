@@ -1,10 +1,10 @@
 <!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
 <!-- SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell -->
 
-# tree-sitter-rescript (vendoring manifest)
+# tree-sitter- (vendoring manifest)
 
 This directory is a **manifest-only vendoring** of the canonical
-[`rescript-lang/tree-sitter-rescript`][upstream] grammar. The grammar
+[`-lang/tree-sitter-`][upstream] grammar. The grammar
 itself is not copied into this repository — `package.json` declares it
 as a dependency, and `scripts/install.sh` fetches and builds it at the
 pinned commit.
@@ -15,7 +15,7 @@ for AffineScript; for that, see `editors/tree-sitter-affinescript/`.
 
 ## Pinned upstream
 
-- **Repository:** <https://github.com/rescript-lang/tree-sitter-rescript>
+- **Repository:** <https://github.com/-lang/tree-sitter->
 - **Commit:** `990214a83f25801dfe0226bd7e92bb71bba1970f`
 - **Version:** 6.0.0
 - **License:** MIT (preserved upstream; compatible with this repo's MPL-2.0)
@@ -30,10 +30,10 @@ From the repo root:
 ```sh
 just install-grammar          # justfile recipe
 # or directly:
-./editors/tree-sitter-rescript/scripts/install.sh
+./editors/tree-sitter-/scripts/install.sh
 ```
 
-This writes a `tree-sitter-rescript` directory under `tools/vendor/`
+This writes a `tree-sitter-` directory under `tools/vendor/`
 (gitignored — same convention as the WASI adapter pinning), containing
 the generated parser. Requires `git` and the `tree-sitter` CLI on PATH.
 
@@ -66,4 +66,4 @@ sync burden, and (c) duplicate MIT-licensed code we have no business
 modifying. The manifest+install approach keeps the dependency explicit
 and pinned without absorbing the source.
 
-[upstream]: https://github.com/rescript-lang/tree-sitter-rescript
+[upstream]: https://github.com/-lang/tree-sitter-

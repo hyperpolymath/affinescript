@@ -189,9 +189,9 @@ double-track-browser `extension_lifecycle_test.affine` (10/10 green).
 The harness now supports idiomatic enum-plus-match application-state
 test suites without fallback tagged-struct workarounds.
 
-== Why AffineScript rather than ReScript?
+== Why AffineScript rather than ?
 
-ReScript is the estate's default TypeScript replacement and has a mature
+ is the estate's default TypeScript replacement and has a mature
 Deno integration (see `fireflag`). The AffineScript path exists because
 AffineScript has stronger semantics for:
 
@@ -202,9 +202,9 @@ AffineScript has stronger semantics for:
 Test suites that want to *demonstrate* these properties — e.g. "this
 resource is consumed exactly once", "this protocol sequence is honoured" —
 are a natural fit for AffineScript. Plain behavioural tests can continue
-in ReScript; there's no migration pressure either direction.
+in ; there's no migration pressure either direction.
 
-The trade-off today: AffineScript's compiler matures while ReScript's is
+The trade-off today: AffineScript's compiler matures while 's is
 mature, so this harness carries the MVP constraints above. As the compiler
 gains `pub fn` / effect-conditional WASI imports / better bridge ergonomics,
 the harness sheds them.

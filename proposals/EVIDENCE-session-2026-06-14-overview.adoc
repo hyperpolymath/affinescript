@@ -38,11 +38,11 @@ record. Per-area detail lives in the linked evidence docs.
 * *Exhaustively classified, yes.* Every non-test idaptik `.res` source file is
   accounted for: ~94 new brains, ~88 already-migrated (earlier clusters), ~195
   documented `NO_NEW_BRAINS` host-side senses (render-glue, FFI shims,
-  string/JSON/wire cores, orchestration). The 195 *stay ReScript* — they have no
+  string/JSON/wire cores, orchestration). The 195 *stay * — they have no
   separable integer/float brain.
 * *Demonstration corpus, NOT the game.* The 94 brains live in
   `proposals/idaptik/migrated/` as a proof-of-pattern + compiler stress-test.
-  *The idaptik game itself is not rewritten* — it still runs ReScript; the wasm
+  *The idaptik game itself is not rewritten* — it still runs ; the wasm
   brains are not wired back in (host bindings + `.res`-consumer replacement is a
   separate, larger downstream effort).
 * *Float tier newly unblocked, not yet swept.* The float wall makes the ~12

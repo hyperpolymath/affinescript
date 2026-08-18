@@ -64,7 +64,7 @@ removed to the host:
 | Kernel | Float issue | Resolution
 | `CriticalRoll`     | `min_float`, `max_float` undefined | stats cross as raw Int; probabilities as milli-units; `imin`/`imax` integer helpers
 | `PlayerAttributes` | `max_float`, `min_float` undefined | all functions Int-native milli-units; `imax`/`imin` helpers
-| `QPrograms`        | `trunc` undefined | `trunc((m-1)*100)` becomes `(m_milli-1000)/10` (integer division == truncation for non-negative, matching ReScript `Float.toInt`)
+| `QPrograms`        | `trunc` undefined | `trunc((m-1)*100)` becomes `(m_milli-1000)/10` (integer division == truncation for non-negative, matching  `Float.toInt`)
 | `QCertifications`  | f64-comparison pub fns emit `i32.ge_s` -> uninstantiable wasm | the two Float-param exports removed to host-side; integer logic + certTier encoding retained and proved
 |===
 

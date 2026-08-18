@@ -170,7 +170,7 @@ implementation, not source analysis tools.
 
 * [x] packages/affine-js/ (Deno ESM WASM loader)
 * [x] packages/affine-ts/ (typed call helpers)
-* [x] packages/affine-res/ (ReScript bindings)
+* [x] packages/affine-res/ ( bindings)
 * [x] RattleScript distribution
 
 === ✅ Educational Materials (2026-04-11)

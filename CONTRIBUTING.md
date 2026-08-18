@@ -40,7 +40,7 @@ affinescript/
 ├── examples/            # Self-contained example programs
 ├── conformance/         # Conformance test corpus
 ├── docs/                # Specs, decisions, guides
-├── packages/            # Aggregate JS/TS/ReScript binding packages
+├── packages/            # Aggregate JS/TS/ binding packages
 ├── editors/             # Editor integrations
 ├── js/                  # `js_of_ocaml` playground (built into `playground.bc.js`)
 ├── .machine_readable/   # Machine-readable metadata (`.a2ml`) — see 0-AI-MANIFEST.a2ml

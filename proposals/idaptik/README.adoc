@@ -20,7 +20,7 @@ toc::[]
 
 == What this is
 
-Practising the idaptik ReScript -> AffineScript -> wasm migration for real,
+Practising the idaptik  -> AffineScript -> wasm migration for real,
 end to end, with the host-native toolchain. Three artefacts:
 
 [cols="1,3a",options="header"]
@@ -44,7 +44,7 @@ string backend, Quantum needs effect codegen). That boundary is the story.
 *decodes* the ASCII byte array into a `String` and then uses
 `String.length` + `String.startsWith`:
 
-[source,rescript]
+[source,]
 ----
 let path = decodePathForCheck(data)            // [int] -> String, byte by byte
 String.length(path) == 0 || path == root || String.startsWith(path, root ++ "/")
@@ -188,7 +188,7 @@ finding) with a suggested regression test feeding the shape to
 
 [cols="1,2a",options="header"]
 |===
-| ReScript shape | AffineScript re-decomposition
+|  shape | AffineScript re-decomposition
 | `decodePathForCheck : [int] -> String` then `String.startsWith` | *deleted*; compare `Int` arrays directly (`prefix_eq`), so no variable-string op is needed.
 | `String.length(path)` | `path_len` (scan to the first 0 byte) over the `Int` array.
 | `path == root \|\| startsWith(path, root ++ "/")` | `prefix_eq` + an explicit separator check `nth(data, rl) == 47`.
@@ -288,7 +288,7 @@ Until then the honest status is **compiler-gated, not effort-gated**.
   but removing the String entirely. The gap forced a *better* design (the
   data was always an `Int` array).
 . **Affine types forbid casual aliasing.** An owned `[Int]` can't be reused
-  across calls the way a ReScript `let root = …` can; you construct per use.
+  across calls the way a  `let root = …` can; you construct per use.
   Surprising at first, correct on reflection.
 . **Verify through the wasm, not the interpreter.** The interpreter has at
   least one `let mut` self-reassignment bug the codegen doesn't; the wasm is

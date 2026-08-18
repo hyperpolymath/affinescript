@@ -3,10 +3,10 @@
 :toc: macro
 :toclevels: 2
 
-A linter that triages whether a ReScript `.res` kernel can be migrated to
+A linter that triages whether a  `.res` kernel can be migrated to
 AffineScript-wasm *today*, or is blocked on a specific AffineScript compiler
 wall. Roadmap ask #4 of the *nextgen-languages-evangelist*. It automates the
-by-hand triage of the idaptik ReScript->AffineScript migration campaign.
+by-hand triage of the idaptik ->AffineScript migration campaign.
 
 toc::[]
 
@@ -104,7 +104,7 @@ these objects.
   top-level `let` starts at column 0, a function-local `let` is indented
   inside its enclosing `let f = (...) => {`. So `Kernel_IO.res`'s in-function
   `ref("")` / `ref(false)` are correctly *not* treated as effect walls.
-* *String subscript vs array subscript.* ReScript uses the same `ident[i]`
+* *String subscript vs array subscript.*  uses the same `ident[i]`
   syntax for string and array access, so an array subscript like `arr[2]`
   would also match the string-subscript rule. In practice the idaptik kernels
   use `Array.get(...)` for arrays, so this does not misfire on them; treat a

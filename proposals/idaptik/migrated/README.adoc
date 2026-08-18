@@ -12,7 +12,7 @@ owner accepts the staged patches. "Migrated" here means *re-decomposed +
 compiled + parity-green + boundary-certified + assail-clean + staged*.
 
 Each kernel is the pure-integer *brain* of an idaptik `shared/src/*.res`
-module: the host (JS/Pixi/ReScript) keeps the strings, floats, DOM, network
+module: the host (JS/Pixi/) keeps the strings, floats, DOM, network
 and mutable service state (the *senses*); AffineScript owns the integer
 arithmetic and crosses the wasm boundary in primitives. See
 `../../nextgen-evangelist/affine-parity/README.adoc` for the scalar-i32 ABI.

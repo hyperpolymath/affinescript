@@ -18,7 +18,7 @@ The README makes claims. This file backs them up.
 
 *From README:* "TEA runtime targeting typed-wasm — dogfooded via IDApTIK. Affine TEA contract: `update : Msg ⊸ Model ⊸ (Model, Cmd Msg)` where Msg is consumed linearly."
 
-*Evidence:* `lib/tea_bridge.ml` generates a complete Wasm 1.0 binary (`titlescreen.wasm`) encoding the TitleScreen state machine. The `typedwasm.ownership` custom section records the update function's `msg` parameter as kind=1 (Linear). `lib/dune` includes `tea_bridge` in the library; `bin/main.ml` exposes `affinescript tea-bridge -o OUTPUT` as a subcommand. The generated binary is checked in at `idaptik/public/assets/wasm/titlescreen.wasm` (512 bytes). Verified in Node.js: `WebAssembly.validate` → `true`; functional round-trip: `init → selected=0`, `update(0) → selected=1`, `update(3) → selected=4`, `setScreen(1920,1080) → screen_w=1920`. The IDApTIK `TitleScreen.res` `teaDrive` function calls `AffineTEA.update`, then reads `getSelected()` — navigation is determined by Wasm state, not button identity. Graceful fallback to direct ReScript navigation when the Wasm binary is unavailable. **Caveat:** The affine ownership guarantee is carried in the `typedwasm.ownership` custom section; a typed-wasm multi-module verifier (Levels 7–10) is needed to enforce it at runtime — that is the Stage 6/7 work.
+*Evidence:* `lib/tea_bridge.ml` generates a complete Wasm 1.0 binary (`titlescreen.wasm`) encoding the TitleScreen state machine. The `typedwasm.ownership` custom section records the update function's `msg` parameter as kind=1 (Linear). `lib/dune` includes `tea_bridge` in the library; `bin/main.ml` exposes `affinescript tea-bridge -o OUTPUT` as a subcommand. The generated binary is checked in at `idaptik/public/assets/wasm/titlescreen.wasm` (512 bytes). Verified in Node.js: `WebAssembly.validate` → `true`; functional round-trip: `init → selected=0`, `update(0) → selected=1`, `update(3) → selected=4`, `setScreen(1920,1080) → screen_w=1920`. The IDApTIK `TitleScreen.res` `teaDrive` function calls `AffineTEA.update`, then reads `getSelected()` — navigation is determined by Wasm state, not button identity. Graceful fallback to direct  navigation when the Wasm binary is unavailable. **Caveat:** The affine ownership guarantee is carried in the `typedwasm.ownership` custom section; a typed-wasm multi-module verifier (Levels 7–10) is needed to enforce it at runtime — that is the Stage 6/7 work.
 
 === Claim 3: 101 End-to-End Tests Covering the Full Compiler Pipeline
 
@@ -50,7 +50,7 @@ Run `dune runtest` to reproduce. All 101 pass. **Caveat:** Borrow-checker BUG-00
 | **Wasm 1.0** | Codegen target. Custom sections carry affine ownership metadata.
 | **QTT** | Quantitative Type Theory semiring — tracks resource usage at compile time.
 | **TEA (The Elm Architecture)** | `update : Msg ⊸ Model ⊸ (Model, Cmd Msg)` with linearity enforced.
-| **IDApTIK** | Dogfood target — ReScript + PixiJS game that runs the AffineTEA Wasm bridge.
+| **IDApTIK** | Dogfood target —  + PixiJS game that runs the AffineTEA Wasm bridge.
 | **Dune** | OCaml build tool and test runner.
 |===
 

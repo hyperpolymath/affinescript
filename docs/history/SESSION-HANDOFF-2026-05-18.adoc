@@ -10,7 +10,7 @@ live punch list.
 
 Epic *++#++128 / ++#++135*: make every `stdlib/++*++.affine` compile
 through `resolve → typecheck → codegen` (Deno-ESM). This was the
-estate’s ReScript-port bottleneck.
+estate’s -port bottleneck.
 
 == What landed (merged to `main`, ~20 PRs, ++#++149–++#++169)
 

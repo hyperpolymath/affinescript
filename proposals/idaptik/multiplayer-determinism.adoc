@@ -6,8 +6,8 @@
 [IMPORTANT]
 ====
 *Status: ARCHITECTURE NOTE / PROPOSAL.* Analysis of why the
-ReScript→AffineScript→wasm migration *unlocks* a class of multiplayer
-netcode that ReScript→JS made impractical, why it is not Elixir-specific,
+→AffineScript→wasm migration *unlocks* a class of multiplayer
+netcode that →JS made impractical, why it is not Elixir-specific,
 and the open threads it raises (Burble string-offload, safe-NIF embedding,
 three-runtime debugging). Staged in affinescript (MPL); subject is idaptik
 (AGPL). A companion SVG (`server-authoritative-determinism.svg`) renders
@@ -68,13 +68,13 @@ If the prediction was right (the common case) the compare matches and the
 player never notices. Mispredictions cost a one-frame correction, not a
 stall.
 
-== Diagram 3 — why ReScript couldn't, and what the real requirement is
+== Diagram 3 — why  couldn't, and what the real requirement is
 
 ----
   CLASSIC netcode (brittle)                  AFFINESCRIPT → wasm (by construction)
   ─────────────────────────                  ─────────────────────────────────────
   client sim        server sim               client            server
-  (JS / ReScript)   (rewritten in Elixir)    [ vm.wasm ] ===== [ vm.wasm ]
+  (JS / )   (rewritten in Elixir)    [ vm.wasm ] ===== [ vm.wasm ]
        └─ must match BIT-FOR-BIT, by hand           same bytes → same result, always
        float rounding / map order / overflow        compile ONCE, run both places
        → silent divergence → DESYNC                 (browser + Elixir via wasmex/wasmtime NIF)
@@ -127,7 +127,7 @@ run on both the client and the authoritative host.**
 [cols="2,1,3a",options="header"]
 |===
 | Stack | Works? | Why
-| ReScript → JS  +  Elixir | ✗ | JS float/GC nondeterminism; and you can't run the *same artifact* server-side — you'd reimplement the sim in Elixir (the two-sims problem).
+|  → JS  +  Elixir | ✗ | JS float/GC nondeterminism; and you can't run the *same artifact* server-side — you'd reimplement the sim in Elixir (the two-sims problem).
 | *AffineScript → wasm*  +  Elixir | ✓✓ | Deterministic integer wasm both sides + affine no-aliasing + *reversible* VM (rollback = step backward).
 | Rust → wasm  +  Elixir | ✓ | Rust is deterministic; same wasm both sides (Rust-native also works server-side via a Rustler NIF). A very common, strong combo.
 | C/C++/Zig → wasm  +  any host | ✓ | Deterministic if you avoid float / UB / map-order. wasm is the shared artifact.
@@ -138,7 +138,7 @@ run on both the client and the authoritative host.**
 Elixir's role is just a *great authoritative host* (per-entity processes,
 OTP supervision, `wasmex` to embed the module) — swap Elixir for a
 Rust/Go server and the determinism story is unchanged. So: *Rust+Elixir,
-Rust+Rust, AffineScript+Elixir* all work; *ReScript+anything* doesn't,
+Rust+Rust, AffineScript+Elixir* all work; *+anything* doesn't,
 because it can't give you the shared deterministic artifact.
 
 == Honest caveats

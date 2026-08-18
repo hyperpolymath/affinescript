@@ -4,7 +4,7 @@
 # `res-to-affine` — Phase-1 corpus run (2026-05-21)
 
 First end-to-end exercise of the Phase-1 scanner against the estate's
-real ReScript surface. Run after [#314] (Phase-1 skeleton merge) on
+real  surface. Run after [#314] (Phase-1 skeleton merge) on
 behalf of [#57]. Surfaced two high-impact false-positive sources in the
 top-level regexes and one false-negative; this run records the fixes
 and the new baseline.
@@ -36,7 +36,7 @@ and the new baseline.
 
 Spot-check of the top file (`idaptik/src/app/devices/LaptopGUI.res`, 105
 markers) showed the 63 `side-effect-import` hits there were all
-**indented** `let _ = Container.addChild(parent, child)` — i.e. ReScript's
+**indented** `let _ = Container.addChild(parent, child)` — i.e. 's
 normal "discard a chained call's return value" idiom inside a function
 body, not LESSONS.md's "module-load side effect" anti-pattern.
 
@@ -51,7 +51,7 @@ mutable.
 
 - `re_side_effect_import` — drop the leading `[ \t]*`; anchor at column
   0. Module-load side effects only fire at top level; in-function
-  `let _ = X.f(...)` is a normal ReScript idiom.
+  `let _ = X.f(...)` is a normal  idiom.
 - `re_mutable_global` — replace bare `:=` with
   `^[a-zA-Z_][a-zA-Z0-9_]*[ \t]*:=`. Same logic: top-level assignment
   to a module-scoped ref is the anti-pattern; intra-function

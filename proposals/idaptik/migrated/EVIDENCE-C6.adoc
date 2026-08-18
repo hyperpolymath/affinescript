@@ -37,7 +37,7 @@ toc::[]
 
 [cols="2,3",options="header"]
 |===
-| Kernel (.affine) | Source ReScript / role
+| Kernel (.affine) | Source  / role
 | `CombatFxInt.affine` (parity subset) | `CombatFxLogicCoprocessor.res` — flash cycle/phase, alpha, even-cycle, advance/reset, floattext positions, knockback pop
 | `DetectionInt.affine` (parity subset) | `DetectionSystemCoprocessor.res` — alert-level threshold ladder
 | `DifficultyScale.affine` | `DifficultyScaleCoprocessor.res` — use-count scaling by difficulty and item kind
@@ -57,7 +57,7 @@ for the scalar-i32 parity runner.
 
 == Host-side sense modules (NOT migrated — host responsibility)
 
-The following ReScript modules are *pure JS/PixiJS routing bridges* or
+The following  modules are *pure JS/PixiJS routing bridges* or
 *host-side state containers* — they have no integer brain and are not
 migrated to AffineScript kernels:
 
@@ -76,8 +76,8 @@ Several kernels cross Float-domain values as Ints scaled by 1000:
 * `DualAlert`: progress (0.0..1.0) and per-trigger severity cross as
   `round(x * 1000)`. The 1.0 escalation threshold becomes 1000. The JS
   caller normalises before calling and re-normalises after.
-* The multiplied-integer arithmetic matches the ReScript source exactly
-  (the ReScript used Float arithmetic; integer milli-units give the same
+* The multiplied-integer arithmetic matches the  source exactly
+  (the  used Float arithmetic; integer milli-units give the same
   results for the test inputs exercised in G2).
 
 == Compiler quirks this cluster is written around
@@ -134,7 +134,7 @@ exit 0, no errors.
 == Gate 2 — parity (oracle-vs-wasm, scalar i32 ABI)
 
 8185 inputs, 0 mismatches. Oracles re-derive every function
-independently from the original ReScript semantics in plain JS — they do
+independently from the original  semantics in plain JS — they do
 not copy logic from the `.affine` source.
 
 ----

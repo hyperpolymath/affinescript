@@ -27,7 +27,7 @@ clamp-to-sentinel hazard as a worked, machine-checked bridge to the game.
 
 == Why this exists (the link nobody had drawn yet)
 
-The idaptik ReScript -> AffineScript -> wasm migration leans on a
+The idaptik  -> AffineScript -> wasm migration leans on a
 repeatable pattern the dogfooding report calls *co-processor
 integerization*: a host-side enumerated / stringly-typed value `X` (a
 device port name, a security rank `Open/Weak/Medium/Strong`, a device
@@ -138,7 +138,7 @@ open import EchoEncodingFaithfulness  -- Encode faithfulness (migration "the int
 +
 [source,agda]
 ----
--- EchoEncodingFaithfulness — the ReScript->AffineScript->wasm encode-
+-- EchoEncodingFaithfulness — the ->AffineScript->wasm encode-
 -- faithfulness theorem ("the integer IS the X").
 open import EchoEncodingFaithfulness using
   ( Encoding ; encoding-injective⇒fibre-unique ; encoding-lossless

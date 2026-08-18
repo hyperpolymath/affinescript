@@ -34,7 +34,7 @@ Opcodes delivered this wave (11 + the taxonomy): ADD, SUB, NEGATE, NOOP, SWAP
 
 == The reversibility gate (what makes C2 different from C1)
 
-Each opcode is migrated as the scalar-int *value transform* the ReScript
+Each opcode is migrated as the scalar-int *value transform* the 
 `execute` / `invert` closures perform on a register; the register-name strings
 and the `dict<int>` stay host-side. The reversibility law is pinned as explicit
 round-trip exports and swept in Gate 2 with the identity (or 0) as oracle:
@@ -68,7 +68,7 @@ fix).
   two's-complement identity `~a == -a - 1` (verified equal to JS `~a` over the
   i32 sample, and self-inverse: `~(~a) = a`).
 . *`>>` is arithmetic; `>>>` does not exist.* `-1 >> 1 == -1` (sign-propagating),
-  and `a >>> n` is a parse error. The ReScript ROL/ROR use a *logical* shift
+  and `a >>> n` is a parse error. The  ROL/ROR use a *logical* shift
   right, so a naive `(a<<b)|(a>>(32-b))` rotation fails to round-trip for
   high-bit values. *Workaround:* emulate logical shift right as
   `lsr(a,n) = (a >> n) & ((1 << (32 - n)) - 1)` (clears the n sign-extended

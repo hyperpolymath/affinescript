@@ -93,7 +93,7 @@ The overall TRG grade is the *worst* of any MUST component.
 | # | Component | Grade | Evidence
 
 | B1 | Intermediate representation | *E*  | Implicit lowering: AST → backend-specific output. *No explicit IR with documented invariants*. Gates the overall grade.
-| B2 | Code generator (per backend) | *D*  | `lib/codegen.ml` (~120K lines, primary WASM target); plus per-backend modules: C, CUDA, FAUST, Gleam, Julia, Lean, LLVM, Lua, Metal, MLIR, Nickel, OCaml, ONNX, OpenCL, Protobuf, ReScript, Rust, SPIR-V, Verilog, WGSL, Why3, Bash, Deno, Node, GC. WASM is well-tested; the 22+ minor targets vary widely in coverage.
+| B2 | Code generator (per backend) | *D*  | `lib/codegen.ml` (~120K lines, primary WASM target); plus per-backend modules: C, CUDA, FAUST, Gleam, Julia, Lean, LLVM, Lua, Metal, MLIR, Nickel, OCaml, ONNX, OpenCL, Protobuf, , Rust, SPIR-V, Verilog, WGSL, Why3, Bash, Deno, Node, GC. WASM is well-tested; the 22+ minor targets vary widely in coverage.
 | B3 | Backend registry        | *D*  | `lib/backends.ml`. Registry exists; backend-conformance test corpus is partial.
 | B4 | Linker / JIT / eval     | *C*  | `lib/wasm_encode.ml`, `lib/wasm_gc_encode.ml`. WASM binary encoding well-exercised by e2e suite.
 | B5 | ABI / FFI surface       | *D*  | Multiple FFI modules: `cafe_face.ml`, `js_face.ml`, `python_face.ml`, etc. Sub-projects `affinescript-pixijs`, `affinescript-vite` (with Zig FFI in `ffi/zig/src/`). Idris2 ABI surface not yet declared.

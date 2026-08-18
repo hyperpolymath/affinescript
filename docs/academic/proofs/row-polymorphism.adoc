@@ -617,7 +617,7 @@ fn handle_base[ρ, A](
 presence/absence
 . *Wand (1991)*: Row polymorphism for type inference in ML
 . *Leijen (2005)*: Extensible records with scoped labels
-. *PureScript*: Practical row polymorphism in production
+. *Pu*: Practical row polymorphism in production
 . *Links*: Row polymorphism with effect types
 . *Koka*: Row-polymorphic effects
 

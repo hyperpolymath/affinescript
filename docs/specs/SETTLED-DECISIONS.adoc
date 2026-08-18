@@ -265,7 +265,7 @@ construction (it only adds `.`/`::` lookahead where no reduce action
 existed — exactly the parse-error void): measured Menhir conflict states
 unchanged at 21 S/R + 1 R/R, item counts unchanged at 68 S/R / 7 R/R.
 The grammar PR unblocks *parsing*; most estate parse failures clear with
-zero consumer churn (genuine ReScript-surface residue is #229).
+zero consumer churn (genuine -surface residue is #229).
 
 This decision is settled; do not reopen without amending the ADR. Full
 ADR in `.machine_readable/descriptiles/META.a2ml` (ADR-014); ledger CORE-03 in
@@ -359,13 +359,13 @@ This decision is settled; do not reopen without amending the ADR. Full
 ADR in `.machine_readable/descriptiles/META.a2ml` (ADR-016); ledger #234 /
 CORE-02 in `docs/TECH-DEBT.adoc`.
 
-== ReScript Block-Module Disposition: One Module Per File (ADR-017)
+==  Block-Module Disposition: One Module Per File (ADR-017)
 
-ReScript `module Name { … }` block modules have no AffineScript block
+ `module Name { … }` block modules have no AffineScript block
 form: the grammar (`parser.mly:130-134`) is a single optional
 `module Path;` *header*, before imports — `module A { }` parse-errors.
 ADR-011 already settled "real modules": *the file is the module*. The
-estate ReScript→AffineScript ports (#229) carry block modules — a single
+estate →AffineScript ports (#229) carry block modules — a single
 one per file is mechanical (hoist the header, drop the braces, dedent;
 already in the #229 canonical map and verified to parse), but *multiple*
 block-modules in one file (e.g. `standards/lol/.../OpenCyc.affine`:
@@ -373,7 +373,7 @@ block-modules in one file (e.g. `standards/lol/.../OpenCyc.affine`:
 occurrences) had no clean target. Escalated language-side as ESC-04
 (#262), the same bidirectional-evidence discipline as ADR-014 / #228.
 
-Decision: *one module per file — split, do not nest.* Each ReScript
+Decision: *one module per file — split, do not nest.* Each 
 `module X { body }` becomes its own `X.affine` whose first declaration is
 `module X;`, body dedented, `use` imports after the header. A file with N
 block-modules is split into N files. The grammar is **not** extended with
@@ -386,16 +386,16 @@ doctrine* + the #229 canonical-map structural rule.
 Adjacent, explicitly NOT in scope here: a split file still hits
 `Resolve.UndefinedModule` until the repo's module-path↔file-layout
 matches the loader — that is cross-module graph coherence (INT-02
-loader-bridge territory), tracked in `RESCRIPT-ELIMINATION.adoc` Tier-4
+loader-bridge territory), tracked in `-ELIMINATION.adoc` Tier-4
 and the INT-02 ledger, never conflated with this disposition.
 
 This decision is settled; do not reopen without amending the ADR. Full
 ADR in `.machine_readable/descriptiles/META.a2ml` (ADR-017); #229 canonical map in
-`docs/RESCRIPT-ELIMINATION.adoc`; escalation issue #262.
+`docs/-ELIMINATION.adoc`; escalation issue #262.
 
 == No Raw/FFI Escape: Typed `extern` Is the Only Host Bridge (ADR-018)
 
-ReScript `%%raw("<host source>")` / `%raw` injects arbitrary untyped host
+ `%%raw("<host source>")` / `%raw` injects arbitrary untyped host
 source. AffineScript's only host bridge is `extern fn` / `extern type`
 (grammar `parser.mly`: `extern_fn_decl` / `extern_type_decl`, `FnExtern`
 body) — *typed*, host-supplied, no body, no arbitrary-source escape. 14
@@ -424,7 +424,7 @@ parts of `burble`) port under this doctrine; per-file execution is the
 
 This decision is settled; do not reopen without amending the ADR. Full
 ADR in `.machine_readable/descriptiles/META.a2ml` (ADR-018); #229 canonical map in
-`docs/RESCRIPT-ELIMINATION.adoc`; escalation issue #245.
+`docs/-ELIMINATION.adoc`; escalation issue #245.
 
 == Compiler Distribution: GitHub Releases Binaries + Thin Deno/JSR Shim (ADR-019)
 

@@ -32,7 +32,7 @@ This directory contains the same logical "hello" program written once in each of
 | `function … do … end`, `set X to Y`, `output X`, `is`/`is not`, `yes`/`no`, `and`/`or`.
 
 | `hello-lucid.affine`
-| LucidScript (PureScript / Haskell)
+| LucidScript (Pu / Haskell)
 | `module … where`, dotted imports with `(name)` lists, `name :: Type` signatures, equation-style `f x = …`, `\x -> …` lambdas, `--` comments.
 
 | `hello-cafe.affine`
@@ -88,7 +88,7 @@ affinescript parse examples/faces/hello-rattle.affine
 | Python (Rattle)
 | Bare assignment `x = y` is not yet auto-lifted to `let x = y` (the example uses explicit `let`); `import a.b` lowering does not produce the canonical `use a::b::{...};` brace form.
 
-| Lucid (PureScript)
+| Lucid (Pu)
 | Haskell-style currying calls `f x` are NOT converted to canonical `f(x)` — the example uses canonical paren syntax. Multi-clause definitions, `do`-notation, and `where`-block hoisting are deferred to AST-level rewrites.
 
 | Cafe (CoffeeScript)

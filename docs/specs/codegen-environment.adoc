@@ -327,7 +327,7 @@ of the SPEC §8 contract per target:
 | As `js_codegen.ml`, plus CJS shim for `extern fn`
 | As `js_codegen.ml`
 
-| Other (Lua, Julia, C, WGSL, Faust, ONNX, Bash, Nickel, ReScript, LLVM, Verilog, Gleam, CUDA, Metal, OpenCL, MLIR, Why3, Lean, SPIR-V)
+| Other (Lua, Julia, C, WGSL, Faust, ONNX, Bash, Nickel, , LLVM, Verilog, Gleam, CUDA, Metal, OpenCL, MLIR, Why3, Lean, SPIR-V)
 | Implementation-specific. If a back-end cannot lower `TopConst`, it
   MUST raise `CodegenError UnsupportedFeature` per SPEC §8 C6 rather
   than silently skip the declaration.

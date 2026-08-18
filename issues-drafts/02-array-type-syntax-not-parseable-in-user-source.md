@@ -81,4 +81,4 @@ Either path lets idaptik's Wave 4 (kernel types preview) and most of Wave 3 proc
 
 ## Cross-reference
 
-- The `migration-playbook.adoc` ReScript→AffineScript table doesn't yet have a row for arrays — once this lands, that row should be added with the chosen syntax.
+- The `migration-playbook.adoc` →AffineScript table doesn't yet have a row for arrays — once this lands, that row should be added with the chosen syntax.

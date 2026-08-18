@@ -8,7 +8,7 @@ Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 == What AffineScript Is
 
 AffineScript is a *web programming language*. Its purpose is to replace the
-fragmented x-script ecosystem — JavaScript, TypeScript, ReScript, CoffeeScript,
+fragmented x-script ecosystem — JavaScript, TypeScript, , CoffeeScript,
 ActionScript, and their successors — with a single language that solves the
 problems they collectively fail to solve, without inheriting their compromises.
 
@@ -245,11 +245,11 @@ for better tools:
 
 * *CoffeeScript* — cleaner syntax, less noise, but no types; the underlying
   platform never changed
-* *PureScript* — Haskell on the web, genuinely typed, genuinely principled;
+* *Pu* — Haskell on the web, genuinely typed, genuinely principled;
   but the ecosystem stayed thin and the ceremony steep
 * *Elm* — beautiful architecture, strong guarantees, the best error messages in
   the industry; but the language closed in on itself rather than opening up
-* *ClojureScript* — dynamic, expressive, the REPL as first-class tool; runtime
+* *Cloju* — dynamic, expressive, the REPL as first-class tool; runtime
   errors still happen because the type story never arrived
 * *TypeScript* — supposed to be the answer; instead just moved the problem
   upstairs and called the ceiling "any"
@@ -264,7 +264,7 @@ a runtime (typed WASM) where the guarantees are not erased.  The thing they were
 looking for when they left JavaScript — or when they stayed but felt the
 compromise every day — is here.
 
-The jump from CoffeeScript or PureScript muscle memory to AffineScript's JS face
+The jump from CoffeeScript or Pu muscle memory to AffineScript's JS face
 is deliberately small.  The jump in what the language gives you is enormous.
 
 === The Pseudocode Face: A Fine Place to Start
@@ -300,7 +300,7 @@ the problem.
 
 Python programmers who wanted the web got shoebox frameworks and
 server-side workarounds.  CoffeeScript programmers who wanted clean syntax
-got abandoned.  PureScript programmers who wanted types got ecosystem
+got abandoned.  Pu programmers who wanted types got ecosystem
 isolation.  Pseudocode writers who wanted to run their ideas got told to learn
 a real language first.
 
@@ -322,7 +322,7 @@ WASM3, embedded runtimes, Cloudflare Workers, Fastly Compute.
 for non-browser targets.
 
 A thin JavaScript interop layer exists for calling Web APIs and for incremental
-adoption alongside TypeScript/ReScript codebases, but it is interop — not the
+adoption alongside TypeScript/ codebases, but it is interop — not the
 target.
 
 == What AffineScript Is NOT

@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: CC-BY-SA-4.0
 // SPDX-FileCopyrightText: 2024-2026 hyperpolymath
-= Estate ReScript-surface elimination — campaign infrastructure
+= Estate -surface elimination — campaign infrastructure
 :toc: macro
 
-Campaign tooling for issue #229 (total ReScript-surface elimination from every
+Campaign tooling for issue #229 (total -surface elimination from every
 estate `.affine`). The authoritative findings, scope, and the canonical
-RS→AffineScript map live in link:../../docs/RESCRIPT-ELIMINATION.adoc[docs/RESCRIPT-ELIMINATION.adoc];
+RS→AffineScript map live in link:../../docs/-ELIMINATION.adoc[docs/-ELIMINATION.adoc];
 this directory is the *reproducer*.
 
 toc::[]
@@ -26,7 +26,7 @@ prior throwaway home (`/tmp`, then `~/dev/repos/.affine-audit`) did not survive
 `main.exe check` on every `.affine`, classify on stdout
 (`PASS` / `DRIFT-SYNTAX` / `TYPE-ONLY`). Exit-code-blind by design (the oracle
 always returns 0; classification is on the first line of output).
-|`rs-inventory.sh` |Scans the *text* of every non-`PASS` file for the ReScript
+|`rs-inventory.sh` |Scans the *text* of every non-`PASS` file for the 
 construct set named in #229. Text-scan, not oracle-classify: the oracle stops
 at the *first* parse error and hides the rest of a file's RS inventory.
 |`affine_repos.txt` |The estate repo list (NWO, one per line).
@@ -58,7 +58,7 @@ deliberate new-corpus snapshot.
 
 == Method note (honest scope)
 
-`DRIFT-SYNTAX` is *not* a synonym for "ReScript surface". Most estate DRIFT is
+`DRIFT-SYNTAX` is *not* a synonym for " surface". Most estate DRIFT is
 non-RS syntax drift (out of #229's contract). Only files with a detected RS
 construct in `data/rs-inventory.tsv` are #229 scope — see the ledger for the
 per-repo true-scope breakdown and the canonical map.

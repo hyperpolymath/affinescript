@@ -98,7 +98,7 @@ on the same footing as the other producers (ephapax). See the contract below.
 ====
 typed-wasm is a *separate, language-agnostic compilation target* with its own
 repository (`hyperpolymath/typed-wasm`), its own Idris2 proofs, its own
-ReScript surface, its own Rust verifier crate, and *its own other producers*
+ surface, its own Rust verifier crate, and *its own other producers*
 (notably `hyperpolymath/ephapax`). AffineScript compiles to plain WASM,
 typed-wasm, Deno-ESM, and ~22 other targets; typed-wasm is one of them.
 Multiple languages target typed-wasm. These are meaningfully separated and
@@ -292,7 +292,7 @@ filed when their blocker closes.
 * link:CAPABILITY-MATRIX.adoc[CAPABILITY-MATRIX.adoc] — authoritative
   per-feature readiness.
 * link:TECH-DEBT.adoc[TECH-DEBT.adoc] — the coordination ledger.
-* link:RESCRIPT-ELIMINATION.adoc[RESCRIPT-ELIMINATION.adoc] — the estate
-  ReScript-surface elimination ledger (#229), the spine's estate-port arm.
+* link:-ELIMINATION.adoc[-ELIMINATION.adoc] — the estate
+  -surface elimination ledger (#229), the spine's estate-port arm.
 * `hyperpolymath/typed-wasm` `LEVEL-STATUS.md` — the target spec & proofs.
 * `hyperpolymath/ephapax` — the other typed-wasm producer.

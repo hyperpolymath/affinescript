@@ -199,7 +199,7 @@ dependent/refinement aspirations).
 * Close preservation under the affine restriction.
 * Close progress.
 * Reach TypeLL L6 honestly (with mechanised soundness for the L4
-  fragment and L5 nullability — affinescript inherits ReScript's
+  fragment and L5 nullability — affinescript inherits 's
   null-discipline).
 * Stand up PROOF-STATUS.a2ml.
 

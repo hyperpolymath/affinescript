@@ -67,8 +67,8 @@ parity, both assail-clean (see `EVIDENCE.adoc`). C3 adds no integer logic on top
   live in C1's verified wasm.
 * *The bridges stay host-side* as the essential wasm-loading glue (the
   AffineScript→wasm FFI exemption). They are ADDITIVE by design (callable behind
-  a FeaturePacks flag; the pure-ReScript path remains until cutover). Their
-  eventual ReScript→(JS glue / thin .affine) fate is a *Phase Ω cutover* wiring
+  a FeaturePacks flag; the pure- path remains until cutover). Their
+  eventual →(JS glue / thin .affine) fate is a *Phase Ω cutover* wiring
   decision, not a brain migration.
 * *String-gated remnants* (`DeviceType.portName`/`fromString`, `GameEvent.toTag`)
   fall to the *string wall* (Phase F) like every other STRING-GATED surface.

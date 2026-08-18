@@ -23,9 +23,9 @@ external dependencies; unlike xref:idaptik-hitbox.adoc[idaptik-hitbox], it
 has interesting state.
 ====
 
-== The original (88 lines, ReScript)
+== The original (88 lines, )
 
-[source,rescript]
+[source,]
 ----
 type t = {
   mutable current: float,
@@ -99,7 +99,7 @@ evidence point at "genuinely independent":
   No single consumer reads all three.
 
 The bundling in the original is not a design — it is a side-effect of
-ReScript's "one record per gameplay subsystem" idiom.
+'s "one record per gameplay subsystem" idiom.
 
 == The translation (aspect-decomposed, `mut`-based)
 
@@ -219,7 +219,7 @@ isn't doing any work.
 
 === 3. Tuning constants in `static let` slots, not bare module values
 
-ReScript's `module Damage = { let roboDogContact = 15.0 }` works because
+'s `module Damage = { let roboDogContact = 15.0 }` works because
 modules are namespaces. AffineScript's idiomatic equivalent (per the
 hitbox lesson and the v0.1.0 surface) is `static let` inside a `struct`,
 which gives the same `Damage.robo_dog_contact` access path with a
@@ -306,7 +306,7 @@ file-buffer anti-pattern shows two-types-from-one — but a *six-field
 mutable record with three orthogonal concerns* is a distinct pattern
 that wants its own row in the source-pattern index.
 
-*Proposed for a v1.2 follow-up:* a row in the ReScript pattern index for
+*Proposed for a v1.2 follow-up:* a row in the  pattern index for
 "record with N orthogonal aspects bundled into one type" with the
 decomposition "fission into N nominally distinct types whose lifetimes
 and consumers differ; compose them in a parent type only when they

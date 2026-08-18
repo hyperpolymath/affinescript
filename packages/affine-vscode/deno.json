@@ -1,8 +1,0 @@
-{
-  "name": "@hyperpolymath/affine-vscode",
-  "version": "0.1.0",
-  "exports": {
-    ".": "./mod.js"
-  },
-  "license": "MPL-2.0"
-}

@@ -30,7 +30,7 @@ toc::[]
 
 typed-wasm is a *separate, language-agnostic compilation target* with
 its own repository (`hyperpolymath/typed-wasm`), its own Idris2
-proofs, its own ReScript surface, its own Rust verifier crate, and
+proofs, its own  surface, its own Rust verifier crate, and
 its own other producers (notably `hyperpolymath/ephapax`).
 AffineScript is *one of several producers* targeting it.
 
@@ -45,7 +45,7 @@ This document specifies *the AffineScript-side of the contract*:
   roadmap).
 
 What this document does *not* specify: the Idris2 proofs, the
-ReScript surface, the Rust verifier, or the typed-wasm level
+ surface, the Rust verifier, or the typed-wasm level
 definitions L1..L16 — those live in `hyperpolymath/typed-wasm`.
 Coordinate ABI changes with that repo + `hyperpolymath/ephapax`.
 

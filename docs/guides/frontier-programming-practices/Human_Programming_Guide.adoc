@@ -15,7 +15,7 @@ This guide supersedes the v1.0 defensive draft. It describes what AffineScript *
 
 AffineScript is **JavaScript-ergonomic correctness**.
 
-It takes the developer experience of the `-script` family — TypeScript, ReScript, PureScript — and raises the floor on correctness through a small, deliberately chosen set of advanced types. It compiles to **Typed WASM** for performance, portability, and safety.
+It takes the developer experience of the `-script` family — TypeScript, , Pu — and raises the floor on correctness through a small, deliberately chosen set of advanced types. It compiles to **Typed WASM** for performance, portability, and safety.
 
 The design principle is ergonomics first: the type system's defaults are sensible, so most code reads like modern JavaScript. Correctness is enforced at compile time rather than hoped for at runtime.
 
@@ -156,7 +156,7 @@ let mut counter = 0;
 counter = counter + 1;   // ok
 ----
 
-Matches `const` in JavaScript and `let` in ReScript — familiar to most developers.
+Matches `const` in JavaScript and `let` in  — familiar to most developers.
 
 === Effect Tracking
 
@@ -304,7 +304,7 @@ fn createWindow(cfg: WindowConfig): Window
 
 Compare with the migration source:
 
-[source,rescript]
+[source,]
 ----
 ~resizeOptions={
   minWidth: 768.0,
@@ -313,19 +313,19 @@ Compare with the migration source:
 },
 ----
 
-The ReScript form has no compile-time guard against being set to `0.0`, `-100.0`, or `1.0` — only runtime checks (if any). Argument-position refinements catch this at the call site.
+The  form has no compile-time guard against being set to `0.0`, `-100.0`, or `1.0` — only runtime checks (if any). Argument-position refinements catch this at the call site.
 
 **This is where 80% of refinement types' daily ergonomic value comes from**: not invariants on internal state, but pre-conditions on caller input.
 
 === Migrating from -script Languages
 
-This chapter exists because the most-frequent migrator question is **"I have ReScript / TypeScript / JavaScript code that does X — what does the AffineScript form look like?"**. The patterns below address the six anti-patterns most commonly encountered.
+This chapter exists because the most-frequent migrator question is **"I have  / TypeScript / JavaScript code that does X — what does the AffineScript form look like?"**. The patterns below address the six anti-patterns most commonly encountered.
 
 ==== Anti-pattern 1: Side-effect imports (`let _ = X.constructor`)
 
 **Symptom**: a top-of-module sequence of `let _ = SomeModule.value` lines whose only purpose is to trigger module-load side effects (registry registration, plugin install, etc.).
 
-**Root cause**: ReScript / JS module loading runs top-level code as a side effect of `import`. AffineScript compiles to wasm where there is no implicit module-load-time side effect.
+**Root cause**:  / JS module loading runs top-level code as a side effect of `import`. AffineScript compiles to wasm where there is no implicit module-load-time side effect.
 
 **Fix**: move the registration into an explicit function call, invoked from your boot sequence:
 
@@ -340,7 +340,7 @@ fn registerScreens(engine: Engine) {
 
 ==== Anti-pattern 2: `%raw` JS / `unsafe!` blobs
 
-**Symptom**: inline `%raw` (ReScript) or `as any` (TypeScript) blocks containing JS that pokes at the DOM, console, or browser globals.
+**Symptom**: inline `%raw` () or `as any` (TypeScript) blocks containing JS that pokes at the DOM, console, or browser globals.
 
 **Decision tree for the migration**:
 
@@ -445,7 +445,7 @@ The AffineScript side is where the correctness guarantees live: affine resource 
 
 == Faces: Frontend Surfaces
 
-A face is a sugared surface syntax over the canonical AffineScript AST. AffineScript ships with six established faces — canonical, RattleScript (Python-like), JaffaScript (JS/TS-like), PseudoScript (pedagogy), LucidScript (PureScript/Haskell-like), and CafeScripto (CoffeeScript-like). The six rules below were earned during the May-2026 buildout of LucidScript and CafeScripto, and during the eject of the five non-canonical faces into their own brand-surface repos.
+A face is a sugared surface syntax over the canonical AffineScript AST. AffineScript ships with six established faces — canonical, RattleScript (Python-like), JaffaScript (JS/TS-like), PseudoScript (pedagogy), LucidScript (Pu/Haskell-like), and CafeScripto (CoffeeScript-like). The six rules below were earned during the May-2026 buildout of LucidScript and CafeScripto, and during the eject of the five non-canonical faces into their own brand-surface repos.
 
 === Faces Are Brand Surfaces, Not Compiler Forks
 

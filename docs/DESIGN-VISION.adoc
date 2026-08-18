@@ -8,7 +8,7 @@ Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 == What AffineScript Is
 
 AffineScript is a *web programming language*. Its purpose is to replace the
-fragmented x-script ecosystem — JavaScript, TypeScript, ReScript, CoffeeScript,
+fragmented x-script ecosystem — JavaScript, TypeScript, , CoffeeScript,
 ActionScript, and their successors — with a single language that solves the
 problems they collectively fail to solve, without inheriting their compromises.
 

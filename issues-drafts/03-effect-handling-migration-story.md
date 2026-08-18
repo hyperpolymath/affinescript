@@ -18,7 +18,7 @@ This is a sound, deliberate position. **The issue here is not the position; the 
 
 A large fraction of any real `-script` codebase is *operations against shared mutable state, executed for their side effects*:
 
-```rescript
+```
 // idaptik/src/app/GetEngine.res
 let instance: ref<option<Engine.t>> = ref(None)
 let get = (): option<Engine.t> => instance.contents

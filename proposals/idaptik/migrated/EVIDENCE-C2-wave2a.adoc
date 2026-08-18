@@ -31,7 +31,7 @@ Source: `vm/lib/ocaml/Mul.res` + `vm/lib/ocaml/Div.res`. Eleven exports —
 
 == Re-decomposition (brain/senses)
 
-The ReScript VM stores state in a `dict<int>` keyed by register name; each
+The  VM stores state in a `dict<int>` keyed by register name; each
 opcode is an `execute`/`invert` closure pair over that dict. Per the brain/
 senses split the register-name strings + dict stay host-side; the brain is the
 scalar-int value transform. "The integer IS the register."
@@ -57,13 +57,13 @@ divide break reversibility).
   `i32.mul` exactly (e.g. `2147483647 * 2147483647 -> 1`). A naive `(a*b)|0`
   oracle would have produced false mismatches at the domain extremes. This is a
   new fact beyond wave 1 (which used only `+`/`-`, exact in JS over the domain).
-. *`i32.div_s` / `i32.rem_s` trap where ReScript wraps/guards.* `i32.div_s`
+. *`i32.div_s` / `i32.rem_s` trap where  wraps/guards.* `i32.div_s`
   TRAPS on `b == 0` and on `INT_MIN / -1`; `i32.rem_s` TRAPS on `b == 0`
-  (but `INT_MIN % -1 == 0`, no trap). ReScript's int `/` truncates through
+  (but `INT_MIN % -1 == 0`, no trap). 's int `/` truncates through
   `| 0` so `INT_MIN / -1` wraps to `INT_MIN`, and the source guards `b == 0`
   explicitly. The `.affine` brain reproduces both guards (nested-`if` form, to
   stay clear of the unverified `&&` codegen path) so the wasm is a *total*
-  function matching ReScript's observable output — never a trap. The oracle
+  function matching 's observable output — never a trap. The oracle
   re-derives the original `.res` output independently and the two agree across
   the full sweep, including every `(x, 0)` and the `(INT_MIN, -1)` pair.
 

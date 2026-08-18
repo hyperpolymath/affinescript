@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: CC-BY-SA-4.0
 // SPDX-FileCopyrightText: 2025-2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
-= IDApTIK migration map — ReScript → AffineScript corpus triage
+= IDApTIK migration map —  → AffineScript corpus triage
 :toc: macro
 
 [IMPORTANT]
@@ -435,7 +435,7 @@ src/bindings/PixiUI.res
 === C_TESTS — Test harnesses (193 files)
 
 The `__tests__/*.res` test harnesses are a separate track. When a coprocessor kernel migrates,
-its test harness becomes an *affine-parity* harness (gate 2 of the recipe) — the ReScript oracle
+its test harness becomes an *affine-parity* harness (gate 2 of the recipe) — the  oracle
 runs the original `.res.mjs` and the new `.wasm` must match output on all inputs.
 These are NOT direct `.res → .affine` migrations.
 
@@ -651,4 +651,4 @@ function (the ref becomes an `&mut` or affine owned value). Key files:
 
 Generated 2026-06-05 by running `affine-migratability` over 571 `.res` source files
 in `hyperpolymath/idaptik` (excluding compiled output in `lib/js/`, `lib/es6/`).
-Part of the ReScript→AffineScript migration campaign; companion: `MIGRATION-PLAN.adoc`.
+Part of the →AffineScript migration campaign; companion: `MIGRATION-PLAN.adoc`.

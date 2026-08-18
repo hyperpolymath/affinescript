@@ -73,7 +73,7 @@ The compiler is face-agnostic throughout. The two face-aware layers are:
 | `.pseudoaff`
 | Beta (2026-04-11)
 
-| Lucid (PureScript / Haskell)
+| Lucid (Pu / Haskell)
 | `--face lucid`
 | `.lucidaff`
 | Beta (2026-06)
@@ -98,7 +98,7 @@ brand repos carry no compiler.
 | RattleScript (Python)      | `hyperpolymath/rattlescript` | `lib/python_face.ml`
 | JaffaScript (JS / TS)      | `hyperpolymath/jaffascript`  | `lib/js_face.ml`
 | PseudoScript (pseudocode)  | `hyperpolymath/pseudoscript` | `lib/pseudocode_face.ml`
-| LucidScript (PureScript)   | `hyperpolymath/lucidscript`  | `lib/lucid_face.ml`
+| LucidScript (Pu)   | `hyperpolymath/lucidscript`  | `lib/lucid_face.ml`
 | CafeScripto (CoffeeScript) | `hyperpolymath/cafescripto`  | `lib/cafe_face.ml`
 |===
 
@@ -125,7 +125,7 @@ into ProperScript (the TypeScript face) as an AS3-idioms migration preset — se
 `docs/specs/FACE-CONTRACT.adoc`, "ActionScript: welcomed in, but not a standalone
 face". The surface mapping retained in the section below now describes that
 preset, not a standalone `action_face`. No standalone faces remain on the
-roadmap; the two new faces (ProperScript / TypeScript, RealScript / ReScript) are
+roadmap; the two new faces (ProperScript / TypeScript, RealScript / ) are
 tracked as active planned work in the Face Contract, not here.
 
 === CoffeeScript-face — SHIPPED as CafeScripto

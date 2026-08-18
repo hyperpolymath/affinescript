@@ -15,7 +15,7 @@ v1.4, 2026-06-04
 This guide is the **systematic companion** to link:frontier-guide.adoc[`frontier-guide.adoc`].
 
 * The Frontier Guide unveils what AffineScript *is* — read it if you are starting a new program.
-* This playbook describes how to **carry an existing codebase across the boundary** — read it if you are translating ReScript, TypeScript, or another `-script` family language into AffineScript.
+* This playbook describes how to **carry an existing codebase across the boundary** — read it if you are translating , TypeScript, or another `-script` family language into AffineScript.
 
 The machine-readable companion for AI agents is link:frontier-programming-practices/AI.a2ml[`AI.a2ml`].
 ====
@@ -42,7 +42,7 @@ The rest of this document is a catalogue of common source-language patterns and 
 [#source-pattern-index]
 == Source-Pattern Index
 
-=== ReScript → AffineScript
+===  → AffineScript
 
 [cols="1,2,2"]
 |===
@@ -68,11 +68,11 @@ The rest of this document is a catalogue of common source-language patterns and 
 | `Result[T, E]` where `E` is a named variant covering each failure
 | Replaces an untyped throw path with an exhaustive return type. The compiler forces every caller to handle the `Err` shape.
 
-| `Js.Promise.t<'a>` / async ReScript
+| `Js.Promise.t<'a>` / async 
 | `Async` effect on the function row
 | Promises silently allow racing, ignoring errors, and detached lifetimes. The `Async` effect makes lifetime and error explicit.
 
-| ReScript object types `Js.t<{..}>`
+|  object types `Js.t<{..}>`
 | Records with row variables `{ field: T, ..r }`
 | Row polymorphism replaces structural object types principle-for-principle.
 
@@ -90,7 +90,7 @@ The rest of this document is a catalogue of common source-language patterns and 
 
 | `unit` returns from impure code
 | `() / IO` (or whichever effects apply)
-| In ReScript, `unit` says nothing about whether the function did IO. In AffineScript, the effect row makes it visible.
+| In , `unit` says nothing about whether the function did IO. In AffineScript, the effect row makes it visible.
 
 | Module-level getter for a singleton runtime — `Module.get(): Option<Thing>`
 | Lift to an effect (`effect Thing { fn current() -> Option[ref Thing]; }`); make the "is the runtime available?" branch a typed `Result`, not a silent no-op
@@ -113,7 +113,7 @@ The rest of this document is a catalogue of common source-language patterns and 
 
 | `Promise<T>` / `async function`
 | `Async` effect
-| Same reasoning as the ReScript case.
+| Same reasoning as the  case.
 
 | `class Foo { private x; method() {} }`
 | Owned record + standalone functions; lift mutation to `mut` or `State`
@@ -166,9 +166,9 @@ The `affinescript compile graph.affine -o graph.onnx` invocation produces a real
 Why this matters for migration: when porting code that calls platform-specific functions, you do not need to extend AffineScript itself. Declare the platform's API as stubs in your translation unit, and let the backend recognise them. This keeps the frontend small and the backend self-contained.
 
 [#portable-http]
-=== Portable HTTP (ReScript `fetch` / `Js.Promise` → `Http` stdlib)
+=== Portable HTTP ( `fetch` / `Js.Promise` → `Http` stdlib)
 
-ReScript networking is `fetch(...)` returning a `Js.Promise.t`, usually
+ networking is `fetch(...)` returning a `Js.Promise.t`, usually
 wrapped in a `.then`/`.catch` umbrella. Do not port the promise. Port to
 the `Http` stdlib module (`use Http::{fetch, get, post, request};`),
 whose surface is a typed request/response with an honest effect row:
@@ -191,7 +191,7 @@ Re-decomposition rules:
   (the #161 `Json` primitive) — do not conflate transport with parsing.
 * Every function that transitively calls `Http` carries `/ { Net, Async }`
   in its signature. That is the point: the network and its asynchrony are
-  visible in the type, where ReScript hid them in a `Promise`.
+  visible in the type, where  hid them in a `Promise`.
 
 Backend status: the Deno-ESM target lowers this to a `globalThis.fetch`
 round-trip (Deno / Node 18+ / browser ESM) and is fully exercised
@@ -253,11 +253,11 @@ The decision tracks the same logic as `mut` vs `State`: keep coupling local unle
 [#anti-patterns]
 == Anti-patterns: Faithful-but-monolithic Translation
 
-The following ReScript is a small file buffer that conflates state, lifetime, and IO.
+The following  is a small file buffer that conflates state, lifetime, and IO.
 
-[source,rescript]
+[source,]
 ----
-// ReScript — original
+//  — original
 type fileBuffer = {
   mutable data: array<string>,
   mutable open_: bool,
@@ -302,7 +302,7 @@ fn write(b: mut FileBuffer, s: String) -> () {
 fn close(b: mut FileBuffer) -> () { b.open_ = false }
 ----
 
-This compiles. It is also no better than the ReScript original: the `closed` invariant is still a runtime check, the IO is still invisible, and `close` does not actually consume the buffer.
+This compiles. It is also no better than the  original: the `closed` invariant is still a runtime check, the IO is still invisible, and `close` does not actually consume the buffer.
 
 === Re-decomposed translation
 
@@ -339,7 +339,7 @@ What changed:
 The two versions are roughly the same number of lines. They are different programs.
 
 [#coprocessor-integerization]
-== Co-processor Integerization (ReScript → AffineScript → wasm)
+== Co-processor Integerization ( → AffineScript → wasm)
 
 The largest-scale pattern surfacing from the in-flight idaptik migration is
 not a single rule but a *shape for the whole port*: the host language keeps
@@ -349,7 +349,7 @@ boundary. The Human Programming Guide names the deployment posture — _"AffineS
 serves as the 'brain'… while the frontend serves as the 'senses'… the two
 communicate by passing raw primitives across the WASM boundary."_ This section
 is the migration-engineering companion to that posture: six named, verified
-patterns for carrying real ReScript across the boundary.
+patterns for carrying real  across the boundary.
 
 The patterns are independent but reinforce each other. Read them in order the
 first time; thereafter <<integerization-pattern-index>> indexes them for
@@ -466,7 +466,7 @@ so. The wasm core gets smaller, the boundary gets narrower, and — see
 === Pattern 2 — Re-decompose, don't transliterate
 
 This is the <<the-cardinal-rule,Cardinal Rule>> applied at co-processor scale.
-A 1:1 port of a ReScript kernel into AffineScript reproduces the ReScript design;
+A 1:1 port of a  kernel into AffineScript reproduces the  design;
 the integerization only pays off if the `.affine` is re-decomposed around what
 the wasm boundary and the current codegen actually support. The verified example
 is `Kernel_Compute.affine`, a genuine re-decomposition of `Kernel_Compute.res`.
@@ -474,7 +474,7 @@ Six concrete deltas:
 
 [cols="1,2,2"]
 |===
-| # | ReScript shape | Re-decomposed AffineScript shape
+| # |  shape | Re-decomposed AffineScript shape
 
 | (a)
 | `promise<executionResult>` — an incidental Promise wrapper around a value that is, at the kernel boundary, already settled.
@@ -514,7 +514,7 @@ it." That reframing is the whole pattern.
 
 ==== Second verified example — `Kernel_IO`: keep the data as it already is
 
-`Kernel_IO` does a sandbox check: in ReScript it decodes ASCII bytes to a
+`Kernel_IO` does a sandbox check: in  it decodes ASCII bytes to a
 `String` and then calls `String.startsWith` for a prefix test. The naïve port
 inherits the String backend — which AffineScript's wasm target does not yet
 fully provide (see <<p-string-abi>>). The re-decomposition observes that **the
@@ -674,7 +674,7 @@ effects, but the mechanism is identical.
 === Pattern 5 — No module-load side-effects → explicit threading / registration
 
 AffineScript modules **do not run code at load time**. There is no implicit
-module-load-time hook in wasm to attach a side effect to. ReScript/JS code that
+module-load-time hook in wasm to attach a side effect to. /JS code that
 relies on `let _ = X.foo()` at module scope, or that reads `Date.now()` /
 `Console.log` ambiently, has nowhere to put that behaviour after the port — *until*
 extensible-effect handling codegen lands.
@@ -794,11 +794,11 @@ If you complete a non-trivial `.res → .affine` translation and the re-decompos
 
 | 1.0
 | 2026-05-02
-| Initial draft. ReScript and TypeScript pattern indices, decision criteria, file-buffer anti-pattern. Companion to `frontier-guide.adoc` v1.0.
+| Initial draft.  and TypeScript pattern indices, decision criteria, file-buffer anti-pattern. Companion to `frontier-guide.adoc` v1.0.
 
 | 1.1
 | 2026-05-02
-| Two additions surfaced by the link:lessons/migrations/idaptik-user-settings.adoc[idaptik UserSettings design walk-through]: (1) service-locator-globals row added to the ReScript pattern index; (2) coupled-writes subsection added to Decision Criteria, with the rule "keep coupling local unless the invariant must be observable across callers." No removals; existing v1.0 guidance unchanged.
+| Two additions surfaced by the link:lessons/migrations/idaptik-user-settings.adoc[idaptik UserSettings design walk-through]: (1) service-locator-globals row added to the  pattern index; (2) coupled-writes subsection added to Decision Criteria, with the rule "keep coupling local unless the invariant must be observable across callers." No removals; existing v1.0 guidance unchanged.
 
 | 1.2
 | 2026-05-02
@@ -806,9 +806,9 @@ If you complete a non-trivial `.res → .affine` translation and the re-decompos
 
 | 1.3
 | 2026-05-18
-| New `<<portable-http>>` recipe for the C-spine `Http` stdlib primitive (issue #160): ReScript `fetch`/`Js.Promise` → typed `Request`/`Response` with a `/ { Net, Async }` effect row. Deno-ESM target landed and exercised end-to-end; typed-wasm target tracked as the next slice (convergence ABI shared with Ephapax). No existing guidance changed.
+| New `<<portable-http>>` recipe for the C-spine `Http` stdlib primitive (issue #160):  `fetch`/`Js.Promise` → typed `Request`/`Response` with a `/ { Net, Async }` effect row. Deno-ESM target landed and exercised end-to-end; typed-wasm target tracked as the next slice (convergence ABI shared with Ephapax). No existing guidance changed.
 
 | 1.4
 | 2026-06-04
-| New `<<coprocessor-integerization>>` section — six verified, named patterns for the ReScript → AffineScript → wasm co-processor port, grounded in the in-flight idaptik migration: (1) *the integer IS the X* (verified: `SecurityRank.affine`, 454-byte wasm, `0..3` rank encoding); (2) *re-decompose, don't transliterate* (verified deltas from `Kernel_Compute.affine` + the `Kernel_IO` int-array prefix-check); (3) *differential parity as the acceptance bar* (verified: 78/78 green; host-native compile per the 2026-06-03 reanchor, not the retired podman container); (4) *the String host-boundary ABI* (`[len][utf8]`, `__affine_alloc` replacing the fixed `8192` scratch offset, host read/write helpers, `extern fn`/`pub fn`); (5) *no module-load side-effects* (verified counter-example: `Kernel_Quantum` hits the effect-codegen wall; thread state/time/log explicitly); (6) *certifying the boundary* (the `EchoEncodingFaithfulness.agda` faithfulness theorem + the clamp-direction fail-open/fail-closed security nuance). The `<<the-cardinal-rule>>` heading gains an explicit anchor. No existing guidance changed.
+| New `<<coprocessor-integerization>>` section — six verified, named patterns for the  → AffineScript → wasm co-processor port, grounded in the in-flight idaptik migration: (1) *the integer IS the X* (verified: `SecurityRank.affine`, 454-byte wasm, `0..3` rank encoding); (2) *re-decompose, don't transliterate* (verified deltas from `Kernel_Compute.affine` + the `Kernel_IO` int-array prefix-check); (3) *differential parity as the acceptance bar* (verified: 78/78 green; host-native compile per the 2026-06-03 reanchor, not the retired podman container); (4) *the String host-boundary ABI* (`[len][utf8]`, `__affine_alloc` replacing the fixed `8192` scratch offset, host read/write helpers, `extern fn`/`pub fn`); (5) *no module-load side-effects* (verified counter-example: `Kernel_Quantum` hits the effect-codegen wall; thread state/time/log explicitly); (6) *certifying the boundary* (the `EchoEncodingFaithfulness.agda` faithfulness theorem + the clamp-direction fail-open/fail-closed security nuance). The `<<the-cardinal-rule>>` heading gains an explicit anchor. No existing guidance changed.
 |===

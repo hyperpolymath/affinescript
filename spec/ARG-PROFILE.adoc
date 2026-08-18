@@ -21,7 +21,7 @@
 
 == About this profile
 
-AffineScript is the estate's general-purpose affine-typed JS/TS/ReScript
+AffineScript is the estate's general-purpose affine-typed JS/TS/
 successor, targeting typed-wasm. It is the most adoption-ready of the
 three audit-cohort languages by ARG criteria: CLI `check`/`compile`/`eval`
 gate user programs with QTT-style usage tracking, a conformance corpus
@@ -57,7 +57,7 @@ satisfied per implementation activity).
 
 | *D2 — Elevator pitch*
 | YES
-| README §1 — affine-typed JS/TS/ReScript successor, compiles to
+| README §1 — affine-typed JS/TS/ successor, compiles to
   typed-wasm
 
 | *D3 — Provenance*

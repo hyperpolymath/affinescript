@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: CC-BY-SA-4.0
 // SPDX-FileCopyrightText: 2024-2026 hyperpolymath
-= Estate ReScript-surface elimination — authoritative ledger (issue #229)
+= Estate -surface elimination — authoritative ledger (issue #229)
 :toc: macro
 :toclevels: 3
 :icons: font
@@ -22,11 +22,11 @@ toc::[]
 
 == What #229 is
 
-A subset of estate `.affine` files are unfinished ReScript→AffineScript
+A subset of estate `.affine` files are unfinished →AffineScript
 hand-ports: the file declares itself AffineScript (`module …;`) but the body
-still carries ReScript surface syntax. Such a file is neither valid ReScript
+still carries  surface syntax. Such a file is neither valid 
 nor valid AffineScript — debt in limbo that cannot be oracle-certified. The
-committed goal is *zero ReScript surface in any estate `.affine`*. #229 was
+committed goal is *zero  surface in any estate `.affine`*. #229 was
 blocked on #228 (ADR-014, module-qualified type/effect paths) because the
 oracle stops at the *first* parse error: qualified-path faults masked each
 file's full RS inventory. #228 landed on `main` via #241 — this re-audit is
@@ -59,7 +59,7 @@ behaviour. This table is now the post-#228 baseline of record.
 ====
 `DRIFT-SYNTAX` (491) is *not* the #229 workload. Most estate DRIFT is *non-RS*
 syntax drift — out of #229's contract by design. The true #229 scope is the
-files that carry a detected ReScript construct in
+files that carry a detected  construct in
 `tools/estate-rs-audit/data/rs-inventory.tsv`: *~84 files across 12 repos*,
 two of which hold 71%.
 ====
@@ -111,7 +111,7 @@ oracle-validated, human-gated ports rather than one blind sweep.
 `standards` 112, `proof-burrower` 98, `developer-ecosystem` 97, `bofj-kitt`
 96, `affinescript` 84 (its own negative fixtures), `airborne-submarine-squadron`
 13, `accessibility-everywhere` 13, `idaptik` 9, `stapeln` 6, `burble` 3,
-singletons elsewhere. These DRIFT for non-ReScript reasons; they belong to
+singletons elsewhere. These DRIFT for non- reasons; they belong to
 separate workstreams, not #229.
 
 == Construct frequency (estate, excl. affinescript)
@@ -129,7 +129,7 @@ Every target form carries its grounding citation. Four tiers.
 
 [cols="2,2,3"]
 |===
-|ReScript |AffineScript |Grounding
+| |AffineScript |Grounding
 
 |*expression-position* record literal `{ f: v }` → `#{ f: v }` |the
 *record sigil* `#{…}` |*The dominant estate blocker — and NOT in #229's
@@ -143,7 +143,7 @@ in `match` (`{ a: x } =>`) and `struct`/`enum`/`type` decl bodies stay
 "applies to patterns" claim was wrong, corrected from doing the ports).
 Position-aware codemod (standalone-`{`-then-`field:` → `#{`), *not* naive
 regex; record patterns/decls untouched.
-|ReScript string `+` → `++` |`++` |Concat is `++` (`stdlib/string.affine:98`
+| string `+` → `++` |`++` |Concat is `++` (`stdlib/string.affine:98`
 `a ++ b`); `+` is numeric — `"x" + s` left a `Unify(String,Int)` *beneath*
 the parse wall. Oracle-verified: `"a" ++ "b"` passes, `"a" + "b"` →
 `String/Int`. String-literal-adjacent only (numeric `+`/`-` untouched).
@@ -177,7 +177,7 @@ one-RS-flagged files are multi-layer.
 
 [cols="2,3"]
 |===
-|ReScript |Why it is not mechanical
+| |Why it is not mechanical
 
 |`mutable` record field |AffineScript is immutable-by-default with *explicit
 mutation via ownership* (`docs/spec.md:38`; `mut τ` `docs/spec.md:563`).
@@ -186,7 +186,7 @@ ownership model — a redesign, reviewed per record.
 |`(~x) =>` labelled args |No labelled/named-argument syntax in the grammar or
 stdlib (stdlib is uniformly positional, e.g. `stdlib/option.affine`).
 Rewrite to positional — a call-convention change, reviewed per call site.
-|`Belt.*` / `Js.*` / `Rescript.*` |ReScript stdlib; no 1:1 AffineScript
+|`Belt.*` / `Js.*` / `.*` | stdlib; no 1:1 AffineScript
 target. Per-symbol remap to the estate stdlib, semantic.
 |===
 
@@ -238,7 +238,7 @@ instructed); it is the foundation's own finding that the `idaptik-dlc-vm`
 Each repo: oracle-validate locally first (estate CI does not compile
 `.affine`), one branch + squash-merge PR per repo, noreply author,
 `Refs #229` (multi-repo, sequenced, human-gated — never `Closes`). *Per-repo
-hands-off confirm before touching*: policy hands-off is the ReScript
+hands-off confirm before touching*: policy hands-off is the 
 *ecosystem* (`.res`); `.affine`-with-RS is an in-scope unfinished port — but
 confirm per repo it is an intended AffineScript target, not a deliberate
 interop artefact (burble's standing caveat), before removal.
@@ -246,7 +246,7 @@ interop artefact (burble's standing caveat), before removal.
 . *Smallest non-coupled — DONE 2026-05-19:* `git-scripts`
   (PR #9), `game-server-admin` (PR #14), `invariant-path` (PR #4). One
   file each; layered: `List(X)`→`[X]` + expr record literals `{`→`#{`
-  (patterns/decls left `{ }`) + ReScript string `+`→`++` (the latter two
+  (patterns/decls left `{ }`) +  string `+`→`++` (the latter two
   oracle-peeled, not scanner-visible). Each oracle-validated "Type
   checking passed" on `main`. `panll` *excluded* (no listed RS construct
   — scanner FP; see the lower-bound-triage warning).
@@ -262,19 +262,19 @@ Doing the ports collapsed the apparent scope. The honest end-state:
 `git-scripts` #9 · `game-server-admin` #14 · `invariant-path` #4 ·
 `standards/session-management-standards/.../system_update_gui.affine` #142.
 Each oracle-validated "Type checking passed" on `main`. Transform:
-`List(X)`→`[X]`, expr record literals `{`→`#{`, ReScript string `+`→`++`,
-ReScript `import P [as A]`→`use P [as A];`, single block-module
+`List(X)`→`[X]`, expr record literals `{`→`#{`,  string `+`→`++`,
+ `import P [as A]`→`use P [as A];`, single block-module
 `module P { body }`→`module P;`-header-first + dedented body.
 
 === Canonical-map additions (from doing the ports)
 
-* *Structural Tier-1:* ReScript `import P[.Q] [as A]` → `use P.Q [as A];`
+* *Structural Tier-1:*  `import P[.Q] [as A]` → `use P.Q [as A];`
   (`parser.mly:166-169`); *single* block-module `module P { body }` →
   `module P;` header (hoisted before imports — `parser.mly:130-134`
   requires the header first), braces dropped, body dedented one level.
   Oracle-verified to parse.
 * *ESC-04 (#262) — SETTLED by ADR-017:* AffineScript is strictly
-  one-module-per-file. Doctrine: *split, do not nest* — each ReScript
+  one-module-per-file. Doctrine: *split, do not nest* — each 
   `module X { body }` (incl. each of N in a multi-block file like
   `standards/lol/.../OpenCyc.affine`) becomes its own `X.affine` with a
   `module X;` header. No grammar change (ADR-011 file=module; a
@@ -291,8 +291,8 @@ ReScript `import P [as A]`→`use P [as A];`, single block-module
   *comments* ("// State effect - mutable references", "// ── mut …"). Same
   discipline as the affinescript-own-corpus exclusion + the `panll` FP.
   *0 real #229 files in these three repos.*
-* `standards/a2ml/prototype/rescript/src/{A2ml,Json}.affine`: inside a
-  `rescript/` *ecosystem* folder → policy hands-off (as `.res`), not a
+* `standards/a2ml/prototype//src/{A2ml,Json}.affine`: inside a
+  `/` *ecosystem* folder → policy hands-off (as `.res`), not a
   port target.
 
 === Gated remainder — precisely bounded (not open-ended)

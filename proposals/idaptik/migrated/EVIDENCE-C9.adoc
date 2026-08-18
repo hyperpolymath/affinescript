@@ -52,9 +52,9 @@ toc::[]
 | `src/Main.res` | SENSES (effect-gated) | App entry point: side-effect screen imports, multiplayer init, Burble voice startup, PixiJS engine creation. DOM manipulation, `Promise.catch` error display. No separable integer computation.
 | `src/app/GameLoop.res` | SENSES (effect-gated) | Per-frame game loop coordinator. Integer counters (`commandsExecuted`, `devicesHacked`, `maxAlertReached`) are trivial increments interleaved with float physics (`playerX`/`playerY`/`dt`), mutable JS guard/dog arrays, and AI orchestration calls. No standalone integer brain separable from the effect-heavy orchestration.
 | `src/app/burble/BurbleIntegration.res` | SENSES (effect-gated) | HTTP/WebSocket voice-server client: async `fetch`, URL string construction, connection state enum. No integer computation.
-| `src/app/pixi/PixiCoprocessor.res` | SENSES (bridge) | ReScript FFI wrapping `PixiCoprocessorBridge.js` → `pixi.wasm`. Pure `external` declarations. AffineScript PixiJS brain already live.
-| `src/app/tea/AffineTEA.res` | SENSES (bridge) | ReScript FFI wrapping `AffineTEA.js` → `titlescreen.wasm`. Pure `external` declarations. TEA title-screen brain already live.
-| `src/app/tea/AffineTEARouter.res` | SENSES (bridge) | ReScript FFI wrapping `AffineTEARouter.js` → `router.wasm`. Pure `external` declarations. Affine navigation router brain already live.
+| `src/app/pixi/PixiCoprocessor.res` | SENSES (bridge) |  FFI wrapping `PixiCoprocessorBridge.js` → `pixi.wasm`. Pure `external` declarations. AffineScript PixiJS brain already live.
+| `src/app/tea/AffineTEA.res` | SENSES (bridge) |  FFI wrapping `AffineTEA.js` → `titlescreen.wasm`. Pure `external` declarations. TEA title-screen brain already live.
+| `src/app/tea/AffineTEARouter.res` | SENSES (bridge) |  FFI wrapping `AffineTEARouter.js` → `router.wasm`. Pure `external` declarations. Affine navigation router brain already live.
 | `src/app/verisimdb/SaveGame.res` | SENSES (effect-gated) | VeriSimDB save/load: async HTTP, JSON serialization, `formatPlayTime` string formatting. Effect-gated throughout.
 | `src/app/verisimdb/VeriSimDrift.res` | SENSES (HTTP client) | Async HTTP wrappers for drift score/status/normalize endpoints. No integer computation.
 | `src/app/verisimdb/VeriSimError.res` | SENSES (string-wall gated) | Error variant `fromStatus(int) → t` dispatches HTTP codes, but every constructor carries a `string` payload. String-wall prevents integer brain extraction.
@@ -64,7 +64,7 @@ toc::[]
 | `src/app/verisimdb/VeriSimSearch.res` | SENSES (HTTP client) | Async HTTP wrappers for text/vector/spatial/nearest/related search. No integer computation.
 | `src/app/verisimdb/VeriSimTypes.res` | SENSES (string-wall gated) | Type definitions: `modality` (8 enum), `hexadStatus` (4 enum), `driftLevel` (5 enum). Variants themselves have no string payloads, but `modalityToString`/`modalityFromString` use string literals and all enums appear exclusively as fields in string-bearing records. No standalone integer computation exists on these enums. String-wall gated.
 | `src/app/verisimdb/VeriSimVcl.res` | SENSES (HTTP client) | Async HTTP wrappers for VCL execute/explain. No integer computation.
-| `src/app/vm/VmCoprocessor.res` | SENSES (bridge) | ReScript FFI wrapping `VmCoprocessorBridge.js` → `vmcoprocessor.wasm`. Pure `external` declarations. VM brain migrated in C2.
+| `src/app/vm/VmCoprocessor.res` | SENSES (bridge) |  FFI wrapping `VmCoprocessorBridge.js` → `vmcoprocessor.wasm`. Pure `external` declarations. VM brain migrated in C2.
 |===
 
 == Already-live wasm brains referenced by C9 bridges
@@ -127,11 +127,11 @@ In contrast, `DualAlert.affine` (C6) had computation: `level_value` mapped
 ordinals to display integers, `escalate_level` implemented the state machine,
 `overall_threat` aggregated physical + cyber levels.  The VeriSimTypes enums
 have none of this — they are pure serialization tags with no logic in the
-ReScript sources of C9.
+ sources of C9.
 
 == Impact on remaining clusters
 
 C9 being NO_NEW_BRAINS does not affect the C10/C12 roadmap.  The four wasm
 brains referenced by C9 bridges are already live.  The VeriSimDB HTTP client
-modules remain host-side ReScript throughout Phase Ω.  The completion-drive
+modules remain host-side  throughout Phase Ω.  The completion-drive
 directive proceeds to *C10*.

@@ -36,9 +36,9 @@ of the same shape.
 
 == Pattern 1 — Sum-type round-trip through a string-keyed Storage
 
-=== Original (ReScript)
+=== Original ()
 
-[source,rescript]
+[source,]
 ----
 type stance = Jessica | Q
 let keyStance = "character-stance"
@@ -120,9 +120,9 @@ What the re-decomposition buys:
 
 == Pattern 2 — Stringly-typed config
 
-=== Original (ReScript)
+=== Original ()
 
-[source,rescript]
+[source,]
 ----
 let getDifficulty = (): string =>
   Storage.getString(keyDifficulty)->Option.getOr("normal")
@@ -162,14 +162,14 @@ fn get_difficulty() -> Difficulty / Storage {
 
 This is the
 xref:../../migration-playbook.adoc#source-pattern-index["any / unknown" rule]
-applied to a ReScript file: a `string` at the public boundary is the same
+applied to a  file: a `string` at the public boundary is the same
 abdication of a thesis as TypeScript's `any`. Pin it.
 
 == Pattern 3 — Coupled write through a service-locator global
 
-=== Original (ReScript)
+=== Original ()
 
-[source,rescript]
+[source,]
 ----
 let setMasterVolume = (value: float): unit =>
   switch GetEngine.get() {
@@ -272,10 +272,10 @@ when the stdlib catches up.
 === Gaps the playbook should address
 
 . **Service-locator globals.** `GetEngine.get(): Option<engine>` is a
-  common ReScript pattern and its re-decomposition (lift to effect) is
+  common  pattern and its re-decomposition (lift to effect) is
   not named in the source-pattern index. The playbook covers `ref` and
   `let mutable` but not "module-level getter for a singleton runtime."
-  *Proposed addition: one row in the ReScript table.*
+  *Proposed addition: one row in the  table.*
 . **Coupled-write composition.** When one user action both updates an
   in-memory subsystem AND persists to Storage (the volume case), the
   playbook does not say whether to express this as one function calling
@@ -291,7 +291,7 @@ Gap (3) is fixed in the same commit as this file. Gaps (1) and (2) were
 deferred to a v1.1 follow-up so the policy PR (#36) could land focused;
 both are now addressed in playbook v1.1 — see the
 xref:../../migration-playbook.adoc#source-pattern-index[service-locator
-row in the ReScript table] and the
+row in the  table] and the
 xref:../../migration-playbook.adoc#decision-criteria[coupled-writes
 subsection in Decision Criteria].
 
@@ -315,7 +315,7 @@ When translating a multi-pattern, dependency-heavy `.res` file:
 == Reproducibility
 
 This lesson is design-only against AffineScript v0.1.0 — it does not produce
-a compilable `.affine` file. The original ReScript:
+a compilable `.affine` file. The original :
 
 [source,bash]
 ----

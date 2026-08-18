@@ -75,7 +75,7 @@ Compiler: `/home/user/affinescript/_build/default/bin/main.exe compile`
 === G2 — Parity (Deno harness, independent oracle)
 
 All 8 kernels achieve 100% pass rate against independent oracles derived
-directly from the original ReScript semantics.
+directly from the original  semantics.
 
 [cols="2,1,1"]
 |===
@@ -171,7 +171,7 @@ Binary: `/home/user/panic-attack/target/release/panic-attack`
 
 == Host-Side Senses (not migrated)
 
-Each kernel is a pure brain. The following remain on the JS/ReScript host side:
+Each kernel is a pure brain. The following remain on the JS/ host side:
 
 === SecurityRank
 The `securityLevel` variant (`Open/Weak/Medium/Strong`) and its string

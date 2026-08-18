@@ -135,7 +135,7 @@ benchmarks:
     memory_bytes: 2400
 ....
 
-*Compare against:* ReScript, OCaml, Rust, JavaScript implementations
+*Compare against:* , OCaml, Rust, JavaScript implementations
 
 *Insight:* Shows cost/benefit of affine type safety
 
@@ -190,7 +190,7 @@ alib-for-affinescript/
 === Phase 4: Cross-Language Integration (Month 3)
 
 * [ ] Benchmark AffineScript vs other implementations
-* [ ] Create interop examples (AffineScript ↔ ReScript/OCaml)
+* [ ] Create interop examples (AffineScript ↔ /OCaml)
 * [ ] Publish comparison study
 * [ ] Present findings to aLib community
 

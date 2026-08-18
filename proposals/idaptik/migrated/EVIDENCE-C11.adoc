@@ -12,7 +12,7 @@ new AffineScript kernels are required because:
 1. The integer brain of `DualAlert.res` (alert-level ordinals, escalation,
    trigger-milli, scrub, overall-threat, dispatch predicates) was already
    extracted in *cluster C6* (`DualAlert.affine`, 613/613 parity, LOSSLESS
-   boundary proof). `DualAlertCoprocessor.res` is the existing ReScript
+   boundary proof). `DualAlertCoprocessor.res` is the existing 
    bridge to that wasm.
 2. `ForceLayoutCoprocessor.res` is a bridge to `forcelayout.wasm` (a
    float-only physics kernel — euclidean distance, repulsion/attraction
@@ -33,7 +33,7 @@ toc::[]
 |===
 | File | Disposition | Reason
 | `src/app/ui/DualAlert.res` | SENSES (brain in C6) | Integer core (`levelValue`, `levelColor`, `escalateLevel`, `scrubStep`, trigger-milli, cooldown-milli, `overallThreat`, `shouldDispatchAntiHacker`, `guardsCheckingTerminals`) already lives in `DualAlert.affine` (C6, 613/613 parity). Float progress/trigger-severity orchestration stays host-side.
-| `src/app/ui/DualAlertCoprocessor.res` | SENSES (bridge) | ReScript FFI wrapping `DualAlertCoprocessorBridge.js` → `dualalert.wasm`. Pure `external` declarations; no logic.
+| `src/app/ui/DualAlertCoprocessor.res` | SENSES (bridge) |  FFI wrapping `DualAlertCoprocessorBridge.js` → `dualalert.wasm`. Pure `external` declarations; no logic.
 | `src/app/popups/ForceLayoutCoprocessor.res` | SENSES (float-brain bridge) | Wraps `forcelayout.wasm` float kernel (euclidean, repelDv, attractDv, decayVelocity, integratePosition, decayAlpha). All f64 primitives; float-wall convention: brain deferred to host-side.
 | `src/app/ui/Button.res` | SENSES (PixiJS) | FancyButton nine-slice wrapper + FontScale + Audio SFX. Zero integer computation.
 | `src/app/ui/HardwareWiring.res` | SENSES (PixiJS) | Interactive patch-panel with float catenary sag (`computeSagLocal`), quadratic Bézier cable rendering, pointer-event wiring, string template port IDs. No separable integer brain.
@@ -94,4 +94,4 @@ continuous-domain arithmetic throughout.
 
 C11 being NO_NEW_BRAINS does not affect the C9/C10/C12 roadmap. The
 `DualAlertCoprocessor` wasm is already live; the UI components remain host-side
-ReScript throughout Phase Ω. The completion-drive directive proceeds to *C9*.
+ throughout Phase Ω. The completion-drive directive proceeds to *C9*.

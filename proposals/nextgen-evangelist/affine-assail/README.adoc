@@ -191,7 +191,7 @@ The Rust port in `panic-attack` (`src/assail/analyzer.rs` +
 patterns. PA-AFF-001 is the novel, high-value one — it is the type-system-aware
 analogue of panic-attack's existing `InputBoundary` (PA024) / `MutationGap`
 (PA025) family, specialised to the AffineScript "out-of-band variant collapses
-to an in-band integer" idiom that the ReScript->AffineScript migration produces
+to an in-band integer" idiom that the ->AffineScript migration produces
 when a variant is re-decomposed onto a closed integer band. The fix the message
 recommends — a *declared clamp* or an *injectivity proof via `echo-boundary`* —
 ties the finding to the sibling proposal.

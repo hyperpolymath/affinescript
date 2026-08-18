@@ -257,7 +257,7 @@ META.a2ml + SETTLED-DECISIONS.adoc. Supersedes DRAFT #231. |S1 |grammar
 merged (#241). Post-#228 estate re-audit DONE — true #229 scope is
 ~84 files/12 repos (not the 491 DRIFT; bulk is non-RS, out of contract);
 authoritative ledger + language-grounded canonical map + ESC-01..03
-escalations: link:RESCRIPT-ELIMINATION.adoc[RESCRIPT-ELIMINATION.adoc]
+escalations: link:-ELIMINATION.adoc[-ELIMINATION.adoc]
 |CORE-04 |Traits: associated-type substitution, where-clause supertraits,
 generic-subsumption overlap. (Concrete-overlap coherence DONE — #559, see
 link:SOUNDNESS.adoc[SOUNDNESS.adoc].) |S2 |partial

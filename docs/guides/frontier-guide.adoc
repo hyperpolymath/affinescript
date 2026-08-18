@@ -12,7 +12,7 @@ v1.2, 2026-06-04
 ====
 Status: **canonical, living document.** This guide is the design reference for AffineScript itself and for any migration into AffineScript. Edits are welcome; record them in the <<revision-history>> appendix so the timeline is visible to future readers and AI agents.
 
-For systematic translation patterns from ReScript, TypeScript, or another `-script` family language, read this guide first, then the link:migration-playbook.adoc[Migration Playbook].
+For systematic translation patterns from , TypeScript, or another `-script` family language, read this guide first, then the link:migration-playbook.adoc[Migration Playbook].
 ====
 
 The Frontier Guide takes you from "I write JavaScript / Python" to
@@ -381,14 +381,14 @@ compose. They don't. The diagram is:
 ----
 
 **Faces are input skins.** A face is a parser front-end: Python-shaped
-syntax, JavaScript-shaped syntax, pseudocode, PureScript-shaped Lucid,
+syntax, JavaScript-shaped syntax, pseudocode, Pu-shaped Lucid,
 CoffeeScript-shaped Cafe. The `--face` flag picks the parser; the AST
 that comes out the other side is canonical AffineScript. Error messages
 are translated back into the face's vocabulary, so a Python-face user
 sees `def`, `True`, indentation, not `fn`, `true`, `{}`.
 
 **Backends are output skins.** A backend is a code generator: WASM,
-WASM-GC, Julia, JavaScript, C, Rust, OCaml, Lua, Bash, Gleam, ReScript,
+WASM-GC, Julia, JavaScript, C, Rust, OCaml, Lua, Bash, Gleam, ,
 Nickel, WGSL (compute shaders), Faust (DSP), ONNX (tensor graphs),
 LLVM IR, Verilog, … The output extension picks the backend
 (`-o foo.js`, `-o foo.wgsl`, `-o foo.onnx`, …).
@@ -396,7 +396,7 @@ LLVM IR, Verilog, … The output extension picks the backend
 The two axes don't compose: there is no "JS face implies JS output" or
 "Python face implies Python output." You can write Python-faced source
 and compile it to WGSL; you can write canonical AffineScript and compile
-it to ReScript. The face you read in is independent from the target you
+it to . The face you read in is independent from the target you
 write out.
 
 [NOTE]
@@ -422,7 +422,7 @@ target runtimes are restricted.
 | Tier | Members | Acceptance
 
 | **A — host-language emitters**
-| WASM 1.0, WASM-GC, Julia, JS, C, Rust, OCaml, ReScript, Lua, Bash, Gleam, Nickel
+| WASM 1.0, WASM-GC, Julia, JS, C, Rust, OCaml, , Lua, Bash, Gleam, Nickel
 | Full AffineScript surface. Anything you can write in canonical AS, these accept. Missing features in the codegen produce a loud error at compile time, never silent miscompilation.
 
 | **B — IR / native**
@@ -447,7 +447,7 @@ won't be available, and that should drive the design.
 == Chapter 9: The Co-processor and the Integer
 
 You already know the problem, even if you have not named it. You have a
-working ReScript or JavaScript program — a game, a simulator, a tool — and
+working  or JavaScript program — a game, a simulator, a tool — and
 you want the *logic* to run with AffineScript's guarantees, compiled to
 wasm, without rewriting the rendering, the input handling, or the network.
 The instinct is to port the whole thing. The better move is to split it.
@@ -546,7 +546,7 @@ are teaching points, not apologies:
   are already an `Int` array, so it compares integer arrays directly and
   never builds a `String` at all.
 * **No code runs at module load.** AffineScript modules have no load-time
-  side effect to hook. ReScript that mutates a module-level cell, reads
+  side effect to hook.  that mutates a module-level cell, reads
   `Date.now()`, or calls `Console.log` ambiently has nowhere to put that
   after the port — those capabilities must be *threaded in as parameters*
   (or supplied by `extern` host functions) until effect-handling codegen
@@ -631,7 +631,7 @@ fn fetch_with_retry(
 == What to Read Next
 
 - link:warmup/README.adoc[Warmup scripts] — hands-on exercises, 15 minutes each
-- link:migration-playbook.adoc[Migration Playbook] — systematic re-decomposition rules for porting ReScript / TypeScript / other `-script` codebases into AffineScript
+- link:migration-playbook.adoc[Migration Playbook] — systematic re-decomposition rules for porting  / TypeScript / other `-script` codebases into AffineScript
 - link:frontier-programming-practices/Human_Programming_Guide.adoc[Frontier Programming Practices] — the wider design philosophy (v2.0, 2026-04-10)
 - link:../specs/SPEC.adoc[Language Specification] — the authoritative grammar and semantics
 - link:../specs/SETTLED-DECISIONS.adoc[Settled Decisions] — architectural choices and why they were made
@@ -718,7 +718,7 @@ This document is intended to evolve. When you change it — adding a chapter, sh
 
 | 1.1
 | 2026-05-02
-| Findings from the May-2026 backend buildout (16 new backends shipped: JS, C, WGSL, Faust, ONNX, OCaml, Lua, Bash, Nickel, ReScript, Rust, LLVM, Verilog, Gleam, plus protobuf and onnx_proto support modules) folded back into the guide:
+| Findings from the May-2026 backend buildout (16 new backends shipped: JS, C, WGSL, Faust, ONNX, OCaml, Lua, Bash, Nickel, , Rust, LLVM, Verilog, Gleam, plus protobuf and onnx_proto support modules) folded back into the guide:
   (1) Chapter 2 gains a "where the keyword goes" sidebar — `mut` annotates the binder, not the type.
   (2) Chapter 5 gains the *Arithmetic Without Typeclasses* sub-section — the typechecker now dispatches arithmetic on the lhs type (Float-aware as of 2026-05-02), with no implicit promotion.
   (3) New Chapter 7 — *Faces In, Backends Out* — makes the orthogonality of input skins and output backends explicit.
@@ -728,6 +728,6 @@ This document is intended to evolve. When you change it — adding a chapter, sh
 
 | 1.2
 | 2026-06-04
-| New Chapter 9 — *The Co-processor and the Integer* — unveils the ReScript → AffineScript → wasm co-processor mental model ("AffineScript is the brain; JS/Pixi the senses; only primitives cross the boundary") and the "the integer IS the X" encoding idea, grounded in idaptik's verified 454-byte `SecurityRank` core (78/78 differential-parity). The chapter introduces the model and the honest edges (String ABI, no module-load effects, machine-checked faithfulness via `EchoEncodingFaithfulness.agda`); the systematic re-decomposition patterns live in the link:migration-playbook.adoc#coprocessor-integerization[Migration Playbook §Co-processor Integerization] (playbook v1.4). No removals; existing v1.1 content unchanged.
+| New Chapter 9 — *The Co-processor and the Integer* — unveils the  → AffineScript → wasm co-processor mental model ("AffineScript is the brain; JS/Pixi the senses; only primitives cross the boundary") and the "the integer IS the X" encoding idea, grounded in idaptik's verified 454-byte `SecurityRank` core (78/78 differential-parity). The chapter introduces the model and the honest edges (String ABI, no module-load effects, machine-checked faithfulness via `EchoEncodingFaithfulness.agda`); the systematic re-decomposition patterns live in the link:migration-playbook.adoc#coprocessor-integerization[Migration Playbook §Co-processor Integerization] (playbook v1.4). No removals; existing v1.1 content unchanged.
 
 |===

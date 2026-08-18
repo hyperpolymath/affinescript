@@ -58,7 +58,7 @@ legacy stream so the FeaturePacks flag can flip with zero behavioural drift.
 pre-scales `t` by 1000), `dist_sq` (squared Euclidean distance — the integer core
 of `getDistance`; the `sqrt` stays host-side, and games compare squared distances
 anyway). 1982/1982 over moderate domains chosen so the blend and squared terms
-never overflow i32 (these are screen/value magnitudes). The ReScript original is
+never overflow i32 (these are screen/value magnitudes). The  original is
 float throughout; this is the float-wall convention (integer brain, floats stay
 host-side).
 

@@ -20,7 +20,7 @@ toc::[]
 
 == One-paragraph summary
 
-Dogfooding the idaptik ReScript -> AffineScript -> wasm migration surfaced
+Dogfooding the idaptik  -> AffineScript -> wasm migration surfaced
 six concrete compiler/toolchain findings, ranked here by leverage. The
 single highest-leverage item is the *variable-string backend gap*: it is
 the reason the estate keeps strings host-side, and closing it unblocks the
@@ -260,7 +260,7 @@ larger rewrite.
 
 === The constraint (verified this session)
 
-The build network is *github-only*. `crates.io`, `deno.land`,
+The build network is *github-only*. `crates.io`, ``,
 `opam.ocaml.org`, and launchpad PPAs all return **403**; `github.com` and
 `archive.ubuntu.com` are reachable. Any install path that reaches for a
 package registry will fail.
@@ -385,7 +385,7 @@ estate's primary application language.
 
 == Verification summary (what was actually run)
 
-* *Network:* `crates.io` / `deno.land` / `opam.ocaml.org` / launchpad ->
+* *Network:* `crates.io` / `` / `opam.ocaml.org` / launchpad ->
   403; `github.com` / `archive.ubuntu.com` -> reachable. Confirmed.
 * *Build:* apt OCaml deps -> `dune exec affinescript -- compile FILE -o
   OUT` emits valid wasm; full `dune build` stops only on
@@ -395,7 +395,7 @@ estate's primary application language.
   in source while drafting.
 * *Proof:* `proposals/echo-types/EchoEncodingFaithfulness.agda` typechecks
   `--safe --without-K`, zero postulates, Agda 2.6.3 + stdlib v2.3.
-* *Migration corpus:* idaptik 107,758 LOC ReScript / 21,540 LOC
+* *Migration corpus:* idaptik 107,758 LOC  / 21,540 LOC
   AffineScript / 17,633 LOC TS; 2/4 kernels migrated; pins affinescript
   v0.1.1. Stated facts.
 

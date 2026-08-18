@@ -176,7 +176,7 @@ Repo-level hooks landed 2026-05-26: README admonitions in affinescript (PR #393)
 . *CORE-01 Slice C-full (Polonius)* — ADR-gated, multi-week architectural change. The dominant single item.
 . *CORE-01 Slices C′ + D + ref-to-ref* — PR-sized each (~3–4 PRs total).
 . *Cross-repo: CONV-04 multi-producer ABI proposal* — filed with typed-wasm; needs owner-coordinated decision before AffineScript can widen enforcement beyond L7 + L10 + L13.
-. *#229 estate-wide ReScript elimination* — 84 files / 12 repos, mechanical-ish but coordination-heavy.
+. *#229 estate-wide  elimination* — 84 files / 12 repos, mechanical-ish but coordination-heavy.
 . *INT-03 (WASI host I/O beyond stdout)* — ADR-015 filed; PR-sized work to land.
 . *INT-04 JSR/npm publish* — READY; needs the version-coordination switch flipped.
 
@@ -192,12 +192,12 @@ Major-labelled / S1:
 * *#228* — LANG: type/effect grammar module-qualified path (grammar merged; estate port in flight)
 * *#179* — INT-02: stable host-agnostic loader bridge (tracker)
 * *#180* — INT-03: WASI preview2 / host I/O beyond stdout
-* *#229* — ESTATE: total ReScript-surface elimination from all .affine (blocked-on #228, now unblocked)
+* *#229* — ESTATE: total -surface elimination from all .affine (blocked-on #228, now unblocked)
 * *#392* — Extract embedded `affinescript-*` subtrees (road-skate done; 5 more)
 
 Other open:
 
-* #175 (doc truthing meta), #176 (DOC-01..09 doc-truthing rules), #181 (INT-04 JSR/npm), #182 (INT-07 tea runtime), #183 (INT-08 DOM reconciler), #235 (closure ABI re-validation), #245 (ESC-01 raw/FFI escape), #249 (`::` value-call form residual), #260 (INT-04 native binary distribution), #262 (ESC-04 ReScript block-module), #378 (panic-attack findings triage), #56 (affinescript-dom + affinescript-pixijs migration prerequisite), #57 (.res → .affine migration assistant — Phase 2c landed 2026-05-26).
+* #175 (doc truthing meta), #176 (DOC-01..09 doc-truthing rules), #181 (INT-04 JSR/npm), #182 (INT-07 tea runtime), #183 (INT-08 DOM reconciler), #235 (closure ABI re-validation), #245 (ESC-01 raw/FFI escape), #249 (`::` value-call form residual), #260 (INT-04 native binary distribution), #262 (ESC-04  block-module), #378 (panic-attack findings triage), #56 (affinescript-dom + affinescript-pixijs migration prerequisite), #57 (.res → .affine migration assistant — Phase 2c landed 2026-05-26).
 
 == Open PRs at session close (13)
 

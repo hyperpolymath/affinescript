@@ -373,7 +373,7 @@ type checking.
 
 == 🏅 Achievements Unlocked
 
-✅ *Row Polymorphism* - Like OCaml and PureScript ✅ *Effect System* -
+✅ *Row Polymorphism* - Like OCaml and Pu ✅ *Effect System* -
 Like Koka and Eff ✅ *Dependent Types* - Like Idris and Agda (parsing)
 ✅ *Higher-Kinded Types* - Like Haskell and Scala ✅ *Generic
 Programming* - Traits with HKTs

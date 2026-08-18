@@ -31,9 +31,9 @@ do not qualify as standalone faces (see <<actionscript>>).
 | RattleScript  | Python                | `rattle`    | Shipped
 | JaffaScript   | JavaScript            | `jaffa`     | Shipped
 | ProperScript  | TypeScript (+ AS3 preset) | `proper` | *New — planned*
-| RealScript    | ReScript              | `real`      | *New — planned*
+| RealScript    |               | `real`      | *New — planned*
 | CafeScripto   | CoffeeScript          | `cafe`      | Shipped
-| LucidScript   | PureScript / Haskell  | `lucid`     | Shipped
+| LucidScript   | Pu / Haskell  | `lucid`     | Shipped
 | PseudoScript  | pseudocode            | `pseudo`    | Shipped
 |===
 
@@ -48,7 +48,7 @@ JaffaScript:
 * *ProperScript* — TypeScript, now typed _properly_. TypeScript's types are
   structural and erased; routed through the affine core + typed-wasm they become
   sound. "The TypeScript that is finally typed properly."
-* *RealScript* — ReScript, whose ML-family types were _real_ (sound,
+* *RealScript* — , whose ML-family types were _real_ (sound,
   non-nullable, no `any`) all along. The name is a homophone tribute
   (Re→Real), not a corrective.
 
@@ -92,7 +92,7 @@ syntax, of the form `<comment> face: <long-name>`:
 | RattleScript | `rattle`, `python`       | `rattlescript` | `lib/python_face.ml` · `Face.Python`     | `hyperpolymath/rattlescript`
 | JaffaScript  | `jaffa`, `js`, `javascript` | `jaffascript` | `lib/js_face.ml` · `Face.Js`          | `hyperpolymath/jaffascript`
 | ProperScript | `proper`, `typescript`   | `properscript` | `lib/proper_face.ml`* · `Face.Proper`*  | `hyperpolymath/properscript`*
-| RealScript   | `real`, `rescript`       | `realscript`   | `lib/real_face.ml`* · `Face.Real`*      | `hyperpolymath/realscript`*
+| RealScript   | `real`, ``       | `realscript`   | `lib/real_face.ml`* · `Face.Real`*      | `hyperpolymath/realscript`*
 | CafeScripto  | `cafe`, `coffee`         | `cafescripto`  | `lib/cafe_face.ml` · `Face.Cafe`        | `hyperpolymath/cafescripto`
 | LucidScript  | `lucid`                  | `lucidscript`  | `lib/lucid_face.ml` · `Face.Lucid`      | `hyperpolymath/lucidscript`
 | PseudoScript | `pseudo`, `pseudocode`   | `pseudoscript` | `lib/pseudocode_face.ml` · `Face.Pseudocode` | `hyperpolymath/pseudoscript`
@@ -101,8 +101,8 @@ syntax, of the form `<comment> face: <long-name>`:
 `*` = does not exist yet; created under Part 2 of the plan. The CLI already
 accepts the brand short aliases `rattle`/`jaffa` alongside the canonical
 `python`/`js` names; it MUST be extended to accept `proper`/`real` (and
-`typescript`/`rescript`) once those `Face` variants land. Note: `bin/main.ml`
-already carries partial `is_rescript` error-vocabulary plumbing that RealScript
+`typescript`/``) once those `Face` variants land. Note: `bin/main.ml`
+already carries partial `is_` error-vocabulary plumbing that RealScript
 will absorb.
 
 == Shim protocol (hardened)
@@ -202,7 +202,7 @@ tests only; this table is the honest statement of that gap.
 
 == Open implementation tasks (tracked by the plan)
 
-* *P1.2* — add `proper`/`real` (+ `typescript`/`rescript`) to the CLI `--face`
+* *P1.2* — add `proper`/`real` (+ `typescript`/``) to the CLI `--face`
   alias table and `Face` variant type.
 * *P2 (js_face split)* — JaffaScript narrows to plain JavaScript; ProperScript
   gets its own transformer + TS-idiom error vocabulary (interfaces→traits, `type`,

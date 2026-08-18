@@ -96,7 +96,7 @@ guide-linked readiness report
 # Next-gen readiness report
 Target: /tmp/evangelist-demo  |  3 .res, 2 .affine
 
-① ReScript migratability (.res)
+①  migratability (.res)
   Kernel_Quantum.res  | EFFECT-GATED
   Kernel_IO.res       | STRING-GATED
   Kernel_Compute.res  | MIGRATABLE NOW

@@ -72,7 +72,7 @@ eliminating them is the contortion ADR-012 forbids). `just build` masks
 type/effect paths now parse* — `Pkg.Type` / `Pkg::Type` (mixed, deep),
 `::` canonical (ADR-014, PR #241, Refs #228; zero Menhir conflict delta).
 Cleared the dominant estate parse blocker (was 525/1177 `.affine`);
-estate re-audit + ReScript residue (#229) follow separately.
+estate re-audit +  residue (#229) follow separately.
 
 |AST |works |All current language constructs represented.
 
@@ -205,7 +205,7 @@ the `vscode-smoke` CI job, asserting activation, command registration,
 |Julia, JS, Rust, Lua |works (transpile) |`Module_loader.flatten_imports`
 inlines imported public fns; smoke-tested.
 
-|C, WGSL, Faust, ONNX, OCaml, Bash, Nickel, ReScript, LLVM, Verilog, Gleam,
+|C, WGSL, Faust, ONNX, OCaml, Bash, Nickel, , LLVM, Verilog, Gleam,
 CUDA, Metal, OpenCL, MLIR, Why3, Lean, SPIR-V
 |partial / experimental
 |Code-generators exist and build. Coverage varies widely; treat as

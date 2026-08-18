@@ -45,7 +45,7 @@ clamp-to-sentinel hazard are both certified.
 
 `hyperpolymath/standards`, in a new *AffineScript migration practices*
 section of the language-policy / migration guidance (adjacent to the
-existing ReScript/TS exemption material, since it governs the same
+existing /TS exemption material, since it governs the same
 RS/TS -> AffineScript -> typed-wasm pipeline).
 
 === Proposed normative text
@@ -135,7 +135,7 @@ they consume strings already laid out in this format, and
 
 === The constraint (verified this session)
 
-The build network is *github-only*: `crates.io`, `deno.land`,
+The build network is *github-only*: `crates.io`, ``,
 `opam.ocaml.org`, and launchpad PPAs return *403*; `github.com` and
 `archive.ubuntu.com` are reachable. CI that assumes registry reachability
 will fail estate-wide, not just here.
@@ -151,7 +151,7 @@ material).
 [quote]
 ____
 *EST-CI-NET-1 (Registry-independent install).* Estate CI runs on a
-*github-only* network: package registries (`crates.io`, `deno.land`,
+*github-only* network: package registries (`crates.io`, ``,
 `opam.ocaml.org`, launchpad PPAs) are unreachable (HTTP 403); only
 `github.com` and the OS package archive (`archive.ubuntu.com`) are
 reachable. CI workflows MUST NOT depend on language-registry reachability.

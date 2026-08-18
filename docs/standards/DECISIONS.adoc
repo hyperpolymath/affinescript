@@ -238,7 +238,7 @@ prover.
 |LSP Server |Rust |Performance
 |Formatter |OCaml |Shares AST
 |REPL |OCaml |Interpreter mode
-|Web Tooling |ReScript {plus} Deno |Per standards
+|Web Tooling | {plus} Deno |Per standards
 |Build Meta |Deno |Per standards
 |Config |Nickel |Per standards
 |Docs |Custom generator |From types

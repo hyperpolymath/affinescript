@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
 <!-- SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell -->
 
-# `res-to-affine` — ReScript-to-AffineScript migration assistant
+# `res-to-affine` — -to-AffineScript migration assistant
 
 A small OCaml CLI that reads a `.res` file and emits a `.affine` skeleton
 with **migration markers** — comments that name each anti-pattern the
@@ -48,14 +48,14 @@ needs re-decomposing.
 | `--engine` | Implementation | When to use |
 |---|---|---|
 | `walker` (default) | Shells out to the vendored `tree-sitter` CLI, walks the AST (`walker.ml`). | Default since Phase 2c — covers all six anti-patterns including the two that the scanner cannot see (inline callback records, oversized functions) and eliminates the `let _ = chained.call()` / line-anchored false-positive classes. |
-| `scanner` | Line-anchored regex over the raw source (`scanner.ml`). | Fallback when the vendored grammar is unavailable (no `tree-sitter` CLI, missing `tools/vendor/tree-sitter-rescript/`). Detects four of the six anti-patterns only. |
+| `scanner` | Line-anchored regex over the raw source (`scanner.ml`). | Fallback when the vendored grammar is unavailable (no `tree-sitter` CLI, missing `tools/vendor/tree-sitter-/`). Detects four of the six anti-patterns only. |
 
-The walker requires the vendored `tree-sitter-rescript` grammar to be
+The walker requires the vendored `tree-sitter-` grammar to be
 built first:
 
 ```sh
 just install-grammar
-# or: ./editors/tree-sitter-rescript/scripts/install.sh
+# or: ./editors/tree-sitter-/scripts/install.sh
 ```
 
 If the grammar isn't built or the `tree-sitter` CLI isn't on PATH, the
@@ -98,7 +98,7 @@ findings on the same line.
 The Frontier Programming Guides' standing rule is **re-decompose, not
 transliterate**. A line-for-line port preserves the source's anti-patterns
 into the target language and produces `.affine` files that are technically
-parseable but architecturally still ReScript. The migration assistant's
+parseable but architecturally still . The migration assistant's
 job is to *make the re-decomposition tractable*, not to skip it. So:
 
 - The skeleton is **honest about being incomplete** — it does not
@@ -126,9 +126,9 @@ to tree-sitter in Phase 2 behind something that already pays its way.
 ### Phase 2 — tree-sitter AST walker
 
 Vendoring of the pinned grammar
-(`rescript-lang/tree-sitter-rescript@990214a`) lives in
-`editors/tree-sitter-rescript/`; `install.sh` materialises the
-parser into `tools/vendor/tree-sitter-rescript/`.
+(`-lang/tree-sitter-@990214a`) lives in
+`editors/tree-sitter-/`; `install.sh` materialises the
+parser into `tools/vendor/tree-sitter-/`.
 
 - **Phase 2a (#321)** — `just install-grammar`, the
   `migration-assistant` CI job that runs it, dual install path
@@ -163,7 +163,7 @@ self-contained, top-level declarations into compilable AffineScript. Every
 generated form below is verified by the compiler itself (`main.exe check`
 → *Type checking passed*).
 
-| ReScript | AffineScript | Slice |
+|  | AffineScript | Slice |
 |---|---|---|
 | `type userId = int` | `type UserId = Int` | 1 |
 | `type color = Red \| Green \| Blue` | `type Color =`<br>`  \| Red`<br>`  \| Green`<br>`  \| Blue` | 1 |
@@ -185,7 +185,7 @@ with a `mutable` or optional-`?` field, or a `let` whose body is not an
 int/float/string/bool literal (a call, a `ref(...)` mutable-global, a
 destructuring pattern) causes the whole decl to be *skipped* (it stays in
 the marker block + quoted original, never mis-translated). Two
-normalisations make the output referenceable: lower-case ReScript type
+normalisations make the output referenceable: lower-case  type
 names are capitalised (`color` → `Color`) and type variables are mapped
 (`'a` → `A`), because `lib/parser.mly` reads a lower-case name in type
 position as a type *variable*, not a constructor. Translation is
@@ -199,7 +199,7 @@ guarantee live in a separate mode or remain deferred:
 - **`switch`→`match` + function bodies** — landed under **`--partial`**
   ([#488](https://github.com/hyperpolymath/affinescript/issues/488)), a
   distinct partial-port model. A `match` is an *expression*, only meaningful
-  inside a function, and ReScript bindings are usually un-annotated
+  inside a function, and  bindings are usually un-annotated
   (`let f = x => …`) while AffineScript `fn` requires param/return types — so
   `--partial` emits a `fn` skeleton with `_` type holes + `switch`→`match` +
   best-effort expression translation, and its output **deliberately does not
@@ -217,7 +217,7 @@ guarantee live in a separate mode or remain deferred:
 Renders each module-top-level function `let f = (params) => body` into an
 AffineScript `fn` skeleton:
 
-| ReScript | AffineScript (`--partial`) |
+|  | AffineScript (`--partial`) |
 |---|---|
 | `let area = (w, h) => w *. h` | `fn area(w: _, h: _) -> _ { w * h }` |
 | `let classify = x => switch x { \| Some(n) => n + 1 \| None => 0 }` | `fn classify(x: _) -> _ { match x { Some(n) => n + 1, None => 0, } }` |
@@ -228,12 +228,12 @@ AffineScript `fn` skeleton:
 | `let scaled = x => { let y = x + 1; y * 2 }` | `fn scaled(x: _) -> _ { let y = x + 1; y * 2 }` |
 
 It translates literals, identifiers, calls, binary operators (normalising
-ReScript's float ops `+.`/`*.` → `+`/`*` and `===`/`!==` → `==`/`!=`), string
+'s float ops `+.`/`*.` → `+`/`*` and `===`/`!==` → `==`/`!=`), string
 concat `++`, member/qualified access, ternaries, **`if`/`else`**, **blocks
 with `let` statements**, **pipe-first `->`** (`a->f(b)` → `f(a, b)`, chained
 left-to-right), **array literals** (`[a, b]`), **record literals** (`{x, y}` →
 `Rec #{ x: x, y: y }` — AffineScript records are *nominal*, so an anonymous
-ReScript record gets the placeholder type `Rec` for the human to rename;
+ record gets the placeholder type `Rec` for the human to rename;
 field punning `{x}` expands to `x: x`), and `switch`→`match` with
 variant/tuple/literal patterns. Anything else (JS objects, interpolated
 template strings, `try`/`catch`, …) becomes a `() /* TODO */` hole. The output
@@ -282,14 +282,14 @@ test suite.
 
 ## Non-goals
 
-- **Not a ReScript compiler.** The scanner does not parse ReScript;
-  even Phase 2 only walks the tree-sitter CST, not the ReScript
+- **Not a  compiler.** The scanner does not parse ;
+  even Phase 2 only walks the tree-sitter CST, not the 
   type-checker's AST. If a `.res` file is syntactically invalid the
   tool may still emit a (less useful) skeleton.
-- **Not a build-time dependency on ReScript.** The pinned grammar is a
-  parser, not the ReScript compiler. The estate's language policy
-  (CLAUDE.md) bans new ReScript code; this tool exists to **help retire
-  the existing ReScript surface**, not to bring more in.
+- **Not a build-time dependency on .** The pinned grammar is a
+  parser, not the  compiler. The estate's language policy
+  (CLAUDE.md) bans new  code; this tool exists to **help retire
+  the existing  surface**, not to bring more in.
 - **Not for editor integration.** Editor tree-sitter bindings for
   AffineScript live at `editors/tree-sitter-affinescript/`; this tool's
   vendored grammar is for the migration pipeline only.
