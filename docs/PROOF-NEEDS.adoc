@@ -84,19 +84,10 @@ than the prose corpus suggests:
   `AffineUsage.v` (`λx.x` affine, `λx. x x` not) + `QttTyping.v` (quantitative
   typing, `usage x t = Γ x` sound) + `QttDynamic.v` (the dynamic half:
   β-reduction preserves the usage profile). Real lift (`REAL-LIFT.adoc`):
-  `RealWasm.v` (real `lib/wasm.ml` IR — i32 core + locals + structured `IfElse`
-  + `Block`/`Loop`/`Br`/`BrIf`, fuel-indexed `wexec`) + `RealCompile.v` (R1+R2:
-  the first real `⟦compile p⟧ = ⟦p⟧`, incl. `if`) + `RealLoop.v` (R2-loops: a
-  branch-aware executor `cexec` over backward jumps, a source `while`/`seq`/`set`
-  statement language, and `compile_stmt_correct` — the lowered terminating
-  `while` simulates the reference run, settling the #601 value-returning-tail
-  question concretely: the statement tail leaves an empty value stack) +
-  `RealMem.v` (R-mem: word-addressed linear memory with `I32Load`/`I32Store`, a
-  structural memory executor `mexec`, a bump allocator, and the store→load /
-  2-cell tuple-layout round-trips — `field i at base+i` proved via `set_nth`'s
-  get-after-set; the heap precondition for arrays/records/strings/floats).
-  Record rows: `Rows.v` (P-11 — progress + preservation for extensible records).
-  See <<outstanding>>, <<faces>>.
+  `RealWasm.v` (real `lib/wasm.ml` IR — i32 core + locals + structured `IfElse`,
+  fuel-indexed `wexec`) + `RealCompile.v` (R1+R2: the first real
+  `⟦compile p⟧ = ⟦p⟧`, incl. `if`). Record rows: `Rows.v` (P-11 — progress +
+  preservation for extensible records). See <<outstanding>>, <<faces>>.
 * **Research tracks** (not core soundness): `docs/academic/tropical-session-types/`
   (Lean), `proposals/echo-types/EchoEncodingFaithfulness.agda`,
   `proposals/idaptik/migrated/**/*Boundary.agda` (echo-types loss-with-residue,
