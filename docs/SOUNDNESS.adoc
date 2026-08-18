@@ -145,17 +145,16 @@ without reified continuations, and previously returned a silently-wrong value).
 | `test/e2e/fixtures/handle_resume_multishot.affine`; `lib/interp.ml` resume
 invocation counter
 
-| #555 (interp, non-tail single-shot) / #623
-| `let x = op(); x + 100` resuming to `5` returns `5`, not `105`: the shallow
-tree-walking continuation has already unwound the bind chain. This is the one
-genuinely-still-silent shape, on the interpreter path only. It needs a CPS
-rewrite of `eval` (blocked: OCaml 4.14 has no native effect handlers and the
-interpreter must stay `js_of_ocaml`-compatible — owner-steer item, #623).
-| `residual (pinned)`
-| `test/e2e/fixtures/handle_resume_nontail.affine` + `test_resume_nontail_xfail`
-(xfail: asserts the correct `105`; currently fails-as-expected; flips to an
-unexpected pass the day delimited continuations land). See _Pinned-residual
-discipline_.
+|*#555* (interp, non-tail single-shot)
+|`let x = op(); x + 100` resuming to `5` returns `5`, not `105`: the shallow
+ tree-walking continuation has already unwound the bind chain. This is the one
+ genuinely-still-silent shape, on the *interpreter* path only. It needs a CPS
+ rewrite of `eval` (blocked: OCaml 4.14 has no native effect handlers and the
+ interpreter must stay `js_of_ocaml`-compatible — owner-steer item). Tracked: #623.
+|*residual (pinned)*
+|`test/e2e/fixtures/handle_resume_nontail.affine` +
+ `test_resume_nontail_known_shallow` (asserts the wrong-but-known value; flips
+ to failing the day delimited continuations land)
 
 | #556
 | Async CPS table-miss fails loud instead of silently lowering synchronously.
@@ -219,49 +218,26 @@ The implementation holes marked `fixed` / `loud-fail` / `removed` above are
 closed. Honesty requires naming what is *not* a guarantee. Each item here is a
 row in the table above, restated for the hurried reader — not a separate list:
 
-* *Interpreter non-tail resume* (#555 / #623, `residual (pinned)`) — the
-`5`-not-`105` shape. Silent on the interpreter path; pinned by
-`test_resume_nontail_xfail`.
-(Stub backends dropping `return` (#555-stub / #624) is now `loud-fail` — Lean and
-Why3 reject an early `return` instead of silently dropping it — so it is no longer
-a "still open" residual. Treat all non-reference backends as experimental anyway,
-see `docs/CAPABILITY-MATRIX.adoc`.)
-
-If you are deciding whether AffineScript is "sound enough" for a use, the
-interpreter non-tail resume row above is the one remaining residual, and the
-metatheory caveat below applies to it.
-
-=== Pinned-residual discipline
-
-A `residual (pinned)` / `open (tracked)` row carries an *xfail* test that asserts
-the *desired* behaviour and currently fails because the hole is present. The
-xfail harness (`test/xfail/test_xfail_pins.ml`) tolerates that expected failure
-and reports `XFAIL-OK`; if the assertion ever *passes*, the harness reports
-`XPASS`, exits non-zero, and the gate surfaces a distinct "pin for #N is passing
-— is the hole fixed? update the row" message.
-
-That second job is a *social* guarantee wearing a mechanical costume. The harness
-mechanically catches the flip; but it relies on the engineer reading `XPASS` as
-"good — now advance the ledger row to `fixed`" rather than "annoying — silence
-it". The gate cannot tell those apart. So: *when an `*_xfail` pin reports `XPASS`,
-the correct first move is to open this ledger, not to silence the test.* This is
-the one place the anti-drift machinery hands off to a human, and it is named here
-so the hand-off is deliberate.
+* *Interpreter non-tail resume* (#555 residual, pinned; tracked as #623) — see
+  the ledger row.
+* *Stub backends drop `return`.* The Lean and Why3 *experimental* code
+  generators drop `return` statements wholesale — a broader codegen-honesty gap
+  than #555, flagged but not yet fenced (tracked as #624). Treat all
+  non-reference backends as experimental (see `docs/CAPABILITY-MATRIX.adoc`).
+* *Generic-subsumption coherence* (#559 follow-up) — see the ledger row.
 
 == Closed holes are not proofs
 
-Closing an implementation hole is not the same as having metatheory. The
-soundness arguments for the holes above (`docs/academic/proofs/*.adoc`, the
-comments in `lib/borrow.ml`) remain *prose*, and the Solo core fragment's
-`Soundness.idr` progress / preservation are still `?todo`. Mechanisation has
-*grown substantially* — the axiom-free Coq/Rocq `formal/` track now covers the
-Wave-0 codegen-preservation seed (K-1 `K1_CodegenPreservation.v`, K-1-with-`let`
-`K1Let_CodegenPreservation.v`), the F-1 transformer-preservation composition, and
-the four Wave-0 siblings P-2 (progress), P-3 (borrow-graph, with loan edges +
-move-locality), F-3 and F-4 (#620–#627). These target core/fragment metatheory;
-*none yet covers a hole in this ledger* — they are not the full AffineScript
-borrow checker / interpreter / backends. The obligations, their rigour tiers, and
-their exact status are catalogued in `docs/PROOF-NEEDS.adoc` (umbrella #513).
+Closing an *implementation* hole is not the same as having *metatheory*. The
+soundness *arguments* for the holes above (`docs/academic/proofs/*.adoc`, the
+comments in `lib/borrow.ml`) remain `prose`, and the `Solo` core fragment's
+`progress` / `preservation` are still `?todo`. Mechanisation has *started* — an
+axiom-free Coq/Rocq `formal/` track (codegen-preservation: K-1
+`K1_CodegenPreservation.v`, K-1-with-`let` `K1Let_CodegenPreservation.v`, and
+the F-1 transformer-preservation composition; #620/#621) — but it does not yet
+cover any hole in this ledger. The proof obligations, their rigour tiers, and
+their (mostly `prose` / `absent`) status are catalogued in
+`docs/PROOF-NEEDS.adoc` (umbrella issue #513). The one-line distinction:
 
 The one distinction to carry away, stated so the polish of *this ledger* is not
 mistaken for the rigour of the *metatheory*:
