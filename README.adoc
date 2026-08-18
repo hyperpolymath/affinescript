@@ -1,6 +1,3 @@
-// SPDX-License-Identifier: MPL-2.0
-// SPDX-License-Identifier: CC-BY-SA-4.0
-
 = AffineScript
 
 [.lead]
@@ -30,8 +27,7 @@ Early and experimental. This is *v0.2*: the architecture is settled, the
 implementation and the metatheory are partial and still moving. It is suitable
 for experimentation, teaching, and small sound components -- not yet for
 production. What is proven, what is implemented, and what is still prose are
-stated plainly below and tracked in `docs/SOUNDNESS.adoc`; per-feature
-readiness is tracked in `docs/CAPABILITY-MATRIX.adoc`.
+stated plainly below and tracked in `SOUNDNESS-LEDGER.adoc`.
 
 == What you get
 
@@ -115,14 +111,7 @@ AffineScript is one setting of a more general machine.
   the thing this design is built to avoid.)
 * *Faces to core.* Many surfaces, one core AST, one proof.
 
-The design notes now have stable homes:
-link:https://github.com/hyperpolymath/systemet[systemet] (the theory: layer
-meanings, gates, proof obligations) and
-link:https://github.com/hyperpolymath/anytype[anytype] (the kernel: a
-parameterised graded checker). AffineScript's `{0,1,ω}` quantity semiring
-(`lib/quantity.ml`) is one instantiation of anytype's L2 grade-algebra
-interface — the same checking rules under a different algebra give a
-different discipline.
+// TODO: link the SystemET / Anytype design notes once they have stable locations.
 
 == Where this fits
 
@@ -153,7 +142,7 @@ risk here, and it is not yet solved.
 Soundness is *partially mechanised, and honestly tracked.* An initial,
 axiom-free, machine-checked result for code-generation preservation exists
 (Coq/Rocq). A number of residuals remain open; they are recorded -- not hidden
--- in `docs/SOUNDNESS.adoc`, which states for each claim whether it is
+-- in `SOUNDNESS-LEDGER.adoc`, which states for each claim whether it is
 mechanised or still argued in prose.
 
 The ledger is the source of truth for what currently holds. This README
@@ -203,12 +192,8 @@ totality cut, and a WebAssembly target -- rather than any one ingredient.
 == Documentation
 
 // TODO: link the design notes and the examples directory once locations are stable.
-* Soundness status: `docs/SOUNDNESS.adoc`
-* Feature readiness: `docs/CAPABILITY-MATRIX.adoc`
+* Soundness status: `SOUNDNESS-LEDGER.adoc`
 
 == License
 
-Code is licensed under the Mozilla Public License 2.0 (`MPL-2.0`); prose and
-documentation under Creative Commons Attribution-ShareAlike 4.0
-(`CC-BY-SA-4.0`). Full texts are in `LICENSE` and `LICENSES/`; per-file
-provenance is declared with SPDX headers.
+// TODO: state the license and add a LICENSE file.
