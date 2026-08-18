@@ -41,7 +41,11 @@ Inductive instr :=
 | Drop
 | LocalGet (i : nat)             (* R1: locals *)
 | LocalSet (i : nat)
-| IfElse (thn els : list instr). (* R2: lib/wasm.ml `If` (sans block_type) *)
+| IfElse (thn els : list instr)  (* R2: lib/wasm.ml `If` (sans block_type) *)
+| Block (body : list instr)      (* R2-loops: forward label — Br exits past it *)
+| Loop  (body : list instr)      (* R2-loops: backward label — Br re-enters it *)
+| Br    (k : nat)                (* R2-loops: branch to the k-th enclosing label *)
+| BrIf  (k : nat).               (* R2-loops: pop; if nonzero, branch to label k *)
 
 Definition stack  := list Z.
 Definition locals := list Z.
@@ -92,6 +96,7 @@ Definition step1 (i : instr) (lo : locals) (st : stack) : option (locals * stack
                   | [] => None
                   end
   | IfElse _ _ => None
+  | Block _ | Loop _ | Br _ | BrIf _ => None  (* structured control: cexec (RealLoop), not step1 *)
   end.
 
 (* fuel-indexed executor. None = trap OR out of fuel. *)
