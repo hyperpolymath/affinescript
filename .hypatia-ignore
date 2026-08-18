@@ -87,3 +87,7 @@ cicd_rules/banned_language_file:formal/RealCompile.v
 # script, wired into formal/_CoqProject; exempt from the V-lang ban.
 cicd_rules/vlang_detected:formal/RealLoop.v
 cicd_rules/banned_language_file:formal/RealLoop.v
+# RealMem.v — REAL-LIFT rung R-mem (linear memory: I32Load/I32Store + heap
+# tuples). Coq proof script, wired into formal/_CoqProject; exempt from V-lang.
+cicd_rules/vlang_detected:formal/RealMem.v
+cicd_rules/banned_language_file:formal/RealMem.v

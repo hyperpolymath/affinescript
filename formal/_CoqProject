@@ -17,4 +17,5 @@ F5_RenderFaithful.v
 RealWasm.v
 RealCompile.v
 RealLoop.v
+RealMem.v
 Rows.v
