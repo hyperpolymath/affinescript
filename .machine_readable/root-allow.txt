@@ -1,2 +1,2 @@
 .hypatia-ignore
-flake.nix
+flake.guix

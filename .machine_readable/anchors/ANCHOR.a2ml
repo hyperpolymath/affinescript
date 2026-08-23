@@ -20,11 +20,11 @@ status: "active-recovery"
 thesis:
   one-sentence: >
     AffineScript is JavaScript-ergonomic correctness: the developer experience
-    of the -script family (TypeScript, ReScript, PureScript) raised to a higher
+    of the -script family (TypeScript, AffineScript, PureScript) raised to a higher
     correctness floor through a small, deliberately chosen set of advanced
     types, compiling to Typed WASM.
 
-  ergonomic-target: "closer to JavaScript than ReScript in experience"
+  ergonomic-target: "closer to JavaScript than AffineScript in experience"
 
   design-principle: >
     Ergonomics first. The type system defaults must be sensible so most code
@@ -33,7 +33,7 @@ thesis:
 
   in-scope:
     - phantom-types                # free via generics
-    - immutable-by-default         # matches ReScript/Elm/Grain/JS `const`
+    - immutable-by-default         # matches AffineScript/Elm/Grain/JS `const`
     - row-polymorphism             # PureScript/Elm pattern
     - full-type-inference          # HM-style; quantities at signatures, inferred in function bodies
     - sound-type-system            # table stakes; three bugs currently open

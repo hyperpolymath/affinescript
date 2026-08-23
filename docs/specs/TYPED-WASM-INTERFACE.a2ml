@@ -298,7 +298,7 @@ verifier-cli = "ephapax compile --verify-ownership"
 id = "typed-wasm"
 repo = "hyperpolymath/typed-wasm"
 role = "spec + Rust verifier crate; cross-compat target"
-artefacts = ["crates/typed-wasm-verify (Rust)", "Idris2 proofs", "ReScript surface"]
+artefacts = ["crates/typed-wasm-verify (Rust)", "Idris2 proofs", "AffineScript surface"]
 cross-compat-suite = "crates/typed-wasm-verify/tests/cross_compat.rs (typed-wasm 'C5.1')"
 
 # ──────────────────────────────────────────────────────────────────────────────

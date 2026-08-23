@@ -39,8 +39,8 @@ The fork presented four options:
 (1) **GitHub Releases binaries.** Per-platform artifacts via the existing
     `release.yml` (`v*` tags) + an install script / fetch-pin.
 
-(2) **Guix/Nix channel.** Aligns with the repo's primary packaging
-    (`guix.scm` / `flake.nix`); reproducible, but a narrower audience and no
+(2) **Guix/Guix channel.** Aligns with the repo's primary packaging
+    (`guix.scm` / `flake.guix`); reproducible, but a narrower audience and no
     `deno`/`npm` ergonomics for the LSP-installer consumers.
 
 (3) **Thin JSR/npm shim.** A small package that, on first run, downloads a
@@ -58,7 +58,7 @@ door:
 * *Canonical artifact.* `.github/workflows/release.yml`, on a `v*` tag,
   builds per-platform compiler binaries and a `SHA256SUMS` manifest, both
   attached to the GitHub Release. The Release is the one source of truth;
-  Guix/Nix and any later npm tail are **additive fetch-derivations over it**,
+  Guix/Guix and any later npm tail are **additive fetch-derivations over it**,
   not separate producers.
 
 * *Ergonomic front door.* A thin Deno/JSR package
@@ -102,14 +102,14 @@ tag-time bake step (#297/#300).
 
 * The install contract is *Releases-first*. Renaming the `SHA256SUMS`
   manifest or the per-platform asset names is an ABI change for every shim
-  version and for Guix/Nix derivations downstream — do not rename without
+  version and for Guix/Guix derivations downstream — do not rename without
   amending this ADR and the shim's pinned spec.
 * Browsers and Cloudflare Workers are out of scope for the shim by
   construction (fetch → save to disk → exec a native binary cannot run in a
   sandboxed JS runtime). The shim's runtime-compatibility matrix is therefore
   Deno ✅ / Bun ✅ / Node ✅ / Workers ❌ / Browsers ❌ (see `.claude/CLAUDE.md`
   Runtime Exemptions).
-* Reproducible-build consumers are served by the additive Guix/Nix
+* Reproducible-build consumers are served by the additive Guix/Guix
   derivations layered over the same Release artifact, not by a competing
   artifact source.
 

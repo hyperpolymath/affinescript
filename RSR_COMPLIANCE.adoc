@@ -32,7 +32,7 @@ toc::[]
 |`.well-known/security.txt` |✅ |RFC 9116 disclosure contact.
 |`.well-known/ai.txt`       |✅ |Estate-wide AI agent affordance metadata.
 |`.well-known/humans.txt`   |✅ |Human-readable maintainer / contributor surface.
-|`guix.scm` or `flake.nix`  |⚠️ |Neither file currently committed; the `affinescript.opam` package descriptor + the global `justfile` recipes carry the build contract today. Adding a Guix channel definition is a planned follow-up (estate primary is Guix per RSR-OUTLINE §"Language Tiers"); a Nix fallback would be acceptable for early CI.
+|`guix.scm` or `flake.guix`  |⚠️ |Neither file currently committed; the `affinescript.opam` package descriptor + the global `justfile` recipes carry the build contract today. Adding a Guix channel definition is a planned follow-up (estate primary is Guix per RSR-OUTLINE §"Language Tiers"); a Guix fallback would be acceptable for early CI.
 |`0-AI-MANIFEST.a2ml`       |✅ |Adopted 2026-05-25 (PR #359) replacing the older `AI.a2ml` per Hypatia `root_hygiene` rule. Matches sibling-repo convention (`hyperpolymath/road-skate`, `affinescript-vite/`, `affinescriptiser/` all carry the same).
 |`STATE.scm`                |❌ |*Documented exemption.* This repo's `.scm` extension is reserved for Guix (`guix.scm`, `.guix-channel`) per the language policy in `0-AI-MANIFEST.a2ml`. Project state lives at `.machine_readable/descriptiles/STATE.a2ml` in the canonical descriptiles schema (matches sibling repos in the same estate). Substituting `.a2ml` for `.scm` is the cross-repo standard, not an AffineScript outlier — see also `hyperpolymath/road-skate`'s `.machine_readable/STATE.a2ml`.
 |`RSR_COMPLIANCE.adoc`      |✅ |This file. Added 2026-05-25.
@@ -131,4 +131,4 @@ above two-line check is on the follow-up list.
 
 == History
 
-* 2026-05-25 — Initial file. T-4 of the repo-tidy stack (PR follows). Documented the four ⚠️ rows (`guix.scm`/Nix gap; `STATE.scm` substitution; TypeScript exemptions; runtime exemptions) and the ✅ adoption of `0-AI-MANIFEST.a2ml` from PR #359.
+* 2026-05-25 — Initial file. T-4 of the repo-tidy stack (PR follows). Documented the four ⚠️ rows (`guix.scm`/Guix gap; `STATE.scm` substitution; TypeScript exemptions; runtime exemptions) and the ✅ adoption of `0-AI-MANIFEST.a2ml` from PR #359.

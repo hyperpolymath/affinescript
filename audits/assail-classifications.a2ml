@@ -65,18 +65,18 @@ schema_version = "1.0.0"
 
   ; ─── SupplyChain (High) — vendored subtrees ─────────────────────────────
   ;
-  ; The two flake.nix files below live in vendored subtrees with their
-  ; own upstream repos. The affinescriptiser/flake.nix that panic-attack
+  ; The two flake.guix files below live in vendored subtrees with their
+  ; own upstream repos. The affinescriptiser/flake.guix that panic-attack
   ; ALSO flagged was an unfilled scaffold leftover (had {{PROJECT_NAME}}
   ; placeholders) — deleted in this PR rather than suppressed.
 
   (classification
-    (file "road-skate/flake.nix")
+    (file "road-skate/flake.guix")
     (category "SupplyChain")
     (rationale "Vendored from upstream hyperpolymath/road-skate. Input pinning fix belongs upstream."))
 
   (classification
-    (file "affinescript-vite/flake.nix")
+    (file "affinescript-vite/flake.guix")
     (category "SupplyChain")
     (rationale "Vendored from upstream hyperpolymath/affinescript-vite. Input pinning fix belongs upstream."))
 )

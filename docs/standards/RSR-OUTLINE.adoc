@@ -147,7 +147,7 @@ project/
 === Language Tiers
 
 * **Tier 1** (Gold): Rust, Elixir, Zig, Ada, Haskell, 
-* **Tier 2** (Silver): Nickel, Racket, Guile Scheme, Nix
+* **Tier 2** (Silver): Nickel, Racket, Guile Scheme, Guix
 * **Infrastructure**: Guix channels, derivations
 
 === Required Files
@@ -161,7 +161,7 @@ project/
 * `.well-known/security.txt`
 * `.well-known/ai.txt`
 * `.well-known/humans.txt`
-* `guix.scm` OR `flake.nix`
+* `guix.scm` OR `flake.guix`
 
 === Prohibited
 

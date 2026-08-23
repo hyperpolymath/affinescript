@@ -583,7 +583,7 @@ out-of-band, agreed.
 idaptik harnesses (`vm/tests/*_diff.ts`) still shell out to a *retired*
 `idaptik-affinescript-build:latest` podman container. That container was retired
 in the 2026-06-03 reanchor in favour of running the toolchain host-native
-(guix/nix dev shell + `affinescript` on `PATH`). **New harnesses must call the
+(guix/guix dev shell + `affinescript` on `PATH`). **New harnesses must call the
 host compiler directly** — `affinescript compile …` (or `dune exec affinescript
 -- compile …`) — not the container. If you are copying an older `*_diff.ts`
 harness, replace the container invocation with the host-native form above before

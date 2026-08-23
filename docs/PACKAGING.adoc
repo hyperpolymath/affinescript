@@ -84,7 +84,7 @@ link:decisions/0019-compiler-distribution.adoc[docs/decisions/0019-compiler-dist
   Publish is owner-gated via `publish-jsr.yml` (the INT-04 manual
   workflow; choice `affinescript-cli`).
 * *Later, additive over the same Release artifact (not separate
-  producers):* Guix/Nix fetch-derivations; an npm tail only if an
+  producers):* Guix/Guix fetch-derivations; an npm tail only if an
   npm-native consumer needs it.
 
 `affinescript-lsp` distribution (INT-10, #282) consumes the shim.

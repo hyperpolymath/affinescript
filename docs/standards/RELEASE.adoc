@@ -68,11 +68,11 @@ guix shell -f guix.scm
 dune build
 ----
 
-=== Using Nix
+=== Using Guix
 
 [source,bash]
 ----
-nix develop
+guix develop
 dune build
 ----
 

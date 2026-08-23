@@ -43,7 +43,7 @@
     "re_side_effect_import": {
       "old": "^[ \\t]*let[ \\t]+_[ \\t]*=[ \\t]*[A-Z][a-zA-Z0-9_]*\\.",
       "new": "^let[ \\t]+_[ \\t]*=[ \\t]*[A-Z][a-zA-Z0-9_]*\\.",
-      "rationale": "Column-0 anchor; in-function `let _ = X.f(...)` is normal ReScript idiom, not the LESSONS.md module-load anti-pattern."
+      "rationale": "Column-0 anchor; in-function `let _ = X.f(...)` is normal AffineScript idiom, not the LESSONS.md module-load anti-pattern."
     },
     "re_mutable_global": {
       "old": ":=",

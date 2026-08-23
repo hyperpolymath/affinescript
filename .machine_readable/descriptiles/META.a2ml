@@ -918,7 +918,7 @@ Implementation (parser.mly, conflict-neutral):
 - Resolution of the qualified name against a real module is a separate
   concern (the parse gap is what #228 names); the grammar PR unblocks
   parsing — most of the 525 estate parse failures clear with zero
-  consumer churn. Genuine ReScript-surface residue (#229) is tracked
+  consumer churn. Genuine AffineScript-surface residue (#229) is tracked
   separately.
 """
 consequences = """
@@ -979,7 +979,7 @@ Staged plan (ledger INT-03; each row = one gated PR):
 - S1 (this PR): ADR-015 + WIT world + staged plan + tooling-prerequisite
   + roadmap truthing. No codegen change.
 - S2: toolchain provisioning — `wasm-tools` + `wasm-component-ld` (and
-  `wac`) into guix.scm/flake.nix. ABSENT in the current toolchain ⇒ a
+  `wac`) into guix.scm/flake.guix. ABSENT in the current toolchain ⇒ a
   HARD GATE on S3+: a component cannot be built or tested without them.
 - S3: componentize on-ramp — codegen still emits core wasm; a
   post-codegen step wraps it with the standard preview1->preview2
@@ -1146,9 +1146,9 @@ references = [
 id = "ADR-017"
 status = "accepted"
 date = "2026-05-19"
-title = "ReScript block-module disposition: one module per file (split, do not nest)"
+title = "AffineScript block-module disposition: one module per file (split, do not nest)"
 context = """
-ReScript `module Name { … }` block modules have no AffineScript block
+AffineScript `module Name { … }` block modules have no AffineScript block
 form: the grammar (parser.mly:130-134) is a single optional `module
 Path;` header, before imports — `module A { }` parse-errors. ADR-011
 settled "real modules": the file IS the module. The estate #229 ports
@@ -1162,7 +1162,7 @@ occurrences) had no clean target. Escalated language-side as ESC-04
 no-raw-escape doctrine, #245 — this is ADR-017, sequential.)
 """
 decision = """
-One module per file — split, do not nest. Each ReScript `module X {
+One module per file — split, do not nest. Each AffineScript `module X {
 body }` becomes its own `X.affine` whose first declaration is `module
 X;`, body dedented, `use` after the header. A file with N block-modules
 is split into N files. The grammar is NOT extended with a block/nested
@@ -1173,7 +1173,7 @@ ADR settles the porting doctrine + the #229 canonical-map structural
 rule. Adjacent and explicitly OUT of scope: a split file still hits
 Resolve.UndefinedModule until the repo module-path<->file-layout matches
 the loader — cross-module graph coherence (INT-02 loader-bridge),
-tracked in RESCRIPT-ELIMINATION.adoc Tier-4, never conflated here.
+tracked in AFFINESCRIPT-ELIMINATION.adoc Tier-4, never conflated here.
 """
 consequences = """
 - The #229 block-module residue (idaptik-dlc-vm, standards/lol, parts of
@@ -1181,14 +1181,14 @@ consequences = """
   needs the per-repo module graph (INT-02), tracked separately.
 - No language/compiler change; no estate consumer churn from this ADR.
 - This decision is settled; do not reopen without amending this ADR.
-  ESC-04 #262; #229 canonical map in docs/RESCRIPT-ELIMINATION.adoc.
+  ESC-04 #262; #229 canonical map in docs/AFFINESCRIPT-ELIMINATION.adoc.
 """
 references = [
   "https://github.com/hyperpolymath/affinescript/issues/262",
   "https://github.com/hyperpolymath/affinescript/issues/229",
   "lib/parser.mly (module_decl; one `module Path;` header per file)",
   "docs/specs/SETTLED-DECISIONS.adoc (ADR-017 section)",
-  "docs/RESCRIPT-ELIMINATION.adoc (#229 canonical map; Tier-4 INT-02)",
+  "docs/AFFINESCRIPT-ELIMINATION.adoc (#229 canonical map; Tier-4 INT-02)",
   "META.a2ml [[adr]] ADR-011 (real modules: file = module)",
   "META.a2ml [[adr]] ADR-012 (grammar changes are correctness assertions)",
 ]
@@ -1199,7 +1199,7 @@ status = "accepted"
 date = "2026-05-19"
 title = "No raw/FFI escape: typed `extern` is the only host bridge"
 context = """
-ReScript `%%raw("<host source>")` / `%raw` injects arbitrary untyped
+AffineScript `%%raw("<host source>")` / `%raw` injects arbitrary untyped
 host source. AffineScript's only host bridge is `extern fn` / `extern
 type` (parser.mly extern_fn_decl/extern_type_decl, FnExtern body) —
 typed, host-supplied, no body, no arbitrary-source escape. 14 estate
@@ -1235,7 +1235,7 @@ references = [
   "https://github.com/hyperpolymath/affinescript/issues/229",
   "lib/parser.mly (extern_fn_decl; extern_type_decl; FnExtern)",
   "docs/specs/SETTLED-DECISIONS.adoc (ADR-018 section)",
-  "docs/RESCRIPT-ELIMINATION.adoc (#229 canonical map; Tier-3 ESC-01)",
+  "docs/AFFINESCRIPT-ELIMINATION.adoc (#229 canonical map; Tier-3 ESC-01)",
   "META.a2ml [[adr]] ADR-012 (grammar changes are correctness assertions)",
 ]
 
@@ -1252,7 +1252,7 @@ so "publish the compiler" needed a distribution strategy. This gates
 INT-10 (`affinescript-lsp` distribution, which "waits on a published
 compiler"). The fork was escalated (issue #260; AskUserQuestion
 2026-05-19) over four options: (1) GitHub Releases binaries, (2)
-Guix/Nix channel, (3) thin JSR/npm shim, (4) Releases + shim. The
+Guix/Guix channel, (3) thin JSR/npm shim, (4) Releases + shim. The
 owner chose (4).
 """
 decision = """
@@ -1262,7 +1262,7 @@ Dual-channel, Releases-canonical:
   to build per-platform compiler binaries (Linux x86_64 first;
   macOS/Windows as the build matrix allows) and attach them to the
   GitHub Release together with a `SHA256SUMS` manifest. Releases are
-  the single source of truth; Guix/Nix and any npm tail become
+  the single source of truth; Guix/Guix and any npm tail become
   *additive fetch-derivations over the same artifact* later (NOT in
   this ADR's slices) — no second producer of the binary.
 - *Ergonomic front door.* A thin Deno/JSR package
@@ -1290,7 +1290,7 @@ Staged (ledger #260 / INT-10; each a gated PR):
 consequences = """
 - One-way: fixes the install contract (Releases artifact name/layout +
   shim package name). Reversible per-slice; Releases-canonical keeps
-  Guix/Nix/npm strictly additive.
+  Guix/Guix/npm strictly additive.
 - INT-10 (`affinescript-lsp` distribution) is unblocked once S2+S3
   land; filed now.
 - Supply chain: every shim release pins one checksummed binary; no

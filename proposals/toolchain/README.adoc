@@ -234,7 +234,7 @@ The idaptik differential-parity harnesses are *doubly* stale:
   `idaptik-affinescript-build:latest` (verified: `vm/tests/affinescript_stralloc_diff.ts`
   invokes `podman run ... idaptik-affinescript-build:latest compile`). The
   2026-06-03 idaptik reanchor (authority: Marina) *retired containers* in
-  favour of host-native `affinescript` on PATH (guix/nix dev shell). A
+  favour of host-native `affinescript` on PATH (guix/guix dev shell). A
   harness that invokes the retired container is invoking a toolchain that
   no longer exists.
 

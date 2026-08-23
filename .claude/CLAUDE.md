@@ -163,7 +163,7 @@ Do not "migrate", rewrite, or delete `formal/*.v` as if it were V-lang.
 ### Package Management
 
 - **Primary**: Guix (guix.scm)
-- **Fallback**: Nix (flake.nix)
+- **Fallback**: Guix (flake.guix)
 - **JS deps**: Deno (deno.json imports)
 
 ### Security Requirements

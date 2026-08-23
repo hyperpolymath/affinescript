@@ -13,7 +13,7 @@ repo = "nextgen-languages/affinescript"
 is = """
 AffineScript is a programming language with affine types and JavaScript ergonomics,
 compiling to Typed WASM. It targets the -script developer community (TypeScript,
-ReScript, PureScript users) and offers a higher correctness floor through a small,
+AffineScript, PureScript users) and offers a higher correctness floor through a small,
 deliberately chosen set of advanced types. The feature set is fixed by the thesis
 in ANCHOR.a2ml — new features require a thesis change, not a code change.
 """

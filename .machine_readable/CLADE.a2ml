@@ -31,7 +31,7 @@ note = "Predates ANCHOR.a2ml convention. Retroactively assigned clade 2026-04-12
 # AffineScript-specific fields
 paradigm = ["functional", "affine", "typed"]
 compile-targets = ["typed-wasm", "julia", "wasm-gc"]
-inspiration = ["ReScript", "Rust", "Granule", "OCaml"]
+inspiration = ["AffineScript", "Rust", "Granule", "OCaml"]
 headline-feature = "affine-types-with-javascript-ergonomics"
 
 [thesis]

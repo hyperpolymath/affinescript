@@ -9,12 +9,12 @@
     (companion "Human_Programming_Guide.adoc")
     (changelog
       (entry (version "2.1.0") (date "2026-06-04")
-        (note "Added (coprocessor-integerization) stanza — six verified ReScript->AffineScript->wasm co-processor patterns from the in-flight idaptik migration (the-integer-is-the-X, re-decompose-not-transliterate, differential-parity-acceptance-bar, string-host-boundary-abi, no-module-load-side-effects, certifying-the-boundary) + named codegen gaps. Added agent-behavior/coprocessor-port-discipline. Human companions: migration-playbook.adoc §Co-processor Integerization (v1.4) + frontier-guide.adoc Chapter 9 (v1.2).")))
+        (note "Added (coprocessor-integerization) stanza — six verified AffineScript->AffineScript->wasm co-processor patterns from the in-flight idaptik migration (the-integer-is-the-X, re-decompose-not-transliterate, differential-parity-acceptance-bar, string-host-boundary-abi, no-module-load-side-effects, certifying-the-boundary) + named codegen gaps. Added agent-behavior/coprocessor-port-discipline. Human companions: migration-playbook.adoc §Co-processor Integerization (v1.4) + frontier-guide.adoc Chapter 9 (v1.2).")))
   )
 
   (thesis
     (one-sentence
-      "AffineScript is JavaScript-ergonomic correctness: the developer experience of the -script family (TypeScript, ReScript, PureScript) raised to a higher correctness floor through a small, deliberately chosen set of advanced types, compiling to Typed WASM.")
+      "AffineScript is JavaScript-ergonomic correctness: the developer experience of the -script family (TypeScript, AffineScript, PureScript) raised to a higher correctness floor through a small, deliberately chosen set of advanced types, compiling to Typed WASM.")
     (long-form
       "AffineScript answers the question: can you keep the developer experience of modern JavaScript while raising correctness to the level of ML-family languages? The answer is yes — but only if the type system is narrowly scoped and ergonomically defaulted. The language copies the green-checkmark features from the -script lineage and adds affine types as the single novel contribution. It compiles to Typed WASM as the primary target. Refinement types are a soft commitment, limited to a decidable fragment. Dependent and tropical types live in the sibling Typed WASM project, not here.")
     (design-principle "Ergonomics first. The type system defaults must be sensible so that most code reads like modern JavaScript while correctness is enforced at compile time. A feature earns its place only if it makes correct code easier to write, not harder.")
@@ -23,7 +23,7 @@
   (in-scope
     (copied-from-the-family
       (feature (name "phantom-types")         (source "purescript-rust-idris2") (cost "free-from-generics"))
-      (feature (name "immutable-by-default")  (source "rescript-elm-grain")     (cost "low"))
+      (feature (name "immutable-by-default")  (source "affinescript-elm-grain")     (cost "low"))
       (feature (name "row-polymorphism")      (source "purescript-elm")         (cost "medium"))
       (feature (name "full-type-inference")   (source "hm-family")              (cost "medium")
                (note "types inferred fully; quantities inferred inside function bodies, annotated at function signatures"))
@@ -172,7 +172,7 @@
   )
 
   (coprocessor-integerization
-    (note "Six verified, named patterns for the ReScript -> AffineScript -> wasm co-processor port. The human companion is migration-playbook.adoc §'Co-processor Integerization' (#coprocessor-integerization) and frontier-guide.adoc Chapter 9. Grounded ONLY in the in-flight idaptik migration; every claim below is observed, not aspirational. Load at session start before any .res -> .affine kernel translation.")
+    (note "Six verified, named patterns for the AffineScript -> AffineScript -> wasm co-processor port. The human companion is migration-playbook.adoc §'Co-processor Integerization' (#coprocessor-integerization) and frontier-guide.adoc Chapter 9. Grounded ONLY in the in-flight idaptik migration; every claim below is observed, not aspirational. Load at session start before any .res -> .affine kernel translation.")
     (mental-model
       (one-sentence "AffineScript is the brain (logic, physics, decisions, integer math in wasm); JS/Pixi are the senses (rendering, input, strings, dispatch); only raw primitives (Int, Float, Array) cross the wasm boundary.")
       (source "Human_Programming_Guide.adoc §'The WASM Co-processor Model'"))
@@ -200,7 +200,7 @@
       (purpose "Acceptance = build-green AND parity-green. Build-green alone (compiler accepted it) is NOT acceptance.")
       (procedure "1. Compile host-native: affinescript compile FILE -o OUT.wasm (or dune exec affinescript -- compile …). 2. Instantiate (WASI fd_write stub). 3. For each input in a sweep INCLUDING out-of-band values, compare wasm output against an INDEPENDENT oracle written from the documented contract (not from the .affine). Any mismatch fails.")
       (verified-example "SecurityRank harness ran 78/78 green against a JS oracle of the documented 0..3 contract.")
-      (host-native-warning "CRITICAL: existing idaptik harnesses (vm/tests/*_diff.ts) still shell out to a RETIRED idaptik-affinescript-build:latest podman container. The 2026-06-03 reanchor went host-native (guix/nix dev shell + affinescript on PATH). NEW harnesses must call the host compiler directly — do NOT copy the container invocation. Replace it with the host-native form.")
+      (host-native-warning "CRITICAL: existing idaptik harnesses (vm/tests/*_diff.ts) still shell out to a RETIRED idaptik-affinescript-build:latest podman container. The 2026-06-03 reanchor went host-native (guix/guix dev shell + affinescript on PATH). NEW harnesses must call the host compiler directly — do NOT copy the container invocation. Replace it with the host-native form.")
       (why-independent "An oracle generated from the same .affine only proves the compiler is deterministic, not that the kernel is correct. The oracle must encode the human-readable contract so disagreement localises a real bug (wrong .affine, wrong oracle, or ambiguous spec)."))
 
     (pattern
@@ -259,10 +259,10 @@
     (eta-style
       (rule "When a function has named pi-binders ((name : Type) -> ...), prefer eta-expanded definitions over point-free. Point-free is a parser-cascade trigger when the eta-rewrite's argument name disagrees with the declared signature's name."))
     (no-side-effect-imports
-      (rule "AffineScript modules do not run code at load time. Migrating ReScript/JS code that uses `let _ = X.foo` for module-load side effects must be rewritten to call an explicit registration function. There is no implicit module-load-time side effect to hook in wasm."))
+      (rule "AffineScript modules do not run code at load time. Migrating AffineScript/JS code that uses `let _ = X.foo` for module-load side effects must be rewritten to call an explicit registration function. There is no implicit module-load-time side effect to hook in wasm."))
     (coprocessor-port-discipline
       (rule "Before any .res -> .affine kernel translation aimed at wasm, load the (coprocessor-integerization) stanza above. Apply the integerization patterns: encode host values to integers and keep strings/state/dispatch host-side; re-decompose (do not transliterate); gate on differential parity against an INDEPENDENT oracle compiled HOST-NATIVE (not the retired podman container); thread state/time/log explicitly because modules have no load-time side effect; honour the String ABI only when a string must genuinely cross.")
-      (anti-pattern "1:1 porting a ReScript kernel; copying vm/tests/*_diff.ts container invocations; calling Int.toString or relying on module-load mutation / Date.now / Console.log inside a wasm-targeted kernel; treating build-green as acceptance.")))
+      (anti-pattern "1:1 porting a AffineScript kernel; copying vm/tests/*_diff.ts container invocations; calling Int.toString or relying on module-load mutation / Date.now / Console.log inside a wasm-targeted kernel; treating build-green as acceptance.")))
   )
 
   (relationship-with-typed-wasm-project
@@ -345,12 +345,12 @@
   )
 
   (backends
-    (note "AffineScript is one frontend, many backends. There is no middle-end IR — each backend lowers AST→target directly. Adding a new backend is templated work; the lessons below were earned during the May-2026 backend buildout (JS/C/WGSL/Faust/ONNX/Rust/LLVM/OCaml/Lua/Bash/Nickel/ReScript/Verilog/Gleam landed alongside the pre-existing WASM/WASM-GC/Julia).")
+    (note "AffineScript is one frontend, many backends. There is no middle-end IR — each backend lowers AST→target directly. Adding a new backend is templated work; the lessons below were earned during the May-2026 backend buildout (JS/C/WGSL/Faust/ONNX/Rust/LLVM/OCaml/Lua/Bash/Nickel/AffineScript/Verilog/Gleam landed alongside the pre-existing WASM/WASM-GC/Julia).")
 
     (tiers
       (tier
         (name "A — host-language emitters")
-        (members "WASM 1.0, WASM-GC, Julia, JS, C, Rust, OCaml, ReScript, Lua, Bash, Gleam, Nickel")
+        (members "WASM 1.0, WASM-GC, Julia, JS, C, Rust, OCaml, AffineScript, Lua, Bash, Gleam, Nickel")
         (acceptance "full AffineScript surface; missing features error loudly at codegen time")
         (file-shape "lib/<name>_codegen.ml, ~200-400 lines, single-file output with a tiny inline runtime prelude"))
       (tier
@@ -368,7 +368,7 @@
       (clone-don't-redesign
         (rule "When adding a new backend, clone the closest existing emitter and substitute lowering rules. Do NOT redesign the codegen module shape from scratch — every backend after the first cost ~200 lines because the modules are isomorphic.")
         (template-pairs
-          "JS/C/Lua/Rust/OCaml/ReScript/Gleam/Nickel/Bash → julia_codegen.ml"
+          "JS/C/Lua/Rust/OCaml/AffineScript/Gleam/Nickel/Bash → julia_codegen.ml"
           "WGSL/SPIR-V/CUDA/Metal/OpenCL → wgsl_codegen.ml"
           "Faust/Csound → faust_codegen.ml"
           "ONNX/MLIR/TFLite → onnx_codegen.ml"
