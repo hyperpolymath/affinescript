@@ -1,0 +1,27 @@
+== AffineScript
+
+The public web home for this project is
+https://affinescript.dev[affinescript.dev].
+
+The language where protocol correctness is free.
+
+AffineScript is the only language that combines affine types,
+quantitative type theory, row polymorphism, and algebraic effects in a
+single practical systems language. This intersection makes it possible
+to write code where the compiler proves your protocol states, resource
+lifecycles, and effect boundaries are correct – with syntax that doesn’t
+feel like a theorem prover.
+
+=== Project Links
+
+* Website: https://affinescript.dev[affinescript.dev]
+* Source: https://github.com/hyperpolymath/affinescript
+* README:
+https://github.com/hyperpolymath/affinescript/blob/main/README.adoc[project
+overview]
+* Docs:
+https://github.com/hyperpolymath/affinescript/tree/main/docs[documentation
+directory]
+
+This page is a lightweight landing point for the repository and will
+grow with the project.
