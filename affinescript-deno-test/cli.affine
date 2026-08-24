@@ -1,11 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
-// Ported via Harvard Engine mechanical processor
+// Ported via Harvard Engine (Semantic pass)
 
 module cli;
 
-// TODO: Complete semantic implementation
-
-/* === ORIGINAL TYPESCRIPT CONTEXT ===
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
 //
@@ -27,7 +24,7 @@ module cli;
 import { compileToWasm } from "./lib/compile.ts";
 import { discoverTestFiles } from "./lib/discover.ts";
 
-function usage(): never {
+fn usage(): never {
   console.error(
     "Usage: deno run --allow-read --allow-run --allow-env cli.ts <root>\n" +
       "\n" +
@@ -39,10 +36,10 @@ function usage(): never {
 }
 
 if (import.meta.main) {
-  const root = Deno.args[0];
+  let root = Deno.args[0];
   if (!root) usage();
 
-  const sources = await discoverTestFiles(root);
+  let sources = await discoverTestFiles(root);
   if (sources.length === 0) {
     console.error(`No *_test.affine files found under ${root}`);
     Deno.exit(1);
@@ -51,14 +48,13 @@ if (import.meta.main) {
   console.log(`Discovered ${sources.length} test file(s):`);
   for (const source of sources) {
     try {
-      const wasm = await compileToWasm(source);
+      let wasm = await compileToWasm(source);
       console.log(`  ✓ ${source} → ${wasm}`);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      let message = error instanceof Error ? error.message : String(error);
       console.error(`  ✗ ${source}\n    ${message}`);
       Deno.exit(1);
     }
   }
 }
 
-==================================== */

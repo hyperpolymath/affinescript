@@ -1,11 +1,8 @@
 // SPDX-License-Identifier: MPL-2.0
-// Ported via Harvard Engine mechanical processor
+// Ported via Harvard Engine (Semantic pass)
 
 module types.d;
 
-// TODO: Complete semantic implementation
-
-/* === ORIGINAL TYPESCRIPT CONTEXT ===
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
 //
@@ -20,19 +17,19 @@ module types.d;
 
 // ── AffineValue discriminated union ──────────────────────────────────────────
 
-export type AffineInt    = { kind: "int";    value: number };
-export type AffineFloat  = { kind: "float";  value: number };
-export type AffineBool   = { kind: "bool";   value: boolean };
-export type AffineUnit   = { kind: "unit" };
-export type AffineString = { kind: "string"; value: string };
-export type AffineSome   = { kind: "some";   value: AffineValue };
-export type AffineNone   = { kind: "none" };
-export type AffineOk     = { kind: "ok";     value: AffineValue };
-export type AffineErr    = { kind: "err";    value: AffineValue };
-export type AffineArray  = { kind: "array";  elements: AffineValue[] };
-export type AffineRecord = { kind: "record"; fields: Record<string, AffineValue> };
+struct AffineInt { { kind: "int";    value: number };
+struct AffineFloat { { kind: "float";  value: number };
+struct AffineBool { { kind: "bool";   value: boolean };
+struct AffineUnit { { kind: "unit" };
+struct AffineString { { kind: "string"; value: string };
+struct AffineSome { { kind: "some";   value: AffineValue };
+struct AffineNone { { kind: "none" };
+struct AffineOk { { kind: "ok";     value: AffineValue };
+struct AffineErr { { kind: "err";    value: AffineValue };
+struct AffineArray { { kind: "array";  elements: AffineValue[] };
+struct AffineRecord { { kind: "record"; fields: Record<string, AffineValue> };
 
-export type AffineValue =
+struct AffineValue {
   | AffineInt
   | AffineFloat
   | AffineBool
@@ -47,7 +44,7 @@ export type AffineValue =
 
 // ── Return type hint ──────────────────────────────────────────────────────────
 
-export type AffineValueType =
+struct AffineValueType {
   | "int"
   | "float"
   | "bool"
@@ -60,7 +57,7 @@ export type AffineValueType =
 
 // ── LoadOptions ───────────────────────────────────────────────────────────────
 
-export interface LoadOptions {
+struct LoadOptions {
   /**
    * Extra host imports merged with the default AffineScript runtime.
    *
@@ -92,13 +89,13 @@ export interface LoadOptions {
 
 // ── Ownership (typed-wasm contract carrier) ───────────────────────────────────
 
-export type OwnershipKind =
+struct OwnershipKind {
   | "unrestricted"
   | "linear"
   | "sharedBorrow"
   | "exclBorrow";
 
-export interface OwnershipEntry {
+struct OwnershipEntry {
   funcIdx: number;
   paramKinds: OwnershipKind[];
   retKind: OwnershipKind;
@@ -106,7 +103,7 @@ export interface OwnershipEntry {
 
 // ── CallOptions ───────────────────────────────────────────────────────────────
 
-export interface CallOptions extends LoadOptions {
+struct CallOptions extends LoadOptions {
   /**
    * Type hint for the return value unmarshaler.
    *
@@ -119,19 +116,19 @@ export interface CallOptions extends LoadOptions {
 
 // ── AffineModule ──────────────────────────────────────────────────────────────
 
-export declare class AffineModule {
+declare struct AffineModule {
   /**
    * Load a compiled AffineScript `.wasm` file from the local filesystem.
    */
-  static fromFile(path: string | URL, options?: LoadOptions): Promise<AffineModule>;
+  static fromFile(path: string | URL, options?: LoadOptions): AffineModule;
 
   /**
    * Load a compiled AffineScript module from raw WASM bytes.
    */
-  static fromBytes(bytes: Uint8Array | ArrayBuffer, options?: LoadOptions): Promise<AffineModule>;
+  static fromBytes(bytes: Uint8Array | ArrayBuffer, options?: LoadOptions): AffineModule;
 
   /**
-   * Call a named export by name.
+   * Call a named by name.
    */
   call(name: string, options?: CallOptions, ...args: AffineValue[]): AffineValue;
 
@@ -159,45 +156,45 @@ export declare class AffineModule {
 
 // ── Host-agnostic loader (INT-02) ─────────────────────────────────────────────
 
-export type Host = "deno" | "node" | "browser" | "unknown";
+struct Host { "deno" | "node" | "browser" | "unknown";
 
 /** Detect the current JavaScript host by feature, not by user agent. */
-export declare function detectHost(): Host;
+declare fn detectHost(): Host;
 
 /** Resolve a module specifier (URL, file path, or relative) to a URL. */
-export declare function resolveUrl(spec: string | URL, base?: string | URL): URL;
+declare fn resolveUrl(spec: string | URL, base?: string | URL): URL;
 
-/** Read a WASM module's bytes from any source, on any host. */
-export declare function readBytes(
+/** Read a WASM module's bytes from unknown source, on unknown host. */
+declare fn readBytes(
   source: string | URL | Uint8Array | ArrayBuffer,
   options?: { base?: string | URL },
-): Promise<Uint8Array>;
+): Uint8Array;
 
 /** Build the full WebAssembly import object (multi-namespace). */
-export declare function buildImportObject(
+declare fn buildImportObject(
   runtimeImports: Record<string, Function>,
   options?: Pick<LoadOptions, "imports" | "modules">,
 ): WebAssembly.Imports;
 
 /** Parse the `typedwasm.ownership` custom section. */
-export declare function parseOwnershipSection(
+declare fn parseOwnershipSection(
   wasmModule: WebAssembly.Module,
 ): OwnershipEntry[];
 
 // ── Top-level functions ───────────────────────────────────────────────────────
 
 /** Load and run a compiled AffineScript program in one call. */
-export declare function run(path: string | URL, options?: LoadOptions): Promise<AffineValue>;
+declare fn run(path: string | URL, options?: LoadOptions): AffineValue;
 
 /** Marshal an AffineValue to a raw WASM operand. */
-export declare function marshal(
+declare fn marshal(
   value: AffineValue,
   memory: WebAssembly.Memory,
   alloc: (n: number) => number,
 ): number;
 
 /** Unmarshal a raw WASM operand to an AffineValue. */
-export declare function unmarshal(
+declare fn unmarshal(
   raw: number,
   valueType: AffineValueType,
   memory: WebAssembly.Memory,
@@ -205,21 +202,20 @@ export declare function unmarshal(
 
 // ── AffineValue constructors ──────────────────────────────────────────────────
 
-export declare function int(value: number): AffineInt;
-export declare function float(value: number): AffineFloat;
-export declare function bool(value: boolean): AffineBool;
-export declare function unit(): AffineUnit;
-export declare function string(value: string): AffineString;
-export declare function some(value: AffineValue): AffineSome;
-export declare function none(): AffineNone;
-export declare function ok(value: AffineValue): AffineOk;
-export declare function err(value: AffineValue): AffineErr;
-export declare function array(elements: AffineValue[]): AffineArray;
-export declare function record(fields: Record<string, AffineValue>): AffineRecord;
+declare fn int(value: number): AffineInt;
+declare fn float(value: number): AffineFloat;
+declare fn bool(value: boolean): AffineBool;
+declare fn unit(): AffineUnit;
+declare fn string(value: string): AffineString;
+declare fn some(value: AffineValue): AffineSome;
+declare fn none(): AffineNone;
+declare fn ok(value: AffineValue): AffineOk;
+declare fn err(value: AffineValue): AffineErr;
+declare fn array(elements: AffineValue[]): AffineArray;
+declare fn record(fields: Record<string, AffineValue>): AffineRecord;
 
 // ── Runtime constants ─────────────────────────────────────────────────────────
 
-export declare const AFFINE_TAG: Readonly<{ NONE: 0; SOME: 1; OK: 2; ERR: 3 }>;
-export declare const AFFINE_SIZE: Readonly<{ INT: 4; FLOAT: 8; PTR: 4; TAG: 4; LEN: 4 }>;
+declare const AFFINE_TAG: Readonly<{ NONE: 0; SOME: 1; OK: 2; ERR: 3 }>;
+declare const AFFINE_SIZE: Readonly<{ INT: 4; FLOAT: 8; PTR: 4; TAG: 4; LEN: 4 }>;
 
-==================================== */
