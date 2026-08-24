@@ -1,4 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
+// Ported via Harvard Engine mechanical processor
+
+module types.d;
+
+// TODO: Complete semantic implementation
+
+/* === ORIGINAL TYPESCRIPT CONTEXT ===
+// SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
 //
 // affine-js: TypeScript declarations
@@ -213,3 +221,5 @@ export declare function record(fields: Record<string, AffineValue>): AffineRecor
 
 export declare const AFFINE_TAG: Readonly<{ NONE: 0; SOME: 1; OK: 2; ERR: 3 }>;
 export declare const AFFINE_SIZE: Readonly<{ INT: 4; FLOAT: 8; PTR: 4; TAG: 4; LEN: 4 }>;
+
+==================================== */

@@ -1,4 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
+// Ported via Harvard Engine mechanical processor
+
+module smoke_driver;
+
+// TODO: Complete semantic implementation
+
+/* === ORIGINAL TYPESCRIPT CONTEXT ===
+// SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
 //
 // affinescript-deno-test: smoke test driver
@@ -12,3 +20,5 @@
 import { runAll } from "../mod.ts";
 
 await runAll(new URL("./", import.meta.url).pathname);
+
+==================================== */
