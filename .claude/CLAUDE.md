@@ -49,7 +49,7 @@ The following files in `.machine_readable/` contain structured project metadata:
 | Language/Tool | Use Case | Notes |
 |---------------|----------|-------|
 | **AffineScript** (`.affine`) | Primary application code | Affine types, dependent types, row polymorphism, extensible effects; compiles to Wasm |
-| **Deno** | Runtime & package management | Replaces Node/npm/bun |
+| **Bun** | JS/TS runtime & package management (tier 1) | Default for all new work. Executes `.ts` directly, no build step. Uses an npm-compatible `package.json` plus `bun.lock` — both are expected, not anti-patterns. |
 | **Rust** | Performance-critical, systems, WASM | Preferred for CLI tools |
 | **Tauri 2.0+** | Mobile apps (iOS/Android) | Rust backend + web UI |
 | **Dioxus** | Mobile apps (native UI) | Pure Rust, React-like |
@@ -76,10 +76,9 @@ The following files in `.machine_readable/` contain structured project metadata:
 | TypeScript | **AffineScript** |
 |  (new files) | **AffineScript** (migration via #488) |
 | JavaScript (where the project has been meaningfully migrated to AffineScript) | **AffineScript** |
-| Node.js | Deno |
-| npm | Deno |
-| Bun | Deno |
-| pnpm/yarn | Deno |
+| Node.js | Bun |
+| npm | Bun |
+| pnpm/yarn | Bun |
 | Go | Rust |
 | Python (general) | **AffineScript** / Rust / Julia |
 | Java/Kotlin | Rust / Tauri / Dioxus |
@@ -102,9 +101,9 @@ Both are FOSS with independent governance (no Big Tech).
 ### Enforcement Rules
 
 1. **No new TypeScript files** - Write new code in AffineScript (closed exemptions table below covers the residual `.d.ts` / Deno-test cases).
-2. **No new  files** - As of 2026-05-25 policy refresh; AffineScript is the go-forward. Existing `.res` files stay until migrated via #488.
-3. **No package.json for runtime deps** - Use deno.json imports.
-4. **No node_modules in production** - Deno caches deps automatically.
+2. **No new ReScript files** - As of 2026-05-25 policy refresh; AffineScript is the go-forward. Existing `.res` files stay until migrated via #488.
+3. **Use `package.json` + `bun.lock` for JS runtime deps** - Bun is npm-compatible; a manifest is REQUIRED
+4. **`bun install --production` for production deps** - resolved from `package.json`, pinned via `bun.lock`
 5. **No Go code** - Use Rust instead.
 6. **Python only for SaltStack** - All other Python must be rewritten.
 7. **No Kotlin/Swift for mobile** - Use Tauri 2.0+ or Dioxus.
@@ -164,7 +163,7 @@ Do not "migrate", rewrite, or delete `formal/*.v` as if it were V-lang.
 
 - **Primary**: Guix (guix.scm)
 - **Fallback**: Guix (flake.guix)
-- **JS deps**: Deno (deno.json imports)
+- **JS deps**: Bun (`package.json` + `bun.lock`); `bunx <tool>` for one-off tooling
 
 ### Security Requirements
 
