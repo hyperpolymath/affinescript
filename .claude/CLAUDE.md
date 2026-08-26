@@ -49,7 +49,7 @@ The following files in `.machine_readable/` contain structured project metadata:
 | Language/Tool | Use Case | Notes |
 |---------------|----------|-------|
 | **AffineScript** (`.affine`) | Primary application code | Affine types, dependent types, row polymorphism, extensible effects; compiles to Wasm |
-| **Bun** | JS/TS runtime & package management (tier 1) | Default for all new work. Executes `.ts` directly, no build step. Uses an npm-compatible `package.json` plus `bun.lock` — both are expected, not anti-patterns. |
+| **Bun** | JS runtime & package management (tier 1) | Default for all new work. Runs compiled ESM/JS directly — no bundler step. Uses an npm-compatible `package.json` plus `bun.lock` — both are expected, not anti-patterns. |
 | **Rust** | Performance-critical, systems, WASM | Preferred for CLI tools |
 | **Tauri 2.0+** | Mobile apps (iOS/Android) | Rust backend + web UI |
 | **Dioxus** | Mobile apps (native UI) | Pure Rust, React-like |
@@ -76,6 +76,7 @@ The following files in `.machine_readable/` contain structured project metadata:
 | TypeScript | **AffineScript** |
 |  (new files) | **AffineScript** (migration via #488) |
 | JavaScript (where the project has been meaningfully migrated to AffineScript) | **AffineScript** |
+| Deno | Bun |
 | Node.js | Bun |
 | npm | Bun |
 | pnpm/yarn | Bun |
@@ -163,7 +164,7 @@ Do not "migrate", rewrite, or delete `formal/*.v` as if it were V-lang.
 
 - **Primary**: Guix (guix.scm)
 - **Fallback**: Guix (flake.guix)
-- **JS deps**: Bun (`package.json` + `bun.lock`); `bunx <tool>` for one-off tooling
+- **JS deps**: Bun (`package.json` + `bun.lock`). Declare tooling as a devDependency and run `bunx --no-install --bun <tool>` — a bare `bunx <tool>` can fetch an unpinned package and may start Node via its shebang.
 
 ### Security Requirements
 
