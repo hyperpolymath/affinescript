@@ -1,0 +1,30 @@
+{
+  "name": "@hyperpolymath/affinescript",
+  "version": "0.1.2",
+  "description": "Ergonomic front door for the AffineScript compiler: downloads the pinned native binary for the host platform, verifies its SHA-256, caches it, and execs it.",
+  "license": "MPL-2.0",
+  "type": "module",
+  "bin": {
+    "affinescript": "./bin/affinescript.js"
+  },
+  "exports": {
+    ".": "./mod.js"
+  },
+  "files": [
+    "bin/affinescript.js",
+    "mod.js",
+    "pins.js",
+    "mod.d.affine"
+  ],
+  "engines": {
+    "bun": ">=1.0.0",
+    "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hyperpolymath/affinescript.git",
+    "directory": "packages/affinescript-cli"
+  },
+  "homepage": "https://github.com/hyperpolymath/affinescript",
+  "keywords": ["affinescript", "compiler", "affine-types", "wasm"]
+}
