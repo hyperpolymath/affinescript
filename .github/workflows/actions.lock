@@ -5,6 +5,8 @@ version: 'v0.0.2'
 workflows:
     '.github/workflows/governance-baseline.yml': []
     '.github/workflows/hypatia-scan.yml': []
+    '.github/workflows/label-triage.yml': []
+    '.github/workflows/labels.yml': []
     '.github/workflows/mirror.yml': []
     '.github/workflows/scorecard.yml': []
     '.github/workflows/spark-theatre-gate.yml': []
