@@ -1256,7 +1256,30 @@ and gen_pattern_test scrut pat =
   match pat with
   | PatWildcard _ | PatVar _ -> "true"
   | PatLit lit -> scrut ^ " === " ^ gen_literal lit
-  | PatCon (id, _) -> scrut ^ ".tag === " ^ Printf.sprintf "%S" id.name
+  (* Descend into the sub-patterns. This used to be [PatCon (id, _)], testing
+     only the OUTERMOST tag and discarding the arguments -- so [Some(Circle(n))]
+     and [Some(Square(n))] emitted the SAME guard, the second arm was
+     unreachable, and the first arm's body ran for both. It type-checked; only
+     the emitted JavaScript was wrong, which is the worst place for it to be.
+
+     The paths mirror gen_pattern_bindings below, which was already descending
+     correctly -- that asymmetry is why the bug was invisible: bindings landed
+     on the right values, so the output looked plausible. *)
+  | PatCon (id, args) ->
+      let tag_test = scrut ^ ".tag === " ^ Printf.sprintf "%S" id.name in
+      let sub_tests =
+        match args with
+        | []       -> []
+        | [single] -> [gen_pattern_test (scrut ^ ".value") single]
+        | many     ->
+            List.mapi (fun i p ->
+              gen_pattern_test
+                (scrut ^ ".values[" ^ string_of_int i ^ "]") p) many
+      in
+      (* A variable or wildcard sub-pattern tests "true"; dropping those keeps
+         the guard readable rather than "tag === X && true && true". *)
+      let meaningful = List.filter (fun s -> s <> "true") sub_tests in
+      String.concat " && " (tag_test :: meaningful)
   | PatTuple pats ->
       let conds = List.mapi (fun i p ->
         gen_pattern_test (scrut ^ "[" ^ string_of_int i ^ "]") p) pats in
