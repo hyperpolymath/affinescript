@@ -35,11 +35,17 @@ let engine_label = function
   | Scanner_engine -> "scanner"
   | Walker_engine  -> "walker"
 
-let run engine grammar_dir do_translate do_partial input output_opt =
+let run engine grammar_dir do_translate do_partial allow_fallback input
+    output_opt =
   if not (Sys.file_exists input) then begin
     Format.eprintf "res-to-affine: input not found: %s@." input;
     exit 2
   end;
+  (* Records whether the walker was ASKED for but could not run. Without this
+     the summary line reported the REQUESTED engine, so a fallback printed
+     "[walker]" while the scanner had produced the output -- which is why
+     whole-repo sweeps degraded silently and nobody noticed. *)
+  let degraded = ref false in
   let source  = read_file input in
   let findings =
     match engine with
@@ -47,6 +53,7 @@ let run engine grammar_dir do_translate do_partial input output_opt =
     | Walker_engine  ->
         (try Walker.scan ~grammar_dir ~path:input ~source with
          | Failure msg ->
+             degraded := true;
              Format.eprintf "res-to-affine: %s@." msg;
              Format.eprintf
                "res-to-affine: falling back to scanner engine for %s@."
@@ -62,6 +69,10 @@ let run engine grammar_dir do_translate do_partial input output_opt =
     else
       match engine with
       | Scanner_engine ->
+          (* Degraded even when the scanner was chosen deliberately: asking for
+             --translate/--partial and getting no translation is a useless
+             output whatever the intent, and a sweep must be able to see it. *)
+          degraded := true;
           Format.eprintf
             "res-to-affine: --translate/--partial need the walker engine; \
              no translation emitted for %s@." input;
@@ -72,6 +83,7 @@ let run engine grammar_dir do_translate do_partial input output_opt =
           in
           (try f ~grammar_dir ~path:input ~source with
            | Failure msg ->
+               degraded := true;
                Format.eprintf "res-to-affine: %s@." msg;
                Format.eprintf
                  "res-to-affine: no translation emitted for %s@." input;
@@ -88,18 +100,38 @@ let run engine grammar_dir do_translate do_partial input output_opt =
     else
       Emitter.emit ~module_name ~source_path:input ~source ~findings
   in
-  match output_opt with
-  | None ->
-      print_string out
-  | Some path ->
-      write_file path out;
-      Format.printf
-        "res-to-affine: %d finding%s, %d translated [%s] → %s@."
-        (List.length findings)
-        (if List.length findings = 1 then "" else "s")
-        (List.length translated)
-        (engine_label engine)
-        path
+  (match output_opt with
+   | None ->
+       print_string out
+   | Some path ->
+       write_file path out;
+       (* Report the EFFECTIVE engine, not the requested one. *)
+       Format.printf
+         "res-to-affine: %d finding%s, %d translated [%s] → %s@."
+         (List.length findings)
+         (if List.length findings = 1 then "" else "s")
+         (List.length translated)
+         (if !degraded then "scanner (DEGRADED)" else engine_label engine)
+         path);
+
+  (* Fail loudly rather than at exit 0. A sweep over hundreds of files cannot
+     otherwise distinguish a real port from a function-free skeleton, and the
+     stderr warning scrolls past. metadatastician/stapeln migrated all 47 of
+     its frontend modules this way: every file reported success, every file
+     contained zero functions. *)
+  if !degraded && not allow_fallback then begin
+    Format.eprintf
+      "res-to-affine: DEGRADED OUTPUT for %s — the walker engine was \
+       unavailable, so no functions were translated.@." input;
+    Format.eprintf
+      "res-to-affine: install the grammar (`just install-grammar`) or pass \
+       `--grammar-dir`; note the default path is resolved relative to the \
+       CURRENT DIRECTORY, so run this from the affinescript repo root.@.";
+    Format.eprintf
+      "res-to-affine: pass `--allow-scanner-fallback` if a \
+       declarations-only skeleton really is what you want.@.";
+    exit 3
+  end
 
 (* ---- cmdliner wiring ---- *)
 
@@ -159,13 +191,22 @@ let partial_arg =
   in
   Cmdliner.Arg.(value & flag & info ["partial"] ~doc)
 
+let allow_fallback_arg =
+  let doc =
+    "Exit 0 even when the walker engine was unavailable and the scanner \
+     produced the output. Without this, a degraded run exits 3, because a \
+     declarations-only skeleton with no functions is almost never what a \
+     migration sweep wants and the stderr warning is easy to miss."
+  in
+  Cmdliner.Arg.(value & flag & info ["allow-scanner-fallback"] ~doc)
+
 let cmd =
   let doc = "Emit an AffineScript skeleton from a ReScript source file." in
   let info = Cmdliner.Cmd.info "res-to-affine" ~version:"0.1.0" ~doc in
   let term =
     Cmdliner.Term.(
       const run $ engine_arg $ grammar_dir_arg $ translate_arg $ partial_arg
-      $ input_arg $ output_arg)
+      $ allow_fallback_arg $ input_arg $ output_arg)
   in
   Cmdliner.Cmd.v info term
 
