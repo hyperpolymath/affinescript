@@ -340,9 +340,77 @@ let tuple_pattern_tests =
   [ Alcotest.test_case "nested (literal/var) tuple patterns -> Wasm" `Quick
       test_nested_tuple_patterns_wasm ]
 
+(* ---- Nested CONSTRUCTOR patterns must be discriminated (#731) -------------
+
+   Regression guard. gen_pattern_test discarded PatCon's sub-patterns, so arms
+   differing only in a NESTED constructor emitted IDENTICAL guards:
+
+       if (__scrut.tag === "Some")     <- Some(Circle(n))
+       if (__scrut.tag === "Some")     <- Some(Square(n))   unreachable
+
+   Every arm after the first was dead and the first arm's body ran for all of
+   them. It type-checked; only the emitted code was wrong, so nothing in the
+   compiler caught it -- and neither did this file, which had a nested-TUPLE
+   pattern test but none for nested CONSTRUCTORS on the JS-family backends.
+
+   Verified to fail without the fix: reverting the PatCon arm in
+   codegen_deno.ml turns exactly this test red. *)
+let nested_ctor_src = {|
+module nestedctor;
+use prelude::{ Option, Some, None };
+
+pub type Shape = Circle(Int) | Square(Int)
+
+pub fn describe(s: Option<Shape>) -> Int {
+  match s {
+    Some(Circle(n)) => n,
+    Some(Square(n)) => n + 1000,
+    None => -1,
+  }
+}
+|}
+
+let check_nested_ctor_guards (backend : string) (js : string) =
+  (* The inner constructor must appear in a GUARD, not merely in a binding --
+     bindings were already descending correctly, which is what made the bug
+     invisible. *)
+  Alcotest.(check bool)
+    (backend ^ ": guard discriminates the inner Circle")
+    true (count_substr "tag === \"Circle\"" js > 0
+          || count_substr "tag == \"Circle\"" js > 0);
+  Alcotest.(check bool)
+    (backend ^ ": guard discriminates the inner Square")
+    true (count_substr "tag === \"Square\"" js > 0
+          || count_substr "tag == \"Square\"" js > 0)
+
+let test_deno_nested_ctor_guards () =
+  match Parse_driver.parse_string ~file:"<nestedctor>" nested_ctor_src with
+  | exception e ->
+    Alcotest.failf "nested-ctor parse raised: %s" (Printexc.to_string e)
+  | prog ->
+    (match pipeline_to_deno prog with
+     | Error m -> Alcotest.failf "deno codegen failed: %s" m
+     | Ok js -> check_nested_ctor_guards "Deno-ESM" js)
+
+let test_js_nested_ctor_guards () =
+  match Parse_driver.parse_string ~file:"<nestedctor>" nested_ctor_src with
+  | exception e ->
+    Alcotest.failf "nested-ctor parse raised: %s" (Printexc.to_string e)
+  | prog ->
+    (match pipeline_to_js prog with
+     | Error m -> Alcotest.failf "js codegen failed: %s" m
+     | Ok js -> check_nested_ctor_guards "JS" js)
+
+let nested_ctor_tests =
+  [ Alcotest.test_case "nested constructor patterns are discriminated (Deno)"
+      `Quick test_deno_nested_ctor_guards;
+    Alcotest.test_case "nested constructor patterns are discriminated (JS)"
+      `Quick test_js_nested_ctor_guards ]
+
 let tests =
   [ ("STAGE-A AOT smoke (#136)", aot_smoke_tests);
     ("STAGE-A multi-module integration (#137)", integration_tests);
     ("cross-module constructor linking, Wasm (#138)", xmod_constructor_tests);
     ("Deno-ESM / JS no duplicate Option/Result constructor", dup_ctor_tests);
-    ("Wasm nested tuple patterns", tuple_pattern_tests) ]
+    ("Wasm nested tuple patterns", tuple_pattern_tests);
+    ("Nested constructor patterns discriminated (#731)", nested_ctor_tests) ]
