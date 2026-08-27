@@ -74,6 +74,7 @@ The following files in `.machine_readable/` contain structured project metadata:
 | Banned | Replacement |
 |--------|-------------|
 | TypeScript | **AffineScript** |
+| ReScript | **AffineScript** |
 |  (new files) | **AffineScript** (migration via #488) |
 | JavaScript (where the project has been meaningfully migrated to AffineScript) | **AffineScript** |
 | Deno | Bun |
@@ -104,7 +105,7 @@ Both are FOSS with independent governance (no Big Tech).
 1. **No new TypeScript files** - Write new code in AffineScript (closed exemptions table below covers the residual `.d.ts` / Deno-test cases).
 2. **No new ReScript files** - As of 2026-05-25 policy refresh; AffineScript is the go-forward. Existing `.res` files stay until migrated via #488.
 3. **Use `package.json` + `bun.lock` for JS runtime deps** - Bun is npm-compatible; a manifest is REQUIRED
-4. **`bun install --production` for production deps** - resolved from `package.json`, pinned via `bun.lock`
+4. **`bun install --production --frozen-lockfile` for production deps** - resolved from `package.json` and pinned via `bun.lock`; `--frozen-lockfile` makes a lockfile mismatch a build failure rather than a silent re-resolve
 5. **No Go code** - Use Rust instead.
 6. **Python only for SaltStack** - All other Python must be rewritten.
 7. **No Kotlin/Swift for mobile** - Use Tauri 2.0+ or Dioxus.
