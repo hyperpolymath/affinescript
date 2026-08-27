@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MPL-2.0
 # This workflow is managed by gh actions-lock.
+# This workflow is managed by gh actions-lock.
 # Estate SPARK Theatre Gate — thin caller of the reusable workflow in
 # hyperpolymath/standards (#135 / #141). Pinned by commit SHA per the
 # estate action-pinning policy. Regenerate the pin only when the reusable
@@ -10,6 +11,7 @@ on:
   push:
     branches: [main]
 permissions:
+  actions: read
   contents: read
 # Note: NO workflow-level `concurrency:` block here. The reusable
 # workflow in standards already declares concurrency on the same key
@@ -24,7 +26,7 @@ permissions:
 # 2026-05-28. See hypatia#376 BP008 for the class-level detector.
 jobs:
   spark-theatre-gate:
-    uses: hyperpolymath/standards/.github/workflows/spark-theatre-gate.yml@462003782f3ebb93ea763e81d0d199ce13ef7d73
+    uses: hyperpolymath/standards/.github/workflows/spark-theatre-gate.yml@84355587cb2a1f86e6882de83514a32db2646e7a
     with:
       paths: "."
       enforce_zero_contract: false
