@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MPL-2.0
 # This workflow is managed by gh actions-lock.
+# This workflow is managed by gh actions-lock.
 #
 # Release (ADR-019 / #260 S2). On a `v*` tag: build the AffineScript
 # compiler for each supported platform, attach the raw per-platform

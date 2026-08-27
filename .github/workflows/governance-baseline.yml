@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MPL-2.0
 # This workflow is managed by gh actions-lock.
+# This workflow is managed by gh actions-lock.
 #
 # Required-check bridge: re-emits the estate-standard governance check context
 # `governance / Validate Hypatia baseline` on EVERY pull request.
