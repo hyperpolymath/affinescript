@@ -376,9 +376,24 @@ and gen_pattern_test scrut pat =
   match pat with
   | PatWildcard _ | PatVar _ -> "true"
   | PatLit lit -> scrut ^ " === " ^ gen_literal lit
-  | PatCon (id, _) ->
-      (* Tagged-union variant: { tag: "Some", value: ... } *)
-      scrut ^ ".tag === " ^ Printf.sprintf "%S" id.name
+  (* Tagged-union variant: { tag: "Some", value: ... }
+     Sub-patterns MUST be tested too. This used to discard [args], so
+     [Some(Circle(n))] and [Some(Square(n))] produced the same guard and the
+     second arm was unreachable -- the first arm's body ran for both. Paths
+     mirror gen_pattern_bindings: .value for arity 1, .values[i] otherwise. *)
+  | PatCon (id, args) ->
+      let tag_test = scrut ^ ".tag === " ^ Printf.sprintf "%S" id.name in
+      let sub_tests =
+        match args with
+        | []       -> []
+        | [single] -> [gen_pattern_test (scrut ^ ".value") single]
+        | many     ->
+            List.mapi (fun i p ->
+              gen_pattern_test
+                (scrut ^ ".values[" ^ string_of_int i ^ "]") p) many
+      in
+      String.concat " && "
+        (tag_test :: List.filter (fun s -> s <> "true") sub_tests)
   | PatTuple pats ->
       let conds = List.mapi (fun i p ->
         gen_pattern_test (scrut ^ "[" ^ string_of_int i ^ "]") p

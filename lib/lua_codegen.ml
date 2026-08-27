@@ -99,7 +99,23 @@ and gen_pattern_test scrut pat =
   match pat with
   | PatWildcard _ | PatVar _ -> "true"
   | PatLit lit -> Printf.sprintf "%s == %s" scrut (gen_lit lit)
-  | PatCon (id, _) -> Printf.sprintf "%s.tag == %S" scrut id.name
+  (* Sub-patterns must be tested, not discarded -- see codegen_deno.ml. Paths
+     mirror gen_pattern_bindings below: .value for arity 1, .values[i] else.
+     Lua indexes from 1, and the bindings walker uses the same expression, so
+     the two stay in step. *)
+  | PatCon (id, args) ->
+      let tag_test = Printf.sprintf "%s.tag == %S" scrut id.name in
+      let sub_tests =
+        match args with
+        | []       -> []
+        | [single] -> [gen_pattern_test (scrut ^ ".value") single]
+        | many     ->
+            List.mapi (fun i p ->
+              gen_pattern_test
+                (Printf.sprintf "%s.values[%d]" scrut i) p) many
+      in
+      String.concat " and "
+        (tag_test :: List.filter (fun s -> s <> "true") sub_tests)
   | PatTuple _ -> "true"  (* arity match by structure, not tag *)
   | PatRecord _ -> "true"
   | PatAs (_, p) -> gen_pattern_test scrut p
