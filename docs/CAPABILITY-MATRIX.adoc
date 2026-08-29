@@ -260,6 +260,7 @@ test is deleted or renamed without this section (and CI) noticing.
 |typed-wasm isolation |`test/test_tw_isolation.ml`
 |Codegen (golden snapshots) |`test/test_golden.ml`
 |Deno / JS host backends |`test/test_deno_builtins_consistency.ml`, `test/test_int_div_js.ml`
+|Bun-ESM host backend |`tools/run_codegen_bun_tests.sh`
 |Solo core (executable metatheory) |`test/test_solo_cesk.ml`
 |===
 

@@ -492,7 +492,19 @@ let repl_cmd_fn () =
 let compile_file face json wasm_gc vscode_ext vscode_adapter vscode_no_lc
     deno_esm bun_esm target path output =
   let face = resolve_face ~quiet:json face path in
-  if json then begin
+  let is_deno = deno_esm || Filename.check_suffix output ".deno.js" in
+  let is_bun = bun_esm || Filename.check_suffix output ".bun.js" in
+  if is_deno && is_bun then
+    let message = "--deno-esm and --bun-esm are mutually exclusive" in
+    if json then
+      json_finish [{ Affinescript.Json_output.severity = Error;
+                     code = "E0826"; message;
+                     span = Affinescript.Span.dummy; help = None; labels = [] }]
+    else begin
+      Format.eprintf "@[<v>Backend selection error: %s@]@." message;
+      `Error (false, "Backend selection error")
+    end
+  else if json then begin
     let diags = ref [] in
     let add d = diags := d :: !diags in
     begin try
@@ -526,8 +538,6 @@ let compile_file face json wasm_gc vscode_ext vscode_adapter vscode_no_lc
             let flat_prog = Affinescript.Module_loader.flatten_imports loader prog in
             let is_deno = deno_esm || Filename.check_suffix output ".deno.js" in
             let is_bun = bun_esm || Filename.check_suffix output ".bun.js" in
-            if is_deno && is_bun then
-              failwith "--deno-esm and --bun-esm are mutually exclusive";
             let is_julia = Filename.check_suffix output ".jl" in
             let is_js = (not is_deno) && (not is_bun) && Filename.check_suffix output ".js" in
             let is_c = Filename.check_suffix output ".c" in
@@ -771,8 +781,6 @@ let compile_file face json wasm_gc vscode_ext vscode_adapter vscode_no_lc
             let flat_prog = Affinescript.Module_loader.flatten_imports loader prog in
             let is_deno = deno_esm || Filename.check_suffix output ".deno.js" in
             let is_bun = bun_esm || Filename.check_suffix output ".bun.js" in
-            if is_deno && is_bun then
-              failwith "--deno-esm and --bun-esm are mutually exclusive";
             let is_julia = Filename.check_suffix output ".jl" in
             let is_js = (not is_deno) && (not is_bun) && Filename.check_suffix output ".js" in
             let is_c = Filename.check_suffix output ".c" in

@@ -29,7 +29,7 @@ try {
   try {
     subject.is_file(file);
   } catch (error) {
-    if (!(error && error.code === "ENOENT")) throw error;
+    if (error?.code !== "ENOENT") throw error;
     missingPathThrew = true;
   }
   if (!missingPathThrew) throw new Error("remove did not make path absent");

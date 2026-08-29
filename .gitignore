@@ -102,6 +102,7 @@ bisect*.coverage
 /tests/codegen-deno/*.deno.js
 # Issue #734: generated native Bun-ESM acceptance outputs.
 /tests/codegen-bun/*.bun.js
+/tests/codegen-bun/backend-conflict.json
 # Local-only build workaround (see file header); never committed.
 /dune-workspace
 packages/affinescript-cli/deno.lock
