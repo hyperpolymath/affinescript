@@ -1,0 +1,7 @@
+// SPDX-License-Identifier: MPL-2.0
+// Planted negative control: a Bun capability name without a compiler lowering
+// must be rejected, never emitted as an optimistic same-named JavaScript call.
+
+extern fn bun_unimplemented_operation() -> Int;
+
+pub fn probe() -> Int { bun_unimplemented_operation() }

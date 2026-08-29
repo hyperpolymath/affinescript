@@ -490,9 +490,21 @@ let repl_cmd_fn () =
     compilation errors.  With [--wasm-gc], targets the WebAssembly GC
     proposal instead of WASM 1.0 linear memory. *)
 let compile_file face json wasm_gc vscode_ext vscode_adapter vscode_no_lc
-    deno_esm target path output =
+    deno_esm bun_esm target path output =
   let face = resolve_face ~quiet:json face path in
-  if json then begin
+  let is_deno = deno_esm || Filename.check_suffix output ".deno.js" in
+  let is_bun = bun_esm || Filename.check_suffix output ".bun.js" in
+  if is_deno && is_bun then
+    let message = "--deno-esm and --bun-esm are mutually exclusive" in
+    if json then
+      json_finish [{ Affinescript.Json_output.severity = Error;
+                     code = "E0826"; message;
+                     span = Affinescript.Span.dummy; help = None; labels = [] }]
+    else begin
+      Format.eprintf "@[<v>Backend selection error: %s@]@." message;
+      `Error (false, "Backend selection error")
+    end
+  else if json then begin
     let diags = ref [] in
     let add d = diags := d :: !diags in
     begin try
@@ -525,8 +537,9 @@ let compile_file face json wasm_gc vscode_ext vscode_adapter vscode_no_lc
                via Codegen.gen_imports / the import section. *)
             let flat_prog = Affinescript.Module_loader.flatten_imports loader prog in
             let is_deno = deno_esm || Filename.check_suffix output ".deno.js" in
+            let is_bun = bun_esm || Filename.check_suffix output ".bun.js" in
             let is_julia = Filename.check_suffix output ".jl" in
-            let is_js = (not is_deno) && Filename.check_suffix output ".js" in
+            let is_js = (not is_deno) && (not is_bun) && Filename.check_suffix output ".js" in
             let is_c = Filename.check_suffix output ".c" in
             let is_wgsl = Filename.check_suffix output ".wgsl" in
             let is_faust = Filename.check_suffix output ".dsp" in
@@ -547,14 +560,24 @@ let compile_file face json wasm_gc vscode_ext vscode_adapter vscode_no_lc
             let is_why3 = Filename.check_suffix output ".mlw" in
             let is_lean = Filename.check_suffix output ".lean" in
             let is_spirv = Filename.check_suffix output ".spv" in
-            if is_deno then begin
+            if is_bun then begin
+              match Affinescript.Codegen_deno.codegen_bun flat_prog resolve_ctx.symbols with
+              | Error msg ->
+                add { severity = Error; code = "E0825";
+                      message = msg;
+                      span = Affinescript.Span.dummy; help = None; labels = [] }
+              | Ok esm_code ->
+                let oc = open_out_bin output in
+                output_string oc esm_code;
+                close_out oc
+            end else if is_deno then begin
               match Affinescript.Codegen_deno.codegen_deno flat_prog resolve_ctx.symbols with
               | Error msg ->
                 add { severity = Error; code = "E0824";
                       message = Printf.sprintf "Deno-ESM codegen error: %s" msg;
                       span = Affinescript.Span.dummy; help = None; labels = [] }
               | Ok esm_code ->
-                let oc = open_out output in
+                let oc = open_out_bin output in
                 output_string oc esm_code;
                 close_out oc
             end else if is_julia then begin
@@ -757,8 +780,9 @@ let compile_file face json wasm_gc vscode_ext vscode_adapter vscode_no_lc
                module-system support. Wasm/Wasm-GC keep the original [prog]. *)
             let flat_prog = Affinescript.Module_loader.flatten_imports loader prog in
             let is_deno = deno_esm || Filename.check_suffix output ".deno.js" in
+            let is_bun = bun_esm || Filename.check_suffix output ".bun.js" in
             let is_julia = Filename.check_suffix output ".jl" in
-            let is_js = (not is_deno) && Filename.check_suffix output ".js" in
+            let is_js = (not is_deno) && (not is_bun) && Filename.check_suffix output ".js" in
             let is_c = Filename.check_suffix output ".c" in
             let is_wgsl = Filename.check_suffix output ".wgsl" in
             let is_faust = Filename.check_suffix output ".dsp" in
@@ -779,7 +803,18 @@ let compile_file face json wasm_gc vscode_ext vscode_adapter vscode_no_lc
             let is_why3 = Filename.check_suffix output ".mlw" in
             let is_lean = Filename.check_suffix output ".lean" in
             let is_spirv = Filename.check_suffix output ".spv" in
-            if is_deno then
+            if is_bun then
+              (match Affinescript.Codegen_deno.codegen_bun flat_prog resolve_ctx.symbols with
+              | Error e ->
+                Format.eprintf "@[<v>%s@]@." e;
+                `Error (false, "Bun-ESM codegen error")
+              | Ok esm_code ->
+                let oc = open_out_bin output in
+                output_string oc esm_code;
+                close_out oc;
+                Format.printf "Compiled %s -> %s (Bun-ESM)@." path output;
+                `Ok ())
+            else if is_deno then
               (match Affinescript.Codegen_deno.codegen_deno flat_prog resolve_ctx.symbols with
               | Error e ->
                 Format.eprintf "@[<v>Deno-ESM codegen error: %s@]@." e;
@@ -1259,6 +1294,15 @@ let deno_esm_arg =
           no handle table — the output is a drop-in importable ESM. A \
           `.deno.js` output extension selects this backend implicitly.")
 
+let bun_esm_arg =
+  Arg.(value & flag & info ["bun-esm"]
+    ~doc:"Emit a standalone Bun-native ES module directly from the AST: \
+          public declarations are exported and host operations use Bun's \
+          Node-compatible synchronous APIs. The emitted module contains no \
+          legacy-runtime shim. A `.bun.js` output extension selects this \
+          backend implicitly. This option is mutually exclusive with \
+          `--deno-esm`.")
+
 (** Shared --face flag: select the parser surface-syntax face. *)
 let face_arg =
   let faces = Arg.enum [
@@ -1602,11 +1646,11 @@ let repl_cmd =
   Cmd.v info Term.(ret (const repl_cmd_fn $ const ()))
 
 let compile_cmd =
-  let doc = "Compile a file to WebAssembly (1.0 or GC proposal), Julia (.jl), JavaScript (.js), C (.c), a WGSL compute kernel (.wgsl), a Faust DSP program (.dsp), or an ONNX model (.onnx)" in
+  let doc = "Compile a file to WebAssembly (1.0 or GC proposal), native Bun ESM (.bun.js/--bun-esm), Julia (.jl), JavaScript (.js), C (.c), a WGSL compute kernel (.wgsl), a Faust DSP program (.dsp), or an ONNX model (.onnx)" in
   let info = Cmd.info "compile" ~doc in
   Cmd.v info Term.(ret (const compile_file $ face_arg $ json_arg $ wasm_gc_arg
     $ vscode_ext_arg $ vscode_adapter_arg $ vscode_no_lc_arg $ deno_esm_arg
-    $ target_arg $ path_arg $ output_arg))
+    $ bun_esm_arg $ target_arg $ path_arg $ output_arg))
 
 let fmt_cmd =
   let doc = "Format a file" in

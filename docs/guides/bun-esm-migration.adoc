@@ -1,0 +1,71 @@
+= Migrating direct ESM output to Bun
+:toc: macro
+
+toc::[]
+
+== Select the Bun host profile
+
+Replace `--deno-esm` with `--bun-esm`, and replace generated `.deno.js` names
+with `.bun.js`. A `.bun.js` output suffix selects the profile implicitly, but
+the explicit flag is preferable in build definitions because it records the
+runtime contract directly.
+
+[source,console]
+----
+affinescript compile --bun-esm -o build/library.bun.js src/library.affine
+bun --check build/library.bun.js
+----
+
+The compiler emits public functions, constants, variants, and generated
+classes as standard ESM exports. Bun output is checked in CI to contain no
+case-insensitive reference to the former runtime.
+
+== Host operations
+
+The shared ESM core contains runtime-neutral lowering for JSON, URL,
+WebAssembly, web APIs, and pure language operations. The Bun profile supplies
+its own filesystem, arguments, process, environment, subprocess, standard-I/O,
+and exit lowerings. Synchronous filesystem and subprocess operations use Bun's
+Node-compatibility surface. They are resolved lazily, so a generated module
+that only calls browser-provided externs can still load in a webview with no
+`process` global.
+
+Import explicit Bun process capabilities from `stdlib/Bun.affine`:
+
+[source,affinescript]
+----
+use Bun::{ bun_env_get, bun_run, bun_stdin_text,
+          bun_stdout_write, bun_stderr_write, bun_exit };
+----
+
+Names beginning with `bun_` form a checked capability namespace. If such an
+extern has no compiler lowering, Bun code generation fails non-zero. This is a
+deliberate negative guarantee: a misspelt or unimplemented host operation must
+not silently turn into an optimistic JavaScript call. Other `extern fn` names
+retain the existing direct-ESM contract and lower to same-named host symbols;
+that facility is required for explicit webview bridges such as Gossamer.
+
+== Runtime-neutral core and compatibility
+
+`lib/codegen_deno.ml` currently owns the mature direct-ESM lowering machinery,
+but its generated runtime is split into three parts: a compatibility host
+profile, a Bun host profile, and a shared runtime-neutral prelude/builtin core.
+The source filename is retained to avoid a high-risk mechanical move in the
+same change as the semantic migration. It does not imply that Bun output passes
+through or embeds the compatibility runtime.
+
+The compatibility flag remains available for existing external consumers. An
+estate migration is complete only when its active workflows, runtime files,
+lockfiles, build commands, generated artefact names, examples, and current
+documentation have moved to Bun. Historical records may retain their original
+runtime names when clearly marked as history; renaming history would make it
+less accurate.
+
+== Verification contract
+
+`tools/run_codegen_bun_tests.sh` provides positive and planted-negative
+controls. It compiles and imports public exports, exercises filesystem and byte
+I/O, arguments, environment values, subprocess status, stdin, and explicit
+exit status under Bun; checks JavaScript syntax and absence of legacy-runtime
+references; compiles twice and compares output byte-for-byte; and proves that
+an unsupported `bun_` capability fails compilation.

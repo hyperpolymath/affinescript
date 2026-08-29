@@ -37,11 +37,14 @@
 
 open Ast
 
+type host_profile = Deno | Bun
+
 (* ============================================================================
    Code-generation context
    ============================================================================ *)
 
 type codegen_ctx = {
+  host : host_profile;
   output : Buffer.t;
   indent : int;
   symbols : Symbol.t;
@@ -95,7 +98,8 @@ type codegen_ctx = {
   in_async : bool;
 }
 
-let create_ctx symbols = {
+let create_ctx host symbols = {
+  host;
   output = Buffer.create 1024;
   indent = 0;
   symbols;
@@ -148,12 +152,7 @@ let fd_is_async (fd : fn_decl) : bool =
    that need Node should target the .cjs backend instead).
    ============================================================================ *)
 
-let prelude = {|// ---- AffineScript Deno-ESM runtime ----
-const Some = (value) => ({ tag: "Some", value });
-const None = { tag: "None" };
-const Ok   = (value) => ({ tag: "Ok",  value });
-const Err  = (error) => ({ tag: "Err", error });
-const Unit = null;
+let deno_host_prelude = {|// ---- AffineScript Deno-ESM runtime ----
 const print   = (s) => { Deno.stdout.writeSync(new TextEncoder().encode(String(s))); };
 const println = (s) => { console.log(String(s)); };
 // ---- Deno host shims (extern fn lowering targets, issue #122) ----
@@ -181,7 +180,7 @@ const __as_walkRecursive = (root) => {
   const out = [];
   const rec = (dir) => {
     for (const entry of Deno.readDirSync(dir)) {
-      const full = (dir.endsWith("/") ? dir : dir + "/") + entry.name;
+      const full = __as_pathJoin(dir, entry.name);
       if (entry.isFile) out.push(full);
       else if (entry.isDirectory) rec(full);
     }
@@ -189,12 +188,74 @@ const __as_walkRecursive = (root) => {
   rec(root);
   return out;
 };
+|}
+
+let bun_host_prelude = {|// ---- AffineScript Bun-ESM runtime ----
+const print = (s) => {
+  const stdout = globalThis.process?.stdout;
+  if (stdout) stdout.write(String(s)); else console.log(String(s));
+};
+const println = (s) => { console.log(String(s)); };
+// ---- Bun host shims (extern fn lowering targets) ----
+// Resolve Node-compatible builtins lazily. This keeps pure/browser-facing
+// generated modules importable where no filesystem host is present, while
+// Bun executions receive its synchronous compatibility implementation.
+const __as_fs = () => {
+  const getBuiltinModule = globalThis.process?.getBuiltinModule;
+  if (!getBuiltinModule) throw new Error("Bun filesystem host is unavailable");
+  return getBuiltinModule("node:fs");
+};
+const __as_process = () => {
+  const process = globalThis.process;
+  if (!process) throw new Error("Bun process host is unavailable");
+  return process;
+};
+const __as_childProcess = () => {
+  const getBuiltinModule = globalThis.process?.getBuiltinModule;
+  if (!getBuiltinModule) throw new Error("Bun subprocess host is unavailable");
+  return getBuiltinModule("node:child_process");
+};
+const __as_path = () => {
+  const getBuiltinModule = globalThis.process?.getBuiltinModule;
+  if (!getBuiltinModule) throw new Error("Bun path host is unavailable");
+  return getBuiltinModule("node:path");
+};
+const __as_ensureDir = (p) => { __as_fs().mkdirSync(p, { recursive: true }); };
+const __as_pathJoin = (a, b) => __as_path().join(a, b);
+const __as_readDirNames = (p) => {
+  const names = [];
+  for (const entry of __as_fs().readdirSync(p, { withFileTypes: true })) {
+    if (entry.isFile()) names.push(entry.name);
+  }
+  return names;
+};
+const __as_isNotFound = (e) => Boolean(e && e.code === "ENOENT");
+const __as_walkRecursive = (root) => {
+  const out = [];
+  const rec = (dir) => {
+    for (const entry of __as_fs().readdirSync(dir, { withFileTypes: true })) {
+      const full = __as_pathJoin(dir, entry.name);
+      if (entry.isFile()) out.push(full);
+      else if (entry.isDirectory()) rec(full);
+    }
+  };
+  rec(root);
+  return out;
+};
+|}
+
+let common_prelude = {|
+const Some = (value) => ({ tag: "Some", value });
+const None = { tag: "None" };
+const Ok   = (value) => ({ tag: "Ok",  value });
+const Err  = (error) => ({ tag: "Err", error });
+const Unit = null;
 const __as_regexMatch = (s, pat) => new RegExp(pat).test(String(s));
 const __as_wasmInstance = (bytes) =>
   new WebAssembly.Instance(new WebAssembly.Module(bytes),
     { wasi_snapshot_preview1: { fd_write: () => 0 } }).exports;
 const __as_wasmCall = (exports, name, args) => Number(exports[name](...(args || [])));
-// ---- WasmValue (Deno.affine #455 — Tier 1 #5, Option B) ----
+// ---- WasmValue host bindings (#455 — Tier 1 #5, Option B) ----
 // Opaque tagged value crossing the AS/JS boundary as `{ kind, v }`.
 // `kind` is one of "i32" | "i64" | "f32" | "f64". The `v` payload is
 // `BigInt` for i64 (preserves precision beyond 2^53), `Number` otherwise.
@@ -344,7 +405,7 @@ const __as_pixiSoundSetVolume = (s, vol) => { s.volume = vol; return 0; };
 const __as_pixiSoundSetLoop = (s, loop) => { s.loop = loop; return 0; };
 // ---- Ipc (bindings #9): web-platform MessageChannel/MessagePort ----
 // Uses standard web globals (MessageChannel, structuredClone) — no
-// consumer-side init required. Available unmodified in Deno, Node 16+,
+// consumer-side init required. Available unmodified in modern JS runtimes,
 // browsers, and Web Workers.
 const __as_messageChannelNew = () => new MessageChannel();
 const __as_messageChannelPort1 = (ch) => ch.port1;
@@ -358,7 +419,7 @@ const __as_structuredCloneValue = (v) => structuredClone(v);
 // ---- Canvas (bindings #8): HTML5 Canvas 2D rendering context ----
 // `canvas` arg is the consumer-supplied HTMLCanvasElement; helpers
 // dispatch directly to the standard CanvasRenderingContext2D
-// methods. Available unmodified in browsers, jsdom-under-Deno,
+// methods. Available unmodified in browsers and jsdom,
 // idaptik's WebView host, and any DOM emulator.
 const __as_canvasGetContext2D = (canvas) => canvas.getContext("2d");
 const __as_canvasFillStyle = (ctx, color) => { ctx.fillStyle = color; return 0; };
@@ -427,7 +488,7 @@ const __as_httpHeadersFromResponse = (res) => {
   return out;
 };
 // ---- hpm-json-rsr Zig FFI shims (stdlib/json.affine v0.3) ----
-// `HpmJsonValue` is opaque to AffineScript; on Deno-ESM it's just the
+// `HpmJsonValue` is opaque to AffineScript; on direct ESM it's just the
 // underlying JS value from JSON.parse. The shims mirror the sentinel
 // conventions of the Zig exports so the AffineScript-side wrappers
 // (`to_json`, `parse`) behave identically across backends.
@@ -480,7 +541,7 @@ const __as_hpmJsonEscapeString = (s) => {
 // ---- Sqlite (db-theory #1a / stdlib/Sqlite.affine): SQL via host adapter ----
 // Host JS environment must expose globalThis.__as_sqlite, a namespace
 // implementing the small adapter contract below. Consumers init once
-// (Deno):
+// (host runtime):
 //   import * as s from "jsr:@db/sqlite";
 //   globalThis.__as_sqlite = {
 //     open: (p) => new s.Database(p),
@@ -542,6 +603,23 @@ const __as_dbColumnText   = (s, idx) => {
 };
 const __as_dbReset        = (s) => { globalThis.__as_sqlite.reset(s); return 0; };
 const __as_dbFinalize     = (s) => { globalThis.__as_sqlite.finalize(s); return 0; };
+// ---- Sqlite schema introspection + bulk I/O + error inspection (db-theory #1c) ----
+// Five more adapter methods (`schemaTables`, `schemaColumns`,
+// `tableExists`, `importCsv`, `exportCsv`, `lastError`); each
+// real-world adapter backs them with a small query or file operation.
+const __as_dbSchemaTables  = (h) => String(globalThis.__as_sqlite.schemaTables(h));
+const __as_dbSchemaColumns = (h, table) => String(globalThis.__as_sqlite.schemaColumns(h, table));
+const __as_dbTableExists   = (h, table) => Boolean(globalThis.__as_sqlite.tableExists(h, table));
+const __as_dbImportCsv     = (h, table, path, hasHeader) =>
+  Number(globalThis.__as_sqlite.importCsv(h, table, path, Boolean(hasHeader))) | 0;
+const __as_dbExportCsv     = (h, sql, paramsJson, path) => {
+  const params = paramsJson === "" || paramsJson === "[]" ? [] : JSON.parse(paramsJson);
+  return Number(globalThis.__as_sqlite.exportCsv(h, sql, params, path)) | 0;
+};
+const __as_dbLastError     = (h) => {
+  const v = globalThis.__as_sqlite.lastError(h);
+  return v == null ? "" : String(v);
+};
 // ---- Sqlite transactions (db-theory #2) ----
 // `Tx` is an opaque handle; the host adapter is required to
 // invalidate it on `commit` / `rollback` so that subsequent calls
@@ -873,6 +951,13 @@ let () =
   b "db_column_text" (fun a -> Printf.sprintf "__as_dbColumnText(%s, %s)" (arg 0 a) (arg 1 a));
   b "db_reset"       (fun a -> Printf.sprintf "__as_dbReset(%s)" (arg 0 a));
   b "db_finalize"    (fun a -> Printf.sprintf "__as_dbFinalize(%s)" (arg 0 a));
+  (* ---- Sqlite schema/bulk/error inspection (db-theory #1c) ---- *)
+  b "db_schema_tables"  (fun a -> Printf.sprintf "__as_dbSchemaTables(%s)" (arg 0 a));
+  b "db_schema_columns" (fun a -> Printf.sprintf "__as_dbSchemaColumns(%s, %s)" (arg 0 a) (arg 1 a));
+  b "db_table_exists"   (fun a -> Printf.sprintf "__as_dbTableExists(%s, %s)" (arg 0 a) (arg 1 a));
+  b "db_import_csv"     (fun a -> Printf.sprintf "__as_dbImportCsv(%s, %s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a) (arg 3 a));
+  b "db_export_csv"     (fun a -> Printf.sprintf "__as_dbExportCsv(%s, %s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a) (arg 3 a));
+  b "db_last_error"     (fun a -> Printf.sprintf "__as_dbLastError(%s)" (arg 0 a));
   (* ---- Sqlite transactions (db-theory #2 / stdlib/Transaction.affine) ---- *)
   b "tx_begin"        (fun a -> Printf.sprintf "__as_txBegin(%s)" (arg 0 a));
   b "tx_commit"       (fun a -> Printf.sprintf "__as_txCommit(%s)" (arg 0 a));
@@ -956,6 +1041,55 @@ let pat_var_name : pattern -> string option = function
 
 (* Builtins whose return type is unambiguously [Int]. Calls to these count
    as integer operands. (Excludes e.g. [parse_int], which is Option<Int>.) *)
+let bun_builtins :
+  (string, string list -> string) Hashtbl.t = Hashtbl.copy deno_builtins
+
+let () =
+  let b name f = Hashtbl.replace bun_builtins name f in
+  let arg n a = List.nth a n in
+  b "writeTextFile"
+    (fun a -> Printf.sprintf "(__as_fs().writeFileSync(%s, %s, \"utf8\"), 0)"
+        (arg 0 a) (arg 1 a));
+  b "readTextFile"
+    (fun a -> Printf.sprintf "__as_fs().readFileSync(%s, \"utf8\")" (arg 0 a));
+  b "readFileBytes"
+    (fun a -> Printf.sprintf "new Uint8Array(__as_fs().readFileSync(%s))" (arg 0 a));
+  b "removePath"
+    (fun a -> Printf.sprintf "(__as_fs().rmSync(%s), 0)" (arg 0 a));
+  b "mkdirRecursive"
+    (fun a -> Printf.sprintf "(__as_fs().mkdirSync(%s, { recursive: true }), 0)"
+        (arg 0 a));
+  b "statSize"
+    (fun a -> Printf.sprintf "__as_fs().statSync(%s).size" (arg 0 a));
+  b "statIsFile"
+    (fun a -> Printf.sprintf "__as_fs().statSync(%s).isFile()" (arg 0 a));
+  b "statIsDirectory"
+    (fun a -> Printf.sprintf "__as_fs().statSync(%s).isDirectory()" (arg 0 a));
+  b "args" (fun _ -> "(globalThis.process?.argv?.slice(2) ?? [])");
+  b "exit"
+    (fun a -> Printf.sprintf "__as_process().exit(%s)" (arg 0 a));
+  b "bun_env_get"
+    (fun a ->
+      Printf.sprintf
+        "((__v) => __v === undefined ? None : Some(__v))(__as_process().env[%s])"
+        (arg 0 a));
+  b "bun_run"
+    (fun a ->
+      Printf.sprintf
+        "(__as_childProcess().spawnSync(%s, %s, { stdio: \"inherit\" }).status ?? 1)"
+        (arg 0 a) (arg 1 a));
+  b "bun_stdin_text"
+    (fun _ -> "__as_fs().readFileSync(0, \"utf8\")");
+  b "bun_stdout_write"
+    (fun a -> Printf.sprintf "(__as_process().stdout.write(String(%s)), 0)" (arg 0 a));
+  b "bun_stderr_write"
+    (fun a -> Printf.sprintf "(__as_process().stderr.write(String(%s)), 0)" (arg 0 a));
+  b "bun_exit"
+    (fun a -> Printf.sprintf "__as_process().exit(%s)" (arg 0 a))
+
+let builtins_for ctx =
+  match ctx.host with Deno -> deno_builtins | Bun -> bun_builtins
+
 let int_returning_builtins =
   [ "len"; "string_find"; "string_char_code_at"; "char_to_int";
     "string_length" ]
@@ -1049,15 +1183,21 @@ let rec gen_expr ctx (expr : expr) : string =
               inside the [async] method bodies we emit). *)
            "(await " ^ recv ^ "." ^ m ^ "(" ^ String.concat ", " rest ^ "))"
        | ExprVar id
-         when Hashtbl.mem deno_builtins id.name
+         when Hashtbl.mem (builtins_for ctx) id.name
               && not (Hashtbl.mem ctx.local_fns id.name) ->
            (* Honest host/runtime intrinsic (FS/JSON/Date/Wasm extern or
               a string/number primitive underpinning stdlib/string.affine).
               Applied to ANY matching call head, not only declared externs,
               so AffineScript-level stdlib compiled here resolves — but a
               same-named user definition shadows it (e.g. a user `len`). *)
-           (Hashtbl.find deno_builtins id.name) (List.map (gen_expr ctx) args)
+           (Hashtbl.find (builtins_for ctx) id.name)
+             (List.map (gen_expr ctx) args)
        | ExprVar id when Hashtbl.mem ctx.externs id.name ->
+           if ctx.host = Bun && String.starts_with ~prefix:"bun_" id.name then
+             failwith
+               (Printf.sprintf
+                  "unsupported Bun host operation `%s`: add an explicit lowering before using it"
+                  id.name);
            (* Declared extern with no intrinsic lowering: assume a
               same-named host symbol is in scope. *)
            let arg_strs = List.map (gen_expr ctx) args in
@@ -1182,15 +1322,15 @@ let rec gen_expr ctx (expr : expr) : string =
          unaffected — they lower via `async function` (fd_is_async), not
          via `handle` expressions. *)
       failwith
-        "effect handler (handle { ... }) is not supported by the Deno-ESM \
+        "effect handler (handle { ... }) is not supported by the direct ESM \
          backend — handler arms cannot be dispatched (Refs #555); \
          use `--interp` / `-i`"
   | ExprResume _ ->
       failwith
-        "`resume` is not supported by the Deno-ESM backend — only valid \
+        "`resume` is not supported by the direct ESM backend — only valid \
          inside a `handle` block (Refs #555); use `--interp` / `-i`"
   | ExprUnsafe _ ->
-      iife ctx "throw new Error('unsafe op not supported in Deno-ESM backend');"
+      iife ctx "throw new Error('unsafe op not supported in direct ESM backend');"
 
 and gen_literal (lit : literal) : string =
   match lit with
@@ -1719,8 +1859,8 @@ let gen_type_decl ctx (td : type_decl) : unit =
          a bare struct/alias/extern type carries no runtime value. *)
       emit_line ctx (Printf.sprintf "// type %s" td.td_name.name)
 
-let generate (program : program) (symbols : Symbol.t) : string =
-  let ctx = create_ctx symbols in
+let generate (host : host_profile) (program : program) (symbols : Symbol.t) : string =
+  let ctx = create_ctx host symbols in
   (* Register extern names so calls lower via the builtin table, and
      user-defined top-level names so they shadow host intrinsics. *)
   List.iter (function
@@ -1751,9 +1891,13 @@ let generate (program : program) (symbols : Symbol.t) : string =
           | ImplType _ -> ()) ib.ib_items
     | _ -> ()) program.prog_decls;
 
-  emit_line ctx "// Generated by AffineScript compiler (Deno-ESM target, issue #122)";
+  emit_line ctx
+    (match host with
+     | Deno -> "// Generated by AffineScript compiler (Deno-ESM target, issue #122)"
+     | Bun -> "// Generated by AffineScript compiler (Bun-ESM target, issue #734)");
   emit_line ctx "// SPDX-License-Identifier: MPL-2.0";
-  emit ctx prelude;
+  emit ctx (match host with Deno -> deno_host_prelude | Bun -> bun_host_prelude);
+  emit ctx common_prelude;
 
   (* Collect structs. AffineScript's grammar accepts neither inherent
      [impl Type {}] nor a [self] expression (SELF_KW has no expression
@@ -1854,7 +1998,14 @@ let generate (program : program) (symbols : Symbol.t) : string =
 
 let codegen_deno (program : program) (symbols : Symbol.t)
   : (string, string) result =
-  try Ok (generate program symbols)
+  try Ok (generate Deno program symbols)
   with
   | Failure msg -> Error ("Deno-ESM codegen error: " ^ msg)
   | e           -> Error ("Deno-ESM codegen error: " ^ Printexc.to_string e)
+
+let codegen_bun (program : program) (symbols : Symbol.t)
+  : (string, string) result =
+  try Ok (generate Bun program symbols)
+  with
+  | Failure msg -> Error ("Bun-ESM codegen error: " ^ msg)
+  | e           -> Error ("Bun-ESM codegen error: " ^ Printexc.to_string e)

@@ -195,6 +195,16 @@ Producer-side; target spec is the separate `hyperpolymath/typed-wasm` repo.
 |Deno-ESM |works |Direct AST→ES-module transpiler (`lib/codegen_deno.ml`),
 `--deno-esm` / `.deno.js`. Shipped + consumer-verified (ubicity).
 
+|Bun-ESM |works |Host-profiled direct AST→ES-module transpiler,
+`--bun-esm` / `.bun.js`. Public declarations remain importable ESM; filesystem,
+argument, and process operations lower through Bun's synchronous
+Node-compatibility surface. Host operations are resolved lazily so a generated
+module that only uses browser-provided externs remains browser-importable. CI
+compiles, checks for legacy-runtime leakage, parses, and executes filesystem,
+byte, argument, export, and missing-path controls under Bun.
+Migration and host-contract details:
+link:guides/bun-esm-migration.adoc[guides/bun-esm-migration.adoc].
+
 |Node-CJS |works |`lib/codegen_node.ml`; CJS shim, handle table, the
 `.affine` VS Code extension compiles through it. Live-host smoke
 harness for the compiled extension landed via PR #317 / issue #139:
@@ -250,6 +260,7 @@ test is deleted or renamed without this section (and CI) noticing.
 |typed-wasm isolation |`test/test_tw_isolation.ml`
 |Codegen (golden snapshots) |`test/test_golden.ml`
 |Deno / JS host backends |`test/test_deno_builtins_consistency.ml`, `test/test_int_div_js.ml`
+|Bun-ESM host backend |`tools/run_codegen_bun_tests.sh`
 |Solo core (executable metatheory) |`test/test_solo_cesk.ml`
 |===
 

@@ -1,0 +1,27 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell
+//
+// Explicit host operations for the native `--bun-esm` profile. The `bun_`
+// prefix is capability-bearing: an unknown prefixed extern is rejected by the
+// compiler instead of silently becoming a same-named JavaScript call.
+
+module Bun;
+
+use prelude::{Option};
+
+/// Read an environment variable without conflating absence with an empty value.
+pub extern fn bun_env_get(name: String) -> Option<String>;
+
+/// Run a child process synchronously, inherit its standard streams, and return
+/// its exit status (or 1 when the host supplies no status).
+pub extern fn bun_run(command: String, arguments: [String]) -> Int;
+
+/// Read standard input to EOF as UTF-8.
+pub extern fn bun_stdin_text() -> String;
+
+/// Write without adding a newline. Both operations return 0.
+pub extern fn bun_stdout_write(value: String) -> Int;
+pub extern fn bun_stderr_write(value: String) -> Int;
+
+/// Terminate with the supplied status. This function does not return.
+pub extern fn bun_exit(status: Int) -> Unit;

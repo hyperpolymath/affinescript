@@ -15,8 +15,8 @@
 #
 # Checks:
 #   1. The matrix exists and carries a "== Test anchors" section.
-#   2. Every test/*.ml and test/e2e/fixtures/*.affine path named anywhere in the
-#      matrix actually exists on disk.
+#   2. Every test/*.ml, test/e2e/fixtures/*.affine, and tools/*.sh path named
+#      anywhere in the matrix actually exists on disk.
 #
 # Usage:  ./tools/check-capability-anchors.sh
 # Wired into:  just check (via the `guard` recipe) and CI (.github/workflows/ci.yml).
@@ -56,7 +56,7 @@ while IFS= read -r path; do
     fi
     note "         - $path"
   fi
-done < <(grep -oE 'test/[A-Za-z0-9_./-]+\.(ml|affine)' "$MATRIX" | LC_ALL=C sort -u)
+done < <(grep -oE '(test/[A-Za-z0-9_./-]+\.(ml|affine)|tools/[A-Za-z0-9_./-]+\.sh)' "$MATRIX" | LC_ALL=C sort -u)
 if [ "$missing" -eq 1 ]; then
   note "       Either restore the test or update the matrix to its new anchor"
   note "       in the same change. A renamed/deleted test must not leave a"
