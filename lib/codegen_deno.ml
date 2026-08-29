@@ -153,11 +153,6 @@ let fd_is_async (fd : fn_decl) : bool =
    ============================================================================ *)
 
 let deno_host_prelude = {|// ---- AffineScript Deno-ESM runtime ----
-const Some = (value) => ({ tag: "Some", value });
-const None = { tag: "None" };
-const Ok   = (value) => ({ tag: "Ok",  value });
-const Err  = (error) => ({ tag: "Err", error });
-const Unit = null;
 const print   = (s) => { Deno.stdout.writeSync(new TextEncoder().encode(String(s))); };
 const println = (s) => { console.log(String(s)); };
 // ---- Deno host shims (extern fn lowering targets, issue #122) ----
@@ -185,7 +180,7 @@ const __as_walkRecursive = (root) => {
   const out = [];
   const rec = (dir) => {
     for (const entry of Deno.readDirSync(dir)) {
-      const full = (dir.endsWith("/") ? dir : dir + "/") + entry.name;
+      const full = __as_pathJoin(dir, entry.name);
       if (entry.isFile) out.push(full);
       else if (entry.isDirectory) rec(full);
     }
@@ -196,11 +191,6 @@ const __as_walkRecursive = (root) => {
 |}
 
 let bun_host_prelude = {|// ---- AffineScript Bun-ESM runtime ----
-const Some = (value) => ({ tag: "Some", value });
-const None = { tag: "None" };
-const Ok   = (value) => ({ tag: "Ok",  value });
-const Err  = (error) => ({ tag: "Err", error });
-const Unit = null;
 const print = (s) => {
   const stdout = globalThis.process?.stdout;
   if (stdout) stdout.write(String(s)); else console.log(String(s));
@@ -225,12 +215,13 @@ const __as_childProcess = () => {
   if (!getBuiltinModule) throw new Error("Bun subprocess host is unavailable");
   return getBuiltinModule("node:child_process");
 };
-const __as_ensureDir = (p) => { __as_fs().mkdirSync(p, { recursive: true }); };
-const __as_pathJoin = (a, b) => {
-  if (a.length === 0) return b;
-  const sep = a.endsWith("/") || a.endsWith("\\") ? "" : "/";
-  return a + sep + b;
+const __as_path = () => {
+  const getBuiltinModule = globalThis.process?.getBuiltinModule;
+  if (!getBuiltinModule) throw new Error("Bun path host is unavailable");
+  return getBuiltinModule("node:path");
 };
+const __as_ensureDir = (p) => { __as_fs().mkdirSync(p, { recursive: true }); };
+const __as_pathJoin = (a, b) => __as_path().join(a, b);
 const __as_readDirNames = (p) => {
   const names = [];
   for (const entry of __as_fs().readdirSync(p, { withFileTypes: true })) {
@@ -243,7 +234,7 @@ const __as_walkRecursive = (root) => {
   const out = [];
   const rec = (dir) => {
     for (const entry of __as_fs().readdirSync(dir, { withFileTypes: true })) {
-      const full = (dir.endsWith("/") ? dir : dir + "/") + entry.name;
+      const full = __as_pathJoin(dir, entry.name);
       if (entry.isFile()) out.push(full);
       else if (entry.isDirectory()) rec(full);
     }
@@ -254,6 +245,11 @@ const __as_walkRecursive = (root) => {
 |}
 
 let common_prelude = {|
+const Some = (value) => ({ tag: "Some", value });
+const None = { tag: "None" };
+const Ok   = (value) => ({ tag: "Ok",  value });
+const Err  = (error) => ({ tag: "Err", error });
+const Unit = null;
 const __as_regexMatch = (s, pat) => new RegExp(pat).test(String(s));
 const __as_wasmInstance = (bytes) =>
   new WebAssembly.Instance(new WebAssembly.Module(bytes),
