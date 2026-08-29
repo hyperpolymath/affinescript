@@ -557,7 +557,7 @@ let compile_file face json wasm_gc vscode_ext vscode_adapter vscode_no_lc
                       message = msg;
                       span = Affinescript.Span.dummy; help = None; labels = [] }
               | Ok esm_code ->
-                let oc = open_out output in
+                let oc = open_out_bin output in
                 output_string oc esm_code;
                 close_out oc
             end else if is_deno then begin
@@ -567,7 +567,7 @@ let compile_file face json wasm_gc vscode_ext vscode_adapter vscode_no_lc
                       message = Printf.sprintf "Deno-ESM codegen error: %s" msg;
                       span = Affinescript.Span.dummy; help = None; labels = [] }
               | Ok esm_code ->
-                let oc = open_out output in
+                let oc = open_out_bin output in
                 output_string oc esm_code;
                 close_out oc
             end else if is_julia then begin
@@ -801,7 +801,7 @@ let compile_file face json wasm_gc vscode_ext vscode_adapter vscode_no_lc
                 Format.eprintf "@[<v>%s@]@." e;
                 `Error (false, "Bun-ESM codegen error")
               | Ok esm_code ->
-                let oc = open_out output in
+                let oc = open_out_bin output in
                 output_string oc esm_code;
                 close_out oc;
                 Format.printf "Compiled %s -> %s (Bun-ESM)@." path output;
