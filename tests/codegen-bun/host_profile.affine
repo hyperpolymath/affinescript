@@ -1,0 +1,51 @@
+// SPDX-License-Identifier: MPL-2.0
+// Bun-ESM host-profile acceptance fixture (issue #734).
+
+use Bun::{ bun_env_get, bun_run, bun_stdin_text, bun_stdout_write, bun_stderr_write, bun_exit };
+use prelude::{Some, None};
+
+extern type Bytes;
+extern fn writeTextFile(path: String, content: String) -> Int;
+extern fn readTextFile(path: String) -> String;
+extern fn readFileBytes(path: String) -> Bytes;
+extern fn removePath(path: String) -> Int;
+extern fn mkdirRecursive(path: String) -> Int;
+extern fn statSize(path: String) -> Int;
+extern fn statIsFile(path: String) -> Bool;
+extern fn statIsDirectory(path: String) -> Bool;
+extern fn bytesLength(value: Bytes) -> Int;
+extern fn bytesByteAt(value: Bytes, offset: Int) -> Int;
+extern fn args() -> [String];
+
+pub fn write_text(path: String, content: String) -> Int {
+  writeTextFile(path, content)
+}
+
+pub fn read_text(path: String) -> String { readTextFile(path) }
+pub fn remove_path(path: String) -> Int { removePath(path) }
+pub fn make_directory(path: String) -> Int { mkdirRecursive(path) }
+pub fn file_size(path: String) -> Int { statSize(path) }
+pub fn is_file(path: String) -> Bool { statIsFile(path) }
+pub fn is_directory(path: String) -> Bool { statIsDirectory(path) }
+pub fn argument_count() -> Int { len(args()) }
+
+pub fn environment_value(name: String) -> String {
+  match bun_env_get(name) {
+    Some(value) => value,
+    None => ""
+  }
+}
+
+pub fn run_successful_child() -> Int {
+  bun_run("bun", ["-e", "process.exit(0)"])
+}
+
+pub fn read_standard_input() -> String { bun_stdin_text() }
+pub fn write_standard_output(value: String) -> Int { bun_stdout_write(value) }
+pub fn write_standard_error(value: String) -> Int { bun_stderr_write(value) }
+pub fn exit_with(status: Int) -> Unit { bun_exit(status) }
+
+pub fn first_byte(path: String) -> Int {
+  let value = readFileBytes(path);
+  if bytesLength(value) == 0 { 0 } else { bytesByteAt(value, 0) }
+}

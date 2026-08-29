@@ -41,12 +41,13 @@ const __as_walkRecursive = (root) => {
   rec(root);
   return out;
 };
+
 const __as_regexMatch = (s, pat) => new RegExp(pat).test(String(s));
 const __as_wasmInstance = (bytes) =>
   new WebAssembly.Instance(new WebAssembly.Module(bytes),
     { wasi_snapshot_preview1: { fd_write: () => 0 } }).exports;
 const __as_wasmCall = (exports, name, args) => Number(exports[name](...(args || [])));
-// ---- WasmValue (Deno.affine #455 — Tier 1 #5, Option B) ----
+// ---- WasmValue host bindings (#455 — Tier 1 #5, Option B) ----
 // Opaque tagged value crossing the AS/JS boundary as `{ kind, v }`.
 // `kind` is one of "i32" | "i64" | "f32" | "f64". The `v` payload is
 // `BigInt` for i64 (preserves precision beyond 2^53), `Number` otherwise.
@@ -196,7 +197,7 @@ const __as_pixiSoundSetVolume = (s, vol) => { s.volume = vol; return 0; };
 const __as_pixiSoundSetLoop = (s, loop) => { s.loop = loop; return 0; };
 // ---- Ipc (bindings #9): web-platform MessageChannel/MessagePort ----
 // Uses standard web globals (MessageChannel, structuredClone) — no
-// consumer-side init required. Available unmodified in Deno, Node 16+,
+// consumer-side init required. Available unmodified in modern JS runtimes,
 // browsers, and Web Workers.
 const __as_messageChannelNew = () => new MessageChannel();
 const __as_messageChannelPort1 = (ch) => ch.port1;
@@ -210,7 +211,7 @@ const __as_structuredCloneValue = (v) => structuredClone(v);
 // ---- Canvas (bindings #8): HTML5 Canvas 2D rendering context ----
 // `canvas` arg is the consumer-supplied HTMLCanvasElement; helpers
 // dispatch directly to the standard CanvasRenderingContext2D
-// methods. Available unmodified in browsers, jsdom-under-Deno,
+// methods. Available unmodified in browsers and jsdom,
 // idaptik's WebView host, and any DOM emulator.
 const __as_canvasGetContext2D = (canvas) => canvas.getContext("2d");
 const __as_canvasFillStyle = (ctx, color) => { ctx.fillStyle = color; return 0; };
@@ -279,7 +280,7 @@ const __as_httpHeadersFromResponse = (res) => {
   return out;
 };
 // ---- hpm-json-rsr Zig FFI shims (stdlib/json.affine v0.3) ----
-// `HpmJsonValue` is opaque to AffineScript; on Deno-ESM it's just the
+// `HpmJsonValue` is opaque to AffineScript; on direct ESM it's just the
 // underlying JS value from JSON.parse. The shims mirror the sentinel
 // conventions of the Zig exports so the AffineScript-side wrappers
 // (`to_json`, `parse`) behave identically across backends.
@@ -332,7 +333,7 @@ const __as_hpmJsonEscapeString = (s) => {
 // ---- Sqlite (db-theory #1a / stdlib/Sqlite.affine): SQL via host adapter ----
 // Host JS environment must expose globalThis.__as_sqlite, a namespace
 // implementing the small adapter contract below. Consumers init once
-// (Deno):
+// (host runtime):
 //   import * as s from "jsr:@db/sqlite";
 //   globalThis.__as_sqlite = {
 //     open: (p) => new s.Database(p),
@@ -397,9 +398,7 @@ const __as_dbFinalize     = (s) => { globalThis.__as_sqlite.finalize(s); return 
 // ---- Sqlite schema introspection + bulk I/O + error inspection (db-theory #1c) ----
 // Five more adapter methods (`schemaTables`, `schemaColumns`,
 // `tableExists`, `importCsv`, `exportCsv`, `lastError`); each
-// real-world adapter (jsr:@db/sqlite, better-sqlite3) backs them with
-// a one-liner over `PRAGMA table_info` / a `Database.prepare()`
-// iterator / a `fs.writeFileSync(..., csv)` call.
+// real-world adapter backs them with a small query or file operation.
 const __as_dbSchemaTables  = (h) => String(globalThis.__as_sqlite.schemaTables(h));
 const __as_dbSchemaColumns = (h, table) => String(globalThis.__as_sqlite.schemaColumns(h, table));
 const __as_dbTableExists   = (h, table) => Boolean(globalThis.__as_sqlite.tableExists(h, table));
