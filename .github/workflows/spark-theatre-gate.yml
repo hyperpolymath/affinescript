@@ -26,7 +26,7 @@ permissions:
 # 2026-05-28. See hypatia#376 BP008 for the class-level detector.
 jobs:
   spark-theatre-gate:
-    uses: hyperpolymath/standards/.github/workflows/spark-theatre-gate.yml@84355587cb2a1f86e6882de83514a32db2646e7a
+    uses: hyperpolymath/standards/.github/workflows/spark-theatre-gate.yml@571cc734cd69fb846032ec77a662aa8ee4fc32cd
     with:
       paths: "."
       enforce_zero_contract: false
