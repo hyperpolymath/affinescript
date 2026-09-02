@@ -3,13 +3,6 @@
 # Docs: https://gh.io/actions-lockfile
 version: 'v0.0.2'
 workflows:
-    '.github/workflows/governance-baseline.yml': []
-    '.github/workflows/hypatia-scan.yml': []
-    '.github/workflows/label-triage.yml': []
-    '.github/workflows/labels.yml': []
-    '.github/workflows/mirror.yml': []
-    '.github/workflows/scorecard.yml': []
-    '.github/workflows/spark-theatre-gate.yml': []
     '.github/workflows/affine-vscode-publish.yml':
         - 'actions/checkout@v7.0.1'
     '.github/workflows/casket-pages.yml':
@@ -25,15 +18,20 @@ workflows:
         - 'actions/upload-artifact@v7.0.1'
     '.github/workflows/codeql.yml':
         - 'actions/checkout@v7.0.1'
-        - 'github/codeql-action@v4.37.7'
+        - 'github/codeql-action@v4.37.9'
     '.github/workflows/coq-proof-gate.yml':
         - 'actions/checkout@v7.0.1'
     '.github/workflows/governance-baseline-impl.yml':
         - 'actions/checkout@v7.0.1'
+    '.github/workflows/governance-baseline.yml': []
     '.github/workflows/governance.yml':
         - 'actions/checkout@v7.0.1'
+    '.github/workflows/hypatia-scan.yml': []
     '.github/workflows/instant-sync.yml':
         - 'peter-evans/repository-dispatch@v4.0.1'
+    '.github/workflows/label-triage.yml': []
+    '.github/workflows/labels.yml': []
+    '.github/workflows/mirror.yml': []
     '.github/workflows/pages.yml':
         - 'actions/checkout@v7.0.1'
         - 'actions/deploy-pages@v5.0.0'
@@ -46,16 +44,18 @@ workflows:
         - 'actions/checkout@v7.0.1'
         - 'denoland/setup-deno@v2.0.5'
     '.github/workflows/push-email-notify.yml':
-        - 'dawidd6/action-send-mail@v3.12.0'
+        - 'hyperpolymath/smtp-notify-action@v0.1.0'
     '.github/workflows/release.yml':
         - 'actions/attest-build-provenance@v4.2.2'
         - 'actions/checkout@v7.0.1'
-        - 'ocaml/setup-ocaml@v3.7.1'
+        - 'ocaml/setup-ocaml@v3.7.2'
+    '.github/workflows/scorecard.yml': []
     '.github/workflows/secret-scanner.yml':
         - 'actions/checkout@v7.0.1'
     '.github/workflows/semgrep.yml':
         - 'actions/checkout@v7.0.1'
-        - 'github/codeql-action@v4.37.7'
+        - 'github/codeql-action@v4.37.9'
+    '.github/workflows/spark-theatre-gate.yml': []
     '.github/workflows/stdlib-naming.yml':
         - 'actions/checkout@v7.0.1'
     '.github/workflows/workflow-linter.yml':
@@ -115,11 +115,6 @@ dependencies:
         repo_id: 496012378
         uses:
             - 'actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f'
-    'dawidd6/action-send-mail@v3.12.0':
-        ref: 'v3.12.0'
-        commit: 'sha1-94de994a9f6fffee200243214e17002e2920bb59'
-        owner_id: 9713907
-        repo_id: 222439721
     'denoland/setup-deno@v2.0.5':
         ref: 'v2.0.5'
         commit: 'sha1-22d081ff2d3a40755e97629de92e3bcbfa7cf2ed'
@@ -130,9 +125,9 @@ dependencies:
         commit: 'sha1-2c7215f132e9ebf062739d9130488b56d53c060c'
         owner_id: 1940490
         repo_id: 260749683
-    'github/codeql-action@v4.37.7':
-        ref: 'v4.37.7'
-        commit: 'sha1-ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd'
+    'github/codeql-action@v4.37.9':
+        ref: 'v4.37.9'
+        commit: 'sha1-cdf488f595d80d6e07e03d4674febd5ab45fa938'
         owner_id: 9919
         repo_id: 259445878
     'haskell-actions/setup@v2.12.0':
@@ -140,9 +135,14 @@ dependencies:
         commit: 'sha1-6037f33647c3f17758a2356c80fc4a53d7e0685d'
         owner_id: 75048950
         repo_id: 623796603
-    'ocaml/setup-ocaml@v3.7.1':
-        ref: 'v3.7.1'
-        commit: 'sha1-605a7e998e76e035b82c14d618a6e1010732c4ce'
+    'hyperpolymath/smtp-notify-action@v0.1.0':
+        ref: 'v0.1.0'
+        commit: 'sha1-1b3b752d39a4fe4c0f28f10905e4608789d3e050'
+        owner_id: 6759885
+        repo_id: 1352485172
+    'ocaml/setup-ocaml@v3.7.2':
+        ref: 'v3.7.2'
+        commit: 'sha1-f92e0606b7ae4873dd1238465ea4bf6f8e40d85c'
         owner_id: 1841483
         repo_id: 220799100
     'peter-evans/repository-dispatch@v4.0.1':
