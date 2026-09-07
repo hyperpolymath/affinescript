@@ -3,10 +3,16 @@
 
 (** End-to-end tests for the tree-sitter walker (#57 Phase 2b).
 
-    These tests shell out to the [tree-sitter] CLI; they are
-    automatically skipped when the CLI is not on PATH so a fresh
-    clone can still run [dune runtest] without bootstrapping the
-    grammar. CI installs tree-sitter and runs them as a gate.
+    These tests shell out to the [tree-sitter] CLI. They FAIL -- they do
+    not skip -- when the CLI or the generated grammar is absent.
+
+    A skip here was a fake green: [Alcotest.skip] on every case makes
+    alcotest print "Test Successful ... 0 test run" and exit 0, so the
+    suite was green precisely when it tested nothing. [src/parser.c] is
+    gitignored, so every fresh checkout hit that path. That is how the
+    deletion of this suite's own fixtures (f766dcb) went unnoticed for
+    three weeks. Owner ruling 2026-09-07: no environment may silently
+    run zero tests.
 
     To run locally: install tree-sitter (`cargo install
     tree-sitter-cli`), then `just install-grammar`, then `dune
@@ -62,23 +68,23 @@ let grammar_dir () =
 let grammar_built () =
   Sys.file_exists (Filename.concat (grammar_dir ()) "src/parser.c")
 
-let skip_unless_ready () =
-  if not (tree_sitter_available ()) then begin
-    Printf.printf
-      "  [skip] tree-sitter CLI not on PATH; install via `cargo install \
-       tree-sitter-cli`@\n";
-    Alcotest.skip ()
-  end;
-  if not (grammar_built ()) then begin
-    Printf.printf
-      "  [skip] grammar not built; run `just install-grammar`@\n";
-    Alcotest.skip ()
-  end
+(* Deliberately fails rather than skips: see the header comment. *)
+let require_ready () =
+  if not (tree_sitter_available ()) then
+    Alcotest.failf
+      "tree-sitter CLI not on PATH. These tests are a gate, not an \
+       optional extra; install it with `cargo install tree-sitter-cli`."
+  ;
+  if not (grammar_built ()) then
+    Alcotest.failf
+      "tree-sitter grammar not built (%s/src/parser.c is absent). \
+       Run `just install-grammar`."
+      (grammar_dir ())
 
 let fixture = "fixtures/sample.res"
 
 let test_walker_finds_side_effect_import () =
-  skip_unless_ready ();
+  require_ready ();
   let source = read_file fixture in
   let path = Filename.concat (Sys.getcwd ()) fixture in
   let findings =
@@ -99,7 +105,7 @@ let test_walker_only_module_toplevel () =
      fixture, which has the regex-scanner-matching shape at module
      top level — the walker should match it. The negative case lives
      in Phase 2c's expanded corpus. *)
-  skip_unless_ready ();
+  require_ready ();
   let source = read_file fixture in
   let path = Filename.concat (Sys.getcwd ()) fixture in
   let findings =
@@ -135,7 +141,7 @@ let lines_for_kind findings k =
     findings
 
 let test_walker_finds_raw_js () =
-  skip_unless_ready ();
+  require_ready ();
   let findings = scan_sample () in
   (* sample.res line 11: `let host = %raw(`globalThis.location.host`)`. *)
   Alcotest.(check (list int))
@@ -143,7 +149,7 @@ let test_walker_finds_raw_js () =
     [11] (lines_for_kind findings Scanner.Raw_js)
 
 let test_walker_finds_mutable_global () =
-  skip_unless_ready ();
+  require_ready ();
   let findings = scan_sample () in
   let got = lines_for_kind findings Scanner.Mutable_global in
   (* sample.res line 14: `let currentUser = ref(None)` — top-level
@@ -154,7 +160,7 @@ let test_walker_finds_mutable_global () =
     true (List.mem 14 got && List.mem 15 got)
 
 let test_walker_finds_untyped_exception () =
-  skip_unless_ready ();
+  require_ready ();
   let findings = scan_sample () in
   let got = lines_for_kind findings Scanner.Untyped_exception in
   (* sample.res has untyped-exception flavours at: line 19 (`try {`),
@@ -174,7 +180,7 @@ let test_walker_finds_untyped_exception () =
 let phase2c_fixture = "fixtures/phase2c.res"
 
 let test_walker_finds_inline_callback_record () =
-  skip_unless_ready ();
+  require_ready ();
   let source = read_file phase2c_fixture in
   let path = Filename.concat (Sys.getcwd ()) phase2c_fixture in
   let findings =
@@ -186,7 +192,7 @@ let test_walker_finds_inline_callback_record () =
     true (got <> [])
 
 let test_walker_finds_oversized_function () =
-  skip_unless_ready ();
+  require_ready ();
   let source = read_file phase2c_fixture in
   let path = Filename.concat (Sys.getcwd ()) phase2c_fixture in
   let findings =
@@ -224,7 +230,7 @@ let translate_phase3_blob () =
   String.concat "\n" (List.map snd (translate_phase3 ()))
 
 let test_translate_count () =
-  skip_unless_ready ();
+  require_ready ();
   (* userId, color, shape, and (slice 2) the generic box — 4. theirMap
      (qualified) and the let/switch stay skipped. *)
   Alcotest.(check int)
@@ -232,20 +238,20 @@ let test_translate_count () =
     4 (List.length (translate_phase3 ()))
 
 let test_translate_generic_sum () =
-  skip_unless_ready ();
+  require_ready ();
   let blob = translate_phase3_blob () in
   Alcotest.(check bool)
     "generic sum -> type Box[A] = | Box(A)"
     true (contains blob "type Box[A] =" && contains blob "| Box(A)")
 
 let test_translate_alias () =
-  skip_unless_ready ();
+  require_ready ();
   Alcotest.(check bool)
     "primitive alias -> capitalised TyCon + Int"
     true (contains (translate_phase3_blob ()) "type UserId = Int")
 
 let test_translate_nullary_sum () =
-  skip_unless_ready ();
+  require_ready ();
   let blob = translate_phase3_blob () in
   let ok =
     contains blob "type Color =" && contains blob "| Red"
@@ -254,7 +260,7 @@ let test_translate_nullary_sum () =
   Alcotest.(check bool) "nullary sum -> leading-pipe variant form" true ok
 
 let test_translate_payload_sum () =
-  skip_unless_ready ();
+  require_ready ();
   let blob = translate_phase3_blob () in
   let ok =
     contains blob "type Shape =" && contains blob "| Circle(Float)"
@@ -263,7 +269,7 @@ let test_translate_payload_sum () =
   Alcotest.(check bool) "primitive-payload sum -> mapped param types" true ok
 
 let test_translate_skips_non_structural () =
-  skip_unless_ready ();
+  require_ready ();
   let blob = translate_phase3_blob () in
   (* the qualified Belt.Map.t and the let/switch must stay absent — the tool
      never guesses them; and no raw ReScript type-var ['a] leaks through. *)
@@ -291,14 +297,14 @@ let translate_phase3b_blob () =
   String.concat "\n" (List.map snd (translate_phase3b ()))
 
 let test_translate_b_count () =
-  skip_unless_ready ();
+  require_ready ();
   (* point, box, id translate; counter (mutable) and config (optional) skip. *)
   Alcotest.(check int)
     "three of five record/generic decls translate"
     3 (List.length (translate_phase3b ()))
 
 let test_translate_record () =
-  skip_unless_ready ();
+  require_ready ();
   let blob = translate_phase3b_blob () in
   let ok =
     contains blob "struct Point {" && contains blob "x: Int"
@@ -307,19 +313,19 @@ let test_translate_record () =
   Alcotest.(check bool) "record -> struct with mapped field types" true ok
 
 let test_translate_generic_record () =
-  skip_unless_ready ();
+  require_ready ();
   let blob = translate_phase3b_blob () in
   let ok = contains blob "struct Box[A] {" && contains blob "value: A" in
   Alcotest.(check bool) "generic record -> struct with type params" true ok
 
 let test_translate_generic_alias () =
-  skip_unless_ready ();
+  require_ready ();
   Alcotest.(check bool)
     "generic alias -> type Id[A] = A"
     true (contains (translate_phase3b_blob ()) "type Id[A] = A")
 
 let test_translate_b_skips () =
-  skip_unless_ready ();
+  require_ready ();
   let blob = translate_phase3b_blob () in
   (* mutable + optional records must be skipped, never silently flattened. *)
   let leaked =
@@ -345,14 +351,14 @@ let translate_phase3c_blob () =
   String.concat "\n" (List.map snd (translate_phase3c ()))
 
 let test_translate_c_count () =
-  skip_unless_ready ();
+  require_ready ();
   (* answer, pi, greeting, enabled, disabled -> 5; now/counter/(a,b) skip. *)
   Alcotest.(check int)
     "five literal let-bindings translate to const"
     5 (List.length (translate_phase3c ()))
 
 let test_translate_const_int_float () =
-  skip_unless_ready ();
+  require_ready ();
   let blob = translate_phase3c_blob () in
   let ok =
     contains blob "const answer: Int = 42;"
@@ -361,7 +367,7 @@ let test_translate_const_int_float () =
   Alcotest.(check bool) "int + float literal -> typed const" true ok
 
 let test_translate_const_string_bool () =
-  skip_unless_ready ();
+  require_ready ();
   let blob = translate_phase3c_blob () in
   let ok =
     contains blob "const greeting: String = \"hi\";"
@@ -371,7 +377,7 @@ let test_translate_const_string_bool () =
   Alcotest.(check bool) "string + bool literal -> typed const" true ok
 
 let test_translate_c_skips () =
-  skip_unless_ready ();
+  require_ready ();
   let blob = translate_phase3c_blob () in
   (* call / ref / destructuring bindings must never become a const. *)
   let leaked =
@@ -399,42 +405,42 @@ let partial1_blob () =
   String.concat "\n" (List.map snd (translate_partial1 ()))
 
 let test_partial_count () =
-  skip_unless_ready ();
+  require_ready ();
   Alcotest.(check int)
     "eleven module-top-level functions -> fn skeletons"
     11 (List.length (translate_partial1 ()))
 
 let test_partial_array () =
-  skip_unless_ready ();
+  require_ready ();
   Alcotest.(check bool) "array literal translated"
     true (contains (partial1_blob ()) "[x, x]")
 
 let test_partial_record () =
-  skip_unless_ready ();
+  require_ready ();
   (* nominal placeholder type `Rec`; field punning {x} -> x: x *)
   Alcotest.(check bool) "record literal -> Rec #{ ... }"
     true (contains (partial1_blob ()) "Rec #{ x: x, y: y }")
 
 let test_partial_pipe () =
-  skip_unless_ready ();
+  require_ready ();
   let blob = partial1_blob () in
   (* x->doStuff(1) -> doStuff(x, 1); chain x->f->g(2) -> g(f(x), 2) *)
   Alcotest.(check bool) "pipe-first desugars, including left-nested chains"
     true (contains blob "doStuff(x, 1)" && contains blob "g(f(x), 2)")
 
 let test_partial_if () =
-  skip_unless_ready ();
+  require_ready ();
   Alcotest.(check bool) "if/else translated"
     true (contains (partial1_blob ()) "if x > 0 { x } else { 0 }")
 
 let test_partial_block () =
-  skip_unless_ready ();
+  require_ready ();
   let blob = partial1_blob () in
   Alcotest.(check bool) "block body with a let statement translated"
     true (contains blob "let y = x + 1" && contains blob "y * 2")
 
 let test_partial_switch_to_match () =
-  skip_unless_ready ();
+  require_ready ();
   let blob = partial1_blob () in
   let ok =
     contains blob "fn classify(x: _) -> _" && contains blob "match x {"
@@ -443,7 +449,7 @@ let test_partial_switch_to_match () =
   Alcotest.(check bool) "switch -> match with translated arms + patterns" true ok
 
 let test_partial_float_op_normalised () =
-  skip_unless_ready ();
+  require_ready ();
   let blob = partial1_blob () in
   Alcotest.(check bool) "float op normalised; multi-param skeleton"
     true
@@ -452,14 +458,14 @@ let test_partial_float_op_normalised () =
     && not (contains blob "*."))
 
 let test_partial_concat_and_call () =
-  skip_unless_ready ();
+  require_ready ();
   let blob = partial1_blob () in
   Alcotest.(check bool) "string concat + member-call translated"
     true
     (contains blob "\"hi \" ++ name" && contains blob "Js.log(msg)")
 
 let test_partial_todo_hole () =
-  skip_unless_ready ();
+  require_ready ();
   let blob = partial1_blob () in
   Alcotest.(check bool) "untranslatable form becomes a () /* TODO */ hole"
     true (contains blob "() /* TODO:")
