@@ -220,6 +220,20 @@ jobs:
           opam exec -- ocaml -version
       - name: Install dependencies
         run: opam install . --deps-only --with-test --with-doc --yes
+      - name: Set up Node.js
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: "20"
+      - name: Install tree-sitter CLI (for res-to-affine walker tests)
+        # This job runs the WHOLE `dune runtest` sweep, which includes
+        # tools/res-to-affine/test/test_walker.ml. Those tests now fail
+        # rather than skip when the CLI or generated grammar is absent,
+        # so this job needs the same grammar prerequisites as `build`.
+        # Before the skip was removed, this job was green while running
+        # zero walker tests.
+        run: npm install -g tree-sitter-cli@^0.25.0
+      - name: Build pinned tree-sitter-rescript grammar
+        run: ./editors/tree-sitter-rescript/scripts/install.sh
       - name: Run tests with bisect_ppx instrumentation
         run: |
           opam exec -- dune runtest --force --instrument-with bisect_ppx
