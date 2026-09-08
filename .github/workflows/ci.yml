@@ -71,9 +71,11 @@ jobs:
         # Same rationale as the migration-assistant job (see below):
         # npm distribution is the fast CI install (~5 s). The walker
         # end-to-end tests in tools/res-to-affine/test/test_walker.ml
-        # auto-skip if the CLI / generated grammar aren't present, so
-        # this step is only required to *exercise* the walker — the
-        # build itself does not depend on it.
+        # now FAIL rather than skip when the CLI or the generated
+        # grammar is absent, so this step is a hard prerequisite for
+        # `dune runtest` — not an optional extra that merely widens
+        # coverage. Dropping it turns the walker suite red, which is
+        # the intended behaviour: see that file's header comment.
         run: npm install -g tree-sitter-cli@^0.25.0
       - name: Build pinned tree-sitter-rescript grammar
         run: ./editors/tree-sitter-rescript/scripts/install.sh
@@ -224,6 +226,20 @@ jobs:
           opam exec -- ocaml -version
       - name: Install dependencies
         run: opam install . --deps-only --with-test --with-doc --yes
+      - name: Set up Node.js
+        uses: actions/setup-node@v7.0.0
+        with:
+          node-version: "20"
+      - name: Install tree-sitter CLI (for res-to-affine walker tests)
+        # This job runs the WHOLE `dune runtest` sweep, which includes
+        # tools/res-to-affine/test/test_walker.ml. Those tests now fail
+        # rather than skip when the CLI or generated grammar is absent,
+        # so this job needs the same grammar prerequisites as `build`.
+        # Before the skip was removed, this job was green while running
+        # zero walker tests.
+        run: npm install -g tree-sitter-cli@^0.25.0
+      - name: Build pinned tree-sitter-rescript grammar
+        run: ./editors/tree-sitter-rescript/scripts/install.sh
       - name: Run tests with bisect_ppx instrumentation
         run: |
           opam exec -- dune runtest --force --instrument-with bisect_ppx
