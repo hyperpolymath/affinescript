@@ -9,7 +9,6 @@ Thumbs.db
 *~
 .idea/
 .vscode/
-
 # Build
 target/
 /_build/
@@ -21,36 +20,29 @@ target/
 *.install
 # Idris2 build artifacts (nested, e.g. under formal-verification dirs)
 **/solo-core/build/
-
 # Dependencies
 /node_modules/
 /vendor/
 /deps/
 /.elixir_ls/
-
 # Rust
 # Cargo.lock  # Keep for binaries
-
 # Elixir
 /cover/
 /doc/
 *.ez
 erl_crash.dump
-
 # Julia
 *.jl.cov
 *.jl.mem
 /Manifest.toml
-
 # ReScript
 /lib/bs/
 /.bsb.lock
-
 # Python (SaltStack only)
 __pycache__/
 *.py[cod]
 .venv/
-
 # Ada/SPARK
 *.ali
 /obj/
@@ -62,41 +54,33 @@ __pycache__/
 /bin/*
 !bin/*.ml
 !bin/dune
-
 # Haskell
 /.stack-work/
 /dist-newstyle/
-
 # Chapel
 *.chpl.tmp.*
-
 # Secrets
 .env
 .env.*
 *.pem
 *.key
 secrets/
-
 # Test/Coverage
 /coverage/
 htmlcov/
 /_coverage/
 bisect*.coverage
-
 # Benchmark archives (visibility-only output, see docs/standards/TESTING.adoc)
 /bench-runs/
-
 # Logs
 *.log
 /logs/
-
 # Temp
 /tmp/
 *.tmp
 *.bak
 *.wasm
 /a.out
-
 # issue #122: generated Deno-ESM regression outputs (compiled from the
 # committed *.affine fixtures by tools/run_codegen_deno_tests.sh).
 /tests/codegen-deno/*.deno.js
@@ -104,12 +88,34 @@ bisect*.coverage
 /dune-workspace
 packages/affinescript-cli/deno.lock
 packages/affine-js/deno.lock
-
 # ADR-015 S3: fetch-pinned WASI adapter (provisioned, not committed)
 tools/vendor/
-
 # Claude Code agent worktrees — transient per-agent git worktrees,
 # never committed (committing a nested worktree would corrupt the repo).
 /.claude/worktrees/
-
 .editorconfig
+# Build (unanchored to match nested monorepo paths)
+_build/
+zig-out/
+zig-cache/
+.zig-cache/
+/bin/
+# Machine-readable locks
+.machine_readable/.locks/
+# ReScript/OCaml compiler artifacts
+*.cmt
+*.cmti
+*.cmi
+# asdf version manager
+.tool-versions
+# Rust build artefacts (innervation tools)
+inline-annotations/extractor/target/
+k9-coordination-protocol/tools/k9-init/target/
+hooks/playbook-to-recipe/target/
+inline-annotations/extractor/Cargo.lock
+k9-coordination-protocol/tools/k9-init/Cargo.lock
+hooks/playbook-to-recipe/Cargo.lock
+.verisimdb/ecosystem-ingest/target/
+.verisimdb/ecosystem-ingest/Cargo.lock
+# Backup/scratch files (never commit)
+*.backup
