@@ -35,7 +35,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Create the release as a draft (idempotent)
         # Immutable releases (enabled on this repo) forbid adding assets to a
         # *published* release — the v0.2.0 build legs hit "HTTP 422: Cannot
@@ -72,9 +72,9 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Set up OCaml
-        uses: ocaml/setup-ocaml@v3.7.1
+        uses: ocaml/setup-ocaml@605a7e998e76e035b82c14d618a6e1010732c4ce # v3.7.1
         with:
           ocaml-compiler: "5.1"
       - name: Install dependencies
@@ -105,7 +105,7 @@ jobs:
           install -m 0755 _build/default/bin/main.exe \
             "affinescript-${{ matrix.target }}"
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v4.2.2
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: 'affinescript-${{ matrix.target }}'
       - name: Upload the binary to the release
