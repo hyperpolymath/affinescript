@@ -8,7 +8,7 @@ This guide helps you navigate the AffineScript repository structure.
 == Start here — by audience
 
 * *New users* — link:tutorial/lesson-01-hello.adoc[tutorial (lessons 1–10)], link:guides/warmup/[runnable warm-ups], link:../wiki/language-reference/[language reference].
-* *Developers / contributors* — this guide, link:../wiki/compiler/architecture.md[compiler architecture], link:decisions/[ADRs], link:governance/CONTRIBUTING.adoc[contributing].
+* *Developers / contributors* — this guide, link:../wiki/compiler/architecture.md[compiler architecture], link:decisions/[ADRs], link:governance/../.github/CONTRIBUTING.md[contributing].
 * *Maintainers* — link:governance/MAINTAINERS.adoc[maintainers], link:standards/RELEASE.adoc[release process], link:../.machine_readable/descriptiles/PLAYBOOK.a2ml[ops playbook], link:SOUNDNESS.adoc[soundness ledger].
 
 == Quick Start Files (Root Level)
@@ -57,7 +57,7 @@ This guide helps you navigate the AffineScript repository structure.
 
 **Governance documents:**
 
-* link:governance/CONTRIBUTING.adoc[Contributing Guide] - How to contribute
+* link:governance/../.github/CONTRIBUTING.md[Contributing Guide] - How to contribute
 * link:governance/CODE_OF_CONDUCT.md[Code of Conduct] - Community standards
 * link:governance/SECURITY.md[Security Policy] - Reporting vulnerabilities
 * link:governance/MAINTAINERS.adoc[Maintainers] - Project maintainers
@@ -156,7 +156,7 @@ just fmt             # Format code
 
 === Contributing
 
-1. Read link:governance/CONTRIBUTING.adoc[Contributing Guide]
+1. Read link:governance/../.github/CONTRIBUTING.md[Contributing Guide]
 2. Check link:governance/CODE_OF_CONDUCT.md[Code of Conduct]
 3. Review link:standards/DECISIONS.adoc[Architecture Decisions]
 4. Follow link:standards/ROADMAP.adoc[Development Roadmap]
