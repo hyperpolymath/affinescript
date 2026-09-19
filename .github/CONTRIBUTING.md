@@ -49,8 +49,8 @@ Tested on OCaml 4.14.2 (the constraint in `dune-project` is `>=`
     ├── js/                  # `js_of_ocaml` playground (built into `playground.bc.js`)
     ├── .machine_readable/   # Machine-readable metadata (`.a2ml`) — see 0-AI-MANIFEST.a2ml
     ├── .github/             # CI workflows, issue templates
+    │   └── CONTRIBUTING.md  # This file
     ├── CODE_OF_CONDUCT.md
-    ├── CONTRIBUTING.md      # This file
     ├── LICENSE / LICENSES   # MIT OR AGPL-3.0-or-later
     ├── MAINTAINERS.adoc
     ├── README.adoc
