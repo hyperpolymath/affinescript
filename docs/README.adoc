@@ -16,7 +16,7 @@ docs/
 │   └── SPEC.adoc             # Core specification
 ├── governance/               # Community and process docs
 │   ├── CODE_OF_CONDUCT.md    # Community standards
-│   ├── CONTRIBUTING.adoc     # How to contribute
+│   ├── ../.github/CONTRIBUTING.md     # How to contribute
 │   ├── MAINTAINERS.adoc      # Project maintainers
 │   └── SECURITY.md           # Security policy
 ├── standards/                # Design & planning docs
@@ -48,7 +48,7 @@ docs/
 **For contributors and community members.**
 
 * link:governance/CODE_OF_CONDUCT.md[Code of Conduct] - Community behavior standards
-* link:governance/CONTRIBUTING.adoc[Contributing Guide] - How to contribute code/docs
+* link:governance/../.github/CONTRIBUTING.md[Contributing Guide] - How to contribute code/docs
 * link:governance/MAINTAINERS.adoc[Maintainers] - Who maintains what
 * link:governance/SECURITY.md[Security Policy] - How to report vulnerabilities
 
@@ -79,7 +79,7 @@ docs/
 → Start with link:specs/affinescript-spec.md[Language Specification]
 
 **...contribute code**
-→ Read link:governance/CONTRIBUTING.adoc[Contributing Guide]
+→ Read link:governance/../.github/CONTRIBUTING.md[Contributing Guide]
 
 **...report a security issue**
 → Follow link:governance/SECURITY.md[Security Policy]
@@ -95,7 +95,7 @@ docs/
 
 == Contributing to Documentation
 
-Documentation improvements are always welcome! See link:governance/CONTRIBUTING.adoc[Contributing Guide] for:
+Documentation improvements are always welcome! See link:governance/../.github/CONTRIBUTING.md[Contributing Guide] for:
 
 * Style guidelines
 * Review process
