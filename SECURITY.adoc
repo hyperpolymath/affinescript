@@ -410,7 +410,7 @@ When using \{\{PROJECT_NAME}}, we recommend:
 * https://github.com/%7B%7BOWNER%7D%7D/%7B%7BREPO%7D%7D/security/advisories[Security
 Advisories]
 * link:CHANGELOG.md[Changelog]
-* link:CONTRIBUTING.md[Contributing Guidelines]
+* link:.github/CONTRIBUTING.md[Contributing Guidelines]
 * https://cve.mitre.org/[CVE Database]
 * https://www.first.org/cvss/calculator/3.1[CVSS Calculator]
 
