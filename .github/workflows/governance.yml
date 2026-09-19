@@ -3,7 +3,7 @@
 # This workflow is managed by gh actions-lock.
 #
 # Standalone governance gate. Previously a thin caller of
-# `hyperpolymath/standards/.github/workflows/governance-reusable.yml@main`;
+# `hyperpolymath/standards/.github/workflows/governance-reusable.yml@210f14e753c80064ec1bcae72f1d654dd9b0e687`;
 # that cross-repo dependency (a) coupled this repo's CI to another repo's
 # moving `@main` and (b) startup-failed because a `concurrency:` block in a
 # reusable-workflow caller, when the reusable also declares concurrency on the
