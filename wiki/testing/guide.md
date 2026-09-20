@@ -609,15 +609,21 @@ aspm coverage --format lcov --output coverage.lcov
 
 ### Coverage in CI
 
+Coverage is visibility-only: the report is attached to the run as an artifact, not shipped
+to a third-party service. This is what `.github/workflows/ci.yml` actually does (see
+`docs/standards/TESTING.adoc`, "Coverage (visibility-only)") — no upload token, no external
+account, and nothing for Dependabot to keep bumping.
+
 ```yaml
 # .github/workflows/ci.yml
 - name: Run tests with coverage
   run: aspm test --coverage
 
-- name: Upload coverage
-  uses: codecov/codecov-action@v3
+- name: Upload coverage report
+  uses: actions/upload-artifact@v7.0.1
   with:
-    file: coverage.lcov
+    name: coverage-lcov
+    path: coverage.lcov
 ```
 
 ---
