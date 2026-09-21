@@ -1811,16 +1811,6 @@ let rec type_expr_name : type_expr -> string option = function
    as — i.e. [fd] is a receiver-first method of that struct. *)
 let receiver_struct ~(known : (string, 'a) Hashtbl.t) (fd : fn_decl)
   : (string * string) option =
-  match fd.fd_params withtion = function
-  | TyCon id | TyVar id -> Some id.name
-  | TyApp (id, _)       -> Some id.name
-  | TyOwn t | TyRef (_, t) | TyMut (_, t) -> type_expr_name t
-  | _ -> None
-
-(* The struct (if any, among [known]) that [fd]'s first parameter is typed
-   as — i.e. [fd] is a receiver-first method of that struct. *)
-let receiver_struct ~(known : (string, 'a) Hashtbl.t) (fd : fn_decl)
-  : (string * string) option =
   match fd.fd_params with
   | p :: _ ->
       (match type_expr_name p.p_ty with
