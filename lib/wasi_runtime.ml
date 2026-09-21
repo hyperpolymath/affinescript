@@ -590,3 +590,358 @@ let gen_str_at_via_get
     (* --- Result: leave the string pointer on the stack. --- *)
     LocalGet result_local;
   ]
+
+
+(** {1 ADR-015 S5 (#485) — native wasi:filesystem}
+
+    Guest builtins [file_open] / [file_read] / [file_fd_write] /
+    [file_close] lower to preview1 [path_open] / [fd_read] / the
+    already-emitted [fd_write] / [fd_close]. The command adapter
+    bridges those to [wasi:filesystem] on a real host. Path bytes
+    are taken from the AffineScript length-prefixed string layout
+    ([len: i32][bytes...]), same encoding [env_at]/[arg_at] use.
+
+    Convention: [file_open] uses dirfd 3, the first [wasmtime --dir]
+    preopen. oflags are passed through (0 = existing, 1 = CREAT,
+    9 = CREAT|TRUNC). Success returns the new fd (>= 0); failure
+    returns [-errno]. *)
+
+let fd_preopen = 3l
+
+(** FD_READ|FD_WRITE|FD_SEEK|FD_TELL|PATH_CREATE_FILE|PATH_OPEN *)
+let rights_file = 9318L
+
+let create_path_open_import () : import * func_type =
+  let func_type = {
+    ft_params = [I32; I32; I32; I32; I32; I64; I64; I32; I32];
+    ft_results = [I32];
+  } in
+  let import = {
+    i_module = "wasi_snapshot_preview1";
+    i_name = "path_open";
+    i_desc = ImportFunc 0;
+  } in
+  (import, func_type)
+
+let create_fd_read_import () : import * func_type =
+  let func_type = {
+    ft_params = [I32; I32; I32; I32];
+    ft_results = [I32];
+  } in
+  let import = {
+    i_module = "wasi_snapshot_preview1";
+    i_name = "fd_read";
+    i_desc = ImportFunc 0;
+  } in
+  (import, func_type)
+
+let create_fd_close_import () : import * func_type =
+  let func_type = {
+    ft_params = [I32];
+    ft_results = [I32];
+  } in
+  let import = {
+    i_module = "wasi_snapshot_preview1";
+    i_name = "fd_close";
+    i_desc = ImportFunc 0;
+  } in
+  (import, func_type)
+
+(** [file_open(path, oflags) -> fd]. [path_local] holds the AS string
+    pointer; [oflags_local] the oflags i32. Leaves the new fd (or
+    [-errno]) on the stack. *)
+let gen_file_open
+    (heap_ptr_global : int)
+    (path_local : int)
+    (oflags_local : int)
+    (opened_fd_local : int)
+    (errno_local : int)
+    (path_open_idx : int)
+    : instr list =
+  [
+    GlobalGet heap_ptr_global;
+    I32Const 4l; I32Add;
+    GlobalSet heap_ptr_global;
+    GlobalGet heap_ptr_global;
+    I32Const 4l; I32Sub;
+    LocalSet opened_fd_local;
+    I32Const fd_preopen;
+    I32Const 0l;
+    LocalGet path_local; I32Const 4l; I32Add;
+    LocalGet path_local; I32Load (2, 0);
+    LocalGet oflags_local;
+    I64Const rights_file;
+    I64Const 0L;
+    I32Const 0l;
+    LocalGet opened_fd_local;
+    Call path_open_idx;
+    LocalTee errno_local;
+    I32Eqz;
+    If (BtType I32,
+        [ LocalGet opened_fd_local; I32Load (2, 0) ],
+        [ I32Const 0l; LocalGet errno_local; I32Sub ]);
+  ]
+
+(** [file_fd_write(fd, data) -> errno]. Reuses the always-present
+    [fd_write] import (idx 0) with a caller-supplied fd instead of
+    stdout. Leaves errno on the stack. *)
+let gen_file_fd_write
+    (heap_ptr_global : int)
+    (fd_local : int)
+    (str_ptr_local : int)
+    (fd_write_idx : int)
+    (temp_local : int)
+    : instr list =
+  [
+    GlobalGet heap_ptr_global;
+    I32Const 12l; I32Add;
+    GlobalSet heap_ptr_global;
+    GlobalGet heap_ptr_global;
+    I32Const 12l; I32Sub;
+    LocalSet temp_local;
+    LocalGet temp_local;
+    LocalGet str_ptr_local; I32Const 4l; I32Add;
+    I32Store (2, 0);
+    LocalGet temp_local; I32Const 4l; I32Add;
+    LocalGet str_ptr_local; I32Load (2, 0);
+    I32Store (2, 0);
+    LocalGet fd_local;
+    LocalGet temp_local;
+    I32Const 1l;
+    LocalGet temp_local; I32Const 8l; I32Add;
+    Call fd_write_idx;
+  ]
+
+(** [file_read(fd, max_len) -> String]. Allocates an iovec + byte
+    buffer, calls [fd_read], then copies [nread] bytes into a
+    length-prefixed AS string. On errno != 0 returns the empty string. *)
+let gen_file_read
+    (heap_ptr_global : int)
+    (fd_local : int)
+    (max_local : int)
+    (iov_local : int)
+    (buf_local : int)
+    (n_local : int)
+    (src_local : int)
+    (dst_local : int)
+    (result_local : int)
+    (fd_read_idx : int)
+    : instr list =
+  [
+    GlobalGet heap_ptr_global;
+    LocalSet iov_local;
+    GlobalGet heap_ptr_global;
+    I32Const 16l; I32Add;
+    LocalSet buf_local;
+    GlobalGet heap_ptr_global;
+    I32Const 16l; LocalGet max_local; I32Add; I32Add;
+    GlobalSet heap_ptr_global;
+    LocalGet iov_local; LocalGet buf_local; I32Store (2, 0);
+    LocalGet iov_local; LocalGet max_local; I32Store (2, 4);
+    LocalGet fd_local;
+    LocalGet iov_local;
+    I32Const 1l;
+    LocalGet iov_local; I32Const 8l; I32Add;
+    Call fd_read_idx;
+    LocalSet n_local;
+    LocalGet n_local; I32Eqz;
+    If (BtType I32,
+        [
+          LocalGet iov_local; I32Load (2, 8); LocalSet n_local;
+          GlobalGet heap_ptr_global; LocalSet result_local;
+          GlobalGet heap_ptr_global;
+          I32Const 4l; LocalGet n_local; I32Add; I32Add;
+          GlobalSet heap_ptr_global;
+          LocalGet result_local; LocalGet n_local; I32Store (2, 0);
+          LocalGet buf_local; LocalSet src_local;
+          LocalGet result_local; I32Const 4l; I32Add; LocalSet dst_local;
+          Block (BtEmpty, [
+            Loop (BtEmpty, [
+              LocalGet n_local; I32Eqz; BrIf 1;
+              LocalGet dst_local;
+              LocalGet src_local; I32Load8U (0, 0);
+              I32Store8 (0, 0);
+              LocalGet src_local; I32Const 1l; I32Add; LocalSet src_local;
+              LocalGet dst_local; I32Const 1l; I32Add; LocalSet dst_local;
+              LocalGet n_local; I32Const 1l; I32Sub; LocalSet n_local;
+              Br 0
+            ])
+          ]);
+          LocalGet result_local
+        ],
+        [
+          GlobalGet heap_ptr_global; LocalSet result_local;
+          GlobalGet heap_ptr_global; I32Const 4l; I32Add;
+          GlobalSet heap_ptr_global;
+          LocalGet result_local; I32Const 0l; I32Store (2, 0);
+          LocalGet result_local
+        ]);
+  ]
+
+let gen_file_close (fd_close_idx : int) : instr list =
+  [ Call fd_close_idx ]
+
+(** {1 ADR-015 follow-up (#487) — sock_recv / sock_send / sock_accept}
+
+    Byte-level buffer marshalling mirrors [gen_str_at_via_get] /
+    [gen_file_read]. Effect row stays [Net]. The command adapter
+    already bridges preview1 sockets to [wasi:sockets/tcp]. *)
+
+let create_sock_recv_import () : import * func_type =
+  let func_type = {
+    ft_params = [I32; I32; I32; I32; I32; I32];
+    ft_results = [I32];
+  } in
+  let import = {
+    i_module = "wasi_snapshot_preview1";
+    i_name = "sock_recv";
+    i_desc = ImportFunc 0;
+  } in
+  (import, func_type)
+
+let create_sock_send_import () : import * func_type =
+  let func_type = {
+    ft_params = [I32; I32; I32; I32; I32];
+    ft_results = [I32];
+  } in
+  let import = {
+    i_module = "wasi_snapshot_preview1";
+    i_name = "sock_send";
+    i_desc = ImportFunc 0;
+  } in
+  (import, func_type)
+
+let create_sock_accept_import () : import * func_type =
+  let func_type = {
+    ft_params = [I32; I32; I32];
+    ft_results = [I32];
+  } in
+  let import = {
+    i_module = "wasi_snapshot_preview1";
+    i_name = "sock_accept";
+    i_desc = ImportFunc 0;
+  } in
+  (import, func_type)
+
+(** [net_recv(fd, max_len) -> String]. Same shape as [file_read] but
+    calls [sock_recv] (ri_flags = 0). *)
+let gen_net_recv
+    (heap_ptr_global : int)
+    (fd_local : int)
+    (max_local : int)
+    (iov_local : int)
+    (buf_local : int)
+    (n_local : int)
+    (src_local : int)
+    (dst_local : int)
+    (result_local : int)
+    (sock_recv_idx : int)
+    : instr list =
+  [
+    GlobalGet heap_ptr_global;
+    LocalSet iov_local;
+    GlobalGet heap_ptr_global;
+    I32Const 16l; I32Add;
+    LocalSet buf_local;
+    GlobalGet heap_ptr_global;
+    I32Const 16l; LocalGet max_local; I32Add; I32Add;
+    GlobalSet heap_ptr_global;
+    LocalGet iov_local; LocalGet buf_local; I32Store (2, 0);
+    LocalGet iov_local; LocalGet max_local; I32Store (2, 4);
+    LocalGet fd_local;
+    LocalGet iov_local;
+    I32Const 1l;
+    I32Const 0l;
+    LocalGet iov_local; I32Const 8l; I32Add;
+    LocalGet iov_local; I32Const 12l; I32Add;
+    Call sock_recv_idx;
+    LocalSet n_local;
+    LocalGet n_local; I32Eqz;
+    If (BtType I32,
+        [
+          LocalGet iov_local; I32Load (2, 8); LocalSet n_local;
+          GlobalGet heap_ptr_global; LocalSet result_local;
+          GlobalGet heap_ptr_global;
+          I32Const 4l; LocalGet n_local; I32Add; I32Add;
+          GlobalSet heap_ptr_global;
+          LocalGet result_local; LocalGet n_local; I32Store (2, 0);
+          LocalGet buf_local; LocalSet src_local;
+          LocalGet result_local; I32Const 4l; I32Add; LocalSet dst_local;
+          Block (BtEmpty, [
+            Loop (BtEmpty, [
+              LocalGet n_local; I32Eqz; BrIf 1;
+              LocalGet dst_local;
+              LocalGet src_local; I32Load8U (0, 0);
+              I32Store8 (0, 0);
+              LocalGet src_local; I32Const 1l; I32Add; LocalSet src_local;
+              LocalGet dst_local; I32Const 1l; I32Add; LocalSet dst_local;
+              LocalGet n_local; I32Const 1l; I32Sub; LocalSet n_local;
+              Br 0
+            ])
+          ]);
+          LocalGet result_local
+        ],
+        [
+          GlobalGet heap_ptr_global; LocalSet result_local;
+          GlobalGet heap_ptr_global; I32Const 4l; I32Add;
+          GlobalSet heap_ptr_global;
+          LocalGet result_local; I32Const 0l; I32Store (2, 0);
+          LocalGet result_local
+        ]);
+  ]
+
+(** [net_send(fd, data) -> errno]. iovec over the AS string bytes. *)
+let gen_net_send
+    (heap_ptr_global : int)
+    (fd_local : int)
+    (str_ptr_local : int)
+    (temp_local : int)
+    (sock_send_idx : int)
+    : instr list =
+  [
+    GlobalGet heap_ptr_global;
+    I32Const 12l; I32Add;
+    GlobalSet heap_ptr_global;
+    GlobalGet heap_ptr_global;
+    I32Const 12l; I32Sub;
+    LocalSet temp_local;
+    LocalGet temp_local;
+    LocalGet str_ptr_local; I32Const 4l; I32Add;
+    I32Store (2, 0);
+    LocalGet temp_local; I32Const 4l; I32Add;
+    LocalGet str_ptr_local; I32Load (2, 0);
+    I32Store (2, 0);
+    LocalGet fd_local;
+    LocalGet temp_local;
+    I32Const 1l;
+    I32Const 0l;
+    LocalGet temp_local; I32Const 8l; I32Add;
+    Call sock_send_idx;
+  ]
+
+(** [net_accept(fd) -> new_fd]. [flags] = 0. Success returns the new
+    fd; failure returns [-errno]. *)
+let gen_net_accept
+    (heap_ptr_global : int)
+    (fd_local : int)
+    (opened_fd_local : int)
+    (errno_local : int)
+    (sock_accept_idx : int)
+    : instr list =
+  [
+    GlobalGet heap_ptr_global;
+    I32Const 4l; I32Add;
+    GlobalSet heap_ptr_global;
+    GlobalGet heap_ptr_global;
+    I32Const 4l; I32Sub;
+    LocalSet opened_fd_local;
+    LocalGet fd_local;
+    I32Const 0l;
+    LocalGet opened_fd_local;
+    Call sock_accept_idx;
+    LocalTee errno_local;
+    I32Eqz;
+    If (BtType I32,
+        [ LocalGet opened_fd_local; I32Load (2, 0) ],
+        [ I32Const 0l; LocalGet errno_local; I32Sub ]);
+  ]

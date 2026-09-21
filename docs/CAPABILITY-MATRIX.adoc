@@ -176,7 +176,11 @@ The compiler emits to many targets. *Maturity is not uniform; do not claim
 |Target |Status |Notes
 
 |WASM (core) |works |Cross-module imports + `extern fn` → WASM import
-emission. The reference target.
+emission. The reference target. WASI preview1 on-demand imports cover
+clock/env/args/sockets/filesystem (`file_open`/`file_read`/
+`file_fd_write`/`file_close`, `net_recv`/`net_send`/`net_accept`);
+`tools/componentize.sh` defaults to the command adapter (#486). Native
+preview2 import lowering is still the one-way door.
 
 |WASM-GC |partial |Variant-with-args + same-arity `PatCon` destructuring;
 silent-bad-codegen fallbacks eliminated. Mixed-arity matches need uniform
@@ -288,8 +292,11 @@ their own ledger (link:SOUNDNESS.adoc[SOUNDNESS.adoc]), gated by
 * The satellite ecosystem is mixed maturity — see the satellite registry
   in `ECOSYSTEM.adoc`. `affinescript-tea` (INT-07/#182) and
   `affinescript-dom` (INT-08/#183) shipped runtimes; `affinescript-cadre`
-  (INT-09) closed 2026-07-25. `affinescript-pixijs` remains a scaffold
-  (#56). The `-dom-loader` satellite was folded into `affine-js` (#489).
+  (INT-09) closed 2026-07-25. `affinescript-pixijs` in-tree bindings
+  (`stdlib/Pixi.affine` + UI/Sound) plus 56-A `stdlib/Dom.affine` /
+  `stdlib/Console.affine` landed 2026-09-21; full idaptik surface is
+  still open (#56). The `-dom-loader` satellite was folded into
+  `affine-js` (#489).
 
 == Change control
 

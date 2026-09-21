@@ -1,0 +1,61 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// Dom.affine — #56-A typed DOM convenience surface.
+//
+// Canonical `module Dom` so `use Dom::{div, h1, p, text, replaceBody}`
+// resolves from stdlib/. Constructors are pure VNode builders (no host
+// FFI). Runtime mount lives in affinescript-dom (the reconciler); this
+// module is the compile-time target for idaptik's pilot syntax.
+//
+// Attrs are `[(String, String)]` — the same tuple-list shape as
+// `Http.affine` headers. Record-literal attrs (`#{style: ...}`) are a
+// follow-up once that surface is widely supported.
+
+module Dom;
+
+pub enum VNode {
+  VText(String),
+  VElem(String, [(String, String)], [VNode])
+}
+
+pub fn text(content: String) -> VNode = VText(content);
+
+pub fn h(tag: String, attrs: [(String, String)], children: [VNode]) -> VNode =
+  VElem(tag, attrs, children);
+
+pub fn div(attrs: [(String, String)], children: [VNode]) -> VNode =
+  h("div", attrs, children);
+
+pub fn h1(attrs: [(String, String)], content: String) -> VNode =
+  h("h1", attrs, [text(content)]);
+
+pub fn h2(attrs: [(String, String)], content: String) -> VNode =
+  h("h2", attrs, [text(content)]);
+
+pub fn h3(attrs: [(String, String)], content: String) -> VNode =
+  h("h3", attrs, [text(content)]);
+
+pub fn p(attrs: [(String, String)], content: String) -> VNode =
+  h("p", attrs, [text(content)]);
+
+pub fn span(attrs: [(String, String)], content: String) -> VNode =
+  h("span", attrs, [text(content)]);
+
+pub fn button(attrs: [(String, String)], content: String) -> VNode =
+  h("button", attrs, [text(content)]);
+
+pub fn input(attrs: [(String, String)]) -> VNode =
+  h("input", attrs, []);
+
+pub fn a(attrs: [(String, String)], content: String) -> VNode =
+  h("a", attrs, [text(content)]);
+
+pub fn img(attrs: [(String, String)]) -> VNode =
+  h("img", attrs, []);
+
+pub fn ul(attrs: [(String, String)], children: [VNode]) -> VNode =
+  h("ul", attrs, children);
+
+pub fn li(attrs: [(String, String)], children: [VNode]) -> VNode =
+  h("li", attrs, children);

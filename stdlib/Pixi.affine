@@ -46,6 +46,13 @@ pub extern type Graphics;
 pub extern type Text;
 pub extern type Texture;
 pub extern type Ticker;
+pub extern type Point;
+pub extern type Rectangle;
+pub extern type Circle;
+pub extern type ObservablePoint;
+pub extern type NineSliceSprite;
+pub extern type BlurFilter;
+pub extern type Assets;
 
 // ── Application ────────────────────────────────────────────────────
 
@@ -193,3 +200,47 @@ pub extern fn pixiTickerStart(t: Ticker) -> Int;
 
 /// `ticker.stop()`. Returns 0.
 pub extern fn pixiTickerStop(t: Ticker) -> Int;
+
+// ── Geometry + filters + assets (#56 gap-fill) ─────────────────────
+
+/// `new PIXI.Point(x, y)`.
+pub extern fn pixiPointNew(x: Float, y: Float) -> Point;
+
+/// `new PIXI.Rectangle(x, y, w, h)`.
+pub extern fn pixiRectangleNew(x: Float, y: Float, w: Float, h: Float) -> Rectangle;
+
+/// `new PIXI.Circle(x, y, r)`.
+pub extern fn pixiCircleNew(x: Float, y: Float, r: Float) -> Circle;
+
+/// `s.tint = color`. Returns 0.
+pub extern fn pixiSpriteSetTint(s: Sprite, color: Int) -> Int;
+
+/// `s.blendMode = mode`. Returns 0.
+pub extern fn pixiSpriteSetBlendMode(s: Sprite, mode: String) -> Int;
+
+/// `c.hitArea = area`. Returns 0.
+pub extern fn pixiContainerSetHitArea(c: Container, area: Rectangle) -> Int;
+
+/// `c.mask = mask`. Returns 0.
+pub extern fn pixiContainerSetMask(c: Container, mask: Container) -> Int;
+
+/// `new PIXI.BlurFilter({ strength })`.
+pub extern fn pixiBlurFilterNew(strength: Float) -> BlurFilter;
+
+/// `c.filters = [filter]`. Returns 0.
+pub extern fn pixiContainerSetFilter(c: Container, filter: BlurFilter) -> Int;
+
+/// `new PIXI.NineSliceSprite(texture)`.
+pub extern fn pixiNineSliceSpriteFrom(texture: Texture) -> NineSliceSprite;
+
+/// Upcast NineSliceSprite → Container. Zero-cost identity lowering.
+pub extern fn pixiNineSliceSpriteAsContainer(s: NineSliceSprite) -> Container;
+
+/// `PIXI.Assets.load(url)` — async texture load.
+pub extern fn pixiAssetsLoad(url: String) -> Texture / { Async };
+
+/// `event.global.x` on a FederatedPointerEvent exposed as Json.
+pub extern fn pixiEventGlobalX(e: Json) -> Float;
+
+/// `event.global.y` on a FederatedPointerEvent exposed as Json.
+pub extern fn pixiEventGlobalY(e: Json) -> Float;

@@ -366,6 +366,20 @@ const __as_pixiTextAsContainer = (t) => t;
 const __as_pixiTickerAdd = (t, cb) => { t.add(cb); return 0; };
 const __as_pixiTickerStart = (t) => { t.start(); return 0; };
 const __as_pixiTickerStop = (t) => { t.stop(); return 0; };
+const __as_pixiPointNew = (x, y) => new globalThis.__as_pixi.Point(x, y);
+const __as_pixiRectangleNew = (x, y, w, h) => new globalThis.__as_pixi.Rectangle(x, y, w, h);
+const __as_pixiCircleNew = (x, y, r) => new globalThis.__as_pixi.Circle(x, y, r);
+const __as_pixiSpriteSetTint = (s, color) => { s.tint = color; return 0; };
+const __as_pixiSpriteSetBlendMode = (s, mode) => { s.blendMode = mode; return 0; };
+const __as_pixiContainerSetHitArea = (c, area) => { c.hitArea = area; return 0; };
+const __as_pixiContainerSetMask = (c, mask) => { c.mask = mask; return 0; };
+const __as_pixiBlurFilterNew = (strength) => new globalThis.__as_pixi.BlurFilter({ strength });
+const __as_pixiContainerSetFilter = (c, filter) => { c.filters = [filter]; return 0; };
+const __as_pixiNineSliceSpriteFrom = (t) => new globalThis.__as_pixi.NineSliceSprite(t);
+const __as_pixiNineSliceSpriteAsContainer = (s) => s;
+const __as_pixiAssetsLoad = async (url) => globalThis.__as_pixi.Assets.load(url);
+const __as_pixiEventGlobalX = (e) => Number(e && e.global ? e.global.x : 0);
+const __as_pixiEventGlobalY = (e) => Number(e && e.global ? e.global.y : 0);
 // ---- @pixi/ui (bindings #3): consumer-provided import ----
 // Host JS environment exposes globalThis.__as_pixi_ui (the namespace
 // from `import * as PixiUI from "@pixi/ui"`). Tests set it in the
@@ -388,6 +402,12 @@ const __as_pixiUiSliderAsContainer = (s)       => s;
 const __as_pixiUiSwitchNew         = (options) => new globalThis.__as_pixi_ui.Switch(options);
 const __as_pixiUiSwitchOnChange    = (sw, cb)  => { sw.onChange.connect(cb); return 0; };
 const __as_pixiUiSwitchAsContainer = (sw)      => sw;
+const __as_pixiUiProgressBarNew         = (options) => new globalThis.__as_pixi_ui.ProgressBar(options);
+const __as_pixiUiProgressBarAsContainer = (p)       => p;
+const __as_pixiUiListNew                = (options) => new globalThis.__as_pixi_ui.List(options);
+const __as_pixiUiListAsContainer        = (l)       => l;
+const __as_pixiUiInputNew               = (options) => new globalThis.__as_pixi_ui.Input(options);
+const __as_pixiUiInputAsContainer       = (i)       => i;
 // ---- @pixi/sound (bindings #2): consumer-provided import ----
 // Host JS environment exposes globalThis.__as_pixi_sound (the `Sound`
 // named export from `@pixi/sound`). Tests set it in the harness before
@@ -403,6 +423,8 @@ const __as_pixiSoundPause = (s) => { s.pause(); return 0; };
 const __as_pixiSoundResume = (s) => { s.resume(); return 0; };
 const __as_pixiSoundSetVolume = (s, vol) => { s.volume = vol; return 0; };
 const __as_pixiSoundSetLoop = (s, loop) => { s.loop = loop; return 0; };
+const __as_pixiSoundIsPlaying = (s) => Boolean(s.isPlaying);
+const __as_pixiSoundDuration = (s) => Number(s.duration) || 0;
 // ---- Ipc (bindings #9): web-platform MessageChannel/MessagePort ----
 // Uses standard web globals (MessageChannel, structuredClone) — no
 // consumer-side init required. Available unmodified in modern JS runtimes,
@@ -803,6 +825,20 @@ let () =
   b "pixiTickerAdd"            (fun a -> Printf.sprintf "__as_pixiTickerAdd(%s, %s)" (arg 0 a) (arg 1 a));
   b "pixiTickerStart"          (fun a -> Printf.sprintf "__as_pixiTickerStart(%s)" (arg 0 a));
   b "pixiTickerStop"           (fun a -> Printf.sprintf "__as_pixiTickerStop(%s)" (arg 0 a));
+  b "pixiPointNew"             (fun a -> Printf.sprintf "__as_pixiPointNew(%s, %s)" (arg 0 a) (arg 1 a));
+  b "pixiRectangleNew"         (fun a -> Printf.sprintf "__as_pixiRectangleNew(%s, %s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a) (arg 3 a));
+  b "pixiCircleNew"            (fun a -> Printf.sprintf "__as_pixiCircleNew(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
+  b "pixiSpriteSetTint"        (fun a -> Printf.sprintf "__as_pixiSpriteSetTint(%s, %s)" (arg 0 a) (arg 1 a));
+  b "pixiSpriteSetBlendMode"   (fun a -> Printf.sprintf "__as_pixiSpriteSetBlendMode(%s, %s)" (arg 0 a) (arg 1 a));
+  b "pixiContainerSetHitArea"  (fun a -> Printf.sprintf "__as_pixiContainerSetHitArea(%s, %s)" (arg 0 a) (arg 1 a));
+  b "pixiContainerSetMask"     (fun a -> Printf.sprintf "__as_pixiContainerSetMask(%s, %s)" (arg 0 a) (arg 1 a));
+  b "pixiBlurFilterNew"        (fun a -> Printf.sprintf "__as_pixiBlurFilterNew(%s)" (arg 0 a));
+  b "pixiContainerSetFilter"   (fun a -> Printf.sprintf "__as_pixiContainerSetFilter(%s, %s)" (arg 0 a) (arg 1 a));
+  b "pixiNineSliceSpriteFrom"  (fun a -> Printf.sprintf "__as_pixiNineSliceSpriteFrom(%s)" (arg 0 a));
+  b "pixiNineSliceSpriteAsContainer" (fun a -> Printf.sprintf "__as_pixiNineSliceSpriteAsContainer(%s)" (arg 0 a));
+  b "pixiAssetsLoad"           (fun a -> Printf.sprintf "(await __as_pixiAssetsLoad(%s))" (arg 0 a));
+  b "pixiEventGlobalX"         (fun a -> Printf.sprintf "__as_pixiEventGlobalX(%s)" (arg 0 a));
+  b "pixiEventGlobalY"         (fun a -> Printf.sprintf "__as_pixiEventGlobalY(%s)" (arg 0 a));
   (* ---- @pixi/ui (bindings #3) ---- *)
   b "pixiUiButtonNew"              (fun a -> Printf.sprintf "__as_pixiUiButtonNew(%s)" (arg 0 a));
   b "pixiUiButtonOnPress"          (fun a -> Printf.sprintf "__as_pixiUiButtonOnPress(%s, %s)" (arg 0 a) (arg 1 a));
@@ -815,6 +851,12 @@ let () =
   b "pixiUiSwitchNew"              (fun a -> Printf.sprintf "__as_pixiUiSwitchNew(%s)" (arg 0 a));
   b "pixiUiSwitchOnChange"         (fun a -> Printf.sprintf "__as_pixiUiSwitchOnChange(%s, %s)" (arg 0 a) (arg 1 a));
   b "pixiUiSwitchAsContainer"      (fun a -> Printf.sprintf "__as_pixiUiSwitchAsContainer(%s)" (arg 0 a));
+  b "pixiUiProgressBarNew"         (fun a -> Printf.sprintf "__as_pixiUiProgressBarNew(%s)" (arg 0 a));
+  b "pixiUiProgressBarAsContainer" (fun a -> Printf.sprintf "__as_pixiUiProgressBarAsContainer(%s)" (arg 0 a));
+  b "pixiUiListNew"                (fun a -> Printf.sprintf "__as_pixiUiListNew(%s)" (arg 0 a));
+  b "pixiUiListAsContainer"        (fun a -> Printf.sprintf "__as_pixiUiListAsContainer(%s)" (arg 0 a));
+  b "pixiUiInputNew"               (fun a -> Printf.sprintf "__as_pixiUiInputNew(%s)" (arg 0 a));
+  b "pixiUiInputAsContainer"       (fun a -> Printf.sprintf "__as_pixiUiInputAsContainer(%s)" (arg 0 a));
   (* ---- motion extras (bindings #4 follow-up) ---- *)
   b "motionAnimateMini" (fun a -> Printf.sprintf "__as_motionAnimateMini(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
   b "motionTween"   (fun a -> Printf.sprintf "__as_motionTween(%s, %s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a) (arg 3 a));
@@ -1296,14 +1338,7 @@ let rec gen_expr ctx (expr : expr) : string =
   | ExprReturn (Some e) -> iife ctx ("return " ^ gen_expr ctx e ^ ";")
   | ExprReturn None     -> iife ctx "return Unit;"
   (* #459: break/continue lower to the corresponding JS keywords. The
-     wrapping IIFE pattern used for `return` doesn't work here — JS's
-     `break`/`continue` only target the nearest enclosing loop and an
-     IIFE wraps the keyword in a new function frame. Emit a bare
-     statement and rely on the parent block-flatten machinery. *)
-  | ExprBreak _    -> iife ctx "break;"
-  | ExprContinue _ -> iife ctx "continue;"
-  | ExprLambda { elam_params; elam_body; elam_ret_ty = _ } ->
-      let ps = List.map (fun (p : param) -> mangle p.p_name.name) elam_params in
+     wrapping Iram) -> mangle p.p_name.name) elam_params in
       "((" ^ String.concat ", " ps ^ ") => " ^ gen_expr ctx elam_body ^ ")"
   | ExprTry { et_body; et_catch; et_finally } ->
       gen_try ctx et_body et_catch et_finally
@@ -1691,6 +1726,16 @@ let gen_function ctx (fd : fn_decl) : unit =
 
 (* Head name of a (possibly ref/own/mut/applied) type expression. *)
 let rec type_expr_name : type_expr -> string option = function
+  | TyCon id | TyVar id -> Some id.name
+  | TyApp (id, _)       -> Some id.name
+  | TyOwn t | TyRef (_, t) | TyMut (_, t) -> type_expr_name t
+  | _ -> None
+
+(* The struct (if any, among [known]) that [fd]'s first parameter is typed
+   as — i.e. [fd] is a receiver-first method of that struct. *)
+let receiver_struct ~(known : (string, 'a) Hashtbl.t) (fd : fn_decl)
+  : (string * string) option =
+  match fd.fd_params withtion = function
   | TyCon id | TyVar id -> Some id.name
   | TyApp (id, _)       -> Some id.name
   | TyOwn t | TyRef (_, t) | TyMut (_, t) -> type_expr_name t

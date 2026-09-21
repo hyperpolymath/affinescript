@@ -77,9 +77,11 @@ Phase-3 (#177); the INT-01..12 integration roadmap; the satellite registry
 made real; #228/ADR-014 module-qualified paths (estate port unblocker). |
 *CLOSED 2026-07-25* |Substrate (INT-01..04 + CORE-01) closed 2026-05-31;
 remaining original #175 children INT-07 (#182) and INT-08 (#183) closed
-2026-07-25. Residual WASI slices live as independent follow-ups (#485 S5
-filesystem, #486 S6c default-flip, #487 sockets); satellite remainder is
-#56. Stage E is now the frontier.
+2026-07-25. Residual WASI follow-ups #485 (S5 filesystem) and #487
+(socket recv/send/accept) have preview1 lowerings + gated smokes in
+tree; #486 flipped the wrap default to `--command` without the one-way
+compiler re-target. Satellite remainder is #56 (56-A Dom/Console + Pixi
+gap-fill landed). Stage E is now the frontier.
 
 |*E* |typed-wasm convergence hardening (the transition runway): the
 AffineScript↔typed-wasm contract widened from L7+L10 toward full
@@ -158,7 +160,10 @@ runtime is *VERIFIED end-to-end* (2026-07-07): `affinescript-dom/e2e/run.sh`
 drives mount + in-place attr patch + text update + surplus-child removal
 against a real Int-handle host DOM, mutation log asserted.
 
-|`affinescript-pixijs` |skeleton |Migration-prerequisite scaffold (#56).
+|`affinescript-pixijs` |in-tree bindings |#56 partial: `stdlib/Pixi.affine`
+(+ UI/Sound) is the operational binding; 56-A also landed
+`stdlib/Dom.affine` + `stdlib/Console.affine`. Remaining: full idaptik
+surface.
 
 |`affinescript-vite` |scaffold |Build-tool integration shell.
 
@@ -192,10 +197,10 @@ object, `typedwasm.ownership` accessor.
 == Integration roadmap — INT-01..12
 
 Critical path: *INT-01..INT-04 are substrate and block most satellites.*
-GitHub index #175 is closed (8/8 original sub-issues complete, owner close
-2026-09-21); severity/blocked-by also in
-link:TECH-DEBT.adoc[TECH-DEBT.adoc]. Residual WASI work is #485/#486/#487;
-satellite remainder is #56.
+GitHub index #175: 8/8 original sub-issues complete; severity/blocked-by
+also in link:TECH-DEBT.adoc[TECH-DEBT.adoc]. Residual WASI work is
+#485/#486/#487 (preview1 FS + sockio + wrap-default in tree; native
+preview2 re-target still the one-way door); satellite remainder is #56.
 
 [cols="1,3,1,2"]
 |===
@@ -245,16 +250,15 @@ dropped; 81d9fc7). Test gates:
 `tests/componentize/{smoke,command_smoke,sockets_smoke}.sh` cover
 the contract end-to-end; ownership section byte-survives every
 wrap; combo-import canonical-order regression. Residual (filed
-2026-05-31): #485 — S5 native `wasi:filesystem`
-(open/read/write/close), unblocks INT-06 (server-side runtime
-profile); #486 — S6c flip default wasm target preview1 →
-component, bundled with native-preview2 cleanup replacing the
-on-demand preview1 shims emitted by S4a/S4b/S6b with direct
-`wasi:clocks` / `wasi:cli` / `wasi:sockets` calls (only pays off
-once preview2 is the default — the one-way door that ends
-reversibility); #487 — socket recv/send/accept primitives
-(byte-level buffer / network-address marshalling, helper mirrors
-`gen_str_at_via_get`). WIT world of record: `wit/affinescript.wit`
+2026-05-31, status 2026-09-21): #485 — S5 native `wasi:filesystem`
+preview1 lowering LANDED (`file_open`/`file_read`/`file_fd_write`/
+`file_close`, Effect `File`, gated
+`tests/componentize/filesystem_smoke.sh`); #486 — S6c wrap default
+flipped to `--command` (S3 reactor smoke now passes `--reactor`);
+compiler still emits preview1 core; native-preview2 cleanup remains
+the one-way door; #487 — `net_recv`/`net_send`/`net_accept` preview1
+lowering LANDED (gated `tests/componentize/sockio_smoke.sh`). WIT
+world of record: `wit/affinescript.wit`
 |INT-04 |Publish compiler + runtime to JSR (then npm) |#181 |runtime
 packaging READY (affine-js + affinescript-tea JSR dry-run green;
 manual-only `publish-jsr.yml`; docs/PACKAGING.adoc). INT-01 dep
@@ -264,7 +268,7 @@ auth). Compiler-binary distribution = design fork #260
 (INT-02 dep cleared 2026-05-31 via #179; no other blockers — next-up
 candidate for an issue-spinout)
 |INT-06 |Server-side runtime profile (on INT-03 WASI p2) |ledger-only
-|planned (blocked by #485)
+|planned (#485 FS slice unblocked 2026-09-21)
 |INT-07 |`affinescript-tea` runtime satellite |#182 **CLOSED 2026-07-25** |runtime + run loop
 shipped (`TeaApp`/`parseTeaLayout`, Linear-msg enforced); INT-01 dep
 cleared (#253). Router/nav = separate INT-09

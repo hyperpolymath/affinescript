@@ -17,6 +17,8 @@ class MockSound {
     this.resumeCount = 0;
     this.volume = 1.0;
     this.loop = false;
+    this.isPlaying = false;
+    this.duration = 12.5;
   }
   play()   { this.playCount   += 1; }
   stop()   { this.stopCount   += 1; }
@@ -63,5 +65,8 @@ assert.equal(s.loop, true, "loop field updated");
 
 assert.equal(smokeSetLoop(s, false), 0, "setLoop(false) returns 0");
 assert.equal(s.loop, false, "loop field cleared");
+
+assert.equal(smokeIsPlaying(s), false, "isPlaying reads host field");
+assert.equal(smokeDuration(s), 12.5, "duration reads host field");
 
 console.log("pixisound_smoke.harness.mjs OK");

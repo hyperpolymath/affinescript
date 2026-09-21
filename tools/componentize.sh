@@ -8,17 +8,19 @@
 # *component* via the official preview1->preview2 adapter family
 # (fetch-pinned + checksum-verified by provision-component-toolchain.sh):
 #
-#   reactor (default, ADR-015 S3) — for AffineScript modules used as
+#   command (default as of ADR-015 S6c / #486) — for AffineScript
+#   programs invoked as WASI commands (`wasmtime run`, jco). Requires
+#   the core module to export `_start : () -> ()`; the S6 codegen
+#   change in `lib/codegen.ml` emits this shim automatically whenever
+#   the unit exports a parameter-less `main`. The resulting component
+#   exports `wasi:cli/run@0.2.x` per `wit/affinescript.wit`.
+#
+#   reactor (--reactor, ADR-015 S3) — for AffineScript modules used as
 #   libraries (host calls plain exports like `main`). The resulting
 #   component instantiates but has no `wasi:cli/run`, so `wasmtime run`
 #   cannot invoke it; the host loads it through its own WASI bindings.
-#
-#   command (--command, ADR-015 S6) — for AffineScript programs
-#   invoked as WASI commands (`wasmtime run`, jco). Requires the core
-#   module to export `_start : () -> ()`; the S6 codegen change in
-#   `lib/codegen.ml` emits this shim automatically whenever the unit
-#   exports a parameter-less `main`. The resulting component exports
-#   `wasi:cli/run@0.2.x` per `wit/affinescript.wit`.
+#   The compiler still emits a preview1 core module; native-preview2
+#   import lowering remains the one-way door (not this wrap default).
 #
 # The `typedwasm.ownership` custom section (the typed-wasm contract
 # carrier, multi-producer ABI) MUST survive the wrap — asserted here
@@ -32,7 +34,9 @@
 #    AFFINESCRIPT_WASI_ADAPTER=/path to force a specific adapter file.)
 set -euo pipefail
 
-mode="reactor"
+# ADR-015 S6c (#486): command is the default wrap. The reactor adapter
+# remains selectable via --reactor (the S3 on-ramp / library consumers).
+mode="command"
 if [ "${1:-}" = "--command" ] || [ "${1:-}" = "--reactor" ]; then
   mode="${1#--}"
   shift

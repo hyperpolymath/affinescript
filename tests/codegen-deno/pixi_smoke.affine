@@ -6,7 +6,7 @@
 // extern shape (constructor, mutator, async init, upcast).
 
 use Deno::{Json};
-use Pixi::{Application, Container, Sprite, Graphics, Text, Texture, pixiAppInit, pixiAppStage, pixiContainerNew, pixiContainerAddChild, pixiContainerSetPosition, pixiContainerSetVisible, pixiContainerSetScale, pixiContainerSetPivot, pixiContainerSetRotation, pixiContainerSetAlpha, pixiContainerSetZIndex, pixiContainerSetSortableChildren, pixiContainerSetEventMode, pixiContainerSetCursor, pixiContainerOn, pixiContainerOff, pixiSpriteFrom, pixiSpriteSetAnchor, pixiSpriteAsContainer, pixiTextureFromUrl, pixiGraphicsNew, pixiGraphicsRect, pixiGraphicsFill, pixiGraphicsAsContainer};
+use Pixi::{Application, Container, Sprite, Graphics, Text, Texture, pixiAppInit, pixiAppStage, pixiContainerNew, pixiContainerAddChild, pixiContainerSetPosition, pixiContainerSetVisible, pixiContainerSetScale, pixiContainerSetPivot, pixiContainerSetRotation, pixiContainerSetAlpha, pixiContainerSetZIndex, pixiContainerSetSortableChildren, pixiContainerSetEventMode, pixiContainerSetCursor, pixiContainerOn, pixiContainerOff, pixiSpriteFrom, pixiSpriteSetAnchor, pixiSpriteAsContainer, pixiTextureFromUrl, pixiGraphicsNew, pixiGraphicsRect, pixiGraphicsFill, pixiGraphicsAsContainer, pixiPointNew, pixiRectangleNew, pixiCircleNew, pixiSpriteSetTint, pixiSpriteSetBlendMode, pixiContainerSetHitArea, pixiContainerSetMask, pixiBlurFilterNew, pixiContainerSetFilter, pixiNineSliceSpriteFrom, pixiNineSliceSpriteAsContainer, pixiEventGlobalX, pixiEventGlobalY};
 
 pub fn smokeInit(options: Json) -> Application / { Async } = pixiAppInit(options);
 
@@ -49,5 +49,27 @@ pub fn smokeAccessorsFlow(app: Application, url: String, onDown: Json, onMove: J
   pixiContainerOn(spriteC, "pointermove", onMove);
   pixiContainerAddChild(stage, spriteC);
   pixiContainerOff(spriteC, "pointermove", onMove);
+  0
+}
+
+/// #56 gap-fill: geometry, tint/blend, hitArea/mask, blur, nine-slice,
+/// FederatedPointerEvent global coords.
+pub fn smokeGapFill(app: Application, url: String, event: Json) -> Int {
+  let _pt = pixiPointNew(1.0, 2.0);
+  let rect = pixiRectangleNew(0.0, 0.0, 16.0, 16.0);
+  let _circ = pixiCircleNew(4.0, 5.0, 6.0);
+  let texture = pixiTextureFromUrl(url);
+  let sprite = pixiSpriteFrom(texture);
+  pixiSpriteSetTint(sprite, 0xffffff);
+  pixiSpriteSetBlendMode(sprite, "normal");
+  let spriteC = pixiSpriteAsContainer(sprite);
+  pixiContainerSetHitArea(spriteC, rect);
+  pixiContainerSetMask(spriteC, pixiContainerNew());
+  let blur = pixiBlurFilterNew(2.0);
+  pixiContainerSetFilter(spriteC, blur);
+  let nine = pixiNineSliceSpriteFrom(texture);
+  pixiContainerAddChild(pixiAppStage(app), pixiNineSliceSpriteAsContainer(nine));
+  let _x = pixiEventGlobalX(event);
+  let _y = pixiEventGlobalY(event);
   0
 }

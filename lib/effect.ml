@@ -136,7 +136,7 @@ let v1_effects = [ "IO"; "Async"; "Partial"; "Throws"; "Mut" ]
 
 (** Reserved for v1.x — recognised so the names are not repurposed, not
     yet wired into the stdlib. *)
-let reserved_effects = [ "Random"; "Time"; "Net" ]
+let reserved_effects = [ "Random"; "Time"; "Net"; "File" ]
 
 (** Canonical registry name for a source effect name, or [None] if it is
     neither a v1 nor a reserved name.  Callers additionally accept

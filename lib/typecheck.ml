@@ -1855,6 +1855,35 @@ let register_builtins (ctx : context) : unit =
     (TArrow (ty_int, QOmega,
              TArrow (ty_int, QOmega, ty_int, ESingleton "Net"),
              ESingleton "Net"));
+  (* ADR-015 S5 (#485): native wasi:filesystem. Effect row `File`
+     (reserved). file_open returns fd (>=0) or -errno; file_read
+     returns a length-prefixed string (empty on error); file_fd_write
+     / file_close return errno. *)
+  bind_var ctx "file_open"
+    (TArrow (ty_string, QOmega,
+             TArrow (ty_int, QOmega, ty_int, ESingleton "File"),
+             ESingleton "File"));
+  bind_var ctx "file_read"
+    (TArrow (ty_int, QOmega,
+             TArrow (ty_int, QOmega, ty_string, ESingleton "File"),
+             ESingleton "File"));
+  bind_var ctx "file_fd_write"
+    (TArrow (ty_int, QOmega,
+             TArrow (ty_string, QOmega, ty_int, ESingleton "File"),
+             ESingleton "File"));
+  bind_var ctx "file_close"
+    (TArrow (ty_int, QOmega, ty_int, ESingleton "File"));
+  (* #487: sock_recv / sock_send / sock_accept. Effect row `Net`. *)
+  bind_var ctx "net_recv"
+    (TArrow (ty_int, QOmega,
+             TArrow (ty_int, QOmega, ty_string, ESingleton "Net"),
+             ESingleton "Net"));
+  bind_var ctx "net_send"
+    (TArrow (ty_int, QOmega,
+             TArrow (ty_string, QOmega, ty_int, ESingleton "Net"),
+             ESingleton "Net"));
+  bind_var ctx "net_accept"
+    (TArrow (ty_int, QOmega, ty_int, ESingleton "Net"));
   bind_var ctx "eprint" (TArrow (ty_string, QOmega, ty_unit, ESingleton "IO"));
   bind_var ctx "eprintln" (TArrow (ty_string, QOmega, ty_unit, ESingleton "IO"));
   bind_var ctx "read_line"

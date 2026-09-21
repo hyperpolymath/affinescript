@@ -20,11 +20,14 @@ link:CAPABILITY-MATRIX.adoc[CAPABILITY-MATRIX.adoc].
 
 GitHub index #175: **8/8 original sub-issues CLOSED** as of 2026-07-25
 (#176 DOC, #177 CORE-01, #178 INT-01, #179 INT-02, #180 INT-03,
-#181 INT-04-JSR, #182 INT-07, #183 INT-08). The GitHub ticket itself is a
-closed index (owner close 2026-09-21); this ledger remains the durable
-index. Residual WASI work lives as independent follow-ups (#485 S5
-filesystem, #486 S6c default-flip, #487 socket recv/send/accept);
-satellite remainder is #56.
+#181 INT-04-JSR, #182 INT-07, #183 INT-08). The GitHub ticket is a pure
+index whose children are complete; this ledger remains the durable
+index. Residual WASI follow-ups #485 (S5 filesystem) and #487
+(socket recv/send/accept) have preview1 lowerings + gated smokes in
+tree; #486 flipped the *wrap* default to `--command` without the
+one-way compiler re-target (native-preview2 cleanup still open).
+Satellite remainder is #56 (56-A Dom/Console + Pixi gap-fill landed;
+full idaptik surface still open).
 ====
 
 toc::[]
@@ -409,11 +412,21 @@ export lifting via `_start : () -> ()` shim around parameter-less
 `wasi_snapshot_preview1.sock_shutdown` (command adapter bridges to
 `wasi:sockets/tcp`; 81d9fc7). Gates:
 `tests/componentize/{smoke,command_smoke,sockets_smoke}.sh`.
-Residual (filed 2026-05-31): #485 S5 native `wasi:filesystem`
-(open/read/write/close — unblocks INT-06), #486 S6c flip default
-wasm target preview1 → component + native-preview2 cleanup (one-way
-door), #487 socket recv/send/accept primitives (byte-level buffer
-/ network-address marshalling)
+Residual (filed 2026-05-31, status 2026-09-21):
+#485 S5 native `wasi:filesystem` — *preview1 lowering LANDED*
+(`file_open`/`file_read`/`file_fd_write`/`file_close` →
+`path_open`/`fd_read`/`fd_write`/`fd_close`, Effect `File`,
+dirfd 3, combo canonical-order lock + gated
+`tests/componentize/filesystem_smoke.sh` hermetic `--dir`
+round-trip). Unblocks INT-06's FS slice.
+#486 S6c — *wrap default LANDED* (`tools/componentize.sh` now
+defaults to `--command`; S3 reactor smoke requests `--reactor`
+explicitly). Compiler still emits preview1 core wasm;
+native-preview2 import cleanup remains the one-way door.
+#487 socket recv/send/accept — *preview1 lowering LANDED*
+(`net_recv`/`net_send`/`net_accept` → `sock_recv`/`sock_send`/
+`sock_accept`, Effect `Net`, gated
+`tests/componentize/sockio_smoke.sh`)
 |INT-04 |Publish to JSR/npm |S2 |#181 packaging READY (dry-run green,
 manual workflow); compiler-binary distribution decided = **ADR-019**
 (#260, Releases + thin Deno/JSR shim, staged S1..S4; per-file record
@@ -448,7 +461,8 @@ end-to-end now (was code-correct but inert before today's publish).
 |INT-05 |Loader-driven multi-module app bundling |S2 |planned (INT-02 dep
 cleared 2026-05-31 via #179; candidate for an issue-spinout)
 |INT-06 |Server-side runtime profile (on INT-03 WASI p2) |S2 |planned
-(blocked by #485)
+(#485 FS slice unblocked 2026-09-21; remaining: native-preview2
+clocks/cli/sockets + a real server profile)
 |INT-11 |Browser host parity (`affine-js` loader + `affinescript-dom`
 reconciler end-to-end) |S2 |**CLOSED 2026-07-25**
 |INT-12 |typed-wasm convergence fixtures |S1 |planned (Stage E;
@@ -512,7 +526,10 @@ link:specs/TYPED-WASM-ROADMAP.adoc[TYPED-WASM-ROADMAP] (Tranches B/C/D)
 == Update protocol
 
 * One PR per ledger unit; `Refs #N` (never `Closes` on the #175 epic — only
-  the owner closes it).
+  the owner closes it). Residual follow-ups after the original 8 children
+  are #485/#486/#487/#56 — do not re-open #175 to track them. Owner may
+  close #175 once those residuals are accepted; GitHub write is a PAT
+  capability, not a ledger action.
 * Every capability-affecting PR updates `CAPABILITY-MATRIX.adoc` *and* this
   ledger in the same change; `STATE.a2ml` mirrors after.
 * `dune runtest --force` must stay green (baseline 260, 2026-05-19).

@@ -1295,6 +1295,151 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
         let code = fd_code @ how_code @ [Call sock_func_idx] in
         Ok (ctx_how, code)
 
+      | ExprVar id when id.name = "file_open" && List.length args = 2 ->
+        (* ADR-015 S5 (#485): file_open(path, oflags) -> Int fd.
+           Lowers to wasi_snapshot_preview1.path_open against dirfd 3
+           (first --dir preopen). Failure returns -errno. *)
+        let* (ctx_p, path_code) = gen_expr ctx (List.nth args 0) in
+        let* (ctx_o, oflags_code) = gen_expr ctx_p (List.nth args 1) in
+        let (ctx1, path_local) = alloc_local ctx_o "__file_open_path" in
+        let (ctx2, oflags_local) = alloc_local ctx1 "__file_open_oflags" in
+        let (ctx3, opened_fd_local) = alloc_local ctx2 "__file_open_fd" in
+        let (ctx4, errno_local) = alloc_local ctx3 "__file_open_errno" in
+        let (ctx_h, heap_idx) = ensure_heap_ptr ctx4 in
+        let path_open_idx =
+          try List.assoc "path_open" ctx.wasi_func_indices
+          with Not_found -> 1
+        in
+        let code =
+          path_code @ [LocalSet path_local] @
+          oflags_code @ [LocalSet oflags_local] @
+          Wasi_runtime.gen_file_open
+            heap_idx path_local oflags_local
+            opened_fd_local errno_local path_open_idx
+        in
+        Ok (ctx_h, code)
+
+      | ExprVar id when id.name = "file_fd_write" && List.length args = 2 ->
+        (* ADR-015 S5 (#485): file_fd_write(fd, data) -> Int errno.
+           Reuses the always-present fd_write import with a caller fd. *)
+        let* (ctx_fd, fd_code) = gen_expr ctx (List.nth args 0) in
+        let* (ctx_s, str_code) = gen_expr ctx_fd (List.nth args 1) in
+        let (ctx1, fd_local) = alloc_local ctx_s "__file_fd_write_fd" in
+        let (ctx2, str_local) = alloc_local ctx1 "__file_fd_write_str" in
+        let (ctx3, temp_local) = alloc_local ctx2 "__file_fd_write_iov" in
+        let (ctx_h, heap_idx) = ensure_heap_ptr ctx3 in
+        let fd_write_idx =
+          try List.assoc "fd_write" ctx.wasi_func_indices
+          with Not_found -> 0
+        in
+        let code =
+          fd_code @ [LocalSet fd_local] @
+          str_code @ [LocalSet str_local] @
+          Wasi_runtime.gen_file_fd_write
+            heap_idx fd_local str_local fd_write_idx temp_local
+        in
+        Ok (ctx_h, code)
+
+      | ExprVar id when id.name = "file_read" && List.length args = 2 ->
+        (* ADR-015 S5 (#485): file_read(fd, max_len) -> String. *)
+        let* (ctx_fd, fd_code) = gen_expr ctx (List.nth args 0) in
+        let* (ctx_n, n_code) = gen_expr ctx_fd (List.nth args 1) in
+        let (ctx1, fd_local) = alloc_local ctx_n "__file_read_fd" in
+        let (ctx2, max_local) = alloc_local ctx1 "__file_read_max" in
+        let (ctx3, iov_local) = alloc_local ctx2 "__file_read_iov" in
+        let (ctx4, buf_local) = alloc_local ctx3 "__file_read_buf" in
+        let (ctx5, n_local) = alloc_local ctx4 "__file_read_n" in
+        let (ctx6, src_local) = alloc_local ctx5 "__file_read_src" in
+        let (ctx7, dst_local) = alloc_local ctx6 "__file_read_dst" in
+        let (ctx8, result_local) = alloc_local ctx7 "__file_read_res" in
+        let (ctx_h, heap_idx) = ensure_heap_ptr ctx8 in
+        let fd_read_idx =
+          try List.assoc "fd_read" ctx.wasi_func_indices
+          with Not_found -> 1
+        in
+        let code =
+          fd_code @ [LocalSet fd_local] @
+          n_code @ [LocalSet max_local] @
+          Wasi_runtime.gen_file_read
+            heap_idx fd_local max_local iov_local buf_local
+            n_local src_local dst_local result_local fd_read_idx
+        in
+        Ok (ctx_h, code)
+
+      | ExprVar id when id.name = "file_close" && List.length args = 1 ->
+        (* ADR-015 S5 (#485): file_close(fd) -> Int errno. *)
+        let* (ctx_fd, fd_code) = gen_expr ctx (List.hd args) in
+        let fd_close_idx =
+          try List.assoc "fd_close" ctx.wasi_func_indices
+          with Not_found -> 1
+        in
+        let code = fd_code @ Wasi_runtime.gen_file_close fd_close_idx in
+        Ok (ctx_fd, code)
+
+      | ExprVar id when id.name = "net_recv" && List.length args = 2 ->
+        (* #487: net_recv(fd, max_len) -> String. *)
+        let* (ctx_fd, fd_code) = gen_expr ctx (List.nth args 0) in
+        let* (ctx_n, n_code) = gen_expr ctx_fd (List.nth args 1) in
+        let (ctx1, fd_local) = alloc_local ctx_n "__net_recv_fd" in
+        let (ctx2, max_local) = alloc_local ctx1 "__net_recv_max" in
+        let (ctx3, iov_local) = alloc_local ctx2 "__net_recv_iov" in
+        let (ctx4, buf_local) = alloc_local ctx3 "__net_recv_buf" in
+        let (ctx5, n_local) = alloc_local ctx4 "__net_recv_n" in
+        let (ctx6, src_local) = alloc_local ctx5 "__net_recv_src" in
+        let (ctx7, dst_local) = alloc_local ctx6 "__net_recv_dst" in
+        let (ctx8, result_local) = alloc_local ctx7 "__net_recv_res" in
+        let (ctx_h, heap_idx) = ensure_heap_ptr ctx8 in
+        let sock_recv_idx =
+          try List.assoc "sock_recv" ctx.wasi_func_indices
+          with Not_found -> 1
+        in
+        let code =
+          fd_code @ [LocalSet fd_local] @
+          n_code @ [LocalSet max_local] @
+          Wasi_runtime.gen_net_recv
+            heap_idx fd_local max_local iov_local buf_local
+            n_local src_local dst_local result_local sock_recv_idx
+        in
+        Ok (ctx_h, code)
+
+      | ExprVar id when id.name = "net_send" && List.length args = 2 ->
+        (* #487: net_send(fd, data) -> Int errno. *)
+        let* (ctx_fd, fd_code) = gen_expr ctx (List.nth args 0) in
+        let* (ctx_s, str_code) = gen_expr ctx_fd (List.nth args 1) in
+        let (ctx1, fd_local) = alloc_local ctx_s "__net_send_fd" in
+        let (ctx2, str_local) = alloc_local ctx1 "__net_send_str" in
+        let (ctx3, temp_local) = alloc_local ctx2 "__net_send_iov" in
+        let (ctx_h, heap_idx) = ensure_heap_ptr ctx3 in
+        let sock_send_idx =
+          try List.assoc "sock_send" ctx.wasi_func_indices
+          with Not_found -> 1
+        in
+        let code =
+          fd_code @ [LocalSet fd_local] @
+          str_code @ [LocalSet str_local] @
+          Wasi_runtime.gen_net_send
+            heap_idx fd_local str_local temp_local sock_send_idx
+        in
+        Ok (ctx_h, code)
+
+      | ExprVar id when id.name = "net_accept" && List.length args = 1 ->
+        (* #487: net_accept(fd) -> Int new_fd (or -errno). *)
+        let* (ctx_fd, fd_code) = gen_expr ctx (List.hd args) in
+        let (ctx1, fd_local) = alloc_local ctx_fd "__net_accept_fd" in
+        let (ctx2, opened_fd_local) = alloc_local ctx1 "__net_accept_out" in
+        let (ctx3, errno_local) = alloc_local ctx2 "__net_accept_errno" in
+        let (ctx_h, heap_idx) = ensure_heap_ptr ctx3 in
+        let sock_accept_idx =
+          try List.assoc "sock_accept" ctx.wasi_func_indices
+          with Not_found -> 1
+        in
+        let code =
+          fd_code @ [LocalSet fd_local] @
+          Wasi_runtime.gen_net_accept
+            heap_idx fd_local opened_fd_local errno_local sock_accept_idx
+        in
+        Ok (ctx_h, code)
+
       | ExprVar id when (id.name = "env_count" || id.name = "arg_count")
                         && List.length args = 1 ->
         (* ADR-015 S4b (#180): env_count(u: Unit) / arg_count(u: Unit)
@@ -3773,6 +3918,12 @@ let generate_module ?loader (prog : program) : wasm_module result =
       ("arg_at",       "args_sizes_get",     Wasi_runtime.create_args_sizes_get_import);
       ("arg_at",       "args_get",           Wasi_runtime.create_args_get_import);
       ("net_shutdown", "sock_shutdown",      Wasi_runtime.create_sock_shutdown_import);
+      ("file_open",    "path_open",          Wasi_runtime.create_path_open_import);
+      ("file_read",    "fd_read",            Wasi_runtime.create_fd_read_import);
+      ("file_close",   "fd_close",           Wasi_runtime.create_fd_close_import);
+      ("net_recv",     "sock_recv",          Wasi_runtime.create_sock_recv_import);
+      ("net_send",     "sock_send",          Wasi_runtime.create_sock_send_import);
+      ("net_accept",   "sock_accept",        Wasi_runtime.create_sock_accept_import);
     ]
     |> List.filter_map
          (fun (b, w, f) -> if uses b then Some (w, f ()) else None)
