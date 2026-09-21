@@ -21,6 +21,8 @@ workflows:
         - 'github/codeql-action@v4.38.0'
     '.github/workflows/coq-proof-gate.yml':
         - 'actions/checkout@v7.0.1'
+    '.github/workflows/deed-validate.yml':
+        - 'actions/checkout@v7.0.1'
     '.github/workflows/governance-baseline-impl.yml':
         - 'actions/checkout@v7.0.1'
     '.github/workflows/governance-baseline.yml': []
