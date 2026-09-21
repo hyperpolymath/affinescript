@@ -118,11 +118,20 @@ class MockApplication {
   constructor() {
     this.stage = new MockContainer();
     this.canvas = { tagName: "CANVAS" };
-    this.ticker = { add() {}, start() {}, stop() {} };
+    this.ticker = { deltaTime: 1.5, add() {}, start() {}, stop() {}, remove() {} };
+    this.renderer = {
+      width: 800,
+      height: 600,
+      resize(w, h) { this.width = w; this.height = h; operationsLog.push("rendererResize"); },
+    };
   }
   async init(options) { initCalls.push(options); }
   destroy() { operationsLog.push("appDestroy"); }
 }
+
+const assetInits = [];
+const bundles = [];
+const bgBundles = [];
 
 globalThis.__as_pixi = {
   Application: MockApplication,
@@ -136,11 +145,17 @@ globalThis.__as_pixi = {
   BlurFilter: MockBlurFilter,
   NineSliceSprite: MockNineSliceSprite,
   Texture: {
+    WHITE: { __mockTexture: true, url: "WHITE" },
     from(url) { textureUrls.push(url); return { __mockTexture: true, url }; },
+  },
+  Assets: {
+    async init(options) { assetInits.push(options); },
+    async loadBundle(name) { bundles.push(name); },
+    backgroundLoadBundle(names) { bgBundles.push(...names); },
   },
 };
 
-const { smokeInit, smokeSpriteFlow, smokeGraphicsFlow, smokeAccessorsFlow, smokeGapFill } = await import("./pixi_smoke.bun.js");
+const { smokeInit, smokeSpriteFlow, smokeGraphicsFlow, smokeAccessorsFlow, smokeGapFill, smokeIdaptikReach, smokeAssets } = await import("./pixi_smoke.bun.js");
 
 // Async init returns an Application after `await app.init(options)`
 const app = await smokeInit({ width: 800, height: 600, backgroundColor: 0x1099bb });

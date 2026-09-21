@@ -6,7 +6,7 @@
 // registration, and upcast → Container for each MVP component.
 
 use Deno::{Json};
-use PixiUI::{Button, FancyButton, Slider, Switch, Container, Input, List, ProgressBar, pixiUiButtonNew, pixiUiButtonOnPress, pixiUiButtonAsContainer, pixiUiFancyButtonNew, pixiUiFancyButtonAsContainer, pixiUiFancyButtonOnPress, pixiUiFancyButtonOnDown, pixiUiFancyButtonOnHover, pixiUiSliderNew, pixiUiSliderOnUpdate, pixiUiSliderAsContainer, pixiUiSliderSetValue, pixiUiSliderValue, pixiUiSliderAddChild, pixiUiSwitchNew, pixiUiSwitchOnChange, pixiUiSwitchAsContainer, pixiUiProgressBarNew, pixiUiProgressBarAsContainer, pixiUiProgressBarSetProgress, pixiUiProgressBarProgress, pixiUiListNew, pixiUiListAsContainer, pixiUiListAddChild, pixiUiInputNew, pixiUiInputAsContainer, pixiUiInputValue, pixiUiInputSetValue, pixiUiInputOnEnter, pixiUiInputOnChange};
+use PixiUI::{Button, FancyButton, Slider, Switch, Container, Input, ProgressBar, pixiUiButtonNew, pixiUiButtonOnPress, pixiUiButtonAsContainer, pixiUiFancyButtonNew, pixiUiFancyButtonAsContainer, pixiUiFancyButtonOnPress, pixiUiFancyButtonOnDown, pixiUiFancyButtonOnHover, pixiUiSliderNew, pixiUiSliderOnUpdate, pixiUiSliderAsContainer, pixiUiSliderSetValue, pixiUiSliderValue, pixiUiSliderAddChild, pixiUiSwitchNew, pixiUiSwitchOnChange, pixiUiSwitchAsContainer, pixiUiProgressBarNew, pixiUiProgressBarAsContainer, pixiUiProgressBarSetProgress, pixiUiProgressBarProgress, pixiUiListNew, pixiUiListAsContainer, pixiUiListAddChild, pixiUiInputNew, pixiUiInputAsContainer, pixiUiInputValue, pixiUiInputSetValue, pixiUiInputOnEnter, pixiUiInputOnChange};
 
 pub fn smokeButton(options: Json, callback: Json) -> Container {
   let b = pixiUiButtonNew(options);
