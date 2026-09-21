@@ -119,7 +119,7 @@ pub extern fn pixiUiSwitchAsContainer(sw: Switch) -> Container;
 // ── ProgressBar / List / Input (#56 gap-fill) ──────────────────────
 
 pub extern type ProgressBar;
-pub extern type List;
+pub extern type UiList;
 pub extern type Input;
 
 /// `new PixiUI.ProgressBar(options)`.
@@ -129,10 +129,10 @@ pub extern fn pixiUiProgressBarNew(options: Json) -> ProgressBar;
 pub extern fn pixiUiProgressBarAsContainer(p: ProgressBar) -> Container;
 
 /// `new PixiUI.List(options)`.
-pub extern fn pixiUiListNew(options: Json) -> List;
+pub extern fn pixiUiListNew(options: Json) -> UiList;
 
 /// Upcast List → Container. Zero-cost identity lowering.
-pub extern fn pixiUiListAsContainer(l: List) -> Container;
+pub extern fn pixiUiListAsContainer(l: UiList) -> Container;
 
 /// `new PixiUI.Input(options)`.
 pub extern fn pixiUiInputNew(options: Json) -> Input;
@@ -163,7 +163,7 @@ pub extern fn pixiUiSliderSetValue(s: Slider, v: Float) -> Int;
 pub extern fn pixiUiSliderAddChild(s: Slider, child: Json) -> Int;
 
 /// `list.addChild(child)`.
-pub extern fn pixiUiListAddChild(l: List, child: Json) -> Int;
+pub extern fn pixiUiListAddChild(l: UiList, child: Json) -> Int;
 
 /// `input.value` getter/setter + enter/change signals.
 pub extern fn pixiUiInputValue(i: Input) -> String;
