@@ -5,11 +5,12 @@
 # Used by CI instead of `npm install -g --ignore-scripts tree-sitter-cli`:
 # that package's binary is fetched in a postinstall script, so
 # --ignore-scripts (Sonar S6505) leaves `tree-sitter` missing (ENOENT).
-# A release tarball has no lifecycle scripts.
 set -euo pipefail
 
 VER="${TREE_SITTER_CLI_VERSION:-0.25.0}"
-DEST="${TREE_SITTER_CLI_DEST:-/usr/local/bin/tree-sitter}"
+# tree-sitter-linux-x64.gz from
+# https://github.com/tree-sitter/tree-sitter/releases/tag/v0.25.0
+SHA256="${TREE_SITTER_LINUX_X64_SHA256:-d7b68a7a79459c0c23e062f719fe90781ed284a4fb172756e217ca08ea86b8d3}"
 
 arch="$(uname -m)"
 case "$arch" in
@@ -22,17 +23,20 @@ case "$arch" in
 esac
 
 url="https://github.com/tree-sitter/tree-sitter/releases/download/v${VER}/tree-sitter-linux-${ts_arch}.gz"
-tmp="$(mktemp)"
-trap 'rm -f "$tmp"' EXIT
-curl -fsSL "$url" | gunzip > "$tmp"
-chmod +x "$tmp"
+workdir="${RUNNER_TEMP:-$(mktemp -d)}"
+archive="${workdir}/tree-sitter-linux-${ts_arch}.gz"
+bin_dir="${workdir}/tree-sitter-cli"
+mkdir -p "$bin_dir"
 
-if [ -w "$(dirname "$DEST")" ]; then
-  mv "$tmp" "$DEST"
-  trap - EXIT
-else
-  sudo mv "$tmp" "$DEST"
-  trap - EXIT
+curl --fail --location --retry 3 --proto "=https" \
+  --output "$archive" \
+  "$url"
+printf '%s  %s\n' "$SHA256" "$archive" | sha256sum --check --strict
+gunzip -c "$archive" > "${bin_dir}/tree-sitter"
+chmod +x "${bin_dir}/tree-sitter"
+
+if [[ -n "${GITHUB_PATH:-}" ]]; then
+  printf '%s\n' "$bin_dir" >> "$GITHUB_PATH"
 fi
-
-"$DEST" --version
+export PATH="${bin_dir}:${PATH}"
+tree-sitter --version
