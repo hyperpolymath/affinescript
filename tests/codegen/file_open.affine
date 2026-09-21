@@ -1,0 +1,7 @@
+// SPDX-License-Identifier: MPL-2.0
+// ADR-015 S5 (#485): file_open(path, oflags) smoke. Lowers to
+// wasi_snapshot_preview1.path_open against dirfd 3 (first --dir
+// preopen). The harness stubs path_open and returns a known fd.
+pub fn main() -> Int / { File } {
+  file_open("hello.txt", 1)  // 1 = CREAT
+}

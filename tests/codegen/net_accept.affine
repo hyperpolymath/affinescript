@@ -1,0 +1,5 @@
+// SPDX-License-Identifier: MPL-2.0
+// #487: net_accept(fd) -> Int new_fd (or -errno).
+pub fn main() -> Int / { Net } {
+  net_accept(3)
+}

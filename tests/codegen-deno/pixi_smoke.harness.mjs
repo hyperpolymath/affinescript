@@ -63,6 +63,27 @@ class MockGraphics extends MockContainer {
   clear() { this.paths = []; this.fills = []; }
 }
 
+class MockPointCtor {
+  constructor(x = 0, y = 0) { this.x = x; this.y = y; }
+  set(x, y) { this.x = x; this.y = y; }
+}
+
+class MockRectangle {
+  constructor(x, y, w, h) { this.x = x; this.y = y; this.width = w; this.height = h; }
+}
+
+class MockCircle {
+  constructor(x, y, r) { this.x = x; this.y = y; this.radius = r; }
+}
+
+class MockBlurFilter {
+  constructor(opts) { this.strength = opts?.strength ?? 0; }
+}
+
+class MockNineSliceSprite extends MockContainer {
+  constructor(texture) { super(); this.texture = texture; }
+}
+
 class MockText extends MockContainer {
   constructor(opts) { super(); this.text = opts.text ?? ""; this.style = opts.style; }
 }
@@ -83,12 +104,17 @@ globalThis.__as_pixi = {
   Sprite: MockSprite,
   Graphics: MockGraphics,
   Text: MockText,
+  Point: MockPointCtor,
+  Rectangle: MockRectangle,
+  Circle: MockCircle,
+  BlurFilter: MockBlurFilter,
+  NineSliceSprite: MockNineSliceSprite,
   Texture: {
     from(url) { textureUrls.push(url); return { __mockTexture: true, url }; },
   },
 };
 
-const { smokeInit, smokeSpriteFlow, smokeGraphicsFlow, smokeAccessorsFlow } = await import("./pixi_smoke.deno.js");
+const { smokeInit, smokeSpriteFlow, smokeGraphicsFlow, smokeAccessorsFlow, smokeGapFill } = await import("./pixi_smoke.deno.js");
 
 // Async init returns an Application after `await app.init(options)`
 const app = await smokeInit({ width: 800, height: 600, backgroundColor: 0x1099bb });
@@ -130,5 +156,12 @@ assert.equal(aSprite.cursor, "pointer", "container.cursor");
 assert.equal(aSprite.handlers.get("pointerdown").length, 1, "pointerdown handler registered");
 assert.equal(aSprite.handlers.get("pointermove").length, 0, "pointermove handler off after off()");
 assert.equal(aSprite.handlers.get("pointerdown")[0], onDown, "pointerdown handler identity preserved");
+
+const gapEvent = { global: { x: 11, y: 22 } };
+assert.equal(smokeGapFill(app, "/assets/nine.png", gapEvent), 0, "smokeGapFill returns 0");
+assert.equal(textureUrls.length, 3, "gap-fill Texture.from recorded");
+assert.equal(app.stage.children.length, 4, "nine-slice added as fourth child");
+const nine = app.stage.children[3];
+assert.ok(nine instanceof MockNineSliceSprite, "nine-slice upcast is identity");
 
 console.log("pixi_smoke.harness.mjs OK");

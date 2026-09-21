@@ -9,7 +9,7 @@
 
 import assert from "node:assert/strict";
 
-const ctorCalls = { Button: [], FancyButton: [], Slider: [], Switch: [] };
+const ctorCalls = { Button: [], FancyButton: [], Slider: [], Switch: [], ProgressBar: [], List: [], Input: [] };
 const onPressRegs = [];
 const onUpdateRegs = [];
 const onChangeRegs = [];
@@ -49,14 +49,21 @@ class MockSwitch {
   }
 }
 
+class MockProgressBar { constructor(options) { ctorCalls.ProgressBar.push(options); } }
+class MockList { constructor(options) { ctorCalls.List.push(options); } }
+class MockInput { constructor(options) { ctorCalls.Input.push(options); } }
+
 globalThis.__as_pixi_ui = {
   Button: MockButton,
   FancyButton: MockFancyButton,
   Slider: MockSlider,
   Switch: MockSwitch,
+  ProgressBar: MockProgressBar,
+  List: MockList,
+  Input: MockInput,
 };
 
-const { smokeButton, smokeFancyButton, smokeSlider, smokeSwitch } =
+const { smokeButton, smokeFancyButton, smokeSlider, smokeSwitch, smokeProgressBar, smokeList, smokeInput } =
   await import("./pixiui_smoke.deno.js");
 
 // ── Button: ctor + onPress + upcast ────────────────────────────────
@@ -91,5 +98,18 @@ assert.deepEqual(ctorCalls.Switch[0], { value: false }, "Switch options reach ho
 assert.equal(onChangeRegs.length, 1, "onChange.connect called once");
 assert.equal(onChangeRegs[0], switchChangeCb, "onChange callback identity preserved");
 assert.ok(switchContainer instanceof MockSwitch, "Switch upcast is identity");
+
+const pb = smokeProgressBar({ progress: 0.4 });
+assert.equal(ctorCalls.ProgressBar.length, 1, "ProgressBar ctor called once");
+assert.deepEqual(ctorCalls.ProgressBar[0], { progress: 0.4 }, "ProgressBar options reach host");
+assert.ok(pb instanceof MockProgressBar, "ProgressBar upcast is identity");
+
+const list = smokeList({ type: "vertical" });
+assert.equal(ctorCalls.List.length, 1, "List ctor called once");
+assert.ok(list instanceof MockList, "List upcast is identity");
+
+const input = smokeInput({ placeholder: "name" });
+assert.equal(ctorCalls.Input.length, 1, "Input ctor called once");
+assert.ok(input instanceof MockInput, "Input upcast is identity");
 
 console.log("pixiui_smoke.harness.mjs OK");

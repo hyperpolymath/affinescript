@@ -63,6 +63,10 @@ let seed_builtins (symbols : Symbol.t) : unit =
   def "env_at"; def "arg_at";
   (* WASI socket primitive (ADR-015 S6b, #180) *)
   def "net_shutdown";
+  (* WASI filesystem (ADR-015 S5, #485) *)
+  def "file_open"; def "file_read"; def "file_fd_write"; def "file_close";
+  (* WASI sockets follow-up (#487) *)
+  def "net_recv"; def "net_send"; def "net_accept";
   (* String / char builtins *)
   def "len"; def "slice"; def "string_get"; def "string_sub"; def "string_find";
   def "char_to_int"; def "int_to_char"; def "show";

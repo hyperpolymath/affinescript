@@ -1,0 +1,15 @@
+// SPDX-License-Identifier: MPL-2.0
+// ADR-015 S5 (#485) combo: filesystem + clock + env + sock_shutdown
+// in one unit. Proves ctx.wasi_func_indices canonical order:
+// fd_write < clock_time_get < environ_sizes_get < sock_shutdown
+// < path_open < fd_read < fd_close.
+pub fn main() -> Int / { Time, Net, File } {
+  let t = clock_now_ms(1);
+  let n = env_count(());
+  net_shutdown(0, 3);
+  let fd = file_open("combo.txt", 1);
+  file_fd_write(fd, "x");
+  let _s = file_read(fd, 1);
+  file_close(fd);
+  t + n + fd
+}

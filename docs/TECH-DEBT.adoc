@@ -17,6 +17,17 @@ Reconstructed and made authoritative 2026-05-19 (it was cited by #175–183 /
 #228 / #177 but never committed). For the spine + contract see
 link:ECOSYSTEM.adoc[ECOSYSTEM.adoc]; for readiness see
 link:CAPABILITY-MATRIX.adoc[CAPABILITY-MATRIX.adoc].
+
+GitHub index #175: **8/8 original sub-issues CLOSED** as of 2026-07-25
+(#176 DOC, #177 CORE-01, #178 INT-01, #179 INT-02, #180 INT-03,
+#181 INT-04-JSR, #182 INT-07, #183 INT-08). The GitHub ticket is a pure
+index whose children are complete; this ledger remains the durable
+index. Residual WASI follow-ups #485 (S5 filesystem) and #487
+(socket recv/send/accept) have preview1 lowerings + gated smokes in
+tree; #486 flipped the *wrap* default to `--command` without the
+one-way compiler re-target (native-preview2 cleanup still open).
+Satellite remainder is #56 (56-A Dom/Console + Pixi gap-fill landed;
+full idaptik surface still open).
 ====
 
 toc::[]
@@ -36,8 +47,8 @@ Stage D  CLOSED ── CORE-01 (#177)  ─┐                            (base l
          └─ INT-04 (#181) ◄─┘ (◄ INT-01)                         │
             ADR-014 (#228)  ── estate port unblocker, S1         │
                                                                  ▼
-Stage E  planned ── typed-wasm convergence hardening
-         (#234, #235, #225/#160 line, INT-12) ──► stable multi-producer ABI
+Stage E  ACTIVE  ── typed-wasm convergence hardening
+         (#234 closed, #235, #225/#160 line, INT-12) ──► stable multi-producer ABI
 ----
 
 The mandate's order of operations: *CORE-01 first* (the one named
@@ -401,11 +412,21 @@ export lifting via `_start : () -> ()` shim around parameter-less
 `wasi_snapshot_preview1.sock_shutdown` (command adapter bridges to
 `wasi:sockets/tcp`; 81d9fc7). Gates:
 `tests/componentize/{smoke,command_smoke,sockets_smoke}.sh`.
-Residual (filed 2026-05-31): #485 S5 native `wasi:filesystem`
-(open/read/write/close — unblocks INT-06), #486 S6c flip default
-wasm target preview1 → component + native-preview2 cleanup (one-way
-door), #487 socket recv/send/accept primitives (byte-level buffer
-/ network-address marshalling)
+Residual (filed 2026-05-31, status 2026-09-21):
+#485 S5 native `wasi:filesystem` — *preview1 lowering LANDED*
+(`file_open`/`file_read`/`file_fd_write`/`file_close` →
+`path_open`/`fd_read`/`fd_write`/`fd_close`, Effect `File`,
+dirfd 3, combo canonical-order lock + gated
+`tests/componentize/filesystem_smoke.sh` hermetic `--dir`
+round-trip). Unblocks INT-06's FS slice.
+#486 S6c — *wrap default LANDED* (`tools/componentize.sh` now
+defaults to `--command`; S3 reactor smoke requests `--reactor`
+explicitly). Compiler still emits preview1 core wasm;
+native-preview2 import cleanup remains the one-way door.
+#487 socket recv/send/accept — *preview1 lowering LANDED*
+(`net_recv`/`net_send`/`net_accept` → `sock_recv`/`sock_send`/
+`sock_accept`, Effect `Net`, gated
+`tests/componentize/sockio_smoke.sh`)
 |INT-04 |Publish to JSR/npm |S2 |#181 packaging READY (dry-run green,
 manual workflow); compiler-binary distribution decided = **ADR-019**
 (#260, Releases + thin Deno/JSR shim, staged S1..S4; per-file record
@@ -420,12 +441,15 @@ drift fixed via #297/#300 (single source of truth `lib/version.ml`
 `0.1.1`).  Repo-wide SPDX surface relicensed MPL-2.0 →
 MPL-2.0 (#301/#304; PMPL preserved as the narrative-preferred
 licence in root `LICENSE`).
-|INT-07 |`affinescript-tea` runtime |S2 |#182 runtime + run loop shipped
-(TeaApp/parseTeaLayout, Linear-msg enforced); INT-01 cleared (#253)
-|INT-08 |DOM reconciler |S2 |#183 implemented + compiles; `.as`→`.affine`
-fixed; #255 (wasm loop-codegen defect) that gated the runtime is fixed
-(PR #257, closed 2026-05-19) — runtime VERIFIED end-to-end 2026-07-07 via
-`affinescript-dom/e2e/run.sh`
+|INT-07 |`affinescript-tea` runtime |S2 |**#182 CLOSED 2026-07-25** —
+runtime + run loop shipped (TeaApp/parseTeaLayout, Linear-msg enforced);
+INT-01 cleared (#253)
+|INT-08 |DOM reconciler |S2 |**#183 CLOSED 2026-07-25** — implemented +
+compiles; `.as`→`.affine` fixed; #255 (wasm loop-codegen defect) that
+gated the runtime is fixed (PR #257, closed 2026-05-19) — runtime
+VERIFIED end-to-end 2026-07-07 via `affinescript-dom/e2e/run.sh`
+|INT-09 |`affinescript-cadre` router/navigation runtime |S2 |**CLOSED
+2026-07-25** (CadreRouter JS wrapper + E2E tests)
 |INT-10 |`affinescript-lsp` distribution |S2 |**DONE end-to-end live**
 (#282, ADR-019 S4): LSP resolves the compiler via `AFFINESCRIPT_COMPILER`
 → `affinescript` on `PATH` → the `@hyperpolymath/affinescript` shim
@@ -434,7 +458,15 @@ unit tests green. As of 2026-05-20 the shim is published on JSR
 (`@hyperpolymath/affinescript@0.1.2`) and pins all three v0.1.1
 binaries by SHA256, so the shim resolution path actually executes
 end-to-end now (was code-correct but inert before today's publish).
-|INT-05/06/09/11/12 |ledger-only; filed when blocker closes |— |planned
+|INT-05 |Loader-driven multi-module app bundling |S2 |planned (INT-02 dep
+cleared 2026-05-31 via #179; candidate for an issue-spinout)
+|INT-06 |Server-side runtime profile (on INT-03 WASI p2) |S2 |planned
+(#485 FS slice unblocked 2026-09-21; remaining: native-preview2
+clocks/cli/sockets + a real server profile)
+|INT-11 |Browser host parity (`affine-js` loader + `affinescript-dom`
+reconciler end-to-end) |S2 |**CLOSED 2026-07-25**
+|INT-12 |typed-wasm convergence fixtures |S1 |planned (Stage E;
+coordinates with `hyperpolymath/typed-wasm` C5.1)
 |===
 
 == Section E — SAT (satellite repos)
@@ -442,14 +474,18 @@ end-to-end now (was code-correct but inert before today's publish).
 [cols="1,3,1,2"]
 |===
 |ID |Item |Sev |Status
-|SAT-01 |`affinescript-dom` reconciler (skeleton → real) |S2 |open (=INT-08)
+|SAT-01 |`affinescript-dom` reconciler (skeleton → real) |S2 |**DONE**
+(=INT-08, #183 CLOSED 2026-07-25) — runtime VERIFIED e2e 2026-07-07 via
+`affinescript-dom/e2e/run.sh`
 |SAT-02 |`packages/affine-js` hardcoded path / env-only imports |S1
 |*FIXED* by INT-02 (Refs #179): `Deno.readFile(url.pathname)` replaced by
 host-agnostic `readBytes`; `env`-only import shape replaced by
 multi-namespace `buildImportObject`; `mod.js` consumes the loader.
 Proven + locked (see INT-02)
-|SAT-03 |`affinescript-tea` runtime build-out |S2 |open (=INT-07)
-|SAT-04 |`affinescript-cadre` router runtime |S2 |planned (=INT-09)
+|SAT-03 |`affinescript-tea` runtime build-out |S2 |**DONE** (=INT-07,
+#182 CLOSED 2026-07-25)
+|SAT-04 |`affinescript-cadre` router runtime |S2 |**DONE** (=INT-09,
+CLOSED 2026-07-25)
 |SAT-05 |`affinescript-pixijs` migration prerequisite |S3 |open #56
 |===
 
@@ -490,7 +526,10 @@ link:specs/TYPED-WASM-ROADMAP.adoc[TYPED-WASM-ROADMAP] (Tranches B/C/D)
 == Update protocol
 
 * One PR per ledger unit; `Refs #N` (never `Closes` on the #175 epic — only
-  the owner closes it).
+  the owner closes it). Residual follow-ups after the original 8 children
+  are #485/#486/#487/#56 — do not re-open #175 to track them. Owner may
+  close #175 once those residuals are accepted; GitHub write is a PAT
+  capability, not a ledger action.
 * Every capability-affecting PR updates `CAPABILITY-MATRIX.adoc` *and* this
   ledger in the same change; `STATE.a2ml` mirrors after.
 * `dune runtest --force` must stay green (baseline 260, 2026-05-19).

@@ -40,7 +40,9 @@ $COMPILER compile "$work/cz.affine" -o "$work/cz.wasm"
 has_section "$work/cz.wasm" \
   || { echo "FAIL: fixture did not emit the ownership section"; exit 1; }
 
-tools/componentize.sh "$work/cz.wasm" "$work/cz.component.wasm"
+# S6c (#486): the wrapper now defaults to --command. The S3 reactor
+# contract is the legacy path and must be requested explicitly.
+tools/componentize.sh --reactor "$work/cz.wasm" "$work/cz.component.wasm"
 wasm-tools validate --features component-model "$work/cz.component.wasm"
 has_section "$work/cz.component.wasm" \
   || { echo "FAIL: ownership section lost through componentization"; exit 1; }

@@ -27,3 +27,9 @@ pub fn smokeSetVolume(s: Sound, vol: Float) -> Int =
 
 pub fn smokeSetLoop(s: Sound, loop: Bool) -> Int =
   pixiSoundSetLoop(s, loop);
+
+pub fn smokeIsPlaying(s: Sound) -> Bool =
+  pixiSoundIsPlaying(s);
+
+pub fn smokeDuration(s: Sound) -> Float =
+  pixiSoundDuration(s);

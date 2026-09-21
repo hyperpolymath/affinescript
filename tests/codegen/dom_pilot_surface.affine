@@ -1,0 +1,34 @@
+// SPDX-License-Identifier: MPL-2.0
+// #56-A — compile-pass for the Dom convenience constructors.
+// Uses the in-file surface (not stdlib/) so the wasm codegen suite
+// stays self-contained; stdlib/Dom.affine is the AOT-gated twin.
+
+pub enum VNode {
+  VText(String),
+  VElem(String, [(String, String)], [VNode])
+}
+
+pub fn text(content: String) -> VNode = VText(content);
+
+pub fn h(tag: String, attrs: [(String, String)], children: [VNode]) -> VNode =
+  VElem(tag, attrs, children);
+
+pub fn div(attrs: [(String, String)], children: [VNode]) -> VNode =
+  h("div", attrs, children);
+
+pub fn h1(attrs: [(String, String)], content: String) -> VNode =
+  h("h1", attrs, [text(content)]);
+
+pub fn p(attrs: [(String, String)], content: String) -> VNode =
+  h("p", attrs, [text(content)]);
+
+pub fn button(attrs: [(String, String)], content: String) -> VNode =
+  h("button", attrs, [text(content)]);
+
+pub fn input(attrs: [(String, String)]) -> VNode =
+  h("input", attrs, []);
+
+pub fn main() -> Int {
+  let _n = div([], [h1([], "err"), p([], "boom"), button([], "ok"), input([])]);
+  0
+}

@@ -1,0 +1,5 @@
+// SPDX-License-Identifier: MPL-2.0
+// #487: net_recv(fd, max_len) -> String. Harness stubs sock_recv.
+pub fn main() -> Int / { Net } {
+  string_length(net_recv(4, 16))
+}

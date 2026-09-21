@@ -1,0 +1,27 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// Console.affine — #56-A typed console surface.
+//
+// `println` / `eprintln` already lower to `console.log` / `console.error`
+// on the JS/Deno backends. These wrappers give the pilot's
+// `Console.log(...)` name a home so migration does not accumulate
+// `%raw` for the four console methods.
+
+module Console;
+
+pub fn log(msg: String) -> () {
+  println(msg);
+}
+
+pub fn info(msg: String) -> () {
+  println(msg);
+}
+
+pub fn warn(msg: String) -> () {
+  eprintln(msg);
+}
+
+pub fn error(msg: String) -> () {
+  eprintln(msg);
+}

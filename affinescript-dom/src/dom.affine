@@ -60,6 +60,45 @@ pub fn text(content: String) -> VNode = VText(content);
 pub fn h(tag: String, attrs: [(String, String)], children: [VNode]) -> VNode =
   VElem(tag, attrs, children);
 
+/// Convenience constructors (#56-A). Thin wrappers over `h` so idaptik's
+/// pilot `Dom.div` / `Dom.h1` / `Dom.p` surface compiles without going
+/// through the low-level tag string.
+pub fn div(attrs: [(String, String)], children: [VNode]) -> VNode =
+  h("div", attrs, children);
+
+pub fn h1(attrs: [(String, String)], content: String) -> VNode =
+  h("h1", attrs, [text(content)]);
+
+pub fn h2(attrs: [(String, String)], content: String) -> VNode =
+  h("h2", attrs, [text(content)]);
+
+pub fn h3(attrs: [(String, String)], content: String) -> VNode =
+  h("h3", attrs, [text(content)]);
+
+pub fn p(attrs: [(String, String)], content: String) -> VNode =
+  h("p", attrs, [text(content)]);
+
+pub fn span(attrs: [(String, String)], content: String) -> VNode =
+  h("span", attrs, [text(content)]);
+
+pub fn button(attrs: [(String, String)], content: String) -> VNode =
+  h("button", attrs, [text(content)]);
+
+pub fn input(attrs: [(String, String)]) -> VNode =
+  h("input", attrs, []);
+
+pub fn a(attrs: [(String, String)], content: String) -> VNode =
+  h("a", attrs, [text(content)]);
+
+pub fn img(attrs: [(String, String)]) -> VNode =
+  h("img", attrs, []);
+
+pub fn ul(attrs: [(String, String)], children: [VNode]) -> VNode =
+  h("ul", attrs, children);
+
+pub fn li(attrs: [(String, String)], children: [VNode]) -> VNode =
+  h("li", attrs, children);
+
 // `len` is not available in the standalone wasm-AOT subset; a `for`-count
 // helper is (proven: tests/codegen/test_for_loop). Monomorphic, not
 // generic, since wasm codegen generic support is not relied on here.
@@ -102,6 +141,12 @@ pub fn mount(selector: String, vnode: VNode) -> Bool {
     true
   }
 }
+
+/// Replace `document.body` contents with `vnode` (#56-A). Equivalent
+/// to `mount("body", vnode)`. Declared below `mount` because codegen
+/// is single-pass in source order.
+pub fn replaceBody(vnode: VNode) -> Bool =
+  mount("body", vnode);
 
 // ── Reconciler: minimal mutation between two VNode trees ─────────────────────
 

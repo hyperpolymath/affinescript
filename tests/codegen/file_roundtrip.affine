@@ -1,0 +1,14 @@
+// SPDX-License-Identifier: MPL-2.0
+// ADR-015 S5 (#485): open / write / close / open / read round-trip
+// surface. The harness stubs the WASI imports; this fixture proves
+// codegen emits path_open + fd_write + fd_close + fd_read together
+// without index collisions.
+pub fn main() -> Int / { File } {
+  let fd = file_open("roundtrip.txt", 9);  // CREAT|TRUNC
+  file_fd_write(fd, "ok");
+  file_close(fd);
+  let fd2 = file_open("roundtrip.txt", 0);
+  let s = file_read(fd2, 8);
+  file_close(fd2);
+  string_length(s)
+}

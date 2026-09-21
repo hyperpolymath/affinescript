@@ -71,3 +71,9 @@ pub extern fn pixiSoundSetVolume(s: Sound, vol: Float) -> Int;
 /// `sound.loop = loop` — enable or disable looping. When `true`,
 /// playback restarts from the beginning on completion. Returns 0.
 pub extern fn pixiSoundSetLoop(s: Sound, loop: Bool) -> Int;
+
+/// `sound.isPlaying` — true while the instance is currently playing.
+pub extern fn pixiSoundIsPlaying(s: Sound) -> Bool;
+
+/// `sound.duration` — decoded length in seconds (0 if still loading).
+pub extern fn pixiSoundDuration(s: Sound) -> Float;

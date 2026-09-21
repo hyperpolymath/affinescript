@@ -6,7 +6,7 @@
 // registration, and upcast → Container for each MVP component.
 
 use Deno::{Json};
-use PixiUI::{Button, FancyButton, Slider, Switch, Container, pixiUiButtonNew, pixiUiButtonOnPress, pixiUiButtonAsContainer, pixiUiFancyButtonNew, pixiUiFancyButtonAsContainer, pixiUiSliderNew, pixiUiSliderOnUpdate, pixiUiSliderAsContainer, pixiUiSwitchNew, pixiUiSwitchOnChange, pixiUiSwitchAsContainer};
+use PixiUI::{Button, FancyButton, Slider, Switch, Container, pixiUiButtonNew, pixiUiButtonOnPress, pixiUiButtonAsContainer, pixiUiFancyButtonNew, pixiUiFancyButtonAsContainer, pixiUiSliderNew, pixiUiSliderOnUpdate, pixiUiSliderAsContainer, pixiUiSwitchNew, pixiUiSwitchOnChange, pixiUiSwitchAsContainer, pixiUiProgressBarNew, pixiUiProgressBarAsContainer, pixiUiListNew, pixiUiListAsContainer, pixiUiInputNew, pixiUiInputAsContainer};
 
 pub fn smokeButton(options: Json, callback: Json) -> Container {
   let b = pixiUiButtonNew(options);
@@ -29,4 +29,16 @@ pub fn smokeSwitch(options: Json, callback: Json) -> Container {
   let sw = pixiUiSwitchNew(options);
   pixiUiSwitchOnChange(sw, callback);
   pixiUiSwitchAsContainer(sw)
+}
+
+pub fn smokeProgressBar(options: Json) -> Container {
+  pixiUiProgressBarAsContainer(pixiUiProgressBarNew(options))
+}
+
+pub fn smokeList(options: Json) -> Container {
+  pixiUiListAsContainer(pixiUiListNew(options))
+}
+
+pub fn smokeInput(options: Json) -> Container {
+  pixiUiInputAsContainer(pixiUiInputNew(options))
 }

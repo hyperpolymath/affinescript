@@ -15,7 +15,7 @@
 // graph via `Pixi::pixiContainerAddChild`).
 //
 // Deferred (follow-ups):
-//   - Input  — text-entry, focus, blur, value accessor
+//   - Input value/focus/blur accessors (ctor + upcast landed #56)
 //   - ScrollBox — scroll position, content add/remove, viewport
 //   - Full event surface (onHover / onOut / onDown / onUp)
 //   - FancyButton style accessors (textures per state)
@@ -115,3 +115,27 @@ pub extern fn pixiUiSwitchOnChange(sw: Switch, callback: Json) -> Int;
 /// Upcast a Switch to its Container superclass. Zero-cost identity
 /// lowering.
 pub extern fn pixiUiSwitchAsContainer(sw: Switch) -> Container;
+
+// ── ProgressBar / List / Input (#56 gap-fill) ──────────────────────
+
+pub extern type ProgressBar;
+pub extern type List;
+pub extern type Input;
+
+/// `new PixiUI.ProgressBar(options)`.
+pub extern fn pixiUiProgressBarNew(options: Json) -> ProgressBar;
+
+/// Upcast ProgressBar → Container. Zero-cost identity lowering.
+pub extern fn pixiUiProgressBarAsContainer(p: ProgressBar) -> Container;
+
+/// `new PixiUI.List(options)`.
+pub extern fn pixiUiListNew(options: Json) -> List;
+
+/// Upcast List → Container. Zero-cost identity lowering.
+pub extern fn pixiUiListAsContainer(l: List) -> Container;
+
+/// `new PixiUI.Input(options)`.
+pub extern fn pixiUiInputNew(options: Json) -> Input;
+
+/// Upcast Input → Container. Zero-cost identity lowering.
+pub extern fn pixiUiInputAsContainer(i: Input) -> Container;

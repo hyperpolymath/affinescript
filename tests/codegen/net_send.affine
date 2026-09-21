@@ -1,0 +1,5 @@
+// SPDX-License-Identifier: MPL-2.0
+// #487: net_send(fd, data) -> Int errno.
+pub fn main() -> Int / { Net } {
+  net_send(4, "ping")
+}
