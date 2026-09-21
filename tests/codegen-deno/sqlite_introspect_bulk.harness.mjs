@@ -168,7 +168,7 @@ globalThis.__as_sqlite = {
   reset() {}, finalize() {},
 };
 
-const mod = await import("./sqlite_introspect_bulk.deno.js");
+const mod = await import("./sqlite_introspect_bulk.bun.js");
 
 // ── schema_tables ────────────────────────────────────────────────────
 const tablesJson = mod.smoke_schema_tables(":memory:");

@@ -1,0 +1,14 @@
+// SPDX-License-Identifier: MPL-2.0
+// #56 aspirational idaptik StartupError shape, in syntax that compiles
+// today: `use` not `import`, tuple-list attrs not `{style: bg}`.
+// Record-literal attrs remain `#{field: value}` in the language; the
+// migration assistant (#57) emits tuple lists / `#{…}`, not JS `{}`.
+
+use Console::{log};
+use Dom::{VNode, div, h1, p, text};
+
+pub fn startupError(msg: String) -> VNode {
+  log(msg);
+  let _style = #{ bg: "crimson" };
+  div([("class", "startup-error")], [h1([], "Startup error"), p([], msg), text("")])
+}

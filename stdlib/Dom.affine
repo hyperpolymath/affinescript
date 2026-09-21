@@ -5,8 +5,10 @@
 //
 // Canonical `module Dom` so `use Dom::{div, h1, p, text, replaceBody}`
 // resolves from stdlib/. Constructors are pure VNode builders (no host
-// FFI). Runtime mount lives in affinescript-dom (the reconciler); this
-// module is the compile-time target for idaptik's pilot syntax.
+// FFI, no `/ IO` row — Canvas-style erasure). Runtime mount lives in
+// affinescript-dom (the reconciler); this module is the compile-time
+// target for idaptik's pilot syntax. `--bun-esm` is the JS-host ESM
+// emit; Deno-ESM is retired.
 //
 // Attrs are `[(String, String)]` — the same tuple-list shape as
 // `Http.affine` headers. Record-literal attrs (`#{style: ...}`) are a

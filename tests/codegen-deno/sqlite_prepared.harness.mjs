@@ -247,7 +247,7 @@ globalThis.__as_sqlite = {
   finalize(s) { stmts.delete(s); },
 };
 
-const mod = await import("./sqlite_prepared.deno.js");
+const mod = await import("./sqlite_prepared.bun.js");
 
 assert.equal(
   mod.smoke_prepare_bind_int_step_finalize(":memory:"),

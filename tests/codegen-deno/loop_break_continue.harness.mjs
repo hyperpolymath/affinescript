@@ -6,7 +6,7 @@ import {
   sum_odd,
   find_first,
   count_positive,
-} from "./loop_break_continue.deno.js";
+} from "./loop_break_continue.bun.js";
 
 // sum_until: 0+1+2+3+4+5 = 15 (stops at total >= 10 once total reaches 15).
 // Sequence: total=0 (i=0, +0=0), 1, 3, 6, 10 → break.

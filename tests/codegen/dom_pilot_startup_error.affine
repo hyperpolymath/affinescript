@@ -1,0 +1,31 @@
+// SPDX-License-Identifier: MPL-2.0
+// #56 — wasm compile-pass of the idaptik StartupError shape
+// (in-file, no stdlib), matching tests/codegen/dom_pilot_surface.affine.
+
+pub enum VNode {
+  VText(String),
+  VElem(String, [(String, String)], [VNode])
+}
+
+pub fn text(content: String) -> VNode = VText(content);
+
+pub fn h(tag: String, attrs: [(String, String)], children: [VNode]) -> VNode =
+  VElem(tag, attrs, children);
+
+pub fn div(attrs: [(String, String)], children: [VNode]) -> VNode =
+  h("div", attrs, children);
+
+pub fn h1(attrs: [(String, String)], content: String) -> VNode =
+  h("h1", attrs, [text(content)]);
+
+pub fn p(attrs: [(String, String)], content: String) -> VNode =
+  h("p", attrs, [text(content)]);
+
+pub fn startupError(msg: String) -> VNode =
+  div([("class", "startup-error")], [h1([], "Startup error"), p([], msg)]);
+
+pub fn main() -> Int {
+  let _s = #{ bg: "crimson" };
+  let _n = startupError("boom");
+  0
+}

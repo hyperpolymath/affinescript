@@ -38,7 +38,7 @@ const {
   header_string,
   module_url_has_scheme,
   discard_chain,
-} = await import("./deno_scripting_part2.deno.js");
+} = await import("./deno_scripting_part2.bun.js");
 
 // statIsFile / statIsDirectory
 assert.equal(classify_path("/etc/hosts"), 1, "statIsFile true for a regular file");

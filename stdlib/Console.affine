@@ -4,9 +4,10 @@
 // Console.affine — #56-A typed console surface.
 //
 // `println` / `eprintln` already lower to `console.log` / `console.error`
-// on the JS/Deno backends. These wrappers give the pilot's
+// on the JS-host ESM (Bun) backend. These wrappers give the pilot's
 // `Console.log(...)` name a home so migration does not accumulate
-// `%raw` for the four console methods.
+// `%raw` for the four console methods. No `/ IO` row — Canvas-style
+// erasure at emit (see docs/EFFECTS-IMPLEMENTATION.adoc).
 
 module Console;
 

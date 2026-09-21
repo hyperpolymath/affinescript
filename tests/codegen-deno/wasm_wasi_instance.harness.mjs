@@ -10,7 +10,7 @@
 // the fix this threw "Imports argument must be present and must be an object".
 
 import assert from "node:assert/strict";
-import { addViaWasiWasm } from "./wasm_wasi_instance.deno.js";
+import { addViaWasiWasm } from "./wasm_wasi_instance.bun.js";
 
 // (module
 //   (import "wasi_snapshot_preview1" "fd_write"

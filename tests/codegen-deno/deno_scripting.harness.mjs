@@ -43,7 +43,7 @@ const {
   is_pa_code,
   warn_then_zero,
   exit_with,
-} = await import("./deno_scripting.deno.js");
+} = await import("./deno_scripting.bun.js");
 
 // walkRecursive — depth-first across nested dirs.
 assert.equal(count_walked("/root"), 3, "walkRecursive finds 3 files (a.txt + b.txt + c.txt)");

@@ -8,7 +8,7 @@ import {
   first_lt, first_gt,
   equal_strings_le, equal_strings_ge, equal_strings_lt,
   empty_lt, empty_le, prefix_lt,
-} from "./string_lex_cmp.deno.js";
+} from "./string_lex_cmp.bun.js";
 
 assert.equal(lt("abc", "abd"), true, "abc < abd");
 assert.equal(lt("abd", "abc"), false, "abd not < abc");

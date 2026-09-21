@@ -7,7 +7,7 @@
 
 import assert from "node:assert/strict";
 
-const { smokeChannelFlow, smokeCloseFlow, smokeTargetFlow, smokeStructuredClone } = await import("./ipc_smoke.deno.js");
+const { smokeChannelFlow, smokeCloseFlow, smokeTargetFlow, smokeStructuredClone } = await import("./ipc_smoke.bun.js");
 
 // Channel flow: assert handlers fire on the peer side, postMessage
 // round-trips identical payload, and close()s don't throw.

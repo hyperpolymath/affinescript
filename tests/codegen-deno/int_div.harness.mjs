@@ -15,7 +15,7 @@ import {
   for_lit,
   idx_half,
   for_float,
-} from "./int_div.deno.js";
+} from "./int_div.bun.js";
 
 // Integer division truncates toward zero.
 assert.equal(idiv(255, 16), 15, "idiv(255,16)");

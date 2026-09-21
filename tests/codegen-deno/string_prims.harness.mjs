@@ -9,7 +9,7 @@ import {
   n2s,
   str_cat,
   arr_cat,
-} from "./string_prims.deno.js";
+} from "./string_prims.bun.js";
 
 assert.equal(ends_with2("foo.json", ".json"), true, "string_sub/len ends_with");
 assert.equal(ends_with2("foo.txt", ".json"), false, "negative ends_with");

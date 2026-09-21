@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // issue #122 v2.4 — qualified Type::Variant patterns + recursive ADTs.
 import assert from "node:assert/strict";
-import { rank, Red, Blue, len, sum, demo_list } from "./match_enum.deno.js";
+import { rank, Red, Blue, len, sum, demo_list } from "./match_enum.bun.js";
 
 assert.equal(rank(Red), 1, "match expr-body, nullary qualified pattern");
 assert.equal(rank(Blue), 3, "match expr-body, last arm");

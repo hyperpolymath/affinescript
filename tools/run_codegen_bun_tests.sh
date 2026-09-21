@@ -31,22 +31,22 @@ second="$TEST_DIR/reproducibility.bun.js"
 "${COMPILE_CMD[@]}" "$src" -o "$second" --bun-esm
 cmp "$out" "$second"
 
-conflict_log="$TEST_DIR/backend-conflict.log"
-if "${COMPILE_CMD[@]}" "$src" -o "$out" --deno-esm --bun-esm \
-    >"$conflict_log" 2>&1; then
-  echo "error: conflicting host-profile flags compiled successfully" >&2
+removed_log="$TEST_DIR/deno-removed.log"
+if "${COMPILE_CMD[@]}" "$src" -o "$out" --deno-esm \
+    >"$removed_log" 2>&1; then
+  echo "error: retired --deno-esm compiled successfully" >&2
   exit 1
 fi
-grep -q -- '--deno-esm and --bun-esm are mutually exclusive' "$conflict_log"
+grep -q 'Deno-ESM was removed' "$removed_log"
 
-conflict_json="$TEST_DIR/backend-conflict.json"
-if "${COMPILE_CMD[@]}" "$src" -o "$out" --deno-esm --bun-esm --json \
-    >"$conflict_json" 2>&1; then
-  echo "error: conflicting host-profile flags passed in JSON mode" >&2
+removed_json="$TEST_DIR/deno-removed.json"
+if "${COMPILE_CMD[@]}" "$src" -o "${out%.bun.js}.deno.js" --json \
+    >"$removed_json" 2>&1; then
+  echo "error: retired .deno.js output compiled successfully" >&2
   exit 1
 fi
-grep -q '"code":"E0826"' "$conflict_json"
-grep -q '"success":false' "$conflict_json"
+grep -q '"code":"E0826"' "$removed_json"
+grep -q '"success":false' "$removed_json"
 
 for js in "$TEST_DIR"/*.harness.mjs; do
   (cd "$TEST_DIR" && AFFINESCRIPT_BUN_PROBE=estate bun "$(basename "$js")" alpha beta)

@@ -6,7 +6,7 @@
 // __as_wasmCall(exports, "add", [a, b]), round-trips correctly.
 
 import assert from "node:assert/strict";
-import { addViaWasm } from "./wasm_call.deno.js";
+import { addViaWasm } from "./wasm_call.bun.js";
 
 // Hand-built minimal wasm module:
 //   (module

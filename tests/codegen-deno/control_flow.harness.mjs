@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // issue #122 v2.1 — statement-position return / control flow.
 import assert from "node:assert/strict";
-import { sum_to, classify, first_even } from "./control_flow.deno.js";
+import { sum_to, classify, first_even } from "./control_flow.bun.js";
 
 assert.equal(sum_to(5), 15, "while-loop + trailing return");
 assert.equal(sum_to(0), 0, "while-loop zero iterations");

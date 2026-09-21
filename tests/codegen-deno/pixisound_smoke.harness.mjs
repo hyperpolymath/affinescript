@@ -38,7 +38,7 @@ globalThis.__as_pixi_sound = {
 const {
   smokeFrom, smokePlay, smokeStop, smokePause, smokeResume,
   smokeSetVolume, smokeSetLoop,
-} = await import("./pixisound_smoke.deno.js");
+} = await import("./pixisound_smoke.bun.js");
 
 const s = smokeFrom("assets/bgm.mp3");
 assert.equal(lastFromUrl, "assets/bgm.mp3", "from URL reaches host");

@@ -114,7 +114,7 @@ globalThis.__as_pixi = {
   },
 };
 
-const { smokeInit, smokeSpriteFlow, smokeGraphicsFlow, smokeAccessorsFlow, smokeGapFill } = await import("./pixi_smoke.deno.js");
+const { smokeInit, smokeSpriteFlow, smokeGraphicsFlow, smokeAccessorsFlow, smokeGapFill } = await import("./pixi_smoke.bun.js");
 
 // Async init returns an Application after `await app.init(options)`
 const app = await smokeInit({ width: 800, height: 600, backgroundColor: 0x1099bb });

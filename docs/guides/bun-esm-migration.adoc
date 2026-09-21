@@ -54,12 +54,18 @@ The source filename is retained to avoid a high-risk mechanical move in the
 same change as the semantic migration. It does not imply that Bun output passes
 through or embeds the compatibility runtime.
 
-The compatibility flag remains available for existing external consumers. An
-estate migration is complete only when its active workflows, runtime files,
-lockfiles, build commands, generated artefact names, examples, and current
-documentation have moved to Bun. Historical records may retain their original
-runtime names when clearly marked as history; renaming history would make it
-less accurate.
+`--deno-esm` and `-o *.deno.js` are retired: the compiler errors with E0826
+and points at `--bun-esm` / `.bun.js`. The flag is kept so existing scripts
+fail loudly instead of becoming an unknown option. An estate migration is
+complete only when its active workflows, runtime files, lockfiles, build
+commands, generated artefact names, examples, and current documentation have
+moved to Bun. Historical records may retain their original runtime names when
+clearly marked as history; renaming history would make it less accurate.
+
+`affinescript-vite` remains a scaffold (not in this tree). Effect rows such
+as `/ IO` are not required on the JS-host ESM path: host FFI is erased at
+emit the same way Canvas/Dom externs are (see
+link:../EFFECTS-IMPLEMENTATION.adoc[EFFECTS-IMPLEMENTATION.adoc]).
 
 == Verification contract
 

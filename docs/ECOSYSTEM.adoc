@@ -168,8 +168,8 @@ surface.
 
 |`affinescript-vite` |scaffold |Build-tool integration shell.
 
-|`affinescript-deno-test` |works |Smoke-test harness used by the Deno-ESM
-target.
+|`affinescript-deno-test` |historical |Smoke-test harness from the retired
+Deno-ESM target. JS-host ESM is Bun-ESM (`--bun-esm`).
 
 |`affinescript-tea` |runtime |INT-07 (#182): real host-side TEA runtime
 + run loop (`TeaApp`: load/init/dispatch/model/setScreen/run,
