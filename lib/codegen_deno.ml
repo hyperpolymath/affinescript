@@ -1407,7 +1407,14 @@ let rec gen_expr ctx (expr : expr) : string =
   | ExprReturn (Some e) -> iife ctx ("return " ^ gen_expr ctx e ^ ";")
   | ExprReturn None     -> iife ctx "return Unit;"
   (* #459: break/continue lower to the corresponding JS keywords. The
-     wrapping Iram) -> mangle p.p_name.name) elam_params in
+     wrapping IIFE pattern used for `return` doesn't work here — JS's
+     `break`/`continue` only target the nearest enclosing loop and an
+     IIFE wraps the keyword in a new function frame. Emit a bare
+     statement and rely on the parent block-flatten machinery. *)
+  | ExprBreak _    -> iife ctx "break;"
+  | ExprContinue _ -> iife ctx "continue;"
+  | ExprLambda { elam_params; elam_body; elam_ret_ty = _ } ->
+      let ps = List.map (fun (p : param) -> mangle p.p_name.name) elam_params in
       "((" ^ String.concat ", " ps ^ ") => " ^ gen_expr ctx elam_body ^ ")"
   | ExprTry { et_body; et_catch; et_finally } ->
       gen_try ctx et_body et_catch et_finally
@@ -1795,16 +1802,6 @@ let gen_function ctx (fd : fn_decl) : unit =
 
 (* Head name of a (possibly ref/own/mut/applied) type expression. *)
 let rec type_expr_name : type_expr -> string option = function
-  | TyCon id | TyVar id -> Some id.name
-  | TyApp (id, _)       -> Some id.name
-  | TyOwn t | TyRef (_, t) | TyMut (_, t) -> type_expr_name t
-  | _ -> None
-
-(* The struct (if any, among [known]) that [fd]'s first parameter is typed
-   as — i.e. [fd] is a receiver-first method of that struct. *)
-let receiver_struct ~(known : (string, 'a) Hashtbl.t) (fd : fn_decl)
-  : (string * string) option =
-  match fd.fd_params withtion = function
   | TyCon id | TyVar id -> Some id.name
   | TyApp (id, _)       -> Some id.name
   | TyOwn t | TyRef (_, t) | TyMut (_, t) -> type_expr_name t
