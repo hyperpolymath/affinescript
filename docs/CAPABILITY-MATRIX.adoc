@@ -298,8 +298,9 @@ their own ledger (link:SOUNDNESS.adoc[SOUNDNESS.adoc]), gated by
   (INT-09) closed 2026-07-25. `affinescript-pixijs` in-tree bindings
   (`stdlib/Pixi.affine` + UI/Sound) plus 56-A `stdlib/Dom.affine` /
   `stdlib/Console.affine` and 56 PR 4 Window/Document/utility externs
-  landed 2026-09-21; record-literal attrs + remaining idaptik Pixi
-  decls are still open (#56). The `-dom-loader` satellite was folded into
+  landed 2026-09-21; idaptik-reached Pixi/UI/Sound remainder landed
+  2026-09-21 (#760). Unused Pixi.res decls (BigPool, Extensions,
+  ScrollBox, sprite atlases) are not in the #760 bar. The `-dom-loader` satellite was folded into
   `affine-js` (#489).
 
 == Change control

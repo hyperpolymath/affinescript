@@ -21,7 +21,7 @@
 //   - FancyButton style accessors (textures per state)
 //   - Slider min/max/step accessors
 //
-// Targets the Deno-ESM backend. Consumer (or its host wrapper) sets
+// Targets the Bun-ESM backend. Consumer (or its host wrapper) sets
 // `globalThis.__as_pixi_ui` to the `@pixi/ui` namespace at module-
 // init time:
 //
@@ -139,3 +139,38 @@ pub extern fn pixiUiInputNew(options: Json) -> Input;
 
 /// Upcast Input → Container. Zero-cost identity lowering.
 pub extern fn pixiUiInputAsContainer(i: Input) -> Container;
+
+// ── idaptik-reached remainder (#760) ────────────────────────────────
+//
+// FancyButton onPress/onDown/onHover, Slider value, List.addChild,
+// Input value/onEnter/onChange. Position/size go through the
+// Container upcast (`pixiContainerSetX` etc.). Not production-ready.
+
+/// `fancyButton.onPress.connect(callback)`. Returns 0.
+pub extern fn pixiUiFancyButtonOnPress(b: FancyButton, callback: Json) -> Int;
+
+/// `fancyButton.onDown.connect(callback)`. Returns 0.
+pub extern fn pixiUiFancyButtonOnDown(b: FancyButton, callback: Json) -> Int;
+
+/// `fancyButton.onHover.connect(callback)`. Returns 0.
+pub extern fn pixiUiFancyButtonOnHover(b: FancyButton, callback: Json) -> Int;
+
+/// `slider.value` getter/setter.
+pub extern fn pixiUiSliderValue(s: Slider) -> Float;
+pub extern fn pixiUiSliderSetValue(s: Slider, v: Float) -> Int;
+
+/// `slider.addChild(child)`. `child` is an opaque display object.
+pub extern fn pixiUiSliderAddChild(s: Slider, child: Json) -> Int;
+
+/// `list.addChild(child)`.
+pub extern fn pixiUiListAddChild(l: List, child: Json) -> Int;
+
+/// `input.value` getter/setter + enter/change signals.
+pub extern fn pixiUiInputValue(i: Input) -> String;
+pub extern fn pixiUiInputSetValue(i: Input, v: String) -> Int;
+pub extern fn pixiUiInputOnEnter(i: Input, callback: Json) -> Int;
+pub extern fn pixiUiInputOnChange(i: Input, callback: Json) -> Int;
+
+/// `progressBar.progress` getter/setter (0–100 in @pixi/ui).
+pub extern fn pixiUiProgressBarProgress(p: ProgressBar) -> Float;
+pub extern fn pixiUiProgressBarSetProgress(p: ProgressBar, v: Float) -> Int;

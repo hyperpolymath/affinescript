@@ -21,6 +21,7 @@ class MockContainer {
     this.x = 0; this.y = 0;
     this.scale = new MockPoint();
     this.pivot = new MockPoint();
+    this.anchor = new MockPoint();
     this.rotation = 0;
     this.alpha = 1;
     this.zIndex = 0;
@@ -28,13 +29,30 @@ class MockContainer {
     this.eventMode = "auto";
     this.cursor = "";
     this.visible = true;
+    this.interactiveChildren = false;
+    this.parent = null;
+    this.width = 0;
+    this.height = 0;
     this.children = [];
     this.handlers = new Map();
   }
-  addChild(c) { this.children.push(c); operationsLog.push("addChild"); }
+  addChild(c) {
+    this.children.push(c);
+    c.parent = this;
+    operationsLog.push("addChild");
+  }
+  addChildAt(c, i) {
+    this.children.splice(i, 0, c);
+    c.parent = this;
+    operationsLog.push("addChildAt");
+  }
   removeChild(c) {
     this.children = this.children.filter((ch) => ch !== c);
     operationsLog.push("removeChild");
+  }
+  removeChildren() {
+    this.children = [];
+    operationsLog.push("removeChildren");
   }
   on(event, handler) {
     if (!this.handlers.has(event)) this.handlers.set(event, []);
@@ -53,14 +71,22 @@ class MockSprite extends MockContainer {
     super();
     this.texture = texture;
     this.anchor = new MockPoint();
+    this.position = new MockPoint();
+    this.interactive = false;
   }
 }
 
 class MockGraphics extends MockContainer {
-  constructor() { super(); this.paths = []; this.fills = []; }
+  constructor() { super(); this.paths = []; this.fills = []; this.strokes = []; }
   rect(x, y, w, h) { this.paths.push({ kind: "rect", x, y, w, h }); }
+  circle(x, y, r) { this.paths.push({ kind: "circle", x, y, r }); }
+  roundRect(x, y, w, h, radius) { this.paths.push({ kind: "roundRect", x, y, w, h, radius }); }
+  moveTo(x, y) { this.paths.push({ kind: "moveTo", x, y }); }
+  lineTo(x, y) { this.paths.push({ kind: "lineTo", x, y }); }
+  quadraticCurveTo(cpx, cpy, x, y) { this.paths.push({ kind: "quadratic", cpx, cpy, x, y }); }
   fill(opts) { this.fills.push(opts); }
-  clear() { this.paths = []; this.fills = []; }
+  stroke(opts) { this.strokes.push(opts); }
+  clear() { this.paths = []; this.fills = []; this.strokes = []; }
 }
 
 class MockPointCtor {
@@ -163,5 +189,24 @@ assert.equal(textureUrls.length, 3, "gap-fill Texture.from recorded");
 assert.equal(app.stage.children.length, 4, "nine-slice added as fourth child");
 const nine = app.stage.children[3];
 assert.ok(nine instanceof MockNineSliceSprite, "nine-slice upcast is identity");
+
+const reachEvent = { global: { x: 1, y: 2 }, preventDefault() { reachEvent.prevented = true; } };
+assert.equal(smokeIdaptikReach(app, reachEvent, { color: 0x00ff00, width: 2 }, { text: "hi" }), 0, "smokeIdaptikReach returns 0");
+assert.equal(app.stage.x, 3, "stage.x set per-axis");
+assert.equal(app.stage.y, 4, "stage.y set per-axis");
+assert.equal(app.stage.interactiveChildren, true, "interactiveChildren set");
+assert.equal(app.stage.scale.x, 1.5, "ObservablePoint.set on scale");
+assert.equal(app.renderer.width, 640, "renderer.resize width");
+assert.equal(app.renderer.height, 480, "renderer.resize height");
+assert.equal(reachEvent.prevented, true, "preventDefault reached host");
+assert.equal(app.stage.children.length, 0, "removeChildren cleared stage");
+assert.ok(operationsLog.includes("addChildAt"), "addChildAt observed");
+assert.ok(operationsLog.includes("removeChildren"), "removeChildren observed");
+assert.ok(operationsLog.includes("rendererResize"), "renderer.resize observed");
+
+assert.equal(await smokeAssets({ basePath: "/assets" }, "ui"), 0, "smokeAssets returns 0");
+assert.deepEqual(assetInits, [{ basePath: "/assets" }], "Assets.init options");
+assert.deepEqual(bundles, ["ui"], "Assets.loadBundle name");
+assert.deepEqual(bgBundles, ["ui"], "Assets.backgroundLoadBundle name");
 
 console.log("pixi_smoke.harness.mjs OK");
