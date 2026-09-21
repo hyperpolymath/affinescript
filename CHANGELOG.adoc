@@ -23,6 +23,9 @@ kept so existing scripts fail loudly (Refs #56)
 
 ==== Added
 
+* PixiUI: rename extern type `List` → `UiList` so `use PixiUI` typechecks
+against prelude `List<T>` (kind mismatch). Harness actually imports
+`smokeIdaptikReach` / Assets mock. Smokes compile + run (Refs #760)
 * Pixi/UI/Sound idaptik-reached remainder (#760): Graphics
 circle/stroke/roundRect/path, per-axis Container x/y, parent Option,
 interactiveChildren, ObservablePoint.set, Texture.WHITE, Assets
