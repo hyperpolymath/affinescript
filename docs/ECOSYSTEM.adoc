@@ -166,7 +166,10 @@ against a real Int-handle host DOM, mutation log asserted.
 `stdlib/Dom.affine` + `stdlib/Console.affine`. Remaining: full idaptik
 surface.
 
-|`affinescript-vite` |scaffold |Build-tool integration shell.
+|`affinescript-vite` |scaffold |In-tree Vite plugin shell
+(`affinescript-vite/`): transforms `*.affine` via
+`affinescript compile --bun-esm`. Compiler must be on PATH. Not a
+production bundler.
 
 |`affinescript-deno-test` |historical |Smoke-test harness from the retired
 Deno-ESM target. JS-host ESM is Bun-ESM (`--bun-esm`).

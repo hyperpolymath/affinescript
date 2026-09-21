@@ -28,7 +28,9 @@ jobs:
           errors=0
           for f in .github/workflows/*.yml .github/workflows/*.yaml; do
             [ -f "$f" ] || continue
-            if ! head -1 "$f" | grep -q "SPDX-License-Identifier"; then
+            # actions-lock prepends a managed-by comment, so SPDX is
+            # often line 2. Accept it anywhere in the first 5 lines.
+            if ! head -5 "$f" | grep -q "SPDX-License-Identifier"; then
               echo "ERROR: $f missing SPDX header"
               errors=$((errors + 1))
             fi
