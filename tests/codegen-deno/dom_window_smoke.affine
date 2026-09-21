@@ -1,0 +1,50 @@
+// SPDX-License-Identifier: MPL-2.0
+// #56 PR 4 — Window / Document / utility smoke.
+//
+// The harness installs a jsdom-style `window`/`document` mock on
+// globalThis before importing the generated module.
+
+use Deno::{Json};
+use Dom::{Element, Node, MediaQueryList, TimerId, addEventListener, removeEventListener, matchMedia, windowOpen, innerWidth, innerHeight, devicePixelRatio, setTimeout, setInterval, clearInterval, clearTimeout, createElement, getElementById, bodyAppendChild, bodyRemoveChild, bodyFirstChild, bodySetInnerHTML, bodyInnerHTML, elementAsNode, domDateNow, numberIsFinite, numberIsNaN, btoa};
+
+/// Window geometry + media + open.
+pub fn smokeWindow(handler: Json) -> Int {
+  addEventListener("resize", handler);
+  removeEventListener("resize", handler);
+  let _mq = matchMedia("(min-width: 600px)");
+  windowOpen("https://example.com", "_blank");
+  let _w = innerWidth();
+  let _h = innerHeight();
+  let _dpr = devicePixelRatio();
+  0
+}
+
+/// Timers: set + clear both timeout and interval.
+pub fn smokeTimers(handler: Json) -> Int {
+  let t = setTimeout(handler, 16);
+  clearTimeout(t);
+  let i = setInterval(handler, 1000);
+  clearInterval(i);
+  0
+}
+
+/// Document: create, lookup, body child list + innerHTML.
+pub fn smokeDocument() -> String {
+  let el = createElement("div");
+  let node = elementAsNode(el);
+  bodyAppendChild(node);
+  let _found = getElementById("root");
+  let _first = bodyFirstChild();
+  bodySetInnerHTML("<p>hi</p>");
+  let html = bodyInnerHTML();
+  bodyRemoveChild(node);
+  html
+}
+
+/// Date.now / Number.isFinite / Number.isNaN / btoa.
+pub fn smokeUtil(n: Float, s: String) -> String {
+  let _now = domDateNow();
+  let _fin = numberIsFinite(n);
+  let _nan = numberIsNaN(n);
+  btoa(s)
+}

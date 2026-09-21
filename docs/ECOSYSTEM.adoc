@@ -81,7 +81,8 @@ remaining original #175 children INT-07 (#182) and INT-08 (#183) closed
 (socket recv/send/accept) have preview1 lowerings + gated smokes in
 tree; #486 flipped the wrap default to `--command` without the one-way
 compiler re-target. Satellite remainder is #56 (56-A Dom/Console + Pixi
-gap-fill landed). Stage E is now the frontier.
+gap-fill + Window/Document/utility PR 4 landed; record-literal attrs
+remain). Stage E is now the frontier.
 
 |*E* |typed-wasm convergence hardening (the transition runway): the
 AffineScript↔typed-wasm contract widened from L7+L10 toward full
