@@ -1,0 +1,14 @@
+{
+  "name": "affinescript-vite",
+  "version": "0.0.1",
+  "description": "Vite plugin scaffold: compile .affine files with --bun-esm",
+  "license": "MPL-2.0",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js"
+  },
+  "peerDependencies": {
+    "vite": ">=5"
+  }
+}

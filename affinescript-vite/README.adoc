@@ -1,0 +1,23 @@
+= affinescript-vite
+:toc: macro
+
+toc::[]
+
+Vite plugin **scaffold** for AffineScript (issue #56 remainder).
+Not a production bundler integration.
+
+== Use
+
+[source,javascript]
+----
+import affinescript from "affinescript-vite";
+
+export default {
+  plugins: [affinescript()],
+};
+----
+
+`*.affine` modules are compiled with `affinescript compile --bun-esm`.
+The compiler must be on `PATH` (or set `AFFINESCRIPT` / `compiler` option).
+
+Deno-ESM is retired; the emit target is Bun-ESM.
