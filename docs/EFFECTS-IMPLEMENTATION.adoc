@@ -78,6 +78,18 @@ type eval_error =
 Handler evaluation catches `PerformEffect`, selects a matching arm, and
 evaluates the arm body in the handler context.
 
+== JS-host ESM (Bun) — Canvas-style erasure
+
+Host FFI on `--bun-esm` does **not** require `/ IO` (or `{IO}`) effect
+rows. `stdlib/Canvas.affine`, `stdlib/Dom.affine`, and
+`stdlib/Console.affine` declare ordinary `extern fn` / wrappers; the
+direct-ESM emitter lowers them to host calls and erases effect
+declarations (`// effect declaration (erased)`). Declared `/ Async` rows
+are the exception: they compile to `async function` so `await fetch` is
+legal JS. Algebraic `handle { ... }` is a compile error on this backend
+(Refs #555). This is the AOT-safe contract for the #56 remainder — not
+a second effect system.
+
 == Not Yet Complete
 
 [arabic]

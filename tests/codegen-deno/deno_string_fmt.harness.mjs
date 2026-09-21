@@ -8,7 +8,7 @@ const {
   drop_ts_suffix,
   drop_missing_suffix,
   fmt_pct,
-} = await import("./deno_string_fmt.deno.js");
+} = await import("./deno_string_fmt.bun.js");
 
 // endsWith
 assert.equal(is_ts("foo.ts"),   true,  "endsWith hit");

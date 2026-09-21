@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: MPL-2.0
 // Copyright (c) 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
 //
-// Deno.affine — issue #122 host bindings for the Deno-ESM backend.
+// Deno.affine — issue #122 host bindings (JSON / bytes / path helpers).
 //
 // Unlike stdlib/Vscode.affine (issue #35), these externs are NOT a
 // wasm-FFI surface with an Int-handle/readString contract. The
-// `--deno-esm` backend (lib/codegen_deno.ml) is a *direct* AST → ES
-// module transpiler with no wasm boundary, so each `extern fn` below is
-// lowered, at compile time, straight to its host expression:
+// `--bun-esm` backend (lib/codegen_deno.ml, `codegen_bun`) is a *direct*
+// AST → ES module transpiler with no wasm boundary, so each `extern fn`
+// below is lowered, at compile time, straight to its host expression
+// (Bun Node-compat for FS; JSON/Date stay platform-neutral). `--deno-esm`
+// is retired (E0826).
 //
 //   writeTextFile(p, c)  ->  Deno.writeTextFileSync(p, c)
 //   jsonParse(s)         ->  JSON.parse(s)

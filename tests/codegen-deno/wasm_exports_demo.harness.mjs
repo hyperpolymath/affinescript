@@ -11,7 +11,7 @@ import {
   add_i64_via_wasm,
   mul_f32_via_wasm,
   mul_f64_via_wasm,
-} from "./wasm_exports_demo.deno.js";
+} from "./wasm_exports_demo.bun.js";
 
 // Hand-built minimal wasm module:
 //   (module

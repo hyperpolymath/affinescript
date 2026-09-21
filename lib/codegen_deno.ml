@@ -1,13 +1,14 @@
 (* SPDX-License-Identifier: MPL-2.0 *)
 (* SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell *)
 
-(** Deno-ESM Emit Mode (issue #122, Refs #35 #103).
+(** Direct ESM emit (issue #122 origin; Bun-ESM is the only JS-host
+    profile — `--deno-esm` retired, Refs #56).
 
     A *direct* AffineScript-AST → ES-module transpiler. Unlike
     {!Codegen_node} (which wraps a compiled [Wasm.wasm_module] in a CJS
     shim), this backend emits standalone ES2020 module source — no wasm,
     no [require], no handle table — so the output is a drop-in [.js] /
-    [.mjs] ES module a Deno (or Node ESM) consumer can [import] directly.
+    [.mjs] ES module a Bun (or Node ESM) consumer can [import] directly.
 
     Why a direct transpiler and not a wasm-wrapping ESM shim: the
     motivating consumer ([hyperpolymath/ubicity]'s [storage.ts] /
@@ -2109,12 +2110,14 @@ let generate (host : host_profile) (program : program) (symbols : Symbol.t) : st
   if has_main then emit_line ctx "await main();";
   Buffer.contents ctx.output
 
+(* Deno-ESM host profile is retired; the ESM emitter is Bun-only. The
+   name is kept so existing library callers compile. *)
 let codegen_deno (program : program) (symbols : Symbol.t)
   : (string, string) result =
-  try Ok (generate Deno program symbols)
+  try Ok (generate Bun program symbols)
   with
-  | Failure msg -> Error ("Deno-ESM codegen error: " ^ msg)
-  | e           -> Error ("Deno-ESM codegen error: " ^ Printexc.to_string e)
+  | Failure msg -> Error ("Bun-ESM codegen error: " ^ msg)
+  | e           -> Error ("Bun-ESM codegen error: " ^ Printexc.to_string e)
 
 let codegen_bun (program : program) (symbols : Symbol.t)
   : (string, string) result =

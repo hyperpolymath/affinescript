@@ -9,7 +9,7 @@ import {
   ANSWER,
   Red,
   Green,
-} from "./class_basic.deno.js";
+} from "./class_basic.bun.js";
 
 // struct + receiver-first fns -> class with synthesised constructor
 const c = new Counter(10);

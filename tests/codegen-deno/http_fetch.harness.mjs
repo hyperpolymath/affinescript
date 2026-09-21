@@ -27,7 +27,7 @@ const {
   req_get_status,
   req_post_body,
   ok_get,
-} = await import("./http_fetch.deno.js");
+} = await import("./http_fetch.bun.js");
 
 // GET — status round-trips, no body sent
 assert.equal(await get_status("https://example.test/ok"), 200, "GET 200");

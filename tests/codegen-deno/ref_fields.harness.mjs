@@ -4,7 +4,7 @@
 // take Point first (ref/own/mut) so they synthesise as Point methods —
 // exercising auto-deref field access *and* class synthesis together.
 import assert from "node:assert/strict";
-import { Point } from "./ref_fields.deno.js";
+import { Point } from "./ref_fields.bun.js";
 
 const p = new Point(3, 4);
 assert.equal(p.x, 3, "constructor assigns x");

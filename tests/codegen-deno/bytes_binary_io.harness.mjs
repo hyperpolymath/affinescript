@@ -15,7 +15,7 @@ const {
   read_mouse_y,
   fill_byte,
   fill_first,
-} = await import("./bytes_binary_io.deno.js");
+} = await import("./bytes_binary_io.bun.js");
 
 // Round-trip: build a Key event and read every field back.
 {

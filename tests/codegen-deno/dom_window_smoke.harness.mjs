@@ -43,7 +43,7 @@ globalThis.document = document;
 
 const {
   smokeWindow, smokeTimers, smokeDocument, smokeUtil,
-} = await import("./dom_window_smoke.deno.js");
+} = await import("./dom_window_smoke.bun.js");
 
 const handler = () => 0;
 assert.equal(smokeWindow(handler), 0);

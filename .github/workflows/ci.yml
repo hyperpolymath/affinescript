@@ -89,10 +89,10 @@ jobs:
         run: opam exec -- dune runtest
       - name: Run codegen WASM tests
         run: opam exec -- ./tools/run_codegen_wasm_tests.sh
-      - name: Run codegen Deno-ESM tests (issue #122)
-        # Compiles tests/codegen-deno/*.affine with the --deno-esm backend
-        # and runs the *.harness.mjs under Node (CI has Node 20, not Deno;
-        # the Phase 1 fixtures are pure logic so Node ESM exercises them).
+      - name: Run codegen Bun-ESM tests (historical codegen-deno corpus)
+        # Compiles tests/codegen-deno/*.affine with the --bun-esm backend
+        # and runs the *.harness.mjs under Node (CI has Node 20; these
+        # fixtures mock host objects and do not need the Bun binary).
         run: opam exec -- ./tools/run_codegen_deno_tests.sh
       - name: Run native Bun-ESM tests (issue #734)
         run: opam exec -- ./tools/run_codegen_bun_tests.sh

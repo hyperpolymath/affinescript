@@ -64,7 +64,7 @@ globalThis.__as_pixi_ui = {
 };
 
 const { smokeButton, smokeFancyButton, smokeSlider, smokeSwitch, smokeProgressBar, smokeList, smokeInput } =
-  await import("./pixiui_smoke.deno.js");
+  await import("./pixiui_smoke.bun.js");
 
 // ── Button: ctor + onPress + upcast ────────────────────────────────
 const buttonPressCb = () => "pressed";

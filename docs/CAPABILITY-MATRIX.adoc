@@ -196,16 +196,19 @@ Formal spec: link:specs/TYPED-WASM-INTERFACE.adoc[specs/TYPED-WASM-INTERFACE.ado
 Widening roadmap (L1–6, L14–16, multi-producer ABI): link:specs/TYPED-WASM-ROADMAP.adoc[specs/TYPED-WASM-ROADMAP.adoc].
 Producer-side; target spec is the separate `hyperpolymath/typed-wasm` repo.
 
-|Deno-ESM |works |Direct AST→ES-module transpiler (`lib/codegen_deno.ml`),
-`--deno-esm` / `.deno.js`. Shipped + consumer-verified (ubicity).
+|Deno-ESM |retired |`--deno-esm` / `-o FILE.deno.js` is a hard error (E0826).
+The JS-host ESM target is Bun-ESM. The flag is kept so existing scripts fail
+loudly instead of becoming an unknown option.
 
-|Bun-ESM |works |Host-profiled direct AST→ES-module transpiler,
-`--bun-esm` / `.bun.js`. Public declarations remain importable ESM; filesystem,
-argument, and process operations lower through Bun's synchronous
-Node-compatibility surface. Host operations are resolved lazily so a generated
-module that only uses browser-provided externs remains browser-importable. CI
-compiles, checks for legacy-runtime leakage, parses, and executes filesystem,
-byte, argument, export, and missing-path controls under Bun.
+|Bun-ESM |works |Direct AST→ES-module transpiler (`lib/codegen_deno.ml`,
+`codegen_bun`), `--bun-esm` / `.bun.js`. Public declarations remain importable
+ESM; filesystem, argument, and process operations lower through Bun's
+synchronous Node-compatibility surface. Host operations are resolved lazily so
+a generated module that only uses browser-provided externs remains
+browser-importable. CI compiles, checks for legacy-runtime leakage, parses,
+and executes filesystem, byte, argument, export, and missing-path controls
+under Bun. `tools/run_codegen_deno_tests.sh` (historical name) compiles
+`tests/codegen-deno/` with `--bun-esm`.
 Migration and host-contract details:
 link:guides/bun-esm-migration.adoc[guides/bun-esm-migration.adoc].
 

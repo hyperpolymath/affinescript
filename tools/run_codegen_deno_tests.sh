@@ -1,15 +1,12 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MPL-2.0
-# issue #122 — Deno-ESM backend regression runner.
+# issue #122 corpus — now compiled with the Bun-ESM backend.
 #
-# Mirrors tools/run_codegen_wasm_tests.sh: for every fixture in
-# tests/codegen-deno/, compile FILE.affine -> FILE.deno.js with the
-# --deno-esm backend, then run every *.harness.mjs with `node`.
-#
-# Node is used (not deno) deliberately: CI provisions Node 20 but not
-# Deno, and the Phase 1 fixtures are pure logic — the generated module
-# only references the `Deno` global lazily inside helper bodies that the
-# harnesses never call, so plain Node ESM exercises them faithfully.
+# Directory name `tests/codegen-deno/` is historical. Every fixture is
+# compiled with `--bun-esm` to FILE.bun.js. Harnesses still run under
+# `node` in CI (Node 20 is provisioned; these fixtures do not need the
+# Bun binary — they mock host objects). Native Bun acceptance lives in
+# tools/run_codegen_bun_tests.sh.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -26,16 +23,16 @@ fi
 echo "Using compiler: ${COMPILE_CMD[*]}"
 
 for src in "$TEST_DIR"/*.affine; do
-  out="${src%.affine}.deno.js"
+  out="${src%.affine}.bun.js"
   echo "Compiling $(basename "$src") -> $(basename "$out")"
-  "${COMPILE_CMD[@]}" "$src" -o "$out" --deno-esm
+  "${COMPILE_CMD[@]}" "$src" -o "$out" --bun-esm
 done
 
 echo ""
-echo "Running Deno-ESM harnesses (node)"
+echo "Running ESM harnesses (node, Bun-ESM artefacts)"
 for js in "$TEST_DIR"/*.harness.mjs; do
   echo "node $(basename "$js")"
   (cd "$TEST_DIR" && node "$(basename "$js")")
 done
 
-echo "All codegen Deno-ESM tests passed."
+echo "All codegen Bun-ESM (legacy codegen-deno corpus) tests passed."

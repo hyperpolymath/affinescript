@@ -189,7 +189,7 @@ globalThis.__as_sqlite = {
   exportCsv() { return 0; }, lastError() { return ""; },
 };
 
-const mod = await import("./transaction_smoke.deno.js");
+const mod = await import("./transaction_smoke.bun.js");
 
 // ── commit_persists ────────────────────────────────────────────────
 assert.equal(

@@ -212,7 +212,7 @@ globalThis.__as_sqlite = {
   txDb() { return 0; }, txIsLive() { return false; },
 };
 
-const mod = await import("./aggregate_smoke.deno.js");
+const mod = await import("./aggregate_smoke.bun.js");
 
 // ── COUNT ───────────────────────────────────────────────────────────
 assert.equal(mod.smoke_count(":memory:"), 5, "smoke_count: 5 rows inserted");

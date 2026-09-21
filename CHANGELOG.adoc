@@ -15,8 +15,17 @@ https://semver.org/spec/v2.0.0.html[Semantic Versioning].
 
 === [Unreleased]
 
+==== Removed
+
+* `--deno-esm` / `-o FILE.deno.js` is a hard error (E0826). Bun-ESM
+(`--bun-esm` / `.bun.js`) is the only JS-host ESM target. The flag is
+kept so existing scripts fail loudly (Refs #56)
+
 ==== Added
 
+* Aspirational idaptik StartupError fixture compiles with real syntax
+(`use Console::{log}`, `use Dom::{…}`, tuple-list attrs and
+`#{ bg: … }` records) on `--bun-esm` (Refs #56)
 * feat(stdlib): Aggregate.affine — SQL group-by + aggregation primitives
 — db-theory #3 (7 externs) (PR #527)
 * feat(stdlib): Transaction.affine — affine-bounded write-set isolation

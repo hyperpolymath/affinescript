@@ -42,7 +42,7 @@ class MockCtx2D {
 const ctx = new MockCtx2D();
 const canvas = { getContext: (kind) => { assert.equal(kind, "2d", "getContext called with '2d'"); return ctx; } };
 
-const { smokeRects, smokePath, smokeTransform, smokeText, smokeImages } = await import("./canvas_smoke.deno.js");
+const { smokeRects, smokePath, smokeTransform, smokeText, smokeImages } = await import("./canvas_smoke.bun.js");
 
 // Rects: assert each style + each of the three rect ops + clear.
 const ctxBack = smokeRects(canvas);

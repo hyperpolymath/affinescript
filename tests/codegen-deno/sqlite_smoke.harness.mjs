@@ -125,7 +125,7 @@ globalThis.__as_sqlite = {
   },
 };
 
-const mod = await import("./sqlite_smoke.deno.js");
+const mod = await import("./sqlite_smoke.bun.js");
 
 assert.equal(
   mod.smoke_full_lifecycle(":memory:"),

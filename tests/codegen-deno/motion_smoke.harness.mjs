@@ -55,7 +55,7 @@ const {
   smokeTween,
   smokeSpring,
   smokeEase,
-} = await import("./motion_smoke.deno.js");
+} = await import("./motion_smoke.bun.js");
 
 // ---- animate + cancel (original surface) ----
 const controls = smokeAnimate("#player", { x: 100, opacity: 0.5 }, { duration: 1.0 });

@@ -70,8 +70,8 @@ producer-side type signature here and a verifier-side contract in
 runtime adapter all green.  `Http.fetch` is the canonical example
 (landed via the #225 CPS line, PR1..PR3d).
 
-|*Adapter-side (Deno-ESM)*
-|Compiles via the `--deno-esm` backend; the `extern` is realised
+|*Adapter-side (JS-host ESM)*
+|Compiles via the `--bun-esm` backend (Deno-ESM retired); the `extern` is realised
 by the emitted ESM importing a JS module.  The "real impl" is the
 adapter shim in `packages/<adapter>/mod.js` (or equivalent).
 |Adapter package exists, the symbol is exported, and a

@@ -8,7 +8,7 @@ const {
   draw_unit,
   draw_in_range,
   perf_tick,
-} = await import("./random_smoke.deno.js");
+} = await import("./random_smoke.bun.js");
 
 // math_random — every draw is in [0, 1).
 for (let i = 0; i < 1000; i++) {

@@ -492,10 +492,8 @@ let repl_cmd_fn () =
 let compile_file face json wasm_gc vscode_ext vscode_adapter vscode_no_lc
     deno_esm bun_esm target path output =
   let face = resolve_face ~quiet:json face path in
-  let is_deno = deno_esm || Filename.check_suffix output ".deno.js" in
-  let is_bun = bun_esm || Filename.check_suffix output ".bun.js" in
-  if is_deno && is_bun then
-    let message = "--deno-esm and --bun-esm are mutually exclusive" in
+  if deno_esm || Filename.check_suffix output ".deno.js" then
+    let message = "Deno-ESM was removed; use --bun-esm (and a .bun.js output path)" in
     if json then
       json_finish [{ Affinescript.Json_output.severity = Error;
                      code = "E0826"; message;
@@ -536,10 +534,9 @@ let compile_file face json wasm_gc vscode_ext vscode_adapter vscode_no_lc
                use the original [prog] because they handle imports natively
                via Codegen.gen_imports / the import section. *)
             let flat_prog = Affinescript.Module_loader.flatten_imports loader prog in
-            let is_deno = deno_esm || Filename.check_suffix output ".deno.js" in
             let is_bun = bun_esm || Filename.check_suffix output ".bun.js" in
             let is_julia = Filename.check_suffix output ".jl" in
-            let is_js = (not is_deno) && (not is_bun) && Filename.check_suffix output ".js" in
+            let is_js = (not is_bun) && Filename.check_suffix output ".js" in
             let is_c = Filename.check_suffix output ".c" in
             let is_wgsl = Filename.check_suffix output ".wgsl" in
             let is_faust = Filename.check_suffix output ".dsp" in
@@ -565,16 +562,6 @@ let compile_file face json wasm_gc vscode_ext vscode_adapter vscode_no_lc
               | Error msg ->
                 add { severity = Error; code = "E0825";
                       message = msg;
-                      span = Affinescript.Span.dummy; help = None; labels = [] }
-              | Ok esm_code ->
-                let oc = open_out_bin output in
-                output_string oc esm_code;
-                close_out oc
-            end else if is_deno then begin
-              match Affinescript.Codegen_deno.codegen_deno flat_prog resolve_ctx.symbols with
-              | Error msg ->
-                add { severity = Error; code = "E0824";
-                      message = Printf.sprintf "Deno-ESM codegen error: %s" msg;
                       span = Affinescript.Span.dummy; help = None; labels = [] }
               | Ok esm_code ->
                 let oc = open_out_bin output in
@@ -779,10 +766,9 @@ let compile_file face json wasm_gc vscode_ext vscode_adapter vscode_no_lc
                cross-module imports for backends that don't have native
                module-system support. Wasm/Wasm-GC keep the original [prog]. *)
             let flat_prog = Affinescript.Module_loader.flatten_imports loader prog in
-            let is_deno = deno_esm || Filename.check_suffix output ".deno.js" in
             let is_bun = bun_esm || Filename.check_suffix output ".bun.js" in
             let is_julia = Filename.check_suffix output ".jl" in
-            let is_js = (not is_deno) && (not is_bun) && Filename.check_suffix output ".js" in
+            let is_js = (not is_bun) && Filename.check_suffix output ".js" in
             let is_c = Filename.check_suffix output ".c" in
             let is_wgsl = Filename.check_suffix output ".wgsl" in
             let is_faust = Filename.check_suffix output ".dsp" in
@@ -813,17 +799,6 @@ let compile_file face json wasm_gc vscode_ext vscode_adapter vscode_no_lc
                 output_string oc esm_code;
                 close_out oc;
                 Format.printf "Compiled %s -> %s (Bun-ESM)@." path output;
-                `Ok ())
-            else if is_deno then
-              (match Affinescript.Codegen_deno.codegen_deno flat_prog resolve_ctx.symbols with
-              | Error e ->
-                Format.eprintf "@[<v>Deno-ESM codegen error: %s@]@." e;
-                `Error (false, "Deno-ESM codegen error")
-              | Ok esm_code ->
-                let oc = open_out output in
-                output_string oc esm_code;
-                close_out oc;
-                Format.printf "Compiled %s -> %s (Deno-ESM)@." path output;
                 `Ok ())
             else if is_julia then
               (match Affinescript.Julia_codegen.codegen_julia flat_prog resolve_ctx.symbols with
@@ -1280,28 +1255,21 @@ let vscode_no_lc_arg =
           dependency for extensions that ship no language client; the \
           wiring passes null in its place.")
 
-(* Issue #122: --deno-esm. Selects the direct AST -> ES-module backend
-   ({!Affinescript.Codegen_deno}) regardless of output extension, so a
-   drop-in `.js` ES module can be produced (e.g. `-o src/storage.js
-   --deno-esm`). A `.deno.js` output extension also routes here without
-   the flag, as a convenience for the test corpus / ad-hoc use. *)
+(* --deno-esm was issue #122. Retired: the ESM host is Bun (--bun-esm).
+   The flag is kept so existing scripts get a clear error instead of
+   Cmdliner unknown-option. *)
 let deno_esm_arg =
   Arg.(value & flag & info ["deno-esm"]
-    ~doc:"Emit a standalone Deno/Node ES module directly from the AST \
-          (issue #122): `export class` for struct+impl, `export` for \
-          public fns/consts, and `extern fn` lowered to direct host \
-          calls (Deno.*Sync / JSON / WebAssembly). No wasm, no require, \
-          no handle table — the output is a drop-in importable ESM. A \
-          `.deno.js` output extension selects this backend implicitly.")
+    ~doc:"REMOVED. Deno-ESM is gone; use $(b,--bun-esm) / a `.bun.js` \
+          output path. Passing this flag (or `-o *.deno.js`) is an error.")
 
 let bun_esm_arg =
   Arg.(value & flag & info ["bun-esm"]
     ~doc:"Emit a standalone Bun-native ES module directly from the AST: \
           public declarations are exported and host operations use Bun's \
           Node-compatible synchronous APIs. The emitted module contains no \
-          legacy-runtime shim. A `.bun.js` output extension selects this \
-          backend implicitly. This option is mutually exclusive with \
-          `--deno-esm`.")
+          Deno runtime shim. A `.bun.js` output extension selects this \
+          backend implicitly.")
 
 (** Shared --face flag: select the parser surface-syntax face. *)
 let face_arg =
