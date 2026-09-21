@@ -23,6 +23,10 @@ kept so existing scripts fail loudly (Refs #56)
 
 ==== Added
 
+* CI gates on `.deed` (DEED grammar). Leftover `.a2ml` is a hard fail.
+`tools/check-deed-gates.sh` + `.github/workflows/deed-validate.yml`.
+Machine-readable manifests renamed `.a2ml` → `.deed`. Repo deed:
+`affinescript_chora.deed` (Refs standards #837)
 * Aspirational idaptik StartupError fixture compiles with real syntax
 (`use Console::{log}`, `use Dom::{…}`, tuple-list attrs and
 `#{ bg: … }` records) on `--bun-esm` (Refs #56)

@@ -1,0 +1,37 @@
+# AI Assistant Instructions
+
+# Machine-Readable Metadata
+
+Project metadata and AI agent configuration files live under `.machine_readable/`. All metadata files use the `.deed` extension; the `.scm` extension is reserved for Guix (`guix.scm`, `.guix-channel`).
+
+## Core descriptiles metadata (`.machine_readable/descriptiles/`)
+
+- **STATE.deed** - Current project state, progress, blockers, next actions, session notes
+- **ECOSYSTEM.deed** - Position in ecosystem, relationships to sibling projects
+- **META.deed** - Architecture decisions, governance, development practices
+- **PLAYBOOK.deed** - Operational runbook, procedures, alerts
+- **AGENTIC.deed** - AI agent interaction patterns and constraints
+- **NEUROSYM.deed** - Neurosymbolic integration configuration
+
+## Top-level contractile files (`.machine_readable/`)
+
+- **ADJUST.contractile**, **INTENT.contractile**, **MUST.contractile**, **TRUST.contractile** - Trident-shape commitments
+- **CLADE.deed** - Phylogenetic context within the estate
+- **anchors/ANCHOR.deed** - Stable references for tooling
+
+## Agent guidance (`.machine_readable/agent_instructions/`)
+
+- **methodology.deed** - Required checks (dune build / dune runtest must pass; see for the full list)
+- **coverage.deed**, **debt.deed** - Tracked metrics
+- **README.adoc** - Human-readable summary of agent instructions
+
+**These files are the canonical source of truth for project metadata.**
+
+## Workflow
+
+1. Read `.machine_readable/descriptiles/*.deed` files at session start
+2. Check `STATE.deed` for current phase, blockers, next actions
+3. Follow patterns and constraints from `AGENTIC.deed`
+4. Follow methodology gates from `agent_instructions/methodology.deed`
+5. Update `STATE.deed` after completing work
+6. Sync to database: `~/sync-language-tracker.sh`

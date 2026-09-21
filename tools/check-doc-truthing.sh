@@ -18,7 +18,7 @@
 # check-doc-overclaims.sh — into one script with no overlap):
 #
 #   Presence invariants (DOC-04/05) — fails if any banner pointer, the matrix's
-#   self-declaration, the anti-over-claim section, or the STATE.a2ml mirror keys
+#   self-declaration, the anti-over-claim section, or the STATE.deed mirror keys
 #   are removed. This deliberately checks *presence of the correction*, not a
 #   phrase blocklist: "production-ready" legitimately appears inside the
 #   negating banners and future-roadmap sections, so a naive grep over the
@@ -67,7 +67,7 @@ BANNERED_DOCS=(
 
 # The machine-readable mirror (DOC-05): it follows the matrix, it does not
 # lead. These keys assert that contract in-band.
-STATE_FILE=".machine_readable/descriptiles/STATE.a2ml"
+STATE_FILE=".machine_readable/descriptiles/STATE.deed"
 STATE_KEYS=(
   "authoritative-status-doc"
   "drift-flag"
@@ -168,7 +168,7 @@ for stem in "${BANNERED_DOCS[@]}"; do
   fi
 done
 
-# --- 3. STATE.a2ml still declares itself a mirror, not a leader (DOC-05) -----
+# --- 3. STATE.deed still declares itself a mirror, not a leader (DOC-05) -----
 if [ ! -f "$STATE_FILE" ]; then
   note "ERROR: machine-readable state file is missing: $STATE_FILE"
   fail=1
@@ -176,7 +176,7 @@ else
   for key in "${STATE_KEYS[@]}"; do
     if ! grep -q "$key" "$STATE_FILE"; then
       note "ERROR: $STATE_FILE lost the '$key' key."
-      note "       DOC-05 requires STATE.a2ml to flag that it MIRRORS the"
+      note "       DOC-05 requires STATE.deed to flag that it MIRRORS the"
       note "       capability matrix and does not lead it (issue #176)."
       fail=1
     fi
