@@ -285,9 +285,11 @@ their own ledger (link:SOUNDNESS.adoc[SOUNDNESS.adoc]), gated by
 * typed-wasm is *not* an AffineScript subsystem. It is a separate,
   language-agnostic target with its own repo, proofs, and other producers
   (ephapax). AffineScript is one producer among several.
-* The satellite ecosystem is mostly scaffold/skeleton — see the satellite
-  registry in `ECOSYSTEM.adoc`. `affinescript-tea`/`-dom-loader`/`-cadre`
-  were imaginary until the #175 scaffolds; `-dom`/`-pixijs` are skeletons.
+* The satellite ecosystem is mixed maturity — see the satellite registry
+  in `ECOSYSTEM.adoc`. `affinescript-tea` (INT-07/#182) and
+  `affinescript-dom` (INT-08/#183) shipped runtimes; `affinescript-cadre`
+  (INT-09) closed 2026-07-25. `affinescript-pixijs` remains a scaffold
+  (#56). The `-dom-loader` satellite was folded into `affine-js` (#489).
 
 == Change control
 
