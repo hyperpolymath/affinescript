@@ -6,7 +6,7 @@
 // registration, and upcast → Container for each MVP component.
 
 use Deno::{Json};
-use PixiUI::{Button, FancyButton, Slider, Switch, Container, pixiUiButtonNew, pixiUiButtonOnPress, pixiUiButtonAsContainer, pixiUiFancyButtonNew, pixiUiFancyButtonAsContainer, pixiUiSliderNew, pixiUiSliderOnUpdate, pixiUiSliderAsContainer, pixiUiSwitchNew, pixiUiSwitchOnChange, pixiUiSwitchAsContainer, pixiUiProgressBarNew, pixiUiProgressBarAsContainer, pixiUiListNew, pixiUiListAsContainer, pixiUiInputNew, pixiUiInputAsContainer};
+use PixiUI::{Button, FancyButton, Slider, Switch, Container, Input, List, ProgressBar, pixiUiButtonNew, pixiUiButtonOnPress, pixiUiButtonAsContainer, pixiUiFancyButtonNew, pixiUiFancyButtonAsContainer, pixiUiFancyButtonOnPress, pixiUiFancyButtonOnDown, pixiUiFancyButtonOnHover, pixiUiSliderNew, pixiUiSliderOnUpdate, pixiUiSliderAsContainer, pixiUiSliderSetValue, pixiUiSliderValue, pixiUiSliderAddChild, pixiUiSwitchNew, pixiUiSwitchOnChange, pixiUiSwitchAsContainer, pixiUiProgressBarNew, pixiUiProgressBarAsContainer, pixiUiProgressBarSetProgress, pixiUiProgressBarProgress, pixiUiListNew, pixiUiListAsContainer, pixiUiListAddChild, pixiUiInputNew, pixiUiInputAsContainer, pixiUiInputValue, pixiUiInputSetValue, pixiUiInputOnEnter, pixiUiInputOnChange};
 
 pub fn smokeButton(options: Json, callback: Json) -> Container {
   let b = pixiUiButtonNew(options);
@@ -41,4 +41,42 @@ pub fn smokeList(options: Json) -> Container {
 
 pub fn smokeInput(options: Json) -> Container {
   pixiUiInputAsContainer(pixiUiInputNew(options))
+}
+
+/// #760 idaptik-reached FancyButton signals + Slider value + Input
+/// value/enter/change + List.addChild.
+pub fn smokeFancyButtonEvents(options: Json, onPress: Json, onDown: Json, onHover: Json) -> Container {
+  let fb = pixiUiFancyButtonNew(options);
+  pixiUiFancyButtonOnPress(fb, onPress);
+  pixiUiFancyButtonOnDown(fb, onDown);
+  pixiUiFancyButtonOnHover(fb, onHover);
+  pixiUiFancyButtonAsContainer(fb)
+}
+
+pub fn smokeSliderValue(options: Json, v: Float) -> Float {
+  let s = pixiUiSliderNew(options);
+  pixiUiSliderSetValue(s, v);
+  pixiUiSliderValue(s)
+}
+
+pub fn smokeSliderAdd(options: Json, child: Json) -> Int {
+  pixiUiSliderAddChild(pixiUiSliderNew(options), child)
+}
+
+pub fn smokeListAdd(options: Json, child: Json) -> Int {
+  pixiUiListAddChild(pixiUiListNew(options), child)
+}
+
+pub fn smokeInputValue(options: Json, v: String, onEnter: Json, onChange: Json) -> String {
+  let i = pixiUiInputNew(options);
+  pixiUiInputSetValue(i, v);
+  pixiUiInputOnEnter(i, onEnter);
+  pixiUiInputOnChange(i, onChange);
+  pixiUiInputValue(i)
+}
+
+pub fn smokeProgress(options: Json, v: Float) -> Float {
+  let p = pixiUiProgressBarNew(options);
+  pixiUiProgressBarSetProgress(p, v);
+  pixiUiProgressBarProgress(p)
 }

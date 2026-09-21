@@ -13,6 +13,13 @@ const ctorCalls = { Button: [], FancyButton: [], Slider: [], Switch: [], Progres
 const onPressRegs = [];
 const onUpdateRegs = [];
 const onChangeRegs = [];
+const fancyPressRegs = [];
+const fancyDownRegs = [];
+const fancyHoverRegs = [];
+const inputEnterRegs = [];
+const inputChangeRegs = [];
+const listChildren = [];
+const sliderChildren = [];
 
 // `Signal`-ish stub matching the @pixi/ui event surface
 // (`button.onPress.connect(cb)`). Records every registered callback
@@ -32,6 +39,9 @@ class MockButton {
 class MockFancyButton {
   constructor(options) {
     ctorCalls.FancyButton.push(options);
+    this.onPress = new MockSignal(fancyPressRegs);
+    this.onDown = new MockSignal(fancyDownRegs);
+    this.onHover = new MockSignal(fancyHoverRegs);
   }
 }
 
@@ -39,7 +49,9 @@ class MockSlider {
   constructor(options) {
     ctorCalls.Slider.push(options);
     this.onUpdate = new MockSignal(onUpdateRegs);
+    this.value = options?.value ?? 0;
   }
+  addChild(child) { sliderChildren.push(child); return child; }
 }
 
 class MockSwitch {
@@ -49,9 +61,24 @@ class MockSwitch {
   }
 }
 
-class MockProgressBar { constructor(options) { ctorCalls.ProgressBar.push(options); } }
-class MockList { constructor(options) { ctorCalls.List.push(options); } }
-class MockInput { constructor(options) { ctorCalls.Input.push(options); } }
+class MockProgressBar {
+  constructor(options) {
+    ctorCalls.ProgressBar.push(options);
+    this.progress = options?.progress ?? 0;
+  }
+}
+class MockList {
+  constructor(options) { ctorCalls.List.push(options); }
+  addChild(child) { listChildren.push(child); return child; }
+}
+class MockInput {
+  constructor(options) {
+    ctorCalls.Input.push(options);
+    this.value = options?.value ?? "";
+    this.onEnter = new MockSignal(inputEnterRegs);
+    this.onChange = new MockSignal(inputChangeRegs);
+  }
+}
 
 globalThis.__as_pixi_ui = {
   Button: MockButton,
@@ -63,7 +90,7 @@ globalThis.__as_pixi_ui = {
   Input: MockInput,
 };
 
-const { smokeButton, smokeFancyButton, smokeSlider, smokeSwitch, smokeProgressBar, smokeList, smokeInput } =
+const { smokeButton, smokeFancyButton, smokeSlider, smokeSwitch, smokeProgressBar, smokeList, smokeInput, smokeFancyButtonEvents, smokeSliderValue, smokeSliderAdd, smokeListAdd, smokeInputValue, smokeProgress } =
   await import("./pixiui_smoke.bun.js");
 
 // ── Button: ctor + onPress + upcast ────────────────────────────────

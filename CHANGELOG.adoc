@@ -23,6 +23,12 @@ kept so existing scripts fail loudly (Refs #56)
 
 ==== Added
 
+* Pixi/UI/Sound idaptik-reached remainder (#760): Graphics
+circle/stroke/roundRect/path, per-axis Container x/y, parent Option,
+interactiveChildren, ObservablePoint.set, Texture.WHITE, Assets
+init/loadBundle, Renderer.resize, FancyButton onPress/onDown/onHover,
+Slider/Input value, `@pixi/sound` singleton pauseAll/find/play(name).
+Bun-ESM lowerings + smokes. Unused Pixi.res decls stay out.
 * CI gates on `.deed` (DEED grammar). Leftover `.a2ml` is a hard fail.
 `tools/check-deed-gates.sh` + `.github/workflows/deed-validate.yml`.
 Machine-readable manifests renamed `.a2ml` → `.deed`. Repo deed:
