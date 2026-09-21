@@ -667,6 +667,50 @@ const __as_dbMaxInt      = (h, sql, params) => Number(globalThis.__as_sqlite.agg
 const __as_dbAvg         = (h, sql, params) => Number(globalThis.__as_sqlite.aggAvg(h, sql, params));
 const __as_dbGroupBy     = (h, sql, params) => String(globalThis.__as_sqlite.groupBy(h, sql, params));
 const __as_dbGroupCount  = (h, table, keyCol) => String(globalThis.__as_sqlite.groupCount(h, table, keyCol));
+// ---- Dom (#56 PR 4): Window / Document / utility ----
+// Host is `globalThis.window` when present (browser, jsdom, idaptik
+// WebView); otherwise `globalThis` so a Deno/Node harness can install
+// document/window mocks on the global. No consumer-side init required
+// beyond providing those web-platform objects.
+const __as_domWin = () =>
+  (typeof globalThis.window !== "undefined" ? globalThis.window : globalThis);
+const __as_domDoc = () => {
+  const d = __as_domWin().document;
+  if (!d) throw new Error("DOM document host is unavailable");
+  return d;
+};
+const __as_addEventListener = (event, handler) => {
+  __as_domWin().addEventListener(event, handler); return 0;
+};
+const __as_removeEventListener = (event, handler) => {
+  __as_domWin().removeEventListener(event, handler); return 0;
+};
+const __as_matchMedia = (query) => __as_domWin().matchMedia(query);
+const __as_windowOpen = (url, target) => {
+  __as_domWin().open(url, target); return 0;
+};
+const __as_innerWidth = () => Number(__as_domWin().innerWidth) | 0;
+const __as_innerHeight = () => Number(__as_domWin().innerHeight) | 0;
+const __as_devicePixelRatio = () => Number(__as_domWin().devicePixelRatio) || 1;
+const __as_setTimeout = (handler, ms) => __as_domWin().setTimeout(handler, ms);
+const __as_setInterval = (handler, ms) => __as_domWin().setInterval(handler, ms);
+const __as_clearInterval = (id) => { __as_domWin().clearInterval(id); return 0; };
+const __as_clearTimeout = (id) => { __as_domWin().clearTimeout(id); return 0; };
+const __as_createElement = (tag) => __as_domDoc().createElement(tag);
+const __as_getElementById = (id) => __as_domDoc().getElementById(id);
+const __as_bodyAppendChild = (child) => { __as_domDoc().body.appendChild(child); return 0; };
+const __as_bodyRemoveChild = (child) => { __as_domDoc().body.removeChild(child); return 0; };
+const __as_bodyFirstChild = () => __as_domDoc().body.firstChild;
+const __as_bodySetInnerHTML = (html) => { __as_domDoc().body.innerHTML = html; return 0; };
+const __as_bodyInnerHTML = () => String(__as_domDoc().body.innerHTML);
+const __as_elementAsNode = (el) => el;
+const __as_domDateNow = () => Date.now();
+const __as_numberIsFinite = (n) => Number.isFinite(Number(n));
+const __as_numberIsNaN = (n) => Number.isNaN(Number(n));
+const __as_btoa = (s) => {
+  if (typeof globalThis.btoa === "function") return globalThis.btoa(String(s));
+  return Buffer.from(String(s), "binary").toString("base64");
+};
 const __as_httpFetch = async (url, method, headers, bodyOpt) => {
   const init = { method, headers: __as_httpHeadersToObject(headers) };
   if (bodyOpt && bodyOpt.tag === "Some") init.body = bodyOpt.value;
@@ -909,6 +953,30 @@ let () =
   b "canvasMeasureText"    (fun a -> Printf.sprintf "__as_canvasMeasureText(%s, %s)" (arg 0 a) (arg 1 a));
   b "canvasDrawImage"      (fun a -> Printf.sprintf "__as_canvasDrawImage(%s, %s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a) (arg 3 a));
   b "canvasDrawImageScaled" (fun a -> Printf.sprintf "__as_canvasDrawImageScaled(%s, %s, %s, %s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a) (arg 3 a) (arg 4 a) (arg 5 a));
+  (* ---- Dom (#56 PR 4): Window / Document / utility ---- *)
+  b "addEventListener"    (fun a -> Printf.sprintf "__as_addEventListener(%s, %s)" (arg 0 a) (arg 1 a));
+  b "removeEventListener" (fun a -> Printf.sprintf "__as_removeEventListener(%s, %s)" (arg 0 a) (arg 1 a));
+  b "matchMedia"          (fun a -> Printf.sprintf "__as_matchMedia(%s)" (arg 0 a));
+  b "windowOpen"          (fun a -> Printf.sprintf "__as_windowOpen(%s, %s)" (arg 0 a) (arg 1 a));
+  b "innerWidth"          (fun _ -> "__as_innerWidth()");
+  b "innerHeight"         (fun _ -> "__as_innerHeight()");
+  b "devicePixelRatio"    (fun _ -> "__as_devicePixelRatio()");
+  b "setTimeout"          (fun a -> Printf.sprintf "__as_setTimeout(%s, %s)" (arg 0 a) (arg 1 a));
+  b "setInterval"         (fun a -> Printf.sprintf "__as_setInterval(%s, %s)" (arg 0 a) (arg 1 a));
+  b "clearInterval"       (fun a -> Printf.sprintf "__as_clearInterval(%s)" (arg 0 a));
+  b "clearTimeout"        (fun a -> Printf.sprintf "__as_clearTimeout(%s)" (arg 0 a));
+  b "createElement"       (fun a -> Printf.sprintf "__as_createElement(%s)" (arg 0 a));
+  b "getElementById"      (fun a -> Printf.sprintf "__as_getElementById(%s)" (arg 0 a));
+  b "bodyAppendChild"     (fun a -> Printf.sprintf "__as_bodyAppendChild(%s)" (arg 0 a));
+  b "bodyRemoveChild"     (fun a -> Printf.sprintf "__as_bodyRemoveChild(%s)" (arg 0 a));
+  b "bodyFirstChild"      (fun _ -> "__as_bodyFirstChild()");
+  b "bodySetInnerHTML"    (fun a -> Printf.sprintf "__as_bodySetInnerHTML(%s)" (arg 0 a));
+  b "bodyInnerHTML"       (fun _ -> "__as_bodyInnerHTML()");
+  b "elementAsNode"       (fun a -> Printf.sprintf "__as_elementAsNode(%s)" (arg 0 a));
+  b "domDateNow"          (fun _ -> "__as_domDateNow()");
+  b "numberIsFinite"      (fun a -> Printf.sprintf "__as_numberIsFinite(%s)" (arg 0 a));
+  b "numberIsNaN"         (fun a -> Printf.sprintf "__as_numberIsNaN(%s)" (arg 0 a));
+  b "btoa"                (fun a -> Printf.sprintf "__as_btoa(%s)" (arg 0 a));
   (* Generic JS array push helper (returns the array, fluent). *)
   b "arrayPush" (fun a -> Printf.sprintf "(%s.push(%s), %s)" (arg 0 a) (arg 1 a) (arg 0 a));
   (* ---- honest string/number primitives underpinning the

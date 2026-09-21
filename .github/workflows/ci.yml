@@ -77,7 +77,10 @@ jobs:
         # `dune runtest` — not an optional extra that merely widens
         # coverage. Dropping it turns the walker suite red, which is
         # the intended behaviour: see that file's header comment.
-        run: npm install -g tree-sitter-cli@^0.25.0
+        # Pin exact version + --ignore-scripts: Sonar githubactions:S8543
+        # (unlocked versions) and S6505 (lifecycle scripts). Same binary
+        # the grammar's package.json asks for (^0.25.0 floor).
+        run: npm install -g --ignore-scripts tree-sitter-cli@0.25.0
       - name: Build pinned tree-sitter-rescript grammar
         run: ./editors/tree-sitter-rescript/scripts/install.sh
       - name: Build
@@ -238,7 +241,10 @@ jobs:
         # so this job needs the same grammar prerequisites as `build`.
         # Before the skip was removed, this job was green while running
         # zero walker tests.
-        run: npm install -g tree-sitter-cli@^0.25.0
+        # Pin exact version + --ignore-scripts: Sonar githubactions:S8543
+        # (unlocked versions) and S6505 (lifecycle scripts). Same binary
+        # the grammar's package.json asks for (^0.25.0 floor).
+        run: npm install -g --ignore-scripts tree-sitter-cli@0.25.0
       - name: Build pinned tree-sitter-rescript grammar
         run: ./editors/tree-sitter-rescript/scripts/install.sh
       - name: Run tests with bisect_ppx instrumentation
@@ -303,7 +309,7 @@ jobs:
         # deps. `vscode` itself is provided by the test runner at launch.
         # The #381 SKIP-when-missing guard remains downstream as a safety
         # net but is now expected to find the adapter present.
-        run: npm install --no-audit --no-fund
+        run: npm install --no-audit --no-fund --ignore-scripts
       - name: Report adapter availability
         working-directory: editors/vscode
         # Surface the @hyperpolymath/affine-vscode publish state in the
@@ -348,7 +354,10 @@ jobs:
         # the install script invokes via `command -v`. The version
         # tracks `tree-sitter-rescript`'s package.json devDependency
         # range.
-        run: npm install -g tree-sitter-cli@^0.25.0
+        # Pin exact version + --ignore-scripts: Sonar githubactions:S8543
+        # (unlocked versions) and S6505 (lifecycle scripts). Same binary
+        # the grammar's package.json asks for (^0.25.0 floor).
+        run: npm install -g --ignore-scripts tree-sitter-cli@0.25.0
       - name: Build pinned tree-sitter-rescript grammar
         # Direct script invocation rather than `just install-grammar` —
         # GitHub Actions runners do not ship `just` preinstalled, and

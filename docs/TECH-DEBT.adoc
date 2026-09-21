@@ -26,8 +26,9 @@ index. Residual WASI follow-ups #485 (S5 filesystem) and #487
 (socket recv/send/accept) have preview1 lowerings + gated smokes in
 tree; #486 flipped the *wrap* default to `--command` without the
 one-way compiler re-target (native-preview2 cleanup still open).
-Satellite remainder is #56 (56-A Dom/Console + Pixi gap-fill landed;
-full idaptik surface still open).
+Satellite remainder is #56 (56-A Dom/Console + Pixi gap-fill +
+Window/Document/utility PR 4 landed; record-literal attrs + remaining
+idaptik Pixi decls still open).
 ====
 
 toc::[]
@@ -486,7 +487,9 @@ Proven + locked (see INT-02)
 #182 CLOSED 2026-07-25)
 |SAT-04 |`affinescript-cadre` router runtime |S2 |**DONE** (=INT-09,
 CLOSED 2026-07-25)
-|SAT-05 |`affinescript-pixijs` migration prerequisite |S3 |open #56
+|SAT-05 |`affinescript-pixijs` migration prerequisite |S3 |open #56 —
+56-A + Pixi gap-fill + Window/Document/utility (PR 4) landed; remainder
+is record-literal attrs + the rest of idaptik's Pixi.res decls
 |===
 
 == Stage E — typed-wasm convergence runway

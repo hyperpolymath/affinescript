@@ -294,8 +294,9 @@ their own ledger (link:SOUNDNESS.adoc[SOUNDNESS.adoc]), gated by
   `affinescript-dom` (INT-08/#183) shipped runtimes; `affinescript-cadre`
   (INT-09) closed 2026-07-25. `affinescript-pixijs` in-tree bindings
   (`stdlib/Pixi.affine` + UI/Sound) plus 56-A `stdlib/Dom.affine` /
-  `stdlib/Console.affine` landed 2026-09-21; full idaptik surface is
-  still open (#56). The `-dom-loader` satellite was folded into
+  `stdlib/Console.affine` and 56 PR 4 Window/Document/utility externs
+  landed 2026-09-21; record-literal attrs + remaining idaptik Pixi
+  decls are still open (#56). The `-dom-loader` satellite was folded into
   `affine-js` (#489).
 
 == Change control

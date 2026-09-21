@@ -14,6 +14,8 @@
 
 module Dom;
 
+use Deno::{Json};
+
 pub enum VNode {
   VText(String),
   VElem(String, [(String, String)], [VNode])
@@ -59,3 +61,45 @@ pub fn ul(attrs: [(String, String)], children: [VNode]) -> VNode =
 
 pub fn li(attrs: [(String, String)], children: [VNode]) -> VNode =
   h("li", attrs, children);
+
+// ── #56 PR 4 — Window / Document / utility (idaptik legacy surface) ──
+//
+// These are the remaining bindings from the original #56 inventory that
+// are not VNode constructors: Window (11), Document (7), utility (4;
+// `fetch` already lives in Http.affine). Callbacks cross as opaque
+// `Json` — the same host-function shape Pixi/Canvas use. Deno-ESM
+// lowerings live in lib/codegen_deno.ml (`__as_dom*` helpers).
+
+pub extern type Element;
+pub extern type Node;
+pub extern type MediaQueryList;
+pub extern type TimerId;
+
+// Window
+pub extern fn addEventListener(event: String, handler: Json) -> Int;
+pub extern fn removeEventListener(event: String, handler: Json) -> Int;
+pub extern fn matchMedia(query: String) -> MediaQueryList;
+pub extern fn windowOpen(url: String, target: String) -> Int;
+pub extern fn innerWidth() -> Int;
+pub extern fn innerHeight() -> Int;
+pub extern fn devicePixelRatio() -> Float;
+pub extern fn setTimeout(handler: Json, ms: Int) -> TimerId;
+pub extern fn setInterval(handler: Json, ms: Int) -> TimerId;
+pub extern fn clearInterval(id: TimerId) -> Int;
+pub extern fn clearTimeout(id: TimerId) -> Int;
+
+// Document
+pub extern fn createElement(tag: String) -> Element;
+pub extern fn getElementById(id: String) -> Element;
+pub extern fn bodyAppendChild(child: Node) -> Int;
+pub extern fn bodyRemoveChild(child: Node) -> Int;
+pub extern fn bodyFirstChild() -> Node;
+pub extern fn bodySetInnerHTML(html: String) -> Int;
+pub extern fn bodyInnerHTML() -> String;
+pub extern fn elementAsNode(el: Element) -> Node;
+
+// Utility (Date.now / Number.isFinite / Number.isNaN / btoa)
+pub extern fn domDateNow() -> Int;
+pub extern fn numberIsFinite(n: Float) -> Bool;
+pub extern fn numberIsNaN(n: Float) -> Bool;
+pub extern fn btoa(s: String) -> String;
