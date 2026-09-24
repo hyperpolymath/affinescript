@@ -6,7 +6,7 @@
 // extern shape (constructor, mutator, async init, upcast).
 
 use Deno::{Json};
-use Pixi::{Application, Container, Sprite, Graphics, Text, Texture, pixiAppInit, pixiAppStage, pixiContainerNew, pixiContainerAddChild, pixiContainerSetPosition, pixiContainerSetVisible, pixiContainerSetScale, pixiContainerSetPivot, pixiContainerSetRotation, pixiContainerSetAlpha, pixiContainerSetZIndex, pixiContainerSetSortableChildren, pixiContainerSetEventMode, pixiContainerSetCursor, pixiContainerOn, pixiContainerOff, pixiSpriteFrom, pixiSpriteSetAnchor, pixiSpriteAsContainer, pixiTextureFromUrl, pixiGraphicsNew, pixiGraphicsRect, pixiGraphicsFill, pixiGraphicsAsContainer, pixiPointNew, pixiRectangleNew, pixiCircleNew, pixiSpriteSetTint, pixiSpriteSetBlendMode, pixiContainerSetHitArea, pixiContainerSetMask, pixiBlurFilterNew, pixiContainerSetFilter, pixiNineSliceSpriteFrom, pixiNineSliceSpriteAsContainer, pixiEventGlobalX, pixiEventGlobalY};
+use Pixi::{Application, Container, Sprite, Graphics, Text, Texture, Ticker, Renderer, ObservablePoint, Circle, pixiAppInit, pixiAppStage, pixiAppTicker, pixiAppRenderer, pixiContainerNew, pixiContainerAddChild, pixiContainerSetPosition, pixiContainerSetVisible, pixiContainerSetScale, pixiContainerSetPivot, pixiContainerSetRotation, pixiContainerSetAlpha, pixiContainerSetZIndex, pixiContainerSetSortableChildren, pixiContainerSetEventMode, pixiContainerSetCursor, pixiContainerOn, pixiContainerOff, pixiSpriteFrom, pixiSpriteSetAnchor, pixiSpriteAsContainer, pixiTextureFromUrl, pixiGraphicsNew, pixiGraphicsRect, pixiGraphicsFill, pixiGraphicsAsContainer, pixiPointNew, pixiRectangleNew, pixiCircleNew, pixiSpriteSetTint, pixiSpriteSetBlendMode, pixiContainerSetHitArea, pixiContainerSetMask, pixiBlurFilterNew, pixiContainerSetFilter, pixiNineSliceSpriteFrom, pixiNineSliceSpriteAsContainer, pixiEventGlobalX, pixiEventGlobalY, pixiContainerX, pixiContainerY, pixiContainerSetX, pixiContainerSetY, pixiContainerSetInteractiveChildren, pixiContainerRemoveChildren, pixiContainerAddChildAt, pixiContainerSetHitAreaCircle, pixiContainerScale, pixiObservablePointSet, pixiGraphicsCircle, pixiGraphicsRoundRect, pixiGraphicsStroke, pixiGraphicsMoveTo, pixiGraphicsLineTo, pixiTextNew, pixiTextAnchor, pixiTextAsContainer, pixiSpriteSetWidth, pixiSpriteSetHeight, pixiSpriteSetInteractive, pixiTextureWhite, pixiTickerDeltaTime, pixiRendererResize, pixiAssetsInit, pixiAssetsLoadBundle, pixiAssetsBackgroundLoadBundle, pixiEventPreventDefault};
 
 pub fn smokeInit(options: Json) -> Application / { Async } = pixiAppInit(options);
 
@@ -72,4 +72,49 @@ pub fn smokeGapFill(app: Application, url: String, event: Json) -> Int {
   let _x = pixiEventGlobalX(event);
   let _y = pixiEventGlobalY(event);
   0
+}
+
+/// #760 idaptik-reached remainder: per-axis position, interactiveChildren,
+/// Graphics circle/stroke/roundRect/path, ObservablePoint.set, Texture.WHITE,
+/// ticker delta, renderer resize, preventDefault.
+pub fn smokeIdaptikReach(app: Application, event: Json, strokeOpts: Json, textOpts: Json) -> Int {
+  let stage = pixiAppStage(app);
+  pixiContainerSetX(stage, 3.0);
+  pixiContainerSetY(stage, 4.0);
+  let _x = pixiContainerX(stage);
+  let _y = pixiContainerY(stage);
+  pixiContainerSetInteractiveChildren(stage, true);
+  let scale = pixiContainerScale(stage);
+  pixiObservablePointSet(scale, 1.5, 1.5);
+  let g = pixiGraphicsNew();
+  pixiGraphicsCircle(g, 10.0, 10.0, 5.0);
+  pixiGraphicsRoundRect(g, 0.0, 0.0, 8.0, 8.0, 2.0);
+  pixiGraphicsMoveTo(g, 0.0, 0.0);
+  pixiGraphicsLineTo(g, 4.0, 4.0);
+  pixiGraphicsStroke(g, strokeOpts);
+  pixiContainerAddChildAt(stage, pixiGraphicsAsContainer(g), 0);
+  let circ = pixiCircleNew(0.0, 0.0, 12.0);
+  pixiContainerSetHitAreaCircle(pixiGraphicsAsContainer(g), circ);
+  let white = pixiTextureWhite();
+  let sprite = pixiSpriteFrom(white);
+  pixiSpriteSetWidth(sprite, 32.0);
+  pixiSpriteSetHeight(sprite, 32.0);
+  pixiSpriteSetInteractive(sprite, true);
+  pixiContainerAddChild(stage, pixiSpriteAsContainer(sprite));
+  let text = pixiTextNew(textOpts);
+  let _anchor = pixiTextAnchor(text);
+  pixiContainerAddChild(stage, pixiTextAsContainer(text));
+  let ticker = pixiAppTicker(app);
+  let _dt = pixiTickerDeltaTime(ticker);
+  let renderer = pixiAppRenderer(app);
+  pixiRendererResize(renderer, 640.0, 480.0);
+  pixiEventPreventDefault(event);
+  pixiContainerRemoveChildren(stage);
+  0
+}
+
+pub fn smokeAssets(options: Json, bundle: String) -> Int / { Async } {
+  let _i = pixiAssetsInit(options);
+  let _b = pixiAssetsLoadBundle(bundle);
+  pixiAssetsBackgroundLoadBundle(bundle)
 }

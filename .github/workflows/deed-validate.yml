@@ -1,0 +1,23 @@
+# This workflow is managed by gh actions-lock.
+# SPDX-License-Identifier: MPL-2.0
+# DEED manifest gate. A2ML is retired; leftover *.a2ml fails CI.
+name: "DEED Manifest Validation"
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  deed-validate:
+    name: Validate DEED manifests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7.0.1
+      - name: Run DEED gates
+        run: ./tools/check-deed-gates.sh

@@ -26,9 +26,8 @@ index. Residual WASI follow-ups #485 (S5 filesystem) and #487
 (socket recv/send/accept) have preview1 lowerings + gated smokes in
 tree; #486 flipped the *wrap* default to `--command` without the
 one-way compiler re-target (native-preview2 cleanup still open).
-Satellite remainder is #56 (56-A Dom/Console + Pixi gap-fill +
-Window/Document/utility PR 4 landed; record-literal attrs + remaining
-idaptik Pixi decls still open).
+Satellite remainder for Pixi is #760 (idaptik-reached decls landed;
+unused Pixi.res surface is not a close-blocker). #56 is closed.
 ====
 
 toc::[]
@@ -487,16 +486,16 @@ Proven + locked (see INT-02)
 #182 CLOSED 2026-07-25)
 |SAT-04 |`affinescript-cadre` router runtime |S2 |**DONE** (=INT-09,
 CLOSED 2026-07-25)
-|SAT-05 |`affinescript-pixijs` migration prerequisite |S3 |open #56 —
-56-A + Pixi gap-fill + Window/Document/utility (PR 4) landed; remainder
-is record-literal attrs + the rest of idaptik's Pixi.res decls
+|SAT-05 |`affinescript-pixijs` migration prerequisite |S3 |#56 closed;
+idaptik-reached Pixi/UI/Sound remainder landed #760. Unused decls
+(BigPool, Extensions, ScrollBox, sprite atlases) stay out of bar
 |===
 
 == Stage E — typed-wasm convergence runway
 
 Formal interface spec:
 link:specs/TYPED-WASM-INTERFACE.adoc[specs/TYPED-WASM-INTERFACE.adoc]
-(+ link:specs/TYPED-WASM-INTERFACE.a2ml[machine companion]).
+(+ link:specs/TYPED-WASM-INTERFACE.deed[machine companion]).
 Widening roadmap (tranches A..E, recommended sequencing):
 link:specs/TYPED-WASM-ROADMAP.adoc[specs/TYPED-WASM-ROADMAP.adoc].
 Proposed ADRs: ADR-020 (schema versioning), ADR-021 (multi-producer

@@ -20,24 +20,47 @@ class MockSound {
     this.isPlaying = false;
     this.duration = 12.5;
   }
-  play()   { this.playCount   += 1; }
+  play(opts) {
+    this.playCount += 1;
+    this.lastPlayOpts = opts;
+  }
   stop()   { this.stopCount   += 1; }
   pause()  { this.pauseCount  += 1; }
   resume() { this.resumeCount += 1; }
 }
 
 let lastFromUrl = null;
+const singleton = {
+  volumeAll: 1,
+  pauseAllCount: 0,
+  resumeAllCount: 0,
+  muteAllCount: 0,
+  unmuteAllCount: 0,
+  played: [],
+  sounds: {},
+  pauseAll() { this.pauseAllCount += 1; },
+  resumeAll() { this.resumeAllCount += 1; },
+  muteAll() { this.muteAllCount += 1; },
+  unmuteAll() { this.unmuteAllCount += 1; },
+  find(name) { return this.sounds[name]; },
+  play(name, opts) { this.played.push({ name, opts }); },
+};
 
 globalThis.__as_pixi_sound = {
   from(url) {
     lastFromUrl = url;
-    return new MockSound(url);
+    const s = new MockSound(url);
+    singleton.sounds[url] = s;
+    return s;
   },
 };
+globalThis.__as_pixi_sound_lib = singleton;
 
 const {
   smokeFrom, smokePlay, smokeStop, smokePause, smokeResume,
-  smokeSetVolume, smokeSetLoop,
+  smokeSetVolume, smokeSetLoop, smokeIsPlaying, smokeDuration,
+  smokePlayOptions, smokePauseAll, smokeResumeAll, smokeMuteAll,
+  smokeUnmuteAll, smokeVolumeAll, smokeSetVolumeAll, smokeFind, smokePlayName,
 } = await import("./pixisound_smoke.bun.js");
 
 const s = smokeFrom("assets/bgm.mp3");

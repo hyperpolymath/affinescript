@@ -49,21 +49,21 @@ no further significant  → AffineScript work is tractable.
 
 |1
 |*PixiJS core* (Application, Container, Sprite, Graphics, Text, Ticker, FederatedEvent)
-|`◑` partial (Application / Container / Sprite / Graphics / Text / Texture / Ticker landed; Container 8.x transform-and-event surface — scale / pivot / rotation / alpha / zIndex / sortableChildren / eventMode / cursor + on/off pointer-event registration + Sprite anchor — landed; opaque `FederatedPointerEvent` Json accessors + `parent` read accessor + Point/Rectangle/Circle helper types + sprite atlases + filters + hitArea deferred)
+|`◑` partial (idaptik-reached surface landed #760: Application / Container / Sprite / Graphics / Text / Texture / Ticker / Point / Rectangle / Circle / ObservablePoint / BlurFilter / NineSliceSprite / Assets / Renderer; per-axis x/y, parent Option, interactiveChildren, addChildAt, removeChildren, Graphics circle/stroke/roundRect/path, Texture.WHITE, ticker deltaTime, renderer.resize, FederatedPointerEvent global + preventDefault)
 |`stdlib/Pixi.affine` (eventual home: `affinescript-pixijs` as a separate repo per the SNIFs/typed-wasm precedent)
-|idaptik `src/bindings/Pixi.res`; all 215 `src/app/*.res` files depend on this. Restarted 2026-05-28 — the prior `affinescript-pixijs/` directory used the obsolete `.as` extension + AGPL-3.0-or-later headers + a Zig→C→WASM-import architecture incompatible with the Deno-ESM emitter; it was deleted and the surface rebuilt in `stdlib/Pixi.affine` matching the wasmCall / motion pattern. Container accessor + on/off expansion landed 2026-05-31. Test fixture: `tests/codegen-deno/pixi_smoke.{affine,harness.mjs}` exercises every shipped extern, including `smokeAccessorsFlow` over the 11-extern 8.x transform-and-event addition. Follow-ups: typed `FederatedPointerEvent` accessors (read global/client x,y; target; stopPropagation); `parent` read accessor with Option-null handling; Point/Rectangle/Circle helper types; sprite atlases; filters; hitArea.
+|idaptik `src/bindings/Pixi.res` (JoshuaJewell/IDApixiTIK). Restarted 2026-05-28 — the prior `affinescript-pixijs/` directory used the obsolete `.as` extension + AGPL-3.0-or-later headers + a Zig→C→WASM-import architecture incompatible with the Bun-ESM emitter; it was deleted and the surface rebuilt in `stdlib/Pixi.affine`. #760 ports only what `src/app` + `src/engine` still call. Test fixture: `tests/codegen-deno/pixi_smoke.{affine,harness.mjs}` (`smokeIdaptikReach` / `smokeAssets`). Unused decls (BigPool, Extensions, ResizePlugin, CanvasStyle, TextStyle, sprite atlases, stopPropagation target) stay out.
 
 |2
 |*@pixi/sound* (`Sound.from`, play, stop, volume, setVolume, loop)
-|`◐` scaffold (from / play / stop / pause / resume / setVolume / setLoop landed)
+|`◑` partial (`Sound.from` transport + idaptik singleton `pauseAll` / `resumeAll` / `muteAll` / `unmuteAll` / `volumeAll` / `find` / `play(name)` landed #760)
 |`stdlib/PixiSound.affine` (eventual home: `affinescript-pixijs` sub-module, or `affinescript-pixi-sound`)
-|idaptik `src/bindings/PixiSound.res`; BGM + SFX. Initial surface (`pixiSoundFrom` / `pixiSoundPlay` / `pixiSoundStop` / `pixiSoundPause` / `pixiSoundResume` / `pixiSoundSetVolume` / `pixiSoundSetLoop`) lands in `stdlib/` parallel to Motion / Http / Sqlite / Crypto; consumer provides `globalThis.__as_pixi_sound` (the `Sound` named export from `@pixi/sound`) at module-init time. Test fixture: `tests/codegen-deno/pixisound_smoke.{affine,harness.mjs}`. Follow-ups: `Sound.add` (multi-source registry), sprite atlases, async load (await + onload), `pauseAll` / `stopAll` / `resumeAll`, the `sound` singleton's filter pipeline.
+|idaptik `src/bindings/PixiSound.res` talks to the `@pixi/sound` *singleton*, not `Sound.from`. Consumer sets `globalThis.__as_pixi_sound` to the `Sound` class and `globalThis.__as_pixi_sound_lib` to the `sound` singleton. Test fixture: `tests/codegen-deno/pixisound_smoke.{affine,harness.mjs}`. Follow-ups: `Sound.add`, sprite atlases, async load, singleton filter pipeline.
 
 |3
 |*@pixi/ui* (Button, FancyButton, Switch, Slider, Input, ScrollBox)
-|`◐` scaffold
+|`◑` partial (idaptik-reached: FancyButton onPress/onDown/onHover, Slider value + addChild, Input value/onEnter/onChange, List.addChild, ProgressBar progress; Button/Switch constructors remain)
 |`stdlib/PixiUI.affine` (eventual home: `affinescript-pixijs` sub-module)
-|idaptik `src/bindings/PixiUI.res`; all HUD / menu code. MVP surface (Button / FancyButton / Slider / Switch — `new` + primary callback + `AsContainer` upcast) lives in `stdlib/` alongside Pixi / PixiSound; consumer provides `globalThis.__as_pixi_ui` at module-init time. Test fixture: `tests/codegen-deno/pixiui_smoke.{affine,harness.mjs}`. Deferred follow-ups: Input (text-entry + focus + value), ScrollBox (scroll position + viewport), full event surface (onHover / onOut / onDown / onUp), FancyButton textures-per-state accessors, Slider min/max/step accessors.
+|idaptik `src/bindings/PixiUI.res` HUD/menu. #760 adds the signals and value accessors `src/app` actually calls. Test fixture: `tests/codegen-deno/pixiui_smoke.{affine,harness.mjs}`. Deferred: ScrollBox, FancyButton textures-per-state, Slider min/max/step, Input focus.
 
 |4
 |*motion* (animate, animateMini, tween, ease, spring)

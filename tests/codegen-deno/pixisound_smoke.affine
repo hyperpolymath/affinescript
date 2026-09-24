@@ -5,7 +5,8 @@
 // importing the generated module; we re-export thin wrappers so the
 // harness can drive each extern via stable names.
 
-use PixiSound::{Sound, pixiSoundFrom, pixiSoundPlay, pixiSoundStop, pixiSoundPause, pixiSoundResume, pixiSoundSetVolume, pixiSoundSetLoop};
+use Deno::{Json};
+use PixiSound::{Sound, pixiSoundFrom, pixiSoundPlay, pixiSoundStop, pixiSoundPause, pixiSoundResume, pixiSoundSetVolume, pixiSoundSetLoop, pixiSoundIsPlaying, pixiSoundDuration, pixiSoundPlayOptions, pixiSoundPauseAll, pixiSoundResumeAll, pixiSoundMuteAll, pixiSoundUnmuteAll, pixiSoundVolumeAll, pixiSoundSetVolumeAll, pixiSoundFind, pixiSoundPlayName};
 
 pub fn smokeFrom(url: String) -> Sound =
   pixiSoundFrom(url);
@@ -33,3 +34,15 @@ pub fn smokeIsPlaying(s: Sound) -> Bool =
 
 pub fn smokeDuration(s: Sound) -> Float =
   pixiSoundDuration(s);
+
+pub fn smokePlayOptions(s: Sound, options: Json) -> Int =
+  pixiSoundPlayOptions(s, options);
+
+pub fn smokePauseAll() -> Int = pixiSoundPauseAll();
+pub fn smokeResumeAll() -> Int = pixiSoundResumeAll();
+pub fn smokeMuteAll() -> Int = pixiSoundMuteAll();
+pub fn smokeUnmuteAll() -> Int = pixiSoundUnmuteAll();
+pub fn smokeVolumeAll() -> Float = pixiSoundVolumeAll();
+pub fn smokeSetVolumeAll(vol: Float) -> Int = pixiSoundSetVolumeAll(vol);
+pub fn smokeFind(name: String) -> Sound = pixiSoundFind(name);
+pub fn smokePlayName(name: String, options: Json) -> Int = pixiSoundPlayName(name, options);

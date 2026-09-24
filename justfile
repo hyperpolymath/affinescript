@@ -92,12 +92,13 @@ check: lint test guard
 #  - Issue #35 Phase 3: fails if extension.ts reappears under
 #    editors/vscode/src or any face's vscode extension dir.
 #  - Issue #176 (DOC-01..09): the unified doc-truthing guard — fails if the
-#    status-doc banners / matrix primacy / STATE.a2ml mirror keys re-drift,
+#    status-doc banners / matrix primacy / STATE.deed mirror keys re-drift,
 #    OR if a NEW backend-breadth / "production-ready" / stdlib-% over-claim
 #    appears beyond the frozen baseline.
 guard:
     ./tools/check-no-extension-ts.sh
     ./tools/check-doc-truthing.sh
+    ./tools/check-deed-gates.sh
     ./tools/check-soundness-ledger.sh
     ./tools/check-capability-anchors.sh
 

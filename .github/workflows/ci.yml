@@ -108,11 +108,14 @@ jobs:
         if: ${{ !cancelled() }}
         # Single toolchain-free gate enforcing both halves of the doc-truthing
         # MONITOR: the presence invariants (DOC-04/05 — banner pointers, matrix
-        # primacy + anti-over-claim section, STATE.a2ml mirror keys) AND the
+        # primacy + anti-over-claim section, STATE.deed mirror keys) AND the
         # over-claim ratchet (DOC-08/09 — fails any NEW backend-breadth /
         # "production-ready" / stdlib-% phrase beyond tools/doc-overclaims.allow).
         # See tools/check-doc-truthing.sh.
         run: ./tools/check-doc-truthing.sh
+      - name: DEED manifest gate (A2ML retired)
+        if: ${{ !cancelled() }}
+        run: ./tools/check-deed-gates.sh
       - name: Soundness-ledger anti-staleness gate
         if: ${{ !cancelled() }}
         # docs/SOUNDNESS.adoc is the single source of truth for soundness-hole
