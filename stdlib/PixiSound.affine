@@ -6,7 +6,7 @@
 //
 // Provides a typed surface over `@pixi/sound`'s `Sound.from()` factory
 // plus the basic transport operations (play / stop / pause / resume,
-// volume + loop control). Targets the Deno-ESM backend; the consumer
+// volume + loop control). Targets the Bun-ESM backend; the consumer
 // (or its host wrapper) is responsible for putting the `Sound` class
 // from `@pixi/sound` at `globalThis.__as_pixi_sound` before any
 // generated module that uses these externs runs. The test harness
@@ -77,3 +77,37 @@ pub extern fn pixiSoundIsPlaying(s: Sound) -> Bool;
 
 /// `sound.duration` — decoded length in seconds (0 if still loading).
 pub extern fn pixiSoundDuration(s: Sound) -> Float;
+
+// ── idaptik-reached remainder (#760) ────────────────────────────────
+//
+// IDApixiTIK's PixiSound.res talks to the `@pixi/sound` *singleton*
+// (`sound.pauseAll` / `find` / `play(name)` / `volumeAll`), not
+// `Sound.from`. Host sets `globalThis.__as_pixi_sound_lib` to that
+// singleton (the named `sound` export). Existing `pixiSoundFrom`
+// still uses `__as_pixi_sound` (the `Sound` class). Not production-ready.
+
+/// `sound.play(s, options)` — instance play with the options object
+/// idaptik passes (`{ loop, volume }`). Returns 0.
+pub extern fn pixiSoundPlayOptions(s: Sound, options: Json) -> Int;
+
+/// `sound.pauseAll()`. Returns 0.
+pub extern fn pixiSoundPauseAll() -> Int;
+
+/// `sound.resumeAll()`. Returns 0.
+pub extern fn pixiSoundResumeAll() -> Int;
+
+/// `sound.muteAll()`. Returns 0.
+pub extern fn pixiSoundMuteAll() -> Int;
+
+/// `sound.unmuteAll()`. Returns 0.
+pub extern fn pixiSoundUnmuteAll() -> Int;
+
+/// `sound.volumeAll` getter/setter.
+pub extern fn pixiSoundVolumeAll() -> Float;
+pub extern fn pixiSoundSetVolumeAll(vol: Float) -> Int;
+
+/// `sound.find(name)` — look up a registered sound by alias.
+pub extern fn pixiSoundFind(name: String) -> Sound;
+
+/// `sound.play(name, options)` — singleton play-by-alias. Returns 0.
+pub extern fn pixiSoundPlayName(name: String, options: Json) -> Int;

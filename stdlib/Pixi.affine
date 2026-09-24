@@ -9,7 +9,7 @@
 // replacing idaptik's src/bindings/Pixi.res (the largest binding
 // surface in idaptik's 215-file src/app/ tree).
 //
-// Targets the Deno-ESM backend. Consumer (or its host wrapper) sets
+// Targets the Bun-ESM backend. Consumer (or its host wrapper) sets
 // `globalThis.__as_pixi` to the PIXI namespace at module-init time:
 //
 //   import * as PIXI from "pixi.js";
@@ -33,6 +33,7 @@
 module Pixi;
 
 use Deno::{Json};
+use prelude::{Option};
 
 // ── Opaque host types ──────────────────────────────────────────────
 //
@@ -244,3 +245,92 @@ pub extern fn pixiEventGlobalX(e: Json) -> Float;
 
 /// `event.global.y` on a FederatedPointerEvent exposed as Json.
 pub extern fn pixiEventGlobalY(e: Json) -> Float;
+
+// ── idaptik-reached remainder (#760) ────────────────────────────────
+//
+// Audited against JoshuaJewell/IDApixiTIK `src/bindings/Pixi.res` and
+// `src/app` + `src/engine` call sites. Only declarations a real build
+// still reaches. Unused Pixi.res surface (BigPool, Extensions,
+// ResizePlugin, CanvasStyle, TextStyle, DOM helpers already in
+// Dom.affine) stays out.
+
+pub extern type Renderer;
+
+/// `c.x` / `c.y` getters. Pair with `pixiContainerSetX` / `SetY`
+/// (idaptik uses per-axis writes far more than `setPosition`).
+pub extern fn pixiContainerX(c: Container) -> Float;
+pub extern fn pixiContainerY(c: Container) -> Float;
+pub extern fn pixiContainerSetX(c: Container, x: Float) -> Int;
+pub extern fn pixiContainerSetY(c: Container, y: Float) -> Int;
+
+/// Layout size. Sprite width/height setters are separate
+/// (`pixiSpriteSetWidth`) because Container.width is computed.
+pub extern fn pixiContainerWidth(c: Container) -> Float;
+pub extern fn pixiContainerHeight(c: Container) -> Float;
+
+/// `c.parent` — None when the container is not on a scene graph.
+pub extern fn pixiContainerParent(c: Container) -> Option<Container>;
+
+/// `c.interactiveChildren = v`. Returns 0.
+pub extern fn pixiContainerSetInteractiveChildren(c: Container, v: Bool) -> Int;
+
+/// `c.removeChildren()`. Returns 0.
+pub extern fn pixiContainerRemoveChildren(c: Container) -> Int;
+
+/// `parent.addChildAt(child, index)`. Returns 0.
+pub extern fn pixiContainerAddChildAt(parent: Container, child: Container, index: Int) -> Int;
+
+/// `c.hitArea = circle`. Returns 0.
+pub extern fn pixiContainerSetHitAreaCircle(c: Container, area: Circle) -> Int;
+
+/// `c.scale` / `c.pivot` / `c.anchor` as ObservablePoint. Idaptik
+/// then calls `ObservablePoint.set` (36 call sites).
+pub extern fn pixiContainerScale(c: Container) -> ObservablePoint;
+pub extern fn pixiContainerPivot(c: Container) -> ObservablePoint;
+pub extern fn pixiContainerAnchor(c: Container) -> ObservablePoint;
+
+pub extern fn pixiObservablePointSet(p: ObservablePoint, x: Float, y: Float) -> Int;
+pub extern fn pixiObservablePointX(p: ObservablePoint) -> Float;
+pub extern fn pixiObservablePointY(p: ObservablePoint) -> Float;
+pub extern fn pixiObservablePointSetX(p: ObservablePoint, x: Float) -> Int;
+pub extern fn pixiObservablePointSetY(p: ObservablePoint, y: Float) -> Int;
+
+/// Graphics path extras idaptik actually draws (circle 51, stroke 58,
+/// roundRect 10, moveTo/lineTo, one quadraticCurveTo).
+pub extern fn pixiGraphicsCircle(g: Graphics, x: Float, y: Float, r: Float) -> Int;
+pub extern fn pixiGraphicsRoundRect(g: Graphics, x: Float, y: Float, w: Float, h: Float, radius: Float) -> Int;
+pub extern fn pixiGraphicsStroke(g: Graphics, options: Json) -> Int;
+pub extern fn pixiGraphicsMoveTo(g: Graphics, x: Float, y: Float) -> Int;
+pub extern fn pixiGraphicsLineTo(g: Graphics, x: Float, y: Float) -> Int;
+pub extern fn pixiGraphicsQuadraticCurveTo(g: Graphics, cpx: Float, cpy: Float, x: Float, y: Float) -> Int;
+
+/// `t.anchor` — Text.anchor.set is 28 idaptik call sites.
+pub extern fn pixiTextAnchor(t: Text) -> ObservablePoint;
+
+pub extern fn pixiSpriteSetWidth(s: Sprite, w: Float) -> Int;
+pub extern fn pixiSpriteSetHeight(s: Sprite, h: Float) -> Int;
+pub extern fn pixiSpriteWidth(s: Sprite) -> Float;
+pub extern fn pixiSpriteHeight(s: Sprite) -> Float;
+pub extern fn pixiSpriteSetInteractive(s: Sprite, v: Bool) -> Int;
+pub extern fn pixiSpritePosition(s: Sprite) -> ObservablePoint;
+
+/// `PIXI.Texture.WHITE`.
+pub extern fn pixiTextureWhite() -> Texture;
+
+pub extern fn pixiTickerDeltaTime(t: Ticker) -> Float;
+pub extern fn pixiTickerRemove(t: Ticker, callback: Json) -> Int;
+
+pub extern fn pixiAppRenderer(app: Application) -> Renderer;
+pub extern fn pixiRendererResize(r: Renderer, w: Float, h: Float) -> Int;
+
+/// `PIXI.Assets.init(options)`. Returns 0.
+pub extern fn pixiAssetsInit(options: Json) -> Int / { Async };
+
+/// `PIXI.Assets.loadBundle(name)` (string form). Returns 0.
+pub extern fn pixiAssetsLoadBundle(name: String) -> Int / { Async };
+
+/// `PIXI.Assets.backgroundLoadBundle([name])`. Returns 0.
+pub extern fn pixiAssetsBackgroundLoadBundle(name: String) -> Int;
+
+/// `event.preventDefault()` on a FederatedPointerEvent-as-Json. Returns 0.
+pub extern fn pixiEventPreventDefault(e: Json) -> Int;

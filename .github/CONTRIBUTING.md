@@ -6,7 +6,7 @@ how to set up a working tree, file useful bugs, and submit changes.
 
 For the language itself, start from [`README.adoc`](../README.adoc). For
 project state, blockers, and next-actions, see
-[`.machine_readable/descriptiles/STATE.a2ml`](../.machine_readable/descriptiles/STATE.a2ml).
+[`.machine_readable/descriptiles/STATE.deed`](../.machine_readable/descriptiles/STATE.deed).
 
 ’’’’’
 
@@ -47,7 +47,7 @@ Tested on OCaml 4.14.2 (the constraint in `dune-project` is `>=`
     ├── packages/            # Aggregate JS/TS/ binding packages
     ├── editors/             # Editor integrations
     ├── js/                  # `js_of_ocaml` playground (built into `playground.bc.js`)
-    ├── .machine_readable/   # Machine-readable metadata (`.a2ml`) — see 0-AI-MANIFEST.a2ml
+    ├── .machine_readable/   # Machine-readable metadata (`.deed`) — see 0-AI-MANIFEST.deed
     ├── .github/             # CI workflows, issue templates
     │   └── CONTRIBUTING.md  # This file
     ├── CODE_OF_CONDUCT.md
@@ -85,7 +85,7 @@ template](.github/ISSUE_TEMPLATE/bug_report.md) and include:
 ### Suggesting Features
 
 **Before suggesting:** 1. Skim [`docs/ROADMAP.adoc`](../docs/ROADMAP.adoc)
-and `.machine_readable/descriptiles/STATE.a2ml`. 2. Search existing
+and `.machine_readable/descriptiles/STATE.deed`. 2. Search existing
 issues and discussions.
 
 **When suggesting:** use the [feature request
@@ -150,7 +150,7 @@ dune runtest     # must be green
 dune fmt         # optional — auto-formats with ocamlformat
 ```
 
-The `methodology.a2ml` file lists the canonical gate set. CI will rerun
+The `methodology.deed` file lists the canonical gate set. CI will rerun
 `build` + `runtest` plus the security, lint, and policy workflows in
 `.github/workflows/`.
 

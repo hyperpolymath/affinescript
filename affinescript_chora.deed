@@ -1,0 +1,17 @@
+;; SPDX-License-Identifier: MPL-2.0
+;;
+;; Repo deed for affinescript. DEED (s-expression, application/vnd.deed)
+;; owns the manifest grammar; A2ML is retired (standards #837 / #64).
+;; CI gates on this file and on *.deed — leftover *.a2ml is a hard fail.
+(repo-deed
+  :schema-version "1.0.0"
+  :canonical-name "affinescript"
+  :beholding-chora #u5"estate/chora"
+  :repo-uuid #u5"github.com/hyperpolymath/affinescript"
+  (manifest
+    :version "0.1.1"
+    :project "affinescript"
+    :purpose "AffineScript compiler — linear/affine typed language with wasm and Bun-ESM backends."
+    :authoritative-status-doc "docs/CAPABILITY-MATRIX.adoc"
+    :state-mirror ".machine_readable/descriptiles/STATE.deed"
+    :estate "AsciiDoc + .deed; not .a2ml"))
