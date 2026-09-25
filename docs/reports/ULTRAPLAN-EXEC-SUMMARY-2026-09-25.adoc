@@ -1,0 +1,65 @@
+// SPDX-License-Identifier: CC-BY-SA-4.0
+= Ultraplan Exec Summary — 2026-09-25
+:toc:
+
+== TL;DR
+
+* **Ecosystem**: `systemet` (theory, Equality Theory, L0-L4) → `anytype` (kernel, pluggable grade algebra) → `affinescript` (product profile grade=affine+cost, premier PL work) → `*script` faces (rattlescript, jaffascript, cafescripto, lucidscript, pseudoscript, planned properscript, realscript). Faces are shims, no compiler, pin affinescript as submodule, single `.affine` extension + pragma.
+* **Mathematical foundations = world-changing bet**: L1 totality cut (normalize+compare, type-level total by construction, no coercion machinery inside equality) + L2 pluggable semiring (same kernel, many disciplines: affine, privacy budget, security lattice, cost, latency×billing). Avoids coherence cliff that killed v0.1. Categorical: LCCC, SMCC, graded comonad D_π, Freyd, presheaf over regions, fibration. If this holds, you get dial-a-discipline kernel — one proof, N languages.
+* **Current**: anytype MVP early, systemet spec only, affinescript Stage E active (typed-wasm convergence L7+L10+L13 enforced, L1-L6/L14-L16 need new carrier multi-producer ABI), borrow checker Polonius M1-M3 test-only 7 divergences, same-cube 2 classes #601, satellites INT-01..04/07/08/09/11 closed, WASI preview1+adapter --command default #486.
+* **Rename systemet → system-et**: 
+  * Damage without sweep: **8/10** — mass broken links, confused AI agents (0-AI-MANIFEST.deed), failing CI, lost SEO, hyphen invalid in Cargo/opam package names, 100-200 files across ~300 repos.
+  * Damage with sweep: **3/10** — 1-2 week churn, recoverable, GitHub redirect saves URLs but not string content.
+  * **Recommendation: Option A — KEEP repo name `systemet`, display as "system-et" / "System ET" everywhere.** Add topics both names, alias in deed, first paragraph "Pronounced system-et, written systemet for package compatibility. Also searchable as system-et." Zero damage, +2 discoverability. Norwegian pun "systemet = the system" valuable — signals ambition. ET pun already explained in README first line.
+  * If you must rename, do Option B full rename with `reposystem scenario` + `rg` sweep + megasweep, after Phases 1-5 green, keep package id `systemet`.
+
+== What was done in this PR (do-nothing per request)
+
+* Created `docs/ULTRAPLAN.adoc` — full mass recon, dependency graph, math foundations, current status, face implications, phased plan 0-6, proof obligations, open questions.
+* Created `docs/decisions/0027-systemet-rename-to-system-et.adoc` — detailed ADR with blast radius table, quantitative estimate, Options A/B/C, recommendation.
+* Created `.machine_readable/descriptiles/ULTRAPLAN.deed` — machine-readable companion.
+* Updated `docs/NAVIGATION.adoc` to list ultraplan.
+* This exec summary `docs/reports/ULTRAPLAN-EXEC-SUMMARY-2026-09-25.adoc`.
+* **No code changes, no renames, no repo moves** — plan only.
+
+== Phased Plan (summary)
+
+* **Phase 0** (now): Recon complete — this doc.
+* **Phase 1** — Math foundations hardening: L1 totality cut formalization + proof, L2 grade algebra spec+instances, L3/L4 open problems, categorical grounding.
+* **Phase 2** — Anytype kernel hardening: L2 instances (privacy, security, cost), L1 branching join, L0 lowering, ABI in-process, proof quarantine cleanup.
+* **Phase 3** — AffineScript core soundness Stage D→E: Polonius production, effect handlers CPS or loud-fail, typed-wasm widening L1-L6/L14-L16 new carrier multi-producer, same-cube fix #601 1 cube CI required, WASI preview2 native.
+* **Phase 4** — Faces sealing: Face Contract accepted, js_face split (JaffaScript plain JS, ProperScript TS), RealScript tribute, ActionScript preset, brand repos sync.
+* **Phase 5** — Ecosystem & distribution: compiler releases + JSR/npm, satellites published, dogfood idaptik+road-skate, docs tutorials.
+* **Phase 6** — Rename if still wanted: tracking issue, reposystem scenario, GitHub rename keeps redirect, estate sweep, keep package id, deprecation notice. Optional, after 1-5 green.
+
+== Implications for *script repos
+
+| Core change | Impact | Mitigation |
+| ast.ml new node | All faces need new snapshot, bump submodule | Update transformers, run face tests |
+| quantity.ml change | Error vocab update | Update face.ml |
+| typecheck new error | Face formatter new arm | Add per-face error message |
+| borrow Polonius | No face impact, re-run same-cube | None |
+| codegen new backend | Faces benefit auto | Update CAPABILITY-MATRIX |
+| tw new carrier | Faces benefit, update brand README guarantees | Update brand docs |
+| New face Proper/Real | New brand repo, Face variant, CLI alias, transformer, shim, gate, same-cube | Follow FACE-CONTRACT checklist |
+| Rename systemet | All face READMEs mention systemet | Sweep if rename, keep alias |
+
+== Open Questions for Owner
+
+1. Rename Option A or B? (Rec: A)
+2. ProperScript before RealScript? (TS community larger)
+3. TortoiseScript retired or still desired?
+4. Anytype as library dependency or keep independent OCaml QTT?
+5. Same-cube #601 first or new faces first?
+6. WASI native preview2 blocking?
+
+== Files
+
+* `docs/ULTRAPLAN.adoc` — full plan (authoritative)
+* `docs/decisions/0027-systemet-rename-to-system-et.adoc` — rename ADR
+* `.machine_readable/descriptiles/ULTRAPLAN.deed` — machine companion
+* `docs/reports/ULTRAPLAN-EXEC-SUMMARY-2026-09-25.adoc` — this file
+
+== No execution
+
+Per request: "do nothing. put the plan into affinescript" — no code, no renames performed. This is doc only.

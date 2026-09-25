@@ -1,0 +1,174 @@
+// SPDX-License-Identifier: CC-BY-SA-4.0
+// SPDX-FileCopyrightText: 2024-2026 hyperpolymath
+= ADR-027: systemet → system-et Rename Assessment
+:toc: macro
+:toclevels: 3
+:icons: font
+:date: 2026-09-25
+:status: PROPOSED — assessment only, no rename performed
+
+toc::[]
+
+== Context
+
+Owner asked: "systemet is the repo, but I need to rename this as system-et - can you assess if this is going to cause mass damage to the entire ecosystem with the name change for finding things"
+
+This ADR records the assessment. It does NOT perform the rename. It is the companion to `docs/ULTRAPLAN.adoc` §3.
+
+== Name Semantics
+
+* **Current**: `systemet` — system + ET, ET = Equality Theory. Also Norwegian/Danish definite form "the system" — pun signaling ambition: this is *the* system, not *a* system.
+* **Proposed**: `system-et` — explicit hyphen, emphasizes ET, more searchable for "ET", loses Norwegian pun, two tokens, hyphen invalid in many package managers (Cargo crate name, opam, npm scope).
+
+Both names explain same theory: L0 runtime, L1 equality (normalize+compare, totality cut), L2 resources (pluggable semiring), L3 recursion (guarded), L4 effects (TEA-erasure).
+
+== Blast Radius — Detailed
+
+=== GitHub repo URL
+
+* `https://github.com/hyperpolymath/systemet` → `https://github.com/hyperpolymath/system-et`
+* GitHub keeps redirect from old to new if you don't create new repo at old name. Clone URLs with old name continue to work via redirect, but with warning.
+* However: submodule pointers (`git submodule` in face repos), `Cargo.toml`, `dune-project` source field, `package.json` repository field, `Justfile` recipes, `docs/CITATIONS.adoc`, `hyperpolymath.github.io` portfolio, `reposystem` graph edges, `developer-ecosystem` paths, `paint-type` DEP trackers — all hardcode old name.
+* Dependabot, Actions `actions/checkout` with `repository: hyperpolymath/systemet`, OSSF Scorecard, etc. — may 404 if they resolve old name after rename without sweep.
+
+=== In-repo string content
+
+* Grep `systemet` across estate: estimated 100-200 files (affinescript alone has 10+ hits: README.adoc, EXPLAINME.adoc, ECOSYSTEM.adoc, .deed files, academic docs).
+* AI agents read `0-AI-MANIFEST.deed` as universal entry point — if it still says `systemet` after rename, agent will search wrong name.
+* `anytype` README relationship table: "systemet The theory — Equality Theory. Semantic authority"
+* `affinescript` README: "Anytype / SystemET, the rebuilt foundation" — already uses SystemET capitalization, close to system-et.
+* `typed-wasm`, `ephapax` may reference systemet in convergence docs.
+
+=== Package manager validity
+
+* `system-et` hyphen:
+  * Cargo: crate name cannot contain hyphen in lib name (binary name can, lib becomes `system_et`). `cargo install system-et` works but `use system_et` needed.
+  * npm: `@hyperpolymath/system-et` valid, but `@hyperpolymath/systemet` already maybe claimed.
+  * opam: `system-et` invalid? opam package names allow hyphen but convention is no hyphen? Need check: affinescript opam name `affinescript` no hyphen. Safer keep `systemet`.
+  * JSR: `system-et` valid.
+* Recommendation: keep package identifier `systemet` (or `system_et`) even if repo renamed `system-et`. Document: "repo is system-et, package is systemet for compatibility".
+
+=== SEO / discoverability
+
+* "systemet" is common Norwegian word — ~ millions of hits, noisy, bad SEO for Equality Theory.
+* "system-et" is distinctive, explicit ET token, better for search "equality theory", "system et".
+* BUT existing citations: white-papers, academic docs, `docs/CITATIONS.adoc`, external blogs, maybe arXiv — all cite `systemet`. Changing breaks citation stability, DOI-like persistence.
+* GitHub search: `systemet` topic already has some stars, `system-et` new would start at 0.
+
+=== RSR compliance
+
+* `.machine_readable/descriptiles/STATE.deed`, `META.deed`, `ECOSYSTEM.deed` mention systemet.
+* RSR requires `0-AI-MANIFEST.deed` at root.
+* Governance: `CODEOWNERS`, `.governance-allowlist`, `.hypatia-ignore` may list repo names.
+* Renaming requires updating all deeds + governance files + CI workflows that check SPDX headers + managed-workflow markers.
+
+=== Human memory / brand
+
+* `systemet`: short, one token, memorable, punny, signals ambition.
+* `system-et`: longer, hyphenated, explicit, clearer for newcomers, but less elegant.
+* The ET explanation already in first paragraph of README — hyphen not needed for clarity if first paragraph says "system + ET".
+
+=== Estate automation
+
+* `reposystem`: flat clones in $REPOS_DIR are single source of truth, repos-monorepo generated artifact. Graph has edges typed by repo name. Renaming requires `reposystem scan`, `scenario create`, `scenario diff`, `plan`, `apply` with rollback.
+* `standards` megasweep compliance engine: enforces naming, topics, licenses, workflows. Will flag mismatch if rename not swept.
+* `hyperpolymath.github.io`: avatars + index.html curated asset catalog, must update.
+
+=== External dependencies
+
+* Downstream: `paint-type` DEP-?? tracker, `gossamer`, `panll`, `katagoria`, `nextgen-typing`, `typell`, `typed-wasm`, `ephapax`, face repos, `idaptik`, `road-skate`.
+* Each needs PR: update README relationship table, update submodule if any, update docs.
+
+== Quantitative Estimate
+
+* Estate size: ~300 repos (per reposystem README)
+* Direct refs in affinescript: 10-20 files
+* Estimated total files across estate mentioning systemet: 100-200
+* Time to sweep with automation: 1-2 days
+* Time with manual review + CI green: 1 week
+* Risk of missed ref: high if manual, low if `rg` + `reposystem` + `hypatia` gate
+* GitHub redirect saves URLs, but not string content.
+
+== Options
+
+=== Option A — Keep `systemet` repo, display as "system-et" (RECOMMENDED, 0/10 damage)
+
+* Repo stays `hyperpolymath/systemet`
+* README title: `# system-et — systemet is a stratified type theory. System + ET...`
+* First paragraph: "Pronounced system-et, written systemet for package compatibility. Also searchable as system-et."
+* GitHub description: "system-et (systemet) — stratified type theory. System + ET = Equality Theory"
+* Topics: `systemet`, `system-et`, `equality-theory`, `anytype`, `affinescript`, `graded-types`, `totality-cut`
+* Docs: use `systemet (system-et)` first mention, then `systemet` thereafter
+* Package names stay `systemet`
+* Add alias in `0-AI-MANIFEST.deed`: `aliases = ["system-et"]`
+* Result: discoverability +2, damage 0, no churn, Norwegian pun kept, ET explicit in display.
+
+=== Option B — Full rename to `system-et` with coordinated sweep (3/10 damage with sweep, 8/10 without)
+
+Steps:
+
+1. Tracking issue: `hyperpolymath/standards#XXX` "Rename systemet → system-et"
+2. `reposystem scenario create rename-systemet-to-system-et`
+3. Rename on GitHub: Settings → Rename → `system-et` (keeps redirect, do NOT create new repo at old name)
+4. Update local clones: `git remote set-url origin https://github.com/hyperpolymath/system-et.git`
+5. Estate sweep:
+   ```
+   rg -l "hyperpolymath/systemet" --hidden -g '!*.git' | xargs sed -i 's|hyperpolymath/systemet|hyperpolymath/system-et|g'
+   rg -l "\bsystemet\b" --type-not binary | ... # prose → system-et, but keep package id systemet where hyphen invalid
+   ```
+   Update:
+   * `.machine_readable/descriptiles/*`, `0-AI-MANIFEST.deed`, `AFFIRMATION.adoc`, `README.adoc`
+   * `anytype` README relationship table
+   * `affinescript` README + `docs/ECOSYSTEM.adoc` + `docs/CAPABILITY-MATRIX.adoc` + `docs/TECH-DEBT.adoc` + `docs/CITATIONS.adoc` + `docs/academic/*` + `wiki/*`
+   * All face repos: `rattlescript`, `jaffascript`, `cafescripto`, `lucidscript`, `pseudoscript` READMEs + justfiles
+   * `typed-wasm`, `ephapax` convergence docs
+   * `hyperpolymath.github.io` index.html + avatars
+   * `reposystem` graph + `developer-ecosystem`
+   * `paint-type` DEP tracker
+6. Package names: keep `systemet` as crate/lib id, display as `system-et`, document mapping
+7. Add redirect notice if you create placeholder (better not — rely on GitHub redirect)
+8. Publish deprecation notice: "systemet has moved to system-et"
+9. Run `reposystem plan` + `apply` + CI green
+10. Update external citations with footnote "formerly systemet"
+11. Keep `systemet` topic for 6 months for discoverability
+
+Damage:
+* Without sweep: 8/10 — mass broken links, confused AI agents, failing CI, lost SEO, invalid package name
+* With sweep: 3/10 — 1-2 week churn, recoverable, redirect saves URLs
+
+=== Option C — New repo `system-et`, keep `systemet` as archive (NOT RECOMMENDED, 9/10 damage)
+
+* Create new repo `system-et`, archive old `systemet` with README pointing to new.
+* Breaks GitHub redirect (old name now occupied), all old URLs 404 or point to archive.
+* Loses stars, watchers, issues, PR history linkage.
+* Requires manual migration of issues.
+* Damage 9/10.
+
+== Decision
+
+**PROPOSED**: Option A — keep repo name `systemet`, rebrand display as "system-et" / "System ET" everywhere.
+
+Rationale:
+* Norwegian pun "systemet = the system" is valuable brand signaling ambition.
+* ET pun already explained in README first paragraph — hyphen not needed for clarity.
+* Package manager hyphen problem avoided.
+* Zero mass damage.
+* Discoverability solved via topics + alias + first paragraph mentioning both names.
+* If later you do full estate normalization (e.g., rename all repos to hyphenated form), batch rename then with `reposystem`.
+
+If you must have hyphen in repo name for discoverability, choose Option B with full sweep, but schedule it after Phase 1-5 of ultraplan are green, not now.
+
+== Consequences
+
+* If Option A: update README title, description, topics, first paragraph alias, deeds alias field. No URL break.
+* If Option B: 1-2 week estate-wide churn, CI must stay green, `reposystem` scenario required.
+* If Option C: do not do.
+
+== References
+
+* `hyperpolymath/systemet` README: "system + ET, where ET stands for Equality Theory"
+* `hyperpolymath/anytype` README relationship table
+* `hyperpolymath/affinescript` README history: "Anytype / SystemET, the rebuilt foundation"
+* `hyperpolymath/reposystem` ESTATE-ORGANIZATION.adoc
+* GitHub docs: repository rename redirect behavior
+* `docs/ULTRAPLAN.adoc` §3 — summary of this assessment
