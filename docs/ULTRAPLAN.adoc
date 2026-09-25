@@ -1,0 +1,540 @@
+// SPDX-License-Identifier: CC-BY-SA-4.0
+// SPDX-FileCopyrightText: 2024-2026 hyperpolymath
+= AffineScript Ultraplan — Mass Recon & Strategic Plan
+:toc: macro
+:toclevels: 4
+:icons: font
+:date: 2026-09-25
+:status: DRAFT — recon complete, execution NOT started (do-nothing per request)
+
+[IMPORTANT]
+====
+This document is the **ultraplan** requested 2026-09-25. It is a **plan only** — no code, no renames, no repo moves were performed. It records the mass recon of the hyperpolymath estate as seen from `affinescript`, the dependency stack `systemet → anytype → affinescript → *script faces`, the mathematical foundations that are the world-changing bet, and an explicit assessment of renaming `systemet` → `system-et`.
+
+Authoritative status still lives in:
+* `docs/CAPABILITY-MATRIX.adoc` — feature readiness
+* `docs/ECOSYSTEM.adoc` — spine A-E, AS↔typed-wasm contract
+* `docs/TECH-DEBT.adoc` — coordination ledger
+* `docs/SOUNDNESS.adoc` — soundness holes
+
+This ultraplan does NOT supersede them; it references them.
+====
+
+toc::[]
+
+== 0. Executive Summary — The Three-Layer Wager
+
+You have **one wager, expressed in three repos**:
+
+[cols="1,1,4"]
+|===
+| Layer | Repo | What it is
+
+| **L-theory** | `hyperpolymath/systemet` | **Equality Theory** — stratified calculus L0 runtime, L1 equality (normalize+compare, totality cut), L2 resources (graded modal, pluggable semiring), L3 recursion (guarded), L4 effects (TEA-erasure). Semantic authority. Spec, invariants, proof obligations. No compiler.
+| **L-kernel** | `hyperpolymath/anytype` | Reference kernel implementing systemet. "Pick the algebra, get the discipline." Parametric over grade algebra (ordered semiring with proof fields). Anytype.Grade.Algebra = the dial. MVP: simply-graded λ-calculus, bidirectional checking, total-by-construction type-level language, process-boundary seam (anytype-check + Zig export). Not yet: branching join, L3, L0 lowering, L4 TEA-erasure (blocked on systemet open result).
+| **L-product** | `hyperpolymath/affinescript` | **One opinionated product profile**: grade = `affine + cost`. Premier PL work. Faces delivery mechanism. Compiles to typed WASM (WasmGC + `typedwasm.ownership` carrier), plus 22+ source-to-source backends. Early/experimental v0.2, Stage E active (typed-wasm convergence hardening).
+
+| **L-faces** | `hyperpolymath/rattlescript`, `jaffascript`, `cafescripto`, `lucidscript`, `pseudoscript`, `properscript*`, `realscript*` | Brand-surface shims. No compiler. `bin/<short>` injects `--face <short>`. Pin affinescript as git submodule + `just update-affinescript`. Single extension `.affine` + first-line pragma (`# face: rattlescript` / `// face: jaffascript`). Error vocabulary per face via `lib/face.ml`. Same-cube invariant: N faces → 1 WASM cube.
+|===
+
+`*` planned — ProperScript (TypeScript, "typed properly"), RealScript (ReScript tribute, "real" sound types). ActionScript folded into ProperScript AS3-idioms preset per `FACE-CONTRACT.adoc` 2026-07-08 decision.
+
+**The world-changing bet is not AffineScript syntax.** It is that **L1 totality cut + L2 pluggable grades** is the architecture that avoids the coherence cliff that killed v0.1 and that System Fc / Haskell / Rust all pay for with heavy coercion machinery inside equality. If anytype + systemet succeed, you get:
+
+* one kernel, many disciplines (affine, privacy budget, security lattice, cost, latency×billing)
+* N faces cost one proof (soundness proven once for core)
+* types that survive into runtime (typed-wasm levels L1-L16, currently L7+L10+L13 enforced)
+* totality decidable without termination analysis at type level (syntactic gate)
+
+AffineScript is the proof that the kernel can ship a real product. Anytype/systemet are the proof that the product is not a one-off.
+
+== 1. Mass Recon — Estate Topology
+
+=== 1.1 Repos discovered (from docs, code, web search)
+
+**Core chain:**
+* `systemet` — theory, 0 compiler, README explicitly: "theory, not implementation"
+* `anytype` — kernel, Idris2, 6A2 metadata, `src/kernel/`, `verification/proofs/idris2/`, `src/interface/` ABI/FFI seam
+* `affinescript` — compiler (OCaml, dune, menhir), `lib/` 83 .ml files, backends: wasm, wasm-gc, bun-esm (deno-esm retired), js, c, llvm, julia, gleam, nickel, etc., `stdlib/` 19 files AOT green, `packages/affine-js` host-agnostic loader, `affinescript-dom`, `affinescript-tea`, `affinescript-cadre`, `affinescript-vite`, `affinescript-deno-test` (historical)
+* `typed-wasm` — separate repo `hyperpolymath/typed-wasm`, level discipline L1-L16, Rust verifier crate, other producer `ephapax` (`hyperpolymath/ephapax`), Idris2 proofs
+* `panoply` — discipline lab, no faces, mentioned in README history as fork from v0.1 lesson
+
+**Face brand repos (6 shipped + 2 planned):**
+* `rattlescript` — Python-shaped, `lib/python_face.ml`, `--face rattle|python`, pragma `rattlescript`, submodule pin pattern
+* `jaffascript` — JS/TS-shaped (currently JS untyped, TS to split), `lib/js_face.ml`, `--face jaffa|js|javascript`
+* `cafescripto` — CoffeeScript-shaped, `lib/cafe_face.ml`, `--face cafe|coffee`, arrows →/⇒, @, unless/until, Yes/No/On/Off
+* `lucidscript` — Pu/Haskell-shaped, `lib/lucid_face.ml`, `--face lucid`
+* `pseudoscript` — pseudocode-shaped pedagogy, `lib/pseudocode_face.ml`, `--face pseudo|pseudocode`
+* `properscript` (planned) — TypeScript-shaped, "typed properly", will split from `js_face.ml` per FACE-CONTRACT P2
+* `realscript` (planned) — ReScript-shaped, homophone tribute
+* `tortoisescript` mentioned in README but not in FACE-CONTRACT roster — Logo-shaped teaching, likely retired or merged into pseudoscript
+* Distributions in `distributions/rattlescript/` — cargo wrapper example
+
+**Satellites & consumers:**
+* `affinescript-dom` — VDOM reconciler, INT-08 closed 2026-07-25, e2e `e2e/run.sh`
+* `affinescript-tea` — TEA runtime, INT-07 closed, `TeaApp`
+* `affinescript-cadre` — router
+* `affinescript-vite` — Vite plugin shell
+* `affine-js` / `-ts` / `-res` / `-vscode` in `packages/` — JS/TS/ReScript/VSCode bindings, loader fixed via INT-02
+* `idaptik` — game dogfood, `titlescreen.wasm` via `tea-bridge`
+* `road-skate` — extracted 2026-05-26, retro driving game in AffineScript
+* `paint-type`, `gossamer`, etc. — downstream deps blocked on compiler per search
+
+**Estate control plane:**
+* `reposystem` — graph/context source, ~300 repos, `ESTATE-ORGANIZATION.adoc`, scan → slot → scenario diff → plan → apply
+* `standards`, `developer-ecosystem`, `hyperpolymath.github.io` — portfolio site
+
+=== 1.2 Dependency Direction (must not invert)
+
+```
+systemet (theory, invariants, proof obligations, L0-L4 spec)
+   ↓ implements, must not silently diverge
+anytype (kernel, Grade.Algebra semiring, bidirectional checker, totality gate, ABI seam)
+   ↓ product profile grade = affine + cost
+affinescript (compiler, QTT quantity.ml, borrow.ml, typecheck.ml, codegen.ml, tw_interface.ml)
+   ↓ face transformers + shim protocol + same-cube gate
+rattlescript / jaffascript / cafescripto / lucidscript / pseudoscript / properscript / realscript
+   ↓ applications
+idaptik / road-skate / affinescript-dom / affinescript-tea / etc.
+   ↓ convergence target
+typed-wasm (multi-producer ABI, levels, Rust verifier, cross-compat C5.1)
+   ↕ co-producer
+ephapax (other language targeting typed-wasm)
+```
+
+**Rule:** Faces add NO semantics. One extension `.affine`, pragma selects face, `--face` flag wins. Same-cube: all faces of one program → byte-identical WASM (currently 2 cubes due to #601 tail-expression vs statement, tracked in FACE-CONTRACT).
+
+**Implications for *script repos if core changes:**
+* Any change to `lib/ast.ml`, `quantity.ml`, `typecheck.ml`, `borrow.ml`, `interp.ml`, `codegen*.ml`, `tw_interface.ml` touches spine → must bump submodule in all face repos via `just update-affinescript`.
+* Face Contract (`docs/specs/FACE-CONTRACT.adoc`) is normative: roster, binding model, shim protocol (hardened order: $AFFINESCRIPT env → PATH → sibling checkout → actionable error), canonical pin, conformance obligations (snapshot + round-trip + same-cube), proof obligations (F-1 preservation, F-2 tail normalisation, F-6 preview totality, F-7 confluence).
+* Adding ProperScript/RealScript requires: new `Face` variant, CLI alias table, transformer file `lib/proper_face.ml` / `lib/real_face.ml`, error vocab, snapshot fixtures, same-cube inclusion.
+
+=== 1.3 Mathematical Foundations — Why This Is World-Changing (Your Note)
+
+Per `docs/academic/mathematical-foundations/`:
+
+* **Categorical semantics**: LCCC for dependent types (Π/Σ as adjoints Σ⊣τ*⊣Π), SMCC for linear/affine (⊗, ⊸), graded comonads D_π for QTT (D_0≈I erased, D_1≈Id linear, D_ω=! exponential), Freyd categories for effects, fibrations for refinements, presheaf over regions for borrow.
+* **Logic foundations**: Curry-Howard extended: affine = affine logic (weakening allowed, contraction controlled via ω), QTT = graded linear logic, effects = modal/◇, ownership = reader/state comonads.
+* **Totality cut**: L1 equality = normalize-and-compare, no coercion proofs. Type-level language total by construction (no recursion constructor, %default total). This is the anti-System-Fc move. Haskell's System Fc carries coercion machinery inside equality — the thing this design refuses.
+* **Grade algebra**: semiring (0,1,ω, +, ×, ≤) with laws as proof fields in Anytype.Grade.Algebra. Instances: affine {0,1,ω}, exact-usage ℕ, privacy budget, security lattice Low≤High, probability [0,1], Latency×Billing. Same kernel, distinct disciplines — demonstrated in anytype golden matrix.
+* **Coherence cliff**: v0.1 hit failure where equality machinery collapses under own weight. Forked to Panoply (austere lab) + Anytype/SystemET (rebuilt foundation). v0.2 = "save faces" on kernel built to carry them.
+* **Borrow checker**: lexical + NLL last-use expiry + flow-sensitive escape via re-assignment + CFG-join merge_arm_results + loop 2-iteration re-check + @linear capture rejection + Polonius M1-M3 test-only extractor with datalog-style loan-live-at-point solver (ADR-022, #553, 7 known divergences).
+* **Proof status**: per SOUNDNESS.adoc: #554 fixed (callee-returned borrow UAM), #555 loud-fail (handle/resume on compiled backends + multi-shot), residual pinned #555 non-tail single-shot (#623), #556 loud-fail (async CPS table-miss), #558 removed (refinement), #559 fixed (trait coherence), #553 partial (Polonius), etc. Coq/Rocq codegen preservation initial, Idris2 Solo-core QTT metatheory, Lean tropical-session-types, Agda echo-boundary.
+
+**World-changing claim**: If L2 pluggable grades + L1 totality cut holds, you get a **dial-a-discipline kernel** that can produce privacy-typed queries, security-typed, cost-visible edge functions, affine-safe game mods, without rebuilding a language each time. AffineScript is just dial setting `affine+cost`. That is the bet.
+
+== 2. Current Status — Honest Recon
+
+=== 2.1 anytype (kernel)
+
+* Status: early, MVP cut only. Simply-graded λ-calculus, pluggable semiring, total-by-construction, process-boundary seam.
+* Not yet: branching grade join, L3 guarded recursion, L0 lowering, L4 effects (blocked on systemet open TEA-erasure theorem), in-process linkage (currently spawned process).
+* Proofs: Idris2 `verification/proofs/idris2/` 5 RSR template modules quarantined (never compiled) in `scripts/check-idris2-proofs.sh`.
+* Docs: `AFFIRMATION.adoc` honesty snapshot, `EXPLAINME.adoc` mapping claims to files.
+* Role: must stay faithful to systemet spec, not diverge.
+
+=== 2.2 systemet (theory)
+
+* Status: no compiler, spec + invariants + proof obligations only. Defines layers L0-L4, refuses new type relations when layer discipline will do.
+* Open: TEA-erasure result (whether Total+Effect-graded+Affine handler erases), deep variance refusal rationale, role/trope system A@t, session protocols.
+* Comparison table vs System Fc, Idris2, Rust in README — key differentiator: no coercions, pluggable semiring, tropes.
+* Name: `systemet` = system + ET (Equality Theory), also Norwegian "the system" pun. README explains ET = Equality Theory.
+
+=== 2.3 affinescript (product)
+
+* Version 0.1.1 (dune-project), v0.2 architecture per README.
+* Compiler: lexer 100%, parser works (ADR-009 conformance, 21 S/R + 1 R/R intentional won't-fix per ADR-012), AST works, name resolution works, type checker works (bidirectional, effect rows, Never), effect system partial (handlers fail loud on compiled backends, shallow single-shot tail-resume in interp, multi-shot loud-fail, non-tail residual pinned), borrow checker partial (CORE-01 landed 2026-05-30, NLL slices, flow-sensitive, CFG-join, loop soundness, @linear capture rejection, Polonius test-only), quantity enforced (QTT semiring, scaled-Let ADR-002, BUG-001/002 closed), interpreter works (let mut gaps), traits partial (coherence checking #559 landed, associated types missing), dependent/refinement removed (v1 withdrawn 2026-04-10), row polymorphism partial, formatter/linter works, LSP works (hover, goto-def, completion, JSON-RPC).
+* Backends: wasm core works (cross-module imports, extern fn → import, WASI preview1 on-demand clock/env/args/sockets/filesystem, componentize.sh defaults to --command per #486, native preview2 still one-way door), wasm-gc partial (variant-with-args + same-arity PatCon, mixed-arity needs uniform rep, effects/try-catch/call_ref deferred), typed-wasm contract narrow (L7 aliasing + L10 linearity + L13 module isolation negative form enforced via Tw_verify.verify_module_isolation, L1-L6/L14-L16 require new carrier section = multi-producer ABI change), bun-esm works (Deno-ESM retired hard error E0826), 22+ source-to-source (julia, gleam, nickel, etc.) uneven maturity.
+* Stdlib: 19/19 AOT green (Stage C closed 2026-05-18).
+* Tests: 260+ (historical 260 baseline 2026-05-19), now 263-281 per TECH-DEBT, `dune runtest --force` green, e2e fixtures, borrow graph, loader-bridge, componentize smoke.
+* Docs: CAPABILITY-MATRIX authoritative, ECOSYSTEM spine + contract, TECH-DEBT coordination ledger, SOUNDNESS ledger with content-bound digests + freshness stamp, FACE-CONTRACT normative, STATE.a2ml flagged stale (mirror, not lead), many .deed companions.
+* Satellites: INT-01..04 substrate closed (cross-module imports, host-agnostic loader, WASI preview2 on-ramp, JSR publish ready not published owner-gated), INT-07/08/09/11 closed 2026-07-25 (tea, dom reconciler verified e2e, cadre router, browser parity), residual #485/#487 FS + sockio preview1 lowerings landed with gated smokes, #486 wrap default flipped to --command, #56 Pixi closed via #760.
+* Stage E active: typed-wasm convergence hardening, CONV-01 estate re-validation #235 open, CONV-02 async-boundary #234 closed, CONV-03 #225/#160 convergence ABI shared with Ephapax partial, CONV-04 widen enforcement L1-L6/L14-L16 needs carrier section, CONV-05 INT-12 fixtures into typed-wasm cross_compat.rs planned.
+
+=== 2.4 *script faces
+
+* 6 shipped: RattleScript (Python), JaffaScript (JS), CafeScripto (CoffeeScript), LucidScript (Pu/Haskell), PseudoScript (pseudocode), canonical.
+* Each: brand repo hyperpolymath/<name>, bin/<short> shim, examples, docs, justfile, Cargo.toml wrapper (rattlescript), affinescript submodule pin.
+* Transformer: lib/*_face.ml text→canonical, face.ml error formatter.
+* Known gap: same-cube split into 2 wasm classes {lucid,pseudo,rattle} tail-expr vs {cafe,canonical,jaffa} statement due to terminator-free faces guessing unit-typed trailing call as tail expr dropping ; — issue #601, fix via post-typecheck tail-normalisation pass, must be promoted to required CI.
+* Planned: ProperScript (TS, typed properly), RealScript (ReScript tribute). ActionScript not standalone face, folded into ProperScript AS3 preset.
+* P1.2 tasks: add proper/real + typescript/rescript to CLI alias table + Face variant.
+* P2: js_face split — JaffaScript narrows to plain JS, ProperScript gets own transformer + TS-idiom error vocab.
+
+== 3. The Rename Question — systemet → system-et
+
+=== 3.1 What you asked
+
+"systemet is the repo, but I need to rename this as system-et - can you assess if this is going to cause mass damage to the entire ecosystem with the name change for finding things"
+
+=== 3.2 Current name semantics
+
+* `systemet` = system + ET, ET = Equality Theory. README says: "The name is system + ET, where ET stands for Equality Theory — because the one primitive relation the whole system keeps at the bottom is equality, and everything else is layered above it as discipline rather than added as new relations."
+* Also Norwegian/Danish: "systemet" = "the system" (definite form) — nice pun, suggests this is *the* system.
+* `system-et` = explicit hyphen, emphasizes ET split, more searchable for "ET", but loses Norwegian pun and becomes two-token.
+
+=== 3.3 Blast radius assessment
+
+[cols="1,1,4"]
+|===
+| Area | Damage if rename without sweep | Mitigation
+
+| **GitHub repo URL** `hyperpolymath/systemet` → `hyperpolymath/system-et`
+| Medium. GitHub keeps redirect from old name to new *if* you don't create new repo at old name. Clone URLs, submodule pointers, docs links, external citations break unless updated. `gh` CLI, Dependabot, Actions that checkout by name may 404 if they use hardcoded string.
+| Mitigation: GitHub redirect + estate sweep via `reposystem` + `hyperpolymath/standards` megasweep compliance engine. Must update: anytype README, affinescript README + docs, all face repos, typed-wasm, ephapax, reposystem graph, hyperpolymath.github.io portfolio, paint-type DEP trackers, etc. ~300 repos scan required.
+
+| **In-repo strings** `systemet` in code/docs
+| High. Grep in affinescript alone shows many hits (README, EXPLAINME, etc.). anytype references systemet as semantic authority. Search: `grep -R "systemet"` across estate will find hundreds. If renamed, old string becomes dead link in prose, confusing for AI agents that read 0-AI-MANIFEST.deed.
+| Mitigation: `rg -l "systemet" --type-not binary` sweep, codemod to `system-et` but keep alias note. Add `systemet` as deprecated alias in docs with redirect note. Keep `systemet` in `topics` on GitHub for discoverability.
+
+| **Package / crate / opam / JSR names**
+| Low today (no package named systemet). But future `system-et` with hyphen is invalid in many package managers (Cargo, npm, opam). Hyphen vs underscore: `system_et` vs `system-et`. GitHub repo hyphen is fine, but Rust crate cannot have hyphen in lib name (becomes underscore). OCaml package hyphen also awkward.
+| Mitigation: Keep package name `systemet` (underscore) even if repo renamed `system-et`. Or use `system_et` as crate. Document canonical import name. Check: anytype uses `anytype` not `any-type` — consistency says keep unhyphenated.
+
+| **SEO / discoverability / citations**
+| Medium-High. "systemet" is common Norwegian word — noisy search. "system-et" is more distinctive, better for "Equality Theory" SEO, explicit ET token helps. But existing papers, white-papers, citations, academic docs (`docs/academic/`) reference systemet. Changing breaks citation stability. Academic white-papers need DOI-stable names.
+| Mitigation: Keep both names in README first line: "system-et (formerly systemet)". Add GitHub topics: `equality-theory`, `system-et`, `systemet`. Keep `systemet` as alias in first paragraph for search engines.
+
+| **RSR compliance / SPDX / governance**
+| Low-Medium. `.machine_readable/descriptiles/` STATE, META, ECOSYSTEM mention systemet. RSR requires `0-AI-MANIFEST.deed` entry point. Rename requires updating those deeds + GOVERNANCE allowlist + CODEOWNERS.
+| Mitigation: Update deeds, keep old name in `aliases` field.
+
+| **Human memory / brand**
+| Medium. "systemet" is short, memorable, one token, punny. "system-et" is longer, hyphenated, more explicit but less elegant. Loses the "the system" pun which signals ambition (this is *the* system). Gains clarity for newcomers who don't get ET pun.
+| Mitigation: User decision — clarity vs elegance. Could keep repo `systemet` but display name "System ET" in README title. Best of both.
+
+| **Estate automation**
+| High if not coordinated. `reposystem` graph has edges typed by repo name. `developer-ecosystem` repo lists affinescript-ecosystem/* paths. `hyperpolymath.github.io` avatars/index. Megasweep workflows that enforce naming, topics, licenses will flag mismatch.
+| Mitigation: Use `reposystem` to plan: `reposystem scan`, `reposystem scenario create rename-systemet`, `reposystem scenario diff`, `reposystem plan`, `reposystem apply` with rollback. Coordinate with `reposystem` maintainer.
+
+| **External deps**
+| Low-Medium. Downstream like `paint-type` DEP tracker, `ephapax`, `typed-wasm` reference systemet. They will need PRs.
+| Mitigation: Open tracking issue in each downstream, batch PR via `gh` + `just`.
+
+|===
+
+=== 3.4 Quantitative estimate
+
+* Estate size: ~300 repos (per reposystem README)
+* Direct references to "systemet" in affinescript alone: ~10-20 files (README, docs, .deed)
+* Estimated total files across estate mentioning systemet: 100-200 (based on anytype + affinescript + face repos + standards + docs)
+* GitHub redirect covers URL, but not string content.
+* Time to sweep: 1-2 days with automation, 1 week with manual review + CI green.
+* Risk of missed reference: high if manual, low if `rg` + `reposystem` + `hypatia` gate.
+
+=== 3.5 Recommendation — DO NOT RENAME YET (or use dual-name strategy)
+
+**Option A (recommended): Keep `systemet` as repo name, but rebrand display as "System ET" / "system-et" in prose.**
+
+* Repo stays `hyperpolymath/systemet` — no URL break.
+* README title: `# system-et — systemet is a stratified type theory. System + ET...`
+* First paragraph: "Pronounced system-et, written systemet for package compatibility. Formerly searched as system-et."
+* Add alias: "Also searchable as system-et, equality-theory"
+* GitHub repo description: "system-et (systemet) — stratified type theory..."
+* Topics: `systemet`, `system-et`, `equality-theory`, `anytype`, `affinescript`
+* In docs: use `systemet (system-et)` first mention, then `systemet` thereafter.
+* Package names stay `systemet` (no hyphen problem).
+* This gives you discoverability without mass damage.
+
+**Option B: Full rename to `system-et` with coordinated sweep — only if you accept 1-2 week estate-wide churn.**
+
+Steps if you choose B:
+1. Create tracking issue `hyperpolymath/standards#XXX` "Rename systemet → system-et"
+2. `reposystem scenario create rename-systemet-to-system-et`
+3. Rename repo on GitHub: Settings → Rename → `system-et` (keeps redirect)
+4. Do NOT create new repo at old name (would break redirect)
+5. Update local clones: `git remote set-url origin https://github.com/hyperpolymath/system-et.git`
+6. Estate sweep:
+   * `rg -l "hyperpolymath/systemet" --hidden` → replace with `hyperpolymath/system-et`
+   * `rg -l "\bsystemet\b" --type-not binary` → replace with `system-et` in prose, but keep `systemet` as package identifier where hyphen invalid → use `system_et` or keep `systemet`
+   * Update `.machine_readable/descriptiles/*`, `0-AI-MANIFEST.deed`, `CARGO.toml`, `dune-project`, `package.json`, `Justfile`, `README.adoc`, `ECOSYSTEM.adoc`, `docs/CITATIONS.adoc`, `docs/academic/*`, `wiki/*`
+   * Update `affinescript` `ECOSYSTEM.deed` related-projects, `anytype` README relationship table
+   * Update all face repos: submodule reference still points to affinescript, but their READMEs mention systemet
+   * Update `hyperpolymath.github.io` index.html + avatars
+   * Update `typed-wasm`, `ephapax` references
+7. Add redirect notice in old README if you create placeholder (but better rely on GitHub redirect + not create placeholder)
+8. Publish deprecation notice: "systemet has moved to system-et, update your remotes"
+9. Run `reposystem plan` + `apply` + CI green across estate
+10. Update external citations (white-papers) with footnote: "formerly systemet"
+11. Keep `systemet` as GitHub topic for 6 months
+
+**Damage rating:**
+* Option A: **0/10 damage**, +2 discoverability with alias.
+* Option B without sweep: **8/10 damage** — mass broken links, confused AI agents, failing CI, lost SEO, package name invalid.
+* Option B with sweep: **3/10 damage** — 1-2 week churn, but recoverable, GitHub redirect saves URLs.
+
+**My assessment:** The hyphen does NOT justify mass damage. The Norwegian pun "systemet = the system" is actually valuable brand — it signals ambition that this is *the* system, not *a* system. The ET pun is already explained in README first paragraph. Better to keep `systemet` repo name, but use "system-et" as pronunciation/display alias everywhere. If you must rename, do it as part of a larger estate-wide naming normalization (e.g., when you also rename `anytype` → `any-type`? which you shouldn't) and batch with `reposystem`.
+
+== 4. Ultraplan — Phased Execution (Do-Nothing Now, Plan Only)
+
+=== 4.1 Principles
+
+* **Theory first**: systemet spec is semantic authority. Anytype must not silently diverge. AffineScript must not add semantics in faces.
+* **One proof, N faces**: Soundness proven once for core. Faces are pure re-shaping.
+* **Totality cut is non-negotiable**: L1 equality = normalize-and-compare, type-level total by construction. No coercion machinery inside equality.
+* **Spine lock-step**: Any change to `ast.ml`, `quantity.ml`, `typecheck.ml`, `borrow.ml`, `interp.ml`, `codegen*.ml`, `tw_interface.ml` touches all files in implementation spine.
+* **Same-cube or it didn't happen**: Faces must be byte-identical WASM or explicitly tracked as #601 gap.
+* **Do-nothing per request**: This plan is doc only. No code changes in this PR.
+
+=== 4.2 Phase 0 — Recon Complete (this doc, 2026-09-25)
+
+* ✅ Mass recon of affinescript, anytype, systemet, typed-wasm, ephapax, face repos, satellites, reposystem
+* ✅ Dependency graph documented
+* ✅ Rename assessment done
+* ✅ Ultraplan written to `docs/ULTRAPLAN.adoc`
+* Deliverable: this file + `docs/decisions/0027-systemet-rename-assessment.adoc` (detailed rename decision)
+
+=== 4.3 Phase 1 — Mathematical Foundations Hardening (The World-Changing Bet)
+
+**Goal:** Make systemet spec machine-checkable enough that anytype can be proven faithful, and affinescript's totality cut is justified.
+
+* **1.1 Systemet L1 formalization**
+  * Document totality cut formally: type-level language syntax without recursion constructor, %default total gate, normalize-and-compare at single site.
+  * Prove: type-level normalization terminates (syntactic argument, not termination analysis)
+  * Deliverable: `systemet/docs/L1-totality-cut.adoc` + Idris2 proof `systemet/proofs/L1Totality.idr`
+  * Blocks: anytype L1 implementation
+
+* **1.2 Systemet L2 Grade Algebra spec**
+  * Formalize Anytype.Grade.Algebra record: carrier, 0,1,ω, +, ×, ≤, laws (semiring + order + proof fields)
+  * Instances: affine {0,1,ω}, ℕ exact-usage, privacy budget, security lattice, probability, Latency×Billing
+  * Prove: affine instance satisfies laws, golden matrix demo
+  * Deliverable: `systemet/docs/L2-grade-algebra.adoc` + `anytype/src/Grade/Algebra.idr`
+
+* **1.3 Systemet L3 Guarded Recursion**
+  * Spec guarded recursion checking, not yet implemented in anytype
+  * Deliverable: `systemet/docs/L3-guarded-recursion.adoc` (open problem)
+
+* **1.4 Systemet L4 Effects + TEA-erasure**
+  * Open problem: TEA-erasure theorem — when does Total+Effect-graded+Affine handler erase?
+  * This blocks anytype L4 and affinescript effect handlers full story
+  * Deliverable: research note `systemet/docs/L4-TEA-erasure-open.adoc`, collaboration with typed-wasm/ephapax
+
+* **1.5 Categorical semantics grounding**
+  * Expand `docs/academic/mathematical-foundations/categorical-semantics.adoc` with graded comonad D_π, Freyd category for effects, presheaf for regions
+  * Link to anytype implementation: show how `lib/quantity.ml` corresponds to D_π
+  * Deliverable: updated academic docs + `docs/academic/mathematical-foundations/implementation-correspondence.adoc`
+
+**Exit criteria:** systemet has L1+L2 fully spec'd and proven, L3/L4 open problems clearly marked, anytype MVP proven faithful to L1/L2.
+
+=== 4.4 Phase 2 — Anytype Kernel Hardening
+
+**Goal:** Make anytype the reference engine that other disciplines can plug into.
+
+* **2.1 L2 instances**
+  * Implement privacy budget, security lattice, cost, latency×billing as Anytype.Grade.Algebra instances
+  * Test: same program, different grades, different discipline errors
+  * Deliverable: `anytype/src/Grade/Instances/` + golden matrix tests
+
+* **2.2 L1 branching**
+  * Currently if needs grade join beyond semiring+order laws — implement join
+  * Deliverable: branching with grade join, `anytype/src/Kernel/Branch.idr`
+
+* **2.3 L0 lowering**
+  * Lower to WASM/C target, not yet started
+  * Deliverable: `anytype/src/Runtime/Lower.idr` + WASM text backend
+
+* **2.4 ABI seam hardening**
+  * Currently process-boundary seam (anytype-check + Zig export) — move to in-process linkage
+  * Typed ABI/FFI seam `src/interface/` — validate abi/ffi consistency
+  * Deliverable: `anytype/src/Interface/` with generated headers, in-process lib
+
+* **2.5 Proof quarantine cleanup**
+  * 5 RSR template modules under `verification/proofs/idris2/` never compiled, quarantined in `scripts/check-idris2-proofs.sh` — either compile or delete
+  * Deliverable: `just proof-check-idris2` green without quarantine
+
+**Exit criteria:** anytype can be used as library by affinescript (instead of affinescript re-implementing QTT), `anytype` → `affinescript` dependency is real code reuse, not just conceptual.
+
+=== 4.5 Phase 3 — AffineScript Core Soundness (Stage D → E)
+
+**Goal:** Close remaining soundness holes, finish Stage E typed-wasm convergence.
+
+* **3.1 Borrow checker Polonius**
+  * ADR-022, #553: true Polonius origin/region variables on TyRef/TyMut with subset constraints + datalog solver
+  * Currently M1-M3 test-only, 7 known divergences
+  * Deliverable: M4-M6 production wiring, `lib/borrow_polonius/` becomes production, `lib/borrow.ml` deprecated, `test/test_borrow_polonius.ml` 0 divergences
+
+* **3.2 Effect handlers full story**
+  * Currently loud-fail on compiled backends, shallow single-shot tail-resume in interp, non-tail residual pinned #623
+  * Needs CPS rewrite of eval (blocked OCaml 4.14 no native effect handlers, must stay js_of_ocaml compatible)
+  * Deliverable: either CPS transform or document as permanent limitation with loud-fail everywhere (no silent wrong value)
+
+* **3.3 Typed-wasm widening L1-L6/L14-L16**
+  * Currently L7+L10+L13 enforced, L1-L6/L14-L16 need new carrier section = multi-producer ABI change
+  * Coordinate with `hyperpolymath/typed-wasm` + `ephapax` per ADR-021
+  * Deliverable: new `typedwasm.*` custom sections, `lib/tw_interface.ml` extended, `tw-verify` cross-repo gate, INT-12 fixtures into `crates/typed-wasm-verify/tests/cross_compat.rs`
+
+* **3.4 Same-cube fix #601**
+  * Currently 2 wasm classes due to tail-expr vs statement
+  * Fix via post-typecheck tail-normalisation pass
+  * Promote `hyperpolymath/invariant-path/scripts/verify-same-cube.sh` to required CI check in canonical + per-face conformance gate in brand repos
+  * Deliverable: 1 cube, CI required
+
+* **3.5 WASI preview2 native**
+  * Currently preview1 with componentize adapter, wrap default flipped to --command (#486), native preview2 re-target still one-way door
+  * Deliverable: S6c native preview2 lowering, `wit/affinescript.wit` world `affinescript:cli/run` fully native, legacy preview1 path removed
+
+**Exit criteria:** Stage E closed, stable multi-producer typed-wasm ABI, same-cube green, Polonius production.
+
+=== 4.6 Phase 4 — Faces Sealing (ProperScript, RealScript, ActionScript preset)
+
+**Goal:** Seal face contract, add 2 new faces, ensure N faces cost one proof.
+
+* **4.1 Face Contract hardening**
+  * Per `docs/specs/FACE-CONTRACT.adoc`: roster normative, binding model (one extension .affine + pragma + --face flag wins), shim protocol hardened (AFFINESCRIPT env → PATH → sibling checkout → actionable error), canonical pin via submodule, conformance obligations (snapshot + round-trip + same-cube), proof obligations (F-1 per-face preservation, F-2 tail normalisation, F-6 preview totality, F-7 confluence)
+  * Deliverable: FACE-CONTRACT marked ACCEPTED, all 6 shipped faces conformant
+
+* **4.2 js_face split**
+  * JaffaScript narrows to plain JavaScript (untyped)
+  * ProperScript gets own transformer + TS-idiom error vocab
+  * Deliverable: `lib/js_face.ml` + `lib/proper_face.ml`, `Face.Js` + `Face.Proper`, CLI accepts `proper`/`typescript`, tests
+
+* **4.3 RealScript**
+  * ReScript tribute, ML-family types real (sound, non-nullable, no any)
+  * Deliverable: `lib/real_face.ml`, `Face.Real`, CLI `real`/`rescript`, brand repo `hyperpolymath/realscript`
+
+* **4.4 ActionScript preset**
+  * Not standalone face, but ProperScript AS3-idioms migration preset: extends→traits, package stripped, trace→IO.println, Number/int→Float/Int, Array.<T>/Vector.<T>→Array[T], null→()
+  * Deliverable: `docs/guides/migrations/as3-to-properscript.adoc` + preset in proper_face.ml
+
+* **4.5 Face brand repos sync**
+  * Each brand repo: update submodule pin, hardened shim, conformance gate, examples, migration guides
+  * Deliverable: all face repos green, `just update-affinescript` works, `just preview` shows canonical lowering
+
+**Exit criteria:** 8 faces (canonical + 7 brand) sealed, same-cube, conformance CI required, no drift.
+
+=== 4.7 Phase 5 — Ecosystem & Distribution
+
+**Goal:** Make affinescript installable, publishable, dogfoodable.
+
+* **5.1 Compiler distribution**
+  * ADR-019: Releases + thin Deno/JSR shim, #260 S2/S3
+  * Deliverable: `affinescript` binary releases, `packages/affine-js` JSR + npm published (currently ready, owner-gated, dry-run green), `affinescript-lsp` distribution
+
+* **5.2 Satellites**
+  * `affinescript-dom` reconciler (INT-08 closed, verified e2e), `affinescript-tea` runtime (INT-07 closed), `affinescript-cadre` router (INT-09 closed), `affinescript-vite` scaffold, `affine-vscode` extension
+  * Deliverable: all satellites published, browser parity verified
+
+* **5.3 Dogfood**
+  * `idaptik` titlescreen.wasm via tea-bridge (512 bytes, WebAssembly.validate true, round-trip init→selected, update, setScreen), `road-skate` retro game
+  * Deliverable: 2 dogfood apps using affinescript for real
+
+* **5.4 Docs & tutorials**
+  * 10 lessons (`docs/tutorial/`), frontier guide, human programming guide, lessons/migrations
+  * Deliverable: `docs/guides/WHAT-MAKES-IT-BRILLIANT.adoc`, `docs/vision/AFFINESCRIPT-VISION.adoc` aligned with reality
+
+**Exit criteria:** `opam install affinescript` + `npm install @hyperpolymath/affine-js` + face shims work, dogfood apps green.
+
+=== 4.8 Phase 6 — Rename Decision (if you still want system-et)
+
+**Goal:** If you decide to rename, do it with zero mass damage.
+
+* **6.1 Pre-rename**
+  * Tracking issue in `hyperpolymath/standards`, `reposystem scenario create`
+  * Update `hyperpolymath.github.io` to list both names
+  * Add topics `system-et` + `systemet` to existing repo (no rename yet)
+
+* **6.2 Rename**
+  * GitHub Settings → Rename → `system-et` (keeps redirect)
+  * Do NOT create new repo at old name
+  * Update local remotes
+
+* **6.3 Estate sweep**
+  * `rg` sweep + `reposystem plan/apply` + megasweep compliance engine
+  * Update all `.deed`, `README`, `ECOSYSTEM`, `CITATIONS`, academic docs, face repos, typed-wasm, ephapax, anytype, affinescript, portfolio
+  * Package names: keep `systemet` as package id (hyphen invalid), display as `system-et`
+
+* **6.4 Post-rename**
+  * Deprecation notice, footnote in white-papers "formerly systemet"
+  * Keep `systemet` topic for 6 months
+  * Verify CI green across estate
+
+**Recommendation:** Do Phase 6 only after Phases 1-5 are green, and only if Option A (dual-name) is insufficient for discoverability. My assessment: Option A is sufficient, Phase 6 is optional.
+
+== 5. Implications for *script Repos — Detailed
+
+[cols="1,2,3"]
+|===
+| Change in core | Impact on *script | Mitigation
+
+| `lib/ast.ml` new node
+| All faces must lower to new node or fail loud. Brand repos need new snapshot.
+| Update transformers, run `tools/run_face_transformer_tests.sh`, bump submodule.
+
+| `lib/quantity.ml` QTT semiring change
+| Error messages change, face error vocab must update (`lib/face.ml`).
+| Update `face.ml` format_quantity_error per face, snapshot.
+
+| `lib/typecheck.ml` new error
+| Face error formatter must map new error to face vocab (JS: "Cannot find name", Python: "Name not found", etc.)
+| Add arm in `format_type_error` per face, test.
+
+| `lib/borrow.ml` Polonius
+| No face impact (borrow checker face-agnostic), but same-cube must hold.
+| No face change, but re-run same-cube gate.
+
+| `lib/codegen*.ml` new backend
+| Faces benefit automatically (same core). No face change unless backend-specific error.
+| No face change, but update `docs/CAPABILITY-MATRIX.adoc` backend table.
+
+| `lib/tw_interface.ml` new carrier section
+| Faces benefit (typed-wasm guarantees). Brand repos need to document new guarantees.
+| Update brand README "What you get" section.
+
+| New face (ProperScript/RealScript)
+| New brand repo `hyperpolymath/properscript` / `realscript`, new `Face` variant, CLI alias, transformer, shim, submodule pin, conformance gate, same-cube inclusion.
+| Follow FACE-CONTRACT P1.2 + P2 checklist.
+
+| Rename systemet → system-et
+| All face READMEs mention systemet as theory. Must update if rename.
+| Sweep face repos READMEs, keep alias note.
+
+|===
+
+== 6. Proof Obligations — The Real Work
+
+Per `docs/PROOF-NEEDS.adoc` and `docs/specs/FACE-CONTRACT.adoc`:
+
+* **F-1**: every `lib/<face>_face.ml` transform preserves typed-wasm denotation — partial (toy model only), need per-face preservation against real `lib/ast.ml`/`lib/wasm.ml`
+* **F-2**: tail/statement normalisation preserves denotation — partial (unit-tail case, `SameCube.agda`), need generalisation to #601 normalisation pass
+* **F-6**: preview round-trip totality (transform always yields parseable canonical) — absent
+* **F-7**: face/canon confluence (all faces of one program reach one canonical AST) — absent
+* **CORE-01**: borrow-checker Phase-3 — landed, Polonius residual #553 M1-M3 test-only
+* **SOUNDNESS**: #554 fixed, #555 loud-fail + residual pinned non-tail (#623), #556 loud-fail, #558 removed, #559 fixed, #553 partial
+
+**World-changing proof**: The totality cut + grade algebra laws. If you prove L1 normalization terminates syntactically and L2 semiring laws hold for all instances, you have proven that the kernel cannot hit coherence cliff. That is the theorem that makes anytype reusable.
+
+== 7. Ultraplan Deliverables Checklist
+
+* [x] This doc `docs/ULTRAPLAN.adoc` (recon + plan, do-nothing)
+* [ ] `docs/decisions/0027-systemet-rename-assessment.adoc` (detailed rename decision)
+* [ ] `.machine_readable/descriptiles/ULTRAPLAN.deed` (machine-readable companion)
+* [ ] Update `docs/ECOSYSTEM.adoc` to cross-link ultraplan (future)
+* [ ] Update `docs/NAVIGATION.adoc` to list ultraplan (future)
+* [ ] Create tracking issues in anytype/systemet/typed-wasm for L1/L2 hardening (future, not in this PR)
+* [ ] No code changes in this PR (per request)
+
+== 8. Open Questions for Owner
+
+1. **Rename**: Do you want Option A (keep `systemet` repo, display as "system-et") or Option B (full rename with sweep)? My recommendation: Option A.
+2. **ProperScript/RealScript priority**: Should ProperScript (TS) come before RealScript (ReScript) given TS community size?
+3. **TortoiseScript**: README mentions TortoiseScript Logo-shaped teaching — is this retired, merged into PseudoScript, or still desired?
+4. **Anytype → AffineScript code reuse**: Do you want affinescript to actually depend on anytype as library (currently conceptual), or keep independent OCaml implementation of QTT for speed?
+5. **Face sealing order**: Same-cube fix #601 first, then ProperScript/RealScript, or new faces first?
+6. **WASI**: Is native preview2 (S6c) blocking for your dogfood apps, or is preview1+adapter sufficient for now?
+
+== 9. References
+
+* `hyperpolymath/systemet` — theory, https://github.com/hyperpolymath/systemet
+* `hyperpolymath/anytype` — kernel, https://github.com/hyperpolymath/anytype
+* `hyperpolymath/affinescript` — product, https://github.com/hyperpolymath/affinescript
+* `hyperpolymath/typed-wasm` — convergence target, https://github.com/hyperpolymath/typed-wasm
+* `hyperpolymath/ephapax` — co-producer, https://github.com/hyperpolymath/ephapax
+* `hyperpolymath/rattlescript`, `jaffascript`, `cafescripto`, `lucidscript`, `pseudoscript` — faces
+* `hyperpolymath/reposystem` — estate control plane, https://github.com/hyperpolymath/reposystem
+* Docs: `CAPABILITY-MATRIX.adoc`, `ECOSYSTEM.adoc`, `TECH-DEBT.adoc`, `SOUNDNESS.adoc`, `FACE-CONTRACT.adoc`, `DESIGN-VISION.adoc`, `AFFINESCRIPT-VISION.adoc`
+* Academic: `docs/academic/mathematical-foundations/categorical-semantics.adoc`, `logic-foundations.adoc`, `formal-verification/`
+* Decisions: `docs/decisions/0019-compiler-distribution.adoc`, `0022-polonius-origin-variables.adoc`, `0023-finality-types.adoc`, `0024-android-aarch64-native-target.adoc`, `0025-semantics-vm.adoc`, `0026-formal-complexity-isabelle.adoc`
+
+---
+
+_Last updated: 2026-09-25 — recon complete, execution not started. This is the ultraplan._

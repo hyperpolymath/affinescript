@@ -1,0 +1,153 @@
+# SPDX-License-Identifier: MPL-2.0
+# ULTRAPLAN.deed — machine-readable companion to docs/ULTRAPLAN.adoc
+# Date: 2026-09-25, Status: DRAFT, Execution: NONE (plan only)
+
+[metadata]
+project = "affinescript"
+doc = "docs/ULTRAPLAN.adoc"
+date = "2026-09-25"
+status = "draft-recon-complete"
+execution = "none-per-request"
+
+[ecosystem]
+chain = "systemet → anytype → affinescript → faces"
+theory = "hyperpolymath/systemet"
+kernel = "hyperpolymath/anytype"
+product = "hyperpolymath/affinescript"
+convergence = "hyperpolymath/typed-wasm"
+coproducer = "hyperpolymath/ephapax"
+control_plane = "hyperpolymath/reposystem"
+portfolio = "hyperpolymath/hyperpolymath.github.io"
+
+[faces]
+shipped = ["canonical", "rattlescript", "jaffascript", "cafescripto", "lucidscript", "pseudoscript"]
+planned = ["properscript", "realscript"]
+retired = ["tortoisescript"]
+not_standalone = ["actionscript"] # folded into properscript AS3 preset
+contract = "docs/specs/FACE-CONTRACT.adoc"
+same_cube_issue = 601
+same_cube_status = "2-cubes-known-gap"
+same_cube_fix = "post-typecheck-tail-normalisation-pass"
+
+[mathematical_foundations]
+bet = "L1 totality cut + L2 pluggable grades = dial-a-discipline kernel, avoids coherence cliff"
+L0 = "runtime — lowering to WASM/C, not started in anytype"
+L1 = "equality — normalize+compare, total-by-construction, syntactic gate %default total, no coercion machinery"
+L2 = "resources — graded modal, Anytype.Grade.Algebra semiring {0,1,ω} + laws as proof fields, instances: affine, ℕ, privacy budget, security lattice, probability, Latency×Billing"
+L3 = "recursion — guarded recursion, not started"
+L4 = "effects — TEA-erasure open problem, blocks anytype L4 and affinescript handlers full story"
+categorical = "LCCC for dependent types, SMCC for linear/affine, graded comonad D_π for QTT, Freyd for effects, presheaf over regions for borrow, fibration for refinements"
+logic = "Curry-Howard: affine=affine logic, QTT=graded linear logic, effects=modal, ownership=reader/state comonads"
+coherence_cliff = "v0.1 hit failure where equality machinery collapses, forked to Panoply + Anytype/SystemET, v0.2 save faces"
+borrow_checker = "lexical + NLL last-use + flow-sensitive escape + CFG-join merge_arm_results + loop 2-iteration re-check + @linear capture rejection + Polonius M1-M3 test-only 7 divergences ADR-022 #553"
+proof_status = "Idris2 Solo-core QTT, Coq/Rocq codegen preservation initial, Lean tropical-session-types, Agda echo-boundary, SOUNDNESS.adoc ledger content-bound"
+
+[dependencies]
+systemet_to_anytype = "implements, must not silently diverge, semantic authority"
+anytype_to_affinescript = "product profile grade=affine+cost, currently conceptual not code reuse, goal: real library dependency"
+affinescript_to_faces = "face transformers text→canonical, error vocab per face, single extension .affine + pragma + --face flag wins, shim protocol hardened, canonical pin via submodule, conformance: snapshot+round-trip+same-cube, proof: F-1..F-7"
+affinescript_to_typed_wasm = "narrow contract L7 aliasing + L10 linearity + L13 module isolation negative form enforced via Tw_verify.verify_module_isolation, L1-L6/L14-L16 need new carrier section multi-producer ABI change ADR-021"
+faces_to_apps = "idaptik titlescreen.wasm via tea-bridge 512 bytes, road-skate retro game, affinescript-dom VDOM reconciler INT-08 closed verified e2e, affinescript-tea runtime INT-07 closed, cadre router INT-09 closed, vite scaffold, affine-js host-agnostic loader INT-02 fixed"
+
+[current_status]
+anytype = "early MVP simply-graded λ-calculus, 5 RSR template proofs quarantined, branching join not yet, L3/L0/L4 not started, process-boundary seam"
+systemet = "no compiler, spec+invariants+proof obligations only, L1/L2 spec, L3/L4 open, TEA-erasure open"
+affinescript_version = "0.1.1 dune-project, v0.2 architecture, Stage E active"
+affinescript_tests = "260 baseline 2026-05-19, now 263-281, dune runtest green"
+affinescript_stdlib = "19/19 AOT green Stage C closed 2026-05-18"
+affinescript_spine = "A closed, B closed residual conflicts intentional won't-fix ADR-012, C closed, D closed 2026-07-25, E active typed-wasm convergence"
+affinescript_soundness = "#554 fixed, #555 loud-fail + residual pinned non-tail #623, #556 loud-fail, #558 removed, #559 fixed, #553 partial Polonius test-only"
+affinescript_backends = "wasm core works preview1 on-demand + componentize adapter --command default #486, wasm-gc partial, typed-wasm narrow, bun-esm works deno-esm retired E0826, 22+ source-to-source uneven"
+satellites = "INT-01..04 substrate closed, INT-07/08/09/11 closed 2026-07-25, residual #485 FS landed #487 sockio landed #486 wrap default flipped, #56 Pixi closed via #760"
+faces_status = "6 shipped same-cube 2-classes #601, ProperScript/RealScript planned, ActionScript folded into ProperScript preset"
+
+[rename_assessment]
+question = "systemet → system-et mass damage?"
+current_name_semantics = "system + ET, ET=Equality Theory, Norwegian 'the system' pun"
+proposed_name_semantics = "system-et explicit hyphen, emphasizes ET, loses Norwegian pun, hyphen invalid in many package managers"
+blast_radius_url = "medium with redirect, high without sweep — submodule pointers, docs, portfolio, reposystem graph, downstream DEP trackers"
+blast_radius_strings = "high — 100-200 files across estate, AI agents read 0-AI-MANIFEST.deed"
+blast_radius_package = "low today but hyphen invalid in Cargo lib, opam, etc — keep package id systemet"
+blast_radius_seo = "medium-high — systemet noisy Norwegian, system-et distinctive, but breaks existing citations"
+blast_radius_rsr = "low-medium — deeds + governance + CODEOWNERS need update"
+blast_radius_brand = "medium — loses elegant pun, gains clarity"
+blast_radius_automation = "high if not coordinated — reposystem, standards megasweep, github.io"
+blast_radius_external = "low-medium — typed-wasm, ephapax, anytype, face repos need PRs"
+time_sweep_automated = "1-2 days"
+time_sweep_manual = "1 week"
+risk_missed_ref = "high manual, low with rg+reposystem+hypatia"
+option_A = "keep systemet repo, display as system-et, topics both, alias in deed, 0/10 damage, +2 discoverability RECOMMENDED"
+option_B_without_sweep = "8/10 damage — mass broken links, confused agents, failing CI, lost SEO, invalid package"
+option_B_with_sweep = "3/10 damage — 1-2 week churn, recoverable, redirect saves URLs"
+option_C = "9/10 damage — new repo, archive old, breaks redirect, loses stars/issues"
+recommendation = "Option A — dual-name strategy, keep repo systemet, display system-et, no rename yet. Phase 6 optional after Phases 1-5 green."
+
+[ultraplan_phases]
+phase_0 = "Recon complete 2026-09-25 — this doc, no code"
+phase_1 = "Mathematical foundations hardening — L1 totality cut formalization, L2 grade algebra spec+instances, L3/L4 open problems, categorical semantics grounding, exit: systemet L1+L2 proven, anytype faithful"
+phase_2 = "Anytype kernel hardening — L2 instances privacy/security/cost/latency, L1 branching join, L0 lowering, ABI seam in-process, proof quarantine cleanup, exit: anytype usable as library by affinescript"
+phase_3 = "AffineScript core soundness Stage D→E — Polonius production M4-M6 0 divergences, effect handlers CPS or loud-fail everywhere, typed-wasm widening L1-L6/L14-L16 new carrier multi-producer ADR-021, same-cube fix #601 1 cube CI required, WASI preview2 native S6c, exit: Stage E closed stable multi-producer ABI"
+phase_4 = "Faces sealing — Face Contract accepted, js_face split JaffaScript→plain JS ProperScript→TS, RealScript tribute, ActionScript preset in ProperScript, brand repos sync submodule+hardened shim+conformance gate, exit: 8 faces sealed same-cube"
+phase_5 = "Ecosystem & distribution — compiler releases + thin Deno/JSR shim ADR-019 #260, satellites published browser parity, dogfood idaptik+road-skate, docs tutorials, exit: opam+npm+shims work"
+phase_6 = "Rename decision if still wanted — tracking issue standards, reposystem scenario, GitHub rename keeps redirect, estate sweep rg+reposystem+standards, package id keep systemet, deprecation notice, keep topic 6 months, exit: rename done or Option A kept"
+
+[face_implications]
+ast_change = "all faces need new snapshot, bump submodule"
+quantity_change = "error vocab update in face.ml"
+typecheck_new_error = "add arm in format_type_error per face"
+borrow_polonius = "no face impact, re-run same-cube gate"
+codegen_new_backend = "faces benefit automatically, update CAPABILITY-MATRIX"
+tw_new_carrier = "faces benefit, update brand README guarantees"
+new_face = "new brand repo, Face variant, CLI alias, transformer, shim, submodule pin, conformance gate, same-cube inclusion"
+rename_systemet = "all face READMEs mention systemet, must update if rename, keep alias"
+
+[proof_obligations]
+F1 = "every face transformer preserves typed-wasm denotation — partial toy model only, need per-face vs real ast/wasm"
+F2 = "tail/statement normalisation preserves denotation — partial unit-tail SameCube.agda, need generalisation #601"
+F6 = "preview round-trip totality — absent"
+F7 = "face/canon confluence — absent"
+CORE01 = "borrow-checker Phase-3 landed, Polonius residual #553 M1-M3 test-only"
+SOUNDNESS_554 = "fixed callee-returned borrow UAM"
+SOUNDNESS_555 = "loud-fail compiled backends + multi-shot, residual pinned non-tail #623"
+SOUNDNESS_556 = "loud-fail async CPS table-miss"
+SOUNDNESS_558 = "removed refinement"
+SOUNDNESS_559 = "fixed trait coherence"
+SOUNDNESS_553 = "partial Polonius test-only"
+world_changing_proof = "L1 normalization terminates syntactically + L2 semiring laws for all instances = kernel cannot hit coherence cliff = reusable"
+
+[deliverables_checklist]
+ULTRAPLAN_adoc = "done 2026-09-25"
+ADR027_rename = "done 2026-09-25"
+ULTRAPLAN_deed = "done 2026-09-25"
+ECOSYSTEM_crosslink = "future"
+NAVIGATION_list = "future"
+tracking_issues = "future not in this PR"
+code_changes = "none per request"
+
+[open_questions]
+q1_rename = "Option A dual-name or Option B full rename? Recommendation A"
+q2_proper_vs_real = "ProperScript TS before RealScript ReScript given community size?"
+q3_tortoisescript = "Logo-shaped teaching retired merged into PseudoScript or still desired?"
+q4_anytype_reuse = "affinescript depend on anytype as library or keep independent OCaml QTT for speed?"
+q5_face_order = "same-cube fix #601 first then ProperScript/RealScript or new faces first?"
+q6_wasi = "native preview2 S6c blocking for dogfood or preview1+adapter sufficient?"
+
+[references]
+systemet = "https://github.com/hyperpolymath/systemet"
+anytype = "https://github.com/hyperpolymath/anytype"
+affinescript = "https://github.com/hyperpolymath/affinescript"
+typed_wasm = "https://github.com/hyperpolymath/typed-wasm"
+ephapax = "https://github.com/hyperpolymath/ephapax"
+rattlescript = "https://github.com/hyperpolymath/rattlescript"
+jaffascript = "https://github.com/hyperpolymath/jaffascript"
+cafescripto = "https://github.com/hyperpolymath/cafescripto"
+lucidscript = "https://github.com/hyperpolymath/lucidscript"
+pseudoscript = "https://github.com/hyperpolymath/pseudoscript"
+reposystem = "https://github.com/hyperpolymath/reposystem"
+capability_matrix = "docs/CAPABILITY-MATRIX.adoc"
+ecosystem = "docs/ECOSYSTEM.adoc"
+tech_debt = "docs/TECH-DEBT.adoc"
+soundness = "docs/SOUNDNESS.adoc"
+face_contract = "docs/specs/FACE-CONTRACT.adoc"
+design_vision = "docs/DESIGN-VISION.adoc"
+affinescript_vision = "docs/vision/AFFINESCRIPT-VISION.adoc"

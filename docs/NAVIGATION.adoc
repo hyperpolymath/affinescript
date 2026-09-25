@@ -52,6 +52,8 @@ This guide helps you navigate the AffineScript repository structure.
 
 **Key specification documents:**
 
+* link:ULTRAPLAN.adoc[Ultraplan — Mass Recon & Strategic Plan] - **NEW 2026-09-25** — ecosystem topology systemet→anytype→affinescript→faces, mathematical foundations, rename assessment, phased execution (do-nothing plan only)
+* link:decisions/0027-systemet-rename-to-system-et.adoc[ADR-027: systemet→system-et Rename Assessment] - **NEW 2026-09-25** — blast radius, options, recommendation (Option A: keep systemet repo, display as system-et)
 * link:specs/affinescript-spec.md[AffineScript Specification] - Complete language spec
 * link:specs/SPEC.adoc[Core Specification] - Core language features
 
