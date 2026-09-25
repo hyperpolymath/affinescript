@@ -262,24 +262,37 @@ let clear_cache (loader : t) : unit =
     demand. If a referenced module isn't cached, its imports are silently
     skipped — the resolver would have reported the error already.
 
-    Imports are processed in declaration order; later imports override
-    earlier ones with the same fn name. Local decls in [prog.prog_decls]
-    always win over imported ones. *)
+    Imports are processed in declaration order; later imports replace
+    earlier imported declarations with the same name. This mirrors the
+    resolver's name-table order and keeps the two paths deterministic.
+    Glob/glob collisions are rejected by the resolver before code generation;
+    this function retains the same last-import policy as a defensive fallback
+    for callers that flatten an already-loaded program directly. Local decls
+    in [prog.prog_decls] always win over imported ones. *)
 let flatten_imports (loader : t) (prog : program) : program =
   (* Local-decl names suppress same-named imports of any kind. *)
-  let local_names =
+  let local_name_list =
     List.filter_map (function
       | TopFn fd -> Some fd.fd_name.name
       | TopConst { tc_name; _ } -> Some tc_name.name
       | _ -> None
     ) prog.prog_decls
   in
-  let already_in = Hashtbl.create 32 in
-  List.iter (fun n -> Hashtbl.add already_in n ()) local_names;
-  (* A flattened import is either a function or a constant; both share the
-     same name-collision rule against [already_in]. *)
-  let imported_decls =
-    List.concat_map (fun imp ->
+  let local_names = Hashtbl.create 32 in
+  List.iter (fun n -> Hashtbl.replace local_names n ()) local_name_list;
+  (* Keep imported declaration order stable while replacing the declaration
+     stored for a later duplicate.  A plain `already_in` set used to keep the
+     FIRST declaration here, while resolve.ml kept the LAST one (#743). *)
+  let imported_by_name = Hashtbl.create 32 in
+  let imported_order = ref [] in
+  let add_imported name decl_kind =
+    if not (Hashtbl.mem local_names name) then begin
+      if not (Hashtbl.mem imported_by_name name) then
+        imported_order := name :: !imported_order;
+      Hashtbl.replace imported_by_name name decl_kind
+    end
+  in
+  List.iter (fun imp ->
       let path_strs path =
         List.map (fun (id : ident) -> id.name) path
       in
@@ -287,7 +300,7 @@ let flatten_imports (loader : t) (prog : program) : program =
         | ImportSimple (p, _) | ImportList (p, _) | ImportGlob p -> path_strs p
       in
       match Hashtbl.find_opt loader.loaded mod_path with
-      | None -> []
+      | None -> ()
       | Some lm ->
         let public_decls = List.filter_map (fun decl ->
           match decl with
@@ -334,16 +347,15 @@ let flatten_imports (loader : t) (prog : program) : program =
                 (bound_name, renamed))
             ) items
         in
-        List.filter_map (fun (name, decl_kind) ->
-          if Hashtbl.mem already_in name then None
-          else begin
-            Hashtbl.add already_in name ();
-            match decl_kind with
-            | `Fn fd -> Some (TopFn fd)
-            | `Const decl -> Some decl
-          end
-        ) select
-    ) prog.prog_imports
+        List.iter (fun (name, decl_kind) -> add_imported name decl_kind) select
+    ) prog.prog_imports;
+  let imported_decls =
+    List.rev !imported_order
+    |> List.filter_map (fun name ->
+         match Hashtbl.find_opt imported_by_name name with
+         | Some (`Fn fd) -> Some (TopFn fd)
+         | Some (`Const decl) -> Some decl
+         | None -> None)
   in
   (* #138 follow-up: imported TYPE decls are intentionally NOT inlined here.
      An earlier #138 revision carried imported public [TopType]s so the

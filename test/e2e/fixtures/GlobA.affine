@@ -1,0 +1,7 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+module GlobA;
+
+pub fn collide(x: Int) -> Int {
+  return x + 1;
+}

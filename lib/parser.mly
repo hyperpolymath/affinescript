@@ -951,6 +951,11 @@ expr_primary:
      stdlib/traits.affine failed to parse. Resolves/typechecks as an
      ordinary parameter binding named "self". */
   | SELF_KW { ExprVar (mk_ident "self" $startpos $endpos) }
+  /* `total` is a soft keyword: it modifies `fn` in declaration position,
+     but is a perfectly ordinary value name in expression/assignment
+     position.  Keep the lexer keyword so `total fn` remains unambiguous,
+     and recover it here as an identifier (#682). */
+  | TOTAL { ExprVar (mk_ident "total" $startpos $endpos) }
   | name = lower_ident { ExprVar (mk_ident name $startpos $endpos) }
   /* Struct literal: `Point #{ x: v, y: w }` (affinescript#215). The `#{`
      sigil makes this unambiguous against a bare block and removes the
@@ -1255,9 +1260,15 @@ block_terminator:
     { ExprBlock inner }
 
 block:
-  | LBRACE stmts = list(stmt) RBRACE
+  /* Keep the empty block explicit.  Using `list(stmt)` for this alternative
+     made `Pat => {}` depend on Menhir's conflict choice between the inner
+     and outer closing braces (#644).  A block with statements remains
+     non-empty in the two statement-bearing alternatives below. */
+  | LBRACE RBRACE
+    { { blk_stmts = []; blk_expr = None } }
+  | LBRACE stmts = nonempty_list(stmt) RBRACE
     { { blk_stmts = stmts; blk_expr = None } }
-  | LBRACE stmts = list(stmt) final = block_terminator RBRACE
+  | LBRACE stmts = nonempty_list(stmt) final = block_terminator RBRACE
     { { blk_stmts = stmts; blk_expr = Some final } }
   | LBRACE stmts = stmt_list_nonempty_trailing_expr RBRACE
     { { blk_stmts = fst stmts; blk_expr = Some (snd stmts) } }
@@ -1300,6 +1311,10 @@ pattern_or:
 
 pattern_primary:
   | UNDERSCORE { PatWildcard (mk_span $startpos $endpos) }
+  /* `total` is contextual rather than reserved in a binder.  The lexer must
+     keep TOTAL for the `total fn` modifier, so accept it as a pattern
+     variable here as well (#682). */
+  | TOTAL { PatVar (mk_ident "total" $startpos $endpos) }
   | name = lower_ident { PatVar (mk_ident name $startpos $endpos) }
   | n = INT { PatLit (LitInt (n, mk_span $startpos $endpos)) }
   | c = CHAR { PatLit (LitChar (c, mk_span $startpos $endpos)) }

@@ -25,9 +25,15 @@ jobs:
     if: ${{ vars.FARM_DISPATCH_ENABLED == 'true' }}
     steps:
       - name: Trigger Propagation
+        # Keep the action out of the job when the optional secret is absent.
+        # The variable gate above controls policy; this presence gate prevents
+        # an unconfigured fork from invoking repository-dispatch at all.
+        if: ${{ env.FARM_DISPATCH_TOKEN != '' }}
+        env:
+          FARM_DISPATCH_TOKEN: ${{ secrets.FARM_DISPATCH_TOKEN }}
         uses: peter-evans/repository-dispatch@v4.0.1
         with:
-          token: ${{ secrets.FARM_DISPATCH_TOKEN }}
+          token: ${{ env.FARM_DISPATCH_TOKEN }}
           repository: hyperpolymath/.git-private-farm
           event-type: propagate
           client-payload: |-
@@ -38,4 +44,7 @@ jobs:
               "forges": ""
             }
       - name: Confirm
+        if: ${{ env.FARM_DISPATCH_TOKEN != '' }}
+        env:
+          FARM_DISPATCH_TOKEN: ${{ secrets.FARM_DISPATCH_TOKEN }}
         run: echo "::notice::Propagation triggered for ${{ github.event.repository.name }}"

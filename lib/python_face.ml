@@ -226,20 +226,32 @@ let is_blank_line raw =
 (** Transform Python-style AffineScript source text to canonical AffineScript.
     The result is valid input for the standard lexer + Menhir parser.
 
-    Tail-position detection: a regular statement (non-block-opener) in the
-    last position of a block — i.e. the next meaningful line's indent is
+    Tail-position detection: a regular expression in the last position of a
+    value-producing block — i.e. the next meaningful line's indent is
     strictly less than the current line's indent — is emitted WITHOUT a
-    trailing `;`.  This preserves the expression-as-return-value semantics
-    that AffineScript blocks require (a trailing `;` would make the block
-    yield unit rather than the expression's value). *)
+    trailing `;`.  Loop bodies are statement blocks, however: their final
+    assignment/expression still needs a semicolon (#683). *)
+type block_kind =
+  | Value_block
+  | Statement_block
+
 let transform_source source =
   let lines = Array.of_list (String.split_on_char '\n' source) in
   let n = Array.length lines in
   let out = Buffer.create (String.length source + 256) in
-  (* Indentation stack: innermost level at head, outermost (0) at tail. *)
-  let stack = ref [0] in
+  (* Indentation stack: innermost level at head, outermost (0) at tail.
+     Each nested indentation also records the kind of the block that opened
+     it.  This matters because `while`/`for` bodies are statement blocks,
+     even though a function or conditional body may use its final expression
+     as a return value. *)
+  let stack = ref [(0, Value_block)] in
+  let pending_kind = ref None in
 
-  let top () = match !stack with h :: _ -> h | [] -> 0 in
+  let top () = match !stack with (h, _) :: _ -> h | [] -> 0 in
+
+  let current_kind () =
+    match !stack with (_, kind) :: _ -> kind | [] -> Value_block
+  in
 
   let emit_dedents target =
     while top () > target do
@@ -280,37 +292,55 @@ let transform_source source =
          We then continue with `else {` — no leading `}` here because
          emit_dedents already supplied it. *)
       emit_dedents ind;
+      pending_kind := Some Value_block;
       Buffer.add_string out (with_comment "else {")
     end else if is_elif_clause stripped then begin
       (* `elif COND:` — same structure as `else:` *)
       emit_dedents ind;
+      pending_kind := Some Value_block;
       let cond = apply_keywords (elif_condition stripped) in
       Buffer.add_string out (with_comment ("else if " ^ cond ^ " {"))
     end else begin
-      (* Normal line (statement or block-opener) *)
+      (* Normal line (statement or block-opener). *)
       emit_dedents ind;
-      (* Push a new indent level when we step in *)
-      if ind > top () then stack := ind :: !stack;
+      (* Push a new indent level when we step in.  The pending opener was
+         recorded on the preceding line; consume it exactly once. *)
+      if ind > top () then begin
+        let kind = Option.value !pending_kind ~default:Value_block in
+        stack := (ind, kind) :: !stack;
+        pending_kind := None
+      end else
+        (* A same-level or dedented line cannot be the body of the previous
+           opener.  Do not leak its kind into a later block. *)
+        pending_kind := None;
 
       let indent_str = String.make ind ' ' in
 
       (* Tail-position check: the next meaningful line is less indented (or
          EOF), meaning this is the last expression in its block.  Omit `;`
-         so the block's value is this expression, not unit. *)
+         only for value-producing blocks; the final statement in a loop body
+         must remain terminated. *)
       let next_ind = next_meaningful_indent i in
       let is_tail = next_ind < ind in (* -1 (EOF) satisfies this for ind > 0 *)
+      let may_drop_tail_semicolon =
+        is_tail && current_kind () = Value_block
+      in
 
       let line_text = match transform_import_line stripped with
         | Some s -> s  (* imports are always top-level statements *)
         | None ->
-          if is_block_opener stripped then
-            (* Replace trailing `:` with ` {` *)
+          if is_block_opener stripped then begin
+            (* Replace trailing `:` with ` {`; remember whether the body is a
+               statement block for the next indentation level. *)
+            pending_kind :=
+              Some (if starts_with stripped "while " || starts_with stripped "for "
+                    then Statement_block else Value_block);
             apply_keywords (strip_block_colon stripped) ^ " {"
-          else if is_tail then
+          end else if may_drop_tail_semicolon then
             (* Tail expression: no `;` — this is the block's return value *)
             apply_keywords stripped
           else
-            (* Mid-block statement: terminate with `;` *)
+            (* Mid-block statement, or the tail of a loop body. *)
             apply_keywords stripped ^ ";"
       in
       Buffer.add_string out (indent_str ^ with_comment line_text)

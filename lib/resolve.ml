@@ -714,6 +714,32 @@ and resolve_imports_with_loader
     (type_ctx : Typecheck.context)
     (loader : Module_loader.t)
     (imports : import_decl list) : unit result =
+  (* A glob import has no source-level disambiguation: if two glob imports
+     export the same binding, selecting one would make typechecking and
+     non-WASM flattening disagree (#743).  Record the names introduced by
+     each glob and reject a collision before registering either side.  The
+     check is based on declarations rather than [all_symbols], because an
+     imported module's symbol table also contains its seeded builtins. *)
+  let glob_exports = Hashtbl.create 32 in
+  let public_decl_names (program : program) =
+    List.concat_map (function
+      | TopFn fd when fd.fd_vis = Public || fd.fd_vis = PubCrate ->
+        [fd.fd_name.name]
+      | TopType td when td.td_vis = Public || td.td_vis = PubCrate ->
+        let variants = match td.td_body with
+          | TyEnum vs -> List.map (fun v -> v.vd_name.name) vs
+          | TyAlias _ | TyStruct _ | TyExtern -> []
+        in
+        td.td_name.name :: variants
+      | TopEffect ed when ed.ed_vis = Public || ed.ed_vis = PubCrate ->
+        ed.ed_name.name :: List.map (fun op -> op.eod_name.name) ed.ed_ops
+      | TopTrait td when td.trd_vis = Public || td.trd_vis = PubCrate ->
+        [td.trd_name.name]
+      | TopConst { tc_vis; tc_name; _ }
+        when tc_vis = Public || tc_vis = PubCrate ->
+        [tc_name.name]
+      | _ -> []) program.prog_decls
+  in
   List.fold_left (fun acc import ->
     let* () = acc in
     match import with
@@ -775,21 +801,47 @@ and resolve_imports_with_loader
           (* Resolve and type-check the module *)
           begin match resolve_and_typecheck_module loader loaded_mod with
             | Ok (mod_symbols, mod_type_ctx) ->
-              (* Import all public symbols *)
-              Hashtbl.iter (fun _id sym ->
-                match sym.Symbol.sym_visibility with
-                | Public | PubCrate ->
-                  let _ = Symbol.register_import ctx.symbols sym None in
-                  Option.iter (fun scheme ->
-                    Hashtbl.replace type_ctx.Typecheck.var_types sym.Symbol.sym_id scheme;
-                    Hashtbl.replace type_ctx.Typecheck.name_types sym.Symbol.sym_name scheme
-                  ) (lookup_source_scheme
-                       mod_type_ctx.Typecheck.var_types
-                       mod_type_ctx.Typecheck.name_types
-                       sym)
-                | _ -> ()
-              ) mod_symbols.all_symbols;
-              Ok ()
+              let module_name = String.concat "::" path_strs in
+              let exported_names =
+                match Module_loader.get_module loader path_strs with
+                | Some loaded -> public_decl_names loaded.mod_program
+                | None -> []
+              in
+              (* A glob/glob collision is ambiguous even when the two
+                 declarations happen to have compatible types.  Refuse it at
+                 the import site instead of silently choosing the first or
+                 last implementation. *)
+              (match List.find_map (fun name ->
+                       match Hashtbl.find_opt glob_exports name with
+                       | Some previous -> Some (name, previous)
+                       | None -> None) exported_names with
+               | Some (name, previous) ->
+                   let id = List.hd (List.rev path) in
+                   Error
+                     (ImportError
+                        (Printf.sprintf
+                           "glob import collision for `%s`: exported by `%s` and `%s`; use an item import or alias"
+                           name previous module_name),
+                      id.span)
+               | None ->
+                   List.iter (fun name ->
+                     Hashtbl.replace glob_exports name module_name)
+                     exported_names;
+                   (* Import all public symbols. *)
+                   Hashtbl.iter (fun _id sym ->
+                     match sym.Symbol.sym_visibility with
+                     | Public | PubCrate ->
+                       let _ = Symbol.register_import ctx.symbols sym None in
+                       Option.iter (fun scheme ->
+                         Hashtbl.replace type_ctx.Typecheck.var_types sym.Symbol.sym_id scheme;
+                         Hashtbl.replace type_ctx.Typecheck.name_types sym.Symbol.sym_name scheme
+                       ) (lookup_source_scheme
+                            mod_type_ctx.Typecheck.var_types
+                            mod_type_ctx.Typecheck.name_types
+                            sym)
+                     | _ -> ()
+                   ) mod_symbols.all_symbols;
+                   Ok ())
             | Error e -> Error e
           end
         | Error (Module_loader.ModuleNotFound _) ->
