@@ -1064,10 +1064,47 @@ let test_error_parse_missing_arrow () =
   | exception Lexer.Lexer_error _ -> ()
   | _ -> Alcotest.fail "Expected parse error for missing arrow"
 
+let test_total_is_valid_binding_name () =
+  let source =
+    "fn f() -> Int { let mut total = 0; total = total + 1; total }" in
+  let prog =
+    try Parse_driver.parse_string ~file:"<total-binding>" source
+    with
+    | Parse_driver.Parse_error (msg, _) ->
+        Alcotest.failf "`total` binding should parse: %s" msg
+    | Lexer.Lexer_error (msg, _) ->
+        Alcotest.failf "`total` binding should lex: %s" msg
+  in
+  match resolve_program prog with
+  | Error msg -> Alcotest.failf "`total` binding should resolve/typecheck: %s" msg
+  | Ok _ -> ()
+
+let test_empty_match_arm_block_parses () =
+  let source = {|module EmptyArm;
+                enum Opt { SomeV(Int), NoneV }
+                pub fn f(o: Opt) -> Int {
+                  match o {
+                    SomeV(v) => { return v; }
+                    NoneV => {}
+                  }
+                  return 0;
+                }|} in
+  try
+    ignore (Parse_driver.parse_string ~file:"<empty-match-arm>" source)
+  with
+  | Parse_driver.Parse_error (msg, _) ->
+      Alcotest.failf "empty match-arm block should parse: %s" msg
+  | Lexer.Lexer_error (msg, _) ->
+      Alcotest.failf "empty match-arm block should lex: %s" msg
+
 let error_tests = [
   Alcotest.test_case "bad syntax" `Quick test_error_parse_bad_syntax;
   Alcotest.test_case "unclosed brace" `Quick test_error_parse_unclosed_brace;
   Alcotest.test_case "missing arrow" `Quick test_error_parse_missing_arrow;
+  Alcotest.test_case "`total` is valid let/assignment name (#682)" `Quick
+    test_total_is_valid_binding_name;
+  Alcotest.test_case "empty match arm block parses (#644)" `Quick
+    test_empty_match_arm_block_parses;
 ]
 
 (* ============================================================================
@@ -1172,12 +1209,34 @@ let test_python_face_transform_preview () =
   Alcotest.(check bool) "contains brace" true
     (String.contains canonical '{')
 
+let test_python_loop_tail_statement_keeps_semicolon () =
+  let src = {|
+def score(n: Int) -> Int:
+    let mut total = 0
+    let mut i = 1
+    while i <= n:
+        total = total + i
+        i = i + 1
+    total
+|} in
+  let canonical = Python_face.preview_transform src in
+  Alcotest.(check bool) "loop tail assignment is terminated" true
+    (try
+       ignore (Str.search_forward (Str.regexp_string "i = i + 1;") canonical 0);
+       true
+     with Not_found -> false);
+  match parse_python src with
+  | Ok _ -> ()
+  | Error e -> Alcotest.failf "loop face source should parse: %s" e
+
 let python_face_tests = [
   Alcotest.test_case "def → fn" `Quick test_python_face_def_to_fn;
   Alcotest.test_case "if/elif/else chain" `Quick test_python_face_if_else;
   Alcotest.test_case "keyword substitution" `Quick test_python_face_keywords;
   Alcotest.test_case "fixture parses (3 fns)" `Quick test_python_face_fixture;
   Alcotest.test_case "transform preview" `Quick test_python_face_transform_preview;
+  Alcotest.test_case "loop tail statement keeps semicolon (#683)" `Quick
+    test_python_loop_tail_statement_keeps_semicolon;
 ]
 
 (* ============================================================================
@@ -3519,6 +3578,26 @@ let test_flatten_imports_dedup_local_wins () =
    threaded into the importer's environment by both paths (WASM via
    gen_imports, non-WASM via flatten_imports). *)
 
+let test_glob_import_collision_is_rejected () =
+  let loader = Module_loader.create {
+    Module_loader.stdlib_path = "stdlib";
+    search_paths = [];
+    current_dir = fixture_dir;
+  } in
+  match parse_fixture (fixture "glob_collision.affine") with
+  | Error e -> Alcotest.failf "parse failed: %s" e
+  | Ok prog ->
+    (match Resolve.resolve_program_with_loader prog loader with
+     | Ok _ -> Alcotest.fail "glob/glob collision should be rejected"
+     | Error (err, _) ->
+         let message = Resolve.show_resolve_error err in
+         Alcotest.(check bool) "diagnostic identifies the collision" true
+           (try
+              ignore (Str.search_forward (Str.regexp_string "glob import collision")
+                        message 0);
+              true
+            with Not_found -> false))
+
 let test_flatten_imports_inlines_public_const () =
   let loader = Module_loader.create {
     Module_loader.stdlib_path = "stdlib";
@@ -3566,6 +3645,7 @@ let test_wasm_cross_module_const_compiles () =
 let cross_module_other_codegens_tests = [
   Alcotest.test_case "flatten_imports inlines imported public fns"          `Quick test_flatten_imports_inlines_public_fns;
   Alcotest.test_case "flatten_imports: local def shadows imported, no dup"  `Quick test_flatten_imports_dedup_local_wins;
+  Alcotest.test_case "glob/glob import collision is rejected (#743)"        `Quick test_glob_import_collision_is_rejected;
   Alcotest.test_case "flatten_imports inlines imported public consts (#107)" `Quick test_flatten_imports_inlines_public_const;
   Alcotest.test_case "WASM gen_imports threads imported consts (#107)"      `Quick test_wasm_cross_module_const_compiles;
 ]

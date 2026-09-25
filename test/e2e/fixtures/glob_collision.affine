@@ -1,0 +1,8 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+use GlobA::*;
+use GlobB::*;
+
+pub fn main() -> Int {
+  return collide(0);
+}

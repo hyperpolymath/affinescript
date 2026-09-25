@@ -149,6 +149,8 @@ pub unsafe extern "C" fn reallocate(
 /// Get allocation statistics
 #[no_mangle]
 pub extern "C" fn alloc_stats() -> (usize, usize, usize) {
+    // SAFETY: the runtime exposes one allocator state for the single linear
+    // memory instance; this read is confined to that runtime state.
     unsafe {
         (
             ALLOCATOR.allocated,

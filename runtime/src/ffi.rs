@@ -41,11 +41,15 @@ impl FfiString {
 
     /// Get as byte slice
     pub unsafe fn as_bytes(&self) -> &[u8] {
+        // SAFETY: the caller's contract for this unsafe method guarantees
+        // that `ptr` is valid for `len` bytes for the returned lifetime.
         slice::from_raw_parts(self.ptr, self.len)
     }
 
     /// Get as str (unchecked)
     pub unsafe fn as_str(&self) -> &str {
+        // SAFETY: this method is explicitly unchecked; the caller promises
+        // valid UTF-8 and the pointer/length contract of `as_bytes`.
         core::str::from_utf8_unchecked(self.as_bytes())
     }
 }
@@ -106,6 +110,8 @@ pub fn init() {
 /// True if registration succeeded
 #[no_mangle]
 pub extern "C" fn register_host_callback(id: u32, callback: HostCallback) -> bool {
+    // SAFETY: the id bounds check below limits access to the fixed-size
+    // callback registry; the host supplies a valid C-ABI function pointer.
     unsafe {
         if (id as usize) < HOST_REGISTRY.callbacks.len() {
             HOST_REGISTRY.callbacks[id as usize] = Some(callback);
@@ -129,6 +135,8 @@ pub extern "C" fn register_host_callback(id: u32, callback: HostCallback) -> boo
 /// Result from host function
 #[no_mangle]
 pub extern "C" fn call_host(id: u32, arg: *const ()) -> *mut () {
+    // SAFETY: the registry lookup is bounds-checked by `get`; the host owns
+    // the callback and is responsible for the validity of its argument.
     unsafe {
         if let Some(callback) = HOST_REGISTRY.callbacks.get(id as usize).and_then(|c| *c) {
             callback(arg, core::ptr::null_mut())
@@ -187,6 +195,8 @@ mod js {
     /// Print to console
     #[no_mangle]
     pub extern "C" fn print(s: FfiString) {
+        // SAFETY: the imported host function consumes the caller-provided
+        // pointer and length without retaining them beyond the call.
         unsafe {
             console_log(s.ptr, s.len);
         }

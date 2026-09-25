@@ -90,6 +90,8 @@ pub fn init() {
 /// * `hook` - Function to call on panic
 #[no_mangle]
 pub extern "C" fn set_panic_hook(hook: PanicHook) {
+    // SAFETY: hook installation updates the runtime's single global callback
+    // slot; the caller supplies an extern function pointer with C ABI.
     unsafe {
         PANIC_HOOK = Some(hook);
     }
@@ -121,6 +123,8 @@ pub extern "C" fn panic(
         column,
     };
 
+    // SAFETY: panic handling reads the callback installed in the runtime's
+    // single global slot and invokes it only for the duration of this call.
     unsafe {
         if let Some(hook) = PANIC_HOOK {
             hook(&info);
