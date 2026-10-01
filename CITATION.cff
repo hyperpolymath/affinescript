@@ -1,7 +1,7 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 type: software
-title: "affinescript"
+title: "AffineScript"
 abstract: "Resource-safe, effect-typed programs in syntax you already know. A checked affine core with familiar Faces — JavaScript-, Python-, functional-, and pseudocode-shaped surfaces — compiling to typed WebAssembly."
 authors:
   - family-names: "Jewell"
