@@ -85,7 +85,16 @@ jobs:
       - name: Build
         run: opam exec -- dune build
       - name: Run tests
-        run: opam exec -- dune runtest
+        run: |
+          set -o pipefail
+          opam exec -- dune runtest 2>&1 | tee runtest.log
+      # ── TEMPORARY DIAGNOSTIC (removed before merge) ───────────────────────
+      # Republishes the failure + a downstream probe as annotations, so the
+      # result is readable through the API rather than the Actions log UI.
+      - name: "[diag] surface runtest failure and probe downstream"
+        if: always()
+        run: bash tools/ci/diag-probe.sh
+      # ─────────────────────────────────────────────────────────────────────
       - name: Run codegen WASM tests
         run: opam exec -- ./tools/run_codegen_wasm_tests.sh
       - name: Run codegen Bun-ESM tests (historical codegen-deno corpus)
