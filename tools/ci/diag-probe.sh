@@ -46,6 +46,26 @@ if log.exists():
 else:
     annotate("diag-runtest", "runtest.log was not produced")
 
+# ── 1b. the whole masked cascade, in one shot ─────────────────────────────
+# `dune runtest` failed first, so every later step in the build job was
+# skipped and its state was unknown. Now that the tests pass, surface the
+# whole remaining chain at once instead of one failure per CI cycle.
+CASCADE = [
+    ("codegen WASM", ["bash", "tools/run_codegen_wasm_tests.sh"]),
+    ("codegen Bun-ESM (codegen-deno corpus)", ["bash", "tools/run_codegen_deno_tests.sh"]),
+    ("native Bun-ESM", ["bash", "tools/run_codegen_bun_tests.sh"]),
+    ("face transformers", ["bash", "tools/run_face_transformer_tests.sh"]),
+    ("no-extension-ts", ["bash", "tools/check-no-extension-ts.sh"]),
+]
+out = []
+for label, argv in CASCADE:
+    rc, text = run(argv, timeout=900)
+    tail = text.splitlines()[-40:]
+    out.append(f"===== {label}: rc={rc} =====\n" + "\n".join(tail))
+body = "\n\n".join(out)
+annotate("diag-cascade", body)
+summary("diag: masked cascade", body)
+
 # ── 2. parser probe: which construct does the #644 test need? ─────────────
 VARIANTS = {
     "v1-exact-test-source": """module EmptyArm;
