@@ -1084,7 +1084,7 @@ let test_empty_match_arm_block_parses () =
      The issue's repro additionally put the `match` in NON-final statement
      position *without* a `;`, and reported the resulting failure at the
      `}` that closes the `match`. Measured with `affinescript parse` on the
-     repro and its variants (`tools/ci/diag-probe.sh`, 2026-10-03):
+     repro and its variants (2026-10-03):
        - empty arm, `match` FINAL in the block      -> parses
        - empty arm, `match` mid-block, no `;`       -> fails AT the match's `}`
        - empty arm, `match` mid-block, with `;`     -> parses
