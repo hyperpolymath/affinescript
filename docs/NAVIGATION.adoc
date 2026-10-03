@@ -80,6 +80,7 @@ This guide helps you navigate the AffineScript repository structure.
 
 **Guides:**
 
+* link:ON-RAMP.adoc[Consumer On-Ramp] - **Start here if you are consuming AffineScript from another project** — getting a compiler, targets, declaring a host surface with `extern fn`, carrying errors across the wasm boundary (#771)
 * link:CAPABILITY-MATRIX.adoc[Capability Matrix] - **Live** per-component readiness (authoritative for feature readiness)
 * link:SOUNDNESS.adoc[Soundness Ledger] - **Live** test-anchored soundness-hole status (authoritative for "is it sound?"; the matrix links here). *Start here for soundness questions.*
 * link:PROOF-NEEDS.adoc[Proof-Needs Inventory] - what must be *proven* (mostly unmechanised); distinct from the soundness ledger above

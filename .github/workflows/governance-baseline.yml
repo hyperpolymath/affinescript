@@ -35,12 +35,28 @@ on:
     branches: [main, master]
   pull_request:
   workflow_dispatch:
-# Caller-side concurrency only. The local reusable deliberately declares NO
-# concurrency block: a reusable that declares concurrency on the same computed
-# key as its caller is rejected at run-creation (the BP008 class).
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+# NO `concurrency:` block — deliberately, and this is the fix for a 30-for-30
+# `startup_failure` streak (every run this workflow has ever had, from its
+# first push to 2026-10-03).
+#
+# The BP008 class is caller-plus-callee, not callee-only: a reusable-workflow
+# caller that declares `concurrency` alongside a callee that also declares it
+# is rejected at *run-creation* — no job, no `check_run`, and therefore no
+# way for the pinned context `governance / Validate Hypatia baseline` to ever
+# report. An earlier pass removed the block from the local reusable
+# (`governance-baseline-impl.yml`, which still has none) and left the
+# caller's in place, so the collision survived and the streak continued.
+#
+# The evidence for removing the caller's block instead is the sibling
+# workflow that works: `spark-theatre-gate.yml` is the estate's other
+# reusable caller, it carries the same "NO workflow-level concurrency" note
+# for the same reason, and its context reports on every PR. `governance.yml`
+# keeps its concurrency block precisely because it is a *normal* workflow,
+# not a caller.
+#
+# Consequence, recorded rather than hidden: two runs of this bridge on the
+# same ref are no longer auto-cancelled. The bridge is a ~5 s `jq` check, so
+# that is an acceptable price for a context that actually reports.
 permissions:
   contents: read
 jobs:

@@ -107,6 +107,40 @@ pub fn f(o: Opt) -> Int {
   }
 }
 """,
+    # Isolation pair for the `;`-after-`match` question: v8 is the issue's
+    # own "contrast" case (non-empty arm) still missing the `;`; v11 moves the
+    # empty arm off the last position. If v8 fails like v1, the empty arm is
+    # irrelevant and the missing statement terminator is the whole cause.
+    "v8-issue-contrast-no-semicolon": """module EmptyArm;
+enum Opt { SomeV(Int), NoneV }
+pub fn f(o: Opt) -> Int {
+  match o {
+    SomeV(v) => { return v; }
+    NoneV => { return 0; }
+  }
+  return 0;
+}
+""",
+    "v11-empty-arm-first-no-semicolon": """module EmptyArm;
+enum Opt { SomeV(Int), NoneV }
+pub fn f(o: Opt) -> Int {
+  match o {
+    NoneV => {}
+    SomeV(v) => { return v; }
+  }
+  return 0;
+}
+""",
+    "v12-expr-arms-no-semicolon": """module EmptyArm;
+enum Opt { SomeV(Int), NoneV }
+pub fn f(o: Opt) -> Int {
+  match o {
+    SomeV(v) => v
+    NoneV => 0
+  }
+  return 0;
+}
+""",
 }
 
 out = ["parser probe: `affinescript parse` on variants of the #644 test source"]

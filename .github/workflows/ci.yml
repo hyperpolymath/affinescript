@@ -95,6 +95,16 @@ jobs:
         if: always()
         run: bash tools/ci/diag-probe.sh
       # ─────────────────────────────────────────────────────────────────────
+      - name: Consumer on-ramp example (issue #771)
+        # The consumer-facing contract this project owes its downstream
+        # readers: a host surface declared with `extern fn`, compiled to
+        # wasm, driven by a host that supplies the imports, errors carried as
+        # stable integer codes. docs/ON-RAMP.adoc is the prose; this is the
+        # executable half, and it is gated so the on-ramp cannot rot the way
+        # blocky-writer's "just tell us how to build" ask did. The example
+        # finds the compiler three ways (in-tree build / PATH / dune exec),
+        # so it exercises the same entry point a consumer has.
+        run: ./examples/consumers/extension-boundary/build.sh
       - name: Run codegen WASM tests
         run: opam exec -- ./tools/run_codegen_wasm_tests.sh
       - name: Run codegen Bun-ESM tests (historical codegen-deno corpus)

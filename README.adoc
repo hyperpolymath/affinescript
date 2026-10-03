@@ -86,20 +86,34 @@ write(buf, "world")     # error: 'buf' was already used up by close()
 
 == Quick start
 
-// TODO: replace this block with the real toolchain commands.
+Build the compiler from a checkout (the only route that works today — see
+link:docs/ON-RAMP.adoc[docs/ON-RAMP.adoc] for why the release-binary and
+JSR-shim routes do not yet):
+
 [source,console]
 ----
-# install
-$ <install command here>
+$ git clone https://github.com/hyperpolymath/affinescript && cd affinescript
+$ opam install . --deps-only --with-test --yes
+$ dune build
 
-# compile a face program to WebAssembly
-$ <compiler invocation here> hello.rattle -o hello.wasm
+# lex / parse / type-check / evaluate a program
+$ dune exec affinescript -- check examples/hello.affine
 
-# run it
-$ <runner invocation here> hello.wasm
+# compile it to WebAssembly
+$ dune exec affinescript -- compile examples/hello.affine -o hello.wasm
+
+# or to an ES module for a JavaScript host
+$ dune exec affinescript -- compile examples/hello.affine -o hello.bun.js --bun-esm
 ----
 
-A runnable example lives in `examples/` once the toolchain lands.
+If you are *consuming* AffineScript — a project outside this repository that
+wants a compiler, a target, and a host boundary — read
+link:docs/ON-RAMP.adoc[docs/ON-RAMP.adoc] instead of the rest of this file.
+It states what exists and what does not.
+
+A complete, CI-gated consumer lives in
+`examples/consumers/extension-boundary/`; `just on-ramp-example` builds and
+runs it.
 
 == How it works
 

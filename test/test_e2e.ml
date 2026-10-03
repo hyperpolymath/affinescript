@@ -1080,13 +1080,29 @@ let test_total_is_valid_binding_name () =
   | Ok _ -> ()
 
 let test_empty_match_arm_block_parses () =
+  (* #644: an empty match-arm body (`Pat => {}`) must parse.
+     The issue's repro additionally put the `match` in NON-final statement
+     position *without* a `;`, and reported the resulting failure at the
+     `}` that closes the `match`. Measured with `affinescript parse` on the
+     repro and its variants (`tools/ci/diag-probe.sh`, 2026-10-03):
+       - empty arm, `match` FINAL in the block      -> parses
+       - empty arm, `match` mid-block, no `;`       -> fails AT the match's `}`
+       - empty arm, `match` mid-block, with `;`     -> parses
+       - non-empty arm, `match` mid-block, no `;`   -> fails at the same place
+     So the empty arm was never the cause: only `if`/`while`/`for` are
+     self-terminating statements (`lib/parser.mly`, `stmt:`), and a `match`
+     that is not a block's final expression is an ordinary expression
+     statement needing its `;`. This case keeps the empty arm *and*
+     terminates the statement, so it asserts #644's actual property rather
+     than the `;`-less shape the grammar has never accepted. The `;` rule
+     itself is pinned by test_match_statement_requires_semicolon below. *)
   let source = {|module EmptyArm;
                 enum Opt { SomeV(Int), NoneV }
                 pub fn f(o: Opt) -> Int {
                   match o {
                     SomeV(v) => { return v; }
                     NoneV => {}
-                  }
+                  };
                   return 0;
                 }|} in
   try
@@ -1097,6 +1113,33 @@ let test_empty_match_arm_block_parses () =
   | Lexer.Lexer_error (msg, _) ->
       Alcotest.failf "empty match-arm block should lex: %s" msg
 
+(* The statement-termination rule the #644 repro tripped over, pinned so it
+   stops being folklore. `if`/`while`/`for` end with a `}` and terminate
+   themselves; a `match` in non-final statement position is an expression
+   statement and needs an explicit `;`. If the language decides instead that
+   a `}`-terminated `match` should self-terminate (that is #644's open
+   question — see docs/ON-RAMP.adoc, "Statements and `;`"), then this test is
+   the one to delete, and the positive form belongs next to the #644 case
+   above. *)
+let test_match_statement_requires_semicolon () =
+  let source = {|module NoSemi;
+                enum Opt { SomeV(Int), NoneV }
+                pub fn f(o: Opt) -> Int {
+                  match o {
+                    SomeV(v) => { return v; }
+                    NoneV => {}
+                  }
+                  return 0;
+                }|} in
+  match Parse_driver.parse_string ~file:"<match-no-semi>" source with
+  | exception Parse_driver.Parse_error _ -> ()
+  | exception Lexer.Lexer_error _ -> ()
+  | _ ->
+      Alcotest.fail
+        "a mid-block `match` with no trailing `;` parsed; if the grammar was \
+         deliberately extended to make `match` self-terminating, delete this \
+         test and record the decision on #644"
+
 let error_tests = [
   Alcotest.test_case "bad syntax" `Quick test_error_parse_bad_syntax;
   Alcotest.test_case "unclosed brace" `Quick test_error_parse_unclosed_brace;
@@ -1105,6 +1148,8 @@ let error_tests = [
     test_total_is_valid_binding_name;
   Alcotest.test_case "empty match arm block parses (#644)" `Quick
     test_empty_match_arm_block_parses;
+  Alcotest.test_case "mid-block `match` needs its `;` (#644 repro)" `Quick
+    test_match_statement_requires_semicolon;
 ]
 
 (* ============================================================================
