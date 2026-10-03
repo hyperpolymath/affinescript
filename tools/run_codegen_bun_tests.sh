@@ -24,6 +24,8 @@ if ! command -v bun >/dev/null 2>&1; then
 fi
 
 failures=()
+# Records a check failure and echoes it as a `::error::` annotation, without
+# aborting the script, so later checks still run (fail-late).
 fail() {
   failures+=("$1")
   echo "::error::$1" >&2
