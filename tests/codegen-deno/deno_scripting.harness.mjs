@@ -27,6 +27,7 @@ const fs = {
 };
 
 const fsStub = {
+  /** Returns the in-memory `fs` entries for `path` as Dirent-like objects, or throws ENOENT. */
   readdirSync: (path) => {
     const entries = fs[path];
     if (!entries) {
@@ -40,10 +41,15 @@ const fsStub = {
       isDirectory: () => e.isDirectory,
     }));
   },
+  /** No-op stand-in; this corpus never asserts on directory creation. */
   mkdirSync: () => {},
+  /** No-op stand-in; this corpus never asserts on file writes. */
   writeFileSync: () => {},
+  /** No-op stand-in; this corpus never asserts on file removal. */
   rmSync: () => {},
+  /** Returns an empty buffer; this corpus never asserts on file contents. */
   readFileSync: () => new Uint8Array(),
+  /** Always throws ENOENT; this corpus never exercises a successful stat. */
   statSync: (path) => {
     const err = new Error(`stub: no such path ${path}`);
     err.code = "ENOENT";
@@ -51,6 +57,8 @@ const fsStub = {
   },
 };
 
+// Intercepts the Bun-ESM prelude's lazy `node:fs` resolution so `fsStub`
+// backs the emitted FS calls; delegates any other builtin to the real host.
 const realGetBuiltinModule = process.getBuiltinModule?.bind(process);
 process.getBuiltinModule = (name) => {
   if (name === "node:fs") return fsStub;
@@ -65,6 +73,7 @@ process.getBuiltinModule = (name) => {
 const realArgv = process.argv;
 process.argv = ["node", "deno_scripting.harness.mjs", "alpha", "beta", "gamma"];
 let lastExit = null;
+/** Captures the exit code instead of terminating the harness process. */
 process.exit = (code) => { lastExit = code; };
 
 // Capture stderr writes from consoleError.

@@ -18,6 +18,7 @@ const files = {
 };
 
 const fsStub = {
+  /** Returns size/isFile/isDirectory for a known path, or throws ENOENT. */
   statSync: (path) => {
     const e = files[path];
     if (!e) {
@@ -31,6 +32,7 @@ const fsStub = {
       isDirectory: () => e.kind === "dir",
     };
   },
+  /** Returns the stubbed bytes for a known file path, or throws ENOENT. */
   readFileSync: (path) => {
     const e = files[path];
     if (!e || e.kind !== "file") {
@@ -42,6 +44,8 @@ const fsStub = {
   },
 };
 
+// Intercepts the Bun-ESM prelude's lazy `node:fs` resolution so `fsStub`
+// backs the emitted FS calls; delegates any other builtin to the real host.
 const realGetBuiltinModule = process.getBuiltinModule?.bind(process);
 process.getBuiltinModule = (name) => {
   if (name === "node:fs") return fsStub;
