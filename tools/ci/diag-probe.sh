@@ -1,0 +1,254 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: MPL-2.0
+#
+# TEMPORARY diagnostics bridge (PR-only; deleted before merge).
+#
+# Why this exists: this repo's Actions job logs are served from
+# productionresultssa1.blob.core.windows.net, which is unreachable from some
+# sandboxes. GitHub *annotations* are reachable through api.github.com, so
+# this republishes the interesting parts of a failing `dune runtest` — plus
+# two probes — as annotations, readable without the Actions log UI.
+set -uo pipefail
+
+python3 - <<'PY'
+import os, pathlib, re, subprocess, urllib.parse
+
+def annotate(title, text, limit=60000):
+    msg = urllib.parse.quote(text[:limit], safe="")
+    print(f"::error title={title}::{msg}", flush=True)
+
+def summary(title, text):
+    path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if not path:
+        return
+    with open(path, "a") as fh:
+        fh.write(f"\n### {title}\n\n```\n{text}\n```\n")
+
+def run(argv, timeout=300):
+    try:
+        r = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+        return r.returncode, (r.stdout + r.stderr).strip()
+    except subprocess.TimeoutExpired:
+        return 124, "TIMEOUT"
+
+# ── 1. the dune runtest failure ────────────────────────────────────────────
+log = pathlib.Path("runtest.log")
+if log.exists():
+    lines = log.read_text(errors="replace").splitlines()
+    keep = [l for l in lines
+            if ("[FAIL]" in l or "FAIL " in l or "Error" in l or "error:" in l
+                or "Assert" in l or "expected" in l)]
+    body = ("== lines matching FAIL/Error/Assert/expected ==\n"
+            + "\n".join(keep[:80])
+            + "\n\n== tail (120 lines) ==\n"
+            + "\n".join(lines[-120:]))
+    annotate("diag-runtest", body)
+else:
+    annotate("diag-runtest", "runtest.log was not produced")
+
+# ── 1b. the whole masked cascade, in one shot ─────────────────────────────
+# `dune runtest` failed first, so every later step in the build job was
+# skipped and its state was unknown. Now that the tests pass, surface the
+# whole remaining chain at once instead of one failure per CI cycle.
+CASCADE = [
+    ("codegen WASM", ["bash", "tools/run_codegen_wasm_tests.sh"]),
+    ("codegen Bun-ESM (codegen-deno corpus)", ["bash", "tools/run_codegen_deno_tests.sh"]),
+    ("native Bun-ESM", ["bash", "tools/run_codegen_bun_tests.sh"]),
+    ("face transformers", ["bash", "tools/run_face_transformer_tests.sh"]),
+    ("no-extension-ts", ["bash", "tools/check-no-extension-ts.sh"]),
+]
+BAD_LINE = re.compile(
+    r"(::error::|AssertionError|TypeError|ReferenceError|SyntaxError"
+    r"|\b[Ee]rror\b|FAIL|FAILED|✗|\bpanic\b|No such file|denied|not allowed)"
+)
+
+
+def digest(text, budget=700):
+    """Dense, capped summary of one cascade step.
+
+    GitHub truncates check-run annotations at ~4096 bytes, so a raw tail of
+    each step's output silently loses every step after the first oversized
+    one (compiler chatter is verbose). Report only the interesting lines.
+    """
+    lines = [l.rstrip() for l in text.splitlines() if l.strip()]
+    picked, seen = [], set()
+    for l in lines:
+        if not BAD_LINE.search(l):
+            continue
+        key = re.sub(r"\d+", "#", l)[:70]
+        if key in seen:
+            continue
+        seen.add(key)
+        picked.append(l)
+        if len(picked) == 5:
+            break
+    # The runner's own failure roll-call (names, not prose).
+    for l in lines:
+        if (l.startswith("  - ") or l.startswith("✗")) and l not in picked:
+            picked.append(l)
+        if len(picked) >= 8:
+            break
+    for l in lines[-2:]:
+        if l not in picked:
+            picked.append(l)
+    body = "\n".join("  ! " + l[:160] for l in picked)
+    return body[:budget] if body else "  (no error-like lines; rc shown above)"
+
+
+out = []
+for label, argv in CASCADE:
+    rc, text = run(argv, timeout=900)
+    n = len(text.splitlines())
+    head = f"===== {label}: rc={rc} ({n} lines) ====="
+    out.append(head if rc == 0 else head + "\n" + digest(text))
+body = "\n\n".join(out)
+annotate("diag-cascade", body)
+summary("diag: masked cascade", body)
+
+# ── 2. parser probe: which construct does the #644 test need? ─────────────
+VARIANTS = {
+    "v1-exact-test-source": """module EmptyArm;
+enum Opt { SomeV(Int), NoneV }
+pub fn f(o: Opt) -> Int {
+  match o {
+    SomeV(v) => { return v; }
+    NoneV => {}
+  }
+  return 0;
+}
+""",
+    "v2-plus-semicolon-after-match": """module EmptyArm;
+enum Opt { SomeV(Int), NoneV }
+pub fn f(o: Opt) -> Int {
+  match o {
+    SomeV(v) => { return v; }
+    NoneV => {}
+  };
+  return 0;
+}
+""",
+    "v3-match-as-final-expr": """module EmptyArm;
+enum Opt { SomeV(Int), NoneV }
+pub fn f(o: Opt) -> Int {
+  match o {
+    SomeV(v) => { return v; }
+    NoneV => {}
+  }
+}
+""",
+    "v4-empty-block-arm-only-final": """module EmptyArm;
+enum Opt { Som(Int), Non }
+pub fn f(o: Opt) -> Int {
+  match o {
+    Non => {}
+  }
+}
+""",
+    "v5-nonempty-block-arm-only-final": """module EmptyArm;
+enum Opt { Som(Int), Non }
+pub fn f(o: Opt) -> Int {
+  match o {
+    Som(v) => { return v; }
+  }
+}
+""",
+    "v6-empty-block-empty-body": """module EmptyArm;
+pub fn f() -> Int {
+  {}
+}
+""",
+    "v7-two-empty-block-arms-final": """module EmptyArm;
+enum Opt { Som(Int), Non }
+pub fn f(o: Opt) -> Int {
+  match o {
+    Som(v) => {}
+    Non => {}
+  }
+}
+""",
+    # Isolation pair for the `;`-after-`match` question: v8 is the issue's
+    # own "contrast" case (non-empty arm) still missing the `;`; v11 moves the
+    # empty arm off the last position. If v8 fails like v1, the empty arm is
+    # irrelevant and the missing statement terminator is the whole cause.
+    "v8-issue-contrast-no-semicolon": """module EmptyArm;
+enum Opt { SomeV(Int), NoneV }
+pub fn f(o: Opt) -> Int {
+  match o {
+    SomeV(v) => { return v; }
+    NoneV => { return 0; }
+  }
+  return 0;
+}
+""",
+    "v11-empty-arm-first-no-semicolon": """module EmptyArm;
+enum Opt { SomeV(Int), NoneV }
+pub fn f(o: Opt) -> Int {
+  match o {
+    NoneV => {}
+    SomeV(v) => { return v; }
+  }
+  return 0;
+}
+""",
+    "v12-expr-arms-no-semicolon": """module EmptyArm;
+enum Opt { SomeV(Int), NoneV }
+pub fn f(o: Opt) -> Int {
+  match o {
+    SomeV(v) => v
+    NoneV => 0
+  }
+  return 0;
+}
+""",
+}
+
+out = ["parser probe: `affinescript parse` on variants of the #644 test source"]
+probe_dir = pathlib.Path("/tmp/parse-probe")
+probe_dir.mkdir(parents=True, exist_ok=True)
+for name, src in VARIANTS.items():
+    p = probe_dir / f"{name}.affine"
+    p.write_text(src)
+    for label, extra in (("canonical", []), ("face-js", ["--face", "js"])):
+        rc, text = run(["opam", "exec", "--", "dune", "exec", "affinescript",
+                        "--", "parse"] + extra + [str(p)])
+        first = " | ".join(text.splitlines()[:3]) if text else "(silent)"
+        out.append(f"{name} [{label}] rc={rc}: {first}")
+
+body = "\n".join(out)
+annotate("diag-parser", body)
+summary("diag: parser probe", body)
+
+# ── 3. on-ramp example consumer (compile + run) ───────────────────────────
+example = pathlib.Path("examples/consumers/extension-boundary")
+if example.exists():
+    rc, text = run(["bash", str(example / "build.sh")])
+    body = f"build.sh rc={rc}\n---\n{text[-6000:]}"
+else:
+    body = "examples/consumers/extension-boundary missing"
+annotate("diag-example", body)
+summary("diag: on-ramp example", body)
+
+# ── 4. downstream probe: blocky-writer's sources (issue #771) ─────────────
+probe = pathlib.Path("/tmp/probe")
+probe.mkdir(parents=True, exist_ok=True)
+clone = subprocess.run(
+    ["git", "clone", "--depth", "1", "--quiet",
+     "https://github.com/hyperpolymath/blocky-writer", "/tmp/probe/bw"],
+    capture_output=True, text=True)
+out = []
+if clone.returncode != 0:
+    out.append("clone failed: " + clone.stderr[-400:])
+else:
+    src = pathlib.Path("/tmp/probe/bw/src")
+    files = sorted(str(p) for p in src.rglob("*.affine"))
+    out.append(f"downstream .affine files: {len(files)}")
+    for f in files:
+        rc, text = run(["opam", "exec", "--", "dune", "exec", "affinescript",
+                        "--", "check", f])
+        first = " | ".join(text.splitlines()[:2]) if text else "(silent)"
+        out.append(f"{f} rc={rc}: {first}")
+body = "\n".join(out)
+annotate("diag-downstream", body)
+summary("diag: downstream probe", body)
+print("[diag] done")
+PY

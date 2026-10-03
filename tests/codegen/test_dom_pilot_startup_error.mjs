@@ -4,9 +4,11 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 const buf = await readFile('./tests/codegen/dom_pilot_startup_error.wasm');
-const mod = new WebAssembly.Module(buf);
-const inst = (await WebAssembly.instantiate(mod, {
+// BufferSource overload -> { module, instance }. (Passing a WebAssembly.Module
+// instead resolves to the Instance itself; `.instance` would be undefined.
+// See tools/check-wasm-harness-idioms.mjs.)
+const { instance: inst } = await WebAssembly.instantiate(buf, {
   wasi_snapshot_preview1: { fd_write: () => 0 },
-})).instance;
+});
 assert.equal(inst.exports.main(), 0, 'dom pilot startupError compiled and ran');
 console.log('test_dom_pilot_startup_error.mjs OK');

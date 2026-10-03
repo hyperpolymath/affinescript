@@ -1,0 +1,104 @@
+// SPDX-License-Identifier: CC-BY-SA-4.0
+// SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+= Consumer example: an extension-shaped host boundary
+:toc: macro
+:icons: font
+
+A complete, minimal consumer of AffineScript — the thing
+link:../../../docs/ON-RAMP.adoc[docs/ON-RAMP.adoc] describes in prose.
+
+It is shaped after the first real consumer request
+(`hyperpolymath/affinescript#771`, from `hyperpolymath/blocky-writer#73`): a
+browser extension whose document engine lives behind a two-function boundary,
+compiled to WebAssembly, with an error taxonomy that has to cross that
+boundary intact.
+
+toc::[]
+
+== Run it
+
+[source,console]
+----
+$ just on-ramp-example          # from the repository root
+# or
+$ ./examples/consumers/extension-boundary/build.sh
+----
+
+Expected output:
+
+[source,console]
+----
+Compiling boundary.affine -> boundary.wasm
+Compiled …/src/boundary.affine -> …/dist/boundary.wasm (WASM)
+Running host.mjs
+examples/consumers/extension-boundary: OK
+----
+
+`build.sh` finds the compiler three ways, so it works in a checkout
+(`_build/default/bin/main.exe`), against a release binary on `PATH`
+(`affinescript`), or with `dune exec`. That is deliberate: a consumer's build
+script should not care which of the three you have.
+
+== The four files, and why each exists
+
+[cols="1,3",options="header"]
+|===
+| File | What it is
+
+| `src/boundary.affine`
+| The consumer's own module. It declares the host functions it calls with
+  `extern fn` (the whole binding story — no compiler change, no IDL, no
+  adapter package), wraps them in typed helpers, and never touches a string
+  it did not receive from the host.
+
+| `host.mjs`
+| The other half: an import object that satisfies those declarations, a
+  `{code, message, context}` payload the host owns, and assertions for the
+  contract (success path, failure path, message round-trip, exported
+  surface).
+
+| `build.sh`
+| Compile, then run. The "smallest thing that turns `src/*.affine` into
+  something that compiles", in executable form.
+
+| `dist/`
+| Build output (gitignored). `boundary.wasm` is what you would ship in an
+  extension bundle next to `host.mjs`'s import object.
+|===
+
+== The parts worth copying
+
+*Declare the boundary before porting bodies.* The `extern fn` block at the top
+of `src/boundary.affine` fixes every type the guest can see. In a real port
+this is the first thing to write, because the compiler's error messages are
+most useful at the seam.
+
+*Codes, not strings.* `bw_detect_blocks` returns an `Int` status; the message
+lives host-side and is reachable byte-by-byte via
+`bw_error_message_len` / `bw_error_message_byte`. The guest never allocates,
+never encodes, and cannot invent an error shape the host does not know.
+
+*Assert the contract in CI.* `host.mjs` is not a smoke test — it asserts that
+`fill` propagates the exact `BW_*` code, that the message round-trips
+byte-for-byte, and that the guest exports the names it advertised. The same
+script runs in this repository's `build` job, so the on-ramp cannot rot.
+
+*Nothing here is browser-specific.* Node is used only to read the file and to
+have an assertion library. `WebAssembly.instantiate(bytes, imports)` with the
+same `imports` object runs unchanged in a Firefox/Chrome extension background
+frame, in Bun, or in Deno.
+
+== What this example deliberately does not do
+
+* *No byte transfer through linear memory.* Parameters are `i32`, so real byte
+  work is a `(pointer, length)` pair into the guest's exported `memory`; see
+  `tests/codegen/test_net_send.mjs` for a worked host-side write, and
+  `tests/codegen/test_file_roundtrip.mjs` for a round-trip. Kept out here so
+  the boundary pattern is the only thing in view.
+* *No closures.* Passing a callback to the host uses the
+  `[fnId @+0, envPtr @+4]` + `__indirect_function_table` ABI; a complete
+  dispatcher is in `tests/codegen/test_closure_indirect_dispatch.mjs` and in
+  `packages/affine-vscode/mod.js`.
+* *No bundler, no manifest.* There is no `deno.json`, no `package.json`, no
+  `affine.toml`. A consumer's build file is this shell script, because the
+  compiler takes a source file and `-o`.

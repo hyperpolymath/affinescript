@@ -733,7 +733,7 @@ const __as_dbGroupBy     = (h, sql, params) => String(globalThis.__as_sqlite.gro
 const __as_dbGroupCount  = (h, table, keyCol) => String(globalThis.__as_sqlite.groupCount(h, table, keyCol));
 // ---- Dom (#56 PR 4): Window / Document / utility ----
 // Host is `globalThis.window` when present (browser, jsdom, idaptik
-// WebView); otherwise `globalThis` so a Deno/Node harness can install
+// WebView); otherwise `globalThis` so a Node/Bun harness can install
 // document/window mocks on the global. No consumer-side init required
 // beyond providing those web-platform objects.
 const __as_domWin = () =>

@@ -1,0 +1,313 @@
+// SPDX-License-Identifier: CC-BY-SA-4.0
+// SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+= Consumer on-ramp: wiring AffineScript into another project
+:toc: macro
+:toclevels: 3
+:icons: font
+
+This is the page a project *outside this repository* needs: how to get a
+compiler, which target to pick, how to declare the host functions your
+program calls, and how to carry errors across that boundary.
+
+It exists because the first real consumer asked for exactly this and could
+not find it — `hyperpolymath/blocky-writer#73` filed
+`hyperpolymath/affinescript#771`, "a real consumer exists, and it is blocked
+on the on-ramp". Every claim below is either runnable in this repository or
+marked as not-yet-true. Where something is missing, it says so rather than
+leaving you to discover it.
+
+[IMPORTANT]
+====
+Feature readiness is *not* stated here. The authoritative per-feature status
+is link:CAPABILITY-MATRIX.adoc[CAPABILITY-MATRIX.adoc]; soundness-hole status
+is link:SOUNDNESS.adoc[SOUNDNESS.adoc]. This page states only what a
+*consumer* has to do, and it is CI-gated by
+`examples/consumers/extension-boundary` (see <<the-worked-example>>).
+====
+
+toc::[]
+
+== The whole on-ramp in one screen
+
+. Get a compiler (<<getting-a-compiler>>).
+. Write `.affine` in the canonical face — see <<not-rescript>> if your
+  sources came from ReScript.
+. Declare every host function you call with `extern fn` and give it a type
+  (<<declaring-your-host-surface>>).
+. Compile to the target you want (<<targets>>).
+. Supply those host functions when you load the artifact
+  (<<the-worked-example>>).
+
+There is no project manifest to write, no build-file schema to learn, and no
+bundler configuration. The compiler takes a file and `-o`. If you want a
+task runner, the repository's own `justfile` recipes are the model —
+`just on-ramp-example` runs the worked example.
+
+== Getting a compiler
+
+Three routes exist. Only the first works today; the other two are recorded
+with their exact state so you do not spend an afternoon on them.
+
+[cols="1,2,3",options="header"]
+|===
+| Route | State (2026-10-03) | What to do
+
+| Build from a checkout | *Works.*
+| `git clone https://github.com/hyperpolymath/affinescript && cd
+  affinescript && opam install . --deps-only --with-test --yes && dune
+  build`, then use `dune exec affinescript -- …` or
+  `_build/default/bin/main.exe`. This is what CI does on every pull request,
+  so it is the route with the most evidence behind it. Needs OCaml >= 4.14
+  and opam.
+
+| Release binary | *Not available.* All three published Releases (`v0.1.0`,
+  `v0.1.1`, `v0.2.0`) carry **zero assets**. `release.yml` did not complete
+  on those tags (documented in link:PACKAGING.adoc[PACKAGING.adoc]); it has
+  since been repaired and now creates the release as a draft and publishes it
+  only after all four assets are attached, but *it has not run since that
+  repair*.
+| Watch `hyperpolymath/affinescript` Releases for a `v*` tag whose assets
+  include `affinescript-linux-x64` / `affinescript-macos-{x64,arm64}` and
+  `SHA256SUMS`. Do not assume an asset exists because a tag does.
+
+| JSR shim `@hyperpolymath/affinescript` | *Cannot work yet.* The shim
+  downloads the host binary from the Release pinned in
+  `packages/affinescript-cli/pins.js` and verifies it against an embedded
+  SHA-256, failing closed. With no assets attached, every target refuses to
+  run — deliberately, rather than fetching something unverified.
+| Nothing yet. This is the same blocker as the row above: it unblocks when a
+  `v*` tag publishes the three binaries.
+|===
+
+[NOTE]
+====
+`tools/affine-pkg/` is a Rust prototype of a package manager with an
+`affine.toml` manifest. It is *not* part of the consumer path today: nothing
+in CI builds it, and the compiler does not read `affine.toml`. It is listed
+in link:standards/ROADMAP.adoc[standards/ROADMAP.adoc] and nothing more.
+====
+
+== Targets
+
+One flag selects the output; the file extension also implies it.
+
+[cols="2,1,3",options="header"]
+|===
+| Invocation | Output | Use it when
+
+| `compile FILE -o OUT.wasm` | WebAssembly (linear memory)
+| You want to embed the program in a host that owns the outside world: a
+  browser extension, a Node/Bun/Deno process, wasmtime, a plugin host. The
+  artifact's imports are yours to satisfy (<<declaring-your-host-surface>>).
+  This is the target the worked example uses.
+
+| `compile FILE -o OUT.bun.js --bun-esm` | ES module
+| You want JavaScript you can read, bundle, or hand to a JS toolchain, and
+  your host APIs are Node-shaped (`Bun`/`Node` synchronous file, JSON, Date).
+  Host operations the compiler knows about lower to those APIs directly; a
+  declared `extern fn` the compiler has no lowering for becomes a plain call
+  to the same name, which the host provides by putting it in scope.
+
+| `compile FILE -o OUT.cjs --vscode-extension` | Node CJS shim
+| You are building a VS Code extension and want the `exports.activate` wiring
+  generated for you (`packages/affine-vscode` supplies the adapter).
+
+| `compile FILE -o OUT.wasm --wasm-gc` | WebAssembly GC
+| Your runtime supports the GC proposal and you want struct/array types
+  instead of linear memory. V8 >= 119 / SpiderMonkey >= 120.
+|===
+
+Deno-ESM is *retired*: `--deno-esm` (or an `-o …deno.js` path) is an error by
+design, not a missing feature. Use `--bun-esm`.
+
+== Faces: which surface syntax
+
+`--face` selects the surface syntax; the affine core is the same either way,
+so the guarantees do not depend on your choice:
+
+* `canonical` (default) — `.affine`, the shape used in this repository.
+* `python` / `rattle` — Python-shaped (`def`, indentation).
+* `js` / `jaffa` — JavaScript-shaped (`const`, `function`, `=>`).
+* `pseudocode`, `lucid`, `cafe` — the remaining documented faces.
+
+A file can declare its own face in a leading comment instead of relying on
+the flag (`# face: rattlescript`). The recommended layout is `.affine`
+everywhere plus that pragma; the old face-implying extensions (`.rattle`,
+`.pyaff`, …) are deprecated.
+
+== Not ReScript
+
+A face is a *shape for AffineScript source*. It is not a ReScript parser.
+`.res` written in ReScript is not a face, and renaming `Foo.res` to
+`Foo.affine` does not make it one — it produces a file that fails to parse:
+
+[source,console]
+----
+$ affinescript check src/popup.affine
+src/popup.affine:16:8: parse error: Syntax error
+----
+
+ReScript constructs with no AffineScript counterpart: `@val` / `@module` /
+`@scope` / `@react.component` attributes, `%raw`, `external … = "js.path"`
+bindings, `Js.Dict.t` / `Js.Promise.t`, `~labelled` parameters, and
+`'a`-style type variables. All eight `.affine` files in the consumer that
+prompted this page fail to parse for exactly these reasons.
+
+If your sources are ReScript, the honest sequence is:
+
+. Decide what you are actually migrating. A React component tree is not a
+  mechanical translation: AffineScript's typed surfaces are
+  `stdlib/Dom.affine` (VNode builders) and the TEA runtime, not a React
+  binding. A pure data/algorithm module — a PDF byte protocol, a parser, a
+  storage layer — usually is close to mechanical.
+. Convert, don't rename. `tools/res-to-affine/` exists for this: it reads
+  `.res` and emits an `.affine` skeleton with migration markers naming each
+  anti-pattern it found, or `--partial` for a partial port.
+  Usage: `dune exec tools/res-to-affine/main.exe -- path/to/Foo.res`.
+  See link:MIGRATION-ASSISTANT.adoc[MIGRATION-ASSISTANT.adoc] and
+  link:RESCRIPT-ELIMINATION.adoc[RESCRIPT-ELIMINATION.adoc].
+. Port the boundary first. Declare the host functions the module needs
+  (<<declaring-your-host-surface>>) before porting bodies; the boundary is
+  what fixes the types, and it is where the compiler's feedback is most
+  useful.
+
+== Declaring your host surface
+
+This is the whole foreign-function story for the wasm target: a *declaration*
+with no body. The compiler emits one import per declaration, into the `env`
+module, with `i32` parameters and an `i32` result.
+
+[source,affine]
+----
+module boundary;
+
+// Implemented by the host — see host.mjs in the worked example.
+pub extern fn bw_detect_blocks(pdf_len: Int) -> Int;
+pub extern fn bw_fill_blocks(pdf_len: Int, field_count: Int) -> Int;
+
+// An opaque host-owned type, when you need one.
+pub extern type HostBuffer;
+----
+
+Your host satisfies them in the import object:
+
+[source,javascript]
+----
+const imports = {
+  env: {
+    bw_detect_blocks: (pdfLen) => { /* ... */ return 0; },
+    bw_fill_blocks: (pdfLen, fieldCount) => { /* ... */ return 1042; },
+  },
+};
+const { instance } = await WebAssembly.instantiate(bytes, imports);
+const status = instance.exports.detect(4096);   // your `pub fn`s are exports
+----
+
+Three things this example does not show, in increasing order of effort:
+
+* *Bytes in and out.* Parameters are `i32`, so a byte transfer is
+  `(pointer, length)` into the guest's exported `memory`, which the host reads
+  and writes with a `DataView`. Worked references in this repository:
+  `tests/codegen/test_net_send.mjs` (host writes into guest memory) and
+  `tests/codegen/test_file_roundtrip.mjs`.
+* *Closures passed to the host.* A closure is a pointer to `[fnId @+0,
+  envPtr @+4]`; the host looks `fnId` up in the guest's exported
+  `__indirect_function_table` and calls it with `envPtr` first, zero-padding
+  to arity. A complete dispatcher is in
+  `tests/codegen/test_closure_indirect_dispatch.mjs`, and the same code
+  appears in `packages/affine-vscode/mod.js`.
+* *The ESM target.* There, a declared `extern fn` the compiler has no
+  built-in lowering for becomes a plain call to that name — so the host must
+  put it in scope (a `globalThis.<name> = …` before importing the generated
+  module). The pattern is in `tests/codegen-deno/pixi_smoke.harness.mjs`.
+
+== Errors across the boundary
+
+Do not send strings. Send a status code, and let the host own the prose.
+This keeps the guest free of allocation and encoding questions, and gives you
+a stable taxonomy your host can switch on:
+
+[source,affine]
+----
+/// 0 is success; anything else is a stable code the host defines.
+pub fn detect(pdf_len: Int) -> Int {
+  let status = bw_detect_blocks(pdf_len);
+  if is_ok(status) { 0 } else { bw_error_code() }
+}
+----
+
+The example pairs this with `bw_error_code` / `bw_error_message_len` /
+`bw_error_message_byte`, so the human-readable message is reachable
+byte-by-byte *without* the guest ever holding a string. The host keeps the
+`{code, message, context}` payload it already wants; the guest only ever
+names codes. `examples/consumers/extension-boundary/host.mjs` asserts the
+whole round-trip.
+
+== Statements and `;`
+
+Two grammar rules cost consumers time, so they are stated here:
+
+* `if`, `while` and `for` are self-terminating statements — the closing `}`
+  is enough.
+* A `match` that is *not* a block's final expression is an ordinary
+  expression statement and needs its `;`:
+
+[source,affine]
+----
+pub fn f(o: Opt) -> Int {
+  match o {                    // mid-block: statement, needs the `;`
+    SomeV(v) => { return v; }
+    NoneV => {}
+  };
+  return 0;
+}
+----
+
+Omitting that `;` fails at the `}` that closes the `match`, which reads as
+"the match is broken" rather than "the statement is unterminated". Empty arm
+bodies (`Pat => {}`) are fine, in any position. The rule is pinned by
+`test_match_statement_requires_semicolon` in `test/test_e2e.ml`, and the
+grammar question ("should a `}`-terminated `match` self-terminate, as `if`
+does?") is open on `#644`.
+
+== The worked example
+
+`examples/consumers/extension-boundary/` is a complete consumer in one
+directory, shaped after the first real consumer request: a two-function
+boundary (`detect` / `fill`), a host-supplied error taxonomy, and a host
+harness that asserts the contract.
+
+[source,console]
+----
+$ just on-ramp-example
+Compiling boundary.affine -> boundary.wasm
+Compiled …/src/boundary.affine -> …/dist/boundary.wasm (WASM)
+Running host.mjs
+examples/consumers/extension-boundary: OK
+----
+
+Its `build.sh` locates the compiler the three ways a consumer can have one
+(in-tree `dune build`, `affinescript` on `PATH`, `dune exec`), so the same
+script works in a checkout and against a release binary. CI runs it in the
+`build` job, which means the page you are reading cannot drift away from the
+code it describes without the build going red.
+
+== What is not there yet
+
+Recorded so you can plan around it rather than discover it:
+
+* *No release binary.* See <<getting-a-compiler>>. Until a `v*` tag publishes
+  assets, building from a checkout is the only route.
+* *No project manifest.* `affine.toml` is a prototype (`tools/affine-pkg/`);
+  a consumer's "build file" is a shell script or a `justfile` recipe.
+* *The host surface is per-target, not declared per-project.* Adding a host
+  function needs no compiler change (the `extern fn` route above), but the
+  *ESM* target's built-in lowerings are a fixed table in
+  `lib/codegen_deno.ml`, so an ESM consumer cannot rename what the compiler
+  already knows.
+* *`docs/reference/ABI-FFI.adoc` is an unfilled estate template.* It describes
+  an Idris2-plus-Zig ABI that is not how a consumer reaches this compiler (the
+  wasm import contract above is). Treat it as unmaintained until it is
+  rewritten or deleted.
+* *Async host calls.* The ESM target has documented async-extern limits
+  (`#122` / `#103`); the wasm target's `extern fn` is synchronous.

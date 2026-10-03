@@ -247,6 +247,26 @@ golden-path:
     dune exec affinescript -- parse examples/ownership.affine 2>/dev/null || dune exec affinescript -- parse examples/ownership.affine 2>/dev/null || echo "(no ownership example — skip)"
     @echo "=== Golden Path Complete ==="
 
+# ── Consumer on-ramp (issue #771) ─────────────────────────────────────────────
+# The wiring a project *outside* this repo uses: declare a host surface with
+# `extern fn`, compile to wasm, hand the imports to the host. Prose:
+# docs/ON-RAMP.adoc. This recipe is the same thing CI gates, so a consumer
+# can reproduce the guarantee locally before trusting it.
+
+# Build and run the consumer on-ramp example (compile -> wasm -> host harness)
+on-ramp-example:
+    ./examples/consumers/extension-boundary/build.sh
+
+# Show the consumer-facing compiler surface without reading the CLI source
+on-ramp-targets:
+    @echo "Targets a consumer can pick from (docs/ON-RAMP.adoc):"
+    @echo "  compile FILE -o OUT.wasm           wasm — host supplies imports (browser, wasmtime, node)"
+    @echo "  compile FILE -o OUT.bun.js --bun-esm   ES module for a JS host (Bun/Node APIs; Deno-ESM retired)"
+    @echo "  compile FILE -o OUT.cjs --vscode-extension   Node-CJS shim wired for a VS Code extension"
+    @echo "  compile FILE -o OUT.wasm --wasm-gc  WebAssembly GC proposal target"
+    @echo ""
+    @echo "Faces (--face): canonical (default) | python/rattle | js/jaffa | pseudocode | lucid | cafe"
+
 # Run panic-attack security scan
 panic:
     panic-attack assail

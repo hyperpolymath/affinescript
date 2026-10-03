@@ -51,7 +51,12 @@ const imports = {
   },
 };
 
-inst = (await WebAssembly.instantiate(mod, imports)).instance;
+// `mod` is a WebAssembly.Module (needed above for Module.imports), so the
+// Module overload applies and resolves to the Instance directly — this is
+// NOT the `{ module, instance }` BufferSource shape.
+// See tools/check-wasm-harness-idioms.mjs.
+inst = await WebAssembly.instantiate(mod, imports);
+assert.ok(inst instanceof WebAssembly.Instance, 'instantiate returned an Instance');
 const result = inst.exports.main();
 assert.equal(typeof result, 'number', 'combo ran without trap');
 console.log('test_wasi_fs_combo.mjs OK');

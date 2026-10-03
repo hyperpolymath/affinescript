@@ -1,0 +1,18 @@
+# This workflow is managed by gh actions-lock.
+# SPDX-License-Identifier: MPL-2.0
+#
+# TEMPORARY PROBE (deleted before merge) — hypothesis A:
+# the local reusable call fails at run-creation because the CALLER JOB does
+# not grant permissions explicitly (the only reusable caller in this repo that
+# works, spark-theatre-gate.yml, does grant them at job level). Same shape as
+# governance-baseline.yml, plus job-level permissions.
+name: ZZ Probe A
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  governance:
+    uses: ./.github/workflows/governance-baseline-impl.yml
+    permissions:
+      contents: read
