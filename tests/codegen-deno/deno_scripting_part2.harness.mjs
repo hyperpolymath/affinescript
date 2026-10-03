@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: MPL-2.0
 // campaign #239 STEP 3 part 2 — Node-ESM harness for the second wave
-// of Deno-scripting externs (stat predicates, byte accessors, module URL)
-// plus the `let _ = X` wildcard-binding codegen fix.
+// of Deno-era scripting externs (stat predicates, byte accessors, module URL)
+// plus the `let _ = X` wildcard-binding codegen fix, exercised through the
+// Bun-ESM backend.
+//
+// The Bun prelude reaches the filesystem through process.getBuiltinModule(),
+// so the in-memory FS is installed at that seam — a `globalThis.Deno` stub
+// would never be consulted.
 
 import assert from "node:assert/strict";
 
@@ -12,24 +17,38 @@ const files = {
   "/empty.bin":         { kind: "file",   bytes: new Uint8Array() },
 };
 
-globalThis.Deno = globalThis.Deno || {};
-globalThis.Deno.statSync = (path) => {
-  const e = files[path];
-  if (!e) {
-    const err = new Error(`stub: no such path ${path}`);
-    err.code = "ENOENT";
-    throw err;
-  }
-  return {
-    size: e.kind === "file" ? e.bytes.length : 0,
-    isFile: e.kind === "file",
-    isDirectory: e.kind === "dir",
-  };
+const fsStub = {
+  statSync: (path) => {
+    const e = files[path];
+    if (!e) {
+      const err = new Error(`stub: no such path ${path}`);
+      err.code = "ENOENT";
+      throw err;
+    }
+    return {
+      size: e.kind === "file" ? e.bytes.length : 0,
+      isFile: () => e.kind === "file",
+      isDirectory: () => e.kind === "dir",
+    };
+  },
+  readFileSync: (path) => {
+    const e = files[path];
+    if (!e || e.kind !== "file") {
+      const err = new Error(`stub: not a file ${path}`);
+      err.code = "ENOENT";
+      throw err;
+    }
+    return e.bytes;
+  },
 };
-globalThis.Deno.readFileSync = (path) => {
-  const e = files[path];
-  if (!e || e.kind !== "file") throw new Error(`stub: not a file ${path}`);
-  return e.bytes;
+
+const realGetBuiltinModule = process.getBuiltinModule?.bind(process);
+process.getBuiltinModule = (name) => {
+  if (name === "node:fs") return fsStub;
+  if (!realGetBuiltinModule) {
+    throw new Error(`host builtin unavailable: ${name}`);
+  }
+  return realGetBuiltinModule(name);
 };
 
 const {

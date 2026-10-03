@@ -1,14 +1,22 @@
 // SPDX-License-Identifier: MPL-2.0
-// issue #122 follow-up — Node-ESM harness for new Deno-scripting externs.
+// issue #122 follow-up — Node-ESM harness for the Deno-era scripting externs,
+// now exercised through the Bun-ESM backend.
 //
-// Stubs only what the new surface needs: a tiny in-memory FS for
-// `Deno.readDirSync` (so `walkRecursive` traverses it deterministically),
-// `Deno.args` / `Deno.exit`, and captures `console.error`.
+// Stubs only what the surface needs: a tiny in-memory FS (so `walkRecursive`
+// traverses it deterministically), `args`, `exit`, and captures
+// `console.error`.
+//
+// IMPORTANT: this corpus is compiled with `--bun-esm`, and the emitted Bun
+// prelude resolves `node:fs` lazily via `process.getBuiltinModule()` and reads
+// `process.argv` / `process.exit`. Stubbing a `globalThis.Deno` object is
+// inert under that backend, so the host is stubbed at the seam the emission
+// actually uses.
 
 import assert from "node:assert/strict";
 
 // ── In-memory FS stub for walkRecursive ─────────────────────────────
-// Shape: { "/root": ["a", "b/", ".hidden"], "/root/b": ["c"] }
+// Shape: { "/root": ["a.txt", "sub/"], "/root/sub": ["b.txt", "deeper/"],
+//          "/root/sub/deeper": ["c.txt"], "/empty": [] }
 const fs = {
   "/root":   [{ name: "a.txt",  isFile: true,  isDirectory: false },
               { name: "sub",    isFile: false, isDirectory: true  }],
@@ -18,17 +26,46 @@ const fs = {
   "/empty": [],
 };
 
-globalThis.Deno = globalThis.Deno || {};
-globalThis.Deno.readDirSync = (path) => {
-  const entries = fs[path];
-  if (!entries) throw new Error(`stub: no such dir ${path}`);
-  return entries;
+const fsStub = {
+  readdirSync: (path) => {
+    const entries = fs[path];
+    if (!entries) {
+      const err = new Error(`stub: no such dir ${path}`);
+      err.code = "ENOENT";
+      throw err;
+    }
+    return entries.map((e) => ({
+      name: e.name,
+      isFile: () => e.isFile,
+      isDirectory: () => e.isDirectory,
+    }));
+  },
+  mkdirSync: () => {},
+  writeFileSync: () => {},
+  rmSync: () => {},
+  readFileSync: () => new Uint8Array(),
+  statSync: (path) => {
+    const err = new Error(`stub: no such path ${path}`);
+    err.code = "ENOENT";
+    throw err;
+  },
+};
+
+const realGetBuiltinModule = process.getBuiltinModule?.bind(process);
+process.getBuiltinModule = (name) => {
+  if (name === "node:fs") return fsStub;
+  if (!realGetBuiltinModule) {
+    throw new Error(`host builtin unavailable: ${name}`);
+  }
+  return realGetBuiltinModule(name);
 };
 
 // args / exit stubs — exit captures the code instead of terminating.
+// `args` lowers to process.argv.slice(2), so the leading entries are dropped.
+const realArgv = process.argv;
+process.argv = ["node", "deno_scripting.harness.mjs", "alpha", "beta", "gamma"];
 let lastExit = null;
-globalThis.Deno.args = ["alpha", "beta", "gamma"];
-globalThis.Deno.exit = (code) => { lastExit = code; return code; };
+process.exit = (code) => { lastExit = code; };
 
 // Capture stderr writes from consoleError.
 const stderrLog = [];
@@ -71,4 +108,5 @@ exit_with(2);
 assert.equal(lastExit, 2, "Deno.exit lowered correctly");
 
 console.error = origError;
+process.argv = realArgv;
 console.log("deno_scripting.harness.mjs OK");
