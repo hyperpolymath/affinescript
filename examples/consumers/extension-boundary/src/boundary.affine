@@ -1,0 +1,86 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>
+//
+// Consumer on-ramp example (issue #771) — the "extension boundary" shape.
+//
+// This module is what a downstream consumer writes. It is deliberately
+// shaped after the first real consumer request the project received: a
+// browser extension with a WASM core behind a two-function boundary
+// (`detect` / `fill`), whose error taxonomy has to cross that boundary as
+// stable integer codes plus a message the host owns.
+//
+// Two things are being demonstrated:
+//
+//   1. A consumer owns its own host surface. The `extern fn` declarations
+//      below are the entire binding story: the WASM backend emits one
+//      `(import "env" "<name>")` per declaration, and the host supplies
+//      them in the import object. No compiler change is needed to add a
+//      host function.
+//
+//   2. Errors do not cross as strings. The guest returns a status code
+//      (0 = ok, non-zero = a stable `BW_*` code) and asks the host for the
+//      message only when a human needs to read it.
+//
+// Compile:
+//   affinescript compile src/boundary.affine -o dist/boundary.wasm
+// Run the harness:
+//   node host.mjs
+
+module boundary;
+
+// ── The host surface this consumer owns ──────────────────────────────────
+// Implemented in the host's `env` import object (see host.mjs). Params and
+// results are i32 across the WASM boundary.
+
+/// Scan a document for fillable blocks. PDF bytes stay host-side; the guest
+/// passes only the length it was told about. Returns 0 or a `BW_*` code.
+pub extern fn bw_detect_blocks(pdf_len: Int) -> Int;
+
+/// Write field values into the blocks found by `bw_detect_blocks`.
+/// `field_count` is the number of entries the host handed over. Returns 0
+/// or a `BW_*` code.
+pub extern fn bw_fill_blocks(pdf_len: Int, field_count: Int) -> Int;
+
+/// The `BW_*` code for the most recent failure. Always safe to call.
+pub extern fn bw_error_code() -> Int;
+
+/// Byte length of the host-owned message for the most recent failure.
+pub extern fn bw_error_message_len() -> Int;
+
+/// Byte `offset` of the host-owned message for the most recent failure.
+pub extern fn bw_error_message_byte(offset: Int) -> Int;
+
+// ── Guest-side vocabulary ────────────────────────────────────────────────
+
+/// Status values are the `BW_*` taxonomy, narrowed to the two the guest
+/// reasons about: 0 is success, anything else is a failure whose detail
+/// lives host-side.
+pub fn is_ok(status: Int) -> Bool {
+  status == 0
+}
+
+/// Detect blocks, normalising the host's status to the documented
+/// "0 = ok, non-zero = BW_* code" contract.
+pub fn detect(pdf_len: Int) -> Int {
+  let status = bw_detect_blocks(pdf_len);
+  if is_ok(status) { 0 } else { bw_error_code() }
+}
+
+/// Fill blocks. Same normalisation as `detect`.
+pub fn fill(pdf_len: Int, field_count: Int) -> Int {
+  let status = bw_fill_blocks(pdf_len, field_count);
+  if is_ok(status) { 0 } else { bw_error_code() }
+}
+
+/// Length of the human-readable message for `status`, or 0 when `status`
+/// is success. The guest never materialises the message as a String: the
+/// host owns it, and the guest asks for it only when someone will read it.
+pub fn message_len(status: Int) -> Int {
+  if is_ok(status) { 0 } else { bw_error_message_len() }
+}
+
+/// Byte of the human-readable message for `status`, or 0 when `status` is
+/// success. Mirrors `message_len`.
+pub fn message_byte(status: Int, offset: Int) -> Int {
+  if is_ok(status) { 0 } else { bw_error_message_byte(offset) }
+}
