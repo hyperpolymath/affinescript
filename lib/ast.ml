@@ -540,3 +540,113 @@ and stmt_contains_return (s : stmt) : bool =
 let fn_body_contains_return : fn_body -> bool = function
   | FnExpr e -> expr_contains_return e
   | FnBlock b -> block_contains_return b
+
+(** Free variables of an expression.
+
+    Returns the names used in [expr] but not bound within it; [bound_vars]
+    lists the names already bound by the enclosing scope (parameters, let
+    bindings).
+
+    Shared by every pass that needs to know what a body refers to: wasm
+    codegen, and [Module_loader]'s `use`-list flattening, which uses it to
+    pull in helpers a selective import never names (`use Dom::{div}` needs
+    `div`'s own helper `h`; omitting it emitted a module that called an
+    undefined `h`). Like the other walkers in this module it is deliberately
+    conservative: constructs it does not inspect contribute [] rather than a
+    wrong answer. *)
+let rec find_free_vars (bound_vars : string list) (expr : expr) : string list =
+  match expr with
+  | ExprLit _ -> []
+  | ExprVar id ->
+    if List.mem id.name bound_vars then [] else [id.name]
+  | ExprBinary (e1, _, e2) ->
+    find_free_vars bound_vars e1 @ find_free_vars bound_vars e2
+  | ExprStringConcat (e1, e2) ->
+    find_free_vars bound_vars e1 @ find_free_vars bound_vars e2
+  | ExprUnary (_, e) ->
+    find_free_vars bound_vars e
+  | ExprIf ei ->
+    find_free_vars bound_vars ei.ei_cond @
+    find_free_vars bound_vars ei.ei_then @
+    (match ei.ei_else with
+     | Some e -> find_free_vars bound_vars e
+     | None -> [])
+  | ExprLet lb ->
+    let rhs_free = find_free_vars bound_vars lb.el_value in
+    (* Add bound variable to scope for body *)
+    let new_bound = match lb.el_pat with
+      | PatVar id -> id.name :: bound_vars
+      | _ -> bound_vars
+    in
+    let body_free = match lb.el_body with
+      | Some e -> find_free_vars new_bound e
+      | None -> []
+    in
+    rhs_free @ body_free
+  | ExprLambda lam ->
+    (* Parameters are bound within lambda *)
+    let param_names = List.map (fun p -> p.p_name.name) lam.elam_params in
+    find_free_vars (param_names @ bound_vars) lam.elam_body
+  | ExprApp (f, args) ->
+    find_free_vars bound_vars f @
+    List.concat (List.map (find_free_vars bound_vars) args)
+  | ExprBlock blk ->
+    (* Statements may introduce bindings *)
+    let (bound_after, free) = List.fold_left (fun (bound, acc_free) stmt ->
+      match stmt with
+      | StmtLet sl ->
+        let rhs_free = find_free_vars bound sl.sl_value in
+        let new_bound = match sl.sl_pat with
+          | PatVar id -> id.name :: bound
+          | _ -> bound
+        in
+        (new_bound, acc_free @ rhs_free)
+      | StmtExpr e ->
+        (bound, acc_free @ find_free_vars bound e)
+      | _ -> (bound, acc_free)
+    ) (bound_vars, []) blk.blk_stmts in
+    (* The tail expression is in scope of the block's own `let`
+       bindings, so its free vars must exclude them — use the
+       threaded [bound_after], not the original [bound_vars]. (Prior
+       code used [bound_vars], spuriously reporting block-local
+       binders as free; surfaced by #225 PR3c chained continuations.) *)
+    let expr_free = match blk.blk_expr with
+      | Some e -> find_free_vars bound_after e
+      | None -> []
+    in
+    free @ expr_free
+  | ExprMatch m ->
+    find_free_vars bound_vars m.em_scrutinee @
+    List.concat (List.map (fun arm -> find_free_vars bound_vars arm.ma_body) m.em_arms)
+  | ExprReturn e_opt ->
+    (match e_opt with Some e -> find_free_vars bound_vars e | None -> [])
+  | ExprTuple exprs | ExprArray exprs ->
+    List.concat (List.map (find_free_vars bound_vars) exprs)
+  | ExprRecord r ->
+    List.concat (List.map (fun (_, e_opt) ->
+      match e_opt with
+      | Some e -> find_free_vars bound_vars e
+      | None -> []
+    ) r.er_fields)
+  | ExprField (e, _) -> find_free_vars bound_vars e
+  | ExprTupleIndex (e, _) -> find_free_vars bound_vars e
+  | ExprIndex (e1, e2) ->
+    find_free_vars bound_vars e1 @ find_free_vars bound_vars e2
+  | ExprVariant _ -> []
+  | ExprSpan (e, _) -> find_free_vars bound_vars e
+  (* Float-wall elaboration nodes (codegen runs on the post-elaborate tree, so
+     these CAN appear here): traverse them exactly like their pre-elaboration
+     forms, else a variable captured only inside a float expression is missed
+     and the closure mis-lowers to UnboundVariable. *)
+  | ExprFloatBinary (a, _, b) ->
+    find_free_vars bound_vars a @ find_free_vars bound_vars b
+  | ExprFloatArray exprs -> List.concat (List.map (find_free_vars bound_vars) exprs)
+  | ExprFloatIndex (a, b) ->
+    find_free_vars bound_vars a @ find_free_vars bound_vars b
+  | ExprCellTuple cells ->
+    List.concat (List.map (fun (e, _) -> find_free_vars bound_vars e) cells)
+  | ExprCellTupleIndex (e, _, _) -> find_free_vars bound_vars e
+  | ExprCellRecord fields ->
+    List.concat (List.map (fun (_, e, _) -> find_free_vars bound_vars e) fields)
+  | ExprCellField (e, _, _) -> find_free_vars bound_vars e
+  | _ -> []  (* Other expressions *)

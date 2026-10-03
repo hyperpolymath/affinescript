@@ -275,6 +275,7 @@ let flatten_imports (loader : t) (prog : program) : program =
     List.filter_map (function
       | TopFn fd -> Some fd.fd_name.name
       | TopConst { tc_name; _ } -> Some tc_name.name
+      | TopType td -> Some td.td_name.name
       | _ -> None
     ) prog.prog_decls
   in
@@ -321,31 +322,122 @@ let flatten_imports (loader : t) (prog : program) : program =
                the bodies present. *)
             public_decls
           | ImportList (_, items) ->
-            List.filter_map (fun item ->
-              let target = item.ii_name.name in
-              List.find_opt (fun (n, _) -> n = target) public_decls
-              |> Option.map (fun (_, found) ->
-                let bound_name = match item.ii_alias with
-                  | Some a -> a.name
-                  | None -> target
-                in
-                let renamed = match found with
+            (* The name a directly-named item is imported under (alias
+               honoured). *)
+            let bound_name_of target =
+              match List.find_opt (fun item -> item.ii_name.name = target) items with
+              | Some { ii_alias = Some a; _ } -> a.name
+              | _ -> target
+            in
+            let rename_decl bound_name found =
+              match found with
+              | `Fn fd ->
+                `Fn { fd with fd_name = { fd.fd_name with name = bound_name } }
+              | `Const (TopConst { tc_vis; tc_mut; tc_name; tc_ty; tc_value }) ->
+                `Const (TopConst {
+                  tc_vis;
+                  tc_mut;
+                  tc_name = { tc_name with name = bound_name };
+                  tc_ty;
+                  tc_value;
+                })
+              | `Const _ | `Type _ ->
+                (* `Const` here is unreachable: public_decls only stores
+                   TopConst under `Const`. `Type` decls are never renamed —
+                   they are carried under their own name. *)
+                found
+            in
+            let direct =
+              List.filter_map (fun item ->
+                let target = item.ii_name.name in
+                List.find_opt (fun (n, _) -> n = target) public_decls
+                |> Option.map (fun (_, found) -> (target, found))
+              ) items
+            in
+            (* Transitive closure. A selected declaration's body may call
+               helpers of the same module that the import list never names:
+               `use Dom::{div}` pulls in `div`, whose body calls `h`. Leaving
+               `h` out of the flattened program produced
+               `ReferenceError: h is not defined` in the emitted module
+               (tests/codegen-deno/dom_startup_error). Private helpers are
+               pulled in too — a public wrapper may delegate to one. *)
+            let module_value_decls =
+              List.filter_map (fun decl ->
+                match decl with
+                | TopFn fd when fd.fd_body <> FnExtern ->
+                  Some (fd.fd_name.name, `Fn fd)
+                | TopConst { tc_name; _ } as d ->
+                  Some (tc_name.name, `Const d)
+                | _ -> None
+              ) lm.mod_program.prog_decls
+            in
+            (* Constructors of this module's own enums, keyed by constructor
+               name. An inlined wrapper body can name a constructor
+               (`text` returns `VText(content)`) and the constructor exists
+               only where the enum is declared. Option/Result constructors
+               are excluded: every non-wasm preamble already defines
+               Some/None/Ok/Err, and re-emitting them is the duplicate-`const`
+               crash that reverted type-carrying in #138 — this narrows the
+               carry to user enums a backend preamble cannot supply. *)
+            let preamble_ctors = [ "Some"; "None"; "Ok"; "Err" ] in
+            let ctor_decls = Hashtbl.create 16 in
+            List.iter (fun decl ->
+              match decl with
+              | TopType td ->
+                (match td.td_body with
+                 | TyEnum variants ->
+                   List.iter (fun (vd : variant_decl) ->
+                     if not (List.mem vd.vd_name.name preamble_ctors) then
+                       Hashtbl.replace ctor_decls vd.vd_name.name
+                         (td.td_name.name, decl)
+                   ) variants
+                 | _ -> ())
+              | _ -> ()) lm.mod_program.prog_decls;
+            let by_name = Hashtbl.create 16 in
+            List.iter (fun (n, d) -> Hashtbl.replace by_name n d) module_value_decls;
+            let seen = Hashtbl.create 16 in
+            List.iter (fun (n, _) -> Hashtbl.replace seen n ()) direct;
+            let rec close pending acc =
+              match pending with
+              | [] -> List.rev acc
+              | (_, dk) :: rest ->
+                let free = match dk with
                   | `Fn fd ->
-                    `Fn { fd with fd_name = { fd.fd_name with name = bound_name } }
-                  | `Const (TopConst { tc_vis; tc_mut; tc_name; tc_ty; tc_value }) ->
-                    `Const (TopConst {
-                      tc_vis;
-                      tc_mut;
-                      tc_name = { tc_name with name = bound_name };
-                      tc_ty;
-                      tc_value;
-                    })
-                  | `Const _ ->
-                    (* Unreachable: public_decls only stores TopConst under `Const`. *)
-                    found
+                    let params =
+                      List.map (fun (p : param) -> p.p_name.name) fd.fd_params
+                    in
+                    (match fd.fd_body with
+                     | FnExtern -> []
+                     | FnExpr e -> find_free_vars params e
+                     | FnBlock b -> find_free_vars params (ExprBlock b))
+                  | `Const (TopConst { tc_value; _ }) -> find_free_vars [] tc_value
+                  | `Const _ | `Type _ -> []
                 in
-                (bound_name, renamed))
-            ) items
+                let (pending, acc) =
+                  List.fold_left (fun (pending, acc) name ->
+                    if Hashtbl.mem seen name then (pending, acc)
+                    else begin
+                      Hashtbl.replace seen name ();
+                      match Hashtbl.find_opt by_name name with
+                      | Some dep -> ((name, dep) :: pending, (name, dep) :: acc)
+                      | None ->
+                        (* A constructor name: carry the enum it belongs to,
+                           once per type. *)
+                        (match Hashtbl.find_opt ctor_decls name with
+                         | Some (td_name, decl) when not (Hashtbl.mem seen td_name) ->
+                           Hashtbl.replace seen td_name ();
+                           ((td_name, `Type decl) :: pending,
+                            (td_name, `Type decl) :: acc)
+                         | _ -> (pending, acc))
+                    end
+                  ) (rest, acc) free
+                in
+                close pending acc
+            in
+            let extras = close direct [] in
+            List.map
+              (fun (n, dk) -> (bound_name_of n, rename_decl (bound_name_of n) dk))
+              (direct @ extras)
         in
         List.iter (fun (name, decl_kind) -> add_imported name decl_kind) select
     ) prog.prog_imports;
@@ -355,6 +447,7 @@ let flatten_imports (loader : t) (prog : program) : program =
          match Hashtbl.find_opt imported_by_name name with
          | Some (`Fn fd) -> Some (TopFn fd)
          | Some (`Const decl) -> Some decl
+         | Some (`Type decl) -> Some decl
          | None -> None)
   in
   (* #138 follow-up: imported TYPE decls are intentionally NOT inlined here.
