@@ -105,6 +105,15 @@ jobs:
         # finds the compiler three ways (in-tree build / PATH / dune exec),
         # so it exercises the same entry point a consumer has.
         run: ./examples/consumers/extension-boundary/build.sh
+      - name: WASM harness instantiation-idiom gate
+        if: ${{ !cancelled() }}
+        # tests/**/*.mjs must not mix the two WebAssembly.instantiate
+        # overloads (Module -> Instance vs BufferSource -> { module, instance }).
+        # A mix-up yields `undefined` and, before the codegen WASM runner was
+        # made fail-late, aborted the harness loop at the first bad file and
+        # silently masked every harness after it (33 of them).
+        # See tools/check-wasm-harness-idioms.sh.
+        run: ./tools/check-wasm-harness-idioms.sh
       - name: Run codegen WASM tests
         run: opam exec -- ./tools/run_codegen_wasm_tests.sh
       - name: Run codegen Bun-ESM tests (historical codegen-deno corpus)

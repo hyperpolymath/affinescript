@@ -11,7 +11,7 @@
 set -uo pipefail
 
 python3 - <<'PY'
-import os, pathlib, subprocess, urllib.parse
+import os, pathlib, re, subprocess, urllib.parse
 
 def annotate(title, text, limit=60000):
     msg = urllib.parse.quote(text[:limit], safe="")
@@ -57,11 +57,50 @@ CASCADE = [
     ("face transformers", ["bash", "tools/run_face_transformer_tests.sh"]),
     ("no-extension-ts", ["bash", "tools/check-no-extension-ts.sh"]),
 ]
+BAD_LINE = re.compile(
+    r"(::error::|AssertionError|TypeError|ReferenceError|SyntaxError"
+    r"|\b[Ee]rror\b|FAIL|FAILED|✗|\bpanic\b|No such file|denied|not allowed)"
+)
+
+
+def digest(text, budget=700):
+    """Dense, capped summary of one cascade step.
+
+    GitHub truncates check-run annotations at ~4096 bytes, so a raw tail of
+    each step's output silently loses every step after the first oversized
+    one (compiler chatter is verbose). Report only the interesting lines.
+    """
+    lines = [l.rstrip() for l in text.splitlines() if l.strip()]
+    picked, seen = [], set()
+    for l in lines:
+        if not BAD_LINE.search(l):
+            continue
+        key = re.sub(r"\d+", "#", l)[:70]
+        if key in seen:
+            continue
+        seen.add(key)
+        picked.append(l)
+        if len(picked) == 5:
+            break
+    # The runner's own failure roll-call (names, not prose).
+    for l in lines:
+        if (l.startswith("  - ") or l.startswith("✗")) and l not in picked:
+            picked.append(l)
+        if len(picked) >= 8:
+            break
+    for l in lines[-2:]:
+        if l not in picked:
+            picked.append(l)
+    body = "\n".join("  ! " + l[:160] for l in picked)
+    return body[:budget] if body else "  (no error-like lines; rc shown above)"
+
+
 out = []
 for label, argv in CASCADE:
     rc, text = run(argv, timeout=900)
-    tail = text.splitlines()[-40:]
-    out.append(f"===== {label}: rc={rc} =====\n" + "\n".join(tail))
+    n = len(text.splitlines())
+    head = f"===== {label}: rc={rc} ({n} lines) ====="
+    out.append(head if rc == 0 else head + "\n" + digest(text))
 body = "\n\n".join(out)
 annotate("diag-cascade", body)
 summary("diag: masked cascade", body)
