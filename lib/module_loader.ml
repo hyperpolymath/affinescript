@@ -275,6 +275,7 @@ let flatten_imports (loader : t) (prog : program) : program =
     List.filter_map (function
       | TopFn fd -> Some fd.fd_name.name
       | TopConst { tc_name; _ } -> Some tc_name.name
+      | TopType td -> Some td.td_name.name
       | _ -> None
     ) prog.prog_decls
   in
@@ -340,8 +341,10 @@ let flatten_imports (loader : t) (prog : program) : program =
                   tc_ty;
                   tc_value;
                 })
-              | `Const _ ->
-                (* Unreachable: public_decls only stores TopConst under `Const`. *)
+              | `Const _ | `Type _ ->
+                (* `Const` here is unreachable: public_decls only stores
+                   TopConst under `Const`. `Type` decls are never renamed —
+                   they are carried under their own name. *)
                 found
             in
             let direct =
@@ -368,6 +371,28 @@ let flatten_imports (loader : t) (prog : program) : program =
                 | _ -> None
               ) lm.mod_program.prog_decls
             in
+            (* Constructors of this module's own enums, keyed by constructor
+               name. An inlined wrapper body can name a constructor
+               (`text` returns `VText(content)`) and the constructor exists
+               only where the enum is declared. Option/Result constructors
+               are excluded: every non-wasm preamble already defines
+               Some/None/Ok/Err, and re-emitting them is the duplicate-`const`
+               crash that reverted type-carrying in #138 — this narrows the
+               carry to user enums a backend preamble cannot supply. *)
+            let preamble_ctors = [ "Some"; "None"; "Ok"; "Err" ] in
+            let ctor_decls = Hashtbl.create 16 in
+            List.iter (fun decl ->
+              match decl with
+              | TopType td ->
+                (match td.td_body with
+                 | TyEnum variants ->
+                   List.iter (fun (vd : variant_decl) ->
+                     if not (List.mem vd.vd_name.name preamble_ctors) then
+                       Hashtbl.replace ctor_decls vd.vd_name.name
+                         (td.td_name.name, decl)
+                   ) variants
+                 | _ -> ())
+              | _ -> ()) lm.mod_program.prog_decls;
             let by_name = Hashtbl.create 16 in
             List.iter (fun (n, d) -> Hashtbl.replace by_name n d) module_value_decls;
             let seen = Hashtbl.create 16 in
@@ -386,7 +411,7 @@ let flatten_imports (loader : t) (prog : program) : program =
                      | FnExpr e -> find_free_vars params e
                      | FnBlock b -> find_free_vars params (ExprBlock b))
                   | `Const (TopConst { tc_value; _ }) -> find_free_vars [] tc_value
-                  | `Const _ -> []
+                  | `Const _ | `Type _ -> []
                 in
                 let (pending, acc) =
                   List.fold_left (fun (pending, acc) name ->
@@ -395,7 +420,15 @@ let flatten_imports (loader : t) (prog : program) : program =
                       Hashtbl.replace seen name ();
                       match Hashtbl.find_opt by_name name with
                       | Some dep -> ((name, dep) :: pending, (name, dep) :: acc)
-                      | None -> (pending, acc)
+                      | None ->
+                        (* A constructor name: carry the enum it belongs to,
+                           once per type. *)
+                        (match Hashtbl.find_opt ctor_decls name with
+                         | Some (td_name, decl) when not (Hashtbl.mem seen td_name) ->
+                           Hashtbl.replace seen td_name ();
+                           ((td_name, `Type decl) :: pending,
+                            (td_name, `Type decl) :: acc)
+                         | _ -> (pending, acc))
                     end
                   ) (rest, acc) free
                 in
@@ -414,6 +447,7 @@ let flatten_imports (loader : t) (prog : program) : program =
          match Hashtbl.find_opt imported_by_name name with
          | Some (`Fn fd) -> Some (TopFn fd)
          | Some (`Const decl) -> Some decl
+         | Some (`Type decl) -> Some decl
          | None -> None)
   in
   (* #138 follow-up: imported TYPE decls are intentionally NOT inlined here.
