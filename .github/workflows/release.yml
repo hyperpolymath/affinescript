@@ -75,7 +75,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7.0.1
       - name: Set up OCaml
-        uses: ocaml/setup-ocaml@v3.8.0
+        uses: ocaml/setup-ocaml@v3.9.0
         with:
           ocaml-compiler: "5.1"
       - name: Install dependencies
