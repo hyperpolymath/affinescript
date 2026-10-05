@@ -1,0 +1,537 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// Tea.affine — The Elm Architecture for AffineScript on the Bun-ESM target.
+//
+// A browser application is an initial state and three pure functions:
+//
+//   init          : (Model, Cmd<Msg>)
+//   update        : (Msg, Model) -> (Model, Cmd<Msg>)
+//   view          : Model -> Html<Msg>
+//   subscriptions : Model -> Sub<Msg>
+//
+// handed to `run`. Everything stateful — the current model, the rendered
+// virtual DOM, live subscriptions — is owned here; the program itself never
+// touches the DOM. The reconciler (keyed and unkeyed child diffing) is
+// AffineScript; the host (`tea_host.js`) supplies only primitive DOM, timer
+// and storage-cell operations, declared below as `extern fn`.
+//
+// Build: put this directory on $AFFINESCRIPT_PATH, `use Tea::{...}`, compile
+// the app with `affinescript compile --bun-esm`, and load `tea_host.js`
+// before the compiled module.
+
+module Tea;
+
+use prelude::*;
+
+// ── Host primitives ─────────────────────────────────────────────────────────
+
+/// A real DOM node, owned by the host.
+pub extern type Node;
+/// A DOM (or synthetic timer/frame) event, owned by the host.
+pub extern type Event;
+/// A host-allocated mutable cell: the runtime's only mutable state.
+pub extern type Cell<T>;
+
+pub extern fn tea_cell<T>(v: T) -> Cell<T>;
+pub extern fn tea_get<T>(c: Cell<T>) -> T;
+pub extern fn tea_put<T>(c: Cell<T>, v: T) -> Unit;
+
+pub extern fn tea_query(selector: String) -> Node;
+pub extern fn tea_create(tag: String, ns: String) -> Node;
+pub extern fn tea_create_text(s: String) -> Node;
+pub extern fn tea_set_text(n: Node, s: String) -> Unit;
+pub extern fn tea_set_attr(n: Node, k: String, v: String) -> Unit;
+pub extern fn tea_remove_attr(n: Node, k: String) -> Unit;
+pub extern fn tea_set_prop(n: Node, k: String, v: String) -> Unit;
+pub extern fn tea_set_style(n: Node, k: String, v: String) -> Unit;
+pub extern fn tea_remove_style(n: Node, k: String) -> Unit;
+pub extern fn tea_children(parent: Node) -> [Node];
+pub extern fn tea_child_at(parent: Node, i: Int) -> Node;
+pub extern fn tea_append(parent: Node, child: Node) -> Unit;
+pub extern fn tea_insert_at(parent: Node, child: Node, index: Int) -> Unit;
+pub extern fn tea_remove(parent: Node, child: Node) -> Unit;
+pub extern fn tea_replace(parent: Node, fresh: Node, old: Node) -> Unit;
+pub extern fn tea_clear(parent: Node) -> Unit;
+pub extern fn tea_set_handler(n: Node, event: String, h: Event -> Unit) -> Unit;
+pub extern fn tea_clear_handler(n: Node, event: String) -> Unit;
+pub extern fn tea_next_frame(f: () -> Unit) -> Unit;
+pub extern fn tea_sub_set(key: String, kind: String, arg: String, h: Event -> Unit) -> Unit;
+pub extern fn tea_sub_clear(key: String) -> Unit;
+pub extern fn tea_defer(f: () -> Unit) -> Unit;
+pub extern fn tea_report(context: String, message: String) -> Unit;
+
+// Event accessors.
+pub extern fn ev_value(e: Event) -> String;
+pub extern fn ev_checked(e: Event) -> Bool;
+pub extern fn ev_key(e: Event) -> String;
+pub extern fn ev_client_x(e: Event) -> Float;
+pub extern fn ev_client_y(e: Event) -> Float;
+pub extern fn ev_delta_y(e: Event) -> Float;
+pub extern fn ev_button(e: Event) -> Int;
+pub extern fn ev_ctrl(e: Event) -> Bool;
+pub extern fn ev_shift(e: Event) -> Bool;
+pub extern fn ev_meta(e: Event) -> Bool;
+pub extern fn ev_time(e: Event) -> Float;
+pub extern fn ev_target_is_self(e: Event) -> Bool;
+pub extern fn ev_prevent(e: Event) -> Unit;
+pub extern fn ev_stop(e: Event) -> Unit;
+
+// Linear-time list building (the prelude's `map`/`filter` append with `++`
+// and are quadratic on the JS target; views over hundreds of nodes need
+// these).
+pub extern fn tea_map<A, B>(xs: [A], f: A -> B) -> [B];
+pub extern fn tea_filter<A>(xs: [A], keep: A -> Bool) -> [A];
+pub extern fn tea_concat<A>(xss: [[A]]) -> [A];
+
+// ── Virtual DOM ─────────────────────────────────────────────────────────────
+
+/// One attribute of an element. `On` holds an event decoder: returning
+/// `None` ignores the event (e.g. a keydown that is not Enter).
+pub enum Attr<M> {
+  Attribute(String, String),
+  Property(String, String),
+  Style(String, String),
+  On(String, Event -> Option<M>),
+  Key(String)
+}
+
+/// A virtual DOM node. `Element(tag, namespace, attrs, children)`; the
+/// namespace is "" for HTML or an XML namespace URI (SVG).
+pub enum Html<M> {
+  Text(String),
+  Element(String, String, [Attr<M>], [Html<M>])
+}
+
+pub fn text<M>(s: String) -> Html<M> = Text(s);
+pub fn node<M>(tag: String, attrs: [Attr<M>], kids: [Html<M>]) -> Html<M> = Element(tag, "", attrs, kids);
+pub fn svg_node<M>(tag: String, attrs: [Attr<M>], kids: [Html<M>]) -> Html<M> =
+  Element(tag, "http://www.w3.org/2000/svg", attrs, kids);
+
+pub fn div<M>(attrs: [Attr<M>], kids: [Html<M>]) -> Html<M> = node("div", attrs, kids);
+pub fn span<M>(attrs: [Attr<M>], kids: [Html<M>]) -> Html<M> = node("span", attrs, kids);
+pub fn button<M>(attrs: [Attr<M>], kids: [Html<M>]) -> Html<M> = node("button", attrs, kids);
+pub fn input<M>(attrs: [Attr<M>]) -> Html<M> = node("input", attrs, []);
+pub fn textarea<M>(attrs: [Attr<M>]) -> Html<M> = node("textarea", attrs, []);
+pub fn label<M>(attrs: [Attr<M>], kids: [Html<M>]) -> Html<M> = node("label", attrs, kids);
+pub fn ul<M>(attrs: [Attr<M>], kids: [Html<M>]) -> Html<M> = node("ul", attrs, kids);
+pub fn li<M>(attrs: [Attr<M>], kids: [Html<M>]) -> Html<M> = node("li", attrs, kids);
+pub fn h1<M>(attrs: [Attr<M>], kids: [Html<M>]) -> Html<M> = node("h1", attrs, kids);
+pub fn h2<M>(attrs: [Attr<M>], kids: [Html<M>]) -> Html<M> = node("h2", attrs, kids);
+pub fn p<M>(attrs: [Attr<M>], kids: [Html<M>]) -> Html<M> = node("p", attrs, kids);
+pub fn section<M>(attrs: [Attr<M>], kids: [Html<M>]) -> Html<M> = node("section", attrs, kids);
+pub fn header<M>(attrs: [Attr<M>], kids: [Html<M>]) -> Html<M> = node("header", attrs, kids);
+pub fn main_<M>(attrs: [Attr<M>], kids: [Html<M>]) -> Html<M> = node("main", attrs, kids);
+pub fn nav<M>(attrs: [Attr<M>], kids: [Html<M>]) -> Html<M> = node("nav", attrs, kids);
+pub fn aside<M>(attrs: [Attr<M>], kids: [Html<M>]) -> Html<M> = node("aside", attrs, kids);
+pub fn form<M>(attrs: [Attr<M>], kids: [Html<M>]) -> Html<M> = node("form", attrs, kids);
+pub fn details<M>(attrs: [Attr<M>], kids: [Html<M>]) -> Html<M> = node("details", attrs, kids);
+pub fn summary<M>(attrs: [Attr<M>], kids: [Html<M>]) -> Html<M> = node("summary", attrs, kids);
+pub fn output<M>(attrs: [Attr<M>], kids: [Html<M>]) -> Html<M> = node("output", attrs, kids);
+
+pub fn attr<M>(k: String, v: String) -> Attr<M> = Attribute(k, v);
+pub fn prop<M>(k: String, v: String) -> Attr<M> = Property(k, v);
+pub fn style<M>(k: String, v: String) -> Attr<M> = Style(k, v);
+pub fn key<M>(k: String) -> Attr<M> = Key(k);
+pub fn class<M>(c: String) -> Attr<M> = Attribute("class", c);
+pub fn id<M>(i: String) -> Attr<M> = Attribute("id", i);
+pub fn value<M>(v: String) -> Attr<M> = Property("value", v);
+pub fn aria<M>(name: String, v: String) -> Attr<M> = Attribute("aria-" ++ name, v);
+pub fn data<M>(name: String, v: String) -> Attr<M> = Attribute("data-" ++ name, v);
+
+/// A raw decoder: full control over which events produce a message.
+pub fn on<M>(event: String, decode: Event -> Option<M>) -> Attr<M> = On(event, decode);
+pub fn on_click<M>(msg: M) -> Attr<M> = On("click", fn(e) => Some(msg));
+pub fn on_input<M>(f: String -> M) -> Attr<M> = On("input", fn(e) => Some(f(ev_value(e))));
+pub fn on_change<M>(f: String -> M) -> Attr<M> = On("change", fn(e) => Some(f(ev_value(e))));
+pub fn on_check<M>(f: Bool -> M) -> Attr<M> = On("change", fn(e) => Some(f(ev_checked(e))));
+pub fn on_submit<M>(msg: M) -> Attr<M> =
+  On("submit", fn(e) => { ev_prevent(e); Some(msg) });
+/// Enter (without Shift) produces `msg`; any other key is ignored.
+pub fn on_enter<M>(msg: M) -> Attr<M> =
+  On("keydown", fn(e) => if ev_key(e) == "Enter" && !ev_shift(e) { ev_prevent(e); Some(msg) } else { None });
+
+/// Re-tag a view's messages, so a component's `Html<A>` embeds in a parent's
+/// `Html<B>`.
+pub fn map_html<A, B>(f: A -> B, h: Html<A>) -> Html<B> {
+  match h {
+    Html::Text(s) => Text(s),
+    Html::Element(tag, ns, attrs, kids) =>
+      Element(tag, ns, tea_map(attrs, fn(a) => map_attr(f, a)), tea_map(kids, fn(k) => map_html(f, k)))
+  }
+}
+
+pub fn map_attr<A, B>(f: A -> B, a: Attr<A>) -> Attr<B> {
+  match a {
+    Attr::Attribute(k, v) => Attribute(k, v),
+    Attr::Property(k, v) => Property(k, v),
+    Attr::Style(k, v) => Style(k, v),
+    Attr::Key(k) => Key(k),
+    Attr::On(ev, decode) => On(ev, fn(e) => match decode(e) { Some(m) => Some(f(m)), None => None })
+  }
+}
+
+// ── Commands and subscriptions ──────────────────────────────────────────────
+
+/// A side effect requested by `update`. `Run` receives the dispatcher and
+/// may call it any number of times, synchronously or later (timers,
+/// IndexedDB, WebAssembly calls) — every effect is expressible as one.
+pub enum Cmd<M> {
+  NoCmd,
+  Batch([Cmd<M>]),
+  Run((M -> Unit) -> Unit)
+}
+
+pub fn none<M>() -> Cmd<M> = NoCmd;
+pub fn batch<M>(cmds: [Cmd<M>]) -> Cmd<M> = Batch(cmds);
+pub fn run_cmd<M>(job: (M -> Unit) -> Unit) -> Cmd<M> = Run(job);
+/// Deliver `msg` as a fresh update after the current one completes.
+pub fn send<M>(msg: M) -> Cmd<M> = Run(fn(dispatch) => tea_defer(fn() => dispatch(msg)));
+
+pub fn map_cmd<A, B>(f: A -> B, c: Cmd<A>) -> Cmd<B> {
+  match c {
+    Cmd::NoCmd => NoCmd,
+    Cmd::Batch(cs) => Batch(tea_map(cs, fn(x) => map_cmd(f, x))),
+    Cmd::Run(job) => Run(fn(dispatch) => job(fn(a) => dispatch(f(a))))
+  }
+}
+
+/// A standing interest in outside events. Subscriptions are diffed by key
+/// after every update: listeners are added, re-pointed or removed so the
+/// live set always equals `subscriptions(model)`.
+pub enum Sub<M> {
+  NoSub,
+  Subs([Sub<M>]),
+  OnWindow(String, Event -> Option<M>),
+  OnFrame(Float -> M),
+  Every(Int, Float -> M)
+}
+
+pub fn no_sub<M>() -> Sub<M> = NoSub;
+pub fn subs<M>(xs: [Sub<M>]) -> Sub<M> = Subs(xs);
+pub fn on_window<M>(event: String, decode: Event -> Option<M>) -> Sub<M> = OnWindow(event, decode);
+pub fn on_frame<M>(f: Float -> M) -> Sub<M> = OnFrame(f);
+pub fn every<M>(ms: Int, f: Float -> M) -> Sub<M> = Every(ms, f);
+
+// ── Reconciler ──────────────────────────────────────────────────────────────
+
+/// Wrap a decoder as a host event handler that dispatches its message.
+fn event_handler<M>(decode: Event -> Option<M>, dispatch: M -> Unit) -> Event -> Unit =
+  fn(e) => match decode(e) { Some(m) => dispatch(m), None => () };
+
+fn apply_attr<M>(n: Node, a: Attr<M>, dispatch: M -> Unit) -> Unit {
+  match a {
+    Attr::Attribute(k, v) => tea_set_attr(n, k, v),
+    Attr::Property(k, v) => tea_set_prop(n, k, v),
+    Attr::Style(k, v) => tea_set_style(n, k, v),
+    Attr::On(ev, decode) => tea_set_handler(n, ev, event_handler(decode, dispatch)),
+    Attr::Key(_) => ()
+  }
+}
+
+/// Whether `attrs` still sets the attribute/property/style/handler named by
+/// `a` (so `a` must not be removed).
+fn still_present<M>(a: Attr<M>, attrs: [Attr<M>]) -> Bool {
+  for b in attrs {
+    let same = match (a, b) {
+      (Attr::Attribute(k, _), Attr::Attribute(k2, _)) => k == k2,
+      (Attr::Style(k, _), Attr::Style(k2, _)) => k == k2,
+      (Attr::Property(k, _), Attr::Property(k2, _)) => k == k2,
+      (Attr::On(ev, _), Attr::On(ev2, _)) => ev == ev2,
+      _ => false
+    };
+    if same {
+      return true;
+    }
+  }
+  false
+}
+
+fn remove_attr<M>(n: Node, a: Attr<M>) -> Unit {
+  match a {
+    Attr::Attribute(k, _) => tea_remove_attr(n, k),
+    Attr::Property(k, _) => tea_set_prop(n, k, ""),
+    Attr::Style(k, _) => tea_remove_style(n, k),
+    Attr::On(ev, _) => tea_clear_handler(n, ev),
+    Attr::Key(_) => ()
+  }
+}
+
+/// Bring `n`'s attributes from `old` to `fresh`: drop what disappeared, then
+/// (re)apply everything current. Handlers are always re-pointed, since a
+/// decoder closure may capture values from the latest model.
+fn patch_attrs<M>(n: Node, old: [Attr<M>], fresh: [Attr<M>], dispatch: M -> Unit) -> Unit {
+  for a in old {
+    if !still_present(a, fresh) {
+      remove_attr(n, a);
+    }
+  }
+  for a in fresh {
+    apply_attr(n, a, dispatch);
+  }
+}
+
+/// Create the DOM for a virtual node.
+pub fn create<M>(h: Html<M>, dispatch: M -> Unit) -> Node {
+  match h {
+    Html::Text(s) => tea_create_text(s),
+    Html::Element(tag, ns, attrs, kids) => {
+      let n = tea_create(tag, ns);
+      for a in attrs {
+        apply_attr(n, a, dispatch);
+      }
+      for k in kids {
+        tea_append(n, create(k, dispatch));
+      }
+      n
+    }
+  }
+}
+
+/// The `Key` of a virtual node, or "" when it has none.
+pub fn key_of<M>(h: Html<M>) -> String {
+  match h {
+    Html::Text(_) => "",
+    Html::Element(_, _, attrs, _) => {
+      for a in attrs {
+        match a {
+          Attr::Key(k) => { return k; },
+          _ => ()
+        }
+      }
+      ""
+    }
+  }
+}
+
+fn all_keyed<M>(kids: [Html<M>]) -> Bool {
+  if len(kids) == 0 {
+    return false;
+  }
+  for k in kids {
+    if key_of(k) == "" {
+      return false;
+    }
+  }
+  true
+}
+
+/// Whether two virtual nodes can be patched in place (same kind, tag,
+/// namespace and key) rather than replaced.
+fn same_shape<M>(a: Html<M>, b: Html<M>) -> Bool {
+  match (a, b) {
+    (Html::Text(_), Html::Text(_)) => true,
+    (Html::Element(t1, n1, _, _), Html::Element(t2, n2, _, _)) =>
+      t1 == t2 && n1 == n2 && key_of(a) == key_of(b),
+    _ => false
+  }
+}
+
+/// Patch DOM node `n` (currently rendering `old`) to render `fresh`. Returns
+/// the node now in the tree (a replacement when the shapes differ).
+pub fn patch<M>(parent: Node, n: Node, old: Html<M>, fresh: Html<M>, dispatch: M -> Unit) -> Node {
+  if !same_shape(old, fresh) {
+    let created = create(fresh, dispatch);
+    tea_replace(parent, created, n);
+    return created;
+  }
+  match (old, fresh) {
+    (Html::Text(a), Html::Text(b)) => {
+      if a != b {
+        tea_set_text(n, b);
+      }
+      n
+    },
+    (Html::Element(_, _, oa, ok), Html::Element(_, _, fa, fk)) => {
+      patch_attrs(n, oa, fa, dispatch);
+      if all_keyed(ok) && all_keyed(fk) {
+        patch_keyed(n, ok, fk, dispatch);
+      } else {
+        patch_children(n, ok, fk, dispatch);
+      }
+      n
+    },
+    _ => n
+  }
+}
+
+/// Unkeyed children: patch pairwise by position, then append or remove the
+/// surplus.
+fn patch_children<M>(n: Node, old: [Html<M>], fresh: [Html<M>], dispatch: M -> Unit) -> Unit {
+  let doms = tea_children(n);
+  let common = if len(old) < len(fresh) { len(old) } else { len(fresh) };
+  let mut i = 0;
+  while i < common {
+    patch(n, doms[i], old[i], fresh[i], dispatch);
+    i = i + 1;
+  }
+  while i < len(fresh) {
+    tea_append(n, create(fresh[i], dispatch));
+    i = i + 1;
+  }
+  let mut j = len(old) - 1;
+  while j >= common {
+    tea_remove(n, doms[j]);
+    j = j - 1;
+  }
+}
+
+/// Keyed children: reuse the DOM node of each surviving key (patched and
+/// moved into place), create new keys, and remove vanished ones. Linear in
+/// the number of children (a host string map indexes the old keys).
+fn patch_keyed<M>(n: Node, old: [Html<M>], fresh: [Html<M>], dispatch: M -> Unit) -> Unit {
+  let doms = tea_children(n);
+  let index = tea_key_index(tea_map(old, fn(h) => key_of(h)));
+  let used = tea_cell(tea_map(old, fn(h) => false));
+  let mut i = 0;
+  while i < len(fresh) {
+    let k = key_of(fresh[i]);
+    let j = tea_key_lookup(index, k);
+    if j >= 0 {
+      let live = patch(n, doms[j], old[j], fresh[i], dispatch);
+      tea_put(used, tea_set_at(tea_get(used), j, true));
+      tea_move_to(n, live, i);
+    } else {
+      tea_insert_at(n, create(fresh[i], dispatch), i);
+    }
+    i = i + 1;
+  }
+  let flags = tea_get(used);
+  let mut j = 0;
+  while j < len(old) {
+    if !flags[j] {
+      tea_remove(n, doms[j]);
+    }
+    j = j + 1;
+  }
+}
+
+/// Opaque string → index map over a list of keys (first occurrence wins).
+pub extern type KeyIndex;
+pub extern fn tea_key_index(keys: [String]) -> KeyIndex;
+/// Index of `k`, or -1.
+pub extern fn tea_key_lookup(ix: KeyIndex, k: String) -> Int;
+/// `xs` with position `i` set to `v` (the host may update in place: the
+/// array never escapes `patch_keyed`).
+pub extern fn tea_set_at<A>(xs: [A], i: Int, v: A) -> [A];
+/// Move `child` (already a child of `parent`) to position `index`, if it is
+/// not there already.
+pub extern fn tea_move_to(parent: Node, child: Node, index: Int) -> Unit;
+
+// ── Runtime ─────────────────────────────────────────────────────────────────
+
+/// Run a command, delivering its messages through `dispatch`.
+pub fn exec<M>(c: Cmd<M>, dispatch: M -> Unit) -> Unit {
+  match c {
+    Cmd::NoCmd => (),
+    Cmd::Batch(cs) => {
+      for x in cs {
+        exec(x, dispatch);
+      }
+    },
+    Cmd::Run(job) => job(dispatch)
+  }
+}
+
+/// A flattened subscription: host key, kind, argument and handler.
+struct LiveSub { key: String, kind: String, arg: String, h: Event -> Unit }
+
+fn flatten_subs<M>(s: Sub<M>, dispatch: M -> Unit) -> [LiveSub] {
+  match s {
+    Sub::NoSub => [],
+    Sub::Subs(xs) => tea_concat(tea_map(xs, fn(x) => flatten_subs(x, dispatch))),
+    Sub::OnWindow(ev, decode) =>
+      [LiveSub #{ key: "window:" ++ ev, kind: "window", arg: ev, h: event_handler(decode, dispatch) }],
+    Sub::OnFrame(f) =>
+      [LiveSub #{ key: "frame", kind: "frame", arg: "", h: fn(e) => dispatch(f(ev_time(e))) }],
+    Sub::Every(ms, f) =>
+      [LiveSub #{ key: "every:" ++ int_to_string(ms), kind: "every", arg: int_to_string(ms),
+                  h: fn(e) => dispatch(f(ev_time(e))) }]
+  }
+}
+
+/// Make the host's live subscriptions equal `wanted`; returns the new key set.
+fn sync_subs(active: [String], wanted: [LiveSub]) -> [String] {
+  let keys = tea_map(wanted, fn(s) => s.key);
+  let ix = tea_key_index(keys);
+  for k in active {
+    if tea_key_lookup(ix, k) < 0 {
+      tea_sub_clear(k);
+    }
+  }
+  for s in wanted {
+    tea_sub_set(s.key, s.kind, s.arg, s.h);
+  }
+  keys
+}
+
+/// Mount a program on the element matching `selector` and run it.
+///
+/// Messages are processed one at a time, in order: `update` runs, its
+/// command executes, subscriptions are re-synced, and a render is scheduled
+/// for the next animation frame (several messages in one frame render once).
+/// A message dispatched while another is being processed is queued.
+pub fn run<Model, Msg>(
+  selector: String,
+  init: (Model, Cmd<Msg>),
+  update: (Msg, Model) -> (Model, Cmd<Msg>),
+  view: Model -> Html<Msg>,
+  subscriptions: Model -> Sub<Msg>
+) -> Unit {
+  let root = tea_query(selector);
+  let (model0, cmd0) = init;
+  let model = tea_cell(model0);
+  let busy = tea_cell(false);
+  let queue = tea_cell([]);
+  let scheduled = tea_cell(false);
+  let active = tea_cell([]);
+  let noop: Msg -> Unit = fn(m) => ();
+  let dispatch_cell = tea_cell(noop);
+  let dispatch = fn(msg: Msg) => (tea_get(dispatch_cell))(msg);
+
+  let first = view(model0);
+  tea_clear(root);
+  tea_append(root, create(first, dispatch));
+  let vdom = tea_cell(first);
+
+  let render = fn() => {
+    tea_put(scheduled, false);
+    let fresh = view(tea_get(model));
+    let live = tea_child_at(root, 0);
+    patch(root, live, tea_get(vdom), fresh, dispatch);
+    tea_put(vdom, fresh);
+  };
+
+  let step = fn(msg: Msg) => {
+    let (m2, c2) = update(msg, tea_get(model));
+    tea_put(model, m2);
+    exec(c2, dispatch);
+    tea_put(active, sync_subs(tea_get(active), flatten_subs(subscriptions(m2), dispatch)));
+    if !tea_get(scheduled) {
+      tea_put(scheduled, true);
+      tea_next_frame(render);
+    }
+  };
+
+  let process = fn(msg: Msg) => {
+    if tea_get(busy) {
+      tea_put(queue, tea_get(queue) ++ [msg]);
+    } else {
+      tea_put(busy, true);
+      step(msg);
+      while len(tea_get(queue)) > 0 {
+        let q = tea_get(queue);
+        tea_put(queue, tea_slice(q, 1));
+        step(q[0]);
+      }
+      tea_put(busy, false);
+    }
+  };
+  tea_put(dispatch_cell, process);
+
+  tea_put(active, sync_subs([], flatten_subs(subscriptions(model0), dispatch)));
+  exec(cmd0, dispatch);
+}
+
+/// `xs` without its first `from` elements.
+pub extern fn tea_slice<A>(xs: [A], from: Int) -> [A];
