@@ -126,11 +126,13 @@ jobs:
           bun install --frozen-lockfile
           bunx --no-install --bun playwright install --with-deps chromium
           opam exec -- bun test --timeout 60000
-      - name: affinescript-router unit + browser tests
-        # Router.affine's pure functions (Bun-ESM) and the Nav example in
-        # headless Chromium: navigate/replace/back, hash edits, deep links.
+      - name: affinescript-router + affinescript-crdt tests
+        # Router.affine's pure functions and Crdt.affine's property tests
+        # (convergence, merge laws) on Bun-ESM; the Nav example in headless
+        # Chromium: navigate/replace/back, hash edits, deep links.
         run: |
           opam exec -- bun test affinescript-router/test
+          opam exec -- bun test affinescript-crdt/test
           cd affinescript-router/e2e
           bun install --frozen-lockfile
           opam exec -- bun test --timeout 60000

@@ -1,0 +1,88 @@
+// SPDX-License-Identifier: CC-BY-SA-4.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+= affinescript-crdt
+:toc: macro
+
+Conflict-free replicated data types for local-first AffineScript apps.
+Replicas update their own copy and exchange whole states. `merge` is
+commutative, associative and idempotent, so replicas that have seen the same
+updates hold equal states, whatever order they merged in and however many
+times.
+
+toc::[]
+
+== Types
+
+[cols="1,3"]
+|===
+| `Clock`, `Stamp`
+| A Lamport clock and its timestamps, totally ordered by `(counter, replica)`.
+  `tick(clock)` stamps a local write. `observe(clock, stamp)` accounts for a
+  stamp seen from another replica, so later local writes are ordered after it.
+
+| `Lww<T>`
+| A last-writer-wins register (`lww`, `lww_set`, `lww_value`, `lww_merge`).
+
+| `LwwMap<V>`
+| A string-keyed map of LWW entries (`map_set`, `map_remove`, `map_get`,
+  `map_keys`, `map_merge`). Removal is a timestamped tombstone, so a later set
+  revives the key and an earlier concurrent set loses.
+
+| `OrSet`
+| An observed-remove set of strings (`or_add`, `or_remove`, `or_contains`,
+  `or_elements`, `or_merge`). An add wins over a concurrent remove; a remove
+  deletes only the adds it has observed.
+
+| `PnCounter`
+| An increment/decrement counter (`pn_add`, `pn_value`, `pn_merge`).
+|===
+
+States are plain values (sorted arrays of tuples and records), so they
+serialise directly, e.g. to JSON, for storage and sync. Each replica needs a
+unique id; stamps from one replica's clock are unique by construction, which
+is the precondition every LWW type relies on.
+
+== Example
+
+[source,affinescript]
+----
+use Crdt::{clock, tick, map_empty, map_set, map_merge, map_get};
+
+let (c1, s1) = tick(clock("laptop"));
+let laptop = map_set(map_empty(), "title", "Draft", s1);
+let (c2, s2) = tick(clock("phone"));
+let phone = map_set(map_empty(), "title", "Final", s2);
+// Both replicas converge on the same winner ("phone" breaks the tie):
+map_get(map_merge(laptop, phone), "title") == map_get(map_merge(phone, laptop), "title")
+----
+
+== Performance
+
+Merges are linear merge-joins over sorted entries. On the JS target, though,
+building an array with `++` copies it, so construction and merges cost
+O(n²) in the number of entries. A merge of a 2,000-entry map with a
+1,000-entry one measured 7–47 ms locally. That's fine for sync events; for
+very large states, shard by key.
+
+== Tests
+
+`test/crdt.test.js` contains property tests on the module compiled with
+Bun-ESM. Each uses deterministic seeds, and they cover:
+
+* three replicas applying 300 random operations each with random partial
+  gossip, then converging in all six merge orders (LWW map, OR-set,
+  PN-counter);
+* LWW maps whose key values equal the highest-stamped write across all
+  replicas;
+* the merge laws (commutative, associative, idempotent) on random states for
+  every type;
+* OR-set add-wins and observed-remove semantics;
+* PN-counter sums.
+
+Breaking `map_merge`'s tie rule makes the convergence and law tests fail.
+
+[source,sh]
+----
+dune build          # at the repo root
+bun test affinescript-crdt/test
+----
