@@ -1,0 +1,8 @@
+// SPDX-License-Identifier: MPL-2.0
+// Middle module of the chain_import fixture: re-uses DirLib.
+module ChainLib;
+
+use DirLib::{Dir, North, Step, name};
+
+pub fn describe_north() -> String = "it is " ++ name(North);
+pub fn describe_steps(n: Int) -> String = name(Step(n));

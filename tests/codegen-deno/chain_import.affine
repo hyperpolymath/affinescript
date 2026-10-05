@@ -1,0 +1,7 @@
+// SPDX-License-Identifier: MPL-2.0
+// Transitive imports: this program imports only ChainLib, whose functions
+// call DirLib's. Flattening used to stop at the first hop, so DirLib's
+// `name` was undefined in the emitted module.
+use ChainLib::{describe_north, describe_steps};
+
+pub fn both() -> String = describe_north() ++ ";" ++ describe_steps(2);
