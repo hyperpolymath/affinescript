@@ -40,11 +40,20 @@ let passes ?dir src =
   | Ok () -> ()
   | Error m -> Alcotest.failf "expected Ok, got: %s" m
 
-(** Assert [src] is rejected. *)
-let fails src =
-  match frontend src with
+(** Assert [src] is rejected by the *type checker* (a parse or resolution
+    error would hide whether field typing ran), with a message containing
+    every string in [needles]. *)
+let fails ?dir ?(needles = []) src =
+  match frontend ?dir src with
   | Ok () -> Alcotest.fail "expected a type error, got Ok"
-  | Error _ -> ()
+  | Error m ->
+    let has n =
+      let nl = String.length n and ml = String.length m in
+      let rec go i = i + nl <= ml && (String.sub m i nl = n || go (i + 1)) in
+      go 0
+    in
+    if not (has "Type error") then Alcotest.failf "expected a type error, got: %s" m;
+    List.iter (fun n -> if not (has n) then Alcotest.failf "expected %S in: %s" n m) needles
 
 let p = "struct P { a: Int, b: String }\n"
 
@@ -52,7 +61,11 @@ let update_keeps_struct_type () = passes (p ^ "pub fn f(q: P) -> P = P #{ ..q, a
 let spread_only () = passes (p ^ "pub fn f(q: P) -> P = P #{ ..q };\n")
 let untouched_field_readable () =
   passes (p ^ "pub fn f(q: P) -> String { let r = P #{ ..q, a: 2 }; r.b }\n")
-let update_cannot_change_field_type () = fails (p ^ "pub fn f(q: P) -> P = P #{ ..q, a: \"x\" };\n")
+(* The result type is `String` (read from `r.a`), which the old
+   spread-ignoring typing would also accept: rejection here comes only from
+   validating the incompatible update itself. *)
+let update_cannot_change_field_type () =
+  fails (p ^ "pub fn f(q: P) -> String { let r = P #{ ..q, a: \"x\" }; r.a }\n")
 let update_through_destructured_tuple () =
   passes (p ^ "fn mk(q: P) -> (P, Int) = (q, 1);\n\
                pub fn f(q: P) -> P { let (r, n) = mk(q); P #{ ..r, a: n } }\n")
@@ -79,9 +92,7 @@ let imported_struct_fields () =
 let imported_struct_unknown_field_rejected () =
   let dir = module_dir "Shapes2"
       "module Shapes2;\npub struct Point { x: Float, y: Float }\n" in
-  match frontend ~dir "use Shapes2::{Point};\npub fn f(p: Point) -> Float = p.z;\n" with
-  | Ok () -> Alcotest.fail "expected unknown field to be rejected"
-  | Error _ -> ()
+  fails ~dir ~needles:[ "z" ] "use Shapes2::{Point};\npub fn f(p: Point) -> Float = p.z;\n"
 
 (* A function-local binding must not replace the module-level binding of
    the same name in what importers see. *)
