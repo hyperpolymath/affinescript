@@ -83,6 +83,9 @@ let codegen_only_names =
   [ "len"; "panic"; "get"; "set"; "slice"; "show"; "error"; "make_ref";
     "int_to_string"; "float_to_string"; "string_to_int"; "parse_int";
     "parse_float"; "int_to_char"; "char_to_int";
+    (* stdlib/math.affine header builtins (resolver-level, no extern decl);
+       the rest of that family is registered in a loop the regex skips. *)
+    "float"; "atan2"; "pow_float";
     "string_length"; "string_sub"; "string_get"; "string_find";
     "string_char_code_at"; "string_from_char_code";
     "to_lowercase"; "to_uppercase"; "trim";

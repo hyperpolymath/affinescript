@@ -67,6 +67,12 @@ let function_payload () =
     "pub enum Attr<M> { On(String, Int -> M) }\n\
      pub fn on_click<M>(f: Int -> M) -> Attr<M> = On(\"click\", f);\n"
 
+let parametric_extern_type () =
+  passes
+    "pub extern type Cell<T>;\n\
+     pub extern fn cell_new<T>(v: T) -> Cell<T>;\n\
+     pub fn mk() -> Cell<Int> = cell_new(1);\n"
+
 (* Planted negative: the kind check must still reject over-application. *)
 let over_application_still_rejected () =
   fails_with ~needle:"Too many arguments for kind"
@@ -96,6 +102,7 @@ let tests =
       concrete_application_in_signature;
     Alcotest.test_case "two-parameter enum" `Quick two_parameter_enum;
     Alcotest.test_case "function payload" `Quick function_payload;
+    Alcotest.test_case "parametric extern type" `Quick parametric_extern_type;
     Alcotest.test_case "over-application still rejected" `Quick
       over_application_still_rejected;
     Alcotest.test_case "imported enum kind" `Quick imported_enum_kind;

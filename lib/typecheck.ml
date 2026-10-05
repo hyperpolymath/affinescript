@@ -1016,6 +1016,13 @@ let rec synth (ctx : context) (expr : expr) : ty result =
       in
       (q, param_ty)
     ) elam_params param_tys in
+    (* A zero-parameter lambda `fn() => e` is a thunk: type it
+       `Unit -> T`, the same type an explicit `() -> T` annotation lowers
+       to (see the zero-argument [ExprApp] case, which consumes either
+       form). Typing it as the bare `T` made it impossible to pass a thunk
+       to a `() -> T` parameter. *)
+    let param_qty_pairs =
+      if elam_params = [] then [ (Types.QOmega, ty_unit) ] else param_qty_pairs in
     let ty = List.fold_right (fun (q, param_ty) acc ->
       TArrow (param_ty, q, acc, eff)
     ) param_qty_pairs body_ty in
@@ -1620,12 +1627,22 @@ and check (ctx : context) (expr : expr) (expected : ty) : unit result =
       (p.p_name.name, Hashtbl.find_opt ctx.name_types p.p_name.name)
     ) elam_params in
     let* () = peel_arrows expected elam_params in
-    (* Now check the body against the final return type *)
-    let final_ret = List.fold_left (fun ty _ ->
-      match repr ty with
-      | TArrow (_, _, ret, _) -> ret
-      | _ -> ty
-    ) expected elam_params in
+    (* Now check the body against the final return type. A zero-parameter
+       lambda checked against `() -> T` (= `Unit -> T`) consumes the unit
+       parameter: its body has type `T`. *)
+    let* final_ret =
+      if elam_params = [] then
+        match repr expected with
+        | TArrow (param_ty, _, ret, _) ->
+          let* () = unify_or_err param_ty ty_unit in
+          Ok ret
+        | _ -> Ok expected
+      else
+        Ok (List.fold_left (fun ty _ ->
+          match repr ty with
+          | TArrow (_, _, ret, _) -> ret
+          | _ -> ty
+        ) expected elam_params) in
     let* () = check ctx elam_body final_ret in
     (* Restore *)
     List.iter (fun (n, old_sc) ->
@@ -2244,7 +2261,12 @@ let register_type_decl (ctx : context) (td : type_decl) : unit result =
       Ok (TCon td.td_name.name)
     | TyExtern ->
       (* Opaque host-supplied type. Register a TCon so user code can name it
-         in signatures; the body is intentionally absent. *)
+         in signatures; the body is intentionally absent. A parametric one
+         (`extern type Cell<T>`) records its arity for [infer_kind], like a
+         parametric enum. *)
+      if td.td_type_params <> [] then
+        Hashtbl.replace ctx.type_arity td.td_name.name
+          (List.length td.td_type_params);
       Ok (TCon td.td_name.name)
   in
   Hashtbl.replace ctx.type_env td.td_name.name ty;

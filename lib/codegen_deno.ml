@@ -1118,6 +1118,21 @@ let () =
      AffineScript definition exists; the interpreter binds them too),
      not externs — endsWith/stripSuffix/pathJoin/etc. are NOT here:
      they are real AffineScript built on `ends_with`/`substring`/`++`. *)
+  (* ---- numeric builtins (stdlib/math.affine header) ----
+     Interpreter builtins with no Bun-ESM lowering compiled to calls of
+     undefined JS globals (`float(n)` -> ReferenceError). floor/ceil/
+     round/trunc return Int, which on JS is a Number with no fraction. *)
+  b "float"     (fun a -> Printf.sprintf "Number(%s)" (arg 0 a));
+  List.iter (fun (name, js) ->
+    b name (fun a -> Printf.sprintf "%s(%s)" js (arg 0 a)))
+    [ ("floor", "Math.floor"); ("ceil", "Math.ceil"); ("round", "Math.round");
+      ("trunc", "Math.trunc"); ("sqrt", "Math.sqrt"); ("cbrt", "Math.cbrt");
+      ("sin", "Math.sin"); ("cos", "Math.cos"); ("tan", "Math.tan");
+      ("asin", "Math.asin"); ("acos", "Math.acos"); ("atan", "Math.atan");
+      ("exp", "Math.exp"); ("log", "Math.log"); ("log10", "Math.log10");
+      ("log2", "Math.log2") ];
+  b "atan2"     (fun a -> Printf.sprintf "Math.atan2(%s, %s)" (arg 0 a) (arg 1 a));
+  b "pow_float" (fun a -> Printf.sprintf "Math.pow(%s, %s)" (arg 0 a) (arg 1 a));
   b "len"            (fun a -> Printf.sprintf "((%s).length)" (arg 0 a));
   b "slice"          (fun a -> Printf.sprintf "((%s).slice(%s, %s))"
                                  (arg 0 a) (arg 1 a) (arg 2 a));
