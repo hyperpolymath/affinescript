@@ -88,7 +88,7 @@ async function eventually(read, check) {
 }
 
 /** Text of every item title, in DOM order. */
-const titles = () => page.$$eval("#items .title", (els) => els.map((e) => e.textContent));
+const titles = () => page.locator("#items .title").evaluateAll((els) => els.map((e) => e.textContent));
 
 /** Add an item by typing it and pressing Enter. */
 async function add(title) {
@@ -120,12 +120,12 @@ test("the add button and an empty draft", async () => {
 
 test("keyed reorder moves the existing DOM node instead of recreating it", async () => {
   await add("bread");
-  await page.$eval('#items li[data-id="3"]', (li) => {
+  await page.locator('#items li[data-id="3"]').evaluate((li) => {
     li.__marker = "kept";
   });
   await page.click('#items li[data-id="3"] .top');
   await eventually(titles, (v) => expect(v).toEqual(["bread", "milk", "eggs"]));
-  const marker = await page.$eval("#items li:first-child", (li) => li.__marker ?? null);
+  const marker = await page.locator("#items li:first-child").evaluate((li) => li.__marker ?? null);
   expect(marker).toBe("kept");
 });
 
@@ -139,7 +139,7 @@ test("toggling updates the checkbox, class and count", async () => {
 test("removing an item removes exactly its node", async () => {
   await page.click('#items li[data-id="2"] .remove');
   await eventually(titles, (v) => expect(v).toEqual(["bread", "milk"]));
-  expect(await page.$$eval("#items li", (els) => els.length)).toBe(2);
+  expect(await page.locator("#items li").count()).toBe(2);
 });
 
 test("a subscription starts and stops with the model", async () => {
@@ -153,8 +153,8 @@ test("a subscription starts and stops with the model", async () => {
 });
 
 test("exactly one app instance is mounted", async () => {
-  expect(await page.$$eval("#app", (els) => els.length)).toBe(1);
-  expect(await page.$$eval("h1", (els) => els.length)).toBe(1);
+  expect(await page.locator("#app").count()).toBe(1);
+  expect(await page.locator("h1").count()).toBe(1);
 });
 
 test("keyed diffing: random edits keep order and identity, with minimal moves", async () => {

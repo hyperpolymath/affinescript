@@ -59,8 +59,11 @@ afterAll(async () => {
   server?.stop(true);
 });
 
-/** Wait until the rendered page label equals `label`. */
-const pageIs = (label) => page.waitForFunction((l) => document.querySelector("#page")?.textContent === l, label);
+/** Wait until the rendered page label equals `label`, then assert it. */
+async function pageIs(label) {
+  await page.waitForFunction((l) => document.querySelector("#page")?.textContent === l, label);
+  expect(await page.textContent("#page")).toBe(label);
+}
 
 test("initial route is read from the URL", async () => {
   expect(await page.textContent("#page")).toBe("home");

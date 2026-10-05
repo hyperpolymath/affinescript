@@ -93,24 +93,28 @@ install({
   },
   /** Insert `child` at position `index` (appending past the end). */
   tea_insert_at: (parent, child, index) => {
-    parent.insertBefore(child, parent.childNodes[index] ?? null);
+    const at = parent.childNodes[index];
+    if (at) at.before(child);
+    else parent.append(child);
   },
   /** Insert (or move) `child` immediately before `before`. */
   tea_insert_before: (parent, child, before) => {
-    if (child.nextSibling !== before || child.parentNode !== parent) parent.insertBefore(child, before);
+    if (child.nextSibling !== before || child.parentNode !== parent) before.before(child);
   },
   /** Move an existing child to position `index` unless it is already there. */
   tea_move_to: (parent, child, index) => {
-    const at = parent.childNodes[index] ?? null;
-    if (at !== child) parent.insertBefore(child, at);
+    const at = parent.childNodes[index];
+    if (at === child) return;
+    if (at) at.before(child);
+    else parent.append(child);
   },
   /** Remove `child` from `parent`. */
-  tea_remove: (parent, child) => {
-    parent.removeChild(child);
+  tea_remove: (_parent, child) => {
+    child.remove();
   },
   /** Replace `old` with `fresh` in `parent`. */
-  tea_replace: (parent, fresh, old) => {
-    parent.replaceChild(fresh, old);
+  tea_replace: (_parent, fresh, old) => {
+    old.replaceWith(fresh);
   },
   /** Remove every child of `parent`. */
   tea_clear: (parent) => parent.replaceChildren(),
@@ -197,6 +201,9 @@ install({
   tea_report: (context, message) => console.error(`[tea] ${context}: ${message}`),
 });
 
+/** Pixels per wheel `deltaMode` unit: pixel, line, page. */
+const WHEEL_UNIT = [1, 16, 800];
+
 // ── Events ─────────────────────────────────────────────────────────────────
 
 install({
@@ -211,7 +218,7 @@ install({
   /** Pointer y in viewport coordinates. */
   ev_client_y: (e) => e.clientY ?? 0,
   /** Wheel delta in pixels (line/page deltas normalised). */
-  ev_delta_y: (e) => (e.deltaY ?? 0) * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 800 : 1),
+  ev_delta_y: (e) => (e.deltaY ?? 0) * WHEEL_UNIT[e.deltaMode ?? 0],
   /** Mouse button. */
   ev_button: (e) => e.button ?? 0,
   /** Modifier keys. */
@@ -229,7 +236,7 @@ install({
   /** Whether the target is a text input, textarea, select or contenteditable. */
   ev_target_editable: (e) => {
     const t = e.target;
-    if (!t || !t.tagName) return false;
+    if (!t?.tagName) return false;
     const tag = t.tagName.toLowerCase();
     return tag === "input" || tag === "textarea" || tag === "select" || Boolean(t.isContentEditable);
   },
