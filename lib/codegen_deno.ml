@@ -2238,8 +2238,16 @@ let generate (host : host_profile) (program : program) (symbols : Symbol.t) : st
       Hashtbl.replace emitted_class s ()
     end
   in
+  (* Enum constructor bindings first: a qualified constructor lowers to its
+     binding (`Msg::Inc` -> `Inc`), and the checker lets a top-level `const`
+     name a variant declared later in the file — emitting in source order
+     would read the binding in its temporal dead zone (ReferenceError). *)
+  List.iter (function
+    | TopType ({ td_body = TyEnum _; _ } as td) -> gen_type_decl ctx td
+    | _ -> ()) program.prog_decls;
   List.iter (fun top ->
     match top with
+    | TopType { td_body = TyEnum _; _ } -> ()  (* emitted above *)
     | TopFn fd when fd.fd_body <> FnExtern ->
         if not (Hashtbl.mem consumed fd.fd_name.name) then
           gen_function ctx fd

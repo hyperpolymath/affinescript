@@ -1,0 +1,13 @@
+// SPDX-License-Identifier: MPL-2.0
+// A top-level const naming a variant of an enum declared later in the file:
+// the constructor binding must exist before the const is evaluated.
+
+pub const DEFAULT: Mode = Mode::Fast;
+pub const START: Mode = Mode::Slow(3);
+
+pub enum Mode { Fast, Slow(Int) }
+
+pub fn describe(m: Mode) -> String = match m {
+  Mode::Fast => "fast",
+  Mode::Slow(n) => "slow " ++ int_to_string(n)
+};
