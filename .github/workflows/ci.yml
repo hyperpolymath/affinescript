@@ -122,11 +122,11 @@ jobs:
         # input, async commands, keyed reorder preserving DOM-node identity,
         # subscriptions. Playwright is pinned in e2e/bun.lock.
         working-directory: affinescript-tea/e2e
-        # `bun x`, not `bunx`: the digest-verified Bun release zip that
-        # scripts/install-bun.sh installs ships only the `bun` binary.
+        # Chromium comes from the e2e package's `browsers` script (the pinned
+        # Playwright's own download; no package lifecycle scripts run).
         run: |
           bun install --frozen-lockfile --ignore-scripts
-          bun x --no-install --bun playwright install --with-deps chromium
+          bun run browsers
           opam exec -- bun test --timeout 60000
       - name: affinescript-router + affinescript-crdt tests
         # Router.affine's pure functions and Crdt.affine's property tests
