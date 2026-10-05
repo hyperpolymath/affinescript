@@ -92,7 +92,8 @@ let imported_struct_fields () =
 let imported_struct_unknown_field_rejected () =
   let dir = module_dir "Shapes2"
       "module Shapes2;\npub struct Point { x: Float, y: Float }\n" in
-  fails ~dir ~needles:[ "z" ] "use Shapes2::{Point};\npub fn f(p: Point) -> Float = p.z;\n"
+  fails ~dir ~needles:[ "Field 'z' not found" ]
+    "use Shapes2::{Point};\npub fn f(p: Point) -> Float = p.z;\n"
 
 (* A function-local binding must not replace the module-level binding of
    the same name in what importers see. *)
