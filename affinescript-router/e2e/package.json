@@ -1,0 +1,12 @@
+{
+  "name": "affinescript-router-e2e",
+  "private": true,
+  "type": "module",
+  "description": "Browser tests for affinescript-router (Router.affine + router_host.js) on affinescript-tea.",
+  "scripts": {
+    "test": "bun test --timeout 60000"
+  },
+  "devDependencies": {
+    "playwright": "1.62.1"
+  }
+}

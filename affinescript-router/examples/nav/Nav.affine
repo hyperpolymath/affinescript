@@ -1,0 +1,63 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// Nav — affinescript-router's reference app and the program its browser
+// tests drive: routes "/", "/item/:id" and "/search?q=...", links that push
+// history, a replace, back, and the URL-change subscription.
+
+module Nav;
+
+use prelude::*;
+use Tea::{Html, Cmd, Sub, run, text, div, button, p, id, on_click, none, batch};
+use Router::{Url, current_url, on_url_change, navigate, replace, back, match_route, query_param, href};
+
+pub enum Page { Home, Item(String), Search(String), Missing(String) }
+
+pub struct Model { page: Page, visits: Int }
+
+pub enum Msg { UrlChanged(Url), Go(String), Swap(String), Back }
+
+/// The page a URL denotes.
+pub fn route(u: Url) -> Page {
+  if u.path == "/" { return Page::Home; }
+  match match_route("/item/:id", u.path) {
+    Some(caps) => { return Page::Item(caps[0]); },
+    None => ()
+  };
+  match match_route("/search", u.path) {
+    Some(_) => Page::Search(match query_param(u.query, "q") { Some(q) => q, None => "" }),
+    None => Page::Missing(u.path)
+  }
+}
+
+pub fn init() -> (Model, Cmd<Msg>) = (Model #{ page: route(current_url()), visits: 1 }, none());
+
+pub fn update(msg: Msg, m: Model) -> (Model, Cmd<Msg>) {
+  match msg {
+    Msg::UrlChanged(u) => (Model #{ page: route(u), visits: m.visits + 1 }, none()),
+    Msg::Go(h) => (m, navigate(h, fn(u) => Msg::UrlChanged(u))),
+    Msg::Swap(h) => (m, replace(h, fn(u) => Msg::UrlChanged(u))),
+    Msg::Back => (m, back())
+  }
+}
+
+pub fn view(m: Model) -> Html<Msg> {
+  let label = match m.page {
+    Page::Home => "home",
+    Page::Item(i) => "item " ++ i,
+    Page::Search(q) => "search " ++ q,
+    Page::Missing(path) => "missing " ++ path
+  };
+  div([id("app")], [
+    p([id("page")], [text(label)]),
+    p([id("visits")], [text(int_to_string(m.visits))]),
+    button([id("to-item"), on_click(Msg::Go(href(["item", "a b/c"])))], [text("item")]),
+    button([id("to-search"), on_click(Msg::Go("/search?q=hello+world"))], [text("search")]),
+    button([id("swap"), on_click(Msg::Swap("/item/7"))], [text("swap")]),
+    button([id("back"), on_click(Msg::Back)], [text("back")])
+  ])
+}
+
+pub fn subscriptions(m: Model) -> Sub<Msg> = on_url_change(fn(u) => Msg::UrlChanged(u));
+
+pub fn main() -> Unit = run("#root", init(), update, view, subscriptions);

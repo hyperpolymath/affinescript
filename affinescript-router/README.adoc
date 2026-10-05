@@ -1,0 +1,77 @@
+// SPDX-License-Identifier: CC-BY-SA-4.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+= affinescript-router
+:toc: macro
+
+URL routing for link:../affinescript-tea[affinescript-tea] applications,
+written in AffineScript. It maps the browser URL to application state and
+back. It is unrelated to link:../affinescript-cadre[affinescript-cadre],
+which is a WASM screen back-stack for games.
+
+toc::[]
+
+== Usage
+
+[source,affinescript]
+----
+use Router::{Url, current_url, on_url_change, navigate, replace, match_route, query_param, href};
+
+pub enum Msg { UrlChanged(Url), Open(String) }
+
+pub fn route(u: Url) -> Page = match match_route("/note/:id", u.path) {
+  Some(caps) => Page::Note(caps[0]),
+  None => Page::Home
+};
+
+// init:          (Model #{ page: route(current_url()) }, none())
+// update:        Msg::Open(id) => (m, navigate(href(["note", id]), fn(u) => Msg::UrlChanged(u)))
+// subscriptions: on_url_change(fn(u) => Msg::UrlChanged(u))
+----
+
+What the package provides:
+
+* *`current_url()`* reads the location for `init`.
+* *`on_url_change(f)`* is a subscription. It fires on back and forward, and when
+  the user edits the address bar.
+* *`navigate(href, f)`* and *`replace(href, f)`* change the URL, either adding a
+  history entry or replacing the current one, and deliver the new `Url` through
+  `f`. The History API fires no event for programmatic changes, so the command
+  dispatches the new URL itself, as Elm's `Browser.Navigation` does.
+* *`back()`* goes back one entry.
+* *`match_route(pattern, path)`* matches a path against a pattern, returning the
+  decoded captures. Pattern segments can be:
+** a literal;
+** `:name`, which captures one segment;
+** a final `*`, which captures the rest.
+* *`query_param(query, key)`* decodes a query value (form encoding: `+` is a
+  space). *`href(segments)`* builds an encoded path. *`parse_url(href)`*
+  splits a URL into path, query and hash.
+
+Routes live after `#` by default (hash mode), which suits static hosting and
+`file://`. `current_path_url()` reads the real pathname instead.
+
+== Building
+
+Put both `affinescript-tea/src` and `affinescript-router/src` on
+`$AFFINESCRIPT_PATH`. The page loads `tea_host.js`, then `router_host.js`,
+then the compiled app. The app module runs its own `main`; do not call it again.
+
+== Tests
+
+* `test/router.test.js` is a set of unit tests of the pure functions, compiled
+  with Bun-ESM.
+* `e2e/nav.test.js` runs `examples/nav/Nav.affine` in headless Chromium. It
+  checks that:
+** navigate pushes history and delivers a decoded route;
+** replace adds no entry;
+** back and forward work, in the app and through the browser;
+** a manual hash edit is picked up;
+** a deep link loads directly;
+** no runtime errors occur.
+
+[source,sh]
+----
+dune build                                  # at the repo root
+bun test affinescript-router/test
+cd affinescript-router/e2e && bun install --frozen-lockfile && bun test
+----

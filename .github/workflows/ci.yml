@@ -126,6 +126,14 @@ jobs:
           bun install --frozen-lockfile
           bunx --no-install --bun playwright install --with-deps chromium
           opam exec -- bun test --timeout 60000
+      - name: affinescript-router unit + browser tests
+        # Router.affine's pure functions (Bun-ESM) and the Nav example in
+        # headless Chromium: navigate/replace/back, hash edits, deep links.
+        run: |
+          opam exec -- bun test affinescript-router/test
+          cd affinescript-router/e2e
+          bun install --frozen-lockfile
+          opam exec -- bun test --timeout 60000
       - name: Run face-transformer regression tests
         run: opam exec -- ./tools/run_face_transformer_tests.sh
       - name: Issue #35 Phase 3 — block extension.ts regression

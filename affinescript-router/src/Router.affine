@@ -1,0 +1,164 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// Router.affine — URL routing for affinescript-tea applications.
+//
+// Not to be confused with affinescript-cadre (a WASM screen back-stack for
+// games): this maps the browser URL to application state and back.
+//
+//   * `current_url()` reads the location (for `init`);
+//   * `on_url_change(f)` is a subscription firing on back/forward and on
+//     manual edits of the address bar;
+//   * `navigate(href, f)` / `replace(href, f)` change the URL (adding or
+//     replacing a history entry) and deliver the new URL through `f` — the
+//     History API fires no event for programmatic changes, so the command
+//     dispatches it, the way Elm's Browser.Navigation does;
+//   * `match_route("/note/:id", url.path)` matches a pattern, returning the
+//     captured parameters (decoded), and `query_param` reads the query.
+//
+// Mode: in hash mode (the default, for static hosting and file://) the route
+// lives after `#`; in path mode it is the real pathname.
+
+module Router;
+
+use prelude::*;
+use string::{split, join, starts_with};
+use Tea::{Sub, Cmd, Event, on_window, subs, run_cmd};
+
+/// A parsed URL. `path` always starts with "/"; `query` excludes the `?`.
+pub struct Url { path: String, query: String, hash: String }
+
+// ── Host primitives (router_host.js) ────────────────────────────────────────
+
+/// The current location as a `Url`; in hash mode the route after `#`.
+pub extern fn router_location(hash_mode: Bool) -> Url;
+/// Add a history entry for `href` (hash mode: `#href`).
+pub extern fn router_push(hash_mode: Bool, href: String) -> Unit;
+/// Replace the current history entry with `href`.
+pub extern fn router_replace(hash_mode: Bool, href: String) -> Unit;
+/// Go back one history entry.
+pub extern fn router_back() -> Unit;
+/// `decodeURIComponent` (`+` is left alone; `query_param` handles it),
+/// returning the input unchanged if malformed.
+pub extern fn router_decode(s: String) -> String;
+/// `encodeURIComponent`.
+pub extern fn router_encode(s: String) -> String;
+
+// ── Reading and changing the URL ────────────────────────────────────────────
+
+/// The current URL (hash mode).
+pub fn current_url() -> Url = router_location(true);
+/// The current URL from the real pathname (path mode).
+pub fn current_path_url() -> Url = router_location(false);
+
+/// A subscription delivering the URL whenever the user navigates (back,
+/// forward, or editing the address bar).
+pub fn on_url_change<M>(f: Url -> M) -> Sub<M> =
+  subs([on_window("popstate", fn(e) => Some(f(router_location(true)))),
+        on_window("hashchange", fn(e) => Some(f(router_location(true))))]);
+
+/// Go to `href`, adding a history entry, and deliver the new URL via `f`.
+pub fn navigate<M>(href: String, f: Url -> M) -> Cmd<M> =
+  run_cmd(fn(dispatch) => { router_push(true, href); dispatch(f(router_location(true))) });
+
+/// Go to `href` without adding a history entry (e.g. reflecting a selection).
+pub fn replace<M>(href: String, f: Url -> M) -> Cmd<M> =
+  run_cmd(fn(dispatch) => { router_replace(true, href); dispatch(f(router_location(true))) });
+
+/// Go back one entry (the subscription then reports the URL).
+pub fn back<M>() -> Cmd<M> = run_cmd(fn(dispatch) => router_back());
+
+// ── Parsing and matching (pure) ─────────────────────────────────────────────
+
+/// Parse an href such as "/note/42?tab=links#top" into a `Url`.
+pub fn parse_url(href: String) -> Url {
+  let hash_parts = split(href, "#");
+  let before_hash = if len(hash_parts) > 0 { hash_parts[0] } else { "" };
+  let hash = if len(hash_parts) > 1 { join(tail_from(hash_parts, 1), "#") } else { "" };
+  let query_parts = split(before_hash, "?");
+  let raw_path = if len(query_parts) > 0 { query_parts[0] } else { "" };
+  let query = if len(query_parts) > 1 { join(tail_from(query_parts, 1), "?") } else { "" };
+  let path = if starts_with(raw_path, "/") { raw_path } else { "/" ++ raw_path };
+  Url #{ path: path, query: query, hash: hash }
+}
+
+/// `xs` from index `from` on.
+fn tail_from(xs: [String], from: Int) -> [String] {
+  let mut out = [];
+  let mut i = from;
+  while i < len(xs) {
+    out = out ++ [xs[i]];
+    i = i + 1;
+  }
+  out
+}
+
+/// The non-empty path segments: "/note//42/" -> ["note", "42"] (undecoded).
+pub fn segments(path: String) -> [String] {
+  let mut out = [];
+  for s in split(path, "/") {
+    if s != "" {
+      out = out ++ [s];
+    }
+  }
+  out
+}
+
+/// Match `path` against `pattern`. Pattern segments are literals, `:name`
+/// (captures one decoded segment) or a final `*` (captures the decoded rest,
+/// joined with "/"). Returns the captures in order, or `None`.
+pub fn match_route(pattern: String, path: String) -> Option<[String]> {
+  let ps = segments(pattern);
+  let xs = segments(path);
+  let mut caps = [];
+  let mut i = 0;
+  while i < len(ps) {
+    let p = ps[i];
+    if p == "*" && i == len(ps) - 1 {
+      let rest = tea_map_decode(tail_from(xs, i));
+      return Some(caps ++ [join(rest, "/")]);
+    }
+    if i >= len(xs) {
+      return None;
+    }
+    if starts_with(p, ":") {
+      caps = caps ++ [router_decode(xs[i])];
+    } else {
+      if p != router_decode(xs[i]) {
+        return None;
+      }
+    }
+    i = i + 1;
+  }
+  if len(xs) == len(ps) { Some(caps) } else { None }
+}
+
+fn tea_map_decode(xs: [String]) -> [String] {
+  let mut out = [];
+  for x in xs {
+    out = out ++ [router_decode(x)];
+  }
+  out
+}
+
+/// The decoded value of query parameter `key` ("a=1&b=two"), or `None`.
+/// A key without `=` has the value "".
+pub fn query_param(query: String, key: String) -> Option<String> {
+  for pair in split(query, "&") {
+    let kv = split(pair, "=");
+    if len(kv) > 0 && router_decode(kv[0]) == key {
+      // In a query string `+` encodes a space (form encoding).
+      return Some(if len(kv) > 1 { router_decode(join(split(join(tail_from(kv, 1), "="), "+"), " ")) } else { "" });
+    }
+  }
+  None
+}
+
+/// An href from path segments (each encoded): ["note", "a b"] -> "/note/a%20b".
+pub fn href(parts: [String]) -> String {
+  let mut out = "";
+  for p in parts {
+    out = out ++ "/" ++ router_encode(p);
+  }
+  if out == "" { "/" } else { out }
+}
