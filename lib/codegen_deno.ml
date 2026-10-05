@@ -103,6 +103,8 @@ type codegen_ctx = {
   in_async : bool;
 }
 
+(** Create an empty emission context for [host], sharing [symbols] and
+    allocating fresh output and name tables. *)
 let create_ctx host symbols = {
   host;
   output = Buffer.create 1024;
@@ -1420,6 +1422,12 @@ let enter_fn_scope ctx (params : param list) : codegen_ctx =
    call whose head is a known [extern fn] lowers via {!deno_builtins}.
    ============================================================================ *)
 
+(** Render an expression as JavaScript using the names and host in [ctx].
+    Lambdas are synchronous arrows; known qualified constructors refer to
+    their emitted bindings. Nested statements can update integer tracking.
+
+    @raise Failure for unsupported handlers, resumptions or Bun host calls,
+    or when a builtin lowering receives too few arguments. *)
 let rec gen_expr ctx (expr : expr) : string =
   match expr with
   | ExprLit lit -> gen_literal lit
@@ -1839,6 +1847,10 @@ and gen_try_stmt ctx body catch finally =
   in
   "try { " ^ b ^ " } " ^ c ^ f
 
+(** Render a JavaScript statement and update [ctx]'s integer tracking for
+    subsequent statements. Loop bodies are processed before their tails so
+    integer division uses the bindings available at each point.
+    Exceptions from [gen_expr] propagate to the caller. *)
 and gen_stmt ctx (stmt : stmt) : string =
   match stmt with
   | StmtLet { sl_pat = PatWildcard _; sl_value; _ } ->
@@ -2134,6 +2146,13 @@ let gen_type_decl ctx (td : type_decl) : unit =
          a bare struct/alias/extern type carries no runtime value. *)
       emit_line ctx (Printf.sprintf "// type %s" td.td_name.name)
 
+(** Return a complete JavaScript ES module with the selected host runtime.
+    Imports must already be flattened. Enum bindings precede other
+    declarations, and synthesised classes supplement the free functions;
+    a receiver parameter alone does not make a free function asynchronous.
+    If a top-level function is named [main], the module awaits its invocation.
+    Emission exceptions, including [Failure] from [gen_expr], propagate;
+    [codegen_bun] and [codegen_deno] convert them to [Error] results. *)
 let generate (host : host_profile) (program : program) (symbols : Symbol.t) : string =
   let ctx = create_ctx host symbols in
   (* Register extern names so calls lower via the builtin table, and

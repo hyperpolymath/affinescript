@@ -600,7 +600,9 @@ let lookup_source_scheme
 
 (** For an imported type symbol, carry its definition (recorded by the
     source module under [Typecheck.type_def_key]) so the importer can use the
-    type's structure — e.g. read an imported struct's fields. *)
+    type's structure — e.g. read an imported struct's fields. The destination
+    key uses [bound_name], which may be an alias, and replaces any existing
+    definition. Non-type symbols and missing definitions leave it unchanged. *)
 let import_type_def ~dest_name_types ~source_name_types
     (sym : Symbol.symbol) (bound_name : string) : unit =
   if sym.Symbol.sym_kind = Symbol.SKType then
@@ -613,7 +615,9 @@ let import_type_def ~dest_name_types ~source_name_types
 
     [dest_name_types] is the destination type checker's name-keyed scheme map;
     populating it here is what makes imported functions visible to a freshly
-    created [Typecheck.check_program] (which keys lookups on name, not sym_id). *)
+    created [Typecheck.check_program] (which keys lookups on name, not sym_id).
+    Only [Public] and [PubCrate] symbols are imported, under their original
+    names; [_alias] is ignored. Available type definitions are copied too. *)
 let import_resolved_symbols
     (dest_symbols : Symbol.t)
     (dest_types : (Symbol.symbol_id, Types.scheme) Hashtbl.t)
@@ -638,8 +642,11 @@ let import_resolved_symbols
     | _ -> ()  (* Private symbols not imported *)
   ) source_symbols.all_symbols
 
-(** Import specific items from resolved symbols. See
-    [import_resolved_symbols] for the role of [dest_name_types]. *)
+(** Import specific items from resolved symbols, honouring item aliases for
+    both value schemes and type definitions. See [import_resolved_symbols]
+    for the role of [dest_name_types]. Returns [VisibilityError] for an item
+    outside [Public] or [PubCrate], or [UndefinedVariable] for a missing name,
+    paired with the item's span. Imports made before an error remain installed. *)
 let import_specific_items
     (dest_symbols : Symbol.t)
     (dest_types : (Symbol.symbol_id, Types.scheme) Hashtbl.t)
