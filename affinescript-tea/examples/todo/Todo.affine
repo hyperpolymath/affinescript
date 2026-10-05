@@ -11,7 +11,7 @@ module Todo;
 
 use prelude::*;
 use Tea::{Html, Attr, Cmd, Sub, Event, run, text, div, span, button, input, ul, li, h1, p,
-          class, id, value, key, attr, on_click, on_input, on_enter, on_check, none, send,
+          class, id, value, key, attr, lazy, on_click, on_input, on_enter, on_check, none, send,
           every, no_sub, tea_map, tea_filter, run_cmd, tea_defer};
 
 pub struct Item { id: Int, title: String, done: Bool }
@@ -86,7 +86,11 @@ pub fn view(m: Model) -> Html<Msg> =
     input([id("draft"), attr("placeholder", "What needs doing?"), value(m.draft),
            on_input(fn(s) => Msg::Draft(s)), on_enter(Msg::Add)]),
     button([id("add"), on_click(Msg::Add)], [text("add")]),
-    ul([id("items")], tea_map(m.items, fn(it) => view_item(it))),
+    // Memoised rows: a row is rebuilt only when its id, title or done flag
+    // changes (the keyed reorder test moves memoised rows).
+    ul([id("items")], tea_map(m.items, fn(it) =>
+      lazy(int_to_string(it.id), int_to_string(it.id) ++ "|" ++ it.title ++ "|" ++ (if it.done { "1" } else { "0" }),
+           fn() => view_item(it)))),
     p([id("count")], [text(int_to_string(len(tea_filter(m.items, fn(it) => !it.done)))
                            ++ " left")]),
     button([id("tick"), on_click(Msg::SetTicking(!m.ticking))],

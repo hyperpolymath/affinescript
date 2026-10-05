@@ -95,6 +95,10 @@ install({
   tea_insert_at: (parent, child, index) => {
     parent.insertBefore(child, parent.childNodes[index] ?? null);
   },
+  /** Insert (or move) `child` immediately before `before`. */
+  tea_insert_before: (parent, child, before) => {
+    if (child.nextSibling !== before || child.parentNode !== parent) parent.insertBefore(child, before);
+  },
   /** Move an existing child to position `index` unless it is already there. */
   tea_move_to: (parent, child, index) => {
     const at = parent.childNodes[index] ?? null;
@@ -246,6 +250,10 @@ install({
   tea_concat: (xss) => xss.flat(1),
   /** `xs` without its first `from` elements. */
   tea_slice: (xs, from) => xs.slice(from),
+  /** `[0, 1, ..., n - 1]`. */
+  tea_range: (n) => Array.from({ length: n }, (_, i) => i),
+  /** A fresh array of `n` copies of `v`. */
+  tea_filled: (n, v) => new Array(n).fill(v),
   /** A key → first-index map. */
   tea_key_index: (keys) => {
     const m = new Map();

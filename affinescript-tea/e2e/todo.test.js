@@ -157,6 +157,66 @@ test("exactly one app instance is mounted", async () => {
   expect(await page.$$eval("h1", (els) => els.length)).toBe(1);
 });
 
+test("keyed diffing: random edits keep order and identity, with minimal moves", async () => {
+  const result = await page.evaluate(async () => {
+    const m = await import("./todo.bun.js");
+    let seed = 7;
+    const rand = () => {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      return seed / 0x7fffffff;
+    };
+    const vnode = (keys) => m.node("ul", [], keys.map((k) => m.node("li", [m.key(k)], [m.text(k)])));
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    let keys = Array.from({ length: 30 }, (_, i) => `k${i}`);
+    let next = 30;
+    let old = vnode(keys);
+    host.appendChild(m.create(old, () => {}));
+    const ul = host.firstChild;
+    for (const li of ul.children) li.__id = li.textContent;
+    let moves = 0;
+    const observer = new MutationObserver((records) => {
+      for (const r of records) moves += r.addedNodes.length;
+    });
+    observer.observe(ul, { childList: true });
+    for (let round = 0; round < 200; round++) {
+      const before = new Map(Array.from(ul.children, (li) => [li.textContent, li]));
+      let fresh = keys.filter(() => rand() > 0.1);
+      for (let i = 0; i < 3; i++) fresh.splice(Math.floor(rand() * (fresh.length + 1)), 0, `k${next++}`);
+      for (let i = 0; i < 4; i++) {
+        const a = Math.floor(rand() * fresh.length);
+        const b = Math.floor(rand() * fresh.length);
+        [fresh[a], fresh[b]] = [fresh[b], fresh[a]];
+      }
+      const neu = vnode(fresh);
+      m.patch(host, ul, old, neu, () => {});
+      const got = Array.from(ul.children, (li) => li.textContent);
+      if (JSON.stringify(got) !== JSON.stringify(fresh)) return { ok: false, round, got, fresh };
+      for (const li of ul.children) {
+        const prev = before.get(li.textContent);
+        if (prev && prev !== li) return { ok: false, round, reason: `recreated ${li.textContent}` };
+      }
+      keys = fresh;
+      old = neu;
+    }
+    observer.disconnect();
+    // Moving the last item to the front needs exactly one DOM move.
+    const rotated = [keys[keys.length - 1], ...keys.slice(0, -1)];
+    let single = 0;
+    const o2 = new MutationObserver((rs) => {
+      for (const r of rs) single += r.addedNodes.length;
+    });
+    o2.observe(ul, { childList: true });
+    m.patch(host, ul, old, vnode(rotated), () => {});
+    await new Promise((r) => setTimeout(r, 0));
+    o2.disconnect();
+    host.remove();
+    return { ok: true, moves, single };
+  });
+  expect(result).toMatchObject({ ok: true });
+  expect(result.single).toBe(1);
+});
+
 test("no runtime errors were reported", () => {
   expect(consoleErrors).toEqual([]);
 });

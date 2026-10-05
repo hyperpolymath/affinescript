@@ -93,6 +93,30 @@ pub extern fn tea_map<A, B>(xs: [A], f: A -> B) -> [B];
 pub extern fn tea_filter<A>(xs: [A], keep: A -> Bool) -> [A];
 pub extern fn tea_concat<A>(xss: [[A]]) -> [A];
 
+// Runtime-private array and key helpers (declared before use: a generic
+// extern referenced before its declaration is not yet generalised).
+/// `[0, 1, ..., n - 1]`.
+pub extern fn tea_range(n: Int) -> [Int];
+/// A fresh array of `n` copies of `v` (runtime-private; updated in place).
+pub extern fn tea_filled<A>(n: Int, v: A) -> [A];
+/// Insert (or move) `child` immediately before `before` in `parent`.
+pub extern fn tea_insert_before(parent: Node, child: Node, before: Node) -> Unit;
+
+/// Opaque string → index map over a list of keys (first occurrence wins).
+pub extern type KeyIndex;
+pub extern fn tea_key_index(keys: [String]) -> KeyIndex;
+/// Index of `k`, or -1.
+pub extern fn tea_key_lookup(ix: KeyIndex, k: String) -> Int;
+/// `xs` with position `i` set to `v` (the host may update in place: the
+/// array never escapes `patch_keyed`).
+pub extern fn tea_set_at<A>(xs: [A], i: Int, v: A) -> [A];
+/// Move `child` (already a child of `parent`) to position `index`, if it is
+/// not there already.
+pub extern fn tea_move_to(parent: Node, child: Node, index: Int) -> Unit;
+
+/// `xs` without its first `from` elements.
+pub extern fn tea_slice<A>(xs: [A], from: Int) -> [A];
+
 // ── Virtual DOM ─────────────────────────────────────────────────────────────
 
 /// One attribute of an element. `On` holds an event decoder: returning
@@ -106,13 +130,23 @@ pub enum Attr<M> {
 }
 
 /// A virtual DOM node. `Element(tag, namespace, attrs, children)`; the
-/// namespace is "" for HTML or an XML namespace URI (SVG).
+/// namespace is "" for HTML or an XML namespace URI (SVG). `Lazy(key, memo,
+/// view)` defers building a subtree: when a re-render finds the same `memo`
+/// at the same place, the subtree is neither rebuilt nor diffed (see `lazy`).
 pub enum Html<M> {
   Text(String),
-  Element(String, String, [Attr<M>], [Html<M>])
+  Element(String, String, [Attr<M>], [Html<M>]),
+  Lazy(String, String, () -> Html<M>)
 }
 
 pub fn text<M>(s: String) -> Html<M> = Text(s);
+/// A memoised subtree. `view` runs only when `memo` differs from the previous
+/// render's memo at the same position, so `memo` must change whenever
+/// anything `view` reads changes (the way Elm's `Html.Lazy` compares
+/// arguments). `key` is the subtree's key in a keyed child list ("" if none).
+/// Event handlers inside a skipped subtree keep the closures from the render
+/// that built it, so they must depend only on what `memo` covers.
+pub fn lazy<M>(key: String, memo: String, view: () -> Html<M>) -> Html<M> = Lazy(key, memo, view);
 pub fn node<M>(tag: String, attrs: [Attr<M>], kids: [Html<M>]) -> Html<M> = Element(tag, "", attrs, kids);
 pub fn svg_node<M>(tag: String, attrs: [Attr<M>], kids: [Html<M>]) -> Html<M> =
   Element(tag, "http://www.w3.org/2000/svg", attrs, kids);
@@ -165,6 +199,7 @@ pub fn on_enter<M>(msg: M) -> Attr<M> =
 pub fn map_html<A, B>(f: A -> B, h: Html<A>) -> Html<B> {
   match h {
     Html::Text(s) => Text(s),
+    Html::Lazy(k, memo, view) => Lazy(k, memo, fn() => map_html(f, view())),
     Html::Element(tag, ns, attrs, kids) =>
       Element(tag, ns, tea_map(attrs, fn(a) => map_attr(f, a)), tea_map(kids, fn(k) => map_html(f, k)))
   }
@@ -284,6 +319,7 @@ fn patch_attrs<M>(n: Node, old: [Attr<M>], fresh: [Attr<M>], dispatch: M -> Unit
 pub fn create<M>(h: Html<M>, dispatch: M -> Unit) -> Node {
   match h {
     Html::Text(s) => tea_create_text(s),
+    Html::Lazy(_, _, view) => create(view(), dispatch),
     Html::Element(tag, ns, attrs, kids) => {
       let n = tea_create(tag, ns);
       for a in attrs {
@@ -301,6 +337,7 @@ pub fn create<M>(h: Html<M>, dispatch: M -> Unit) -> Node {
 pub fn key_of<M>(h: Html<M>) -> String {
   match h {
     Html::Text(_) => "",
+    Html::Lazy(k, _, _) => k,
     Html::Element(_, _, attrs, _) => {
       for a in attrs {
         match a {
@@ -339,6 +376,21 @@ fn same_shape<M>(a: Html<M>, b: Html<M>) -> Bool {
 /// Patch DOM node `n` (currently rendering `old`) to render `fresh`. Returns
 /// the node now in the tree (a replacement when the shapes differ).
 pub fn patch<M>(parent: Node, n: Node, old: Html<M>, fresh: Html<M>, dispatch: M -> Unit) -> Node {
+  // Memoised subtrees: an unchanged memo means nothing to do; otherwise
+  // diff the expansions (re-running the old view rebuilds exactly the tree
+  // that is in the DOM, since it closes over the old inputs).
+  match (old, fresh) {
+    (Html::Lazy(_, m1, _), Html::Lazy(_, m2, _)) => { if m1 == m2 { return n; } },
+    _ => ()
+  };
+  match old {
+    Html::Lazy(_, _, view) => { return patch(parent, n, view(), fresh, dispatch); },
+    _ => ()
+  };
+  match fresh {
+    Html::Lazy(_, _, view) => { return patch(parent, n, old, view(), dispatch); },
+    _ => ()
+  };
   if !same_shape(old, fresh) {
     let created = create(fresh, dispatch);
     tea_replace(parent, created, n);
@@ -385,47 +437,89 @@ fn patch_children<M>(n: Node, old: [Html<M>], fresh: [Html<M>], dispatch: M -> U
   }
 }
 
-/// Keyed children: reuse the DOM node of each surviving key (patched and
-/// moved into place), create new keys, and remove vanished ones. Linear in
-/// the number of children (a host string map indexes the old keys).
-fn patch_keyed<M>(n: Node, old: [Html<M>], fresh: [Html<M>], dispatch: M -> Unit) -> Unit {
-  let doms = tea_children(n);
-  let index = tea_key_index(tea_map(old, fn(h) => key_of(h)));
-  let used = tea_cell(tea_map(old, fn(h) => false));
+/// Flags marking one longest increasing subsequence of `xs` (negative
+/// entries are never in it). In keyed diffing these are the surviving
+/// children already in relative order, which never need to move.
+/// Patience sorting with predecessor links: O(n log n).
+pub fn lis_flags(xs: [Int]) -> [Bool] {
+  let n = len(xs);
+  let mut tails = tea_filled(n, 0);
+  let mut prev = tea_filled(n, 0 - 1);
+  let mut size = 0;
   let mut i = 0;
-  while i < len(fresh) {
-    let k = key_of(fresh[i]);
-    let j = tea_key_lookup(index, k);
-    if j >= 0 {
-      let live = patch(n, doms[j], old[j], fresh[i], dispatch);
-      tea_put(used, tea_set_at(tea_get(used), j, true));
-      tea_move_to(n, live, i);
-    } else {
-      tea_insert_at(n, create(fresh[i], dispatch), i);
+  while i < n {
+    let x = xs[i];
+    if x >= 0 {
+      let mut lo = 0;
+      let mut hi = size;
+      while lo < hi {
+        let mid = (lo + hi) / 2;
+        if xs[tails[mid]] < x { lo = mid + 1; } else { hi = mid; }
+      }
+      if lo > 0 {
+        prev = tea_set_at(prev, i, tails[lo - 1]);
+      }
+      tails = tea_set_at(tails, lo, i);
+      if lo == size {
+        size = size + 1;
+      }
     }
     i = i + 1;
   }
-  let flags = tea_get(used);
+  let mut flags = tea_filled(n, false);
+  if size > 0 {
+    let mut k = tails[size - 1];
+    while k >= 0 {
+      flags = tea_set_at(flags, k, true);
+      k = prev[k];
+    }
+  }
+  flags
+}
+
+/// Keyed children: reuse the DOM node of each surviving key (patched in
+/// place), create new keys, remove vanished ones, and move as few nodes as
+/// possible — the survivors on a longest increasing subsequence of their old
+/// positions stay put, everything else is inserted before its right-hand
+/// neighbour. A duplicate key is matched once; later duplicates are new.
+fn patch_keyed<M>(n: Node, old: [Html<M>], fresh: [Html<M>], dispatch: M -> Unit) -> Unit {
+  let doms = tea_children(n);
+  let index = tea_key_index(tea_map(old, fn(h) => key_of(h)));
+  let mut claimed = tea_filled(len(old), false);
+  let mut srcs = tea_filled(len(fresh), 0 - 1);
+  let mut i = 0;
+  while i < len(fresh) {
+    let j = tea_key_lookup(index, key_of(fresh[i]));
+    if j >= 0 && !claimed[j] {
+      srcs = tea_set_at(srcs, i, j);
+      claimed = tea_set_at(claimed, j, true);
+    }
+    i = i + 1;
+  }
+  let lives = tea_map(tea_range(len(fresh)), fn(f) =>
+    if srcs[f] >= 0 { patch(n, doms[srcs[f]], old[srcs[f]], fresh[f], dispatch) } else { create(fresh[f], dispatch) });
   let mut j = 0;
   while j < len(old) {
-    if !flags[j] {
+    if !claimed[j] {
       tea_remove(n, doms[j]);
     }
     j = j + 1;
   }
+  let stable = lis_flags(srcs);
+  let mut anchor = n;
+  let mut has_anchor = false;
+  let mut k = len(fresh) - 1;
+  while k >= 0 {
+    let node = lives[k];
+    if srcs[k] < 0 || !stable[k] {
+      if has_anchor { tea_insert_before(n, node, anchor); } else { tea_append(n, node); }
+    }
+    anchor = node;
+    has_anchor = true;
+    k = k - 1;
+  }
 }
 
-/// Opaque string → index map over a list of keys (first occurrence wins).
-pub extern type KeyIndex;
-pub extern fn tea_key_index(keys: [String]) -> KeyIndex;
-/// Index of `k`, or -1.
-pub extern fn tea_key_lookup(ix: KeyIndex, k: String) -> Int;
-/// `xs` with position `i` set to `v` (the host may update in place: the
-/// array never escapes `patch_keyed`).
-pub extern fn tea_set_at<A>(xs: [A], i: Int, v: A) -> [A];
-/// Move `child` (already a child of `parent`) to position `index`, if it is
-/// not there already.
-pub extern fn tea_move_to(parent: Node, child: Node, index: Int) -> Unit;
 
 // ── Runtime ─────────────────────────────────────────────────────────────────
 
@@ -542,5 +636,3 @@ pub fn run<Model, Msg>(
   exec(cmd0, dispatch);
 }
 
-/// `xs` without its first `from` elements.
-pub extern fn tea_slice<A>(xs: [A], from: Int) -> [A];
