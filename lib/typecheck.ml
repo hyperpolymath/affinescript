@@ -1103,7 +1103,55 @@ let rec synth (ctx : context) (expr : expr) : ty result =
        let kinds = List.map (fun (name, (_off, is_f64)) -> (name, is_f64)) layout in
        cell_record_sites := (rec_node, kinds) :: !cell_record_sites
      | _ -> ());
-    Ok (TRecord row)
+    begin match er_spread with
+      | None -> Ok (TRecord row)
+      | Some base ->
+        (* Functional update `#{ ..base, f: v }`: the result has every field
+           of [base], with each explicitly given field replacing the base's
+           (same type — a struct update cannot change a field's type) and
+           any field the base lacks added. The spread used to be ignored, so
+           the result was typed as only the explicit fields and an update
+           could never produce the struct it started from. *)
+        let* base_ty = synth ctx base in
+        let rec follow (r : row) : row =
+          match r with
+          | RVar { contents = RLink r' } -> follow r'
+          | _ -> r
+        in
+        let explicit = List.rev field_tys in
+        let rec closed (r : row) : bool =
+          match follow r with
+          | REmpty -> true
+          | RExtend (_, _, rest) -> closed rest
+          | RVar _ -> false
+        in
+        begin match repr base_ty with
+          | TRecord brow when closed brow ->
+            let rec update_row (r : row) (seen : string list) : (row * string list) result =
+              match follow r with
+              | RExtend (l, t, rest) ->
+                let* () = match List.assoc_opt l explicit with
+                  | Some nt -> unify_or_err t nt
+                  | None -> Ok ()
+                in
+                let* (rest', seen') = update_row rest (l :: seen) in
+                Ok (RExtend (l, t, rest'), seen')
+              | tail -> Ok (tail, seen)
+            in
+            let* (updated, base_labels) = update_row brow [] in
+            let added = List.filter (fun (l, _) -> not (List.mem l base_labels)) explicit in
+            Ok (TRecord (List.fold_right (fun (l, t) acc -> RExtend (l, t, acc)) added updated))
+          | _ ->
+            (* An open or not-yet-known base: it must have the explicitly
+               updated fields (same types), and the result is the base's own
+               type. Extending an open row here would make it contain itself
+               (row occurs check). *)
+            let expected = TRecord (List.fold_right (fun (l, t) acc -> RExtend (l, t, acc))
+                                      explicit (fresh_rowvar ctx.level)) in
+            let* () = unify_or_err base_ty expected in
+            Ok base_ty
+        end
+    end
 
   (* Field access — first try record-field projection, then trait method lookup *)
   | ExprField (obj, { name = field; _ }) as field_node ->
@@ -2198,6 +2246,20 @@ let check_fn_decl (ctx : context) (fd : fn_decl) : unit result =
   Ok ()
 
 (** Register a type declaration in the context. *)
+(** Reserved [name_types] key under which a module records the definition
+    of its type [name], so importers can name the type with its structure
+    (an imported struct's fields; imports otherwise carry only value
+    schemes). The NUL byte keeps it disjoint from every identifier. *)
+let type_def_key (name : string) : string = "\000type:" ^ name
+
+(** Inverse of [type_def_key]: the type name, if [key] is one. *)
+let type_of_def_key (key : string) : string option =
+  let pfx = "\000type:" in
+  let n = String.length pfx in
+  if String.length key > n && String.sub key 0 n = pfx
+  then Some (String.sub key n (String.length key - n))
+  else None
+
 let register_type_decl (ctx : context) (td : type_decl) : unit result =
   let* ty = match td.td_body with
     | TyAlias te ->
@@ -2270,6 +2332,12 @@ let register_type_decl (ctx : context) (td : type_decl) : unit result =
       Ok (TCon td.td_name.name)
   in
   Hashtbl.replace ctx.type_env td.td_name.name ty;
+  (* Export the definition for importers (see [type_def_key]). Only
+     monomorphic definitions: a generic struct/alias body mentions its
+     parameters, which have no meaning outside this declaration. *)
+  if td.td_type_params = [] then
+    Hashtbl.replace ctx.name_types (type_def_key td.td_name.name)
+      { sc_tyvars = []; sc_effvars = []; sc_rowvars = []; sc_body = ty };
   Ok ()
 
 (** Register an effect declaration. *)
@@ -2514,8 +2582,14 @@ let check_program ?(import_types : (string, scheme) Hashtbl.t option)
   ) prog.prog_imports;
   Option.iter (fun tbl ->
     Hashtbl.iter (fun name sc ->
-      Hashtbl.replace ctx.name_types name sc;
-      record_type_arities ctx sc.sc_body) tbl
+      match type_of_def_key name with
+      | Some ty_name ->
+        (* An imported type's definition. Local declarations, registered in
+           the forward pass below, replace it. *)
+        Hashtbl.replace ctx.type_env ty_name sc.sc_body
+      | None ->
+        Hashtbl.replace ctx.name_types name sc;
+        record_type_arities ctx sc.sc_body) tbl
   ) import_types;
   (* Forward pass: register all types, effects, traits, impls, and
      function signatures so that mutually recursive declarations resolve. *)

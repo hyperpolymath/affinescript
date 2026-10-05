@@ -1,0 +1,13 @@
+// SPDX-License-Identifier: MPL-2.0
+// A lambda inside a receiver-first fn: the fn is also synthesised as an
+// (async) class method, and the lambda body must not inherit that async
+// context — `(x) => (await ...)` is a SyntaxError in V8/browsers.
+
+use prelude::*;
+
+struct Box { items: [Int], label: String }
+
+pub fn make() -> Box = Box #{ items: [1, 2, 3], label: "b" };
+
+pub fn describe(b: Box) -> [String] =
+  map(b.items, fn(i) => if i > 1 { b.label } else { "small" });

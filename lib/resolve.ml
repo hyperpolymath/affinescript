@@ -598,6 +598,17 @@ let lookup_source_scheme
   | Some sc -> Some sc
   | None    -> Hashtbl.find_opt source_name_types sym.Symbol.sym_name
 
+(** For an imported type symbol, carry its definition (recorded by the
+    source module under [Typecheck.type_def_key]) so the importer can use the
+    type's structure — e.g. read an imported struct's fields. *)
+let import_type_def ~dest_name_types ~source_name_types
+    (sym : Symbol.symbol) (bound_name : string) : unit =
+  if sym.Symbol.sym_kind = Symbol.SKType then
+    Option.iter (fun sc ->
+      Hashtbl.replace dest_name_types (Typecheck.type_def_key bound_name) sc)
+      (Hashtbl.find_opt source_name_types
+         (Typecheck.type_def_key sym.Symbol.sym_name))
+
 (** Import symbols from a resolved module into the current context.
 
     [dest_name_types] is the destination type checker's name-keyed scheme map;
@@ -621,7 +632,9 @@ let import_resolved_symbols
       Option.iter (fun scheme ->
         Hashtbl.replace dest_types sym.Symbol.sym_id scheme;
         Hashtbl.replace dest_name_types sym.Symbol.sym_name scheme
-      ) (lookup_source_scheme source_types source_name_types sym)
+      ) (lookup_source_scheme source_types source_name_types sym);
+      import_type_def ~dest_name_types ~source_name_types sym
+        sym.Symbol.sym_name
     | _ -> ()  (* Private symbols not imported *)
   ) source_symbols.all_symbols
 
@@ -646,6 +659,7 @@ let import_specific_items
           let alias = Option.map (fun id -> id.name) item.ii_alias in
           let _ = Symbol.register_import dest_symbols sym alias in
           let bound_name = Option.value alias ~default:sym.Symbol.sym_name in
+          import_type_def ~dest_name_types ~source_name_types sym bound_name;
           Option.iter (fun scheme ->
             Hashtbl.replace dest_types sym.Symbol.sym_id scheme;
             Hashtbl.replace dest_name_types bound_name scheme

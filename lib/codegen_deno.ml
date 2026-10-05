@@ -1563,7 +1563,12 @@ let rec gen_expr ctx (expr : expr) : string =
   | ExprContinue _ -> iife ctx "continue;"
   | ExprLambda { elam_params; elam_body; elam_ret_ty = _ } ->
       let ps = List.map (fun (p : param) -> mangle p.p_name.name) elam_params in
-      "((" ^ String.concat ", " ps ^ ") => " ^ gen_expr ctx elam_body ^ ")"
+      (* A lambda is a plain (non-async) arrow, so its body must not inherit
+         the enclosing async context: inside a synthesised (async) method,
+         `(x) => (await ...)` is a SyntaxError in browsers — Bun's parser
+         happens to accept it, which hid the bug. *)
+      "((" ^ String.concat ", " ps ^ ") => "
+      ^ gen_expr { ctx with in_async = false } elam_body ^ ")"
   | ExprTry { et_body; et_catch; et_finally } ->
       gen_try ctx et_body et_catch et_finally
   | ExprVariant (ty, ctor) ->

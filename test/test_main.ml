@@ -16,6 +16,7 @@ let () =
       ("Qualified paths (#228, ADR-014)", Test_qualified_paths.tests);
       ("Generic enum kinds", Test_generic_enum_kinds.tests);
       ("Module search path ($AFFINESCRIPT_PATH)", Test_module_search_path.tests);
+      ("Record update + imported types", Test_records_and_imports.tests);
       ("Module mut (#548)", Test_module_mut.tests);
       ("Int-div on JS-text backend (#478)", Test_int_div_js.tests);
       ("Deno builtins ↔ stdlib decls consistency", Test_deno_builtins_consistency.tests);
