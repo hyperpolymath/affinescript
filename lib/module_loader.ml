@@ -107,7 +107,6 @@ let discover_stdlib () =
         if user_share <> "" && stdlib_dir_valid user_share then user_share
         else "./stdlib"  (* preserves the historical default error path *)
 
-(** Create default configuration *)
 (** Directories listed in [$AFFINESCRIPT_PATH] (colon-separated, empty
     entries ignored): where third-party packages such as affinescript-tea
     live. Searched after the current directory and the stdlib. *)
@@ -116,6 +115,10 @@ let env_search_paths () : string list =
   | None -> []
   | Some v -> List.filter (fun d -> d <> "") (String.split_on_char ':' v)
 
+(** Create a configuration using the discovered stdlib, [$AFFINESCRIPT_PATH]
+    and the current working directory.
+
+    @raise Sys_error if the current working directory cannot be obtained. *)
 let default_config () : config =
   {
     stdlib_path = discover_stdlib ();
@@ -276,7 +279,17 @@ let clear_cache (loader : t) : unit =
     Glob/glob collisions are rejected by the resolver before code generation;
     this function retains the same last-import policy as a defensive fallback
     for callers that flatten an already-loaded program directly. Local decls
-    in [prog.prog_decls] always win over imported ones. *)
+    in [prog.prog_decls] always win over imported ones.
+
+    Selective imports also carry referenced helpers, including private ones,
+    and their enum dependencies. Public enums named by type or constructor
+    are included; enums containing only [Some], [None], [Ok] and [Err] are
+    excluded from this direct selection because the runtime supplies them.
+
+    [cache] memoises flattened dependencies for this traversal and is updated
+    in place. [visiting] lists module paths already being traversed; a cycle
+    uses the cached module's original declarations without further recursion.
+    Imported declarations are prepended; [prog.prog_imports] is retained. *)
 let rec flatten_imports_from
     (cache : (string list, program) Hashtbl.t)
     (visiting : string list list) (loader : t)
@@ -522,6 +535,8 @@ let rec flatten_imports_from
   { prog with prog_decls = imported_decls @ prog.prog_decls }
 
 (** Inline the declarations [prog]'s imports need (transitively) into [prog],
-    for the backends that compile one flattened program. *)
+    for the backends that compile one flattened program. Uses only modules
+    already loaded in [loader]; missing modules are silently skipped.
+    See [flatten_imports_from] for selection and name precedence. *)
 let flatten_imports (loader : t) (prog : program) : program =
   flatten_imports_from (Hashtbl.create 8) [] loader prog

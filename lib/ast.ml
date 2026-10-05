@@ -541,19 +541,6 @@ let fn_body_contains_return : fn_body -> bool = function
   | FnExpr e -> expr_contains_return e
   | FnBlock b -> block_contains_return b
 
-(** Free variables of an expression.
-
-    Returns the names used in [expr] but not bound within it; [bound_vars]
-    lists the names already bound by the enclosing scope (parameters, let
-    bindings).
-
-    Shared by every pass that needs to know what a body refers to: wasm
-    codegen, and [Module_loader]'s `use`-list flattening, which uses it to
-    pull in helpers a selective import never names (`use Dom::{div}` needs
-    `div`'s own helper `h`; omitting it emitted a module that called an
-    undefined `h`). Like the other walkers in this module it is deliberately
-    conservative: constructs it does not inspect contribute [] rather than a
-    wrong answer. *)
 (** Variables bound by a pattern. *)
 let rec pattern_binders (pat : pattern) : string list =
   match pat with
@@ -570,6 +557,20 @@ let rec pattern_binders (pat : pattern) : string list =
   | PatOr (p1, p2) -> pattern_binders p1 @ pattern_binders p2
   | PatAs (id, pat) -> id.name :: pattern_binders pat
 
+(** Free variables of an expression.
+
+    Returns the names used in [expr] but not bound within it; [bound_vars]
+    lists the names already bound by the enclosing scope (parameters, let
+    bindings).
+
+    Shared by every pass that needs to know what a body refers to: wasm
+    codegen, and [Module_loader]'s `use`-list flattening, which uses it to
+    pull in helpers a selective import never names (`use Dom::{div}` needs
+    `div`'s own helper `h`; omitting it emitted a module that called an
+    undefined `h`). Like the other walkers in this module it is deliberately
+    partial: unhandled constructs, record spreads, shorthand record fields
+    and qualified constructors contribute no names. The result may contain
+    duplicates. *)
 let rec find_free_vars (bound_vars : string list) (expr : expr) : string list =
   match expr with
   | ExprLit _ -> []

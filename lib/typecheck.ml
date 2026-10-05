@@ -295,6 +295,9 @@ let unify_eff_or_err (e1 : eff) (e2 : eff) : unit result =
 
 (** {1 Context management} *)
 
+(** Create an empty typing context sharing [symbols], with fresh inference
+    state and registries. Builtins are installed separately by
+    [register_builtins]. *)
 let create_context (symbols : Symbol.t) : context =
   {
     var_types = Hashtbl.create 128;
@@ -448,6 +451,10 @@ let lookup_var (ctx : context) (name : string) : ty result =
 
 (** {1 Kind checking} *)
 
+(** Infer a kind using builtin kinds and user arities recorded in [ctx].
+    Unregistered type names and unbound variables default to [KType].
+    Applications return the remaining kind after consuming their arguments;
+    argument kind mismatches and over-application return [NotImplemented]. *)
 let rec infer_kind (ctx : context) (ty : ty) : kind result =
   match repr ty with
   | TVar r ->
@@ -886,7 +893,13 @@ let record_cell_layout (row : row) : (string * (int * bool)) list option =
 
 (** {1 Expression synthesis (mode ⇒)} *)
 
-(** Synthesize a type for an expression. *)
+(** Synthesise an expression's type, updating inference state and recording
+    sites for later elaboration. Zero-parameter lambdas have type [Unit -> T].
+    Record updates unify replaced fields with their existing types and add
+    new fields to closed rows; an open base is constrained to contain the
+    updated fields and retains its type. Typing and unification errors are
+    returned; annotation lowering can propagate [Module_resolution_error]
+    or [Effect_validation_error]. *)
 let rec synth (ctx : context) (expr : expr) : ty result =
   match expr with
   (* Literals *)
@@ -1640,7 +1653,11 @@ and check_stmt (ctx : context) (stmt : stmt) : unit result =
 
 (** {1 Checking mode (mode ⇐)} *)
 
-(** Check that an expression has the expected type. *)
+(** Check that an expression has the expected type, constraining inference
+    variables in place. A zero-parameter lambda checked against an arrow
+    requires a [Unit] argument and checks its body against the return type.
+    Returns typing or unification errors and propagates annotation-lowering
+    exceptions as in [synth]. *)
 and check (ctx : context) (expr : expr) (expected : ty) : unit result =
   match expr with
   (* Lambda against arrow type: check mode is more precise.
@@ -2109,7 +2126,13 @@ let register_builtins (ctx : context) : unit =
              TApp (TCon "Cmd", [cmd_tv2]),
              EPure))
 
-(** Check a top-level function declaration. *)
+(** Check a top-level function's signature and body, then bind its generalised
+    scheme in [ctx]. Externs register their signature without a body check.
+    On success, parameter and body-local names do not escape into the module.
+    Kind, body and unification errors are returned; inferred effects outside
+    an explicit effect row return [EffectNotDeclared]. Annotation lowering
+    can raise [Module_resolution_error] or [Effect_validation_error].
+    An error may leave partially updated context state. *)
 let check_fn_decl (ctx : context) (fd : fn_decl) : unit result =
   (* #135 slice 7: register the explicit `<T>` type parameters as fresh,
      generalizable unification variables before lowering param/return
@@ -2245,14 +2268,14 @@ let check_fn_decl (ctx : context) (fd : fn_decl) : unit result =
   restore_tp ();
   Ok ()
 
-(** Register a type declaration in the context. *)
 (** Reserved [name_types] key under which a module records the definition
     of its type [name], so importers can name the type with its structure
     (an imported struct's fields; imports otherwise carry only value
     schemes). The NUL byte keeps it disjoint from every identifier. *)
 let type_def_key (name : string) : string = "\000type:" ^ name
 
-(** Inverse of [type_def_key]: the type name, if [key] is one. *)
+(** Extract the non-empty type name from a [type_def_key] key, or [None]
+    if the prefix is absent or the name is empty. *)
 let type_of_def_key (key : string) : string option =
   let pfx = "\000type:" in
   let n = String.length pfx in
@@ -2260,6 +2283,11 @@ let type_of_def_key (key : string) : string option =
   then Some (String.sub key n (String.length key - n))
   else None
 
+(** Register a type definition and any enum constructor schemes in [ctx].
+    Parametric enums and extern types record their arities; declarations
+    without type parameters also export a definition under [type_def_key].
+    Returns kind-checking errors. Annotation lowering can propagate
+    [Module_resolution_error] or [Effect_validation_error]. *)
 let register_type_decl (ctx : context) (td : type_decl) : unit result =
   let* ty = match td.td_body with
     | TyAlias te ->
@@ -2533,11 +2561,13 @@ let populate_call_effects (ctx : context) (prog : Ast.program) : unit =
     ctx.call_effects;
   Effect_sites.set_async_by_ord async_tbl
 
-(** Learn the arity of every parametric type constructor applied in [ty]
+(** Record previously unknown arities of type constructors applied in [ty]
     (e.g. `Html<M>` in an imported `text : String -> Html<M>`). Imported
     schemes are the only cross-module type information [check_program]
     receives, so this is how an imported `enum Html<M>` gets kind
-    `Type -> Type` in the importer. Builtins keep their fixed kinds. *)
+    `Type -> Type` in the importer. Builtins keep their fixed kinds, and
+    existing entries in [ctx.type_arity] are preserved. Row variables are
+    not followed, including linked row variables. *)
 let rec record_type_arities (ctx : context) (ty : ty) : unit =
   let go = record_type_arities ctx in
   let rec go_row = function
@@ -2560,6 +2590,14 @@ let rec record_type_arities (ctx : context) (ty : ty) : unit =
   | TRef t | TMut t | TOwn t -> go t
   | TVar _ | TCon _ -> ()
 
+(** Check declarations, trait coherence and quantities in a fresh context.
+    [import_types] supplies value schemes and definitions keyed by
+    [type_def_key]; local declarations can replace imported bindings.
+    Generic extern signatures are generalised before bodies are checked.
+    On success, returns the context and publishes call-effect information
+    through [Effect_sites]. Typing also records sites for later elaboration.
+    Returns the first error encountered, converting [Effect_validation_error]
+    and [Module_resolution_error] to [UnknownEffect] and [UnknownModule]. *)
 let check_program ?(import_types : (string, scheme) Hashtbl.t option)
     (symbols : Symbol.t) (prog : Ast.program)
     : (context, type_error) Result.t =
