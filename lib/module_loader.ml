@@ -281,8 +281,11 @@ let clear_cache (loader : t) : unit =
     for callers that flatten an already-loaded program directly. Local decls
     in [prog.prog_decls] always win over imported ones.
 
-    Selective imports also carry referenced helpers, including private ones,
-    and their enum dependencies. Public enums named by type or constructor
+    Selective imports carry referenced helpers, including private ones, when
+    [find_free_vars] detects them. That walker is partial: dependencies
+    referenced only in record spreads, shorthand record fields or qualified
+    constructors may be omitted. Public enums named directly by type or
+    constructor in a selective import
     are included; enums containing only [Some], [None], [Ok] and [Err] are
     excluded from this direct selection because the runtime supplies them.
 
