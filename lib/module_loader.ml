@@ -277,7 +277,8 @@ let clear_cache (loader : t) : unit =
     this function retains the same last-import policy as a defensive fallback
     for callers that flatten an already-loaded program directly. Local decls
     in [prog.prog_decls] always win over imported ones. *)
-let flatten_imports (loader : t) (prog : program) : program =
+let rec flatten_imports_from (visiting : string list list) (loader : t)
+    (prog : program) : program =
   (* Local-decl names suppress same-named imports of any kind. *)
   let local_name_list =
     List.filter_map (function
@@ -310,7 +311,16 @@ let flatten_imports (loader : t) (prog : program) : program =
       in
       match Hashtbl.find_opt loader.loaded mod_path with
       | None -> ()
-      | Some lm ->
+      | Some lm0 ->
+        (* Flatten the imported module's own imports first, so the closure
+           below can reach what *it* uses from other modules: `Nav` importing
+           `Router.on_url_change`, whose body calls `Tea.subs`, emitted an
+           undefined `subs`. [visiting] stops an import cycle. *)
+        let lm =
+          if List.mem mod_path visiting then lm0
+          else { lm0 with mod_program =
+                   flatten_imports_from (mod_path :: visiting) loader lm0.mod_program }
+        in
         let public_decls = List.filter_map (fun decl ->
           match decl with
           | TopFn fd when fd.fd_vis = Public || fd.fd_vis = PubCrate ->
@@ -498,3 +508,8 @@ let flatten_imports (loader : t) (prog : program) : program =
      Re-introducing type-carrying for *user-defined* cross-module enums would
      need per-backend constructor dedup first. *)
   { prog with prog_decls = imported_decls @ prog.prog_decls }
+
+(** Inline the declarations [prog]'s imports need (transitively) into [prog],
+    for the backends that compile one flattened program. *)
+let flatten_imports (loader : t) (prog : program) : program =
+  flatten_imports_from [] loader prog
