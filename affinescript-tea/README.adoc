@@ -132,15 +132,16 @@ export AFFINESCRIPT_PATH=/path/to/affinescript/affinescript-tea/src
 affinescript compile --bun-esm App.affine -o app.bun.js
 ----
 
-Then serve a page that loads the host before the app:
+Then serve a page that loads the host before the app. The Bun-ESM backend
+runs a module's `main` when the module is loaded, so the page only imports
+it. Calling `main()` again would mount a second instance on the same root.
 
 [source,html]
 ----
 <div id="root"></div>
 <script type="module">
   import "./tea_host.js";
-  import { main } from "./app.bun.js";
-  main();
+  import "./app.bun.js";
 </script>
 ----
 

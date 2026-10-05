@@ -42,7 +42,7 @@ beforeAll(async () => {
   writeFileSync(
     join(site, "index.html"),
     `<!doctype html><meta charset="utf-8"><title>todo</title><div id="root"></div>
-<script type="module">import "./tea_host.js"; import { main } from "./todo.bun.js"; main();</script>`,
+<script type="module">import "./tea_host.js"; import "./todo.bun.js";</script>`,
   );
   server = Bun.serve({
     port: 0,
@@ -150,6 +150,11 @@ test("a subscription starts and stops with the model", async () => {
   const stopped = Number(await page.textContent("#ticks"));
   await page.waitForTimeout(150);
   expect(Number(await page.textContent("#ticks"))).toBe(stopped);
+});
+
+test("exactly one app instance is mounted", async () => {
+  expect(await page.$$eval("#app", (els) => els.length)).toBe(1);
+  expect(await page.$$eval("h1", (els) => els.length)).toBe(1);
 });
 
 test("no runtime errors were reported", () => {
