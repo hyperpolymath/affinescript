@@ -277,7 +277,9 @@ let clear_cache (loader : t) : unit =
     this function retains the same last-import policy as a defensive fallback
     for callers that flatten an already-loaded program directly. Local decls
     in [prog.prog_decls] always win over imported ones. *)
-let rec flatten_imports_from (visiting : string list list) (loader : t)
+let rec flatten_imports_from
+    (cache : (string list, program) Hashtbl.t)
+    (visiting : string list list) (loader : t)
     (prog : program) : program =
   (* Local-decl names suppress same-named imports of any kind. *)
   let local_name_list =
@@ -318,8 +320,18 @@ let rec flatten_imports_from (visiting : string list list) (loader : t)
            undefined `subs`. [visiting] stops an import cycle. *)
         let lm =
           if List.mem mod_path visiting then lm0
-          else { lm0 with mod_program =
-                   flatten_imports_from (mod_path :: visiting) loader lm0.mod_program }
+          else
+            (* Memoised per flatten call: a module shared by several import
+               paths (a diamond) is flattened once, not once per path. *)
+            let flat = match Hashtbl.find_opt cache mod_path with
+              | Some p -> p
+              | None ->
+                let p = flatten_imports_from cache (mod_path :: visiting) loader
+                    lm0.mod_program in
+                Hashtbl.replace cache mod_path p;
+                p
+            in
+            { lm0 with mod_program = flat }
         in
         let public_decls = List.filter_map (fun decl ->
           match decl with
@@ -512,4 +524,4 @@ let rec flatten_imports_from (visiting : string list list) (loader : t)
 (** Inline the declarations [prog]'s imports need (transitively) into [prog],
     for the backends that compile one flattened program. *)
 let flatten_imports (loader : t) (prog : program) : program =
-  flatten_imports_from [] loader prog
+  flatten_imports_from (Hashtbl.create 8) [] loader prog
