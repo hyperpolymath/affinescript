@@ -122,9 +122,11 @@ jobs:
         # input, async commands, keyed reorder preserving DOM-node identity,
         # subscriptions. Playwright is pinned in e2e/bun.lock.
         working-directory: affinescript-tea/e2e
+        # `bun x`, not `bunx`: the digest-verified Bun release zip that
+        # scripts/install-bun.sh installs ships only the `bun` binary.
         run: |
-          bun install --frozen-lockfile
-          bunx --no-install --bun playwright install --with-deps chromium
+          bun install --frozen-lockfile --ignore-scripts
+          bun x --no-install --bun playwright install --with-deps chromium
           opam exec -- bun test --timeout 60000
       - name: affinescript-router + affinescript-crdt tests
         # Router.affine's pure functions and Crdt.affine's property tests
@@ -134,7 +136,7 @@ jobs:
           opam exec -- bun test affinescript-router/test
           opam exec -- bun test affinescript-crdt/test
           cd affinescript-router/e2e
-          bun install --frozen-lockfile
+          bun install --frozen-lockfile --ignore-scripts
           opam exec -- bun test --timeout 60000
       - name: Run face-transformer regression tests
         run: opam exec -- ./tools/run_face_transformer_tests.sh
