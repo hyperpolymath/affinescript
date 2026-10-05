@@ -2199,12 +2199,15 @@ let check_fn_decl (ctx : context) (fd : fn_decl) : unit result =
   ) param_tys fd.fd_params ret_ty in
   (* Bind the function name (allows recursion) *)
   bind_var ctx fd.fd_name.name fn_ty;
+  (* Everything the body binds — parameters and block-local `let`s — is
+     scoped to it. Only parameters used to be restored, so a local
+     `let node = ...` overwrote the module-level `node` in [name_types],
+     and importers saw the local's type as the module's export. Snapshot
+     here and restore the whole table after the body. *)
+  let scope_snapshot = Hashtbl.copy ctx.name_types in
   (* Bind parameters *)
-  let old = List.map2 (fun (p : param) ty ->
-    let old = Hashtbl.find_opt ctx.name_types p.p_name.name in
-    bind_var ctx p.p_name.name ty;
-    (p.p_name.name, old)
-  ) fd.fd_params param_tys in
+  List.iter2 (fun (p : param) ty -> bind_var ctx p.p_name.name ty)
+    fd.fd_params param_tys;
   (* issue #59 — effect inference spine: infer this body's effect row
      into a fresh accumulator, then (only if a row was explicitly
      declared) require the inferred row to be a subset of it. An
@@ -2219,12 +2222,9 @@ let check_fn_decl (ctx : context) (fd : fn_decl) : unit result =
     | FnExpr e ->
       check ctx e ret_ty
   end in
-  (* Restore parameter bindings *)
-  List.iter (fun (n, old_sc) ->
-    match old_sc with
-    | Some sc -> Hashtbl.replace ctx.name_types n sc
-    | None -> Hashtbl.remove ctx.name_types n
-  ) old;
+  (* Restore every binding the body introduced (see [scope_snapshot]). *)
+  Hashtbl.reset ctx.name_types;
+  Hashtbl.iter (fun n sc -> Hashtbl.replace ctx.name_types n sc) scope_snapshot;
   let inferred_eff = ctx.current_eff in
   ctx.current_eff <- saved_eff;
   let* () =
