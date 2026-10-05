@@ -74,6 +74,15 @@ pub extern fn ev_shift(e: Event) -> Bool;
 pub extern fn ev_meta(e: Event) -> Bool;
 pub extern fn ev_time(e: Event) -> Float;
 pub extern fn ev_target_is_self(e: Event) -> Bool;
+/// Pointer position relative to the element the handler is bound to.
+pub extern fn ev_local_x(e: Event) -> Float;
+pub extern fn ev_local_y(e: Event) -> Float;
+/// Whether the event's target is a text field or contenteditable (global
+/// shortcuts usually ignore keys typed into one).
+pub extern fn ev_target_editable(e: Event) -> Bool;
+/// The viewport (window) size in CSS pixels.
+pub extern fn tea_viewport_width() -> Float;
+pub extern fn tea_viewport_height() -> Float;
 pub extern fn ev_prevent(e: Event) -> Unit;
 pub extern fn ev_stop(e: Event) -> Unit;
 

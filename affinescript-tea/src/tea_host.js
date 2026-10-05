@@ -185,6 +185,10 @@ install({
     SUBS.get(key)?.stop();
     SUBS.delete(key);
   },
+  /** Viewport width in CSS pixels. */
+  tea_viewport_width: () => window.innerWidth,
+  /** Viewport height in CSS pixels. */
+  tea_viewport_height: () => window.innerHeight,
   /** Report a runtime problem (never thrown into the app). */
   tea_report: (context, message) => console.error(`[tea] ${context}: ${message}`),
 });
@@ -214,6 +218,17 @@ install({
   ev_time: (e) => e.timeStamp ?? performance.now(),
   /** Whether the event originated on the element the handler is bound to. */
   ev_target_is_self: (e) => e.target === e.currentTarget,
+  /** Pointer x relative to the handler's element (its bounding box). */
+  ev_local_x: (e) => (e.clientX ?? 0) - (e.currentTarget?.getBoundingClientRect?.().left ?? 0),
+  /** Pointer y relative to the handler's element (its bounding box). */
+  ev_local_y: (e) => (e.clientY ?? 0) - (e.currentTarget?.getBoundingClientRect?.().top ?? 0),
+  /** Whether the target is a text input, textarea, select or contenteditable. */
+  ev_target_editable: (e) => {
+    const t = e.target;
+    if (!t || !t.tagName) return false;
+    const tag = t.tagName.toLowerCase();
+    return tag === "input" || tag === "textarea" || tag === "select" || Boolean(t.isContentEditable);
+  },
   /** `preventDefault()`. */
   ev_prevent: (e) => e.preventDefault?.(),
   /** `stopPropagation()`. */
