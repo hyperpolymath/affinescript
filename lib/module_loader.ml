@@ -108,10 +108,18 @@ let discover_stdlib () =
         else "./stdlib"  (* preserves the historical default error path *)
 
 (** Create default configuration *)
+(** Directories listed in [$AFFINESCRIPT_PATH] (colon-separated, empty
+    entries ignored): where third-party packages such as affinescript-tea
+    live. Searched after the current directory and the stdlib. *)
+let env_search_paths () : string list =
+  match Sys.getenv_opt "AFFINESCRIPT_PATH" with
+  | None -> []
+  | Some v -> List.filter (fun d -> d <> "") (String.split_on_char ':' v)
+
 let default_config () : config =
   {
     stdlib_path = discover_stdlib ();
-    search_paths = [];
+    search_paths = env_search_paths ();
     current_dir = Sys.getcwd ();
   }
 
