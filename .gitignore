@@ -117,3 +117,7 @@ tools/vendor/
 /.claude/worktrees/
 
 .editorconfig
+
+# affinescript-tea browser test deps
+/affinescript-tea/e2e/node_modules/
+/affinescript-router/e2e/node_modules/

@@ -1,0 +1,13 @@
+{
+  "name": "affinescript-tea-e2e",
+  "private": true,
+  "type": "module",
+  "description": "Browser tests for the AffineScript TEA runtime (Tea.affine + tea_host.js).",
+  "scripts": {
+    "test": "bun test --timeout 60000",
+    "browsers": "playwright install --with-deps chromium"
+  },
+  "devDependencies": {
+    "playwright": "1.62.1"
+  }
+}

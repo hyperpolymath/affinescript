@@ -1,0 +1,105 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// Todo — the affinescript-tea reference application, and the program the
+// browser test suite (../../e2e) drives: a keyed list (add, toggle, delete,
+// move to top), a controlled input submitted with Enter, a command that
+// dispatches later, and a subscription that is switched on and off by the
+// model.
+
+module Todo;
+
+use prelude::*;
+use Tea::{Html, Attr, Cmd, Sub, Event, run, text, div, span, button, input, ul, li, h1, p,
+          class, id, value, key, attr, lazy, on_click, on_input, on_enter, on_check, none, send,
+          every, no_sub, tea_map, tea_filter, run_cmd, tea_defer};
+
+pub struct Item { id: Int, title: String, done: Bool }
+
+pub struct Model { items: [Item], draft: String, next_id: Int, ticking: Bool, ticks: Int, notice: String }
+
+pub enum Msg {
+  Draft(String),
+  Add,
+  Toggle(Int),
+  Remove(Int),
+  ToTop(Int),
+  SetTicking(Bool),
+  Tick(Float),
+  Notice(String)
+}
+
+pub fn init() -> (Model, Cmd<Msg>) =
+  (Model #{ items: [], draft: "", next_id: 1, ticking: false, ticks: 0, notice: "" },
+   send(Msg::Notice("ready")));
+
+fn with_items(m: Model, items: [Item]) -> Model =
+  Model #{ items: items, draft: m.draft, next_id: m.next_id, ticking: m.ticking, ticks: m.ticks, notice: m.notice };
+
+fn toggled(it: Item, target: Int) -> Item =
+  if it.id == target { Item #{ id: it.id, title: it.title, done: !it.done } } else { it };
+
+pub fn update(msg: Msg, m: Model) -> (Model, Cmd<Msg>) {
+  match msg {
+    Msg::Draft(s) =>
+      (Model #{ items: m.items, draft: s, next_id: m.next_id, ticking: m.ticking, ticks: m.ticks, notice: m.notice }, none()),
+    Msg::Add => {
+      if m.draft == "" {
+        return (m, none());
+      }
+      let item = Item #{ id: m.next_id, title: m.draft, done: false };
+      (Model #{ items: m.items ++ [item], draft: "", next_id: m.next_id + 1, ticking: m.ticking,
+                ticks: m.ticks, notice: m.notice },
+       // A command that dispatches asynchronously, after this update.
+       run_cmd(fn(dispatch) => tea_defer(fn() => dispatch(Msg::Notice("added " ++ item.title)))))
+    },
+    Msg::Toggle(target) => (with_items(m, tea_map(m.items, fn(it) => toggled(it, target))), none()),
+    Msg::Remove(target) => (with_items(m, tea_filter(m.items, fn(it) => it.id != target)), none()),
+    Msg::ToTop(target) => {
+      let picked = tea_filter(m.items, fn(it) => it.id == target);
+      let rest = tea_filter(m.items, fn(it) => it.id != target);
+      (with_items(m, picked ++ rest), none())
+    },
+    Msg::SetTicking(on) =>
+      (Model #{ items: m.items, draft: m.draft, next_id: m.next_id, ticking: on, ticks: m.ticks, notice: m.notice }, none()),
+    Msg::Tick(_) =>
+      (Model #{ items: m.items, draft: m.draft, next_id: m.next_id, ticking: m.ticking, ticks: m.ticks + 1, notice: m.notice }, none()),
+    Msg::Notice(s) =>
+      (Model #{ items: m.items, draft: m.draft, next_id: m.next_id, ticking: m.ticking, ticks: m.ticks, notice: s }, none())
+  }
+}
+
+fn view_item(it: Item) -> Html<Msg> {
+  let sid = int_to_string(it.id);
+  li([key(sid), class(if it.done { "item done" } else { "item" }), attr("data-id", sid)], [
+    input([attr("type", "checkbox"), attr("aria-label", "done " ++ it.title),
+           Attr::Property("checked", if it.done { "true" } else { "false" }), on_check(fn(b) => Msg::Toggle(it.id))]),
+    span([class("title")], [text(it.title)]),
+    button([class("top"), on_click(Msg::ToTop(it.id))], [text("top")]),
+    button([class("remove"), on_click(Msg::Remove(it.id))], [text("x")])
+  ])
+}
+
+pub fn view(m: Model) -> Html<Msg> =
+  div([id("app")], [
+    h1([], [text("Todo")]),
+    input([id("draft"), attr("placeholder", "What needs doing?"), value(m.draft),
+           on_input(fn(s) => Msg::Draft(s)), on_enter(Msg::Add)]),
+    button([id("add"), on_click(Msg::Add)], [text("add")]),
+    // Memoised rows: a row is rebuilt only when its id, title or done flag
+    // changes (the keyed reorder test moves memoised rows).
+    ul([id("items")], tea_map(m.items, fn(it) =>
+      lazy(int_to_string(it.id), int_to_string(it.id) ++ "|" ++ it.title ++ "|" ++ (if it.done { "1" } else { "0" }),
+           fn() => view_item(it)))),
+    p([id("count")], [text(int_to_string(len(tea_filter(m.items, fn(it) => !it.done)))
+                           ++ " left")]),
+    button([id("tick"), on_click(Msg::SetTicking(!m.ticking))],
+           [text(if m.ticking { "stop" } else { "start" })]),
+    span([id("ticks")], [text(int_to_string(m.ticks))]),
+    p([id("notice")], [text(m.notice)])
+  ]);
+
+pub fn subscriptions(m: Model) -> Sub<Msg> =
+  if m.ticking { every(20, fn(t) => Msg::Tick(t)) } else { no_sub() };
+
+pub fn main() -> Unit = run("#root", init(), update, view, subscriptions);
