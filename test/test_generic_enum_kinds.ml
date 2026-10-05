@@ -73,6 +73,11 @@ let parametric_extern_type () =
      pub extern fn cell_new<T>(v: T) -> Cell<T>;\n\
      pub fn mk() -> Cell<Int> = cell_new(1);\n"
 
+let generic_extern_used_before_declaration () =
+  passes
+    "pub fn both() -> Bool { let a = mk(1); let b = mk(true); b[0] }\n\
+     pub extern fn mk<A>(v: A) -> [A];\n"
+
 (* Planted negative: the kind check must still reject over-application. *)
 let over_application_still_rejected () =
   fails_with ~needle:"Too many arguments for kind"
@@ -103,6 +108,8 @@ let tests =
     Alcotest.test_case "two-parameter enum" `Quick two_parameter_enum;
     Alcotest.test_case "function payload" `Quick function_payload;
     Alcotest.test_case "parametric extern type" `Quick parametric_extern_type;
+    Alcotest.test_case "generic extern used before declaration" `Quick
+      generic_extern_used_before_declaration;
     Alcotest.test_case "over-application still rejected" `Quick
       over_application_still_rejected;
     Alcotest.test_case "imported enum kind" `Quick imported_enum_kind;
