@@ -83,6 +83,14 @@ let imported_struct_unknown_field_rejected () =
   | Ok () -> Alcotest.fail "expected unknown field to be rejected"
   | Error _ -> ()
 
+(* A function-local binding must not replace the module-level binding of
+   the same name in what importers see. *)
+let local_binding_does_not_shadow_export () =
+  let dir = module_dir "Shadow"
+      "module Shadow;\npub fn node(x: Int) -> Int = x + 1;\n\
+       pub fn uses() -> Bool { let node = true; node }\n" in
+  passes ~dir "use Shadow::{node};\npub fn f() -> Int = node(41);\n"
+
 let tests =
   [
     Alcotest.test_case "update keeps struct type" `Quick update_keeps_struct_type;
@@ -93,4 +101,6 @@ let tests =
     Alcotest.test_case "imported struct fields" `Quick imported_struct_fields;
     Alcotest.test_case "imported struct unknown field rejected" `Quick
       imported_struct_unknown_field_rejected;
+    Alcotest.test_case "local binding does not shadow export" `Quick
+      local_binding_does_not_shadow_export;
   ]
