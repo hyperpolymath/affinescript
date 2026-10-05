@@ -447,6 +447,33 @@ let flatten_imports (loader : t) (prog : program) : program =
               (fun (n, dk) -> (bound_name_of n, rename_decl (bound_name_of n) dk))
               (direct @ extras)
         in
+        (* Public enums the importer names directly. A constructor in the
+           import list (`use Geometry::{Up, Down}`) or a type name the
+           importer constructs was only carried when some carried *function*
+           happened to construct it, so `Some(Up)` in the importer compiled
+           to a reference to an undefined `Up`. Enums made only of the
+           preamble's Option/Result constructors are never carried (every
+           non-Wasm backend's runtime preamble already defines those). *)
+        let preamble_only = [ "Some"; "None"; "Ok"; "Err" ] in
+        let public_enums = List.filter_map (fun decl ->
+          match decl with
+          | TopType ({ td_body = TyEnum variants; _ } as td)
+            when (td.td_vis = Public || td.td_vis = PubCrate)
+                 && List.exists (fun (vd : variant_decl) ->
+                      not (List.mem vd.vd_name.name preamble_only)) variants ->
+            Some (td.td_name.name,
+                  List.map (fun (vd : variant_decl) -> vd.vd_name.name) variants,
+                  decl)
+          | _ -> None) lm.mod_program.prog_decls in
+        let named = match imp with
+          | ImportList (_, items) ->
+            List.filter (fun (ty, ctors, _) ->
+              List.exists (fun item ->
+                let n = item.ii_name.name in n = ty || List.mem n ctors) items)
+              public_enums
+          | ImportSimple _ | ImportGlob _ -> public_enums
+        in
+        List.iter (fun (ty, _, decl) -> add_imported ty (`Type decl)) named;
         List.iter (fun (name, decl_kind) -> add_imported name decl_kind) select
     ) prog.prog_imports;
   let imported_decls =
