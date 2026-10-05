@@ -1887,11 +1887,16 @@ and gen_stmt ctx (stmt : stmt) : string =
        | _ -> ());
       js
   | StmtWhile (cond, body) ->
-      "while (" ^ gen_expr ctx cond ^ ") { "
-      ^ String.concat " " (List.map (gen_stmt ctx) body.blk_stmts)
-      ^ (match body.blk_expr with
-         | Some e -> " " ^ gen_stmt_expr ctx e | None -> "")
-      ^ " }"
+      (* Generate strictly in source order: OCaml evaluates `^` operands
+         right to left, which generated the block's tail before its
+         statements — so int-tracking (#478) saw the tail's assignments
+         before the `let`s they depend on, and `(lo + hi) / 2` lost its
+         truncation. *)
+      let cond_js = gen_expr ctx cond in
+      let stmts_js = String.concat " " (List.map (gen_stmt ctx) body.blk_stmts) in
+      let tail_js = match body.blk_expr with
+        | Some e -> " " ^ gen_stmt_expr ctx e | None -> "" in
+      "while (" ^ cond_js ^ ") { " ^ stmts_js ^ tail_js ^ " }"
   | StmtFor (pat, iter, body) ->
       (* The iterable is evaluated in the outer scope, so emit it first. *)
       let iter_str = gen_expr ctx iter in
@@ -1911,9 +1916,11 @@ and gen_stmt ctx (stmt : stmt) : string =
         | _ -> fun () -> ()
       in
       let body_js =
-        String.concat " " (List.map (gen_stmt ctx) body.blk_stmts)
-        ^ (match body.blk_expr with
-           | Some e -> " " ^ gen_stmt_expr ctx e | None -> "")
+        (* Source order (see StmtWhile): statements before the tail. *)
+        let stmts_js = String.concat " " (List.map (gen_stmt ctx) body.blk_stmts) in
+        let tail_js = match body.blk_expr with
+          | Some e -> " " ^ gen_stmt_expr ctx e | None -> "" in
+        stmts_js ^ tail_js
       in
       restore ();
       "for (const " ^ pat_str ^ " of " ^ iter_str ^ ") { " ^ body_js ^ " }"

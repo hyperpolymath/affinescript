@@ -2616,6 +2616,17 @@ let check_program ?(import_types : (string, scheme) Hashtbl.t option)
       Ok ()
     | _ -> Ok ()
   ) (Ok ()) prog.prog_decls in
+  (* Extern functions are fully described by their signatures, so register
+     their generalised schemes now (after every type is known) rather than
+     the fresh monomorphic placeholder above: a generic extern used before
+     its declaration otherwise had its type fixed by the first use, and a
+     second instantiation failed (`TypeMismatch (Int, Bool)`). *)
+  let* () = List.fold_left (fun acc decl ->
+    let* () = acc in
+    match decl with
+    | TopFn fd when fd.fd_body = FnExtern -> check_fn_decl ctx fd
+    | _ -> Ok ()
+  ) (Ok ()) prog.prog_decls in
   (* #559: trait coherence — now that every impl is registered, reject
      overlapping impls of the same trait (self types that unify). Done before
      the check pass so an ambiguous instance base is reported up front. *)
