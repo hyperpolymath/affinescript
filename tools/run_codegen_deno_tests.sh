@@ -31,7 +31,10 @@ compile_failures=()
 for src in "$TEST_DIR"/*.affine; do
   out="${src%.affine}.bun.js"
   echo "Compiling $(basename "$src") -> $(basename "$out")"
-  if ! "${COMPILE_CMD[@]}" "$src" -o "$out" --bun-esm; then
+  # The corpus directory is on the module path so multi-module fixtures
+  # (e.g. imported_ctor + DirLib) resolve their sibling modules.
+  if ! AFFINESCRIPT_PATH="$TEST_DIR${AFFINESCRIPT_PATH:+:$AFFINESCRIPT_PATH}" \
+       "${COMPILE_CMD[@]}" "$src" -o "$out" --bun-esm; then
     compile_failures+=("$(basename "$src")")
   fi
 done
