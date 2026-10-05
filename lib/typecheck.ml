@@ -264,6 +264,12 @@ type context = {
       value-path lowering done by [Resolve.lower_qualified_value_paths]
       (#178). Populated at [check_program] entry from
       [prog.prog_imports]. *)
+  type_arity : (string, int) Hashtbl.t;
+  (** Number of type parameters of each user-declared parametric enum
+      (`enum Html<M>` -> 1), so [infer_kind] gives it kind
+      `Type -> ... -> Type` instead of treating every non-builtin type
+      constructor as kind `Type` (which rejected `Html<Int>` in any
+      signature with "Too many arguments for kind"). *)
   mutable in_loop : bool;
   (** #459: tracks whether the synth/check walker is currently inside
       a loop body. Set true on entry to a [StmtWhile]/[StmtFor] body,
@@ -302,6 +308,7 @@ let create_context (symbols : Symbol.t) : context =
     declared_effects = Hashtbl.create 16;
     call_effects = Hashtbl.create 64;
     module_quals = Hashtbl.create 4;
+    type_arity = Hashtbl.create 16;
     in_loop = false;
   }
 
@@ -452,7 +459,12 @@ let rec infer_kind (ctx : context) (ty : ty) : kind result =
     begin match name with
       | "Array" | "Option" | "List" | "Vec" | "Cmd" | "Ref" -> Ok (KArrow (KType, KType))
       | "Result" -> Ok (KArrow (KType, KArrow (KType, KType)))
-      | _ -> Ok KType
+      | user ->
+        (match Hashtbl.find_opt ctx.type_arity user with
+         | Some n ->
+           let rec arrows k = if k = 0 then KType else KArrow (KType, arrows (k - 1)) in
+           Ok (arrows n)
+         | None -> Ok KType)
     end
   | TApp (head, args) ->
     let* k = infer_kind ctx head in
@@ -2200,6 +2212,8 @@ let register_type_decl (ctx : context) (td : type_decl) : unit result =
       let param_names =
         List.map (fun (tp : type_param) -> tp.tp_name.name) td.td_type_params
       in
+      if param_names <> [] then
+        Hashtbl.replace ctx.type_arity td.td_name.name (List.length param_names);
       enter_level ctx;
       let param_tvs = List.map (fun n ->
         let tv = fresh_tyvar ctx.level in
@@ -2429,6 +2443,33 @@ let populate_call_effects (ctx : context) (prog : Ast.program) : unit =
     ctx.call_effects;
   Effect_sites.set_async_by_ord async_tbl
 
+(** Learn the arity of every parametric type constructor applied in [ty]
+    (e.g. `Html<M>` in an imported `text : String -> Html<M>`). Imported
+    schemes are the only cross-module type information [check_program]
+    receives, so this is how an imported `enum Html<M>` gets kind
+    `Type -> Type` in the importer. Builtins keep their fixed kinds. *)
+let rec record_type_arities (ctx : context) (ty : ty) : unit =
+  let go = record_type_arities ctx in
+  let rec go_row = function
+    | RExtend (_, t, rest) -> go t; go_row rest
+    | REmpty | RVar _ -> ()
+  in
+  match repr ty with
+  | TApp (TCon name, args) ->
+    (match name with
+     | "Array" | "Option" | "List" | "Vec" | "Cmd" | "Ref" | "Result" -> ()
+     | _ ->
+       if not (Hashtbl.mem ctx.type_arity name) then
+         Hashtbl.replace ctx.type_arity name (List.length args));
+    List.iter go args
+  | TApp (head, args) -> go head; List.iter go args
+  | TArrow (a, _, b, _) -> go a; go b
+  | TTuple ts -> List.iter go ts
+  | TRecord row | TVariant row -> go_row row
+  | TForall (_, _, body) | TExists (_, _, body) -> go body
+  | TRef t | TMut t | TOwn t -> go t
+  | TVar _ | TCon _ -> ()
+
 let check_program ?(import_types : (string, scheme) Hashtbl.t option)
     (symbols : Symbol.t) (prog : Ast.program)
     : (context, type_error) Result.t =
@@ -2450,7 +2491,9 @@ let check_program ?(import_types : (string, scheme) Hashtbl.t option)
     | Ast.ImportList _ | Ast.ImportGlob _ -> ()
   ) prog.prog_imports;
   Option.iter (fun tbl ->
-    Hashtbl.iter (fun name sc -> Hashtbl.replace ctx.name_types name sc) tbl
+    Hashtbl.iter (fun name sc ->
+      Hashtbl.replace ctx.name_types name sc;
+      record_type_arities ctx sc.sc_body) tbl
   ) import_types;
   (* Forward pass: register all types, effects, traits, impls, and
      function signatures so that mutually recursive declarations resolve. *)

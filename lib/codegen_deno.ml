@@ -77,6 +77,10 @@ type codegen_ctx = {
      operand — needed to truncate e.g. [abs(a*b) / gcd(a,b)]. Populated
      in {!generate}. *)
   int_fns : (string, unit) Hashtbl.t;
+  (* Variant constructors of enums declared in this program; each is
+     emitted as a same-named binding (an object when nullary, a factory
+     otherwise), so a qualified `Enum::Ctor` lowers to that binding. *)
+  ctors : (string, unit) Hashtbl.t;
   (* Names bound to a provably-[Int] value in the *current function*:
      [Int]-typed params plus [let]/assignments whose value is an integer
      expression. Mutated in source order as statements are emitted (the
@@ -110,6 +114,7 @@ let create_ctx host symbols = {
   local_fns = Hashtbl.create 64;
   async_fns = Hashtbl.create 32;
   int_fns = Hashtbl.create 64;
+  ctors = Hashtbl.create 32;
   int_vars = Hashtbl.create 16;
   int_array_vars = Hashtbl.create 16;
   in_async = false;
@@ -1550,6 +1555,10 @@ let rec gen_expr ctx (expr : expr) : string =
       (match ty.name, ctor.name with
        | _, "None" -> "None" | _, "Some" -> "Some"
        | _, "Ok"   -> "Ok"   | _, "Err"  -> "Err"
+       | _, name when Hashtbl.mem ctx.ctors name ->
+           (* The emitted binding: correct for nullary (`Msg::Inc`) and
+              for payload ctors applied as calls (`Msg::SetName(s)`). *)
+           mangle name
        | _, name   -> Printf.sprintf "({ tag: %S })" name)
   | ExprSpan (inner, _) -> gen_expr ctx inner
   | ExprRowRestrict (e, _) -> gen_expr ctx e
@@ -2119,6 +2128,9 @@ let generate (host : host_profile) (program : program) (symbols : Symbol.t) : st
          | _ -> ())
     | TopConst { tc_name; _ } ->
         Hashtbl.replace ctx.local_fns tc_name.name ()
+    | TopType { td_body = TyEnum variants; _ } ->
+        List.iter (fun (vd : variant_decl) ->
+          Hashtbl.replace ctx.ctors vd.vd_name.name ()) variants
     | TopImpl ib ->
         List.iter (function
           | ImplFn fd ->
@@ -2160,17 +2172,20 @@ let generate (host : host_profile) (program : program) (symbols : Symbol.t) : st
     Hashtbl.replace tbl k (v :: (try Hashtbl.find tbl k with Not_found -> [])) in
   List.iter (function
     | TopFn fd when fd.fd_body <> FnExtern ->
+        (* The synthesised class is an *additional* JS-facing surface
+           (`new Point(..)`, `await p.sum_ref()`). Every fn is still
+           emitted as a plain synchronous export, and AffineScript-level
+           calls go to that free fn — never rewritten to an async method
+           call. Struct literals are plain objects, so the old rewrite broke
+           chained calls (`acc.update(..)` on a literal has no method) and
+           leaked `await` into sync callers (e.g. a TEA `update`). *)
         (match receiver_struct ~known:structs fd with
          | Some (s, rn) ->
              let js = method_js_name ~struct_name:s fd.fd_name.name in
-             push methods_of s (rn, js, fd);
-             Hashtbl.replace ctx.assoc fd.fd_name.name js;
-             Hashtbl.replace consumed fd.fd_name.name ()
+             push methods_of s (rn, js, fd)
          | None ->
              (match returns_struct ~known:structs fd with
-              | Some s ->
-                  push ctors_of s fd;
-                  Hashtbl.replace consumed fd.fd_name.name ()
+              | Some s -> push ctors_of s fd
               | None -> ()))
     | _ -> ()) program.prog_decls;
   let methods_for s =
