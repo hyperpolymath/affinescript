@@ -108,10 +108,18 @@ let discover_stdlib () =
         else "./stdlib"  (* preserves the historical default error path *)
 
 (** Create default configuration *)
+(** Directories listed in [$AFFINESCRIPT_PATH] (colon-separated, empty
+    entries ignored): where third-party packages such as affinescript-tea
+    live. Searched after the current directory and the stdlib. *)
+let env_search_paths () : string list =
+  match Sys.getenv_opt "AFFINESCRIPT_PATH" with
+  | None -> []
+  | Some v -> List.filter (fun d -> d <> "") (String.split_on_char ':' v)
+
 let default_config () : config =
   {
     stdlib_path = discover_stdlib ();
-    search_paths = [];
+    search_paths = env_search_paths ();
     current_dir = Sys.getcwd ();
   }
 
@@ -269,7 +277,10 @@ let clear_cache (loader : t) : unit =
     this function retains the same last-import policy as a defensive fallback
     for callers that flatten an already-loaded program directly. Local decls
     in [prog.prog_decls] always win over imported ones. *)
-let flatten_imports (loader : t) (prog : program) : program =
+let rec flatten_imports_from
+    (cache : (string list, program) Hashtbl.t)
+    (visiting : string list list) (loader : t)
+    (prog : program) : program =
   (* Local-decl names suppress same-named imports of any kind. *)
   let local_name_list =
     List.filter_map (function
@@ -302,7 +313,26 @@ let flatten_imports (loader : t) (prog : program) : program =
       in
       match Hashtbl.find_opt loader.loaded mod_path with
       | None -> ()
-      | Some lm ->
+      | Some lm0 ->
+        (* Flatten the imported module's own imports first, so the closure
+           below can reach what *it* uses from other modules: `Nav` importing
+           `Router.on_url_change`, whose body calls `Tea.subs`, emitted an
+           undefined `subs`. [visiting] stops an import cycle. *)
+        let lm =
+          if List.mem mod_path visiting then lm0
+          else
+            (* Memoised per flatten call: a module shared by several import
+               paths (a diamond) is flattened once, not once per path. *)
+            let flat = match Hashtbl.find_opt cache mod_path with
+              | Some p -> p
+              | None ->
+                let p = flatten_imports_from cache (mod_path :: visiting) loader
+                    lm0.mod_program in
+                Hashtbl.replace cache mod_path p;
+                p
+            in
+            { lm0 with mod_program = flat }
+        in
         let public_decls = List.filter_map (fun decl ->
           match decl with
           | TopFn fd when fd.fd_vis = Public || fd.fd_vis = PubCrate ->
@@ -439,6 +469,33 @@ let flatten_imports (loader : t) (prog : program) : program =
               (fun (n, dk) -> (bound_name_of n, rename_decl (bound_name_of n) dk))
               (direct @ extras)
         in
+        (* Public enums the importer names directly. A constructor in the
+           import list (`use Geometry::{Up, Down}`) or a type name the
+           importer constructs was only carried when some carried *function*
+           happened to construct it, so `Some(Up)` in the importer compiled
+           to a reference to an undefined `Up`. Enums made only of the
+           preamble's Option/Result constructors are never carried (every
+           non-Wasm backend's runtime preamble already defines those). *)
+        let preamble_only = [ "Some"; "None"; "Ok"; "Err" ] in
+        let public_enums = List.filter_map (fun decl ->
+          match decl with
+          | TopType ({ td_body = TyEnum variants; _ } as td)
+            when (td.td_vis = Public || td.td_vis = PubCrate)
+                 && List.exists (fun (vd : variant_decl) ->
+                      not (List.mem vd.vd_name.name preamble_only)) variants ->
+            Some (td.td_name.name,
+                  List.map (fun (vd : variant_decl) -> vd.vd_name.name) variants,
+                  decl)
+          | _ -> None) lm.mod_program.prog_decls in
+        let named = match imp with
+          | ImportList (_, items) ->
+            List.filter (fun (ty, ctors, _) ->
+              List.exists (fun item ->
+                let n = item.ii_name.name in n = ty || List.mem n ctors) items)
+              public_enums
+          | ImportSimple _ | ImportGlob _ -> public_enums
+        in
+        List.iter (fun (ty, _, decl) -> add_imported ty (`Type decl)) named;
         List.iter (fun (name, decl_kind) -> add_imported name decl_kind) select
     ) prog.prog_imports;
   let imported_decls =
@@ -463,3 +520,8 @@ let flatten_imports (loader : t) (prog : program) : program =
      Re-introducing type-carrying for *user-defined* cross-module enums would
      need per-backend constructor dedup first. *)
   { prog with prog_decls = imported_decls @ prog.prog_decls }
+
+(** Inline the declarations [prog]'s imports need (transitively) into [prog],
+    for the backends that compile one flattened program. *)
+let flatten_imports (loader : t) (prog : program) : program =
+  flatten_imports_from (Hashtbl.create 8) [] loader prog

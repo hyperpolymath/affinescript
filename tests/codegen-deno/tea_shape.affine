@@ -1,0 +1,40 @@
+// SPDX-License-Identifier: MPL-2.0
+// TEA-shaped program on the Bun-ESM target. Pins two codegen fixes:
+//  * a qualified payload constructor (`Msg::SetName(s)`) lowers to the
+//    constructor factory, not a call on a nullary `{ tag }` object;
+//  * a receiver-first fn (`update(m: Model, msg)`) stays a synchronous free
+//    function, so it chains on struct *literals* and never leaks `await`
+//    into a sync caller (the synthesised class is only an extra surface).
+
+use prelude::*;
+
+pub enum Msg {
+  Inc,
+  SetName(String),
+  Move(String, Float, Float),
+  Batch([Msg])
+}
+
+struct Model { count: Int, name: String, xs: [Float] }
+
+pub fn init() -> Model = Model #{ count: 0, name: "n", xs: [] };
+
+pub fn update(m: Model, msg: Msg) -> Model {
+  match msg {
+    Msg::Inc => Model #{ count: m.count + 1, name: m.name, xs: m.xs },
+    Msg::SetName(s) => Model #{ count: m.count, name: s, xs: m.xs },
+    Msg::Move(id, x, y) => Model #{ count: m.count, name: id, xs: m.xs ++ [x, y] },
+    Msg::Batch(ms) => {
+      let mut acc = m;
+      for one in ms {
+        acc = update(acc, one);
+      }
+      acc
+    }
+  }
+}
+
+pub fn run() -> String {
+  let m = update(init(), Msg::Batch([Msg::Inc, Msg::Inc, Msg::SetName("z"), Msg::Move("a", 1.5, 2.0)]));
+  m.name ++ ":" ++ int_to_string(m.count) ++ ":" ++ int_to_string(len(m.xs))
+}

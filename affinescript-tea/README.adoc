@@ -9,7 +9,16 @@ AffineScript modules. INT-07 (issue #182).
 
 toc::[]
 
-== What this is
+This package holds two TEA runtimes:
+
+* *`src/Tea.affine`* — The Elm Architecture *written in AffineScript*, for
+  browser applications compiled with the Bun-ESM backend: typed virtual
+  DOM, keyed reconciler, commands, subscriptions. See
+  <<affinescript-tea-runtime>>.
+* *`mod.js`* — the host-side run loop for WASM modules that expose the
+  `lib/tea_bridge.ml` ABI (below).
+
+== What this is (WASM bridge runtime)
 
 The compiler-internal `lib/tea_bridge.ml` defines a TEA runtime ABI a
 conforming WASM module exposes: `affinescript_init()`,
@@ -64,3 +73,115 @@ INT-07 first general runtime: `TeaApp` (`load`/`init`/`dispatch`/
 canonical bridge (`affinescript tea-bridge`) and a hand-built
 re-entrancy fixture — see `mod_test.js` (9 tests). The router/navigation
 runtime is a separate satellite (INT-09, `lib/tea_router.ml`).
+
+[[affinescript-tea-runtime]]
+== The AffineScript runtime (`src/Tea.affine`)
+
+A browser application is an initial state and three pure functions:
+
+[source,affinescript]
+----
+use Tea::{Html, Cmd, Sub, run, div, button, text, on_click, none, no_sub};
+
+pub enum Msg { Inc, Dec }
+
+pub fn update(msg: Msg, n: Int) -> (Int, Cmd<Msg>) = match msg {
+  Msg::Inc => (n + 1, none()),
+  Msg::Dec => (n - 1, none())
+};
+
+pub fn view(n: Int) -> Html<Msg> =
+  div([], [button([on_click(Msg::Dec)], [text("-")]),
+           text(int_to_string(n)),
+           button([on_click(Msg::Inc)], [text("+")])]);
+
+pub fn main() -> Unit =
+  run("#root", (0, none()), update, view, fn(n) => no_sub());
+----
+
+What the runtime provides:
+
+* *`Html<M>` / `Attr<M>`* — elements (HTML and SVG), attributes, DOM
+  properties, inline styles, keys, and event decoders
+  (`On(event, Event -> Option<M>)`; returning `None` ignores the event, as
+  `on_enter` does for non-Enter keys). `map_html` re-tags a component's
+  messages.
+* *Keyed reconciliation* — when every child carries a `key`, surviving
+  children keep their DOM node and are *moved*, so focus, scroll and
+  in-progress input survive reordering. Otherwise children patch by position.
+  Event handlers are re-pointed in place: the DOM listener is installed once
+  per node and event.
+* *`Cmd<M>`* — `none`, `batch`, `send(msg)` and `run_cmd(fn(dispatch) => …)`,
+  which expresses any effect (timers, IndexedDB, WebAssembly calls); `map_cmd`.
+* *`Sub<M>`* — `on_window(event, decode)`, `on_frame(f)`, `every(ms, f)`,
+  `subs([...])`. They are diffed by key after every update, so a
+  subscription returned only while some state holds is added and removed
+  with that state.
+* *Ordering* — messages are processed one at a time, in order. A message
+  dispatched during an update is queued. Renders are batched to the next
+  animation frame.
+* *Linear list helpers* — `tea_map`, `tea_filter`, `tea_concat`. The
+  prelude's `map`/`filter` append with `++` and are quadratic on the JS
+  target.
+
+=== Building and running an app
+
+[source,sh]
+----
+export AFFINESCRIPT_PATH=/path/to/affinescript/affinescript-tea/src
+affinescript compile --bun-esm App.affine -o app.bun.js
+----
+
+Then serve a page that loads the host before the app. The Bun-ESM backend
+runs a module's `main` when the module is loaded, so the page only imports
+it. Calling `main()` again would mount a second instance on the same root.
+
+[source,html]
+----
+<div id="root"></div>
+<script type="module">
+  import "./tea_host.js";
+  import "./app.bun.js";
+</script>
+----
+
+`tea_host.js` is the runtime's only JavaScript: a host carve-out that
+implements the primitive `extern fn`s (create node, set attribute,
+`requestAnimationFrame`, timers, cells) as globals. Every decision is made in
+`Tea.affine`: what to render, diffing, keyed moves, message order, and
+subscription sets.
+
+=== Tests
+
+`examples/todo/Todo.affine` is the reference app. `e2e/todo.test.js` drives
+it in headless Chromium and covers:
+
+* mount and the init command;
+* a controlled input with Enter;
+* an asynchronous command;
+* keyed reorder preserving DOM-node identity;
+* toggle and remove;
+* a subscription that starts and stops with the model;
+* no runtime errors.
+
+The keyed-reorder test is known to fail when keyed diffing is disabled.
+
+[source,sh]
+----
+dune build                       # at the repo root: the compiler
+cd affinescript-tea/e2e
+bun install --frozen-lockfile
+bun test
+----
+
+Playwright is pinned to 1.62.1 (Chromium revision 1234).
+
+=== Limits (current compiler)
+
+* `run` takes the initial `(Model, Cmd<Msg>)` *value*, not an `init`
+  function. A zero-parameter function declaration is typed as its bare
+  result, so it cannot be passed where a `() -> T` thunk is expected.
+* Generic *structs* are not supported by the type checker, so the program
+  is passed as separate functions rather than one record.
+* A qualified pattern on an imported enum (`Html::Element(..)`) needs the
+  constructor imported by name, not just the type.

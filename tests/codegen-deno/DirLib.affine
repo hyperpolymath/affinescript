@@ -1,0 +1,13 @@
+// SPDX-License-Identifier: MPL-2.0
+// Library half of the imported_ctor fixture: an enum and a function that only
+// *matches* on it (patterns do not reference constructors, so nothing here
+// causes the enum to be carried into an importer's flattened output).
+module DirLib;
+
+pub enum Dir { North, South, Step(Int) }
+
+pub fn name(d: Dir) -> String = match d {
+  Dir::North => "north",
+  Dir::South => "south",
+  Dir::Step(n) => "step " ++ int_to_string(n)
+};

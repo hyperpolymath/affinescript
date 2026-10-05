@@ -77,6 +77,10 @@ type codegen_ctx = {
      operand — needed to truncate e.g. [abs(a*b) / gcd(a,b)]. Populated
      in {!generate}. *)
   int_fns : (string, unit) Hashtbl.t;
+  (* Variant constructors of enums declared in this program; each is
+     emitted as a same-named binding (an object when nullary, a factory
+     otherwise), so a qualified `Enum::Ctor` lowers to that binding. *)
+  ctors : (string, unit) Hashtbl.t;
   (* Names bound to a provably-[Int] value in the *current function*:
      [Int]-typed params plus [let]/assignments whose value is an integer
      expression. Mutated in source order as statements are emitted (the
@@ -110,6 +114,7 @@ let create_ctx host symbols = {
   local_fns = Hashtbl.create 64;
   async_fns = Hashtbl.create 32;
   int_fns = Hashtbl.create 64;
+  ctors = Hashtbl.create 32;
   int_vars = Hashtbl.create 16;
   int_array_vars = Hashtbl.create 16;
   in_async = false;
@@ -1113,6 +1118,21 @@ let () =
      AffineScript definition exists; the interpreter binds them too),
      not externs — endsWith/stripSuffix/pathJoin/etc. are NOT here:
      they are real AffineScript built on `ends_with`/`substring`/`++`. *)
+  (* ---- numeric builtins (stdlib/math.affine header) ----
+     Interpreter builtins with no Bun-ESM lowering compiled to calls of
+     undefined JS globals (`float(n)` -> ReferenceError). floor/ceil/
+     round/trunc return Int, which on JS is a Number with no fraction. *)
+  b "float"     (fun a -> Printf.sprintf "Number(%s)" (arg 0 a));
+  List.iter (fun (name, js) ->
+    b name (fun a -> Printf.sprintf "%s(%s)" js (arg 0 a)))
+    [ ("floor", "Math.floor"); ("ceil", "Math.ceil"); ("round", "Math.round");
+      ("trunc", "Math.trunc"); ("sqrt", "Math.sqrt"); ("cbrt", "Math.cbrt");
+      ("sin", "Math.sin"); ("cos", "Math.cos"); ("tan", "Math.tan");
+      ("asin", "Math.asin"); ("acos", "Math.acos"); ("atan", "Math.atan");
+      ("exp", "Math.exp"); ("log", "Math.log"); ("log10", "Math.log10");
+      ("log2", "Math.log2") ];
+  b "atan2"     (fun a -> Printf.sprintf "Math.atan2(%s, %s)" (arg 0 a) (arg 1 a));
+  b "pow_float" (fun a -> Printf.sprintf "Math.pow(%s, %s)" (arg 0 a) (arg 1 a));
   b "len"            (fun a -> Printf.sprintf "((%s).length)" (arg 0 a));
   b "slice"          (fun a -> Printf.sprintf "((%s).slice(%s, %s))"
                                  (arg 0 a) (arg 1 a) (arg 2 a));
@@ -1543,13 +1563,22 @@ let rec gen_expr ctx (expr : expr) : string =
   | ExprContinue _ -> iife ctx "continue;"
   | ExprLambda { elam_params; elam_body; elam_ret_ty = _ } ->
       let ps = List.map (fun (p : param) -> mangle p.p_name.name) elam_params in
-      "((" ^ String.concat ", " ps ^ ") => " ^ gen_expr ctx elam_body ^ ")"
+      (* A lambda is a plain (non-async) arrow, so its body must not inherit
+         the enclosing async context: inside a synthesised (async) method,
+         `(x) => (await ...)` is a SyntaxError in browsers — Bun's parser
+         happens to accept it, which hid the bug. *)
+      "((" ^ String.concat ", " ps ^ ") => "
+      ^ gen_expr { ctx with in_async = false } elam_body ^ ")"
   | ExprTry { et_body; et_catch; et_finally } ->
       gen_try ctx et_body et_catch et_finally
   | ExprVariant (ty, ctor) ->
       (match ty.name, ctor.name with
        | _, "None" -> "None" | _, "Some" -> "Some"
        | _, "Ok"   -> "Ok"   | _, "Err"  -> "Err"
+       | _, name when Hashtbl.mem ctx.ctors name ->
+           (* The emitted binding: correct for nullary (`Msg::Inc`) and
+              for payload ctors applied as calls (`Msg::SetName(s)`). *)
+           mangle name
        | _, name   -> Printf.sprintf "({ tag: %S })" name)
   | ExprSpan (inner, _) -> gen_expr ctx inner
   | ExprRowRestrict (e, _) -> gen_expr ctx e
@@ -1858,11 +1887,16 @@ and gen_stmt ctx (stmt : stmt) : string =
        | _ -> ());
       js
   | StmtWhile (cond, body) ->
-      "while (" ^ gen_expr ctx cond ^ ") { "
-      ^ String.concat " " (List.map (gen_stmt ctx) body.blk_stmts)
-      ^ (match body.blk_expr with
-         | Some e -> " " ^ gen_stmt_expr ctx e | None -> "")
-      ^ " }"
+      (* Generate strictly in source order: OCaml evaluates `^` operands
+         right to left, which generated the block's tail before its
+         statements — so int-tracking (#478) saw the tail's assignments
+         before the `let`s they depend on, and `(lo + hi) / 2` lost its
+         truncation. *)
+      let cond_js = gen_expr ctx cond in
+      let stmts_js = String.concat " " (List.map (gen_stmt ctx) body.blk_stmts) in
+      let tail_js = match body.blk_expr with
+        | Some e -> " " ^ gen_stmt_expr ctx e | None -> "" in
+      "while (" ^ cond_js ^ ") { " ^ stmts_js ^ tail_js ^ " }"
   | StmtFor (pat, iter, body) ->
       (* The iterable is evaluated in the outer scope, so emit it first. *)
       let iter_str = gen_expr ctx iter in
@@ -1882,9 +1916,11 @@ and gen_stmt ctx (stmt : stmt) : string =
         | _ -> fun () -> ()
       in
       let body_js =
-        String.concat " " (List.map (gen_stmt ctx) body.blk_stmts)
-        ^ (match body.blk_expr with
-           | Some e -> " " ^ gen_stmt_expr ctx e | None -> "")
+        (* Source order (see StmtWhile): statements before the tail. *)
+        let stmts_js = String.concat " " (List.map (gen_stmt ctx) body.blk_stmts) in
+        let tail_js = match body.blk_expr with
+          | Some e -> " " ^ gen_stmt_expr ctx e | None -> "" in
+        stmts_js ^ tail_js
       in
       restore ();
       "for (const " ^ pat_str ^ " of " ^ iter_str ^ ") { " ^ body_js ^ " }"
@@ -2119,6 +2155,9 @@ let generate (host : host_profile) (program : program) (symbols : Symbol.t) : st
          | _ -> ())
     | TopConst { tc_name; _ } ->
         Hashtbl.replace ctx.local_fns tc_name.name ()
+    | TopType { td_body = TyEnum variants; _ } ->
+        List.iter (fun (vd : variant_decl) ->
+          Hashtbl.replace ctx.ctors vd.vd_name.name ()) variants
     | TopImpl ib ->
         List.iter (function
           | ImplFn fd ->
@@ -2160,17 +2199,20 @@ let generate (host : host_profile) (program : program) (symbols : Symbol.t) : st
     Hashtbl.replace tbl k (v :: (try Hashtbl.find tbl k with Not_found -> [])) in
   List.iter (function
     | TopFn fd when fd.fd_body <> FnExtern ->
+        (* The synthesised class is an *additional* JS-facing surface
+           (`new Point(..)`, `await p.sum_ref()`). Every fn is still
+           emitted as a plain synchronous export, and AffineScript-level
+           calls go to that free fn — never rewritten to an async method
+           call. Struct literals are plain objects, so the old rewrite broke
+           chained calls (`acc.update(..)` on a literal has no method) and
+           leaked `await` into sync callers (e.g. a TEA `update`). *)
         (match receiver_struct ~known:structs fd with
          | Some (s, rn) ->
              let js = method_js_name ~struct_name:s fd.fd_name.name in
-             push methods_of s (rn, js, fd);
-             Hashtbl.replace ctx.assoc fd.fd_name.name js;
-             Hashtbl.replace consumed fd.fd_name.name ()
+             push methods_of s (rn, js, fd)
          | None ->
              (match returns_struct ~known:structs fd with
-              | Some s ->
-                  push ctors_of s fd;
-                  Hashtbl.replace consumed fd.fd_name.name ()
+              | Some s -> push ctors_of s fd
               | None -> ()))
     | _ -> ()) program.prog_decls;
   let methods_for s =
@@ -2196,8 +2238,16 @@ let generate (host : host_profile) (program : program) (symbols : Symbol.t) : st
       Hashtbl.replace emitted_class s ()
     end
   in
+  (* Enum constructor bindings first: a qualified constructor lowers to its
+     binding (`Msg::Inc` -> `Inc`), and the checker lets a top-level `const`
+     name a variant declared later in the file — emitting in source order
+     would read the binding in its temporal dead zone (ReferenceError). *)
+  List.iter (function
+    | TopType ({ td_body = TyEnum _; _ } as td) -> gen_type_decl ctx td
+    | _ -> ()) program.prog_decls;
   List.iter (fun top ->
     match top with
+    | TopType { td_body = TyEnum _; _ } -> ()  (* emitted above *)
     | TopFn fd when fd.fd_body <> FnExtern ->
         if not (Hashtbl.mem consumed fd.fd_name.name) then
           gen_function ctx fd

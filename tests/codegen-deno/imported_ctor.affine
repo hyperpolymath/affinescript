@@ -1,0 +1,10 @@
+// SPDX-License-Identifier: MPL-2.0
+// Constructors of an imported enum, named directly in the import list, must
+// exist in the flattened output (they compiled to undefined references when
+// no carried function happened to construct them).
+use prelude::*;
+use DirLib::{Dir, North, South, Step, name};
+
+pub fn pick(up: Bool) -> Option<Dir> = if up { Some(North) } else { Some(Step(3)) };
+
+pub fn both() -> String = name(North) ++ "," ++ name(Step(0 - 3)) ++ "," ++ name(South);

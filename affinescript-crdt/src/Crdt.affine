@@ -1,0 +1,375 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// Crdt.affine — conflict-free replicated data types for local-first apps.
+//
+// Every type here is a *state-based* CRDT: replicas update their own copy
+// and exchange whole states; `merge` is commutative, associative and
+// idempotent, so replicas that have seen the same updates hold equal states
+// whatever order (or how many times) they merged them in.
+//
+//   Clock / Stamp  Lamport clock and timestamps, totally ordered by
+//                  (counter, replica) — the tie-break that makes LWW safe.
+//   Lww<T>         last-writer-wins register.
+//   LwwMap<V>      string-keyed map of LWW registers; removal is a
+//                  timestamped tombstone, so a later set revives the key.
+//   OrSet          observed-remove set of strings: an add wins over a
+//                  concurrent remove; a remove deletes the adds it observed.
+//   PnCounter      increment/decrement counter (per-replica totals).
+//
+// Pure AffineScript; no host code. States are plain values (sorted arrays),
+// so they serialise directly (e.g. to JSON) for exchange and storage.
+// Complexity: merges are linear merge-joins over the sorted entries, but on
+// the JS target array building is O(n²) in the number of entries (each
+// append copies), which is ~tens of ms at a few thousand entries.
+
+module Crdt;
+
+use prelude::*;
+
+// ── Lamport clock ───────────────────────────────────────────────────────────
+
+/// A write's timestamp. Ordered by `counter`, ties broken by `replica`.
+pub struct Stamp { counter: Int, replica: String }
+
+/// A replica's Lamport clock.
+pub struct Clock { counter: Int, replica: String }
+
+/// A fresh clock for replica `replica` (ids must be unique per replica).
+pub fn clock(replica: String) -> Clock = Clock #{ counter: 0, replica: replica };
+
+/// Advance the clock for a local write; returns the new clock and the
+/// write's stamp.
+pub fn tick(c: Clock) -> (Clock, Stamp) {
+  let next = c.counter + 1;
+  (Clock #{ counter: next, replica: c.replica }, Stamp #{ counter: next, replica: c.replica })
+}
+
+/// Account for a stamp seen from another replica, so later local writes are
+/// ordered after it.
+pub fn observe(c: Clock, s: Stamp) -> Clock =
+  if s.counter > c.counter { Clock #{ counter: s.counter, replica: c.replica } } else { c };
+
+/// Whether `a` is strictly later than `b`.
+pub fn after(a: Stamp, b: Stamp) -> Bool =
+  a.counter > b.counter || (a.counter == b.counter && a.replica > b.replica);
+
+/// The later of two stamps.
+pub fn later(a: Stamp, b: Stamp) -> Stamp = if after(b, a) { b } else { a };
+
+/// `"replica#counter"` — a unique tag for a write.
+pub fn tag(s: Stamp) -> String = s.replica ++ "#" ++ int_to_string(s.counter);
+
+// ── LWW register ────────────────────────────────────────────────────────────
+
+/// A last-writer-wins register: a value and the stamp that wrote it.
+pub enum Lww<T> { Reg(T, Stamp) }
+
+pub fn lww<T>(value: T, s: Stamp) -> Lww<T> = Reg(value, s);
+
+pub fn lww_value<T>(r: Lww<T>) -> T = match r { Lww::Reg(v, _) => v };
+
+pub fn lww_stamp<T>(r: Lww<T>) -> Stamp = match r { Lww::Reg(_, s) => s };
+
+/// Write `value` at stamp `s` (ignored if the register holds a later write).
+pub fn lww_set<T>(r: Lww<T>, value: T, s: Stamp) -> Lww<T> =
+  if after(s, lww_stamp(r)) { Reg(value, s) } else { r };
+
+/// Merge two registers: the later write wins.
+pub fn lww_merge<T>(a: Lww<T>, b: Lww<T>) -> Lww<T> =
+  if after(lww_stamp(b), lww_stamp(a)) { b } else { a };
+
+// ── LWW map ─────────────────────────────────────────────────────────────────
+
+/// A string-keyed map of LWW entries, sorted by key. `None` is a tombstone.
+pub enum LwwMap<V> { Entries([(String, Option<V>, Stamp)]) }
+
+pub fn map_empty<V>() -> LwwMap<V> = Entries([]);
+
+fn map_entries<V>(m: LwwMap<V>) -> [(String, Option<V>, Stamp)] = match m { LwwMap::Entries(es) => es };
+
+/// Put an entry for `key` (a value or a tombstone) at stamp `s`, keeping key
+/// order; an older write than the stored one is ignored.
+fn map_put<V>(m: LwwMap<V>, key: String, v: Option<V>, s: Stamp) -> LwwMap<V> {
+  let es = map_entries(m);
+  let mut out = [];
+  let mut placed = false;
+  for e in es {
+    let (k, old, os) = e;
+    if !placed && key < k {
+      out = out ++ [(key, v, s)];
+      placed = true;
+    }
+    if k == key {
+      out = out ++ [if after(s, os) { (key, v, s) } else { (k, old, os) }];
+      placed = true;
+    } else {
+      out = out ++ [(k, old, os)];
+    }
+  }
+  if !placed {
+    out = out ++ [(key, v, s)];
+  }
+  Entries(out)
+}
+
+/// Set `key` to `value` at stamp `s`.
+pub fn map_set<V>(m: LwwMap<V>, key: String, value: V, s: Stamp) -> LwwMap<V> = map_put(m, key, Some(value), s);
+
+/// Remove `key` at stamp `s` (a tombstone, so a concurrent older set loses).
+pub fn map_remove<V>(m: LwwMap<V>, key: String, s: Stamp) -> LwwMap<V> = map_put(m, key, None, s);
+
+/// The live value of `key`, if any.
+pub fn map_get<V>(m: LwwMap<V>, key: String) -> Option<V> {
+  for e in map_entries(m) {
+    let (k, v, _s) = e;
+    if k == key {
+      return v;
+    }
+  }
+  None
+}
+
+/// The live keys, in order.
+pub fn map_keys<V>(m: LwwMap<V>) -> [String] {
+  let mut out = [];
+  for e in map_entries(m) {
+    let (k, v, _s) = e;
+    match v {
+      Some(_) => { out = out ++ [k]; },
+      None => ()
+    };
+  }
+  out
+}
+
+/// Merge two maps: per key, the later write (value or tombstone) wins.
+pub fn map_merge<V>(a: LwwMap<V>, b: LwwMap<V>) -> LwwMap<V> {
+  let xs = map_entries(a);
+  let ys = map_entries(b);
+  let mut out = [];
+  let mut i = 0;
+  let mut j = 0;
+  while i < len(xs) || j < len(ys) {
+    if j >= len(ys) {
+      out = out ++ [xs[i]];
+      i = i + 1;
+    } else {
+      if i >= len(xs) {
+        out = out ++ [ys[j]];
+        j = j + 1;
+      } else {
+        let (kx, vx, sx) = xs[i];
+        let (ky, vy, sy) = ys[j];
+        if kx < ky {
+          out = out ++ [xs[i]];
+          i = i + 1;
+        } else {
+          if ky < kx {
+            out = out ++ [ys[j]];
+            j = j + 1;
+          } else {
+            out = out ++ [if after(sy, sx) { ys[j] } else { xs[i] }];
+            i = i + 1;
+            j = j + 1;
+          }
+        }
+      }
+    }
+  }
+  Entries(out)
+}
+
+// ── Observed-remove set (of strings) ────────────────────────────────────────
+
+/// `adds` holds (element, tag) pairs sorted by element then tag; `removed`
+/// holds the sorted tags of adds that a remove observed.
+pub struct OrSet { adds: [(String, String)], removed: [String] }
+
+pub fn or_empty() -> OrSet = OrSet #{ adds: [], removed: [] };
+
+fn pair_lt(a: (String, String), b: (String, String)) -> Bool {
+  let (ea, ta) = a;
+  let (eb, tb) = b;
+  ea < eb || (ea == eb && ta < tb)
+}
+
+/// Sorted union of two sorted pair lists.
+fn union_pairs(xs: [(String, String)], ys: [(String, String)]) -> [(String, String)] {
+  let mut out = [];
+  let mut i = 0;
+  let mut j = 0;
+  while i < len(xs) || j < len(ys) {
+    if j >= len(ys) || (i < len(xs) && pair_lt(xs[i], ys[j])) {
+      out = out ++ [xs[i]];
+      i = i + 1;
+    } else {
+      if i >= len(xs) || pair_lt(ys[j], xs[i]) {
+        out = out ++ [ys[j]];
+        j = j + 1;
+      } else {
+        out = out ++ [xs[i]];
+        i = i + 1;
+        j = j + 1;
+      }
+    }
+  }
+  out
+}
+
+/// Sorted union of two sorted string lists.
+fn union_strings(xs: [String], ys: [String]) -> [String] {
+  let mut out = [];
+  let mut i = 0;
+  let mut j = 0;
+  while i < len(xs) || j < len(ys) {
+    if j >= len(ys) || (i < len(xs) && xs[i] < ys[j]) {
+      out = out ++ [xs[i]];
+      i = i + 1;
+    } else {
+      if i >= len(xs) || ys[j] < xs[i] {
+        out = out ++ [ys[j]];
+        j = j + 1;
+      } else {
+        out = out ++ [xs[i]];
+        i = i + 1;
+        j = j + 1;
+      }
+    }
+  }
+  out
+}
+
+fn has_string(xs: [String], x: String) -> Bool {
+  for y in xs {
+    if y == x {
+      return true;
+    }
+  }
+  false
+}
+
+/// Add `elem`, tagged with the unique stamp `s`.
+pub fn or_add(set: OrSet, elem: String, s: Stamp) -> OrSet =
+  OrSet #{ adds: union_pairs(set.adds, [(elem, tag(s))]), removed: set.removed };
+
+/// Remove `elem`: every add of it this replica has observed is cancelled. A
+/// concurrent add (not yet observed) survives the merge.
+pub fn or_remove(set: OrSet, elem: String) -> OrSet {
+  let mut tags = [];
+  for p in set.adds {
+    let (e, t) = p;
+    if e == elem && !has_string(set.removed, t) {
+      tags = union_strings(tags, [t]);
+    }
+  }
+  OrSet #{ adds: set.adds, removed: union_strings(set.removed, tags) }
+}
+
+/// Whether `elem` is in the set.
+pub fn or_contains(set: OrSet, elem: String) -> Bool {
+  for p in set.adds {
+    let (e, t) = p;
+    if e == elem && !has_string(set.removed, t) {
+      return true;
+    }
+  }
+  false
+}
+
+/// The elements, sorted and distinct.
+pub fn or_elements(set: OrSet) -> [String] {
+  let mut out = [];
+  for p in set.adds {
+    let (e, t) = p;
+    if !has_string(set.removed, t) && (len(out) == 0 || out[len(out) - 1] != e) {
+      out = out ++ [e];
+    }
+  }
+  out
+}
+
+/// Merge two sets: union of adds and of observed removals.
+pub fn or_merge(a: OrSet, b: OrSet) -> OrSet =
+  OrSet #{ adds: union_pairs(a.adds, b.adds), removed: union_strings(a.removed, b.removed) };
+
+// ── PN-counter ──────────────────────────────────────────────────────────────
+
+/// Per-replica totals of increments (`pos`) and decrements (`neg`), sorted
+/// by replica.
+pub struct PnCounter { pos: [(String, Int)], neg: [(String, Int)] }
+
+pub fn pn_empty() -> PnCounter = PnCounter #{ pos: [], neg: [] };
+
+/// Add `amount` to `replica`'s total in a sorted per-replica list.
+fn bump(xs: [(String, Int)], replica: String, amount: Int) -> [(String, Int)] {
+  let mut out = [];
+  let mut placed = false;
+  for p in xs {
+    let (r, n) = p;
+    if !placed && replica < r {
+      out = out ++ [(replica, amount)];
+      placed = true;
+    }
+    if r == replica {
+      out = out ++ [(r, n + amount)];
+      placed = true;
+    } else {
+      out = out ++ [(r, n)];
+    }
+  }
+  if !placed {
+    out = out ++ [(replica, amount)];
+  }
+  out
+}
+
+/// Per replica, the larger total (each replica's totals only grow).
+fn max_merge(xs: [(String, Int)], ys: [(String, Int)]) -> [(String, Int)] {
+  let mut out = [];
+  let mut i = 0;
+  let mut j = 0;
+  while i < len(xs) || j < len(ys) {
+    if j >= len(ys) {
+      out = out ++ [xs[i]];
+      i = i + 1;
+    } else {
+      if i >= len(xs) {
+        out = out ++ [ys[j]];
+        j = j + 1;
+      } else {
+        let (rx, nx) = xs[i];
+        let (ry, ny) = ys[j];
+        if rx < ry {
+          out = out ++ [xs[i]];
+          i = i + 1;
+        } else {
+          if ry < rx {
+            out = out ++ [ys[j]];
+            j = j + 1;
+          } else {
+            out = out ++ [(rx, if nx > ny { nx } else { ny })];
+            i = i + 1;
+            j = j + 1;
+          }
+        }
+      }
+    }
+  }
+  out
+}
+
+/// Change the counter by `amount` (negative to decrement) on `replica`.
+pub fn pn_add(c: PnCounter, replica: String, amount: Int) -> PnCounter =
+  if amount >= 0 { PnCounter #{ pos: bump(c.pos, replica, amount), neg: c.neg } }
+  else { PnCounter #{ pos: c.pos, neg: bump(c.neg, replica, 0 - amount) } };
+
+pub fn pn_value(c: PnCounter) -> Int {
+  let mut total = 0;
+  for p in c.pos { let (_r, n) = p; total = total + n; }
+  for p in c.neg { let (_r, n) = p; total = total - n; }
+  total
+}
+
+pub fn pn_merge(a: PnCounter, b: PnCounter) -> PnCounter =
+  PnCounter #{ pos: max_merge(a.pos, b.pos), neg: max_merge(a.neg, b.neg) };

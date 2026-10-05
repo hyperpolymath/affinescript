@@ -1,0 +1,21 @@
+// SPDX-License-Identifier: MPL-2.0
+// Zero-parameter lambdas are `() -> T` thunks (pass inline, pass by name,
+// call later), and the stdlib/math.affine builtins lower on Bun-ESM.
+
+use prelude::*;
+use math::{to_float};
+
+pub extern fn host_later(f: () -> Unit) -> Unit;
+pub extern fn host_note(s: String) -> Unit;
+
+pub fn force(f: () -> Int) -> Int = f() + 1;
+
+pub fn inline_thunk() -> Int = force(fn() => 41);
+
+pub fn named_thunk() -> Unit {
+  let f = fn() => host_note("ran");
+  host_later(f)
+}
+
+pub fn geometry(x: Float, y: Float) -> Float =
+  sqrt(x * x + y * y) + to_float(floor(2.7)) + to_float(round(0.5)) + atan2(0.0, 1.0);

@@ -116,6 +116,28 @@ jobs:
         run: opam exec -- ./tools/run_codegen_deno_tests.sh
       - name: Run native Bun-ESM tests (issue #734)
         run: opam exec -- ./tools/run_codegen_bun_tests.sh
+      - name: affinescript-tea browser tests (headless Chromium)
+        # The AffineScript TEA runtime (affinescript-tea/src/Tea.affine) driven
+        # through its reference app in a real browser: mount, controlled
+        # input, async commands, keyed reorder preserving DOM-node identity,
+        # subscriptions. Playwright is pinned in e2e/bun.lock.
+        working-directory: affinescript-tea/e2e
+        # Chromium comes from the e2e package's `browsers` script (the pinned
+        # Playwright's own download; no package lifecycle scripts run).
+        run: |
+          bun install --frozen-lockfile --ignore-scripts
+          bun run browsers
+          opam exec -- bun test --timeout 60000
+      - name: affinescript-router + affinescript-crdt tests
+        # Router.affine's pure functions and Crdt.affine's property tests
+        # (convergence, merge laws) on Bun-ESM; the Nav example in headless
+        # Chromium: navigate/replace/back, hash edits, deep links.
+        run: |
+          opam exec -- bun test affinescript-router/test
+          opam exec -- bun test affinescript-crdt/test
+          cd affinescript-router/e2e
+          bun install --frozen-lockfile --ignore-scripts
+          opam exec -- bun test --timeout 60000
       - name: Run face-transformer regression tests
         run: opam exec -- ./tools/run_face_transformer_tests.sh
       - name: Issue #35 Phase 3 — block extension.ts regression

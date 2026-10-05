@@ -264,6 +264,12 @@ type context = {
       value-path lowering done by [Resolve.lower_qualified_value_paths]
       (#178). Populated at [check_program] entry from
       [prog.prog_imports]. *)
+  type_arity : (string, int) Hashtbl.t;
+  (** Number of type parameters of each user-declared parametric enum
+      (`enum Html<M>` -> 1), so [infer_kind] gives it kind
+      `Type -> ... -> Type` instead of treating every non-builtin type
+      constructor as kind `Type` (which rejected `Html<Int>` in any
+      signature with "Too many arguments for kind"). *)
   mutable in_loop : bool;
   (** #459: tracks whether the synth/check walker is currently inside
       a loop body. Set true on entry to a [StmtWhile]/[StmtFor] body,
@@ -302,6 +308,7 @@ let create_context (symbols : Symbol.t) : context =
     declared_effects = Hashtbl.create 16;
     call_effects = Hashtbl.create 64;
     module_quals = Hashtbl.create 4;
+    type_arity = Hashtbl.create 16;
     in_loop = false;
   }
 
@@ -452,7 +459,12 @@ let rec infer_kind (ctx : context) (ty : ty) : kind result =
     begin match name with
       | "Array" | "Option" | "List" | "Vec" | "Cmd" | "Ref" -> Ok (KArrow (KType, KType))
       | "Result" -> Ok (KArrow (KType, KArrow (KType, KType)))
-      | _ -> Ok KType
+      | user ->
+        (match Hashtbl.find_opt ctx.type_arity user with
+         | Some n ->
+           let rec arrows k = if k = 0 then KType else KArrow (KType, arrows (k - 1)) in
+           Ok (arrows n)
+         | None -> Ok KType)
     end
   | TApp (head, args) ->
     let* k = infer_kind ctx head in
@@ -1004,6 +1016,13 @@ let rec synth (ctx : context) (expr : expr) : ty result =
       in
       (q, param_ty)
     ) elam_params param_tys in
+    (* A zero-parameter lambda `fn() => e` is a thunk: type it
+       `Unit -> T`, the same type an explicit `() -> T` annotation lowers
+       to (see the zero-argument [ExprApp] case, which consumes either
+       form). Typing it as the bare `T` made it impossible to pass a thunk
+       to a `() -> T` parameter. *)
+    let param_qty_pairs =
+      if elam_params = [] then [ (Types.QOmega, ty_unit) ] else param_qty_pairs in
     let ty = List.fold_right (fun (q, param_ty) acc ->
       TArrow (param_ty, q, acc, eff)
     ) param_qty_pairs body_ty in
@@ -1084,7 +1103,55 @@ let rec synth (ctx : context) (expr : expr) : ty result =
        let kinds = List.map (fun (name, (_off, is_f64)) -> (name, is_f64)) layout in
        cell_record_sites := (rec_node, kinds) :: !cell_record_sites
      | _ -> ());
-    Ok (TRecord row)
+    begin match er_spread with
+      | None -> Ok (TRecord row)
+      | Some base ->
+        (* Functional update `#{ ..base, f: v }`: the result has every field
+           of [base], with each explicitly given field replacing the base's
+           (same type — a struct update cannot change a field's type) and
+           any field the base lacks added. The spread used to be ignored, so
+           the result was typed as only the explicit fields and an update
+           could never produce the struct it started from. *)
+        let* base_ty = synth ctx base in
+        let rec follow (r : row) : row =
+          match r with
+          | RVar { contents = RLink r' } -> follow r'
+          | _ -> r
+        in
+        let explicit = List.rev field_tys in
+        let rec closed (r : row) : bool =
+          match follow r with
+          | REmpty -> true
+          | RExtend (_, _, rest) -> closed rest
+          | RVar _ -> false
+        in
+        begin match repr base_ty with
+          | TRecord brow when closed brow ->
+            let rec update_row (r : row) (seen : string list) : (row * string list) result =
+              match follow r with
+              | RExtend (l, t, rest) ->
+                let* () = match List.assoc_opt l explicit with
+                  | Some nt -> unify_or_err t nt
+                  | None -> Ok ()
+                in
+                let* (rest', seen') = update_row rest (l :: seen) in
+                Ok (RExtend (l, t, rest'), seen')
+              | tail -> Ok (tail, seen)
+            in
+            let* (updated, base_labels) = update_row brow [] in
+            let added = List.filter (fun (l, _) -> not (List.mem l base_labels)) explicit in
+            Ok (TRecord (List.fold_right (fun (l, t) acc -> RExtend (l, t, acc)) added updated))
+          | _ ->
+            (* An open or not-yet-known base: it must have the explicitly
+               updated fields (same types), and the result is the base's own
+               type. Extending an open row here would make it contain itself
+               (row occurs check). *)
+            let expected = TRecord (List.fold_right (fun (l, t) acc -> RExtend (l, t, acc))
+                                      explicit (fresh_rowvar ctx.level)) in
+            let* () = unify_or_err base_ty expected in
+            Ok base_ty
+        end
+    end
 
   (* Field access — first try record-field projection, then trait method lookup *)
   | ExprField (obj, { name = field; _ }) as field_node ->
@@ -1608,12 +1675,22 @@ and check (ctx : context) (expr : expr) (expected : ty) : unit result =
       (p.p_name.name, Hashtbl.find_opt ctx.name_types p.p_name.name)
     ) elam_params in
     let* () = peel_arrows expected elam_params in
-    (* Now check the body against the final return type *)
-    let final_ret = List.fold_left (fun ty _ ->
-      match repr ty with
-      | TArrow (_, _, ret, _) -> ret
-      | _ -> ty
-    ) expected elam_params in
+    (* Now check the body against the final return type. A zero-parameter
+       lambda checked against `() -> T` (= `Unit -> T`) consumes the unit
+       parameter: its body has type `T`. *)
+    let* final_ret =
+      if elam_params = [] then
+        match repr expected with
+        | TArrow (param_ty, _, ret, _) ->
+          let* () = unify_or_err param_ty ty_unit in
+          Ok ret
+        | _ -> Ok expected
+      else
+        Ok (List.fold_left (fun ty _ ->
+          match repr ty with
+          | TArrow (_, _, ret, _) -> ret
+          | _ -> ty
+        ) expected elam_params) in
     let* () = check ctx elam_body final_ret in
     (* Restore *)
     List.iter (fun (n, old_sc) ->
@@ -2122,12 +2199,15 @@ let check_fn_decl (ctx : context) (fd : fn_decl) : unit result =
   ) param_tys fd.fd_params ret_ty in
   (* Bind the function name (allows recursion) *)
   bind_var ctx fd.fd_name.name fn_ty;
+  (* Everything the body binds — parameters and block-local `let`s — is
+     scoped to it. Only parameters used to be restored, so a local
+     `let node = ...` overwrote the module-level `node` in [name_types],
+     and importers saw the local's type as the module's export. Snapshot
+     here and restore the whole table after the body. *)
+  let scope_snapshot = Hashtbl.copy ctx.name_types in
   (* Bind parameters *)
-  let old = List.map2 (fun (p : param) ty ->
-    let old = Hashtbl.find_opt ctx.name_types p.p_name.name in
-    bind_var ctx p.p_name.name ty;
-    (p.p_name.name, old)
-  ) fd.fd_params param_tys in
+  List.iter2 (fun (p : param) ty -> bind_var ctx p.p_name.name ty)
+    fd.fd_params param_tys;
   (* issue #59 — effect inference spine: infer this body's effect row
      into a fresh accumulator, then (only if a row was explicitly
      declared) require the inferred row to be a subset of it. An
@@ -2142,12 +2222,9 @@ let check_fn_decl (ctx : context) (fd : fn_decl) : unit result =
     | FnExpr e ->
       check ctx e ret_ty
   end in
-  (* Restore parameter bindings *)
-  List.iter (fun (n, old_sc) ->
-    match old_sc with
-    | Some sc -> Hashtbl.replace ctx.name_types n sc
-    | None -> Hashtbl.remove ctx.name_types n
-  ) old;
+  (* Restore every binding the body introduced (see [scope_snapshot]). *)
+  Hashtbl.reset ctx.name_types;
+  Hashtbl.iter (fun n sc -> Hashtbl.replace ctx.name_types n sc) scope_snapshot;
   let inferred_eff = ctx.current_eff in
   ctx.current_eff <- saved_eff;
   let* () =
@@ -2169,6 +2246,20 @@ let check_fn_decl (ctx : context) (fd : fn_decl) : unit result =
   Ok ()
 
 (** Register a type declaration in the context. *)
+(** Reserved [name_types] key under which a module records the definition
+    of its type [name], so importers can name the type with its structure
+    (an imported struct's fields; imports otherwise carry only value
+    schemes). The NUL byte keeps it disjoint from every identifier. *)
+let type_def_key (name : string) : string = "\000type:" ^ name
+
+(** Inverse of [type_def_key]: the type name, if [key] is one. *)
+let type_of_def_key (key : string) : string option =
+  let pfx = "\000type:" in
+  let n = String.length pfx in
+  if String.length key > n && String.sub key 0 n = pfx
+  then Some (String.sub key n (String.length key - n))
+  else None
+
 let register_type_decl (ctx : context) (td : type_decl) : unit result =
   let* ty = match td.td_body with
     | TyAlias te ->
@@ -2200,6 +2291,8 @@ let register_type_decl (ctx : context) (td : type_decl) : unit result =
       let param_names =
         List.map (fun (tp : type_param) -> tp.tp_name.name) td.td_type_params
       in
+      if param_names <> [] then
+        Hashtbl.replace ctx.type_arity td.td_name.name (List.length param_names);
       enter_level ctx;
       let param_tvs = List.map (fun n ->
         let tv = fresh_tyvar ctx.level in
@@ -2230,10 +2323,21 @@ let register_type_decl (ctx : context) (td : type_decl) : unit result =
       Ok (TCon td.td_name.name)
     | TyExtern ->
       (* Opaque host-supplied type. Register a TCon so user code can name it
-         in signatures; the body is intentionally absent. *)
+         in signatures; the body is intentionally absent. A parametric one
+         (`extern type Cell<T>`) records its arity for [infer_kind], like a
+         parametric enum. *)
+      if td.td_type_params <> [] then
+        Hashtbl.replace ctx.type_arity td.td_name.name
+          (List.length td.td_type_params);
       Ok (TCon td.td_name.name)
   in
   Hashtbl.replace ctx.type_env td.td_name.name ty;
+  (* Export the definition for importers (see [type_def_key]). Only
+     monomorphic definitions: a generic struct/alias body mentions its
+     parameters, which have no meaning outside this declaration. *)
+  if td.td_type_params = [] then
+    Hashtbl.replace ctx.name_types (type_def_key td.td_name.name)
+      { sc_tyvars = []; sc_effvars = []; sc_rowvars = []; sc_body = ty };
   Ok ()
 
 (** Register an effect declaration. *)
@@ -2429,6 +2533,33 @@ let populate_call_effects (ctx : context) (prog : Ast.program) : unit =
     ctx.call_effects;
   Effect_sites.set_async_by_ord async_tbl
 
+(** Learn the arity of every parametric type constructor applied in [ty]
+    (e.g. `Html<M>` in an imported `text : String -> Html<M>`). Imported
+    schemes are the only cross-module type information [check_program]
+    receives, so this is how an imported `enum Html<M>` gets kind
+    `Type -> Type` in the importer. Builtins keep their fixed kinds. *)
+let rec record_type_arities (ctx : context) (ty : ty) : unit =
+  let go = record_type_arities ctx in
+  let rec go_row = function
+    | RExtend (_, t, rest) -> go t; go_row rest
+    | REmpty | RVar _ -> ()
+  in
+  match repr ty with
+  | TApp (TCon name, args) ->
+    (match name with
+     | "Array" | "Option" | "List" | "Vec" | "Cmd" | "Ref" | "Result" -> ()
+     | _ ->
+       if not (Hashtbl.mem ctx.type_arity name) then
+         Hashtbl.replace ctx.type_arity name (List.length args));
+    List.iter go args
+  | TApp (head, args) -> go head; List.iter go args
+  | TArrow (a, _, b, _) -> go a; go b
+  | TTuple ts -> List.iter go ts
+  | TRecord row | TVariant row -> go_row row
+  | TForall (_, _, body) | TExists (_, _, body) -> go body
+  | TRef t | TMut t | TOwn t -> go t
+  | TVar _ | TCon _ -> ()
+
 let check_program ?(import_types : (string, scheme) Hashtbl.t option)
     (symbols : Symbol.t) (prog : Ast.program)
     : (context, type_error) Result.t =
@@ -2450,7 +2581,15 @@ let check_program ?(import_types : (string, scheme) Hashtbl.t option)
     | Ast.ImportList _ | Ast.ImportGlob _ -> ()
   ) prog.prog_imports;
   Option.iter (fun tbl ->
-    Hashtbl.iter (fun name sc -> Hashtbl.replace ctx.name_types name sc) tbl
+    Hashtbl.iter (fun name sc ->
+      match type_of_def_key name with
+      | Some ty_name ->
+        (* An imported type's definition. Local declarations, registered in
+           the forward pass below, replace it. *)
+        Hashtbl.replace ctx.type_env ty_name sc.sc_body
+      | None ->
+        Hashtbl.replace ctx.name_types name sc;
+        record_type_arities ctx sc.sc_body) tbl
   ) import_types;
   (* Forward pass: register all types, effects, traits, impls, and
      function signatures so that mutually recursive declarations resolve. *)
@@ -2475,6 +2614,17 @@ let check_program ?(import_types : (string, scheme) Hashtbl.t option)
       let self_ty = lower_type_expr ctx ib.ib_self_ty in
       Trait.register_impl ctx.trait_registry ib self_ty;
       Ok ()
+    | _ -> Ok ()
+  ) (Ok ()) prog.prog_decls in
+  (* Extern functions are fully described by their signatures, so register
+     their generalised schemes now (after every type is known) rather than
+     the fresh monomorphic placeholder above: a generic extern used before
+     its declaration otherwise had its type fixed by the first use, and a
+     second instantiation failed (`TypeMismatch (Int, Bool)`). *)
+  let* () = List.fold_left (fun acc decl ->
+    let* () = acc in
+    match decl with
+    | TopFn fd when fd.fd_body = FnExtern -> check_fn_decl ctx fd
     | _ -> Ok ()
   ) (Ok ()) prog.prog_decls in
   (* #559: trait coherence — now that every impl is registered, reject

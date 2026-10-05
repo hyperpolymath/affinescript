@@ -554,6 +554,22 @@ let fn_body_contains_return : fn_body -> bool = function
     undefined `h`). Like the other walkers in this module it is deliberately
     conservative: constructs it does not inspect contribute [] rather than a
     wrong answer. *)
+(** Variables bound by a pattern. *)
+let rec pattern_binders (pat : pattern) : string list =
+  match pat with
+  | PatWildcard _ | PatLit _ -> []
+  | PatVar id -> [id.name]
+  | PatTuple pats -> List.concat_map pattern_binders pats
+  | PatRecord (fields, _) ->
+    List.concat_map (fun (id, pat_opt) ->
+      match pat_opt with
+      | Some p -> pattern_binders p
+      | None -> [id.name]
+    ) fields
+  | PatCon (_, pats) -> List.concat_map pattern_binders pats
+  | PatOr (p1, p2) -> pattern_binders p1 @ pattern_binders p2
+  | PatAs (id, pat) -> id.name :: pattern_binders pat
+
 let rec find_free_vars (bound_vars : string list) (expr : expr) : string list =
   match expr with
   | ExprLit _ -> []
@@ -574,10 +590,7 @@ let rec find_free_vars (bound_vars : string list) (expr : expr) : string list =
   | ExprLet lb ->
     let rhs_free = find_free_vars bound_vars lb.el_value in
     (* Add bound variable to scope for body *)
-    let new_bound = match lb.el_pat with
-      | PatVar id -> id.name :: bound_vars
-      | _ -> bound_vars
-    in
+    let new_bound = pattern_binders lb.el_pat @ bound_vars in
     let body_free = match lb.el_body with
       | Some e -> find_free_vars new_bound e
       | None -> []
@@ -596,14 +609,22 @@ let rec find_free_vars (bound_vars : string list) (expr : expr) : string list =
       match stmt with
       | StmtLet sl ->
         let rhs_free = find_free_vars bound sl.sl_value in
-        let new_bound = match sl.sl_pat with
-          | PatVar id -> id.name :: bound
-          | _ -> bound
-        in
+        let new_bound = pattern_binders sl.sl_pat @ bound in
         (new_bound, acc_free @ rhs_free)
       | StmtExpr e ->
         (bound, acc_free @ find_free_vars bound e)
-      | _ -> (bound, acc_free)
+      (* Loops and assignments were skipped entirely, so a name used only
+         inside a `for`/`while` body was never reported: import flattening
+         then dropped the helper it called (`ReferenceError: apply_attr is
+         not defined`), and closure conversion could miss a capture. *)
+      | StmtAssign (lhs, _, rhs) ->
+        (bound, acc_free @ find_free_vars bound lhs @ find_free_vars bound rhs)
+      | StmtWhile (cond, body) ->
+        (bound, acc_free @ find_free_vars bound cond
+                @ find_free_vars bound (ExprBlock body))
+      | StmtFor (pat, iter, body) ->
+        (bound, acc_free @ find_free_vars bound iter
+                @ find_free_vars (pattern_binders pat @ bound) (ExprBlock body))
     ) (bound_vars, []) blk.blk_stmts in
     (* The tail expression is in scope of the block's own `let`
        bindings, so its free vars must exclude them — use the
@@ -617,7 +638,12 @@ let rec find_free_vars (bound_vars : string list) (expr : expr) : string list =
     free @ expr_free
   | ExprMatch m ->
     find_free_vars bound_vars m.em_scrutinee @
-    List.concat (List.map (fun arm -> find_free_vars bound_vars arm.ma_body) m.em_arms)
+    List.concat (List.map (fun arm ->
+      let arm_bound = pattern_binders arm.ma_pat @ bound_vars in
+      (match arm.ma_guard with
+       | Some g -> find_free_vars arm_bound g
+       | None -> [])
+      @ find_free_vars arm_bound arm.ma_body) m.em_arms)
   | ExprReturn e_opt ->
     (match e_opt with Some e -> find_free_vars bound_vars e | None -> [])
   | ExprTuple exprs | ExprArray exprs ->

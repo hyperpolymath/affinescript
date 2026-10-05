@@ -179,6 +179,24 @@ Deno-ESM target. JS-host ESM is Bun-ESM (`--bun-esm`).
 `parseTeaLayout`). Generic over `affinescript.tea_layout`; enforces the
 Linear-msg invariant; reuses the INT-02 loader. 9 Deno tests vs the
 canonical `affinescript tea-bridge` + a re-entrancy fixture.
+*Also* (2026-10-05) `src/Tea.affine`: The Elm Architecture written in
+AffineScript for browser apps on Bun-ESM. It provides a typed virtual DOM,
+`lazy` subtrees, keyed reconciliation that moves the fewest nodes (an LIS
+over surviving positions), `Cmd`/`Sub`, and `run`. `tea_host.js` is the
+host carve-out. There are 10 browser tests (Playwright), including a
+randomized keyed-diff property test. It is used by hyperpolymath/nexia-list.
+
+|`affinescript-router` |library |URL routing for `affinescript-tea` apps
+(2026-10-05): `current_url`, `on_url_change`, `navigate`/`replace`/`back`
+commands that deliver the new URL, `match_route` with `:param`/`*`
+captures, `query_param`, `href`. There are 5 unit tests and 6 browser
+tests. It is unrelated to `affinescript-cadre` (a screen back-stack).
+
+|`affinescript-crdt` |library |State-based CRDTs (2026-10-05): a Lamport
+clock and stamps, an LWW register, an LWW map with tombstones, an
+observed-remove set and a PN-counter, in pure AffineScript. There are 7
+property tests: convergence of three replicas under random ops and gossip,
+merge laws, and semantics.
 
 |`affinescript-cadre` |runtime |Cadre Router navigation satellite wrapper.
 Consumes `lib/tea_router.ml` generated WASM module.
