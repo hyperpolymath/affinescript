@@ -1339,6 +1339,18 @@ let () =
       Printf.sprintf
         "(__as_childProcess().spawnSync(%s, %s, { stdio: \"inherit\" }).status ?? 1)"
         (arg 0 a) (arg 1 a));
+  (* Captured run: stdin closed, stdout/stderr piped as UTF-8. [cwd] is an
+     AffineScript Option ({ tag, value }). A host spawn error (ENOENT,
+     ENOBUFS) has no status, so it maps to 1 with its message on stderr. *)
+  b "bun_run_capture"
+    (fun a ->
+      Printf.sprintf
+        "((__r) => ({ status: __r.status ?? 1, stdout: __r.stdout ?? \"\", \
+         stderr: (__r.stderr ?? \"\") + (__r.error ? String(__r.error.message) : \"\") }))\
+         (__as_childProcess().spawnSync(%s, %s, { encoding: \"utf8\", \
+         stdio: [\"ignore\", \"pipe\", \"pipe\"], \
+         cwd: ((__c) => __c.tag === \"Some\" ? __c.value : undefined)(%s) }))"
+        (arg 0 a) (arg 1 a) (arg 2 a));
   b "bun_stdin_text"
     (fun _ -> "__as_fs().readFileSync(0, \"utf8\")");
   b "bun_stdout_write"

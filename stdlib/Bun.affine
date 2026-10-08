@@ -16,6 +16,23 @@ pub extern fn bun_env_get(name: String) -> Option<String>;
 /// its exit status (or 1 when the host supplies no status).
 pub extern fn bun_run(command: String, arguments: [String]) -> Int;
 
+/// The captured outcome of a child process: its exit status (1 when the host
+/// supplies none, e.g. on a signal or a spawn failure) and its standard output
+/// and standard error decoded as UTF-8.
+pub type RunResult = {
+  status: Int,
+  stdout: String,
+  stderr: String
+}
+
+/// Run a child process synchronously and capture its standard output and
+/// standard error instead of inheriting them. Standard input is closed.
+/// `cwd` sets the child's working directory; `None` keeps the caller's. A
+/// spawn failure (missing program, output over the host buffer limit) yields
+/// status 1 with the host's error message appended to `stderr`.
+pub extern fn bun_run_capture(command: String, arguments: [String],
+                              cwd: Option<String>) -> RunResult;
+
 /// Read standard input to EOF as UTF-8.
 pub extern fn bun_stdin_text() -> String;
 

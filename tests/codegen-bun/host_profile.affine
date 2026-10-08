@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 // Bun-ESM host-profile acceptance fixture (issue #734).
 
-use Bun::{ bun_env_get, bun_run, bun_stdin_text, bun_stdout_write, bun_stderr_write, bun_exit };
+use Bun::{ RunResult, bun_env_get, bun_run, bun_run_capture, bun_stdin_text, bun_stdout_write, bun_stderr_write, bun_exit };
 use prelude::{Some, None};
 
 extern type Bytes;
@@ -48,4 +48,15 @@ pub fn exit_with(status: Int) -> Unit { bun_exit(status) }
 pub fn first_byte(path: String) -> Int {
   let value = readFileBytes(path);
   if bytesLength(value) == 0 { 0 } else { bytesByteAt(value, 0) }
+}
+
+/// Run `sh -c script` in `cwd` (empty string = inherit) and capture the result.
+pub fn run_captured(script: String, cwd: String) -> RunResult {
+  let dir = if cwd == "" { None } else { Some(cwd) };
+  bun_run_capture("sh", ["-c", script], dir)
+}
+
+/// Capture-run a program that does not exist, to exercise the spawn-error path.
+pub fn run_missing_program() -> RunResult {
+  bun_run_capture("affinescript-no-such-program", [], None)
 }
