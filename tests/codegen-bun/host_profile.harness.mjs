@@ -24,6 +24,19 @@ try {
     throw new Error("missing environment value failed");
   }
   if (subject.run_successful_child() !== 0) throw new Error("subprocess lowering failed");
+  // Captured run (bun_run_capture): planted controls with known answers.
+  const captured = subject.run_captured("echo hi; echo err >&2; exit 3", "");
+  if (captured.status !== 3) throw new Error(`capture status failed: ${captured.status}`);
+  if (captured.stdout !== "hi\n") throw new Error(`capture stdout failed: ${JSON.stringify(captured.stdout)}`);
+  if (captured.stderr !== "err\n") throw new Error(`capture stderr failed: ${JSON.stringify(captured.stderr)}`);
+  const inDir = subject.run_captured("pwd", nested);
+  if (inDir.status !== 0 || inDir.stdout.trim() !== nested) {
+    throw new Error(`capture cwd failed: ${JSON.stringify(inDir)}`);
+  }
+  const missing = subject.run_missing_program();
+  if (missing.status !== 1 || !missing.stderr.includes("affinescript-no-such-program")) {
+    throw new Error(`capture spawn-error failed: ${JSON.stringify(missing)}`);
+  }
   subject.remove_path(file);
   let missingPathThrew = false;
   try {
