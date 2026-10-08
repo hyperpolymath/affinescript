@@ -54,9 +54,6 @@ workflows:
     '.github/workflows/scorecard.yml': []
     '.github/workflows/secret-scanner.yml':
         - 'actions/checkout@v7.0.1'
-    '.github/workflows/semgrep.yml':
-        - 'actions/checkout@v7.0.1'
-        - 'github/codeql-action@v4.38.0'
     '.github/workflows/spark-theatre-gate.yml': []
     '.github/workflows/stdlib-naming.yml':
         - 'actions/checkout@v7.0.1'
