@@ -54,7 +54,7 @@ jobs:
             || opam switch create . ocaml-base-compiler.4.14.2 --no-install --yes
           opam exec -- ocaml -version
       - name: Set up Node.js
-        uses: actions/setup-node@v7.0.0
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: "20"
       - name: Set up Bun
@@ -250,7 +250,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload bench log
         if: always()
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: bench-output
           path: bench-output.log
@@ -276,7 +276,7 @@ jobs:
       - name: Install dependencies
         run: opam install . --deps-only --with-test --with-doc --yes
       - name: Set up Node.js
-        uses: actions/setup-node@v7.0.0
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: "20"
       - name: Install tree-sitter CLI (for res-to-affine walker tests)
@@ -315,7 +315,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload coverage HTML
         if: always()
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: coverage-html
           path: _coverage
@@ -342,7 +342,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7.0.1
       - name: Set up Node.js
-        uses: actions/setup-node@v7.0.0
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: "20"
       - name: Install test runner dependencies
@@ -387,7 +387,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7.0.1
       - name: Set up Node.js
-        uses: actions/setup-node@v7.0.0
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: "20"
       - name: Install tree-sitter CLI
