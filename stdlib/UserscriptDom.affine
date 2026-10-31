@@ -1,0 +1,188 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell
+//
+// UserscriptDom.affine — the DOM runtime for the `--target userscript` build.
+//
+// Why this module exists: packages/affine-js is the host side of the WASM
+// virtual-DOM connector (affinescript-dom), and it cannot be shipped to a
+// userscript — its loader reads `import.meta.url` and reaches for
+// `node:fs/promises` / `node:url` through dynamic `import()`, none of which
+// exist in a page (see docs/guides/userscript-target.adoc, "The ESM DOM runtime
+// does not bundle to an IIFE"). The userscript answer is to author the DOM
+// runtime in AffineScript and let this target emit it as one IIFE: that is what
+// this module is. It compiles to nothing but `__as_dom*` calls plus plain
+// functions, so it needs no loader, no wasm module, and no page CSP allowance.
+//
+// Scope, deliberately: a *reconciler*, not a virtual DOM diff. An `Element`
+// remembers the attributes and text it was created with, which is what makes an
+// in-place patch possible without a vnode tree to diff against (the target has
+// no `get_attribute`, and a recursive vnode type is not expressible here).
+// `Group` handles siblings: patch by position, append the surplus, remove what
+// the new list no longer mentions.
+//
+// Affine discipline: an `Element` owns one DOM node and one parent reference;
+// `unmount` removes that node exactly once. `Group` owns its children: either
+// `reconcile` (which returns the group in its new state) or `unmount_all`
+// consumes it. Nothing here touches the page except through stdlib/Userscript
+// externs.
+
+module UserscriptDom;
+
+use prelude::*;
+
+use Userscript::{
+  Node, element, append, remove, set_attribute, remove_attribute, set_text
+};
+
+// ── Attribute values ────────────────────────────────────────────────────────
+
+/// One attribute to be present on an element. Absence is expressed by leaving
+/// it out of the next spec — that is what `patch` turns into a removal.
+pub struct Attr { name: String, value: String }
+
+pub fn attr(name: String, value: String) -> Attr {
+  Attr #{ name: name, value: value }
+}
+
+/// The element description a `create`/`patch` consumes.
+pub struct Spec { html_tag: String, attrs: [Attr], text: String }
+
+pub fn spec(html_tag: String, attrs: [Attr], text: String) -> Spec {
+  Spec #{ html_tag: html_tag, attrs: attrs, text: text }
+}
+
+/// A spec with no attributes.
+pub fn text_spec(html_tag: String, text: String) -> Spec {
+  Spec #{ html_tag: html_tag, attrs: [], text: text }
+}
+
+// ── Elements ────────────────────────────────────────────────────────────────
+
+/// A created, attached element together with the state needed to patch it in
+/// place: the attributes it currently has and the text it currently shows.
+pub struct Element { parent: Node, node: Node, attrs: [Attr], text: String }
+
+/// Is `name` among these attributes?
+fn has_attr(attrs: [Attr], name: String) -> Bool {
+  let mut found = false;
+  for a in attrs {
+    if a.name == name {
+      found = true;
+    }
+  };
+  found
+}
+
+fn apply_attrs(node: Node, attrs: [Attr]) -> Unit {
+  for a in attrs {
+    set_attribute(node, a.name, a.value);
+  };
+  ()
+}
+
+/// Remove every attribute the old spec had and the new one does not. This is
+/// the half a "set everything in the new spec" patcher silently gets wrong:
+/// the attribute stays on the element for ever.
+fn drop_removed(node: Node, old_attrs: [Attr], new_attrs: [Attr]) -> Unit {
+  for a in old_attrs {
+    if not (has_attr(new_attrs, a.name)) {
+      remove_attribute(node, a.name);
+    }
+  };
+  ()
+}
+
+/// Create an element, apply its attributes and text, and attach it.
+pub fn create(parent: Node, html_tag: String, attrs: [Attr], text: String) -> Element {
+  let node = element(html_tag);
+  apply_attrs(node, attrs);
+  if text != "" {
+    set_text(node, text);
+  };
+  append(parent, node);
+  Element #{ parent: parent, node: node, attrs: attrs, text: text }
+}
+
+pub fn create_from(parent: Node, s: Spec) -> Element {
+  create(parent, s.html_tag, s.attrs, s.text)
+}
+
+/// Bring an existing element in line with a new attribute set and text: apply
+/// what is there, remove what is not, rewrite the text only when it changed.
+pub fn patch(el: Element, attrs: [Attr], text: String) -> Element {
+  drop_removed(el.node, el.attrs, attrs);
+  apply_attrs(el.node, attrs);
+  if el.text != text {
+    set_text(el.node, text);
+  };
+  Element #{ parent: el.parent, node: el.node, attrs: attrs, text: text }
+}
+
+pub fn patch_from(el: Element, s: Spec) -> Element {
+  patch(el, s.attrs, s.text)
+}
+
+/// Change only the text (the common case: a counter, a status line).
+pub fn set_text_of(el: Element, text: String) -> Element {
+  if el.text != text {
+    set_text(el.node, text);
+  };
+  Element #{ parent: el.parent, node: el.node, attrs: el.attrs, text: text }
+}
+
+/// Detach the element from the page. Consumes it: an `Element` is not reusable
+/// after this, and there is nothing left to release.
+pub fn unmount(el: Element) -> Unit {
+  remove(el.parent, el.node)
+}
+
+// ── Sibling groups ──────────────────────────────────────────────────────────
+
+/// The children of one parent, in document order.
+pub struct Group { parent: Node, items: [Element] }
+
+pub fn group(parent: Node) -> Group {
+  Group #{ parent: parent, items: [] }
+}
+
+pub fn member_count(g: Group) -> Int {
+  len(g.items)
+}
+
+/// Reconcile a group against a new list of specs, positionally.
+///
+/// * a position that already has an element is patched in place (so the DOM
+///   node — and anything the page attached to it — survives),
+/// * a position past the end is created and appended,
+/// * an element whose position the new list no longer reaches is removed.
+///
+/// Returns the group in its new state; the caller keeps the result.
+pub fn reconcile(g: Group, specs: [Spec]) -> Group {
+  let existing = len(g.items);
+  let mut index = 0;
+  let mut kept = [];
+  for s in specs {
+    if index < existing {
+      kept = kept ++ [patch_from(g.items[index], s)];
+    } else {
+      kept = kept ++ [create_from(g.parent, s)];
+    };
+    index = index + 1;
+  };
+  let mut position = 0;
+  for el in g.items {
+    if position >= index {
+      remove(g.parent, el.node);
+    };
+    position = position + 1;
+  };
+  Group #{ parent: g.parent, items: kept }
+}
+
+/// Remove every child in the group and leave the group empty.
+pub fn unmount_all(g: Group) -> Unit {
+  for el in g.items {
+    remove(g.parent, el.node);
+  };
+  ()
+}

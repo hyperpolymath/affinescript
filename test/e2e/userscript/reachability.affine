@@ -1,0 +1,33 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell
+//
+// Entry-reachability fixture. `use prelude::*` and `use Userscript::{...}`
+// pull in far more than a page-injected script should ship, so the target
+// prunes to what `main` actually reaches: `dead_helper` and every unused
+// Userscript operation (and their runtime sections) must be absent from the
+// emitted file, while the live path stays. Reachability, not minification —
+// nothing is renamed, folded, or inlined.
+
+module Reachability;
+
+use prelude::*;
+
+use Userscript::{Node, body, element, append};
+
+fn dead_helper() -> String {
+  "dead-code-marker"
+}
+
+fn live_helper(node: Node) -> Unit {
+  set_attribute_placeholder(node)
+}
+
+fn set_attribute_placeholder(node: Node) -> Unit {
+  println("reachability:live")
+}
+
+pub fn main() -> Unit {
+  let box = element("div");
+  append(body(), box);
+  live_helper(box)
+}

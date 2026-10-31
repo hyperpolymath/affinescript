@@ -1,0 +1,144 @@
+// SPDX-License-Identifier: CC-BY-SA-4.0
+// SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+= JSON and YAML conventions
+:toc: macro
+
+toc::[]
+
+Machine-readable output in this repo follows two estate standards. This page
+records them, where they already hold, and what is left to convert.
+
+== JSON: I-JSON + JCS (`hyperpolymath/ijson-jcs`, D306)
+
+Every JSON document the compiler writes for a machine is *I-JSON* (RFC 7493)
+and *JCS-canonical* (RFC 8785), as defined by the estate standard
+https://github.com/hyperpolymath/ijson-jcs[`hyperpolymath/ijson-jcs`] — I-JSON
+validation plus JCS canonicalisation, shipped there as a Rust library with
+`check`/`fix`/`canon` in its CLI.
+
+Why both halves matter:
+
+* **I-JSON** removes the parts of JSON that let two parsers disagree: duplicate
+  object keys, lone surrogates and malformed UTF-8, and `NaN`/`Infinity`.
+* **JCS** removes the parts that let two *writers* disagree: key order, string
+  escaping, and number spelling. Two runs that produce equal values produce
+  equal bytes, which is what content addressing, signed payloads, and
+  byte-level diffing need.
+
+The rules, stated concretely (these are the ones that bite):
+
+[cols="1,3"]
+|===
+|Rule |Detail
+
+|Key order |Lexicographic over **UTF-16 code units** — the order ECMAScript's
+default `sort` gives, *not* UTF-8 byte order and *not* locale order. Above the
+BMP the two disagree: a key containing an emoji (high surrogate U+D83D) sorts
+*before* one containing U+E000.
+
+|Strings |Escaped exactly as `JSON.stringify` escapes them: `\"`, `\\`, the
+five short control escapes (`\b \f \n \r \t`), `\u00xx` (lower-case hex) for
+the rest of C0, everything else verbatim UTF-8.
+
+|Numbers |ECMAScript `Number::toString`, not C `%g`: `1e21` →
+`1e+21`, `1e20` → `100000000000000000000`, `2e-3` → `0.002`, `-0` → `0`,
+`1.7976931348623157e308` → `1.7976931348623157e+308`. Plain notation while
+the decimal exponent is in `[-6, 21)`, exponent form outside it.
+
+|No whitespace |No spaces, no newlines inside the document.
+
+|Rejections |Duplicate keys, lone surrogates / bad UTF-8, `NaN`, `±Infinity`
+are errors, never silently coerced.
+|===
+
+=== Current state in this tree
+
+[cols="2,1,3"]
+|===
+|Site |Status |Note
+
+|`lib/json_output.ml` |*canonical* |All five serialisation sites now go
+through `Jcs.to_string_exn`: the two `--json` report emitters (stderr) and the
+three LSP response emitters — `emit_hover`, `emit_goto_def`,
+`emit_completions` (stdout).
+
+|`lib/lsp_server.ml` |*canonical* |JSON-RPC frames go through
+`Jcs.to_string_exn` too. `Content-Length` is computed from the serialised body,
+so canonical output keeps framing byte-exact by construction.
+
+|`lib/jcs.ml` |*wired, vector-checked* |The RFC 7493 + RFC 8785 serialiser,
+in `lib/dune`'s `(modules ...)` list. Built and run against the vectors below
+as a standalone `dune` + `yojson` project: all six byte-identical to an
+independent JCS implementation, and all four I-JSON rejections fire. The full
+repository build has not been re-run here — see *Building the toolchain*.
+
+|`--json` stream |stderr |Unchanged by this convention: the compiler's
+`Compiled …` messages own stdout, so the machine document stays on stderr.
+|===
+
+The toolchain is hermetic (no Cargo, no crates.io), so `ijson-jcs`'s Rust
+library cannot be linked and shelling out to its CLI would make `--json`
+depend on what is installed on the machine. `lib/jcs.ml` is therefore a port
+of the two RFCs, not a binding; the CLI remains the out-of-band conformance
+oracle, to be driven by `tools/run_jcs_conformance.sh` (planned: run `canon`
+over the corpus below when it is on `PATH`, skip loudly otherwise).
+
+=== What does not break
+
+Canonical output changes key order and whitespace only, and both are
+insignificant to consumers. The greps in this repo keep matching:
+
+* `tools/run_codegen_bun_tests.sh` → `grep -q '"success":false'`
+* `test/e2e/userscript/run.sh` → `grep -q '"code":"E0827"'`
+
+=== Pinned corpus
+
+These vectors were produced by an independent JCS implementation (node's own
+`JSON.stringify` for ES6 strings/numbers, default `sort` for UTF-16 key
+order) and matched by a step-for-step mirror of `lib/jcs.ml`'s algorithm.
+They are the corpus `test/test_jcs.ml` asserts (as `Alcotest` cases).
+
+[source,text]
+----
+{"literals":[null,true,false],"numbers":[333333333.3333333,1e+30,4.5,0.002,1e-27],"string":"€$\u000f\nA'B\"\\\\\"/"}
+{"":5,"A":3,"a":2,"aa":4,"b":1}
+{"e":2,"z":[1,2,{"y":null}],"é":1}
+{"astral":1,"😀":2,"":4,"":3}   <- U+E000 and U+FFFD, emitted verbatim
+[0,0,1e+21,100000000000000000000,1e-7,0.000001,5e-324,1.7976931348623157e+308,123456789012345680000,-2.5,0.1]
+{"nested":{"k1":{"y":[null],"z":1},"k2":[true,"x"]}}
+----
+
+The fourth line is the UTF-16 ordering case: `😀` (U+1F600) precedes
+U+E000 even though its code point is larger. The fifth covers the ES6 number
+placement rule at both switch points, subnormals, and `-0`.
+
+== Building the toolchain
+
+The checks above were run with a from-source toolchain, because this
+environment has no opam switch: `tools/bootstrap-ocaml-toolchain.sh` builds
+OCaml 4.14.2, dune, and the findlib packages this repo needs straight from
+upstream tarballs into one prefix (`--prefix`, `--stage core|shims|libs`,
+`--verify`), with no opam and no user-wide switch. Its header records the
+traps (dune bootstraps without `--release`; `ocaml-compiler-libs` v0.17 is
+OCaml-5-only; `cppo` is needed by `ppx_deriving`; fmt's tarballs are
+topkg-only; `seq`/`result` must be stdlib re-export shims).
+
+One step cannot complete behind a restrictive egress policy: sedlex
+regenerates its Unicode tables by downloading `UnicodeData.txt` from
+`unicode.org`. On a machine with ordinary internet access that is a no-op; on
+an air-gapped runner, pre-seed the file or install sedlex from a distribution
+package.
+
+== YAML: kyaml (external standard)
+
+YAML this repo emits is kyaml. **kyaml is not defined in this estate** — it is
+an upstream standard, unlike ijson-jcs above, which is ours (D306). So there is
+no estate repository to pin here, only the upstream one, and no version to
+track in `dune`/`opam`: kyaml governs the *shape* of the YAML we emit, not a
+linked dependency.
+
+Nothing in this tree generates YAML today (the CI workflows and manifests are
+hand-written YAML; `.deed` manifests are DEED), so nothing is blocked on
+pinning the exact upstream link. When a tool starts emitting YAML, it emits
+kyaml rather than hand-rolling a writer — and this page gains the upstream
+pointer at that point.

@@ -86,9 +86,13 @@ let read_message () : Yojson.Basic.t option =
     end
   with End_of_file | Sys_error _ -> None
 
-(** Serialise and write one JSON-RPC message to stdout. *)
+(** Serialise and write one JSON-RPC message to stdout.
+
+    The body is canonical JSON (I-JSON + JCS, see {!Jcs}): JSON-RPC is
+    insensitive to member order, and a canonical body makes
+    [Content-Length] byte-exact by construction rather than by luck. *)
 let write_message (json : Yojson.Basic.t) : unit =
-  let body = Yojson.Basic.to_string json in
+  let body = Jcs.to_string_exn json in
   let n    = String.length body in
   print_string (Printf.sprintf "Content-Length: %d\r\n\r\n%s" n body);
   flush stdout

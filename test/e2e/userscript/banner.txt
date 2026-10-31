@@ -1,0 +1,9 @@
+// ==UserScript==
+// @name        AffineScript userscript fixture
+// @namespace   https://affinescript.dev/e2e/userscript
+// @version     1.0.0
+// @description CI fixture for the AffineScript `--target userscript` build
+// @match       https://affinescript.test/probe
+// @run-at      document-idle
+// @grant       none
+// ==/UserScript==

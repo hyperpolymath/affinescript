@@ -1,0 +1,108 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell
+//
+// Userscript-target CI fixture.
+//
+// Exercises the shape a real userscript has, end to end:
+//   1. append a <div> to the page,
+//   2. register a menu command (a typed error under `@grant none`),
+//   3. write and read one setting,
+//   4. remove the <div> and release the menu command on teardown.
+//
+// Teardown is triggered by the harness dispatching the custom window event
+// `affinescript-userscript:teardown`. The listener is a *once* listener: the
+// emitted runtime removes it from the page before running the handler, so the
+// add/remove listener spy in the harness must balance exactly.
+
+module Probe;
+
+use prelude::*;
+
+use Userscript::{
+  Node, MenuCommand,
+  add_style, set_attribute, remove, set_text, append, body, element,
+  storage_backend, get_setting, set_setting, register_menu_command,
+  release_menu_command, release_style, listen_window_once, describe_error
+};
+
+const TEARDOWN_EVENT: String = "affinescript-userscript:teardown";
+const SETTING_KEY: String = "affinescript-userscript-probe";
+
+fn setting_text(value: Option<String>) -> String {
+  match value {
+    Some(text) => text,
+    None => "<unset>"
+  }
+}
+
+/// Step 4 of the contract: the div leaves the DOM and the menu command (if
+/// one was granted) is released exactly once.
+fn teardown(box: Node, menu: Option<MenuCommand>) -> Unit {
+  match menu {
+    Some(command) => {
+      let released = release_menu_command(command);
+      match released {
+        Ok(_) => println("probe:menu-released"),
+        Err(e) => println("probe:menu-release-failed=" ++ describe_error(e))
+      }
+    },
+    None => println("probe:menu-released")
+  };
+  remove(body(), box);
+  println("probe:div-removed")
+}
+
+fn arm_teardown(box: Node, menu: Option<MenuCommand>) -> Unit {
+  match listen_window_once(TEARDOWN_EVENT, fn() => teardown(box, menu)) {
+    Ok(_) => println("probe:armed"),
+    Err(e) => println("probe:arm-failed=" ++ describe_error(e))
+  }
+}
+
+pub fn main() -> Unit {
+  // 1. Append a div.
+  let host = body();
+  let box = element("div");
+  set_attribute(box, "id", "affinescript-userscript-probe");
+  set_text(box, "AffineScript userscript is running");
+  append(host, box);
+  println("probe:div-appended");
+
+  // 3. Store and read back one setting (manager first, localStorage fallback).
+  let wrote = set_setting(SETTING_KEY, "42");
+  match wrote {
+    Ok(_) => println("probe:setting-written"),
+    Err(e) => println("probe:setting-write-failed=" ++ describe_error(e))
+  };
+  match get_setting(SETTING_KEY) {
+    Ok(value) => println("probe:setting=" ++ setting_text(value)),
+    Err(e) => println("probe:setting-read-failed=" ++ describe_error(e))
+  };
+  println("probe:storage=" ++ storage_backend());
+
+  // GM_addStyle: no fallback exists, so under `@grant none` this must be a
+  // typed ManagerMissing error rather than a throw.
+  match add_style("#affinescript-userscript-probe { outline: 1px dotted currentColor; }") {
+    Ok(sheet) => {
+      let released = release_style(sheet);
+      match released {
+        Ok(_) => println("probe:style=added-and-released"),
+        Err(_) => println("probe:style=release-failed")
+      }
+    },
+    Err(e) => println("probe:style-unavailable=" ++ describe_error(e))
+  };
+
+  // 2. Register a menu command. With `@grant none` there is no manager, so
+  // this is the typed-error half of the capability contract.
+  match register_menu_command("AffineScript probe", fn() => println("probe:menu-clicked")) {
+    Ok(command) => {
+      println("probe:menu=registered");
+      arm_teardown(box, Some(command))
+    },
+    Err(e) => {
+      println("probe:menu-unavailable=" ++ describe_error(e));
+      arm_teardown(box, None)
+    }
+  }
+}

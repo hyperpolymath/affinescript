@@ -212,6 +212,21 @@ under Bun. `tools/run_codegen_deno_tests.sh` (historical name) compiles
 Migration and host-contract details:
 link:guides/bun-esm-migration.adoc[guides/bun-esm-migration.adoc].
 
+|Userscript (browser) |works |`lib/codegen_userscript.ml`,
+`--target userscript` / `--iife` / `--banner FILE`. Direct AST→ES2020
+single-file IIFE for userscript managers: no import/export, no dynamic
+import, no `eval`, no top-level `await` (all four are checked on every
+build). Host surface is a closed allowlist — `stdlib/Userscript.affine`'s
+`us_*`/`dom_*` externs — and anything else is a build error naming the
+construct and module (E0827); effect handlers, `unsafe` and float-cell
+records are refused rather than miscompiled. `use prelude::*` is safe in a
+page-injected file because the target prunes to what `main` reaches
+(reachability, not minification). No WASM: the constructs that would need
+linear memory are refused, and `wasm-unsafe-eval` is not available in the
+page CSP a userscript inherits. Runtime fixture runs the compiled script in a
+page under `@grant none`, `@grant GM_*` and a storage-denying page.
+Guide: link:guides/userscript-target.adoc[guides/userscript-target.adoc].
+
 |Node-CJS |works |`lib/codegen_node.ml`; CJS shim, handle table, the
 `.affine` VS Code extension compiles through it. Live-host smoke
 harness for the compiled extension landed via PR #317 / issue #139:
@@ -268,6 +283,7 @@ test is deleted or renamed without this section (and CI) noticing.
 |Codegen (golden snapshots) |`test/test_golden.ml`
 |Deno / JS host backends |`test/test_deno_builtins_consistency.ml`, `test/test_int_div_js.ml`
 |Bun-ESM host backend |`tools/run_codegen_bun_tests.sh`
+|Userscript target |`tools/run_userscript_tests.sh`; fixtures `test/e2e/userscript/probe.affine`, `test/e2e/userscript/reachability.affine`, negatives `test/e2e/userscript/negatives/missing_binding.affine`, `test/e2e/userscript/negatives/handle_leak.affine`
 |Solo core (executable metatheory) |`test/test_solo_cesk.ml`
 |===
 

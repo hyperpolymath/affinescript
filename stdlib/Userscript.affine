@@ -1,0 +1,444 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell
+//
+// Userscript.affine — manager bindings for the `--target userscript` backend.
+//
+// A userscript is loaded by Tampermonkey / Greasemonkey / Violentmonkey into
+// somebody else's page. Which host globals exist is decided by the manager,
+// per script, from its `@grant` list — with `@grant none` there are no GM_*
+// globals at all. So nothing here assumes a manager:
+//
+//   * capability checks — `capabilities()` reports what this page/manager
+//     actually exposes; every operation consults it first;
+//   * localStorage fallback — settings fall back to `localStorage` when the
+//     manager grants no storage, and fail with a typed error when the page
+//     denies that too (opaque origin);
+//   * typed errors — every operation returns `Result<_, UserscriptError>`;
+//     the raw host shapes (`HostRead` / `HostWrite` / `HostHandle`) are never
+//     leaked to callers;
+//   * affine handles — a menu command, injected style, notification, event
+//     listener and timer each come back as a handle that must be *consumed*
+//     by its release function. Bind it `@linear` and the quantity checker
+//     (lib/quantity.ml) proves exactly-one release statically: a dropped
+//     handle is a compile error, a double release does not type-check.
+//
+// The externs below are the entire host surface of the userscript target.
+// Each is lowered by lib/codegen_userscript.ml to a feature-detected helper
+// in the emitted IIFE; an extern outside that table fails the build, naming
+// the module. The DOM primitives return `Node` handles that are plain DOM
+// nodes at runtime (null when the page has no document).
+
+module Userscript;
+
+use prelude::*;
+
+// ── Opaque host types ───────────────────────────────────────────────────────
+
+/// A DOM node (element or text node). Opaque: only this module's operations
+/// may touch it.
+pub extern type Node;
+
+// ── Errors ──────────────────────────────────────────────────────────────────
+
+/// Everything that can go wrong at the manager/page boundary. Each case
+/// carries the capability or host message so a script can report precisely
+/// *why* it degraded instead of silently doing nothing.
+pub enum UserscriptError {
+  /// The manager does not grant this capability (checked via `capabilities`).
+  ManagerMissing(String),
+  /// The manager grants it, but the call itself failed.
+  HostRejected(String),
+  /// `localStorage` exists but the page refuses access (e.g. opaque origin,
+  /// private-mode quota of 0).
+  StorageDenied(String),
+  /// The key is empty, longer than 128 characters, or contains a control
+  /// character.
+  InvalidKey(String)
+}
+
+/// Human-readable rendering, for logging and for the fixture's assertions.
+pub fn describe_error(e: UserscriptError) -> String {
+  match e {
+    ManagerMissing(capability) => "userscript: capability not granted: " ++ capability,
+    HostRejected(message) => "userscript: host rejected the call: " ++ message,
+    StorageDenied(message) => "userscript: storage denied: " ++ message,
+    InvalidKey(key) => "userscript: invalid setting key: " ++ key
+  }
+}
+
+// ── Raw host shapes (internal) ──────────────────────────────────────────────
+
+pub struct HostRead { found: Bool, value: String, error: String }
+pub struct HostWrite { ok: Bool, error: String }
+pub struct HostHandle { ok: Bool, id: Int, error: String }
+
+// ── Releases (affine handles) ───────────────────────────────────────────────
+
+pub struct MenuCommand { id: Int }
+pub struct StyleSheet { id: Int }
+pub struct Notification { id: Int }
+pub struct ListenerHandle { id: Int }
+pub struct Timer { id: Int }
+
+// ── Host primitives: capability probes ──────────────────────────────────────
+
+/// Is `GM_<capability>` callable in this page? Query by suffix: `"getValue"`,
+/// `"setValue"`, `"deleteValue"`, `"registerMenuCommand"`, `"addStyle"`,
+/// `"notification"`, …
+pub extern fn us_gm_has(capability: String) -> Bool;
+
+/// Is `localStorage` present *and* usable (a write probe succeeds)?
+pub extern fn us_local_available() -> Bool;
+
+/// Key discipline shared by every backend: non-empty, <= 128 chars, no
+/// control characters.
+pub extern fn us_key_valid(key: String) -> Bool;
+
+// ── Host primitives: manager storage (GM_getValue / GM_setValue) ────────────
+
+pub extern fn us_gm_get(key: String) -> HostRead;
+pub extern fn us_gm_set(key: String, value: String) -> HostWrite;
+pub extern fn us_gm_delete(key: String) -> HostWrite;
+
+// ── Host primitives: localStorage fallback ──────────────────────────────────
+
+pub extern fn us_local_get(key: String) -> HostRead;
+pub extern fn us_local_set(key: String, value: String) -> HostWrite;
+pub extern fn us_local_delete(key: String) -> HostWrite;
+
+// ── Host primitives: GM_registerMenuCommand ─────────────────────────────────
+
+pub extern fn us_gm_register_menu(label: String, handler: () -> Unit) -> HostHandle;
+pub extern fn us_gm_unregister_menu(ticket: Int) -> HostWrite;
+
+// ── Host primitives: GM_addStyle ────────────────────────────────────────────
+
+pub extern fn us_gm_add_style(css: String) -> HostHandle;
+pub extern fn us_gm_remove_style(ticket: Int) -> HostWrite;
+
+// ── Host primitives: GM_notification ────────────────────────────────────────
+
+pub extern fn us_gm_notify(text: String, title: String) -> HostHandle;
+pub extern fn us_gm_close_notification(ticket: Int) -> HostWrite;
+
+// ── Host primitives: event listeners and timers ─────────────────────────────
+
+pub extern fn us_on_window(event: String, handler: () -> Unit) -> Int;
+pub extern fn us_on_element(node: Node, event: String, handler: () -> Unit) -> Int;
+pub extern fn us_on_window_once(event: String, handler: () -> Unit) -> Int;
+pub extern fn us_on_element_once(node: Node, event: String, handler: () -> Unit) -> Int;
+pub extern fn us_off(ticket: Int) -> Unit;
+pub extern fn us_set_timeout(handler: () -> Unit, ms: Int) -> Int;
+pub extern fn us_clear_timeout(ticket: Int) -> Unit;
+
+// ── Host primitives: DOM ────────────────────────────────────────────────────
+
+pub extern fn dom_body() -> Node;
+pub extern fn dom_create_element(tag: String) -> Node;
+pub extern fn dom_create_text(content: String) -> Node;
+pub extern fn dom_query(selector: String) -> Node;
+pub extern fn dom_append(parent: Node, child: Node) -> Unit;
+pub extern fn dom_remove(parent: Node, child: Node) -> Unit;
+pub extern fn dom_set_attribute(node: Node, name: String, value: String) -> Unit;
+pub extern fn dom_remove_attribute(node: Node, name: String) -> Unit;
+pub extern fn dom_set_text(node: Node, content: String) -> Unit;
+pub extern fn dom_add_class(node: Node, class_name: String) -> Unit;
+pub extern fn dom_remove_class(node: Node, class_name: String) -> Unit;
+pub extern fn dom_is_null(node: Node) -> Bool;
+
+// ════════════════════════════════════════════════════════════════════════════
+// Capabilities
+// ════════════════════════════════════════════════════════════════════════════
+
+/// What the current page's manager actually provides. Read it once and pass
+/// it around rather than probing per call.
+pub struct Caps {
+  manager: Bool,
+  gm_storage: Bool,
+  local_storage: Bool,
+  menu: Bool,
+  style: Bool,
+  notification: Bool
+}
+
+pub fn capabilities() -> Caps {
+  let can_read = us_gm_has("getValue");
+  let can_write = us_gm_has("setValue");
+  Caps #{
+    manager: can_read,
+    gm_storage: can_read,
+    local_storage: us_local_available(),
+    menu: us_gm_has("registerMenuCommand"),
+    style: us_gm_has("addStyle"),
+    notification: us_gm_has("notification")
+  } 
+}
+
+/// The storage backend a setting write will use: `"manager"`, `"localStorage"`
+/// or `"none"`. Handy for diagnostics and for the fixture's assertions.
+pub fn storage_backend() -> String {
+  let caps = capabilities();
+  if caps.gm_storage {
+    "manager"
+  } else if caps.local_storage {
+    "localStorage"
+  } else {
+    "none"
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Settings (GM_getValue / GM_setValue with localStorage fallback)
+// ════════════════════════════════════════════════════════════════════════════
+
+/// Read one setting. `Ok(None)` means "not set" — never conflated with an
+/// error, and never with the empty string.
+///
+/// Backend order: the manager (`GM_getValue`) if granted, else
+/// `localStorage`. Values are strings: a manager storing a structured value
+/// hands back its JSON text (see the emitted runtime's `__as_gmGet`).
+pub fn get_setting(key: String) -> Result<Option<String>, UserscriptError> {
+  if us_key_valid(key) {
+    let caps = capabilities();
+    if caps.gm_storage {
+      let read = us_gm_get(key);
+      if read.error != "" {
+        Err(HostRejected(read.error))
+      } else if read.found {
+        Ok(Some(read.value))
+      } else {
+        Ok(None)
+      }
+    } else if caps.local_storage {
+      let read = us_local_get(key);
+      if read.error != "" {
+        Err(StorageDenied(read.error))
+      } else if read.found {
+        Ok(Some(read.value))
+      } else {
+        Ok(None)
+      }
+    } else {
+      Err(ManagerMissing("GM_getValue (and no usable localStorage)"))
+    }
+  } else {
+    Err(InvalidKey(key))
+  }
+}
+
+/// Write one setting through the same backend order as `get_setting`.
+pub fn set_setting(key: String, value: String) -> Result<Unit, UserscriptError> {
+  if us_key_valid(key) {
+    let caps = capabilities();
+    if caps.gm_storage {
+      let wrote = us_gm_set(key, value);
+      if wrote.ok { Ok(()) } else { Err(HostRejected(wrote.error)) }
+    } else if caps.local_storage {
+      let wrote = us_local_set(key, value);
+      if wrote.ok { Ok(()) } else { Err(StorageDenied(wrote.error)) }
+    } else {
+      Err(ManagerMissing("GM_setValue (and no usable localStorage)"))
+    }
+  } else {
+    Err(InvalidKey(key))
+  }
+}
+
+/// Remove one setting. A missing key is not an error.
+pub fn delete_setting(key: String) -> Result<Unit, UserscriptError> {
+  if us_key_valid(key) {
+    let caps = capabilities();
+    if caps.gm_storage {
+      let wrote = us_gm_delete(key);
+      if wrote.ok { Ok(()) } else { Err(HostRejected(wrote.error)) }
+    } else if caps.local_storage {
+      let wrote = us_local_delete(key);
+      if wrote.ok { Ok(()) } else { Err(StorageDenied(wrote.error)) }
+    } else {
+      Err(ManagerMissing("GM_deleteValue (and no usable localStorage)"))
+    }
+  } else {
+    Err(InvalidKey(key))
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Menu commands (GM_registerMenuCommand) — affine handle
+// ════════════════════════════════════════════════════════════════════════════
+
+/// Register a menu command. The returned handle *must* be released with
+/// `release_menu_command`; bind it `@linear` to have the quantity checker
+/// prove it.
+pub fn register_menu_command(label: String, handler: () -> Unit) -> Result<MenuCommand, UserscriptError> {
+  if capabilities().menu {
+    let registered = us_gm_register_menu(label, handler);
+    if registered.ok {
+      Ok(MenuCommand #{ id: registered.id })
+    } else {
+      Err(HostRejected(registered.error))
+    }
+  } else {
+    Err(ManagerMissing("GM_registerMenuCommand"))
+  }
+}
+
+pub fn release_menu_command(command: MenuCommand) -> Result<Unit, UserscriptError> {
+  let wrote = us_gm_unregister_menu(command.id);
+  if wrote.ok { Ok(()) } else { Err(HostRejected(wrote.error)) }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Styles (GM_addStyle) — affine handle
+// ════════════════════════════════════════════════════════════════════════════
+
+pub fn add_style(css: String) -> Result<StyleSheet, UserscriptError> {
+  if capabilities().style {
+    let added = us_gm_add_style(css);
+    if added.ok {
+      Ok(StyleSheet #{ id: added.id })
+    } else {
+      Err(HostRejected(added.error))
+    }
+  } else {
+    Err(ManagerMissing("GM_addStyle"))
+  }
+}
+
+pub fn release_style(sheet: StyleSheet) -> Result<Unit, UserscriptError> {
+  let wrote = us_gm_remove_style(sheet.id);
+  if wrote.ok { Ok(()) } else { Err(HostRejected(wrote.error)) }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Notifications (GM_notification) — affine handle
+// ════════════════════════════════════════════════════════════════════════════
+
+/// Show a notification. Managers differ: some return a closable control,
+/// some expose `GM_closeNotification`, some can do neither. Closing is
+/// therefore best-effort and reports `HostRejected` when the manager has no
+/// close capability — the handle is still consumed either way.
+pub fn notify(text: String, title: String) -> Result<Notification, UserscriptError> {
+  if capabilities().notification {
+    let posted = us_gm_notify(text, title);
+    if posted.ok {
+      Ok(Notification #{ id: posted.id })
+    } else {
+      Err(HostRejected(posted.error))
+    }
+  } else {
+    Err(ManagerMissing("GM_notification"))
+  }
+}
+
+pub fn close_notification(note: Notification) -> Result<Unit, UserscriptError> {
+  let wrote = us_gm_close_notification(note.id);
+  if wrote.ok { Ok(()) } else { Err(HostRejected(wrote.error)) }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// Event listeners and timers — affine handles
+// ════════════════════════════════════════════════════════════════════════════
+
+/// Listen on `window`. Release with `release_listener`.
+pub fn listen_window(event: String, handler: () -> Unit) -> Result<ListenerHandle, UserscriptError> {
+  let ticket = us_on_window(event, handler);
+  if ticket == 0 {
+    Err(HostRejected("window.addEventListener is not available"))
+  } else {
+    Ok(ListenerHandle #{ id: ticket })
+  }
+}
+
+/// Listen on one element. Release with `release_listener`.
+pub fn listen_element(node: Node, event: String, handler: () -> Unit) -> Result<ListenerHandle, UserscriptError> {
+  if dom_is_null(node) {
+    Err(HostRejected("listen_element on a null node"))
+  } else {
+    let ticket = us_on_element(node, event, handler);
+    if ticket == 0 {
+      Err(HostRejected("addEventListener is not available"))
+    } else {
+      Ok(ListenerHandle #{ id: ticket })
+    }
+  }
+}
+
+/// Listen on `window` for exactly one dispatch of `event`. The runtime removes
+/// the listener *before* invoking the handler, so there is no handle to bind
+/// or release — which is what lets a script tear itself down on a page event
+/// without leaking a listener or needing a self-referential handle.
+pub fn listen_window_once(event: String, handler: () -> Unit) -> Result<Unit, UserscriptError> {
+  let ticket = us_on_window_once(event, handler);
+  if ticket == 0 {
+    Err(HostRejected("window.addEventListener is not available"))
+  } else {
+    Ok(())
+  }
+}
+
+/// One-shot listener on one element; see `listen_window_once`.
+pub fn listen_element_once(node: Node, event: String, handler: () -> Unit) -> Result<Unit, UserscriptError> {
+  if dom_is_null(node) {
+    Err(HostRejected("listen_element_once on a null node"))
+  } else {
+    let ticket = us_on_element_once(node, event, handler);
+    if ticket == 0 {
+      Err(HostRejected("addEventListener is not available"))
+    } else {
+      Ok(())
+    }
+  }
+}
+
+pub fn release_listener(listener: ListenerHandle) -> Result<Unit, UserscriptError> {
+  us_off(listener.id);
+  Ok(())
+}
+
+/// Schedule work once. Release (cancel) with `cancel_timer`.
+pub fn after(ms: Int, handler: () -> Unit) -> Result<Timer, UserscriptError> {
+  let ticket = us_set_timeout(handler, ms);
+  if ticket == 0 {
+    Err(HostRejected("setTimeout is not available"))
+  } else {
+    Ok(Timer #{ id: ticket })
+  }
+}
+
+pub fn cancel_timer(timer: Timer) -> Result<Unit, UserscriptError> {
+  us_clear_timeout(timer.id);
+  Ok(())
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// DOM surface
+// ════════════════════════════════════════════════════════════════════════════
+
+pub fn body() -> Node = dom_body();
+
+pub fn element(tag: String) -> Node = dom_create_element(tag);
+
+pub fn text_node(content: String) -> Node = dom_create_text(content);
+
+pub fn query(selector: String) -> Option<Node> {
+  let found = dom_query(selector);
+  if dom_is_null(found) { None } else { Some(found) }
+}
+
+pub fn append(parent: Node, child: Node) -> Unit = dom_append(parent, child);
+
+pub fn remove(parent: Node, child: Node) -> Unit = dom_remove(parent, child);
+
+pub fn set_attribute(node: Node, name: String, value: String) -> Unit =
+  dom_set_attribute(node, name, value);
+
+pub fn remove_attribute(node: Node, name: String) -> Unit =
+  dom_remove_attribute(node, name);
+
+pub fn set_text(node: Node, content: String) -> Unit = dom_set_text(node, content);
+
+pub fn add_class(node: Node, class_name: String) -> Unit =
+  dom_add_class(node, class_name);
+
+pub fn remove_class(node: Node, class_name: String) -> Unit =
+  dom_remove_class(node, class_name);

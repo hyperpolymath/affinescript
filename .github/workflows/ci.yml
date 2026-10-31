@@ -138,6 +138,21 @@ jobs:
           cd affinescript-router/e2e
           bun install --frozen-lockfile --ignore-scripts
           opam exec -- bun test --timeout 60000
+      - name: Userscript target fixture (single-file IIFE, headless Chromium)
+        # Compiles test/e2e/userscript/probe.affine with --target userscript and
+        # runs the artefact in a real page: div append + teardown, menu command,
+        # setting round-trip, style release, listener spy (no listener left
+        # behind) — once under @grant none, once under @grant GM_*, once on a
+        # page that denies storage. Also gates the single-file contract (no
+        # import/export/dynamic import/eval/top-level await), the --iife /
+        # --target equivalence, --banner happy path + both refusals, the
+        # --wasm-gc conflict (E0827) and the two planted negatives.
+        # Reuses the Chromium pinned by affinescript-tea/e2e (installed above),
+        # so this adds no browser download; AFFINESCRIPT_E2E_STRICT turns a
+        # missing engine into a failure instead of a skip.
+        env:
+          AFFINESCRIPT_E2E_STRICT: "1"
+        run: opam exec -- ./tools/run_userscript_tests.sh
       - name: Run face-transformer regression tests
         run: opam exec -- ./tools/run_face_transformer_tests.sh
       - name: Issue #35 Phase 3 — block extension.ts regression

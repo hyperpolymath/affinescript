@@ -30,6 +30,7 @@
   codegen_deno
   codegen_gc
   codegen_node
+  codegen_userscript
   desugar_traits
   effect
   effect_sites
@@ -40,6 +41,7 @@
   face_pragma
   formatter
   int_div_classifier
+  jcs
   bash_codegen
   cuda_codegen
   faust_codegen

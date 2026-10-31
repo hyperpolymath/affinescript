@@ -46,7 +46,8 @@ This guide helps you navigate the AffineScript repository structure.
 |**docs/specs/** |Language specifications
 |**docs/governance/** |Community and contribution docs
 |**docs/standards/** |Design decisions, roadmap, releases
-|**docs/guides/** |Testing reports and guides
+|**docs/guides/** |Testing reports and guides; link:guides/userscript-target.adoc[shipping a userscript] covers the `--target userscript` build, `stdlib/Userscript.affine` and its page-injected contract
+|**docs/reference/** |ABI/FFI, compiler capabilities; link:reference/JSON-AND-YAML.adoc[JSON and YAML conventions] records the I-JSON + JCS (`ijson-jcs`) and kyaml rules for machine-readable output
 |**wiki/** |Extended documentation and wiki content
 |===
 

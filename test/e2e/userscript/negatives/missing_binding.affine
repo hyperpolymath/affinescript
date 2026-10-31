@@ -1,0 +1,15 @@
+// SPDX-License-Identifier: MPL-2.0
+// Planted negative control: a host capability with no userscript lowering must
+// fail the build and name the construct, never be emitted as an optimistic
+// same-named JavaScript call (which would throw only in the page, at runtime,
+// in front of the user).
+//
+// Expected (see run.sh): non-zero exit, `userscript target: unsupported
+// extern fn us_not_a_capability`, E0827.
+
+extern fn us_not_a_capability() -> Int;
+
+pub fn main() -> Unit {
+  let probe = us_not_a_capability();
+  println("never reached")
+}

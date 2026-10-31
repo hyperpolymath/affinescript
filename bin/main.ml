@@ -498,13 +498,102 @@ let repl_cmd_fn () =
   Format.eprintf "REPL not yet implemented@.";
   `Error (false, "REPL not yet implemented")
 
+(** Read and validate a [==UserScript==] banner file.
+
+    The banner is prepended verbatim, so it must be a complete metadata
+    block: an opening [==UserScript==] line, a closing [==/UserScript==]
+    line, and the opening before the closing. Anything else is a mistake
+    that would ship a script the manager cannot parse, so it is refused
+    rather than pasted through. *)
+let read_userscript_banner (banner : string option) : (string, string) result =
+  match banner with
+  | None -> Ok ""
+  | Some path ->
+    (match (try Ok (read_file path) with Sys_error e -> Error e) with
+     | Error e -> Error (Printf.sprintf "cannot read --banner %s: %s" path e)
+     | Ok text ->
+       let contains needle =
+         let nl = String.length needle and tl = String.length text in
+         let rec scan i =
+           if i + nl > tl then false
+           else if String.sub text i nl = needle then true
+           else scan (i + 1)
+         in
+         scan 0
+       in
+       if not (contains "==UserScript==") then
+         Error (Printf.sprintf
+                  "--banner %s is not a ==UserScript== metadata block \
+                   (no `// ==UserScript==` opener)" path)
+       else if not (contains "==/UserScript==") then
+         Error (Printf.sprintf
+                  "--banner %s has no `// ==/UserScript==` terminator" path)
+       else
+         let open_at =
+           try Some (Str.search_forward (Str.regexp_string "==UserScript==") text 0)
+           with Not_found -> None
+         in
+         let close_at =
+           try Some (Str.search_forward (Str.regexp_string "==/UserScript==") text 0)
+           with Not_found -> None
+         in
+         match (open_at, close_at) with
+         | (Some o, Some c) when c < o ->
+           Error (Printf.sprintf
+                    "--banner %s closes before it opens (==/UserScript== \
+                     precedes ==UserScript==)" path)
+         | _ -> Ok text)
+
 (** Compile a file.  With [--json], emits diagnostics for any
     compilation errors.  With [--wasm-gc], targets the WebAssembly GC
-    proposal instead of WASM 1.0 linear memory. *)
+    proposal instead of WASM 1.0 linear memory.
+
+    [--target userscript] (alias [--iife]) selects the single-file
+    userscript target; the LLVM-triple reading of [--target] is unchanged
+    for every other value. *)
 let compile_file face json wasm_gc vscode_ext vscode_adapter vscode_no_lc
-    deno_esm bun_esm target path output =
+    deno_esm bun_esm iife banner target path output =
   let face = resolve_face ~quiet:json face path in
-  if deno_esm || Filename.check_suffix output ".deno.js" then
+  (* `--target userscript` / `--target iife` / `--iife` are target *modes*,
+     not LLVM triples (documented in the CLI reference). *)
+  let userscript =
+    iife
+    || (match target with Some "userscript" | Some "iife" -> true | _ -> false)
+  in
+  (* The default output path is a wasm module; a userscript is one .js file,
+     so an unspecified -o becomes out.user.js instead of silently writing a
+     JS source file called out.wasm. *)
+  let output = if userscript && output = "out.wasm" then "out.user.js" else output in
+  let banner_text, banner_error =
+    if userscript then
+      match read_userscript_banner banner with
+      | Ok t -> (Some t, None)
+      | Error m -> (None, Some m)
+    else (None, None)
+  in
+  if userscript && wasm_gc then
+    let message =
+      "--target userscript emits a single JS file and has no wasm module; \
+       it cannot be combined with --wasm-gc" in
+    if json then
+      json_finish [{ Affinescript.Json_output.severity = Error;
+                     code = "E0827"; message;
+                     span = Affinescript.Span.dummy; help = None; labels = [] }]
+    else begin
+      Format.eprintf "@[<v>Backend selection error: %s@]@." message;
+      `Error (false, "Backend selection error")
+    end
+  else if (match banner_error with Some _ -> true | None -> false) then
+    let message = Option.get banner_error in
+    if json then
+      json_finish [{ Affinescript.Json_output.severity = Error;
+                     code = "E0827"; message;
+                     span = Affinescript.Span.dummy; help = None; labels = [] }]
+    else begin
+      Format.eprintf "@[<v>Userscript banner error: %s@]@." message;
+      `Error (false, "Userscript banner error")
+    end
+  else if deno_esm || Filename.check_suffix output ".deno.js" then
     let message = "Deno-ESM was removed; use --bun-esm (and a .bun.js output path)" in
     if json then
       json_finish [{ Affinescript.Json_output.severity = Error;
@@ -569,7 +658,38 @@ let compile_file face json wasm_gc vscode_ext vscode_adapter vscode_no_lc
             let is_why3 = Filename.check_suffix output ".mlw" in
             let is_lean = Filename.check_suffix output ".lean" in
             let is_spirv = Filename.check_suffix output ".spv" in
-            if is_bun then begin
+            if userscript then begin
+              (* Reachability check FIRST: it walks the module graph the
+                 resolver loaded, so a refusal can name the module. *)
+              match Affinescript.Codegen_userscript.check_reachable
+                      ~loader ~root_name:path prog with
+              | errs when errs <> [] ->
+                List.iter (fun (u : Affinescript.Codegen_userscript.unsupported) ->
+                    add { severity = Error; code = "E0827";
+                          message = Printf.sprintf
+                              "userscript target: unsupported %s"
+                              (Affinescript.Codegen_userscript.show_unsupported u);
+                          span = Affinescript.Span.dummy;
+                          help = Some "a userscript is one non-module file; \
+                                       remove the construct or build that module \
+                                       for another target";
+                          labels = [] }) errs
+              | _ ->
+                let banner =
+                  match banner_text with
+                  | Some t when t <> "" -> Some t
+                  | _ -> None
+                in
+                (match Affinescript.Codegen_userscript.codegen_userscript
+                         ?banner flat_prog resolve_ctx.symbols with
+                 | Error msg ->
+                   add { severity = Error; code = "E0827"; message = msg;
+                         span = Affinescript.Span.dummy; help = None; labels = [] }
+                 | Ok js ->
+                   let oc = open_out_bin output in
+                   output_string oc js;
+                   close_out oc)
+            end else if is_bun then begin
               match Affinescript.Codegen_deno.codegen_bun flat_prog resolve_ctx.symbols with
               | Error msg ->
                 add { severity = Error; code = "E0825";
@@ -801,7 +921,37 @@ let compile_file face json wasm_gc vscode_ext vscode_adapter vscode_no_lc
             let is_why3 = Filename.check_suffix output ".mlw" in
             let is_lean = Filename.check_suffix output ".lean" in
             let is_spirv = Filename.check_suffix output ".spv" in
-            if is_bun then
+            if userscript then
+              (match Affinescript.Codegen_userscript.check_reachable
+                       ~loader ~root_name:path prog with
+              | errs when errs <> [] ->
+                List.iter (fun (u : Affinescript.Codegen_userscript.unsupported) ->
+                    Format.eprintf "@[<v>userscript target: unsupported %s@]@."
+                      (Affinescript.Codegen_userscript.show_unsupported u)) errs;
+                Format.eprintf
+                  "@[<v>A userscript is a single non-module file: no import/export, \
+                   no dynamic import, no eval, no top-level await.@.                   Every reachable module must be expressible in plain JS with \
+                   only the documented userscript bindings.@]@.";
+                `Error (false, "Userscript target error")
+              | _ ->
+                let banner =
+                  match banner_text with
+                  | Some t when t <> "" -> Some t
+                  | _ -> None
+                in
+                (match Affinescript.Codegen_userscript.codegen_userscript
+                         ?banner flat_prog resolve_ctx.symbols with
+                 | Error msg ->
+                   Format.eprintf "@[<v>userscript codegen error: %s@]@." msg;
+                   `Error (false, "Userscript codegen error")
+                 | Ok js ->
+                   let oc = open_out_bin output in
+                   output_string oc js;
+                   close_out oc;
+                   Format.printf "Compiled %s -> %s (userscript, %d bytes)@."
+                     path output (String.length js);
+                   `Ok ()))
+            else if is_bun then
               (match Affinescript.Codegen_deno.codegen_bun flat_prog resolve_ctx.symbols with
               | Error e ->
                 Format.eprintf "@[<v>%s@]@." e;
@@ -1231,8 +1381,11 @@ let output_arg =
   Arg.(value & opt string "out.wasm" & info ["o"; "output"] ~docv:"FILE" ~doc:"Output file")
 
 let target_arg =
-  Arg.(value & opt (some string) None & info ["target"] ~docv:"TRIPLE"
-    ~doc:"LLVM target triple for native (.ll) output. Overrides the \
+  Arg.(value & opt (some string) None & info ["target"] ~docv:"TRIPLE|MODE"
+    ~doc:"Target selection. $(b,userscript) (alias $(b,iife)) selects the \
+          single-file userscript target (see $(b,--iife)); those two words \
+          are reserved and never read as triples. Any other value is an \
+          LLVM target triple for native (.ll) output. Overrides the \
           AFFINESCRIPT_LLVM_TRIPLE env var; default is x86_64-unknown-linux-gnu. \
           Accepts a full triple verbatim (e.g. riscv64-unknown-linux-gnu) or a \
           shorthand: x86_64, aarch64/arm64, aarch64-android/android, riscv64, \
@@ -1283,6 +1436,27 @@ let bun_esm_arg =
           Deno runtime shim. A `.bun.js` output extension selects this \
           backend implicitly.")
 
+(* Userscript target: `--target userscript` (alias `--iife`) emits ONE
+   ES2020 IIFE file — no import/export, no dynamic import, no eval, no
+   top-level await — suitable for Tampermonkey/Greasemonkey/Violentmonkey. *)
+let iife_arg =
+  Arg.(value & flag & info ["iife"]
+    ~doc:"Emit a single-file ES2020 userscript (shorthand for \
+          $(b,--target userscript)). The output is one IIFE with no \
+          import/export, no dynamic import, no eval and no top-level await; \
+          a construct the target cannot lower fails the build, naming the \
+          module and the construct. Pair with $(b,--banner) for the \
+          $(b,==UserScript==) metadata block.")
+
+let banner_arg =
+  Arg.(value & opt (some string) None & info ["banner"] ~docv:"FILE"
+    ~doc:"With $(b,--target userscript)/$(b,--iife), prepend the contents of \
+          FILE verbatim. FILE must be a complete $(b,==UserScript==) \
+          metadata block: an opening $(b,// ==UserScript==) line and a \
+          closing $(b,// ==/UserScript==) line. Declare $(b,@grant none) \
+          there unless the script needs the manager bindings in \
+          $(b,stdlib/Userscript.affine).")
+
 (** Shared --face flag: select the parser surface-syntax face. *)
 let face_arg =
   let faces = Arg.enum [
@@ -1321,7 +1495,7 @@ let face_arg =
           ($(b,function)/$(b,set...to)/$(b,if...then)/$(b,end)/$(b,is)/$(b,and)/etc.). \
           $(b,lucid)/$(b,lucidscript)/$(b,purescript) — PureScript-style \
           ($(b,module … where)/$(b,data)/$(b,class)/$(b,instance)/$(b,case … of)/\
-           $(b,\\x ->)/$(b,let … in)/$(b,True)/$(b,--) comments). \
+           $(b,\\\\x ->)/$(b,let … in)/$(b,True)/$(b,--) comments). \
           $(b,cafe)/$(b,cafescripto)/$(b,coffee)/$(b,coffeescript) — CoffeeScript-style \
           ($(b,->)/$(b,=>)/$(b,@)/$(b,unless)/$(b,until)/postfix-if/postfix-unless/\
            $(b,Yes)/$(b,No)/$(b,On)/$(b,Off)/$(b,#) comments/$(b,###) blocks). \
@@ -1626,11 +1800,11 @@ let repl_cmd =
   Cmd.v info Term.(ret (const repl_cmd_fn $ const ()))
 
 let compile_cmd =
-  let doc = "Compile a file to WebAssembly (1.0 or GC proposal), native Bun ESM (.bun.js/--bun-esm), Julia (.jl), JavaScript (.js), C (.c), a WGSL compute kernel (.wgsl), a Faust DSP program (.dsp), or an ONNX model (.onnx)" in
+  let doc = "Compile a file to WebAssembly (1.0 or GC proposal), native Bun ESM (.bun.js/--bun-esm), a single-file userscript (--target userscript/--iife), Julia (.jl), JavaScript (.js), C (.c), a WGSL compute kernel (.wgsl), a Faust DSP program (.dsp), or an ONNX model (.onnx)" in
   let info = Cmd.info "compile" ~doc in
   Cmd.v info Term.(ret (const compile_file $ face_arg $ json_arg $ wasm_gc_arg
     $ vscode_ext_arg $ vscode_adapter_arg $ vscode_no_lc_arg $ deno_esm_arg
-    $ bun_esm_arg $ target_arg $ path_arg $ output_arg))
+    $ bun_esm_arg $ iife_arg $ banner_arg $ target_arg $ path_arg $ output_arg))
 
 let fmt_cmd =
   let doc = "Format a file" in

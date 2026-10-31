@@ -1,0 +1,42 @@
+// SPDX-License-Identifier: CC-BY-SA-4.0
+// SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell (hyperpolymath) <j.d.a.jewell@open.ac.uk>
+= Userscript target — end-to-end fixture
+
+Acceptance fixture for `--target userscript` / `--iife`. Run it with
+`./run.sh` (or `./tools/run_userscript_tests.sh` from the repo root); the
+guide for the target itself is
+link:../../../docs/guides/userscript-target.adoc[`docs/guides/userscript-target.adoc`].
+
+[cols="1,3"]
+|===
+|File |What it pins
+
+|`probe.affine` |The whole userscript lifecycle: append a `<div>`, register a
+menu command, write/read a setting, inject and release a style, remove the
+`<div>` and release the menu command on teardown. Compiled once, run three
+ways (`@grant none`, `@grant GM_*`, storage-denying page) — the script is
+capability-driven, not grant-specific.
+
+|`reachability.affine` |Entry-reachability pruning, both directions: the live
+path survives, an unreachable top-level fn and the unused manager runtime
+section do not.
+
+|`negatives/missing_binding.affine` |An extern with no userscript lowering is
+a build error naming the construct and the module.
+
+|`negatives/handle_leak.affine` |A `@linear` menu-command handle that is never
+released is rejected by the quantity checker.
+
+|`banner.txt` |A complete `==UserScript==` metadata block (happy path).
+
+|`banner_no_opener.txt`, `banner_closes_first.txt` |Malformed banners that must
+be refused (E0827) instead of pasted in.
+
+|`harness.mjs` |Static artefact checks (single capsule, no
+import/export/dynamic import/eval/top-level await, size budget) plus the
+in-page lifecycle assertions. Two engines: Playwright/Chromium (CI) and jsdom
+(no browser download); neither → loud SKIP.
+|===
+
+`harness.mjs` is a test harness (the same role as the existing
+`tests/codegen-*/*.harness.mjs` files); it is not part of any shipped artefact.

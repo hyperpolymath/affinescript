@@ -3,6 +3,12 @@
 
 (** JSON output for machine-readable compiler diagnostics.
 
+    Every document emitted here is *canonical* JSON — I-JSON (RFC 7493) +
+    JCS (RFC 8785), the estate standard `hyperpolymath/ijson-jcs` (D306) — so
+    two runs over the same values produce the same bytes. Serialisation goes
+    through {!Jcs}; see docs/reference/JSON-AND-YAML.adoc for the rules and the
+    pinned vectors.
+
     Phase A of the AffineScript LSP integration: structured JSON output
     from the compiler CLI via [--json], enabling the LSP (and other tools)
     to consume diagnostics without fragile regex parsing.
@@ -106,7 +112,7 @@ let report_to_json ~(success : bool) (diags : diagnostic list) : Yojson.Basic.t 
 (** Write the JSON report to stderr. *)
 let emit_report ~(success : bool) (diags : diagnostic list) : unit =
   let json = report_to_json ~success diags in
-  Format.eprintf "%s@." (Yojson.Basic.to_string json)
+  Format.eprintf "%s@." (Jcs.to_string_exn json)
 
 (** {1 Converters from compiler error types} *)
 
@@ -463,7 +469,7 @@ let report_v2_to_json ~(success : bool) (diags : diagnostic list)
 let emit_report_v2 ~(success : bool) (diags : diagnostic list)
     (symbols : Symbol.t) (refs : reference list) : unit =
   let json = report_v2_to_json ~success diags symbols refs in
-  Format.eprintf "%s@." (Yojson.Basic.to_string json)
+  Format.eprintf "%s@." (Jcs.to_string_exn json)
 
 (** {1 Phase B: Hover and goto-definition queries}
 
@@ -577,7 +583,7 @@ let emit_hover (sym_opt : Symbol.symbol option) : unit =
     | Some sym -> hover_to_json sym
     | None     -> not_found_json
   in
-  print_string (Yojson.Basic.to_string json);
+  print_string (Jcs.to_string_exn json);
   print_newline ()
 
 (** Emit a goto-definition JSON response on stdout. *)
@@ -586,7 +592,7 @@ let emit_goto_def (sym_opt : Symbol.symbol option) : unit =
     | Some sym -> goto_def_to_json sym
     | None     -> not_found_json
   in
-  print_string (Yojson.Basic.to_string json);
+  print_string (Jcs.to_string_exn json);
   print_newline ()
 
 (** {1 Phase C: Completion candidates}
@@ -719,5 +725,5 @@ let collect_completions
 (** Emit a completion JSON array on stdout. *)
 let emit_completions (items : completion_item list) : unit =
   let json = `List (List.map completion_item_to_json items) in
-  print_string (Yojson.Basic.to_string json);
+  print_string (Jcs.to_string_exn json);
   print_newline ()

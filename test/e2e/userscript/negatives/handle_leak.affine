@@ -1,0 +1,23 @@
+// SPDX-License-Identifier: MPL-2.0
+// Planted negative control for the affine-handle discipline: a menu command
+// arrives as a handle, is bound `@linear`, and is never released. The quantity
+// checker must reject the program (a dropped handle is a compile error, not a
+// runtime leak).
+//
+// Expected (see run.sh): non-zero exit, a Quantity error naming `@linear`.
+
+module HandleLeak;
+
+use prelude::*;
+
+use Userscript::{register_menu_command, describe_error};
+
+pub fn main() -> Unit {
+  match register_menu_command("leak", fn() => println("clicked")) {
+    Ok(command) => {
+      @linear let menu = command;
+      println("registered")
+    },
+    Err(e) => println(describe_error(e))
+  }
+}
