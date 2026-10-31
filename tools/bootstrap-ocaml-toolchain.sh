@@ -303,7 +303,10 @@ DUNE
   fi
   if [ -f "$PREFIX/lib/sedlex/META" ]; then skip "sedlex"; else
     command -v python3 >/dev/null 2>&1 || die "sedlex needs python3 (gen_ucd.py)"
-    dune_build_install "$(fetch ocaml-community/sedlex v3.2)" sedlex sedlex.ppx
+    # `sedlex.ppx` is a public_name inside the `sedlex` package, not a package
+    # of its own: naming it as an install target fails with "Unknown package
+    # sedlex.ppx". Installing `sedlex` installs both libraries.
+    dune_build_install "$(fetch ocaml-community/sedlex v3.2)" sedlex
   fi
 fi
 

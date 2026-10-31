@@ -1,0 +1,69 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 Jonathan D.A. Jewell
+//
+// Userscript-target CI fixture: the AffineScript DOM runtime.
+//
+// probe.affine exercises the *target* (one file, menu command, setting,
+// teardown). This fixture exercises stdlib/UserscriptDom.affine, the
+// reconciler a userscript reaches for instead of a WASM DOM package:
+//
+//   1. create an element from a spec,
+//   2. patch it — attributes added *and removed*, text only when it changed,
+//   3. reconcile a group: grow, then shrink (the surplus must be removed),
+//   4. leave the page as it was found.
+//
+// Every step prints a marker before it runs, so a runtime harness that dies
+// half-way still shows how far it got. The static checks in run.sh assert the
+// emitted file stays one capsule and inside the byte budget.
+
+module DomProbe;
+
+use prelude::*;
+
+use Userscript::{body, remove};
+use UserscriptDom::{
+  Spec, Element, Group,
+  attr, spec, text_spec, create_from, patch_from, set_text_of, unmount,
+  group, member_count, reconcile, unmount_all
+};
+
+fn count(g: Group) -> String {
+  show(member_count(g))
+}
+
+pub fn main() -> Unit {
+  let host = body();
+
+  // 1. Create.
+  let created = create_from(host, spec("p", [attr("id", "affinescript-dom-probe"), attr("data-state", "new")], "first"));
+  println("dom:created");
+
+  // 2. Patch in place: `data-state` leaves the spec, so it must leave the
+  // element; `class` arrives; the text changes.
+  let patched = patch_from(created, spec("p", [attr("id", "affinescript-dom-probe"), attr("class", "probe")], "second"));
+  println("dom:patched");
+
+  // 3. Text-only patch.
+  let retitled = set_text_of(patched, "third");
+  println("dom:retitled");
+
+  // 4. Groups: grow, then shrink. Reconcile patches by position, so the two
+  // surviving <li> elements are the same DOM nodes as before the shrink.
+  let empty = group(host);
+  let grown = reconcile(empty, [text_spec("li", "a"), text_spec("li", "b"), text_spec("li", "c")]);
+  println("dom:grown=" ++ count(grown));
+
+  let shrunk = reconcile(grown, [text_spec("li", "a2"), text_spec("li", "b2")]);
+  println("dom:shrunk=" ++ count(shrunk));
+
+  // Replacing an element's attribute set through reconcile: the first <li>
+  // gains `data-step` here and loses it in the next call.
+  let stepped = reconcile(shrunk, [spec("li", [attr("data-step", "1")], "a3"), text_spec("li", "b3")]);
+  let unstepped = reconcile(stepped, [text_spec("li", "a4"), text_spec("li", "b4")]);
+  println("dom:unstepped=" ++ count(unstepped));
+
+  // 5. Teardown: the group and the <p> both leave the page.
+  unmount_all(unstepped);
+  unmount(retitled);
+  println("dom:unmounted")
+}

@@ -350,15 +350,28 @@ available the runtime half prints a loud `SKIP` and the static and refusal
 checks still run; `AFFINESCRIPT_E2E_STRICT=1` (set in CI) turns that skip into
 a failure.
 
+The runner then does the same for the runtime itself: `dom.affine` is compiled
+with `--target userscript`, held to the single-capsule/size rules, and executed
+by `dom_harness.mjs` against a *recording fake DOM* — no browser, no jsdom. It
+needs nothing but the JS runtime the compiler already requires, so the answers
+that matter (was the dropped attribute removed? did reconcile append and remove
+the right children? is the page empty after teardown?) are checked on every
+machine, not only where a browser is installed.
+
+`len` and `show` are typechecker builtins with no extern declaration to lower
+through; this target lowers them to `.length` and `__as_show(...)` itself. A
+program that declares its own `len`/`show` shadows that, as it does elsewhere.
+
 == Measured sizes
 
 [cols="1,1,3"]
 |===
 |Program |Bytes |Contents
 
-|`hello` (DOM append) |4,142 |capsule + 4 DOM helpers + `main`
-|`reachability.affine` |4,153 |same, plus pruning proof
-|`probe.affine` (fixture) |18,325 |full lifecycle: DOM, storage, menu, style,
+|`hello` (DOM append) |4,318 |capsule + 4 DOM helpers + `main`
+|`reachability.affine` |4,351 |same, plus pruning proof
+|`dom.affine` (fixture) |7,991 |`UserscriptDom`: create, patch, reconcile, teardown
+|`probe.affine` (fixture) |18,523 |full lifecycle: DOM, storage, menu, style,
 one-shot listener, typed errors
-|`probe.affine --banner banner.txt` |18,663 |above + a 9-line metadata block
+|`probe.affine --banner banner.txt` |18,861 |above + a 9-line metadata block
 |===

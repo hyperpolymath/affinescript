@@ -27,10 +27,24 @@ a build error naming the construct and the module.
 |`negatives/handle_leak.affine` |A `@linear` menu-command handle that is never
 released is rejected by the quantity checker.
 
+|`dom.affine` |The AffineScript DOM runtime
+(`stdlib/UserscriptDom.affine`): create, patch (an attribute dropped from the
+spec must leave the element, and the text is rewritten only when it changed),
+text-only patch, then `reconcile` growing a group 0→3 and shrinking it 3→2,
+and teardown leaving the page empty. Compiled with `--target userscript`; the
+artefact is held to the same shape rules as `probe.affine` (one capsule, no
+import/export/dynamic import/eval, size budget).
+
 |`banner.txt` |A complete `==UserScript==` metadata block (happy path).
 
 |`banner_no_opener.txt`, `banner_closes_first.txt` |Malformed banners that must
 be refused (E0827) instead of pasted in.
+
+|`dom_harness.mjs` |Runs `dom.affine` against a recording fake DOM — no
+browser and no jsdom, because `UserscriptDom` only reaches the page through
+`document.createElement`/`appendChild`/`removeChild`/`*Attribute`/`textContent`.
+Asserts the markers, the attribute add/remove sequence and that teardown
+empties the page (12 checks). Runs under bun or node.
 
 |`harness.mjs` |Static artefact checks (single capsule, no
 import/export/dynamic import/eval/top-level await, size budget) plus the
@@ -38,5 +52,8 @@ in-page lifecycle assertions. Two engines: Playwright/Chromium (CI) and jsdom
 (no browser download); neither → loud SKIP.
 |===
 
-`harness.mjs` is a test harness (the same role as the existing
-`tests/codegen-*/*.harness.mjs` files); it is not part of any shipped artefact.
+Both `*.mjs` files are test harnesses (the same role as the existing
+`tests/codegen-*/*.harness.mjs` files); they are not part of any shipped
+artefact. `dom_harness.mjs` needs no engine beyond the JS runtime itself, so
+it runs wherever a compiler does — the full runtime fixture still needs
+Playwright or jsdom.

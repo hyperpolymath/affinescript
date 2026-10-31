@@ -273,6 +273,52 @@ else
   esac
 fi
 
+# ── 5c. DOM runtime (stdlib/UserscriptDom.affine) ───────────────────────────
+# The reconciler is AffineScript, so nothing else in the suite proves it
+# survives codegen. This compiles it, holds the artefact to the same shape
+# rules as the target itself, and — when a JS runner exists — runs it against
+# a recording fake DOM (no browser, no jsdom).
+echo "userscript target: DOM runtime (stdlib/UserscriptDom.affine)"
+dom_src="$FIXTURE_DIR/dom.affine"
+dom_out="$OUT_DIR/dom.user.js"
+dom_log="$OUT_DIR/dom.log"
+rm -f "$dom_out"
+if "${COMPILE_CMD[@]}" "$dom_src" --target userscript -o "$dom_out" >"$dom_log" 2>&1 \
+   && [[ -s "$dom_out" ]]; then
+  dom_bytes=$(wc -c <"$dom_out" | tr -d ' ')
+  note "compiled: dom.user.js — $dom_bytes bytes"
+  dom_capsules=$(grep -c '^(function () {' "$dom_out" || true)
+  if [[ "$dom_capsules" = "1" ]]; then
+    note "one IIFE capsule"
+  else
+    fail "DOM runtime artefact has $dom_capsules capsules (expected 1)"
+  fi
+  if grep -qE '(^|[^.[:alnum:]_])import[[:space:](]|(^|[^.[:alnum:]_])export[[:space:]{]|eval\(' "$dom_out"; then
+    fail "DOM runtime artefact contains import/export/dynamic import/eval"
+  else
+    note "no import/export/dynamic import/eval"
+  fi
+  if [[ "$dom_bytes" -le 24576 ]]; then
+    note "size budget: $dom_bytes <= 24576"
+  else
+    fail "DOM runtime artefact is $dom_bytes bytes, over the 24576 budget"
+  fi
+  if [[ ${#JS_RUN[@]} -gt 0 ]]; then
+    if "${JS_RUN[@]}" "$FIXTURE_DIR/dom_harness.mjs" "$dom_out" >"$dom_log.harness" 2>&1; then
+      grep '  ok ' "$dom_log.harness" | sed 's/^/  /'
+      note "DOM runtime: $(grep -c '  ok ' "$dom_log.harness") checks passed"
+    else
+      fail "DOM runtime harness failed (log: $dom_log.harness)"
+      tail -30 "$dom_log.harness" | sed 's/^/    /' >&2
+    fi
+  else
+    note "SKIP: no JS runner (bun/node) for the DOM runtime harness"
+  fi
+else
+  fail "dom.affine failed to compile"
+  tail -20 "$dom_log" | sed 's/^/    /' >&2
+fi
+
 # ── Summary ─────────────────────────────────────────────────────────────────
 echo
 if [[ ${#failures[@]} -gt 0 ]]; then

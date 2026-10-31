@@ -69,14 +69,14 @@ fn has_attr(attrs: [Attr], name: String) -> Bool {
     if a.name == name {
       found = true;
     }
-  };
+  }
   found
 }
 
 fn apply_attrs(node: Node, attrs: [Attr]) -> Unit {
   for a in attrs {
     set_attribute(node, a.name, a.value);
-  };
+  }
   ()
 }
 
@@ -88,7 +88,7 @@ fn drop_removed(node: Node, old_attrs: [Attr], new_attrs: [Attr]) -> Unit {
     if not (has_attr(new_attrs, a.name)) {
       remove_attribute(node, a.name);
     }
-  };
+  }
   ()
 }
 
@@ -98,7 +98,7 @@ pub fn create(parent: Node, html_tag: String, attrs: [Attr], text: String) -> El
   apply_attrs(node, attrs);
   if text != "" {
     set_text(node, text);
-  };
+  }
   append(parent, node);
   Element #{ parent: parent, node: node, attrs: attrs, text: text }
 }
@@ -114,7 +114,7 @@ pub fn patch(el: Element, attrs: [Attr], text: String) -> Element {
   apply_attrs(el.node, attrs);
   if el.text != text {
     set_text(el.node, text);
-  };
+  }
   Element #{ parent: el.parent, node: el.node, attrs: attrs, text: text }
 }
 
@@ -126,7 +126,7 @@ pub fn patch_from(el: Element, s: Spec) -> Element {
 pub fn set_text_of(el: Element, text: String) -> Element {
   if el.text != text {
     set_text(el.node, text);
-  };
+  }
   Element #{ parent: el.parent, node: el.node, attrs: el.attrs, text: text }
 }
 
@@ -166,16 +166,16 @@ pub fn reconcile(g: Group, specs: [Spec]) -> Group {
       kept = kept ++ [patch_from(g.items[index], s)];
     } else {
       kept = kept ++ [create_from(g.parent, s)];
-    };
+    }
     index = index + 1;
-  };
+  }
   let mut position = 0;
   for el in g.items {
     if position >= index {
       remove(g.parent, el.node);
-    };
+    }
     position = position + 1;
-  };
+  }
   Group #{ parent: g.parent, items: kept }
 }
 
@@ -183,6 +183,6 @@ pub fn reconcile(g: Group, specs: [Spec]) -> Group {
 pub fn unmount_all(g: Group) -> Unit {
   for el in g.items {
     remove(g.parent, el.node);
-  };
+  }
   ()
 }

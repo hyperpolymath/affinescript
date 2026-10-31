@@ -333,6 +333,9 @@ const __as_has = (name) => {
   try { return typeof globalThis[name] === "function"; } catch (_) { return false; }
 };
 const __as_msg = (e) => (e && e.message ? String(e.message) : String(e));
+// `show` (a typechecker builtin, like `len`) prints strings as-is and
+// everything else the way the other JS backends do.
+const __as_show = (v) => (typeof v === "string" ? v : JSON.stringify(v));
 const __as_readFound   = (v) => ({ found: true, value: v == null ? "" : String(v), error: "" });
 const __as_readMissing = () => ({ found: false, value: "", error: "" });
 const __as_readError   = (e) => ({ found: false, value: "", error: __as_msg(e) });
@@ -885,6 +888,12 @@ let rec gen_expr ctx (expr : expr) : string =
           that declares its own `len` shadows this, as it does everywhere
           else. *)
        "(" ^ List.hd arg_strs ^ ").length"
+     | ExprVar id when id.name = "show" && List.length arg_strs = 1 ->
+       (* `show` is the other typechecker builtin with no extern declaration
+          to lower through. The JS backends spell it `__as_show`, which the
+          runtime defines below; keep the same shape so a value prints the
+          same way under every JS target. *)
+       "__as_show(" ^ List.hd arg_strs ^ ")"
      | ExprVar id when is_known_extern id.name ->
        (match Hashtbl.find_opt extern_table id.name with
         | Some lower -> lower arg_strs
