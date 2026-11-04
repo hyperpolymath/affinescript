@@ -204,7 +204,7 @@ All were observed by RUN unless marked otherwise. The maps confirm that H1–H4 
 . H3. The JS-text backend drops block returns (`lib/js_codegen.ml`). The Lua backend emits invalid code.
 . H4. Non-exhaustive match compiles to "return 0" on core WASM.
 . H5. Effect rows are not checked against performed operations or callee rows.
-. H6. `eval` and the REPL skip borrow checking and trait coherence.
+. H6. `eval` and the REPL skip borrow checking and trait coherence. Only the `eval` borrow-checking gap is RUN. The REPL gap is READ only, because the REPL is not built.
 . H7. Interpreter `let mut` reassignment fails at runtime.
 . H8. `total fn` is accepted without any check.
 . H9. Integer width diverges: the interpreter uses 63-bit ints, WASM wraps at i32.
@@ -378,7 +378,7 @@ The kernel enters first as an independent oracle for translation validation, and
 |===
 | Component | Owner repo | Why
 
-| xfail pins and ledger entries for H1–H13
+| xfail pins and ledger entries for H1–H13 and H16–H18
 | affinescript (`test/xfail`, `docs/SOUNDNESS.adoc`)
 | Doctrine 1. Today the ledger claims "one remaining residual", which is an overclaim.
 
@@ -482,7 +482,13 @@ apt-get update && apt-get install -y ocaml-nox ocaml-dune menhir libmenhir-ocaml
   libsedlex-ocaml-dev libppx-deriving-ocaml-dev libppx-sexp-conv-ocaml-dev libsexplib0-ocaml-dev \
   libfmt-ocaml-dev libcmdliner-ocaml-dev libyojson-ocaml-dev libalcotest-ocaml-dev \
   js-of-ocaml libjs-of-ocaml-dev libzarith-ocaml-dev coq wabt z3 agda-bin
-cargo install --locked tree-sitter-cli wasm-tools wasmtime-cli just
+# Versions match the repo's existing pins (tools/provision-component-toolchain.sh,
+# scripts/install-tree-sitter-cli.sh) and the estate wasmtime pin v44.0.1.
+cargo install --locked --version 0.25.0  tree-sitter-cli
+cargo install --locked --version 1.249.0 wasm-tools
+cargo install --locked --version 44.0.1  wasmtime-cli
+cargo install --locked --version <owner-chosen> just
+# Record every apt package version in the W0 toolchain manifest; pin coq once question 13 is settled.
 bash $AS/editors/tree-sitter-rescript/scripts/install.sh
 git -C $AS fetch --unshallow
 cd $AS && dune build && dune runtest --force && bash tools/check-soundness-ledger.sh
@@ -492,10 +498,13 @@ Serialise apt installs; never run two at once.
 
 === M1. Ledger the holes before fixing them
 
-*Exit criteria:* each of H1–H13 has a failing-expectation pin in `test/xfail` (or the e2e suite) and a `docs/SOUNDNESS.adoc` row. The vacuous QTT anchors carry `@linear`/`@erased` annotations and assert `Error`.
+*Exit criteria:* each of H1–H13 and H16–H18 has a failing-expectation pin in `test/xfail` (or the e2e suite) and a `docs/SOUNDNESS.adoc` row. The vacuous QTT anchors carry `@linear`/`@erased` annotations and assert `Error`.
 
 ----
-cd $AS && dune runtest --force 2>&1 | grep -cE 'XFAIL-OK|FENCE-OK'   # assert >= existing pins + 13
+cd $AS && dune runtest --force > /tmp/m1.log 2>&1; rc=$?
+n=$(grep -cE 'XFAIL-OK|FENCE-OK' /tmp/m1.log || true)
+echo "markers=$n dune_rc=$rc"
+test "$rc" -eq 0 && test "$n" -ge "$((EXISTING + 16))"   # EXISTING = pin count before M1
 bash tools/check-soundness-ledger.sh
 ----
 
@@ -555,9 +564,15 @@ cargo run -q -p typed-wasm-verify --all-features --bin tw-verify -- --require ow
 *Exit criteria:* a corpus of at least 20 AffineScript programs (records, closures, enums, loops, linear params) is processed by a single `just` recipe: compile with `--strict`, then `tw-verify` with required carriers, then `wasmtime run`, then compare against expected stdout.
 
 ----
+set -o pipefail   # bash
+n=$(ls test/e2e/verified/*.affine 2>/dev/null | wc -l)
+[ "$n" -ge 20 ] || { echo "FAIL: $n programs, at least 20 required"; exit 1; }
+fail=0
 for f in test/e2e/verified/*.affine; do $M compile --strict $f -o /tmp/o.wasm \
   && cargo run -q --manifest-path $TW/Cargo.toml --bin tw-verify --all-features -- --require ownership /tmp/o.wasm \
-  && wasmtime run --invoke main /tmp/o.wasm | diff - "${f%.affine}.expected" || echo FAIL $f; done
+  && wasmtime run --invoke main /tmp/o.wasm | diff - "${f%.affine}.expected" \
+  || { echo FAIL $f; fail=1; }; done
+test "$fail" -eq 0
 ----
 
 *Fixture sourcing caveat.* The `forward(41)=42` probe ran under wasmtime. Programs that import WASI print functions need `wasmtime run` with WASI, which is the default.
@@ -567,7 +582,7 @@ for f in test/e2e/verified/*.affine; do $M compile --strict $f -o /tmp/o.wasm \
 *Exit criteria:* AffineScript emits `typedwasm.regions` and `typedwasm.access-sites` (affinescript#462), and a record-accessor program reports `L2 access typing: N type-verified` with N > 0. Once the coordinated ADR lands, `own` emits the new Affine kind.
 
 ----
-$M compile --strict rec.affine -o rec.wasm && cargo run -q --manifest-path $TW/Cargo.toml --bin tw-verify --all-features -- rec.wasm | grep 'type-verified'
+$M compile --strict rec.affine -o rec.wasm && cargo run -q --manifest-path $TW/Cargo.toml --bin tw-verify --all-features -- rec.wasm | grep -E 'L2 access typing: [1-9][0-9]* type-verified'
 ----
 
 === M8. Secondary host and quarantine
@@ -657,7 +672,7 @@ Leverage means how much assurance a rung adds about the actual binary `main.exe`
 
 * *SMT for QTT.* Usage counts become linear integer constraints with `ω` as an unbounded tag. Z3 is apt-installable (4.8.12, RUN in the absolute-zero cluster). This gives a second, independent oracle beside anytype, at a fraction of the Idris cost.
 * *Datalog for borrows.* Polonius facts are already extracted (`lib/borrow_extract.ml`). Running an external solver turns the existing test-only machinery into an N-version check.
-* *Translation validation instead of a verified compiler.* Per-compilation checking (P1 and P2) gives assurance about each shipped output without proving the 3987-line `codegen.ml`.
+* *Translation validation instead of a verified compiler.* Per-output carrier checking (P1) checks ownership and access-typing annotations on each emitted `.wasm`, not semantics. Differential checking against Coq (P2) runs at test time for the int/bool/let/if fragment only. Neither proves the 3987-line `codegen.ml`.
 * *Auto-generated `Print Assumptions`.* Generate one line per lemma, as done in the survey's `AllAssump.v`. This closes the axiom-gate blind spot at near-zero cost.
 
 === 5.2 Where a type, logic or proof trope gives a more final solution
@@ -824,7 +839,7 @@ Ratings run from 1 (poor) to 5 (strong). Column (a) is elegance plus correctness
 *W1 Ledger the holes (understand + implement tests).*
 
 * Goal: M1.
-* Fan-out: one agent per hole, H1–H13, each in its own git worktree, writing only an xfail fixture and a ledger row.
+* Fan-out: one agent per hole, H1–H13 and H16–H18, each in its own git worktree, writing only an xfail fixture and a ledger row.
 * Scope: affinescript only.
 * Gates: `dune runtest --force` and `bash tools/check-soundness-ledger.sh` on a full clone.
 * Stop if: any pin passes unexpectedly. That means the hole is not reproduced; re-verify before writing anything.
@@ -891,7 +906,7 @@ wasmtime run --invoke get_player_hp examples/01-single-module.wasm 0 150        
 ** OCaml emitter agent.
 ** anytype agent: fix the `abi.ipkg` path in the Justfile and `idris2-proof.yml`, and draft `gjoin`. The join is a systemet ADR draft only.
 * Gates:
-** Generate `AllAssump.v` from a grep of every `Theorem|Lemma|Corollary|Example` in `formal/*.v` and commit the generator. Then `coqc -Q . ASFormal AllAssump.v | grep -c 'Closed under'` must equal the generated line count. Add a negative test: an `Admitted` lemma in `QttSemiring.v` must fail the gate.
+** Generate `AllAssump.v` from a grep of every `Theorem|Lemma|Corollary|Example|Proposition|Fact|Remark` in `formal/*.v` and commit the generator. Then `coqc -Q . ASFormal AllAssump.v | grep -c 'Closed under'` must equal the generated line count. Add a negative test: an `Admitted` lemma in `QttSemiring.v` must fail the gate.
 ** `dune test` for extraction parity.
 ** In anytype: `./scripts/check-idris2-proofs.sh` (only if idris2 is provisioned).
 * R-wrap starts only after the owner rules on question 1 (integer semantics); otherwise it may prove agreement with the wrong target.
