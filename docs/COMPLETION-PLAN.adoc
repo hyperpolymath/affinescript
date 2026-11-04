@@ -1,0 +1,975 @@
+// SPDX-License-Identifier: CC-BY-SA-4.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath (Jonathan D.A. Jewell <j.d.a.jewell@open.ac.uk>)
+= AffineScript Completion Architecture and Ultracode Plan
+:toc: macro
+:toclevels: 2
+
+[IMPORTANT]
+====
+This is a planning document produced from a survey on 2026-11-04. It is not a status authority. Feature readiness lives in link:CAPABILITY-MATRIX.adoc[CAPABILITY-MATRIX], and soundness-hole status lives in link:SOUNDNESS.adoc[SOUNDNESS]. Where this plan names a hole that the ledger lacks, the ledger is the place to record it (workflow W1).
+====
+
+toc::[]
+
+[abstract]
+This plan builds on eight structured maps of the AffineScript compiler and its estate neighbours, produced on 2026-11-04. The repo states it covers are affinescript HEAD `5af55f5` (a shallow clone), typed-wasm `ac1bf63`, and the checkouts of the other repos under `/home/user`.
+
+Each claim carries one of these status labels:
+
+* *RUN*: a survey agent ran a tool and saw the result.
+* *READ*: an agent inspected the source but did not execute it.
+* *DOC*: the claim appears only in repo documents and was not reproduced.
+* *ABSENT*: the component does not exist.
+
+No claim is raised above the status the maps support.
+
+An adversarial review pass checked this plan against the maps, and its corrections are folded in. The session lead also reproduced four headline findings directly on the built compiler: H1 (the interpreter returns 2 for `g(5)` where WebAssembly returns 1), H4 (a non-exhaustive match type-checks and the compiled WebAssembly returns 0), H6 (`check` reports a borrow error on two #554 fixtures that `eval` runs into a runtime type error) and H8 (`total fn loop` type-checks). Proof claims about Idris2 artefacts stay at READ or DOC everywhere, because no survey agent could install idris2. The systemet repo was not checked out, so every theory-level claim attributed to it is unverified.
+
+== 1. Ground-truth snapshot
+
+=== 1.1 Caveats on the snapshot itself
+
+* Toolchain state differed between survey containers. For example, the typell agent found no OCaml, while the compiler agents installed it from apt and built. Treat the provisioning in workflow W0 (section 7) as mandatory, not optional.
+* Several proof checks ran on toolchain versions different from the CI pins:
+** Agda 2.6.3 versus the CI pin 2.6.4.3. stdlib 2.3 versus the 2.1 pin, which applies to choreographic-types only; echo-types itself pins stdlib 2.3.
+** Coq 8.18 versus CI 8.20.1.
++
+Results were consistent, but they do not prove CI is green.
+* `tools/check-soundness-ledger.sh` cannot run on the shallow clone because stamp `65c2ae3` is missing from history. So the ledger itself is unverified this session.
+* Parallel agents contended for apt locks. One install was silently lost and had to be retried.
+
+=== 1.2 Per-subsystem status
+
+[cols="2,4,3,3",options="header"]
+|===
+| Subsystem | RUN (verified this survey) | READ / DOC only (unverified) | ABSENT / aspirational
+
+| Compiler build and test (`/home/user/affinescript`)
+| `dune build` exits 0 with apt OCaml 4.14.1, ocaml-dune 3.14 and menhir 20231231. A rebuild is byte-identical to the prebuilt `_build/default/bin/main.exe`. `test_main` passes 562 tests. Full `dune runtest` exits 0 once the tree-sitter CLI and the rescript grammar are installed; without them, 32 walker tests fail.
+| Menhir reports 67 S/R and 7 R/R conflicts; ADR-012 declares them intentional.
+| No property-based tests, fuzzing or mutation testing.
+
+| QTT (`lib/quantity.ml`)
+| `@linear` dup, drop and arrow-violation probes are rejected. However, the front-end accepts the c5_real L7/L10-violating sources, such as `03_partial_drop.affine`, which `tw-verify` then fails (typed-wasm map). The anchor fixtures `affine_violation.affine` and `erased_violation.affine` carry no annotations, and `test_e2e.ml:426-455` treats `Ok` as a pass, so those tests are vacuous.
+| The `q_add`/`q_mul`/`q_le` tables are textually identical to anytype `Grade/Affine.idr` and to tropical-types `Resource/Instances/Affine.lean`.
+| No parameterisation over a grade algebra. No code link to anytype.
+
+| Borrow (`lib/borrow.ml`)
+| `check` rejects #554 (callee-returned borrow), use-after-move, and a move inside a loop. `eval` skips `Borrow.check_program` (RUN). `lib/repl.ml` uses only `check_decl` (READ), but the REPL is not built.
+| The Polonius extractor is test-only. The diff gate prints 6 allowlisted divergences, while `docs/SOUNDNESS.adoc` says 7.
+| No formal model of `borrow.ml`. Polonius (#553) gates nothing.
+
+| Effects
+| Undeclared effects, callee rows and IO all type-check. `ctx.current_eff` grows only on `?` (Partial) at `typecheck.ml:1518`. Handlers fail loudly (UnsupportedFeature) on WASM, Bun-ESM and WasmGC.
+| The capability matrix says "pure/impure separation enforced". The run refutes this.
+| No effect inference for user effects or IO. No compiled handlers. #623 (non-tail resume) is pinned as xfail.
+
+| Pattern matching
+| `match e { A => 7 }` called with `B` passes `check`. Core WASM returns 0 with no trap. Bun-ESM throws. The interpreter raises.
+| —
+| No exhaustiveness or redundancy checker.
+
+| Totality
+| `total fn loop(n) { loop(n+1) }` type-checks (prints "Type checking passed").
+| `fd_total` is parsed (`lib/parser.mly:249`) and never read by `typecheck.ml`.
+| No totality gate.
+
+| Interpreter (`lib/interp.ml`)
+| Early `return` gives a wrong value (`g(5)=2`, expected 1) because of `interp.ml:262`. Local `let mut` reassignment fails at runtime (`value.ml:157`). `2147483647+1` evaluates to `2147483648` in the interpreter but `-2147483648` in compiled WASM.
+| The interpreter is the declared reference semantics, and the Coq models claim to mirror it.
+| Delimited continuations. The interpreter is the only handler executor, yet it cannot run `return` or `let mut` correctly, so handler programs have no correct execution path today.
+
+| Core WASM backend (`lib/codegen.ml`)
+| Probes `w1` and `w2` return 141 and 27. 38 JS wasm harnesses pass. The `typedwasm.ownership` section is emitted, and `affinescript verify` reports OK.
+| `codegen.ml:201,220` maps `own` to Linear because there is no Affine ownership kind. The bump allocator never frees. There is no `show` builtin.
+| Memory reclamation. try/catch.
+
+| Bun-ESM (`lib/codegen_deno.ml`)
+| Basic programs are correct. A `return` inside a match arm returns 100 instead of 99 (IIFE at `:1575`). aLib conformance is 100 of 103 vectors.
+| —
+| —
+
+| Other backends
+| The JS-text backend drops every block `return` (`main()` gives `undefined`/NaN). Lua output is invalid. C, Rust and LLVM output fails on records and closures. Julia is correct on the probe. WasmGC hits an internal bug on closures and produces invalid wasm (`anyref` vs `i32`) for a trivial fixture.
+| The matrix rates JS, Rust and Lua as "works (transpile)". The runs refute this.
+| —
+
+| AffineScript to typed-wasm seam
+| Scalar end-to-end works: `forward(41)=42` under wasmtime, and `tw-verify` reports VERIFIED. `compile` exits 0 and writes the `.wasm` even when its own verifier reports L7/L10 violations (`bin/main.ml` ~L977, marked "informational"). An empty 8-byte module is VERIFIED.
+| Only L7, L10 and L13 are enforced by `lib/tw_verify.ml`.
+| No emission of regions, access-sites, capabilities or region-imports (affinescript#462).
+
+| typed-wasm repo (`/home/user/typed-wasm`)
+| `cargo test` passes 197 (default features) or 209 (all features). Clippy is clean. All 6 examples build and verify. `tw build` silently stubs bodies it cannot lower (`twice(5)=0`, `parser.rs` ~L895) and the result is VERIFIED. No L5 index guard is emitted: `get_player_hp(0,150)` returns 0. Malformed `session` blocks are accepted. No capabilities carrier is emitted. `tests/e2e.sh` reports 47 passed with 8 skipped (idris2, zig, parser), which is a silent green. Codegen output does not export memory, so multi-module sharing is unexercised.
+| L2, L13-imports and L15 sit behind `unstable-*` features, so the default `tw-verify` build skips them. An unknown carrier version returns `Ok(vec![])` (`verify.rs:880,967`). An unknown ownership byte decodes to Unrestricted. 33 Idris2 modules contain no escape hatches by grep (not built). The "ECHIDNA 10^5" and "88/88 parser tests" claims cannot be reproduced: `Parser.mjs` is absent and `src/parser/*.affine` does not parse.
+| No L8, L9, L14 or L16 carriers. No wasmtime gate adapter. No WasmCert tie-back.
+
+| Coq `formal/` (20 files)
+| All files compile under Coq 8.18. 137 named lemmas are "Closed under the global context". There are 35 in-file closure reports.
+| P3, F3 and F4 are true by construction. RealWasm uses unbounded `Z`, not i32. Compile and eval are hand re-implementations, with no extraction or link to `lib/*.ml`. The axiom gate checks only lemmas that have an explicit `Print Assumptions` (`QttSemiring.v` and `Siblings_Stated.v` have none).
+| No proofs of type soundness for the real type system, effects, inference or coherence.
+
+| Idris2 solo-core (`docs/academic/formal-verification/solo-core/*.idr`)
+| —
+| Hole-free and `%default total` by grep. Never type-checked. `docs/SOUNDNESS.adoc` and `docs/PROOF-NEEDS.adoc` §1 still say `?todo` (doc drift).
+| No CI gate was found in the survey pass.
+
+| Lean `docs/academic/tropical-session-types`
+| Not run.
+| This is a diverged copy of the tropical-types file (461-line diff).
+| —
+
+| anytype (`/home/user/anytype`)
+| An exhaustive Rust check of the transcribed Affine tables finds 0 law violations.
+| Idris2 was not run. The 19-case golden matrix and 8 CLI cases were counted, not executed. The golden path is probably broken: `abi.ipkg` moved to `src/interface/abi.ipkg` in commit `7329ceb`, but the Justfile and `idris2-proof.yml` still point at the root. That breakage is inferred, not observed.
+| No checker soundness theorem. No join, branching, ADTs, polymorphism, effects or `CostAlgebra`.
+
+| typell (`/home/user/typell`)
+| The workspace builds. 447 tests pass and 3 are ignored. `UsageQuantifier` is not lawful: monotonicity of + and *, distributivity and transitivity all fail.
+| Idris `Soundness.idr` covers plain STLC only (not run). `tests/integration_test.rs` is never compiled.
+| Not on the AffineScript critical path.
+
+| echo-types
+| `All.agda` and `Smoke.agda` exit 0. The guardrails pass. There is 1 postulate block, outside `All.agda`.
+| `PROOF-STATUS` claims about 200 modules. There are 94 imports, and 96 modules were checked.
+| A parametric `LEcho` over arbitrary drops.
+
+| tropical-types
+| Lean 4.13 builds 20/20. The transport theorems are axiom-free, but `parametric_resource_transport` is a field repackaging.
+| Isabelle was not run. The ROOT session covers 5 of 9 theories, and no CI workflow runs Isabelle.
+| —
+
+| occupancy, secret, residual-evidence, choreographic, epistemic
+| All five `check.sh` gates pass, including their rejection fixtures. occupancy's stackcert `cert_sound` fails to compile under Lean 4.15 and depends on `sorryAx`.
+| occupancy's Idris spike is not run.
+| None of these has an AffineScript consumer.
+
+| jtv-halting-islands-ct
+| The build works and the demo prints 10. There are 0 tests. The `--features verify` Creusot build fails on stable.
+| Docs describe a Python implementation that was deleted (commit `98880b1`).
+| Parser, CLI and tests.
+
+| absolute-zero
+| The 4 active Agda modules type-check. The Z3 OND checks pass. The archived Coq tree is 17/17 closed. `src/whitespace` has 1 failing test.
+| Idris ABI not run; it contains `believe_me` at `Layout.idr:270`. In the Agda CNO, the termination and thermodynamic parts are vacuous.
+| —
+
+| januskey
+| 135 tests pass. The Agda kernel and 4 reject fixtures pass against resource-algebra `cf9235c`.
+| The Zig C ABI is a stub (`TODO(#155)`). T-8 is non-atomic. Idris was not run.
+| No AffineScript seam today.
+
+| stdlib and aLib
+| All 38 stdlib modules type-check. `alib` passes 100 of 103 vectors on Bun-ESM; the failures are `divide` Int-truncating and `substring` taking (start, length). Code that `use`s alib fails under `eval` ("Unbound variable") and as single-file wasm (missing import).
+| `stdlib-roadmap.adoc` says aLib is "nothing built" (doc drift).
+| No conformance runner. `tests/conformance/**` has 23 files, none of which parse, and none is wired.
+
+| Satellites
+| tea e2e: 10 pass. router: 5 unit and 6 e2e pass. crdt: 7 pass. cadre e2e passes. The DOM e2e fails with a WASI-shim TypeError in `dom_host.mjs:50`.
+| `ECOSYSTEM.adoc` says the DOM e2e is "VERIFIED". The run refutes this.
+| DOM and cadre e2e are not in CI.
+
+| Tooling
+| The OCaml LSP answers `initialize`. The Rust LSP passes 26 tests. `fmt` throws `Failure`. The REPL is unwired. Type errors carry `file:"<dummy>"` with 0:0 spans. `tree-sitter generate` fails. `affine-pkg` has 18 println stubs. `affine-doc` and `affinescript-dap` do not build. `compile --help` hits a cmdliner escape error. The Rust LSP's tests expect `check --json` version 1, but the compiler emits version 2. The committed `editors/vscode/out/extension.cjs` is stale against the compiler. The in-tree Vite plugin loses relative-`use` context because it compiles a temp copy.
+| —
+| Formatter, debugger, package manager, registry.
+
+| Packaging
+| No `deno.json` or `jsr.json` is tracked. The `.d.affine` "Harvard Engine" ports do not parse. `mod.js` still references the missing `./mod.d.ts`.
+| `PACKAGING.adoc` says "dry-run OK". This is contradicted by the tree.
+| npm channel for affine-js.
+
+| Parser conformance corpus (`conformance/`)
+| The corpus has no `dune` file, so `just conformance` is a no-op. Valid cases `007` and `012` fail to parse. Valid case `006` fails later with "Not implemented: Too many arguments for kind". Invalid cases `010` (empty match) and `011` (escape `\q`) are accepted.
+| `.expected` files are TODO placeholders.
+| —
+
+| Faces
+| 6 face snapshots pass. The same-cube invariant (#601) is unmet: the canonical and rattlescript sources give different wasm sha256 values. rattlescript `hello.rattle` and `ownership.rattle` fail with `--face=python`.
+| Coq F1 and F5 are toy models.
+| —
+
+| Theory upstream (systemet)
+| —
+| The anytype `ANCHOR.a2ml` pin `0af1a2f6…` claims ET-2 conversion decidability is PROVEN. Unverified.
+| Not checked out.
+|===
+
+=== 1.3 Unledgered silent holes found by this survey (doctrine 1: these come first)
+
+All were observed by RUN unless marked otherwise. The maps confirm that H1–H4 and H9 are absent from `docs/SOUNDNESS.adoc`. H5–H8, H10, H12 and H13 were not checked against the ledger. H11 already has a drafted issue (`issues-drafts/06`, referenced from the AFFIRMATION). H14, H15 and H19 belong to typed-wasm, not the AffineScript ledger.
+
+. H1. Interpreter early `return` has no non-local exit (`lib/interp.ml:262`).
+. H2. Bun-ESM `return` in expression position is lowered as an IIFE (`lib/codegen_deno.ml:1575`).
+. H3. The JS-text backend drops block returns (`lib/js_codegen.ml`). The Lua backend emits invalid code.
+. H4. Non-exhaustive match compiles to "return 0" on core WASM.
+. H5. Effect rows are not checked against performed operations or callee rows.
+. H6. `eval` and the REPL skip borrow checking and trait coherence.
+. H7. Interpreter `let mut` reassignment fails at runtime.
+. H8. `total fn` is accepted without any check.
+. H9. Integer width diverges: the interpreter uses 63-bit ints, WASM wraps at i32.
+. H10. `compile` emits a `.wasm` despite typed-wasm L7/L10 violations.
+. H11. `own` is mapped to the Linear ownership kind (READ).
+. H12. The QTT anchor tests are vacuous.
+. H13. `wasm-validate-gate` SKIPs with exit code 0 when `wasm-tools` is absent.
+. H14. The typed-wasm verifier fails open: empty modules pass (RUN); unknown versions and unknown bytes pass (READ).
+. H15. typed-wasm `tw build` stub miscompile. This is in the typed-wasm repo, not AffineScript.
+. H16. The AffineScript front-end accepts L7/L10-violating programs (c5_real `03_partial_drop.affine`).
+. H17. The lexer accepts the bad escape `\q`, and an empty `match` parses (conformance invalid cases 010 and 011).
+. H18. The interpreter fails when dereferencing refs returned through calls ("Expected reference type"). The session lead reproduced this on two #554 fixtures.
+. H19 (typed-wasm). No L5 index guard: `get_player_hp(0,150)` reads an adjacent region. `where` constraints are discarded. Malformed `session` blocks are silently ignored.
+
+== 2. Target architecture
+
+=== 2.1 Layered system
+
+----
+ THEORY (donors; no code link today)
+ +-----------------------------------------------------------------------------+
+ | systemet (ET obligations; NOT checked out)   resource-algebra (Agda; ⊕ idem.)|
+ | echo-types  tropical-types  secret-types  occupancy  choreographic  epistemic |
+ | residual-evidence  jtv halting-islands  absolute-zero  januskey/MAA          |
+ | (typell excluded: its usage algebra fails the semiring laws)                |
+ +--------------------------------------+--------------------------------------+
+                                        | extend-not-redefine (ADR + pin)
+ KERNEL                                 v
+ +-----------------------------------------------------------------------------+
+ | anytype: Grade/Algebra.idr (GradeAlgebra) + Core/Check.idr + anytype-check   |
+ |   used first as an ORACLE (S-expr, exit 0/1/2) once idris2 can build it,     |
+ |   later as the certified core                                                 |
+ +--------------------------------------+--------------------------------------+
+                                        | lib/anytype_emit.ml (NEW) -> differential
+ SURFACE                                v
+ +-----------------------------------------------------------------------------+
+ | faces: python/js/cafe/lucid/pseudocode_face.ml -> face.ml/face_pragma.ml     |
+ | lexer.ml (sedlex) -> parser.mly (Menhir) -> resolve.ml + module_loader.ml     |
+ +--------------------------------------+--------------------------------------+
+ ELABORATION / CHECKING  (one shared pipeline for check/eval/repl/compile: NEW lib/pipeline.ml)
+ +-----------------------------------------------------------------------------+
+ | typecheck.ml (+unify, rows, NEW effect inference) -> exhaustiveness (NEW)    |
+ | quantity.ml (QTT {0,1,ω}; later functor over GRADE) -> borrow.ml (lexical+NLL)|
+ | trait coherence -> totality.ml (NEW, jtv method)                             |
+ +--------------------------------------+--------------------------------------+
+ MIDDLE                                 v
+ +-----------------------------------------------------------------------------+
+ | opt.ml (const fold only) -> [typed core IR: no shared one identified in maps]|
+ +------+--------------------+-------------------+-----------------------------+
+        |                    |                   |
+        v PRIMARY            v SECONDARY         v EXPERIMENTAL (quarantine)
+ codegen.ml + wasm.ml   codegen_deno.ml       codegen_gc.ml (partial), js_codegen,
+ + tw_section.ml        (Bun-ESM .bun.js),    .c .rs .ll .lua .jl .wgsl ... (≈20)
+ core WASM 1.0 + WASI   codegen_node.ml (CJS)
+        |
+        v  .wasm + typedwasm.{ownership, regions*, access-sites*, capabilities*}
+ +-----------------------------------------------------------------------------+
+ | VERIFIED TARGET: typed-wasm-verify (Rust, spec of record) || tw_verify.ml    |
+ |   fail-closed (NEW) ; typed-wasm-gate gate_module -> VerifiedModule          |
+ +--------------------------------------+--------------------------------------+
+                                        v
+ RUNTIME   wasmtime | wasmi (gate adapter) | packages/affine-js loader.js (Bun)
+           WASI p1 (wasi_runtime.ml), bump allocator; runtime/ Rust crate UNWIRED
+ LIBS      stdlib/*.affine (38) ; stdlib/alib.affine <-> aggregate-library data/aggregate.json
+ TOOLING   bin/main.ml CLI ; lsp_server.ml ; tools/affinescript-lsp (Rust) ; editors/vscode
+           (extension.affine) ; affinescript-vite/index.js ; packages/affinescript-cli (JSR shim)
+ (* = carrier exists in typed-wasm ABI v1 but AffineScript does not emit it)
+----
+
+*Design principle.* Exactly one path is trusted: source, then the shared checking pipeline, then core WASM, then fail-closed typed-wasm-verify, then a runtime.
+
+Every other backend is labelled experimental until it passes the differential harness described in section 4.
+
+The kernel enters first as an independent oracle for translation validation, and only later as the certified core. This follows from section 6, fork F2.
+
+=== 2.2 Where estate repos plug in
+
+[cols="2,2,4,3",options="header"]
+|===
+| Repo | Classification | Concrete seam (file, interface) | Precondition / blocker
+
+| typed-wasm
+| *Core*
+| AffineScript `lib/tw_section.ml` `Encode.ownership`, `lib/codegen.ml` (~L229, L3493, L3967), `lib/tw_verify.ml`. typed-wasm `crates/typed-wasm-verify` (`verify_from_module`, `verify_access_typing_from_module`, `build_*_section_payload`). `crates/typed-wasm-gate` `gate_module`. Wire format in `crates/typed-wasm-verify/src/section.rs`. Contract in `CONTRACT.adoc` I3.
+| Needs fail-closed verification, an Affine ownership kind (an ABI change in lock-step with ephapax), and regions/access-sites emission (affinescript#462).
+
+| anytype
+| *Core* (kernel, staged)
+| `src/kernel/Anytype/Grade/Algebra.idr`, `Grade/Affine.idr`, `Core/Check.idr`. The CLI `anytype-check --discipline affine` reads an S-expression grammar defined in `src/cli/Anytype/Sexp.idr`. The Zig export `anytype_check` is in `src/interface/ffi/src/main.zig`.
+| Needs `gjoin` plus If/Case (the join law requires a systemet ADR first), ADTs, a checker soundness proof, an idris2 toolchain, and the `abi.ipkg` path fix.
+
+| systemet
+| Theory (authority)
+| ET obligations and grade laws, pinned in `anytype/.machine_readable/6a2/anchors/ANCHOR.a2ml`.
+| Not checked out. Every claim about it is unverified.
+
+| aggregate-library
+| *Core* (conformance spec for stdlib)
+| `data/aggregate.json` (22 ops, 103 vectors) against `stdlib/alib.affine` and `stdlib/AlibSchema.affine`.
+| No runner exists. Its own runners do not parse.
+
+| echo-types
+| Optional extension + theory donor
+| ADR-0023 finality types cite `EchoLinear.no-section-weaken`. `EchoResidueCell` maps to a stdlib `ResidueCell` type. `EchoTransaction.rollback-discards-writes` maps to `stdlib/Transaction.affine` #DB-2.1 (its status note is stale). `proposals/echo-types/EchoEncodingFaithfulness.agda` is staged.
+| The `LEcho` theorems hold only for `collapse : Bool → ⊤`. The comonad framing is retracted (R-2026-05-18). `EchoEphapaxBridge` is for ephapax, not AffineScript.
+
+| tropical-types
+| Theory donor + optional extension (cost grade)
+| A `RESOURCE_SEMIRING` functor in `lib/quantity.ml`, mirroring the Lean `Resource/Algebra/Interface.lean`. Cost grade from `lib/solo_cesk.ml`, exposed at typed-wasm L11 (`Levels.idr`).
+| `docs/spec.adoc` puts tropical types out of scope, while ADR-0025 meters cost. The owner must rule.
+
+| resource-algebra (external, pins `cf9235c`/`0b338c9`)
+| Theory donor
+| Loss/HWM/MaxPlus instances, transcribed into typed-wasm `ResourceAlgebra/*.idr`.
+| Its ⊕ is idempotent, which excludes QTT `{0,1,ω}` (where 1+1=ω). It must never be presented as the QTT algebra.
+
+| secret-types
+| Optional extension
+| A new label pass after `typecheck.ml`: `Secret ℓ A` plus a pc label over a `Lattice` record, mirroring `SecretTypes.Typing.Generic`. Port `tests/reject/{ExplicitFlow,ImplicitFlow}`.
+| TINI holds for a 2-variable while-language only. AffineScript would need its own non-interference proof.
+
+| occupancy-types
+| Optional extension (target level, not surface)
+| typed-wasm `Occupancy.idr` (L13). Emit peak/drift per region from the AffineScript allocator.
+| stackcert is broken (`sorryAx`). Occupancy's ULTRAPLAN forbids a surface language before a certificate checker (stackcert) has a user, and stackcert currently fails to compile.
+
+| choreographic-types
+| Theory donor (target L14/L16)
+| typed-wasm `SessionProtocol.idr` and `Choreography.idr`.
+| K-CUT requires ⊕-idempotence, so it does not apply to QTT. Research only.
+
+| epistemic-types
+| Out of scope for core (niche optional)
+| typed-wasm `Epistemic.idr` (L12).
+| Low priority.
+
+| residual-evidence-types
+| Out of scope
+| None.
+| No PL feature.
+
+| jtv-halting-islands-ct
+| Theory donor (method only)
+| New `lib/totality.ml` (gate on `fd_total`, `lib/ast.ml:339`) and `is_halting_island` in `lib/kernel_sublang.ml`. Rationale in `dev-notes/2026-07-07-prior-art.adoc`.
+| Do not depend on the crate (Rust, binary-only, 0 tests). Its guarantee is per-expression only.
+
+| absolute-zero
+| Theory donor
+| Erasure-as-OND: QZero/`@erased` read as `is-OND` (`proofs/agda/OND.agda`). CNO-justified dead-code elimination in `lib/opt.ml`, built on `cno-composition`.
+| Its CNO model is a toy ISA with vacuous termination. There is no AffineScript core semantics to state these over.
+
+| januskey / MAA
+| Theory donor (possible future consumer)
+| `TransactionAtomicity.rollback-restores` as the restore-direction lemma for `stdlib/Transaction.affine`. Its Loss-grade lemmas could back a reversible typed-wasm level.
+| The C ABI (`ffi/zig`) is a stub that returns `JK_OK`, so binding to it would be silent green. MAA names Oblíbený, not AffineScript. Caution: `stdlib/Transaction.affine` rollback discards writes. `rollback-restores` applies only if the host semantics actually restore state, so do not conflate the two theorems.
+
+| typell
+| Out of the critical path
+| `crates/typell-affinescript/src/bridge.rs` (serde `AffineType`).
+| The bridge has drifted from `lib/types.ml`: it drops the arrow quantity and defaults Var to Omega. Its algebra is unlawful. Its 10 levels are not typed-wasm's 10 levels.
+
+| ephapax
+| Out of scope (sibling producer)
+| Shares only the typed-wasm ABI.
+| Must co-sign any ABI change (CONTRACT I3).
+|===
+
+== 3. What needs creating
+
+[cols="3,2,5",options="header"]
+|===
+| Component | Owner repo | Why
+
+| xfail pins and ledger entries for H1–H13
+| affinescript (`test/xfail`, `docs/SOUNDNESS.adoc`)
+| Doctrine 1. Today the ledger claims "one remaining residual", which is an overclaim.
+
+| A shared checking pipeline (`lib/pipeline.ml`) used by `check`, `eval`, `repl` and `compile`
+| affinescript
+| H6. Today check and eval disagree on soundness.
+
+| Exhaustiveness and redundancy checker (`lib/exhaustive.ml`, Maranget-style)
+| affinescript
+| H4. Until it exists, the codegen fallthrough must emit `unreachable` instead of 0.
+
+| Effect inference that accumulates effect operations and callee rows into `current_eff`
+| affinescript (`lib/typecheck.ml`)
+| H5. The capability matrix claim is currently false.
+
+| Totality gate (`lib/totality.ml`) plus `is_halting_island` in `lib/kernel_sublang.ml`
+| affinescript
+| H8. `total fn` is a user-visible promise that nothing keeps.
+
+| Interpreter fixes: a Return exception and `VMut` allocation
+| affinescript (`lib/interp.ml`, `lib/value.ml`)
+| H1 and H7. The interpreter is the declared reference semantics.
+
+| Cross-backend differential harness (interp vs core WASM vs Bun-ESM) over `test/e2e/fixtures`
+| affinescript (`test/differential/`, an OCaml driver plus a Bun host script)
+| The 562 green tests missed four wrong-value bugs. This harness is the cheapest strong oracle available.
+
+| An ADR deciding integer semantics
+| affinescript (owner decision)
+| H9. Coq models unbounded `Z`, the interpreter uses 63-bit ints, and WASM wraps at i32.
+
+| `--strict` blocking on `Tw_verify` errors, then making it the default
+| affinescript (`bin/main.ml` ~L977)
+| H10.
+
+| Fail-closed policy: `--require <carriers>`, unknown version is an error, unknown kind byte is an error
+| typed-wasm (`verify.rs`, `lib.rs`, `crates/typed-wasm-gate`)
+| H14. Today VERIFIED can be vacuous.
+
+| wasmtime adapter for `typed-wasm-gate`
+| typed-wasm
+| The verified-load path currently exists only for wasmi.
+
+| Affine ownership kind in the ABI
+| typed-wasm + affinescript + ephapax (coordinated ADR, `abi_version` bump)
+| H11. The emitted section is not faithful today.
+
+| regions and access-sites emitter
+| affinescript (#462, handoff `docs/developer/handoff-typed-access-sites-codegen.adoc`)
+| Without it, only L7/L10 of typed-wasm apply to AffineScript output.
+
+| Coq R-wrap rung (i32 modular `step1`) and auto-generated `Print Assumptions` for every lemma
+| affinescript (`formal/`, `formal/justfile`, `.github/workflows/coq-proof-gate.yml`)
+| Makes K-1 target actual WebAssembly, and closes the axiom-gate blind spot.
+
+| Coq extraction of `RealCompile.compile`/`eval` plus a dune translation-validation test against `Codegen`
+| affinescript (`formal/`, `test/`)
+| The first mechanical link between the proofs and the OCaml compiler.
+
+| `lib/anytype_emit.ml` plus a verdict differential against `Quantity.check_program_quantities`
+| affinescript
+| Turns anytype into an oracle for the shipped QTT pass.
+
+| `gjoin` and lattice laws, If/Case, ADTs, `CostAlgebra`, a product combinator, checker soundness
+| anytype (the join law is a systemet ADR first)
+| These are needed before anytype can certify AffineScript's branching usage (`quantity.ml` `join_usage`/`env_join`).
+
+| `conformance/dune` and an aLib runner on Bun-ESM with a CI workflow
+| affinescript
+| Removes two silent-green gates. aLib roadmap items #12–#18.
+
+| Restored `jsr.json` and the exempted `.d.ts` files. Any `deno.json` or `deno publish` path needs explicit owner approval, because Deno is banned; prefer `bunx --no-install --bun jsr publish` with jsr pinned as a devDependency.
+| affinescript (`packages/affine-js`, `packages/affinescript-cli`, `affinescript-tea`)
+| The `.d.ts` paths are listed as approved exemptions in `affinescript/.claude/CLAUDE.md`. Their "Harvard Engine" `.d.affine` replacements do not parse.
+
+| Located type-error diagnostics, plus either `fmt` or removal of the formatting advertisement
+| affinescript
+| IDE usability. Do not advertise formatting while `fmt` crashes.
+
+| A memory-reclamation story for the WASM target
+| affinescript
+| The bump allocator never frees, and `runtime/` is unwired.
+
+| An idris2 0.7/0.8 provisioning recipe for agent sandboxes
+| owner / CI image
+| Every Idris claim in this cluster is unverifiable without it.
+|===
+
+== 4. Fastest engineering route
+
+Goal: AffineScript source, typechecked for affine use, QTT and effects, compiled to typed-wasm, verified fail-closed, and run.
+
+Commands assume repo roots `/home/user/affinescript` (`AS`) and `/home/user/typed-wasm` (`TW`), and a binary `M=$AS/_build/default/bin/main.exe`. Fixture names marked "(new)" are to be created; the e2e fixtures live in `test/e2e/fixtures/`. Flags marked "(new)" do not exist yet.
+
+=== M0. Toolchain and honest baseline
+
+*Exit criteria:* the full clone builds, the full test suite is green, and the ledger gate runs on full history.
+
+----
+apt-get update && apt-get install -y ocaml-nox ocaml-dune menhir libmenhir-ocaml-dev \
+  libsedlex-ocaml-dev libppx-deriving-ocaml-dev libppx-sexp-conv-ocaml-dev libsexplib0-ocaml-dev \
+  libfmt-ocaml-dev libcmdliner-ocaml-dev libyojson-ocaml-dev libalcotest-ocaml-dev \
+  js-of-ocaml libjs-of-ocaml-dev libzarith-ocaml-dev coq wabt z3 agda-bin
+cargo install --locked tree-sitter-cli wasm-tools wasmtime-cli just
+bash $AS/editors/tree-sitter-rescript/scripts/install.sh
+git -C $AS fetch --unshallow
+cd $AS && dune build && dune runtest --force && bash tools/check-soundness-ledger.sh
+----
+
+Serialise apt installs; never run two at once.
+
+=== M1. Ledger the holes before fixing them
+
+*Exit criteria:* each of H1–H13 has a failing-expectation pin in `test/xfail` (or the e2e suite) and a `docs/SOUNDNESS.adoc` row. The vacuous QTT anchors carry `@linear`/`@erased` annotations and assert `Error`.
+
+----
+cd $AS && dune runtest --force 2>&1 | grep -cE 'XFAIL-OK|FENCE-OK'   # assert >= existing pins + 13
+bash tools/check-soundness-ledger.sh
+----
+
+=== M2. No silent wrong value on the primary path
+
+*Exit criteria:*
+
+* A non-exhaustive match traps on core WASM.
+* Whether `check` rejects or warns on non-exhaustive matches waits on the owner's ruling on question 3.
+* `compile --strict` (new) exits non-zero on verifier errors.
+* `wasm-validate-gate` fails instead of skipping when `wasm-tools` is missing.
+
+----
+$M check nx2.affine; echo rc=$?          # expect rc!=0 (new fixture)
+$M compile --strict $TW/crates/typed-wasm-verify/tests/fixtures/c5_real/03_partial_drop.affine -o /tmp/x.wasm; echo rc=$?   # expect rc!=0
+PATH=<path without wasm-tools> bash tools/wasm-validate-gate.sh; echo rc=$?   # expect rc!=0
+----
+
+=== M3. Typechecking means what the docs say
+
+*Exit criteria:*
+
+* `fn f() -> Int / { Other } { log("x"); 1 }` is rejected with EffectNotDeclared.
+* `eval` of a double-move program fails with a Borrow error before running.
+* `total fn loop` is rejected.
+* All 38 stdlib modules still type-check. Run this experiment first; see W2.
+
+----
+cd $AS && dune build && $M check eff_undeclared.affine; echo rc=$?    # expect !=0
+$M eval p1_double_move.affine; echo rc=$?                               # expect borrow error
+$M check total_loop.affine; echo rc=$?                                  # expect !=0
+for f in stdlib/*.affine; do AFFINESCRIPT_STDLIB=$AS/stdlib $M check $f || echo FAIL $f; done
+----
+
+=== M4. Reference-semantics parity
+
+*Exit criteria:* the interpreter returns `g(5)=1`, return-in-arm gives 99, and `let mut` gives the expected values. The differential harness agrees on all of `test/e2e/fixtures` across interp, core WASM and Bun-ESM, with integer width set per the M4 ADR.
+
+----
+$M eval r4.affine                       # prints 1
+$M compile r5.affine -o r5.bun.js && bun -e "import('./r5.bun.js').then(m=>console.log(m.main()))"   # 99
+cd $AS && dune test test/differential   # (new) zero disagreements
+----
+
+=== M5. typed-wasm fails closed
+
+*Exit criteria:* `tw-verify --require ownership` (new) exits 1 on the empty module. Unknown versions and unknown kind bytes are errors. The gate refuses carrier-free modules. All typed-wasm tests stay green. The default-feature build enforces whatever M6 requires, or M6 documents `--all-features`. If treating unknown versions or bytes as errors changes wire semantics, M5 and therefore M6 are blocked on an ADR co-signed with ephapax (CONTRACT I3); that dependency is on the critical path.
+
+----
+cd $TW && cargo test --workspace --all-features
+printf '\0asm\1\0\0\0' > /tmp/empty.wasm
+cargo run -q -p typed-wasm-verify --all-features --bin tw-verify -- --require ownership /tmp/empty.wasm; echo rc=$?   # expect 1
+----
+
+=== M6. Verified and running, end to end
+
+*Exit criteria:* a corpus of at least 20 AffineScript programs (records, closures, enums, loops, linear params) is processed by a single `just` recipe: compile with `--strict`, then `tw-verify` with required carriers, then `wasmtime run`, then compare against expected stdout.
+
+----
+for f in test/e2e/verified/*.affine; do $M compile --strict $f -o /tmp/o.wasm \
+  && cargo run -q --manifest-path $TW/Cargo.toml --bin tw-verify --all-features -- --require ownership /tmp/o.wasm \
+  && wasmtime run --invoke main /tmp/o.wasm | diff - "${f%.affine}.expected" || echo FAIL $f; done
+----
+
+*Fixture sourcing caveat.* The `forward(41)=42` probe ran under wasmtime. Programs that import WASI print functions need `wasmtime run` with WASI, which is the default.
+
+=== M7. Widen the verified levels
+
+*Exit criteria:* AffineScript emits `typedwasm.regions` and `typedwasm.access-sites` (affinescript#462), and a record-accessor program reports `L2 access typing: N type-verified` with N > 0. Once the coordinated ADR lands, `own` emits the new Affine kind.
+
+----
+$M compile --strict rec.affine -o rec.wasm && cargo run -q --manifest-path $TW/Cargo.toml --bin tw-verify --all-features -- rec.wasm | grep 'type-verified'
+----
+
+=== M8. Secondary host and quarantine
+
+*Exit criteria:*
+
+* Bun-ESM passes the differential corpus, and aLib passes 103/103 or the documented divergences are accepted by the owner.
+* Experimental backends require `--experimental` (new) and are relabelled in `docs/CAPABILITY-MATRIX.adoc`.
+* WasmGC remains "disclosed partial".
+
+----
+cd $AS && dune test test/differential
+bun <alib-runner> $AS/../aggregate-library/data/aggregate.json   # expect pass=103, or documented divergences
+$M compile x.affine -o x.lua; echo rc=$?                           # expect !=0 without --experimental
+----
+
+== 5. Fastest proof route (ordered by leverage on the shipped compiler)
+
+Leverage means how much assurance a rung adds about the actual binary `main.exe` and its outputs, not about an idealised core.
+
+[cols="1,3,2,3,3",options="header"]
+|===
+| Rung | Property about the SHIPPED artefact | Prover / solver | Status now | Gap between formal artefact and OCaml
+
+| P0
+| Differential agreement: interp, WASM and Bun-ESM agree on a corpus. Add property-based generation of programs.
+| none (testing, OCaml qcheck)
+| ABSENT. Holes H1–H4 show it is needed.
+| Not a proof. It is the cheapest oracle and is a prerequisite for meaningful proofs, because the reference semantics is wrong today.
+
+| P1
+| Per-output carrier verification at the target. This checks that ownership and access-typing annotations are consistent with the code; it does not check semantic preservation from source. Every emitted `.wasm` is checked fail-closed by `typed-wasm-verify` for L7/L10 now, and L2–L6 after #462.
+| Rust checker, tested against Idris `VerifierSpec` / `AccessTypingSpec`
+| PARTIAL. The checker runs, but fails open (H14), and the AffineScript compiler does not block on it (H10).
+| The Rust checker links to the Idris model only via `TrustedFixture` (ADR-0005). It is not extracted.
+
+| P2
+| Differential check of `Codegen` against an extracted, proved reference for the int/bool/let/if fragment. This is a test, not a theorem about `codegen.ml`. Method: extract Coq `RealCompile.compile`/`eval` and compare with `Codegen.gen_expr` on generated programs.
+| Coq 8.18/8.20 + Extraction to OCaml
+| RUN: the proofs exist and are axiom-free. The link is ABSENT.
+| Coq uses unbounded `Z`, word-addressed memory and depth-indexed locals. Real codegen uses i32 wrap, byte-addressed memory and name-keyed locals. Needs R-wrap first, and a decision on integer semantics.
+
+| P3
+| QTT verdict validation: emit each function's core fragment to anytype and compare verdicts with `quantity.ml`.
+| Idris2 (anytype) as oracle. Optionally Z3, encoding usage counts as linear constraints, as a second independent oracle.
+| The algebra is lawful (RUN, on transcribed tables). The checker is not proved. idris2 is unavailable.
+| anytype has no join, branching or ADTs, so coverage will be partial. Report the coverage percentage as a number and never present it as full.
+
+| P4
+| Borrow-checker validation: export `borrow_extract.ml` facts and solve them independently as Polonius Datalog (Soufflé, or Z3 fixedpoint). Diff against `borrow.ml`.
+| Datalog/Z3
+| Extractor test-only. 6 divergences allowlisted.
+| Coq `P3_*` is tautological (`borrow_ok := ¬analyze`). It needs a separate heap semantics to be meaningful.
+
+| P5
+| Non-tautological P-3: a separate ownership small-step semantics, the `borrow.ml` lexical rules as an inductive checker, and "accepts implies no stuck deref", including the interprocedural #554 shape.
+| Coq
+| ABSENT. The current one is a tautology.
+| Hand transcription of a 2306-line pass. Re-validate via P4.
+
+| P6
+| Real QTT in Coq: `Q_App` scales by q; typed vars; let/pair/case. Agreement with `main.exe check` on the `affine_*` fixtures.
+| Coq
+| Model only. `Q_App` lacks scaling.
+| `QttTyping` is an occurrence counter, not QTT.
+
+| P7
+| Solo-core progress and preservation actually machine-checked.
+| Idris2
+| READ (hole-free by grep). Not checked.
+| Covers only the Solo fragment. Blocked on idris2 provisioning.
+
+| P8
+| Effect-row soundness for real inference (row variables), after H5 is fixed.
+| Coq (extend `Rows.v`)
+| `Rows.v` is monomorphic.
+| Handlers are blocked on #555 and #623. Do not state P-6 handler soundness against a reference semantics known to be wrong.
+
+| P9
+| Full verified compiler for the core fragment (CompCert/CakeML-style), or an extracted backend replacing `codegen.ml` for the core.
+| Coq
+| ABSENT.
+| Long-term. Only worth it once P1–P3 show the fragment is stable.
+|===
+
+=== 5.1 Solver and automation options
+
+* *SMT for QTT.* Usage counts become linear integer constraints with `ω` as an unbounded tag. Z3 is apt-installable (4.8.12, RUN in the absolute-zero cluster). This gives a second, independent oracle beside anytype, at a fraction of the Idris cost.
+* *Datalog for borrows.* Polonius facts are already extracted (`lib/borrow_extract.ml`). Running an external solver turns the existing test-only machinery into an N-version check.
+* *Translation validation instead of a verified compiler.* Per-compilation checking (P1 and P2) gives assurance about each shipped output without proving the 3987-line `codegen.ml`.
+* *Auto-generated `Print Assumptions`.* Generate one line per lemma, as done in the survey's `AllAssump.v`. This closes the axiom-gate blind spot at near-zero cost.
+
+=== 5.2 Where a type, logic or proof trope gives a more final solution
+
+* *de Bruijn criterion / LCF kernel.* The elaborator, which is untrusted, produces core terms. A small kernel (anytype `Core/Check.idr`) re-checks them. Correctness then rests on the kernel, not on `typecheck.ml`. This is the principled end state of P3.
+* *Proof-carrying code via the typed-wasm carriers.* The compiler emits certificates (ownership, access typing, and later cost or occupancy grades) that a small checker validates. typed-wasm is already this shape. The final step is to extract the checker from Idris `decAccessTypingClean` instead of transliterating it.
+* *Evidence-passing translation for handlers (Xie–Leijen).* This compiles tail-resumptive handlers to plain calls, removing the CPS dilemma (#623) for the common case.
+* *Separation logic (Iris-style) for borrows.* This would make P5 compositional. It is a large investment; label it as research.
+* *Grade-polymorphic checking: "pick the algebra, get the discipline".* Functorise `quantity.ml` over a grade signature so that QTT, cost and other grades share one proof. The existing algebras must be split into two classes: the non-idempotent QTT semiring, and idempotent ⊕ grades (Loss, HWM, MaxPlus).
+
+== 6. Options with ratings
+
+Ratings run from 1 (poor) to 5 (strong). Column (a) is elegance plus correctness. Column (b) is dependability plus security/privacy. Per doctrine 15, the elegant default is labelled, and any departure from it is stated with reasons.
+
+=== F1. How to make compilation trustworthy
+
+[cols="3,1,1,5",options="header"]
+|===
+| Option | (a) | (b) | Notes
+
+| A. Full verified compiler (Coq, then extracted backend for the core fragment). *Elegant default.*
+| 5
+| 4
+| The most final option. Requires stable core semantics, which do not exist yet (H1, H7, H9). Multi-year.
+
+| B. Translation validation: fail-closed typed-wasm-verify on every output, plus a test-time oracle from extracted Coq compile.
+| 4
+| 5
+| Checks typing carriers on every shipped artefact, plus semantic agreement for a fragment at test time only. Incremental. Reuses existing assets.
+
+| C. Differential and property testing only.
+| 2
+| 3
+| Cheap and necessary as P0, but not assurance.
+
+| D. Unconventional: certificate-carrying compilation. `codegen` emits per-function simulation witnesses into a custom section, and a tiny verified checker validates them.
+| 5
+| 4
+| Elegant, but needs a certificate format design and a checker proof.
+|===
+
+*Recommendation: B now, as a staged path toward A.* This departs from the default. A's preconditions (a correct reference semantics and an integer-semantics decision) are unmet, while B immediately constrains the binary users actually run. Revisit A once P0–P2 are stable.
+
+=== F2. Quantity and borrow checking kernel
+
+[cols="3,1,1,5",options="header"]
+|===
+| Option | (a) | (b) | Notes
+
+| A. Rebase `quantity.ml` on anytype: in-process via Idris RefC/Zig, or replace the pass with the extracted checker. *Elegant default.*
+| 5
+| 4
+| The kernel would be the checker. Blocked: anytype lacks join, branching and ADTs, there is no soundness proof yet, and idris2 is unavailable.
+
+| B. Keep `quantity.ml` and `borrow.ml`. Use anytype, plus optionally Z3, as an external oracle in CI for translation validation of verdicts.
+| 4
+| 4
+| Blocked on idris2 for the anytype oracle, because `anytype-check` is an Idris2 executable and the Zig export only spawns that CLI. Only the Z3 oracle can ship now. Coverage is honest and measurable once it runs.
+
+| C. Functorise `quantity.ml` over a `GRADE` signature mirroring Lean `ResourceSemiring`. Affine stays the default instance.
+| 4
+| 3
+| Prepares for cost grades with no behaviour change. Does not by itself add assurance.
+
+| D. Unconventional: make Polonius-style Datalog primary for borrows (via `borrow_extract.ml` and an external solver), with `borrow.ml` demoted to a fast pre-pass.
+| 3
+| 4
+| A declarative spec is easier to model in Coq. Adds a toolchain dependency.
+|===
+
+*Recommendation: B, then C, then A.* This departs from the default for the same reason: anytype cannot yet express AffineScript's branching usage. The join law must also be settled in systemet first, under extend-not-redefine. Typell is excluded: its algebra fails the laws (RUN).
+
+=== F3. Who is the trusted checker at the target
+
+[cols="3,1,1,5",options="header"]
+|===
+| Option | (a) | (b) | Notes
+
+| A. `typed-wasm-verify` (Rust) as the sole trusted checker, fail-closed.
+| 3
+| 4
+| It is the spec of record (ADR-0008), but its link to Idris is transliteration only.
+
+| B. AffineScript `lib/tw_verify.ml` as the checker.
+| 2
+| 2
+| Producer-side self-checking. Not independent.
+
+| C. N-version: both checkers, with the parity oracle (`cross_compat_real.rs`) required in CI.
+| 3
+| 5
+| Cheap, because both exist. Disagreement is a loud failure.
+
+| D. Unconventional: extract Idris `decAccessTypingClean` and `VerifierSpec` as the running checker. *Elegant default.*
+| 5
+| 4
+| Removes the transliteration gap. Blocked on idris2 and on the extraction route.
+|===
+
+*Recommendation: C (built on A) now, with D as the target.* This departs from the default because idris2 is not provisionable in sandboxes today and the Rust checker already has 197–209 passing tests.
+
+*Cross-cutting.* Fail-closed semantics may require an `abi_version` bump in lock-step with ephapax (CONTRACT I3). That is slow, cross-repo and owner-gated.
+
+=== F4. Effect handlers on compiled targets
+
+[cols="3,1,1,5",options="header"]
+|===
+| Option | (a) | (b) | Notes
+
+| A. CPS-convert both the interpreter and codegen (resolves #623).
+| 4
+| 3
+| Hard to reconcile with OCaml 4.14 and js_of_ocaml (the interpreter must also run under JS). Bloats code.
+
+| B. WASM stack-switching / exception-handling proposals.
+| 4
+| 2
+| Depends on engine support. Would make typed-wasm verification harder.
+
+| C. Restrict v1 to tail-resumptive handlers and compile them by evidence passing. Non-tail handlers stay loud errors. *Elegant default.*
+| 5
+| 5
+| Covers the common case with no runtime machinery, and keeps "fail loudly" for the rest.
+
+| D. Unconventional: no handlers in v1. Effects are capability parameters, which affine types make unforgeable, desugared before checking.
+| 4
+| 5
+| Aligns with the affine/QTT core. Loses user-defined control effects.
+|===
+
+*Recommendation: C (the default)*, after H5 makes effect rows actually checked. Option D is the fallback if the owner wants the smallest v1.
+
+*Cross-cutting notes for all forks:*
+
+* *Backend breadth.* About 25 targets dilute effort, and several silently miscompile. Quarantining non-primary backends is a precondition for every fork.
+* *Privacy.* An IFC pass (secret-types) is orthogonal to all four forks and should wait until the core is sound.
+* *Supply chain.* SHA-pin all new CI actions. Per `affinescript/.claude/CLAUDE.md`, tag-pinned actions fail at run creation.
+* *Doc drift.* Every fork's outcome must update `docs/SOUNDNESS.adoc` and `docs/CAPABILITY-MATRIX.adoc` in the same PR.
+
+== 7. Ultracode session plan
+
+=== 7.1 Standing rules for every workflow
+
+* Commits are signed with `id_ed25519_signing`, and `git log --show-signature -1` must show `G`.
+* Rebase onto `origin/main` immediately before every push.
+* No licence or SPDX edits.
+* No TypeScript, Python, Go, Node/npm or new Deno code. Harnesses are written in OCaml, Rust, Bun-run JS (where AffineScript cannot do the job) or shell.
+* Every new test is wired into dune or CI in the same change.
+* No admin-merge. Push and PR creation are outward-facing, so they are stop-first: confirm with the owner.
+* Claims in docs may only move to a status that a gate command in the same PR demonstrates.
+
+=== 7.2 Workflows
+
+*W0 Provision and baseline (understand).*
+
+* Goal: reproducible toolchains and a verified baseline.
+* Fan-out: a single agent. apt is serialised, because parallel installs clobbered each other in the survey.
+* Scope: all repos, read-only.
+* Isolation: one container image snapshot, recorded so later workflows can reuse it.
+* Gates: the M0 commands; `cd $TW && cargo test --workspace --all-features`; Coq gate `just -f $AS/formal/justfile check`; echo-types `LC_ALL=C.UTF-8 agda -i proofs/agda proofs/agda/All.agda`.
+* Stop if: idris2 is still unavailable. Record it as an owner request and do not attempt a source bootstrap without approval; the survey's attempt was denied.
+* Output: a versioned toolchain manifest, kept out of the repo root.
+
+*W1 Ledger the holes (understand + implement tests).*
+
+* Goal: M1.
+* Fan-out: one agent per hole, H1–H13, each in its own git worktree, writing only an xfail fixture and a ledger row.
+* Scope: affinescript only.
+* Gates: `dune runtest --force` and `bash tools/check-soundness-ledger.sh` on a full clone.
+* Stop if: any pin passes unexpectedly. That means the hole is not reproduced; re-verify before writing anything.
+* A single integrator merges the rows into `docs/SOUNDNESS.adoc` to avoid conflicts.
+
+*W2 Experiments before commitment (design).*
+
+Run these, record the numbers, then decide.
+
+. Exhaustiveness blast radius: how many of `test/e2e/fixtures`, `stdlib/*.affine` and `examples/**` become errors.
+. Effect-row enforcement blast radius on the 38 stdlib modules and the satellites (tea, router, crdt).
+. Typed-wasm strict mode on the four `c5_real` fixtures and the e2e corpus.
+. Cost of the `unreachable` trap and the L5 guard: wasm size and runtime on the 38 codegen harnesses.
+. anytype S-expression coverage: the percentage of fixture functions expressible without branching or ADTs.
+. Polonius divergence count with the external Datalog solver.
+. Integer-width probe matrix: interp, WASM and Bun on overflow programs, to feed the owner's integer-semantics decision.
+
+* Each experiment must have a command that produces its number, run before and after the prototype branch. For example:
++
+----
+for f in test/e2e/fixtures/*.affine stdlib/*.affine examples/**/*.affine; do $M check $f >/dev/null 2>&1 || echo $f; done | wc -l
+----
+* Fan-out: one agent per experiment, read-only, results to the scratchpad.
+* Output: ADR drafts for integer semantics, exhaustiveness (error vs warning), the effect-inference rule, strict-by-default, and handler strategy (F4). These are drafts for owner ruling; do not merge them.
+
+*W3 Fix holes (implement).*
+
+* Goal: M2, M3 and the interpreter fixes. M4 closes only after W4 delivers `test/differential`, so build W4's harness before the H1, H2, H3 and H7 fixes and let it verify them. Order: H4, H10, H13 (silent wrong outputs on the primary path), then H5, H6, H8, then H1, H7, H2, H3. H12 is closed in M1.
+* Fan-out: one agent per fix in isolated worktrees, at most three concurrently. `typecheck.ml` is a hot file, so H4, H5 and H8 serialise with each other.
+* Gate per fix: its xfail flips to pass, `dune runtest --force` is green, and the ledger gate passes.
+* Stop if: any previously green test turns red with no ledger explanation, or a fix needs a language-semantics decision. H4 (check side), H5, H8 and H9 stay blocked until the owner rules on questions 3, 4, 5 and 1. W2 produces drafts only, which settle nothing.
+
+*W4 Differential harness (verify).*
+
+* Goal: P0 and M4.
+* Fan-out: one agent builds `test/differential` (OCaml runner plus a Bun host); a second writes the qcheck program generator.
+* Gate: `dune test test/differential` reports zero disagreements over the fixture corpus.
+* Stop if: disagreements exceed what the W3 fixes explain. Ledger them first.
+
+*W5 typed-wasm fail-closed (implement, separate repo).*
+
+* Goal: M5 and the wasmtime gate adapter. Also fix the `tw build` stub miscompile (H15) so it becomes a hard error.
+* Fan-out: one agent in `/home/user/typed-wasm`.
+* Gates: `cargo test --workspace --all-features`, `cargo clippy --workspace --all-features`, and `bash tools/check-contract.sh`. Also:
++
+----
+tw build <scratch>/stub.twasm; echo rc=$?                                        # expect !=0 (H15)
+tw-verify --require ownership,regions,access-sites /tmp/empty.wasm; echo rc=$?   # expect 1
+wasmtime run --invoke get_player_hp examples/01-single-module.wasm 0 150         # expect trap (L5)
+----
+* Stop if: the change alters wire semantics (`abi_version`). That needs an ADR co-signed with affinescript and ephapax; escalate to the owner.
+
+*W6 End-to-end verified corpus (verify).*
+
+* Goal: M6, then M7 (#462 emitter).
+* Fan-out: one agent for the corpus and recipe, one agent for the regions/access-sites emitter, following `section.rs` byte layouts.
+* Gate: the M6 loop, and for M7 `grep -E 'L2 access typing: [1-9][0-9]* type-verified'` must match.
+
+*W7 Proof bridges (implement + verify).*
+
+* Goal: P2 (R-wrap, extraction test), P3 (`anytype_emit.ml` with the anytype or Z3 oracle), and gate hardening (auto `Print Assumptions`).
+* Fan-out: three agents.
+** Coq agent in `formal/`.
+** OCaml emitter agent.
+** anytype agent: fix the `abi.ipkg` path in the Justfile and `idris2-proof.yml`, and draft `gjoin`. The join is a systemet ADR draft only.
+* Gates:
+** Generate `AllAssump.v` from a grep of every `Theorem|Lemma|Corollary|Example` in `formal/*.v` and commit the generator. Then `coqc -Q . ASFormal AllAssump.v | grep -c 'Closed under'` must equal the generated line count. Add a negative test: an `Admitted` lemma in `QttSemiring.v` must fail the gate.
+** `dune test` for extraction parity.
+** In anytype: `./scripts/check-idris2-proofs.sh` (only if idris2 is provisioned).
+* R-wrap starts only after the owner rules on question 1 (integer semantics); otherwise it may prove agreement with the wrong target.
+* The `abi.ipkg` path fix cannot be verified without idris2 and just. Do not merge it until `just test` reports "19 cases, 0 failure(s)".
+* Stop if: a theorem can be proved by `rewrite; discriminate` against a definitionally negated predicate. Reject tautologies.
+
+*W8 Ecosystem repair (implement).*
+
+* Goals:
+** Restore `jsr.json` and the exempted `.d.ts` files (owner confirmation needed, since history is shallow). Any `deno.json` path needs explicit owner approval.
+** Fix the DOM e2e (`dom_host.mjs`: pass the WASI shim via `modules:`), and port the dom and cadre e2e harnesses to Bun before wiring them into CI. They run under Node 22 today, which is not an approved runtime exemption.
+** Add `conformance/dune`.
+** Add the aLib Bun-ESM runner and workflow.
+** Fix the tree-sitter grammar conflict.
+** Add located diagnostics.
+** Add `fmt`, or remove the formatting advertisement.
+** Reconcile the LSP JSON contract version, then add Rust LSP CI.
+** Rewrite or regenerate the 23 non-parsing `tests/conformance/**` aLib files and wire them into dune.
+** Restore the 6 exempted `affinescript-deno-test/*.ts` files whose `.affine` ports do not parse (approved exemption list).
+* Fan-out: one agent per item, in isolated worktrees.
+* Gates:
+** `bash affinescript-dom/e2e/run.sh`
+** `cd editors/tree-sitter-affinescript && tree-sitter generate && tree-sitter test`
+** `cd tools/affinescript-lsp && cargo test --locked`
+** the aLib runner prints `pass=103` or documents the accepted divergences.
+** `cd $AS && dune runtest conformance`: all 12 valid cases accepted, all invalid cases rejected, no TODO `.expected` files.
+
+*W9 Truth reconciliation (verify docs).*
+
+* Goal: align `SOUNDNESS`, `CAPABILITY-MATRIX`, `PROOF-NEEDS` (R2-loops landed; Idris `?todo` drift), `ECOSYSTEM`, `PACKAGING`, `stdlib-roadmap` and `ROADMAP` with gate output.
+* Fan-out: a single agent.
+* Gates: `tools/check-doc-truthing.sh`, `check-capability-anchors.sh` and `check-soundness-ledger.sh`.
+* Stop if: a doc change would raise a claim's status without a gate command in the same PR.
+* AFFIRMATION re-signing is owner-only.
+
+== 8. Beyond-this-repo ledger
+
+* [ ] Owner: remove `OR AGPL-3.0-or-later` from AffineScript `bin/dune`, `js/dune` and `lib/version.ml`.
+* [ ] Owner: fix AGPL in `tools/{affinescript-lsp,affine-pkg,affine-doc}/Cargo.toml`, `distributions/rattlescript/Cargo.toml`, `affinescript-dom/package.json` and `/home/user/affinescript-vite/package.json`.
+* [ ] Owner: fix AGPL headers in absolute-zero `proofs/agda/CNO.agda` and `src/{brainfuck,whitespace}/src/lib.rs`. No automated licence edits.
+* [ ] Owner: sign or re-anchor the AFFIRMATION files for AffineScript (stale at `4ed413f`, no SPDX), typed-wasm (2026-06-16, stale counts and a "does not miscompile" claim), anytype (unfilled anchor) and typell.
+* [ ] typed-wasm: fail-closed verifier, stub-to-error in `tw build`, L5 guards, wasmtime gate adapter, capabilities carrier emission. Archive the non-parsing `src/parser/*.affine`, `affinescript.json` and the Parser.mjs harnesses, and correct `LEVEL-STATUS`.
+* [ ] typed-wasm + affinescript + ephapax: an ADR adding an Affine ownership kind and any `abi_version` bump. Then reseal with `tools/check-contract.sh --reseal`.
+* [ ] systemet: an ADR for the grade join law before anytype adds `gjoin`. Check out the repo to audit the ET-2 "PROVEN" claim.
+* [ ] anytype: fix the `abi.ipkg` path in the Justfile and `.github/workflows/idris2-proof.yml`. Add `CostAlgebra` and a product combinator. Prove checker soundness.
+* [ ] echo-types: generalise `LEcho`/`weaken`/`no-section-weaken` beyond `collapse : Bool → ⊤` for ADR-0023. The maintainer decides whether to accept the staged `EchoEncodingFaithfulness.agda`.
+* [ ] tropical-types: add all 9 theories to the ROOT session and add an Isabelle CI workflow, or retract the "CI-gated" claim. After owner confirmation, diff the diverged `TropicalSessionTypes.lean` copy in AffineScript, preserve any AffineScript-only content upstream, then replace it with a pinned pointer. Removing the file is a deletion (doctrine 7).
+* [ ] occupancy-types: fix stackcert under Lean 4.15, or retract the README "compiles" line.
+* [ ] resource-algebra: if a non-idempotent tier is ever wanted, add it there (solutions at source).
+* [ ] aggregate-library: replace the non-parsing runners, reconcile 29 specs with 22 ops, and fix the `STATE.a2ml` "implementation-complete" claim and the CLAUDE.md Deno-vs-Bun conflict.
+* [ ] affinescript-libraries: rewrite the KYAML sources in current syntax.
+* [ ] jtv-halting-islands-ct: rewrite the docs for the Rust POC or restore its tests. Register canon files in gv-clade-index.
+* [ ] januskey: T-8 atomic metadata save. Do not expose the C ABI until a real cdylib exists.
+* [ ] absolute-zero: make the termination notion in the Agda CNO non-vacuous before it is cited for erasure or dead-code elimination. Fix the whitespace test.
+* [ ] Owner/CI: branch protection and required checks (#557). Make `idris-abi.yml` and `agda-proofs.yml` required where relevant.
+* [ ] Owner/CI: approve idris2 (Chez bootstrap) in agent sandboxes.
+* [ ] Owner: JSR and npm publication (INT-04, #104) and VS Code marketplace, only after W8.
+* [ ] Owner: resolve the `hyperpolymath/affinescript-vite` repo identity (its content is road-skate).
+* [ ] Owner: jtv-halting-islands-ct LICENSE placeholder.
+* [ ] Owner: the MAA draft expired on 2026-04-13 and has no SPDX header (no automated edit). Converting maa-framework's vendored absolute-zero to a submodule (typed-wasm ADR-0004) belongs in a maa-scoped session.
+* [ ] 007: confirm `twasm = TwasmBackendNotYetImplemented` (repo not checked out).
+* [ ] Issue trackers: update #563, #513, #553, #555, #601 and #623. These are outward-facing; confirm before posting.
+
+== 9. Open questions for the owner
+
+. *Integer semantics.* i32 wrap, 63-bit, or arbitrary precision? This decides H9 and the Coq R-wrap rung.
+. *Strictness.* Should `compile` fail on typed-wasm verifier errors by default, or only under `--strict`?
+. *Non-exhaustive matches.* Error or warning? Is a trap-on-fallthrough acceptable as the interim step?
+. *Effect inference.* Is a breaking change to effect-row checking acceptable, given the stdlib and satellite blast radius from W2?
+. *`total fn`.* Is structural self-recursion allowed in v1, or only acyclic, loop-free bodies?
+. *Kernel authority.* Is anytype the semantic authority for AffineScript quantities, recorded as an affinescript ADR? Typell is then explicitly out of the path.
+. *Assurance strategy.* Accept fork F1-B (translation validation) now, with the verified compiler as the long-term target?
+. *Effect handlers.* Choose between F4-C (tail-resumptive via evidence passing) and F4-D (no handlers in v1). Also rule on #623 versus js_of_ocaml compatibility.
+. *Backend breadth.* Quarantine all backends except core WASM and Bun-ESM behind `--experimental`?
+. *Scope of new grades.* Re-admit tropical/cost grades and IFC labels into `docs/spec.adoc`, or keep them out? This also resolves the conflict between ADR-0025 metering and the spec's out-of-scope line.
+. *typed-wasm ABI.* Timing and co-sign process for the Affine ownership kind and the fail-closed semantics with the ephapax maintainers.
+. *Packaging.* Restore the exempted `.d.ts` files (listed in `affinescript/.claude/CLAUDE.md`) from history, replacing the non-parsing `.d.affine` ports?
+. *Coq pin.* 8.18 (docs) or 8.20.1 (CI)?
+. *Toolchains.* Approve idris2 in sandboxes; without it, every Idris claim stays unverified.
+. *Node exemption.* Approve a Node runtime exemption for the dom and cadre e2e harnesses, or port them to Bun?
+. *Status documents.* Re-sign the AFFIRMATION files, and decide whether the stale ROADMAP (January 2026 baseline) is retired or rewritten.
