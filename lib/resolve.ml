@@ -783,7 +783,7 @@ and resolve_imports_with_loader
               Ok ()
             | Error e -> Error e
           end
-        | Error (Module_loader.ModuleNotFound _) ->
+        | Error (Module_loader.ModuleNotFound missing) when missing = path_strs ->
           let id = List.hd (List.rev path) in
           Error (UndefinedModule id, id.span)
         | Error e ->
@@ -807,7 +807,7 @@ and resolve_imports_with_loader
                 items
             | Error e -> Error e
           end
-        | Error (Module_loader.ModuleNotFound _) ->
+        | Error (Module_loader.ModuleNotFound missing) when missing = path_strs ->
           let id = List.hd (List.rev path) in
           Error (UndefinedModule id, id.span)
         | Error e ->
@@ -865,7 +865,7 @@ and resolve_imports_with_loader
                    Ok ())
             | Error e -> Error e
           end
-        | Error (Module_loader.ModuleNotFound _) ->
+        | Error (Module_loader.ModuleNotFound missing) when missing = path_strs ->
           let id = List.hd (List.rev path) in
           Error (UndefinedModule id, id.span)
         | Error e ->

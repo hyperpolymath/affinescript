@@ -14,6 +14,11 @@ type load_error =
   | ModuleParseError of string * string  (** File path and parse error *)
   | ModuleCycle of string list  (** Circular dependency detected *)
   | InvalidModulePath of string list
+  | ModuleDeclMismatch of string list * string list * string
+      (** Requested path, the path the file declares, and the file.  A file
+          found for [A.B] that declares [module A;] is not module [A.B]:
+          the language has no nested module declarations, so accepting it
+          would bind [A]'s exports under a name that does not exist. *)
 [@@deriving show]
 
 (** Helper for Result bind *)
@@ -126,6 +131,32 @@ let default_config () : config =
     current_dir = Sys.getcwd ();
   }
 
+(** The directory module paths are resolved from, for a root file in
+    [file_dir] that declares [mod_path].
+
+    A file that declares [module A.B.C;] and sits in [.../A/B/] belongs to
+    the package rooted two directories up, so [use A.D;] must find
+    [.../A/D.affine], not [.../A/B/A/D.affine].  When the declared path's
+    leading segments match the file's trailing directories the root is the
+    directory above them; otherwise (no declaration, a one-segment name, or
+    a layout that does not match) it is [file_dir], which keeps sibling
+    imports working (#642). *)
+let module_root_dir ~(file_dir : string) (mod_path : string list option)
+    : string =
+  match mod_path with
+  | None | Some [] | Some [_] -> file_dir
+  | Some segs ->
+    let parents = List.rev (List.tl (List.rev segs)) in
+    let rec strip dir = function
+      | [] -> Some dir
+      | seg :: rest ->
+        if Filename.basename dir = seg then strip (Filename.dirname dir) rest
+        else None
+    in
+    match strip file_dir (List.rev parents) with
+    | Some root -> root
+    | None -> file_dir
+
 (** Convert module path to file path candidates
 
     For module path ["Math", "Geometry"], try:
@@ -199,6 +230,14 @@ let rec load_module (loader : t) (mod_path : string list) : (loaded_module, load
         match parse_module_file file_path with
         | Error e -> Error e
         | Ok prog ->
+          let declared =
+            Option.map (List.map (fun (id : ident) -> id.name)) prog.prog_module
+          in
+          match declared with
+          | Some d when d <> mod_path ->
+            Hashtbl.remove loader.loading mod_path;
+            Error (ModuleDeclMismatch (mod_path, d, file_path))
+          | _ ->
           (* Load dependencies first (imports) *)
           let* () = load_dependencies loader prog.prog_imports in
 
@@ -358,15 +397,123 @@ let rec flatten_imports_from
             Some (tc_name.name, `Const decl)
           | _ -> None
         ) lm.mod_program.prog_decls in
+        (* Transitive closure. A selected declaration's body may call
+           helpers of the same module that the import list never names:
+           `use Dom::{div}` pulls in `div`, whose body calls `h`. Leaving
+           `h` out of the flattened program produced
+           `ReferenceError: h is not defined` in the emitted module
+           (tests/codegen-deno/dom_startup_error). Private helpers are
+           pulled in too — a public wrapper may delegate to one. *)
+        let module_value_decls =
+          List.filter_map (fun decl ->
+            match decl with
+            | TopFn fd when fd.fd_body <> FnExtern ->
+              Some (fd.fd_name.name, `Fn fd)
+            | TopConst { tc_name; _ } as d ->
+              Some (tc_name.name, `Const d)
+            | _ -> None
+          ) lm.mod_program.prog_decls
+        in
+        (* Constructors of this module's own enums, keyed by constructor
+           name. An inlined wrapper body can name a constructor
+           (`text` returns `VText(content)`) and the constructor exists
+           only where the enum is declared. Option/Result constructors
+           are excluded: every non-wasm preamble already defines
+           Some/None/Ok/Err, and re-emitting them is the duplicate-`const`
+           crash that reverted type-carrying in #138 — this narrows the
+           carry to user enums a backend preamble cannot supply. *)
+        let preamble_ctors = [ "Some"; "None"; "Ok"; "Err" ] in
+        let ctor_decls = Hashtbl.create 16 in
+        List.iter (fun decl ->
+          match decl with
+          | TopType td ->
+            (match td.td_body with
+             | TyEnum variants ->
+               List.iter (fun (vd : variant_decl) ->
+                 if not (List.mem vd.vd_name.name preamble_ctors) then
+                   Hashtbl.replace ctor_decls vd.vd_name.name
+                     (td.td_name.name, decl)
+               ) variants
+             | _ -> ())
+          | _ -> ()) lm.mod_program.prog_decls;
+        let by_name = Hashtbl.create 16 in
+        List.iter (fun (n, d) -> Hashtbl.replace by_name n d) module_value_decls;
+        (* Close a selection over the helpers its bodies reference, then emit
+           it in this module's own declaration order.  Declarations must
+           precede their uses (the checker rejects a forward reference, and
+           the interpreter binds each function in an environment that holds
+           only what came before it), so the order a selection was gathered
+           in is not an order a consumer can use: `api` selected first and
+           its helper `h` carried second left `h` unbound under `eval`.
+           Every import kind needs the closure: a glob or a plain `use`
+           carries the module's public declarations, whose bodies call
+           private helpers just as a selected item's do. *)
+        let close_over direct =
+          let seen = Hashtbl.create 16 in
+          List.iter (fun (n, _) -> Hashtbl.replace seen n ()) direct;
+          let rec close pending acc =
+            match pending with
+            | [] -> List.rev acc
+            | (_, dk) :: rest ->
+              let free = match dk with
+                | `Fn fd ->
+                  let params =
+                    List.map (fun (p : param) -> p.p_name.name) fd.fd_params
+                  in
+                  (match fd.fd_body with
+                   | FnExtern -> []
+                   | FnExpr e -> find_free_vars params e
+                   | FnBlock b -> find_free_vars params (ExprBlock b))
+                | `Const (TopConst { tc_value; _ }) -> find_free_vars [] tc_value
+                | `Const _ | `Type _ -> []
+              in
+              let (pending, acc) =
+                List.fold_left (fun (pending, acc) name ->
+                  if Hashtbl.mem seen name then (pending, acc)
+                  else begin
+                    Hashtbl.replace seen name ();
+                    match Hashtbl.find_opt by_name name with
+                    | Some dep -> ((name, dep) :: pending, (name, dep) :: acc)
+                    | None ->
+                      (* A constructor name: carry the enum it belongs to,
+                         once per type. *)
+                      (match Hashtbl.find_opt ctor_decls name with
+                       | Some (td_name, decl) when not (Hashtbl.mem seen td_name) ->
+                         Hashtbl.replace seen td_name ();
+                         ((td_name, `Type decl) :: pending,
+                          (td_name, `Type decl) :: acc)
+                       | _ -> (pending, acc))
+                  end
+                ) (rest, acc) free
+              in
+              close pending acc
+          in
+          let extras = close direct [] in
+          let position = Hashtbl.create 32 in
+          List.iteri (fun i decl ->
+            let name = match decl with
+              | TopFn fd -> Some fd.fd_name.name
+              | TopConst { tc_name; _ } -> Some tc_name.name
+              | TopType td -> Some td.td_name.name
+              | _ -> None
+            in
+            Option.iter (fun n ->
+              if not (Hashtbl.mem position n) then Hashtbl.replace position n i)
+              name) lm.mod_program.prog_decls;
+          let pos (n, _) =
+            Option.value (Hashtbl.find_opt position n) ~default:max_int
+          in
+          List.stable_sort (fun a b -> compare (pos a) (pos b)) (direct @ extras)
+        in
         let select = match imp with
-          | ImportGlob _ -> public_decls
+          | ImportGlob _ -> close_over public_decls
           | ImportSimple _ ->
             (* `use Foo` brings the namespace into scope but doesn't import
                specific symbols. For codegens that need them inlined we still
                include all public top-level bindings — same as glob. The
                resolver determines what's referenceable; codegen just needs
                the bodies present. *)
-            public_decls
+            close_over public_decls
           | ImportList (_, items) ->
             (* The name a directly-named item is imported under (alias
                honoured). *)
@@ -400,90 +547,9 @@ let rec flatten_imports_from
                 |> Option.map (fun (_, found) -> (target, found))
               ) items
             in
-            (* Transitive closure. A selected declaration's body may call
-               helpers of the same module that the import list never names:
-               `use Dom::{div}` pulls in `div`, whose body calls `h`. Leaving
-               `h` out of the flattened program produced
-               `ReferenceError: h is not defined` in the emitted module
-               (tests/codegen-deno/dom_startup_error). Private helpers are
-               pulled in too — a public wrapper may delegate to one. *)
-            let module_value_decls =
-              List.filter_map (fun decl ->
-                match decl with
-                | TopFn fd when fd.fd_body <> FnExtern ->
-                  Some (fd.fd_name.name, `Fn fd)
-                | TopConst { tc_name; _ } as d ->
-                  Some (tc_name.name, `Const d)
-                | _ -> None
-              ) lm.mod_program.prog_decls
-            in
-            (* Constructors of this module's own enums, keyed by constructor
-               name. An inlined wrapper body can name a constructor
-               (`text` returns `VText(content)`) and the constructor exists
-               only where the enum is declared. Option/Result constructors
-               are excluded: every non-wasm preamble already defines
-               Some/None/Ok/Err, and re-emitting them is the duplicate-`const`
-               crash that reverted type-carrying in #138 — this narrows the
-               carry to user enums a backend preamble cannot supply. *)
-            let preamble_ctors = [ "Some"; "None"; "Ok"; "Err" ] in
-            let ctor_decls = Hashtbl.create 16 in
-            List.iter (fun decl ->
-              match decl with
-              | TopType td ->
-                (match td.td_body with
-                 | TyEnum variants ->
-                   List.iter (fun (vd : variant_decl) ->
-                     if not (List.mem vd.vd_name.name preamble_ctors) then
-                       Hashtbl.replace ctor_decls vd.vd_name.name
-                         (td.td_name.name, decl)
-                   ) variants
-                 | _ -> ())
-              | _ -> ()) lm.mod_program.prog_decls;
-            let by_name = Hashtbl.create 16 in
-            List.iter (fun (n, d) -> Hashtbl.replace by_name n d) module_value_decls;
-            let seen = Hashtbl.create 16 in
-            List.iter (fun (n, _) -> Hashtbl.replace seen n ()) direct;
-            let rec close pending acc =
-              match pending with
-              | [] -> List.rev acc
-              | (_, dk) :: rest ->
-                let free = match dk with
-                  | `Fn fd ->
-                    let params =
-                      List.map (fun (p : param) -> p.p_name.name) fd.fd_params
-                    in
-                    (match fd.fd_body with
-                     | FnExtern -> []
-                     | FnExpr e -> find_free_vars params e
-                     | FnBlock b -> find_free_vars params (ExprBlock b))
-                  | `Const (TopConst { tc_value; _ }) -> find_free_vars [] tc_value
-                  | `Const _ | `Type _ -> []
-                in
-                let (pending, acc) =
-                  List.fold_left (fun (pending, acc) name ->
-                    if Hashtbl.mem seen name then (pending, acc)
-                    else begin
-                      Hashtbl.replace seen name ();
-                      match Hashtbl.find_opt by_name name with
-                      | Some dep -> ((name, dep) :: pending, (name, dep) :: acc)
-                      | None ->
-                        (* A constructor name: carry the enum it belongs to,
-                           once per type. *)
-                        (match Hashtbl.find_opt ctor_decls name with
-                         | Some (td_name, decl) when not (Hashtbl.mem seen td_name) ->
-                           Hashtbl.replace seen td_name ();
-                           ((td_name, `Type decl) :: pending,
-                            (td_name, `Type decl) :: acc)
-                         | _ -> (pending, acc))
-                    end
-                  ) (rest, acc) free
-                in
-                close pending acc
-            in
-            let extras = close direct [] in
             List.map
               (fun (n, dk) -> (bound_name_of n, rename_decl (bound_name_of n) dk))
-              (direct @ extras)
+              (close_over direct)
         in
         (* Public enums the importer names directly. A constructor in the
            import list (`use Geometry::{Up, Down}`) or a type name the
