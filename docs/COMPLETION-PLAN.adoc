@@ -383,7 +383,7 @@ The kernel enters first as an independent oracle for translation validation, and
 |===
 | Component | Owner repo | Why
 
-| xfail pins and ledger entries for H1–H13 and H16–H18
+| xfail pins and ledger entries for H1–H13, H16–H18 and H20–H22
 | affinescript (`test/xfail`, `docs/SOUNDNESS.adoc`)
 | Doctrine 1. Today the ledger claims "one remaining residual", which is an overclaim.
 
@@ -503,13 +503,13 @@ Serialise apt installs; never run two at once.
 
 === M1. Ledger the holes before fixing them
 
-*Exit criteria:* each of H1–H13 and H16–H18 has a failing-expectation pin in `test/xfail` (or the e2e suite) and a `docs/SOUNDNESS.adoc` row. The vacuous QTT anchors carry `@linear`/`@erased` annotations and assert `Error`.
+*Exit criteria:* each of H1–H13, H16–H18 and H20–H22 has a failing-expectation pin in `test/xfail` (or the e2e suite) and a `docs/SOUNDNESS.adoc` row. The vacuous QTT anchors carry `@linear`/`@erased` annotations and assert `Error`.
 
 ----
 cd $AS && dune runtest --force > /tmp/m1.log 2>&1; rc=$?
 n=$(grep -cE 'XFAIL-OK|FENCE-OK' /tmp/m1.log || true)
 echo "markers=$n dune_rc=$rc"
-test "$rc" -eq 0 && test "$n" -ge "$((EXISTING + 16))"   # EXISTING = pin count before M1
+test "$rc" -eq 0 && test "$n" -ge "$((EXISTING + 19))"   # EXISTING = pin count before M1
 bash tools/check-soundness-ledger.sh
 ----
 
@@ -621,7 +621,7 @@ What that means here:
 * *Engineering files.* `K1*`, `Real*`, `P3_*`, `F1` and `F3`–`F5` state properties of this repository's code. No §4 exception is recorded for them. The stated reason in `formal/README.adoc` (interop with typed-wasm and ephapax) is not one of §4's grounds. Question 16 asks the owner to choose.
 * *Highest grade reachable in agent sandboxes.* With the owner's approval (question 19), Lean 4.13.0 and 4.15.0 were installed from `releases.lean-lang.org` on 2026-11-09, with SHA-256 `44ceeac7…` and `af71a256…` recorded for the §6 deviation. A Lean leg can therefore be re-proved in a sandbox, so `PWG-2ii` is reachable there once the Agda source and both legs are reconciled.
 * *Oracles are not proofs.* Z3, Datalog and differential checks earn `TESTED` (with bounds) or `ASSUMED`. They never earn `PROVEN` without an independently checked certificate (§5).
-* *Proof ledger.* The ledger now lives in `docs/EXPLAINME.adoc`. It has 15 obligations: 7 `proven` (all about models), 7 `open` and 1 `argued`. No theory theorem is at `PWG-3` or better.
+* *Proof ledger.* The ledger now lives in `docs/EXPLAINME.adoc`. It has 22 obligation rows, keyed to the `docs/PROOF-NEEDS.adoc` IDs: 7 `proven` (all about models), 13 `open` and 2 `argued`. No theory theorem is at `PWG-3` or better.
 * *Where the Agda sources live* is an owner decision (question 17).
 
 Leverage means how much assurance a rung adds about the actual binary `main.exe` and its outputs, not about an idealised core.
@@ -651,7 +651,7 @@ Leverage means how much assurance a rung adds about the actual binary `main.exe`
 | P3
 | QTT verdict validation: emit each function's core fragment to anytype and compare verdicts with `quantity.ml`.
 | Idris2 (anytype) as oracle. Optionally Z3, encoding usage counts as linear constraints, as a second independent oracle.
-| The algebra is lawful (RUN, on transcribed tables). The checker is not proved. idris2 is unavailable.
+| The algebra is lawful (RUN, on transcribed tables). The checker is not proved. Idris2 0.7.0, anytype's pin, can now be provisioned (W0), and the checker passes its 19 golden and 8 CLI cases with the corrected `abi.ipkg` path.
 | anytype has no join, branching or ADTs, so coverage will be partial. Report the coverage percentage as a number and never present it as full.
 
 | P4
@@ -748,12 +748,12 @@ Ratings run from 1 (poor) to 5 (strong). Column (a) is elegance plus correctness
 | A. Rebase `quantity.ml` on anytype: in-process via Idris RefC/Zig, or replace the pass with the extracted checker. *Elegant default.*
 | 5
 | 4
-| The kernel would be the checker. Blocked: anytype lacks join, branching and ADTs, there is no soundness proof yet, and idris2 is unavailable.
+| The kernel would be the checker. Blocked: anytype lacks join, branching and ADTs, and there is no soundness proof yet. Idris2 0.7.0 can now be provisioned (W0).
 
 | B. Keep `quantity.ml` and `borrow.ml`. Use anytype, plus optionally Z3, as an external oracle in CI for translation validation of verdicts.
 | 4
 | 4
-| Blocked on idris2 for the anytype oracle, because `anytype-check` is an Idris2 executable and the Zig export only spawns that CLI. Only the Z3 oracle can ship now. Coverage is honest and measurable once it runs.
+| The anytype oracle can run now: Idris2 0.7.0 builds in a sandbox, and `anytype-check` passes its 19 golden and 8 CLI cases with the corrected `abi.ipkg` path. The Z3 oracle can run beside it. Coverage stays partial, because anytype has no branching or ADTs; report it as a number.
 
 | C. Functorise `quantity.ml` over a `GRADE` signature mirroring Lean `ResourceSemiring`. Affine stays the default instance.
 | 4
@@ -855,8 +855,8 @@ Ratings run from 1 (poor) to 5 (strong). Column (a) is elegance plus correctness
 * Fan-out: a single agent. apt is serialised, because parallel installs clobbered each other in the survey.
 * Scope: all repos, read-only.
 * Isolation: one container image snapshot, recorded so later workflows can reuse it.
-* Gates: the M0 commands; `cd $TW && cargo test --workspace --all-features`; Coq gate `just -f $AS/formal/justfile check` plus a generated `Print Assumptions` over every assertion; every Agda theory entrypoint under exactly `agda --safe --without-K --cubical-compatible`.
-* Idris2 0.7.0 builds from source in an agent sandbox (verified 2026-11-09, about 15 minutes): `apt-get install -y chezscheme`, `git clone --depth 1 --branch v0.7.0 https://github.com/idris-lang/Idris2`, `make bootstrap SCHEME=chezscheme`, `make install PREFIX=/opt/idris2`. Record this as a PROOF-POLICY §6 deviation until the Guix manifest or container provides it. Idris2 0.8.0, which typed-wasm pins, has not been built in a sandbox.
+* Gates: the M0 commands; `cd $TW && cargo test --workspace --all-features`; Coq gate `just -f $AS/formal/justfile check` plus a generated `Print Assumptions` over every assertion; every Agda theory entrypoint under exactly `agda --safe --without-K --cubical-compatible`. Record each entrypoint's mode: a file-pragma `--cubical` still passes that command line, so a cubical module counts only under a separately reviewed proof profile, and that obligation stays open until the review is recorded.
+* Idris2 0.7.0 builds from source in an agent sandbox (verified 2026-11-09, about 15 minutes): `apt-get install -y chezscheme`, `git clone --depth 1 --branch v0.7.0 https://github.com/idris-lang/Idris2`, then `cd Idris2 && make bootstrap SCHEME=chezscheme && make install PREFIX=/opt/idris2`. Put `/opt/idris2/bin` on `PATH` for every later step and agent (`export PATH=/opt/idris2/bin:$PATH`), so direct checks and `tools/check-proofs.sh` find it. Record this as a PROOF-POLICY §6 deviation until the Guix manifest or container provides it. Idris2 0.8.0, which typed-wasm pins, has not been built in a sandbox.
 * Lean: install the pinned toolchain from `releases.lean-lang.org` (`curl -sSLO https://releases.lean-lang.org/lean4/v<ver>/lean-<ver>-linux.tar.zst`, extract with `tar --zstd`), and record its SHA-256 as a PROOF-POLICY §6 deviation. The owner approved this on 2026-11-09. GitHub release downloads stay blocked, so elan is not the route.
 * Treat an Idris2 `--check` exit code of 0 as a pass only when its output also contains no `Error:` line.
 * Stop if: a pinned prover cannot be provisioned. Record the leg as unavailable and continue with the others.
@@ -867,7 +867,8 @@ Ratings run from 1 (poor) to 5 (strong). Column (a) is elegance plus correctness
 *Ruled 2026-11-09:* W1 runs first, once this plan revision and the companion mathesis change land.
 
 * Goal: M1.
-* Fan-out: one agent per hole, H1–H13 and H16–H18, each in its own git worktree, writing only an xfail fixture and a ledger row.
+* Fan-out: one agent per hole, H1–H13, H16–H18 and H20–H22, each in its own git worktree, writing only an xfail fixture and a ledger row.
+* Anchors for the new holes. H20: a test that renders `List[Option[Int]]` and `Option[List[Int]]` on the Js and Cafe faces and expects different strings. H21: planted assertions outside the printed theorems' cone, and an unused `Axiom bad : False.`, must each fail the Coq gate, and a change to a modelled `lib/*.ml` file must re-run it. H22: `tools/check-proofs.sh --agda` must fail, not skip, when `AFFINESCRIPT_ECHO_TYPES_DIR` or `AGDA_STDLIB` is unset, and the echo-types revision it checks against must be pinned.
 * Scope: affinescript only.
 * Gates: `dune runtest --force` and `bash tools/check-soundness-ledger.sh` on a full clone.
 * Stop if: any pin passes unexpectedly. That means the hole is not reproduced; re-verify before writing anything.
@@ -930,12 +931,12 @@ wasmtime run --invoke get_player_hp examples/01-single-module.wasm 0 150        
 
 * Goal: bring the proof track into line with PROOF-POLICY (section 5.0), then P2 (R-wrap, extraction test), P3 (`anytype_emit.ml` with the anytype or Z3 oracle), and gate hardening.
 * Fan-out: four agents.
-** Agda theory agent: port `QttSemiring` first, then `P2_Stlc`, `Rows` and the Solo core, to Agda under the canonical flags, in the home question 17 settles. For each, record the Rocq leg's statement comparison so it can become `RECONCILED`. Re-prove the Lean leg by hand, with no Mathlib.
+** Agda theory agent: port `QttSemiring` first, then `P2_Stlc`, `Rows` and the Solo core, to Agda under the canonical flags, in the home question 17 settles. For each, record the Rocq leg's statement comparison so it can become `RECONCILED`. The Solo core has no Rocq proof yet: `P2_Stlc` covers a calculus without quantities and does not count, so write a Rocq recheck of Solo progress and preservation for the quantitative calculus before Solo can reach `PWG-2i`. Re-prove the Lean leg by hand, with no Mathlib.
 ** Coq agent in `formal/`: close H21 first, and act on the engineering files as question 16 decides.
 ** OCaml emitter agent.
 ** anytype agent: fix the `abi.ipkg` path in the Justfile and `idris2-proof.yml`, and the workflow's `paths` filter. The corrected path already gives 19/19 golden and 8/8 CLI cases under Idris2 0.7.0. Draft `gjoin` as a systemet ADR only.
 * Gates:
-** Generate `AllAssump.v` from a grep of every `Theorem|Lemma|Corollary|Example|Proposition|Fact|Remark` in `formal/*.v` and commit the generator. Then `coqc -Q . ASFormal AllAssump.v | grep -c 'Closed under'` must equal the generated line count. Add a negative test: an `Admitted` lemma in `QttSemiring.v` must fail the gate.
+** Generate `AllAssump.v` from a grep of every `Theorem|Lemma|Corollary|Example|Proposition|Fact|Remark` in `formal/*.v` and commit the generator. Then `coqc -Q . ASFormal AllAssump.v | grep -c 'Closed under'` must equal the generated line count. Add a negative test: an `Admitted` lemma in `QttSemiring.v` must fail the gate. `Print Assumptions` never reports an axiom that no theorem uses, so also reject any `Axiom`, `Parameter`, `Conjecture`, `Admitted` or `admit` anywhere in `formal/` by a separate scan, with a negative test that an unused `Axiom bad : False.` fails the gate.
 ** `dune test` for extraction parity.
 ** In anytype: `./scripts/check-idris2-proofs.sh` (only if idris2 is provisioned).
 * R-wrap starts only after the owner rules on question 1 (integer semantics); otherwise it may prove agreement with the wrong target.

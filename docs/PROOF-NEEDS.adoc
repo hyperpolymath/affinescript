@@ -146,11 +146,13 @@ obligations. They are the "we might have missed" half of the brief.
 | —
 
 | P-2
-| **Solo progress + preservation.** Discharge the two holes in `Soundness.idr`:
-  give `Step` its constructors and prove
-  `progress`/`preservation`/`affinePreservation`.
-| XL | `partial`
-| #513 must-have 1; solo-core (Idris2) progress + preservation checked locally (Idris2 0.7.0, 2026-11-09; not CI-gated); **progress + preservation
+| **Solo progress + preservation.** *Done for the Solo model (checked 2026-11-09):*
+  `Soundness.idr` gives `Step` its constructors and proves
+  `progress`/`preservation`/`affinePreservation` under Idris2 0.7.0 with
+  `%default total`. Remaining, and separate: a CI job for it, and the
+  policy's Agda source plus Rocq and Lean rechecks.
+| XL | `mechanized`
+| #513 must-have 1; solo-core (Idris2) progress + preservation checked locally (Idris2 0.7.0, 2026-11-09; not CI-gated). Separately, **progress + preservation
   mechanized** for a first-order fragment (`formal/P2_Progress.v`) AND for the
   **STLC with functions + the substitution lemma** (`formal/P2_Stlc.v`,
   funext-free). QTT/affine quantities are the remaining increment
@@ -162,7 +164,10 @@ obligations. They are the "we might have missed" half of the brief.
 | #513 must-have 2; **mechanized** for a single-bit model
   (`formal/P3_BorrowSound.v`) and a *multi-resource borrow graph* with loan
   edges + liveness (`formal/P3_BorrowGraph.v`: soundness, completeness,
-  move-locality, multi-resource #554 rejected). #554 fixed (SOUNDNESS.adoc);
+  move-locality, multi-resource #554 rejected). *Caveat (2026-11-09 review):*
+  `borrow_soundness` holds by definition there (`borrow_ok` is the negation of
+  the dynamic oracle it is compared with), so it says nothing about
+  `lib/borrow.ml`; see the proof ledger in `docs/EXPLAINME.adoc`. #554 fixed (SOUNDNESS.adoc);
   full P-3 needs `lib/borrow.ml`'s CFG + Polonius #553
 
 | P-4
@@ -173,7 +178,10 @@ obligations. They are the "we might have missed" half of the brief.
   (`{0,1,ω}` laws + occurrence homomorphism), `formal/AffineUsage.v` (`λx.x`
   affine, `λx. x x` not), `formal/QttTyping.v` — a quantitative type system whose
   usage context Γ is proven to track usage exactly (`usage x t = Γ x`) — and
-  `formal/QttDynamic.v`, the *dynamic* half: β-reduction **preserves the usage
+  `formal/QttDynamic.v`, the *dynamic* half. *Caveat (2026-11-09 review):*
+  `QttTyping` is an occurrence counter presented as a judgment (`Q_App` does not
+  scale; `Q_Var` accepts any type), so `usage_soundness` holds by definition; see
+  the proof ledger. The dynamic half: β-reduction **preserves the usage
   profile** (`t → t' ⇒ ∀z, usage z t' = usage z t`), with the QTT scaling law
   (`qof_mult`) and `qtt_context_preserved` composing it with `usage_soundness`.
   The full operational development on the *real* AST (substitution lemma past the
@@ -255,7 +263,10 @@ The work in flight changes which obligations are *load-bearing* and which are
   **first real `⟦compile p⟧ = ⟦p⟧`** — resolved int/bool/`let`/binary/**if**
   source, reference `eval`, `compile` to real wasm, `compile_correct` (env↔locals
   agreement, existential-fuel) + `compile_program_correct`, retiring `K1`/`K1Let`
-  on real objects. R2's conditionals forced `wexec` to become **fuel-indexed**
+  on real objects. *Caveat (2026-11-09 review):* these are models, not the
+  shipped compiler. `RealCompile` re-implements the source and `eval` with de
+  Bruijn locals, and its integers are unbounded `Z`, not i32, so nothing here is
+  proved about `lib/codegen.ml` or i32 behaviour. R2's conditionals forced `wexec` to become **fuel-indexed**
   (nested `list instr` defeats the structural guard checker); R2-loops
   (`Loop`/`Br`, value-returning tails) is next and settles #601 concretely.
 * **K-2 — Effect-soundness is *blocked*, not merely unproven.** P-6 cannot be
@@ -344,7 +355,13 @@ cover them.
   collapse onto one string), incl. the Js/Cafe "null"/"?" overlap
   (`js_no_collapse`, `cafe_no_collapse`, `option_never_atom`). Faithful to the
   whole-string Unit/Bool match + canonical-inner Option rewrite; models the
-  name vocabulary, not raw OCaml strings. `lib/face.ml` `render_ty`
+  name vocabulary, not raw OCaml strings. `lib/face.ml` `render_ty`.
+  *Counterexample (2026-11-09):* the real `render_ty` is not injective. On the
+  Js face `List[Option[Int]]` and `Option[List[Int]]` both render as
+  `List[Int] \| null`, and on Cafe both as `List[Int]?`, because the greedy
+  `Option\[\(.*\)\]` regex matches across brackets. The model allows `Option`
+  only at the top level. Injectivity of the real function stays open (hole H20
+  in `docs/COMPLETION-PLAN.adoc`).
 
 | F-6
 | **Preview round-trip totality.** The `preview-{python,js,pseudocode,lucid,cafe}`
@@ -409,7 +426,8 @@ F-1 (full transformer preservation) is non-trivial rather than a formality.
   + the substitution lemma** (`P2_Stlc.v`, funext-free); **P-3 → a multi-resource
   borrow graph** (`P3_BorrowGraph.v`: loan edges, liveness, move-locality,
   multi-resource #554 rejected); **F-5 → `render_ty` non-collision**
-  (`F5_RenderFaithful.v`: every face's renaming injective). *Leftover:* the K-4
+  (`F5_RenderFaithful.v`: every face's renaming injective *in the model*; the
+  real `render_ty` collides on nested types, so F-5 itself stays open, H20). *Leftover:* the K-4
   `CAPABILITY-MATRIX` cross-link.
 | Wave 0
 
@@ -433,7 +451,8 @@ F-1 (full transformer preservation) is non-trivial rather than a formality.
   (`formal/RealWasm.v` — real `lib/wasm.ml` IR, i32 core + locals + structured
   `IfElse`, fuel-indexed `wexec`; `formal/RealCompile.v` — the first real
   `⟦compile p⟧ = ⟦p⟧` incl. value-returning `if`, retiring K1/K1Let on real
-  objects). **R2-loops** (`Loop`/`Br`, value-returning tails) is next and settles
+  objects; these are models with unbounded `Z` integers, not the shipped
+  compiler or i32). **R2-loops** (`Loop`/`Br`, value-returning tails) is next and settles
   #601 concretely. Then the still-`prose`/`absent` obligations: P-5 (inference),
   P-6 (effects — blocked on #555/K-2, = rung R-eff), P-7 (resolution), P-8
   (parser), P-10 (coherence); faces F-6/F-7; full-language borrowing (P-3)
