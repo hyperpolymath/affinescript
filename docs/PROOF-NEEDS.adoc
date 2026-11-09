@@ -53,10 +53,13 @@ than the prose corpus suggests:
 * **`docs/academic/formal-verification/solo-core/`** — the only core-language
   formalisation. Covers the *Solo* fragment only: STLC + Unit + Product + Sum +
   `let` + QTT quantities `{0, 1, ω}`. `Syntax/Context/Quantity/Typing` are
-  populated; **`Soundness.idr` is statements-only** — `data Step` has *no
-  constructors* ("intentionally omitted until week 3"), and
-  `progress = ?todo_progress`, `preservation = ?todo_preservation`. Status:
-  `stated`. It proves nothing yet. Solo *excludes* traits, effects, rows,
+  populated. *Updated 2026-11-09:* `Soundness.idr` now gives `Step` its
+  constructors and proves `progress` and `preservation` (into a `Weaker`
+  sub-context); `affinePreservation` reuses `preservation`. All eight modules
+  check under Idris2 0.7.0 with `%default total`, no holes and no escape
+  hatches, and `progress` and `preservation` report total. This was a local
+  check at commit `9167b04`; no CI job runs it yet. Status: `mechanized` for
+  the Solo model only (the 2026-06-20 sweep said `stated`). Solo *excludes* traits, effects, rows,
   refinements, dependent types, ownership/borrowing, records, arrays, modules,
   and `unsafe`.
 * **`docs/academic/proofs/*.md`** — seven prose proofs (type-soundness,
@@ -147,7 +150,7 @@ obligations. They are the "we might have missed" half of the brief.
   give `Step` its constructors and prove
   `progress`/`preservation`/`affinePreservation`.
 | XL | `partial`
-| #513 must-have 1; solo-core (Idris2) `stated`; **progress + preservation
+| #513 must-have 1; solo-core (Idris2) progress + preservation checked locally (Idris2 0.7.0, 2026-11-09; not CI-gated); **progress + preservation
   mechanized** for a first-order fragment (`formal/P2_Progress.v`) AND for the
   **STLC with functions + the substitution lemma** (`formal/P2_Stlc.v`,
   funext-free). QTT/affine quantities are the remaining increment

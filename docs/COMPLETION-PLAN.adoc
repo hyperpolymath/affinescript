@@ -23,6 +23,8 @@ Each claim carries one of these status labels:
 
 No claim is raised above the status the maps support.
 
+*Revision 2026-11-09.* A proof review re-ran every prover that could be installed and judged each proof against `metadatastician/standards` `3-practice/PROOF-POLICY.adoc` (commit `9bdf864`). Section 5.0 records the result. The proof route in section 5 and workflow W7 were corrected to that policy, and holes H20 to H22 were added.
+
 An adversarial review pass checked this plan against the maps, and its corrections are folded in. The session lead also reproduced four headline findings directly on the built compiler: H1 (the interpreter returns 2 for `g(5)` where WebAssembly returns 1), H4 (a non-exhaustive match type-checks and the compiled WebAssembly returns 0), H6 (`check` reports a borrow error on two #554 fixtures that `eval` runs into a runtime type error) and H8 (`total fn loop` type-checks). Proof claims about Idris2 artefacts stay at READ or DOC everywhere, because no survey agent could install idris2. The systemet repo was not checked out, so every theory-level claim attributed to it is unverified.
 
 == 1. Ground-truth snapshot
@@ -101,17 +103,17 @@ Results were consistent, but they do not prove CI is green.
 
 | typed-wasm repo (`/home/user/typed-wasm`)
 | `cargo test` passes 197 (default features) or 209 (all features). Clippy is clean. All 6 examples build and verify. `tw build` silently stubs bodies it cannot lower (`twice(5)=0`, `parser.rs` ~L895) and the result is VERIFIED. No L5 index guard is emitted: `get_player_hp(0,150)` returns 0. Malformed `session` blocks are accepted. No capabilities carrier is emitted. `tests/e2e.sh` reports 47 passed with 8 skipped (idris2, zig, parser), which is a silent green. Codegen output does not export memory, so multi-module sharing is unexercised.
-| L2, L13-imports and L15 sit behind `unstable-*` features, so the default `tw-verify` build skips them. An unknown carrier version returns `Ok(vec![])` (`verify.rs:880,967`). An unknown ownership byte decodes to Unrestricted. 33 Idris2 modules contain no escape hatches by grep (not built). The "ECHIDNA 10^5" and "88/88 parser tests" claims cannot be reproduced: `Parser.mjs` is absent and `src/parser/*.affine` does not parse.
+| L2, L13-imports and L15 sit behind `unstable-*` features, so the default `tw-verify` build skips them. An unknown carrier version returns `Ok(vec![])` (`verify.rs:880,967`). An unknown ownership byte decodes to Unrestricted. The 33 Idris2 modules fail under Idris2 0.7.0 at one base-library API change (`Region.idr:179`); with that token adapted in a scratch copy all 33 build, the 13 reject fixtures fail as expected, and 269 table rows check. The pinned 0.8.0 build was not run. `verifierIsSound` is vacuous as a claim about the Rust verifier, because each `VerifierAccepts` constructor already holds the spec witness. `MkAttestation` is public, so attestations can be forged. `Proofs.idr` attests L11 and L12 as proven while `LEVEL-STATUS` calls them draft. The "ECHIDNA 10^5" and "88/88 parser tests" claims cannot be reproduced: `Parser.mjs` is absent and `src/parser/*.affine` does not parse.
 | No L8, L9, L14 or L16 carriers. No wasmtime gate adapter. No WasmCert tie-back.
 
 | Coq `formal/` (20 files)
-| All files compile under Coq 8.18. 137 named lemmas are "Closed under the global context". There are 35 in-file closure reports.
-| P3, F3 and F4 are true by construction. RealWasm uses unbounded `Z`, not i32. Compile and eval are hand re-implementations, with no extraction or link to `lib/*.ml`. The axiom gate checks only lemmas that have an explicit `Print Assumptions` (`QttSemiring.v` and `Siblings_Stated.v` have none).
+| All 20 files compile under Coq 8.18. A generated `Print Assumptions` over all 137 assertions reports every one "Closed under the global context". There are no Admitted, axioms or parameters. The CI gate covers only the 35 printed theorems and their dependencies (96 of 137). A planted `Admitted` false lemma and a planted `Axiom False` outside that set both passed a replica of the gate (H21). The real `Face.render_ty` collides two types that the F-5 model proves distinct (H20).
+| Design review per theorem: P3 `borrow_soundness`, F1 `f1_same_cube`, F3, F4 and `QttTyping.usage_soundness` hold by definition. K1, RealCompile, RealLoop, RealMem and RealWasm are sound about their models but the models differ from `lib/codegen.ml` (de Bruijn locals, unbounded `Z`, word addressing, no traps). P2, Rows and QttSemiring are meaningful theory, but not AffineScript's calculus. The full per-theorem table is the proof ledger in `docs/EXPLAINME.adoc`. CI pins Coq 8.20.1, which was not re-run.
 | No proofs of type soundness for the real type system, effects, inference or coherence.
 
 | Idris2 solo-core (`docs/academic/formal-verification/solo-core/*.idr`)
-| —
-| Hole-free and `%default total` by grep. Never type-checked. `docs/SOUNDNESS.adoc` and `docs/PROOF-NEEDS.adoc` §1 still say `?todo` (doc drift).
+| Checks under Idris2 0.7.0 (built from source here): 8 modules, zero errors or warnings; `progress` and `preservation` report total. The stale `?todo` lines in `docs/SOUNDNESS.adoc` and `docs/PROOF-NEEDS.adoc` are corrected in the same change as this revision.
+| `affinePreservation` repeats `preservation`. The calculus is the separate Solo model, not `lib/typecheck.ml`. It is a theory result held in Idris2, not Agda.
 | No CI gate was found in the survey pass.
 
 | Lean `docs/academic/tropical-session-types`
@@ -120,18 +122,18 @@ Results were consistent, but they do not prove CI is green.
 | —
 
 | anytype (`/home/user/anytype`)
-| An exhaustive Rust check of the transcribed Affine tables finds 0 law violations.
-| Idris2 was not run. The 19-case golden matrix and 8 CLI cases were counted, not executed. The golden path is probably broken: `abi.ipkg` moved to `src/interface/abi.ipkg` in commit `7329ceb`, but the Justfile and `idris2-proof.yml` still point at the root. That breakage is inferred, not observed.
+| An exhaustive Rust check of the transcribed Affine tables finds 0 law violations. Under Idris2 0.7.0 (its pin): the golden path is broken, observed: `idris2 --install abi.ipkg` fails with "File Not Found" because the file moved to `src/interface/abi.ipkg`. With the corrected path, the golden matrix passes 19/19, the CLI cases 8/8, and `check-idris2-proofs.sh` passes (15 gated, 5 quarantined). The Affine tables match `lib/quantity.ml` cell for cell (27 cells).
+| The workflow's `paths: '*.ipkg'` filter does not match the moved file. The checker has no soundness theorem; it is TESTED by 27 cases. The Zig seam tests were not run (no zig).
 | No checker soundness theorem. No join, branching, ADTs, polymorphism, effects or `CostAlgebra`.
 
 | typell (`/home/user/typell`)
 | The workspace builds. 447 tests pass and 3 are ignored. `UsageQuantifier` is not lawful: monotonicity of + and *, distributivity and transitivity all fail.
-| Idris `Soundness.idr` covers plain STLC only (not run). `tests/integration_test.rs` is never compiled.
+| Idris `Soundness.idr` checks under Idris2 0.7.0 and covers plain STLC only; its header claims effects and let-polymorphism it does not have. Its proof gate reports 5 passes, but `Foreign.idr` is a false pass: Idris2 0.7.0 `--check` exits 0 when an import is missing (reproduced). `LevelMonotonicity` is vacuous. CI installs Idris2 with `nix shell nixpkgs#idris2`, unpinned and on a banned tool. `tests/integration_test.rs` is never compiled.
 | Not on the AffineScript critical path.
 
 | echo-types
-| `All.agda` and `Smoke.agda` exit 0. The guardrails pass. There is 1 postulate block, outside `All.agda`.
-| `PROOF-STATUS` claims about 200 modules. There are 94 imports, and 96 modules were checked.
+| All 6 own lanes and the guardrails pass. Under the canonical `agda --safe --without-K --cubical-compatible`, all 5 non-cubical entrypoints pass cold (Agda 2.6.3, stdlib v2.3, absolute-zero `f486c29`); the `All` cone is 125 local modules. 11 of the 12 files outside every cone also compile; `EchoImageFactorizationPropPostulated` fails as designed. No escape in the cone.
+| No recipe passes `--cubical-compatible` on the command line; file pragmas carry it in 131 of 137 files. The canonical flags do not stop the `--cubical` pragma, so the cubical island needs a reviewed profile. `PROOF-STATUS` overclaims ("`--safe --without-K` throughout", "≈200 modules", "every module wired") and still lists graded-comonad laws the repo has ruled out. `gcomonad-*`, `LEcho` and `no-section-weaken` hold only for `collapse : Bool → ⊤`. No grade is recorded; 8 headline theorems are eligible for `PWG-3` once a receipt is recorded.
 | A parametric `LEcho` over arbitrary drops.
 
 | tropical-types
@@ -140,8 +142,8 @@ Results were consistent, but they do not prove CI is green.
 | —
 
 | occupancy, secret, residual-evidence, choreographic, epistemic
-| All five `check.sh` gates pass, including their rejection fixtures. occupancy's stackcert `cert_sound` fails to compile under Lean 4.15 and depends on `sorryAx`.
-| occupancy's Idris spike is not run.
+| All five own gates pass, and every wired cone also passes the canonical flags cold, at Agda 2.6.3 (four of them pin 2.6.4.3, which was not installed). Rejection fixtures fail as intended: secret 2/2, epistemic 13/13, residual-evidence 9/9, occupancy 2/2, choreographic 5/5. No escape in any cone.
+| secret-types' own `-W error` fails under the canonical flags unless `-W noUnsupportedIndexedMatch` is added. occupancy's Agda check is called by no workflow, Justfile recipe or script, and its R-6 row says PROVEN for two rejection fixtures (it is TESTED). The template Agda gate is broken in secret-types and occupancy (module name versus `include: src`). Lean was not re-run, so occupancy's `stackcert` remains unverified. No Rocq or Lean leg anywhere is `RECONCILED`, so nothing exceeds `PWG-3`, and no repo records a grade.
 | None of these has an AffineScript consumer.
 
 | jtv-halting-islands-ct
@@ -150,13 +152,13 @@ Results were consistent, but they do not prove CI is green.
 | Parser, CLI and tests.
 
 | absolute-zero
-| The 4 active Agda modules type-check. The Z3 OND checks pass. The archived Coq tree is 17/17 closed. `src/whitespace` has 1 failing test.
-| Idris ABI not run; it contains `believe_me` at `Layout.idr:270`. In the Agda CNO, the termination and thermodynamic parts are vacuous.
+| The 4 active Agda modules type-check, including under the canonical flags with stdlib 1.7.3 (its CI) and 2.3 (what echo-types uses). The Z3 OND checks pass. The archived Coq tree is 17/17 closed. `src/whitespace` has 1 failing test.
+| The Idris ABI builds under Idris2 0.7.0 (the repo pins 0.8.0 through a pack image). It has five `believe_me`: `Layout.idr:270` and `Proofs/DivMod.idr:92,104,114,124`. All five statements are true and provable, so those rows are ASSUMED, not PROVEN. `HasSize` and `HasAlignment` carry no information, so the size and alignment claims are vacuous. `PROOF-STATUS` and `wiki/ABI.md` overclaim on both points. In the Agda CNO, the termination and thermodynamic parts are vacuous.
 | —
 
 | januskey
 | 135 tests pass. The Agda kernel and 4 reject fixtures pass against resource-algebra `cf9235c`.
-| The Zig C ABI is a stub (`TODO(#155)`). T-8 is non-atomic. Idris was not run.
+| The Idris ABI type-checks under Idris2 0.7.0 (4 modules) and its 3 reject fixtures fail as expected. `seqCNO` and `tamperBreaksLink` hold for the Idris model only, which the repo states honestly. The Zig C ABI is a stub (9 `TODO(#155)` sites). T-8 is non-atomic.
 | No AffineScript seam today.
 
 | stdlib and aLib
@@ -218,6 +220,9 @@ All were observed by RUN unless marked otherwise. The maps confirm that H1–H4 
 . H17. The lexer accepts the bad escape `\q`, and an empty `match` parses (conformance invalid cases 010 and 011).
 . H18. The interpreter fails when dereferencing refs returned through calls ("Expected reference type"). The session lead reproduced this on two #554 fixtures.
 . H19 (typed-wasm). No L5 index guard: `get_player_hp(0,150)` reads an adjacent region. `where` constraints are discarded. Malformed `session` blocks are silently ignored.
+. H20. `Face.render_ty` is not injective, contrary to the F-5 model. On the Js face `List[Option[Int]]` and `Option[List[Int]]` both render as `List[Int] | null`; on Cafe both render as `List[Int]?`. The greedy `Option\[\(.*\)\]` regex in `lib/face.ml` causes it (RUN, by calling the built library).
+. H21. The Coq proof gate fails open on assertions outside the printed theorems' dependency cone. A planted `Admitted` false lemma and a planted `Axiom False` both passed a replica of `coq-proof-gate.yml` (RUN). The gate also never re-runs when the `lib/*.ml` files the models describe change.
+. H22. The staged Agda under `proposals/` (23 files) passes under the canonical flags, but nothing checks it: `tools/check-proofs.sh --agda` reports SKIP, not failure, when `AFFINESCRIPT_ECHO_TYPES_DIR` or `AGDA_STDLIB` is unset, and no workflow or dune rule calls it. No echo-types commit is pinned.
 
 == 2. Target architecture
 
@@ -601,6 +606,24 @@ $M compile x.affine -o x.lua; echo rc=$?                           # expect !=0 
 
 == 5. Fastest proof route (ordered by leverage on the shipped compiler)
 
+=== 5.0 Alignment with the estate proof policy
+
+The governing rules are `metadatastician/standards` `3-practice/PROOF-POLICY.adoc`, read at commit `9bdf864`.
+
+* *Theory* means a statement true of any implementation, such as soundness of a calculus or semiring laws. Its source of truth is Agda, checked with exactly `agda --safe --without-K --cubical-compatible`, then rechecked in Rocq and in Lean, with no Mathlib.
+* *Engineering* means a statement that names a type, function or wire format of one repository. It belongs in Idris2. First-party Rust uses Creusot with Pearlite and Verus.
+* An existing Rocq proof of a theory statement counts only as that prover's leg, and only once an Agda source exists and the two statements have been compared and recorded (§3, §2.2). Until then the theorem is `ungraded` (§8.1).
+* An existing engineering proof in another prover moves to Idris2 when it is next touched, unless a §4 exception is recorded beside it and in the proof-status file.
+
+What that means here:
+
+* *Theory files.* `QttSemiring`, `P2_Progress`, `P2_Stlc`, `Rows`, `AffineUsage`, `QttTyping`, `QttDynamic` and the Idris2 Solo core are theory. None has an Agda source, so every one is `ungraded`. The Coq files are `COQ-CHECKED` target-only evidence.
+* *Engineering files.* `K1*`, `Real*`, `P3_*`, `F1` and `F3`–`F5` state properties of this repository's code. No §4 exception is recorded for them. The stated reason in `formal/README.adoc` (interop with typed-wasm and ephapax) is not one of §4's grounds. Question 16 asks the owner to choose.
+* *Highest grade reachable in agent sandboxes.* Lean toolchains are downloadable from `releases.lean-lang.org` (4.13.0 and 4.15.0 return HTTP 200), but in this session the automatic permission check refused installing them as external code. Until the owner approves that install (question 19), a Lean leg is `unavailable` in agent sessions, and the best grade they can reach is `PWG-2i`: an Agda source plus a reconciled Rocq leg.
+* *Oracles are not proofs.* Z3, Datalog and differential checks earn `TESTED` (with bounds) or `ASSUMED`. They never earn `PROVEN` without an independently checked certificate (§5).
+* *Proof ledger.* The ledger now lives in `docs/EXPLAINME.adoc`. It has 15 obligations: 7 `proven` (all about models), 7 `open` and 1 `argued`. No theory theorem is at `PWG-3` or better.
+* *Where the Agda sources live* is an owner decision (question 17).
+
 Leverage means how much assurance a rung adds about the actual binary `main.exe` and its outputs, not about an idealised core.
 
 [cols="1,3,2,3,3",options="header"]
@@ -621,7 +644,7 @@ Leverage means how much assurance a rung adds about the actual binary `main.exe`
 
 | P2
 | Differential check of `Codegen` against an extracted, proved reference for the int/bool/let/if fragment. This is a test, not a theorem about `codegen.ml`. Method: extract Coq `RealCompile.compile`/`eval` and compare with `Codegen.gen_expr` on generated programs.
-| Coq 8.18/8.20 + Extraction to OCaml
+| Coq 8.18/8.20 + Extraction to OCaml. Engineering by policy: Idris2, or Coq under a recorded §4 exception (question 16). The comparison itself is `TESTED`.
 | RUN: the proofs exist and are axiom-free. The link is ABSENT.
 | Coq uses unbounded `Z`, word-addressed memory and depth-indexed locals. Real codegen uses i32 wrap, byte-addressed memory and name-keyed locals. Needs R-wrap first, and a decision on integer semantics.
 
@@ -641,29 +664,29 @@ Leverage means how much assurance a rung adds about the actual binary `main.exe`
 | Non-tautological P-3: a separate ownership small-step semantics, the `borrow.ml` lexical rules as an inductive checker, and "accepts implies no stuck deref", including the interprocedural #554 shape.
 | Coq
 | ABSENT. The current one is a tautology.
-| Hand transcription of a 2306-line pass. Re-validate via P4.
+| Hand transcription of a 2306-line pass. Re-validate via P4. Prover: the ownership calculus and its soundness are theory, so Agda (rechecked in Rocq and Lean). The transcription of `borrow.ml` is engineering, so Idris2.
 
 | P6
-| Real QTT in Coq: `Q_App` scales by q; typed vars; let/pair/case. Agreement with `main.exe check` on the `affine_*` fixtures.
-| Coq
+| Real QTT: `Q_App` scales by q; typed vars; let/pair/case. Agreement with `main.exe check` on the `affine_*` fixtures (that agreement is `TESTED`).
+| Agda (source), rechecked in Rocq and Lean. The existing Coq `QttTyping` is not a usable leg: it holds by definition.
 | Model only. `Q_App` lacks scaling.
 | `QttTyping` is an occurrence counter, not QTT.
 
 | P7
 | Solo-core progress and preservation actually machine-checked.
-| Idris2
-| READ (hole-free by grep). Not checked.
-| Covers only the Solo fragment. Blocked on idris2 provisioning.
+| Idris2 today; Agda needed for a grade
+| RUN: checks under Idris2 0.7.0; `progress` and `preservation` total. Not run in CI.
+| Covers only the Solo fragment. Theory held in Idris2, so `ungraded` until an Agda source exists. Add a CI job that also scans the output for errors, because `--check` exits 0 on a missing import.
 
 | P8
 | Effect-row soundness for real inference (row variables), after H5 is fixed.
-| Coq (extend `Rows.v`)
+| Agda (source), rechecked in Rocq (extend `Rows.v` as that leg) and Lean
 | `Rows.v` is monomorphic.
 | Handlers are blocked on #555 and #623. Do not state P-6 handler soundness against a reference semantics known to be wrong.
 
 | P9
 | Full verified compiler for the core fragment (CompCert/CakeML-style), or an extracted backend replacing `codegen.ml` for the core.
-| Coq
+| Engineering: Idris2, or Coq under a recorded §4 exception (question 16)
 | ABSENT.
 | Long-term. Only worth it once P1–P3 show the fragment is stable.
 |===
@@ -693,7 +716,7 @@ Ratings run from 1 (poor) to 5 (strong). Column (a) is elegance plus correctness
 |===
 | Option | (a) | (b) | Notes
 
-| A. Full verified compiler (Coq, then extracted backend for the core fragment). *Elegant default.*
+| A. Full verified compiler (in Idris2 per PROOF-POLICY §1, or Coq under a recorded §4 exception), then an extracted backend for the core fragment. *Elegant default.*
 | 5
 | 4
 | The most final option. Requires stable core semantics, which do not exist yet (H1, H7, H9). Multi-year.
@@ -740,7 +763,7 @@ Ratings run from 1 (poor) to 5 (strong). Column (a) is elegance plus correctness
 | D. Unconventional: make Polonius-style Datalog primary for borrows (via `borrow_extract.ml` and an external solver), with `borrow.ml` demoted to a fast pre-pass.
 | 3
 | 4
-| A declarative spec is easier to model in Coq. Adds a toolchain dependency.
+| A declarative spec is easier to state as theory in Agda. Adds a toolchain dependency. Solver results are `TESTED`, not `PROVEN`.
 |===
 
 *Recommendation: B, then C, then A.* This departs from the default for the same reason: anytype cannot yet express AffineScript's branching usage. The join law must also be settled in systemet first, under extend-not-redefine. Typell is excluded: its algebra fails the laws (RUN).
@@ -832,8 +855,11 @@ Ratings run from 1 (poor) to 5 (strong). Column (a) is elegance plus correctness
 * Fan-out: a single agent. apt is serialised, because parallel installs clobbered each other in the survey.
 * Scope: all repos, read-only.
 * Isolation: one container image snapshot, recorded so later workflows can reuse it.
-* Gates: the M0 commands; `cd $TW && cargo test --workspace --all-features`; Coq gate `just -f $AS/formal/justfile check`; echo-types `LC_ALL=C.UTF-8 agda -i proofs/agda proofs/agda/All.agda`.
-* Stop if: idris2 is still unavailable. Record it as an owner request and do not attempt a source bootstrap without approval; the survey's attempt was denied.
+* Gates: the M0 commands; `cd $TW && cargo test --workspace --all-features`; Coq gate `just -f $AS/formal/justfile check` plus a generated `Print Assumptions` over every assertion; every Agda theory entrypoint under exactly `agda --safe --without-K --cubical-compatible`.
+* Idris2 0.7.0 builds from source in an agent sandbox (verified 2026-11-09, about 15 minutes): `apt-get install -y chezscheme`, `git clone --depth 1 --branch v0.7.0 https://github.com/idris-lang/Idris2`, `make bootstrap SCHEME=chezscheme`, `make install PREFIX=/opt/idris2`. Record this as a PROOF-POLICY §6 deviation until the Guix manifest or container provides it. Idris2 0.8.0, which typed-wasm pins, has not been built in a sandbox.
+* Lean is downloadable from `releases.lean-lang.org`, but installing it needs owner approval (question 19); GitHub release downloads are blocked. Until then record every Lean leg as `unavailable`, never as passing.
+* Treat an Idris2 `--check` exit code of 0 as a pass only when its output also contains no `Error:` line.
+* Stop if: a pinned prover cannot be provisioned. Record the leg as unavailable and continue with the others.
 * Output: a versioned toolchain manifest, kept out of the repo root.
 
 *W1 Ledger the holes (understand + implement tests).*
@@ -900,11 +926,12 @@ wasmtime run --invoke get_player_hp examples/01-single-module.wasm 0 150        
 
 *W7 Proof bridges (implement + verify).*
 
-* Goal: P2 (R-wrap, extraction test), P3 (`anytype_emit.ml` with the anytype or Z3 oracle), and gate hardening (auto `Print Assumptions`).
-* Fan-out: three agents.
-** Coq agent in `formal/`.
+* Goal: bring the proof track into line with PROOF-POLICY (section 5.0), then P2 (R-wrap, extraction test), P3 (`anytype_emit.ml` with the anytype or Z3 oracle), and gate hardening.
+* Fan-out: four agents.
+** Agda theory agent: port `QttSemiring` first, then `P2_Stlc`, `Rows` and the Solo core, to Agda under the canonical flags, in the home question 17 settles. For each, record the Rocq leg's statement comparison so it can become `RECONCILED`. Re-prove the Lean leg by hand (no Mathlib) once question 19 is settled; until then record it as `unavailable`.
+** Coq agent in `formal/`: close H21 first, and act on the engineering files as question 16 decides.
 ** OCaml emitter agent.
-** anytype agent: fix the `abi.ipkg` path in the Justfile and `idris2-proof.yml`, and draft `gjoin`. The join is a systemet ADR draft only.
+** anytype agent: fix the `abi.ipkg` path in the Justfile and `idris2-proof.yml`, and the workflow's `paths` filter. The corrected path already gives 19/19 golden and 8/8 CLI cases under Idris2 0.7.0. Draft `gjoin` as a systemet ADR only.
 * Gates:
 ** Generate `AllAssump.v` from a grep of every `Theorem|Lemma|Corollary|Example|Proposition|Fact|Remark` in `formal/*.v` and commit the generator. Then `coqc -Q . ASFormal AllAssump.v | grep -c 'Closed under'` must equal the generated line count. Add a negative test: an `Admitted` lemma in `QttSemiring.v` must fail the gate.
 ** `dune test` for extraction parity.
@@ -968,6 +995,18 @@ wasmtime run --invoke get_player_hp examples/01-single-module.wasm 0 150        
 * [ ] Owner: jtv-halting-islands-ct LICENSE placeholder.
 * [ ] Owner: the MAA draft expired on 2026-04-13 and has no SPDX header (no automated edit). Converting maa-framework's vendored absolute-zero to a submodule (typed-wasm ADR-0004) belongs in a maa-scoped session.
 * [ ] 007: confirm `twasm = TwasmBackendNotYetImplemented` (repo not checked out).
+* [ ] anytype: the golden path is broken (observed). Point the Justfile and `idris2-proof.yml` at `src/interface/abi.ipkg`, and widen the workflow `paths` filter to match it.
+* [ ] typell: `Foreign.idr` is a false pass in its proof gate; correct `PROOF-STATUS`. Make the gate fail on any `Error:` line. Replace the unpinned `nix shell nixpkgs#idris2` install. Correct the `Soundness.idr` header, which claims effects and let-polymorphism the calculus does not have.
+* [ ] Estate-wide Agda: no repo's recipe or CI passes `--cubical-compatible` on the command line, as PROOF-POLICY §2.1 requires, and no repo records a §2.1 receipt or a grade. Re-run at each repo's pinned Agda (2.6.4.3 in four repos; this session had only 2.6.3).
+* [ ] echo-types: correct `PROOF-STATUS` (module counts, wiring, the flag claim, the withdrawn graded-comonad framing); put the cubical island under a reviewed proof profile; wire `tutorial/All.agda` or drop the claim.
+* [ ] occupancy-types: wire `scripts/check-agda.sh` into CI and `just`; move R-6 to TESTED. secret-types and occupancy-types: fix the template Agda gate.
+* [ ] absolute-zero: most CNO lemmas are vacuous (`energy-dissipated` is constantly 0); only `cno-composition` and OND1–OND5 carry content. Record the stdlib pin, and mark the archived Coq and Lean sections as archived in `PROOF-STATUS`.
+* [ ] januskey: T-1..T-3 are engineering statements proved in Agda with no §4 exception recorded.
+* [ ] Estate-wide: Idris2 0.7.0 `--check` exits 0 when an import is missing. Every Idris2 gate in the estate that trusts only the exit code can pass falsely. This belongs in `standards` (a gate rule) and in each repo's check script.
+* [ ] absolute-zero: discharge or name the five `believe_me` lemmas as axioms, give `HasSize` and `HasAlignment` real content, and correct `PROOF-STATUS` and `wiki/ABI.md`.
+* [ ] typed-wasm: make `MkAttestation` private, reconcile `Proofs.idr` with `LEVEL-STATUS` on L11 and L12, refresh the stale `PROOF-NEEDS` module counts, and fix the e2e Idris job's 404 tarball URL. Confirm the `Region.idr` build under the pinned Idris2 0.8.0.
+* [ ] Every repo above that installs a prover outside Guix or its container needs a PROOF-POLICY §6 deviation record. None has one (anytype's tarball has no digest check; typell's install is unpinned).
+* [ ] mathesis: the catalogue rows for this plan's repos were refreshed with a new merge mode for the census, and these repos were added as reconciliation targets (mathesis PR). The theorem-level claims registry is still unbuilt there.
 * [ ] Issue trackers: update #563, #513, #553, #555, #601 and #623. These are outward-facing; confirm before posting.
 
 == 9. Open questions for the owner
@@ -987,4 +1026,8 @@ wasmtime run --invoke get_player_hp examples/01-single-module.wasm 0 150        
 . *Coq pin.* 8.18 (docs) or 8.20.1 (CI)?
 . *Toolchains.* Approve idris2 in sandboxes; without it, every Idris claim stays unverified.
 . *Node exemption.* Approve a Node runtime exemption for the dom and cadre e2e harnesses, or port them to Bun?
+. *Coq engineering track.* Record a PROOF-POLICY §4 exception for the Coq engineering files (`K1*`, `Real*`, `P3_*`, `F*`), or move them to Idris2 when next touched? Policy's default is Idris2.
+. *Home of the Agda theory sources.* AffineScript `formal/agda/`, anytype (beside its grade algebra), or mathesis (which may hold theory with no other natural home)?
+. *Idris2 0.8.0.* Approve building Idris2 0.8.0 from source in agent sandboxes (typed-wasm's pin)? An attempt this session was refused by the session's automatic permission check.
+. *Lean.* Approve installing pinned Lean toolchains from `releases.lean-lang.org` in agent sandboxes, with a digest recorded as a §6 deviation? The same check refused it this session. Without it, tropical-types and occupancy's `stackcert` cannot be re-checked and no Lean leg can count.
 . *Status documents.* Re-sign the AFFIRMATION files, and decide whether the stale ROADMAP (January 2026 baseline) is retired or rewritten.

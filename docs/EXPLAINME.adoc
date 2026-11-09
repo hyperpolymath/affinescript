@@ -74,3 +74,127 @@ AffineScript validates the hyperpolymath ecosystem:
 | Lambda captures don't escape linear bound | `lib/borrow.ml` collect_free + Shared borrows | BUG-004 commit 48422d1 — manual smoke
 | TEA update param is linear (Wasm custom section) | `lib/tea_bridge.ml` build_ownership_section | `test/test_e2e.ml` test_bridge_update_msg_linear
 |===
+
+[[proof-ledger]]
+== Proof Ledger
+
+One row per proof obligation this repository speaks about, in the closed
+vocabulary of `metadatastician/standards` `docs/README-EXPLAINME-STANDARD.adoc`
+§5 (`proven`, `proven-with-postulates`, `argued`, `tested-only`, `open`).
+
+*Receipts.* Recorded on 2026-11-09 at commit `9167b04`:
+
+* *Coq rows.* Built with `coqc 8.18.0 -Q . ASFormal` in `formal/`, in the
+  justfile order, on OCaml 4.14.1. A generated `Print Assumptions` over all 137
+  assertions reported every one "Closed under the global context". CI pins
+  Coq 8.20.1, which was not re-run here.
+* *Idris2 row.* Checked with Idris2 0.7.0 (`idris2 --check Soundness.idr`).
+  The run produced zero errors and warnings, and `:total` reported
+  `progress` and `preservation` total.
+
+[cols="2,1,2,2,2", options="header"]
+|===
+| Obligation | Status | Checker (version, flags) | Where | Trust boundary
+
+| Code-generation preservation, toy nat/bool compiler (K-1, K-1 with `let`)
+| `proven`
+| coqc 8.18.0
+| `formal/K1_CodegenPreservation.v:compile_correct`, `formal/K1Let_CodegenPreservation.v:compile_correct`
+| A toy compiler and stack machine. Not `lib/codegen.ml`.
+
+| Code-generation forward simulation on a WASM-shaped model
+| `proven`
+| coqc 8.18.0
+| `formal/RealCompile.v:compile_correct`, `formal/RealLoop.v:compile_stmt_correct`
+| A de Bruijn re-implementation, not `lib/codegen.ml` or `lib/interp.ml`. Integers are unbounded `Z`, not i32. Forward only, with nothing about traps or divergence. `RealLoop` covers let-free statements only. Its header's "observable difference is proved" has no matching theorem.
+
+| Memory and executor lemmas on the WASM model
+| `proven`
+| coqc 8.18.0
+| `formal/RealMem.v`, `formal/RealWasm.v`
+| Fixed instruction sequences. Addressing is word-based, while codegen uses byte offsets. An out-of-range store is a no-op where WASM traps.
+
+| QTT `{0,1,ω}` semiring and order laws
+| `proven`
+| coqc 8.18.0
+| `formal/QttSemiring.v`
+| Theory: no Agda source, so PROOF-POLICY gives it no proof witness grade (it is `ungraded`). The tables match `lib/quantity.ml` `q_add`/`q_mul` by inspection only. The CI gate does not cover 16 of the 21 laws.
+
+| QTT typing soundness for the real quantity checker
+| `open`
+| -
+| `formal/QttTyping.v`, `formal/QttDynamic.v`
+| `QttTyping` is an occurrence counter presented as a judgment. `Q_App` does not scale and `Q_Var` accepts any type. `QttDynamic` proves only a lambda-free scaling law and no subject reduction.
+
+| Progress and preservation, first-order and STLC (P-2)
+| `proven`
+| coqc 8.18.0
+| `formal/P2_Progress.v`, `formal/P2_Stlc.v`
+| Theory, `ungraded`. Textbook STLC with no quantities or affinity, so it is not AffineScript's calculus.
+
+| Progress and preservation for monomorphic records
+| `proven`
+| coqc 8.18.0
+| `formal/Rows.v`
+| Theory, `ungraded`. Rows are ordered lists with no row variables. This is not the effect-row system.
+
+| Solo core progress and preservation
+| `proven`
+| Idris2 0.7.0, `%default total`
+| `docs/academic/formal-verification/solo-core/Soundness.idr:progress`, `:preservation`
+| A separate Solo model, not `lib/typecheck.ml` or `lib/borrow.ml`. No CI job runs it. It is a theory statement held in Idris2 rather than Agda, so it is `ungraded`.
+
+| Borrow checker soundness (`lib/borrow.ml`)
+| `open`
+| -
+| `formal/P3_BorrowSound.v`, `formal/P3_BorrowGraph.v`
+| `borrow_soundness` holds by definition: `borrow_ok` is defined as the negation of the dynamic oracle it is compared against. `rejects_554` and `move_locality` are proven but small.
+
+| Face transformer preserves evaluation (F-1)
+| `open`
+| -
+| `formal/F1_TransformerPreservation.v`
+| The model is an invented AST elaborator, while the real faces rewrite text line by line (`lib/python_face.ml`). `f1_same_cube` is congruence.
+
+| Face pragma detection is local and functional (F-3)
+| `open`
+| -
+| `formal/F3_PragmaDecidable.v`
+| Both theorems hold for any function and by definition. The real scan limits in `lib/face_pragma.ml` are not modelled.
+
+| Face error rendering is faithful (F-4)
+| `open`
+| -
+| `formal/F4_ErrorFaithful.v`
+| `render` is defined to copy the fields it is claimed to preserve. `lib/face.ml` formatting is not modelled.
+
+| Face type rendering is injective (F-5)
+| `open`
+| -
+| `formal/F5_RenderFaithful.v:render_inj`
+| Proved only for a model that allows `Option` at the top level. The real `Face.render_ty` is not injective: on the Js face `List[Option[Int]]` and `Option[List[Int]]` both render as `List[Int] \| null`, and on Cafe both render as `List[Int]?`. This was observed by calling the built library at `9167b04`.
+
+| Effect-row soundness for the real inference
+| `open`
+| -
+| -
+| `formal/Rows.v` is monomorphic. Effect rows are not checked against performed operations today (hole H5 in `docs/COMPLETION-PLAN.adoc`).
+
+| Type soundness of the full language
+| `argued`
+| -
+| `docs/academic/proofs/*.md`
+| Prose only.
+|===
+
+*Census.* 15 obligations: 7 `proven`, 7 `open`, 1 `argued`. Every `proven`
+row is a statement about a model, not about the shipped OCaml code, as each
+row's trust boundary says.
+
+*Proof Witness Grades.* Of the theory theorems above, 0 are at `PWG-3` or
+better. All are `ungraded`, because none has an Agda source (PROOF-POLICY §8.1).
+
+*Policy position.* PROOF-POLICY §1 puts theory proofs in Agda, rechecked in
+Rocq and Lean, and engineering properties of one system in Idris2. This
+repository's Coq choice has no §4 exception recorded beside the files.
+`docs/COMPLETION-PLAN.adoc` §5.0 sets out what that means.
