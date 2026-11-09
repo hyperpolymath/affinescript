@@ -117,8 +117,8 @@ Results were consistent, but they do not prove CI is green.
 | No CI gate was found in the survey pass.
 
 | Lean `docs/academic/tropical-session-types`
-| Not run.
-| This is a diverged copy of the tropical-types file (461-line diff).
+| Compiles under Lean 4.13.0 with zero errors and no `sorry` (2026-11-09).
+| This is a diverged copy of the tropical-types file (412 differing lines after trimming whitespace).
 | —
 
 | anytype (`/home/user/anytype`)
@@ -137,13 +137,13 @@ Results were consistent, but they do not prove CI is green.
 | A parametric `LEcho` over arbitrary drops.
 
 | tropical-types
-| Lean 4.13 builds 20/20. The transport theorems are axiom-free, but `parametric_resource_transport` is a field repackaging.
+| Lean 4.13.0 (its pin, installed from `releases.lean-lang.org`, 2026-11-09): `lake build` completes 20/20. An audit of all 334 theorems finds no `sorry`, no Mathlib and no `Classical.choice`; 102 use only Lean's `propext` and `Quot.sound`, which a grade must list (PROOF-POLICY §8.4). `parametric_resource_transport` is a field repackaging.
 | Isabelle was not run. The ROOT session covers 5 of 9 theories, and no CI workflow runs Isabelle.
 | —
 
 | occupancy, secret, residual-evidence, choreographic, epistemic
 | All five own gates pass, and every wired cone also passes the canonical flags cold, at Agda 2.6.3 (four of them pin 2.6.4.3, which was not installed). Rejection fixtures fail as intended: secret 2/2, epistemic 13/13, residual-evidence 9/9, occupancy 2/2, choreographic 5/5. No escape in any cone.
-| secret-types' own `-W error` fails under the canonical flags unless `-W noUnsupportedIndexedMatch` is added. occupancy's Agda check is called by no workflow, Justfile recipe or script, and its R-6 row says PROVEN for two rejection fixtures (it is TESTED). The template Agda gate is broken in secret-types and occupancy (module name versus `include: src`). Lean was not re-run, so occupancy's `stackcert` remains unverified. No Rocq or Lean leg anywhere is `RECONCILED`, so nothing exceeds `PWG-3`, and no repo records a grade.
+| secret-types' own `-W error` fails under the canonical flags unless `-W noUnsupportedIndexedMatch` is added. occupancy's Agda check is called by no workflow, Justfile recipe or script, and its R-6 row says PROVEN for two rejection fixtures (it is TESTED). The template Agda gate is broken in secret-types and occupancy (module name versus `include: src`). Under its pinned Lean 4.15.0, occupancy's `stackcert` core does not compile: `StackcertCore.lean` has type errors in the proof of `cert_sound` (2026-11-09), so the README's "compiles" is false. No Rocq or Lean leg anywhere is `RECONCILED`, so nothing exceeds `PWG-3`, and no repo records a grade.
 | None of these has an AffineScript consumer.
 
 | jtv-halting-islands-ct
@@ -619,7 +619,7 @@ What that means here:
 
 * *Theory files.* `QttSemiring`, `P2_Progress`, `P2_Stlc`, `Rows`, `AffineUsage`, `QttTyping`, `QttDynamic` and the Idris2 Solo core are theory. None has an Agda source, so every one is `ungraded`. The Coq files are `COQ-CHECKED` target-only evidence.
 * *Engineering files.* `K1*`, `Real*`, `P3_*`, `F1` and `F3`–`F5` state properties of this repository's code. No §4 exception is recorded for them. The stated reason in `formal/README.adoc` (interop with typed-wasm and ephapax) is not one of §4's grounds. Question 16 asks the owner to choose.
-* *Highest grade reachable in agent sandboxes.* Lean toolchains are downloadable from `releases.lean-lang.org` (4.13.0 and 4.15.0 return HTTP 200), but in this session the automatic permission check refused installing them as external code. Until the owner approves that install (question 19), a Lean leg is `unavailable` in agent sessions, and the best grade they can reach is `PWG-2i`: an Agda source plus a reconciled Rocq leg.
+* *Highest grade reachable in agent sandboxes.* With the owner's approval (question 19), Lean 4.13.0 and 4.15.0 were installed from `releases.lean-lang.org` on 2026-11-09, with SHA-256 `44ceeac7…` and `af71a256…` recorded for the §6 deviation. A Lean leg can therefore be re-proved in a sandbox, so `PWG-2ii` is reachable there once the Agda source and both legs are reconciled.
 * *Oracles are not proofs.* Z3, Datalog and differential checks earn `TESTED` (with bounds) or `ASSUMED`. They never earn `PROVEN` without an independently checked certificate (§5).
 * *Proof ledger.* The ledger now lives in `docs/EXPLAINME.adoc`. It has 15 obligations: 7 `proven` (all about models), 7 `open` and 1 `argued`. No theory theorem is at `PWG-3` or better.
 * *Where the Agda sources live* is an owner decision (question 17).
@@ -857,12 +857,14 @@ Ratings run from 1 (poor) to 5 (strong). Column (a) is elegance plus correctness
 * Isolation: one container image snapshot, recorded so later workflows can reuse it.
 * Gates: the M0 commands; `cd $TW && cargo test --workspace --all-features`; Coq gate `just -f $AS/formal/justfile check` plus a generated `Print Assumptions` over every assertion; every Agda theory entrypoint under exactly `agda --safe --without-K --cubical-compatible`.
 * Idris2 0.7.0 builds from source in an agent sandbox (verified 2026-11-09, about 15 minutes): `apt-get install -y chezscheme`, `git clone --depth 1 --branch v0.7.0 https://github.com/idris-lang/Idris2`, `make bootstrap SCHEME=chezscheme`, `make install PREFIX=/opt/idris2`. Record this as a PROOF-POLICY §6 deviation until the Guix manifest or container provides it. Idris2 0.8.0, which typed-wasm pins, has not been built in a sandbox.
-* Lean is downloadable from `releases.lean-lang.org`, but installing it needs owner approval (question 19); GitHub release downloads are blocked. Until then record every Lean leg as `unavailable`, never as passing.
+* Lean: install the pinned toolchain from `releases.lean-lang.org` (`curl -sSLO https://releases.lean-lang.org/lean4/v<ver>/lean-<ver>-linux.tar.zst`, extract with `tar --zstd`), and record its SHA-256 as a PROOF-POLICY §6 deviation. The owner approved this on 2026-11-09. GitHub release downloads stay blocked, so elan is not the route.
 * Treat an Idris2 `--check` exit code of 0 as a pass only when its output also contains no `Error:` line.
 * Stop if: a pinned prover cannot be provisioned. Record the leg as unavailable and continue with the others.
 * Output: a versioned toolchain manifest, kept out of the repo root.
 
 *W1 Ledger the holes (understand + implement tests).*
+
+*Ruled 2026-11-09:* W1 runs first, once this plan revision and the companion mathesis change land.
 
 * Goal: M1.
 * Fan-out: one agent per hole, H1–H13 and H16–H18, each in its own git worktree, writing only an xfail fixture and a ledger row.
@@ -928,7 +930,7 @@ wasmtime run --invoke get_player_hp examples/01-single-module.wasm 0 150        
 
 * Goal: bring the proof track into line with PROOF-POLICY (section 5.0), then P2 (R-wrap, extraction test), P3 (`anytype_emit.ml` with the anytype or Z3 oracle), and gate hardening.
 * Fan-out: four agents.
-** Agda theory agent: port `QttSemiring` first, then `P2_Stlc`, `Rows` and the Solo core, to Agda under the canonical flags, in the home question 17 settles. For each, record the Rocq leg's statement comparison so it can become `RECONCILED`. Re-prove the Lean leg by hand (no Mathlib) once question 19 is settled; until then record it as `unavailable`.
+** Agda theory agent: port `QttSemiring` first, then `P2_Stlc`, `Rows` and the Solo core, to Agda under the canonical flags, in the home question 17 settles. For each, record the Rocq leg's statement comparison so it can become `RECONCILED`. Re-prove the Lean leg by hand, with no Mathlib.
 ** Coq agent in `formal/`: close H21 first, and act on the engineering files as question 16 decides.
 ** OCaml emitter agent.
 ** anytype agent: fix the `abi.ipkg` path in the Justfile and `idris2-proof.yml`, and the workflow's `paths` filter. The corrected path already gives 19/19 golden and 8/8 CLI cases under Idris2 0.7.0. Draft `gjoin` as a systemet ADR only.
@@ -1026,8 +1028,8 @@ wasmtime run --invoke get_player_hp examples/01-single-module.wasm 0 150        
 . *Coq pin.* 8.18 (docs) or 8.20.1 (CI)?
 . *Toolchains.* Approve idris2 in sandboxes; without it, every Idris claim stays unverified.
 . *Node exemption.* Approve a Node runtime exemption for the dom and cadre e2e harnesses, or port them to Bun?
-. *Coq engineering track.* Record a PROOF-POLICY §4 exception for the Coq engineering files (`K1*`, `Real*`, `P3_*`, `F*`), or move them to Idris2 when next touched? Policy's default is Idris2.
-. *Home of the Agda theory sources.* AffineScript `formal/agda/`, anytype (beside its grade algebra), or mathesis (which may hold theory with no other natural home)?
-. *Idris2 0.8.0.* Approve building Idris2 0.8.0 from source in agent sandboxes (typed-wasm's pin)? An attempt this session was refused by the session's automatic permission check.
-. *Lean.* Approve installing pinned Lean toolchains from `releases.lean-lang.org` in agent sandboxes, with a digest recorded as a §6 deviation? The same check refused it this session. Without it, tropical-types and occupancy's `stackcert` cannot be re-checked and no Lean leg can count.
+. *Coq engineering track.* Record a PROOF-POLICY §4 exception for the Coq engineering files (`K1*`, `Real*`, `P3_*`, `F*`), or move them to Idris2 when next touched? Policy's default is Idris2. *Ruled 2026-11-09:* first rewrite the theorems that hold by definition (P3 `borrow_soundness`, F3, F4, F1 `f1_same_cube`, `QttTyping.usage_soundness`) as real statements about the code; decide the prover for the engineering track after that.
+. *Home of the Agda theory sources.* AffineScript `formal/agda/`, anytype (beside its grade algebra), or mathesis (which may hold theory with no other natural home)? *Ruled 2026-11-09:* split by topic. The QTT semiring laws go in resource-algebra as a non-idempotent tier; calculus soundness (STLC, rows, the Solo core) goes in AffineScript `formal/agda/`.
+. *Idris2 0.8.0.* Approve building Idris2 0.8.0 from source in agent sandboxes (typed-wasm's pin)? An attempt this session was refused by the session's automatic permission check. *Ruled 2026-11-09:* approved, with a §6 deviation record.
+. *Lean.* Approve installing pinned Lean toolchains from `releases.lean-lang.org` in agent sandboxes, with a digest recorded as a §6 deviation? The same check refused it this session. Without it, tropical-types and occupancy's `stackcert` cannot be re-checked and no Lean leg can count. *Ruled 2026-11-09:* approved; Lean 4.13.0 and 4.15.0 are now installed this way, with their digests recorded above.
 . *Status documents.* Re-sign the AFFIRMATION files, and decide whether the stale ROADMAP (January 2026 baseline) is retired or rewritten.
