@@ -1434,6 +1434,15 @@ let enter_fn_scope ctx (params : param list) : codegen_ctx =
    call whose head is a known [extern fn] lowers via {!deno_builtins}.
    ============================================================================ *)
 
+(* Fresh temporaries for `let` initializers lowered to statements. *)
+let let_tmp_counter = ref 0
+
+(* Initializer shapes {!gen_assign_tail} can lower to statements. *)
+let rec lowers_to_statements = function
+  | ExprSpan (e, _) -> lowers_to_statements e
+  | ExprMatch _ | ExprIf _ | ExprBlock _ -> true
+  | _ -> false
+
 (** Render an expression as JavaScript using the names and host in [ctx].
     Lambdas are synchronous arrows; known qualified constructors refer to
     their emitted bindings. Nested statements can update integer tracking.
@@ -1587,8 +1596,15 @@ let rec gen_expr ctx (expr : expr) : string =
          the enclosing async context: inside a synthesised (async) method,
          `(x) => (await ...)` is a SyntaxError in browsers — Bun's parser
          happens to accept it, which hid the bug. *)
-      "((" ^ String.concat ", " ps ^ ") => "
-      ^ gen_expr { ctx with in_async = false } elam_body ^ ")"
+      let lctx = { ctx with in_async = false } in
+      if lowers_to_statements elam_body && expr_contains_return elam_body then
+        (* A `return` in the body returns from the lambda: emit a block
+           body so it is not swallowed by an IIFE (see {!gen_match}). *)
+        "((" ^ String.concat ", " ps ^ ") => { "
+        ^ gen_return_tail lctx elam_body ^ " })"
+      else
+        "((" ^ String.concat ", " ps ^ ") => "
+        ^ gen_expr lctx elam_body ^ ")"
   | ExprTry { et_body; et_catch; et_finally } ->
       gen_try ctx et_body et_catch et_finally
   | ExprVariant (ty, ctor) ->
@@ -1651,6 +1667,21 @@ and gen_pattern ctx (pat : pattern) : string =
   | PatOr (p, _)   -> gen_pattern ctx p
 
 and gen_match ctx scrutinee arms =
+  (* As an expression the match is an IIFE, so a `return` in an arm would
+     leave the IIFE, not the enclosing function, and the function would
+     carry on with the returned value as the match's result: silently wrong
+     output.  `let` initializers and tail/statement position are lowered to
+     statements and handled correctly; any other position (an argument, an
+     operand) is refused here rather than miscompiled. *)
+  if List.exists (fun arm ->
+       expr_contains_return arm.ma_body
+       || (match arm.ma_guard with
+           | Some g -> expr_contains_return g | None -> false)) arms
+  then
+    failwith
+      "a `return` inside a match arm is not supported when the match is \
+       used as a sub-expression (an argument or operand); bind the match \
+       to a `let` first";
   let scrutinee_str = gen_expr ctx scrutinee in
   let scrut_var = "__scrut" in
   let rec gen_arms = function
@@ -1844,6 +1875,58 @@ and gen_match_stmt ctx scrut arms =
   in
   "{ const " ^ sv ^ " = " ^ gen_expr ctx scrut ^ "; " ^ arms_js arms ^ " }"
 
+(* Statements that evaluate [e] and hand its value to [sink], which turns a
+   JS expression into a statement (`x = v;` or `return v;`).  A `return`
+   anywhere along a tail path stays a real function return, which the IIFE
+   expression form cannot express.  Used for `let` initializers and for
+   function and lambda bodies that contain an early return. *)
+and gen_tail_to ctx (sink : string -> string) e =
+  match e with
+  | ExprSpan (inner, _) -> gen_tail_to ctx sink inner
+  | ExprReturn _ -> gen_stmt_expr ctx e
+  | ExprBlock blk ->
+      let b = Buffer.create 64 in
+      List.iter (fun s ->
+        Buffer.add_string b (gen_stmt ctx s);
+        Buffer.add_char b ' ') blk.blk_stmts;
+      (match blk.blk_expr with
+       | Some tail -> Buffer.add_string b (gen_tail_to ctx sink tail)
+       | None -> Buffer.add_string b (sink "Unit"));
+      "{ " ^ Buffer.contents b ^ " }"
+  | ExprIf { ei_cond; ei_then; ei_else } ->
+      let elseb = match ei_else with
+        | Some el -> gen_tail_to ctx sink el
+        | None -> sink "Unit"
+      in
+      "if (" ^ gen_expr ctx ei_cond ^ ") { " ^ gen_tail_to ctx sink ei_then
+      ^ " } else { " ^ elseb ^ " }"
+  | ExprMatch { em_scrutinee; em_arms } ->
+      incr let_tmp_counter;
+      let sv = Printf.sprintf "__scrut_%d" !let_tmp_counter in
+      let rec arms_js = function
+        | [] -> "throw new Error(\"non-exhaustive match\");"
+        | arm :: rest ->
+            let cond = gen_pattern_test sv arm.ma_pat in
+            let binds = gen_pattern_bindings sv arm.ma_pat in
+            let guard = match arm.ma_guard with
+              | Some g -> " && (" ^ gen_expr ctx g ^ ")" | None -> "" in
+            "if (" ^ cond ^ guard ^ ") { " ^ binds
+            ^ gen_tail_to ctx sink arm.ma_body ^ " } else " ^ arms_js rest
+      in
+      "{ const " ^ sv ^ " = " ^ gen_expr ctx em_scrutinee ^ "; "
+      ^ arms_js em_arms ^ " }"
+  | other -> sink (gen_expr ctx other)
+
+and gen_assign_tail ctx target e =
+  gen_tail_to ctx (fun v -> target ^ " = " ^ v ^ ";") e
+
+(* A function or lambda body's tail: statements when it holds an early
+   return, else the plain `return <expr>;`. *)
+and gen_return_tail ctx e =
+  if lowers_to_statements e && expr_contains_return e then
+    gen_tail_to ctx (fun v -> "return " ^ v ^ ";") e
+  else "return " ^ gen_expr ctx e ^ ";"
+
 and gen_try_stmt ctx body catch finally =
   let b = gen_stmt_seq ctx body in
   let c = match catch with
@@ -1874,8 +1957,22 @@ and gen_stmt ctx (stmt : stmt) : string =
       gen_expr ctx sl_value ^ ";"
   | StmtLet { sl_pat; sl_value; sl_mut; sl_quantity = _; sl_ty = _ } ->
       let kw = if sl_mut then "let" else "const" in
-      let js = kw ^ " " ^ gen_pattern ctx sl_pat ^ " = "
-               ^ gen_expr ctx sl_value ^ ";" in
+      let js =
+        if lowers_to_statements sl_value && expr_contains_return sl_value then begin
+          (* `let x = match e { A(v) => v, B(err) => return f(err) };`
+             As an expression the match is an IIFE, and the arm's `return`
+             left the IIFE, not the function: the IIFE's result was then
+             bound to `x` and the function carried on.  Lower the
+             initializer to statements that assign a temporary, so the
+             `return` is a real function return. *)
+          incr let_tmp_counter;
+          let tmp = Printf.sprintf "__let_tmp_%d" !let_tmp_counter in
+          "let " ^ tmp ^ "; " ^ gen_assign_tail ctx tmp sl_value ^ " "
+          ^ kw ^ " " ^ gen_pattern ctx sl_pat ^ " = " ^ tmp ^ ";"
+        end else
+          kw ^ " " ^ gen_pattern ctx sl_pat ^ " = "
+          ^ gen_expr ctx sl_value ^ ";"
+      in
       (* Track an [Int]-bound name for the rest of this body (#478). A
          block statement's scope is the enclosing function, which
          {!enter_fn_scope} already bounds, so no restore is needed here. *)
@@ -1961,11 +2058,11 @@ let visibility_is_public = function
 let gen_body ctx (fb : fn_body) : unit =
   match fb with
   | FnExpr e ->
-      emit_line ctx ("return " ^ gen_expr ctx e ^ ";")
+      emit_line ctx (gen_return_tail ctx e)
   | FnBlock block ->
       List.iter (fun s -> emit_line ctx (gen_stmt ctx s)) block.blk_stmts;
       (match block.blk_expr with
-       | Some e -> emit_line ctx ("return " ^ gen_expr ctx e ^ ";")
+       | Some e -> emit_line ctx (gen_return_tail ctx e)
        | None   -> ())
   | FnExtern -> ()
 

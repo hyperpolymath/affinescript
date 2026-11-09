@@ -85,7 +85,7 @@ Results were consistent, but they do not prove CI is green.
 | Memory reclamation. try/catch.
 
 | Bun-ESM (`lib/codegen_deno.ml`)
-| Basic programs are correct. A `return` inside a match arm returns 100 instead of 99 (IIFE at `:1575`). aLib conformance is 100 of 103 vectors.
+| Basic programs are correct. A `return` inside a match arm is correct in a `let` initializer, a function or lambda tail, and nested statement position; as an argument or operand it is refused at compile time rather than miscompiled (H2, 2026-11-09). aLib conformance is 100 of 103 vectors.
 | —
 | —
 
@@ -200,7 +200,7 @@ Results were consistent, but they do not prove CI is green.
 All were observed by RUN unless marked otherwise. The maps confirm that H1–H4 and H9 are absent from `docs/SOUNDNESS.adoc`. H5–H8, H10, H12 and H13 were not checked against the ledger. H11 already has a drafted issue (`issues-drafts/06`, referenced from the AFFIRMATION). H14, H15 and H19 belong to typed-wasm, not the AffineScript ledger.
 
 . H1. Interpreter early `return` has no non-local exit (`lib/interp.ml:262`).
-. H2. Bun-ESM `return` in expression position is lowered as an IIFE (`lib/codegen_deno.ml:1575`).
+. H2. Bun-ESM `return` in expression position is lowered as an IIFE (`lib/codegen_deno.ml:1575`). *Narrowed 2026-11-09:* `let` initializers and function and lambda tails are now lowered to statements, so the `return` leaves the function; a match used as an argument or operand with a `return` in an arm is refused loudly. Anchor: `test/test_module_root_flatten.ml`.
 . H3. The JS-text backend drops block returns (`lib/js_codegen.ml`). The Lua backend emits invalid code.
 . H4. Non-exhaustive match compiles to "return 0" on core WASM.
 . H5. Effect rows are not checked against performed operations or callee rows.
@@ -218,6 +218,9 @@ All were observed by RUN unless marked otherwise. The maps confirm that H1–H4 
 . H17. The lexer accepts the bad escape `\q`, and an empty `match` parses (conformance invalid cases 010 and 011).
 . H18. The interpreter fails when dereferencing refs returned through calls ("Expected reference type"). The session lead reproduced this on two #554 fixtures.
 . H19 (typed-wasm). No L5 index guard: `get_player_hp(0,150)` reads an adjacent region. `where` constraints are discarded. Malformed `session` blocks are silently ignored.
+. H20 (found and fixed 2026-11-09, checking and running metadatastician/kyq). A module file found for `A.B` that declares `module A;` was accepted as `A.B`, so `use A.Nonexistent::*` type-checked and imported `A`'s exports; it is now a `ModuleDeclMismatch` load error. Anchor: `test/test_module_root_flatten.ml`.
+. H21 (found and fixed 2026-11-09). `eval` ran the unflattened program, so no imported function was bound at run time; flattening also emitted a selected function before the private helpers it calls and carried no helpers for glob or plain imports. `eval` now flattens, every import kind carries its helpers, and they are emitted in the imported module's declaration order. Anchor: `test/test_module_root_flatten.ml`.
+. H22 (found and fixed 2026-11-09). The interpreter had no `++` on arrays and no `==`/`!=` beyond Int, Float, String and Bool, though the checker accepts them; it now uses the structural `Value.value_eq`. H7 (`let mut`) is unchanged. Anchor: `test/test_module_root_flatten.ml`.
 
 == 2. Target architecture
 

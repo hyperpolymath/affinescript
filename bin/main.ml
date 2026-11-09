@@ -177,13 +177,21 @@ let parse_file (face : Affinescript.Face.face) path =
     CLI used the process CWD as [current_dir], so compiling `src/Main.affine`
     could not find a sibling `src/Helper.affine` even though the module
     loader already supported relative sibling paths (#642). *)
-let loader_config_for_file path =
+let loader_config_for_file ?prog path =
   let absolute_path =
     if Filename.is_relative path then Filename.concat (Sys.getcwd ()) path
     else path
   in
   let config = Affinescript.Module_loader.default_config () in
-  { config with current_dir = Filename.dirname absolute_path }
+  let mod_path =
+    Option.bind prog (fun (p : Affinescript.Ast.program) ->
+      Option.map (List.map (fun (id : Affinescript.Ast.ident) -> id.name))
+        p.prog_module)
+  in
+  { config with
+    current_dir =
+      Affinescript.Module_loader.module_root_dir
+        ~file_dir:(Filename.dirname absolute_path) mod_path }
 
 (** Type-check a file.  With [--json], emits a structured diagnostic
     report on stderr. *)
@@ -196,7 +204,7 @@ let check_file face json path =
     let resolve_refs = ref [] in
     begin try
       let prog = parse_with_face face path in
-      let loader_config = loader_config_for_file path in
+      let loader_config = loader_config_for_file ~prog path in
       let loader = Affinescript.Module_loader.create loader_config in
       (match Affinescript.Resolve.resolve_program_with_loader prog loader with
       | Error (e, span) ->
@@ -244,7 +252,7 @@ let check_file face json path =
   end else begin
     try
       let prog = parse_with_face face path in
-      let loader_config = loader_config_for_file path in
+      let loader_config = loader_config_for_file ~prog path in
       let loader = Affinescript.Module_loader.create loader_config in
       (match Affinescript.Resolve.resolve_program_with_loader prog loader with
       | Error (e, _span) ->
@@ -294,7 +302,7 @@ let eval_file face json path =
     let add d = diags := d :: !diags in
     begin try
       let prog = parse_with_face face path in
-      let loader_config = loader_config_for_file path in
+      let loader_config = loader_config_for_file ~prog path in
       let loader = Affinescript.Module_loader.create loader_config in
       (match Affinescript.Resolve.resolve_program_with_loader prog loader with
       | Error (e, span) ->
@@ -316,7 +324,8 @@ let eval_file face json path =
           | Error (err, span) ->
             add (Affinescript.Json_output.of_quantity_error (err, span))
           | Ok () ->
-            (match Affinescript.Interp.eval_program prog with
+            (match Affinescript.Interp.eval_program
+                     (Affinescript.Module_loader.flatten_imports loader prog) with
             | Ok env ->
               (* Auto-call main() if defined — entry point for TEA apps and scripts *)
               (match Affinescript.Value.lookup_env "main" env with
@@ -337,7 +346,7 @@ let eval_file face json path =
   end else begin
     try
       let prog = parse_with_face face path in
-      let loader_config = loader_config_for_file path in
+      let loader_config = loader_config_for_file ~prog path in
       let loader = Affinescript.Module_loader.create loader_config in
       (match Affinescript.Resolve.resolve_program_with_loader prog loader with
       | Error (e, _span) ->
@@ -365,7 +374,8 @@ let eval_file face json path =
               (Affinescript.Face.format_quantity_error face err);
             `Error (false, "Quantity error")
           | Ok () ->
-            (match Affinescript.Interp.eval_program prog with
+            (match Affinescript.Interp.eval_program
+                     (Affinescript.Module_loader.flatten_imports loader prog) with
             | Ok env ->
               (* Auto-call main() if defined — entry point for TEA apps and scripts *)
               (match Affinescript.Value.lookup_env "main" env with
@@ -519,7 +529,7 @@ let compile_file face json wasm_gc vscode_ext vscode_adapter vscode_no_lc
     let add d = diags := d :: !diags in
     begin try
       let prog = parse_with_face face path in
-      let loader_config = loader_config_for_file path in
+      let loader_config = loader_config_for_file ~prog path in
       let loader = Affinescript.Module_loader.create loader_config in
       (match Affinescript.Resolve.resolve_program_with_loader prog loader with
       | Error (e, span) ->
@@ -744,7 +754,7 @@ let compile_file face json wasm_gc vscode_ext vscode_adapter vscode_no_lc
   end else begin
     try
       let prog = parse_with_face face path in
-      let loader_config = loader_config_for_file path in
+      let loader_config = loader_config_for_file ~prog path in
       let loader = Affinescript.Module_loader.create loader_config in
       (match Affinescript.Resolve.resolve_program_with_loader prog loader with
       | Error (e, _span) ->
@@ -1037,7 +1047,7 @@ let lint_file face json path =
     let add d = diags := d :: !diags in
     begin try
       let prog = parse_with_face face path in
-      let loader_config = loader_config_for_file path in
+      let loader_config = loader_config_for_file ~prog path in
       let loader = Affinescript.Module_loader.create loader_config in
       (match Affinescript.Resolve.resolve_program_with_loader prog loader with
       | Error (e, span) ->
@@ -1057,7 +1067,7 @@ let lint_file face json path =
   end else begin
     try
       let prog = parse_with_face face path in
-      let loader_config = loader_config_for_file path in
+      let loader_config = loader_config_for_file ~prog path in
       let loader = Affinescript.Module_loader.create loader_config in
       (match Affinescript.Resolve.resolve_program_with_loader prog loader with
       | Error (e, _span) ->
@@ -1096,7 +1106,7 @@ let compile_to_wasm_module face path
   : (Affinescript.Wasm.wasm_module, string) Result.t =
   try
     let prog = parse_with_face face path in
-    let loader_config = loader_config_for_file path in
+    let loader_config = loader_config_for_file ~prog path in
     let loader = Affinescript.Module_loader.create loader_config in
     match Affinescript.Resolve.resolve_program_with_loader prog loader with
     | Error (e, _span) ->
@@ -1160,7 +1170,7 @@ let verify_file face path =
   let face = resolve_face face path in
   try
     let prog = parse_with_face face path in
-    let loader_config = loader_config_for_file path in
+    let loader_config = loader_config_for_file ~prog path in
     let loader = Affinescript.Module_loader.create loader_config in
     (match Affinescript.Resolve.resolve_program_with_loader prog loader with
     | Error (e, _span) ->
@@ -1688,7 +1698,7 @@ let preview_cafe_cmd =
 let run_pipeline_for_query face path =
   try
     let prog = parse_with_face face path in
-    let loader_config = loader_config_for_file path in
+    let loader_config = loader_config_for_file ~prog path in
     let loader = Affinescript.Module_loader.create loader_config in
     match Affinescript.Resolve.resolve_program_with_loader prog loader with
     | Error (e, _span) ->
