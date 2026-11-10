@@ -252,8 +252,13 @@ so the hand-off is deliberate.
 
 Closing an implementation hole is not the same as having metatheory. The
 soundness arguments for the holes above (`docs/academic/proofs/*.adoc`, the
-comments in `lib/borrow.ml`) remain *prose*, and the Solo core fragment's
-`Soundness.idr` progress / preservation are still `?todo`. Mechanisation has
+comments in `lib/borrow.ml`) remain *prose*. The Solo core fragment's
+`Soundness.idr` progress / preservation are now discharged: all eight
+solo-core modules check under Idris2 0.7.0 with `%default total`, no holes and
+no escape hatches (local check, 2026-11-09, commit `9167b04`; not yet gated in
+CI). They concern the separate Solo model, not `lib/typecheck.ml`, and they are
+a theory result in Idris2 rather than Agda (see the proof ledger in
+`docs/EXPLAINME.adoc`). Mechanisation has
 *grown substantially* — the axiom-free Coq/Rocq `formal/` track now covers the
 Wave-0 codegen-preservation seed (K-1 `K1_CodegenPreservation.v`, K-1-with-`let`
 `K1Let_CodegenPreservation.v`), the F-1 transformer-preservation composition, and
