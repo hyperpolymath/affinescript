@@ -523,6 +523,15 @@ let rec expr_contains_return (e : expr) : bool =
   | ExprUnary (_, x) -> expr_contains_return x
   | ExprApp (f, args) ->
     expr_contains_return f || List.exists expr_contains_return args
+  (* A `return` in a match arm (`Err(e) => return Err(e)`) is the common
+     early-exit shape; without this arm it was invisible, and the Bun-ESM
+     backend compiled it into a `return` from the match's IIFE instead of
+     from the function. *)
+  | ExprMatch { em_scrutinee; em_arms } ->
+    expr_contains_return em_scrutinee
+    || List.exists (fun arm ->
+         (match arm.ma_guard with Some g -> expr_contains_return g | None -> false)
+         || expr_contains_return arm.ma_body) em_arms
   | _ -> false
 
 and block_contains_return (blk : block) : bool =
