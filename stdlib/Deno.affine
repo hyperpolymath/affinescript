@@ -78,6 +78,10 @@ pub extern fn statIsFile(path: String) -> Bool;
 /// Throws on a missing path (pair with `isNotFound` for the absent case).
 pub extern fn statIsDirectory(path: String) -> Bool;
 
+/// True if `path` exists (file, directory or other), false if it does not.
+/// Never throws: the total check to make before the stat predicates above.
+pub extern fn pathExists(path: String) -> Bool;
+
 /// Recursive walk under `root` — every file path beneath it, depth-first.
 /// Mirrors `std/fs/walk` for the common case (no glob filter; callers
 /// filter by extension). Throws on a missing root via `Deno.readDirSync`.
