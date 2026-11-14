@@ -256,7 +256,7 @@ let common_prelude = {|
 const Some = (value) => ({ tag: "Some", value });
 const None = { tag: "None" };
 const Ok   = (value) => ({ tag: "Ok",  value });
-const Err  = (error) => ({ tag: "Err", error });
+const Err  = (value) => ({ tag: "Err", value });
 const Unit = null;
 const __as_regexMatch = (s, pat) => new RegExp(pat).test(String(s));
 const __as_wasmInstance = (bytes) =>

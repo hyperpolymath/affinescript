@@ -85,6 +85,15 @@ harness_total=0
 for js in "$TEST_DIR"/*.harness.mjs; do
   name="$(basename "$js")"
   harness_total=$((harness_total + 1))
+  # Each harness imports <stem>.bun.js; compile its subject first (step 1
+  # already compiled host_profile).
+  subject_src="$TEST_DIR/${name%.harness.mjs}.affine"
+  if [ "$subject_src" != "$src" ]; then
+    if ! "${COMPILE_CMD[@]}" "$subject_src" -o "${subject_src%.affine}.bun.js" --bun-esm; then
+      fail "compile failed for $(basename "$subject_src")"
+      continue
+    fi
+  fi
   if ! (cd "$TEST_DIR" && AFFINESCRIPT_BUN_PROBE=estate bun "$name" alpha beta); then
     fail "bun harness failed: $name"
   fi
