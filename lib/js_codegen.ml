@@ -60,7 +60,7 @@ let prelude = {|// ---- AffineScript JS runtime (MVP) ----
 const Some = (value) => ({ tag: "Some", value });
 const None = { tag: "None" };
 const Ok   = (value) => ({ tag: "Ok",  value });
-const Err  = (error) => ({ tag: "Err", error });
+const Err  = (value) => ({ tag: "Err", value });
 const Unit = null;
 const print   = (s) => { (typeof Deno !== "undefined" ? Deno.stdout.writeSync(new TextEncoder().encode(String(s))) : process.stdout.write(String(s))); };
 const println = (s) => { console.log(String(s)); };
