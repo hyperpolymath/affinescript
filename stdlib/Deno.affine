@@ -82,6 +82,14 @@ pub extern fn statIsDirectory(path: String) -> Bool;
 /// Never throws: the total check to make before the stat predicates above.
 pub extern fn pathExists(path: String) -> Bool;
 
+/// Write `content` to `path` as UTF-8. True on success, false on any host
+/// error (permission, missing directory, disk full); never throws.
+pub extern fn tryWriteTextFile(path: String, content: String) -> Bool;
+
+/// Rename `from` to `to` (replacing `to` when it exists). True on success,
+/// false on any host error; never throws.
+pub extern fn tryRenamePath(from: String, to: String) -> Bool;
+
 /// Recursive walk under `root` — every file path beneath it, depth-first.
 /// Mirrors `std/fs/walk` for the common case (no glob filter; callers
 /// filter by extension). Throws on a missing root via `Deno.readDirSync`.
