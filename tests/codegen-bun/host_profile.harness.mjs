@@ -46,6 +46,9 @@ try {
     missingPathThrew = true;
   }
   if (!missingPathThrew) throw new Error("remove did not make path absent");
+  // pathExists is the total check: false for the removed file, never a throw.
+  if (subject.exists(file) !== false) throw new Error("pathExists on a missing path is not false");
+  if (subject.exists(nested) !== true) throw new Error("pathExists on a directory is not true");
 } finally {
   rmSync(root, { recursive: true, force: true });
 }
