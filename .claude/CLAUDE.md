@@ -46,7 +46,7 @@ The descriptiles are deeds (grammar: `metadatastician/standards`
 
 ## Language Policy (Hyperpolymath Standard)
 
-> **Policy refresh 2026-05-25**: AffineScript is now the primary application language across the estate (this is its home repo).  / TypeScript / meaningfully-migrated JavaScript are banned going forward — write new code in AffineScript. Existing  stays in place as legacy until the `.res → .affine` migration assistant (#488) walks the corpus. MPL-1.0 / MPL-1.0-or-later are banned; rewrite to MPL-2.0 wherever encountered (code + docs). **Jekyll is banned**; the canonical estate SSG is `hyperpolymath/casket-ssg` (Haskell). This repo already migrated via `.github/workflows/casket-pages.yml`.
+> **Policy refresh 2026-05-25**: AffineScript is now the primary application language across the estate (this is its home repo).  / TypeScript / meaningfully-migrated JavaScript are banned going forward — write new code in AffineScript. Existing  stays in place as legacy until the `.res → .affine` migration assistant (#488) walks the corpus. MPL-1.0 / MPL-1.0-or-later are non-conforming: flag them to the owner, never rewrite them (licence changes are manual and owner-only). **Jekyll is banned**; the canonical estate SSG is `hyperpolymath/casket-ssg` (Haskell). This repo already migrated via `.github/workflows/casket-pages.yml`.
 
 ### ALLOWED Languages & Tools
 
@@ -89,8 +89,8 @@ The descriptiles are deeds (grammar: `metadatastician/standards`
 | Swift | Tauri / Dioxus |
 | React Native | Tauri / Dioxus |
 | Flutter/Dart | Tauri / Dioxus |
-| **MPL-1.0** | **MPL-2.0** (rewrite SPDX headers + LICENSE files wherever encountered, code AND docs) |
-| **MPL-1.0-or-later** | **MPL-2.0** (same) |
+| **MPL-1.0** | Flag only: report it to the owner, who decides. Never rewrite a SPDX header or LICENSE file (standards licence policy, no automated licence edits). |
+| **MPL-1.0-or-later** | Flag only (same) |
 | **Jekyll** (`jekyll.yml`, `jekyll-gh-pages.yml`, `_config.yml`, `Gemfile`) | **`hyperpolymath/casket-ssg`** (Haskell SSG, owner's own tool). This repo already migrated — see `.github/workflows/casket-pages.yml` for the canonical pattern. Hypatia flags Jekyll filenames as `jekyll_workflow_detected` / `jekyll_gh_pages_workflow_detected` / `jekyll_config_detected` / `gemfile_detected`. |
 
 ### Mobile Development
@@ -111,7 +111,7 @@ Both are FOSS with independent governance (no Big Tech).
 5. **No Go code** - Use Rust instead.
 6. **No Python, no exceptions** - The SaltStack exception is removed (owner ruling 2026-11-14). Any Python must be rewritten or removed.
 7. **No Kotlin/Swift for mobile** - Use Tauri 2.0+ or Dioxus.
-8. **MPL-1.0 / MPL-1.0-or-later are non-conforming** - Rewrite to MPL-2.0 in SPDX headers and LICENSE files when encountered (Hypatia's `validate_license` flags both).
+8. **MPL-1.0 / MPL-1.0-or-later are non-conforming: flag, never rewrite** - Report each to the owner (Hypatia's `validate_license` flags both). Licence and SPDX changes are manual, per file and owner-only; an agent never edits them (owner ruling 2026-11-14, matching the standards licence policy).
 
 ### TypeScript Exemptions (Approved)
 
