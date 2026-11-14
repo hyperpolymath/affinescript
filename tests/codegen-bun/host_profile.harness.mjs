@@ -49,6 +49,16 @@ try {
   // pathExists is the total check: false for the removed file, never a throw.
   if (subject.exists(file) !== false) throw new Error("pathExists on a missing path is not false");
   if (subject.exists(nested) !== true) throw new Error("pathExists on a directory is not true");
+  // tryWriteTextFile / tryRenamePath are total: false on a host error, never a throw.
+  const staged = join(nested, "staged.tmp");
+  const published = join(nested, "published.txt");
+  if (subject.try_write(staged, "v1") !== true) throw new Error("tryWriteTextFile failed on a writable path");
+  if (subject.try_write(join(root, "no-such-dir", "x"), "v") !== false) throw new Error("tryWriteTextFile into a missing directory is not false");
+  if (subject.try_write(published, "old") !== true) throw new Error("tryWriteTextFile could not create the target");
+  if (subject.try_rename(staged, published) !== true) throw new Error("tryRenamePath failed");
+  if (subject.read_text(published) !== "v1") throw new Error("tryRenamePath did not replace the target");
+  if (subject.exists(staged) !== false) throw new Error("tryRenamePath left the source behind");
+  if (subject.try_rename(staged, published) !== false) throw new Error("tryRenamePath of a missing source is not false");
 } finally {
   rmSync(root, { recursive: true, force: true });
 }
