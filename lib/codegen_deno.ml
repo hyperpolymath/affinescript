@@ -1326,6 +1326,11 @@ let () =
     (fun a -> Printf.sprintf "__as_fs().statSync(%s).isFile()" (arg 0 a));
   b "statIsDirectory"
     (fun a -> Printf.sprintf "__as_fs().statSync(%s).isDirectory()" (arg 0 a));
+  (* Total existence test: false for a missing path, never a throw. The stat
+     predicates above keep their ENOENT contract (host_profile pins it); this
+     is the check to make before them (added for kyX). *)
+  b "pathExists"
+    (fun a -> Printf.sprintf "__as_fs().existsSync(%s)" (arg 0 a));
   b "args" (fun _ -> "(globalThis.process?.argv?.slice(2) ?? [])");
   b "exit"
     (fun a -> Printf.sprintf "__as_process().exit(%s)" (arg 0 a));
