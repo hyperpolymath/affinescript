@@ -29,12 +29,16 @@ https://github.com/hyperpolymath/nextgen-languages/blob/main/docs/disambiguation
 
 The following files in `.machine_readable/` contain structured project metadata:
 
-- `.machine_readable/descriptiles/STATE.a2ml` - Current project state and progress
-- `.machine_readable/descriptiles/META.a2ml` - Architecture decisions and development practices
-- `.machine_readable/descriptiles/ECOSYSTEM.a2ml` - Position in the ecosystem and related projects
-- `.machine_readable/descriptiles/AGENTIC.a2ml` - AI agent interaction patterns
-- `.machine_readable/descriptiles/NEUROSYM.a2ml` - Neurosymbolic integration config
-- `.machine_readable/descriptiles/PLAYBOOK.a2ml` - Operational runbook
+- `.machine_readable/descriptiles/STATE.deed` - Current project state and progress
+- `.machine_readable/descriptiles/META.deed` - Architecture decisions and development practices
+- `.machine_readable/descriptiles/ECOSYSTEM.deed` - Position in the ecosystem and related projects
+- `.machine_readable/descriptiles/AGENTIC.deed` - AI agent interaction patterns
+- `.machine_readable/descriptiles/NEUROSYM.deed` - Neurosymbolic integration config
+- `.machine_readable/descriptiles/PLAYBOOK.deed` - Operational runbook
+
+A2ML is retired estate-wide: never create, restore or extend a `.a2ml` file.
+The descriptiles are deeds (grammar: `metadatastician/standards`
+`1-formats/deed/spec/abnf/deed.abnf`; check: `deed_lint.js`).
 
 ---
 
@@ -50,14 +54,14 @@ The following files in `.machine_readable/` contain structured project metadata:
 |---------------|----------|-------|
 | **AffineScript** (`.affine`) | Primary application code | Affine types, dependent types, row polymorphism, extensible effects; compiles to Wasm |
 | **Bun** | JS runtime & package management (tier 1) | Default for all new work. Runs compiled ESM/JS directly — no bundler step. Uses an npm-compatible `package.json` plus `bun.lock` — both are expected, not anti-patterns. |
+| **Deno** | JS runtime (tier 2) | Permitted, second after Bun: use it only where Bun cannot do the job (owner rulings 2026-10-14 and 2026-11-14). pnpm is tier 3 and npm the last resort (standards `3-practice/LANGUAGE-POLICY.adoc` §1.3); `package-lock.json` is never tracked. |
 | **Rust** | Performance-critical, systems, WASM | Preferred for CLI tools |
 | **Tauri 2.0+** | Mobile apps (iOS/Android) | Rust backend + web UI |
 | **Dioxus** | Mobile apps (native UI) | Pure Rust, React-like |
 | **Gleam** | Backend services | Runs on BEAM or compiles to JS |
 | **Bash/POSIX Shell** | Scripts, automation | Keep minimal |
-| **Python** | SaltStack only | No other Python permitted |
 | **Nickel** | Configuration language | For complex configs |
-| **A2ML** | State/meta files | .machine_readable/descriptiles/STATE.a2ml, .machine_readable/descriptiles/META.a2ml, .machine_readable/descriptiles/ECOSYSTEM.a2ml |
+| **deed** | Repo metadata and descriptiles | `.machine_readable/descriptiles/*.deed`; grammar `standards/1-formats/deed/spec/abnf/deed.abnf`. Replaces A2ML, which is retired. |
 | **Julia** | Batch scripts, data processing | Per RSR |
 | **OCaml** | AffineScript compiler | Language-specific (compiler-host tooling lives here) |
 | **Ada** | Safety-critical systems | Where required |
@@ -77,12 +81,10 @@ The following files in `.machine_readable/` contain structured project metadata:
 | ReScript | **AffineScript** |
 |  (new files) | **AffineScript** (migration via #488) |
 | JavaScript (where the project has been meaningfully migrated to AffineScript) | **AffineScript** |
-| Deno | Bun |
 | Node.js | Bun |
-| npm | Bun |
-| pnpm/yarn | Bun |
+| yarn | Bun |
 | Go | Rust |
-| Python (general) | **AffineScript** / Rust / Julia |
+| **Python** (absolute: no exceptions, SaltStack included) | **AffineScript** / Rust / Julia |
 | Java/Kotlin | Rust / Tauri / Dioxus |
 | Swift | Tauri / Dioxus |
 | React Native | Tauri / Dioxus |
@@ -107,7 +109,7 @@ Both are FOSS with independent governance (no Big Tech).
 3. **Use `package.json` + `bun.lock` for JS runtime deps** - Bun is npm-compatible; a manifest is REQUIRED
 4. **`bun install --production --frozen-lockfile` for production deps** - resolved from `package.json` and pinned via `bun.lock`; `--frozen-lockfile` makes a lockfile mismatch a build failure rather than a silent re-resolve
 5. **No Go code** - Use Rust instead.
-6. **Python only for SaltStack** - All other Python must be rewritten.
+6. **No Python, no exceptions** - The SaltStack exception is removed (owner ruling 2026-11-14). Any Python must be rewritten or removed.
 7. **No Kotlin/Swift for mobile** - Use Tauri 2.0+ or Dioxus.
 8. **MPL-1.0 / MPL-1.0-or-later are non-conforming** - Rewrite to MPL-2.0 in SPDX headers and LICENSE files when encountered (Hypatia's `validate_license` flags both).
 
