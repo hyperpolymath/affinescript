@@ -1331,6 +1331,13 @@ let () =
      is the check to make before them (added for kyX). *)
   b "pathExists"
     (fun a -> Printf.sprintf "__as_fs().existsSync(%s)" (arg 0 a));
+  (* Total write and rename: true on success, false on any host error
+     (permission, missing directory, disk full), never a throw. They let a
+     program stage outputs and publish them all or none (added for kyX). *)
+  b "tryWriteTextFile"
+    (fun a -> Printf.sprintf "((p, c) => { try { __as_fs().writeFileSync(p, c, \"utf8\"); return true; } catch (_e) { return false; } })(%s, %s)" (arg 0 a) (arg 1 a));
+  b "tryRenamePath"
+    (fun a -> Printf.sprintf "((f, t) => { try { __as_fs().renameSync(f, t); return true; } catch (_e) { return false; } })(%s, %s)" (arg 0 a) (arg 1 a));
   b "args" (fun _ -> "(globalThis.process?.argv?.slice(2) ?? [])");
   b "exit"
     (fun a -> Printf.sprintf "__as_process().exit(%s)" (arg 0 a));
