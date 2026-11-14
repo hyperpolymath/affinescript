@@ -555,6 +555,17 @@ and eval_binop (op : binary_op) (left : value) (right : value) : value result =
   | (VFloat a, VFloat b) -> binop_float op a b
   | (VString a, VString b) -> binop_string op a b
   | (VBool a, VBool b) -> binop_bool op a b
+  (* The checker accepts `++` on arrays, `==`/`!=` at every type and the
+     relational operators on Char; without these arms such well-typed
+     programs stopped with "Type mismatch in binary operation" at run
+     time (kyq's line splitter, `out ++ [cur]` and `ch == '\n'`). *)
+  | (VArray a, VArray b) when op = OpConcat -> Ok (VArray (Array.append a b))
+  | (VChar a, VChar b) when op = OpLt -> Ok (VBool (a < b))
+  | (VChar a, VChar b) when op = OpLe -> Ok (VBool (a <= b))
+  | (VChar a, VChar b) when op = OpGt -> Ok (VBool (a > b))
+  | (VChar a, VChar b) when op = OpGe -> Ok (VBool (a >= b))
+  | _ when op = OpEq -> Ok (VBool (Value.value_eq left right))
+  | _ when op = OpNe -> Ok (VBool (not (Value.value_eq left right)))
   | _ -> Error (TypeMismatch "Type mismatch in binary operation")
 
 (** Apply function to arguments *)

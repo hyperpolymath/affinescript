@@ -1,0 +1,24 @@
+// SPDX-License-Identifier: MPL-2.0
+// Regression: an `Err(e)` arm must bind the payload. The runtime prelude
+// built Err as { tag, error } while every match lowering reads the
+// single-payload convention `.value`, so `e` was `undefined` (found while
+// writing kyX, metadatastician/kyx).
+
+use prelude::{ Result, Ok, Err, Option, Some, None };
+
+fn check(s: String) -> Result<Int, String> {
+  if s == "ok" { Ok(1) } else { Err("bad: " ++ s) }
+}
+
+pub fn err_message(s: String) -> String {
+  match check(s) { Ok(n) => "ok", Err(m) => m }
+}
+
+pub fn ok_value(s: String) -> Int {
+  match check(s) { Ok(n) => n, Err(m) => 0 }
+}
+
+pub fn nested_err() -> String {
+  let r: Option<Result<Int, String>> = Some(Err("inner"));
+  match r { Some(Err(m)) => m, Some(Ok(n)) => "ok", None => "none" }
+}
