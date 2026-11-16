@@ -131,6 +131,23 @@ let default_config () : config =
     current_dir = Sys.getcwd ();
   }
 
+(** [dir] with `.` segments and empty segments removed and `..` resolved
+    lexically, so `/p/src/./Kyaml` and `/p/src/Kyaml` match the same
+    module path. *)
+let normalise_dir (dir : string) : string =
+  let absolute = String.length dir > 0 && dir.[0] = '/' in
+  let segs =
+    List.fold_left (fun acc seg ->
+        match seg with
+        | "" | "." -> acc
+        | ".." -> (match acc with _ :: rest -> rest | [] -> acc)
+        | s -> s :: acc)
+      [] (String.split_on_char '/' dir)
+    |> List.rev
+  in
+  let body = String.concat "/" segs in
+  if absolute then "/" ^ body else if body = "" then "." else body
+
 (** The directory module paths are resolved from, for a root file in
     [file_dir] that declares [mod_path].
 
@@ -143,6 +160,7 @@ let default_config () : config =
     imports working (#642). *)
 let module_root_dir ~(file_dir : string) (mod_path : string list option)
     : string =
+  let file_dir = normalise_dir file_dir in
   match mod_path with
   | None | Some [] | Some [_] -> file_dir
   | Some segs ->
@@ -156,6 +174,36 @@ let module_root_dir ~(file_dir : string) (mod_path : string list option)
     match strip file_dir (List.rev parents) with
     | Some root -> root
     | None -> file_dir
+
+(** Loader configuration for a root file at [file_path] that declares
+    [mod_path].  The package root (see {!module_root_dir}) resolves full
+    paths (`use A.C;` from `A/B.affine`); the file's own directory stays
+    searchable, so a short sibling import (`use Helper;` for
+    `A/Helper.affine`) keeps working (#642). *)
+let config_for_file ~(file_path : string) (mod_path : string list option)
+    : config =
+  let absolute_path =
+    if Filename.is_relative file_path
+    then Filename.concat (Sys.getcwd ()) file_path
+    else file_path
+  in
+  let file_dir = normalise_dir (Filename.dirname absolute_path) in
+  let root = module_root_dir ~file_dir mod_path in
+  let config = default_config () in
+  { config with
+    current_dir = root;
+    search_paths =
+      (if root = file_dir then config.search_paths
+       else file_dir :: config.search_paths) }
+
+(** Whether [prog] itself declares `main`.  `eval` auto-calls `main` only
+    then: flattening inlines imported declarations, so a dependency's
+    `pub fn main` must not run because the root has none. *)
+let declares_main (prog : program) : bool =
+  List.exists (function
+      | TopFn fd -> fd.fd_name.name = "main"
+      | _ -> false)
+    prog.prog_decls
 
 (** Convert module path to file path candidates
 
@@ -178,11 +226,11 @@ let path_to_candidates (mod_path : string list) : string list =
 (** Search for a module file in search paths *)
 let find_module_file (loader : t) (mod_path : string list) : string option =
   let candidates = path_to_candidates mod_path in
-  let search_in_dir dir =
+  let search_in_dir cands dir =
     List.find_map (fun candidate ->
       let full_path = Filename.concat dir candidate in
       if Sys.file_exists full_path then Some full_path else None
-    ) candidates
+    ) cands
   in
   (* Search order: 1) current dir, 2) stdlib, 3) additional search paths *)
   let all_paths =
@@ -190,7 +238,18 @@ let find_module_file (loader : t) (mod_path : string list) : string option =
     loader.config.stdlib_path ::
     loader.config.search_paths
   in
-  List.find_map search_in_dir all_paths
+  (* Every directory is searched for the exact file (`A/B.affine`) before
+     any falls back to the parent file (`A.affine`): a parent file that
+     declares a different module is rejected when loaded
+     (ModuleDeclMismatch), so it must not shadow a real `A/B.affine` in a
+     later search directory. *)
+  let exact, parent = match candidates with
+    | [ nested; up ] -> ([ nested ], [ up ])
+    | cands -> (cands, [])
+  in
+  match List.find_map (search_in_dir exact) all_paths with
+  | Some _ as found -> found
+  | None -> List.find_map (search_in_dir parent) all_paths
 
 (** Load and parse a module file *)
 let parse_module_file (file_path : string) : (program, load_error) result =
@@ -224,11 +283,11 @@ let rec load_module (loader : t) (mod_path : string list) : (loaded_module, load
 
       (* Find the module file *)
       match find_module_file loader mod_path with
-      | None -> Error (ModuleNotFound mod_path)
+      | None -> Hashtbl.remove loader.loading mod_path; Error (ModuleNotFound mod_path)
       | Some file_path ->
         (* Parse the module *)
         match parse_module_file file_path with
-        | Error e -> Error e
+        | Error e -> Hashtbl.remove loader.loading mod_path; Error e
         | Ok prog ->
           let declared =
             Option.map (List.map (fun (id : ident) -> id.name)) prog.prog_module
@@ -238,8 +297,14 @@ let rec load_module (loader : t) (mod_path : string list) : (loaded_module, load
             Hashtbl.remove loader.loading mod_path;
             Error (ModuleDeclMismatch (mod_path, d, file_path))
           | _ ->
-          (* Load dependencies first (imports) *)
-          let* () = load_dependencies loader prog.prog_imports in
+          (* Load dependencies first (imports).  On failure, clear this
+             module's loading marker, or a later load of it would be
+             reported as a cycle. *)
+          let* () =
+            match load_dependencies loader prog.prog_imports with
+            | Ok () -> Ok ()
+            | Error e -> Hashtbl.remove loader.loading mod_path; Error e
+          in
 
           let loaded_mod = {
             mod_path;
@@ -296,6 +361,63 @@ let clear_cache (loader : t) : unit =
   Hashtbl.clear loader.loaded;
   Hashtbl.clear loader.loading
 
+(** The name a module's private helper carries once flattened.  Flattening
+    puts the declarations of every imported module into one program, so two
+    modules' private helpers of the same name (kyq: `parse_int` in both
+    `Kyaml` and `Kyaml.Parser`) would otherwise collide: one would be
+    dropped, or the importer's own local of that name would win, and a
+    module's code would call another module's helper.  Underscores keep the
+    name valid in every backend's target language. *)
+let qualified_private_name (mod_path : string list) (name : string) : string =
+  "__priv_" ^ String.concat "_" mod_path ^ "__" ^ name
+
+(** Give [prog]'s own private functions and constants (those of [own], the
+    module's unflattened declarations) their {!qualified_private_name}, and
+    rewrite the references to them in the module's own declarations.
+    Declarations [prog] carries from other modules are left alone: their
+    private helpers were qualified when those modules were flattened, and
+    they cannot refer to this module's private names.  Extern functions keep
+    their names (the host binds them by name). *)
+let qualify_private (mod_path : string list) (own : top_level list)
+    (prog : program) : program =
+  let ren =
+    List.filter_map (function
+        | TopFn fd when fd.fd_vis = Private && fd.fd_body <> FnExtern ->
+          Some (fd.fd_name.name, qualified_private_name mod_path fd.fd_name.name)
+        | TopConst { tc_vis = Private; tc_name; _ } ->
+          Some (tc_name.name, qualified_private_name mod_path tc_name.name)
+        | _ -> None) own
+  in
+  if ren = [] then prog
+  else
+    let rename_ident (id : ident) =
+      match List.assoc_opt id.name ren with
+      | Some n -> { id with name = n }
+      | None -> id
+    in
+    let rename_decl = function
+      | TopFn fd ->
+        let inner =
+          without_names ren
+            (List.map (fun (p : param) -> p.p_name.name) fd.fd_params)
+        in
+        let body = match fd.fd_body with
+          | FnExpr e -> FnExpr (rename_free inner e)
+          | FnBlock b -> FnBlock (rename_block inner b)
+          | FnExtern -> FnExtern
+        in
+        TopFn { fd with fd_name = rename_ident fd.fd_name; fd_body = body }
+      | TopConst c ->
+        TopConst { c with tc_name = rename_ident c.tc_name;
+                          tc_value = rename_free ren c.tc_value }
+      | other -> other
+    in
+    let is_own d = List.exists (fun o -> o == d) own in
+    { prog with
+      prog_decls =
+        List.map (fun d -> if is_own d then rename_decl d else d)
+          prog.prog_decls }
+
 (** Flatten cross-module imports by inlining the public top-level decls of
     each imported module into [prog.prog_decls], with deduplication by name.
 
@@ -351,12 +473,46 @@ let rec flatten_imports_from
      stored for a later duplicate.  A plain `already_in` set used to keep the
      FIRST declaration here, while resolve.ml kept the LAST one (#743). *)
   let imported_by_name = Hashtbl.create 32 in
+  let imported_origin = Hashtbl.create 32 in
   let imported_order = ref [] in
-  let add_imported name decl_kind =
+  let is_private = function
+    | `Fn fd -> fd.fd_vis = Private
+    | `Const (TopConst { tc_vis; _ }) -> tc_vis = Private
+    | `Type (TopType td) -> td.td_vis = Private
+    | `Const _ | `Type _ -> false
+  in
+  (* The same declaration reaches here more than once in a diamond (`D`
+     imports `P` and `J`, and `J` imports `P`): flattening is recursive, so
+     `P`'s helpers arrive both directly and inside `J`. That is one helper,
+     not a collision. *)
+  let same_decl a b = match a, b with
+    | `Fn x, `Fn y -> x == y || x = y
+    | `Const x, `Const y | `Type x, `Type y -> x == y || x = y
+    | _ -> false
+  in
+  let add_imported origin name decl_kind =
     if not (Hashtbl.mem local_names name) then begin
+      (match Hashtbl.find_opt imported_origin name,
+             Hashtbl.find_opt imported_by_name name with
+       | Some other, Some prev
+         when other <> origin
+              && (is_private prev || is_private decl_kind)
+              && not (same_decl prev decl_kind) ->
+         (* Two modules each carry a private helper of this name: one
+            flattened program can hold only one, and keeping the later would
+            make the other module call the wrong function.  (Public
+            collisions are rejected by the resolver; #743's last-wins rule
+            still applies to them.) *)
+         failwith
+           (Printf.sprintf
+              "cannot flatten imports: `%s` is defined in both %s and %s, \
+               and at least one is a private helper"
+              name (show_module_path other) (show_module_path origin))
+       | _ -> ());
       if not (Hashtbl.mem imported_by_name name) then
         imported_order := name :: !imported_order;
-      Hashtbl.replace imported_by_name name decl_kind
+      Hashtbl.replace imported_by_name name decl_kind;
+      Hashtbl.replace imported_origin name origin
     end
   in
   List.iter (fun imp ->
@@ -373,8 +529,10 @@ let rec flatten_imports_from
            below can reach what *it* uses from other modules: `Nav` importing
            `Router.on_url_change`, whose body calls `Tea.subs`, emitted an
            undefined `subs`. [visiting] stops an import cycle. *)
+        let own = lm0.mod_program.prog_decls in
         let lm =
-          if List.mem mod_path visiting then lm0
+          if List.mem mod_path visiting then
+            { lm0 with mod_program = qualify_private mod_path own lm0.mod_program }
           else
             (* Memoised per flatten call: a module shared by several import
                paths (a diamond) is flattened once, not once per path. *)
@@ -383,6 +541,7 @@ let rec flatten_imports_from
               | None ->
                 let p = flatten_imports_from cache (mod_path :: visiting) loader
                     lm0.mod_program in
+                let p = qualify_private mod_path own p in
                 Hashtbl.replace cache mod_path p;
                 p
             in
@@ -547,9 +706,16 @@ let rec flatten_imports_from
                 |> Option.map (fun (_, found) -> (target, found))
               ) items
             in
-            List.map
-              (fun (n, dk) -> (bound_name_of n, rename_decl (bound_name_of n) dk))
-              (close_over direct)
+            let closed = close_over direct in
+            (* An aliased item (`use M::{helper as h, api}`) is carried under
+               its alias for the importer, and also under its own name when
+               it is renamed, because the module's other declarations (`api`)
+               still call it by that name. *)
+            List.concat_map (fun (n, dk) ->
+                let b = bound_name_of n in
+                if b = n then [ (n, dk) ]
+                else [ (n, dk); (b, rename_decl b dk) ])
+              closed
         in
         (* Public enums the importer names directly. A constructor in the
            import list (`use Geometry::{Up, Down}`) or a type name the
@@ -577,8 +743,8 @@ let rec flatten_imports_from
               public_enums
           | ImportSimple _ | ImportGlob _ -> public_enums
         in
-        List.iter (fun (ty, _, decl) -> add_imported ty (`Type decl)) named;
-        List.iter (fun (name, decl_kind) -> add_imported name decl_kind) select
+        List.iter (fun (ty, _, decl) -> add_imported mod_path ty (`Type decl)) named;
+        List.iter (fun (name, decl_kind) -> add_imported mod_path name decl_kind) select
     ) prog.prog_imports;
   let imported_decls =
     List.rev !imported_order

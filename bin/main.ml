@@ -173,25 +173,23 @@ let parse_file (face : Affinescript.Face.face) path =
         Affinescript.Span.pp_short span msg;
       `Error (false, "Parse error")
 
-(** Build a loader rooted at the source file's directory.  The historical
-    CLI used the process CWD as [current_dir], so compiling `src/Main.affine`
-    could not find a sibling `src/Helper.affine` even though the module
-    loader already supported relative sibling paths (#642). *)
+(** Build the loader for a source file: rooted at its package root when its
+    `module` declaration matches its directories, with its own directory
+    still searchable (#642).  See [Module_loader.config_for_file]. *)
 let loader_config_for_file ?prog path =
-  let absolute_path =
-    if Filename.is_relative path then Filename.concat (Sys.getcwd ()) path
-    else path
-  in
-  let config = Affinescript.Module_loader.default_config () in
   let mod_path =
     Option.bind prog (fun (p : Affinescript.Ast.program) ->
       Option.map (List.map (fun (id : Affinescript.Ast.ident) -> id.name))
         p.prog_module)
   in
-  { config with
-    current_dir =
-      Affinescript.Module_loader.module_root_dir
-        ~file_dir:(Filename.dirname absolute_path) mod_path }
+  Affinescript.Module_loader.config_for_file ~file_path:path mod_path
+
+(* Auto-call `main` only when the root program declares it
+   (Module_loader.declares_main). *)
+let lookup_root_main (prog : Affinescript.Ast.program) env =
+  if Affinescript.Module_loader.declares_main prog
+  then Affinescript.Value.lookup_env "main" env
+  else Error (Affinescript.Value.UnboundVariable "main")
 
 (** Type-check a file.  With [--json], emits a structured diagnostic
     report on stderr. *)
@@ -328,7 +326,7 @@ let eval_file face json path =
                      (Affinescript.Module_loader.flatten_imports loader prog) with
             | Ok env ->
               (* Auto-call main() if defined — entry point for TEA apps and scripts *)
-              (match Affinescript.Value.lookup_env "main" env with
+              (match lookup_root_main prog env with
               | Ok main_fn ->
                 (match Affinescript.Interp.apply_function main_fn [] with
                 | Ok _ -> ()
@@ -378,7 +376,7 @@ let eval_file face json path =
                      (Affinescript.Module_loader.flatten_imports loader prog) with
             | Ok env ->
               (* Auto-call main() if defined — entry point for TEA apps and scripts *)
-              (match Affinescript.Value.lookup_env "main" env with
+              (match lookup_root_main prog env with
               | Ok main_fn ->
                 (match Affinescript.Interp.apply_function main_fn [] with
                 | Ok _ -> `Ok ()

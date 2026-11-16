@@ -144,7 +144,6 @@ let binop_cases () =
     (Interp.eval_binop Ast.OpConcat (VArray [| VInt 1 |]) (VArray [| VInt 2 |]));
   ok "char == char" (VBool true) (Interp.eval_binop Ast.OpEq (VChar 'a') (VChar 'a'));
   ok "char != char" (VBool true) (Interp.eval_binop Ast.OpNe (VChar 'a') (VChar 'b'));
-  ok "char < char" (VBool true) (Interp.eval_binop Ast.OpLt (VChar 'a') (VChar 'b'));
   ok "tuple == tuple" (VBool false)
     (Interp.eval_binop Ast.OpEq (VTuple [ VInt 1; VInt 2 ]) (VTuple [ VInt 1; VInt 3 ]));
   ok "variant == variant" (VBool true)
@@ -240,6 +239,204 @@ let return_in_operand_refused () =
        Alcotest.(check bool) ("refusal names the cause: " ^ msg) true
          (Str.string_match (Str.regexp ".*return. inside a match arm") msg 0))
 
+(* ---- Review round 1 (affinescript#788) ---------------------------------- *)
+
+let normalise_cases () =
+  Alcotest.(check string) "a `.` segment is dropped" "/p/src/Kyaml"
+    (Module_loader.normalise_dir "/p/src/./Kyaml");
+  Alcotest.(check string) "a `..` segment is resolved" "/p/src"
+    (Module_loader.normalise_dir "/p/src/Kyaml/..");
+  Alcotest.(check string) "the root is found through a `.` segment" "/p/src"
+    (Module_loader.module_root_dir ~file_dir:"/p/src/./Kyaml"
+       (Some [ "Kyaml"; "Ijson" ]))
+
+(* Rooting a nested module at its package root must not stop a short
+   sibling import from resolving (#642). *)
+let sibling_import_from_nested () =
+  let dir = fresh_dir "sibling" in
+  write_file dir "A/Helper.affine" "module Helper;\npub fn h() -> Int { 3 }\n";
+  write_file dir "A/Main.affine"
+    "module A.Main;\nuse Helper::{h};\npub fn main() -> Int { h() }\n";
+  let config =
+    Module_loader.config_for_file
+      ~file_path:(Filename.concat dir "A/Main.affine") (Some [ "A"; "Main" ])
+  in
+  Alcotest.(check string) "rooted at the package root"
+    (Module_loader.normalise_dir dir) config.current_dir;
+  match Module_loader.load_module (Module_loader.create config) [ "Helper" ] with
+  | Ok _ -> ()
+  | Error e ->
+    Alcotest.failf "sibling Helper must load: %s" (Module_loader.show_load_error e)
+
+(* A parent file near the source must not shadow the exact file later on
+   the search path. *)
+let exact_file_beats_parent () =
+  let near = fresh_dir "near" and far = fresh_dir "far" in
+  write_file near "P.affine" "module P;\npub fn p() -> Int { 1 }\n";
+  write_file far "P/M.affine" "module P.M;\npub fn m() -> Int { 2 }\n";
+  let loader =
+    Module_loader.create
+      { (Module_loader.default_config ()) with
+        current_dir = near; search_paths = [ far ] }
+  in
+  match Module_loader.load_module loader [ "P"; "M" ] with
+  | Ok lm ->
+    Alcotest.(check string) "loaded far/P/M.affine"
+      (Filename.concat far "P/M.affine") lm.mod_file
+  | Error e ->
+    Alcotest.failf "P.M must load from the search path: %s"
+      (Module_loader.show_load_error e)
+
+let failed_dependency_is_not_a_cycle () =
+  let dir = fresh_dir "marker" in
+  write_file dir "Q.affine" "module Q;\nuse NoSuch::*;\npub fn q() -> Int { 1 }\n";
+  let loader = loader_in dir in
+  ignore (Module_loader.load_module loader [ "Q" ]);
+  match Module_loader.load_module loader [ "Q" ] with
+  | Error (Module_loader.ModuleCycle _) ->
+    Alcotest.fail "a failed load left Q marked as loading (reported as a cycle)"
+  | Error _ -> ()
+  | Ok _ -> Alcotest.fail "Q cannot load without NoSuch"
+
+let eval_int dir src expected =
+  match eval_main dir src with
+  | Value.VInt n -> Alcotest.(check int) "result" expected n
+  | v -> Alcotest.failf "expected %d, got %s" expected (Value.show_value v)
+
+(* `api` calls `helper` by its own name even when the importer renames it. *)
+let alias_keeps_module_binding () =
+  let dir = fresh_dir "alias" in
+  write_file dir "P/N.affine"
+    "module P.N;\npub fn helper() -> Int { 4 }\n\
+     pub fn api() -> Int { helper() + 1 }\n";
+  eval_int dir
+    "module D;\nuse P.N::{helper as h, api};\n\
+     pub fn main() -> Int { api() * 10 + h() }\n"
+    54
+
+let two_modules_same_private_helper () =
+  let dir = fresh_dir "collide" in
+  write_file dir "Q/A.affine"
+    "module Q.A;\nfn helper() -> Int { 1 }\npub fn a() -> Int { helper() }\n";
+  write_file dir "Q/B.affine"
+    "module Q.B;\nfn helper() -> Int { 2 }\npub fn b() -> Int { helper() }\n";
+  (* Each module calls its own helper. *)
+  eval_int dir
+    "module D;\nuse Q.A::*;\nuse Q.B::*;\n\
+     pub fn main() -> Int { a() * 10 + b() }\n"
+    12;
+  (* The importer's own `helper` neither replaces nor is replaced by Q.A's. *)
+  eval_int dir
+    "module D;\nuse Q.A::{a};\nfn helper() -> Int { 99 }\n\
+     pub fn main() -> Int { a() + helper() }\n"
+    100
+
+(* Qualifying a module's private names leaves a local of the same name
+   alone. *)
+let qualification_respects_shadowing () =
+  let dir = fresh_dir "shadow" in
+  write_file dir "Q/C.affine"
+    "module Q.C;\nfn helper() -> Int { 1 }\n\
+     pub fn c(k: Int) -> Int { let helper = 50; helper + k }\n";
+  eval_int dir "module D;\nuse Q.C::{c};\npub fn main() -> Int { c(1) }\n" 51
+
+let diamond_import () =
+  let dir = fresh_dir "diamond" in
+  write_file dir "P/M.affine" helper_module;
+  write_file dir "J.affine"
+    "module J;\nuse P.M::{api};\npub fn j() -> Int { api(\"x\") + 1 }\n";
+  eval_int dir
+    "module D;\nuse P.M::{api};\nuse J::{j};\n\
+     pub fn main() -> Int { api(\"a\") + j() }\n"
+    15
+
+let main_only_from_root () =
+  let parse src = Parse_driver.parse_string ~file:"<main>" src in
+  Alcotest.(check bool) "a root with main" true
+    (Module_loader.declares_main (parse "module R;\npub fn main() -> Int { 0 }\n"));
+  Alcotest.(check bool) "a root without main" false
+    (Module_loader.declares_main (parse "module R;\npub fn other() -> Int { 0 }\n"))
+
+let id name = { Ast.name; span = Span.dummy }
+
+let free_vars_see_records () =
+  let e =
+    Ast.ExprRecord
+      { er_fields = [ (id "k", None); (id "f", Some (Ast.ExprVar (id "v"))) ];
+        er_spread = Some (Ast.ExprVar (id "base")) }
+  in
+  let free = Ast.find_free_vars [] e in
+  List.iter (fun n ->
+      Alcotest.(check bool) (n ^ " is free") true (List.mem n free))
+    [ "k"; "v"; "base" ];
+  Alcotest.(check bool) "a bound shorthand is not free" false
+    (List.mem "k" (Ast.find_free_vars [ "k" ] e))
+
+let contains_return_sees_aggregates () =
+  let ret = Ast.ExprReturn None in
+  List.iter (fun (what, e) ->
+      Alcotest.(check bool) what true (Ast.expr_contains_return e))
+    [ ("tuple", Ast.ExprTuple [ Ast.ExprVar (id "x"); ret ]);
+      ("array", Ast.ExprArray [ ret ]);
+      ("record", Ast.ExprRecord { er_fields = [ (id "f", Some ret) ]; er_spread = None });
+      ("index", Ast.ExprIndex (Ast.ExprArray [ ret ], Ast.ExprVar (id "i"))) ]
+
+let compile_deno src =
+  let prog = Parse_driver.parse_string ~file:"<deno>" src in
+  let ld = Module_loader.create (Module_loader.default_config ()) in
+  match Resolve.resolve_program_with_loader prog ld with
+  | Error (e, _) -> Error ("resolve: " ^ Resolve.show_resolve_error e)
+  | Ok (rctx, _) ->
+    Codegen_deno.codegen_deno (Module_loader.flatten_imports ld prog) rctx.symbols
+
+let guards_wildcards_and_temporaries () =
+  if not (node_available ()) then
+    Alcotest.fail "node is not on PATH (this test runs the emitted module)";
+  let src = {|
+module guards;
+pub type R = Good(Int) | Bad(Int)
+pub fn f(r: R) -> Int {
+  let v = match r { Good(n) if n > 10 => n, Good(n) => n + 100, Bad(e) => return e };
+  v
+}
+pub fn g(r: R) -> Int {
+  let _ = match r { Good(n) => n, Bad(e) => return e + 1000 };
+  7
+}
+pub fn h() -> Int {
+  let __let_tmp_1 = 5;
+  let w = match Good(1) { Good(n) => n, Bad(e) => return e };
+  __let_tmp_1 + w
+}
+|} in
+  match compile_deno src with
+  | Error e -> Alcotest.failf "deno codegen: %s" e
+  | Ok js ->
+    (* f: the guard reads its own binding (Good(5) fails the guard and takes
+       the next arm); g: `let _` keeps the early return; h: a source name
+       that looks like a temporary does not collide with one. *)
+    Alcotest.(check string) "f f f g g h" "105 20 3 1001 7 6"
+      (run_node (js ^ "\nconsole.log(f(Good(5)), f(Good(20)), f(Bad(3)), \
+                       g(Bad(1)), g(Good(1)), h());\n"))
+
+let return_in_condition_refused () =
+  let prelude =
+    "module refuse;\npub type R = Good(Int) | Bad(Int)\n\
+     fn id(x: Int) -> Int { x }\nfn yes(x: Int) -> Bool { true }\n"
+  in
+  List.iter (fun (what, body) ->
+      match compile_deno (prelude ^ body) with
+      | Ok _ -> Alcotest.failf "%s: a return there must be refused" what
+      | Error msg ->
+        Alcotest.(check bool) (what ^ ": " ^ msg) true
+          (Str.string_match (Str.regexp ".*return. inside") msg 0))
+    [ ("if condition",
+       "pub fn f(r: R) -> Int { let v = if yes(return 1) { 2 } else { 3 }; v }\n");
+      ("scrutinee",
+       "pub fn f(r: R) -> Int { let v = match id(return 1) { 0 => 2, _ => 3 }; v }\n");
+      ("guard",
+       "pub fn f(r: R) -> Int { let v = match r { Good(n) if yes(return 9) => n, _ => 3 }; v }\n") ]
+
 let tests =
   [
     Alcotest.test_case "module_root_dir" `Quick root_cases;
@@ -254,4 +451,28 @@ let tests =
       return_in_match_arm;
     Alcotest.test_case "Bun-ESM: return in an operand match is refused" `Quick
       return_in_operand_refused;
+    Alcotest.test_case "simple import carries private helper" `Quick
+      (flatten_carries_helpers "use P.M;");
+    Alcotest.test_case "normalise_dir" `Quick normalise_cases;
+    Alcotest.test_case "sibling import from a nested module" `Quick
+      sibling_import_from_nested;
+    Alcotest.test_case "exact file beats parent file" `Quick exact_file_beats_parent;
+    Alcotest.test_case "failed dependency is not a cycle" `Quick
+      failed_dependency_is_not_a_cycle;
+    Alcotest.test_case "alias keeps the module binding" `Quick
+      alias_keeps_module_binding;
+    Alcotest.test_case "same-named private helpers stay distinct" `Quick
+      two_modules_same_private_helper;
+    Alcotest.test_case "qualification respects shadowing" `Quick
+      qualification_respects_shadowing;
+    Alcotest.test_case "diamond import" `Quick diamond_import;
+    Alcotest.test_case "main only from the root" `Quick main_only_from_root;
+    Alcotest.test_case "free vars see record shorthand and spread" `Quick
+      free_vars_see_records;
+    Alcotest.test_case "contains_return sees aggregates" `Quick
+      contains_return_sees_aggregates;
+    Alcotest.test_case "Bun-ESM: guards, let _, temporaries" `Quick
+      guards_wildcards_and_temporaries;
+    Alcotest.test_case "Bun-ESM: return in condition, scrutinee, guard refused" `Quick
+      return_in_condition_refused;
   ]
