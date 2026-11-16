@@ -21,6 +21,20 @@ type load_error =
           would bind [A]'s exports under a name that does not exist. *)
 [@@deriving show]
 
+(** Why the declarations of a program's imports cannot be flattened into one
+    program. Raised as {!Flatten_error} by {!flatten_imports}; the CLI reports
+    it as a diagnostic. *)
+type flatten_error =
+  | ImportCollision of string * string list * string list
+      (** One flattened name, carried by two different modules' declarations. *)
+  | MutableAlias of string * string * string list
+      (** A mutable module binding, the alias it was imported under, and its
+          module. An alias is a second declaration, so it would be a second,
+          separate copy of the binding. *)
+[@@deriving show]
+
+exception Flatten_error of flatten_error
+
 (** Helper for Result bind *)
 let ( let* ) = Result.bind
 
@@ -369,7 +383,53 @@ let clear_cache (loader : t) : unit =
     module's code would call another module's helper.  Underscores keep the
     name valid in every backend's target language. *)
 let qualified_private_name (mod_path : string list) (name : string) : string =
-  "__priv_" ^ String.concat "_" mod_path ^ "__" ^ name
+  (* Each path component is prefixed by its length, so the encoding is
+     injective: joining with `_` made `A_B.C` and `A.B_C` the same. *)
+  "__priv_"
+  ^ String.concat ""
+      (List.map (fun c -> string_of_int (String.length c) ^ c) mod_path)
+  ^ "__" ^ name
+
+(** The diagnostic text of a {!flatten_error}. *)
+let flatten_error_message = function
+  | ImportCollision (name, a, b) ->
+    Printf.sprintf
+      "cannot flatten imports: `%s` is defined in both %s and %s" name
+      (String.concat "::" a) (String.concat "::" b)
+  | MutableAlias (name, alias, m) ->
+    Printf.sprintf
+      "cannot import the mutable binding `%s` from %s as `%s`: an alias would \
+       be a separate copy of it; import it under its own name" name
+      (String.concat "::" m) alias
+
+(** Rename, by [ren] (old name to new), a top-level function or constant's
+    own name and the free references to the renamed names in its body; a
+    parameter that shadows a renamed name is left alone. *)
+let rename_top_level (ren : (string * string) list) (decl : top_level)
+    : top_level =
+  if ren = [] then decl
+  else
+    let rename_ident (id : ident) =
+      match List.assoc_opt id.name ren with
+      | Some n -> { id with name = n }
+      | None -> id
+    in
+    match decl with
+    | TopFn fd ->
+      let inner =
+        without_names ren
+          (List.map (fun (p : param) -> p.p_name.name) fd.fd_params)
+      in
+      let body = match fd.fd_body with
+        | FnExpr e -> FnExpr (rename_free inner e)
+        | FnBlock b -> FnBlock (rename_block inner b)
+        | FnExtern -> FnExtern
+      in
+      TopFn { fd with fd_name = rename_ident fd.fd_name; fd_body = body }
+    | TopConst c ->
+      TopConst { c with tc_name = rename_ident c.tc_name;
+                        tc_value = rename_free ren c.tc_value }
+    | other -> other
 
 (** Give [prog]'s own private functions and constants (those of [own], the
     module's unflattened declarations) their {!qualified_private_name}, and
@@ -390,28 +450,7 @@ let qualify_private (mod_path : string list) (own : top_level list)
   in
   if ren = [] then prog
   else
-    let rename_ident (id : ident) =
-      match List.assoc_opt id.name ren with
-      | Some n -> { id with name = n }
-      | None -> id
-    in
-    let rename_decl = function
-      | TopFn fd ->
-        let inner =
-          without_names ren
-            (List.map (fun (p : param) -> p.p_name.name) fd.fd_params)
-        in
-        let body = match fd.fd_body with
-          | FnExpr e -> FnExpr (rename_free inner e)
-          | FnBlock b -> FnBlock (rename_block inner b)
-          | FnExtern -> FnExtern
-        in
-        TopFn { fd with fd_name = rename_ident fd.fd_name; fd_body = body }
-      | TopConst c ->
-        TopConst { c with tc_name = rename_ident c.tc_name;
-                          tc_value = rename_free ren c.tc_value }
-      | other -> other
-    in
+    let rename_decl = rename_top_level ren in
     let is_own d = List.exists (fun o -> o == d) own in
     { prog with
       prog_decls =
@@ -503,11 +542,7 @@ let rec flatten_imports_from
             make the other module call the wrong function.  (Public
             collisions are rejected by the resolver; #743's last-wins rule
             still applies to them.) *)
-         failwith
-           (Printf.sprintf
-              "cannot flatten imports: `%s` is defined in both %s and %s, \
-               and at least one is a private helper"
-              name (show_module_path other) (show_module_path origin))
+         raise (Flatten_error (ImportCollision (name, other, origin)))
        | _ -> ());
       if not (Hashtbl.mem imported_by_name name) then
         imported_order := name :: !imported_order;
@@ -674,13 +709,29 @@ let rec flatten_imports_from
                the bodies present. *)
             close_over public_decls
           | ImportList (_, items) ->
-            (* The name a directly-named item is imported under (alias
-               honoured). *)
-            let bound_name_of target =
-              match List.find_opt (fun item -> item.ii_name.name = target) items with
-              | Some { ii_alias = Some a; _ } -> a.name
-              | _ -> target
+            (* Every alias an item is imported under. *)
+            let aliases_of target =
+              List.filter_map (fun item ->
+                  match item.ii_alias with
+                  | Some a when item.ii_name.name = target -> Some a.name
+                  | _ -> None) items
             in
+            (* Names the importer binds under their own name. *)
+            let exposed =
+              List.filter_map (fun item ->
+                  match item.ii_alias with
+                  | None -> Some item.ii_name.name
+                  | Some _ -> None) items
+            in
+            (* An alias is a second declaration: for a mutable binding that
+               would be a second, separate copy. *)
+            List.iter (fun item ->
+                match item.ii_alias,
+                      List.assoc_opt item.ii_name.name public_decls with
+                | Some a, Some (`Const (TopConst { tc_mut = true; _ })) ->
+                  raise (Flatten_error
+                           (MutableAlias (item.ii_name.name, a.name, mod_path)))
+                | _ -> ()) items;
             let rename_decl bound_name found =
               match found with
               | `Fn fd ->
@@ -707,14 +758,47 @@ let rec flatten_imports_from
               ) items
             in
             let closed = close_over direct in
-            (* An aliased item (`use M::{helper as h, api}`) is carried under
-               its alias for the importer, and also under its own name when
-               it is renamed, because the module's other declarations (`api`)
-               still call it by that name. *)
+            (* This module's own public functions and immutable constants that
+               the closure carries but the importer does not bind under their
+               own name (`helper` in `use M::{helper as h, api}`, or a public
+               helper only `api` calls) get an internal name, with the
+               references to them rewritten. Left under their own name, two
+               modules' `helper`s would replace one another and `api` would
+               call the other module's (CodeRabbit on #797). A mutable binding
+               keeps its name: it may be imported under that name elsewhere,
+               and a renamed copy would be separate storage. *)
+            let hidden =
+              List.filter_map (function
+                  | TopFn fd
+                    when (fd.fd_vis = Public || fd.fd_vis = PubCrate)
+                         && fd.fd_body <> FnExtern
+                         && not (List.mem fd.fd_name.name exposed)
+                         && List.mem_assoc fd.fd_name.name closed ->
+                    Some (fd.fd_name.name,
+                          qualified_private_name mod_path fd.fd_name.name)
+                  | TopConst { tc_vis = (Public | PubCrate); tc_mut = false;
+                               tc_name; _ }
+                    when not (List.mem tc_name.name exposed)
+                         && List.mem_assoc tc_name.name closed ->
+                    Some (tc_name.name,
+                          qualified_private_name mod_path tc_name.name)
+                  | _ -> None) lm0.mod_program.prog_decls
+            in
+            let internalise = function
+              | `Fn fd ->
+                (match rename_top_level hidden (TopFn fd) with
+                 | TopFn fd' -> `Fn fd'
+                 | _ -> `Fn fd)
+              | `Const d -> `Const (rename_top_level hidden d)
+              | `Type _ as t -> t
+            in
+            (* An aliased item (`use M::{helper as h, api}`) is bound under its
+               alias for the importer; the original stays, under its internal
+               name, because the module's other declarations (`api`) call it. *)
             List.concat_map (fun (n, dk) ->
-                let b = bound_name_of n in
-                if b = n then [ (n, dk) ]
-                else [ (n, dk); (b, rename_decl b dk) ])
+                let dk = internalise dk in
+                let n' = Option.value (List.assoc_opt n hidden) ~default:n in
+                (n', dk) :: List.map (fun b -> (b, rename_decl b dk)) (aliases_of n))
               closed
         in
         (* Public enums the importer names directly. A constructor in the

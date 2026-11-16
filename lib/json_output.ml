@@ -136,6 +136,20 @@ let of_parse_error (msg : string) (span : Span.t) : diagnostic =
     labels = [];
   }
 
+(** Convert an import-flattening error to a diagnostic. It names no source
+    position, so it is placed at the start of the root file. *)
+let of_flatten_error (e : Module_loader.flatten_error) (file : string)
+    : diagnostic =
+  let start = { Span.line = 1; col = 1; offset = 0 } in
+  {
+    severity = Error;
+    code = "E0206";
+    message = Module_loader.flatten_error_message e;
+    span = Span.make ~file ~start_pos:start ~end_pos:start;
+    help = Some "import the binding under its own name, or rename one of them";
+    labels = [];
+  }
+
 (** Convert a resolve error to a diagnostic.
 
     [Resolve.resolve_error] variants carry [Ast.ident] values which

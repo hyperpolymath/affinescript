@@ -437,8 +437,103 @@ let return_in_condition_refused () =
       ("guard",
        "pub fn f(r: R) -> Int { let v = match r { Good(n) if yes(return 9) => n, _ => 3 }; v }\n") ]
 
+(* A guard is compiled against the integer tracking it runs under, not the
+   one the arm's body leaves behind: the body's `let n = 0.5` must not turn
+   the guard's `n / 2` into float division (CodeRabbit on #797). *)
+let guard_ignores_body_int_tracking () =
+  if not (node_available ()) then
+    Alcotest.fail "node is not on PATH (this test runs the emitted module)";
+  let src = {|
+module guardint;
+pub fn k(n: Int) -> Int {
+  let _ = match n { m if n / 2 == 2 => { let n = 0.5; 0 }, _ => return 9 };
+  1
+}
+|} in
+  match compile_deno src with
+  | Error e -> Alcotest.failf "deno codegen: %s" e
+  | Ok js ->
+    (* 5 / 2 truncates to 2: the guard holds, so k(5) falls through to 1. *)
+    Alcotest.(check string) "k(5) k(9)" "1 9"
+      (run_node (js ^ "\nconsole.log(k(5), k(9));\n"))
+
+(* A `return` the statement lowering cannot keep (inside an array, so inside
+   an IIFE) is refused rather than dropped. *)
+let return_in_array_arm_refused () =
+  let src =
+    "module arr;\n\
+     pub fn f(b: Bool) -> Int {\n\
+    \  let _ = match b { true => [{ return 7; 0 }], false => return 9 };\n\
+    \  11\n}\n"
+  in
+  match compile_deno src with
+  | Ok _ -> Alcotest.fail "a return inside an array arm must be refused"
+  | Error msg ->
+    Alcotest.(check bool) msg true
+      (Str.string_match (Str.regexp ".*return. inside") msg 0)
+
+(* An original a module carries for its own callers, but which the importer
+   binds only under an alias, does not occupy the importer's namespace: two
+   modules' `helper`s stay apart (CodeRabbit on #797). *)
+let aliased_originals_stay_apart () =
+  let dir = fresh_dir "aliasapart" in
+  write_file dir "R/A.affine"
+    "module R.A;\npub fn helper() -> Int { 1 }\npub fn api() -> Int { helper() }\n";
+  write_file dir "R/B.affine" "module R.B;\npub fn helper() -> Int { 2 }\n";
+  eval_int dir
+    "module D;\nuse R.A::{helper as ah, api};\nuse R.B::{helper as bh};\n\
+     pub fn main() -> Int { api() * 100 + ah() * 10 + bh() }\n"
+    112
+
+(* Module paths that join to the same text (`S_T.U`, `S.T_U`) still give
+   their private helpers different internal names. *)
+let internal_names_are_injective () =
+  Alcotest.(check bool) "distinct" true
+    (Module_loader.qualified_private_name [ "S_T"; "U" ] "h"
+     <> Module_loader.qualified_private_name [ "S"; "T_U" ] "h");
+  let dir = fresh_dir "inject" in
+  write_file dir "S_T/U.affine"
+    "module S_T.U;\nfn h() -> Int { 1 }\npub fn u1() -> Int { h() }\n";
+  write_file dir "S/T_U.affine"
+    "module S.T_U;\nfn h() -> Int { 2 }\npub fn u2() -> Int { h() }\n";
+  eval_int dir
+    "module D;\nuse S_T.U::{u1};\nuse S.T_U::{u2};\n\
+     pub fn main() -> Int { u1() * 10 + u2() }\n"
+    12
+
+(* Aliasing a mutable module binding would make a second, separate copy: it
+   is a structured flattening error, which the CLI reports as a diagnostic. *)
+let mutable_alias_refused () =
+  let dir = fresh_dir "mutalias" in
+  write_file dir "V/M.affine"
+    "module V.M;\npub const mut counter: Int = 0;\n\
+     pub fn get() -> Int { counter }\n";
+  let src =
+    "module D;\nuse V.M::{counter as c, get};\npub fn main() -> Int { get() }\n"
+  in
+  let prog = Parse_driver.parse_string ~file:"<importer>" src in
+  let ld = loader_in dir in
+  match Resolve.resolve_program_with_loader prog ld with
+  | Error (e, _) -> Alcotest.failf "resolve: %s" (Resolve.show_resolve_error e)
+  | Ok _ ->
+    (match Module_loader.flatten_imports ld prog with
+     | _ -> Alcotest.fail "aliasing a mutable binding must be refused"
+     | exception Module_loader.Flatten_error
+                   (Module_loader.MutableAlias ("counter", "c", [ "V"; "M" ])) ->
+       ())
+
 let tests =
   [
+    Alcotest.test_case "Bun-ESM: a guard ignores the body's int tracking" `Quick
+      guard_ignores_body_int_tracking;
+    Alcotest.test_case "Bun-ESM: return inside an array arm refused" `Quick
+      return_in_array_arm_refused;
+    Alcotest.test_case "aliased originals stay apart" `Quick
+      aliased_originals_stay_apart;
+    Alcotest.test_case "internal names are injective" `Quick
+      internal_names_are_injective;
+    Alcotest.test_case "aliasing a mutable binding is refused" `Quick
+      mutable_alias_refused;
     Alcotest.test_case "module_root_dir" `Quick root_cases;
     Alcotest.test_case "declared path must match" `Quick decl_mismatch_rejected;
     Alcotest.test_case "missing dependency is named" `Quick missing_dependency_named;

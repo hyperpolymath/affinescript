@@ -339,6 +339,8 @@ let eval_file face json path =
       add (Affinescript.Json_output.of_lexer_error msg pos path)
     | Affinescript.Parse_driver.Parse_error (msg, span) ->
       add (Affinescript.Json_output.of_parse_error msg span)
+    | Affinescript.Module_loader.Flatten_error e ->
+      add (Affinescript.Json_output.of_flatten_error e path)
     end;
     json_finish (List.rev !diags)
   end else begin
@@ -400,6 +402,10 @@ let eval_file face json path =
         Format.eprintf "@[<v>%a: parse error: %s@]@."
           Affinescript.Span.pp_short span msg;
         `Error (false, "Parse error")
+    | Affinescript.Module_loader.Flatten_error e ->
+        Format.eprintf "@[<v>%s: %s@]@." path
+          (Affinescript.Module_loader.flatten_error_message e);
+        `Error (false, "Import error")
   end
 
 (** Generate the AffineScript TEA bridge Wasm module.
@@ -747,6 +753,8 @@ let compile_file face json wasm_gc vscode_ext vscode_adapter vscode_no_lc
       add (Affinescript.Json_output.of_lexer_error msg pos path)
     | Affinescript.Parse_driver.Parse_error (msg, span) ->
       add (Affinescript.Json_output.of_parse_error msg span)
+    | Affinescript.Module_loader.Flatten_error e ->
+      add (Affinescript.Json_output.of_flatten_error e path)
     end;
     json_finish (List.rev !diags)
   end else begin
@@ -1000,6 +1008,10 @@ let compile_file face json wasm_gc vscode_ext vscode_adapter vscode_no_lc
         Format.eprintf "@[<v>%a: parse error: %s@]@."
           Affinescript.Span.pp_short span msg;
         `Error (false, "Parse error")
+    | Affinescript.Module_loader.Flatten_error e ->
+        Format.eprintf "@[<v>%s: %s@]@." path
+          (Affinescript.Module_loader.flatten_error_message e);
+        `Error (false, "Import error")
   end
 
 (** Format a file.  Only canonical face is supported — non-canonical face
