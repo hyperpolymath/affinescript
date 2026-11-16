@@ -532,6 +532,16 @@ let rec expr_contains_return (e : expr) : bool =
     || List.exists (fun arm ->
          (match arm.ma_guard with Some g -> expr_contains_return g | None -> false)
          || expr_contains_return arm.ma_body) em_arms
+  (* Aggregates: `[return 1]`, `(x, return y)`, `#{ f: return z }` and
+     projections of them return just as directly. *)
+  | ExprTuple es | ExprArray es -> List.exists expr_contains_return es
+  | ExprRecord { er_fields; er_spread } ->
+    List.exists (fun (_, e) ->
+        match e with Some e -> expr_contains_return e | None -> false) er_fields
+    || (match er_spread with Some e -> expr_contains_return e | None -> false)
+  | ExprField (e, _) | ExprTupleIndex (e, _) -> expr_contains_return e
+  | ExprIndex (a, b) | ExprStringConcat (a, b) ->
+    expr_contains_return a || expr_contains_return b
   | _ -> false
 
 and block_contains_return (blk : block) : bool =
@@ -565,6 +575,127 @@ let rec pattern_binders (pat : pattern) : string list =
   | PatCon (_, pats) -> List.concat_map pattern_binders pats
   | PatOr (p1, p2) -> pattern_binders p1 @ pattern_binders p2
   | PatAs (id, pat) -> id.name :: pattern_binders pat
+
+(** Rename free occurrences of variables: [ren] maps old names to new ones.
+    Capture-avoiding in the usual way: a binder (let, match arm, lambda
+    parameter, block `let`, `for` pattern, handler pattern) removes the
+    names it binds from [ren] for its scope, so a local that shadows a
+    renamed top-level name keeps referring to the local.  A record
+    shorthand field `#{ x }` whose variable is renamed becomes
+    `#{ x: x' }`.  Used by import flattening to give each module's private
+    helpers module-specific names. *)
+let without_names (ren : (string * string) list) (names : string list) =
+  List.filter (fun (old, _) -> not (List.mem old names)) ren
+
+let rec rename_free (ren : (string * string) list) (e : expr) : expr =
+  if ren = [] then e
+  else
+    let r = rename_free ren in
+    let ro = Option.map r in
+    match e with
+    | ExprLit _ | ExprBreak _ | ExprContinue _ | ExprVariant _ -> e
+    | ExprVar id ->
+      (match List.assoc_opt id.name ren with
+       | Some n -> ExprVar { id with name = n }
+       | None -> e)
+    | ExprLet lb ->
+      let inner = without_names ren (pattern_binders lb.el_pat) in
+      ExprLet { lb with el_value = r lb.el_value;
+                        el_body = Option.map (rename_free inner) lb.el_body }
+    | ExprIf ei ->
+      ExprIf { ei_cond = r ei.ei_cond; ei_then = r ei.ei_then;
+               ei_else = ro ei.ei_else }
+    | ExprMatch m ->
+      ExprMatch { em_scrutinee = r m.em_scrutinee;
+                  em_arms = List.map (rename_arm ren) m.em_arms }
+    | ExprLambda lam ->
+      let inner =
+        without_names ren (List.map (fun (p : param) -> p.p_name.name)
+                             lam.elam_params) in
+      ExprLambda { lam with elam_body = rename_free inner lam.elam_body }
+    | ExprApp (f, args) -> ExprApp (r f, List.map r args)
+    | ExprField (x, f) -> ExprField (r x, f)
+    | ExprTupleIndex (x, i) -> ExprTupleIndex (r x, i)
+    | ExprIndex (a, b) -> ExprIndex (r a, r b)
+    | ExprTuple es -> ExprTuple (List.map r es)
+    | ExprArray es -> ExprArray (List.map r es)
+    | ExprRecord rc ->
+      let field ((n : ident), eo) =
+        match eo with
+        | Some x -> (n, Some (r x))
+        | None ->
+          (match List.assoc_opt n.name ren with
+           | Some nn -> (n, Some (ExprVar { n with name = nn }))
+           | None -> (n, None))
+      in
+      ExprRecord { er_fields = List.map field rc.er_fields;
+                   er_spread = ro rc.er_spread }
+    | ExprRowRestrict (x, f) -> ExprRowRestrict (r x, f)
+    | ExprBinary (a, op, b) -> ExprBinary (r a, op, r b)
+    | ExprStringConcat (a, b) -> ExprStringConcat (r a, r b)
+    | ExprStringEq (a, b, neg) -> ExprStringEq (r a, r b, neg)
+    | ExprStringRel (a, b, op) -> ExprStringRel (r a, r b, op)
+    | ExprFloatBinary (a, op, b) -> ExprFloatBinary (r a, op, r b)
+    | ExprFloatArray es -> ExprFloatArray (List.map r es)
+    | ExprFloatIndex (a, b) -> ExprFloatIndex (r a, r b)
+    | ExprCellTuple cs -> ExprCellTuple (List.map (fun (x, f) -> (r x, f)) cs)
+    | ExprCellTupleIndex (x, i, f) -> ExprCellTupleIndex (r x, i, f)
+    | ExprCellRecord fs ->
+      ExprCellRecord (List.map (fun (n, x, f) -> (n, r x, f)) fs)
+    | ExprCellField (x, i, f) -> ExprCellField (r x, i, f)
+    | ExprUnary (op, x) -> ExprUnary (op, r x)
+    | ExprBlock b -> ExprBlock (rename_block ren b)
+    | ExprReturn eo -> ExprReturn (ro eo)
+    | ExprTry t ->
+      ExprTry { et_body = rename_block ren t.et_body;
+                et_catch = Option.map (List.map (rename_arm ren)) t.et_catch;
+                et_finally = Option.map (rename_block ren) t.et_finally }
+    | ExprHandle h ->
+      let handler = function
+        | HandlerReturn (p, x) ->
+          HandlerReturn (p, rename_free (without_names ren (pattern_binders p)) x)
+        | HandlerOp (op, ps, x) ->
+          HandlerOp (op, ps,
+                     rename_free
+                       (without_names ren (List.concat_map pattern_binders ps)) x)
+      in
+      ExprHandle { eh_body = r h.eh_body;
+                   eh_handlers = List.map handler h.eh_handlers }
+    | ExprResume eo -> ExprResume (ro eo)
+    | ExprUnsafe ops ->
+      ExprUnsafe (List.map (function
+          | UnsafeRead x -> UnsafeRead (r x)
+          | UnsafeWrite (a, b) -> UnsafeWrite (r a, r b)
+          | UnsafeOffset (a, b) -> UnsafeOffset (r a, r b)
+          | UnsafeTransmute (t1, t2, x) -> UnsafeTransmute (t1, t2, r x)
+          | UnsafeForget x -> UnsafeForget (r x)) ops)
+    | ExprSpan (x, sp) -> ExprSpan (r x, sp)
+
+and rename_arm ren (arm : match_arm) : match_arm =
+  let inner = without_names ren (pattern_binders arm.ma_pat) in
+  { arm with ma_guard = Option.map (rename_free inner) arm.ma_guard;
+             ma_body = rename_free inner arm.ma_body }
+
+and rename_block ren (blk : block) : block =
+  if ren = [] then blk
+  else
+    let rec go ren acc = function
+      | [] -> (List.rev acc, ren)
+      | StmtLet sl :: rest ->
+        let s = StmtLet { sl with sl_value = rename_free ren sl.sl_value } in
+        go (without_names ren (pattern_binders sl.sl_pat)) (s :: acc) rest
+      | StmtExpr x :: rest -> go ren (StmtExpr (rename_free ren x) :: acc) rest
+      | StmtAssign (a, op, b) :: rest ->
+        go ren (StmtAssign (rename_free ren a, op, rename_free ren b) :: acc) rest
+      | StmtWhile (c, b) :: rest ->
+        go ren (StmtWhile (rename_free ren c, rename_block ren b) :: acc) rest
+      | StmtFor (p, it, b) :: rest ->
+        let s = StmtFor (p, rename_free ren it,
+                         rename_block (without_names ren (pattern_binders p)) b) in
+        go ren (s :: acc) rest
+    in
+    let stmts, ren_after = go ren [] blk.blk_stmts in
+    { blk_stmts = stmts; blk_expr = Option.map (rename_free ren_after) blk.blk_expr }
 
 (** Free variables of an expression.
 
@@ -659,11 +790,18 @@ let rec find_free_vars (bound_vars : string list) (expr : expr) : string list =
   | ExprTuple exprs | ExprArray exprs ->
     List.concat (List.map (find_free_vars bound_vars) exprs)
   | ExprRecord r ->
-    List.concat (List.map (fun (_, e_opt) ->
+    (* A shorthand field `#{ x }` reads the variable `x`, and a spread
+       `..base` reads `base`: both are free uses, which import flattening
+       needs to carry the helper or constant they name. *)
+    List.concat (List.map (fun ((name : ident), e_opt) ->
       match e_opt with
       | Some e -> find_free_vars bound_vars e
-      | None -> []
+      | None ->
+        if List.mem name.name bound_vars then [] else [name.name]
     ) r.er_fields)
+    @ (match r.er_spread with
+       | Some e -> find_free_vars bound_vars e
+       | None -> [])
   | ExprField (e, _) -> find_free_vars bound_vars e
   | ExprTupleIndex (e, _) -> find_free_vars bound_vars e
   | ExprIndex (e1, e2) ->

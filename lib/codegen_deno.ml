@@ -1897,15 +1897,22 @@ and gen_tail_to ctx (sink : string -> string) e =
   | ExprSpan (inner, _) -> gen_tail_to ctx sink inner
   | ExprReturn _ -> gen_stmt_expr ctx e
   | ExprBlock blk ->
-      let b = Buffer.create 64 in
-      List.iter (fun s ->
-        Buffer.add_string b (gen_stmt ctx s);
-        Buffer.add_char b ' ') blk.blk_stmts;
-      (match blk.blk_expr with
-       | Some tail -> Buffer.add_string b (gen_tail_to ctx sink tail)
-       | None -> Buffer.add_string b (sink "Unit"));
-      "{ " ^ Buffer.contents b ^ " }"
+      (* The block is a JS block scope: its `let`s must not change the
+         integer tracking of the code after it (a guard, a later arm). *)
+      with_int_scope ctx (fun () ->
+        let b = Buffer.create 64 in
+        List.iter (fun s ->
+          Buffer.add_string b (gen_stmt ctx s);
+          Buffer.add_char b ' ') blk.blk_stmts;
+        (match blk.blk_expr with
+         | Some tail -> Buffer.add_string b (gen_tail_to ctx sink tail)
+         | None -> Buffer.add_string b (sink "Unit"));
+        "{ " ^ Buffer.contents b ^ " }")
   | ExprIf { ei_cond; ei_then; ei_else } ->
+      (* The condition is emitted as an expression, where a `return` would
+         leave an IIFE instead of the function. *)
+      if expr_contains_return ei_cond then
+        refuse_return "an `if` condition";
       let elseb = match ei_else with
         | Some el -> gen_tail_to ctx sink el
         | None -> sink "Unit"
@@ -1913,21 +1920,65 @@ and gen_tail_to ctx (sink : string -> string) e =
       "if (" ^ gen_expr ctx ei_cond ^ ") { " ^ gen_tail_to ctx sink ei_then
       ^ " } else { " ^ elseb ^ " }"
   | ExprMatch { em_scrutinee; em_arms } ->
+      if expr_contains_return em_scrutinee then
+        refuse_return "a match scrutinee";
+      if List.exists (fun arm ->
+           match arm.ma_guard with
+           | Some g -> expr_contains_return g
+           | None -> false) em_arms
+      then refuse_return "a match guard";
       incr let_tmp_counter;
-      let sv = Printf.sprintf "__scrut_%d" !let_tmp_counter in
-      let rec arms_js = function
-        | [] -> "throw new Error(\"non-exhaustive match\");"
-        | arm :: rest ->
-            let cond = gen_pattern_test sv arm.ma_pat in
-            let binds = gen_pattern_bindings sv arm.ma_pat in
-            let guard = match arm.ma_guard with
-              | Some g -> " && (" ^ gen_expr ctx g ^ ")" | None -> "" in
-            "if (" ^ cond ^ guard ^ ") { " ^ binds
-            ^ gen_tail_to ctx sink arm.ma_body ^ " } else " ^ arms_js rest
+      (* `$` cannot occur in an AffineScript identifier, so these names
+         cannot collide with, or shadow, a source binding. *)
+      let sv = Printf.sprintf "$scrut_%d" !let_tmp_counter in
+      let label = Printf.sprintf "$match_%d" !let_tmp_counter in
+      (* A labelled block: each arm binds its pattern variables before its
+         guard reads them, and an arm whose guard fails falls through to
+         the next arm. *)
+      let arm_js arm =
+        let cond = gen_pattern_test sv arm.ma_pat in
+        let binds = gen_pattern_bindings sv arm.ma_pat in
+        (* The guard is emitted before the body, against the integer
+           tracking the guard actually runs under. *)
+        let guard = Option.map (gen_expr ctx) arm.ma_guard in
+        let body =
+          with_int_scope ctx (fun () -> gen_tail_to ctx sink arm.ma_body)
+          ^ " break " ^ label ^ ";"
+        in
+        let guarded = match guard with
+          | None -> body
+          | Some g -> "if (" ^ g ^ ") { " ^ body ^ " }"
+        in
+        "if (" ^ cond ^ ") { " ^ binds ^ guarded ^ " }"
       in
-      "{ const " ^ sv ^ " = " ^ gen_expr ctx em_scrutinee ^ "; "
-      ^ arms_js em_arms ^ " }"
-  | other -> sink (gen_expr ctx other)
+      label ^ ": { const " ^ sv ^ " = " ^ gen_expr ctx em_scrutinee ^ "; "
+      ^ String.concat " " (List.map arm_js em_arms)
+      ^ " throw new Error(\"non-exhaustive match\"); }"
+  | other ->
+      (* Any other form is emitted as an expression, where a nested block
+         becomes an IIFE and a `return` in it would leave only the IIFE
+         (`[{ return 7; 0 }]`). Refuse it rather than drop the return. *)
+      if expr_contains_return other then refuse_return "this expression";
+      sink (gen_expr ctx other)
+
+(* Run [f] in a nested scope of [ctx]'s integer tracking: bindings it records
+   are dropped afterwards, so they cannot leak into the code that follows. *)
+and with_int_scope : 'a. codegen_ctx -> (unit -> 'a) -> 'a = fun ctx f ->
+  let saved = Hashtbl.copy ctx.int_vars in
+  let restore () =
+    Hashtbl.reset ctx.int_vars;
+    Hashtbl.iter (Hashtbl.replace ctx.int_vars) saved
+  in
+  match f () with
+  | v -> restore (); v
+  | exception e -> restore (); raise e
+
+(* Fail loudly where a `return` would otherwise be compiled into an IIFE and
+   leave it instead of the enclosing function. *)
+and refuse_return what =
+  failwith
+    ("a `return` inside " ^ what ^ " is not supported by the Bun-ESM \
+      backend; bind the value to a `let` first")
 
 and gen_assign_tail ctx target e =
   gen_tail_to ctx (fun v -> target ^ " = " ^ v ^ ";") e
@@ -1966,7 +2017,12 @@ and gen_stmt ctx (stmt : stmt) : string =
          occurrence in the same scope ("Identifier '_' has already been
          declared"). Drop the binding entirely; the bare expression
          statement keeps the semantics. *)
-      gen_expr ctx sl_value ^ ";"
+      if lowers_to_statements sl_value && expr_contains_return sl_value then
+        (* As below for named bindings: lower to statements so an early
+           `return` leaves the function; the value itself is discarded. *)
+        gen_tail_to ctx (fun v -> "void (" ^ v ^ ");") sl_value
+      else
+        gen_expr ctx sl_value ^ ";"
   | StmtLet { sl_pat; sl_value; sl_mut; sl_quantity = _; sl_ty = _ } ->
       let kw = if sl_mut then "let" else "const" in
       let js =
@@ -1978,7 +2034,7 @@ and gen_stmt ctx (stmt : stmt) : string =
              initializer to statements that assign a temporary, so the
              `return` is a real function return. *)
           incr let_tmp_counter;
-          let tmp = Printf.sprintf "__let_tmp_%d" !let_tmp_counter in
+          let tmp = Printf.sprintf "$let_tmp_%d" !let_tmp_counter in
           "let " ^ tmp ^ "; " ^ gen_assign_tail ctx tmp sl_value ^ " "
           ^ kw ^ " " ^ gen_pattern ctx sl_pat ^ " = " ^ tmp ^ ";"
         end else
