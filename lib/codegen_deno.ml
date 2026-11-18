@@ -1446,8 +1446,13 @@ let rec expr_is_int ctx (e : expr) : bool =
   | ExprIf { ei_then; ei_else = Some e; _ } ->
       expr_is_int ctx ei_then && expr_is_int ctx e
   | ExprApp (ExprVar id, _) ->
-      Hashtbl.mem ctx.int_fns id.name
-      || List.mem id.name int_returning_builtins
+      (* A call to a local binding is not the intrinsic or top-level
+         function of the same name (see the intrinsic dispatch in
+         {!gen_expr}), so its result is not provably an [Int]. *)
+      not (Hashtbl.mem ctx.locals id.name)
+      && not (Hashtbl.mem ctx.local_fns id.name)
+      && (Hashtbl.mem ctx.int_fns id.name
+          || List.mem id.name int_returning_builtins)
   (* An element read from a provably-[Array<Int>] value is an [Int]
      (covers `xs[i] / 2` where xs: [Int]) — issue #478 finding 2. *)
   | ExprIndex (arr, _) -> expr_is_int_array ctx arr
@@ -1936,7 +1941,9 @@ and gen_stmt_expr ctx (e : expr) : string =
       in
       "if (" ^ gen_expr ctx ei_cond ^ ") { " ^ gen_branch ctx ei_then
       ^ " }" ^ elseb
-  | ExprBlock blk -> gen_stmt_seq ctx blk
+  (* A source block is a scope: keep its braces, so its declarations do
+     not land in the enclosing JS scope. *)
+  | ExprBlock blk -> "{ " ^ gen_stmt_seq ctx blk ^ " }"
   | ExprMatch { em_scrutinee; em_arms } ->
       gen_match_stmt ctx em_scrutinee em_arms
   | ExprTry { et_body; et_catch; et_finally } ->
@@ -1950,7 +1957,11 @@ and gen_branch ctx e =
   | ExprBlock blk -> gen_stmt_seq ctx blk
   | other -> gen_stmt_expr ctx other
 
+(* The statements of a block whose braces the caller emits. Its `let`s are
+   local to it, so a binder declared inside cannot shadow an intrinsic
+   called after it. *)
 and gen_stmt_seq ctx blk =
+  with_locals_scope ctx @@ fun () ->
   let b = Buffer.create 64 in
   List.iter (fun s ->
     Buffer.add_string b (gen_stmt ctx s);
@@ -1997,6 +2008,7 @@ and gen_tail_to ctx (sink : string -> string) e =
       (* The block is a JS block scope: its `let`s must not change the
          integer tracking of the code after it (a guard, a later arm). *)
       with_int_scope ctx (fun () ->
+        with_locals_scope ctx @@ fun () ->
         let b = Buffer.create 64 in
         List.iter (fun s ->
           Buffer.add_string b (gen_stmt ctx s);

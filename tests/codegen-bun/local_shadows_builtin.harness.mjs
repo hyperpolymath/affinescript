@@ -18,4 +18,8 @@ expect("guard reads its binder", subject.stmt_guard(9), "big");
 expect("false guard falls through", subject.stmt_guard(2), "small:2");
 expect("no match", subject.stmt_guard(0), "none");
 expect("for evaluates its iterable first", subject.for_shadows_callee(), "xy");
+expect("if-block let ends with the block (taken)", subject.if_block_let(true), 12);
+expect("if-block let ends with the block (not taken)", subject.if_block_let(false), 2);
+expect("bare block let ends with the block", subject.bare_block_let(), 10);
+expect("shadowed len is not integer division", subject.shadowed_len_div(), 1.5);
 console.log("local_shadows_builtin: ok");

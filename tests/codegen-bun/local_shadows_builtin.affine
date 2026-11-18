@@ -68,3 +68,25 @@ pub fn for_shadows_callee() -> String {
   for letters in letters() { out = out ++ letters; }
   out
 }
+
+// A `let` inside an `if` block ends with the block: the call after it is
+// the intrinsic, whether or not the branch ran.
+pub fn if_block_let(c: Bool) -> Int {
+  let mut n = 0;
+  if c { let len = fn(t: String) => 10; n = len("x"); }
+  n + len("ab")
+}
+
+// A standalone block is a scope too.
+pub fn bare_block_let() -> Int {
+  let mut n = 0;
+  { let len = fn(t: String) => 7; n = len("x"); };
+  n + len("abc")
+}
+
+// A call to a local named `len` is not provably an Int: `/` must not
+// truncate it.
+pub fn shadowed_len_div() -> Float {
+  let len = fn(s: String) => { if s == "a" { 3.0 } else { 2.0 } };
+  len("a") / len("b")
+}
