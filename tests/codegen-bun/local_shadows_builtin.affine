@@ -34,3 +34,37 @@ pub fn let_scope_ends(s: String) -> String {
   let a = { let trim = fn(z: String) => z ++ "?"; trim(s) };
   a ++ trim("  u  ")
 }
+
+// The intrinsic is visible again after a lambda that shadowed it.
+pub fn lambda_then_intrinsic(s: String) -> String {
+  let f = fn(trim: String -> String) => trim(s);
+  f(fn(x: String) => x ++ "!") ++ trim("  t  ")
+}
+
+// A later arm sees the intrinsic an earlier arm's binder shadowed.
+pub fn later_arm_intrinsic(o: Option<String -> String>) -> String {
+  match o { Some(trim) => trim("a"), None => trim("  b  ") }
+}
+
+fn positive(n: Int) -> Option<Int> { if n > 0 { Some(n) } else { None } }
+
+// A statement-position guard reads its arm's binder; a false guard falls
+// through to the next arm.
+pub fn stmt_guard(n: Int) -> String {
+  let mut out = "";
+  match positive(n) {
+    Some(len) if len > 5 => { out = "big"; },
+    Some(len) => { out = "small:" ++ int_to_string(len); },
+    None => { out = "none"; }
+  };
+  out
+}
+
+fn letters() -> [String] { ["x", "y"] }
+
+// The iterable runs before the loop binder exists.
+pub fn for_shadows_callee() -> String {
+  let mut out = "";
+  for letters in letters() { out = out ++ letters; }
+  out
+}

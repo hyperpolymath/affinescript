@@ -616,14 +616,16 @@ const __as_hpmJsonObjectGet = (v, k) => {
     ? Some(v[String(k)]) : None;
 };
 // ---- Url (stdlib/Url.affine): WHATWG URL via the host's URL constructor ----
+// `globalThis.URL`, because a program may declare its own `URL` (a variant,
+// say), which would shadow the host constructor in this module.
 const __as_urlResolve = (href, base) => {
   try {
-    return Some(new URL(String(href), base === "" ? undefined : String(base)).href);
+    return Some(new globalThis.URL(String(href), base === "" ? undefined : String(base)).href);
   } catch (_e) { return None; }
 };
 const __as_urlParse = (s) => {
   let u;
-  try { u = new URL(String(s)); } catch (_e) { return None; }
+  try { u = new globalThis.URL(String(s)); } catch (_e) { return None; }
   return Some({ href: u.href, protocol: u.protocol, username: u.username,
     password: u.password, host: u.host, hostname: u.hostname, port: u.port,
     pathname: u.pathname, search: u.search, hash: u.hash });
@@ -636,10 +638,17 @@ const __as_urlParse = (s) => {
 const __as_hpmJsonObjectKeys = (v) =>
   (v === null || typeof v !== "object" || Array.isArray(v)) ? [] : Object.keys(v);
 const __as_hpmJsonObjectLen = (v) => __as_hpmJsonObjectKeys(v).length;
+// A walk asks for keys by index, so index 0 takes a snapshot of the object's
+// keys and later indices read it: one Object.keys per walk, not per key.
+// Each walk starts at 0, so a snapshot never outlives the walk that made it.
+const __as_hpmJsonKeySnapshots = new WeakMap();
 const __as_hpmJsonObjectKey = (v, i) => {
-  const ks = __as_hpmJsonObjectKeys(v);
+  if (v === null || typeof v !== "object" || Array.isArray(v)) return None;
   const idx = Number(i);
-  return (Number.isInteger(idx) && idx >= 0 && idx < ks.length) ? Some(ks[idx]) : None;
+  if (!Number.isInteger(idx) || idx < 0) return None;
+  let ks = idx === 0 ? undefined : __as_hpmJsonKeySnapshots.get(v);
+  if (ks === undefined) { ks = Object.keys(v); __as_hpmJsonKeySnapshots.set(v, ks); }
+  return idx < ks.length ? Some(ks[idx]) : None;
 };
 const __as_hpmJsonArrayLen = (v) => (Array.isArray(v) ? v.length : 0);
 const __as_hpmJsonArrayGet = (v, i) => {
@@ -1774,9 +1783,10 @@ and gen_match ctx scrutinee arms =
     | arm :: rest ->
         let cond = gen_pattern_test scrut_var arm.ma_pat in
         let bindings = gen_pattern_bindings scrut_var arm.ma_pat in
-        with_locals ctx (pattern_binders arm.ma_pat) @@ fun () ->
+        (* This arm's binders scope its guard and body only; the arms after
+           it are generated outside that scope. *)
+        let arm_js = with_locals ctx (pattern_binders arm.ma_pat) @@ fun () ->
         let body = gen_expr ctx arm.ma_body in
-        let prefix =
           if bindings = "" then
             let guard = match arm.ma_guard with
               | Some g -> " && (" ^ gen_expr ctx g ^ ")" | None -> ""
@@ -1789,7 +1799,7 @@ and gen_match ctx scrutinee arms =
             ^ (match arm.ma_guard with Some g -> gen_expr ctx g | None -> "true")
             ^ ") { return " ^ body ^ "; } }"
         in
-        prefix ^ " " ^ gen_arms rest
+        arm_js ^ " " ^ gen_arms rest
   in
   if ctx.in_async then
     "(await (async (" ^ scrut_var ^ ") => { " ^ gen_arms arms ^ " })("
@@ -1952,21 +1962,27 @@ and gen_stmt_seq ctx blk =
 
 and gen_match_stmt ctx scrut arms =
   let sv = "__scrut" in
-  let rec arms_js = function
-    | [] -> "throw new Error(\"non-exhaustive match\");"
-    | arm :: rest ->
-        let cond = gen_pattern_test sv arm.ma_pat in
-        let binds = gen_pattern_bindings sv arm.ma_pat in
-        let arm_js =
-          with_locals ctx (pattern_binders arm.ma_pat) (fun () ->
-            let guard = match arm.ma_guard with
-              | Some g -> " && (" ^ gen_expr ctx g ^ ")" | None -> "" in
-            "if (" ^ cond ^ guard ^ ") { " ^ binds
-            ^ gen_branch ctx arm.ma_body ^ " } else ")
-        in
-        arm_js ^ arms_js rest
+  incr let_tmp_counter;
+  (* A labelled block, as in {!gen_tail_to}: an arm binds its pattern
+     variables before its guard reads them, and an arm whose guard fails
+     falls through to the next. A guard used to run in the pattern test,
+     before the bindings existed. `$` cannot occur in a source identifier. *)
+  let label = Printf.sprintf "$smatch_%d" !let_tmp_counter in
+  let arm_js arm =
+    let cond = gen_pattern_test sv arm.ma_pat in
+    let binds = gen_pattern_bindings sv arm.ma_pat in
+    with_locals ctx (pattern_binders arm.ma_pat) (fun () ->
+      let guard = Option.map (gen_expr ctx) arm.ma_guard in
+      let body = gen_branch ctx arm.ma_body ^ " break " ^ label ^ ";" in
+      let guarded = match guard with
+        | None -> body
+        | Some g -> "if (" ^ g ^ ") { " ^ body ^ " }"
+      in
+      "if (" ^ cond ^ ") { " ^ binds ^ guarded ^ " }")
   in
-  "{ const " ^ sv ^ " = " ^ gen_expr ctx scrut ^ "; " ^ arms_js arms ^ " }"
+  label ^ ": { const " ^ sv ^ " = " ^ gen_expr ctx scrut ^ "; "
+  ^ String.concat " " (List.map arm_js arms)
+  ^ " throw new Error(\"non-exhaustive match\"); }"
 
 (* Statements that evaluate [e] and hand its value to [sink], which turns a
    JS expression into a statement (`x = v;` or `return v;`).  A `return`
@@ -2205,7 +2221,12 @@ and gen_stmt ctx (stmt : stmt) : string =
         stmts_js ^ tail_js
       in
       restore ();
-      "for (const " ^ pat_str ^ " of " ^ iter_str ^ ") { " ^ body_js ^ " }"
+      (* In `for (const x of e)`, `e` runs with `x` already in its temporal
+         dead zone, so `for f in f()` threw. Evaluate `e` first. *)
+      incr let_tmp_counter;
+      let it = Printf.sprintf "$iter_%d" !let_tmp_counter in
+      "{ const " ^ it ^ " = " ^ iter_str ^ "; for (const " ^ pat_str ^ " of "
+      ^ it ^ ") { " ^ body_js ^ " } }"
 
 (* ============================================================================
    Top-level declarations + class emission

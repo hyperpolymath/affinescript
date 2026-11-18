@@ -212,7 +212,7 @@ fn escape_string(s: String) -> String {
 // ============================================================================
 // RSR rewire (v0.3) — hpm-json-rsr Zig FFI bindings
 //
-// The 13 `hpm_json_*` externs mirror the Zig exports at
+// Eleven of the 13 `hpm_json_*` externs mirror the Zig exports at
 // `hyperpolymath/hpm-json-rsr/ffi/zig/src/main.zig`. They lower on the
 // Deno-ESM backend (lib/codegen_deno.ml) to `JSON.parse` + JS-native
 // walks (a handle is just the underlying JS value); on native targets
@@ -281,7 +281,10 @@ pub fn to_json(val: HpmJsonValue) -> Option<Json> {
   } else if t == 2 {
     Some(JInt(hpm_json_int(val)))
   } else if t == 3 {
-    Some(JFloat(hpm_json_float(val)))
+    // JSON has no Infinity or NaN: a value that parsed to one (`1e400`)
+    // has no JSON form, so it does not convert.
+    let f = hpm_json_float(val);
+    if f - f == 0.0 { Some(JFloat(f)) } else { None }
   } else if t == 4 {
     Some(JString(hpm_json_string(val)))
   } else if t == 5 {

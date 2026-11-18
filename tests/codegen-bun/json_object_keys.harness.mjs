@@ -26,4 +26,12 @@ for (const v of ["q\"uote", "back\\slash", "nl\nx", "cr\rtab\t", "bs\bff\f", "c\
   try { back = JSON.parse(out); } catch (e) { throw new Error(`invalid JSON for ${JSON.stringify(v)}: ${out}`); }
   expect(`string escapes ${JSON.stringify(v)}`, back, JSON.parse(src));
 }
+// Inherited enumerable keys are not members.
+Object.prototype.inheritedProbe = 1;
+try { expect("inherited key excluded", subject.keys('{"a":1}'), ["a"]); }
+finally { delete Object.prototype.inheritedProbe; }
+// JSON has no Infinity: a number that parsed to one does not convert.
+expect("non-finite member", subject.roundtrip('{"n":1e400}'), "<none>");
+expect("non-finite element", subject.roundtrip("[1e400]"), "<none>");
+expect("finite exponent", subject.roundtrip("[1e3]"), "[1000]");
 console.log("json_object_keys: ok");

@@ -4,9 +4,17 @@
 use prelude::{ Option, Some, None };
 use Url::{ url_resolve, url_parse, UrlParts };
 
+// A variant named URL is emitted as a module-level `const URL`; the runtime
+// must still reach the host constructor.
+pub type Kind = URL | Path
+
+pub fn kind_of(s: String) -> Kind { match url_parse(s) { Some(_) => URL, None => Path } }
+
 pub fn resolve(h: String, b: String) -> String {
   match url_resolve(h, b) { Some(u) => u, None => "<none>" }
 }
+
+pub fn parts(s: String) -> Option<UrlParts> { url_parse(s) }
 
 pub fn path_of(s: String) -> String {
   match url_parse(s) { Some(p) => p.protocol ++ "|" ++ p.host ++ "|" ++ p.pathname ++ "|" ++ p.search ++ "|" ++ p.hash, None => "<none>" }
