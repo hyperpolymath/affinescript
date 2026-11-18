@@ -1,0 +1,9 @@
+// SPDX-License-Identifier: MPL-2.0
+// Regression: one declaration reaching a program by two paths is not a
+// collision, even when the copies differ. This module imports `grade`
+// without `is_big`, so its copy of `grade` calls an internalised name,
+// while the copy carried through diamond_j calls `is_big`. The flattener
+// must accept both as the same declaration (same source span).
+use diamond_p::{ grade };
+use diamond_j::{ twice };
+pub fn both(x: Int) -> Int { grade(x) * 10 + twice(x) }

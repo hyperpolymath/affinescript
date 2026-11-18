@@ -518,10 +518,28 @@ let rec flatten_imports_from
      imports `P` and `J`, and `J` imports `P`): flattening is recursive, so
      `P`'s helpers arrive both directly and inside `J`. That is one helper,
      not a collision. *)
-  let same_decl a b = match a, b with
+  (* Copies of one source declaration can differ: an importer that does not
+     bind a carried public helper under its own name internalises it (renames
+     it and rewrites the calls to it), so `strMember` arrives once calling
+     `isStr` and once calling `__priv_5jsonv__isStr`. Both are the same
+     declaration, and each copy's callees are carried with it. Renaming keeps
+     the name's span, so a shared real source span identifies the
+     declaration. *)
+  let decl_span = function
+    | `Fn fd -> Some fd.fd_name.span
+    | `Const (TopConst { tc_name; _ }) -> Some tc_name.span
+    | `Type (TopType td) -> Some td.td_name.span
+    | `Const _ | `Type _ -> None
+  in
+  let same_source a b =
+    match decl_span a, decl_span b with
+    | Some s, Some t -> s.Span.file <> Span.dummy.file && Span.equal s t
+    | _ -> false
+  in
+  let same_decl a b = (match a, b with
     | `Fn x, `Fn y -> x == y || x = y
     | `Const x, `Const y | `Type x, `Type y -> x == y || x = y
-    | _ -> false
+    | _ -> false) || same_source a b
   in
   let add_imported origin name decl_kind =
     if not (Hashtbl.mem local_names name) then begin
