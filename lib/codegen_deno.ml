@@ -95,6 +95,12 @@ type codegen_ctx = {
      integer operand, so divisions over them truncate (#478). Reset per
      function alongside {!int_vars}. *)
   int_array_vars : (string, unit) Hashtbl.t;
+  (* Value names bound locally at the current emission point: parameters,
+     `let`, `for`, lambda and match-arm binders. A local shadows a host
+     intrinsic of the same name, so `fn f(get: ...) { get(x) }` calls the
+     parameter instead of the ref-cell builtin `get`. Reset per function;
+     scoped constructs restore it on exit (see {!with_locals}). *)
+  locals : (string, unit) Hashtbl.t;
   (* True while emitting a synthesised `async` method body. The
      expression-position IIFE wrappers (block/try/match/let/return) must
      then be `async` and awaited, because they may contain an awaited
@@ -119,6 +125,7 @@ let create_ctx host symbols = {
   ctors = Hashtbl.create 32;
   int_vars = Hashtbl.create 16;
   int_array_vars = Hashtbl.create 16;
+  locals = Hashtbl.create 16;
   in_async = false;
 }
 
@@ -607,6 +614,32 @@ const __as_hpmJsonObjectGet = (v, k) => {
   if (v === null || typeof v !== "object" || Array.isArray(v)) return None;
   return Object.prototype.hasOwnProperty.call(v, String(k))
     ? Some(v[String(k)]) : None;
+};
+// ---- Url (stdlib/Url.affine): WHATWG URL via the host's URL constructor ----
+const __as_urlResolve = (href, base) => {
+  try {
+    return Some(new URL(String(href), base === "" ? undefined : String(base)).href);
+  } catch (_e) { return None; }
+};
+const __as_urlParse = (s) => {
+  let u;
+  try { u = new URL(String(s)); } catch (_e) { return None; }
+  return Some({ href: u.href, protocol: u.protocol, username: u.username,
+    password: u.password, host: u.host, hostname: u.hostname, port: u.port,
+    pathname: u.pathname, search: u.search, hash: u.hash });
+};
+// Object-key enumeration mirrors the planned hpm-json-rsr Zig exports
+// `hpm_json_object_len` / `hpm_json_object_key`: own enumerable string keys
+// in insertion order (std.json's ObjectMap is an ordered ArrayHashMap).
+// JavaScript lists integer-like keys first and the native backend will not,
+// so callers must not rely on the relative order of such keys.
+const __as_hpmJsonObjectKeys = (v) =>
+  (v === null || typeof v !== "object" || Array.isArray(v)) ? [] : Object.keys(v);
+const __as_hpmJsonObjectLen = (v) => __as_hpmJsonObjectKeys(v).length;
+const __as_hpmJsonObjectKey = (v, i) => {
+  const ks = __as_hpmJsonObjectKeys(v);
+  const idx = Number(i);
+  return (Number.isInteger(idx) && idx >= 0 && idx < ks.length) ? Some(ks[idx]) : None;
 };
 const __as_hpmJsonArrayLen = (v) => (Array.isArray(v) ? v.length : 0);
 const __as_hpmJsonArrayGet = (v, i) => {
@@ -1191,6 +1224,10 @@ let () =
   b "hpm_json_float"         (fun a -> Printf.sprintf "__as_hpmJsonFloat(%s)" (arg 0 a));
   b "hpm_json_string"        (fun a -> Printf.sprintf "__as_hpmJsonString(%s)" (arg 0 a));
   b "hpm_json_object_get"    (fun a -> Printf.sprintf "__as_hpmJsonObjectGet(%s, %s)" (arg 0 a) (arg 1 a));
+  b "url_resolve"            (fun a -> Printf.sprintf "__as_urlResolve(%s, %s)" (arg 0 a) (arg 1 a));
+  b "url_parse"              (fun a -> Printf.sprintf "__as_urlParse(%s)" (arg 0 a));
+  b "hpm_json_object_len"    (fun a -> Printf.sprintf "__as_hpmJsonObjectLen(%s)" (arg 0 a));
+  b "hpm_json_object_key"    (fun a -> Printf.sprintf "__as_hpmJsonObjectKey(%s, %s)" (arg 0 a) (arg 1 a));
   b "hpm_json_array_len"     (fun a -> Printf.sprintf "__as_hpmJsonArrayLen(%s)" (arg 0 a));
   b "hpm_json_array_get"     (fun a -> Printf.sprintf "__as_hpmJsonArrayGet(%s, %s)" (arg 0 a) (arg 1 a));
   b "hpm_json_escape_string" (fun a -> Printf.sprintf "__as_hpmJsonEscapeString(%s)" (arg 0 a));
@@ -1436,7 +1473,35 @@ let enter_fn_scope ctx (params : param list) : codegen_ctx =
       else if type_is_int_array p.p_ty then
         Hashtbl.replace arr_tbl p.p_name.name ())
     params;
-  { ctx with int_vars = tbl; int_array_vars = arr_tbl }
+  let locals = Hashtbl.create 16 in
+  List.iter (fun (p : param) -> Hashtbl.replace locals p.p_name.name ()) params;
+  { ctx with int_vars = tbl; int_array_vars = arr_tbl; locals }
+
+(* Run [f] with [names] bound as locals, then restore the previous bindings,
+   so a scoped binder (let body, lambda, match arm, loop) cannot shadow an
+   intrinsic outside its scope. *)
+let with_locals : 'a. codegen_ctx -> string list -> (unit -> 'a) -> 'a =
+  fun ctx names f ->
+  let had = List.map (fun n -> (n, Hashtbl.mem ctx.locals n)) names in
+  List.iter (fun n -> Hashtbl.replace ctx.locals n ()) names;
+  let restore () =
+    List.iter (fun (n, h) -> if not h then Hashtbl.remove ctx.locals n) had
+  in
+  match f () with
+  | v -> restore (); v
+  | exception e -> restore (); raise e
+
+(* Snapshot [ctx.locals] around [f]: statement `let`s inside a nested block
+   stay local to it. *)
+let with_locals_scope : 'a. codegen_ctx -> (unit -> 'a) -> 'a = fun ctx f ->
+  let saved = Hashtbl.copy ctx.locals in
+  let restore () =
+    Hashtbl.reset ctx.locals;
+    Hashtbl.iter (Hashtbl.replace ctx.locals) saved
+  in
+  match f () with
+  | v -> restore (); v
+  | exception e -> restore (); raise e
 
 (* ============================================================================
    Expression code generation
@@ -1484,7 +1549,8 @@ let rec gen_expr ctx (expr : expr) : string =
            "(await " ^ recv ^ "." ^ m ^ "(" ^ String.concat ", " rest ^ "))"
        | ExprVar id
          when Hashtbl.mem (builtins_for ctx) id.name
-              && not (Hashtbl.mem ctx.local_fns id.name) ->
+              && not (Hashtbl.mem ctx.local_fns id.name)
+              && not (Hashtbl.mem ctx.locals id.name) ->
            (* Honest host/runtime intrinsic (FS/JSON/Date/Wasm extern or
               a string/number primitive underpinning stdlib/string.affine).
               Applied to ANY matching call head, not only declared externs,
@@ -1492,7 +1558,9 @@ let rec gen_expr ctx (expr : expr) : string =
               same-named user definition shadows it (e.g. a user `len`). *)
            (Hashtbl.find (builtins_for ctx) id.name)
              (List.map (gen_expr ctx) args)
-       | ExprVar id when Hashtbl.mem ctx.externs id.name ->
+       | ExprVar id
+         when Hashtbl.mem ctx.externs id.name
+              && not (Hashtbl.mem ctx.locals id.name) ->
            if ctx.host = Bun && String.starts_with ~prefix:"bun_" id.name then
              failwith
                (Printf.sprintf
@@ -1564,7 +1632,9 @@ let rec gen_expr ctx (expr : expr) : string =
                     else Hashtbl.remove ctx.int_vars n
               | None -> fun () -> ()
             in
-            let b = gen_expr ctx body in
+            let b =
+              with_locals ctx (pattern_binders el_pat) (fun () -> gen_expr ctx body)
+            in
             restore ();
             kw ^ " " ^ pat_str ^ " = " ^ val_str ^ "; return " ^ b ^ ";"
         | None -> kw ^ " " ^ pat_str ^ " = " ^ val_str ^ "; return Unit;"
@@ -1609,14 +1679,17 @@ let rec gen_expr ctx (expr : expr) : string =
          `(x) => (await ...)` is a SyntaxError in browsers — Bun's parser
          happens to accept it, which hid the bug. *)
       let lctx = { ctx with in_async = false } in
-      if lowers_to_statements elam_body && expr_contains_return elam_body then
-        (* A `return` in the body returns from the lambda: emit a block
-           body so it is not swallowed by an IIFE (see {!gen_match}). *)
-        "((" ^ String.concat ", " ps ^ ") => { "
-        ^ gen_return_tail lctx elam_body ^ " })"
-      else
-        "((" ^ String.concat ", " ps ^ ") => "
-        ^ gen_expr lctx elam_body ^ ")"
+      let names = List.map (fun (p : param) -> p.p_name.name) elam_params in
+      with_locals lctx names (fun () ->
+        with_locals_scope lctx (fun () ->
+          if lowers_to_statements elam_body && expr_contains_return elam_body then
+            (* A `return` in the body returns from the lambda: emit a block
+               body so it is not swallowed by an IIFE (see {!gen_match}). *)
+            "((" ^ String.concat ", " ps ^ ") => { "
+            ^ gen_return_tail lctx elam_body ^ " })"
+          else
+            "((" ^ String.concat ", " ps ^ ") => "
+            ^ gen_expr lctx elam_body ^ ")"))
   | ExprTry { et_body; et_catch; et_finally } ->
       gen_try ctx et_body et_catch et_finally
   | ExprVariant (ty, ctor) ->
@@ -1701,6 +1774,7 @@ and gen_match ctx scrutinee arms =
     | arm :: rest ->
         let cond = gen_pattern_test scrut_var arm.ma_pat in
         let bindings = gen_pattern_bindings scrut_var arm.ma_pat in
+        with_locals ctx (pattern_binders arm.ma_pat) @@ fun () ->
         let body = gen_expr ctx arm.ma_body in
         let prefix =
           if bindings = "" then
@@ -1798,6 +1872,7 @@ and gen_pattern_bindings scrut pat =
   Buffer.contents buf
 
 and gen_block_expr ctx block =
+  with_locals_scope ctx @@ fun () ->
   let body = Buffer.create 64 in
   List.iter (fun s ->
     Buffer.add_string body (gen_stmt ctx s);
@@ -1817,7 +1892,9 @@ and gen_try ctx body catch finally =
           | PatVar id -> "const " ^ mangle id.name ^ " = __e; "
           | _ -> ""
         in
-        "catch (__e) { " ^ bind ^ "return " ^ gen_expr ctx arm.ma_body ^ "; }"
+        "catch (__e) { " ^ bind ^ "return "
+        ^ with_locals ctx (pattern_binders arm.ma_pat) (fun () -> gen_expr ctx arm.ma_body)
+        ^ "; }"
   in
   let finally_str = match finally with
     | None -> ""
@@ -1880,10 +1957,14 @@ and gen_match_stmt ctx scrut arms =
     | arm :: rest ->
         let cond = gen_pattern_test sv arm.ma_pat in
         let binds = gen_pattern_bindings sv arm.ma_pat in
-        let guard = match arm.ma_guard with
-          | Some g -> " && (" ^ gen_expr ctx g ^ ")" | None -> "" in
-        "if (" ^ cond ^ guard ^ ") { " ^ binds
-        ^ gen_branch ctx arm.ma_body ^ " } else " ^ arms_js rest
+        let arm_js =
+          with_locals ctx (pattern_binders arm.ma_pat) (fun () ->
+            let guard = match arm.ma_guard with
+              | Some g -> " && (" ^ gen_expr ctx g ^ ")" | None -> "" in
+            "if (" ^ cond ^ guard ^ ") { " ^ binds
+            ^ gen_branch ctx arm.ma_body ^ " } else ")
+        in
+        arm_js ^ arms_js rest
   in
   "{ const " ^ sv ^ " = " ^ gen_expr ctx scrut ^ "; " ^ arms_js arms ^ " }"
 
@@ -1938,6 +2019,7 @@ and gen_tail_to ctx (sink : string -> string) e =
       let arm_js arm =
         let cond = gen_pattern_test sv arm.ma_pat in
         let binds = gen_pattern_bindings sv arm.ma_pat in
+        with_locals ctx (pattern_binders arm.ma_pat) @@ fun () ->
         (* The guard is emitted before the body, against the integer
            tracking the guard actually runs under. *)
         let guard = Option.map (gen_expr ctx) arm.ma_guard in
@@ -1969,7 +2051,7 @@ and with_int_scope : 'a. codegen_ctx -> (unit -> 'a) -> 'a = fun ctx f ->
     Hashtbl.reset ctx.int_vars;
     Hashtbl.iter (Hashtbl.replace ctx.int_vars) saved
   in
-  match f () with
+  match with_locals_scope ctx f with
   | v -> restore (); v
   | exception e -> restore (); raise e
 
@@ -1998,7 +2080,9 @@ and gen_try_stmt ctx body catch finally =
         let bind = match arm.ma_pat with
           | PatVar id -> "const " ^ mangle id.name ^ " = __e; " | _ -> ""
         in
-        "catch (__e) { " ^ bind ^ gen_branch ctx arm.ma_body ^ " }"
+        "catch (__e) { " ^ bind
+        ^ with_locals ctx (pattern_binders arm.ma_pat) (fun () -> gen_branch ctx arm.ma_body)
+        ^ " }"
   in
   let f = match finally with
     | None -> "" | Some blk -> " finally { " ^ gen_stmt_seq ctx blk ^ " }"
@@ -2047,6 +2131,9 @@ and gen_stmt ctx (stmt : stmt) : string =
       (match pat_var_name sl_pat with
        | Some n -> track_int_binding ctx n sl_value
        | None -> ());
+      (* Bound after its initializer is emitted: `let len = len(s);` still
+         calls the intrinsic. Lasts to the end of the enclosing scope. *)
+      List.iter (fun n -> Hashtbl.replace ctx.locals n ()) (pattern_binders sl_pat);
       js
   | StmtExpr e -> gen_stmt_expr ctx e
   | StmtAssign (lhs, op, rhs) ->
@@ -2082,9 +2169,13 @@ and gen_stmt ctx (stmt : stmt) : string =
          before the `let`s they depend on, and `(lo + hi) / 2` lost its
          truncation. *)
       let cond_js = gen_expr ctx cond in
-      let stmts_js = String.concat " " (List.map (gen_stmt ctx) body.blk_stmts) in
-      let tail_js = match body.blk_expr with
-        | Some e -> " " ^ gen_stmt_expr ctx e | None -> "" in
+      let stmts_js, tail_js =
+        with_locals_scope ctx (fun () ->
+          let s = String.concat " " (List.map (gen_stmt ctx) body.blk_stmts) in
+          let t = match body.blk_expr with
+            | Some e -> " " ^ gen_stmt_expr ctx e | None -> "" in
+          (s, t))
+      in
       "while (" ^ cond_js ^ ") { " ^ stmts_js ^ tail_js ^ " }"
   | StmtFor (pat, iter, body) ->
       (* The iterable is evaluated in the outer scope, so emit it first. *)
@@ -2105,6 +2196,8 @@ and gen_stmt ctx (stmt : stmt) : string =
         | _ -> fun () -> ()
       in
       let body_js =
+        with_locals ctx (pattern_binders pat) @@ fun () ->
+        with_locals_scope ctx @@ fun () ->
         (* Source order (see StmtWhile): statements before the tail. *)
         let stmts_js = String.concat " " (List.map (gen_stmt ctx) body.blk_stmts) in
         let tail_js = match body.blk_expr with

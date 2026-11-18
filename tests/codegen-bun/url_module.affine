@@ -1,0 +1,13 @@
+// SPDX-License-Identifier: MPL-2.0
+// stdlib/Url.affine on the ESM backend: WHATWG resolution and parsing.
+
+use prelude::{ Option, Some, None };
+use Url::{ url_resolve, url_parse, UrlParts };
+
+pub fn resolve(h: String, b: String) -> String {
+  match url_resolve(h, b) { Some(u) => u, None => "<none>" }
+}
+
+pub fn path_of(s: String) -> String {
+  match url_parse(s) { Some(p) => p.protocol ++ "|" ++ p.host ++ "|" ++ p.pathname ++ "|" ++ p.search ++ "|" ++ p.hash, None => "<none>" }
+}

@@ -23,6 +23,12 @@ kept so existing scripts fail loudly (Refs #56)
 
 ==== Added
 
+* json: `hpm_json_object_len` / `hpm_json_object_key` enumerate object
+members, so `to_json` materialises objects instead of returning `None`.
+Lowered on Bun-ESM; the matching hpm-json-rsr Zig exports are not merged
+yet, so native targets cannot link them until they are.
+* Url: new `stdlib/Url.affine` with `url_resolve` and `url_parse`, WHATWG
+semantics via the host `URL` constructor. Bun-ESM only; no native lowering.
 * PixiUI: rename extern type `List` → `UiList` so `use PixiUI` typechecks
 against prelude `List<T>` (kind mismatch). Harness actually imports
 `smokeIdaptikReach` / Assets mock. Smokes compile + run (Refs #760)
@@ -109,6 +115,13 @@ pure-extern semantics (Closes #332) (#338)
 
 ==== Fixed
 
+* json: `stringify` emitted invalid JSON for strings containing `"`, `\`
+or a control character: `escape_char` returned the bare character instead
+of its two-character escape. Now round-trips (`tests/codegen-bun/json_object_keys`).
+* Bun-ESM: a local binding named like a host intrinsic (`get`, `len`,
+`trim`, `show`, ...) now shadows it. A parameter `get` compiled to the
+ref-cell builtin and crashed at run time. Parameters, `let`, `for`, lambda,
+match-arm and `catch` binders are scoped (`tests/codegen-bun/local_shadows_builtin`).
 * fix(vscode-smoke): SKIP cleanly when @hyperpolymath/affine-vscode is
 unpublished (#381)
 * fix(governance): rename CLAUDE.md TypeScript exemptions heading to
