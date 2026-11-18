@@ -14,5 +14,5 @@ for (const v of ["q\"uote", "back\\slash", "nl\nx", "cr\rtab\t", "bs\bff\f", "c\
 }
 expect("non-finite element", subject.roundtrip("[1e400]"), "<none>");
 expect("finite exponent", subject.roundtrip("[1e3]"), "[1000]");
-expect("objects need key enumeration, not on this branch", subject.roundtrip('{"a":1}'), "<none>");
+expect("objects convert", subject.roundtrip('{"a":1}'), '{"a":1}');
 console.log("json_escapes: ok");
