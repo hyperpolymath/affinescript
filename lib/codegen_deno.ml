@@ -630,26 +630,6 @@ const __as_urlParse = (s) => {
     password: u.password, host: u.host, hostname: u.hostname, port: u.port,
     pathname: u.pathname, search: u.search, hash: u.hash });
 };
-// Object-key enumeration mirrors the planned hpm-json-rsr Zig exports
-// `hpm_json_object_len` / `hpm_json_object_key`: own enumerable string keys
-// in insertion order (std.json's ObjectMap is an ordered ArrayHashMap).
-// JavaScript lists integer-like keys first and the native backend will not,
-// so callers must not rely on the relative order of such keys.
-const __as_hpmJsonObjectKeys = (v) =>
-  (v === null || typeof v !== "object" || Array.isArray(v)) ? [] : Object.keys(v);
-const __as_hpmJsonObjectLen = (v) => __as_hpmJsonObjectKeys(v).length;
-// A walk asks for keys by index, so index 0 takes a snapshot of the object's
-// keys and later indices read it: one Object.keys per walk, not per key.
-// Each walk starts at 0, so a snapshot never outlives the walk that made it.
-const __as_hpmJsonKeySnapshots = new WeakMap();
-const __as_hpmJsonObjectKey = (v, i) => {
-  if (v === null || typeof v !== "object" || Array.isArray(v)) return None;
-  const idx = Number(i);
-  if (!Number.isInteger(idx) || idx < 0) return None;
-  let ks = idx === 0 ? undefined : __as_hpmJsonKeySnapshots.get(v);
-  if (ks === undefined) { ks = Object.keys(v); __as_hpmJsonKeySnapshots.set(v, ks); }
-  return idx < ks.length ? Some(ks[idx]) : None;
-};
 const __as_hpmJsonArrayLen = (v) => (Array.isArray(v) ? v.length : 0);
 const __as_hpmJsonArrayGet = (v, i) => {
   if (!Array.isArray(v)) return None;
@@ -1235,8 +1215,6 @@ let () =
   b "hpm_json_object_get"    (fun a -> Printf.sprintf "__as_hpmJsonObjectGet(%s, %s)" (arg 0 a) (arg 1 a));
   b "url_resolve"            (fun a -> Printf.sprintf "__as_urlResolve(%s, %s)" (arg 0 a) (arg 1 a));
   b "url_parse"              (fun a -> Printf.sprintf "__as_urlParse(%s)" (arg 0 a));
-  b "hpm_json_object_len"    (fun a -> Printf.sprintf "__as_hpmJsonObjectLen(%s)" (arg 0 a));
-  b "hpm_json_object_key"    (fun a -> Printf.sprintf "__as_hpmJsonObjectKey(%s, %s)" (arg 0 a) (arg 1 a));
   b "hpm_json_array_len"     (fun a -> Printf.sprintf "__as_hpmJsonArrayLen(%s)" (arg 0 a));
   b "hpm_json_array_get"     (fun a -> Printf.sprintf "__as_hpmJsonArrayGet(%s, %s)" (arg 0 a) (arg 1 a));
   b "hpm_json_escape_string" (fun a -> Printf.sprintf "__as_hpmJsonEscapeString(%s)" (arg 0 a));
