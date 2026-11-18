@@ -2423,6 +2423,112 @@ let gen_type_decl ctx (td : type_decl) : unit =
     If a top-level function is named [main], the module awaits its invocation.
     Emission exceptions, including [Failure] from [gen_expr], propagate;
     [codegen_bun] and [codegen_deno] convert them to [Error] results. *)
+(* ---- Runtime pruning ----------------------------------------------------
+
+   The runtime preludes hold every host helper any program might need (DOM,
+   Pixi, Sqlite, ...). Emitting all of them made every module carry ~300
+   helpers it never calls, among them a `document.body.innerHTML` setter that
+   add-on linters rightly flag. [prune_runtime] keeps a helper only if the
+   module's own code, or a kept helper, names it.
+
+   The runtime is a sequence of top-level `const` declarations (checked by
+   [test/test_runtime_prune.ml]); continuation lines are indented or close a
+   bracket, and comment lines attach to the declaration that follows them.
+   A helper is reachable when its name occurs as an identifier anywhere in
+   the reaching text, comments and strings included, so pruning can only err
+   towards keeping. No runtime helper is reached by a computed name. Kept
+   helpers stay in their original order, so evaluation order is unchanged. *)
+
+let is_ident_start c =
+  (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c = '_' || c = '$'
+
+let is_ident_char c = is_ident_start c || (c >= '0' && c <= '9')
+
+(** Every identifier-shaped word in [s]. *)
+let identifiers (s : string) : string list =
+  let n = String.length s in
+  let rec go i acc =
+    if i >= n then acc
+    else if is_ident_start s.[i] && (i = 0 || not (is_ident_char s.[i - 1])) then begin
+      let j = ref i in
+      while !j < n && is_ident_char s.[!j] do incr j done;
+      go !j (String.sub s i (!j - i) :: acc)
+    end else go (i + 1) acc
+  in
+  go 0 []
+
+(** The name a runtime line declares, if it starts a top-level `const`. *)
+let declared_name (line : string) : string option =
+  let p = "const " in
+  let lp = String.length p in
+  if String.length line > lp && String.sub line 0 lp = p
+     && is_ident_start line.[lp] then begin
+    let j = ref lp in
+    while !j < String.length line && is_ident_char line.[!j] do incr j done;
+    Some (String.sub line lp (!j - lp))
+  end else None
+
+let is_comment_or_blank (line : string) : bool =
+  let t = String.trim line in
+  t = "" || (String.length t >= 2 && String.sub t 0 2 = "//")
+
+(** Split [runtime] into chunks: [(Some name, text)] per declaration (with
+    the comment lines before it), and [(None, text)] for lines that belong
+    to no declaration, which are always kept. *)
+let runtime_chunks (runtime : string) : (string option * string) list =
+  let lines = String.split_on_char '\n' runtime in
+  let chunks = ref [] in
+  let current = ref None in        (* (name, lines rev) of the open declaration *)
+  let pending = ref [] in          (* comment lines awaiting a declaration *)
+  let close () =
+    (match !current with
+     | Some (name, ls) -> chunks := (Some name, String.concat "\n" (List.rev ls)) :: !chunks
+     | None -> ());
+    current := None
+  in
+  List.iter (fun line ->
+    match declared_name line with
+    | Some name ->
+        close ();
+        current := Some (name, line :: !pending);
+        pending := []
+    | None ->
+        if is_comment_or_blank line then pending := line :: !pending
+        else begin
+          (* A continuation line: comments seen since belong to it too. *)
+          match !current with
+          | Some (name, ls) -> current := Some (name, line :: (!pending @ ls)); pending := []
+          | None -> chunks := (None, String.concat "\n" (List.rev (line :: !pending))) :: !chunks;
+                    pending := []
+        end) lines;
+  close ();
+  if !pending <> [] then
+    chunks := (None, String.concat "\n" (List.rev !pending)) :: !chunks;
+  List.rev !chunks
+
+(** [runtime] without the declarations [body] cannot reach. *)
+let prune_runtime (runtime : string) ~(body : string) : string =
+  let chunks = runtime_chunks runtime in
+  let by_name = Hashtbl.create 512 in
+  List.iter (fun (n, text) ->
+    match n with Some name -> Hashtbl.replace by_name name text | None -> ()) chunks;
+  let kept = Hashtbl.create 512 in
+  let rec visit = function
+    | [] -> ()
+    | id :: rest ->
+        if Hashtbl.mem by_name id && not (Hashtbl.mem kept id) then begin
+          Hashtbl.replace kept id ();
+          visit (identifiers (Hashtbl.find by_name id) @ rest)
+        end else visit rest
+  in
+  visit (identifiers body);
+  List.iter (fun (n, text) -> if n = None then visit (identifiers text)) chunks;
+  let out = List.filter_map (fun (n, text) ->
+      match n with
+      | None -> Some text
+      | Some name -> if Hashtbl.mem kept name then Some text else None) chunks in
+  String.concat "\n" out ^ "\n"
+
 let generate (host : host_profile) (program : program) (symbols : Symbol.t) : string =
   let ctx = create_ctx host symbols in
   (* Register extern names so calls lower via the builtin table, and
@@ -2463,8 +2569,12 @@ let generate (host : host_profile) (program : program) (symbols : Symbol.t) : st
      | Deno -> "// Generated by AffineScript compiler (Deno-ESM target, issue #122)"
      | Bun -> "// Generated by AffineScript compiler (Bun-ESM target, issue #734)");
   emit_line ctx "// SPDX-License-Identifier: MPL-2.0";
-  emit ctx (match host with Deno -> deno_host_prelude | Bun -> bun_host_prelude);
-  emit ctx common_prelude;
+  (* The runtime is spliced in after the body is generated, pruned to what
+     the body reaches (see [prune_runtime]). *)
+  let runtime_at = Buffer.length ctx.output in
+  let runtime =
+    (match host with Deno -> deno_host_prelude | Bun -> bun_host_prelude)
+    ^ common_prelude in
 
   (* Collect structs. AffineScript's grammar accepts neither inherent
      [impl Type {}] nor a [self] expression (SELF_KW has no expression
@@ -2572,7 +2682,10 @@ let generate (host : host_profile) (program : program) (symbols : Symbol.t) : st
     | TopFn fd -> fd.fd_name.name = "main" | _ -> false)
     program.prog_decls in
   if has_main then emit_line ctx "await main();";
-  Buffer.contents ctx.output
+  let all = Buffer.contents ctx.output in
+  let header = String.sub all 0 runtime_at in
+  let body = String.sub all runtime_at (String.length all - runtime_at) in
+  header ^ prune_runtime runtime ~body ^ body
 
 (* Deno-ESM host profile is retired; the ESM emitter is Bun-only. The
    name is kept so existing library callers compile. *)

@@ -115,6 +115,10 @@ pure-extern semantics (Closes #332) (#338)
 
 ==== Fixed
 
+* Bun-ESM: every module carried the whole runtime (~300 host helpers),
+including a `document.body.innerHTML` setter that add-on linters flag. Only
+the helpers a module reaches are emitted now, in their original order
+(`test/test_runtime_prune.ml`).
 * Module flattening: when two modules' different public declarations of one name
 reached a program transitively (`M` imports `U` and `V`, which import `A::f`
 and `B::f`), last-wins kept one and silently rebound the other module's calls
