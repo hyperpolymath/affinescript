@@ -126,7 +126,9 @@ of its two-character escape. Now round-trips (`tests/codegen-bun/json_escapes`).
 * Bun-ESM: a local binding named like a host intrinsic (`get`, `len`,
 `trim`, `show`, ...) now shadows it. A parameter `get` compiled to the
 ref-cell builtin and crashed at run time. Parameters, `let`, `for`, lambda,
-match-arm and `catch` binders are scoped (`tests/codegen-bun/local_shadows_builtin`).
+match-arm and `catch` binders are scoped, a block's `let`s end with the block,
+a source block keeps its braces, and a call to a local is never classed as an
+`Int` division operand (`tests/codegen-bun/local_shadows_builtin`).
 * fix(vscode-smoke): SKIP cleanly when @hyperpolymath/affine-vscode is
 unpublished (#381)
 * fix(governance): rename CLAUDE.md TypeScript exemptions heading to
