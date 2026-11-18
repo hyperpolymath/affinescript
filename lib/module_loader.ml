@@ -514,12 +514,6 @@ let rec flatten_imports_from
   let imported_by_name = Hashtbl.create 32 in
   let imported_origin = Hashtbl.create 32 in
   let imported_order = ref [] in
-  let is_private = function
-    | `Fn fd -> fd.fd_vis = Private
-    | `Const (TopConst { tc_vis; _ }) -> tc_vis = Private
-    | `Type (TopType td) -> td.td_vis = Private
-    | `Const _ | `Type _ -> false
-  in
   (* The same declaration reaches here more than once in a diamond (`D`
      imports `P` and `J`, and `J` imports `P`): flattening is recursive, so
      `P`'s helpers arrive both directly and inside `J`. That is one helper,
@@ -535,13 +529,15 @@ let rec flatten_imports_from
              Hashtbl.find_opt imported_by_name name with
        | Some other, Some prev
          when other <> origin
-              && (is_private prev || is_private decl_kind)
               && not (same_decl prev decl_kind) ->
-         (* Two modules each carry a private helper of this name: one
+         (* Two modules each carry a different declaration of this name: one
             flattened program can hold only one, and keeping the later would
-            make the other module call the wrong function.  (Public
-            collisions are rejected by the resolver; #743's last-wins rule
-            still applies to them.) *)
+            make the other module call the wrong function.  This holds for
+            public declarations too.  The resolver rejects a collision only
+            within one module's imports; one that arrives transitively (`M`
+            imports `U` and `V`, which import `A::f` and `B::f`) reaches
+            here, and the old last-wins rule silently rebound `U`'s calls
+            to `B::f`.  Fail loudly instead; the fix is to rename one. *)
          raise (Flatten_error (ImportCollision (name, other, origin)))
        | _ -> ());
       if not (Hashtbl.mem imported_by_name name) then

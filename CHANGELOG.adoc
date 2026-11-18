@@ -115,6 +115,11 @@ pure-extern semantics (Closes #332) (#338)
 
 ==== Fixed
 
+* Module flattening: when two modules' different public declarations of one name
+reached a program transitively (`M` imports `U` and `V`, which import `A::f`
+and `B::f`), last-wins kept one and silently rebound the other module's calls
+to it. Now an `ImportCollision` error, as private collisions already were
+(`tests/codegen-bun/collision`).
 * json: `stringify` emitted invalid JSON for strings containing `"`, `\`
 or a control character: `escape_char` returned the bare character instead
 of its two-character escape. Now round-trips (`tests/codegen-bun/json_object_keys`).

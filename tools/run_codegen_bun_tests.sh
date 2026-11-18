@@ -105,6 +105,16 @@ if "${COMPILE_CMD[@]}" "$TEST_DIR/unsupported_host.affine" \
   fail "unsupported Bun host operation compiled successfully"
 fi
 
+# 8. A transitive collision between two modules' different public
+# declarations must be rejected, not resolved by last-wins.
+collision_log="$TEST_DIR/collision/collision.log"
+if "${COMPILE_CMD[@]}" "$TEST_DIR/collision/main.affine" \
+    -o "$TEST_DIR/collision/main.bun.js" --bun-esm >"$collision_log" 2>&1; then
+  fail "transitive public name collision compiled successfully"
+elif ! grep -q 'cannot flatten imports: `pick` is defined in both' "$collision_log"; then
+  fail "transitive collision rejection lacks the ImportCollision diagnostic"
+fi
+
 if [ "${#failures[@]}" -gt 0 ]; then
   echo ""
   echo "✗ ${#failures[@]} native Bun-ESM check(s) failed:"
