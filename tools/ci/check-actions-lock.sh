@@ -41,7 +41,9 @@ tag() {
   sed -E 's/[[:space:]]+#.*$//' "$file" | awk '
     { match($0, /^ */); ind = RLENGTH }
     /^[[:space:]]*$/ { next }
-    in_steps && ind <= sind { in_steps = 0 }
+    # An indentless sequence (`steps:` then `- uses: …` at the same indent) is
+    # still step context: only a non-`-` line at or above the key ends it.
+    in_steps && (ind < sind || (ind == sind && $0 !~ /^ *-/)) { in_steps = 0 }
     /^[[:space:]]*["'\'']?steps["'\'']?[[:space:]]*:/ {
       # `steps: [{uses: …}]` (flow sequence on the key line) is step context too.
       print (match($0, /:[[:space:]]*[^[:space:]]/) ? "S" : "J") "\t" $0

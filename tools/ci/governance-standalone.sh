@@ -71,6 +71,10 @@ if ! lock_out=$(./tools/ci/check-actions-lock.sh 2>&1); then
   printf '%s\n' "$lock_out" | grep '::error::' | sed 's/^::error:: *//' | while IFS= read -r l; do err "$l"; done
   err "actions.lock is out of step with the workflows (run gh actions-lock)"
 else note "$lock_out"; fi
+if ! test_out=$(./tools/ci/test-check-actions-lock.sh 2>&1); then
+  printf '%s\n' "$test_out" | grep '^FAIL' | while IFS= read -r l; do err "check-actions-lock self-test: $l"; done
+  err "the actions.lock guard failed its own regression tests (tools/ci/test-check-actions-lock.sh)"
+else note "$(printf '%s\n' "$test_out" | tail -1)"; fi
 
 echo
 if [ "$fail" -ne 0 ]; then echo "Governance gate: FAIL"; exit 1; fi
