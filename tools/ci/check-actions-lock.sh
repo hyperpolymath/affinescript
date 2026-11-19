@@ -40,9 +40,30 @@ used() {
     | sed -E 's/^.*uses["'\'']?[[:space:]]*:[[:space:]]*//; s/^["'\'']//; s/["'\'']$//' \
     | grep -vE '^(\./|docker://)' \
     | grep -E '^[A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+@[A-Za-z0-9_./-]+$' \
-    | grep -v '/\.github/workflows/' \
+    | grep -vE '/\.github/workflows/[^/@]+\.ya?ml@' \
     | sed -E 's#^([^/@]+/[^/@]+)/[^@]*@#\1@#' \
     | sort -u
+}
+
+# Fail closed: a `uses:` key at the start of a line (block `uses:` / `- uses:`,
+# or a flow mapping opened on the line, `- {uses: …}`) whose value the matcher
+# above cannot read is an error, not a silent skip. That covers folded or
+# literal scalars (`uses: >-` with the ref on the next line), an empty value,
+# and anything else that is not a local action (`./…`), a Docker image
+# (`docker://…`), a reusable workflow (`owner/repo/.github/workflows/x.yml@ref`)
+# or an action (`owner/repo[/path]@ref`). Write such a step as a plain scalar.
+unreadable() {
+  local file="$1"
+  sed -E 's/[[:space:]]+#.*$//' "$file" \
+    | grep -nE '^[[:space:]]*(-[[:space:]]+)?\{?[[:space:]]*["'\'']?uses["'\'']?[[:space:]]*:' \
+    | while IFS= read -r line; do
+        local n="${line%%:*}" v
+        v=$(printf '%s\n' "${line#*:}" \
+          | sed -E 's/^[[:space:]]*(-[[:space:]]+)?\{?[[:space:]]*["'\'']?uses["'\'']?[[:space:]]*:[[:space:]]*//; s/[[:space:]]*[,}].*$//; s/^["'\'']//; s/["'\'']$//')
+        if ! printf '%s\n' "$v" | grep -qE '^(\./|docker://|[A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+@[A-Za-z0-9_./-]+$)'; then
+          printf '%s: %s\n' "$n" "${v:-<empty>}"
+        fi
+      done
 }
 
 # The actions the lock lists for workflow path $1, sorted.
@@ -65,6 +86,8 @@ for wf in "$dir"/*.yml "$dir"/*.yaml; do
   [[ -f "$wf" ]] || continue
   rel=".github/workflows/$(basename "$wf")"
   checked=$((checked + 1))
+  bad=$(unreadable "$wf")
+  [[ -z "$bad" ]] || err "$rel has uses: values this guard cannot read (write them as plain scalars): ${bad//$'\n'/; }"
   u=$(used "$wf")
   l=$(locked "$rel")
   if ! grep -qF "'$rel':" "$lock"; then
