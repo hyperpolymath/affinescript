@@ -68,13 +68,13 @@ for wf in "$dir"/*.yml "$dir"/*.yaml; do
   u=$(used "$wf")
   l=$(locked "$rel")
   if ! grep -qF "'$rel':" "$lock"; then
-    [[ -z "$u" ]] || err "$rel uses actions but has no actions.lock entry: $(echo $u)"
+    [[ -z "$u" ]] || err "$rel uses actions but has no actions.lock entry: ${u//$'\n'/ }"
     continue
   fi
   missing=$(comm -23 <(printf '%s\n' "$u" | sed '/^$/d') <(printf '%s\n' "$l" | sed '/^$/d'))
   stale=$(comm -13 <(printf '%s\n' "$u" | sed '/^$/d') <(printf '%s\n' "$l" | sed '/^$/d'))
-  [[ -z "$missing" ]] || err "$rel uses actions the lock does not list (regenerate actions.lock): $(echo $missing)"
-  [[ -z "$stale" ]] || err "$rel: actions.lock lists actions the workflow no longer uses: $(echo $stale)"
+  [[ -z "$missing" ]] || err "$rel uses actions the lock does not list (regenerate actions.lock): ${missing//$'\n'/ }"
+  [[ -z "$stale" ]] || err "$rel: actions.lock lists actions the workflow no longer uses: ${stale//$'\n'/ }"
   for a in $l; do
     printf '%s\n' "$deps" | grep -qxF "$a" || err "actions.lock has no dependencies entry for $a ($rel)"
   done
