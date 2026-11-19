@@ -12,9 +12,7 @@
             :owner "hyperpolymath"
             :prefixed-name "gv-affinescript"
             :thesis "AffineScript is JavaScript-ergonomic correctness: the developer experience of the -script family raised to a higher correctness floor through affine types, compiling to Typed WASM.")
-  (clade :primary nl
-         :primary-name "Nextgen Languages"
-         :secondary ())
+  (clade (placement :scheme clade-12 :category nl :primary #t))
   (forges :github "hyperpolymath/affinescript")
   (lineage :type satellite
            :parent "nextgen-languages"
