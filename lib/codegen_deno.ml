@@ -1450,9 +1450,9 @@ let rec expr_is_int ctx (e : expr) : bool =
          function of the same name (see the intrinsic dispatch in
          {!gen_expr}), so its result is not provably an [Int]. *)
       not (Hashtbl.mem ctx.locals id.name)
-      && not (Hashtbl.mem ctx.local_fns id.name)
       && (Hashtbl.mem ctx.int_fns id.name
-          || List.mem id.name int_returning_builtins)
+          || (not (Hashtbl.mem ctx.local_fns id.name)
+              && List.mem id.name int_returning_builtins))
   (* An element read from a provably-[Array<Int>] value is an [Int]
      (covers `xs[i] / 2` where xs: [Int]) — issue #478 finding 2. *)
   | ExprIndex (arr, _) -> expr_is_int_array ctx arr
@@ -1505,13 +1505,16 @@ let with_locals : 'a. codegen_ctx -> string list -> (unit -> 'a) -> 'a =
   | v -> restore (); v
   | exception e -> restore (); raise e
 
-(* Snapshot [ctx.locals] around [f]: statement `let`s inside a nested block
-   stay local to it. *)
+(* Snapshot locals and integer metadata around [f]: statement `let`s
+   inside a nested block must not change the enclosing bindings. *)
 let with_locals_scope : 'a. codegen_ctx -> (unit -> 'a) -> 'a = fun ctx f ->
   let saved = Hashtbl.copy ctx.locals in
+  let saved_ints = Hashtbl.copy ctx.int_vars in
   let restore () =
     Hashtbl.reset ctx.locals;
-    Hashtbl.iter (Hashtbl.replace ctx.locals) saved
+    Hashtbl.iter (Hashtbl.replace ctx.locals) saved;
+    Hashtbl.reset ctx.int_vars;
+    Hashtbl.iter (Hashtbl.replace ctx.int_vars) saved_ints
   in
   match f () with
   | v -> restore (); v
@@ -2153,9 +2156,8 @@ and gen_stmt ctx (stmt : stmt) : string =
           kw ^ " " ^ gen_pattern ctx sl_pat ^ " = "
           ^ gen_expr ctx sl_value ^ ";"
       in
-      (* Track an [Int]-bound name for the rest of this body (#478). A
-         block statement's scope is the enclosing function, which
-         {!enter_fn_scope} already bounds, so no restore is needed here. *)
+      (* Track an [Int]-bound name for the rest of this block (#478).
+         {!with_locals_scope} restores the enclosing binding on exit. *)
       (match pat_var_name sl_pat with
        | Some n -> track_int_binding ctx n sl_value
        | None -> ());
