@@ -15,7 +15,8 @@
 # For each workflow, this check compares the set of external actions its
 # `uses:` lines reference (sub-path actions such as
 # `github/codeql-action/init@v4` count as `github/codeql-action@v4`; local
-# `./` actions, `docker://` images and reusable workflows are not locked)
+# `./` actions, `docker://` images and reusable workflows (a job-level
+# `uses:` naming a `.github/workflows/*.yml` file) are not locked)
 # with the set the lock lists for it, and fails on any difference, either
 # way round. It also fails if a locked action has no `dependencies:` entry.
 #
@@ -29,18 +30,42 @@ err() { printf '::error::%s\n' "$*"; fail=1; }
 
 [[ -f "$lock" ]] || { err "actions lockfile missing: $lock"; exit 1; }
 
-# The actions a workflow file uses, normalised and sorted.
-used() {
-  local file="$1"
-  # Block style (`- uses: x`), flow style (`- {uses: x, with: …}`) and quoted keys (`"uses": x`).
-  # Only action-shaped values count (`owner/repo[/path]@ref`, a ref may hold `/`), so `uses:` text in
-  # a `run:` script (a grep pattern, say) is not mistaken for a step.
-  sed -E 's/[[:space:]]+#.*$//' "$file" \
+# Split a workflow (comments stripped) by context: lines inside a `steps:`
+# block (more indented than its `steps:` key) are tagged S, all others J.
+# A reusable workflow is called by a job (`jobs.<id>.uses`), never by a step,
+# so the reusable-workflow exclusion below applies to J lines only: a step
+# action whose directory happens to be named `.github/workflows/x.yml` is
+# still checked.
+tag() {
+  sed -E 's/[[:space:]]+#.*$//' "$1" | awk '
+    { match($0, /^ */); ind = RLENGTH }
+    /^[[:space:]]*$/ { next }
+    in_steps && ind <= sind { in_steps = 0 }
+    /^[[:space:]]*["'\'']?steps["'\'']?[[:space:]]*:/ {
+      # `steps: [{uses: …}]` (flow sequence on the key line) is step context too.
+      print (match($0, /:[[:space:]]*[^[:space:]]/) ? "S" : "J") "\t" $0
+      in_steps = 1; sind = ind; next
+    }
+    { print (in_steps ? "S" : "J") "\t" $0 }
+  '
+}
+
+# The `uses:` values on lines tagged $2 (S or J), action-shaped only.
+# Block style (`- uses: x`), flow style (`- {uses: x, with: …}`) and quoted keys (`"uses": x`).
+# Only action-shaped values count (`owner/repo[/path]@ref`, a ref may hold `/`), so `uses:` text in
+# a `run:` script (a grep pattern, say) is not mistaken for a step.
+refs() {
+  tag "$1" | grep -E "^$2"$'\t' | cut -f2- \
     | grep -oE '(^|[{,[:space:]-])["'\'']?uses["'\'']?[[:space:]]*:[[:space:]]*[^[:space:],}]+' \
     | sed -E 's/^.*uses["'\'']?[[:space:]]*:[[:space:]]*//; s/^["'\'']//; s/["'\'']$//' \
     | grep -vE '^(\./|docker://)' \
-    | grep -E '^[A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+@[A-Za-z0-9_./-]+$' \
-    | grep -vE '/\.github/workflows/[^/@]+\.ya?ml@' \
+    | grep -E '^[A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+@[A-Za-z0-9_./-]+$'
+}
+
+# The actions a workflow file uses, normalised and sorted.
+used() {
+  local file="$1"
+  { refs "$file" S; refs "$file" J | grep -vE '/\.github/workflows/[^/@]+\.ya?ml@'; } \
     | sed -E 's#^([^/@]+/[^/@]+)/[^@]*@#\1@#' \
     | sort -u
 }
