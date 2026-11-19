@@ -27,11 +27,12 @@ lock="$dir/actions.lock"
 fail=0
 err() { printf '::error::%s\n' "$*"; fail=1; }
 
-[ -f "$lock" ] || { err "actions lockfile missing: $lock"; exit 1; }
+[[ -f "$lock" ]] || { err "actions lockfile missing: $lock"; exit 1; }
 
 # The actions a workflow file uses, normalised and sorted.
 used() {
-  grep -E '^[[:space:]]*(-[[:space:]]*)?uses:' "$1" \
+  local file="$1"
+  grep -E '^[[:space:]]*(-[[:space:]]*)?uses:' "$file" \
     | sed -E 's/^[[:space:]]*(-[[:space:]]*)?uses:[[:space:]]*//; s/[[:space:]]+#.*$//; s/^["'\'']//; s/["'\'']$//; s/[[:space:]]+$//' \
     | grep -vE '^(\./|docker://)' \
     | grep -v '/\.github/workflows/' \
@@ -41,7 +42,8 @@ used() {
 
 # The actions the lock lists for workflow path $1, sorted.
 locked() {
-  awk -v wf="'$1':" '
+  local path="$1"
+  awk -v wf="'$path':" '
     /^workflows:/ { inwf = 1; next }
     /^dependencies:/ { inwf = 0 }
     inwf && $1 == wf { on = 1; next }
@@ -55,25 +57,25 @@ deps=$(awk '/^dependencies:/ { d = 1; next } d && /^    '\''/ { k = $1; gsub(/['
 
 checked=0
 for wf in "$dir"/*.yml "$dir"/*.yaml; do
-  [ -f "$wf" ] || continue
+  [[ -f "$wf" ]] || continue
   rel=".github/workflows/$(basename "$wf")"
   checked=$((checked + 1))
   u=$(used "$wf")
   l=$(locked "$rel")
   if ! grep -qF "'$rel':" "$lock"; then
-    [ -z "$u" ] || err "$rel uses actions but has no actions.lock entry: $(echo $u)"
+    [[ -z "$u" ]] || err "$rel uses actions but has no actions.lock entry: $(echo $u)"
     continue
   fi
   missing=$(comm -23 <(printf '%s\n' "$u" | sed '/^$/d') <(printf '%s\n' "$l" | sed '/^$/d'))
   stale=$(comm -13 <(printf '%s\n' "$u" | sed '/^$/d') <(printf '%s\n' "$l" | sed '/^$/d'))
-  [ -z "$missing" ] || err "$rel uses actions the lock does not list (regenerate actions.lock): $(echo $missing)"
-  [ -z "$stale" ] || err "$rel: actions.lock lists actions the workflow no longer uses: $(echo $stale)"
+  [[ -z "$missing" ]] || err "$rel uses actions the lock does not list (regenerate actions.lock): $(echo $missing)"
+  [[ -z "$stale" ]] || err "$rel: actions.lock lists actions the workflow no longer uses: $(echo $stale)"
   for a in $l; do
     printf '%s\n' "$deps" | grep -qxF "$a" || err "actions.lock has no dependencies entry for $a ($rel)"
   done
 done
 
-if [ "$fail" -ne 0 ]; then
+if [[ "$fail" -ne 0 ]]; then
   echo "actions.lock check FAILED: a mismatched workflow does not start (startup_failure, zero jobs)."
   exit 1
 fi
