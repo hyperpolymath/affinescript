@@ -75,6 +75,15 @@ expect pass "reusable call after an indentless steps block" '  a:
     timeout-minutes: 5
   b:
     uses: acme/repo/.github/workflows/x.yaml@v1'
+expect pass "locked action with trailing spaces (plain and quoted)" '  t:
+    runs-on: x
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: "actions/checkout@v7.0.1"  '
+expect fail "empty uses: value still fails closed" '  t:
+    runs-on: x
+    steps:
+      - uses:   '
 expect pass "local action and docker image" '  t:
     runs-on: x
     steps:

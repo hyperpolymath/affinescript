@@ -38,7 +38,7 @@ err() { printf '::error::%s\n' "$*"; fail=1; }
 # still checked.
 tag() {
   local file="$1"
-  sed -E 's/[[:space:]]+#.*$//' "$file" | awk '
+  sed -E 's/[[:space:]]+#.*$//; s/[[:space:]]+$//' "$file" | awk '
     { match($0, /^ */); ind = RLENGTH }
     /^[[:space:]]*$/ { next }
     # An indentless sequence (`steps:` then `- uses: …` at the same indent) is
@@ -83,7 +83,7 @@ used() {
 # or an action (`owner/repo[/path]@ref`). Write such a step as a plain scalar.
 unreadable() {
   local file="$1"
-  sed -E 's/[[:space:]]+#.*$//' "$file" \
+  sed -E 's/[[:space:]]+#.*$//; s/[[:space:]]+$//' "$file" \
     | grep -nE '^[[:space:]]*(-[[:space:]]+)?\{?[[:space:]]*["'\'']?uses["'\'']?[[:space:]]*:' \
     | while IFS= read -r line; do
         local n="${line%%:*}" v
