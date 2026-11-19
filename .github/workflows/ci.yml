@@ -417,11 +417,13 @@ jobs:
           echo "smoke-parsed: ${fixtures[0]}"
 
   # Single required check. The `Branch-Floor` ruleset on main requires the
-  # status `CI/gate`; it passes only when every job above succeeded (a skipped
-  # job counts as passing, a failed or cancelled one does not). Add any new CI
-  # job to `needs:` here, or the ruleset will not wait for it.
+  # status `CI/gate` by check-run name, which is this job's `name:` (not the
+  # job id), so the name must stay exactly `CI/gate`. It passes only when every
+  # job above succeeded (a skipped job counts as passing, a failed or cancelled
+  # one does not). Add any new CI job to `needs:` here, or the ruleset will not
+  # wait for it.
   gate:
-    name: gate
+    name: CI/gate
     if: always()
     needs: [build, lint, bench-visibility, coverage-visibility, vscode-smoke, migration-assistant]
     runs-on: ubuntu-latest
