@@ -10,7 +10,7 @@
 module Todo;
 
 use prelude::*;
-use Tea::{Html, Attr, Cmd, Sub, Event, run, text, div, span, button, input, ul, li, h1, p,
+use Tea::{Html, Attr, Cmd, Sub, Event, run, text, node, create, div, span, button, input, ul, li, h1, p,
           class, id, value, key, attr, lazy, on_click, on_input, on_enter, on_check, none, send,
           every, no_sub, tea_map, tea_filter, run_cmd, tea_defer};
 
