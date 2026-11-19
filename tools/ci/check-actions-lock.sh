@@ -36,8 +36,8 @@ used() {
   # Only action-shaped values count (`owner/repo[/path]@ref`), so `uses:` text in
   # a `run:` script (a grep pattern, say) is not mistaken for a step.
   sed -E 's/[[:space:]]+#.*$//' "$file" \
-    | grep -oE '(^|[{,[:space:]-])["'\'']?uses["'\'']?:[[:space:]]*[^[:space:],}]+' \
-    | sed -E 's/^.*uses["'\'']?:[[:space:]]*//; s/^["'\'']//; s/["'\'']$//' \
+    | grep -oE '(^|[{,[:space:]-])["'\'']?uses["'\'']?[[:space:]]*:[[:space:]]*[^[:space:],}]+' \
+    | sed -E 's/^.*uses["'\'']?[[:space:]]*:[[:space:]]*//; s/^["'\'']//; s/["'\'']$//' \
     | grep -vE '^(\./|docker://)' \
     | grep -E '^[A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+@[A-Za-z0-9_.-]+$' \
     | grep -v '/\.github/workflows/' \
