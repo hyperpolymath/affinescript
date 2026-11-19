@@ -32,8 +32,10 @@ err() { printf '::error::%s\n' "$*"; fail=1; }
 # The actions a workflow file uses, normalised and sorted.
 used() {
   local file="$1"
-  grep -E '^[[:space:]]*(-[[:space:]]*)?uses:' "$file" \
-    | sed -E 's/^[[:space:]]*(-[[:space:]]*)?uses:[[:space:]]*//; s/[[:space:]]+#.*$//; s/^["'\'']//; s/["'\'']$//; s/[[:space:]]+$//' \
+  # Block style (`- uses: x`, `uses: x`) and flow style (`- {uses: x, with: …}`).
+  sed -E 's/[[:space:]]+#.*$//' "$file" \
+    | grep -oE '(^|[{,[:space:]-])uses:[[:space:]]*[^[:space:],}]+' \
+    | sed -E 's/^.*uses:[[:space:]]*//; s/^["'\'']//; s/["'\'']$//' \
     | grep -vE '^(\./|docker://)' \
     | grep -v '/\.github/workflows/' \
     | sed -E 's#^([^/@]+/[^/@]+)/[^@]*@#\1@#' \
@@ -74,6 +76,14 @@ for wf in "$dir"/*.yml "$dir"/*.yaml; do
     printf '%s\n' "$deps" | grep -qxF "$a" || err "actions.lock has no dependencies entry for $a ($rel)"
   done
 done
+
+# Transitive references: an action the lock records may itself use other
+# actions (`uses:` under its dependency record, e.g. upload-pages-artifact ->
+# upload-artifact@<sha>). Each of those must have its own record too.
+while IFS= read -r t; do
+  [[ -n "$t" ]] || continue
+  printf '%s\n' "$deps" | grep -qxF "$t" || err "actions.lock: a dependency uses $t, which has no dependencies entry"
+done < <(awk '/^dependencies:/ { d = 1; next } d && /^        uses:/ { u = 1; next } d && u && /^            - / { v = $2; gsub(/'\''/, "", v); print v; next } { u = 0 }' "$lock" | sort -u)
 
 if [[ "$fail" -ne 0 ]]; then
   echo "actions.lock check FAILED: a mismatched workflow does not start (startup_failure, zero jobs)."
