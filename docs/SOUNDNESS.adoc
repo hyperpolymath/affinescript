@@ -4,8 +4,8 @@
 // Freshness stamp — a real main-ancestor commit (survives squash-merge); advance
 // it (and --reseal) in any change that touches a soundness path. See "Keeping
 // this honest" and tools/check-soundness-ledger.sh (property 4).
-:ground-truth-sha: 65c2ae3
-:ground-truth-date: 2026-06-21
+:ground-truth-sha: 70379fe
+:ground-truth-date: 2026-11-19
 :stamp-verified-by: tools/check-soundness-ledger.sh
 :toc: macro
 :toclevels: 2
@@ -211,6 +211,33 @@ pinned residual).)
 `test_stub_backend_return_fenced` (positive check: asserts
 `Lean_codegen.codegen_lean` returns `Error` on the early-`return` program — it was
 `Ok`; the check would fail if the silent drop regressed).
+
+| #801
+| Two modules' top-level functions or constants of one name stay distinct in
+the flattened program every non-Wasm backend compiles: each imported
+module's declarations, public and private, carry a module-qualified name, so
+`Lib.A`'s code calls `Lib.A.label` (it called `Lib.B.label`, silently, also
+when the two arrived through other modules' imports). The flattener refuses
+two different bindings of one name (E0206), and the Bun-ESM and JS emitters
+refuse a second top-level binding of a JS name: Bun keeps the last of two
+same-named `function`s without complaint, so this is the loud backstop. The
+Wasm backend links imports by module and name and was not affected.
+| `fixed`
+| `test_801_same_name_in_two_modules` + `test_801_transitive_public_and_const`
+(interpreter and Bun-ESM, run) + `test_801_planted_collision_refused` (the
+backstop refuses a planted collision in the flattener and in both JS
+emitters); `tests/codegen-bun/same_name_modules` runs #801's reproduction
+under Bun.
+
+| #801 (impl methods)
+| Trait impl methods are emitted as free functions under their own names on
+Bun-ESM (trait dispatch is not lowered there), so `impl Eq for Int` and
+`impl Eq for Bool` gave two `function eq`s and Bun silently kept `Bool`'s.
+The emitter now refuses the program. `stdlib/traits.affine` is refused for
+this reason until impl methods get distinct names.
+| `loud-fail`
+| `test_801_impl_methods_refused` (the AOT smoke pins `traits.affine`'s refusal
+in `expected_refusals`).
 |===
 
 == Still open — read before claiming "sound"

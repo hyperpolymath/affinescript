@@ -1,0 +1,5 @@
+// SPDX-License-Identifier: MPL-2.0
+// #801 negative fixture: see Lib801c/A.affine.
+module Lib801c.B;
+pub enum Paint { Blue(Int), Red }
+pub fn b_tag() -> Int { match Blue(3) { Red => 1, Blue(n) => n } }
