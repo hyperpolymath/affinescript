@@ -13,6 +13,9 @@ extern fn mkdirRecursive(path: String) -> Int;
 extern fn statSize(path: String) -> Int;
 extern fn statIsFile(path: String) -> Bool;
 extern fn statIsDirectory(path: String) -> Bool;
+extern fn pathExists(path: String) -> Bool;
+extern fn tryWriteTextFile(path: String, content: String) -> Bool;
+extern fn tryRenamePath(from: String, to: String) -> Bool;
 extern fn bytesLength(value: Bytes) -> Int;
 extern fn bytesByteAt(value: Bytes, offset: Int) -> Int;
 extern fn args() -> [String];
@@ -27,6 +30,9 @@ pub fn make_directory(path: String) -> Int { mkdirRecursive(path) }
 pub fn file_size(path: String) -> Int { statSize(path) }
 pub fn is_file(path: String) -> Bool { statIsFile(path) }
 pub fn is_directory(path: String) -> Bool { statIsDirectory(path) }
+pub fn exists(path: String) -> Bool { pathExists(path) }
+pub fn try_write(path: String, content: String) -> Bool { tryWriteTextFile(path, content) }
+pub fn try_rename(from: String, to: String) -> Bool { tryRenamePath(from, to) }
 pub fn argument_count() -> Int { len(args()) }
 
 pub fn environment_value(name: String) -> String {
