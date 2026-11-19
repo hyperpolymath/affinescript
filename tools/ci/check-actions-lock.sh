@@ -37,7 +37,8 @@ err() { printf '::error::%s\n' "$*"; fail=1; }
 # action whose directory happens to be named `.github/workflows/x.yml` is
 # still checked.
 tag() {
-  sed -E 's/[[:space:]]+#.*$//' "$1" | awk '
+  local file="$1"
+  sed -E 's/[[:space:]]+#.*$//' "$file" | awk '
     { match($0, /^ */); ind = RLENGTH }
     /^[[:space:]]*$/ { next }
     in_steps && ind <= sind { in_steps = 0 }
@@ -55,7 +56,8 @@ tag() {
 # Only action-shaped values count (`owner/repo[/path]@ref`, a ref may hold `/`), so `uses:` text in
 # a `run:` script (a grep pattern, say) is not mistaken for a step.
 refs() {
-  tag "$1" | grep -E "^$2"$'\t' | cut -f2- \
+  local file="$1" ctx="$2"
+  tag "$file" | grep -E "^$ctx"$'\t' | cut -f2- \
     | grep -oE '(^|[{,[:space:]-])["'\'']?uses["'\'']?[[:space:]]*:[[:space:]]*[^[:space:],}]+' \
     | sed -E 's/^.*uses["'\'']?[[:space:]]*:[[:space:]]*//; s/^["'\'']//; s/["'\'']$//' \
     | grep -vE '^(\./|docker://)' \
