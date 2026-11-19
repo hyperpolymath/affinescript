@@ -26,7 +26,7 @@ err()  { printf '::error::%s\n' "$*"; fail=1; }
 echo "== Governance gate (standalone) =="
 
 # --- [1] Jekyll artifacts are banned (estate SSG is hyperpolymath/casket-ssg)
-echo "[1/3] Jekyll artifacts"
+echo "[1/4] Jekyll artifacts"
 jekyll=$(find . \( -path ./.git -o -path ./_build -o -path ./node_modules \) -prune -o \
   \( -name '_config.yml' -o -name 'Gemfile' -o -iname 'jekyll*.yml' \
      -o -iname 'jekyll-gh-pages*.yml' \) -print 2>/dev/null || true)
@@ -38,7 +38,7 @@ else note "none"; fi
 # --- [2] MPL-1.0 license headers are banned (must be MPL-2.0) ---------------
 # Match the actual SPDX identifier, not mere prose mentions of the ban (the
 # policy docs legitimately discuss MPL-1.0).
-echo "[2/3] MPL-1.0 SPDX headers"
+echo "[2/4] MPL-1.0 SPDX headers"
 mpl1=$(grep -rIl --exclude-dir=.git --exclude-dir=_build --exclude-dir=node_modules \
   -E 'SPDX-License-Identifier:[[:space:]]*MPL-1\.0' . 2>/dev/null || true)
 if [ -n "$mpl1" ]; then
@@ -48,7 +48,7 @@ else note "none"; fi
 
 # --- [3] DOC-FORMAT (delta): newly-added docs/ files must be .adoc ----------
 # Community-health files keep their canonical .md names.
-echo "[3/3] DOC-FORMAT (newly-added docs/ files must be .adoc)"
+echo "[3/4] DOC-FORMAT (newly-added docs/ files must be .adoc)"
 base="${1:-${GOVERNANCE_BASE_REF:-${GITHUB_BASE_REF:-}}}"
 if [ -n "$base" ] && git rev-parse --verify --quiet "origin/$base" >/dev/null 2>&1; then
   added=$(git diff --name-only --diff-filter=A "origin/$base...HEAD" -- 'docs/' 2>/dev/null \
@@ -61,6 +61,16 @@ if [ -n "$base" ] && git rev-parse --verify --quiet "origin/$base" >/dev/null 2>
 else
   note "no base ref available — delta check skipped"
 fi
+
+# --- [4] actions.lock matches every workflow's `uses:` ---------------------
+# A workflow whose actions drift from the lockfile never starts (GitHub reports
+# a startup_failure with zero jobs). Dependabot bumps do exactly that unless the
+# lock is regenerated: CI was silently not running from 2026-10-11 (#782).
+echo "[4/4] actions.lock consistency"
+if ! lock_out=$(./tools/ci/check-actions-lock.sh 2>&1); then
+  printf '%s\n' "$lock_out" | grep '::error::' | sed 's/^::error:: *//' | while IFS= read -r l; do err "$l"; done
+  err "actions.lock is out of step with the workflows (run gh actions-lock)"
+else note "$lock_out"; fi
 
 echo
 if [ "$fail" -ne 0 ]; then echo "Governance gate: FAIL"; exit 1; fi

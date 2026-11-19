@@ -272,13 +272,20 @@ resolved; kept here with current status so agents don't re-investigate:
   root files. A real new finding shows as a *delta in your changed files*;
   otherwise ignore. (The Hypatia *check run* gates separately and is green.)
 
-**CI is now standalone and green on `main` (since #604 / `c7922cf`).** Two
-`startup_failure` classes bit `ci` / `governance` / `secret-scanner` for days
-(and `main` itself) — worth knowing so they aren't reintroduced:
+**CI is standalone (since #604 / `c7922cf`).** Two `startup_failure` classes
+(a run that never starts, with zero jobs) have bitten `ci` / `governance` /
+`secret-scanner` and `main` itself. `ci` did not run at all from
+2026-10-11 until the actions.lock fix. Know them so they aren't reintroduced:
 
-1. The repo's Actions "allowed actions" policy **rejects tag-pinned action
-   refs at run-creation** (a `startup_failure` with zero jobs). **Pin every
-   `uses:` to a full commit SHA** — `actions/foo@v4` will fail to start.
+1. **`.github/workflows/actions.lock` is the pin authority** (GitHub's actions
+   lockfile, `gh actions-lock`). Workflows reference actions by tag
+   (`actions/checkout@v7.0.1`) and the lock maps each to a commit SHA. A
+   workflow whose `uses:` refs do not match the lock does not start. A
+   Dependabot bump that does not regenerate the lock causes exactly this
+   (#782 stopped `ci`). **After any change to a `uses:` ref, regenerate
+   `actions.lock`.** `tools/ci/check-actions-lock.sh` (governance check 4)
+   fails on a mismatch. (An older note here said tag pins themselves were
+   rejected; the run history shows tag pins that match the lock start fine.)
 2. A reusable-workflow *caller* that declares `concurrency:` on the same key
    the reusable also declares is rejected at run-creation (BP008 — see
    `.github/workflows/spark-theatre-gate.yml`).

@@ -158,6 +158,11 @@ JSR publish (#303)
 
 ==== CI
 
+* fix(ci): `CI` never started from 2026-10-11 (startup_failure, zero jobs)
+because Dependabot #782 bumped actions in ci.yml without regenerating
+`.github/workflows/actions.lock`. The lock now matches every workflow
+(ci.yml, panic-attack.yml, casket-pages.yml, publish-jsr.yml), and
+governance check 4 (`tools/ci/check-actions-lock.sh`) fails on any drift
 * ci(migration-assistant): fix smoke-parse for tree-sitter-cli 0.25
 (#342)
 * ci: bump github/codeql-action from 4.32.6 to 4.36.0 (#323)
