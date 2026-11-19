@@ -32,11 +32,14 @@ err() { printf '::error::%s\n' "$*"; fail=1; }
 # The actions a workflow file uses, normalised and sorted.
 used() {
   local file="$1"
-  # Block style (`- uses: x`, `uses: x`) and flow style (`- {uses: x, with: …}`).
+  # Block style (`- uses: x`), flow style (`- {uses: x, with: …}`) and quoted keys (`"uses": x`).
+  # Only action-shaped values count (`owner/repo[/path]@ref`), so `uses:` text in
+  # a `run:` script (a grep pattern, say) is not mistaken for a step.
   sed -E 's/[[:space:]]+#.*$//' "$file" \
-    | grep -oE '(^|[{,[:space:]-])uses:[[:space:]]*[^[:space:],}]+' \
-    | sed -E 's/^.*uses:[[:space:]]*//; s/^["'\'']//; s/["'\'']$//' \
+    | grep -oE '(^|[{,[:space:]-])["'\'']?uses["'\'']?:[[:space:]]*[^[:space:],}]+' \
+    | sed -E 's/^.*uses["'\'']?:[[:space:]]*//; s/^["'\'']//; s/["'\'']$//' \
     | grep -vE '^(\./|docker://)' \
+    | grep -E '^[A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+@[A-Za-z0-9_.-]+$' \
     | grep -v '/\.github/workflows/' \
     | sed -E 's#^([^/@]+/[^/@]+)/[^@]*@#\1@#' \
     | sort -u
