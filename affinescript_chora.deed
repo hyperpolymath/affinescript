@@ -1,13 +1,27 @@
 ;; SPDX-License-Identifier: MPL-2.0
-;;
-;; Repo deed for affinescript. DEED (s-expression, application/vnd.deed)
-;; owns the manifest grammar; A2ML is retired (standards #837 / #64).
-;; CI gates on this file and on *.deed — leftover *.a2ml is a hard fail.
+; Translated by kyX from hyperpolymath/affinescript/.machine_readable/CLADE.deed under standards
+; 1-formats/deed/mappings/clade-to-repo-deed.adoc, with :repo-uuid, :beholding-chora,
+; the clade placement, the forge path and the lineage from the chora-registry
+; seed hyperpolymath/gv-clade-index/verisim/seed/chora-registry_praxis.deed.
 (repo-deed
   :schema-version "1.0.0"
   :canonical-name "affinescript"
-  :beholding-chora #u5"estate/chora"
-  :repo-uuid #u5"github.com/hyperpolymath/affinescript"
+  :repo-uuid #uuid"0858724e-265e-81d0-909b-05cf7e1b4b2d"
+  :beholding-chora #uuid"0889b37b-defb-831f-973c-e119500db00e"
+  (identity :primary-forge github
+            :owner "hyperpolymath"
+            :prefixed-name "gv-affinescript"
+            :thesis "AffineScript is JavaScript-ergonomic correctness: the developer experience of the -script family raised to a higher correctness floor through affine types, compiling to Typed WASM.")
+  (clade :primary nl
+         :primary-name "Nextgen Languages"
+         :secondary ())
+  (forges :github "hyperpolymath/affinescript")
+  (lineage :type satellite
+           :parent "nextgen-languages"
+           :born "2025-09-12")
+  (language :paradigm (functional affine typed)
+            :compile-targets (typed-wasm julia wasm-gc)
+            :headline-feature affine-types-with-javascript-ergonomics)
   (manifest
     :version "0.1.1"
     :project "affinescript"
