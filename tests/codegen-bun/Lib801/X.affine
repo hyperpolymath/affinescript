@@ -1,0 +1,5 @@
+// SPDX-License-Identifier: MPL-2.0
+// #801 regression fixture: reaches Lib801.A's `label` through an import.
+module Lib801.X;
+use Lib801.A::{ label };
+pub fn via_a() -> String { label() }

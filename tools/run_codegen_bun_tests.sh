@@ -105,6 +105,18 @@ if "${COMPILE_CMD[@]}" "$TEST_DIR/unsupported_host.affine" \
   fail "unsupported Bun host operation compiled successfully"
 fi
 
+# 8. Two different top-level bindings of one name must not compile (#801):
+#    Bun keeps the last of two same-named declarations without complaint, so
+#    an emitted collision is a silent wrong call, not a load error.
+collision_log="$TEST_DIR/binding_collision.log"
+if "${COMPILE_CMD[@]}" "$TEST_DIR/binding_collision.affine" \
+    -o "$TEST_DIR/binding_collision.bun.js" --bun-esm >"$collision_log" 2>&1; then
+  fail "colliding top-level bindings compiled successfully (#801)"
+elif ! grep -q '#801' "$collision_log"; then
+  fail "binding_collision refusal lacks its #801 diagnostic"
+  sed 's/^/    /' "$collision_log" >&2
+fi
+
 if [ "${#failures[@]}" -gt 0 ]; then
   echo ""
   echo "✗ ${#failures[@]} native Bun-ESM check(s) failed:"
