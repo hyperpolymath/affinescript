@@ -158,6 +158,20 @@ JSR publish (#303)
 
 ==== CI
 
+* fix(ci): `CI` never started from 2026-10-11 (startup_failure, zero jobs)
+because Dependabot #782 bumped actions in ci.yml without regenerating
+`.github/workflows/actions.lock`. The lock now matches every workflow
+(ci.yml, panic-attack.yml, casket-pages.yml, publish-jsr.yml), and
+governance check 4 (`tools/ci/check-actions-lock.sh`) fails on any drift
+* fix(ci): the OCaml jobs (build, lint, bench, coverage) failed on Ubuntu
+26.04 runners, which ship OCaml 5.4, because the with-test dependency
+`bisect_ppx` needs OCaml < 5.0. `tools/ci/setup-ocaml.sh` uses the runner
+OCaml only when it is 4.14.x and otherwise builds a pinned
+`ocaml-base-compiler.4.14.2`
+* fix(ci): no PR could merge into main after the `Branch-Floor` ruleset
+started requiring the status `CI/gate` (16 Nov), because no CI job was
+named `gate`. A `gate` job now needs every CI job and passes only when
+all of them succeed
 * ci(migration-assistant): fix smoke-parse for tree-sitter-cli 0.25
 (#342)
 * ci: bump github/codeql-action from 4.32.6 to 4.36.0 (#323)
