@@ -1,0 +1,5 @@
+// SPDX-License-Identifier: MPL-2.0
+// Helper module for diamond_internalised.affine.
+module diamond_p;
+pub fn is_big(x: Int) -> Bool { x > 10 }
+pub fn grade(x: Int) -> Int { if is_big(x) { 2 } else { 1 } }

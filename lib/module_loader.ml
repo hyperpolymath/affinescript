@@ -514,20 +514,32 @@ let rec flatten_imports_from
   let imported_by_name = Hashtbl.create 32 in
   let imported_origin = Hashtbl.create 32 in
   let imported_order = ref [] in
-  let is_private = function
-    | `Fn fd -> fd.fd_vis = Private
-    | `Const (TopConst { tc_vis; _ }) -> tc_vis = Private
-    | `Type (TopType td) -> td.td_vis = Private
-    | `Const _ | `Type _ -> false
-  in
   (* The same declaration reaches here more than once in a diamond (`D`
      imports `P` and `J`, and `J` imports `P`): flattening is recursive, so
      `P`'s helpers arrive both directly and inside `J`. That is one helper,
      not a collision. *)
-  let same_decl a b = match a, b with
+  (* Copies of one source declaration can differ: an importer that does not
+     bind a carried public helper under its own name internalises it (renames
+     it and rewrites the calls to it), so `strMember` arrives once calling
+     `isStr` and once calling `__priv_5jsonv__isStr`. Both are the same
+     declaration, and each copy's callees are carried with it. Renaming keeps
+     the name's span, so a shared real source span identifies the
+     declaration. *)
+  let decl_span = function
+    | `Fn fd -> Some fd.fd_name.span
+    | `Const (TopConst { tc_name; _ }) -> Some tc_name.span
+    | `Type (TopType td) -> Some td.td_name.span
+    | `Const _ | `Type _ -> None
+  in
+  let same_source a b =
+    match decl_span a, decl_span b with
+    | Some s, Some t -> s.Span.file <> Span.dummy.file && Span.equal s t
+    | _ -> false
+  in
+  let same_decl a b = (match a, b with
     | `Fn x, `Fn y -> x == y || x = y
     | `Const x, `Const y | `Type x, `Type y -> x == y || x = y
-    | _ -> false
+    | _ -> false) || same_source a b
   in
   let add_imported origin name decl_kind =
     if not (Hashtbl.mem local_names name) then begin
@@ -535,13 +547,15 @@ let rec flatten_imports_from
              Hashtbl.find_opt imported_by_name name with
        | Some other, Some prev
          when other <> origin
-              && (is_private prev || is_private decl_kind)
               && not (same_decl prev decl_kind) ->
-         (* Two modules each carry a private helper of this name: one
+         (* Two modules each carry a different declaration of this name: one
             flattened program can hold only one, and keeping the later would
-            make the other module call the wrong function.  (Public
-            collisions are rejected by the resolver; #743's last-wins rule
-            still applies to them.) *)
+            make the other module call the wrong function.  This holds for
+            public declarations too.  The resolver rejects a collision only
+            within one module's imports; one that arrives transitively (`M`
+            imports `U` and `V`, which import `A::f` and `B::f`) reaches
+            here, and the old last-wins rule silently rebound `U`'s calls
+            to `B::f`.  Fail loudly instead; the fix is to rename one. *)
          raise (Flatten_error (ImportCollision (name, other, origin)))
        | _ -> ());
       if not (Hashtbl.mem imported_by_name name) then
