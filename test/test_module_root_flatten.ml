@@ -838,6 +838,34 @@ let test_801_escaped_extern_clash () =
   | Error m ->
     Alcotest.(check bool) m true (Str.string_match (Str.regexp ".*`class_`.*#801") m 0)
 
+let test_801_js_prelude_names_complete () =
+  (* Every lower-case name the JS prelude declares at top level, including
+     the later declarators of a `let a = …, b = …;` line, is reserved. *)
+  let first = Str.regexp "^\\(const\\|let\\|var\\|function\\) +\\([a-z_][A-Za-z0-9_]*\\)" in
+  let later = Str.regexp ", *\\([a-z_][A-Za-z0-9_]*\\) *=" in
+  let names =
+    String.split_on_char '\n' Js_codegen.prelude
+    |> List.concat_map (fun l ->
+        if not (Str.string_match first l 0) then []
+        else
+          let rec more pos acc =
+            match Str.search_forward later l pos with
+            | p -> more (p + 1) (Str.matched_group 1 l :: acc)
+            | exception Not_found -> List.rev acc
+          in
+          let n0 = Str.matched_group 2 l in
+          n0 :: (if String.starts_with ~prefix:"function" l then [] else more 0 []))
+  in
+  Alcotest.(check bool) "prelude declares __as_stdin_off" true
+    (List.mem "__as_stdin_off" names);
+  List.iter (fun n ->
+      let prog = Parse_driver.parse_string ~file:"<j>"
+          (Printf.sprintf "fn %s() -> Int { 1 }\n" n) in
+      match Js_codegen.codegen_js prog (Symbol.create ()) with
+      | Ok _ -> Alcotest.failf "a root `%s` must be refused beside the prelude's" n
+      | Error _ -> ())
+    names
+
 (* Bun-ESM: a constructor a private and a public enum share is exported,
    whichever enum comes first. *)
 let test_801_shared_constructor_exported () =
@@ -860,6 +888,8 @@ let tests =
       test_801_reserved_prefix;
     Alcotest.test_case "#801: JS refuses prelude names" `Quick
       test_801_js_prelude_names;
+    Alcotest.test_case "#801: JS reserves every prelude name" `Quick
+      test_801_js_prelude_names_complete;
     Alcotest.test_case "#801: JS refuses a mangled constructor clash" `Quick
       test_801_js_mangled_ctor_clash;
     Alcotest.test_case "#801: runtime constructor names keep their arity" `Quick

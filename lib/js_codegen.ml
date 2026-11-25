@@ -649,7 +649,7 @@ let generate (program : program) (symbols : Symbol.t) : string =
      constructors named Some/None/Ok/Err are filtered before [claim]. *)
   List.iter (fun n -> Hashtbl.replace top_names n "")
     [ "Some"; "None"; "Ok"; "Err"; "Unit"; "print"; "println";
-      "__as_stdin_buf"; "read_line" ];
+      "__as_stdin_buf"; "__as_stdin_off"; "read_line" ];
   let claim name signature =
     match Hashtbl.find_opt top_names name with
     | None -> Hashtbl.replace top_names name signature; true
