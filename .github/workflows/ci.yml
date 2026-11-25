@@ -84,6 +84,13 @@ jobs:
         run: |
           set -o pipefail
           opam exec -- dune runtest 2>&1 | tee runtest.log
+      - name: Proven-Tests run report, lexer suite (advisory)
+        # hyperpolymath/proven-tests-and-benches contract: an OCaml emitter
+        # (test/proven_report.ml) validated by the framework's pinned Rust
+        # checker. Advisory while adoption is a first slice: it never fails
+        # the job. See tools/ci/proven/VENDOR.adoc#proven-tests.
+        continue-on-error: true
+        run: opam exec -- ./tools/ci/proven/proven-report.sh
       - name: Consumer on-ramp example (issue #771)
         # The consumer-facing contract this project owes its downstream
         # readers: a host surface declared with `extern fn`, compiled to
