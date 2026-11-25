@@ -109,6 +109,29 @@ pure-extern semantics (Closes #332) (#338)
 
 ==== Fixed
 
+* fix(modules,codegen): same-named functions in two modules no longer
+collapse to one in a flattened program (Bun-ESM, JS and the other
+non-Wasm backends). Every function and constant of an imported module is
+carried under a module-qualified name (`__mod_<len-prefixed path>__<name>`,
+replacing `__priv_…`), so `Lib.A.label` and `Lib.B.label` stay distinct,
+public or private, also when they arrive transitively. The root module's
+own names and extern (host) names are unchanged. An imported function or
+immutable constant is also bound under the name the root imports it by;
+an imported mutable constant is not (the root refers to its qualified
+storage), and an aliased extern is called by its host name. The prefix
+`__mod_` is reserved: source identifiers that start with it are a lexer
+error.
+Defence in depth: the flattener refuses two different top-level bindings of
+one name (E0206), and the Bun-ESM and JS emitters refuse a second top-level
+binding of a JS name (Bun keeps the last of two same-named `function`s
+silently). Two enums' identical constructors are emitted once; differing
+ones are refused. A variant named `Some`, `None`, `Ok` or `Err` must have
+the runtime constructor's arity (one field, or none for `None`) and is
+otherwise refused, and on Bun-ESM a program binding that would take an
+escaped extern's emitted name (an extern `class` is called as `class_`) is
+refused. Trait impl methods sharing a name are now refused on
+Bun-ESM instead of silently replacing one another (`stdlib/traits.affine`).
+Rebuild compiled output (Closes #801)
 * fix(vscode-smoke): SKIP cleanly when @hyperpolymath/affine-vscode is
 unpublished (#381)
 * fix(governance): rename CLAUDE.md TypeScript exemptions heading to

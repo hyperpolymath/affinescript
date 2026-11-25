@@ -230,6 +230,15 @@ let rec token state buf =
   (* Identifiers *)
   | lower_ident ->
     let s = Sedlexing.Utf8.lexeme buf in
+    (* `__mod_` is reserved for the names Module_loader gives imported
+       functions and constants when it flattens a program (#801).  A source
+       binder spelt that way could capture a rewritten reference. *)
+    if String.length s >= 6 && String.sub s 0 6 = "__mod_" then
+      raise (Lexer_error
+               (Printf.sprintf
+                  "identifier '%s': the prefix `__mod_` is reserved for \
+                   compiler-generated names" s,
+                current_pos state buf));
     (try Hashtbl.find keywords s with Not_found -> LOWER_IDENT s)
   | upper_ident ->
     let s = Sedlexing.Utf8.lexeme buf in
