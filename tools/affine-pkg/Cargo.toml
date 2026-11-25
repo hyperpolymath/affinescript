@@ -35,7 +35,7 @@ hex = "0.4"
 # Archive handling
 tar = "0.4"
 flate2 = "1"
-zip = "0.6"
+zip = "9.0"
 
 # Path handling
 camino = "1"
