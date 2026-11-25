@@ -1,0 +1,69 @@
+// SPDX-License-Identifier: MPL-2.0
+= Vendored proven-cicd-and-workflows gates
+
+Source:: `hyperpolymath/proven-cicd-and-workflows`
+Pinned commit:: `50a443f01b1b85e4957b893a6f1a0ed2e8a52459`
+Licence of the source:: MPL-2.0 (headers kept as shipped)
+
+[cols="2,3,3"]
+|===
+| File here | Upstream | Change
+
+| `code-hygiene-check.sh`
+| `actions/code-hygiene-check/check.sh`
+| a "vendored from" comment only
+
+| `test-code-hygiene-check.sh`
+| `actions/code-hygiene-check/test.sh`
+| the checker path (`check.sh` -> `code-hygiene-check.sh`) and the comment
+
+| `required-files-check.sh`
+| `actions/required-files-check/action.yml`, the `run:` block
+| extracted to a script; `REPO_OWNER` / `REPO_NAME` default to the Actions
+  environment instead of the `github` context
+|===
+
+== Why vendored, not called
+
+The framework's own consumer model calls its reusable workflows and actions
+by remote SHA, removes them from `.github/workflows/actions.lock`, and adds a
+second producer of the `CI/gate` status. This repository's CI is standalone
+(#603/#604), every `uses:` must match `actions.lock`, and `CI/gate` is the one
+required check on `main`. Copying the scripts keeps all three.
+
+== How they run
+
+`tools/ci/governance-standalone.sh` runs them as checks [5] and [6]. They are
+*advisory*: findings print as warnings and do not fail the gate. Only a failed
+self-test of the vendored hygiene checker (its positive and negative controls)
+fails the gate, because then the advisory result itself cannot be trusted.
+
+Run them on their own:
+
+----
+tools/ci/proven/required-files-check.sh
+tools/ci/proven/code-hygiene-check.sh      # uses .cicd-hygiene-allow
+tools/ci/proven/test-code-hygiene-check.sh
+----
+
+== Findings when adopted (2026-11-25)
+
+* required-files: `MAINTAINERS` names `@metadatastician` and never the
+  repository owner `hyperpolymath`; the gate reads that as an unedited
+  template. Owner to decide; not changed here.
+* code-hygiene: 147 TODO / FIXME / XXX / HACK / STUB markers without an
+  issue link (`MARKER(#N)`), most in `tools/affine-pkg/src` and `runtime/src`.
+  No proof escapes outside `.cicd-hygiene-allow`.
+
+== Making them blocking
+
+Swap `advisory …` for a failing call in `governance-standalone.sh` once the
+tree passes. That, and any adoption of the remote reusable workflows, is an
+owner decision.
+
+== Updating
+
+Copy the three files from the new upstream commit, re-apply the changes in
+the table, update the pinned commit above and in each file's comment, and run
+`tools/ci/proven/test-code-hygiene-check.sh` and
+`tools/ci/governance-standalone.sh`.

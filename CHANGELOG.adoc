@@ -185,6 +185,11 @@ JSR publish (#303)
 
 ==== CI
 
+* ci(governance): adopt two hyperpolymath/proven-cicd-and-workflows gates,
+vendored at 50a443f into `tools/ci/proven/`: required files and code hygiene
+(untracked debt markers, proof escapes). They run as advisory checks [5] and
+[6] of `tools/ci/governance-standalone.sh` and do not fail it; `CI/gate`,
+`ci.yml` and `actions.lock` are unchanged. Exclusions in `.cicd-hygiene-allow`
 * fix(ci): `CI` never started from 2026-10-11 (startup_failure, zero jobs)
 because Dependabot #782 bumped actions in ci.yml without regenerating
 `.github/workflows/actions.lock`. The lock now matches every workflow
