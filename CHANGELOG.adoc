@@ -125,7 +125,11 @@ Defence in depth: the flattener refuses two different top-level bindings of
 one name (E0206), and the Bun-ESM and JS emitters refuse a second top-level
 binding of a JS name (Bun keeps the last of two same-named `function`s
 silently). Two enums' identical constructors are emitted once; differing
-ones are refused. Trait impl methods sharing a name are now refused on
+ones are refused. A variant named `Some`, `None`, `Ok` or `Err` must have
+the runtime constructor's arity (one field, or none for `None`) and is
+otherwise refused, and on Bun-ESM a program binding that would take an
+escaped extern's emitted name (an extern `class` is called as `class_`) is
+refused. Trait impl methods sharing a name are now refused on
 Bun-ESM instead of silently replacing one another (`stdlib/traits.affine`).
 Rebuild compiled output (Closes #801)
 * fix(vscode-smoke): SKIP cleanly when @hyperpolymath/affine-vscode is

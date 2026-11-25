@@ -1326,6 +1326,29 @@ let top_binding_name (line : string) : string option =
       if !n = 0 then None else Some (String.sub r 0 !n))
 
 (** Reserve every top-level name the runtime text [js] declares. *)
+(** A variant named like a runtime-preamble constructor ([Some]/[Ok]/[Err]
+    of one field, [None] of none) is that constructor: the preamble's
+    binding builds the same [{ tag, value }] value, and references to the
+    name are lowered to it, so the variant is not emitted again (this is how
+    a program declaring its own [Option]/[Result], such as
+    stdlib/prelude.affine, compiles).  One of another arity would silently
+    become the preamble's factory (a nullary [Choice::Some] evaluating to a
+    function), so it is refused (#801).  Returns [true] when the variant is
+    the preamble's. *)
+let preamble_ctor_shared (td : type_decl) (vd : variant_decl) : bool =
+  let arity = List.length vd.vd_fields in
+  match vd.vd_name.name with
+  | ("Some" | "Ok" | "Err" | "None") as n ->
+    let want = if n = "None" then 0 else 1 in
+    if arity = want then true
+    else
+      failwith
+        (Printf.sprintf
+           "variant `%s` of `%s` has %d field(s), but the runtime's `%s` has \
+            %d; rename the variant (#801)"
+           n td.td_name.name arity n want)
+  | _ -> false
+
 let claim_runtime ctx (js : string) : unit =
   List.iter (fun line ->
       Option.iter (fun n -> Hashtbl.replace ctx.top_names n "")
@@ -2367,9 +2390,8 @@ let gen_type_decl ctx (td : type_decl) : unit =
          already been declared`. Skip any variant the preamble already provides.
          (The #136 AOT smoke never caught this — it only checks the output is
          non-empty, never runs it.) *)
-      let preamble_ctors = [ "Some"; "None"; "Ok"; "Err" ] in
       List.iter (fun (vd : variant_decl) ->
-        if List.mem vd.vd_name.name preamble_ctors then ()
+        if preamble_ctor_shared td vd then ()
         else begin
         let name = mangle vd.vd_name.name in
         let arity = List.length vd.vd_fields in
@@ -2452,6 +2474,15 @@ let generate (host : host_profile) (program : program) (symbols : Symbol.t) : st
   emit ctx (match host with Deno -> deno_host_prelude | Bun -> bun_host_prelude);
   emit ctx common_prelude;
   claim_runtime ctx (Buffer.contents ctx.output);
+  (* An extern with no intrinsic lowering is called by its emitted name,
+     which must then be the host symbol: when [mangle] escapes it (an extern
+     `class` is called as `class_`), reserve that name, so a program binding
+     emitted as `class_` is refused (#801) instead of receiving the call. *)
+  Hashtbl.iter (fun e () ->
+    let js = mangle e in
+    if js <> e && not (Hashtbl.mem (builtins_for ctx) e)
+       && not (Hashtbl.mem ctx.local_fns e)
+    then ignore (claim_top ctx js ("extern/" ^ e))) ctx.externs;
 
   (* Collect structs. AffineScript's grammar accepts neither inherent
      [impl Type {}] nor a [self] expression (SELF_KW has no expression

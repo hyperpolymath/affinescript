@@ -809,6 +809,35 @@ let test_801_js_mangled_ctor_clash () =
     Alcotest.(check bool) msg true
       (Str.string_match (Str.regexp ".*`class_`.*#801") msg 0)
 
+let test_801_preamble_ctor_arity () =
+  (* A variant named like a runtime constructor shares the runtime's binding
+     only at the runtime's arity; a nullary `Some` is refused on both JS
+     backends rather than becoming the unary factory. *)
+  let bad = "enum Choice { Some, Other }\nfn main() -> Int { 0 }\n" in
+  let ok = "enum Maybe { Some(Int), None }\n\
+            fn main() -> Int { match Some(2) { Some(n) => n, None => 0 } }\n" in
+  let refused = Str.regexp ".*`Some` of `Choice`.*#801" in
+  (match compile_deno bad with
+   | Ok _ -> Alcotest.fail "Bun-ESM: a nullary `Some` must be refused"
+   | Error m -> Alcotest.(check bool) m true (Str.string_match refused m 0));
+  (match Js_codegen.codegen_js (Parse_driver.parse_string ~file:"<j>" bad)
+           (Symbol.create ()) with
+   | Ok _ -> Alcotest.fail "JS: a nullary `Some` must be refused"
+   | Error m -> Alcotest.(check bool) m true (Str.string_match refused m 0));
+  (match compile_deno ok with
+   | Ok _ -> ()
+   | Error e -> Alcotest.failf "Bun-ESM: a unary `Some` is the runtime's: %s" e)
+
+let test_801_escaped_extern_clash () =
+  (* An extern `class` is called as `class_`; a root fn `class_` would
+     receive that call, so Bun-ESM refuses it. *)
+  match compile_deno
+          "extern fn class(x: Int) -> Int;\nfn class_(x: Int) -> Int { x }\n\
+           fn main() -> Int { class(1) }\n" with
+  | Ok _ -> Alcotest.fail "a root `class_` beside an extern `class` must be refused"
+  | Error m ->
+    Alcotest.(check bool) m true (Str.string_match (Str.regexp ".*`class_`.*#801") m 0)
+
 (* Bun-ESM: a constructor a private and a public enum share is exported,
    whichever enum comes first. *)
 let test_801_shared_constructor_exported () =
@@ -833,6 +862,10 @@ let tests =
       test_801_js_prelude_names;
     Alcotest.test_case "#801: JS refuses a mangled constructor clash" `Quick
       test_801_js_mangled_ctor_clash;
+    Alcotest.test_case "#801: runtime constructor names keep their arity" `Quick
+      test_801_preamble_ctor_arity;
+    Alcotest.test_case "#801: Bun-ESM refuses an escaped extern clash" `Quick
+      test_801_escaped_extern_clash;
     Alcotest.test_case "#801: a shared constructor stays exported" `Quick
       test_801_shared_constructor_exported;
     Alcotest.test_case "#801: same-named functions in two modules" `Quick
