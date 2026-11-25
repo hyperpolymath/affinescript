@@ -6,7 +6,8 @@
 # proven-tests-and-benches, pinned below). See VENDOR.adoc#proven-tests.
 #
 # Usage: tools/ci/proven/proven-report.sh [OUT_DIR]   (default _build/proven)
-#   PROVEN_EVIDENCE=/path/to/proven-evidence skips the fetch and build.
+#   PROVEN_EVIDENCE=/path/to/proven-evidence skips the fetch and build;
+#   PROVEN_SRC sets where the framework is fetched (outside the tree).
 #
 # Exit codes follow the contract: 0 conforms, 1 does not conform (or a test
 # did not pass), 2 no check was performed (a tool or input was missing).
@@ -25,7 +26,9 @@ if [[ -z "$checker" ]]; then
   for tool in git cargo; do
     command -v "$tool" >/dev/null 2>&1 || { echo "proven-report: '$tool' not found" >&2; exit 2; }
   done
-  src="$out/proven-tests-and-benches"
+  # Outside the working tree: the framework repo carries .a2ml files, which
+  # this repo's DEED gate (tools/check-deed-gates.sh) refuses anywhere in it.
+  src="${PROVEN_SRC:-${RUNNER_TEMP:-${TMPDIR:-/tmp}}/proven-tests-and-benches}"
   if [[ ! -d "$src/.git" ]]; then
     git init -q "$src"
     git -C "$src" remote add origin "$pin_repo"
