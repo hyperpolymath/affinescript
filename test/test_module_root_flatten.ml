@@ -798,6 +798,17 @@ let test_801_js_prelude_names () =
     Alcotest.(check bool) msg true
       (Str.string_match (Str.regexp ".*`println`.*#801") msg 0)
 
+let test_801_js_mangled_ctor_clash () =
+  (* `class` is a JS reserved word, emitted as `class_`; a constructor
+     `class_` beside it must be refused, not silently merged. *)
+  let prog = Parse_driver.parse_string ~file:"<j>"
+      "enum E { class, class_ }\nfn main() -> Int { 0 }\n" in
+  match Js_codegen.codegen_js prog (Symbol.create ()) with
+  | Ok _ -> Alcotest.fail "`class` and `class_` must not share one binding"
+  | Error msg ->
+    Alcotest.(check bool) msg true
+      (Str.string_match (Str.regexp ".*`class_`.*#801") msg 0)
+
 (* Bun-ESM: a constructor a private and a public enum share is exported,
    whichever enum comes first. *)
 let test_801_shared_constructor_exported () =
@@ -820,6 +831,8 @@ let tests =
       test_801_reserved_prefix;
     Alcotest.test_case "#801: JS refuses prelude names" `Quick
       test_801_js_prelude_names;
+    Alcotest.test_case "#801: JS refuses a mangled constructor clash" `Quick
+      test_801_js_mangled_ctor_clash;
     Alcotest.test_case "#801: a shared constructor stays exported" `Quick
       test_801_shared_constructor_exported;
     Alcotest.test_case "#801: same-named functions in two modules" `Quick
