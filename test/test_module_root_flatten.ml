@@ -828,6 +828,30 @@ let test_801_preamble_ctor_arity () =
    | Ok _ -> ()
    | Error e -> Alcotest.failf "Bun-ESM: a unary `Some` is the runtime's: %s" e)
 
+(* An imported enum whose variants all have runtime names is still carried
+   when one of them has another arity, so the emitters see it and refuse it
+   rather than lower `Choice::Some` to the runtime's unary factory. *)
+let test_801_imported_preamble_arity () =
+  let dir = fresh_dir "pa801" in
+  write_file dir "Lib/C.affine"
+    "module Lib.C;\npub enum Choice { Some, None }\n\
+     pub fn pick() -> Choice { Choice::Some }\n";
+  let src = "module Main;\nuse Lib.C::{pick};\n\
+             pub fn main() -> Int { let c = pick(); 0 }\n" in
+  let prog = Parse_driver.parse_string ~file:"<main>" src in
+  let ld = loader_in dir in
+  match Resolve.resolve_program_with_loader prog ld with
+  | Error (e, _) -> Alcotest.failf "resolve: %s" (Resolve.show_resolve_error e)
+  | Ok (rctx, _) ->
+    let flat = Module_loader.flatten_imports ld prog in
+    let refused = Str.regexp ".*`Some` of `Choice`.*#801" in
+    (match Codegen_deno.codegen_bun flat rctx.symbols with
+     | Ok _ -> Alcotest.fail "Bun-ESM: an imported nullary `Some` must be refused"
+     | Error m -> Alcotest.(check bool) m true (Str.string_match refused m 0));
+    (match Js_codegen.codegen_js flat rctx.symbols with
+     | Ok _ -> Alcotest.fail "JS: an imported nullary `Some` must be refused"
+     | Error m -> Alcotest.(check bool) m true (Str.string_match refused m 0))
+
 let test_801_escaped_extern_clash () =
   (* An extern `class` is called as `class_`; a root fn `class_` would
      receive that call, so Bun-ESM refuses it. *)
@@ -895,6 +919,8 @@ let tests =
       test_801_js_mangled_ctor_clash;
     Alcotest.test_case "#801: runtime constructor names keep their arity" `Quick
       test_801_preamble_ctor_arity;
+    Alcotest.test_case "#801: an imported runtime-named variant keeps its arity" `Quick
+      test_801_imported_preamble_arity;
     Alcotest.test_case "#801: Bun-ESM refuses an escaped extern clash" `Quick
       test_801_escaped_extern_clash;
     Alcotest.test_case "#801: a shared constructor stays exported" `Quick

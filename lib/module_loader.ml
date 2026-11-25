@@ -494,12 +494,15 @@ let exported_vis = function Public | PubCrate -> true | _ -> false
 let preamble_ctors = [ "Some"; "None"; "Ok"; "Err" ]
 
 (** An enum the flattener carries: one with a constructor the preamble does
-    not already supply. *)
+    not already supply. A variant with a preamble name but another arity is
+    not the preamble's, so it is carried and the emitter refuses it. *)
 let carried_enum (td : type_decl) : bool =
   match td.td_body with
   | TyEnum variants ->
     List.exists (fun (vd : variant_decl) ->
-        not (List.mem vd.vd_name.name preamble_ctors)) variants
+        let n = vd.vd_name.name in
+        not (List.mem n preamble_ctors)
+        || List.length vd.vd_fields <> (if n = "None" then 0 else 1)) variants
   | _ -> false
 
 let is_extern = function
