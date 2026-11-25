@@ -132,6 +132,10 @@ escaped extern's emitted name (an extern `class` is called as `class_`) is
 refused. Trait impl methods sharing a name are now refused on
 Bun-ESM instead of silently replacing one another (`stdlib/traits.affine`).
 Rebuild compiled output (Closes #801)
+* fix(modules): an imported function bound as `main` (`use A::{entry as main};`)
+is no longer called when the compiled module loads (Bun-ESM, JS and the other
+flattened backends). Only a `main` the root module declares is an entry point;
+the root's calls to the alias go to the imported function (Closes #805)
 * fix(vscode-smoke): SKIP cleanly when @hyperpolymath/affine-vscode is
 unpublished (#381)
 * fix(governance): rename CLAUDE.md TypeScript exemptions heading to

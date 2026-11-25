@@ -709,7 +709,9 @@ let check_unique (entries : entry list) : unit =
     first and each module's in its own order (declarations must precede
     their uses: the interpreter binds each function in an environment that
     holds only what came before it); then a copy, under its bound name, of
-    each function and immutable constant the root imports; then the root's
+    each function and immutable constant the root imports (not of a function
+    bound as [main]: only the root's own [main] is an entry point, so
+    references to that binding are rewritten to the qualified name); then the root's
     own declarations.  The copy of an immutable constant keeps a literal
     value as-is (C emits [static const T K = <expr>;], which needs a constant
     initialiser) and otherwise refers to the qualified declaration, so the
@@ -748,6 +750,13 @@ let flatten_imports (loader : t) (prog : program) : program =
       match x with
       | XValue q ->
         (match Hashtbl.find_opt pool_value q with
+         | Some { decl = TopFn _; _ } when b = "main" ->
+           (* A top-level [main] is the program's entry point (the JS
+              backends call it on load).  Only the root's own [main] is one:
+              an imported function bound as [main] gets no copy under that
+              name, and the root's references to it are rewritten to its
+              qualified name (#805). *)
+           ren := (b, q) :: !ren
          | Some { decl = TopFn fd; _ } ->
            copies := { origin = path;
                        decl = TopFn { fd with fd_name = { fd.fd_name with name = b } } }
