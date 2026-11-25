@@ -188,8 +188,13 @@ JSR publish (#303)
 * ci(governance): adopt two hyperpolymath/proven-cicd-and-workflows gates,
 vendored at 50a443f into `tools/ci/proven/`: required files and code hygiene
 (untracked debt markers, proof escapes). They run as advisory checks [5] and
-[6] of `tools/ci/governance-standalone.sh` and do not fail it; `CI/gate`,
-`ci.yml` and `actions.lock` are unchanged. Exclusions in `.cicd-hygiene-allow`
+[6] of `tools/ci/governance-standalone.sh` and do not fail it; `CI/gate`
+and `actions.lock` are unchanged. Exclusions in `.cicd-hygiene-allow`
+* ci(test): Proven-Tests run report for the lexer suite
+(hyperpolymath/proven-tests-and-benches contract). `test/proven_report.ml`
+emits it in OCaml; `tools/ci/proven/proven-report.sh` validates it with the
+framework's pinned Rust checker `proven-evidence`; an advisory CI step. All 16
+entries are `Unproven` and `FixtureDebt`; a failing test still fails the emitter
 * fix(ci): `CI` never started from 2026-10-11 (startup_failure, zero jobs)
 because Dependabot #782 bumped actions in ci.yml without regenerating
 `.github/workflows/actions.lock`. The lock now matches every workflow
