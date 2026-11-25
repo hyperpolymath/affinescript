@@ -433,12 +433,12 @@ let flatten_error_message = function
        be a separate copy of it; import it under its own name" name
       (String.concat "::" m) alias
 
-(** Map, through [look], a top-level function or constant's free references;
-    parameters shadow.  The declaration's own name is not touched. *)
+(** Map, through [look], the free references of a top-level function,
+    constant or impl block's methods; parameters shadow.  The declaration's
+    own name is not touched. *)
 let map_top_level_free (look : string -> string option) (decl : top_level)
     : top_level =
-  match decl with
-  | TopFn fd ->
+  let map_fn (fd : fn_decl) =
     let inner =
       shadow look (List.map (fun (p : param) -> p.p_name.name) fd.fd_params)
     in
@@ -447,8 +447,15 @@ let map_top_level_free (look : string -> string option) (decl : top_level)
       | FnBlock b -> FnBlock (map_block inner b)
       | FnExtern -> FnExtern
     in
-    TopFn { fd with fd_body = body }
+    { fd with fd_body = body }
+  in
+  match decl with
+  | TopFn fd -> TopFn (map_fn fd)
   | TopConst c -> TopConst { c with tc_value = map_free look c.tc_value }
+  | TopImpl ib ->
+    TopImpl { ib with ib_items = List.map (function
+        | ImplFn fd -> ImplFn (map_fn fd)
+        | other -> other) ib.ib_items }
   | other -> other
 
 (** Rename, by [ren] (old name to new), a top-level function or constant's
@@ -700,7 +707,10 @@ let check_unique (entries : entry list) : unit =
     their uses: the interpreter binds each function in an environment that
     holds only what came before it); then a copy, under its bound name, of
     each function and immutable constant the root imports; then the root's
-    own declarations.  A mutable constant is not copied (a copy would be
+    own declarations.  The copy of an immutable constant keeps a literal
+    value as-is (C emits [static const T K = <expr>;], which needs a constant
+    initialiser) and otherwise refers to the qualified declaration, so the
+    root and the module share one runtime value.  A mutable constant is not copied (a copy would be
     separate storage): the root's references to it are rewritten to its
     qualified name.  A local declaration shadows an import of its name.
     [prog.prog_imports] is retained.
@@ -740,8 +750,18 @@ let flatten_imports (loader : t) (prog : program) : program =
                        decl = TopFn { fd with fd_name = { fd.fd_name with name = b } } }
                      :: !copies
          | Some { decl = TopConst ({ tc_mut = false; _ } as c); _ } ->
+           (* A literal is copied as-is (some backends need a constant
+              initialiser).  Any other value refers to the source
+              declaration, so the root and the module share one runtime
+              value: a second array or record would compare unequal under a
+              reference equality. *)
+           let value = match c.tc_value with
+             | ExprLit _ -> c.tc_value
+             | _ -> ExprVar { c.tc_name with name = q }
+           in
            copies := { origin = path;
-                       decl = TopConst { c with tc_name = { c.tc_name with name = b } } }
+                       decl = TopConst { c with tc_name = { c.tc_name with name = b };
+                                                tc_value = value } }
                      :: !copies
          | Some { decl = TopConst ({ tc_mut = true; _ } as c); _ } ->
            if q <> qualified_name path b then begin

@@ -717,8 +717,111 @@ impl Same for Bool { pub fn same(ref self, ref other: Bool) -> Bool { self == ot
     Alcotest.(check bool) msg true
       (Str.string_match (Str.regexp ".*`same`.*#801") msg 0)
 
+let test_801_impl_reads_imported_mutable () =
+  (* #801 review follow-ups (CodeRabbit on #802).  The comments sit inside
+     the bodies: the soundness ledger pins the preceding test up to the next
+     top-level `let`.  A root impl method that reads an imported mutable
+     constant refers to the qualified storage, which is carried. *)
+  let dir = fresh_dir "im801" in
+  write_file dir "V/M.affine"
+    "module V.M;\npub const mut counter: Int = 7;\n";
+  let src =
+    "module D;\nuse V.M::{counter};\n\
+     trait Peek { fn peek(ref self) -> Int; }\n\
+     impl Peek for Int { pub fn peek(ref self) -> Int { counter } }\n\
+     pub fn main() -> Int { 1 }\n"
+  in
+  let prog = Parse_driver.parse_string ~file:"<main>" src in
+  let ld = loader_in dir in
+  (match Resolve.resolve_program_with_loader prog ld with
+   | Error (e, _) -> Alcotest.failf "resolve: %s" (Resolve.show_resolve_error e)
+   | Ok _ -> ());
+  let flat = Module_loader.flatten_imports ld prog in
+  let q = Module_loader.qualified_name [ "V"; "M" ] "counter" in
+  let impl_refs =
+    List.concat_map (function
+        | Ast.TopImpl _ as d -> Module_loader.top_level_free_names d
+        | _ -> []) flat.prog_decls
+  in
+  Alcotest.(check bool) "the method reads the qualified storage" true
+    (List.mem q impl_refs && not (List.mem "counter" impl_refs));
+  Alcotest.(check bool) "the storage is carried" true
+    (List.mem q (List.filter_map Module_loader.value_name flat.prog_decls))
+
+(* The root's copy of an imported immutable array is the module's value, so
+   reference equality between the two holds, as it did before #801. *)
+let test_801_immutable_import_one_value () =
+  let dir = fresh_dir "iv801" in
+  write_file dir "A.affine"
+    "module A;\npub const K: [Int] = [1, 2];\n\
+     pub fn original() -> [Int] { K }\n";
+  let src =
+    "module Main;\nuse A::{K, original};\n\
+     pub fn main() -> Bool { original() == K }\n"
+  in
+  let prog = Parse_driver.parse_string ~file:"<main>" src in
+  let ld = loader_in dir in
+  (match Resolve.resolve_program_with_loader prog ld with
+   | Error (e, _) -> Alcotest.failf "resolve: %s" (Resolve.show_resolve_error e)
+   | Ok _ -> ());
+  let flat = Module_loader.flatten_imports ld prog in
+  let q = Module_loader.qualified_name [ "A" ] "K" in
+  (match List.find_opt (function
+       | Ast.TopConst c -> c.tc_name.name = "K" | _ -> false) flat.prog_decls with
+   | Some (Ast.TopConst { tc_value = Ast.ExprVar v; _ }) ->
+     Alcotest.(check string) "K refers to the module's K" q v.name
+   | _ -> Alcotest.fail "expected `K` bound to the module's declaration");
+  if node_available () then
+    Alcotest.(check string) "Bun-ESM: one runtime value" "true"
+      (run_flat_js dir src "main()")
+
+(* `__mod_` is reserved: a source binder of that form could capture a
+   rewritten reference. *)
+let test_801_reserved_prefix () =
+  match
+    Parse_driver.parse_string ~file:"<r>"
+      "fn f() -> Int { let __mod_1A__K = 2; __mod_1A__K }\n"
+  with
+  | _ -> Alcotest.fail "an identifier starting with `__mod_` must be refused"
+  | exception e ->
+    let msg = Printexc.to_string e in
+    Alcotest.(check bool) msg true
+      (Str.string_match (Str.regexp ".*__mod_.*reserved") msg 0)
+
+(* JS: a top-level binding may not take a name the prelude declares. *)
+let test_801_js_prelude_names () =
+  let prog = Parse_driver.parse_string ~file:"<j>"
+      "fn println(s: String) -> Int { 1 }\n" in
+  match Js_codegen.codegen_js prog (Symbol.create ()) with
+  | Ok _ -> Alcotest.fail "a second `println` must be refused"
+  | Error msg ->
+    Alcotest.(check bool) msg true
+      (Str.string_match (Str.regexp ".*`println`.*#801") msg 0)
+
+(* Bun-ESM: a constructor a private and a public enum share is exported,
+   whichever enum comes first. *)
+let test_801_shared_constructor_exported () =
+  match compile_deno
+          "module pe;\nenum Hidden { Red, Green }\npub enum Shown { Red, Blue }\n" with
+  | Error e -> Alcotest.failf "Bun-ESM: %s" e
+  | Ok js ->
+    Alcotest.(check bool) "Red is exported once" true
+      (Str.string_match (Str.regexp "\\(.\\|\n\\)*export const Red = ") js 0);
+    Alcotest.(check bool) "Green stays private" false
+      (Str.string_match (Str.regexp "\\(.\\|\n\\)*export const Green") js 0)
+
 let tests =
   [
+    Alcotest.test_case "#801: impl method reads an imported mutable" `Quick
+      test_801_impl_reads_imported_mutable;
+    Alcotest.test_case "#801: an immutable import is one runtime value" `Quick
+      test_801_immutable_import_one_value;
+    Alcotest.test_case "#801: the __mod_ prefix is reserved" `Quick
+      test_801_reserved_prefix;
+    Alcotest.test_case "#801: JS refuses prelude names" `Quick
+      test_801_js_prelude_names;
+    Alcotest.test_case "#801: a shared constructor stays exported" `Quick
+      test_801_shared_constructor_exported;
     Alcotest.test_case "#801: same-named functions in two modules" `Quick
       test_801_same_name_in_two_modules;
     Alcotest.test_case "#801: transitive public functions and constants" `Quick

@@ -106,6 +106,9 @@ type codegen_ctx = {
      text for an enum constructor. Shared by every copy of the context.
      See {!claim_top} (#801). *)
   top_names : (string, string) Hashtbl.t;
+  (* Constructor names some public enum declares: a constructor shared by a
+     private and a public enum is emitted once, exported (#801). *)
+  public_ctors : (string, unit) Hashtbl.t;
 }
 
 (** Create an empty emission context for [host], sharing [symbols] and
@@ -126,6 +129,7 @@ let create_ctx host symbols = {
   int_array_vars = Hashtbl.create 16;
   in_async = false;
   top_names = Hashtbl.create 128;
+  public_ctors = Hashtbl.create 32;
 }
 
 (* Expression-position IIFE wrapper. In an async method body it must be
@@ -2382,7 +2386,11 @@ let gen_type_decl ctx (td : type_decl) : unit =
               name (String.concat ", " ps) vd.vd_name.name
               (String.concat ", " ps)
         in
-        (* Two enums' identical constructors are one binding (#801). *)
+        (* Two enums' identical constructors are one binding (#801), exported
+           when any enum that declares it is public. *)
+        let exp =
+          if Hashtbl.mem ctx.public_ctors vd.vd_name.name then "export " else exp
+        in
         if claim_top ctx name binding then emit_line ctx (exp ^ binding)
         end
       ) variants;
@@ -2420,9 +2428,11 @@ let generate (host : host_profile) (program : program) (symbols : Symbol.t) : st
          | _ -> ())
     | TopConst { tc_name; _ } ->
         Hashtbl.replace ctx.local_fns tc_name.name ()
-    | TopType { td_body = TyEnum variants; _ } ->
+    | TopType { td_body = TyEnum variants; td_vis; _ } ->
         List.iter (fun (vd : variant_decl) ->
-          Hashtbl.replace ctx.ctors vd.vd_name.name ()) variants
+          Hashtbl.replace ctx.ctors vd.vd_name.name ();
+          if visibility_is_public td_vis then
+            Hashtbl.replace ctx.public_ctors vd.vd_name.name ()) variants
     | TopImpl ib ->
         List.iter (function
           | ImplFn fd ->

@@ -624,6 +624,11 @@ let generate (program : program) (symbols : Symbol.t) : string =
      same name and arity as one already emitted is the same runtime value
      (a `{ tag }` object or factory) and is emitted once. *)
   let top_names = Hashtbl.create 64 in
+  (* The prelude above already declares these at top level.  Enum
+     constructors named Some/None/Ok/Err are filtered before [claim]. *)
+  List.iter (fun n -> Hashtbl.replace top_names n "")
+    [ "Some"; "None"; "Ok"; "Err"; "Unit"; "print"; "println";
+      "__as_stdin_buf"; "read_line" ];
   let claim name signature =
     match Hashtbl.find_opt top_names name with
     | None -> Hashtbl.replace top_names name signature; true
@@ -648,7 +653,10 @@ let generate (program : program) (symbols : Symbol.t) : string =
           List.filter (fun (vd : variant_decl) ->
               List.mem vd.vd_name.name [ "Some"; "None"; "Ok"; "Err" ]
               || claim (mangle vd.vd_name.name)
-                   ("ctor/" ^ string_of_int (List.length vd.vd_fields)))
+                   (* The source name too: `class` and `class_` both emit
+                      as `class_` but tag their values differently. *)
+                   ("ctor/" ^ vd.vd_name.name ^ "/"
+                    ^ string_of_int (List.length vd.vd_fields)))
             variants
         in
         gen_top_level ctx (TopType { td with td_body = TyEnum fresh })

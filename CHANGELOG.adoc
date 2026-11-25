@@ -115,7 +115,12 @@ non-Wasm backends). Every function and constant of an imported module is
 carried under a module-qualified name (`__mod_<len-prefixed path>__<name>`,
 replacing `__priv_…`), so `Lib.A.label` and `Lib.B.label` stay distinct,
 public or private, also when they arrive transitively. The root module's
-own names, the names it imports, and extern (host) names are unchanged.
+own names and extern (host) names are unchanged. An imported function or
+immutable constant is also bound under the name the root imports it by;
+an imported mutable constant is not (the root refers to its qualified
+storage), and an aliased extern is called by its host name. The prefix
+`__mod_` is reserved: source identifiers that start with it are a lexer
+error.
 Defence in depth: the flattener refuses two different top-level bindings of
 one name (E0206), and the Bun-ESM and JS emitters refuse a second top-level
 binding of a JS name (Bun keeps the last of two same-named `function`s
