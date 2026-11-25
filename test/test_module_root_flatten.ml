@@ -903,8 +903,42 @@ let test_801_shared_constructor_exported () =
     Alcotest.(check bool) "Green stays private" false
       (Str.string_match (Str.regexp "\\(.\\|\n\\)*export const Green") js 0)
 
+(* #805: only the root's own [main] is an entry point.  An imported function
+   bound as [main] is not called on load, on either JS backend, and stays
+   callable from the root; a root [main] keeps its auto-call. *)
+let test_805_imported_main_alias () =
+  let dir = fresh_dir "m805" in
+  write_file dir "A.affine" "module A;\npub fn entry() -> Int { 7 }\n";
+  let flat src =
+    let prog = Parse_driver.parse_string ~file:"<main>" src in
+    let ld = loader_in dir in
+    match Resolve.resolve_program_with_loader prog ld with
+    | Error (e, _) -> Alcotest.failf "resolve: %s" (Resolve.show_resolve_error e)
+    | Ok (rctx, _) -> (Module_loader.flatten_imports ld prog, rctx.symbols)
+  in
+  let lines js = String.split_on_char '\n' js in
+  let check_backends src ~auto =
+    let prog, syms = flat src in
+    (match Codegen_deno.codegen_bun prog syms with
+     | Error e -> Alcotest.failf "Bun-ESM: %s" e
+     | Ok js -> Alcotest.(check bool) "Bun-ESM auto-call" auto
+                  (List.mem "await main();" (lines js)));
+    (match Js_codegen.codegen_js prog syms with
+     | Error e -> Alcotest.failf "JS: %s" e
+     | Ok js -> Alcotest.(check bool) "JS auto-call" auto
+                  (List.mem "main();" (lines js)))
+  in
+  let aliased = "module Main;\nuse A::{entry as main};\npub fn go() -> Int { main() }\n" in
+  check_backends aliased ~auto:false;
+  check_backends "module Main;\nuse A::{entry};\npub fn main() -> Int { entry() }\n"
+    ~auto:true;
+  if node_available () then
+    Alcotest.(check string) "the alias stays callable" "7" (run_flat_js dir aliased "go()")
+
 let tests =
   [
+    Alcotest.test_case "#805: an imported `main` alias is not auto-run" `Quick
+      test_805_imported_main_alias;
     Alcotest.test_case "#801: impl method reads an imported mutable" `Quick
       test_801_impl_reads_imported_mutable;
     Alcotest.test_case "#801: an immutable import is one runtime value" `Quick
