@@ -839,10 +839,10 @@ let test_801_escaped_extern_clash () =
     Alcotest.(check bool) m true (Str.string_match (Str.regexp ".*`class_`.*#801") m 0)
 
 let test_801_js_prelude_names_complete () =
-  (* Every lower-case name the JS prelude declares at top level, including
+  (* Every name the JS prelude declares at top level, including
      the later declarators of a `let a = …, b = …;` line, is reserved. *)
-  let first = Str.regexp "^\\(const\\|let\\|var\\|function\\) +\\([a-z_][A-Za-z0-9_]*\\)" in
-  let later = Str.regexp ", *\\([a-z_][A-Za-z0-9_]*\\) *=" in
+  let first = Str.regexp "^\\(const\\|let\\|var\\|function\\) +\\([A-Za-z_][A-Za-z0-9_]*\\)" in
+  let later = Str.regexp ", *\\([A-Za-z_][A-Za-z0-9_]*\\) *=" in
   let names =
     String.split_on_char '\n' Js_codegen.prelude
     |> List.concat_map (fun l ->
@@ -858,6 +858,7 @@ let test_801_js_prelude_names_complete () =
   in
   Alcotest.(check bool) "prelude declares __as_stdin_off" true
     (List.mem "__as_stdin_off" names);
+  Alcotest.(check bool) "prelude declares Unit" true (List.mem "Unit" names);
   List.iter (fun n ->
       let prog = Parse_driver.parse_string ~file:"<j>"
           (Printf.sprintf "fn %s() -> Int { 1 }\n" n) in
