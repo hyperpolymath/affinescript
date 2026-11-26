@@ -36,6 +36,10 @@ type context = {
   fn_ret_types : (string * value_type) list;
   (** Float wall: function name -> wasm result value type, so a call site
       `let x = f(...)` can infer whether x is f64. *)
+  unit_fns : string list;
+  (** Top-level functions, externs and effect operations declared to return
+      Unit. A block whose tail is a call to one emits the same code as the
+      statement form `f(..);` (#601); see [expr_is_unit]. *)
   loop_depth : int;                  (** current loop nesting depth *)
   func_indices : (string * int) list;
   (** Top-level name environment shared by functions and constants.
@@ -173,6 +177,7 @@ let create_context () : context = {
   next_local = 0;
   local_types = [];
   fn_ret_types = [];
+  unit_fns = [];
   loop_depth = 0;
   func_indices = [];
   lambda_funcs = [];
@@ -266,6 +271,40 @@ let lookup_local (ctx : context) (name : string) : int result =
   match List.assoc_opt name ctx.locals with
   | Some idx -> Ok idx
   | None -> Error (UnboundVariable name)
+
+(** A declared return type that is Unit: omitted, `()` or `Unit`. *)
+let rec ret_ty_is_unit : type_expr option -> bool = function
+  | None | Some (TyTuple []) -> true
+  | Some (TyCon id) -> id.name = "Unit"
+  | Some (TyOwn t | TyRef (_, t) | TyMut (_, t)) -> ret_ty_is_unit (Some t)
+  | Some _ -> false
+
+(** Names of the program's top-level functions, externs and effect
+    operations declared to return Unit (#601). *)
+let unit_fn_names (prog : program) : string list =
+  List.concat_map
+    (function
+      | TopFn fd when ret_ty_is_unit fd.fd_ret_ty -> [ fd.fd_name.name ]
+      | TopExternFn { ef_name; ef_ret_ty; _ } when ret_ty_is_unit ef_ret_ty ->
+          [ ef_name.name ]
+      | TopEffect ed ->
+          List.filter_map
+            (fun (op : effect_op_decl) ->
+              if ret_ty_is_unit op.eod_ret_ty then Some op.eod_name.name else None)
+            ed.ed_ops
+      | _ -> [])
+    prog.prog_decls
+
+(** Is [e] provably Unit-valued? Conservative: a [false] keeps the tail
+    value as emitted. A call whose callee name is a local (a closure) is
+    not the top-level declaration of that name. *)
+let rec expr_is_unit (ctx : context) (e : expr) : bool =
+  match e with
+  | ExprSpan (e, _) -> expr_is_unit ctx e
+  | ExprLit (LitUnit _) -> true
+  | ExprApp (ExprVar id, _) ->
+      List.mem id.name ctx.unit_fns && not (List.mem_assoc id.name ctx.locals)
+  | _ -> false
 
 (** Generate code to bind a pattern to the value on the WASM stack.
     Assumes the RHS value is already on the stack.
@@ -1800,6 +1839,16 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
         in
         Ok (c10, code)
 
+      | ExprVar id when id.name = "float_to_string"
+                        && List.length args = 1 ->
+        (* #643: shortest round-trip rendering, the same text as Bun's
+           `String(x)` and the interpreter. The printer is emitted once per
+           module by [Wasm_dtoa]; this call is patched to its index when the
+           module is assembled. It allocates from the bump heap. *)
+        let* (ctx1, x_code) = gen_expr ctx (List.hd args) in
+        let (ctx2, _heap_idx) = ensure_heap_ptr ctx1 in
+        Ok (ctx2, x_code @ [Call Wasm_dtoa.call_sentinel])
+
       | ExprVar id when (id.name = "env_at" || id.name = "arg_at")
                         && List.length args = 1 ->
         (* ADR-015 S5 (#180): env_at(i) / arg_at(i) — fetch the i-th
@@ -2468,6 +2517,13 @@ and gen_block (ctx : context) (blk : block) : (context * instr list) result =
     Ok (c', codes @ code)
   ) (Ok (ctx, [])) blk.blk_stmts in
   match blk.blk_expr with
+  | Some e when expr_is_unit ctx' e ->
+    (* A Unit tail `{ ..; f(x) }` emits exactly what the statement form
+       `{ ..; f(x); }` does, so the two spellings (which faces choose
+       differently) compile to identical bytes (#601). The block's value
+       is the canonical unit 0 either way, whatever [f] leaves behind. *)
+    let* (ctx_final, expr_code) = gen_expr ctx' e in
+    Ok (ctx_final, stmt_codes @ expr_code @ [Drop] @ [I32Const 0l])
   | Some e ->
     let* (ctx_final, expr_code) = gen_expr ctx' e in
     Ok (ctx_final, stmt_codes @ expr_code)
@@ -3783,7 +3839,7 @@ let generate_module ?loader (prog : program) : wasm_module result =
     | Some l -> l
     | None -> Module_loader.create (Module_loader.default_config ())
   in
-  let ctx = create_context () in
+  let ctx = { (create_context ()) with unit_fns = unit_fn_names prog } in
 
   (* Add WASI fd_write import at index 0 *)
   let (fd_write_import, fd_write_type) = Wasi_runtime.create_fd_write_import () in
@@ -3962,6 +4018,30 @@ let generate_module ?loader (prog : program) : wasm_module result =
           in
           (types_after, funcs_after, exports_after)
     | _ -> (ctx'.types, all_funcs, exports_with_mem)
+  in
+
+  (* #643: a module that calls float_to_string gets the shortest-digits
+     printer appended after every other function (so no existing index
+     moves), and its call sites are patched to the printer's index. *)
+  let final_types, final_funcs =
+    let uses_dtoa =
+      List.exists (fun f -> Wasm_dtoa.body_calls_sentinel f.f_body) final_funcs
+    in
+    match uses_dtoa, ctx'.heap_ptr with
+    | true, Some heap ->
+      let base = import_offset + List.length final_funcs in
+      let types = ref final_types in
+      let intern ft =
+        let (idx, ts) = intern_func_type !types ft in
+        types := ts; idx
+      in
+      let helpers = Wasm_dtoa.funcs ~base ~heap ~intern in
+      let patched =
+        List.map (fun f -> { f with f_body = Wasm_dtoa.patch_calls base f.f_body })
+          final_funcs
+      in
+      (!types, patched @ helpers)
+    | _ -> (final_types, final_funcs)
   in
 
   (* Stage 2: Build [typedwasm.ownership] custom section from collected annotations *)

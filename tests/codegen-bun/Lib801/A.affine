@@ -1,0 +1,8 @@
+// SPDX-License-Identifier: MPL-2.0
+// #801 regression fixture: `label` exists in Lib801.A and Lib801.B, each
+// called by its own module.
+module Lib801.A;
+pub fn label() -> String { "from A" }
+pub fn a_label() -> String { label() }
+fn helper() -> String { "A helper" }
+pub fn a_helper() -> String { helper() }

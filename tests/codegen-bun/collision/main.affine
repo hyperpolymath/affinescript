@@ -1,0 +1,10 @@
+// SPDX-License-Identifier: MPL-2.0
+// Regression: two modules' different public `pick` reach one flattened program
+// transitively (main -> usea -> a::pick, main -> useb -> b::pick). Last-wins
+// used to rebind usea's call to b::pick silently (viaA(1) returned 100, not
+// 2). Each module-qualified `pick` stays distinct (#801), so both() is [2, 100];
+// tools/run_codegen_bun_tests.sh step 9 checks that.
+module main;
+use usea::{ viaA };
+use useb::{ viaB };
+pub fn both() -> [Int] { [viaA(1), viaB(1)] }

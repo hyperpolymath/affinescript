@@ -1,0 +1,16 @@
+// SPDX-License-Identifier: MPL-2.0
+// json::stringify must emit valid JSON (escape_char used to return the bare
+// quote, backslash and control characters), and to_json must reject numbers
+// JSON cannot represent.
+
+use prelude::{ Option, Some, None };
+use json::{ Json, JArray, JString, parse, to_json, stringify };
+
+pub fn roundtrip(src: String) -> String {
+  match parse(src) {
+    Some(h) => match to_json(h) { Some(j) => stringify(j), None => "<none>" },
+    None => "<parse-fail>"
+  }
+}
+
+pub fn quote(s: String) -> String { stringify(JArray([JString(s)])) }

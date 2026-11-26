@@ -728,7 +728,7 @@ let create_initial_env () : env =
     ));
     ("float_to_string", VBuiltin ("float_to_string", fun args ->
       match args with
-      | [VFloat f] -> Ok (VString (string_of_float f))
+      | [VFloat f] -> Ok (VString (Float_format.to_string f))
       | _ -> Error (TypeMismatch "float_to_string expects Float")
     ));
     (* STDLIB-04e (Refs #332): `string_length : String -> Int / Pure` is

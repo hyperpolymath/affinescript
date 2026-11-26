@@ -3,10 +3,23 @@
 
 (** Main test runner for AffineScript *)
 
+(* [PROVEN_REPORT=FILE]: write a Proven-Tests run report for the lexer suite
+   instead of running Alcotest (tools/ci/proven/proven-report.sh). *)
+let () =
+  match Sys.getenv_opt "PROVEN_REPORT" with
+  | Some path when path <> "" ->
+    let bad =
+      Proven_report.write ~suite:"affinescript-lexer"
+        ~module_path:"test/test_lexer.ml" ~path Test_lexer.tests
+    in
+    exit (if bad = 0 then 0 else 1)
+  | _ -> ()
+
 let () =
   Alcotest.run "AffineScript"
     ([
       ("Lexer", Test_lexer.tests);
+      ("Proven-Tests report emitter", Test_proven_report.tests);
       (* ("Parser", Test_parser.tests); *)  (* TODO: Re-enable when test_parser is implemented *)
       ("Golden", Test_golden.tests);
       ("Examples", Test_golden.example_tests);
@@ -21,6 +34,10 @@ let () =
       ("Module mut (#548)", Test_module_mut.tests);
       ("Int-div on JS-text backend (#478)", Test_int_div_js.tests);
       ("Deno builtins ↔ stdlib decls consistency", Test_deno_builtins_consistency.tests);
+      ("Bun integer block scope", Test_int_scope_bun.tests);
+      ("Same cube: faces compile alike (#601)", Test_same_cube.tests);
+      ("float_to_string format (#643)", Test_float_format.tests);
+      ("ESM runtime pruning", Test_runtime_prune.tests);
       ("Stdlib algebraic laws (batch 1)", Test_stdlib_laws.tests);
       ("Solo CESK (VM M1, ADR-0025)", Test_solo_cesk.tests);
       ("Polonius solver (ADR-022 M3)", Test_borrow_polonius.tests);

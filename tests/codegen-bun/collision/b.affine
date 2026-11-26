@@ -1,0 +1,3 @@
+// SPDX-License-Identifier: MPL-2.0
+module b;
+pub fn pick(x: Int) -> Int { x * 100 }

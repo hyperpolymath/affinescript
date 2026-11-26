@@ -210,7 +210,8 @@ pub fn pad_right(s: String, target_len: Int, pad_char: String) -> String {
 // ============================================================================
 
 // int_to_string(n: Int) -> String         — builtin
-// float_to_string(f: Float) -> String     — builtin
+// float_to_string(f: Float) -> String     — builtin; shortest round-trip
+//   digits in JS layout on every backend: 3.0 -> "3", 1e21 -> "1e+21" (#643)
 // parse_int(s: String) -> Option<Int>     — builtin
 // parse_float(s: String) -> Option<Float> — builtin
 
