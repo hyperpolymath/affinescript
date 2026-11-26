@@ -3852,6 +3852,16 @@ let gen_decl (ctx : context) (decl : top_level) : context result =
             tc.tc_name.name (names lit_layout) s (names decl_layout)))
       | _ -> Ok ()
     in
+    (* #561: a deferred initialiser becomes the body of a void helper that
+       ends in `global.set`; a `return` in it would exit before the store
+       and leave the const zero. A lambda's own `return` is not scanned. *)
+    let* () =
+      if Ast.expr_contains_return tc.tc_value then
+        Error (UnsupportedFeature (Printf.sprintf
+          "const `%s`: `return` is not allowed in a const initialiser"
+          tc.tc_name.name))
+      else Ok ()
+    in
     let ctx_init = { ctx with locals = []; next_local = 0; local_types = [] } in
     let* (ctx', init_code) = gen_expr ctx_init tc.tc_value in
     let init_vts = List.init ctx'.next_local (fun i ->

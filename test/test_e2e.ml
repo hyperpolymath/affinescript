@@ -4655,6 +4655,24 @@ let test_modmut561_named_record_const_declared_order_ok () =
   | Error msg -> Alcotest.failf "a declared-order named record const should compile: %s" msg
   | Ok _ -> ()
 
+let test_modmut561_const_init_return_rejected () =
+  (* A deferred initialiser is a void helper ending in `global.set`; an
+     unscoped `return` exited before the store, so `main()` returned 0. *)
+  match wasm_of_source
+          "const value: Int = { return 7; };\n\
+           pub fn main() -> Int { value }" with
+  | Ok _ -> Alcotest.fail "a `return` in a const initialiser must not compile"
+  | Error msg ->
+    Alcotest.(check bool) "names the const" true (string_contains msg "value")
+
+let test_modmut561_const_lambda_return_ok () =
+  (* A lambda's own `return` stays inside the lambda and is allowed. *)
+  match wasm_of_source
+          "const f: fn(Int) -> Int = |x| { return x + 1; };\n\
+           pub fn main() -> Int { 0 }" with
+  | Error msg -> Alcotest.failf "a lambda's return in a const should compile: %s" msg
+  | Ok _ -> ()
+
 let test_modmut561_imported_float_arith_const_rejected () =
   (* The imported initialiser skips the defining module's Float
      elaboration, so `1.0 + 0.5` lowered to i32.add over f64 constants. *)
@@ -4803,6 +4821,8 @@ let modmut561_tests = [
   Alcotest.test_case "wasm: reordered named-record const literal is rejected" `Quick test_modmut561_named_record_const_reordered_rejected;
   Alcotest.test_case "wasm: reordered const before its record type is rejected" `Quick test_modmut561_named_record_const_before_type_rejected;
   Alcotest.test_case "wasm: declared-order named-record const compiles" `Quick test_modmut561_named_record_const_declared_order_ok;
+  Alcotest.test_case "wasm: return in a const initialiser is rejected" `Quick test_modmut561_const_init_return_rejected;
+  Alcotest.test_case "wasm: lambda return in a const compiles" `Quick test_modmut561_const_lambda_return_ok;
   Alcotest.test_case "wasm: imported arithmetic Float const is rejected" `Quick test_modmut561_imported_float_arith_const_rejected;
 ]
 let test_stringwall_concat_guard_rejects_string () =
