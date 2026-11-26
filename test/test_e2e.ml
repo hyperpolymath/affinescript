@@ -4506,6 +4506,325 @@ let slice560_tests = [
   Alcotest.test_case "wasm: show on Float is a named error" `Quick test_show560_float_named_error;
   Alcotest.test_case "wasm: user-defined show is not rewritten" `Quick test_show560_user_defined_wins;
 ]
+(* #561 — effect wall on core WASM: module-level mutable state. The
+   qualified host-call half (`use Console; Console.log(..)`) needs the
+   stdlib loader and is pinned by tests/codegen/module_state.{affine,mjs}. *)
+let test_modmut561_write_is_global_set () =
+  match wasm_of_source
+          "const mut counter: Int = 0;\n\
+           fn bump() -> Int { counter = counter + 1; counter += 2; counter }" with
+  | Error msg -> Alcotest.failf "a write to `const mut` should lower: %s" msg
+  | Ok m ->
+    let open Wasm in
+    Alcotest.(check bool) "a mutable global is declared" true
+      (List.exists (fun g -> g.g_mutable && g.g_type = I32) m.globals);
+    let sets = List.concat_map (fun f ->
+        List.filter (function GlobalSet _ -> true | _ -> false) f.f_body)
+        m.funcs in
+    Alcotest.(check int) "both writes are global.set" 2 (List.length sets)
+
+let test_modmut561_float_const_is_f64 () =
+  match wasm_of_source "const scale: Float = 1.5;\nfn f() -> Int { 1 }" with
+  | Error msg -> Alcotest.failf "a Float const should compile: %s" msg
+  | Ok m ->
+    let open Wasm in
+    Alcotest.(check bool) "the Float const is an f64 global" true
+      (List.exists (fun g -> g.g_type = F64 && not g.g_mutable) m.globals)
+
+let test_modmut561_immutable_write_rejected () =
+  match wasm_of_source
+          "const limit: Int = 3;\nfn f() -> Int { limit = 4; limit }" with
+  | Ok _ -> Alcotest.fail "a write to an immutable const must not compile"
+  | Error _ -> ()
+
+let test_modmut561_fn_valued_const_call_rejected () =
+  (* Consts are registered under a negative global sentinel; calling one
+     emitted `call` with that negative index, an invalid module. *)
+  match wasm_of_source
+          "const handler: fn(Int) -> Int = fn(x: Int) -> Int { x + 1 };\n\
+           pub fn main() -> Int { handler(41) }" with
+  | Ok _ -> Alcotest.fail "a call to a function-valued const must not compile"
+  | Error msg ->
+    Alcotest.(check bool) "names the const" true
+      (string_contains msg "handler")
+
+let test_modmut561_mut_record_reordered_assign_rejected () =
+  (* A record global's field offsets are fixed at its declaration; a
+     replacement literal in another field order stored `right` at offset 0
+     while every read loaded it at 4 (main() returned 7, not 9). *)
+  match wasm_of_source
+          "const mut config: {left: Int, right: Int} = #{ left: 1, right: 2 };\n\
+           pub fn main() -> Int {\n\
+           \  config = #{ right: 9, left: 7 };\n\
+           \  config.right\n\
+           }" with
+  | Ok _ -> Alcotest.fail "a reordered record replacement must not compile"
+  | Error msg ->
+    Alcotest.(check bool) "names the global" true
+      (string_contains msg "config")
+
+let test_modmut561_mut_record_if_branch_reordered_rejected () =
+  (* The check covers every value the RHS can produce, not just a direct
+     literal: a reordered literal in an `if` branch is rejected too. *)
+  match wasm_of_source
+          "const mut config: {left: Int, right: Int} = #{ left: 1, right: 2 };\n\
+           pub fn choose(flag: Bool) -> Int {\n\
+           \  config = if flag { #{ left: 7, right: 9 } } else { #{ right: 8, left: 6 } };\n\
+           \  config.right\n\
+           }" with
+  | Ok _ -> Alcotest.fail "a reordered literal in an if branch must not compile"
+  | Error msg ->
+    Alcotest.(check bool) "names the global" true
+      (string_contains msg "config")
+
+let test_modmut561_mut_record_block_local_shadow_rejected () =
+  (* A block-local `let config` shadows the global; the tail `config` is
+     that local (a reordered literal), not the global, so `read()` in
+     another function would load `right` at the wrong offset. *)
+  match wasm_of_source
+          "const mut config: {left: Int, right: Int} = #{ left: 1, right: 2 };\n\
+           pub fn update() -> Int {\n\
+           \  config = { let config = #{ right: 9, left: 7 }; config };\n\
+           \  0\n\
+           }\n\
+           pub fn read() -> Int { config.right }" with
+  | Ok _ -> Alcotest.fail "a block-local shadowing replacement must not compile"
+  | Error msg ->
+    Alcotest.(check bool) "names the global" true
+      (string_contains msg "config")
+
+let test_modmut561_mut_record_reassigned_local_rejected () =
+  (* A local's tracked layout is its first literal's; reassigning it in
+     another order left that layout stale, so `config = replacement` was
+     accepted and `read()` loaded `right` at the wrong offset. *)
+  match wasm_of_source
+          "const mut config: {left: Int, right: Int} = #{ left: 1, right: 2 };\n\
+           pub fn update() -> Int {\n\
+           \  let mut replacement = #{ left: 1, right: 2 };\n\
+           \  replacement = #{ right: 9, left: 7 };\n\
+           \  config = replacement;\n\
+           \  0\n\
+           }\n\
+           pub fn read() -> Int { config.right }" with
+  | Ok _ -> Alcotest.fail "a variable replacement must not compile"
+  | Error msg ->
+    Alcotest.(check bool) "names the global" true
+      (string_contains msg "config")
+
+let test_modmut561_mut_record_same_order_assign_ok () =
+  match wasm_of_source
+          "const mut config: {left: Int, right: Int} = #{ left: 1, right: 2 };\n\
+           pub fn main() -> Int {\n\
+           \  config = #{ left: 7, right: 9 };\n\
+           \  config.right\n\
+           }" with
+  | Error msg -> Alcotest.failf "a same-order replacement should compile: %s" msg
+  | Ok _ -> ()
+
+let test_modmut561_named_record_const_reordered_rejected () =
+  (* A record literal is stored in its source field order, but a read
+     through a `Config` parameter uses the type's declared order: passing
+     this const to `read` returned 1, not 2. *)
+  match wasm_of_source
+          "type Config = { left: Int, right: Int };\n\
+           const config: Config = #{ right: 2, left: 1 };\n\
+           fn read(c: Config) -> Int { c.right }\n\
+           pub fn main() -> Int { read(config) }" with
+  | Ok _ -> Alcotest.fail "a reordered literal for a named record const must not compile"
+  | Error msg ->
+    Alcotest.(check bool) "names the const" true (string_contains msg "config");
+    Alcotest.(check bool) "names the type" true (string_contains msg "Config")
+
+let test_modmut561_named_record_const_before_type_rejected () =
+  (* The check must not depend on the type being declared first. *)
+  match wasm_of_source
+          "const config: Config = #{ right: 2, left: 1 };\n\
+           type Config = { left: Int, right: Int };\n\
+           fn read(c: Config) -> Int { c.right }\n\
+           pub fn main() -> Int { read(config) }" with
+  | Ok _ -> Alcotest.fail "a reordered literal must not compile when the type comes later"
+  | Error msg ->
+    Alcotest.(check bool) "names the const" true (string_contains msg "config")
+
+let test_modmut561_named_record_const_declared_order_ok () =
+  match wasm_of_source
+          "type Config = { left: Int, right: Int };\n\
+           const config: Config = #{ left: 1, right: 2 };\n\
+           fn read(c: Config) -> Int { c.right }\n\
+           pub fn main() -> Int { read(config) }" with
+  | Error msg -> Alcotest.failf "a declared-order named record const should compile: %s" msg
+  | Ok _ -> ()
+
+let test_modmut561_const_init_return_rejected () =
+  (* A deferred initialiser is a void helper ending in `global.set`; an
+     unscoped `return` exited before the store, so `main()` returned 0. *)
+  match wasm_of_source
+          "const value: Int = { return 7; };\n\
+           pub fn main() -> Int { value }" with
+  | Ok _ -> Alcotest.fail "a `return` in a const initialiser must not compile"
+  | Error msg ->
+    Alcotest.(check bool) "names the const" true (string_contains msg "value")
+
+let test_modmut561_const_lambda_return_ok () =
+  (* A lambda's own `return` stays inside the lambda and is allowed. *)
+  match wasm_of_source
+          "const f: fn(Int) -> Int = |x| { return x + 1; };\n\
+           pub fn main() -> Int { 0 }" with
+  | Error msg -> Alcotest.failf "a lambda's return in a const should compile: %s" msg
+  | Ok _ -> ()
+
+let test_modmut561_imported_float_arith_const_rejected () =
+  (* The imported initialiser skips the defining module's Float
+     elaboration, so `1.0 + 0.5` lowered to i32.add over f64 constants. *)
+  match compile_fixture_to_wasm (fixture "float_sum_caller.affine") with
+  | Ok _ -> Alcotest.fail "an imported arithmetic Float const must not compile"
+  | Error msg ->
+    Alcotest.(check bool) "names the const" true
+      (string_contains msg "blended")
+
+let test_modmut561_deferred_init_runs_from_exports () =
+  (* A non-constant initialiser is not a valid wasm global init; it is
+     zero-initialised and set by an init runner that every exported
+     function calls first. Not the wasm start function: that runs before
+     a host has bound memory. *)
+  match wasm_of_source
+          "fn seed() -> Int { 7 }\nconst mut acc: Int = seed() + 3;\n\
+           pub fn f() -> Int { acc }" with
+  | Error msg -> Alcotest.failf "a call-initialised const should compile: %s" msg
+  | Ok m ->
+    let open Wasm in
+    Alcotest.(check bool) "no wasm start function" true (m.start = None);
+    let n_imports = List.length (List.filter (fun i ->
+        match i.i_desc with ImportFunc _ -> true | _ -> false) m.imports) in
+    let exported = List.filter_map (fun e ->
+        match e.e_desc with
+        | ExportFunc i when i >= n_imports ->
+          Some (List.nth m.funcs (i - n_imports))
+        | _ -> None) m.exports in
+    Alcotest.(check bool) "there are exported functions" true (exported <> []);
+    Alcotest.(check bool) "every export calls the init runner first" true
+      (List.for_all (fun f ->
+           match f.f_body with Call _ :: _ -> true | _ -> false) exported);
+    (* Guard: 2 = done (return), 1 = a run that did not finish (trap),
+       else mark running, run the initialisers, mark done. *)
+    Alcotest.(check bool) "the runner is guarded (done / failed / running)" true
+      (List.exists (fun f ->
+           match f.f_body with
+           | GlobalGet g :: I32Const 2l :: I32Eq :: BrIf 0
+             :: GlobalGet g1 :: If (BtEmpty, [Unreachable], [])
+             :: I32Const 1l :: GlobalSet g2 :: rest ->
+             g = g1 && g = g2
+             && (match List.rev rest with
+                 | GlobalSet g3 :: I32Const 2l :: _ -> g = g3
+                 | _ -> false)
+           | _ -> false) m.funcs);
+    (* The export is a thunk; `f` itself (called from inside the module)
+       does not call the runner, so an initialiser calling a pub fn does
+       not re-enter it. *)
+    Alcotest.(check bool) "each export thunk calls a function that skips the runner" true
+      (List.for_all (fun thunk ->
+           match thunk.f_body, List.rev thunk.f_body with
+           | Call runner :: _, Call target :: _ when target >= n_imports ->
+             (match (List.nth m.funcs (target - n_imports)).f_body with
+              | Call r :: _ -> r <> runner
+              | _ -> true)
+           | _ -> false) exported)
+
+let test_modmut561_record_const_field_offset () =
+  (* A record const is a pointer global; `c.right` must load at offset 4. *)
+  match wasm_of_source
+          "const config: { left: Int, right: Int } = #{ left: 1, right: 2 };\n\
+           pub fn f() -> Int { config.right }" with
+  | Error msg -> Alcotest.failf "a record const should compile: %s" msg
+  | Ok m ->
+    let open Wasm in
+    Alcotest.(check bool) "the field load is at offset 4" true
+      (List.exists (fun f -> List.mem (I32Load (2, 4)) f.f_body) m.funcs)
+
+let test_modmut561_imported_float_fn_result () =
+  (* `let r = FloatRates.sample()` must declare r f64: the imported
+     function's result type is registered under its alias. *)
+  match compile_fixture_to_wasm (fixture "float_fn_caller.affine") with
+  | Error e -> Alcotest.failf "a qualified Float call should compile: %s" e
+  | Ok m ->
+    let open Wasm in
+    Alcotest.(check bool) "the let binding the call is f64" true
+      (List.exists (fun f ->
+           List.exists (fun l -> l.l_type = F64) f.f_locals) m.funcs)
+
+let test_modmut561_float_global_compound_is_f64 () =
+  match wasm_of_source
+          "const mut ratio: Float = 1.0;\n\
+           fn f() -> Int { ratio += 0.5; ratio *= 2.0; 0 }" with
+  | Error msg -> Alcotest.failf "Float compound assignment should lower: %s" msg
+  | Ok m ->
+    let open Wasm in
+    let body = List.concat_map (fun f -> f.f_body) m.funcs in
+    Alcotest.(check bool) "f64.add and f64.mul, not the i32 ops" true
+      (List.mem F64Add body && List.mem F64Mul body
+       && not (List.mem I32Add body) && not (List.mem I32Mul body))
+
+let test_modmut561_float_global_read_into_let () =
+  (* `let x = scale` must declare x as f64, or local.set fails validation. *)
+  match wasm_of_source
+          "const scale: Float = 1.5;\nfn f() -> Float { let x = scale; x }" with
+  | Error msg -> Alcotest.failf "a Float const read should compile: %s" msg
+  | Ok m ->
+    let open Wasm in
+    Alcotest.(check bool) "the let-bound local is f64" true
+      (List.exists (fun f ->
+           List.exists (fun l -> l.l_type = F64) f.f_locals) m.funcs)
+
+let test_modmut561_float_global_same_name_let () =
+  (* `let scale = scale` must infer the f64 global before the new local
+     shadows it. *)
+  match wasm_of_source
+          "const scale: Float = 1.5;\nfn f() -> Float { let scale = scale; scale }" with
+  | Error msg -> Alcotest.failf "a same-name Float let should compile: %s" msg
+  | Ok m ->
+    let open Wasm in
+    Alcotest.(check bool) "the shadowing local is f64" true
+      (List.exists (fun f ->
+           List.exists (fun l -> l.l_type = F64) f.f_locals) m.funcs)
+
+let test_modmut561_imported_float_const () =
+  match compile_fixture_to_wasm (fixture "float_const_caller.affine") with
+  | Error e -> Alcotest.failf "an imported Float const should compile: %s" e
+  | Ok m ->
+    let open Wasm in
+    Alcotest.(check bool) "the imported const is an immutable f64 global" true
+      (List.exists (fun g ->
+           g.g_type = F64 && not g.g_mutable
+           && List.exists (function F64Const v -> v = 1.5 | _ -> false) g.g_init)
+         m.globals);
+    Alcotest.(check bool) "the let reading it is f64" true
+      (List.exists (fun f ->
+           List.exists (fun l -> l.l_type = F64) f.f_locals) m.funcs)
+
+let modmut561_tests = [
+  Alcotest.test_case "wasm: same-name let of a Float const is f64" `Quick test_modmut561_float_global_same_name_let;
+  Alcotest.test_case "wasm: imported Float const is an f64 global" `Quick test_modmut561_imported_float_const;
+  Alcotest.test_case "wasm: record const field loads at its offset" `Quick test_modmut561_record_const_field_offset;
+  Alcotest.test_case "wasm: imported Float fn result binds an f64 local" `Quick test_modmut561_imported_float_fn_result;
+  Alcotest.test_case "wasm: non-constant const init runs from exports" `Quick test_modmut561_deferred_init_runs_from_exports;
+  Alcotest.test_case "wasm: Float global compound assign is f64" `Quick test_modmut561_float_global_compound_is_f64;
+  Alcotest.test_case "wasm: Float const read into a let is f64" `Quick test_modmut561_float_global_read_into_let;
+  Alcotest.test_case "wasm: const mut write is global.set" `Quick test_modmut561_write_is_global_set;
+  Alcotest.test_case "wasm: Float const is an f64 global" `Quick test_modmut561_float_const_is_f64;
+  Alcotest.test_case "wasm: write to an immutable const is rejected" `Quick test_modmut561_immutable_write_rejected;
+  Alcotest.test_case "wasm: calling a function-valued const is rejected" `Quick test_modmut561_fn_valued_const_call_rejected;
+  Alcotest.test_case "wasm: reordered record global replacement is rejected" `Quick test_modmut561_mut_record_reordered_assign_rejected;
+  Alcotest.test_case "wasm: reordered record in an if branch is rejected" `Quick test_modmut561_mut_record_if_branch_reordered_rejected;
+  Alcotest.test_case "wasm: block-local shadowing record replacement is rejected" `Quick test_modmut561_mut_record_block_local_shadow_rejected;
+  Alcotest.test_case "wasm: reassigned-local record replacement is rejected" `Quick test_modmut561_mut_record_reassigned_local_rejected;
+  Alcotest.test_case "wasm: same-order record global replacement compiles" `Quick test_modmut561_mut_record_same_order_assign_ok;
+  Alcotest.test_case "wasm: reordered named-record const literal is rejected" `Quick test_modmut561_named_record_const_reordered_rejected;
+  Alcotest.test_case "wasm: reordered const before its record type is rejected" `Quick test_modmut561_named_record_const_before_type_rejected;
+  Alcotest.test_case "wasm: declared-order named-record const compiles" `Quick test_modmut561_named_record_const_declared_order_ok;
+  Alcotest.test_case "wasm: return in a const initialiser is rejected" `Quick test_modmut561_const_init_return_rejected;
+  Alcotest.test_case "wasm: lambda return in a const compiles" `Quick test_modmut561_const_lambda_return_ok;
+  Alcotest.test_case "wasm: imported arithmetic Float const is rejected" `Quick test_modmut561_imported_float_arith_const_rejected;
+]
 let test_stringwall_concat_guard_rejects_string () =
   let prog = Parse_driver.parse_string ~file:"<stringwall>"
     "fn f() -> Int { string_char_code_at(\"ab\" ++ \"cd\", 0) }" in
@@ -5974,6 +6293,7 @@ let tests =
     ("E2E String-wall slice 2 (string_from_char_code)", stringwall_alloc_tests);
     ("E2E String-wall slice 3 (string_sub)", stringwall_sub_tests);
     ("E2E String-wall #560 (slice, show)", slice560_tests);
+    ("E2E effect wall #561 (module state)", modmut561_tests);
     ("E2E String-wall slice 4 (case-fold)", stringwall_case_tests);
     ("E2E String-wall slice 5 (trim)", stringwall_trim_tests);
     ("E2E String-wall slice 6 (string_find)", stringwall_find_tests);

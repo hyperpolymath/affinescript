@@ -1,0 +1,10 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell
+//
+// Imports a Float const whose initialiser is arithmetic (#561 review).
+
+use FloatSums::{blended};
+
+pub fn main() -> Float {
+  blended
+}

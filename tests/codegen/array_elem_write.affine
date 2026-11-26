@@ -1,0 +1,15 @@
+// SPDX-License-Identifier: MPL-2.0
+//
+// #561 review: an element write lands past the array's 4-byte length
+// header, where construction and reads put element i (arr + 4 + i*4).
+// It used to write at arr + i*4, so `xs[0] = ..` overwrote the length.
+//
+// xs = [10, 20, 30] -> [10, 42, 35]:
+// main() = 42 * 1000 + 35 * 10 + len(xs) = 42353.
+
+pub fn main() -> Int {
+  let mut xs = [10, 20, 30];
+  xs[1] = 42;
+  xs[2] += 5;
+  xs[1] * 1000 + xs[2] * 10 + len(xs)
+}
