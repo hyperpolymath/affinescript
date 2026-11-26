@@ -126,8 +126,15 @@ of its two-character escape. Now round-trips (`tests/codegen-bun/json_escapes`).
 `trim`, `show`, ...) now shadows it. A parameter `get` compiled to the
 ref-cell builtin and crashed at run time. Parameters, `let`, `for`, lambda,
 match-arm and `catch` binders are scoped, a block's `let`s end with the block,
-a source block keeps its braces, and a call to a local is never classed as an
-`Int` division operand (`tests/codegen-bun/local_shadows_builtin`).
+a source block keeps its braces, and a call to a local is classed as an `Int`
+division operand only by its own declared type (`len: fn(String) -> Int`),
+never by the intrinsic it shadows (`tests/codegen-bun/local_shadows_builtin`,
+`test/test_int_scope_bun.ml`).
+* Bun-ESM: an `Int` assigned inside a nested block to an enclosing variable
+was forgotten at the block's end, so a later `n / 2` did not truncate.
+* json (Bun-ESM): `hpm_json_object_key` cached an object's keys for the
+length of a walk, so after the host deleted a member it still returned the
+deleted name. It now reads the live object (`tests/codegen-bun/json_object_keys`).
 * fix(modules,codegen): same-named functions in two modules no longer
 collapse to one in a flattened program (Bun-ESM, JS and the other
 non-Wasm backends). Every function and constant of an imported module is

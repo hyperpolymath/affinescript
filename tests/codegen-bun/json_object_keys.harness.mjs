@@ -34,4 +34,14 @@ finally { delete Object.prototype.inheritedProbe; }
 expect("non-finite member", subject.roundtrip('{"n":1e400}'), "<none>");
 expect("non-finite element", subject.roundtrip("[1e400]"), "<none>");
 expect("finite exponent", subject.roundtrip("[1e3]"), "[1000]");
+// A key read agrees with the live object: after a member is deleted mid-walk,
+// an index past the current keys is None, not the deleted name.
+{
+  const live = { a: 1, b: 2 };
+  expect("live key 0", subject.key_of(live, 0), "a");
+  delete live.b;
+  expect("deleted key not served", subject.key_of(live, 1), "<none>");
+  live.c = 3;
+  expect("added key served", subject.key_of(live, 1), "c");
+}
 console.log("json_object_keys: ok");

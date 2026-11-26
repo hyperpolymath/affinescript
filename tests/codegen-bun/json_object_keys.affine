@@ -40,3 +40,9 @@ pub fn key_at(src: String, i: Int) -> String {
 pub fn len_of(src: String) -> Int {
   match parse(src) { Some(h) => hpm_json_object_len(h), None => -2 }
 }
+
+// Takes a host handle directly, so the harness can change the object
+// between two index requests.
+pub fn key_of(h: HpmJsonValue, i: Int) -> String {
+  match hpm_json_object_key(h, i) { Some(k) => k, None => "<none>" }
+}

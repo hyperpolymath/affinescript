@@ -101,6 +101,16 @@ type codegen_ctx = {
      parameter instead of the ref-cell builtin `get`. Reset per function;
      scoped constructs restore it on exit (see {!with_locals}). *)
   locals : (string, unit) Hashtbl.t;
+  (* Locals whose declared type is a function returning [Int] (a parameter
+     `len: fn(String) -> Int`). A call to one is an [Int], like a call to an
+     [Int]-returning intrinsic, but it is classified by its own type: a local
+     shadowing an intrinsic does not inherit the intrinsic's classification.
+     Reset per function alongside {!locals}. *)
+  int_callables : (string, unit) Hashtbl.t;
+  (* Names a statement `let` declared in the block being emitted. On block
+     exit, an [Int] classification gained by an assignment to any other
+     (enclosing) name is kept; see {!with_locals_scope}. *)
+  block_decls : (string, unit) Hashtbl.t;
   (* True while emitting a synthesised `async` method body. The
      expression-position IIFE wrappers (block/try/match/let/return) must
      then be `async` and awaited, because they may contain an awaited
@@ -134,6 +144,8 @@ let create_ctx host symbols = {
   int_vars = Hashtbl.create 16;
   int_array_vars = Hashtbl.create 16;
   locals = Hashtbl.create 16;
+  int_callables = Hashtbl.create 8;
+  block_decls = Hashtbl.create 8;
   in_async = false;
   top_names = Hashtbl.create 128;
   public_ctors = Hashtbl.create 32;
@@ -648,16 +660,16 @@ const __as_urlParse = (s) => {
 const __as_hpmJsonObjectKeys = (v) =>
   (v === null || typeof v !== "object" || Array.isArray(v)) ? [] : Object.keys(v);
 const __as_hpmJsonObjectLen = (v) => __as_hpmJsonObjectKeys(v).length;
-// A walk asks for keys by index, so index 0 takes a snapshot of the object's
-// keys and later indices read it: one Object.keys per walk, not per key.
-// Each walk starts at 0, so a snapshot never outlives the walk that made it.
-const __as_hpmJsonKeySnapshots = new WeakMap();
+// Keys are read from the live object on every call, so an index agrees with
+// hpm_json_object_len even if the host changes the object during a walk: an
+// index past the current keys is None, never a deleted key. (A cached key
+// list would serve stale names; the walk is linear per key, quadratic per
+// object, which is acceptable for JSON-sized objects.)
 const __as_hpmJsonObjectKey = (v, i) => {
   if (v === null || typeof v !== "object" || Array.isArray(v)) return None;
   const idx = Number(i);
   if (!Number.isInteger(idx) || idx < 0) return None;
-  let ks = idx === 0 ? undefined : __as_hpmJsonKeySnapshots.get(v);
-  if (ks === undefined) { ks = Object.keys(v); __as_hpmJsonKeySnapshots.set(v, ks); }
+  const ks = Object.keys(v);
   return idx < ks.length ? Some(ks[idx]) : None;
 };
 const __as_hpmJsonArrayLen = (v) => (Array.isArray(v) ? v.length : 0);
@@ -1427,6 +1439,13 @@ let rec type_head_is_int : type_expr -> bool = function
   | TyOwn t | TyRef (_, t) | TyMut (_, t) -> type_head_is_int t
   | _ -> false
 
+(* Is [t] a function type whose result has an [Int] head (`fn(A) -> Int`)?
+   Classifies calls to a callable local by its own declared type. *)
+let rec type_returns_int : type_expr -> bool = function
+  | TyArrow (_, _, ret, _) -> type_head_is_int ret
+  | TyOwn t | TyRef (_, t) | TyMut (_, t) -> type_returns_int t
+  | _ -> false
+
 (* Is [t] an [Array<Int>] (surface `[Int]`, which the parser desugars to
    `Array[Int]`)? Used to seed for-loop variables and recognise indexed
    element reads as integers (#478). *)
@@ -1542,11 +1561,13 @@ let rec expr_is_int ctx (e : expr) : bool =
   | ExprApp (ExprVar id, _) ->
       (* A call to a local binding is not the intrinsic or top-level
          function of the same name (see the intrinsic dispatch in
-         {!gen_expr}), so its result is not provably an [Int]. *)
-      not (Hashtbl.mem ctx.locals id.name)
-      && (Hashtbl.mem ctx.int_fns id.name
-          || (not (Hashtbl.mem ctx.local_fns id.name)
-              && List.mem id.name int_returning_builtins))
+         {!gen_expr}): it is an [Int] only by its own declared type. *)
+      if Hashtbl.mem ctx.locals id.name then
+        Hashtbl.mem ctx.int_callables id.name
+      else
+        Hashtbl.mem ctx.int_fns id.name
+        || (not (Hashtbl.mem ctx.local_fns id.name)
+            && List.mem id.name int_returning_builtins)
   (* An element read from a provably-[Array<Int>] value is an [Int]
      (covers `xs[i] / 2` where xs: [Int]) — issue #478 finding 2. *)
   | ExprIndex (arr, _) -> expr_is_int_array ctx arr
@@ -1583,32 +1604,70 @@ let enter_fn_scope ctx (params : param list) : codegen_ctx =
     params;
   let locals = Hashtbl.create 16 in
   List.iter (fun (p : param) -> Hashtbl.replace locals p.p_name.name ()) params;
-  { ctx with int_vars = tbl; int_array_vars = arr_tbl; locals }
+  let int_callables = Hashtbl.create 8 in
+  List.iter
+    (fun (p : param) ->
+      if type_returns_int p.p_ty then Hashtbl.replace int_callables p.p_name.name ())
+    params;
+  { ctx with int_vars = tbl; int_array_vars = arr_tbl; locals; int_callables;
+             block_decls = Hashtbl.create 8 }
 
 (* Run [f] with [names] bound as locals, then restore the previous bindings,
    so a scoped binder (let body, lambda, match arm, loop) cannot shadow an
    intrinsic outside its scope. *)
 let with_locals : 'a. codegen_ctx -> string list -> (unit -> 'a) -> 'a =
   fun ctx names f ->
-  let had = List.map (fun n -> (n, Hashtbl.mem ctx.locals n)) names in
-  List.iter (fun n -> Hashtbl.replace ctx.locals n ()) names;
+  let mem t n = Hashtbl.mem t n in
+  let had =
+    List.map
+      (fun n -> (n, mem ctx.locals n, mem ctx.int_vars n, mem ctx.int_callables n))
+      names
+  in
+  (* A binder of no declared callable type shadows any [Int]-returning
+     callable of the same name. *)
+  List.iter
+    (fun n -> Hashtbl.replace ctx.locals n (); Hashtbl.remove ctx.int_callables n)
+    names;
+  let set t n b = if b then Hashtbl.replace t n () else Hashtbl.remove t n in
+  (* Restore every table the binders could change: an [Int] recorded for a
+     binder inside [f] must not reach a same-named outer binding. *)
   let restore () =
-    List.iter (fun (n, h) -> if not h then Hashtbl.remove ctx.locals n) had
+    List.iter
+      (fun (n, l, i, c) ->
+        set ctx.locals n l; set ctx.int_vars n i; set ctx.int_callables n c)
+      had
   in
   match f () with
   | v -> restore (); v
   | exception e -> restore (); raise e
 
 (* Snapshot locals and integer metadata around [f]: statement `let`s
-   inside a nested block must not change the enclosing bindings. *)
+   inside a nested block must not change the enclosing bindings.
+
+   An assignment inside the block to a name the block did not declare
+   changes the enclosing variable, so an [Int] classification it gained is
+   kept: the variable's type is static, so it holds after the block too
+   (`let mut n = match ..; { n = 5; } n / 2` truncates). *)
 let with_locals_scope : 'a. codegen_ctx -> (unit -> 'a) -> 'a = fun ctx f ->
   let saved = Hashtbl.copy ctx.locals in
   let saved_ints = Hashtbl.copy ctx.int_vars in
+  let saved_callables = Hashtbl.copy ctx.int_callables in
+  let saved_decls = Hashtbl.copy ctx.block_decls in
+  Hashtbl.reset ctx.block_decls;
+  let refill t src = Hashtbl.reset t; Hashtbl.iter (Hashtbl.replace t) src in
   let restore () =
-    Hashtbl.reset ctx.locals;
-    Hashtbl.iter (Hashtbl.replace ctx.locals) saved;
-    Hashtbl.reset ctx.int_vars;
-    Hashtbl.iter (Hashtbl.replace ctx.int_vars) saved_ints
+    let gained =
+      Hashtbl.fold
+        (fun n () acc ->
+          if Hashtbl.mem saved_ints n || Hashtbl.mem ctx.block_decls n then acc
+          else n :: acc)
+        ctx.int_vars []
+    in
+    refill ctx.locals saved;
+    refill ctx.int_vars saved_ints;
+    List.iter (fun n -> Hashtbl.replace ctx.int_vars n ()) gained;
+    refill ctx.int_callables saved_callables;
+    refill ctx.block_decls saved_decls
   in
   match f () with
   | v -> restore (); v
@@ -2232,7 +2291,7 @@ and gen_stmt ctx (stmt : stmt) : string =
         gen_tail_to ctx (fun v -> "void (" ^ v ^ ");") sl_value
       else
         gen_expr ctx sl_value ^ ";"
-  | StmtLet { sl_pat; sl_value; sl_mut; sl_quantity = _; sl_ty = _ } ->
+  | StmtLet { sl_pat; sl_value; sl_mut; sl_quantity = _; sl_ty } ->
       let kw = if sl_mut then "let" else "const" in
       let js =
         if lowers_to_statements sl_value && expr_contains_return sl_value then begin
@@ -2257,7 +2316,18 @@ and gen_stmt ctx (stmt : stmt) : string =
        | None -> ());
       (* Bound after its initializer is emitted: `let len = len(s);` still
          calls the intrinsic. Lasts to the end of the enclosing scope. *)
-      List.iter (fun n -> Hashtbl.replace ctx.locals n ()) (pattern_binders sl_pat);
+      let binders = pattern_binders sl_pat in
+      List.iter
+        (fun n ->
+          Hashtbl.replace ctx.locals n ();
+          Hashtbl.replace ctx.block_decls n ();
+          Hashtbl.remove ctx.int_callables n)
+        binders;
+      (* `let f: fn(String) -> Int = ...`: calls to [f] are [Int]s. *)
+      (match pat_var_name sl_pat, sl_ty with
+       | Some n, Some t when type_returns_int t ->
+           Hashtbl.replace ctx.int_callables n ()
+       | _ -> ());
       js
   | StmtExpr e -> gen_stmt_expr ctx e
   | StmtAssign (lhs, op, rhs) ->
