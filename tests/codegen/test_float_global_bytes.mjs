@@ -19,7 +19,8 @@ async function check(bytes, label, want) {
   const imports = {};
   for (const i of WebAssembly.Module.imports(mod)) {
     if (i.kind !== 'function') continue;
-    (imports[i.module] ??= {})[i.name] = () => 0;
+    imports[i.module] ??= {};
+    imports[i.module][i.name] = () => 0;
   }
   const instance = await WebAssembly.instantiate(mod, imports);
   const got = instance.exports.main();
