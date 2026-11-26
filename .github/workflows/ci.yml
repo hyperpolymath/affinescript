@@ -5,15 +5,18 @@
 #
 # Standalone CI: no dependency on third-party actions or external-repo
 # reusable workflows. The OCaml toolchain is self-hosted via apt + opam
-# (replacing ocaml/setup-ocaml), and only first-party `actions/*` are used
-# (checkout / setup-node / upload-artifact), SHA-pinned. dune-project requires
-# OCaml >= 4.14, satisfied by the runner's apt OCaml (ocaml-system), with a
-# base-compiler fallback.
+# (replacing ocaml/setup-ocaml) in tools/ci/setup-ocaml.sh, and only
+# first-party `actions/*` are used (checkout / setup-node / upload-artifact).
+# OCaml is held at 4.14: dune-project needs >= 4.14 and the with-test
+# dependency bisect_ppx needs < 5.0, so the runner's apt OCaml is used only
+# when it is 4.14.x (Ubuntu 26.04 ships 5.4) and a pinned
+# ocaml-base-compiler.4.14.2 is built otherwise.
 #
-# NOTE on pins: first-party `actions/*` are SHA-pinned (repo SHA-pinning
-# policy + Hypatia workflow_audit + the "allowed actions" policy that rejects
-# tag refs at run-creation). `actions/checkout` is v7.0.0 (`9c091bb…`, bumped
-# by Dependabot in #605); `setup-node` / `upload-artifact` remain v4.
+# NOTE on pins: `.github/workflows/actions.lock` is the pin authority. Steps
+# name actions by tag and the lock maps each to a commit SHA; a workflow
+# whose refs do not match the lock never starts (startup_failure, zero
+# jobs). Regenerate the lock after any `uses:` change; governance check 4
+# (tools/ci/check-actions-lock.sh) fails on drift.
 name: CI
 on:
   push:
@@ -44,15 +47,8 @@ jobs:
           # clone makes property 4 fail closed ("stamp not present").
           fetch-depth: 0
       - name: Set up OCaml toolchain (self-hosted; replaces ocaml/setup-ocaml)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends opam ocaml
-          opam init --bare --disable-sandboxing --yes
-          # Prefer the runner's system OCaml (>= 4.14 satisfies dune-project)
-          # for an instant switch; fall back to a pinned base compiler.
-          opam switch create . ocaml-system --no-install --yes \
-            || opam switch create . ocaml-base-compiler.4.14.2 --no-install --yes
-          opam exec -- ocaml -version
+        # OCaml 4.14 (bisect_ppx needs < 5.0): runner OCaml when 4.14.x, else pinned 4.14.2.
+        run: ./tools/ci/setup-ocaml.sh
       - name: Set up Node.js
         uses: actions/setup-node@v7.1.0
         with:
@@ -88,6 +84,13 @@ jobs:
         run: |
           set -o pipefail
           opam exec -- dune runtest 2>&1 | tee runtest.log
+      - name: Proven-Tests run report, lexer suite (advisory)
+        # hyperpolymath/proven-tests-and-benches contract: an OCaml emitter
+        # (test/proven_report.ml) validated by the framework's pinned Rust
+        # checker. Advisory while adoption is a first slice: it never fails
+        # the job. See tools/ci/proven/VENDOR.adoc#proven-tests.
+        continue-on-error: true
+        run: opam exec -- ./tools/ci/proven/proven-report.sh
       - name: Consumer on-ramp example (issue #771)
         # The consumer-facing contract this project owes its downstream
         # readers: a host surface declared with `extern fn`, compiled to
@@ -187,13 +190,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7.0.1
       - name: Set up OCaml toolchain (self-hosted; replaces ocaml/setup-ocaml)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends opam ocaml
-          opam init --bare --disable-sandboxing --yes
-          opam switch create . ocaml-system --no-install --yes \
-            || opam switch create . ocaml-base-compiler.4.14.2 --no-install --yes
-          opam exec -- ocaml -version
+        # OCaml 4.14 (bisect_ppx needs < 5.0): runner OCaml when 4.14.x, else pinned 4.14.2.
+        run: ./tools/ci/setup-ocaml.sh
       - name: Install dependencies
         # Match the build job: `dune build` compiles everything including
         # test/ (which depends on alcotest, with-test) and the @doc target
@@ -216,13 +214,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7.0.1
       - name: Set up OCaml toolchain (self-hosted; replaces ocaml/setup-ocaml)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends opam ocaml
-          opam init --bare --disable-sandboxing --yes
-          opam switch create . ocaml-system --no-install --yes \
-            || opam switch create . ocaml-base-compiler.4.14.2 --no-install --yes
-          opam exec -- ocaml -version
+        # OCaml 4.14 (bisect_ppx needs < 5.0): runner OCaml when 4.14.x, else pinned 4.14.2.
+        run: ./tools/ci/setup-ocaml.sh
       - name: Install dependencies
         run: opam install . --deps-only --with-test --with-doc --yes
       - name: Build bench targets
@@ -266,13 +259,8 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7.0.1
       - name: Set up OCaml toolchain (self-hosted; replaces ocaml/setup-ocaml)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends opam ocaml
-          opam init --bare --disable-sandboxing --yes
-          opam switch create . ocaml-system --no-install --yes \
-            || opam switch create . ocaml-base-compiler.4.14.2 --no-install --yes
-          opam exec -- ocaml -version
+        # OCaml 4.14 (bisect_ppx needs < 5.0): runner OCaml when 4.14.x, else pinned 4.14.2.
+        run: ./tools/ci/setup-ocaml.sh
       - name: Install dependencies
         run: opam install . --deps-only --with-test --with-doc --yes
       - name: Set up Node.js
@@ -434,3 +422,28 @@ jobs:
           ( cd tools/vendor/tree-sitter-rescript \
               && tree-sitter parse --quiet "${fixture_abs}" > /dev/null )
           echo "smoke-parsed: ${fixtures[0]}"
+
+  # Single required check. The `Branch-Floor` ruleset on main requires the
+  # status `CI/gate` by check-run name, which is this job's `name:` (not the
+  # job id), so the name must stay exactly `CI/gate`. It passes only when every
+  # job above succeeded (a skipped job counts as passing, a failed or cancelled
+  # one does not). Add any new CI job to `needs:` here, or the ruleset will not
+  # wait for it.
+  gate:
+    name: CI/gate
+    if: always()
+    needs: [build, lint, bench-visibility, coverage-visibility, vscode-smoke, migration-assistant]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: All CI jobs passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "CI job results: $RESULTS"
+          for r in $RESULTS; do
+            case "$r" in
+              success|skipped) ;;
+              *) echo "::error::a required CI job ended as '$r'"; exit 1 ;;
+            esac
+          done

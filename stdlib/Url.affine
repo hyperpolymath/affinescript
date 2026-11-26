@@ -1,0 +1,42 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// Url.affine — URL parsing and reference resolution.
+//
+// Semantics are the WHATWG URL Standard's, because the hosts these programs
+// run in (browsers, extensions, Bun, Deno) resolve URLs that way, and code
+// that compares or rewrites URLs must agree with them. WHATWG differs from
+// RFC 3986 in places (backslashes, default ports, host normalisation), so a
+// hand-rolled RFC 3986 resolver would silently disagree with the host.
+//
+// Portability: both externs are lowered by the ESM backend
+// (lib/codegen_deno.ml) to the host's `URL` constructor. There is no native
+// lowering yet; a native backend must supply a WHATWG-conformant parser
+// before these can be used there.
+
+module Url;
+
+use prelude::{Option, Some, None};
+
+/// The components of a parsed absolute URL, as WHATWG's URL API reports
+/// them: `protocol` keeps its trailing ":", `search` its leading "?" and
+/// `hash` its leading "#"; absent parts are "".
+pub type UrlParts = {
+  href: String,
+  protocol: String,
+  username: String,
+  password: String,
+  host: String,
+  hostname: String,
+  port: String,
+  pathname: String,
+  search: String,
+  hash: String
+}
+
+/// Resolve `href` against `base`. `base` "" means no base, so `href` must
+/// itself be absolute. `None` when the result is not a valid URL.
+pub extern fn url_resolve(href: String, base: String) -> Option<String>;
+
+/// Parse an absolute URL. `None` when `s` is not one.
+pub extern fn url_parse(s: String) -> Option<UrlParts>;

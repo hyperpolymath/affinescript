@@ -1,0 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0
+// Helper module for diamond_internalised.affine: binds is_big under its own
+// name, so the copy of `grade` it carries calls `is_big`.
+module diamond_j;
+use diamond_p::{ is_big, grade };
+pub fn twice(x: Int) -> Int { grade(x) * 2 }

@@ -1,0 +1,7 @@
+// SPDX-License-Identifier: MPL-2.0
+// #801 regression fixture: see Lib801/A.affine.
+module Lib801.B;
+pub fn label() -> String { "from B" }
+pub fn b_label() -> String { label() }
+fn helper() -> String { "B helper" }
+pub fn b_helper() -> String { helper() }

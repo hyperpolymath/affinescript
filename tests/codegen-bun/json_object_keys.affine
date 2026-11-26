@@ -1,0 +1,48 @@
+// SPDX-License-Identifier: MPL-2.0
+// hpm_json_object_len / hpm_json_object_key (json.affine v0.4): object
+// members are enumerable, so `to_json` materialises objects instead of
+// returning None, and `stringify` round-trips them in member order.
+
+use prelude::{ Option, Some, None };
+use json::{ Json, parse, to_json, stringify, hpm_json_object_len,
+            hpm_json_object_key, HpmJsonValue };
+
+pub fn roundtrip(src: String) -> String {
+  match parse(src) {
+    Some(h) => match to_json(h) { Some(j) => stringify(j), None => "<none>" },
+    None => "<parse-fail>"
+  }
+}
+
+pub fn keys(src: String) -> [String] {
+  let mut out = [];
+  match parse(src) {
+    Some(h) => {
+      let n = hpm_json_object_len(h);
+      let mut i = 0;
+      while i < n {
+        match hpm_json_object_key(h, i) { Some(k) => { out = out ++ [k]; }, None => {} };
+        i = i + 1;
+      }
+    },
+    None => {}
+  };
+  out
+}
+
+pub fn key_at(src: String, i: Int) -> String {
+  match parse(src) {
+    Some(h) => match hpm_json_object_key(h, i) { Some(k) => k, None => "<none>" },
+    None => "<parse-fail>"
+  }
+}
+
+pub fn len_of(src: String) -> Int {
+  match parse(src) { Some(h) => hpm_json_object_len(h), None => -2 }
+}
+
+// Takes a host handle directly, so the harness can change the object
+// between two index requests.
+pub fn key_of(h: HpmJsonValue, i: Int) -> String {
+  match hpm_json_object_key(h, i) { Some(k) => k, None => "<none>" }
+}

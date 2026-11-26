@@ -1,0 +1,5 @@
+// SPDX-License-Identifier: MPL-2.0
+// #801 negative fixture: constructor `Blue` of arity 0 here, 1 in B.
+module Lib801c.A;
+pub enum Col { Red, Blue }
+pub fn a_tag() -> Int { match Blue { Red => 1, Blue => 2 } }

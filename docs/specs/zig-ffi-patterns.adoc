@@ -213,6 +213,22 @@ pub extern fn hpm_json_free(val: HpmJsonValue) -> Int;   // ownership: caller fr
 * `parse` returns `Option` because parsing can fail.
 * `free` discharges the host allocation; every successful `parse` is
   balanced by exactly one `free`.
+
+*Wasm host import set (changed in json v0.4).* A Wasm module that brings in
+`json`'s externs, for example with `use json::*`, imports every
+`hpm_json_*` extern whether or not it calls one. v0.4 adds
+`hpm_json_object_len` and `hpm_json_object_key`, so the set grows from 11
+to 13. Compiled with `use json::*`, the imports appear under the `json`
+module (`json.hpm_json_object_len`, `json.hpm_json_object_key`), not under
+`env` as the generic description above says. A host that supplies only the
+v0.3 eleven fails to instantiate the module with a `LinkError`, before any
+code runs. Stubs are safe only for imports that are never called;
+alternatively, import `json` selectively (`use json::{encode_int}` imports
+only what it names). A length stub returning 0 makes `to_json` convert
+even a non-empty object to `Some(JObject([]))` without calling
+`hpm_json_object_key`, so a key stub returning `None` does not reject it.
+Object conversion requires working host implementations of both accessors
+or an explicit rejection path before object conversion proceeds.
 * No effect row: parsing a string is pure with respect to the affine
   effect lattice (the allocation is an implementation detail of the host).
 
