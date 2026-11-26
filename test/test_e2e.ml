@@ -4548,6 +4548,40 @@ let test_modmut561_fn_valued_const_call_rejected () =
     Alcotest.(check bool) "names the const" true
       (string_contains msg "handler")
 
+let test_modmut561_mut_record_reordered_assign_rejected () =
+  (* A record global's field offsets are fixed at its declaration; a
+     replacement literal in another field order stored `right` at offset 0
+     while every read loaded it at 4 (main() returned 7, not 9). *)
+  match wasm_of_source
+          "const mut config: {left: Int, right: Int} = #{ left: 1, right: 2 };\n\
+           pub fn main() -> Int {\n\
+           \  config = #{ right: 9, left: 7 };\n\
+           \  config.right\n\
+           }" with
+  | Ok _ -> Alcotest.fail "a reordered record replacement must not compile"
+  | Error msg ->
+    Alcotest.(check bool) "names the global" true
+      (string_contains msg "config")
+
+let test_modmut561_mut_record_same_order_assign_ok () =
+  match wasm_of_source
+          "const mut config: {left: Int, right: Int} = #{ left: 1, right: 2 };\n\
+           pub fn main() -> Int {\n\
+           \  config = #{ left: 7, right: 9 };\n\
+           \  config.right\n\
+           }" with
+  | Error msg -> Alcotest.failf "a same-order replacement should compile: %s" msg
+  | Ok _ -> ()
+
+let test_modmut561_imported_float_arith_const_rejected () =
+  (* The imported initialiser skips the defining module's Float
+     elaboration, so `1.0 + 0.5` lowered to i32.add over f64 constants. *)
+  match compile_fixture_to_wasm (fixture "float_sum_caller.affine") with
+  | Ok _ -> Alcotest.fail "an imported arithmetic Float const must not compile"
+  | Error msg ->
+    Alcotest.(check bool) "names the const" true
+      (string_contains msg "blended")
+
 let test_modmut561_deferred_init_runs_from_exports () =
   (* A non-constant initialiser is not a valid wasm global init; it is
      zero-initialised and set by an init runner that every exported
@@ -4679,6 +4713,9 @@ let modmut561_tests = [
   Alcotest.test_case "wasm: Float const is an f64 global" `Quick test_modmut561_float_const_is_f64;
   Alcotest.test_case "wasm: write to an immutable const is rejected" `Quick test_modmut561_immutable_write_rejected;
   Alcotest.test_case "wasm: calling a function-valued const is rejected" `Quick test_modmut561_fn_valued_const_call_rejected;
+  Alcotest.test_case "wasm: reordered record global replacement is rejected" `Quick test_modmut561_mut_record_reordered_assign_rejected;
+  Alcotest.test_case "wasm: same-order record global replacement compiles" `Quick test_modmut561_mut_record_same_order_assign_ok;
+  Alcotest.test_case "wasm: imported arithmetic Float const is rejected" `Quick test_modmut561_imported_float_arith_const_rejected;
 ]
 let test_stringwall_concat_guard_rejects_string () =
   let prog = Parse_driver.parse_string ~file:"<stringwall>"

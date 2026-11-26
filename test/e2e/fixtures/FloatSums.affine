@@ -1,0 +1,10 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell
+//
+// Cross-module Float const fixture with an arithmetic initialiser (#561
+// review): the importer cannot copy it, so it must be a named error rather
+// than an i32 add over f64 constants (invalid wasm).
+
+module FloatSums;
+
+pub const blended: Float = 1.0 + 0.5;

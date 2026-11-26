@@ -2956,6 +2956,38 @@ and gen_stmt (ctx : context) (stmt : stmt) : (context * instr list) result =
                         && not (List.exists (fun (g, _, _, m) ->
                                     g = -(k + 1) && not m) ctx.global_inits) ->
             let gidx = -(k + 1) in
+            (* A record global's field offsets are fixed at its declaration
+               ([field_layouts]) and every reader, in any function, loads at
+               them. A replacement value whose known layout differs (e.g. a
+               literal listing the fields in another order) would be read
+               at the wrong offsets, so it is rejected by name (#561). *)
+            let* () = match op, List.assoc_opt id.name ctx.field_layouts with
+              | AssignEq, Some decl_layout ->
+                let rhs_layout = match rhs with
+                  | ExprRecord r ->
+                    Some (List.mapi (fun i (fn, _) -> (fn.name, i * 4))
+                            r.er_fields)
+                  | ExprVar src when src.name <> id.name ->
+                    List.assoc_opt src.name ctx.field_layouts
+                  | ExprApp (ExprVar fn_id, _) ->
+                    Option.bind (List.assoc_opt fn_id.name ctx.fn_ret_structs)
+                      (fun s -> List.assoc_opt s ctx.struct_layouts)
+                  | _ -> None
+                in
+                begin match rhs_layout with
+                  | Some l when l <> decl_layout ->
+                    Error (UnsupportedFeature
+                      (Printf.sprintf
+                         "assignment to `%s`: the new record's field layout \
+                          (%s) differs from the declared one (%s); list the \
+                          fields in the declared order on the core-WASM \
+                          backend (#561)" id.name
+                         (String.concat ", " (List.map fst l))
+                         (String.concat ", " (List.map fst decl_layout))))
+                  | _ -> Ok ()
+                end
+              | _ -> Ok ()
+            in
             let* (ctx', rhs_code) = gen_expr ctx rhs in
             begin match op with
               | AssignEq -> Ok (ctx', rhs_code @ [GlobalSet gidx])
@@ -3966,7 +3998,20 @@ let gen_imports ?(used : (string, unit) Hashtbl.t option)
            module, which this module does not have. *)
         let* g_type = type_to_wasm tc_ty in
         let* () =
-          if is_const_init init_code then Ok ()
+          (* The imported initialiser has not been through the Float
+             elaboration the defining module gets, so `1.0 + 0.5` would
+             reach [gen_expr] as an i32 add over f64 constants (invalid
+             wasm that [is_const_init] cannot see). Only a literal copies. *)
+          if g_type = F64
+             && (match init_code with [F64Const _] -> false | _ -> true) then
+            Error (UnsupportedFeature
+              (Printf.sprintf
+                 "imported Float const `%s` from %s: only a literal \
+                  initialiser can be copied into the importer on the \
+                  core-WASM backend; export a `fn` returning the value \
+                  instead (#561)"
+                 orig_name (String.concat "." mod_path)))
+          else if is_const_init init_code then Ok ()
           else Error (UnsupportedFeature
             (Printf.sprintf
                "imported const `%s` from %s: its initialiser is not a \
