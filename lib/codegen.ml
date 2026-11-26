@@ -3042,7 +3042,8 @@ and gen_stmt (ctx : context) (stmt : stmt) : (context * instr list) result =
         let* (ctx', arr_code) = gen_expr ctx arr_expr in
         let* (ctx'', idx_code) = gen_expr ctx' idx_expr in
         let* (ctx''', rhs_code) = gen_expr ctx'' rhs in
-        (* Array is a pointer, need to compute: arr + (idx * 4) *)
+        (* Element i is at arr + 4 + i*4: the store and load use the address
+           arr + i*4 with a memarg offset of 4 to skip the length header. *)
         let (ctx_with_temp, temp_ptr) = alloc_local ctx''' "__arr_ptr" in
         begin match op with
           | AssignEq ->
@@ -3051,7 +3052,8 @@ and gen_stmt (ctx : context) (stmt : stmt) : (context * instr list) result =
               I32Mul;              (* idx * 4 *)
               I32Add;              (* arr + (idx * 4) *)
             ] @ rhs_code @ [
-              I32Store (2, 0)      (* Store value *)
+              (* offset 4 skips the length header, as [ExprIndex] reads do *)
+              I32Store (2, 4)
             ])
           | AssignAdd | AssignSub | AssignMul | AssignDiv ->
             let binop = match op with
@@ -3068,13 +3070,13 @@ and gen_stmt (ctx : context) (stmt : stmt) : (context * instr list) result =
               I32Mul;              (* idx * 4 *)
               I32Add;              (* arr + (idx * 4) *)
               LocalTee temp_ptr;   (* Save computed address *)
-              I32Load (2, 0);      (* Load current value *)
+              I32Load (2, 4);      (* Load current value (past the header) *)
             ] @ rhs_code @ [
               op_instr;            (* Perform operation *)
               LocalSet temp_val;   (* Save result *)
               LocalGet temp_ptr;   (* Load address *)
               LocalGet temp_val;   (* Load result *)
-              I32Store (2, 0)      (* Store result *)
+              I32Store (2, 4)      (* Store result (past the header) *)
             ])
         end
       | ExprFloatIndex (arr_expr, idx_expr) ->
