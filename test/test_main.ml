@@ -3,10 +3,23 @@
 
 (** Main test runner for AffineScript *)
 
+(* [PROVEN_REPORT=FILE]: write a Proven-Tests run report for the lexer suite
+   instead of running Alcotest (tools/ci/proven/proven-report.sh). *)
+let () =
+  match Sys.getenv_opt "PROVEN_REPORT" with
+  | Some path when path <> "" ->
+    let bad =
+      Proven_report.write ~suite:"affinescript-lexer"
+        ~module_path:"test/test_lexer.ml" ~path Test_lexer.tests
+    in
+    exit (if bad = 0 then 0 else 1)
+  | _ -> ()
+
 let () =
   Alcotest.run "AffineScript"
     ([
       ("Lexer", Test_lexer.tests);
+      ("Proven-Tests report emitter", Test_proven_report.tests);
       (* ("Parser", Test_parser.tests); *)  (* TODO: Re-enable when test_parser is implemented *)
       ("Golden", Test_golden.tests);
       ("Examples", Test_golden.example_tests);

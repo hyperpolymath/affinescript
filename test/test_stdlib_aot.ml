@@ -133,18 +133,37 @@ let stdlib_files () =
   |> List.sort compare
   |> List.map (fun f -> Filename.concat stdlib_dir f)
 
+(* Stdlib files the Bun-ESM backend must refuse, with the text the refusal
+   must carry.  traits.affine has `impl Eq for Int` and `impl Eq for Bool`;
+   impl methods are emitted as free functions under their own names (trait
+   dispatch is not lowered on the non-Wasm backends), so both would be
+   `function eq`, and Bun keeps the second without complaint: `Int`'s `eq`
+   was silently `Bool`'s.  The emitter refuses that (#801); this pin flips
+   when impl methods get distinct names. *)
+let expected_refusals = [ ("traits.affine", "`eq`") ]
+
 let check_one path () =
   let result =
     match parse_file_safe path with
     | Error m -> Error m
     | Ok prog -> pipeline_to_deno prog
   in
-  match result with
-  | Ok js ->
+  match List.assoc_opt (Filename.basename path) expected_refusals, result with
+  | Some needle, Ok _ ->
+    Alcotest.failf "%s compiled, but it must be refused (two bindings named %s); \
+                    if impl methods now have distinct names, drop the pin"
+      (Filename.basename path) needle
+  | Some needle, Error m ->
+    Alcotest.(check bool)
+      (Printf.sprintf "%s refused loudly: %s" (Filename.basename path) m)
+      true
+      (Str.string_match
+         (Str.regexp (".*" ^ Str.quote needle ^ ".*#801")) m 0)
+  | None, Ok js ->
     Alcotest.(check bool)
       (Printf.sprintf "%s emits a non-empty ES module" (Filename.basename path))
       true (String.length js > 0)
-  | Error m ->
+  | None, Error m ->
     Alcotest.failf "AOT pipeline failed for %s: %s"
       (Filename.basename path) m
 

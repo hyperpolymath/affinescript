@@ -119,11 +119,6 @@ pure-extern semantics (Closes #332) (#338)
 including a `document.body.innerHTML` setter that add-on linters flag. Only
 the helpers a module reaches are emitted now, in their original order
 (`test/test_runtime_prune.ml`).
-* Module flattening: when two modules' different public declarations of one name
-reached a program transitively (`M` imports `U` and `V`, which import `A::f`
-and `B::f`), last-wins kept one and silently rebound the other module's calls
-to it. Now an `ImportCollision` error, as private collisions already were
-(`tests/codegen-bun/collision`).
 * json: `stringify` emitted invalid JSON for strings containing `"`, `\`
 or a control character: `escape_char` returned the bare character instead
 of its two-character escape. Now round-trips (`tests/codegen-bun/json_escapes`).
@@ -133,6 +128,33 @@ ref-cell builtin and crashed at run time. Parameters, `let`, `for`, lambda,
 match-arm and `catch` binders are scoped, a block's `let`s end with the block,
 a source block keeps its braces, and a call to a local is never classed as an
 `Int` division operand (`tests/codegen-bun/local_shadows_builtin`).
+* fix(modules,codegen): same-named functions in two modules no longer
+collapse to one in a flattened program (Bun-ESM, JS and the other
+non-Wasm backends). Every function and constant of an imported module is
+carried under a module-qualified name (`__mod_<len-prefixed path>__<name>`,
+replacing `__priv_…`), so `Lib.A.label` and `Lib.B.label` stay distinct,
+public or private, also when they arrive transitively. The root module's
+own names and extern (host) names are unchanged. An imported function or
+immutable constant is also bound under the name the root imports it by;
+an imported mutable constant is not (the root refers to its qualified
+storage), and an aliased extern is called by its host name. The prefix
+`__mod_` is reserved: source identifiers that start with it are a lexer
+error.
+Defence in depth: the flattener refuses two different top-level bindings of
+one name (E0206), and the Bun-ESM and JS emitters refuse a second top-level
+binding of a JS name (Bun keeps the last of two same-named `function`s
+silently). Two enums' identical constructors are emitted once; differing
+ones are refused. A variant named `Some`, `None`, `Ok` or `Err` must have
+the runtime constructor's arity (one field, or none for `None`) and is
+otherwise refused, and on Bun-ESM a program binding that would take an
+escaped extern's emitted name (an extern `class` is called as `class_`) is
+refused. Trait impl methods sharing a name are now refused on
+Bun-ESM instead of silently replacing one another (`stdlib/traits.affine`).
+Rebuild compiled output (Closes #801)
+* fix(modules): an imported function bound as `main` (`use A::{entry as main};`)
+is no longer called when the compiled module loads (Bun-ESM, JS and the other
+flattened backends). Only a `main` the root module declares is an entry point;
+the root's calls to the alias go to the imported function (Closes #805)
 * fix(vscode-smoke): SKIP cleanly when @hyperpolymath/affine-vscode is
 unpublished (#381)
 * fix(governance): rename CLAUDE.md TypeScript exemptions heading to
@@ -182,6 +204,30 @@ JSR publish (#303)
 
 ==== CI
 
+* ci(governance): adopt two hyperpolymath/proven-cicd-and-workflows gates,
+vendored at 50a443f into `tools/ci/proven/`: required files and code hygiene
+(untracked debt markers, proof escapes). They run as advisory checks [5] and
+[6] of `tools/ci/governance-standalone.sh` and do not fail it; `CI/gate`
+and `actions.lock` are unchanged. Exclusions in `.cicd-hygiene-allow`
+* ci(test): Proven-Tests run report for the lexer suite
+(hyperpolymath/proven-tests-and-benches contract). `test/proven_report.ml`
+emits it in OCaml; `tools/ci/proven/proven-report.sh` validates it with the
+framework's pinned Rust checker `proven-evidence`; an advisory CI step. All 16
+entries are `Unproven` and `FixtureDebt`; a failing test still fails the emitter
+* fix(ci): `CI` never started from 2026-10-11 (startup_failure, zero jobs)
+because Dependabot #782 bumped actions in ci.yml without regenerating
+`.github/workflows/actions.lock`. The lock now matches every workflow
+(ci.yml, panic-attack.yml, casket-pages.yml, publish-jsr.yml), and
+governance check 4 (`tools/ci/check-actions-lock.sh`) fails on any drift
+* fix(ci): the OCaml jobs (build, lint, bench, coverage) failed on Ubuntu
+26.04 runners, which ship OCaml 5.4, because the with-test dependency
+`bisect_ppx` needs OCaml < 5.0. `tools/ci/setup-ocaml.sh` uses the runner
+OCaml only when it is 4.14.x and otherwise builds a pinned
+`ocaml-base-compiler.4.14.2`
+* fix(ci): no PR could merge into main after the `Branch-Floor` ruleset
+started requiring the status `CI/gate` (16 Nov), because no CI job was
+named `gate`. A `gate` job now needs every CI job and passes only when
+all of them succeed
 * ci(migration-assistant): fix smoke-parse for tree-sitter-cli 0.25
 (#342)
 * ci: bump github/codeql-action from 4.32.6 to 4.36.0 (#323)

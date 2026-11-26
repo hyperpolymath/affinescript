@@ -375,17 +375,45 @@ let clear_cache (loader : t) : unit =
   Hashtbl.clear loader.loaded;
   Hashtbl.clear loader.loading
 
-(** The name a module's private helper carries once flattened.  Flattening
-    puts the declarations of every imported module into one program, so two
-    modules' private helpers of the same name (kyq: `parse_int` in both
-    `Kyaml` and `Kyaml.Parser`) would otherwise collide: one would be
-    dropped, or the importer's own local of that name would win, and a
-    module's code would call another module's helper.  Underscores keep the
-    name valid in every backend's target language. *)
-let qualified_private_name (mod_path : string list) (name : string) : string =
-  (* Each path component is prefixed by its length, so the encoding is
-     injective: joining with `_` made `A_B.C` and `A.B_C` the same. *)
-  "__priv_"
+(* ============================================================================
+   Import flattening (#801)
+
+   The non-Wasm backends compile one flattened program, so every module's
+   top-level declarations share one namespace there.  Flattening used to keep
+   the source names of the declarations it carried and resolve clashes by
+   dropping one, which made one module's code call another module's function
+   of the same name with no diagnostic (#801: `Lib.A.a_label` printed
+   `Lib.B.label`'s text).  The scheme below makes a clash impossible by
+   construction instead of resolving it:
+
+   - Every function and constant of an imported module, public or private,
+     is carried under its module-qualified name ({!qualified_name}), and every
+     reference to it, in its own module and in the modules that import it, is
+     rewritten to that name.  The encoding is injective, so declarations of
+     different modules never share a name.
+   - The root program's own declarations keep their source names: they are
+     the compiled unit's host-facing surface (`main`, `activate`, the
+     exports a harness imports).  A name the root imports is also present
+     under the name the root binds it to, as a copy of the qualified
+     declaration, so the flattened program keeps the shape it had.
+   - Extern functions keep their names everywhere: the host binds them by
+     name (the Vscode, Bun, Deno and MCP-shim stdlib modules declare them).
+     An alias of an extern rewrites its references to the extern's own name.
+   - Enum types and constructors keep their names; constructors are values
+     a backend preamble may already define, and an enum's constructors are
+     carried with the enum.
+
+   {!check_unique} then refuses a flattened program in which two different
+   top-level bindings still share a name, so a regression in the scheme
+   fails loudly instead of silently picking one.
+   ============================================================================ *)
+
+(** The name a module's function or constant carries once flattened.  Each
+    path component is prefixed by its length, so the encoding is injective:
+    joining with `_` made `A_B.C` and `A.B_C` the same.  Underscores and
+    alphanumerics keep the name valid in every backend's target language. *)
+let qualified_name (mod_path : string list) (name : string) : string =
+  "__mod_"
   ^ String.concat ""
       (List.map (fun c -> string_of_int (String.length c) ^ c) mod_path)
   ^ "__" ^ name
@@ -394,13 +422,41 @@ let qualified_private_name (mod_path : string list) (name : string) : string =
 let flatten_error_message = function
   | ImportCollision (name, a, b) ->
     Printf.sprintf
-      "cannot flatten imports: `%s` is defined in both %s and %s" name
-      (String.concat "::" a) (String.concat "::" b)
+      "cannot flatten imports: two different top-level bindings named `%s` \
+       (from %s and from %s) would share one name in the compiled program"
+      name
+      (match a with [] -> "the root module" | a -> String.concat "::" a)
+      (match b with [] -> "the root module" | b -> String.concat "::" b)
   | MutableAlias (name, alias, m) ->
     Printf.sprintf
       "cannot import the mutable binding `%s` from %s as `%s`: an alias would \
        be a separate copy of it; import it under its own name" name
       (String.concat "::" m) alias
+
+(** Map, through [look], the free references of a top-level function,
+    constant or impl block's methods; parameters shadow.  The declaration's
+    own name is not touched. *)
+let map_top_level_free (look : string -> string option) (decl : top_level)
+    : top_level =
+  let map_fn (fd : fn_decl) =
+    let inner =
+      shadow look (List.map (fun (p : param) -> p.p_name.name) fd.fd_params)
+    in
+    let body = match fd.fd_body with
+      | FnExpr e -> FnExpr (map_free inner e)
+      | FnBlock b -> FnBlock (map_block inner b)
+      | FnExtern -> FnExtern
+    in
+    { fd with fd_body = body }
+  in
+  match decl with
+  | TopFn fd -> TopFn (map_fn fd)
+  | TopConst c -> TopConst { c with tc_value = map_free look c.tc_value }
+  | TopImpl ib ->
+    TopImpl { ib with ib_items = List.map (function
+        | ImplFn fd -> ImplFn (map_fn fd)
+        | other -> other) ib.ib_items }
+  | other -> other
 
 (** Rename, by [ren] (old name to new), a top-level function or constant's
     own name and the free references to the renamed names in its body; a
@@ -414,462 +470,416 @@ let rename_top_level (ren : (string * string) list) (decl : top_level)
       | Some n -> { id with name = n }
       | None -> id
     in
-    match decl with
-    | TopFn fd ->
-      let inner =
-        without_names ren
-          (List.map (fun (p : param) -> p.p_name.name) fd.fd_params)
-      in
-      let body = match fd.fd_body with
-        | FnExpr e -> FnExpr (rename_free inner e)
-        | FnBlock b -> FnBlock (rename_block inner b)
-        | FnExtern -> FnExtern
-      in
-      TopFn { fd with fd_name = rename_ident fd.fd_name; fd_body = body }
-    | TopConst c ->
-      TopConst { c with tc_name = rename_ident c.tc_name;
-                        tc_value = rename_free ren c.tc_value }
+    match map_top_level_free (fun n -> List.assoc_opt n ren) decl with
+    | TopFn fd -> TopFn { fd with fd_name = rename_ident fd.fd_name }
+    | TopConst c -> TopConst { c with tc_name = rename_ident c.tc_name }
     | other -> other
 
-(** Give [prog]'s own private functions and constants (those of [own], the
-    module's unflattened declarations) their {!qualified_private_name}, and
-    rewrite the references to them in the module's own declarations.
-    Declarations [prog] carries from other modules are left alone: their
-    private helpers were qualified when those modules were flattened, and
-    they cannot refer to this module's private names.  Extern functions keep
-    their names (the host binds them by name). *)
-let qualify_private (mod_path : string list) (own : top_level list)
-    (prog : program) : program =
-  let ren =
-    List.filter_map (function
-        | TopFn fd when fd.fd_vis = Private && fd.fd_body <> FnExtern ->
-          Some (fd.fd_name.name, qualified_private_name mod_path fd.fd_name.name)
-        | TopConst { tc_vis = Private; tc_name; _ } ->
-          Some (tc_name.name, qualified_private_name mod_path tc_name.name)
-        | _ -> None) own
-  in
-  if ren = [] then prog
-  else
-    let rename_decl = rename_top_level ren in
-    let is_own d = List.exists (fun o -> o == d) own in
-    { prog with
-      prog_decls =
-        List.map (fun d -> if is_own d then rename_decl d else d)
-          prog.prog_decls }
+(** The free names of a top-level declaration (see {!Ast.free_names}). *)
+let top_level_free_names (decl : top_level) : string list =
+  let acc = ref [] in
+  ignore (map_top_level_free (fun n -> acc := n :: !acc; None) decl);
+  !acc
 
-(** Flatten cross-module imports by inlining the public top-level decls of
-    each imported module into [prog.prog_decls], with deduplication by name.
+(** What a name a module exports binds, as an importer sees it. *)
+type export =
+  | XValue of string   (** a function or constant, by its qualified name *)
+  | XExtern of string  (** an extern function, by its (host) name *)
+  | XEnum of string    (** an enum type or one of its constructors, by the
+                           enum's name *)
 
-    The WASM backend handles cross-module imports via a separate Wasm-import
-    section ([Codegen.gen_imports]). Every other codegen ([Julia / JS / C /
-    Rust / OCaml / ReScript / Lua / Bash / Nickel / LLVM / ...]) iterates
-    [prog.prog_decls] only and would otherwise fail to find imported
-    functions at codegen time. Inlining here is the simplest correct
-    semantics for those targets and saves implementing per-backend module
-    systems.
+let exported_vis = function Public | PubCrate -> true | _ -> false
 
-    The loader must already have been used by [Resolve.resolve_program_with_loader]
-    so that the cache is populated; this function does NOT re-load on
-    demand. If a referenced module isn't cached, its imports are silently
-    skipped — the resolver would have reported the error already.
+(* Every non-Wasm backend's runtime preamble defines these constructors. *)
+let preamble_ctors = [ "Some"; "None"; "Ok"; "Err" ]
 
-    Imports are processed in declaration order; later imports replace
-    earlier imported declarations with the same name. This mirrors the
-    resolver's name-table order and keeps the two paths deterministic.
-    Glob/glob collisions are rejected by the resolver before code generation;
-    this function retains the same last-import policy as a defensive fallback
-    for callers that flatten an already-loaded program directly. Local decls
-    in [prog.prog_decls] always win over imported ones.
+(** An enum the flattener carries: one with a constructor the preamble does
+    not already supply. A variant with a preamble name but another arity is
+    not the preamble's, so it is carried and the emitter refuses it. *)
+let carried_enum (td : type_decl) : bool =
+  match td.td_body with
+  | TyEnum variants ->
+    List.exists (fun (vd : variant_decl) ->
+        let n = vd.vd_name.name in
+        not (List.mem n preamble_ctors)
+        || List.length vd.vd_fields <> (if n = "None" then 0 else 1)) variants
+  | _ -> false
 
-    Selective imports carry referenced helpers, including private ones, when
-    [find_free_vars] detects them. That walker is partial: dependencies
-    referenced only in record spreads, shorthand record fields or qualified
-    constructors may be omitted. Public enums named directly by type or
-    constructor in a selective import
-    are included; enums containing only [Some], [None], [Ok] and [Err] are
-    excluded from this direct selection because the runtime supplies them.
+let is_extern = function
+  | TopFn { fd_body = FnExtern; _ } | TopExternFn _ -> true
+  | _ -> false
 
-    [cache] memoises flattened dependencies for this traversal and is updated
-    in place. [visiting] lists module paths already being traversed; a cycle
-    uses the cached module's original declarations without further recursion.
-    Imported declarations are prepended; [prog.prog_imports] is retained. *)
-let rec flatten_imports_from
-    (cache : (string list, program) Hashtbl.t)
-    (visiting : string list list) (loader : t)
-    (prog : program) : program =
-  (* Local-decl names suppress same-named imports of any kind. *)
-  let local_name_list =
-    List.filter_map (function
-      | TopFn fd -> Some fd.fd_name.name
-      | TopConst { tc_name; _ } -> Some tc_name.name
-      | TopType td -> Some td.td_name.name
-      | _ -> None
-    ) prog.prog_decls
-  in
-  let local_names = Hashtbl.create 32 in
-  List.iter (fun n -> Hashtbl.replace local_names n ()) local_name_list;
-  (* Keep imported declaration order stable while replacing the declaration
-     stored for a later duplicate.  A plain `already_in` set used to keep the
-     FIRST declaration here, while resolve.ml kept the LAST one (#743). *)
-  let imported_by_name = Hashtbl.create 32 in
-  let imported_origin = Hashtbl.create 32 in
-  let imported_order = ref [] in
-  (* The same declaration reaches here more than once in a diamond (`D`
-     imports `P` and `J`, and `J` imports `P`): flattening is recursive, so
-     `P`'s helpers arrive both directly and inside `J`. That is one helper,
-     not a collision. *)
-  (* Copies of one source declaration can differ: an importer that does not
-     bind a carried public helper under its own name internalises it (renames
-     it and rewrites the calls to it), so `strMember` arrives once calling
-     `isStr` and once calling `__priv_5jsonv__isStr`. Both are the same
-     declaration, and each copy's callees are carried with it. Renaming keeps
-     the name's span, so a shared real source span identifies the
-     declaration. *)
-  let decl_span = function
-    | `Fn fd -> Some fd.fd_name.span
-    | `Const (TopConst { tc_name; _ }) -> Some tc_name.span
-    | `Type (TopType td) -> Some td.td_name.span
-    | `Const _ | `Type _ -> None
-  in
-  let same_source a b =
-    match decl_span a, decl_span b with
-    | Some s, Some t -> s.Span.file <> Span.dummy.file && Span.equal s t
-    | _ -> false
-  in
-  let same_decl a b = (match a, b with
-    | `Fn x, `Fn y -> x == y || x = y
-    | `Const x, `Const y | `Type x, `Type y -> x == y || x = y
-    | _ -> false) || same_source a b
-  in
-  let add_imported origin name decl_kind =
-    if not (Hashtbl.mem local_names name) then begin
-      (match Hashtbl.find_opt imported_origin name,
-             Hashtbl.find_opt imported_by_name name with
-       | Some other, Some prev
-         when other <> origin
-              && not (same_decl prev decl_kind) ->
-         (* Two modules each carry a different declaration of this name: one
-            flattened program can hold only one, and keeping the later would
-            make the other module call the wrong function.  This holds for
-            public declarations too.  The resolver rejects a collision only
-            within one module's imports; one that arrives transitively (`M`
-            imports `U` and `V`, which import `A::f` and `B::f`) reaches
-            here, and the old last-wins rule silently rebound `U`'s calls
-            to `B::f`.  Fail loudly instead; the fix is to rename one. *)
-         raise (Flatten_error (ImportCollision (name, other, origin)))
-       | _ -> ());
-      if not (Hashtbl.mem imported_by_name name) then
-        imported_order := name :: !imported_order;
-      Hashtbl.replace imported_by_name name decl_kind;
-      Hashtbl.replace imported_origin name origin
-    end
-  in
+(** The name a value-level declaration binds: functions (extern or not),
+    extern functions and constants. *)
+let value_name = function
+  | TopFn fd -> Some fd.fd_name.name
+  | TopExternFn { ef_name; _ } -> Some ef_name.name
+  | TopConst { tc_name; _ } -> Some tc_name.name
+  | _ -> None
+
+(** The names module [mod_path] exports, read from its own declarations. *)
+let exports_of (mod_path : string list) (prog : program)
+    : (string * export) list =
+  List.concat_map (function
+      | TopFn fd when exported_vis fd.fd_vis ->
+        let n = fd.fd_name.name in
+        [ (n, if fd.fd_body = FnExtern then XExtern n
+               else XValue (qualified_name mod_path n)) ]
+      | TopExternFn { ef_name; _ } -> [ (ef_name.name, XExtern ef_name.name) ]
+      | TopConst { tc_vis; tc_name; _ } when exported_vis tc_vis ->
+        [ (tc_name.name, XValue (qualified_name mod_path tc_name.name)) ]
+      | TopType ({ td_body = TyEnum variants; _ } as td)
+        when exported_vis td.td_vis && carried_enum td ->
+        (td.td_name.name, XEnum td.td_name.name)
+        :: List.map (fun (vd : variant_decl) ->
+            (vd.vd_name.name, XEnum td.td_name.name)) variants
+      | _ -> [])
+    prog.prog_decls
+
+let import_path = function
+  | ImportSimple (p, _) | ImportList (p, _) | ImportGlob p ->
+    List.map (fun (id : ident) -> id.name) p
+
+(** The names [imports] bind in a module whose own value names are [local]
+    (an own declaration shadows an import of the same name), each with the
+    module it comes from and what it binds, in import order.  A glob or a
+    plain `use` binds every export; an item list binds each item under its
+    alias or its own name.  One name bound to two different things is an
+    {!ImportCollision}: the resolver rejects such a program first, and the
+    flattener does not pick one. *)
+let bindings_of (loader : t) ~(local : string list) (imports : import_decl list)
+    : (string * (string list * export)) list =
+  let tbl = Hashtbl.create 32 in
+  let order = ref [] in
   List.iter (fun imp ->
-      let path_strs path =
-        List.map (fun (id : ident) -> id.name) path
-      in
-      let mod_path = match imp with
-        | ImportSimple (p, _) | ImportList (p, _) | ImportGlob p -> path_strs p
-      in
-      match Hashtbl.find_opt loader.loaded mod_path with
+      let path = import_path imp in
+      match Hashtbl.find_opt loader.loaded path with
       | None -> ()
-      | Some lm0 ->
-        (* Flatten the imported module's own imports first, so the closure
-           below can reach what *it* uses from other modules: `Nav` importing
-           `Router.on_url_change`, whose body calls `Tea.subs`, emitted an
-           undefined `subs`. [visiting] stops an import cycle. *)
-        let own = lm0.mod_program.prog_decls in
-        let lm =
-          if List.mem mod_path visiting then
-            { lm0 with mod_program = qualify_private mod_path own lm0.mod_program }
-          else
-            (* Memoised per flatten call: a module shared by several import
-               paths (a diamond) is flattened once, not once per path. *)
-            let flat = match Hashtbl.find_opt cache mod_path with
-              | Some p -> p
+      | Some lm ->
+        let ex = exports_of path lm.mod_program in
+        let bound = match imp with
+          | ImportGlob _ | ImportSimple _ -> ex
+          | ImportList (_, items) ->
+            List.filter_map (fun item ->
+                List.assoc_opt item.ii_name.name ex
+                |> Option.map (fun x ->
+                    ((match item.ii_alias with
+                        | Some a -> a.name
+                        | None -> item.ii_name.name), x)))
+              items
+        in
+        List.iter (fun (b, x) ->
+            if not (List.mem b local) then
+              match Hashtbl.find_opt tbl b with
+              | Some (p', x') when (p', x') <> (path, x) ->
+                raise (Flatten_error (ImportCollision (b, p', path)))
+              | Some _ -> ()
               | None ->
-                let p = flatten_imports_from cache (mod_path :: visiting) loader
-                    lm0.mod_program in
-                let p = qualify_private mod_path own p in
-                Hashtbl.replace cache mod_path p;
-                p
-            in
-            { lm0 with mod_program = flat }
-        in
-        let public_decls = List.filter_map (fun decl ->
-          match decl with
-          | TopFn fd when fd.fd_vis = Public || fd.fd_vis = PubCrate ->
-            Some (fd.fd_name.name, `Fn fd)
-          | TopConst { tc_vis; tc_name; _ }
-            when tc_vis = Public || tc_vis = PubCrate ->
-            Some (tc_name.name, `Const decl)
-          | _ -> None
-        ) lm.mod_program.prog_decls in
-        (* Transitive closure. A selected declaration's body may call
-           helpers of the same module that the import list never names:
-           `use Dom::{div}` pulls in `div`, whose body calls `h`. Leaving
-           `h` out of the flattened program produced
-           `ReferenceError: h is not defined` in the emitted module
-           (tests/codegen-deno/dom_startup_error). Private helpers are
-           pulled in too — a public wrapper may delegate to one. *)
-        let module_value_decls =
-          List.filter_map (fun decl ->
-            match decl with
-            | TopFn fd when fd.fd_body <> FnExtern ->
-              Some (fd.fd_name.name, `Fn fd)
-            | TopConst { tc_name; _ } as d ->
-              Some (tc_name.name, `Const d)
-            | _ -> None
-          ) lm.mod_program.prog_decls
-        in
-        (* Constructors of this module's own enums, keyed by constructor
-           name. An inlined wrapper body can name a constructor
-           (`text` returns `VText(content)`) and the constructor exists
-           only where the enum is declared. Option/Result constructors
-           are excluded: every non-wasm preamble already defines
-           Some/None/Ok/Err, and re-emitting them is the duplicate-`const`
-           crash that reverted type-carrying in #138 — this narrows the
-           carry to user enums a backend preamble cannot supply. *)
-        let preamble_ctors = [ "Some"; "None"; "Ok"; "Err" ] in
-        let ctor_decls = Hashtbl.create 16 in
-        List.iter (fun decl ->
-          match decl with
-          | TopType td ->
-            (match td.td_body with
-             | TyEnum variants ->
-               List.iter (fun (vd : variant_decl) ->
-                 if not (List.mem vd.vd_name.name preamble_ctors) then
-                   Hashtbl.replace ctor_decls vd.vd_name.name
-                     (td.td_name.name, decl)
-               ) variants
-             | _ -> ())
-          | _ -> ()) lm.mod_program.prog_decls;
-        let by_name = Hashtbl.create 16 in
-        List.iter (fun (n, d) -> Hashtbl.replace by_name n d) module_value_decls;
-        (* Close a selection over the helpers its bodies reference, then emit
-           it in this module's own declaration order.  Declarations must
-           precede their uses (the checker rejects a forward reference, and
-           the interpreter binds each function in an environment that holds
-           only what came before it), so the order a selection was gathered
-           in is not an order a consumer can use: `api` selected first and
-           its helper `h` carried second left `h` unbound under `eval`.
-           Every import kind needs the closure: a glob or a plain `use`
-           carries the module's public declarations, whose bodies call
-           private helpers just as a selected item's do. *)
-        let close_over direct =
-          let seen = Hashtbl.create 16 in
-          List.iter (fun (n, _) -> Hashtbl.replace seen n ()) direct;
-          let rec close pending acc =
-            match pending with
-            | [] -> List.rev acc
-            | (_, dk) :: rest ->
-              let free = match dk with
-                | `Fn fd ->
-                  let params =
-                    List.map (fun (p : param) -> p.p_name.name) fd.fd_params
-                  in
-                  (match fd.fd_body with
-                   | FnExtern -> []
-                   | FnExpr e -> find_free_vars params e
-                   | FnBlock b -> find_free_vars params (ExprBlock b))
-                | `Const (TopConst { tc_value; _ }) -> find_free_vars [] tc_value
-                | `Const _ | `Type _ -> []
-              in
-              let (pending, acc) =
-                List.fold_left (fun (pending, acc) name ->
-                  if Hashtbl.mem seen name then (pending, acc)
-                  else begin
-                    Hashtbl.replace seen name ();
-                    match Hashtbl.find_opt by_name name with
-                    | Some dep -> ((name, dep) :: pending, (name, dep) :: acc)
-                    | None ->
-                      (* A constructor name: carry the enum it belongs to,
-                         once per type. *)
-                      (match Hashtbl.find_opt ctor_decls name with
-                       | Some (td_name, decl) when not (Hashtbl.mem seen td_name) ->
-                         Hashtbl.replace seen td_name ();
-                         ((td_name, `Type decl) :: pending,
-                          (td_name, `Type decl) :: acc)
-                       | _ -> (pending, acc))
-                  end
-                ) (rest, acc) free
-              in
-              close pending acc
-          in
-          let extras = close direct [] in
-          let position = Hashtbl.create 32 in
-          List.iteri (fun i decl ->
-            let name = match decl with
-              | TopFn fd -> Some fd.fd_name.name
-              | TopConst { tc_name; _ } -> Some tc_name.name
-              | TopType td -> Some td.td_name.name
-              | _ -> None
-            in
-            Option.iter (fun n ->
-              if not (Hashtbl.mem position n) then Hashtbl.replace position n i)
-              name) lm.mod_program.prog_decls;
-          let pos (n, _) =
-            Option.value (Hashtbl.find_opt position n) ~default:max_int
-          in
-          List.stable_sort (fun a b -> compare (pos a) (pos b)) (direct @ extras)
-        in
-        let select = match imp with
-          | ImportGlob _ -> close_over public_decls
-          | ImportSimple _ ->
-            (* `use Foo` brings the namespace into scope but doesn't import
-               specific symbols. For codegens that need them inlined we still
-               include all public top-level bindings — same as glob. The
-               resolver determines what's referenceable; codegen just needs
-               the bodies present. *)
-            close_over public_decls
-          | ImportList (_, items) ->
-            (* Every alias an item is imported under. *)
-            let aliases_of target =
-              List.filter_map (fun item ->
-                  match item.ii_alias with
-                  | Some a when item.ii_name.name = target -> Some a.name
-                  | _ -> None) items
-            in
-            (* Names the importer binds under their own name. *)
-            let exposed =
-              List.filter_map (fun item ->
-                  match item.ii_alias with
-                  | None -> Some item.ii_name.name
-                  | Some _ -> None) items
-            in
-            (* An alias is a second declaration: for a mutable binding that
-               would be a second, separate copy. *)
-            List.iter (fun item ->
-                match item.ii_alias,
-                      List.assoc_opt item.ii_name.name public_decls with
-                | Some a, Some (`Const (TopConst { tc_mut = true; _ })) ->
-                  raise (Flatten_error
-                           (MutableAlias (item.ii_name.name, a.name, mod_path)))
-                | _ -> ()) items;
-            let rename_decl bound_name found =
-              match found with
-              | `Fn fd ->
-                `Fn { fd with fd_name = { fd.fd_name with name = bound_name } }
-              | `Const (TopConst { tc_vis; tc_mut; tc_name; tc_ty; tc_value }) ->
-                `Const (TopConst {
-                  tc_vis;
-                  tc_mut;
-                  tc_name = { tc_name with name = bound_name };
-                  tc_ty;
-                  tc_value;
-                })
-              | `Const _ | `Type _ ->
-                (* `Const` here is unreachable: public_decls only stores
-                   TopConst under `Const`. `Type` decls are never renamed —
-                   they are carried under their own name. *)
-                found
-            in
-            let direct =
-              List.filter_map (fun item ->
-                let target = item.ii_name.name in
-                List.find_opt (fun (n, _) -> n = target) public_decls
-                |> Option.map (fun (_, found) -> (target, found))
-              ) items
-            in
-            let closed = close_over direct in
-            (* This module's own public functions and immutable constants that
-               the closure carries but the importer does not bind under their
-               own name (`helper` in `use M::{helper as h, api}`, or a public
-               helper only `api` calls) get an internal name, with the
-               references to them rewritten. Left under their own name, two
-               modules' `helper`s would replace one another and `api` would
-               call the other module's (CodeRabbit on #797). A mutable binding
-               keeps its name: it may be imported under that name elsewhere,
-               and a renamed copy would be separate storage. *)
-            let hidden =
-              List.filter_map (function
-                  | TopFn fd
-                    when (fd.fd_vis = Public || fd.fd_vis = PubCrate)
-                         && fd.fd_body <> FnExtern
-                         && not (List.mem fd.fd_name.name exposed)
-                         && List.mem_assoc fd.fd_name.name closed ->
-                    Some (fd.fd_name.name,
-                          qualified_private_name mod_path fd.fd_name.name)
-                  | TopConst { tc_vis = (Public | PubCrate); tc_mut = false;
-                               tc_name; _ }
-                    when not (List.mem tc_name.name exposed)
-                         && List.mem_assoc tc_name.name closed ->
-                    Some (tc_name.name,
-                          qualified_private_name mod_path tc_name.name)
-                  | _ -> None) lm0.mod_program.prog_decls
-            in
-            let internalise = function
-              | `Fn fd ->
-                (match rename_top_level hidden (TopFn fd) with
-                 | TopFn fd' -> `Fn fd'
-                 | _ -> `Fn fd)
-              | `Const d -> `Const (rename_top_level hidden d)
-              | `Type _ as t -> t
-            in
-            (* An aliased item (`use M::{helper as h, api}`) is bound under its
-               alias for the importer; the original stays, under its internal
-               name, because the module's other declarations (`api`) call it. *)
-            List.concat_map (fun (n, dk) ->
-                let dk = internalise dk in
-                let n' = Option.value (List.assoc_opt n hidden) ~default:n in
-                (n', dk) :: List.map (fun b -> (b, rename_decl b dk)) (aliases_of n))
-              closed
-        in
-        (* Public enums the importer names directly. A constructor in the
-           import list (`use Geometry::{Up, Down}`) or a type name the
-           importer constructs was only carried when some carried *function*
-           happened to construct it, so `Some(Up)` in the importer compiled
-           to a reference to an undefined `Up`. Enums made only of the
-           preamble's Option/Result constructors are never carried (every
-           non-Wasm backend's runtime preamble already defines those). *)
-        let preamble_only = [ "Some"; "None"; "Ok"; "Err" ] in
-        let public_enums = List.filter_map (fun decl ->
-          match decl with
-          | TopType ({ td_body = TyEnum variants; _ } as td)
-            when (td.td_vis = Public || td.td_vis = PubCrate)
-                 && List.exists (fun (vd : variant_decl) ->
-                      not (List.mem vd.vd_name.name preamble_only)) variants ->
-            Some (td.td_name.name,
-                  List.map (fun (vd : variant_decl) -> vd.vd_name.name) variants,
-                  decl)
-          | _ -> None) lm.mod_program.prog_decls in
-        let named = match imp with
-          | ImportList (_, items) ->
-            List.filter (fun (ty, ctors, _) ->
-              List.exists (fun item ->
-                let n = item.ii_name.name in n = ty || List.mem n ctors) items)
-              public_enums
-          | ImportSimple _ | ImportGlob _ -> public_enums
-        in
-        List.iter (fun (ty, _, decl) -> add_imported mod_path ty (`Type decl)) named;
-        List.iter (fun (name, decl_kind) -> add_imported mod_path name decl_kind) select
-    ) prog.prog_imports;
-  let imported_decls =
-    List.rev !imported_order
-    |> List.filter_map (fun name ->
-         match Hashtbl.find_opt imported_by_name name with
-         | Some (`Fn fd) -> Some (TopFn fd)
-         | Some (`Const decl) -> Some decl
-         | Some (`Type decl) -> Some decl
-         | None -> None)
+                Hashtbl.replace tbl b (path, x);
+                order := b :: !order)
+          bound)
+    imports;
+  List.rev_map (fun b -> (b, Hashtbl.find tbl b)) !order
+
+(** The renaming that realises [bindings] in the importing module's code:
+    a value is referred to by its qualified name, an aliased extern by the
+    extern's own name. *)
+let binding_renames bindings =
+  List.filter_map (fun (b, (_, x)) ->
+      match x with
+      | XValue q -> Some (b, q)
+      | XExtern x when x <> b -> Some (b, x)
+      | XExtern _ | XEnum _ -> None)
+    bindings
+
+(** A declaration in the flattened program, with the module it came from
+    ([[]] for an anonymous root). *)
+type entry = { origin : string list; decl : top_level }
+
+(** Module [mod_path]'s own carried declarations, qualified: its functions
+    and constants under {!qualified_name}, its references to them and to
+    what it imports rewritten accordingly.  Externs and enums keep their
+    names; other declarations (structs, traits, effects, impls) are not
+    carried. *)
+let qualify_module (loader : t) (mod_path : string list) (prog : program)
+    : entry list =
+  let local = List.filter_map value_name prog.prog_decls in
+  let own =
+    List.filter_map (function
+        | TopFn fd when fd.fd_body <> FnExtern ->
+          Some (fd.fd_name.name, qualified_name mod_path fd.fd_name.name)
+        | TopConst { tc_name; _ } ->
+          Some (tc_name.name, qualified_name mod_path tc_name.name)
+        | _ -> None)
+      prog.prog_decls
   in
-  (* #138 follow-up: imported TYPE decls are intentionally NOT inlined here.
-     An earlier #138 revision carried imported public [TopType]s so the
-     prog_decls-iterating backends could register their constructors — but the
-     non-Wasm backends (Deno-ESM / JS / Julia / C / Rust / ...) already emit
-     the Option/Result constructors from a built-in runtime preamble, so
-     carrying the prelude types declared `Some`/`None`/`Ok`/`Err` twice
-     (`SyntaxError: Identifier 'Some' has already been declared` when the
-     emitted Deno-ESM module is run under node). The Wasm backend learns
-     imported variant tags natively via [Codegen.gen_imports] (it consumes the
-     original, un-flattened [prog]); the other backends rely on their preamble.
-     Re-introducing type-carrying for *user-defined* cross-module enums would
-     need per-backend constructor dedup first. *)
-  { prog with prog_decls = imported_decls @ prog.prog_decls }
+  let ren =
+    own @ binding_renames (bindings_of loader ~local prog.prog_imports) in
+  List.filter_map (fun decl ->
+      match decl with
+      | TopFn _ | TopConst _ | TopExternFn _ ->
+        Some { origin = mod_path; decl = rename_top_level ren decl }
+      | TopType td when carried_enum td -> Some { origin = mod_path; decl }
+      | _ -> None)
+    prog.prog_decls
+
+(** Keep the first of each declaration.  A function or constant reached
+    twice (a diamond: `D` imports `P` and `J`, and `J` imports `P`) is one
+    declaration; two different ones under one name are an
+    {!ImportCollision}, which qualification makes unreachable short of a
+    bug.  Externs of one name are one host binding, so later ones are
+    dropped.  Enums are identified by module and name. *)
+let merge (entries : entry list) : entry list =
+  let values = Hashtbl.create 64 in
+  let types = Hashtbl.create 16 in
+  List.filter (fun e ->
+      match e.decl, value_name e.decl with
+      | TopType td, _ ->
+        let k = (e.origin, td.td_name.name) in
+        if Hashtbl.mem types k then false
+        else (Hashtbl.replace types k (); true)
+      | d, Some n ->
+        (match Hashtbl.find_opt values n with
+         | None -> Hashtbl.replace values n e; true
+         | Some prev when is_extern prev.decl && is_extern d -> false
+         | Some prev when prev.decl == d || prev.decl = d -> false
+         | Some prev ->
+           raise (Flatten_error (ImportCollision (n, prev.origin, e.origin))))
+      | _, None -> true)
+    entries
+
+(** Module [mod_path] flattened as a dependency: the qualified declarations
+    of everything it imports (transitively, dependencies first), then its
+    own.  [cache] memoises per module for one flattening; [visiting] stops
+    an import cycle, whose modules the outer frames carry. *)
+let rec flatten_module cache visiting (loader : t) (mod_path : string list)
+    : entry list =
+  match Hashtbl.find_opt cache mod_path with
+  | Some es -> es
+  | None ->
+    (match Hashtbl.find_opt loader.loaded mod_path with
+     | None -> []
+     | Some lm ->
+       let prog = lm.mod_program in
+       if List.mem mod_path visiting then qualify_module loader mod_path prog
+       else begin
+         let deps =
+           List.concat_map (fun imp ->
+               flatten_module cache (mod_path :: visiting) loader
+                 (import_path imp))
+             prog.prog_imports
+         in
+         let es = merge (deps @ qualify_module loader mod_path prog) in
+         Hashtbl.replace cache mod_path es;
+         es
+       end)
+
+(** Refuse a flattened program in which two different top-level value
+    bindings share a name, or a function or constant has an extern's name
+    (a backend would lower calls to it as host calls).  Several externs of
+    one name are one host binding.  This is the loud backstop behind the
+    qualification scheme: it holds for every backend that compiles the
+    flattened program. *)
+let check_unique (entries : entry list) : unit =
+  let values = Hashtbl.create 64 in
+  let externs = Hashtbl.create 32 in
+  List.iter (fun e ->
+      match value_name e.decl with
+      | Some n when is_extern e.decl ->
+        if not (Hashtbl.mem externs n) then Hashtbl.replace externs n e.origin
+      | Some n ->
+        (match Hashtbl.find_opt values n with
+         | Some o -> raise (Flatten_error (ImportCollision (n, o, e.origin)))
+         | None -> Hashtbl.replace values n e.origin)
+      | None -> ())
+    entries;
+  Hashtbl.iter (fun n o ->
+      match Hashtbl.find_opt externs n with
+      | Some xo -> raise (Flatten_error (ImportCollision (n, o, xo)))
+      | None -> ())
+    values
 
 (** Inline the declarations [prog]'s imports need (transitively) into [prog],
-    for the backends that compile one flattened program. Uses only modules
-    already loaded in [loader]; missing modules are silently skipped.
-    See [flatten_imports_from] for selection and name precedence. *)
+    for the backends that compile one flattened program (see the section
+    comment above for the naming scheme).  Uses only modules already loaded
+    in [loader] (by {!Resolve.resolve_program_with_loader}); a module that
+    is not loaded is skipped, the resolver having reported it.
+
+    The result is: the imported declarations the root reaches, dependencies
+    first and each module's in its own order (declarations must precede
+    their uses: the interpreter binds each function in an environment that
+    holds only what came before it); then a copy, under its bound name, of
+    each function and immutable constant the root imports (not of a function
+    bound as [main]: only the root's own [main] is an entry point, so
+    references to that binding are rewritten to the qualified name); then the root's
+    own declarations.  The copy of an immutable constant keeps a literal
+    value as-is (C emits [static const T K = <expr>;], which needs a constant
+    initialiser) and otherwise refers to the qualified declaration, so the
+    root and the module share one runtime value.  A mutable constant is not copied (a copy would be
+    separate storage): the root's references to it are rewritten to its
+    qualified name.  A local declaration shadows an import of its name.
+    [prog.prog_imports] is retained.
+
+    Raises {!Flatten_error} on a mutable binding imported under an alias, and
+    on two different top-level bindings that would share a name. *)
 let flatten_imports (loader : t) (prog : program) : program =
-  flatten_imports_from (Hashtbl.create 8) [] loader prog
+  let root =
+    match prog.prog_module with
+    | Some p -> List.map (fun (id : ident) -> id.name) p
+    | None -> []
+  in
+  let cache = Hashtbl.create 8 in
+  let visiting = if root = [] then [] else [ root ] in
+  let pool =
+    merge
+      (List.concat_map (fun imp ->
+           flatten_module cache visiting loader (import_path imp))
+          prog.prog_imports)
+  in
+  let local = List.filter_map value_name prog.prog_decls in
+  let bindings = bindings_of loader ~local prog.prog_imports in
+  let pool_value = Hashtbl.create 64 in
+  List.iter (fun e ->
+      match value_name e.decl with
+      | Some n when not (Hashtbl.mem pool_value n) -> Hashtbl.replace pool_value n e
+      | _ -> ())
+    pool;
+  (* Realise the root's bindings. *)
+  let copies = ref [] and ren = ref [] and enum_seeds = ref [] in
+  List.iter (fun (b, (path, x)) ->
+      match x with
+      | XValue q ->
+        (match Hashtbl.find_opt pool_value q with
+         | Some { decl = TopFn _; _ } when b = "main" ->
+           (* A top-level [main] is the program's entry point (the JS
+              backends call it on load).  Only the root's own [main] is one:
+              an imported function bound as [main] gets no copy under that
+              name, and the root's references to it are rewritten to its
+              qualified name (#805). *)
+           ren := (b, q) :: !ren
+         | Some { decl = TopFn fd; _ } ->
+           copies := { origin = path;
+                       decl = TopFn { fd with fd_name = { fd.fd_name with name = b } } }
+                     :: !copies
+         | Some { decl = TopConst ({ tc_mut = false; _ } as c); _ } ->
+           (* A literal is copied as-is (some backends need a constant
+              initialiser).  Any other value refers to the source
+              declaration, so the root and the module share one runtime
+              value: a second array or record would compare unequal under a
+              reference equality. *)
+           let value = match c.tc_value with
+             | ExprLit _ -> c.tc_value
+             | _ -> ExprVar { c.tc_name with name = q }
+           in
+           copies := { origin = path;
+                       decl = TopConst { c with tc_name = { c.tc_name with name = b };
+                                                tc_value = value } }
+                     :: !copies
+         | Some { decl = TopConst ({ tc_mut = true; _ } as c); _ } ->
+           if q <> qualified_name path b then begin
+             let own =
+               let pre = qualified_name path "" in
+               let pl = String.length pre in
+               String.sub c.tc_name.name pl (String.length c.tc_name.name - pl)
+             in
+             raise (Flatten_error (MutableAlias (own, b, path)))
+           end;
+           ren := (b, q) :: !ren
+         | _ -> ())
+      | XExtern xn -> if xn <> b then ren := (b, xn) :: !ren
+      | XEnum ty -> enum_seeds := (path, ty) :: !enum_seeds)
+    bindings;
+  let copies = List.rev !copies in
+  let root_entries =
+    List.map (fun decl -> { origin = root; decl = rename_top_level !ren decl })
+      prog.prog_decls
+  in
+  (* Reachability: carry the pool entries the root reaches.  A constructor
+     or enum-type name resolves in the scope of the module whose code names
+     it: its own enums, then the enums it imports; failing that (a name the
+     scopes do not account for), every carried enum that declares it. *)
+  let enums = Hashtbl.create 16 in
+  List.iter (fun e ->
+      match e.decl with
+      | TopType td -> Hashtbl.replace enums (e.origin, td.td_name.name) e
+      | _ -> ())
+    pool;
+  let enum_names (td : type_decl) =
+    td.td_name.name
+    :: (match td.td_body with
+        | TyEnum vs -> List.map (fun (vd : variant_decl) -> vd.vd_name.name) vs
+        | _ -> [])
+  in
+  let scopes = Hashtbl.create 16 in
+  let scope_of m =
+    match Hashtbl.find_opt scopes m with
+    | Some s -> s
+    | None ->
+      let s = Hashtbl.create 16 in
+      let imports =
+        if m = root then prog.prog_imports
+        else match Hashtbl.find_opt loader.loaded m with
+          | Some lm -> lm.mod_program.prog_imports
+          | None -> []
+      in
+      List.iter (fun (b, (path, x)) ->
+          match x with
+          | XEnum ty -> Hashtbl.replace s b (path, ty)
+          | XValue _ | XExtern _ -> ())
+        (try bindings_of loader ~local:[] imports
+         with Flatten_error _ -> []);
+      Hashtbl.iter (fun (o, ty) e ->
+          match e.decl with
+          | TopType td when o = m ->
+            List.iter (fun n -> Hashtbl.replace s n (o, ty)) (enum_names td)
+          | _ -> ())
+        enums;
+      Hashtbl.replace scopes m s;
+      s
+  in
+  let key (e : entry) =
+    match e.decl with
+    | TopType td -> (e.origin, td.td_name.name, true)
+    | d -> ([], Option.value (value_name d) ~default:"", false)
+  in
+  let reached = Hashtbl.create 64 in
+  let rec reach (e : entry) =
+    if not (Hashtbl.mem reached (key e)) then begin
+      Hashtbl.replace reached (key e) ();
+      visit e
+    end
+  and visit (e : entry) =
+    List.iter (fun n ->
+        match Hashtbl.find_opt pool_value n with
+        | Some d -> reach d
+        | None ->
+          (match Hashtbl.find_opt (scope_of e.origin) n with
+           | Some k ->
+             Option.iter reach (Hashtbl.find_opt enums k)
+           | None ->
+             Hashtbl.iter (fun _ en ->
+                 match en.decl with
+                 | TopType td when List.mem n (enum_names td) -> reach en
+                 | _ -> ())
+               enums))
+      (top_level_free_names e.decl)
+  in
+  List.iter visit copies;
+  List.iter visit root_entries;
+  List.iter (fun k -> Option.iter reach (Hashtbl.find_opt enums k))
+    (List.rev !enum_seeds);
+  (* An extern the root declares itself is not carried a second time. *)
+  let root_externs =
+    List.filter_map (fun e -> if is_extern e.decl then value_name e.decl else None)
+      root_entries
+  in
+  let carried =
+    List.filter (fun e ->
+        Hashtbl.mem reached (key e)
+        && not (is_extern e.decl
+                && List.mem (Option.get (value_name e.decl)) root_externs))
+      pool
+  in
+  let all = carried @ copies @ root_entries in
+  check_unique all;
+  { prog with prog_decls = List.map (fun e -> e.decl) all }

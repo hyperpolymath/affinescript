@@ -489,8 +489,8 @@ let aliased_originals_stay_apart () =
    their private helpers different internal names. *)
 let internal_names_are_injective () =
   Alcotest.(check bool) "distinct" true
-    (Module_loader.qualified_private_name [ "S_T"; "U" ] "h"
-     <> Module_loader.qualified_private_name [ "S"; "T_U" ] "h");
+    (Module_loader.qualified_name [ "S_T"; "U" ] "h"
+     <> Module_loader.qualified_name [ "S"; "T_U" ] "h");
   let dir = fresh_dir "inject" in
   write_file dir "S_T/U.affine"
     "module S_T.U;\nfn h() -> Int { 1 }\npub fn u1() -> Int { h() }\n";
@@ -522,8 +522,454 @@ let mutable_alias_refused () =
                    (Module_loader.MutableAlias ("counter", "c", [ "V"; "M" ])) ->
        ())
 
+(* ---- #801: one flattened namespace, collision-free ---------------------- *)
+
+(* Two modules each define a function of one name; each module's code must
+   call its own.  [label] is public in both, as in #801's reproduction, then
+   private in both (same failure, reported in the issue too). *)
+let label_modules dir vis =
+  write_file dir "Lib/A.affine"
+    (Printf.sprintf "module Lib.A;\n%sfn label() -> Int { 1 }\n\
+                     pub fn a_label() -> Int { label() }\n" vis);
+  write_file dir "Lib/B.affine"
+    (Printf.sprintf "module Lib.B;\n%sfn label() -> Int { 2 }\n\
+                     pub fn b_label() -> Int { label() }\n" vis)
+
+let label_main =
+  "module Main;\nuse Lib.A::{a_label};\nuse Lib.B::{b_label};\n\
+   pub fn main() -> Int { a_label() * 10 + b_label() }\n"
+
+(* Compile [src] (with the modules under [dir]) to Bun-ESM and run it under
+   node with [expr] printed. *)
+let run_flat_js dir src expr =
+  let prog = Parse_driver.parse_string ~file:"<main>" src in
+  let ld = loader_in dir in
+  match Resolve.resolve_program_with_loader prog ld with
+  | Error (e, _) -> Alcotest.failf "resolve: %s" (Resolve.show_resolve_error e)
+  | Ok (rctx, _) ->
+    (match Codegen_deno.codegen_bun (Module_loader.flatten_imports ld prog)
+             rctx.symbols with
+     | Error e -> Alcotest.failf "Bun-ESM codegen: %s" e
+     | Ok js ->
+       (* Drop the auto-call of main: the test prints what it needs. *)
+       let js =
+         String.concat "\n"
+           (List.filter (fun l -> l <> "await main();")
+              (String.split_on_char '\n' js))
+       in
+       run_node (js ^ "\nconsole.log(" ^ expr ^ ");\n"))
+
+let test_801_same_name_in_two_modules () =
+  List.iter (fun vis ->
+      let dir = fresh_dir ("i801" ^ String.trim vis) in
+      label_modules dir vis;
+      eval_int dir label_main 12;
+      if node_available () then
+        Alcotest.(check string) ("Bun-ESM, " ^ vis ^ "label") "12"
+          (run_flat_js dir label_main "main()"))
+    [ "pub "; "" ]
+
+(* The shape #801's reproduction has on main after #797: the colliding
+   functions reach the root only through other modules' bodies.  X uses
+   A's [f] and Y uses B's; the old flattener kept one [f] for both. *)
+let test_801_transitive_public_and_const () =
+  let dir = fresh_dir "t801" in
+  write_file dir "Lib/A.affine"
+    "module Lib.A;\npub fn f() -> Int { 1 }\npub const K: Int = 100;\n";
+  write_file dir "Lib/B.affine"
+    "module Lib.B;\npub fn f() -> Int { 2 }\npub const K: Int = 200;\n";
+  write_file dir "Lib/X.affine"
+    "module Lib.X;\nuse Lib.A::{f, K};\npub fn via_a() -> Int { f() + K }\n";
+  write_file dir "Lib/Y.affine"
+    "module Lib.Y;\nuse Lib.B::*;\npub fn via_b() -> Int { f() + K }\n";
+  let src =
+    "module Main;\nuse Lib.X::{via_a};\nuse Lib.Y::{via_b};\n\
+     pub fn main() -> Int { via_a() * 1000 + via_b() }\n"
+  in
+  eval_int dir src 101202;
+  if node_available () then
+    Alcotest.(check string) "Bun-ESM" "101202" (run_flat_js dir src "main()")
+
+(* Externs keep their host names: an alias is rewritten to the extern's own
+   name, never carried as an extern of the alias's name. *)
+let test_801_externs_keep_host_names () =
+  let dir = fresh_dir "x801" in
+  write_file dir "H.affine"
+    "module H;\npub extern fn host_thing(x: Int) -> Int;\n\
+     pub fn twice(x: Int) -> Int { host_thing(host_thing(x)) }\n";
+  let src =
+    "module Main;\nuse H::{host_thing as ht, twice};\n\
+     pub fn main() -> Int { ht(1) + twice(2) }\n"
+  in
+  let prog = Parse_driver.parse_string ~file:"<main>" src in
+  let ld = loader_in dir in
+  (match Resolve.resolve_program_with_loader prog ld with
+   | Error (e, _) -> Alcotest.failf "resolve: %s" (Resolve.show_resolve_error e)
+   | Ok _ -> ());
+  let flat = Module_loader.flatten_imports ld prog in
+  let externs, others =
+    List.partition Module_loader.is_extern flat.Ast.prog_decls in
+  Alcotest.(check (list string)) "one extern, under its host name"
+    [ "host_thing" ] (List.filter_map Module_loader.value_name externs);
+  Alcotest.(check bool) "no declaration named after the alias" false
+    (List.mem "ht" (List.filter_map Module_loader.value_name others));
+  let main_refs =
+    List.concat_map (function
+        | Ast.TopFn fd when fd.fd_name.name = "main" ->
+          Module_loader.top_level_free_names (Ast.TopFn fd)
+        | _ -> []) flat.prog_decls
+  in
+  Alcotest.(check bool) "main calls the extern by its host name" true
+    (List.mem "host_thing" main_refs && not (List.mem "ht" main_refs))
+
+(* The backstop: a flattened program in which two different bindings share a
+   name is refused, whatever produced it. *)
+let test_801_planted_collision_refused () =
+  let fn_decl src =
+    match (Parse_driver.parse_string ~file:"<p>" src).prog_decls with
+    | [ d ] -> d
+    | _ -> Alcotest.fail "expected one declaration"
+  in
+  let a = fn_decl "fn label() -> Int { 1 }" in
+  let b = fn_decl "fn label() -> Int { 2 }" in
+  (match
+     Module_loader.check_unique
+       [ { origin = [ "Lib"; "A" ]; decl = a }; { origin = [ "Lib"; "B" ]; decl = b } ]
+   with
+   | () -> Alcotest.fail "two different `label`s must be refused"
+   | exception Module_loader.Flatten_error
+                 (Module_loader.ImportCollision ("label", _, _)) -> ());
+  (* A function with an extern's name: a backend would lower calls to it as
+     host calls.  The root's own `host_thing` meets the extern H carries. *)
+  let dir = fresh_dir "p801" in
+  write_file dir "H.affine"
+    "module H;\nextern fn host_thing(x: Int) -> Int;\n\
+     pub fn twice(x: Int) -> Int { host_thing(host_thing(x)) }\n";
+  let src =
+    "module Main;\nuse H::{twice};\nfn host_thing(x: Int) -> Int { x }\n\
+     pub fn main() -> Int { twice(host_thing(2)) }\n"
+  in
+  let prog = Parse_driver.parse_string ~file:"<main>" src in
+  let ld = loader_in dir in
+  (match Resolve.resolve_program_with_loader prog ld with
+   | Error (e, _) -> Alcotest.failf "resolve: %s" (Resolve.show_resolve_error e)
+   | Ok _ -> ());
+  (match Module_loader.flatten_imports ld prog with
+   | _ -> Alcotest.fail "a function named like a carried extern must be refused"
+   | exception Module_loader.Flatten_error
+                 (Module_loader.ImportCollision ("host_thing", _, _)) -> ());
+  (* The JS emitters refuse a duplicate name even when handed one directly
+     (Bun keeps the last `function` of a name without complaint). *)
+  let dup = { (Parse_driver.parse_string ~file:"<d>" "") with
+              Ast.prog_decls = [ a; b ] } in
+  let refused what = function
+    | Ok _ -> Alcotest.failf "%s emitted two `label`s" what
+    | Error msg ->
+      Alcotest.(check bool) (what ^ ": " ^ msg) true
+        (Str.string_match (Str.regexp ".*`label`.*#801") msg 0)
+  in
+  refused "Bun-ESM" (Codegen_deno.codegen_bun dup (Symbol.create ()));
+  refused "JS" (Js_codegen.codegen_js dup (Symbol.create ()))
+
+(* Enum constructors keep their names.  Two enums' identical constructors are
+   one runtime value and are emitted once; constructors of one name and
+   different shapes are refused. *)
+let test_801_enum_constructors () =
+  let dir = fresh_dir "e801" in
+  write_file dir "Lib/A.affine"
+    "module Lib.A;\npub enum Col { Red, Blue }\n\
+     pub fn a_label() -> Int { match Red { Red => 1, Blue => 3 } }\n";
+  write_file dir "Lib/B.affine"
+    "module Lib.B;\npub enum Paint { Blue, Red }\n\
+     pub fn b_label() -> Int { match Blue { Red => 4, Blue => 2 } }\n";
+  if node_available () then
+    Alcotest.(check string) "identical constructors shared" "12"
+      (run_flat_js dir label_main "main()");
+  write_file dir "Lib/B.affine"
+    "module Lib.B;\npub enum Paint { Blue(Int), Red }\n\
+     pub fn b_label() -> Int { match Red { Red => 2, Blue(n) => n } }\n";
+  let prog = Parse_driver.parse_string ~file:"<main>" label_main in
+  let ld = loader_in dir in
+  match Resolve.resolve_program_with_loader prog ld with
+  | Error (e, _) -> Alcotest.failf "resolve: %s" (Resolve.show_resolve_error e)
+  | Ok (rctx, _) ->
+    (match Codegen_deno.codegen_bun (Module_loader.flatten_imports ld prog)
+             rctx.symbols with
+     | Ok _ -> Alcotest.fail "`Blue` and `Blue(Int)` must not share a binding"
+     | Error msg ->
+       Alcotest.(check bool) msg true
+         (Str.string_match (Str.regexp ".*`Blue`.*#801") msg 0))
+
+(* Trait impl methods are emitted as free functions under their own names
+   (trait dispatch is not lowered on the non-Wasm backends), so two impls of
+   one trait gave two `function eq`s and Bun silently kept the second.  They
+   are refused until impl methods get their own names. *)
+let test_801_impl_methods_refused () =
+  let src = {|
+module impls;
+trait Same { fn same(ref self, ref other: Self) -> Bool; }
+impl Same for Int { pub fn same(ref self, ref other: Int) -> Bool { self == other } }
+impl Same for Bool { pub fn same(ref self, ref other: Bool) -> Bool { self == other } }
+|} in
+  match compile_deno src with
+  | Ok _ -> Alcotest.fail "two impls' `same` must not both be emitted as `same`"
+  | Error msg ->
+    Alcotest.(check bool) msg true
+      (Str.string_match (Str.regexp ".*`same`.*#801") msg 0)
+
+let test_801_impl_reads_imported_mutable () =
+  (* #801 review follow-ups (CodeRabbit on #802).  The comments sit inside
+     the bodies: the soundness ledger pins the preceding test up to the next
+     top-level `let`.  A root impl method that reads an imported mutable
+     constant refers to the qualified storage, which is carried. *)
+  let dir = fresh_dir "im801" in
+  write_file dir "V/M.affine"
+    "module V.M;\npub const mut counter: Int = 7;\n";
+  let src =
+    "module D;\nuse V.M::{counter};\n\
+     trait Peek { fn peek(ref self) -> Int; }\n\
+     impl Peek for Int { pub fn peek(ref self) -> Int { counter } }\n\
+     pub fn main() -> Int { 1 }\n"
+  in
+  let prog = Parse_driver.parse_string ~file:"<main>" src in
+  let ld = loader_in dir in
+  (match Resolve.resolve_program_with_loader prog ld with
+   | Error (e, _) -> Alcotest.failf "resolve: %s" (Resolve.show_resolve_error e)
+   | Ok _ -> ());
+  let flat = Module_loader.flatten_imports ld prog in
+  let q = Module_loader.qualified_name [ "V"; "M" ] "counter" in
+  let impl_refs =
+    List.concat_map (function
+        | Ast.TopImpl _ as d -> Module_loader.top_level_free_names d
+        | _ -> []) flat.prog_decls
+  in
+  Alcotest.(check bool) "the method reads the qualified storage" true
+    (List.mem q impl_refs && not (List.mem "counter" impl_refs));
+  Alcotest.(check bool) "the storage is carried" true
+    (List.mem q (List.filter_map Module_loader.value_name flat.prog_decls))
+
+(* The root's copy of an imported immutable array is the module's value, so
+   reference equality between the two holds, as it did before #801. *)
+let test_801_immutable_import_one_value () =
+  let dir = fresh_dir "iv801" in
+  write_file dir "A.affine"
+    "module A;\npub const K: [Int] = [1, 2];\n\
+     pub fn original() -> [Int] { K }\n";
+  let src =
+    "module Main;\nuse A::{K, original};\n\
+     pub fn main() -> Bool { original() == K }\n"
+  in
+  let prog = Parse_driver.parse_string ~file:"<main>" src in
+  let ld = loader_in dir in
+  (match Resolve.resolve_program_with_loader prog ld with
+   | Error (e, _) -> Alcotest.failf "resolve: %s" (Resolve.show_resolve_error e)
+   | Ok _ -> ());
+  let flat = Module_loader.flatten_imports ld prog in
+  let q = Module_loader.qualified_name [ "A" ] "K" in
+  (match List.find_opt (function
+       | Ast.TopConst c -> c.tc_name.name = "K" | _ -> false) flat.prog_decls with
+   | Some (Ast.TopConst { tc_value = Ast.ExprVar v; _ }) ->
+     Alcotest.(check string) "K refers to the module's K" q v.name
+   | _ -> Alcotest.fail "expected `K` bound to the module's declaration");
+  if node_available () then
+    Alcotest.(check string) "Bun-ESM: one runtime value" "true"
+      (run_flat_js dir src "main()")
+
+(* `__mod_` is reserved: a source binder of that form could capture a
+   rewritten reference. *)
+let test_801_reserved_prefix () =
+  match
+    Parse_driver.parse_string ~file:"<r>"
+      "fn f() -> Int { let __mod_1A__K = 2; __mod_1A__K }\n"
+  with
+  | _ -> Alcotest.fail "an identifier starting with `__mod_` must be refused"
+  | exception e ->
+    let msg = Printexc.to_string e in
+    Alcotest.(check bool) msg true
+      (Str.string_match (Str.regexp ".*__mod_.*reserved") msg 0)
+
+(* JS: a top-level binding may not take a name the prelude declares. *)
+let test_801_js_prelude_names () =
+  let prog = Parse_driver.parse_string ~file:"<j>"
+      "fn println(s: String) -> Int { 1 }\n" in
+  match Js_codegen.codegen_js prog (Symbol.create ()) with
+  | Ok _ -> Alcotest.fail "a second `println` must be refused"
+  | Error msg ->
+    Alcotest.(check bool) msg true
+      (Str.string_match (Str.regexp ".*`println`.*#801") msg 0)
+
+let test_801_js_mangled_ctor_clash () =
+  (* `class` is a JS reserved word, emitted as `class_`; a constructor
+     `class_` beside it must be refused, not silently merged. *)
+  let prog = Parse_driver.parse_string ~file:"<j>"
+      "enum E { class, class_ }\nfn main() -> Int { 0 }\n" in
+  match Js_codegen.codegen_js prog (Symbol.create ()) with
+  | Ok _ -> Alcotest.fail "`class` and `class_` must not share one binding"
+  | Error msg ->
+    Alcotest.(check bool) msg true
+      (Str.string_match (Str.regexp ".*`class_`.*#801") msg 0)
+
+let test_801_preamble_ctor_arity () =
+  (* A variant named like a runtime constructor shares the runtime's binding
+     only at the runtime's arity; a nullary `Some` is refused on both JS
+     backends rather than becoming the unary factory. *)
+  let bad = "enum Choice { Some, Other }\nfn main() -> Int { 0 }\n" in
+  let ok = "enum Maybe { Some(Int), None }\n\
+            fn main() -> Int { match Some(2) { Some(n) => n, None => 0 } }\n" in
+  let refused = Str.regexp ".*`Some` of `Choice`.*#801" in
+  (match compile_deno bad with
+   | Ok _ -> Alcotest.fail "Bun-ESM: a nullary `Some` must be refused"
+   | Error m -> Alcotest.(check bool) m true (Str.string_match refused m 0));
+  (match Js_codegen.codegen_js (Parse_driver.parse_string ~file:"<j>" bad)
+           (Symbol.create ()) with
+   | Ok _ -> Alcotest.fail "JS: a nullary `Some` must be refused"
+   | Error m -> Alcotest.(check bool) m true (Str.string_match refused m 0));
+  (match compile_deno ok with
+   | Ok _ -> ()
+   | Error e -> Alcotest.failf "Bun-ESM: a unary `Some` is the runtime's: %s" e)
+
+(* An imported enum whose variants all have runtime names is still carried
+   when one of them has another arity, so the emitters see it and refuse it
+   rather than lower `Choice::Some` to the runtime's unary factory. *)
+let test_801_imported_preamble_arity () =
+  let dir = fresh_dir "pa801" in
+  write_file dir "Lib/C.affine"
+    "module Lib.C;\npub enum Choice { Some, None }\n\
+     pub fn pick() -> Choice { Choice::Some }\n";
+  let src = "module Main;\nuse Lib.C::{pick};\n\
+             pub fn main() -> Int { let c = pick(); 0 }\n" in
+  let prog = Parse_driver.parse_string ~file:"<main>" src in
+  let ld = loader_in dir in
+  match Resolve.resolve_program_with_loader prog ld with
+  | Error (e, _) -> Alcotest.failf "resolve: %s" (Resolve.show_resolve_error e)
+  | Ok (rctx, _) ->
+    let flat = Module_loader.flatten_imports ld prog in
+    let refused = Str.regexp ".*`Some` of `Choice`.*#801" in
+    (match Codegen_deno.codegen_bun flat rctx.symbols with
+     | Ok _ -> Alcotest.fail "Bun-ESM: an imported nullary `Some` must be refused"
+     | Error m -> Alcotest.(check bool) m true (Str.string_match refused m 0));
+    (match Js_codegen.codegen_js flat rctx.symbols with
+     | Ok _ -> Alcotest.fail "JS: an imported nullary `Some` must be refused"
+     | Error m -> Alcotest.(check bool) m true (Str.string_match refused m 0))
+
+let test_801_escaped_extern_clash () =
+  (* An extern `class` is called as `class_`; a root fn `class_` would
+     receive that call, so Bun-ESM refuses it. *)
+  match compile_deno
+          "extern fn class(x: Int) -> Int;\nfn class_(x: Int) -> Int { x }\n\
+           fn main() -> Int { class(1) }\n" with
+  | Ok _ -> Alcotest.fail "a root `class_` beside an extern `class` must be refused"
+  | Error m ->
+    Alcotest.(check bool) m true (Str.string_match (Str.regexp ".*`class_`.*#801") m 0)
+
+let test_801_js_prelude_names_complete () =
+  (* Every name the JS prelude declares at top level, including
+     the later declarators of a `let a = …, b = …;` line, is reserved. *)
+  let first = Str.regexp "^\\(const\\|let\\|var\\|function\\) +\\([A-Za-z_][A-Za-z0-9_]*\\)" in
+  let later = Str.regexp ", *\\([A-Za-z_][A-Za-z0-9_]*\\) *=" in
+  let names =
+    String.split_on_char '\n' Js_codegen.prelude
+    |> List.concat_map (fun l ->
+        if not (Str.string_match first l 0) then []
+        else
+          let rec more pos acc =
+            match Str.search_forward later l pos with
+            | p -> more (p + 1) (Str.matched_group 1 l :: acc)
+            | exception Not_found -> List.rev acc
+          in
+          let n0 = Str.matched_group 2 l in
+          n0 :: (if String.starts_with ~prefix:"function" l then [] else more 0 []))
+  in
+  Alcotest.(check bool) "prelude declares __as_stdin_off" true
+    (List.mem "__as_stdin_off" names);
+  Alcotest.(check bool) "prelude declares Unit" true (List.mem "Unit" names);
+  List.iter (fun n ->
+      let prog = Parse_driver.parse_string ~file:"<j>"
+          (Printf.sprintf "fn %s() -> Int { 1 }\n" n) in
+      match Js_codegen.codegen_js prog (Symbol.create ()) with
+      | Ok _ -> Alcotest.failf "a root `%s` must be refused beside the prelude's" n
+      | Error _ -> ())
+    names
+
+(* Bun-ESM: a constructor a private and a public enum share is exported,
+   whichever enum comes first. *)
+let test_801_shared_constructor_exported () =
+  match compile_deno
+          "module pe;\nenum Hidden { Red, Green }\npub enum Shown { Red, Blue }\n" with
+  | Error e -> Alcotest.failf "Bun-ESM: %s" e
+  | Ok js ->
+    Alcotest.(check bool) "Red is exported once" true
+      (Str.string_match (Str.regexp "\\(.\\|\n\\)*export const Red = ") js 0);
+    Alcotest.(check bool) "Green stays private" false
+      (Str.string_match (Str.regexp "\\(.\\|\n\\)*export const Green") js 0)
+
+(* #805: only the root's own [main] is an entry point.  An imported function
+   bound as [main] is not called on load, on either JS backend, and stays
+   callable from the root; a root [main] keeps its auto-call. *)
+let test_805_imported_main_alias () =
+  let dir = fresh_dir "m805" in
+  write_file dir "A.affine" "module A;\npub fn entry() -> Int { 7 }\n";
+  let flat src =
+    let prog = Parse_driver.parse_string ~file:"<main>" src in
+    let ld = loader_in dir in
+    match Resolve.resolve_program_with_loader prog ld with
+    | Error (e, _) -> Alcotest.failf "resolve: %s" (Resolve.show_resolve_error e)
+    | Ok (rctx, _) -> (Module_loader.flatten_imports ld prog, rctx.symbols)
+  in
+  let lines js = String.split_on_char '\n' js in
+  let check_backends src ~auto =
+    let prog, syms = flat src in
+    (match Codegen_deno.codegen_bun prog syms with
+     | Error e -> Alcotest.failf "Bun-ESM: %s" e
+     | Ok js -> Alcotest.(check bool) "Bun-ESM auto-call" auto
+                  (List.mem "await main();" (lines js)));
+    (match Js_codegen.codegen_js prog syms with
+     | Error e -> Alcotest.failf "JS: %s" e
+     | Ok js -> Alcotest.(check bool) "JS auto-call" auto
+                  (List.mem "main();" (lines js)))
+  in
+  let aliased = "module Main;\nuse A::{entry as main};\npub fn go() -> Int { main() }\n" in
+  check_backends aliased ~auto:false;
+  check_backends "module Main;\nuse A::{entry};\npub fn main() -> Int { entry() }\n"
+    ~auto:true;
+  if node_available () then
+    Alcotest.(check string) "the alias stays callable" "7" (run_flat_js dir aliased "go()")
+
 let tests =
   [
+    Alcotest.test_case "#805: an imported `main` alias is not auto-run" `Quick
+      test_805_imported_main_alias;
+    Alcotest.test_case "#801: impl method reads an imported mutable" `Quick
+      test_801_impl_reads_imported_mutable;
+    Alcotest.test_case "#801: an immutable import is one runtime value" `Quick
+      test_801_immutable_import_one_value;
+    Alcotest.test_case "#801: the __mod_ prefix is reserved" `Quick
+      test_801_reserved_prefix;
+    Alcotest.test_case "#801: JS refuses prelude names" `Quick
+      test_801_js_prelude_names;
+    Alcotest.test_case "#801: JS reserves every prelude name" `Quick
+      test_801_js_prelude_names_complete;
+    Alcotest.test_case "#801: JS refuses a mangled constructor clash" `Quick
+      test_801_js_mangled_ctor_clash;
+    Alcotest.test_case "#801: runtime constructor names keep their arity" `Quick
+      test_801_preamble_ctor_arity;
+    Alcotest.test_case "#801: an imported runtime-named variant keeps its arity" `Quick
+      test_801_imported_preamble_arity;
+    Alcotest.test_case "#801: Bun-ESM refuses an escaped extern clash" `Quick
+      test_801_escaped_extern_clash;
+    Alcotest.test_case "#801: a shared constructor stays exported" `Quick
+      test_801_shared_constructor_exported;
+    Alcotest.test_case "#801: same-named functions in two modules" `Quick
+      test_801_same_name_in_two_modules;
+    Alcotest.test_case "#801: transitive public functions and constants" `Quick
+      test_801_transitive_public_and_const;
+    Alcotest.test_case "#801: externs keep their host names" `Quick
+      test_801_externs_keep_host_names;
+    Alcotest.test_case "#801: a planted collision is refused" `Quick
+      test_801_planted_collision_refused;
+    Alcotest.test_case "#801: enum constructors" `Quick test_801_enum_constructors;
+    Alcotest.test_case "#801: impl methods sharing a name are refused" `Quick
+      test_801_impl_methods_refused;
     Alcotest.test_case "Bun-ESM: a guard ignores the body's int tracking" `Quick
       guard_ignores_body_int_tracking;
     Alcotest.test_case "Bun-ESM: return inside an array arm refused" `Quick

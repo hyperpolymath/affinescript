@@ -107,6 +107,14 @@ type codegen_ctx = {
      associated call (`(await this.m(...))`) — `await` inside a plain
      `(() => {...})()` is a SyntaxError ("Unexpected reserved word"). *)
   in_async : bool;
+  (* Every top-level JS binding emitted so far (runtime preamble included),
+     with a signature: [""] for a function, constant or class, the binding
+     text for an enum constructor. Shared by every copy of the context.
+     See {!claim_top} (#801). *)
+  top_names : (string, string) Hashtbl.t;
+  (* Constructor names some public enum declares: a constructor shared by a
+     private and a public enum is emitted once, exported (#801). *)
+  public_ctors : (string, unit) Hashtbl.t;
 }
 
 (** Create an empty emission context for [host], sharing [symbols] and
@@ -127,6 +135,8 @@ let create_ctx host symbols = {
   int_array_vars = Hashtbl.create 16;
   locals = Hashtbl.create 16;
   in_async = false;
+  top_names = Hashtbl.create 128;
+  public_ctors = Hashtbl.create 32;
 }
 
 (* Expression-position IIFE wrapper. In an async method body it must be
@@ -1307,6 +1317,90 @@ let js_reserved = [
 let mangle (name : string) : string =
   if List.mem name js_reserved then name ^ "_" else name
 
+
+(* ============================================================================
+   Top-level name uniqueness (#801)
+
+   An ES module may declare a top-level name once.  Import flattening gives
+   every module's declarations distinct names, and {!mangle} is not
+   injective (`class` and a user's `class_` both emit `class_`), so this is
+   the last check before the text exists: a second binding of a name is a
+   compile error, never a module where one binding silently replaces another
+   (#801) or fails only when it is loaded.  An enum constructor emitted twice
+   with the same text (two enums of one program each with a nullary `Red`)
+   is the same runtime value, a `{ tag }` object or factory, so it is emitted
+   once.
+   ============================================================================ *)
+
+(** Reserve the top-level JS name [name].  [signature] is [""] for a
+    binding that must be unique (a function, constant or class), or the
+    binding's text for one that may be shared when identical (an enum
+    constructor).  Returns [false] when an identical shared binding has
+    already been emitted, so the caller emits nothing.
+    @raise Failure on any other second binding of [name]. *)
+let claim_top ctx (name : string) (signature : string) : bool =
+  match Hashtbl.find_opt ctx.top_names name with
+  | None -> Hashtbl.replace ctx.top_names name signature; true
+  | Some s when s <> "" && s = signature -> false
+  | Some _ ->
+    failwith
+      (Printf.sprintf
+         "two different top-level bindings would both be emitted as `%s`; \
+          refusing to emit a module in which one replaces the other (#801)"
+         name)
+
+(** The name a column-0 line of emitted runtime text declares at top
+    level ([const x], [let x], [function x], [class x], optionally
+    [export]ed or [async]), if any. *)
+let top_binding_name (line : string) : string option =
+  let strip p s =
+    if String.starts_with ~prefix:p s then
+      Some (String.sub s (String.length p) (String.length s - String.length p))
+    else None
+  in
+  let s = Option.value (strip "export " line) ~default:line in
+  let s = Option.value (strip "async " s) ~default:s in
+  List.find_map (fun kw -> strip (kw ^ " ") s)
+    [ "const"; "let"; "var"; "function"; "class" ]
+  |> Fun.flip Option.bind (fun r ->
+      let is_id c =
+        (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+        || (c >= '0' && c <= '9') || c = '_' || c = '$'
+      in
+      let n = ref 0 in
+      while !n < String.length r && is_id r.[!n] do incr n done;
+      if !n = 0 then None else Some (String.sub r 0 !n))
+
+(** Reserve every top-level name the runtime text [js] declares. *)
+(** A variant named like a runtime-preamble constructor ([Some]/[Ok]/[Err]
+    of one field, [None] of none) is that constructor: the preamble's
+    binding builds the same [{ tag, value }] value, and references to the
+    name are lowered to it, so the variant is not emitted again (this is how
+    a program declaring its own [Option]/[Result], such as
+    stdlib/prelude.affine, compiles).  One of another arity would silently
+    become the preamble's factory (a nullary [Choice::Some] evaluating to a
+    function), so it is refused (#801).  Returns [true] when the variant is
+    the preamble's. *)
+let preamble_ctor_shared (td : type_decl) (vd : variant_decl) : bool =
+  let arity = List.length vd.vd_fields in
+  match vd.vd_name.name with
+  | ("Some" | "Ok" | "Err" | "None") as n ->
+    let want = if n = "None" then 0 else 1 in
+    if arity = want then true
+    else
+      failwith
+        (Printf.sprintf
+           "variant `%s` of `%s` has %d field(s), but the runtime's `%s` has \
+            %d; rename the variant (#801)"
+           n td.td_name.name arity n want)
+  | _ -> false
+
+let claim_runtime ctx (js : string) : unit =
+  List.iter (fun line ->
+      Option.iter (fun n -> Hashtbl.replace ctx.top_names n "")
+        (top_binding_name line))
+    (String.split_on_char '\n' js)
+
 (* Resolve a variable reference, honouring the active [self] rename. *)
 let resolve_var ctx (name : string) : string =
   match ctx.self_name with
@@ -2264,6 +2358,7 @@ let gen_body ctx (fb : fn_body) : unit =
 
 let gen_function ctx (fd : fn_decl) : unit =
   let name = mangle fd.fd_name.name in
+  ignore (claim_top ctx name "");
   let params =
     List.map (fun (p : param) -> mangle p.p_name.name) fd.fd_params in
   let is_async = fd_is_async fd in
@@ -2400,6 +2495,7 @@ let gen_default_constructor ctx (fields : struct_field list) : unit =
 let gen_class ctx ~(name : string) ~(fields : struct_field list)
     ~(ctor : fn_decl option)
     ~(methods : (string * string * fn_decl) list) : unit =
+  ignore (claim_top ctx name "");
   emit_line ctx (Printf.sprintf "export class %s {" name);
   let cls = increase_indent ctx in
   (match ctor with
@@ -2422,27 +2518,30 @@ let gen_type_decl ctx (td : type_decl) : unit =
          already been declared`. Skip any variant the preamble already provides.
          (The #136 AOT smoke never caught this — it only checks the output is
          non-empty, never runs it.) *)
-      let preamble_ctors = [ "Some"; "None"; "Ok"; "Err" ] in
       List.iter (fun (vd : variant_decl) ->
-        if List.mem vd.vd_name.name preamble_ctors then ()
+        if preamble_ctor_shared td vd then ()
         else begin
         let name = mangle vd.vd_name.name in
         let arity = List.length vd.vd_fields in
-        if arity = 0 then
-          emit_line ctx
-            (Printf.sprintf "%sconst %s = { tag: \"%s\" };" exp name
-               vd.vd_name.name)
-        else if arity = 1 then
-          emit_line ctx
-            (Printf.sprintf "%sconst %s = (value) => ({ tag: \"%s\", value });"
-               exp name vd.vd_name.name)
-        else
-          let ps = List.init arity (fun i -> "v" ^ string_of_int i) in
-          emit_line ctx
-            (Printf.sprintf
-               "%sconst %s = (%s) => ({ tag: \"%s\", values: [%s] });"
-               exp name (String.concat ", " ps) vd.vd_name.name
-               (String.concat ", " ps))
+        let binding =
+          if arity = 0 then
+            Printf.sprintf "const %s = { tag: \"%s\" };" name vd.vd_name.name
+          else if arity = 1 then
+            Printf.sprintf "const %s = (value) => ({ tag: \"%s\", value });"
+              name vd.vd_name.name
+          else
+            let ps = List.init arity (fun i -> "v" ^ string_of_int i) in
+            Printf.sprintf
+              "const %s = (%s) => ({ tag: \"%s\", values: [%s] });"
+              name (String.concat ", " ps) vd.vd_name.name
+              (String.concat ", " ps)
+        in
+        (* Two enums' identical constructors are one binding (#801), exported
+           when any enum that declares it is public. *)
+        let exp =
+          if Hashtbl.mem ctx.public_ctors vd.vd_name.name then "export " else exp
+        in
+        if claim_top ctx name binding then emit_line ctx (exp ^ binding)
         end
       ) variants;
       emit ctx "\n"
@@ -2585,9 +2684,11 @@ let generate (host : host_profile) (program : program) (symbols : Symbol.t) : st
          | _ -> ())
     | TopConst { tc_name; _ } ->
         Hashtbl.replace ctx.local_fns tc_name.name ()
-    | TopType { td_body = TyEnum variants; _ } ->
+    | TopType { td_body = TyEnum variants; td_vis; _ } ->
         List.iter (fun (vd : variant_decl) ->
-          Hashtbl.replace ctx.ctors vd.vd_name.name ()) variants
+          Hashtbl.replace ctx.ctors vd.vd_name.name ();
+          if visibility_is_public td_vis then
+            Hashtbl.replace ctx.public_ctors vd.vd_name.name ()) variants
     | TopImpl ib ->
         List.iter (function
           | ImplFn fd ->
@@ -2610,6 +2711,19 @@ let generate (host : host_profile) (program : program) (symbols : Symbol.t) : st
   let runtime =
     (match host with Deno -> deno_host_prelude | Bun -> bun_host_prelude)
     ^ common_prelude in
+  (* Every runtime helper name is claimed, also one pruning later drops, so
+     a program binding of a helper's name is refused (#801) whichever helpers
+     the body reaches. *)
+  claim_runtime ctx runtime;
+  (* An extern with no intrinsic lowering is called by its emitted name,
+     which must then be the host symbol: when [mangle] escapes it (an extern
+     `class` is called as `class_`), reserve that name, so a program binding
+     emitted as `class_` is refused (#801) instead of receiving the call. *)
+  Hashtbl.iter (fun e () ->
+    let js = mangle e in
+    if js <> e && not (Hashtbl.mem (builtins_for ctx) e)
+       && not (Hashtbl.mem ctx.local_fns e)
+    then ignore (claim_top ctx js ("extern/" ^ e))) ctx.externs;
 
   (* Collect structs. AffineScript's grammar accepts neither inherent
      [impl Type {}] nor a [self] expression (SELF_KW has no expression
@@ -2693,8 +2807,11 @@ let generate (host : host_profile) (program : program) (symbols : Symbol.t) : st
              emit_class_for td.td_name.name fields
          | _ -> gen_type_decl ctx td)
     | TopImpl ib ->
-        (* Inherent/trait impls don't parse in the current grammar; this
-           is a defensive fallback only. *)
+        (* Impl methods are emitted as free functions under their own
+           names (trait dispatch is not lowered here), so two impls of one
+           trait give two bindings of one name: {!gen_function}'s
+           {!claim_top} refuses that rather than letting Bun keep the
+           last (#801). *)
         List.iter (function
           | ImplFn fd -> gen_function ctx fd
           | ImplType _ -> ()) ib.ib_items
@@ -2705,6 +2822,7 @@ let generate (host : host_profile) (program : program) (symbols : Symbol.t) : st
            Plain `const` (tc_mut=false) keeps the existing `const`
            emission and JS-enforces immutability. *)
         let kw = if tc_mut then "let" else "const" in
+        ignore (claim_top ctx (mangle tc_name.name) "");
         emit_line ctx
           (Printf.sprintf "%s%s %s = %s;" exp kw (mangle tc_name.name)
              (gen_expr ctx tc_value))

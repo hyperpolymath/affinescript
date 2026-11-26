@@ -1,0 +1,12 @@
+# Paths excluded from tools/ci/proven/code-hygiene-check.sh (vendored from
+# hyperpolymath/proven-cicd-and-workflows). Keep this list short and give a
+# reason for every entry.
+#
+# The file's header comment states the rule "NO `Admitted`, NO `Axiom`, NO
+# `postulate`"; the scanner reads the words as circumventions. The no-escape
+# rule for formal/*.v is enforced by formal/justfile (Print Assumptions).
+formal/K1_CodegenPreservation.v
+
+# The hygiene gate and its fixtures name the markers they look for, and the
+# required-files gate lists "TODO: update" as a placeholder pattern.
+tools/ci/proven/**
