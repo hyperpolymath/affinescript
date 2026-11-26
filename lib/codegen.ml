@@ -1839,6 +1839,16 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
         in
         Ok (c10, code)
 
+      | ExprVar id when id.name = "float_to_string"
+                        && List.length args = 1 ->
+        (* #643: shortest round-trip rendering, the same text as Bun's
+           `String(x)` and the interpreter. The printer is emitted once per
+           module by [Wasm_dtoa]; this call is patched to its index when the
+           module is assembled. It allocates from the bump heap. *)
+        let* (ctx1, x_code) = gen_expr ctx (List.hd args) in
+        let (ctx2, _heap_idx) = ensure_heap_ptr ctx1 in
+        Ok (ctx2, x_code @ [Call Wasm_dtoa.call_sentinel])
+
       | ExprVar id when (id.name = "env_at" || id.name = "arg_at")
                         && List.length args = 1 ->
         (* ADR-015 S5 (#180): env_at(i) / arg_at(i) — fetch the i-th
@@ -4008,6 +4018,30 @@ let generate_module ?loader (prog : program) : wasm_module result =
           in
           (types_after, funcs_after, exports_after)
     | _ -> (ctx'.types, all_funcs, exports_with_mem)
+  in
+
+  (* #643: a module that calls float_to_string gets the shortest-digits
+     printer appended after every other function (so no existing index
+     moves), and its call sites are patched to the printer's index. *)
+  let final_types, final_funcs =
+    let uses_dtoa =
+      List.exists (fun f -> Wasm_dtoa.body_calls_sentinel f.f_body) final_funcs
+    in
+    match uses_dtoa, ctx'.heap_ptr with
+    | true, Some heap ->
+      let base = import_offset + List.length final_funcs in
+      let types = ref final_types in
+      let intern ft =
+        let (idx, ts) = intern_func_type !types ft in
+        types := ts; idx
+      in
+      let helpers = Wasm_dtoa.funcs ~base ~heap ~intern in
+      let patched =
+        List.map (fun f -> { f with f_body = Wasm_dtoa.patch_calls base f.f_body })
+          final_funcs
+      in
+      (!types, patched @ helpers)
+    | _ -> (final_types, final_funcs)
   in
 
   (* Stage 2: Build [typedwasm.ownership] custom section from collected annotations *)

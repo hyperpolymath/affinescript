@@ -36,6 +36,7 @@ let () =
       ("Deno builtins ↔ stdlib decls consistency", Test_deno_builtins_consistency.tests);
       ("Bun integer block scope", Test_int_scope_bun.tests);
       ("Same cube: faces compile alike (#601)", Test_same_cube.tests);
+      ("float_to_string format (#643)", Test_float_format.tests);
       ("ESM runtime pruning", Test_runtime_prune.tests);
       ("Stdlib algebraic laws (batch 1)", Test_stdlib_laws.tests);
       ("Solo CESK (VM M1, ADR-0025)", Test_solo_cesk.tests);
