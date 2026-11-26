@@ -1,0 +1,10 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell
+//
+// Cross-module Float const fixture. Regression coverage for #561: an
+// imported Float const must become an f64 global in the importer, not an
+// i32 one (which fails wasm validation).
+
+module FloatRates;
+
+pub const rate: Float = 1.5;

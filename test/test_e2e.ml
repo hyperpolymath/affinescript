@@ -4589,7 +4589,35 @@ let test_modmut561_float_global_read_into_let () =
       (List.exists (fun f ->
            List.exists (fun l -> l.l_type = F64) f.f_locals) m.funcs)
 
+let test_modmut561_float_global_same_name_let () =
+  (* `let scale = scale` must infer the f64 global before the new local
+     shadows it. *)
+  match wasm_of_source
+          "const scale: Float = 1.5;\nfn f() -> Float { let scale = scale; scale }" with
+  | Error msg -> Alcotest.failf "a same-name Float let should compile: %s" msg
+  | Ok m ->
+    let open Wasm in
+    Alcotest.(check bool) "the shadowing local is f64" true
+      (List.exists (fun f ->
+           List.exists (fun l -> l.l_type = F64) f.f_locals) m.funcs)
+
+let test_modmut561_imported_float_const () =
+  match compile_fixture_to_wasm (fixture "float_const_caller.affine") with
+  | Error e -> Alcotest.failf "an imported Float const should compile: %s" e
+  | Ok m ->
+    let open Wasm in
+    Alcotest.(check bool) "the imported const is an immutable f64 global" true
+      (List.exists (fun g ->
+           g.g_type = F64 && not g.g_mutable
+           && List.exists (function F64Const v -> v = 1.5 | _ -> false) g.g_init)
+         m.globals);
+    Alcotest.(check bool) "the let reading it is f64" true
+      (List.exists (fun f ->
+           List.exists (fun l -> l.l_type = F64) f.f_locals) m.funcs)
+
 let modmut561_tests = [
+  Alcotest.test_case "wasm: same-name let of a Float const is f64" `Quick test_modmut561_float_global_same_name_let;
+  Alcotest.test_case "wasm: imported Float const is an f64 global" `Quick test_modmut561_imported_float_const;
   Alcotest.test_case "wasm: non-constant const init runs from exports" `Quick test_modmut561_deferred_init_runs_from_exports;
   Alcotest.test_case "wasm: Float global compound assign is f64" `Quick test_modmut561_float_global_compound_is_f64;
   Alcotest.test_case "wasm: Float const read into a let is f64" `Quick test_modmut561_float_global_read_into_let;

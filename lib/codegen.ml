@@ -953,12 +953,15 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
 
   | ExprLet lb ->
     let* (ctx', rhs_code) = gen_expr ctx lb.el_value in
+    (* Infer the initialiser's type before binding: in `let x = x` the new
+       local would otherwise shadow the f64 source it reads (#561). *)
+    let rhs_vt = expr_val_type ctx' lb.el_value in
     let* (ctx'', pat_code) = gen_pattern_bind ctx' lb.el_pat in
     (* Float wall: record a float-bound local's f64 type (see StmtLet). *)
     let ctx'' = match lb.el_pat with
       | PatVar id ->
         (match lookup_local ctx'' id.name with
-         | Ok idx when expr_val_type ctx'' lb.el_value = F64 ->
+         | Ok idx when rhs_vt = F64 ->
            { ctx'' with local_types = (idx, F64) :: ctx''.local_types }
          | _ -> ctx'')
       | _ -> ctx''
@@ -2900,10 +2903,13 @@ and gen_stmt (ctx : context) (stmt : stmt) : (context * instr list) result =
           | Some _ as s -> s
           | None -> layout_from_rhs ()
         in
+        (* Infer before allocating: in `let x = x` the new local would
+           otherwise shadow the f64 source it reads (#561). *)
+        let rhs_vt = expr_val_type ctx' sl.sl_value in
         let (ctx'', idx) = alloc_local ctx' id.name in
         (* Float wall: a float-bound local must be declared f64 (else a LocalSet
            of an f64 into an i32 slot fails wasm validation). *)
-        let ctx'' = match expr_val_type ctx'' sl.sl_value with
+        let ctx'' = match rhs_vt with
           | F64 -> { ctx'' with local_types = (idx, F64) :: ctx''.local_types }
           | _ -> ctx''
         in
