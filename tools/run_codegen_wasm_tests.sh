@@ -17,10 +17,10 @@ TEST_DIR="$ROOT_DIR/tests/codegen"
 # An explicit AFFINESCRIPT_COMPILER wins. Whatever is chosen is exported, so
 # harnesses that compile their own inputs (test_float_global_bytes.mjs,
 # test_module_init_print.mjs) use the same compiler as this runner.
-if [ -n "${AFFINESCRIPT_COMPILER:-}" ]; then
+if [[ -n "${AFFINESCRIPT_COMPILER:-}" ]]; then
   COMPILER="$AFFINESCRIPT_COMPILER"
   COMPILE_CMD=("$COMPILER" compile)
-elif [ -x "$ROOT_DIR/_build/default/bin/main.exe" ]; then
+elif [[ -x "$ROOT_DIR/_build/default/bin/main.exe" ]]; then
   COMPILER="$ROOT_DIR/_build/default/bin/main.exe"
   COMPILE_CMD=("$COMPILER" compile)
   export AFFINESCRIPT_COMPILER="$COMPILER"
