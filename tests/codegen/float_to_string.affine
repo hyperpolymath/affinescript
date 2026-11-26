@@ -1,0 +1,14 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2026 hyperpolymath
+//
+// #643: float_to_string on core WASM. The companion harness
+// test_float_to_string.mjs calls `show` on edge cases and random doubles
+// and requires the same text as Bun's String(x).
+
+pub fn show(x: Float) -> String {
+  return float_to_string(x);
+}
+
+fn main() -> Int {
+  string_length(float_to_string(0.1))   // "0.1" = 3
+}
