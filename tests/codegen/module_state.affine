@@ -39,6 +39,11 @@ fn bump() -> Int {
   counter
 }
 
+// Exposes ratio so the harness can check the Float compound writes.
+pub fn ratio_now() -> Float {
+  ratio
+}
+
 fn main() -> Int {
   bump();
   bump();

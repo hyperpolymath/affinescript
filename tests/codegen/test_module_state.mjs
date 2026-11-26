@@ -40,8 +40,12 @@ assert.deepEqual(logs, [], 'no initialiser runs during instantiation');
 const result = inst.exports.main();
 assert.equal(result, 1313, `module_state: wasm main()=${result}, want 1313`);
 assert.deepEqual(logs, ['seed', 'tick'], `Console.log calls: ${logs}`);
+// ratio = (1.0 + 1.5) * 1.5 after one call.
+assert.equal(inst.exports.ratio_now(), 3.75, 'ratio after one main()');
 
 // A second call does not re-run the initialisers.
 inst.exports.main();
 assert.deepEqual(logs, ['seed', 'tick', 'tick'], `second call: ${logs}`);
+// (3.75 + 1.5) * 1.5 after the second.
+assert.equal(inst.exports.ratio_now(), 7.875, 'ratio after two main() calls');
 console.log('test_module_state.mjs OK');

@@ -272,7 +272,11 @@ let type_to_wasm (ty : type_expr) : value_type result =
 let alloc_local (ctx : context) (name : string) : (context * int) =
   let idx = ctx.next_local in
   let locals' = (name, idx) :: ctx.locals in
-  ({ ctx with locals = locals'; next_local = idx + 1 }, idx)
+  (* A new binding shadows any record layout tracked under the same name
+     (a module const's, #561); the binder registers its own after this. *)
+  let field_layouts =
+    List.filter (fun (n, _) -> n <> name) ctx.field_layouts in
+  ({ ctx with locals = locals'; next_local = idx + 1; field_layouts }, idx)
 
 (** Look up local variable index *)
 let lookup_local (ctx : context) (name : string) : int result =
@@ -3743,7 +3747,10 @@ let gen_decl (ctx : context) (decl : top_level) : context result =
             final index = insert order is preserved by the reverse. *)
          funcs = func_with_type :: ctx_after_gen.funcs;
          num_funcs = ctx_after_gen.num_funcs + 1;
-         exports = ctx_after_gen.exports @ export
+         exports = ctx_after_gen.exports @ export;
+         (* Record layouts of this body's locals stay in it; the module's
+            (const records, #561) are what the next function starts from. *)
+         field_layouts = ctx.field_layouts;
        }
 
   | TopConst tc ->
@@ -3783,7 +3790,24 @@ let gen_decl (ctx : context) (decl : top_level) : context result =
           global_inits =
             (global_idx, init_code, init_vts, tc.tc_mut) :: ctx'.global_inits }
     in
+    (* A record const holds a pointer; register its field layout so
+       `c.field` loads at the field's offset, not offset 0. A literal's
+       layout is its store order; otherwise the declared struct's. *)
+    let layout_opt = match tc.tc_value with
+      | ExprRecord r ->
+        Some (List.mapi (fun i (fn, _) -> (fn.name, i * 4)) r.er_fields)
+      | _ ->
+        Option.bind (struct_name_of_ty tc.tc_ty)
+          (fun s -> List.assoc_opt s ctx''.struct_layouts)
+    in
+    let field_layouts = match layout_opt with
+      | Some l -> (tc.tc_name.name, l)
+                  :: List.filter (fun (n, _) -> n <> tc.tc_name.name)
+                       ctx''.field_layouts
+      | None -> ctx''.field_layouts
+    in
     Ok { ctx'' with
+         field_layouts;
          func_indices = (tc.tc_name.name, -(global_idx + 1)) :: ctx''.func_indices }
 
   | TopType td ->
@@ -3915,6 +3939,11 @@ let gen_imports ?(used : (string, unit) Hashtbl.t option)
              types = types_after;
              imports = ctx.imports @ [import];
              func_indices = (local_name, import_func_idx) :: ctx.func_indices;
+             (* The alias carries the result type, so `let r = M.f()` declares
+                r f64 when f returns Float. *)
+             fn_ret_types = (local_name,
+               (match ft.ft_results with t :: _ -> t | [] -> I32))
+               :: ctx.fn_ret_types;
            }
       | Some (`Const (tc_value, tc_ty)) ->
         let* (ctx', init_code) = gen_expr ctx tc_value in
@@ -4291,12 +4320,21 @@ let generate_module ?loader (prog : program) : wasm_module result =
      The runner is not the wasm start function: that runs inside
      instantiation, before a host has bound the exported memory, so an
      initialiser that prints (fd_write reads memory) would fail the whole
-     load. Every exported function calls the runner first instead; a guard
-     global, set before the initialisers run, makes it run once, and makes
-     a re-entrant call from an initialiser return at once. *)
-  let (final_types, final_funcs, final_globals) =
+     load. Each export is instead a thunk that calls the runner, then the
+     function itself. Calls inside the module go to the function, not the
+     thunk, so an initialiser that calls a `pub fn` does not re-enter the
+     runner.
+
+     The guard global is 0 before, 1 while, and 2 after the initialisers
+     run. Finding it at 1 on entry means a previous run trapped part-way
+     (or a host callback re-entered during initialisation): the runner
+     traps rather than let the export run with globals still zeroed, and
+     it never replays an initialiser that completed. A failed module
+     initialisation stays failed, as an ES module whose evaluation threw
+     does. *)
+  let (final_types, final_funcs, final_globals, final_exports, thunk_annots) =
     match List.rev ctx'.global_inits with
-    | [] -> (final_types, final_funcs, ctx'.globals)
+    | [] -> (final_types, final_funcs, ctx'.globals, final_exports, [])
     | inits ->
       let void_ft = { ft_params = []; ft_results = [] } in
       let (void_idx, types) = intern_func_type final_types void_ft in
@@ -4308,19 +4346,43 @@ let generate_module ?loader (prog : program) : wasm_module result =
       let runner_idx = base + List.length inits in
       let runner = {
         f_type = void_idx; f_locals = [];
-        f_body = [GlobalGet guard; BrIf 0; I32Const 1l; GlobalSet guard]
-                 @ List.mapi (fun i _ -> Call (base + i)) inits;
+        f_body = [GlobalGet guard; I32Const 2l; I32Eq; BrIf 0;
+                  GlobalGet guard; If (BtEmpty, [Unreachable], []);
+                  I32Const 1l; GlobalSet guard]
+                 @ List.mapi (fun i _ -> Call (base + i)) inits
+                 @ [I32Const 2l; GlobalSet guard];
       } in
-      let exported = List.filter_map (fun e ->
-          match e.e_desc with ExportFunc i -> Some i | _ -> None)
-          final_exports in
-      let funcs = List.mapi (fun i f ->
-          if List.mem (import_offset + i) exported
-          then { f with f_body = Call runner_idx :: f.f_body }
-          else f) final_funcs in
-      (types, funcs @ init_funcs @ [runner],
+      let n_funcs = List.length final_funcs in
+      let exported = List.sort_uniq compare (List.filter_map (fun e ->
+          match e.e_desc with
+          | ExportFunc i when i >= import_offset && i < import_offset + n_funcs ->
+            Some i
+          | _ -> None) final_exports) in
+      let thunk_base = runner_idx + 1 in
+      let thunk_of = List.mapi (fun j i -> (i, thunk_base + j)) exported in
+      let thunks = List.map (fun i ->
+          let f = List.nth final_funcs (i - import_offset) in
+          let ft = List.nth types f.f_type in
+          { f_type = f.f_type; f_locals = [];
+            f_body = Call runner_idx
+                     :: List.mapi (fun p _ -> LocalGet p) ft.ft_params
+                     @ [Call i] }) exported in
+      let exports = List.map (fun e ->
+          match e.e_desc with
+          | ExportFunc i ->
+            (match List.assoc_opt i thunk_of with
+             | Some t -> { e with e_desc = ExportFunc t }
+             | None -> e)
+          | _ -> e) final_exports in
+      (* A thunk carries its function's ownership annotation, so the
+         export interface the verifier reads is unchanged. *)
+      let annots = List.filter_map (fun (fidx, pk, rk) ->
+          Option.map (fun t -> (t, pk, rk)) (List.assoc_opt fidx thunk_of))
+          ctx'.ownership_annots in
+      (types, final_funcs @ init_funcs @ [runner] @ thunks,
        ctx'.globals @ [{ g_type = I32; g_mutable = true;
-                         g_init = [I32Const 0l] }])
+                         g_init = [I32Const 0l] }],
+       exports, annots)
   in
 
   (* #643: a module that calls float_to_string gets the shortest-digits
@@ -4348,7 +4410,7 @@ let generate_module ?loader (prog : program) : wasm_module result =
   in
 
   (* Stage 2: Build [typedwasm.ownership] custom section from collected annotations *)
-  let ownership_payload = build_ownership_section (List.rev ctx'.ownership_annots) in  (* cons-accumulated; restore entry order *)
+  let ownership_payload = build_ownership_section (List.rev ctx'.ownership_annots @ thunk_annots) in  (* cons-accumulated; restore entry order *)
   let custom_sections = if Bytes.length ownership_payload > 0 then
     [("typedwasm.ownership", ownership_payload)]
   else

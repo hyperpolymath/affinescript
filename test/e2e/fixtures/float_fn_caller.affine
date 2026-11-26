@@ -1,0 +1,13 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell
+//
+// Binds the result of an imported Float function to a local (#561): the
+// local must be f64, or local.set fails wasm validation.
+// float_fn_qualified.affine is the `FloatRates.sample()` form of this.
+
+use FloatRates::{sample};
+
+pub fn main() -> Float {
+  let r = sample();
+  r
+}

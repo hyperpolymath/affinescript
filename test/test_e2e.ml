@@ -4560,11 +4560,52 @@ let test_modmut561_deferred_init_runs_from_exports () =
     Alcotest.(check bool) "every export calls the init runner first" true
       (List.for_all (fun f ->
            match f.f_body with Call _ :: _ -> true | _ -> false) exported);
-    Alcotest.(check bool) "the runner is guarded (br_if out once run)" true
+    (* Guard: 2 = done (return), 1 = a run that did not finish (trap),
+       else mark running, run the initialisers, mark done. *)
+    Alcotest.(check bool) "the runner is guarded (done / failed / running)" true
       (List.exists (fun f ->
            match f.f_body with
-           | GlobalGet g :: BrIf 0 :: I32Const 1l :: GlobalSet g' :: _ -> g = g'
-           | _ -> false) m.funcs)
+           | GlobalGet g :: I32Const 2l :: I32Eq :: BrIf 0
+             :: GlobalGet g1 :: If (BtEmpty, [Unreachable], [])
+             :: I32Const 1l :: GlobalSet g2 :: rest ->
+             g = g1 && g = g2
+             && (match List.rev rest with
+                 | GlobalSet g3 :: I32Const 2l :: _ -> g = g3
+                 | _ -> false)
+           | _ -> false) m.funcs);
+    (* The export is a thunk; `f` itself (called from inside the module)
+       does not call the runner, so an initialiser calling a pub fn does
+       not re-enter it. *)
+    Alcotest.(check bool) "each export thunk calls a function that skips the runner" true
+      (List.for_all (fun thunk ->
+           match thunk.f_body, List.rev thunk.f_body with
+           | Call runner :: _, Call target :: _ when target >= n_imports ->
+             (match (List.nth m.funcs (target - n_imports)).f_body with
+              | Call r :: _ -> r <> runner
+              | _ -> true)
+           | _ -> false) exported)
+
+let test_modmut561_record_const_field_offset () =
+  (* A record const is a pointer global; `c.right` must load at offset 4. *)
+  match wasm_of_source
+          "const config: { left: Int, right: Int } = #{ left: 1, right: 2 };\n\
+           pub fn f() -> Int { config.right }" with
+  | Error msg -> Alcotest.failf "a record const should compile: %s" msg
+  | Ok m ->
+    let open Wasm in
+    Alcotest.(check bool) "the field load is at offset 4" true
+      (List.exists (fun f -> List.mem (I32Load (2, 4)) f.f_body) m.funcs)
+
+let test_modmut561_imported_float_fn_result () =
+  (* `let r = FloatRates.sample()` must declare r f64: the imported
+     function's result type is registered under its alias. *)
+  match compile_fixture_to_wasm (fixture "float_fn_caller.affine") with
+  | Error e -> Alcotest.failf "a qualified Float call should compile: %s" e
+  | Ok m ->
+    let open Wasm in
+    Alcotest.(check bool) "the let binding the call is f64" true
+      (List.exists (fun f ->
+           List.exists (fun l -> l.l_type = F64) f.f_locals) m.funcs)
 
 let test_modmut561_float_global_compound_is_f64 () =
   match wasm_of_source
@@ -4618,6 +4659,8 @@ let test_modmut561_imported_float_const () =
 let modmut561_tests = [
   Alcotest.test_case "wasm: same-name let of a Float const is f64" `Quick test_modmut561_float_global_same_name_let;
   Alcotest.test_case "wasm: imported Float const is an f64 global" `Quick test_modmut561_imported_float_const;
+  Alcotest.test_case "wasm: record const field loads at its offset" `Quick test_modmut561_record_const_field_offset;
+  Alcotest.test_case "wasm: imported Float fn result binds an f64 local" `Quick test_modmut561_imported_float_fn_result;
   Alcotest.test_case "wasm: non-constant const init runs from exports" `Quick test_modmut561_deferred_init_runs_from_exports;
   Alcotest.test_case "wasm: Float global compound assign is f64" `Quick test_modmut561_float_global_compound_is_f64;
   Alcotest.test_case "wasm: Float const read into a let is f64" `Quick test_modmut561_float_global_read_into_let;
