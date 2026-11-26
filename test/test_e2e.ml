@@ -4442,6 +4442,70 @@ let string_contains s sub =
   let rec go i = i + m <= n && (String.sub s i m = sub || go (i + 1)) in
   go 0
 
+
+(* ---- #560 (codegen wall 1): `slice` on String, `show` on Int / Bool ----
+
+   Both builtins are polymorphic, so core WASM cannot lower them untyped.
+   The typechecker records each call (poly_builtin_sites) and
+   Typecheck.elaborate_string_concat rewrites it to a monomorphic op. The
+   interpreter cases pin the oracle; tests/codegen/string_slice.affine is the
+   wasm-side parity fixture for the same values. *)
+
+let test_slice560_interp_plain () =
+  Alcotest.(check int) "slice(\"hello world\",1,4) == \"ell\"" 1
+    (eval_int_fn "fn f() -> Int { if slice(\"hello world\", 1, 4) == \"ell\" { 1 } else { 0 } }")
+
+let test_slice560_interp_negative () =
+  Alcotest.(check int) "slice(s,-5,99) == \"world\"" 1
+    (eval_int_fn "fn f() -> Int { if slice(\"hello world\", -5, 99) == \"world\" { 1 } else { 0 } }")
+
+let test_slice560_interp_empty () =
+  Alcotest.(check int) "slice(s,7,2) is empty" 0
+    (eval_int_fn "fn f() -> Int { string_length(slice(\"hello world\", 7, 2)) }")
+
+let test_slice560_interp_both_negative () =
+  Alcotest.(check int) "slice(s,-99,-6) == \"hello\"" 1
+    (eval_int_fn "fn f() -> Int { if slice(\"hello world\", -99, -6) == \"hello\" { 1 } else { 0 } }")
+
+(* frontend -> elaborate -> core-WASM codegen, from source text *)
+let wasm_of_source src =
+  let prog = Parse_driver.parse_string ~file:"<560>" src in
+  match resolve_program prog with
+  | Error e -> Error e
+  | Ok (resolve_ctx, _) ->
+    match typecheck_program resolve_ctx.symbols prog with
+    | Error e -> Error e
+    | Ok _ -> wasm_codegen (Typecheck.elaborate_string_concat prog)
+
+let test_slice560_wasm_lowers () =
+  match wasm_of_source
+          "fn f(s: String) -> Int { string_length(slice(s, 1, 3)) + \
+           string_length(show(7)) + string_length(show(true)) }" with
+  | Ok _ -> ()
+  | Error msg -> Alcotest.failf "slice/show should lower to wasm: %s" msg
+
+let test_show560_float_named_error () =
+  match wasm_of_source "fn f() -> Int { string_length(show(1.5)) }" with
+  | Ok _ -> Alcotest.fail "show on Float must not compile silently to wasm"
+  | Error msg when string_contains msg "show on Float" -> ()
+  | Error msg -> Alcotest.failf "expected the named show-on-Float error, got: %s" msg
+
+let test_show560_user_defined_wins () =
+  match wasm_of_source
+          "fn show(x: Float) -> String { \"n\" }\n\
+           fn f() -> Int { string_length(show(1.5)) }" with
+  | Ok _ -> ()
+  | Error msg -> Alcotest.failf "a user-defined `show` must still be called: %s" msg
+
+let slice560_tests = [
+  Alcotest.test_case "interp: plain slice" `Quick test_slice560_interp_plain;
+  Alcotest.test_case "interp: negative lo, hi clamped" `Quick test_slice560_interp_negative;
+  Alcotest.test_case "interp: hi < lo -> empty" `Quick test_slice560_interp_empty;
+  Alcotest.test_case "interp: both negative" `Quick test_slice560_interp_both_negative;
+  Alcotest.test_case "wasm: slice/show lower after elaboration" `Quick test_slice560_wasm_lowers;
+  Alcotest.test_case "wasm: show on Float is a named error" `Quick test_show560_float_named_error;
+  Alcotest.test_case "wasm: user-defined show is not rewritten" `Quick test_show560_user_defined_wins;
+]
 let test_stringwall_concat_guard_rejects_string () =
   let prog = Parse_driver.parse_string ~file:"<stringwall>"
     "fn f() -> Int { string_char_code_at(\"ab\" ++ \"cd\", 0) }" in
@@ -5909,6 +5973,7 @@ let tests =
     ("E2E String-wall slice 1 (indexing)", stringwall_index_tests);
     ("E2E String-wall slice 2 (string_from_char_code)", stringwall_alloc_tests);
     ("E2E String-wall slice 3 (string_sub)", stringwall_sub_tests);
+    ("E2E String-wall #560 (slice, show)", slice560_tests);
     ("E2E String-wall slice 4 (case-fold)", stringwall_case_tests);
     ("E2E String-wall slice 5 (trim)", stringwall_trim_tests);
     ("E2E String-wall slice 6 (string_find)", stringwall_find_tests);
