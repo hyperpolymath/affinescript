@@ -419,7 +419,7 @@ let rec is_string_concat_operand (e : expr) : bool =
     (* String-returning builtins (Int/Char-returning ones are excluded). *)
     List.mem id.name
       [ "int_to_string"; "float_to_string"; "to_lowercase"; "to_uppercase";
-        "trim"; "string_sub"; "string_from_char_code"; "show" ]
+        "trim"; "string_sub"; "string_slice"; "string_from_char_code"; "show" ]
   | ExprBinary (a, OpConcat, b) ->
     is_string_concat_operand a || is_string_concat_operand b
   | _ -> false
@@ -1508,6 +1508,79 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
           [ LocalGet ptr_local ]
         in
         Ok (ctx_v, code)
+
+      | ExprVar id when id.name = "string_slice"
+                        && List.length args = 3 ->
+        (* #560: `slice(s, lo, hi)` on a String, after
+           Typecheck.elaborate_string_concat picked the String case of the
+           polymorphic builtin. Half-open [lo, hi); a negative index counts
+           from the end; both are clamped. This matches the interpreter
+           oracle (lib/interp.ml `slice`) and JS `.slice` on the Deno backend:
+             norm i = i < 0 ? max 0 (n + i) : min i n
+             len    = max 0 (norm hi - norm lo)
+           followed by the same allocate-then-copy as `string_sub`. *)
+        let* (ctx1, s_code)  = gen_expr ctx  (List.nth args 0) in
+        let* (ctx2, lo_code) = gen_expr ctx1 (List.nth args 1) in
+        let* (ctx3, hi_code) = gen_expr ctx2 (List.nth args 2) in
+        let (ctx4, heap_idx) = ensure_heap_ptr ctx3 in
+        let (c5,  src) = alloc_local ctx4 "__sslc_src" in
+        let (c6,  n)   = alloc_local c5   "__sslc_n"   in
+        let (c7,  lo)  = alloc_local c6   "__sslc_lo"  in
+        let (c8,  hi)  = alloc_local c7   "__sslc_hi"  in
+        let (c9,  dst) = alloc_local c8   "__sslc_dst" in
+        let (c10, k)   = alloc_local c9   "__sslc_k"   in
+        (* local := (local < 0) ? max(0, n + local) : min(local, n) *)
+        let norm v =
+          [ LocalGet v; I32Const 0l; I32LtS;
+            If (BtEmpty,
+              (* n + v, floored at 0 *)
+              [ LocalGet n; LocalGet v; I32Add; I32Const 0l;
+                LocalGet n; LocalGet v; I32Add; I32Const 0l; I32GtS;
+                Select; LocalSet v ],
+              (* min(v, n) *)
+              [ LocalGet v; LocalGet n; LocalGet v; LocalGet n; I32LtS;
+                Select; LocalSet v ]) ] in
+        let code =
+          s_code  @ [LocalSet src] @
+          lo_code @ [LocalSet lo] @
+          hi_code @ [LocalSet hi] @
+          [ LocalGet src; I32Load (2, 0); LocalSet n ] @
+          norm lo @ norm hi @
+          (* hi := max(0, hi - lo), now the byte count *)
+          [ LocalGet hi; LocalGet lo; I32Sub; I32Const 0l;
+            LocalGet hi; LocalGet lo; I32Sub; I32Const 0l; I32GtS;
+            Select; LocalSet hi ] @
+          (* dst = heap; heap += 4 + count; dst[0] = count *)
+          [ GlobalGet heap_idx; LocalSet dst;
+            GlobalGet heap_idx; I32Const 4l; LocalGet hi; I32Add; I32Add;
+            GlobalSet heap_idx;
+            LocalGet dst; LocalGet hi; I32Store (2, 0) ] @
+          (* for k in 0..count: dst[4+k] = src[4 + lo + k] *)
+          [ I32Const 0l; LocalSet k;
+            Block (BtEmpty, [ Loop (BtEmpty, [
+              LocalGet k; LocalGet hi; I32GeS; BrIf 1;
+              LocalGet dst; LocalGet k; I32Add;
+              LocalGet src; LocalGet lo; I32Add; LocalGet k; I32Add;
+              I32Load8U (0, 4);
+              I32Store8 (0, 4);
+              LocalGet k; I32Const 1l; I32Add; LocalSet k;
+              Br 0 ]) ]) ] @
+          [ LocalGet dst ]
+        in
+        Ok (c10, code)
+
+      | ExprVar id when String.length id.name > 19
+                        && String.sub id.name 0 19 = "__show_unsupported:" ->
+        (* #560: `show` on a type whose rendering the backends do not agree
+           on (the interpreter quotes Strings and Chars and prints Float 3.0
+           as "3."; the Deno backend does not), so core WASM refuses it by
+           name rather than pick one. Int and Bool are lowered. *)
+        let tname = String.sub id.name 19 (String.length id.name - 19) in
+        Error (UnsupportedFeature (Printf.sprintf
+          "show on %s is not lowered on the core-WASM backend (its output \
+           differs between backends; only Int and Bool are lowered). Use \
+           the type's own to-string function, e.g. float_to_string. (#560)"
+          tname))
 
       | ExprVar id when id.name = "string_sub"
                         && List.length args = 3 ->
