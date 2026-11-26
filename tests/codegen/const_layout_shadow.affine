@@ -1,0 +1,11 @@
+// SPDX-License-Identifier: MPL-2.0
+//
+// #561 review: a const initialiser's local that shadows a module record
+// const (with a different field order) must not leak its layout, so
+// `config.right` still loads the module record's `right` field.
+const config: { left: Int, right: Int } = #{ left: 1, right: 2 };
+const scratch: Int = { let config = #{ right: 9, left: 7 }; config.left };
+
+pub fn main() -> Int {
+  config.right * 10 + scratch
+}

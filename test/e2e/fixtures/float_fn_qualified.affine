@@ -1,0 +1,14 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell
+//
+// Binds the result of a qualified call to an imported Float function
+// (#561): the local must be f64, or local.set fails wasm validation.
+// Compiled by tests/codegen/test_float_global_bytes.mjs (the CLI lowers the
+// qualified call; the e2e helper does not).
+
+use FloatRates;
+
+pub fn main() -> Float {
+  let r = FloatRates.sample();
+  r
+}

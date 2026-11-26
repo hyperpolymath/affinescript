@@ -1,0 +1,13 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Jonathan D.A. Jewell
+//
+// #561 — a `let` that reuses a Float const's name must read the f64 global
+// into an f64 local. Validated as emitted bytes by
+// test_float_global_bytes.mjs.
+
+const scale: Float = 1.5;
+
+pub fn main() -> Float {
+  let scale = scale;
+  scale * 2.0
+}

@@ -1,0 +1,9 @@
+// SPDX-License-Identifier: MPL-2.0
+//
+// #814 review: an `extern fn` declared after functions and a deferred const
+// initialiser must not take their function indices.
+fn seed() -> Int { 7 }
+const value: Int = seed();
+fn other() -> Int { 30 }
+extern fn tick() -> Int;
+pub fn main() -> Int { value + other() + tick() }
