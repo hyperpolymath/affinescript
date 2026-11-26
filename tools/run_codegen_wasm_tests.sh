@@ -14,15 +14,32 @@ set -uo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 TEST_DIR="$ROOT_DIR/tests/codegen"
 
-if [ -x "$ROOT_DIR/_build/default/bin/main.exe" ]; then
+# An explicit AFFINESCRIPT_COMPILER wins. Whatever is chosen is exported, so
+# harnesses that compile their own inputs (test_float_global_bytes.mjs,
+# test_module_init_print.mjs) use the same compiler as this runner.
+if [[ -n "${AFFINESCRIPT_COMPILER:-}" ]]; then
+  # A path is made absolute here, before any harness changes directory; a
+  # bare name is left for PATH lookup.
+  if [[ "$AFFINESCRIPT_COMPILER" == */* ]]; then
+    AFFINESCRIPT_COMPILER="$(cd "$(dirname "$AFFINESCRIPT_COMPILER")" && pwd)/$(basename "$AFFINESCRIPT_COMPILER")"
+  fi
+  export AFFINESCRIPT_COMPILER
+  COMPILER="$AFFINESCRIPT_COMPILER"
+  COMPILE_CMD=("$COMPILER" compile)
+elif [[ -x "$ROOT_DIR/_build/default/bin/main.exe" ]]; then
   COMPILER="$ROOT_DIR/_build/default/bin/main.exe"
   COMPILE_CMD=("$COMPILER" compile)
+  export AFFINESCRIPT_COMPILER="$COMPILER"
 elif command -v affinescript >/dev/null 2>&1; then
   COMPILER="affinescript"
   COMPILE_CMD=("$COMPILER" compile)
+  export AFFINESCRIPT_COMPILER="$(command -v affinescript)"
 else
   COMPILER="dune exec affinescript --"
   COMPILE_CMD=(dune exec affinescript -- compile)
+  # dune exec builds _build/default/bin/main.exe, the harnesses' default;
+  # drop an empty override so they fall back to it.
+  unset AFFINESCRIPT_COMPILER
 fi
 
 echo "Using compiler: $COMPILER"

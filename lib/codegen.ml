@@ -77,6 +77,13 @@ type context = {
       added on-demand in a canonical order, with indices computed by
       position. WASI builtin special-cases look up their own import
       index by name from this map. *)
+  global_inits : (int * instr list * value_type list * bool) list;
+  (** #561: module-level consts whose initialiser is not a wasm constant
+      expression (a call, a string build, a read of another const):
+      (global index, init code, the init code's local types, declared
+      `mut`). The global is declared zero-initialised and mutable, and a
+      start function runs each init in declaration order at instantiation.
+      Most recent first. *)
 }
 
 (** Code generation error *)
@@ -192,6 +199,7 @@ let create_context () : context = {
   datas = [];
   ownership_annots = [];
   wasi_func_indices = [];
+  global_inits = [];
 }
 
 (** Extract ownership kind from a parameter declaration.
@@ -264,7 +272,11 @@ let type_to_wasm (ty : type_expr) : value_type result =
 let alloc_local (ctx : context) (name : string) : (context * int) =
   let idx = ctx.next_local in
   let locals' = (name, idx) :: ctx.locals in
-  ({ ctx with locals = locals'; next_local = idx + 1 }, idx)
+  (* A new binding shadows any record layout tracked under the same name
+     (a module const's, #561); the binder registers its own after this. *)
+  let field_layouts =
+    List.filter (fun (n, _) -> n <> name) ctx.field_layouts in
+  ({ ctx with locals = locals'; next_local = idx + 1; field_layouts }, idx)
 
 (** Look up local variable index *)
 let lookup_local (ctx : context) (name : string) : int result =
@@ -475,7 +487,12 @@ let rec expr_val_type (ctx : context) (e : expr) : value_type =
     (match lookup_local ctx id.name with
      | Ok idx ->
        (match List.assoc_opt idx ctx.local_types with Some t -> t | None -> I32)
-     | Error _ -> I32)
+     | Error _ ->
+       (* #561: a module-level const is a global of its declared type. *)
+       (match List.assoc_opt id.name ctx.func_indices with
+        | Some k when k < 0 && -(k + 1) < List.length ctx.globals ->
+          (List.nth ctx.globals (-(k + 1))).g_type
+        | _ -> I32))
   | ExprApp (ExprVar id, _) ->
     (match List.assoc_opt id.name ctx.fn_ret_types with Some t -> t | None -> I32)
   | ExprIf r -> expr_val_type ctx r.ei_then
@@ -503,6 +520,14 @@ let rle_locals (vts : value_type list) : local list =
       { l_count = l_count + 1; l_type = vt } :: rest
     | _ -> { l_count = 1; l_type = vt } :: acc)
     vts []
+
+(** #561: is [code] a wasm constant expression, valid as a global's
+    initialiser? (Numeric constants and the extended-const i32 ops.) *)
+let is_const_init (code : instr list) : bool =
+  List.for_all (function
+      | I32Const _ | I64Const _ | F32Const _ | F64Const _
+      | I32Add | I32Sub | I32Mul -> true
+      | _ -> false) code
 
 (** Generate code for binary operation *)
 let gen_binop (op : binary_op) : instr =
@@ -932,12 +957,15 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
 
   | ExprLet lb ->
     let* (ctx', rhs_code) = gen_expr ctx lb.el_value in
+    (* Infer the initialiser's type before binding: in `let x = x` the new
+       local would otherwise shadow the f64 source it reads (#561). *)
+    let rhs_vt = expr_val_type ctx' lb.el_value in
     let* (ctx'', pat_code) = gen_pattern_bind ctx' lb.el_pat in
     (* Float wall: record a float-bound local's f64 type (see StmtLet). *)
     let ctx'' = match lb.el_pat with
       | PatVar id ->
         (match lookup_local ctx'' id.name with
-         | Ok idx when expr_val_type ctx'' lb.el_value = F64 ->
+         | Ok idx when rhs_vt = F64 ->
            { ctx'' with local_types = (idx, F64) :: ctx''.local_types }
          | _ -> ctx'')
       | _ -> ctx''
@@ -2009,6 +2037,14 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
           | ExprVar id ->
             (* Check if it's a named function or a variable holding a lambda *)
             begin match List.assoc_opt id.name ctx_after_args.func_indices with
+          | Some func_idx when func_idx < 0 ->
+            (* #561: a negative index is a top-level const (global
+               sentinel), not a function. Calling a function-valued const
+               would emit `call` with an invalid index; refuse it by name. *)
+            Error (UnsupportedFeature
+              (Printf.sprintf "calling the top-level constant `%s` is not \
+                               supported on the core-WASM backend; declare it \
+                               as a `fn` instead (#561)" id.name))
           | Some func_idx ->
             (* Direct function call *)
             let call_instr = Call func_idx in
@@ -2879,10 +2915,13 @@ and gen_stmt (ctx : context) (stmt : stmt) : (context * instr list) result =
           | Some _ as s -> s
           | None -> layout_from_rhs ()
         in
+        (* Infer before allocating: in `let x = x` the new local would
+           otherwise shadow the f64 source it reads (#561). *)
+        let rhs_vt = expr_val_type ctx' sl.sl_value in
         let (ctx'', idx) = alloc_local ctx' id.name in
         (* Float wall: a float-bound local must be declared f64 (else a LocalSet
            of an f64 into an i32 slot fails wasm validation). *)
-        let ctx'' = match expr_val_type ctx'' sl.sl_value with
+        let ctx'' = match rhs_vt with
           | F64 -> { ctx'' with local_types = (idx, F64) :: ctx''.local_types }
           | _ -> ctx''
         in
@@ -2904,6 +2943,113 @@ and gen_stmt (ctx : context) (stmt : stmt) : (context * instr list) result =
 
   | StmtAssign (lhs, op, rhs) ->
     begin match lhs with
+      | ExprVar id when Result.is_error (lookup_local ctx id.name) ->
+        (* #561: a write to a module-level `const mut` binding. Top-level
+           consts live in [func_indices] under the negative-sentinel
+           convention (global index = -(k+1)); only a global declared
+           mutable may be written. Imported consts are copied into the
+           importer as immutable globals, so a write to one fails here
+           rather than silently updating a private copy. *)
+        begin match List.assoc_opt id.name ctx.func_indices with
+          | Some k when k < 0
+                        && (List.nth ctx.globals (-(k + 1))).g_mutable
+                        && not (List.exists (fun (g, _, _, m) ->
+                                    g = -(k + 1) && not m) ctx.global_inits) ->
+            let gidx = -(k + 1) in
+            (* A record global's field offsets are fixed at its declaration
+               ([field_layouts]) and every reader, in any function, loads at
+               them. Each value the right-hand side can produce (every
+               `if`/`match` branch) must have that layout; a different one
+               (e.g. a literal listing the fields in another order) or one
+               that cannot be determined is rejected by name (#561). *)
+            let* () = match op, List.assoc_opt id.name ctx.field_layouts with
+              | AssignEq, Some decl_layout ->
+                (* Every value the right-hand side can produce: the
+                   branches of an `if`/`match` and a block's tail. A leaf
+                   under a block's `let`s or a match arm's pattern may name
+                   a binding that shadows a module name, so its names are
+                   not looked up in the enclosing scope ([scoped]). *)
+                let rec leaves scoped e = match e with
+                  | ExprIf ei ->
+                    leaves scoped ei.ei_then
+                    @ (match ei.ei_else with
+                       | Some e' -> leaves scoped e' | None -> [])
+                  | ExprMatch m ->
+                    List.concat_map (fun arm -> leaves true arm.ma_body)
+                      m.em_arms
+                  | ExprBlock { blk_stmts; blk_expr = Some e' } ->
+                    leaves (scoped || blk_stmts <> []) e'
+                  | _ -> [(scoped, e)]
+                in
+                let leaf_layout (scoped, e) = match e with
+                  | ExprRecord r ->
+                    `Layout (List.mapi (fun i (fn, _) -> (fn.name, i * 4))
+                               r.er_fields)
+                  | _ when scoped -> `Unknown
+                  | ExprVar src when src.name = id.name -> `Ok
+                  (* Any other variable or call is unknown: a tracked
+                     layout is a compile-time guess that a later
+                     reassignment of a local (or a callee building its
+                     record in another order) silently invalidates. *)
+                  | _ -> `Unknown
+                in
+                let decl_names = String.concat ", " (List.map fst decl_layout) in
+                List.fold_left (fun acc leaf ->
+                    let* () = acc in
+                    match leaf_layout leaf with
+                    | `Ok -> Ok ()
+                    | `Layout l when l = decl_layout -> Ok ()
+                    | `Layout l ->
+                      Error (UnsupportedFeature
+                        (Printf.sprintf
+                           "assignment to `%s`: the new record's field layout \
+                            (%s) differs from the declared one (%s); list the \
+                            fields in the declared order on the core-WASM \
+                            backend (#561)" id.name
+                           (String.concat ", " (List.map fst l)) decl_names))
+                    | `Unknown ->
+                      Error (UnsupportedFeature
+                        (Printf.sprintf
+                           "assignment to `%s`: the new record's field layout \
+                            cannot be determined, so it may not match the \
+                            declared one (%s); assign a record literal in the \
+                            declared order on the core-WASM backend (#561)"
+                           id.name decl_names)))
+                  (Ok ()) (leaves false rhs)
+              | _ -> Ok ()
+            in
+            let* (ctx', rhs_code) = gen_expr ctx rhs in
+            begin match op with
+              | AssignEq -> Ok (ctx', rhs_code @ [GlobalSet gidx])
+              | AssignAdd | AssignSub | AssignMul | AssignDiv ->
+                let binop = match op with
+                  | AssignAdd -> OpAdd
+                  | AssignSub -> OpSub
+                  | AssignMul -> OpMul
+                  | _ -> OpDiv
+                in
+                (* The arithmetic follows the global's type: a `Float`
+                   global takes the f64 family, not [gen_binop]'s i32. *)
+                let op_instr =
+                  match (List.nth ctx.globals gidx).g_type, binop with
+                  | F64, OpAdd -> F64Add
+                  | F64, OpSub -> F64Sub
+                  | F64, OpMul -> F64Mul
+                  | F64, _ -> F64Div
+                  | _ -> gen_binop binop
+                in
+                Ok (ctx', [GlobalGet gidx] @ rhs_code
+                          @ [op_instr; GlobalSet gidx])
+            end
+          | Some k when k < 0 ->
+            Error (UnsupportedFeature
+              (Printf.sprintf
+                 "assignment to `%s`: it is not a mutable module-level \
+                  binding in this module (declare it `const mut`; an \
+                  imported binding cannot be written on the core-WASM \
+                  backend) (#561)" id.name))
+          | _ -> Error (UnboundVariable id.name)
+        end
       | ExprVar id ->
         (* Variable assignment: x = expr or x += expr *)
         let* idx = lookup_local ctx id.name in
@@ -2966,7 +3112,8 @@ and gen_stmt (ctx : context) (stmt : stmt) : (context * instr list) result =
         let* (ctx', arr_code) = gen_expr ctx arr_expr in
         let* (ctx'', idx_code) = gen_expr ctx' idx_expr in
         let* (ctx''', rhs_code) = gen_expr ctx'' rhs in
-        (* Array is a pointer, need to compute: arr + (idx * 4) *)
+        (* Element i is at arr + 4 + i*4: the store and load use the address
+           arr + i*4 with a memarg offset of 4 to skip the length header. *)
         let (ctx_with_temp, temp_ptr) = alloc_local ctx''' "__arr_ptr" in
         begin match op with
           | AssignEq ->
@@ -2975,7 +3122,8 @@ and gen_stmt (ctx : context) (stmt : stmt) : (context * instr list) result =
               I32Mul;              (* idx * 4 *)
               I32Add;              (* arr + (idx * 4) *)
             ] @ rhs_code @ [
-              I32Store (2, 0)      (* Store value *)
+              (* offset 4 skips the length header, as [ExprIndex] reads do *)
+              I32Store (2, 4)
             ])
           | AssignAdd | AssignSub | AssignMul | AssignDiv ->
             let binop = match op with
@@ -2992,13 +3140,13 @@ and gen_stmt (ctx : context) (stmt : stmt) : (context * instr list) result =
               I32Mul;              (* idx * 4 *)
               I32Add;              (* arr + (idx * 4) *)
               LocalTee temp_ptr;   (* Save computed address *)
-              I32Load (2, 0);      (* Load current value *)
+              I32Load (2, 4);      (* Load current value (past the header) *)
             ] @ rhs_code @ [
               op_instr;            (* Perform operation *)
               LocalSet temp_val;   (* Save result *)
               LocalGet temp_ptr;   (* Load address *)
               LocalGet temp_val;   (* Load result *)
-              I32Store (2, 0)      (* Store result *)
+              I32Store (2, 4)      (* Store result (past the header) *)
             ])
         end
       | ExprFloatIndex (arr_expr, idx_expr) ->
@@ -3671,25 +3819,101 @@ let gen_decl (ctx : context) (decl : top_level) : context result =
             final index = insert order is preserved by the reverse. *)
          funcs = func_with_type :: ctx_after_gen.funcs;
          num_funcs = ctx_after_gen.num_funcs + 1;
-         exports = ctx_after_gen.exports @ export
+         exports = ctx_after_gen.exports @ export;
+         (* Record layouts of this body's locals stay in it; the module's
+            (const records, #561) are what the next function starts from. *)
+         field_layouts = ctx.field_layouts;
        }
 
   | TopConst tc ->
     (* Constants are compiled as WASM globals.
        The initial value must be a constant expression (I32Const etc).
        For complex initialisers, fall back to a local. *)
-    let* (ctx', init_code) = gen_expr ctx tc.tc_value in
+    (* The initialiser is generated in a fresh local frame: when it is not
+       a constant expression it becomes the body of an init function, whose
+       locals start at 0. *)
+    (* #561: a record literal is stored in its source field order, but a
+       read through a parameter of the named type ([gen_function]) uses the
+       type's declared order. Reject a literal whose order differs, so the
+       const is never read at the wrong offset. *)
+    let* () = match tc.tc_value,
+                    Option.bind (struct_name_of_ty tc.tc_ty)
+                      (fun s -> Option.map (fun l -> (s, l))
+                                  (List.assoc_opt s ctx.struct_layouts)) with
+      | ExprRecord r, Some (s, decl_layout) ->
+        let lit_layout = List.mapi (fun i (fn, _) -> (fn.name, i * 4)) r.er_fields in
+        if lit_layout = decl_layout then Ok ()
+        else
+          let names l = String.concat ", " (List.map fst l) in
+          Error (UnsupportedFeature (Printf.sprintf
+            "const `%s`: the record literal's field order (%s) differs from \
+             type `%s` (%s); list the fields in the declared order on the \
+             core-WASM backend (#561)"
+            tc.tc_name.name (names lit_layout) s (names decl_layout)))
+      | _ -> Ok ()
+    in
+    (* #561: a deferred initialiser becomes the body of a void helper that
+       ends in `global.set`; a `return` in it would exit before the store
+       and leave the const zero. A lambda's own `return` is not scanned. *)
+    let* () =
+      if Ast.expr_contains_return tc.tc_value then
+        Error (UnsupportedFeature (Printf.sprintf
+          "const `%s`: `return` is not allowed in a const initialiser"
+          tc.tc_name.name))
+      else Ok ()
+    in
+    let ctx_init = { ctx with locals = []; next_local = 0; local_types = [] } in
+    let* (ctx', init_code) = gen_expr ctx_init tc.tc_value in
+    let init_vts = List.init ctx'.next_local (fun i ->
+      match List.assoc_opt i ctx'.local_types with Some t -> t | None -> I32) in
+    let ctx' = { ctx' with locals = ctx.locals; next_local = ctx.next_local;
+                           local_types = ctx.local_types;
+                           (* The initialiser's locals may have shadowed a
+                              module record const's layout ([alloc_local]). *)
+                           field_layouts = ctx.field_layouts } in
     let global_idx = List.length ctx'.globals in
-    let global = {
-      g_type = I32;
-      g_mutable = false;
-      g_init = init_code;
-    } in
-    let ctx'' = { ctx' with
-      globals = ctx'.globals @ [global];
-      func_indices = (tc.tc_name.name, -(global_idx + 1)) :: ctx'.func_indices;
-    } in
-    Ok ctx''
+    (* #561: the global takes the declared type (a `Float` const is an f64
+       global; it was always i32, which the engine rejected), and a
+       `const mut` binding becomes a mutable global so [StmtAssign] can
+       `global.set` it. *)
+    let* g_type = type_to_wasm tc.tc_ty in
+    let is_const_expr = init_vts = [] && is_const_init init_code in
+    let ctx'' =
+      if is_const_expr then
+        { ctx' with globals = ctx'.globals @ [{ g_type; g_mutable = tc.tc_mut;
+                                                g_init = init_code }] }
+      else
+        (* #561 global init ordering: wasm only accepts a constant
+           expression as a global initialiser, and this one (a call, a
+           heap-built string, a read of another const) produced a module
+           the engine refused. Zero-initialise a mutable global and set it
+           from the start function, in declaration order. *)
+        let zero = if g_type = F64 then F64Const 0.0 else I32Const 0l in
+        { ctx' with
+          globals = ctx'.globals @ [{ g_type; g_mutable = true;
+                                      g_init = [zero] }];
+          global_inits =
+            (global_idx, init_code, init_vts, tc.tc_mut) :: ctx'.global_inits }
+    in
+    (* A record const holds a pointer; register its field layout so
+       `c.field` loads at the field's offset, not offset 0. A literal's
+       layout is its store order; otherwise the declared struct's. *)
+    let layout_opt = match tc.tc_value with
+      | ExprRecord r ->
+        Some (List.mapi (fun i (fn, _) -> (fn.name, i * 4)) r.er_fields)
+      | _ ->
+        Option.bind (struct_name_of_ty tc.tc_ty)
+          (fun s -> List.assoc_opt s ctx''.struct_layouts)
+    in
+    let field_layouts = match layout_opt with
+      | Some l -> (tc.tc_name.name, l)
+                  :: List.filter (fun (n, _) -> n <> tc.tc_name.name)
+                       ctx''.field_layouts
+      | None -> ctx''.field_layouts
+    in
+    Ok { ctx'' with
+         field_layouts;
+         func_indices = (tc.tc_name.name, -(global_idx + 1)) :: ctx''.func_indices }
 
   | TopType td ->
     begin match td.td_body with
@@ -3761,7 +3985,33 @@ let gen_decl (ctx : context) (decl : top_level) : context result =
 
     Silent on missing modules / unresolved items / loader errors: the
     resolver runs before codegen and would have already errored. *)
-let gen_imports (loader : Module_loader.t) (imports : import_decl list) (ctx : context)
+(** #561: every name a program's bodies mention (function bodies, impl
+    methods, const initialisers). Over-approximate — parameters and locals
+    land in it too — which only matters as a filter: `use Mod;` imports the
+    public items of [Mod] that appear here, not all of them, so the host
+    is not asked to supply a `Dom.*` import for each of Dom's 38 functions
+    when the program calls one. *)
+let program_free_names (prog : program) : (string, unit) Hashtbl.t =
+  let h = Hashtbl.create 64 in
+  let add = List.iter (fun n -> Hashtbl.replace h n ()) in
+  let of_fn (fd : fn_decl) = match fd.fd_body with
+    | FnBlock b -> add (free_names_block b)
+    | FnExpr e -> add (free_names e)
+    | FnExtern -> ()
+  in
+  List.iter (function
+    | TopFn fd -> of_fn fd
+    | TopConst { tc_value; _ } -> add (free_names tc_value)
+    | TopImpl ib ->
+      List.iter (function ImplFn fd -> of_fn fd | ImplType _ -> ())
+        ib.ib_items
+    | _ -> ()
+  ) prog.prog_decls;
+  h
+
+let gen_imports ?(used : (string, unit) Hashtbl.t option)
+    ?(local_names : string list = [])
+    (loader : Module_loader.t) (imports : import_decl list) (ctx : context)
     : context result =
   let process_one ctx (mod_path, orig_name, alias_opt) =
     match Module_loader.load_module loader mod_path with
@@ -3775,8 +4025,8 @@ let gen_imports (loader : Module_loader.t) (imports : import_decl list) (ctx : c
          so the constructor's anonymous record type does not escape. *)
       let item = List.find_map (function
         | TopFn fd when fd.fd_name.name = orig_name -> Some (`Fn fd)
-        | TopConst { tc_name; tc_value; _ } when tc_name.name = orig_name ->
-          Some (`Const tc_value)
+        | TopConst { tc_name; tc_value; tc_ty; _ } when tc_name.name = orig_name ->
+          Some (`Const (tc_value, tc_ty))
         | _ -> None
       ) loaded.mod_program.prog_decls in
       match item with
@@ -3794,12 +4044,44 @@ let gen_imports (loader : Module_loader.t) (imports : import_decl list) (ctx : c
              types = types_after;
              imports = ctx.imports @ [import];
              func_indices = (local_name, import_func_idx) :: ctx.func_indices;
+             (* The alias carries the result type, so `let r = M.f()` declares
+                r f64 when f returns Float. *)
+             fn_ret_types = (local_name,
+               (match ft.ft_results with t :: _ -> t | [] -> I32))
+               :: ctx.fn_ret_types;
            }
-      | Some (`Const tc_value) ->
+      | Some (`Const (tc_value, tc_ty)) ->
         let* (ctx', init_code) = gen_expr ctx tc_value in
+        (* #561: the importer's copy takes the const's declared type (a
+           `Float` const is f64), and its initialiser must be a wasm
+           constant expression: a call would name a function of the other
+           module, which this module does not have. *)
+        let* g_type = type_to_wasm tc_ty in
+        let* () =
+          (* The imported initialiser has not been through the Float
+             elaboration the defining module gets, so `1.0 + 0.5` would
+             reach [gen_expr] as an i32 add over f64 constants (invalid
+             wasm that [is_const_init] cannot see). Only a literal copies. *)
+          if g_type = F64
+             && (match init_code with [F64Const _] -> false | _ -> true) then
+            Error (UnsupportedFeature
+              (Printf.sprintf
+                 "imported Float const `%s` from %s: only a literal \
+                  initialiser can be copied into the importer on the \
+                  core-WASM backend; export a `fn` returning the value \
+                  instead (#561)"
+                 orig_name (String.concat "." mod_path)))
+          else if is_const_init init_code then Ok ()
+          else Error (UnsupportedFeature
+            (Printf.sprintf
+               "imported const `%s` from %s: its initialiser is not a \
+                constant expression, which the core-WASM backend cannot \
+                copy into the importer (#561)"
+               orig_name (String.concat "." mod_path)))
+        in
         let global_idx = List.length ctx'.globals in
         let global = {
-          g_type = I32;
+          g_type;
           g_mutable = false;
           g_init = init_code;
         } in
@@ -3810,26 +4092,37 @@ let gen_imports (loader : Module_loader.t) (imports : import_decl list) (ctx : c
   in
   let expand_import imp : (string list * string * string option) list =
     let path_strs path = List.map (fun (id : ident) -> id.name) path in
+    let public_items p =
+      match Module_loader.load_module loader p with
+      | Error _ -> []
+      | Ok lm ->
+        List.filter_map (function
+          | TopFn fd when fd.fd_vis = Public || fd.fd_vis = PubCrate ->
+            Some (p, fd.fd_name.name, None)
+          | TopConst { tc_vis; tc_name; _ }
+            when tc_vis = Public || tc_vis = PubCrate ->
+            Some (p, tc_name.name, None)
+          | _ -> None
+        ) lm.mod_program.prog_decls
+    in
     match imp with
-    | ImportSimple _ -> []
+    | ImportSimple (path, _) ->
+      (* #561: `use Mod;` flat-imports Mod's public items, and the resolver
+         lowers a qualified `Mod.f(x)` to a bare `f(x)` (#178). This arm
+         returned [] so every qualified call — `Console.log(..)`,
+         `Dom.domDateNow()` — reached codegen unbound. Register the public
+         items the program actually names ([used]), each as the same host
+         import an item import would produce. *)
+      let items = public_items (path_strs path) in
+      (match used with
+       | None -> items
+       | Some u -> List.filter (fun (_, n, _) -> Hashtbl.mem u n) items)
     | ImportList (path, items) ->
       let p = path_strs path in
       List.map (fun item ->
         (p, item.ii_name.name, Option.map (fun (id : ident) -> id.name) item.ii_alias)
       ) items
-    | ImportGlob path ->
-      let p = path_strs path in
-      (match Module_loader.load_module loader p with
-       | Error _ -> []
-       | Ok lm ->
-         List.filter_map (function
-           | TopFn fd when fd.fd_vis = Public || fd.fd_vis = PubCrate ->
-             Some (p, fd.fd_name.name, None)
-           | TopConst { tc_vis; tc_name; _ }
-             when tc_vis = Public || tc_vis = PubCrate ->
-             Some (p, tc_name.name, None)
-           | _ -> None
-         ) lm.mod_program.prog_decls)
+    | ImportGlob path -> public_items (path_strs path)
   in
   (* #138: register the constructor tags (and struct field layouts) of
      imported PUBLIC types. [gen_imports] is the WASM backend's native
@@ -3889,6 +4182,44 @@ let gen_imports (loader : Module_loader.t) (imports : import_decl list) (ctx : c
     ) (Ok ctx) imports
   in
   let entries = List.concat_map expand_import imports in
+  (* #561: the resolver lowers a qualified `Mod.f` to a bare `f`, so the
+     module qualifier is gone by codegen. If two `use Mod;` imports, or a
+     `use Mod;` import and a top-level declaration of this module, both
+     supply a name the program uses, the call would silently bind to
+     whichever was registered last. Reject it instead. *)
+  let simple_names = Hashtbl.create 8 in
+  List.iter (function
+    | ImportSimple (path, _) ->
+      List.iter (fun (p, n, _) ->
+        Hashtbl.replace simple_names n
+          (String.concat "." p ::
+           Option.value (Hashtbl.find_opt simple_names n) ~default:[]))
+        (expand_import (ImportSimple (path, None)))
+    | _ -> ()) imports;
+  let clash =
+    Hashtbl.fold (fun n mods acc ->
+      match acc with
+      | Some _ -> acc
+      | None ->
+        let mods = List.sort_uniq compare mods in
+        let local = List.mem n local_names in
+        if List.length mods > 1 then
+          Some (Printf.sprintf "`%s` is exported by both %s" n
+                  (String.concat " and " mods))
+        else if local then
+          Some (Printf.sprintf "`%s` is both declared in this module and \
+                                exported by %s" n (List.hd mods))
+        else None)
+      simple_names None
+  in
+  let* () = match clash with
+    | None -> Ok ()
+    | Some what ->
+      Error (UnsupportedFeature
+        (what ^ ", and a qualified call to it cannot be told apart on the \
+                 core-WASM backend; rename one, or import it by name \
+                 (`use Mod::{f as g};`) (#561)"))
+  in
   let* ctx = register_imported_types ctx in
   List.fold_left (fun acc e ->
     let* ctx = acc in
@@ -3993,12 +4324,45 @@ let generate_module ?loader (prog : program) : wasm_module result =
       }
   in
 
-  let* ctx_with_imports = gen_imports loader prog.prog_imports ctx_with_wasi in
+  let* ctx_with_imports =
+    gen_imports ~used:(program_free_names prog)
+      ~local_names:(List.filter_map (function
+          | TopFn fd -> Some fd.fd_name.name
+          | TopConst tc -> Some tc.tc_name.name
+          | _ -> None) prog.prog_decls)
+      loader prog.prog_imports ctx_with_wasi in
 
+  (* #561: register this module's record-type layouts up front, so a const
+     declared before its type is still checked against the declared field
+     order ([TopConst]). The [TopType] fold re-adds the same layouts. *)
+  let ctx_with_imports = List.fold_left (fun c decl -> match decl with
+    | TopType { td_name; td_body = TyStruct fields; _ } ->
+      { c with struct_layouts =
+          (td_name.name, List.mapi (fun i sf -> (sf.sf_name.name, i * 4)) fields)
+          :: c.struct_layouts }
+    | TopType { td_name; td_body = TyAlias (TyRecord (rfs, _)); _ } ->
+      { c with struct_layouts =
+          (td_name.name, List.mapi (fun i rf -> (rf.rf_name.name, i * 4)) rfs)
+          :: c.struct_layouts }
+    | _ -> c) ctx_with_imports prog.prog_decls in
+
+  (* Host imports must occupy the low function indices before any defined
+     function, lambda or deferred const initialiser takes an index: an
+     `extern fn` declared after a function would otherwise reuse that
+     function's index (imports are numbered from 0, defined functions from
+     [import_func_count] at the time they are generated), so calls to the
+     earlier function silently hit the host import. Generate the extern
+     declarations first; their relative order is kept. *)
+  let is_extern_decl = function
+    | TopFn fd -> fd.fd_body = FnExtern
+    | TopExternFn _ -> true
+    | _ -> false
+  in
+  let (extern_decls, other_decls) = List.partition is_extern_decl prog.prog_decls in
   let* ctx' = List.fold_left (fun acc decl ->
     let* c = acc in
     gen_decl c decl
-  ) (Ok ctx_with_imports) prog.prog_decls in
+  ) (Ok ctx_with_imports) (extern_decls @ other_decls) in
 
   (* Merge regular functions and lambda functions *)
   let num_regular_funcs = List.length ctx'.funcs in
@@ -4093,6 +4457,79 @@ let generate_module ?loader (prog : program) : wasm_module result =
     | _ -> (ctx'.types, all_funcs, exports_with_mem)
   in
 
+  (* #561 global init ordering: one `() -> ()` function per deferred
+     initialiser (each has its own locals), called in declaration order by
+     a runner. They are appended after every other function, so no
+     existing index moves.
+
+     The runner is not the wasm start function: that runs inside
+     instantiation, before a host has bound the exported memory, so an
+     initialiser that prints (fd_write reads memory) would fail the whole
+     load. Each export is instead a thunk that calls the runner, then the
+     function itself. Calls inside the module go to the function, not the
+     thunk, so an initialiser that calls a `pub fn` does not re-enter the
+     runner.
+
+     The guard global is 0 before, 1 while, and 2 after the initialisers
+     run. Finding it at 1 on entry means a previous run trapped part-way
+     (or a host callback re-entered during initialisation): the runner
+     traps rather than let the export run with globals still zeroed, and
+     it never replays an initialiser that completed. A failed module
+     initialisation stays failed, as an ES module whose evaluation threw
+     does. *)
+  let (final_types, final_funcs, final_globals, final_exports, thunk_annots) =
+    match List.rev ctx'.global_inits with
+    | [] -> (final_types, final_funcs, ctx'.globals, final_exports, [])
+    | inits ->
+      let void_ft = { ft_params = []; ft_results = [] } in
+      let (void_idx, types) = intern_func_type final_types void_ft in
+      let base = import_offset + List.length final_funcs in
+      let guard = List.length ctx'.globals in
+      let init_funcs = List.map (fun (gidx, code, vts, _) ->
+          { f_type = void_idx; f_locals = rle_locals vts;
+            f_body = code @ [GlobalSet gidx] }) inits in
+      let runner_idx = base + List.length inits in
+      let runner = {
+        f_type = void_idx; f_locals = [];
+        f_body = [GlobalGet guard; I32Const 2l; I32Eq; BrIf 0;
+                  GlobalGet guard; If (BtEmpty, [Unreachable], []);
+                  I32Const 1l; GlobalSet guard]
+                 @ List.mapi (fun i _ -> Call (base + i)) inits
+                 @ [I32Const 2l; GlobalSet guard];
+      } in
+      let n_funcs = List.length final_funcs in
+      let exported = List.sort_uniq compare (List.filter_map (fun e ->
+          match e.e_desc with
+          | ExportFunc i when i >= import_offset && i < import_offset + n_funcs ->
+            Some i
+          | _ -> None) final_exports) in
+      let thunk_base = runner_idx + 1 in
+      let thunk_of = List.mapi (fun j i -> (i, thunk_base + j)) exported in
+      let thunks = List.map (fun i ->
+          let f = List.nth final_funcs (i - import_offset) in
+          let ft = List.nth types f.f_type in
+          { f_type = f.f_type; f_locals = [];
+            f_body = Call runner_idx
+                     :: List.mapi (fun p _ -> LocalGet p) ft.ft_params
+                     @ [Call i] }) exported in
+      let exports = List.map (fun e ->
+          match e.e_desc with
+          | ExportFunc i ->
+            (match List.assoc_opt i thunk_of with
+             | Some t -> { e with e_desc = ExportFunc t }
+             | None -> e)
+          | _ -> e) final_exports in
+      (* A thunk carries its function's ownership annotation, so the
+         export interface the verifier reads is unchanged. *)
+      let annots = List.filter_map (fun (fidx, pk, rk) ->
+          Option.map (fun t -> (t, pk, rk)) (List.assoc_opt fidx thunk_of))
+          ctx'.ownership_annots in
+      (types, final_funcs @ init_funcs @ [runner] @ thunks,
+       ctx'.globals @ [{ g_type = I32; g_mutable = true;
+                         g_init = [I32Const 0l] }],
+       exports, annots)
+  in
+
   (* #643: a module that calls float_to_string gets the shortest-digits
      printer appended after every other function (so no existing index
      moves), and its call sites are patched to the printer's index. *)
@@ -4118,7 +4555,7 @@ let generate_module ?loader (prog : program) : wasm_module result =
   in
 
   (* Stage 2: Build [typedwasm.ownership] custom section from collected annotations *)
-  let ownership_payload = build_ownership_section (List.rev ctx'.ownership_annots) in  (* cons-accumulated; restore entry order *)
+  let ownership_payload = build_ownership_section (List.rev ctx'.ownership_annots @ thunk_annots) in  (* cons-accumulated; restore entry order *)
   let custom_sections = if Bytes.length ownership_payload > 0 then
     [("typedwasm.ownership", ownership_payload)]
   else
@@ -4130,7 +4567,7 @@ let generate_module ?loader (prog : program) : wasm_module result =
     funcs = final_funcs;
     tables = tables;
     mems = [{ mem_type = { lim_min = 1; lim_max = None } }];  (* 1 page default *)
-    globals = ctx'.globals;
+    globals = final_globals;
     exports = final_exports;
     imports = ctx'.imports;
     elems = elems;

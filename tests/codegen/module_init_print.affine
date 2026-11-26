@@ -1,0 +1,18 @@
+// SPDX-License-Identifier: MPL-2.0
+//
+// #561 — a module-level initialiser that is not a wasm constant
+// expression and prints. The Node-CJS host binds memory only after
+// WebAssembly.instantiate returns, so this initialiser must not run from
+// the wasm start function (fd_write would read a null memory and the whole
+// module would fail to load). It runs on the first call into an export.
+
+fn seed() -> Int {
+  println("seeding");
+  41
+}
+
+const answer: Int = seed() + 1;
+
+pub fn activate(ctx: Int) -> Int {
+  answer
+}

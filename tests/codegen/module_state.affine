@@ -1,0 +1,59 @@
+// SPDX-License-Identifier: MPL-2.0
+//
+// #561 — effect wall on core WASM: module-level mutable state and
+// host-effect calls made through a module qualifier.
+//
+//  * `const mut` bindings are mutable wasm globals; `=`, `+=` and `-=`
+//    from inside a function body write them (global.set).
+//  * A const whose initialiser is not a wasm constant expression (`acc`,
+//    which calls `seed()`) is zero-initialised and set by an init runner that
+//    every export calls first (not the wasm start function, which runs
+//    before the host has bound memory).
+//  * A `Float` const is an f64 global, and `+=` / `*=` on a Float global use
+//    the f64 ops (it used to be i32, which the
+//    engine refused to instantiate).
+//  * `use Console;` / `use Dom;` plus `Console.log(..)` / `Dom.domDateNow()`
+//    lower to the host imports `Console.log` / `Dom.domDateNow` — and only
+//    those, not every public function of the module.
+
+// `use Dom;` comes first: Dom pulls in Deno, whose code calls the builtin
+// `log : Float -> Float`, and checking it after `use Console;` binds `log` to
+// Console.log (a separate, order-dependent typecheck clash).
+use Dom;
+use Console;
+
+const mut counter: Int = 0;
+fn seed() -> Int {
+  Console.log("seed");
+  7
+}
+
+// Not a wasm constant expression: set on the first call into the module,
+// once the host has bound memory (seed() logs a string).
+const mut acc: Int = seed() + 3;
+const scale: Float = 1.5;
+const mut ratio: Float = 1.0;
+
+fn bump() -> Int {
+  counter = counter + 1;
+  counter
+}
+
+// Exposes ratio so the harness can check the Float compound writes.
+pub fn ratio_now() -> Float {
+  ratio
+}
+
+fn main() -> Int {
+  bump();
+  bump();
+  bump();
+  acc += 5;
+  acc -= 2;
+  let s = scale;
+  ratio += s;
+  ratio *= s;
+  Console.log("tick");
+  let now = Dom.domDateNow();
+  counter * 100 + acc + now
+}

@@ -1,0 +1,24 @@
+// SPDX-License-Identifier: MPL-2.0
+//
+// #561 — the deferred-initialisation guard.
+//
+//  * `c` calls the exported `seven()`. Calls inside the module go to the
+//    function, not its export thunk, so this does not re-enter the init
+//    runner.
+//  * `a` and `b` call the host's `tick`. If `tick` throws while `b` is
+//    initialised, later calls into the module trap: none may run with `b`
+//    still zero, and `a`'s initialiser must not run twice.
+
+extern fn tick() -> Int;
+
+pub fn seven() -> Int {
+  7
+}
+
+const mut c: Int = seven() + 1;
+const mut a: Int = tick();
+const mut b: Int = tick();
+
+pub fn main() -> Int {
+  c * 100 + a * 10 + b
+}
