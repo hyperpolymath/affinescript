@@ -144,8 +144,27 @@ A face is a *shape for AffineScript source*. It is not a ReScript parser.
 [source,console]
 ----
 $ affinescript check src/popup.affine
-src/popup.affine:16:8: parse error: Syntax error
+src/popup.affine:17:1: parse error: Syntax error
 ----
+
+The position is the first token the parser could not accept. (Before #771
+was fixed, every span started one token early, so errors pointed at the
+innocent token before the real one, e.g. the `;` of `module Block;`.) For
+the consumer that prompted this page, each file now stops at a ReScript
+construct:
+
+[cols="2,1,3",options="header"]
+|===
+|File |Position |Construct
+|`src/background.affine` |18:1 |`struct onMessage`: abstract type, no body
+|`src/popup.affine` |17:1 |`struct tabsApi`: abstract type, no body
+|`src/content.affine` |20:1 |`@val @scope("browser")` external binding
+|`src/components/Block.affine` |8:1 |`@react.component`
+|`src/components/FormFiller.affine` |16:1 |`@react.component`
+|`src/core/PdfTool.affine` |17:16 |`struct block { {`: ReScript object type
+|`src/core/ProvenMount.affine` |12:3 |`| Mounted(Dom.element)`: ReScript variant syntax
+|`src/core/Storage.affine` |8:1 |`module Template = {`: ReScript nested module
+|===
 
 ReScript constructs with no AffineScript counterpart: `@val` / `@module` /
 `@scope` / `@react.component` attributes, `%raw`, `external … = "js.path"`
