@@ -4593,6 +4593,24 @@ let test_modmut561_mut_record_block_local_shadow_rejected () =
     Alcotest.(check bool) "names the global" true
       (string_contains msg "config")
 
+let test_modmut561_mut_record_reassigned_local_rejected () =
+  (* A local's tracked layout is its first literal's; reassigning it in
+     another order left that layout stale, so `config = replacement` was
+     accepted and `read()` loaded `right` at the wrong offset. *)
+  match wasm_of_source
+          "const mut config: {left: Int, right: Int} = #{ left: 1, right: 2 };\n\
+           pub fn update() -> Int {\n\
+           \  let mut replacement = #{ left: 1, right: 2 };\n\
+           \  replacement = #{ right: 9, left: 7 };\n\
+           \  config = replacement;\n\
+           \  0\n\
+           }\n\
+           pub fn read() -> Int { config.right }" with
+  | Ok _ -> Alcotest.fail "a variable replacement must not compile"
+  | Error msg ->
+    Alcotest.(check bool) "names the global" true
+      (string_contains msg "config")
+
 let test_modmut561_mut_record_same_order_assign_ok () =
   match wasm_of_source
           "const mut config: {left: Int, right: Int} = #{ left: 1, right: 2 };\n\
@@ -4746,6 +4764,7 @@ let modmut561_tests = [
   Alcotest.test_case "wasm: reordered record global replacement is rejected" `Quick test_modmut561_mut_record_reordered_assign_rejected;
   Alcotest.test_case "wasm: reordered record in an if branch is rejected" `Quick test_modmut561_mut_record_if_branch_reordered_rejected;
   Alcotest.test_case "wasm: block-local shadowing record replacement is rejected" `Quick test_modmut561_mut_record_block_local_shadow_rejected;
+  Alcotest.test_case "wasm: reassigned-local record replacement is rejected" `Quick test_modmut561_mut_record_reassigned_local_rejected;
   Alcotest.test_case "wasm: same-order record global replacement compiles" `Quick test_modmut561_mut_record_same_order_assign_ok;
   Alcotest.test_case "wasm: imported arithmetic Float const is rejected" `Quick test_modmut561_imported_float_arith_const_rejected;
 ]

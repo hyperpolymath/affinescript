@@ -2987,14 +2987,10 @@ and gen_stmt (ctx : context) (stmt : stmt) : (context * instr list) result =
                                r.er_fields)
                   | _ when scoped -> `Unknown
                   | ExprVar src when src.name = id.name -> `Ok
-                  | ExprVar src ->
-                    (match List.assoc_opt src.name ctx.field_layouts with
-                     | Some l -> `Layout l | None -> `Unknown)
-                  | ExprApp (ExprVar fn_id, _) ->
-                    (match Option.bind
-                             (List.assoc_opt fn_id.name ctx.fn_ret_structs)
-                             (fun s -> List.assoc_opt s ctx.struct_layouts) with
-                     | Some l -> `Layout l | None -> `Unknown)
+                  (* Any other variable or call is unknown: a tracked
+                     layout is a compile-time guess that a later
+                     reassignment of a local (or a callee building its
+                     record in another order) silently invalidates. *)
                   | _ -> `Unknown
                 in
                 let decl_names = String.concat ", " (List.map fst decl_layout) in
