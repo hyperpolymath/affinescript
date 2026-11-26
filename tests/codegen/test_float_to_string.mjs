@@ -27,9 +27,9 @@ const step = (x, d) => {
   return dv.getFloat64(0);
 };
 
-const cases = [0, -0, NaN, Infinity, -Infinity, 0.1, 0.2, 0.1 + 0.2, 1 / 3,
+const cases = [0, -0, Number.NaN, Infinity, -Infinity, 0.1, 0.2, 0.1 + 0.2, 1 / 3,
   100, 1e21, 1e20, 1e-6, 1e-7, 1.5e-7, 5e-324, -5e-324, 2.2250738585072014e-308,
-  1.7976931348623157e308, 2 ** 53, 2 ** 53 + 2, 267522186230338.62, 4.35, 12345.678];
+  1.7976931348623157e308, 2 ** 53, 2 ** 53 + 2, 267522186230338.625 /* exact tie */, 4.35, 12345.678];
 for (let i = -1074; i <= 1023; i += 7) cases.push(2 ** i);
 for (let i = -323; i <= 308; i += 3) cases.push(Number('1e' + i));
 const seeds = cases.filter(Number.isFinite).filter((x) => x !== 0);
