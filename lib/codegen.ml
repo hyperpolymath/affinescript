@@ -77,6 +77,13 @@ type context = {
       added on-demand in a canonical order, with indices computed by
       position. WASI builtin special-cases look up their own import
       index by name from this map. *)
+  global_inits : (int * instr list * value_type list * bool) list;
+  (** #561: module-level consts whose initialiser is not a wasm constant
+      expression (a call, a string build, a read of another const):
+      (global index, init code, the init code's local types, declared
+      `mut`). The global is declared zero-initialised and mutable, and a
+      start function runs each init in declaration order at instantiation.
+      Most recent first. *)
 }
 
 (** Code generation error *)
@@ -192,6 +199,7 @@ let create_context () : context = {
   datas = [];
   ownership_annots = [];
   wasi_func_indices = [];
+  global_inits = [];
 }
 
 (** Extract ownership kind from a parameter declaration.
@@ -2904,6 +2912,41 @@ and gen_stmt (ctx : context) (stmt : stmt) : (context * instr list) result =
 
   | StmtAssign (lhs, op, rhs) ->
     begin match lhs with
+      | ExprVar id when Result.is_error (lookup_local ctx id.name) ->
+        (* #561: a write to a module-level `const mut` binding. Top-level
+           consts live in [func_indices] under the negative-sentinel
+           convention (global index = -(k+1)); only a global declared
+           mutable may be written. Imported consts are copied into the
+           importer as immutable globals, so a write to one fails here
+           rather than silently updating a private copy. *)
+        begin match List.assoc_opt id.name ctx.func_indices with
+          | Some k when k < 0
+                        && (List.nth ctx.globals (-(k + 1))).g_mutable
+                        && not (List.exists (fun (g, _, _, m) ->
+                                    g = -(k + 1) && not m) ctx.global_inits) ->
+            let gidx = -(k + 1) in
+            let* (ctx', rhs_code) = gen_expr ctx rhs in
+            begin match op with
+              | AssignEq -> Ok (ctx', rhs_code @ [GlobalSet gidx])
+              | AssignAdd | AssignSub | AssignMul | AssignDiv ->
+                let binop = match op with
+                  | AssignAdd -> OpAdd
+                  | AssignSub -> OpSub
+                  | AssignMul -> OpMul
+                  | _ -> OpDiv
+                in
+                Ok (ctx', [GlobalGet gidx] @ rhs_code
+                          @ [gen_binop binop; GlobalSet gidx])
+            end
+          | Some k when k < 0 ->
+            Error (UnsupportedFeature
+              (Printf.sprintf
+                 "assignment to `%s`: it is not a mutable module-level \
+                  binding in this module (declare it `const mut`; an \
+                  imported binding cannot be written on the core-WASM \
+                  backend) (#561)" id.name))
+          | _ -> Error (UnboundVariable id.name)
+        end
       | ExprVar id ->
         (* Variable assignment: x = expr or x += expr *)
         let* idx = lookup_local ctx id.name in
@@ -3678,18 +3721,47 @@ let gen_decl (ctx : context) (decl : top_level) : context result =
     (* Constants are compiled as WASM globals.
        The initial value must be a constant expression (I32Const etc).
        For complex initialisers, fall back to a local. *)
-    let* (ctx', init_code) = gen_expr ctx tc.tc_value in
+    (* The initialiser is generated in a fresh local frame: when it is not
+       a constant expression it becomes the body of an init function, whose
+       locals start at 0. *)
+    let ctx_init = { ctx with locals = []; next_local = 0; local_types = [] } in
+    let* (ctx', init_code) = gen_expr ctx_init tc.tc_value in
+    let init_vts = List.init ctx'.next_local (fun i ->
+      match List.assoc_opt i ctx'.local_types with Some t -> t | None -> I32) in
+    let ctx' = { ctx' with locals = ctx.locals; next_local = ctx.next_local;
+                           local_types = ctx.local_types } in
     let global_idx = List.length ctx'.globals in
-    let global = {
-      g_type = I32;
-      g_mutable = false;
-      g_init = init_code;
-    } in
-    let ctx'' = { ctx' with
-      globals = ctx'.globals @ [global];
-      func_indices = (tc.tc_name.name, -(global_idx + 1)) :: ctx'.func_indices;
-    } in
-    Ok ctx''
+    (* #561: the global takes the declared type (a `Float` const is an f64
+       global; it was always i32, which the engine rejected), and a
+       `const mut` binding becomes a mutable global so [StmtAssign] can
+       `global.set` it. *)
+    let* g_type = type_to_wasm tc.tc_ty in
+    let is_const_expr =
+      init_vts = []
+      && List.for_all (function
+          | I32Const _ | I64Const _ | F32Const _ | F64Const _
+          | I32Add | I32Sub | I32Mul -> true
+          | _ -> false) init_code
+    in
+    let ctx'' =
+      if is_const_expr then
+        { ctx' with globals = ctx'.globals @ [{ g_type; g_mutable = tc.tc_mut;
+                                                g_init = init_code }] }
+      else
+        (* #561 global init ordering: wasm only accepts a constant
+           expression as a global initialiser, and this one (a call, a
+           heap-built string, a read of another const) produced a module
+           the engine refused. Zero-initialise a mutable global and set it
+           from the start function, in declaration order. *)
+        let zero = if g_type = F64 then F64Const 0.0 else I32Const 0l in
+        { ctx' with
+          globals = ctx'.globals @ [{ g_type; g_mutable = true;
+                                      g_init = [zero] }];
+          global_inits =
+            (global_idx, init_code, init_vts, tc.tc_mut) :: ctx'.global_inits }
+    in
+    Ok { ctx'' with
+         func_indices = (tc.tc_name.name, -(global_idx + 1)) :: ctx''.func_indices }
 
   | TopType td ->
     begin match td.td_body with
@@ -3761,7 +3833,32 @@ let gen_decl (ctx : context) (decl : top_level) : context result =
 
     Silent on missing modules / unresolved items / loader errors: the
     resolver runs before codegen and would have already errored. *)
-let gen_imports (loader : Module_loader.t) (imports : import_decl list) (ctx : context)
+(** #561: every name a program's bodies mention (function bodies, impl
+    methods, const initialisers). Over-approximate — parameters and locals
+    land in it too — which only matters as a filter: `use Mod;` imports the
+    public items of [Mod] that appear here, not all of them, so the host
+    is not asked to supply a `Dom.*` import for each of Dom's 38 functions
+    when the program calls one. *)
+let program_free_names (prog : program) : (string, unit) Hashtbl.t =
+  let h = Hashtbl.create 64 in
+  let add = List.iter (fun n -> Hashtbl.replace h n ()) in
+  let of_fn (fd : fn_decl) = match fd.fd_body with
+    | FnBlock b -> add (free_names_block b)
+    | FnExpr e -> add (free_names e)
+    | FnExtern -> ()
+  in
+  List.iter (function
+    | TopFn fd -> of_fn fd
+    | TopConst { tc_value; _ } -> add (free_names tc_value)
+    | TopImpl ib ->
+      List.iter (function ImplFn fd -> of_fn fd | ImplType _ -> ())
+        ib.ib_items
+    | _ -> ()
+  ) prog.prog_decls;
+  h
+
+let gen_imports ?(used : (string, unit) Hashtbl.t option)
+    (loader : Module_loader.t) (imports : import_decl list) (ctx : context)
     : context result =
   let process_one ctx (mod_path, orig_name, alias_opt) =
     match Module_loader.load_module loader mod_path with
@@ -3810,26 +3907,37 @@ let gen_imports (loader : Module_loader.t) (imports : import_decl list) (ctx : c
   in
   let expand_import imp : (string list * string * string option) list =
     let path_strs path = List.map (fun (id : ident) -> id.name) path in
+    let public_items p =
+      match Module_loader.load_module loader p with
+      | Error _ -> []
+      | Ok lm ->
+        List.filter_map (function
+          | TopFn fd when fd.fd_vis = Public || fd.fd_vis = PubCrate ->
+            Some (p, fd.fd_name.name, None)
+          | TopConst { tc_vis; tc_name; _ }
+            when tc_vis = Public || tc_vis = PubCrate ->
+            Some (p, tc_name.name, None)
+          | _ -> None
+        ) lm.mod_program.prog_decls
+    in
     match imp with
-    | ImportSimple _ -> []
+    | ImportSimple (path, _) ->
+      (* #561: `use Mod;` flat-imports Mod's public items, and the resolver
+         lowers a qualified `Mod.f(x)` to a bare `f(x)` (#178). This arm
+         returned [] so every qualified call — `Console.log(..)`,
+         `Dom.domDateNow()` — reached codegen unbound. Register the public
+         items the program actually names ([used]), each as the same host
+         import an item import would produce. *)
+      let items = public_items (path_strs path) in
+      (match used with
+       | None -> items
+       | Some u -> List.filter (fun (_, n, _) -> Hashtbl.mem u n) items)
     | ImportList (path, items) ->
       let p = path_strs path in
       List.map (fun item ->
         (p, item.ii_name.name, Option.map (fun (id : ident) -> id.name) item.ii_alias)
       ) items
-    | ImportGlob path ->
-      let p = path_strs path in
-      (match Module_loader.load_module loader p with
-       | Error _ -> []
-       | Ok lm ->
-         List.filter_map (function
-           | TopFn fd when fd.fd_vis = Public || fd.fd_vis = PubCrate ->
-             Some (p, fd.fd_name.name, None)
-           | TopConst { tc_vis; tc_name; _ }
-             when tc_vis = Public || tc_vis = PubCrate ->
-             Some (p, tc_name.name, None)
-           | _ -> None
-         ) lm.mod_program.prog_decls)
+    | ImportGlob path -> public_items (path_strs path)
   in
   (* #138: register the constructor tags (and struct field layouts) of
      imported PUBLIC types. [gen_imports] is the WASM backend's native
@@ -3993,7 +4101,9 @@ let generate_module ?loader (prog : program) : wasm_module result =
       }
   in
 
-  let* ctx_with_imports = gen_imports loader prog.prog_imports ctx_with_wasi in
+  let* ctx_with_imports =
+    gen_imports ~used:(program_free_names prog) loader prog.prog_imports
+      ctx_with_wasi in
 
   let* ctx' = List.fold_left (fun acc decl ->
     let* c = acc in
@@ -4093,6 +4203,28 @@ let generate_module ?loader (prog : program) : wasm_module result =
     | _ -> (ctx'.types, all_funcs, exports_with_mem)
   in
 
+  (* #561 global init ordering: one `() -> ()` function per deferred
+     initialiser (each has its own locals), called in declaration order by
+     a start function that the module's start section names. They are
+     appended after every other function, so no existing index moves. *)
+  let (final_types, final_funcs, start) =
+    match List.rev ctx'.global_inits with
+    | [] -> (final_types, final_funcs, None)
+    | inits ->
+      let void_ft = { ft_params = []; ft_results = [] } in
+      let (void_idx, types) = intern_func_type final_types void_ft in
+      let base = import_offset + List.length final_funcs in
+      let init_funcs = List.map (fun (gidx, code, vts, _) ->
+          { f_type = void_idx; f_locals = rle_locals vts;
+            f_body = code @ [GlobalSet gidx] }) inits in
+      let runner = {
+        f_type = void_idx; f_locals = [];
+        f_body = List.mapi (fun i _ -> Call (base + i)) inits;
+      } in
+      (types, final_funcs @ init_funcs @ [runner],
+       Some (base + List.length inits))
+  in
+
   (* #643: a module that calls float_to_string gets the shortest-digits
      printer appended after every other function (so no existing index
      moves), and its call sites are patched to the printer's index. *)
@@ -4135,6 +4267,6 @@ let generate_module ?loader (prog : program) : wasm_module result =
     imports = ctx'.imports;
     elems = elems;
     datas = List.rev ctx'.datas;  (* Reverse to get original order *)
-    start = None;
+    start;
     custom_sections;
   }

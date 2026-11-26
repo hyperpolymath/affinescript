@@ -4506,6 +4506,59 @@ let slice560_tests = [
   Alcotest.test_case "wasm: show on Float is a named error" `Quick test_show560_float_named_error;
   Alcotest.test_case "wasm: user-defined show is not rewritten" `Quick test_show560_user_defined_wins;
 ]
+(* #561 — effect wall on core WASM: module-level mutable state. The
+   qualified host-call half (`use Console; Console.log(..)`) needs the
+   stdlib loader and is pinned by tests/codegen/module_state.{affine,mjs}. *)
+let test_modmut561_write_is_global_set () =
+  match wasm_of_source
+          "const mut counter: Int = 0;\n\
+           fn bump() -> Int { counter = counter + 1; counter += 2; counter }" with
+  | Error msg -> Alcotest.failf "a write to `const mut` should lower: %s" msg
+  | Ok m ->
+    let open Wasm in
+    Alcotest.(check bool) "a mutable global is declared" true
+      (List.exists (fun g -> g.g_mutable && g.g_type = I32) m.globals);
+    let sets = List.concat_map (fun f ->
+        List.filter (function GlobalSet _ -> true | _ -> false) f.f_body)
+        m.funcs in
+    Alcotest.(check int) "both writes are global.set" 2 (List.length sets)
+
+let test_modmut561_float_const_is_f64 () =
+  match wasm_of_source "const scale: Float = 1.5;\nfn f() -> Int { 1 }" with
+  | Error msg -> Alcotest.failf "a Float const should compile: %s" msg
+  | Ok m ->
+    let open Wasm in
+    Alcotest.(check bool) "the Float const is an f64 global" true
+      (List.exists (fun g -> g.g_type = F64 && not g.g_mutable) m.globals)
+
+let test_modmut561_immutable_write_rejected () =
+  match wasm_of_source
+          "const limit: Int = 3;\nfn f() -> Int { limit = 4; limit }" with
+  | Ok _ -> Alcotest.fail "a write to an immutable const must not compile"
+  | Error _ -> ()
+
+let test_modmut561_deferred_init_uses_start () =
+  (* A non-constant initialiser is not a valid wasm global init; it is
+     zero-initialised and set by the module's start function. *)
+  match wasm_of_source
+          "fn seed() -> Int { 7 }\nconst mut acc: Int = seed() + 3;\n\
+           fn f() -> Int { acc }" with
+  | Error msg -> Alcotest.failf "a call-initialised const should compile: %s" msg
+  | Ok m ->
+    let open Wasm in
+    Alcotest.(check bool) "the module has a start function" true
+      (m.start <> None);
+    Alcotest.(check bool) "the deferred global is set by an init function" true
+      (List.exists (fun f ->
+           List.exists (function GlobalSet _ -> true | _ -> false) f.f_body)
+         m.funcs)
+
+let modmut561_tests = [
+  Alcotest.test_case "wasm: non-constant const init runs in start" `Quick test_modmut561_deferred_init_uses_start;
+  Alcotest.test_case "wasm: const mut write is global.set" `Quick test_modmut561_write_is_global_set;
+  Alcotest.test_case "wasm: Float const is an f64 global" `Quick test_modmut561_float_const_is_f64;
+  Alcotest.test_case "wasm: write to an immutable const is rejected" `Quick test_modmut561_immutable_write_rejected;
+]
 let test_stringwall_concat_guard_rejects_string () =
   let prog = Parse_driver.parse_string ~file:"<stringwall>"
     "fn f() -> Int { string_char_code_at(\"ab\" ++ \"cd\", 0) }" in
@@ -5974,6 +6027,7 @@ let tests =
     ("E2E String-wall slice 2 (string_from_char_code)", stringwall_alloc_tests);
     ("E2E String-wall slice 3 (string_sub)", stringwall_sub_tests);
     ("E2E String-wall #560 (slice, show)", slice560_tests);
+    ("E2E effect wall #561 (module state)", modmut561_tests);
     ("E2E String-wall slice 4 (case-fold)", stringwall_case_tests);
     ("E2E String-wall slice 5 (trim)", stringwall_trim_tests);
     ("E2E String-wall slice 6 (string_find)", stringwall_find_tests);

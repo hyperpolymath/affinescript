@@ -29,6 +29,16 @@ elaboration picks `string_slice`, `int_to_string`, or an if over
 "true"/"false". `show` on other types is a named error, since the
 interpreter and Deno render Strings, Chars and Floats differently; a
 user-defined `show` or `slice` is still called (Closes #560)
+* WASM: module-level mutable state and qualified host calls now compile on
+the core-WASM backend. A `const mut` binding is a mutable wasm global that
+`=`, `+=`, `-=`, `*=` and `/=` write with `global.set`; a write to an
+immutable or imported const is a named error. A `Float` const is an f64
+global (it was i32, which engines refused). `use Mod;` followed by
+`Mod.f(..)` (`Console.log`, `Dom.domDateNow`) lowers to the host import
+`Mod.f`, importing only the functions the program names. A const whose
+initialiser is not a wasm constant expression (a call, a String) is
+zero-initialised and set, in declaration order, by the module start
+function (Closes #561)
 * json: `hpm_json_object_len` / `hpm_json_object_key` enumerate object
 members, so `to_json` materialises objects instead of returning `None`.
 Lowered on Bun-ESM; the matching hpm-json-rsr Zig exports are not merged
