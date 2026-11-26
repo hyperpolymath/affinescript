@@ -248,7 +248,8 @@ whole round-trip.
 Two grammar rules cost consumers time, so they are stated here:
 
 * `if`, `while`, `for` and `match` are self-terminating statements — the
-  closing `}` is enough, and a trailing `;` is also accepted (#644):
+  closing `}` is enough (#644). A trailing `;` is accepted only after `if`
+  and `match`; after `while` or `for` it is a parse error:
 
 [source,affine]
 ----
