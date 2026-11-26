@@ -4537,24 +4537,62 @@ let test_modmut561_immutable_write_rejected () =
   | Ok _ -> Alcotest.fail "a write to an immutable const must not compile"
   | Error _ -> ()
 
-let test_modmut561_deferred_init_uses_start () =
+let test_modmut561_deferred_init_runs_from_exports () =
   (* A non-constant initialiser is not a valid wasm global init; it is
-     zero-initialised and set by the module's start function. *)
+     zero-initialised and set by an init runner that every exported
+     function calls first. Not the wasm start function: that runs before
+     a host has bound memory. *)
   match wasm_of_source
           "fn seed() -> Int { 7 }\nconst mut acc: Int = seed() + 3;\n\
-           fn f() -> Int { acc }" with
+           pub fn f() -> Int { acc }" with
   | Error msg -> Alcotest.failf "a call-initialised const should compile: %s" msg
   | Ok m ->
     let open Wasm in
-    Alcotest.(check bool) "the module has a start function" true
-      (m.start <> None);
-    Alcotest.(check bool) "the deferred global is set by an init function" true
+    Alcotest.(check bool) "no wasm start function" true (m.start = None);
+    let n_imports = List.length (List.filter (fun i ->
+        match i.i_desc with ImportFunc _ -> true | _ -> false) m.imports) in
+    let exported = List.filter_map (fun e ->
+        match e.e_desc with
+        | ExportFunc i when i >= n_imports ->
+          Some (List.nth m.funcs (i - n_imports))
+        | _ -> None) m.exports in
+    Alcotest.(check bool) "there are exported functions" true (exported <> []);
+    Alcotest.(check bool) "every export calls the init runner first" true
+      (List.for_all (fun f ->
+           match f.f_body with Call _ :: _ -> true | _ -> false) exported);
+    Alcotest.(check bool) "the runner is guarded (br_if out once run)" true
       (List.exists (fun f ->
-           List.exists (function GlobalSet _ -> true | _ -> false) f.f_body)
-         m.funcs)
+           match f.f_body with
+           | GlobalGet g :: BrIf 0 :: I32Const 1l :: GlobalSet g' :: _ -> g = g'
+           | _ -> false) m.funcs)
+
+let test_modmut561_float_global_compound_is_f64 () =
+  match wasm_of_source
+          "const mut ratio: Float = 1.0;\n\
+           fn f() -> Int { ratio += 0.5; ratio *= 2.0; 0 }" with
+  | Error msg -> Alcotest.failf "Float compound assignment should lower: %s" msg
+  | Ok m ->
+    let open Wasm in
+    let body = List.concat_map (fun f -> f.f_body) m.funcs in
+    Alcotest.(check bool) "f64.add and f64.mul, not the i32 ops" true
+      (List.mem F64Add body && List.mem F64Mul body
+       && not (List.mem I32Add body) && not (List.mem I32Mul body))
+
+let test_modmut561_float_global_read_into_let () =
+  (* `let x = scale` must declare x as f64, or local.set fails validation. *)
+  match wasm_of_source
+          "const scale: Float = 1.5;\nfn f() -> Float { let x = scale; x }" with
+  | Error msg -> Alcotest.failf "a Float const read should compile: %s" msg
+  | Ok m ->
+    let open Wasm in
+    Alcotest.(check bool) "the let-bound local is f64" true
+      (List.exists (fun f ->
+           List.exists (fun l -> l.l_type = F64) f.f_locals) m.funcs)
 
 let modmut561_tests = [
-  Alcotest.test_case "wasm: non-constant const init runs in start" `Quick test_modmut561_deferred_init_uses_start;
+  Alcotest.test_case "wasm: non-constant const init runs from exports" `Quick test_modmut561_deferred_init_runs_from_exports;
+  Alcotest.test_case "wasm: Float global compound assign is f64" `Quick test_modmut561_float_global_compound_is_f64;
+  Alcotest.test_case "wasm: Float const read into a let is f64" `Quick test_modmut561_float_global_read_into_let;
   Alcotest.test_case "wasm: const mut write is global.set" `Quick test_modmut561_write_is_global_set;
   Alcotest.test_case "wasm: Float const is an f64 global" `Quick test_modmut561_float_const_is_f64;
   Alcotest.test_case "wasm: write to an immutable const is rejected" `Quick test_modmut561_immutable_write_rejected;

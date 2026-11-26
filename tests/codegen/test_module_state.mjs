@@ -1,8 +1,13 @@
 // SPDX-License-Identifier: MPL-2.0
 //
 // #561 — module-level mutable state and qualified host calls on core WASM.
-// counter is bumped 3 times (300), acc goes 10 -> 15 -> 13, and the
-// host clock returns 1000: main() = 300 + 13 + 1000 = 1313.
+// counter is bumped 3 times (300), acc starts at seed() + 3 = 10 and goes
+// 10 -> 15 -> 13, and the host clock returns 1000:
+// main() = 300 + 13 + 1000 = 1313.
+//
+// Console.log reads its string from the exported memory, as a real host
+// does. acc's initialiser logs "seed", so it must run after instantiation
+// has returned and memory is bound, not from the wasm start function.
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
@@ -16,15 +21,27 @@ const wanted = WebAssembly.Module.imports(mod)
 assert.deepEqual(wanted, ['Console.log', 'Dom.domDateNow'],
   `only the host functions the program calls are imported, got ${wanted}`);
 
-let logs = 0;
+let memory = null;
+const logs = [];
+const readString = (ptr) => {
+  const view = new DataView(memory.buffer);
+  const len = view.getUint32(ptr, true);
+  return new TextDecoder().decode(new Uint8Array(memory.buffer, ptr + 4, len));
+};
 const imports = {
   wasi_snapshot_preview1: { fd_write: () => 0 },
-  Console: { log: () => { logs += 1; } },
+  Console: { log: (ptr) => { logs.push(readString(ptr)); } },
   Dom: { domDateNow: () => 1000 },
 };
 const inst = await WebAssembly.instantiate(mod, imports);
-const result = inst.exports.main();
+memory = inst.exports.memory;
+assert.deepEqual(logs, [], 'no initialiser runs during instantiation');
 
+const result = inst.exports.main();
 assert.equal(result, 1313, `module_state: wasm main()=${result}, want 1313`);
-assert.equal(logs, 1, `Console.log called ${logs} times, want 1`);
+assert.deepEqual(logs, ['seed', 'tick'], `Console.log calls: ${logs}`);
+
+// A second call does not re-run the initialisers.
+inst.exports.main();
+assert.deepEqual(logs, ['seed', 'tick', 'tick'], `second call: ${logs}`);
 console.log('test_module_state.mjs OK');

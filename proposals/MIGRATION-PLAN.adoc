@@ -60,7 +60,7 @@ toc::[]
   `global.set`, and `use Mod;` + `Mod.f(..)` (`Console.log`,
   `Dom.domDateNow`) becomes the host import `Mod.f`, limited to the
   functions the program names. Non-constant initialisers run in
-  declaration order from the module start function. What remains is not lowering but
+  declaration order on the first call into an export. What remains is not lowering but
   re-scoping: each EFFECT-GATED kernel must be re-triaged against the new
   surface (and #555 handler dispatch is the sibling gap). Gates every
   EFFECT-GATED kernel (e.g. `Kernel_Quantum`). Also a compiler task.

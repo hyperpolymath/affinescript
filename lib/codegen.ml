@@ -483,7 +483,12 @@ let rec expr_val_type (ctx : context) (e : expr) : value_type =
     (match lookup_local ctx id.name with
      | Ok idx ->
        (match List.assoc_opt idx ctx.local_types with Some t -> t | None -> I32)
-     | Error _ -> I32)
+     | Error _ ->
+       (* #561: a module-level const is a global of its declared type. *)
+       (match List.assoc_opt id.name ctx.func_indices with
+        | Some k when k < 0 && -(k + 1) < List.length ctx.globals ->
+          (List.nth ctx.globals (-(k + 1))).g_type
+        | _ -> I32))
   | ExprApp (ExprVar id, _) ->
     (match List.assoc_opt id.name ctx.fn_ret_types with Some t -> t | None -> I32)
   | ExprIf r -> expr_val_type ctx r.ei_then
@@ -511,6 +516,14 @@ let rle_locals (vts : value_type list) : local list =
       { l_count = l_count + 1; l_type = vt } :: rest
     | _ -> { l_count = 1; l_type = vt } :: acc)
     vts []
+
+(** #561: is [code] a wasm constant expression, valid as a global's
+    initialiser? (Numeric constants and the extended-const i32 ops.) *)
+let is_const_init (code : instr list) : bool =
+  List.for_all (function
+      | I32Const _ | I64Const _ | F32Const _ | F64Const _
+      | I32Add | I32Sub | I32Mul -> true
+      | _ -> false) code
 
 (** Generate code for binary operation *)
 let gen_binop (op : binary_op) : instr =
@@ -2935,8 +2948,18 @@ and gen_stmt (ctx : context) (stmt : stmt) : (context * instr list) result =
                   | AssignMul -> OpMul
                   | _ -> OpDiv
                 in
+                (* The arithmetic follows the global's type: a `Float`
+                   global takes the f64 family, not [gen_binop]'s i32. *)
+                let op_instr =
+                  match (List.nth ctx.globals gidx).g_type, binop with
+                  | F64, OpAdd -> F64Add
+                  | F64, OpSub -> F64Sub
+                  | F64, OpMul -> F64Mul
+                  | F64, _ -> F64Div
+                  | _ -> gen_binop binop
+                in
                 Ok (ctx', [GlobalGet gidx] @ rhs_code
-                          @ [gen_binop binop; GlobalSet gidx])
+                          @ [op_instr; GlobalSet gidx])
             end
           | Some k when k < 0 ->
             Error (UnsupportedFeature
@@ -3736,13 +3759,7 @@ let gen_decl (ctx : context) (decl : top_level) : context result =
        `const mut` binding becomes a mutable global so [StmtAssign] can
        `global.set` it. *)
     let* g_type = type_to_wasm tc.tc_ty in
-    let is_const_expr =
-      init_vts = []
-      && List.for_all (function
-          | I32Const _ | I64Const _ | F32Const _ | F64Const _
-          | I32Add | I32Sub | I32Mul -> true
-          | _ -> false) init_code
-    in
+    let is_const_expr = init_vts = [] && is_const_init init_code in
     let ctx'' =
       if is_const_expr then
         { ctx' with globals = ctx'.globals @ [{ g_type; g_mutable = tc.tc_mut;
@@ -3858,6 +3875,7 @@ let program_free_names (prog : program) : (string, unit) Hashtbl.t =
   h
 
 let gen_imports ?(used : (string, unit) Hashtbl.t option)
+    ?(local_names : string list = [])
     (loader : Module_loader.t) (imports : import_decl list) (ctx : context)
     : context result =
   let process_one ctx (mod_path, orig_name, alias_opt) =
@@ -3872,8 +3890,8 @@ let gen_imports ?(used : (string, unit) Hashtbl.t option)
          so the constructor's anonymous record type does not escape. *)
       let item = List.find_map (function
         | TopFn fd when fd.fd_name.name = orig_name -> Some (`Fn fd)
-        | TopConst { tc_name; tc_value; _ } when tc_name.name = orig_name ->
-          Some (`Const tc_value)
+        | TopConst { tc_name; tc_value; tc_ty; _ } when tc_name.name = orig_name ->
+          Some (`Const (tc_value, tc_ty))
         | _ -> None
       ) loaded.mod_program.prog_decls in
       match item with
@@ -3892,11 +3910,25 @@ let gen_imports ?(used : (string, unit) Hashtbl.t option)
              imports = ctx.imports @ [import];
              func_indices = (local_name, import_func_idx) :: ctx.func_indices;
            }
-      | Some (`Const tc_value) ->
+      | Some (`Const (tc_value, tc_ty)) ->
         let* (ctx', init_code) = gen_expr ctx tc_value in
+        (* #561: the importer's copy takes the const's declared type (a
+           `Float` const is f64), and its initialiser must be a wasm
+           constant expression: a call would name a function of the other
+           module, which this module does not have. *)
+        let* g_type = type_to_wasm tc_ty in
+        let* () =
+          if is_const_init init_code then Ok ()
+          else Error (UnsupportedFeature
+            (Printf.sprintf
+               "imported const `%s` from %s: its initialiser is not a \
+                constant expression, which the core-WASM backend cannot \
+                copy into the importer (#561)"
+               orig_name (String.concat "." mod_path)))
+        in
         let global_idx = List.length ctx'.globals in
         let global = {
-          g_type = I32;
+          g_type;
           g_mutable = false;
           g_init = init_code;
         } in
@@ -3997,6 +4029,44 @@ let gen_imports ?(used : (string, unit) Hashtbl.t option)
     ) (Ok ctx) imports
   in
   let entries = List.concat_map expand_import imports in
+  (* #561: the resolver lowers a qualified `Mod.f` to a bare `f`, so the
+     module qualifier is gone by codegen. If two `use Mod;` imports, or a
+     `use Mod;` import and a top-level declaration of this module, both
+     supply a name the program uses, the call would silently bind to
+     whichever was registered last. Reject it instead. *)
+  let simple_names = Hashtbl.create 8 in
+  List.iter (function
+    | ImportSimple (path, _) ->
+      List.iter (fun (p, n, _) ->
+        Hashtbl.replace simple_names n
+          (String.concat "." p ::
+           Option.value (Hashtbl.find_opt simple_names n) ~default:[]))
+        (expand_import (ImportSimple (path, None)))
+    | _ -> ()) imports;
+  let clash =
+    Hashtbl.fold (fun n mods acc ->
+      match acc with
+      | Some _ -> acc
+      | None ->
+        let mods = List.sort_uniq compare mods in
+        let local = List.mem n local_names in
+        if List.length mods > 1 then
+          Some (Printf.sprintf "`%s` is exported by both %s" n
+                  (String.concat " and " mods))
+        else if local then
+          Some (Printf.sprintf "`%s` is both declared in this module and \
+                                exported by %s" n (List.hd mods))
+        else None)
+      simple_names None
+  in
+  let* () = match clash with
+    | None -> Ok ()
+    | Some what ->
+      Error (UnsupportedFeature
+        (what ^ ", and a qualified call to it cannot be told apart on the \
+                 core-WASM backend; rename one, or import it by name \
+                 (`use Mod::{f as g};`) (#561)"))
+  in
   let* ctx = register_imported_types ctx in
   List.fold_left (fun acc e ->
     let* ctx = acc in
@@ -4102,8 +4172,12 @@ let generate_module ?loader (prog : program) : wasm_module result =
   in
 
   let* ctx_with_imports =
-    gen_imports ~used:(program_free_names prog) loader prog.prog_imports
-      ctx_with_wasi in
+    gen_imports ~used:(program_free_names prog)
+      ~local_names:(List.filter_map (function
+          | TopFn fd -> Some fd.fd_name.name
+          | TopConst tc -> Some tc.tc_name.name
+          | _ -> None) prog.prog_decls)
+      loader prog.prog_imports ctx_with_wasi in
 
   let* ctx' = List.fold_left (fun acc decl ->
     let* c = acc in
@@ -4205,24 +4279,42 @@ let generate_module ?loader (prog : program) : wasm_module result =
 
   (* #561 global init ordering: one `() -> ()` function per deferred
      initialiser (each has its own locals), called in declaration order by
-     a start function that the module's start section names. They are
-     appended after every other function, so no existing index moves. *)
-  let (final_types, final_funcs, start) =
+     a runner. They are appended after every other function, so no
+     existing index moves.
+
+     The runner is not the wasm start function: that runs inside
+     instantiation, before a host has bound the exported memory, so an
+     initialiser that prints (fd_write reads memory) would fail the whole
+     load. Every exported function calls the runner first instead; a guard
+     global, set before the initialisers run, makes it run once, and makes
+     a re-entrant call from an initialiser return at once. *)
+  let (final_types, final_funcs, final_globals) =
     match List.rev ctx'.global_inits with
-    | [] -> (final_types, final_funcs, None)
+    | [] -> (final_types, final_funcs, ctx'.globals)
     | inits ->
       let void_ft = { ft_params = []; ft_results = [] } in
       let (void_idx, types) = intern_func_type final_types void_ft in
       let base = import_offset + List.length final_funcs in
+      let guard = List.length ctx'.globals in
       let init_funcs = List.map (fun (gidx, code, vts, _) ->
           { f_type = void_idx; f_locals = rle_locals vts;
             f_body = code @ [GlobalSet gidx] }) inits in
+      let runner_idx = base + List.length inits in
       let runner = {
         f_type = void_idx; f_locals = [];
-        f_body = List.mapi (fun i _ -> Call (base + i)) inits;
+        f_body = [GlobalGet guard; BrIf 0; I32Const 1l; GlobalSet guard]
+                 @ List.mapi (fun i _ -> Call (base + i)) inits;
       } in
-      (types, final_funcs @ init_funcs @ [runner],
-       Some (base + List.length inits))
+      let exported = List.filter_map (fun e ->
+          match e.e_desc with ExportFunc i -> Some i | _ -> None)
+          final_exports in
+      let funcs = List.mapi (fun i f ->
+          if List.mem (import_offset + i) exported
+          then { f with f_body = Call runner_idx :: f.f_body }
+          else f) final_funcs in
+      (types, funcs @ init_funcs @ [runner],
+       ctx'.globals @ [{ g_type = I32; g_mutable = true;
+                         g_init = [I32Const 0l] }])
   in
 
   (* #643: a module that calls float_to_string gets the shortest-digits
@@ -4262,11 +4354,11 @@ let generate_module ?loader (prog : program) : wasm_module result =
     funcs = final_funcs;
     tables = tables;
     mems = [{ mem_type = { lim_min = 1; lim_max = None } }];  (* 1 page default *)
-    globals = ctx'.globals;
+    globals = final_globals;
     exports = final_exports;
     imports = ctx'.imports;
     elems = elems;
     datas = List.rev ctx'.datas;  (* Reverse to get original order *)
-    start;
+    start = None;
     custom_sections;
   }
