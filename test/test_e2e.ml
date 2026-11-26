@@ -4621,6 +4621,40 @@ let test_modmut561_mut_record_same_order_assign_ok () =
   | Error msg -> Alcotest.failf "a same-order replacement should compile: %s" msg
   | Ok _ -> ()
 
+let test_modmut561_named_record_const_reordered_rejected () =
+  (* A record literal is stored in its source field order, but a read
+     through a `Config` parameter uses the type's declared order: passing
+     this const to `read` returned 1, not 2. *)
+  match wasm_of_source
+          "type Config = { left: Int, right: Int };\n\
+           const config: Config = #{ right: 2, left: 1 };\n\
+           fn read(c: Config) -> Int { c.right }\n\
+           pub fn main() -> Int { read(config) }" with
+  | Ok _ -> Alcotest.fail "a reordered literal for a named record const must not compile"
+  | Error msg ->
+    Alcotest.(check bool) "names the const" true (string_contains msg "config");
+    Alcotest.(check bool) "names the type" true (string_contains msg "Config")
+
+let test_modmut561_named_record_const_before_type_rejected () =
+  (* The check must not depend on the type being declared first. *)
+  match wasm_of_source
+          "const config: Config = #{ right: 2, left: 1 };\n\
+           type Config = { left: Int, right: Int };\n\
+           fn read(c: Config) -> Int { c.right }\n\
+           pub fn main() -> Int { read(config) }" with
+  | Ok _ -> Alcotest.fail "a reordered literal must not compile when the type comes later"
+  | Error msg ->
+    Alcotest.(check bool) "names the const" true (string_contains msg "config")
+
+let test_modmut561_named_record_const_declared_order_ok () =
+  match wasm_of_source
+          "type Config = { left: Int, right: Int };\n\
+           const config: Config = #{ left: 1, right: 2 };\n\
+           fn read(c: Config) -> Int { c.right }\n\
+           pub fn main() -> Int { read(config) }" with
+  | Error msg -> Alcotest.failf "a declared-order named record const should compile: %s" msg
+  | Ok _ -> ()
+
 let test_modmut561_imported_float_arith_const_rejected () =
   (* The imported initialiser skips the defining module's Float
      elaboration, so `1.0 + 0.5` lowered to i32.add over f64 constants. *)
@@ -4766,6 +4800,9 @@ let modmut561_tests = [
   Alcotest.test_case "wasm: block-local shadowing record replacement is rejected" `Quick test_modmut561_mut_record_block_local_shadow_rejected;
   Alcotest.test_case "wasm: reassigned-local record replacement is rejected" `Quick test_modmut561_mut_record_reassigned_local_rejected;
   Alcotest.test_case "wasm: same-order record global replacement compiles" `Quick test_modmut561_mut_record_same_order_assign_ok;
+  Alcotest.test_case "wasm: reordered named-record const literal is rejected" `Quick test_modmut561_named_record_const_reordered_rejected;
+  Alcotest.test_case "wasm: reordered const before its record type is rejected" `Quick test_modmut561_named_record_const_before_type_rejected;
+  Alcotest.test_case "wasm: declared-order named-record const compiles" `Quick test_modmut561_named_record_const_declared_order_ok;
   Alcotest.test_case "wasm: imported arithmetic Float const is rejected" `Quick test_modmut561_imported_float_arith_const_rejected;
 ]
 let test_stringwall_concat_guard_rejects_string () =

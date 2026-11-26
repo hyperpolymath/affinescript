@@ -3832,6 +3832,26 @@ let gen_decl (ctx : context) (decl : top_level) : context result =
     (* The initialiser is generated in a fresh local frame: when it is not
        a constant expression it becomes the body of an init function, whose
        locals start at 0. *)
+    (* #561: a record literal is stored in its source field order, but a
+       read through a parameter of the named type ([gen_function]) uses the
+       type's declared order. Reject a literal whose order differs, so the
+       const is never read at the wrong offset. *)
+    let* () = match tc.tc_value,
+                    Option.bind (struct_name_of_ty tc.tc_ty)
+                      (fun s -> Option.map (fun l -> (s, l))
+                                  (List.assoc_opt s ctx.struct_layouts)) with
+      | ExprRecord r, Some (s, decl_layout) ->
+        let lit_layout = List.mapi (fun i (fn, _) -> (fn.name, i * 4)) r.er_fields in
+        if lit_layout = decl_layout then Ok ()
+        else
+          let names l = String.concat ", " (List.map fst l) in
+          Error (UnsupportedFeature (Printf.sprintf
+            "const `%s`: the record literal's field order (%s) differs from \
+             type `%s` (%s); list the fields in the declared order on the \
+             core-WASM backend (#561)"
+            tc.tc_name.name (names lit_layout) s (names decl_layout)))
+      | _ -> Ok ()
+    in
     let ctx_init = { ctx with locals = []; next_local = 0; local_types = [] } in
     let* (ctx', init_code) = gen_expr ctx_init tc.tc_value in
     let init_vts = List.init ctx'.next_local (fun i ->
@@ -4301,6 +4321,20 @@ let generate_module ?loader (prog : program) : wasm_module result =
           | TopConst tc -> Some tc.tc_name.name
           | _ -> None) prog.prog_decls)
       loader prog.prog_imports ctx_with_wasi in
+
+  (* #561: register this module's record-type layouts up front, so a const
+     declared before its type is still checked against the declared field
+     order ([TopConst]). The [TopType] fold re-adds the same layouts. *)
+  let ctx_with_imports = List.fold_left (fun c decl -> match decl with
+    | TopType { td_name; td_body = TyStruct fields; _ } ->
+      { c with struct_layouts =
+          (td_name.name, List.mapi (fun i sf -> (sf.sf_name.name, i * 4)) fields)
+          :: c.struct_layouts }
+    | TopType { td_name; td_body = TyAlias (TyRecord (rfs, _)); _ } ->
+      { c with struct_layouts =
+          (td_name.name, List.mapi (fun i rf -> (rf.rf_name.name, i * 4)) rfs)
+          :: c.struct_layouts }
+    | _ -> c) ctx_with_imports prog.prog_decls in
 
   let* ctx' = List.fold_left (fun acc decl ->
     let* c = acc in
