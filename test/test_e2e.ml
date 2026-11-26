@@ -1089,13 +1089,12 @@ let test_empty_match_arm_block_parses () =
        - empty arm, `match` mid-block, no `;`       -> fails AT the match's `}`
        - empty arm, `match` mid-block, with `;`     -> parses
        - non-empty arm, `match` mid-block, no `;`   -> fails at the same place
-     So the empty arm was never the cause: only `if`/`while`/`for` are
+     So the empty arm was never the cause: only `if`/`while`/`for` were
      self-terminating statements (`lib/parser.mly`, `stmt:`), and a `match`
-     that is not a block's final expression is an ordinary expression
-     statement needing its `;`. This case keeps the empty arm *and*
-     terminates the statement, so it asserts #644's actual property rather
-     than the `;`-less shape the grammar has never accepted. The `;` rule
-     itself is pinned by test_match_statement_requires_semicolon below. *)
+     that was not a block's final expression needed its `;`. Since
+     2026-11-26 `match` self-terminates too (owner decision on #644); this
+     case keeps the explicit `;`, which stays legal, and the `;`-less form
+     is pinned by test_match_statement_self_terminates below. *)
   let source = {|module EmptyArm;
                 enum Opt { SomeV(Int), NoneV }
                 pub fn f(o: Opt) -> Int {
@@ -1113,32 +1112,55 @@ let test_empty_match_arm_block_parses () =
   | Lexer.Lexer_error (msg, _) ->
       Alcotest.failf "empty match-arm block should lex: %s" msg
 
-(* The statement-termination rule the #644 repro tripped over, pinned so it
-   stops being folklore. `if`/`while`/`for` end with a `}` and terminate
-   themselves; a `match` in non-final statement position is an expression
-   statement and needs an explicit `;`. If the language decides instead that
-   a `}`-terminated `match` should self-terminate (that is #644's open
-   question — see docs/ON-RAMP.adoc, "Statements and `;`"), then this test is
-   the one to delete, and the positive form belongs next to the #644 case
-   above. *)
-let test_match_statement_requires_semicolon () =
-  let source = {|module NoSemi;
+(* A `}`-terminated `match` self-terminates as a statement, like `if`
+   (#644, owner decision 2026-11-26; docs/ON-RAMP.adoc, "Statements and
+   `;`"). A following token that can continue an expression keeps the
+   expression reading, as for `if`. *)
+let test_match_statement_self_terminates () =
+  let parse_ok what source =
+    match Parse_driver.parse_string ~file:"<match-stmt>" source with
+    | p -> p
+    | exception Parse_driver.Parse_error (msg, _) ->
+        Alcotest.failf "%s should parse: %s" what msg
+  in
+  let header = {|module M;
                 enum Opt { SomeV(Int), NoneV }
-                pub fn f(o: Opt) -> Int {
+                |} in
+  ignore (parse_ok "the #644 repro" (header ^ {|pub fn f(o: Opt) -> Int {
                   match o {
                     SomeV(v) => { return v; }
                     NoneV => {}
                   }
                   return 0;
-                }|} in
-  match Parse_driver.parse_string ~file:"<match-no-semi>" source with
-  | exception Parse_driver.Parse_error _ -> ()
-  | exception Lexer.Lexer_error _ -> ()
-  | _ ->
-      Alcotest.fail
-        "a mid-block `match` with no trailing `;` parsed; if the grammar was \
-         deliberately extended to make `match` self-terminating, delete this \
-         test and record the decision on #644"
+                }|}));
+  ignore (parse_ok "a match followed by let and an assignment" (header ^ {|pub fn f(o: Opt) -> Int {
+                  let mut n = 0;
+                  match o { SomeV(v) => { n = v; } NoneV => {} }
+                  n = n + 1;
+                  let k = n;
+                  return k;
+                }|}));
+  ignore (parse_ok "a trailing `;` is still accepted" (header ^ {|pub fn f(o: Opt) -> Int {
+                  match o { SomeV(v) => { return v; } NoneV => {} };
+                  return 0;
+                }|}));
+  (* `match o { .. } - 1;` is one expression statement, a subtraction. *)
+  let p = parse_ok "a match continued by `-`" (header ^ {|pub fn f(o: Opt) -> Int {
+                  match o { SomeV(v) => v, NoneV => 0 } - 1;
+                  return 0;
+                }|}) in
+  let body =
+    List.find_map
+      (function Ast.TopFn { fd_body = Ast.FnBlock b; _ } -> Some b | _ -> None)
+      p.prog_decls
+  in
+  let rec strip = function Ast.ExprSpan (e, _) -> strip e | e -> e in
+  match body with
+  | Some { blk_stmts = Ast.StmtExpr e :: _; _ } ->
+      (match strip e with
+       | Ast.ExprBinary (_, Ast.OpSub, _) -> ()
+       | _ -> Alcotest.fail "`match .. } - 1;` should be one subtraction")
+  | _ -> Alcotest.fail "expected an expression statement first"
 
 let error_tests = [
   Alcotest.test_case "bad syntax" `Quick test_error_parse_bad_syntax;
@@ -1148,8 +1170,8 @@ let error_tests = [
     test_total_is_valid_binding_name;
   Alcotest.test_case "empty match arm block parses (#644)" `Quick
     test_empty_match_arm_block_parses;
-  Alcotest.test_case "mid-block `match` needs its `;` (#644 repro)" `Quick
-    test_match_statement_requires_semicolon;
+  Alcotest.test_case "mid-block `match` self-terminates (#644)" `Quick
+    test_match_statement_self_terminates;
 ]
 
 (* ============================================================================
@@ -2032,8 +2054,10 @@ let require_symbol symbols refs line col =
 (** hover — definition span resolves to its own name. *)
 let test_hover_def_span () =
   let (symbols, refs) = pipeline_for_hover (fixture "arithmetic.affine") in
-  (* `fn add(…)` — name span starts at line 5, col 1. *)
-  let sym = require_symbol symbols refs 5 1 in
+  (* `fn add(…)` — the name `add` starts at line 5, col 4. (This used to
+     read col 1, which only matched because every token span was shifted one
+     token early; fixed in #771.) *)
+  let sym = require_symbol symbols refs 5 4 in
   Alcotest.(check string) "hovered name is 'add'" "add" sym.Symbol.sym_name;
   Alcotest.(check string) "kind is function"
     "function" (Json_output.symbol_kind_to_string sym.sym_kind)
@@ -2041,8 +2065,9 @@ let test_hover_def_span () =
 (** hover — use-site reference resolves to the defining symbol. *)
 let test_hover_use_site () =
   let (symbols, refs) = pipeline_for_hover (fixture "full_pipeline.affine") in
-  (* `Circle` is used at line 33, col 14 (verified above). *)
-  let sym = require_symbol symbols refs 33 14 in
+  (* `Circle` is used at line 33, col 16: `  let circle = Circle(5);`.
+     (Previously col 14 — the `=` — under the one-token-early spans, #771.) *)
+  let sym = require_symbol symbols refs 33 16 in
   Alcotest.(check string) "use-site resolves to 'Circle'" "Circle" sym.Symbol.sym_name
 
 (** hover — off-document position returns None without crashing. *)
@@ -2054,7 +2079,7 @@ let test_hover_not_found () =
 (** goto-def — JSON output is well-formed (has "found" and "file"). *)
 let test_goto_def_json () =
   let (symbols, refs) = pipeline_for_hover (fixture "arithmetic.affine") in
-  let sym_opt = Json_output.find_symbol_at symbols refs 5 3 in
+  let sym_opt = Json_output.find_symbol_at symbols refs 5 4 in
   let json = match sym_opt with
     | Some sym -> Json_output.goto_def_to_json sym
     | None     -> Json_output.not_found_json
@@ -4417,6 +4442,70 @@ let string_contains s sub =
   let rec go i = i + m <= n && (String.sub s i m = sub || go (i + 1)) in
   go 0
 
+
+(* ---- #560 (codegen wall 1): `slice` on String, `show` on Int / Bool ----
+
+   Both builtins are polymorphic, so core WASM cannot lower them untyped.
+   The typechecker records each call (poly_builtin_sites) and
+   Typecheck.elaborate_string_concat rewrites it to a monomorphic op. The
+   interpreter cases pin the oracle; tests/codegen/string_slice.affine is the
+   wasm-side parity fixture for the same values. *)
+
+let test_slice560_interp_plain () =
+  Alcotest.(check int) "slice(\"hello world\",1,4) == \"ell\"" 1
+    (eval_int_fn "fn f() -> Int { if slice(\"hello world\", 1, 4) == \"ell\" { 1 } else { 0 } }")
+
+let test_slice560_interp_negative () =
+  Alcotest.(check int) "slice(s,-5,99) == \"world\"" 1
+    (eval_int_fn "fn f() -> Int { if slice(\"hello world\", -5, 99) == \"world\" { 1 } else { 0 } }")
+
+let test_slice560_interp_empty () =
+  Alcotest.(check int) "slice(s,7,2) is empty" 0
+    (eval_int_fn "fn f() -> Int { string_length(slice(\"hello world\", 7, 2)) }")
+
+let test_slice560_interp_both_negative () =
+  Alcotest.(check int) "slice(s,-99,-6) == \"hello\"" 1
+    (eval_int_fn "fn f() -> Int { if slice(\"hello world\", -99, -6) == \"hello\" { 1 } else { 0 } }")
+
+(* frontend -> elaborate -> core-WASM codegen, from source text *)
+let wasm_of_source src =
+  let prog = Parse_driver.parse_string ~file:"<560>" src in
+  match resolve_program prog with
+  | Error e -> Error e
+  | Ok (resolve_ctx, _) ->
+    match typecheck_program resolve_ctx.symbols prog with
+    | Error e -> Error e
+    | Ok _ -> wasm_codegen (Typecheck.elaborate_string_concat prog)
+
+let test_slice560_wasm_lowers () =
+  match wasm_of_source
+          "fn f(s: String) -> Int { string_length(slice(s, 1, 3)) + \
+           string_length(show(7)) + string_length(show(true)) }" with
+  | Ok _ -> ()
+  | Error msg -> Alcotest.failf "slice/show should lower to wasm: %s" msg
+
+let test_show560_float_named_error () =
+  match wasm_of_source "fn f() -> Int { string_length(show(1.5)) }" with
+  | Ok _ -> Alcotest.fail "show on Float must not compile silently to wasm"
+  | Error msg when string_contains msg "show on Float" -> ()
+  | Error msg -> Alcotest.failf "expected the named show-on-Float error, got: %s" msg
+
+let test_show560_user_defined_wins () =
+  match wasm_of_source
+          "fn show(x: Float) -> String { \"n\" }\n\
+           fn f() -> Int { string_length(show(1.5)) }" with
+  | Ok _ -> ()
+  | Error msg -> Alcotest.failf "a user-defined `show` must still be called: %s" msg
+
+let slice560_tests = [
+  Alcotest.test_case "interp: plain slice" `Quick test_slice560_interp_plain;
+  Alcotest.test_case "interp: negative lo, hi clamped" `Quick test_slice560_interp_negative;
+  Alcotest.test_case "interp: hi < lo -> empty" `Quick test_slice560_interp_empty;
+  Alcotest.test_case "interp: both negative" `Quick test_slice560_interp_both_negative;
+  Alcotest.test_case "wasm: slice/show lower after elaboration" `Quick test_slice560_wasm_lowers;
+  Alcotest.test_case "wasm: show on Float is a named error" `Quick test_show560_float_named_error;
+  Alcotest.test_case "wasm: user-defined show is not rewritten" `Quick test_show560_user_defined_wins;
+]
 let test_stringwall_concat_guard_rejects_string () =
   let prog = Parse_driver.parse_string ~file:"<stringwall>"
     "fn f() -> Int { string_char_code_at(\"ab\" ++ \"cd\", 0) }" in
@@ -5884,6 +5973,7 @@ let tests =
     ("E2E String-wall slice 1 (indexing)", stringwall_index_tests);
     ("E2E String-wall slice 2 (string_from_char_code)", stringwall_alloc_tests);
     ("E2E String-wall slice 3 (string_sub)", stringwall_sub_tests);
+    ("E2E String-wall #560 (slice, show)", slice560_tests);
     ("E2E String-wall slice 4 (case-fold)", stringwall_case_tests);
     ("E2E String-wall slice 5 (trim)", stringwall_trim_tests);
     ("E2E String-wall slice 6 (string_find)", stringwall_find_tests);

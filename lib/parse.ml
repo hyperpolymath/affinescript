@@ -35,10 +35,8 @@ let create_state_channel ~file chan =
 
 (** Get next token for Menhir *)
 let next_token state () =
-  let start_pos = Lexer.current_pos state.lexer_state state.buf in
-  let tok = Lexer.token state.lexer_state state.buf in
-  let end_pos = Lexer.current_pos state.lexer_state state.buf in
-  let span = Span.make ~file:state.lexer_state.file ~start_pos ~end_pos in
+  let (tok, span) = Lexer.next_span state.lexer_state state.buf in
+  let start_pos = span.Span.start_pos and end_pos = span.Span.end_pos in
   state.last_token <- (tok, span);
 
   (* Convert to Menhir token with positions *)

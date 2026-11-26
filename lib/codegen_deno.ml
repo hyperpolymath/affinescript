@@ -95,12 +95,36 @@ type codegen_ctx = {
      integer operand, so divisions over them truncate (#478). Reset per
      function alongside {!int_vars}. *)
   int_array_vars : (string, unit) Hashtbl.t;
+  (* Value names bound locally at the current emission point: parameters,
+     `let`, `for`, lambda and match-arm binders. A local shadows a host
+     intrinsic of the same name, so `fn f(get: ...) { get(x) }` calls the
+     parameter instead of the ref-cell builtin `get`. Reset per function;
+     scoped constructs restore it on exit (see {!with_locals}). *)
+  locals : (string, unit) Hashtbl.t;
+  (* Locals whose declared type is a function returning [Int] (a parameter
+     `len: fn(String) -> Int`). A call to one is an [Int], like a call to an
+     [Int]-returning intrinsic, but it is classified by its own type: a local
+     shadowing an intrinsic does not inherit the intrinsic's classification.
+     Reset per function alongside {!locals}. *)
+  int_callables : (string, unit) Hashtbl.t;
+  (* Names a statement `let` declared in the block being emitted. On block
+     exit, an [Int] classification gained by an assignment to any other
+     (enclosing) name is kept; see {!with_locals_scope}. *)
+  block_decls : (string, unit) Hashtbl.t;
   (* True while emitting a synthesised `async` method body. The
      expression-position IIFE wrappers (block/try/match/let/return) must
      then be `async` and awaited, because they may contain an awaited
      associated call (`(await this.m(...))`) — `await` inside a plain
      `(() => {...})()` is a SyntaxError ("Unexpected reserved word"). *)
   in_async : bool;
+  (* Every top-level JS binding emitted so far (runtime preamble included),
+     with a signature: [""] for a function, constant or class, the binding
+     text for an enum constructor. Shared by every copy of the context.
+     See {!claim_top} (#801). *)
+  top_names : (string, string) Hashtbl.t;
+  (* Constructor names some public enum declares: a constructor shared by a
+     private and a public enum is emitted once, exported (#801). *)
+  public_ctors : (string, unit) Hashtbl.t;
 }
 
 (** Create an empty emission context for [host], sharing [symbols] and
@@ -119,7 +143,12 @@ let create_ctx host symbols = {
   ctors = Hashtbl.create 32;
   int_vars = Hashtbl.create 16;
   int_array_vars = Hashtbl.create 16;
+  locals = Hashtbl.create 16;
+  int_callables = Hashtbl.create 8;
+  block_decls = Hashtbl.create 8;
   in_async = false;
+  top_names = Hashtbl.create 128;
+  public_ctors = Hashtbl.create 32;
 }
 
 (* Expression-position IIFE wrapper. In an async method body it must be
@@ -607,6 +636,41 @@ const __as_hpmJsonObjectGet = (v, k) => {
   if (v === null || typeof v !== "object" || Array.isArray(v)) return None;
   return Object.prototype.hasOwnProperty.call(v, String(k))
     ? Some(v[String(k)]) : None;
+};
+// ---- Url (stdlib/Url.affine): WHATWG URL via the host's URL constructor ----
+// `globalThis.URL`, because a program may declare its own `URL` (a variant,
+// say), which would shadow the host constructor in this module.
+const __as_urlResolve = (href, base) => {
+  try {
+    return Some(new globalThis.URL(String(href), base === "" ? undefined : String(base)).href);
+  } catch (_e) { return None; }
+};
+const __as_urlParse = (s) => {
+  let u;
+  try { u = new globalThis.URL(String(s)); } catch (_e) { return None; }
+  return Some({ href: u.href, protocol: u.protocol, username: u.username,
+    password: u.password, host: u.host, hostname: u.hostname, port: u.port,
+    pathname: u.pathname, search: u.search, hash: u.hash });
+};
+// Object-key enumeration mirrors the planned hpm-json-rsr Zig exports
+// `hpm_json_object_len` / `hpm_json_object_key`: own enumerable string keys
+// in insertion order (std.json's ObjectMap is an ordered ArrayHashMap).
+// JavaScript lists integer-like keys first and the native backend will not,
+// so callers must not rely on the relative order of such keys.
+const __as_hpmJsonObjectKeys = (v) =>
+  (v === null || typeof v !== "object" || Array.isArray(v)) ? [] : Object.keys(v);
+const __as_hpmJsonObjectLen = (v) => __as_hpmJsonObjectKeys(v).length;
+// Keys are read from the live object on every call, so an index agrees with
+// hpm_json_object_len even if the host changes the object during a walk: an
+// index past the current keys is None, never a deleted key. (A cached key
+// list would serve stale names; the walk is linear per key, quadratic per
+// object, which is acceptable for JSON-sized objects.)
+const __as_hpmJsonObjectKey = (v, i) => {
+  if (v === null || typeof v !== "object" || Array.isArray(v)) return None;
+  const idx = Number(i);
+  if (!Number.isInteger(idx) || idx < 0) return None;
+  const ks = Object.keys(v);
+  return idx < ks.length ? Some(ks[idx]) : None;
 };
 const __as_hpmJsonArrayLen = (v) => (Array.isArray(v) ? v.length : 0);
 const __as_hpmJsonArrayGet = (v, i) => {
@@ -1191,6 +1255,10 @@ let () =
   b "hpm_json_float"         (fun a -> Printf.sprintf "__as_hpmJsonFloat(%s)" (arg 0 a));
   b "hpm_json_string"        (fun a -> Printf.sprintf "__as_hpmJsonString(%s)" (arg 0 a));
   b "hpm_json_object_get"    (fun a -> Printf.sprintf "__as_hpmJsonObjectGet(%s, %s)" (arg 0 a) (arg 1 a));
+  b "url_resolve"            (fun a -> Printf.sprintf "__as_urlResolve(%s, %s)" (arg 0 a) (arg 1 a));
+  b "url_parse"              (fun a -> Printf.sprintf "__as_urlParse(%s)" (arg 0 a));
+  b "hpm_json_object_len"    (fun a -> Printf.sprintf "__as_hpmJsonObjectLen(%s)" (arg 0 a));
+  b "hpm_json_object_key"    (fun a -> Printf.sprintf "__as_hpmJsonObjectKey(%s, %s)" (arg 0 a) (arg 1 a));
   b "hpm_json_array_len"     (fun a -> Printf.sprintf "__as_hpmJsonArrayLen(%s)" (arg 0 a));
   b "hpm_json_array_get"     (fun a -> Printf.sprintf "__as_hpmJsonArrayGet(%s, %s)" (arg 0 a) (arg 1 a));
   b "hpm_json_escape_string" (fun a -> Printf.sprintf "__as_hpmJsonEscapeString(%s)" (arg 0 a));
@@ -1261,6 +1329,90 @@ let js_reserved = [
 let mangle (name : string) : string =
   if List.mem name js_reserved then name ^ "_" else name
 
+
+(* ============================================================================
+   Top-level name uniqueness (#801)
+
+   An ES module may declare a top-level name once.  Import flattening gives
+   every module's declarations distinct names, and {!mangle} is not
+   injective (`class` and a user's `class_` both emit `class_`), so this is
+   the last check before the text exists: a second binding of a name is a
+   compile error, never a module where one binding silently replaces another
+   (#801) or fails only when it is loaded.  An enum constructor emitted twice
+   with the same text (two enums of one program each with a nullary `Red`)
+   is the same runtime value, a `{ tag }` object or factory, so it is emitted
+   once.
+   ============================================================================ *)
+
+(** Reserve the top-level JS name [name].  [signature] is [""] for a
+    binding that must be unique (a function, constant or class), or the
+    binding's text for one that may be shared when identical (an enum
+    constructor).  Returns [false] when an identical shared binding has
+    already been emitted, so the caller emits nothing.
+    @raise Failure on any other second binding of [name]. *)
+let claim_top ctx (name : string) (signature : string) : bool =
+  match Hashtbl.find_opt ctx.top_names name with
+  | None -> Hashtbl.replace ctx.top_names name signature; true
+  | Some s when s <> "" && s = signature -> false
+  | Some _ ->
+    failwith
+      (Printf.sprintf
+         "two different top-level bindings would both be emitted as `%s`; \
+          refusing to emit a module in which one replaces the other (#801)"
+         name)
+
+(** The name a column-0 line of emitted runtime text declares at top
+    level ([const x], [let x], [function x], [class x], optionally
+    [export]ed or [async]), if any. *)
+let top_binding_name (line : string) : string option =
+  let strip p s =
+    if String.starts_with ~prefix:p s then
+      Some (String.sub s (String.length p) (String.length s - String.length p))
+    else None
+  in
+  let s = Option.value (strip "export " line) ~default:line in
+  let s = Option.value (strip "async " s) ~default:s in
+  List.find_map (fun kw -> strip (kw ^ " ") s)
+    [ "const"; "let"; "var"; "function"; "class" ]
+  |> Fun.flip Option.bind (fun r ->
+      let is_id c =
+        (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+        || (c >= '0' && c <= '9') || c = '_' || c = '$'
+      in
+      let n = ref 0 in
+      while !n < String.length r && is_id r.[!n] do incr n done;
+      if !n = 0 then None else Some (String.sub r 0 !n))
+
+(** Reserve every top-level name the runtime text [js] declares. *)
+(** A variant named like a runtime-preamble constructor ([Some]/[Ok]/[Err]
+    of one field, [None] of none) is that constructor: the preamble's
+    binding builds the same [{ tag, value }] value, and references to the
+    name are lowered to it, so the variant is not emitted again (this is how
+    a program declaring its own [Option]/[Result], such as
+    stdlib/prelude.affine, compiles).  One of another arity would silently
+    become the preamble's factory (a nullary [Choice::Some] evaluating to a
+    function), so it is refused (#801).  Returns [true] when the variant is
+    the preamble's. *)
+let preamble_ctor_shared (td : type_decl) (vd : variant_decl) : bool =
+  let arity = List.length vd.vd_fields in
+  match vd.vd_name.name with
+  | ("Some" | "Ok" | "Err" | "None") as n ->
+    let want = if n = "None" then 0 else 1 in
+    if arity = want then true
+    else
+      failwith
+        (Printf.sprintf
+           "variant `%s` of `%s` has %d field(s), but the runtime's `%s` has \
+            %d; rename the variant (#801)"
+           n td.td_name.name arity n want)
+  | _ -> false
+
+let claim_runtime ctx (js : string) : unit =
+  List.iter (fun line ->
+      Option.iter (fun n -> Hashtbl.replace ctx.top_names n "")
+        (top_binding_name line))
+    (String.split_on_char '\n' js)
+
 (* Resolve a variable reference, honouring the active [self] rename. *)
 let resolve_var ctx (name : string) : string =
   match ctx.self_name with
@@ -1285,6 +1437,13 @@ let resolve_var ctx (name : string) : string =
 let rec type_head_is_int : type_expr -> bool = function
   | TyCon id -> id.name = "Int"
   | TyOwn t | TyRef (_, t) | TyMut (_, t) -> type_head_is_int t
+  | _ -> false
+
+(* Is [t] a function type whose result has an [Int] head (`fn(A) -> Int`)?
+   Classifies calls to a callable local by its own declared type. *)
+let rec type_returns_int : type_expr -> bool = function
+  | TyArrow (_, _, ret, _) -> type_head_is_int ret
+  | TyOwn t | TyRef (_, t) | TyMut (_, t) -> type_returns_int t
   | _ -> false
 
 (* Is [t] an [Array<Int>] (surface `[Int]`, which the parser desugars to
@@ -1400,8 +1559,15 @@ let rec expr_is_int ctx (e : expr) : bool =
   | ExprIf { ei_then; ei_else = Some e; _ } ->
       expr_is_int ctx ei_then && expr_is_int ctx e
   | ExprApp (ExprVar id, _) ->
-      Hashtbl.mem ctx.int_fns id.name
-      || List.mem id.name int_returning_builtins
+      (* A call to a local binding is not the intrinsic or top-level
+         function of the same name (see the intrinsic dispatch in
+         {!gen_expr}): it is an [Int] only by its own declared type. *)
+      if Hashtbl.mem ctx.locals id.name then
+        Hashtbl.mem ctx.int_callables id.name
+      else
+        Hashtbl.mem ctx.int_fns id.name
+        || (not (Hashtbl.mem ctx.local_fns id.name)
+            && List.mem id.name int_returning_builtins)
   (* An element read from a provably-[Array<Int>] value is an [Int]
      (covers `xs[i] / 2` where xs: [Int]) — issue #478 finding 2. *)
   | ExprIndex (arr, _) -> expr_is_int_array ctx arr
@@ -1436,7 +1602,76 @@ let enter_fn_scope ctx (params : param list) : codegen_ctx =
       else if type_is_int_array p.p_ty then
         Hashtbl.replace arr_tbl p.p_name.name ())
     params;
-  { ctx with int_vars = tbl; int_array_vars = arr_tbl }
+  let locals = Hashtbl.create 16 in
+  List.iter (fun (p : param) -> Hashtbl.replace locals p.p_name.name ()) params;
+  let int_callables = Hashtbl.create 8 in
+  List.iter
+    (fun (p : param) ->
+      if type_returns_int p.p_ty then Hashtbl.replace int_callables p.p_name.name ())
+    params;
+  { ctx with int_vars = tbl; int_array_vars = arr_tbl; locals; int_callables;
+             block_decls = Hashtbl.create 8 }
+
+(* Run [f] with [names] bound as locals, then restore the previous bindings,
+   so a scoped binder (let body, lambda, match arm, loop) cannot shadow an
+   intrinsic outside its scope. *)
+let with_locals : 'a. codegen_ctx -> string list -> (unit -> 'a) -> 'a =
+  fun ctx names f ->
+  let mem t n = Hashtbl.mem t n in
+  let had =
+    List.map
+      (fun n -> (n, mem ctx.locals n, mem ctx.int_vars n, mem ctx.int_callables n))
+      names
+  in
+  (* A binder of no declared callable type shadows any [Int]-returning
+     callable of the same name. *)
+  List.iter
+    (fun n -> Hashtbl.replace ctx.locals n (); Hashtbl.remove ctx.int_callables n)
+    names;
+  let set t n b = if b then Hashtbl.replace t n () else Hashtbl.remove t n in
+  (* Restore every table the binders could change: an [Int] recorded for a
+     binder inside [f] must not reach a same-named outer binding. *)
+  let restore () =
+    List.iter
+      (fun (n, l, i, c) ->
+        set ctx.locals n l; set ctx.int_vars n i; set ctx.int_callables n c)
+      had
+  in
+  match f () with
+  | v -> restore (); v
+  | exception e -> restore (); raise e
+
+(* Snapshot locals and integer metadata around [f]: statement `let`s
+   inside a nested block must not change the enclosing bindings.
+
+   An assignment inside the block to a name the block did not declare
+   changes the enclosing variable, so an [Int] classification it gained is
+   kept: the variable's type is static, so it holds after the block too
+   (`let mut n = match ..; { n = 5; } n / 2` truncates). *)
+let with_locals_scope : 'a. codegen_ctx -> (unit -> 'a) -> 'a = fun ctx f ->
+  let saved = Hashtbl.copy ctx.locals in
+  let saved_ints = Hashtbl.copy ctx.int_vars in
+  let saved_callables = Hashtbl.copy ctx.int_callables in
+  let saved_decls = Hashtbl.copy ctx.block_decls in
+  Hashtbl.reset ctx.block_decls;
+  let refill t src = Hashtbl.reset t; Hashtbl.iter (Hashtbl.replace t) src in
+  let restore () =
+    let gained =
+      Hashtbl.fold
+        (fun n () acc ->
+          if Hashtbl.mem saved_ints n || Hashtbl.mem ctx.block_decls n then acc
+          else n :: acc)
+        ctx.int_vars []
+    in
+    refill ctx.locals saved;
+    refill ctx.int_vars saved_ints;
+    List.iter (fun n -> Hashtbl.replace ctx.int_vars n ()) gained;
+    refill ctx.int_callables saved_callables;
+    refill ctx.block_decls saved_decls
+  in
+  match f () with
+  | v -> restore (); v
+  | exception e -> restore (); raise e
 
 (* ============================================================================
    Expression code generation
@@ -1484,7 +1719,8 @@ let rec gen_expr ctx (expr : expr) : string =
            "(await " ^ recv ^ "." ^ m ^ "(" ^ String.concat ", " rest ^ "))"
        | ExprVar id
          when Hashtbl.mem (builtins_for ctx) id.name
-              && not (Hashtbl.mem ctx.local_fns id.name) ->
+              && not (Hashtbl.mem ctx.local_fns id.name)
+              && not (Hashtbl.mem ctx.locals id.name) ->
            (* Honest host/runtime intrinsic (FS/JSON/Date/Wasm extern or
               a string/number primitive underpinning stdlib/string.affine).
               Applied to ANY matching call head, not only declared externs,
@@ -1492,7 +1728,9 @@ let rec gen_expr ctx (expr : expr) : string =
               same-named user definition shadows it (e.g. a user `len`). *)
            (Hashtbl.find (builtins_for ctx) id.name)
              (List.map (gen_expr ctx) args)
-       | ExprVar id when Hashtbl.mem ctx.externs id.name ->
+       | ExprVar id
+         when Hashtbl.mem ctx.externs id.name
+              && not (Hashtbl.mem ctx.locals id.name) ->
            if ctx.host = Bun && String.starts_with ~prefix:"bun_" id.name then
              failwith
                (Printf.sprintf
@@ -1564,7 +1802,9 @@ let rec gen_expr ctx (expr : expr) : string =
                     else Hashtbl.remove ctx.int_vars n
               | None -> fun () -> ()
             in
-            let b = gen_expr ctx body in
+            let b =
+              with_locals ctx (pattern_binders el_pat) (fun () -> gen_expr ctx body)
+            in
             restore ();
             kw ^ " " ^ pat_str ^ " = " ^ val_str ^ "; return " ^ b ^ ";"
         | None -> kw ^ " " ^ pat_str ^ " = " ^ val_str ^ "; return Unit;"
@@ -1609,14 +1849,17 @@ let rec gen_expr ctx (expr : expr) : string =
          `(x) => (await ...)` is a SyntaxError in browsers — Bun's parser
          happens to accept it, which hid the bug. *)
       let lctx = { ctx with in_async = false } in
-      if lowers_to_statements elam_body && expr_contains_return elam_body then
-        (* A `return` in the body returns from the lambda: emit a block
-           body so it is not swallowed by an IIFE (see {!gen_match}). *)
-        "((" ^ String.concat ", " ps ^ ") => { "
-        ^ gen_return_tail lctx elam_body ^ " })"
-      else
-        "((" ^ String.concat ", " ps ^ ") => "
-        ^ gen_expr lctx elam_body ^ ")"
+      let names = List.map (fun (p : param) -> p.p_name.name) elam_params in
+      with_locals lctx names (fun () ->
+        with_locals_scope lctx (fun () ->
+          if lowers_to_statements elam_body && expr_contains_return elam_body then
+            (* A `return` in the body returns from the lambda: emit a block
+               body so it is not swallowed by an IIFE (see {!gen_match}). *)
+            "((" ^ String.concat ", " ps ^ ") => { "
+            ^ gen_return_tail lctx elam_body ^ " })"
+          else
+            "((" ^ String.concat ", " ps ^ ") => "
+            ^ gen_expr lctx elam_body ^ ")"))
   | ExprTry { et_body; et_catch; et_finally } ->
       gen_try ctx et_body et_catch et_finally
   | ExprVariant (ty, ctor) ->
@@ -1701,8 +1944,10 @@ and gen_match ctx scrutinee arms =
     | arm :: rest ->
         let cond = gen_pattern_test scrut_var arm.ma_pat in
         let bindings = gen_pattern_bindings scrut_var arm.ma_pat in
+        (* This arm's binders scope its guard and body only; the arms after
+           it are generated outside that scope. *)
+        let arm_js = with_locals ctx (pattern_binders arm.ma_pat) @@ fun () ->
         let body = gen_expr ctx arm.ma_body in
-        let prefix =
           if bindings = "" then
             let guard = match arm.ma_guard with
               | Some g -> " && (" ^ gen_expr ctx g ^ ")" | None -> ""
@@ -1715,7 +1960,7 @@ and gen_match ctx scrutinee arms =
             ^ (match arm.ma_guard with Some g -> gen_expr ctx g | None -> "true")
             ^ ") { return " ^ body ^ "; } }"
         in
-        prefix ^ " " ^ gen_arms rest
+        arm_js ^ " " ^ gen_arms rest
   in
   if ctx.in_async then
     "(await (async (" ^ scrut_var ^ ") => { " ^ gen_arms arms ^ " })("
@@ -1798,6 +2043,7 @@ and gen_pattern_bindings scrut pat =
   Buffer.contents buf
 
 and gen_block_expr ctx block =
+  with_locals_scope ctx @@ fun () ->
   let body = Buffer.create 64 in
   List.iter (fun s ->
     Buffer.add_string body (gen_stmt ctx s);
@@ -1817,7 +2063,9 @@ and gen_try ctx body catch finally =
           | PatVar id -> "const " ^ mangle id.name ^ " = __e; "
           | _ -> ""
         in
-        "catch (__e) { " ^ bind ^ "return " ^ gen_expr ctx arm.ma_body ^ "; }"
+        "catch (__e) { " ^ bind ^ "return "
+        ^ with_locals ctx (pattern_binders arm.ma_pat) (fun () -> gen_expr ctx arm.ma_body)
+        ^ "; }"
   in
   let finally_str = match finally with
     | None -> ""
@@ -1849,7 +2097,9 @@ and gen_stmt_expr ctx (e : expr) : string =
       in
       "if (" ^ gen_expr ctx ei_cond ^ ") { " ^ gen_branch ctx ei_then
       ^ " }" ^ elseb
-  | ExprBlock blk -> gen_stmt_seq ctx blk
+  (* A source block is a scope: keep its braces, so its declarations do
+     not land in the enclosing JS scope. *)
+  | ExprBlock blk -> "{ " ^ gen_stmt_seq ctx blk ^ " }"
   | ExprMatch { em_scrutinee; em_arms } ->
       gen_match_stmt ctx em_scrutinee em_arms
   | ExprTry { et_body; et_catch; et_finally } ->
@@ -1863,7 +2113,11 @@ and gen_branch ctx e =
   | ExprBlock blk -> gen_stmt_seq ctx blk
   | other -> gen_stmt_expr ctx other
 
+(* The statements of a block whose braces the caller emits. Its `let`s are
+   local to it, so a binder declared inside cannot shadow an intrinsic
+   called after it. *)
 and gen_stmt_seq ctx blk =
+  with_locals_scope ctx @@ fun () ->
   let b = Buffer.create 64 in
   List.iter (fun s ->
     Buffer.add_string b (gen_stmt ctx s);
@@ -1875,17 +2129,27 @@ and gen_stmt_seq ctx blk =
 
 and gen_match_stmt ctx scrut arms =
   let sv = "__scrut" in
-  let rec arms_js = function
-    | [] -> "throw new Error(\"non-exhaustive match\");"
-    | arm :: rest ->
-        let cond = gen_pattern_test sv arm.ma_pat in
-        let binds = gen_pattern_bindings sv arm.ma_pat in
-        let guard = match arm.ma_guard with
-          | Some g -> " && (" ^ gen_expr ctx g ^ ")" | None -> "" in
-        "if (" ^ cond ^ guard ^ ") { " ^ binds
-        ^ gen_branch ctx arm.ma_body ^ " } else " ^ arms_js rest
+  incr let_tmp_counter;
+  (* A labelled block, as in {!gen_tail_to}: an arm binds its pattern
+     variables before its guard reads them, and an arm whose guard fails
+     falls through to the next. A guard used to run in the pattern test,
+     before the bindings existed. `$` cannot occur in a source identifier. *)
+  let label = Printf.sprintf "$smatch_%d" !let_tmp_counter in
+  let arm_js arm =
+    let cond = gen_pattern_test sv arm.ma_pat in
+    let binds = gen_pattern_bindings sv arm.ma_pat in
+    with_locals ctx (pattern_binders arm.ma_pat) (fun () ->
+      let guard = Option.map (gen_expr ctx) arm.ma_guard in
+      let body = gen_branch ctx arm.ma_body ^ " break " ^ label ^ ";" in
+      let guarded = match guard with
+        | None -> body
+        | Some g -> "if (" ^ g ^ ") { " ^ body ^ " }"
+      in
+      "if (" ^ cond ^ ") { " ^ binds ^ guarded ^ " }")
   in
-  "{ const " ^ sv ^ " = " ^ gen_expr ctx scrut ^ "; " ^ arms_js arms ^ " }"
+  label ^ ": { const " ^ sv ^ " = " ^ gen_expr ctx scrut ^ "; "
+  ^ String.concat " " (List.map arm_js arms)
+  ^ " throw new Error(\"non-exhaustive match\"); }"
 
 (* Statements that evaluate [e] and hand its value to [sink], which turns a
    JS expression into a statement (`x = v;` or `return v;`).  A `return`
@@ -1900,6 +2164,7 @@ and gen_tail_to ctx (sink : string -> string) e =
       (* The block is a JS block scope: its `let`s must not change the
          integer tracking of the code after it (a guard, a later arm). *)
       with_int_scope ctx (fun () ->
+        with_locals_scope ctx @@ fun () ->
         let b = Buffer.create 64 in
         List.iter (fun s ->
           Buffer.add_string b (gen_stmt ctx s);
@@ -1938,6 +2203,7 @@ and gen_tail_to ctx (sink : string -> string) e =
       let arm_js arm =
         let cond = gen_pattern_test sv arm.ma_pat in
         let binds = gen_pattern_bindings sv arm.ma_pat in
+        with_locals ctx (pattern_binders arm.ma_pat) @@ fun () ->
         (* The guard is emitted before the body, against the integer
            tracking the guard actually runs under. *)
         let guard = Option.map (gen_expr ctx) arm.ma_guard in
@@ -1969,7 +2235,7 @@ and with_int_scope : 'a. codegen_ctx -> (unit -> 'a) -> 'a = fun ctx f ->
     Hashtbl.reset ctx.int_vars;
     Hashtbl.iter (Hashtbl.replace ctx.int_vars) saved
   in
-  match f () with
+  match with_locals_scope ctx f with
   | v -> restore (); v
   | exception e -> restore (); raise e
 
@@ -1998,7 +2264,9 @@ and gen_try_stmt ctx body catch finally =
         let bind = match arm.ma_pat with
           | PatVar id -> "const " ^ mangle id.name ^ " = __e; " | _ -> ""
         in
-        "catch (__e) { " ^ bind ^ gen_branch ctx arm.ma_body ^ " }"
+        "catch (__e) { " ^ bind
+        ^ with_locals ctx (pattern_binders arm.ma_pat) (fun () -> gen_branch ctx arm.ma_body)
+        ^ " }"
   in
   let f = match finally with
     | None -> "" | Some blk -> " finally { " ^ gen_stmt_seq ctx blk ^ " }"
@@ -2023,7 +2291,7 @@ and gen_stmt ctx (stmt : stmt) : string =
         gen_tail_to ctx (fun v -> "void (" ^ v ^ ");") sl_value
       else
         gen_expr ctx sl_value ^ ";"
-  | StmtLet { sl_pat; sl_value; sl_mut; sl_quantity = _; sl_ty = _ } ->
+  | StmtLet { sl_pat; sl_value; sl_mut; sl_quantity = _; sl_ty } ->
       let kw = if sl_mut then "let" else "const" in
       let js =
         if lowers_to_statements sl_value && expr_contains_return sl_value then begin
@@ -2041,12 +2309,25 @@ and gen_stmt ctx (stmt : stmt) : string =
           kw ^ " " ^ gen_pattern ctx sl_pat ^ " = "
           ^ gen_expr ctx sl_value ^ ";"
       in
-      (* Track an [Int]-bound name for the rest of this body (#478). A
-         block statement's scope is the enclosing function, which
-         {!enter_fn_scope} already bounds, so no restore is needed here. *)
+      (* Track an [Int]-bound name for the rest of this block (#478).
+         {!with_locals_scope} restores the enclosing binding on exit. *)
       (match pat_var_name sl_pat with
        | Some n -> track_int_binding ctx n sl_value
        | None -> ());
+      (* Bound after its initializer is emitted: `let len = len(s);` still
+         calls the intrinsic. Lasts to the end of the enclosing scope. *)
+      let binders = pattern_binders sl_pat in
+      List.iter
+        (fun n ->
+          Hashtbl.replace ctx.locals n ();
+          Hashtbl.replace ctx.block_decls n ();
+          Hashtbl.remove ctx.int_callables n)
+        binders;
+      (* `let f: fn(String) -> Int = ...`: calls to [f] are [Int]s. *)
+      (match pat_var_name sl_pat, sl_ty with
+       | Some n, Some t when type_returns_int t ->
+           Hashtbl.replace ctx.int_callables n ()
+       | _ -> ());
       js
   | StmtExpr e -> gen_stmt_expr ctx e
   | StmtAssign (lhs, op, rhs) ->
@@ -2082,9 +2363,13 @@ and gen_stmt ctx (stmt : stmt) : string =
          before the `let`s they depend on, and `(lo + hi) / 2` lost its
          truncation. *)
       let cond_js = gen_expr ctx cond in
-      let stmts_js = String.concat " " (List.map (gen_stmt ctx) body.blk_stmts) in
-      let tail_js = match body.blk_expr with
-        | Some e -> " " ^ gen_stmt_expr ctx e | None -> "" in
+      let stmts_js, tail_js =
+        with_locals_scope ctx (fun () ->
+          let s = String.concat " " (List.map (gen_stmt ctx) body.blk_stmts) in
+          let t = match body.blk_expr with
+            | Some e -> " " ^ gen_stmt_expr ctx e | None -> "" in
+          (s, t))
+      in
       "while (" ^ cond_js ^ ") { " ^ stmts_js ^ tail_js ^ " }"
   | StmtFor (pat, iter, body) ->
       (* The iterable is evaluated in the outer scope, so emit it first. *)
@@ -2105,6 +2390,8 @@ and gen_stmt ctx (stmt : stmt) : string =
         | _ -> fun () -> ()
       in
       let body_js =
+        with_locals ctx (pattern_binders pat) @@ fun () ->
+        with_locals_scope ctx @@ fun () ->
         (* Source order (see StmtWhile): statements before the tail. *)
         let stmts_js = String.concat " " (List.map (gen_stmt ctx) body.blk_stmts) in
         let tail_js = match body.blk_expr with
@@ -2112,7 +2399,12 @@ and gen_stmt ctx (stmt : stmt) : string =
         stmts_js ^ tail_js
       in
       restore ();
-      "for (const " ^ pat_str ^ " of " ^ iter_str ^ ") { " ^ body_js ^ " }"
+      (* In `for (const x of e)`, `e` runs with `x` already in its temporal
+         dead zone, so `for f in f()` threw. Evaluate `e` first. *)
+      incr let_tmp_counter;
+      let it = Printf.sprintf "$iter_%d" !let_tmp_counter in
+      "{ const " ^ it ^ " = " ^ iter_str ^ "; for (const " ^ pat_str ^ " of "
+      ^ it ^ ") { " ^ body_js ^ " } }"
 
 (* ============================================================================
    Top-level declarations + class emission
@@ -2136,6 +2428,7 @@ let gen_body ctx (fb : fn_body) : unit =
 
 let gen_function ctx (fd : fn_decl) : unit =
   let name = mangle fd.fd_name.name in
+  ignore (claim_top ctx name "");
   let params =
     List.map (fun (p : param) -> mangle p.p_name.name) fd.fd_params in
   let is_async = fd_is_async fd in
@@ -2272,6 +2565,7 @@ let gen_default_constructor ctx (fields : struct_field list) : unit =
 let gen_class ctx ~(name : string) ~(fields : struct_field list)
     ~(ctor : fn_decl option)
     ~(methods : (string * string * fn_decl) list) : unit =
+  ignore (claim_top ctx name "");
   emit_line ctx (Printf.sprintf "export class %s {" name);
   let cls = increase_indent ctx in
   (match ctor with
@@ -2294,27 +2588,30 @@ let gen_type_decl ctx (td : type_decl) : unit =
          already been declared`. Skip any variant the preamble already provides.
          (The #136 AOT smoke never caught this — it only checks the output is
          non-empty, never runs it.) *)
-      let preamble_ctors = [ "Some"; "None"; "Ok"; "Err" ] in
       List.iter (fun (vd : variant_decl) ->
-        if List.mem vd.vd_name.name preamble_ctors then ()
+        if preamble_ctor_shared td vd then ()
         else begin
         let name = mangle vd.vd_name.name in
         let arity = List.length vd.vd_fields in
-        if arity = 0 then
-          emit_line ctx
-            (Printf.sprintf "%sconst %s = { tag: \"%s\" };" exp name
-               vd.vd_name.name)
-        else if arity = 1 then
-          emit_line ctx
-            (Printf.sprintf "%sconst %s = (value) => ({ tag: \"%s\", value });"
-               exp name vd.vd_name.name)
-        else
-          let ps = List.init arity (fun i -> "v" ^ string_of_int i) in
-          emit_line ctx
-            (Printf.sprintf
-               "%sconst %s = (%s) => ({ tag: \"%s\", values: [%s] });"
-               exp name (String.concat ", " ps) vd.vd_name.name
-               (String.concat ", " ps))
+        let binding =
+          if arity = 0 then
+            Printf.sprintf "const %s = { tag: \"%s\" };" name vd.vd_name.name
+          else if arity = 1 then
+            Printf.sprintf "const %s = (value) => ({ tag: \"%s\", value });"
+              name vd.vd_name.name
+          else
+            let ps = List.init arity (fun i -> "v" ^ string_of_int i) in
+            Printf.sprintf
+              "const %s = (%s) => ({ tag: \"%s\", values: [%s] });"
+              name (String.concat ", " ps) vd.vd_name.name
+              (String.concat ", " ps)
+        in
+        (* Two enums' identical constructors are one binding (#801), exported
+           when any enum that declares it is public. *)
+        let exp =
+          if Hashtbl.mem ctx.public_ctors vd.vd_name.name then "export " else exp
+        in
+        if claim_top ctx name binding then emit_line ctx (exp ^ binding)
         end
       ) variants;
       emit ctx "\n"
@@ -2330,6 +2627,112 @@ let gen_type_decl ctx (td : type_decl) : unit =
     If a top-level function is named [main], the module awaits its invocation.
     Emission exceptions, including [Failure] from [gen_expr], propagate;
     [codegen_bun] and [codegen_deno] convert them to [Error] results. *)
+(* ---- Runtime pruning ----------------------------------------------------
+
+   The runtime preludes hold every host helper any program might need (DOM,
+   Pixi, Sqlite, ...). Emitting all of them made every module carry ~300
+   helpers it never calls, among them a `document.body.innerHTML` setter that
+   add-on linters rightly flag. [prune_runtime] keeps a helper only if the
+   module's own code, or a kept helper, names it.
+
+   The runtime is a sequence of top-level `const` declarations (checked by
+   [test/test_runtime_prune.ml]); continuation lines are indented or close a
+   bracket, and comment lines attach to the declaration that follows them.
+   A helper is reachable when its name occurs as an identifier anywhere in
+   the reaching text, comments and strings included, so pruning can only err
+   towards keeping. No runtime helper is reached by a computed name. Kept
+   helpers stay in their original order, so evaluation order is unchanged. *)
+
+let is_ident_start c =
+  (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c = '_' || c = '$'
+
+let is_ident_char c = is_ident_start c || (c >= '0' && c <= '9')
+
+(** Every identifier-shaped word in [s]. *)
+let identifiers (s : string) : string list =
+  let n = String.length s in
+  let rec go i acc =
+    if i >= n then acc
+    else if is_ident_start s.[i] && (i = 0 || not (is_ident_char s.[i - 1])) then begin
+      let j = ref i in
+      while !j < n && is_ident_char s.[!j] do incr j done;
+      go !j (String.sub s i (!j - i) :: acc)
+    end else go (i + 1) acc
+  in
+  go 0 []
+
+(** The name a runtime line declares, if it starts a top-level `const`. *)
+let declared_name (line : string) : string option =
+  let p = "const " in
+  let lp = String.length p in
+  if String.length line > lp && String.sub line 0 lp = p
+     && is_ident_start line.[lp] then begin
+    let j = ref lp in
+    while !j < String.length line && is_ident_char line.[!j] do incr j done;
+    Some (String.sub line lp (!j - lp))
+  end else None
+
+let is_comment_or_blank (line : string) : bool =
+  let t = String.trim line in
+  t = "" || (String.length t >= 2 && String.sub t 0 2 = "//")
+
+(** Split [runtime] into chunks: [(Some name, text)] per declaration (with
+    the comment lines before it), and [(None, text)] for lines that belong
+    to no declaration, which are always kept. *)
+let runtime_chunks (runtime : string) : (string option * string) list =
+  let lines = String.split_on_char '\n' runtime in
+  let chunks = ref [] in
+  let current = ref None in        (* (name, lines rev) of the open declaration *)
+  let pending = ref [] in          (* comment lines awaiting a declaration *)
+  let close () =
+    (match !current with
+     | Some (name, ls) -> chunks := (Some name, String.concat "\n" (List.rev ls)) :: !chunks
+     | None -> ());
+    current := None
+  in
+  List.iter (fun line ->
+    match declared_name line with
+    | Some name ->
+        close ();
+        current := Some (name, line :: !pending);
+        pending := []
+    | None ->
+        if is_comment_or_blank line then pending := line :: !pending
+        else begin
+          (* A continuation line: comments seen since belong to it too. *)
+          match !current with
+          | Some (name, ls) -> current := Some (name, line :: (!pending @ ls)); pending := []
+          | None -> chunks := (None, String.concat "\n" (List.rev (line :: !pending))) :: !chunks;
+                    pending := []
+        end) lines;
+  close ();
+  if !pending <> [] then
+    chunks := (None, String.concat "\n" (List.rev !pending)) :: !chunks;
+  List.rev !chunks
+
+(** [runtime] without the declarations [body] cannot reach. *)
+let prune_runtime (runtime : string) ~(body : string) : string =
+  let chunks = runtime_chunks runtime in
+  let by_name = Hashtbl.create 512 in
+  List.iter (fun (n, text) ->
+    match n with Some name -> Hashtbl.replace by_name name text | None -> ()) chunks;
+  let kept = Hashtbl.create 512 in
+  let rec visit = function
+    | [] -> ()
+    | id :: rest ->
+        if Hashtbl.mem by_name id && not (Hashtbl.mem kept id) then begin
+          Hashtbl.replace kept id ();
+          visit (identifiers (Hashtbl.find by_name id) @ rest)
+        end else visit rest
+  in
+  visit (identifiers body);
+  List.iter (fun (n, text) -> if n = None then visit (identifiers text)) chunks;
+  let out = List.filter_map (fun (n, text) ->
+      match n with
+      | None -> Some text
+      | Some name -> if Hashtbl.mem kept name then Some text else None) chunks in
+  String.concat "\n" out ^ "\n"
+
 let generate (host : host_profile) (program : program) (symbols : Symbol.t) : string =
   let ctx = create_ctx host symbols in
   (* Register extern names so calls lower via the builtin table, and
@@ -2351,9 +2754,11 @@ let generate (host : host_profile) (program : program) (symbols : Symbol.t) : st
          | _ -> ())
     | TopConst { tc_name; _ } ->
         Hashtbl.replace ctx.local_fns tc_name.name ()
-    | TopType { td_body = TyEnum variants; _ } ->
+    | TopType { td_body = TyEnum variants; td_vis; _ } ->
         List.iter (fun (vd : variant_decl) ->
-          Hashtbl.replace ctx.ctors vd.vd_name.name ()) variants
+          Hashtbl.replace ctx.ctors vd.vd_name.name ();
+          if visibility_is_public td_vis then
+            Hashtbl.replace ctx.public_ctors vd.vd_name.name ()) variants
     | TopImpl ib ->
         List.iter (function
           | ImplFn fd ->
@@ -2370,8 +2775,25 @@ let generate (host : host_profile) (program : program) (symbols : Symbol.t) : st
      | Deno -> "// Generated by AffineScript compiler (Deno-ESM target, issue #122)"
      | Bun -> "// Generated by AffineScript compiler (Bun-ESM target, issue #734)");
   emit_line ctx "// SPDX-License-Identifier: MPL-2.0";
-  emit ctx (match host with Deno -> deno_host_prelude | Bun -> bun_host_prelude);
-  emit ctx common_prelude;
+  (* The runtime is spliced in after the body is generated, pruned to what
+     the body reaches (see [prune_runtime]). *)
+  let runtime_at = Buffer.length ctx.output in
+  let runtime =
+    (match host with Deno -> deno_host_prelude | Bun -> bun_host_prelude)
+    ^ common_prelude in
+  (* Every runtime helper name is claimed, also one pruning later drops, so
+     a program binding of a helper's name is refused (#801) whichever helpers
+     the body reaches. *)
+  claim_runtime ctx runtime;
+  (* An extern with no intrinsic lowering is called by its emitted name,
+     which must then be the host symbol: when [mangle] escapes it (an extern
+     `class` is called as `class_`), reserve that name, so a program binding
+     emitted as `class_` is refused (#801) instead of receiving the call. *)
+  Hashtbl.iter (fun e () ->
+    let js = mangle e in
+    if js <> e && not (Hashtbl.mem (builtins_for ctx) e)
+       && not (Hashtbl.mem ctx.local_fns e)
+    then ignore (claim_top ctx js ("extern/" ^ e))) ctx.externs;
 
   (* Collect structs. AffineScript's grammar accepts neither inherent
      [impl Type {}] nor a [self] expression (SELF_KW has no expression
@@ -2455,8 +2877,11 @@ let generate (host : host_profile) (program : program) (symbols : Symbol.t) : st
              emit_class_for td.td_name.name fields
          | _ -> gen_type_decl ctx td)
     | TopImpl ib ->
-        (* Inherent/trait impls don't parse in the current grammar; this
-           is a defensive fallback only. *)
+        (* Impl methods are emitted as free functions under their own
+           names (trait dispatch is not lowered here), so two impls of one
+           trait give two bindings of one name: {!gen_function}'s
+           {!claim_top} refuses that rather than letting Bun keep the
+           last (#801). *)
         List.iter (function
           | ImplFn fd -> gen_function ctx fd
           | ImplType _ -> ()) ib.ib_items
@@ -2467,6 +2892,7 @@ let generate (host : host_profile) (program : program) (symbols : Symbol.t) : st
            Plain `const` (tc_mut=false) keeps the existing `const`
            emission and JS-enforces immutability. *)
         let kw = if tc_mut then "let" else "const" in
+        ignore (claim_top ctx (mangle tc_name.name) "");
         emit_line ctx
           (Printf.sprintf "%s%s %s = %s;" exp kw (mangle tc_name.name)
              (gen_expr ctx tc_value))
@@ -2479,7 +2905,10 @@ let generate (host : host_profile) (program : program) (symbols : Symbol.t) : st
     | TopFn fd -> fd.fd_name.name = "main" | _ -> false)
     program.prog_decls in
   if has_main then emit_line ctx "await main();";
-  Buffer.contents ctx.output
+  let all = Buffer.contents ctx.output in
+  let header = String.sub all 0 runtime_at in
+  let body = String.sub all runtime_at (String.length all - runtime_at) in
+  header ^ prune_runtime runtime ~body ^ body
 
 (* Deno-ESM host profile is retired; the ESM emitter is Bun-only. The
    name is kept so existing library callers compile. *)

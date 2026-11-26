@@ -145,7 +145,7 @@
   "devDependencies": {
     "@types/vscode": "^1.80.0",
     "@vscode/test-electron": "^2.4.1",
-    "glob": "^10.4.5",
+    "glob": "^14.0.6",
     "mocha": "^10.7.3",
     "vsce": "^2.15.0"
   },

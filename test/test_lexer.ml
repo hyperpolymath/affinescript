@@ -132,8 +132,46 @@ let test_type_decl () =
      Token.UPPER_IDENT "T"; Token.RPAREN; Token.EOF]
     tokens
 
+(* #771: every token span used to start where the *previous* token started
+   (the start was read before trivia was skipped), so parse errors blamed the
+   token before the offender. Spans are (line, col) start .. end-exclusive. *)
+let spans_of source =
+  let lexer = Lexer.from_string ~file:"<test>" source in
+  let rec loop acc =
+    let (tok, (sp : Span.t)) = lexer () in
+    let r = (sp.start_pos.line, sp.start_pos.col,
+             sp.end_pos.line, sp.end_pos.col) in
+    if tok = Token.EOF then List.rev acc else loop (r :: acc)
+  in
+  loop []
+
+let span4 = Alcotest.(list (pair (pair int int) (pair int int)))
+let as_pairs = List.map (fun (a, b, c, d) -> ((a, b), (c, d)))
+
+let test_spans_after_trivia () =
+  Alcotest.check span4 "spans skip whitespace, newlines and comments"
+    (as_pairs [ (1, 1, 1, 7); (1, 8, 1, 13); (1, 13, 1, 14);
+                (5, 1, 5, 2); (5, 2, 5, 3) ])
+    (as_pairs (spans_of "module Block;\n\n/* c */\n// l\n@x"))
+
+let test_spans_multiline_string () =
+  Alcotest.check span4 "a string token spans its opening to closing quote"
+    (as_pairs [ (1, 1, 1, 2); (1, 3, 2, 3); (2, 4, 2, 5) ])
+    (as_pairs (spans_of "x \"a\nb\" y"))
+
+let test_parse_error_points_at_offender () =
+  let src = "module Block;\n\n/* c */\n\n@react.component\nfn make = 1\n" in
+  match Parse_driver.parse_string ~file:"<test>" src with
+  | _ -> Alcotest.fail "expected a parse error"
+  | exception Parse_driver.Parse_error (_, sp) ->
+    Alcotest.(check (pair int int)) "error is at the attribute, not the `;`"
+      (5, 1) (sp.start_pos.line, sp.start_pos.col)
+
 let tests =
   [
+    Alcotest.test_case "spans after trivia (#771)" `Quick test_spans_after_trivia;
+    Alcotest.test_case "multi-line string span (#771)" `Quick test_spans_multiline_string;
+    Alcotest.test_case "parse error position (#771)" `Quick test_parse_error_points_at_offender;
     Alcotest.test_case "keywords" `Quick test_keywords;
     Alcotest.test_case "identifiers" `Quick test_identifiers;
     Alcotest.test_case "literals" `Quick test_literals;

@@ -843,6 +843,18 @@ let float_heap_sites : expr list ref = ref []
 (** Discard any recorded Float-heap sites (e.g. before re-checking). *)
 let reset_float_heap_sites () : unit = float_heap_sites := []
 
+(** String-wall #560. Physical-identity map from each call of a polymorphic
+    builtin the core-WASM backend cannot lower untyped (`slice`, `show`) to
+    the instantiated function type at that call. After checking, the first
+    parameter of that type is the argument's type, so
+    {!elaborate_string_concat} can pick a monomorphic lowering:
+    `slice` on a String becomes `string_slice`; `show` on Int becomes
+    `int_to_string`, on Bool an if over two literals. Same physical-identity
+    discipline as {!string_concat_sites}. *)
+let poly_builtin_sites : (expr * ty) list ref = ref []
+
+let reset_poly_builtin_sites () : unit = poly_builtin_sites := []
+
 (** Float heap wall — heterogeneous tuples. A tuple with at least one scalar
     `Float` field is laid out with uniform 8-byte cells (see {!Ast.ExprCellTuple}).
     These two physical-identity *maps* carry the per-cell kinds (a set is not
@@ -1042,8 +1054,14 @@ let rec synth (ctx : context) (expr : expr) : ty result =
     Ok ty
 
   (* Function application *)
-  | ExprApp (fn_expr, args) ->
+  | ExprApp (fn_expr, args) as app_node ->
     let* fn_ty = synth ctx fn_expr in
+    (* #560: remember the instantiated type at `slice`/`show` calls; the
+       argument type is read off it after [apply_args] has unified it. *)
+    (match fn_expr, args with
+     | ExprVar { name = ("slice" | "show"); _ }, _ :: _ ->
+       poly_builtin_sites := (app_node, fn_ty) :: !poly_builtin_sites
+     | _ -> ());
     begin match args with
       | [] ->
         (* A zero-argument call [f()]. Zero-parameter function
@@ -1739,6 +1757,27 @@ and synth_and_unify (ctx : context) (expr : expr) (expected : ty) : unit result 
    expression grammar — any constructor it failed to descend into would leave
    a String `++` un-elaborated, where the slice-8a guard would (loudly) catch
    the obvious cases and a var-var case could still miscompile. *)
+let poly_builtin_shadowed : string list ref = ref []
+
+(** #560: monomorphic lowering for a recorded `slice`/`show` call, from the
+    argument type (first parameter of the instantiated [fty]). Cases the
+    backends do not agree on are renamed to `__show_unsupported:<Type>`, so
+    core-WASM codegen reports them by name instead of "unbound `show`". *)
+let elab_poly_builtin (id : ident) (fty : ty) (args : expr list) : expr =
+  let arg_ty = match repr fty with TArrow (a, _, _, _) -> Some (repr a) | _ -> None in
+  let call name = ExprApp (ExprVar { id with name }, args) in
+  match id.name, arg_ty, args with
+  | "slice", Some (TCon "String"), _ -> call "string_slice"
+  | "show", Some (TCon "Int"), _ -> call "int_to_string"
+  | "show", Some (TCon "Bool"), [b] ->
+    ExprIf { ei_cond = b;
+             ei_then = ExprLit (LitString ("true", id.span));
+             ei_else = Some (ExprLit (LitString ("false", id.span))) }
+  | "show", Some t, _ ->
+    let tname = match t with TCon c -> c | TApp (TCon c, _) -> c | _ -> "this type" in
+    call ("__show_unsupported:" ^ tname)
+  | _ -> ExprApp (ExprVar id, args)
+
 let rec elab_expr (e : expr) : expr =
   match e with
   | ExprBinary (l, op, r) ->
@@ -1776,7 +1815,13 @@ let rec elab_expr (e : expr) : expr =
     ExprMatch { em_scrutinee = elab_expr r.em_scrutinee;
                 em_arms = List.map elab_arm r.em_arms }
   | ExprLambda r -> ExprLambda { r with elam_body = elab_expr r.elam_body }
-  | ExprApp (f, args) -> ExprApp (elab_expr f, List.map elab_expr args)
+  | ExprApp (f, args) ->
+    let args' = List.map elab_expr args in
+    (match List.assq_opt e !poly_builtin_sites, f with
+     | Some fty, ExprVar ({ name; _ } as id)
+       when not (List.mem name !poly_builtin_shadowed) ->
+       elab_poly_builtin id fty args'
+     | _ -> ExprApp (elab_expr f, args'))
   | ExprTupleIndex (e1, i) ->
     (* Float heap wall: rewrite a float-bearing tuple's `t.i` into the cell load. *)
     (match List.assq_opt e !cell_tuple_index_sites with
@@ -1890,7 +1935,16 @@ let elaborate_string_concat (program : program) : program =
     || !float_binop_sites <> [] || !float_heap_sites <> []
     || !cell_tuple_sites <> [] || !cell_tuple_index_sites <> []
     || !cell_record_sites <> [] || !cell_field_sites <> []
+    || !poly_builtin_sites <> []
   in
+  (* #560: a program that defines its own `slice`/`show` keeps calling it. *)
+  poly_builtin_shadowed :=
+    List.filter_map (function
+      | TopFn fd when fd.fd_name.name = "slice" || fd.fd_name.name = "show" ->
+        Some fd.fd_name.name
+      | TopExternFn { ef_name; _ }
+        when ef_name.name = "slice" || ef_name.name = "show" -> Some ef_name.name
+      | _ -> None) program.prog_decls;
   let result =
     if any_sites
     then { program with prog_decls = List.map elab_top program.prog_decls }
@@ -1905,6 +1959,7 @@ let elaborate_string_concat (program : program) : program =
   reset_cell_tuple_index_sites ();
   reset_cell_record_sites ();
   reset_cell_field_sites ();
+  reset_poly_builtin_sites ();
   result
 
 (** {1 Declaration checking} *)

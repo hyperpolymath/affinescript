@@ -1,0 +1,17 @@
+// SPDX-License-Identifier: MPL-2.0
+// Regression for #801: two modules each define `label` (public) and `helper`
+// (private).  The flattened Bun-ESM program kept one `function label`, and
+// Bun keeps the last of two same-named declarations without complaint, so
+// both modules called Lib801.B's: "from B" twice.  X and Y reach the two
+// `label`s only through their own imports (the shape that still collided
+// after #797).
+module same_name_modules;
+use Lib801.A::{ a_label, a_helper };
+use Lib801.B::{ b_label, b_helper };
+use Lib801.X::{ via_a };
+use Lib801.Y::{ via_b };
+
+pub fn labels() -> String {
+  a_label() ++ "|" ++ b_label() ++ "|" ++ a_helper() ++ "|" ++ b_helper()
+    ++ "|" ++ via_a() ++ "|" ++ via_b()
+}

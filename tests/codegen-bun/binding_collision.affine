@@ -1,0 +1,9 @@
+// SPDX-License-Identifier: MPL-2.0
+// #801 negative check: Lib801c.A's `Blue` and Lib801c.B's `Blue(Int)` would
+// both be the top-level binding `Blue`.  Compilation must fail with the
+// emitter's refusal, not produce a module where one replaces the other.
+module binding_collision;
+use Lib801c.A::{ a_tag };
+use Lib801c.B::{ b_tag };
+
+pub fn tags() -> Int { a_tag() * 10 + b_tag() }

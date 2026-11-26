@@ -70,13 +70,25 @@ type state = {
   mutable line : int;
   mutable col : int;
   mutable line_start : int;
+  mutable tok_start : Span.pos;
+  (** Start of the token being lexed. Set on every entry to [token]; trivia
+      (whitespace, newlines, comments) re-enters [token], so after it returns
+      this is the start of the real token, not of the trivia before it
+      (#771: spans used to be one token early). *)
   file : string;
 }
 
-let create_state file = { line = 1; col = 1; line_start = 0; file }
+let create_state file =
+  { line = 1; col = 1; line_start = 0;
+    tok_start = { Span.line = 1; col = 1; offset = 0 }; file }
 
 let current_pos state buf =
   let offset = Sedlexing.lexeme_start buf in
+  { Span.line = state.line; col = offset - state.line_start + 1; offset }
+
+(** Position just past the last consumed lexeme. *)
+let end_pos state buf =
+  let offset = Sedlexing.lexeme_end buf in
   { Span.line = state.line; col = offset - state.line_start + 1; offset }
 
 let update_newlines state buf =
@@ -129,6 +141,7 @@ let newline = [%sedlex.regexp? '\n']
 
 (** Main lexer function *)
 let rec token state buf =
+  state.tok_start <- end_pos state buf;
   match%sedlex buf with
   (* Whitespace *)
   | Plus whitespace -> token state buf
@@ -230,6 +243,15 @@ let rec token state buf =
   (* Identifiers *)
   | lower_ident ->
     let s = Sedlexing.Utf8.lexeme buf in
+    (* `__mod_` is reserved for the names Module_loader gives imported
+       functions and constants when it flattens a program (#801).  A source
+       binder spelt that way could capture a rewritten reference. *)
+    if String.length s >= 6 && String.sub s 0 6 = "__mod_" then
+      raise (Lexer_error
+               (Printf.sprintf
+                  "identifier '%s': the prefix `__mod_` is reserved for \
+                   compiler-generated names" s,
+                current_pos state buf));
     (try Hashtbl.find keywords s with Not_found -> LOWER_IDENT s)
   | upper_ident ->
     let s = Sedlexing.Utf8.lexeme buf in
@@ -326,22 +348,21 @@ and char_lit state buf =
     let pos = current_pos state buf in
     raise (Lexer_error ("Invalid character literal", pos))
 
+(** Lex one token and return it with its true span: from the first
+    character of the token (after any trivia) to just past its last. *)
+let next_span state buf =
+  let tok = token state buf in
+  let stop = end_pos state buf in
+  (tok, Span.make ~file:state.file ~start_pos:state.tok_start ~end_pos:stop)
+
 (** Create a token stream from a string *)
 let from_string ~file content =
   let buf = Sedlexing.Utf8.from_string content in
   let state = create_state file in
-  fun () ->
-    let start_pos = current_pos state buf in
-    let tok = token state buf in
-    let end_pos = current_pos state buf in
-    (tok, Span.make ~file ~start_pos ~end_pos)
+  fun () -> next_span state buf
 
 (** Create a token stream from a channel *)
 let from_channel ~file chan =
   let buf = Sedlexing.Utf8.from_channel chan in
   let state = create_state file in
-  fun () ->
-    let start_pos = current_pos state buf in
-    let tok = token state buf in
-    let end_pos = current_pos state buf in
-    (tok, Span.make ~file ~start_pos ~end_pos)
+  fun () -> next_span state buf

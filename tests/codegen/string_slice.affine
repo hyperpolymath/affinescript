@@ -1,0 +1,24 @@
+// SPDX-License-Identifier: MPL-2.0
+// SPDX-FileCopyrightText: 2025-2026 hyperpolymath
+//
+// #560 (codegen wall 1): `slice` on a String and `show` on Int / Bool lower
+// to core WASM. The typechecker records each call's argument type and
+// Typecheck.elaborate_string_concat rewrites it to a monomorphic op
+// (`string_slice`, `int_to_string`, an if over "true"/"false").
+//
+// slice is half-open [lo, hi); a negative index counts from the end; both
+// are clamped (lib/interp.ml `slice`, JS `.slice`). The companion harness
+// test_string_slice.mjs asserts main() == 31; the same cases are pinned
+// interpreter-side in test/test_e2e.ml (E2E String-wall #560).
+
+fn cut(s: String, lo: Int, hi: Int) -> String { slice(s, lo, hi) }
+
+fn main() -> Int {
+  let s = "hello world";
+  let a = if cut(s, 1, 4) == "ell" { 1 } else { 0 };         // plain
+  let b = if cut(s, -5, 99) == "world" { 2 } else { 0 };     // negative lo, hi clamped
+  let c = if cut(s, 7, 2) == "" { 4 } else { 0 };            // hi < lo -> empty
+  let d = if cut(s, -99, -6) == "hello" { 8 } else { 0 };    // both negative, lo floored at 0
+  let e = if show(-42) ++ show(true) ++ show(1 < 0) == "-42truefalse" { 16 } else { 0 };
+  a + b + c + d + e                                          // 31 when every case holds
+}

@@ -1,0 +1,106 @@
+// SPDX-License-Identifier: MPL-2.0
+= proven-* framework adoption
+
+Source:: `hyperpolymath/proven-cicd-and-workflows`
+Pinned commit:: `50a443f01b1b85e4957b893a6f1a0ed2e8a52459`
+Licence of the source:: MPL-2.0 (headers kept as shipped)
+
+[cols="2,3,3"]
+|===
+| File here | Upstream | Change
+
+| `code-hygiene-check.sh`
+| `actions/code-hygiene-check/check.sh`
+| a "vendored from" comment only
+
+| `test-code-hygiene-check.sh`
+| `actions/code-hygiene-check/test.sh`
+| the checker path (`check.sh` -> `code-hygiene-check.sh`) and the comment
+
+| `required-files-check.sh`
+| `actions/required-files-check/action.yml`, the `run:` block
+| extracted to a script; `REPO_OWNER` / `REPO_NAME` default to the Actions
+  environment instead of the `github` context
+|===
+
+== Why vendored, not called
+
+The framework's own consumer model calls its reusable workflows and actions
+by remote SHA, removes them from `.github/workflows/actions.lock`, and adds a
+second producer of the `CI/gate` status. This repository's CI is standalone
+(#603/#604), every `uses:` must match `actions.lock`, and `CI/gate` is the one
+required check on `main`. Copying the scripts keeps all three.
+
+== How they run
+
+`tools/ci/governance-standalone.sh` runs them as checks [5] and [6]. They are
+*advisory*: findings print as warnings and do not fail the gate. Only a failed
+self-test of the vendored hygiene checker (its positive and negative controls)
+fails the gate, because then the advisory result itself cannot be trusted.
+
+Run them on their own:
+
+----
+tools/ci/proven/required-files-check.sh
+tools/ci/proven/code-hygiene-check.sh      # uses .cicd-hygiene-allow
+tools/ci/proven/test-code-hygiene-check.sh
+----
+
+== Findings when adopted (2026-11-25)
+
+* required-files: `MAINTAINERS` names `@metadatastician` and never the
+  repository owner `hyperpolymath`; the gate reads that as an unedited
+  template. Owner to decide; not changed here.
+* code-hygiene: 147 TODO / FIXME / XXX / HACK / STUB markers without an
+  issue link (`MARKER(#N)`), most in `tools/affine-pkg/src` and `runtime/src`.
+  No proof escapes outside `.cicd-hygiene-allow`.
+
+== Making them blocking
+
+Swap `advisory …` for a failing call in `governance-standalone.sh` once the
+tree passes. That, and any adoption of the remote reusable workflows, is an
+owner decision.
+
+== Updating
+
+Copy the three files from the new upstream commit, re-apply the changes in
+the table, update the pinned commit above and in each file's comment, and run
+`tools/ci/proven/test-code-hygiene-check.sh` and
+`tools/ci/governance-standalone.sh`.
+
+[[proven-tests]]
+== proven-tests-and-benches: lexer run report
+
+Not vendored: only the contract is used. `test/proven_report.ml` is an OCaml
+producer of the schema_version-2 run report (the framework's own emitter and
+validator are Python, which this repository does not use).
+`PROVEN_REPORT=FILE test_main.exe` writes the report for the lexer suite
+(`test/test_lexer.ml`) instead of running Alcotest.
+`tools/ci/proven/proven-report.sh` builds the framework's Rust validator,
+`proven-evidence`, from
+
+Source:: `hyperpolymath/proven-tests-and-benches`,
+  `integrations/contract/proven-tests/downstream/rust/proven-evidence`
+Pinned commit:: `f90bacbe3a5fa1869239fcb9175757509464aa13`
+
+and runs `emit` and `check` on the report. The contract's own pin
+(`contract-version.json`, `2eaa6535…`) predates the crate's `Cargo.lock`, so
+it cannot be built with `--locked`; the newer commit is pinned instead.
+
+The CI `build` job runs it as a step with `continue-on-error: true`, so it
+reports without failing the job.
+
+What the report claims, and why:
+
+* Every entry is `Unproven` with an empty proof ladder: no lexer test has a
+  mechanised theorem or a safety certificate behind it.
+* Every entry is `FixtureDebt`: no test yet has a *demonstrated* firing
+  fixture (an input with the defect, shown to make the test fail). The
+  contract leaves debt entries out of the pass/fail ledger, so the summary
+  shows 0 tests and 16 unproven. To keep failures visible anyway, the
+  emitter exits 1 when any test does not pass, and the entry records the
+  real outcome; `test/test_proven_report.ml` pins that behaviour.
+
+Next steps: add silence/firing fixture pairs to tests (moving them from
+`FixtureDebt` to `Fixtures`, where they count), then extend the report to
+more suites.
