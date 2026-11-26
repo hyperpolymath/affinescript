@@ -1,0 +1,14 @@
+// SPDX-License-Identifier: MPL-2.0
+// Declared return types and nested statement bindings govern division.
+pub fn int_value() -> Int = 7;
+pub fn declared_half() -> Int = int_value() / 2;
+
+// A user function with a builtin name must use its declared Float result.
+pub fn len(x: Int) -> Float = if x == 0 { 7.0 } else { 2.0 };
+pub fn builtin_named_fraction() -> Float = len(0) / len(1);
+
+pub fn lexical_call() -> Float {
+  let int_value = fn() => 7.0;
+  let string_length = fn() => 2.0;
+  int_value() / string_length()
+}
