@@ -30,8 +30,11 @@ async function check(bytes, label, want) {
 await check(readFileSync('tests/codegen/float_const_shadow.wasm'),
   'same-name let', 3);
 
-const compiler = resolve(process.env.AFFINESCRIPT_COMPILER
-  ?? './_build/default/bin/main.exe');
+// A bare name (e.g. `affinescript` on PATH) is looked up on PATH; a path is
+// made absolute because the compile below runs from the fixtures directory.
+const rawCompiler = process.env.AFFINESCRIPT_COMPILER
+  ?? './_build/default/bin/main.exe';
+const compiler = rawCompiler.includes('/') ? resolve(rawCompiler) : rawCompiler;
 const dir = mkdtempSync(join(tmpdir(), 'affine-561-float-'));
 try {
   const out = join(dir, 'float_const_caller.wasm');

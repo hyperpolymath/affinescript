@@ -20,6 +20,9 @@ if [ -x "$ROOT_DIR/_build/default/bin/main.exe" ]; then
 elif command -v affinescript >/dev/null 2>&1; then
   COMPILER="affinescript"
   COMPILE_CMD=("$COMPILER" compile)
+  # Harnesses that compile their own inputs (e.g. test_float_global_bytes.mjs)
+  # read this; without it they default to _build/default/bin/main.exe.
+  export AFFINESCRIPT_COMPILER="${AFFINESCRIPT_COMPILER:-$(command -v affinescript)}"
 else
   COMPILER="dune exec affinescript --"
   COMPILE_CMD=(dune exec affinescript -- compile)
