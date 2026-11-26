@@ -4537,6 +4537,17 @@ let test_modmut561_immutable_write_rejected () =
   | Ok _ -> Alcotest.fail "a write to an immutable const must not compile"
   | Error _ -> ()
 
+let test_modmut561_fn_valued_const_call_rejected () =
+  (* Consts are registered under a negative global sentinel; calling one
+     emitted `call` with that negative index, an invalid module. *)
+  match wasm_of_source
+          "const handler: fn(Int) -> Int = fn(x: Int) -> Int { x + 1 };\n\
+           pub fn main() -> Int { handler(41) }" with
+  | Ok _ -> Alcotest.fail "a call to a function-valued const must not compile"
+  | Error msg ->
+    Alcotest.(check bool) "names the const" true
+      (string_contains msg "handler")
+
 let test_modmut561_deferred_init_runs_from_exports () =
   (* A non-constant initialiser is not a valid wasm global init; it is
      zero-initialised and set by an init runner that every exported
@@ -4667,6 +4678,7 @@ let modmut561_tests = [
   Alcotest.test_case "wasm: const mut write is global.set" `Quick test_modmut561_write_is_global_set;
   Alcotest.test_case "wasm: Float const is an f64 global" `Quick test_modmut561_float_const_is_f64;
   Alcotest.test_case "wasm: write to an immutable const is rejected" `Quick test_modmut561_immutable_write_rejected;
+  Alcotest.test_case "wasm: calling a function-valued const is rejected" `Quick test_modmut561_fn_valued_const_call_rejected;
 ]
 let test_stringwall_concat_guard_rejects_string () =
   let prog = Parse_driver.parse_string ~file:"<stringwall>"

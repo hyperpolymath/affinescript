@@ -41,9 +41,9 @@ zero-initialised and set, in declaration order, on the first call into
 any export (not from the wasm start function, which runs before a host
 has bound memory). If an initialiser throws, later calls into the module
 trap rather than run with a global still zero. A record const's fields
-load at their own offsets, and a local bound to an imported `Float`
+load at their own offsets, even after an initialiser binds a local of the same name, and a local bound to an imported `Float`
 function's result is f64. An array element write (`xs[i] = ..`, `+=`) lands past
-the length header instead of overwriting it. Compound assignment to a `Float` global uses
+the length header instead of overwriting it. Calling a function-valued const is a named error rather than an invalid `call`. Compound assignment to a `Float` global uses
 the f64 ops, and an imported `Float` const is an f64 global (Closes #561)
 * json: `hpm_json_object_len` / `hpm_json_object_key` enumerate object
 members, so `to_json` materialises objects instead of returning `None`.

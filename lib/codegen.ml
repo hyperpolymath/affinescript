@@ -2037,6 +2037,14 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
           | ExprVar id ->
             (* Check if it's a named function or a variable holding a lambda *)
             begin match List.assoc_opt id.name ctx_after_args.func_indices with
+          | Some func_idx when func_idx < 0 ->
+            (* #561: a negative index is a top-level const (global
+               sentinel), not a function. Calling a function-valued const
+               would emit `call` with an invalid index; refuse it by name. *)
+            Error (UnsupportedFeature
+              (Printf.sprintf "calling the top-level constant `%s` is not \
+                               supported on the core-WASM backend; declare it \
+                               as a `fn` instead (#561)" id.name))
           | Some func_idx ->
             (* Direct function call *)
             let call_instr = Call func_idx in
@@ -3767,7 +3775,10 @@ let gen_decl (ctx : context) (decl : top_level) : context result =
     let init_vts = List.init ctx'.next_local (fun i ->
       match List.assoc_opt i ctx'.local_types with Some t -> t | None -> I32) in
     let ctx' = { ctx' with locals = ctx.locals; next_local = ctx.next_local;
-                           local_types = ctx.local_types } in
+                           local_types = ctx.local_types;
+                           (* The initialiser's locals may have shadowed a
+                              module record const's layout ([alloc_local]). *)
+                           field_layouts = ctx.field_layouts } in
     let global_idx = List.length ctx'.globals in
     (* #561: the global takes the declared type (a `Float` const is an f64
        global; it was always i32, which the engine rejected), and a
