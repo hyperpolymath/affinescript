@@ -12,7 +12,7 @@ const mod = await WebAssembly.compile(buf);
 const wanted = WebAssembly.Module.imports(mod)
   .filter((i) => i.module !== 'wasi_snapshot_preview1')
   .map((i) => `${i.module}.${i.name}`)
-  .sort();
+  .sort((a, b) => a.localeCompare(b));
 assert.deepEqual(wanted, ['Console.log', 'Dom.domDateNow'],
   `only the host functions the program calls are imported, got ${wanted}`);
 
