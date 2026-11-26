@@ -2054,8 +2054,10 @@ let require_symbol symbols refs line col =
 (** hover — definition span resolves to its own name. *)
 let test_hover_def_span () =
   let (symbols, refs) = pipeline_for_hover (fixture "arithmetic.affine") in
-  (* `fn add(…)` — name span starts at line 5, col 1. *)
-  let sym = require_symbol symbols refs 5 1 in
+  (* `fn add(…)` — the name `add` starts at line 5, col 4. (This used to
+     read col 1, which only matched because every token span was shifted one
+     token early; fixed in #771.) *)
+  let sym = require_symbol symbols refs 5 4 in
   Alcotest.(check string) "hovered name is 'add'" "add" sym.Symbol.sym_name;
   Alcotest.(check string) "kind is function"
     "function" (Json_output.symbol_kind_to_string sym.sym_kind)
@@ -2063,8 +2065,9 @@ let test_hover_def_span () =
 (** hover — use-site reference resolves to the defining symbol. *)
 let test_hover_use_site () =
   let (symbols, refs) = pipeline_for_hover (fixture "full_pipeline.affine") in
-  (* `Circle` is used at line 33, col 14 (verified above). *)
-  let sym = require_symbol symbols refs 33 14 in
+  (* `Circle` is used at line 33, col 16: `  let circle = Circle(5);`.
+     (Previously col 14 — the `=` — under the one-token-early spans, #771.) *)
+  let sym = require_symbol symbols refs 33 16 in
   Alcotest.(check string) "use-site resolves to 'Circle'" "Circle" sym.Symbol.sym_name
 
 (** hover — off-document position returns None without crashing. *)
@@ -2076,7 +2079,7 @@ let test_hover_not_found () =
 (** goto-def — JSON output is well-formed (has "found" and "file"). *)
 let test_goto_def_json () =
   let (symbols, refs) = pipeline_for_hover (fixture "arithmetic.affine") in
-  let sym_opt = Json_output.find_symbol_at symbols refs 5 3 in
+  let sym_opt = Json_output.find_symbol_at symbols refs 5 4 in
   let json = match sym_opt with
     | Some sym -> Json_output.goto_def_to_json sym
     | None     -> Json_output.not_found_json
