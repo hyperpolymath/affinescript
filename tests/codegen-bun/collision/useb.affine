@@ -1,0 +1,4 @@
+// SPDX-License-Identifier: MPL-2.0
+module useb;
+use b::{ pick };
+pub fn viaB(x: Int) -> Int { pick(x) }

@@ -1,0 +1,92 @@
+// SPDX-License-Identifier: MPL-2.0
+// Regression: a local binding named like a host intrinsic (`get`, `len`,
+// `trim`, `show`, ...) must shadow it. A parameter `get` used to compile to
+// the ref-cell builtin, `("x").__cell`, and crash at run time (found while
+// porting metadatastician/consent-aware-inspector).
+
+use prelude::{ Option, Some, None };
+
+pub fn call_param(get: String -> Option<String>) -> String {
+  match get("x") { Some(v) => v, None => "none" }
+}
+
+// The initializer still calls the intrinsic; the body sees the local.
+pub fn let_after_init(s: String) -> Int {
+  let len = len(s);
+  len + 1
+}
+
+pub fn lambda_param(s: String) -> String {
+  let f = fn(trim: String -> String) => trim(s);
+  f(fn(x: String) => x ++ "!")
+}
+
+// A binder's scope ends with its arm, loop or lambda: the intrinsic is
+// visible again afterwards in the same function.
+pub fn scope_ends(s: String, xs: [String -> String]) -> String {
+  let mut out = "";
+  for trim in xs { out = out ++ trim(s); }
+  let h = match Some(fn(z: String) => "[" ++ z ++ "]") { Some(trim) => trim(s), None => "" };
+  out ++ h ++ trim("  t  ")
+}
+
+pub fn let_scope_ends(s: String) -> String {
+  let a = { let trim = fn(z: String) => z ++ "?"; trim(s) };
+  a ++ trim("  u  ")
+}
+
+// The intrinsic is visible again after a lambda that shadowed it.
+pub fn lambda_then_intrinsic(s: String) -> String {
+  let f = fn(trim: String -> String) => trim(s);
+  f(fn(x: String) => x ++ "!") ++ trim("  t  ")
+}
+
+// A later arm sees the intrinsic an earlier arm's binder shadowed.
+pub fn later_arm_intrinsic(o: Option<String -> String>) -> String {
+  match o { Some(trim) => trim("a"), None => trim("  b  ") }
+}
+
+fn positive(n: Int) -> Option<Int> { if n > 0 { Some(n) } else { None } }
+
+// A statement-position guard reads its arm's binder; a false guard falls
+// through to the next arm.
+pub fn stmt_guard(n: Int) -> String {
+  let mut out = "";
+  match positive(n) {
+    Some(len) if len > 5 => { out = "big"; },
+    Some(len) => { out = "small:" ++ int_to_string(len); },
+    None => { out = "none"; }
+  };
+  out
+}
+
+fn letters() -> [String] { ["x", "y"] }
+
+// The iterable runs before the loop binder exists.
+pub fn for_shadows_callee() -> String {
+  let mut out = "";
+  for letters in letters() { out = out ++ letters; }
+  out
+}
+
+// A `let` inside an `if` block ends with the block: the call after it is
+// the intrinsic, whether or not the branch ran.
+pub fn if_block_let(c: Bool) -> Int {
+  let mut n = 0;
+  if c { let len = fn(t: String) => 10; n = len("x"); }
+  n + len("ab")
+}
+
+// A standalone block is a scope too.
+pub fn bare_block_let() -> Int {
+  let mut n = 0;
+  { let len = fn(t: String) => 7; n = len("x"); };
+  n + len("abc")
+}
+
+// A call to a local named `len` is not provably an Int: `/` must not
+// truncate it.
+pub fn shadowed_len_div() -> Float {
+  let len = fn(s: String) => { if s == "a" { 3.0 } else { 2.0 } };
+  len("a") / len("b")
+}

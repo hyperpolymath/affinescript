@@ -101,6 +101,8 @@
   wasm_gc
   wasm_gc_encode
   wasi_runtime
+  wasm_dtoa
+  float_format
   wgsl_codegen)
  (libraries str unix sedlex fmt menhirLib yojson borrow_polonius)
  ; Warnings 8 (partial-match) and 9 (missing-record-fields) are demoted from

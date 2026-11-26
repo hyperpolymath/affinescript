@@ -117,6 +117,20 @@ elif ! grep -q '#801' "$collision_log"; then
   sed 's/^/    /' "$collision_log" >&2
 fi
 
+# 9. Two modules' different public declarations of one name that reach one
+#    program transitively (main -> usea -> a::pick, main -> useb -> b::pick)
+#    stay distinct: each is carried under its module-qualified name (#801), so
+#    usea calls a::pick and useb calls b::pick. Last-wins used to rebind
+#    usea's call to b::pick silently (viaA(1) returned 100, not 2).
+collision_log="$TEST_DIR/collision/collision.log"
+if ! "${COMPILE_CMD[@]}" "$TEST_DIR/collision/main.affine" \
+    -o "$TEST_DIR/collision/main.bun.js" --bun-esm >"$collision_log" 2>&1; then
+  fail "transitive same-named public functions did not compile"
+  sed 's/^/    /' "$collision_log" >&2
+elif ! (cd "$TEST_DIR/collision" && bun both.harness.mjs); then
+  fail "transitive same-named public functions were not kept distinct"
+fi
+
 if [ "${#failures[@]}" -gt 0 ]; then
   echo ""
   echo "✗ ${#failures[@]} native Bun-ESM check(s) failed:"

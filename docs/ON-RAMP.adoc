@@ -144,8 +144,27 @@ A face is a *shape for AffineScript source*. It is not a ReScript parser.
 [source,console]
 ----
 $ affinescript check src/popup.affine
-src/popup.affine:16:8: parse error: Syntax error
+src/popup.affine:17:1: parse error: Syntax error
 ----
+
+The position is the first token the parser could not accept. (Before #771
+was fixed, every span started one token early, so errors pointed at the
+innocent token before the real one, e.g. the `;` of `module Block;`.) For
+the consumer that prompted this page, each file now stops at a ReScript
+construct:
+
+[cols="2,1,3",options="header"]
+|===
+|File |Position |Construct
+|`src/background.affine` |18:1 |`struct onMessage`: abstract type, no body
+|`src/popup.affine` |17:1 |`struct tabsApi`: abstract type, no body
+|`src/content.affine` |20:1 |`@val @scope("browser")` external binding
+|`src/components/Block.affine` |8:1 |`@react.component`
+|`src/components/FormFiller.affine` |16:1 |`@react.component`
+|`src/core/PdfTool.affine` |17:16 |`struct block { {`: ReScript object type
+|`src/core/ProvenMount.affine` |12:3 |`| Mounted(Dom.element)`: ReScript variant syntax
+|`src/core/Storage.affine` |8:1 |`module Template = {`: ReScript nested module
+|===
 
 ReScript constructs with no AffineScript counterpart: `@val` / `@module` /
 `@scope` / `@react.component` attributes, `%raw`, `external … = "js.path"`
@@ -247,28 +266,28 @@ whole round-trip.
 
 Two grammar rules cost consumers time, so they are stated here:
 
-* `if`, `while` and `for` are self-terminating statements — the closing `}`
-  is enough.
-* A `match` that is *not* a block's final expression is an ordinary
-  expression statement and needs its `;`:
+* `if`, `while`, `for` and `match` are self-terminating statements — the
+  closing `}` is enough (#644). A trailing `;` is accepted only after `if`
+  and `match`; after `while` or `for` it is a parse error:
 
 [source,affine]
 ----
 pub fn f(o: Opt) -> Int {
-  match o {                    // mid-block: statement, needs the `;`
+  match o {                    // mid-block statement: no `;` needed
     SomeV(v) => { return v; }
     NoneV => {}
-  };
+  }
   return 0;
 }
 ----
 
-Omitting that `;` fails at the `}` that closes the `match`, which reads as
-"the match is broken" rather than "the statement is unterminated". Empty arm
-bodies (`Pat => {}`) are fine, in any position. The rule is pinned by
-`test_match_statement_requires_semicolon` in `test/test_e2e.ml`, and the
-grammar question ("should a `}`-terminated `match` self-terminate, as `if`
-does?") is open on `#644`.
+* A statement that starts with `if` or `match` and is followed by a token
+  that can continue an expression (`*`, `-`, `(`, `[`, `&`, `|`) is read as
+  that longer expression, so `match o { .. } -1;` subtracts. Put a `;` after
+  the `}` when the next statement starts with one of those tokens.
+
+Empty arm bodies (`Pat => {}`) are fine, in any position. Both rules are
+pinned in `test/test_e2e.ml` (`test_match_statement_self_terminates`).
 
 == The worked example
 

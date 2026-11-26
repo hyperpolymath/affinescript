@@ -1292,6 +1292,12 @@ stmt:
   | e = expr SEMICOLON { StmtExpr e }
   | IF cond = expr then_blk = block else_part = else_part?
     { StmtExpr (ExprIf { ei_cond = cond; ei_then = ExprBlock then_blk; ei_else = else_part }) }
+  (* A statement `match`, like a statement `if`, ends with its own `}` and
+     needs no `;` before the next statement (#644). On the tokens that could
+     continue an expression (`*`, `-`, `(`, `[`, `&`, `|`) and before the
+     closing `}`, Menhir keeps the expression reading, as it does for `if`. *)
+  | MATCH scrutinee = expr LBRACE arms = list(match_arm) RBRACE
+    { StmtExpr (ExprMatch { em_scrutinee = scrutinee; em_arms = arms }) }
   | lhs = expr_postfix EQ rhs = expr SEMICOLON { StmtAssign (lhs, AssignEq, rhs) }
   | lhs = expr_postfix PLUSEQ rhs = expr SEMICOLON { StmtAssign (lhs, AssignAdd, rhs) }
   | lhs = expr_postfix MINUSEQ rhs = expr SEMICOLON { StmtAssign (lhs, AssignSub, rhs) }
