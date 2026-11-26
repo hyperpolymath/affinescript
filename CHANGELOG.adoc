@@ -115,6 +115,10 @@ pure-extern semantics (Closes #332) (#338)
 
 ==== Fixed
 
+* WASM: a block ending in a Unit call with no `;` (`println("Hi")`) now
+compiles to the same code as the statement form (`println("Hi");`).
+Faces keep whichever form the author wrote, so greet in all six faces
+now gives byte-identical wasm instead of two classes (Closes #601)
 * Bun-ESM: every module carried the whole runtime (~300 host helpers),
 including a `document.body.innerHTML` setter that add-on linters flag. Only
 the helpers a module reaches are emitted now, in their original order
