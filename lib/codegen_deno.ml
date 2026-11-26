@@ -310,11 +310,11 @@ const __as_rsaKey = (pem, priv) => {
 };
 const __as_sha256 = (b) => Array.from(__as_crypto().createHash("sha256").update(__as_bytes(b)).digest());
 const __as_hmacSha256 = (k, m) => Array.from(__as_crypto().createHmac("sha256", __as_bytes(k)).update(__as_bytes(m)).digest());
-const __as_b64urlEncode = (b) => Buffer.from(__as_bytes(b)).toString("base64url");
+const __as_b64urlEncode = (b) => globalThis.Buffer.from(__as_bytes(b)).toString("base64url");
 // snip:prod - Buffer's base64url decoder skips bad characters silently; reject them.
 const __as_b64urlDecode = (s) => {
   if (!/^[A-Za-z0-9_-]*$/.test(s) || s.length % 4 === 1) throw new Error("invalid base64url");
-  return Array.from(Buffer.from(s, "base64url"));
+  return Array.from(globalThis.Buffer.from(s, "base64url"));
 };
 const __as_rsaSign = (pem, m) => Array.from(__as_crypto().sign("sha256", __as_bytes(m), __as_rsaKey(pem, true)));
 const __as_rsaVerify = (pem, m, sig) => __as_crypto().verify("sha256", __as_bytes(m), __as_rsaKey(pem, false), __as_bytes(sig));
