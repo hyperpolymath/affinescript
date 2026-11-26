@@ -2958,34 +2958,61 @@ and gen_stmt (ctx : context) (stmt : stmt) : (context * instr list) result =
             let gidx = -(k + 1) in
             (* A record global's field offsets are fixed at its declaration
                ([field_layouts]) and every reader, in any function, loads at
-               them. A replacement value whose known layout differs (e.g. a
-               literal listing the fields in another order) would be read
-               at the wrong offsets, so it is rejected by name (#561). *)
+               them. Each value the right-hand side can produce (every
+               `if`/`match` branch) must have that layout; a different one
+               (e.g. a literal listing the fields in another order) or one
+               that cannot be determined is rejected by name (#561). *)
             let* () = match op, List.assoc_opt id.name ctx.field_layouts with
               | AssignEq, Some decl_layout ->
-                let rhs_layout = match rhs with
-                  | ExprRecord r ->
-                    Some (List.mapi (fun i (fn, _) -> (fn.name, i * 4))
-                            r.er_fields)
-                  | ExprVar src when src.name <> id.name ->
-                    List.assoc_opt src.name ctx.field_layouts
-                  | ExprApp (ExprVar fn_id, _) ->
-                    Option.bind (List.assoc_opt fn_id.name ctx.fn_ret_structs)
-                      (fun s -> List.assoc_opt s ctx.struct_layouts)
-                  | _ -> None
+                (* Every value the right-hand side can produce: the
+                   branches of an `if`/`match` and a block's tail. *)
+                let rec leaves e = match e with
+                  | ExprIf ei ->
+                    leaves ei.ei_then
+                    @ (match ei.ei_else with Some e' -> leaves e' | None -> [])
+                  | ExprMatch m ->
+                    List.concat_map (fun arm -> leaves arm.ma_body) m.em_arms
+                  | ExprBlock { blk_expr = Some e'; _ } -> leaves e'
+                  | _ -> [e]
                 in
-                begin match rhs_layout with
-                  | Some l when l <> decl_layout ->
-                    Error (UnsupportedFeature
-                      (Printf.sprintf
-                         "assignment to `%s`: the new record's field layout \
-                          (%s) differs from the declared one (%s); list the \
-                          fields in the declared order on the core-WASM \
-                          backend (#561)" id.name
-                         (String.concat ", " (List.map fst l))
-                         (String.concat ", " (List.map fst decl_layout))))
-                  | _ -> Ok ()
-                end
+                let leaf_layout e = match e with
+                  | ExprVar src when src.name = id.name -> `Ok
+                  | ExprRecord r ->
+                    `Layout (List.mapi (fun i (fn, _) -> (fn.name, i * 4))
+                               r.er_fields)
+                  | ExprVar src ->
+                    (match List.assoc_opt src.name ctx.field_layouts with
+                     | Some l -> `Layout l | None -> `Unknown)
+                  | ExprApp (ExprVar fn_id, _) ->
+                    (match Option.bind
+                             (List.assoc_opt fn_id.name ctx.fn_ret_structs)
+                             (fun s -> List.assoc_opt s ctx.struct_layouts) with
+                     | Some l -> `Layout l | None -> `Unknown)
+                  | _ -> `Unknown
+                in
+                let decl_names = String.concat ", " (List.map fst decl_layout) in
+                List.fold_left (fun acc leaf ->
+                    let* () = acc in
+                    match leaf_layout leaf with
+                    | `Ok -> Ok ()
+                    | `Layout l when l = decl_layout -> Ok ()
+                    | `Layout l ->
+                      Error (UnsupportedFeature
+                        (Printf.sprintf
+                           "assignment to `%s`: the new record's field layout \
+                            (%s) differs from the declared one (%s); list the \
+                            fields in the declared order on the core-WASM \
+                            backend (#561)" id.name
+                           (String.concat ", " (List.map fst l)) decl_names))
+                    | `Unknown ->
+                      Error (UnsupportedFeature
+                        (Printf.sprintf
+                           "assignment to `%s`: the new record's field layout \
+                            cannot be determined, so it may not match the \
+                            declared one (%s); assign a record literal in the \
+                            declared order on the core-WASM backend (#561)"
+                           id.name decl_names)))
+                  (Ok ()) (leaves rhs)
               | _ -> Ok ()
             in
             let* (ctx', rhs_code) = gen_expr ctx rhs in

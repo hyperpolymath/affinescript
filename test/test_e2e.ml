@@ -4563,6 +4563,20 @@ let test_modmut561_mut_record_reordered_assign_rejected () =
     Alcotest.(check bool) "names the global" true
       (string_contains msg "config")
 
+let test_modmut561_mut_record_if_branch_reordered_rejected () =
+  (* The check covers every value the RHS can produce, not just a direct
+     literal: a reordered literal in an `if` branch is rejected too. *)
+  match wasm_of_source
+          "const mut config: {left: Int, right: Int} = #{ left: 1, right: 2 };\n\
+           pub fn choose(flag: Bool) -> Int {\n\
+           \  config = if flag { #{ left: 7, right: 9 } } else { #{ right: 8, left: 6 } };\n\
+           \  config.right\n\
+           }" with
+  | Ok _ -> Alcotest.fail "a reordered literal in an if branch must not compile"
+  | Error msg ->
+    Alcotest.(check bool) "names the global" true
+      (string_contains msg "config")
+
 let test_modmut561_mut_record_same_order_assign_ok () =
   match wasm_of_source
           "const mut config: {left: Int, right: Int} = #{ left: 1, right: 2 };\n\
@@ -4714,6 +4728,7 @@ let modmut561_tests = [
   Alcotest.test_case "wasm: write to an immutable const is rejected" `Quick test_modmut561_immutable_write_rejected;
   Alcotest.test_case "wasm: calling a function-valued const is rejected" `Quick test_modmut561_fn_valued_const_call_rejected;
   Alcotest.test_case "wasm: reordered record global replacement is rejected" `Quick test_modmut561_mut_record_reordered_assign_rejected;
+  Alcotest.test_case "wasm: reordered record in an if branch is rejected" `Quick test_modmut561_mut_record_if_branch_reordered_rejected;
   Alcotest.test_case "wasm: same-order record global replacement compiles" `Quick test_modmut561_mut_record_same_order_assign_ok;
   Alcotest.test_case "wasm: imported arithmetic Float const is rejected" `Quick test_modmut561_imported_float_arith_const_rejected;
 ]
