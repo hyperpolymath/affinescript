@@ -287,6 +287,37 @@ const None = { tag: "None" };
 const Ok   = (value) => ({ tag: "Ok",  value });
 const Err  = (value) => ({ tag: "Err", value });
 const Unit = null;
+// ---- crypto (#746): node:crypto via getBuiltinModule (Node, Bun) ----
+// snip: host crypto only; typed-wasm has no lowering for these externs yet.
+const __as_crypto = () => {
+  const getBuiltinModule = globalThis.process?.getBuiltinModule;
+  if (!getBuiltinModule) throw new Error("crypto host (node:crypto) is unavailable");
+  return getBuiltinModule("node:crypto");
+};
+// snip:prod - trust boundary: reject non-byte Ints instead of wrapping mod 256.
+const __as_bytes = (a) => {
+  for (const x of a) {
+    if (!Number.isInteger(x) || x < 0 || x > 255) throw new RangeError(`not a byte: ${x}`);
+  }
+  return Uint8Array.from(a);
+};
+// snip:prod - only RSA keys; an EC/Ed key would silently give a non-RS256 signature.
+const __as_rsaKey = (pem, priv) => {
+  const c = __as_crypto();
+  const k = priv ? c.createPrivateKey(pem) : c.createPublicKey(pem);
+  if (k.asymmetricKeyType !== "rsa") throw new Error(`expected an RSA key, got ${k.asymmetricKeyType}`);
+  return k;
+};
+const __as_sha256 = (b) => Array.from(__as_crypto().createHash("sha256").update(__as_bytes(b)).digest());
+const __as_hmacSha256 = (k, m) => Array.from(__as_crypto().createHmac("sha256", __as_bytes(k)).update(__as_bytes(m)).digest());
+const __as_b64urlEncode = (b) => Buffer.from(__as_bytes(b)).toString("base64url");
+// snip:prod - Buffer's base64url decoder skips bad characters silently; reject them.
+const __as_b64urlDecode = (s) => {
+  if (!/^[A-Za-z0-9_-]*$/.test(s) || s.length % 4 === 1) throw new Error("invalid base64url");
+  return Array.from(Buffer.from(s, "base64url"));
+};
+const __as_rsaSign = (pem, m) => Array.from(__as_crypto().sign("sha256", __as_bytes(m), __as_rsaKey(pem, true)));
+const __as_rsaVerify = (pem, m, sig) => __as_crypto().verify("sha256", __as_bytes(m), __as_rsaKey(pem, false), __as_bytes(sig));
 const __as_regexMatch = (s, pat) => new RegExp(pat).test(String(s));
 const __as_wasmInstance = (bytes) =>
   new WebAssembly.Instance(new WebAssembly.Module(bytes),
@@ -921,6 +952,13 @@ let () =
   b "dateNowIso"  (fun _ -> "(new Date().toISOString())");
   (* `performance.now()` — high-resolution sub-millisecond timer. *)
   b "performance_now" (fun _ -> "performance.now()");
+  (* ---- crypto (#746): helpers in common_prelude ---- *)
+  b "sha256"                  (fun a -> Printf.sprintf "__as_sha256(%s)" (arg 0 a));
+  b "hmac_sha256"             (fun a -> Printf.sprintf "__as_hmacSha256(%s, %s)" (arg 0 a) (arg 1 a));
+  b "base64url_encode"        (fun a -> Printf.sprintf "__as_b64urlEncode(%s)" (arg 0 a));
+  b "base64url_decode"        (fun a -> Printf.sprintf "__as_b64urlDecode(%s)" (arg 0 a));
+  b "rsa_sign_pkcs1_sha256"   (fun a -> Printf.sprintf "__as_rsaSign(%s, %s)" (arg 0 a) (arg 1 a));
+  b "rsa_verify_pkcs1_sha256" (fun a -> Printf.sprintf "__as_rsaVerify(%s, %s, %s)" (arg 0 a) (arg 1 a) (arg 2 a));
   (* Math.random + derived integer-range helpers (campaign #239 STEP
      4-B / standards#327). Non-crypto PRNG. *)
   b "math_random"     (fun _ -> "Math.random()");

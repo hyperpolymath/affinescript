@@ -9,3 +9,15 @@ module Crypto;
 pub extern fn random_string(n: Int) -> String;
 pub extern fn random_f64() -> Float;
 pub extern fn time_ms() -> Int;
+
+// #746: digest, MAC, base64url and RS256 signing. Bytes are [Int] in 0..255;
+// a value outside that range panics. Lowered on the Bun-ESM backend (Node
+// and Bun) through node:crypto. The typed-wasm backend has no lowering yet.
+pub extern fn sha256(bytes: [Int]) -> [Int];
+pub extern fn hmac_sha256(key: [Int], msg: [Int]) -> [Int];
+pub extern fn base64url_encode(bytes: [Int]) -> String;
+pub extern fn base64url_decode(s: String) -> [Int];
+// key_pem: PKCS#1 or PKCS#8 RSA private key. Panics on a non-RSA key.
+pub extern fn rsa_sign_pkcs1_sha256(key_pem: String, msg: [Int]) -> [Int];
+// key_pem: RSA public key (or private key). False on a bad signature.
+pub extern fn rsa_verify_pkcs1_sha256(key_pem: String, msg: [Int], sig: [Int]) -> Bool;
