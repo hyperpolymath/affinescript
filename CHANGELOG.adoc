@@ -115,6 +115,11 @@ pure-extern semantics (Closes #332) (#338)
 
 ==== Fixed
 
+* Lexer: token spans start at the token, not at the token before it. The
+start was read before whitespace and comments were skipped, so every parse
+error, hover and goto-definition position was one token early (a parse
+error after `module Block;` blamed the `;`). Three LSP tests had been
+written against the shifted columns and are corrected (Closes #771)
 * WASM: a block ending in a Unit call with no `;` (`println("Hi")`) now
 compiles to the same code as the statement form (`println("Hi");`).
 Faces keep whichever form the author wrote, so greet in all six faces
