@@ -2,15 +2,11 @@
 # Project toolchains. Language package managers come with their runtimes;
 # listing npm, cargo, pip, or gofmt as independent mise plugins is invalid.
 bun = "latest"
-node = "latest"
 rust = "latest"
 zig = "latest"
 
 [env]
 # Common environment variables
-NODE_ENV = "development"
-PYTHONDONTWRITEBYTECODE = "1"
-PYTHONUNBUFFERED = "1"
 
 [tasks.build]
 run = "opam exec -- dune build"
