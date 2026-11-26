@@ -2965,21 +2965,28 @@ and gen_stmt (ctx : context) (stmt : stmt) : (context * instr list) result =
             let* () = match op, List.assoc_opt id.name ctx.field_layouts with
               | AssignEq, Some decl_layout ->
                 (* Every value the right-hand side can produce: the
-                   branches of an `if`/`match` and a block's tail. *)
-                let rec leaves e = match e with
+                   branches of an `if`/`match` and a block's tail. A leaf
+                   under a block's `let`s or a match arm's pattern may name
+                   a binding that shadows a module name, so its names are
+                   not looked up in the enclosing scope ([scoped]). *)
+                let rec leaves scoped e = match e with
                   | ExprIf ei ->
-                    leaves ei.ei_then
-                    @ (match ei.ei_else with Some e' -> leaves e' | None -> [])
+                    leaves scoped ei.ei_then
+                    @ (match ei.ei_else with
+                       | Some e' -> leaves scoped e' | None -> [])
                   | ExprMatch m ->
-                    List.concat_map (fun arm -> leaves arm.ma_body) m.em_arms
-                  | ExprBlock { blk_expr = Some e'; _ } -> leaves e'
-                  | _ -> [e]
+                    List.concat_map (fun arm -> leaves true arm.ma_body)
+                      m.em_arms
+                  | ExprBlock { blk_stmts; blk_expr = Some e' } ->
+                    leaves (scoped || blk_stmts <> []) e'
+                  | _ -> [(scoped, e)]
                 in
-                let leaf_layout e = match e with
-                  | ExprVar src when src.name = id.name -> `Ok
+                let leaf_layout (scoped, e) = match e with
                   | ExprRecord r ->
                     `Layout (List.mapi (fun i (fn, _) -> (fn.name, i * 4))
                                r.er_fields)
+                  | _ when scoped -> `Unknown
+                  | ExprVar src when src.name = id.name -> `Ok
                   | ExprVar src ->
                     (match List.assoc_opt src.name ctx.field_layouts with
                      | Some l -> `Layout l | None -> `Unknown)
@@ -3012,7 +3019,7 @@ and gen_stmt (ctx : context) (stmt : stmt) : (context * instr list) result =
                             declared one (%s); assign a record literal in the \
                             declared order on the core-WASM backend (#561)"
                            id.name decl_names)))
-                  (Ok ()) (leaves rhs)
+                  (Ok ()) (leaves false rhs)
               | _ -> Ok ()
             in
             let* (ctx', rhs_code) = gen_expr ctx rhs in

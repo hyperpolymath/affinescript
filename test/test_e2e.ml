@@ -4577,6 +4577,22 @@ let test_modmut561_mut_record_if_branch_reordered_rejected () =
     Alcotest.(check bool) "names the global" true
       (string_contains msg "config")
 
+let test_modmut561_mut_record_block_local_shadow_rejected () =
+  (* A block-local `let config` shadows the global; the tail `config` is
+     that local (a reordered literal), not the global, so `read()` in
+     another function would load `right` at the wrong offset. *)
+  match wasm_of_source
+          "const mut config: {left: Int, right: Int} = #{ left: 1, right: 2 };\n\
+           pub fn update() -> Int {\n\
+           \  config = { let config = #{ right: 9, left: 7 }; config };\n\
+           \  0\n\
+           }\n\
+           pub fn read() -> Int { config.right }" with
+  | Ok _ -> Alcotest.fail "a block-local shadowing replacement must not compile"
+  | Error msg ->
+    Alcotest.(check bool) "names the global" true
+      (string_contains msg "config")
+
 let test_modmut561_mut_record_same_order_assign_ok () =
   match wasm_of_source
           "const mut config: {left: Int, right: Int} = #{ left: 1, right: 2 };\n\
@@ -4729,6 +4745,7 @@ let modmut561_tests = [
   Alcotest.test_case "wasm: calling a function-valued const is rejected" `Quick test_modmut561_fn_valued_const_call_rejected;
   Alcotest.test_case "wasm: reordered record global replacement is rejected" `Quick test_modmut561_mut_record_reordered_assign_rejected;
   Alcotest.test_case "wasm: reordered record in an if branch is rejected" `Quick test_modmut561_mut_record_if_branch_reordered_rejected;
+  Alcotest.test_case "wasm: block-local shadowing record replacement is rejected" `Quick test_modmut561_mut_record_block_local_shadow_rejected;
   Alcotest.test_case "wasm: same-order record global replacement compiles" `Quick test_modmut561_mut_record_same_order_assign_ok;
   Alcotest.test_case "wasm: imported arithmetic Float const is rejected" `Quick test_modmut561_imported_float_arith_const_rejected;
 ]
