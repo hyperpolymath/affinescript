@@ -193,6 +193,10 @@ probe (#294)
 
 ==== Changed
 
+* parser: a mid-block `match` self-terminates like `if`, `while` and
+`for`; the `;` after its `}` is optional (#644). A following `*`, `-`,
+`(`, `[`, `&` or `|` still continues the expression, as after `if`. Parse
+output for every `.affine` file in the repository is unchanged.
 * refactor(codegen): extract affinescript.ownership emission to lib/tw_…
 (#347)
 

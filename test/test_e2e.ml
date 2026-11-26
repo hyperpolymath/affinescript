@@ -1089,13 +1089,12 @@ let test_empty_match_arm_block_parses () =
        - empty arm, `match` mid-block, no `;`       -> fails AT the match's `}`
        - empty arm, `match` mid-block, with `;`     -> parses
        - non-empty arm, `match` mid-block, no `;`   -> fails at the same place
-     So the empty arm was never the cause: only `if`/`while`/`for` are
+     So the empty arm was never the cause: only `if`/`while`/`for` were
      self-terminating statements (`lib/parser.mly`, `stmt:`), and a `match`
-     that is not a block's final expression is an ordinary expression
-     statement needing its `;`. This case keeps the empty arm *and*
-     terminates the statement, so it asserts #644's actual property rather
-     than the `;`-less shape the grammar has never accepted. The `;` rule
-     itself is pinned by test_match_statement_requires_semicolon below. *)
+     that was not a block's final expression needed its `;`. Since
+     2026-11-26 `match` self-terminates too (owner decision on #644); this
+     case keeps the explicit `;`, which stays legal, and the `;`-less form
+     is pinned by test_match_statement_self_terminates below. *)
   let source = {|module EmptyArm;
                 enum Opt { SomeV(Int), NoneV }
                 pub fn f(o: Opt) -> Int {
@@ -1113,32 +1112,55 @@ let test_empty_match_arm_block_parses () =
   | Lexer.Lexer_error (msg, _) ->
       Alcotest.failf "empty match-arm block should lex: %s" msg
 
-(* The statement-termination rule the #644 repro tripped over, pinned so it
-   stops being folklore. `if`/`while`/`for` end with a `}` and terminate
-   themselves; a `match` in non-final statement position is an expression
-   statement and needs an explicit `;`. If the language decides instead that
-   a `}`-terminated `match` should self-terminate (that is #644's open
-   question — see docs/ON-RAMP.adoc, "Statements and `;`"), then this test is
-   the one to delete, and the positive form belongs next to the #644 case
-   above. *)
-let test_match_statement_requires_semicolon () =
-  let source = {|module NoSemi;
+(* A `}`-terminated `match` self-terminates as a statement, like `if`
+   (#644, owner decision 2026-11-26; docs/ON-RAMP.adoc, "Statements and
+   `;`"). A following token that can continue an expression keeps the
+   expression reading, as for `if`. *)
+let test_match_statement_self_terminates () =
+  let parse_ok what source =
+    match Parse_driver.parse_string ~file:"<match-stmt>" source with
+    | p -> p
+    | exception Parse_driver.Parse_error (msg, _) ->
+        Alcotest.failf "%s should parse: %s" what msg
+  in
+  let header = {|module M;
                 enum Opt { SomeV(Int), NoneV }
-                pub fn f(o: Opt) -> Int {
+                |} in
+  ignore (parse_ok "the #644 repro" (header ^ {|pub fn f(o: Opt) -> Int {
                   match o {
                     SomeV(v) => { return v; }
                     NoneV => {}
                   }
                   return 0;
-                }|} in
-  match Parse_driver.parse_string ~file:"<match-no-semi>" source with
-  | exception Parse_driver.Parse_error _ -> ()
-  | exception Lexer.Lexer_error _ -> ()
-  | _ ->
-      Alcotest.fail
-        "a mid-block `match` with no trailing `;` parsed; if the grammar was \
-         deliberately extended to make `match` self-terminating, delete this \
-         test and record the decision on #644"
+                }|}));
+  ignore (parse_ok "a match followed by let and an assignment" (header ^ {|pub fn f(o: Opt) -> Int {
+                  let mut n = 0;
+                  match o { SomeV(v) => { n = v; } NoneV => {} }
+                  n = n + 1;
+                  let k = n;
+                  return k;
+                }|}));
+  ignore (parse_ok "a trailing `;` is still accepted" (header ^ {|pub fn f(o: Opt) -> Int {
+                  match o { SomeV(v) => { return v; } NoneV => {} };
+                  return 0;
+                }|}));
+  (* `match o { .. } - 1;` is one expression statement, a subtraction. *)
+  let p = parse_ok "a match continued by `-`" (header ^ {|pub fn f(o: Opt) -> Int {
+                  match o { SomeV(v) => v, NoneV => 0 } - 1;
+                  return 0;
+                }|}) in
+  let body =
+    List.find_map
+      (function Ast.TopFn { fd_body = Ast.FnBlock b; _ } -> Some b | _ -> None)
+      p.prog_decls
+  in
+  let rec strip = function Ast.ExprSpan (e, _) -> strip e | e -> e in
+  match body with
+  | Some { blk_stmts = Ast.StmtExpr e :: _; _ } ->
+      (match strip e with
+       | Ast.ExprBinary (_, Ast.OpSub, _) -> ()
+       | _ -> Alcotest.fail "`match .. } - 1;` should be one subtraction")
+  | _ -> Alcotest.fail "expected an expression statement first"
 
 let error_tests = [
   Alcotest.test_case "bad syntax" `Quick test_error_parse_bad_syntax;
@@ -1148,8 +1170,8 @@ let error_tests = [
     test_total_is_valid_binding_name;
   Alcotest.test_case "empty match arm block parses (#644)" `Quick
     test_empty_match_arm_block_parses;
-  Alcotest.test_case "mid-block `match` needs its `;` (#644 repro)" `Quick
-    test_match_statement_requires_semicolon;
+  Alcotest.test_case "mid-block `match` self-terminates (#644)" `Quick
+    test_match_statement_self_terminates;
 ]
 
 (* ============================================================================
