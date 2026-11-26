@@ -4346,10 +4346,23 @@ let generate_module ?loader (prog : program) : wasm_module result =
           :: c.struct_layouts }
     | _ -> c) ctx_with_imports prog.prog_decls in
 
+  (* Host imports must occupy the low function indices before any defined
+     function, lambda or deferred const initialiser takes an index: an
+     `extern fn` declared after a function would otherwise reuse that
+     function's index (imports are numbered from 0, defined functions from
+     [import_func_count] at the time they are generated), so calls to the
+     earlier function silently hit the host import. Generate the extern
+     declarations first; their relative order is kept. *)
+  let is_extern_decl = function
+    | TopFn fd -> fd.fd_body = FnExtern
+    | TopExternFn _ -> true
+    | _ -> false
+  in
+  let (extern_decls, other_decls) = List.partition is_extern_decl prog.prog_decls in
   let* ctx' = List.fold_left (fun acc decl ->
     let* c = acc in
     gen_decl c decl
-  ) (Ok ctx_with_imports) prog.prog_decls in
+  ) (Ok ctx_with_imports) (extern_decls @ other_decls) in
 
   (* Merge regular functions and lambda functions *)
   let num_regular_funcs = List.length ctx'.funcs in
