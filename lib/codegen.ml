@@ -4030,15 +4030,21 @@ let gen_decl (ctx : context) (decl : top_level) : context result =
     Silent on missing modules / unresolved items / loader errors: the
     resolver runs before codegen and would have already errored. *)
 (** #561: every name a program's bodies mention (function bodies, impl
-    methods, const initialisers). Over-approximate — parameters and locals
-    land in it too — which only matters as a filter: `use Mod;` imports the
+    methods, const initialisers), less each function's parameters (#815).
+    Locals are already excluded by {!free_names}. It is a filter: `use Mod;` imports the
     public items of [Mod] that appear here, not all of them, so the host
     is not asked to supply a `Dom.*` import for each of Dom's 38 functions
     when the program calls one. *)
 let program_free_names (prog : program) : (string, unit) Hashtbl.t =
   let h = Hashtbl.create 64 in
   let add = List.iter (fun n -> Hashtbl.replace h n ()) in
-  let of_fn (fd : fn_decl) = match fd.fd_body with
+  (* #815: a parameter is not an import reference. Resolve refuses a
+     qualified `Mod.f` that a local `f` would capture, so every free
+     occurrence of a parameter name in the body is the parameter. *)
+  let of_fn (fd : fn_decl) =
+    let params = List.map (fun (p : param) -> p.p_name.name) fd.fd_params in
+    let add ns = add (List.filter (fun n -> not (List.mem n params)) ns) in
+    match fd.fd_body with
     | FnBlock b -> add (free_names_block b)
     | FnExpr e -> add (free_names e)
     | FnExtern -> ()

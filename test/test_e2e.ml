@@ -4825,9 +4825,46 @@ let test_822_wasm_crypto_unused_import_ok () =
   | Error msg -> Alcotest.failf "an unused Crypto import should compile: %s" msg
   | Ok () -> ()
 
+(* #815: `use Mod;` imports only names that bind to Mod, not parameters. *)
+let imports815 (src : string) : string list =
+  let prog = Resolve.lower_qualified_value_paths
+      (Parse_driver.parse_string ~file:"<t815>" src) in
+  let stdlib_dir = List.find Sys.file_exists [
+    "stdlib"; "../../../stdlib"; "../../../../stdlib" ] in
+  let loader = Module_loader.create {
+    Module_loader.stdlib_path = stdlib_dir; search_paths = [];
+    current_dir = stdlib_dir } in
+  match Codegen.generate_module ~loader prog with
+  | Error e -> Alcotest.failf "codegen failed: %s" (Codegen.show_codegen_error e)
+  | Ok m -> List.map (fun (i : Wasm.import) -> i.i_module ^ "." ^ i.i_name) m.imports
+
+let test_815_param_is_not_import () =
+  Alcotest.(check bool) "no Console.log import" false
+    (List.mem "Console.log"
+       (imports815 "use Console;\npub fn main(log: Int) -> Int { log }"))
+
+let test_815_qualified_call_imports () =
+  Alcotest.(check bool) "Console.log imported" true
+    (List.mem "Console.log"
+       (imports815 "use Console;\npub fn main(n: Int) -> Int { Console.log(\"x\"); n }"))
+
+let test_815_captured_qualified_call_rejected () =
+  match Resolve.lower_qualified_value_paths
+          (Parse_driver.parse_string ~file:"<t815>"
+             "use Console;\npub fn main(log: Int) -> Int { Console.log(\"x\"); log }") with
+  | _ -> Alcotest.fail "expected a shadowing error"
+  | exception Parse_driver.Parse_error (msg, _) ->
+    Alcotest.(check bool) "names the shadowing local" true
+      (String.length msg > 0
+       && (try ignore (Str.search_forward (Str.regexp_string "shadowed by a local `log`") msg 0); true
+           with Not_found -> false))
+
 let modmut561_tests = [
   Alcotest.test_case "#822: a Crypto extern use on core WASM is rejected by name" `Quick test_822_wasm_crypto_use_rejected;
   Alcotest.test_case "#822: an unused Crypto import still compiles" `Quick test_822_wasm_crypto_unused_import_ok;
+  Alcotest.test_case "#815: a parameter named like an import is not imported" `Quick test_815_param_is_not_import;
+  Alcotest.test_case "#815: a qualified Mod.f call keeps its import" `Quick test_815_qualified_call_imports;
+  Alcotest.test_case "#815: a local that captures Mod.f is refused" `Quick test_815_captured_qualified_call_rejected;
   Alcotest.test_case "wasm: same-name let of a Float const is f64" `Quick test_modmut561_float_global_same_name_let;
   Alcotest.test_case "wasm: imported Float const is an f64 global" `Quick test_modmut561_imported_float_const;
   Alcotest.test_case "wasm: record const field loads at its offset" `Quick test_modmut561_record_const_field_offset;
