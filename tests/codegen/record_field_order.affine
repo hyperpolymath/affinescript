@@ -1,0 +1,34 @@
+// SPDX-License-Identifier: MPL-2.0
+// #817: a record literal in another field order is stored by the
+// expected layout, so each read finds the right field.
+
+type Config = { width: Int, height: Int }
+
+fn h(c: Config) -> Int { c.height }
+
+fn mk(n: Int) -> Config {
+  if n > 100 { return #{height: 5, width: 1}; }
+  #{height: n, width: 2}
+}
+
+pub fn reassign() -> Int {
+  let mut r = #{left: 3, right: 7};
+  r = #{right: 7, left: 3};
+  r.right
+}
+
+pub fn typed_let() -> Int {
+  let x: Config = #{height: 9, width: 2};
+  h(x)
+}
+
+pub fn direct_arg() -> Int { h(#{height: 9, width: 2}) }
+
+pub fn returned() -> Int { let c = mk(9); c.height * 100 + c.width }
+
+pub fn early_return() -> Int { let c = mk(200); c.height * 100 + c.width }
+
+pub fn same_order() -> Int {
+  let x: Config = #{width: 2, height: 9};
+  h(x) * 100 + x.width
+}

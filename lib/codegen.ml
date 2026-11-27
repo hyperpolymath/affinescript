@@ -57,6 +57,12 @@ type context = {
   (** Struct type name -> [(field, offset)]. Registered from TopType(TyStruct)
       at decl time so function-parameter and call-result field accesses can
       recover the field layout by type, not by let-binding shape. *)
+  fn_param_structs : (string * string option list) list;
+  (** #817: function name -> the struct type of each parameter (if any), so a
+      record literal passed directly as an argument takes that layout. *)
+  ret_layout : (string * int) list option;
+  (** #817: the current function's return-struct layout, for `return #{..}`
+      and a record literal in tail position. *)
   fn_ret_structs : (string * string) list;
   (** Function name -> struct type name it returns (if any). Lets a
       `let s = make()` call site register s's field layout in field_layouts
@@ -192,6 +198,8 @@ let create_context () : context = {
   heap_ptr = None;
   field_layouts = [];
   struct_layouts = [];
+  fn_param_structs = [];
+  ret_layout = None;
   fn_ret_structs = [];
   variant_tags = [];
   string_data = [];
@@ -949,7 +957,7 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
   | ExprReturn e_opt ->
     begin match e_opt with
       | Some e ->
-        let* (ctx', code) = gen_expr ctx e in
+        let* (ctx', code) = gen_expr_laid ctx ctx.ret_layout e in
         Ok (ctx', code @ [Return])
       | None ->
         Ok (ctx, [Return])
@@ -1047,7 +1055,7 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
     let lambda_ctx =
       { ctx_after_env with
         locals = []; next_local = 0; loop_depth = 0;
-        next_lambda_id = lambda_id + 1 } in
+        next_lambda_id = lambda_id + 1; ret_layout = None } in
 
     (* Environment is always first parameter (even if unused) for uniform calling convention *)
     let (ctx_with_env, _) = alloc_local lambda_ctx "__env" in
@@ -2026,11 +2034,17 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
       | _ ->
         (* Not a built-in, proceed with normal function call *)
         (* Generate code for arguments (left to right) *)
-        let* (ctx_after_args, all_arg_code) = List.fold_left (fun acc arg ->
+        let param_structs = match func_expr with
+          | ExprVar id when not (List.mem_assoc id.name ctx.locals) ->
+            Option.value ~default:[] (List.assoc_opt id.name ctx.fn_param_structs)
+          | _ -> [] in
+        let* (ctx_after_args, all_arg_code) = List.fold_left (fun acc (i, arg) ->
           let* (ctx', accumulated_code) = acc in
-          let* (ctx'', arg_code) = gen_expr ctx' arg in
+          let layout = Option.bind (List.nth_opt param_structs i) (fun so ->
+            Option.bind so (fun s -> List.assoc_opt s ctx'.struct_layouts)) in
+          let* (ctx'', arg_code) = gen_expr_laid ctx' layout arg in
           Ok (ctx'', accumulated_code @ arg_code)
-        ) (Ok (ctx, [])) args in
+        ) (Ok (ctx, [])) (List.mapi (fun i a -> (i, a)) args) in
 
         (* Generate code for function expression *)
         begin match func_expr with
@@ -2360,46 +2374,7 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
     ) (Ok (ctx_with_temp, [])) (List.mapi (fun i e -> (i, e)) elements) in
     Ok (ctx_final, alloc_code @ save_code @ length_code @ store_code @ [LocalGet temp_idx])
 
-  | ExprRecord rec_expr ->
-    let* () =
-      guard_no_float_elems ctx
-        (List.map (fun (id, eopt) -> match eopt with Some e -> e | None -> ExprVar id)
-           rec_expr.er_fields) "record" in
-    (* Allocate memory for record fields *)
-    let num_fields = List.length rec_expr.er_fields in
-    let size_in_bytes = num_fields * 4 in  (* Each field is 4 bytes (I32) *)
-
-    (* Allocate heap memory and save pointer to temp local *)
-    let (ctx_with_heap, alloc_code) = gen_heap_alloc ctx size_in_bytes in
-    let (ctx_with_temp, temp_idx) = alloc_local ctx_with_heap "__rec_ptr" in
-
-    (* Save allocated address to temp *)
-    let save_code = [LocalSet temp_idx] in
-
-    (* Generate code to store each field *)
-    let* (ctx_final, store_code) = List.fold_left (fun acc (idx, (field, expr_opt)) ->
-      let* (ctx_acc, code_acc) = acc in
-      (* Get field value expression *)
-      let field_expr = match expr_opt with
-        | Some e -> e
-        | None -> ExprVar field  (* Field punning: {x} means {x: x} *)
-      in
-      (* Generate code for field value *)
-      let* (ctx', field_code) = gen_expr ctx_acc field_expr in
-
-      (* Store at offset (field_index * 4) from base address *)
-      let offset = idx * 4 in
-      let store_instrs = [
-        LocalGet temp_idx;  (* Get base address *)
-      ] @ field_code @ [
-        I32Store (2, offset);  (* Store at offset with alignment 2 (4-byte) *)
-      ] in
-      Ok (ctx', code_acc @ store_instrs)
-    ) (Ok (ctx_with_temp, [])) (List.mapi (fun i x -> (i, x)) rec_expr.er_fields) in
-
-    (* Complete code: allocate, save to temp (leaving on stack), store fields, leave address *)
-    (* But we already consumed the address from stack when storing, so push it again *)
-    Ok (ctx_final, alloc_code @ save_code @ store_code @ [LocalGet temp_idx])
+  | ExprRecord rec_expr -> gen_record ctx None rec_expr.er_fields
 
   | ExprCellRecord fields ->
     (* Float heap wall (issue-draft 05): closed float-bearing record — uniform
@@ -2618,8 +2593,70 @@ let rec gen_expr (ctx : context) (expr : expr) : (context * instr list) result =
   | ExprSpan (e, _) ->
     gen_expr ctx e
 
+(** #817: a record literal. With [layout] (the expected type's field
+    offsets, same field set), each field is stored at its layout offset;
+    field values still run in source order. *)
+and gen_record (ctx : context) (layout : (string * int) list option)
+    (er_fields : (ident * expr option) list) : (context * instr list) result =
+    let* () =
+      guard_no_float_elems ctx
+        (List.map (fun (id, eopt) -> match eopt with Some e -> e | None -> ExprVar id)
+           er_fields) "record" in
+    (* Allocate memory for record fields *)
+    let num_fields = List.length er_fields in
+    let size_in_bytes = num_fields * 4 in  (* Each field is 4 bytes (I32) *)
+
+    (* Allocate heap memory and save pointer to temp local *)
+    let (ctx_with_heap, alloc_code) = gen_heap_alloc ctx size_in_bytes in
+    let (ctx_with_temp, temp_idx) = alloc_local ctx_with_heap "__rec_ptr" in
+
+    (* Save allocated address to temp *)
+    let save_code = [LocalSet temp_idx] in
+
+    (* Generate code to store each field *)
+    let* (ctx_final, store_code) = List.fold_left (fun acc (idx, (field, expr_opt)) ->
+      let* (ctx_acc, code_acc) = acc in
+      (* Get field value expression *)
+      let field_expr = match expr_opt with
+        | Some e -> e
+        | None -> ExprVar field  (* Field punning: {x} means {x: x} *)
+      in
+      (* Generate code for field value *)
+      let* (ctx', field_code) = gen_expr ctx_acc field_expr in
+
+      (* Store at the layout offset, else at source position * 4 *)
+      let offset = match layout with
+        | Some l -> List.assoc field.name l
+        | None -> idx * 4 in
+      let store_instrs = [
+        LocalGet temp_idx;  (* Get base address *)
+      ] @ field_code @ [
+        I32Store (2, offset);  (* Store at offset with alignment 2 (4-byte) *)
+      ] in
+      Ok (ctx', code_acc @ store_instrs)
+    ) (Ok (ctx_with_temp, [])) (List.mapi (fun i x -> (i, x)) er_fields) in
+
+    (* Complete code: allocate, save to temp (leaving on stack), store fields, leave address *)
+    (* But we already consumed the address from stack when storing, so push it again *)
+    Ok (ctx_final, alloc_code @ save_code @ store_code @ [LocalGet temp_idx])
+
+(** #817: generate [e], laying out a record literal in a direct position
+    (through spans and a block's tail) by [layout] when its field set
+    matches. Anything else is plain [gen_expr]. *)
+and gen_expr_laid (ctx : context) (layout : (string * int) list option)
+    (e : expr) : (context * instr list) result =
+  match layout, e with
+  | Some _, ExprSpan (inner, _) -> gen_expr_laid ctx layout inner
+  | Some l, ExprRecord r
+    when List.sort compare (List.map (fun ((f : ident), _) -> f.name) r.er_fields)
+         = List.sort compare (List.map fst l) ->
+    gen_record ctx layout r.er_fields
+  | Some _, ExprBlock blk -> gen_block ~tail_layout:layout ctx blk
+  | _ -> gen_expr ctx e
+
 (** Generate code for a block *)
-and gen_block (ctx : context) (blk : block) : (context * instr list) result =
+and gen_block ?(tail_layout = None) (ctx : context) (blk : block)
+    : (context * instr list) result =
   let* (ctx', stmt_codes) = List.fold_left (fun acc stmt ->
     let* (c, codes) = acc in
     let* (c', code) = gen_stmt c stmt in
@@ -2634,7 +2671,7 @@ and gen_block (ctx : context) (blk : block) : (context * instr list) result =
     let* (ctx_final, expr_code) = gen_expr ctx' e in
     Ok (ctx_final, stmt_codes @ expr_code @ [Drop] @ [I32Const 0l])
   | Some e ->
-    let* (ctx_final, expr_code) = gen_expr ctx' e in
+    let* (ctx_final, expr_code) = gen_expr_laid ctx' tail_layout e in
     Ok (ctx_final, stmt_codes @ expr_code)
   | None ->
     Ok (ctx', stmt_codes @ [I32Const 0l])
@@ -2877,7 +2914,9 @@ and gen_pattern (ctx : context) (scrutinee_local : int) (pat : pattern)
 and gen_stmt (ctx : context) (stmt : stmt) : (context * instr list) result =
   match stmt with
   | StmtLet sl ->
-    let* (ctx', rhs_code) = gen_expr ctx sl.sl_value in
+    let annot_layout = Option.bind sl.sl_ty (fun ty ->
+      Option.bind (struct_name_of_ty ty) (fun s -> List.assoc_opt s ctx.struct_layouts)) in
+    let* (ctx', rhs_code) = gen_expr_laid ctx annot_layout sl.sl_value in
     begin match sl.sl_pat with
       | PatVar id ->
         (* Track the bound variable's field layout so subsequent `.field_N`
@@ -3053,7 +3092,9 @@ and gen_stmt (ctx : context) (stmt : stmt) : (context * instr list) result =
       | ExprVar id ->
         (* Variable assignment: x = expr or x += expr *)
         let* idx = lookup_local ctx id.name in
-        let* (ctx', rhs_code) = gen_expr ctx rhs in
+        let* (ctx', rhs_code) = match op with
+          | AssignEq -> gen_expr_laid ctx (List.assoc_opt id.name ctx.field_layouts) rhs
+          | _ -> gen_expr ctx rhs in
         begin match op with
           | AssignEq ->
             (* Simple assignment *)
@@ -3595,7 +3636,10 @@ let gen_function (ctx : context) (fd : fn_decl) : (context * func) result =
      later function's i32 local at the same index is mis-declared f64). Keep
      [fn_ret_types]: it is module-level (cross-function call inference). *)
   let fn_ctx = { ctx with locals = []; next_local = 0; loop_depth = 0;
-                          local_types = [] } in
+                          local_types = [];
+                          ret_layout = Option.bind fd.fd_ret_ty (fun ty ->
+                            Option.bind (struct_name_of_ty ty)
+                              (fun s -> List.assoc_opt s ctx.struct_layouts)) } in
 
   (* Parameters become locals 0..n-1. When a parameter's declared type
      names a known struct, register its field layout under the parameter
@@ -3677,7 +3721,7 @@ let gen_function (ctx : context) (fd : fn_decl) : (context * func) result =
            continuation before the async result settles. Use `--interp` / \
            `-i`, or a backend where `thenableThen` is importable."
           fd.fd_name.name))
-    | None -> gen_expr ctx_with_params body_expr
+    | None -> gen_expr_laid ctx_with_params ctx_with_params.ret_layout body_expr
   in
 
   (* Compute additional locals (beyond parameters) *)
@@ -4344,6 +4388,10 @@ let generate_module ?loader (prog : program) : wasm_module result =
       { c with struct_layouts =
           (td_name.name, List.mapi (fun i rf -> (rf.rf_name.name, i * 4)) rfs)
           :: c.struct_layouts }
+    | TopFn fd ->
+      { c with fn_param_structs =
+          (fd.fd_name.name, List.map (fun p -> struct_name_of_ty p.p_ty) fd.fd_params)
+          :: c.fn_param_structs }
     | _ -> c) ctx_with_imports prog.prog_decls in
 
   (* Host imports must occupy the low function indices before any defined
