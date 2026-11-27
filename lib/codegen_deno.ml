@@ -1745,8 +1745,13 @@ let rec gen_expr ctx (expr : expr) : string =
       (* #818: an extern used as a value has no JS binding of its own name;
          wrap its builtin lowering in an arrow of the declared arity. *)
       let ps = List.init (Hashtbl.find ctx.externs id.name) (Printf.sprintf "__a%d") in
-      Printf.sprintf "((%s) => %s)" (String.concat ", " ps)
-        ((Hashtbl.find (builtins_for ctx) id.name) ps)
+      let body = (Hashtbl.find (builtins_for ctx) id.name) ps in
+      (* snip: an await-based lowering keeps the bare name (as before #818);
+         an async wrapper also needs awaited calls through the value. *)
+      if (try ignore (Str.search_forward (Str.regexp "\\bawait\\b") body 0); true
+          with Not_found -> false)
+      then resolve_var ctx id.name
+      else Printf.sprintf "((%s) => %s)" (String.concat ", " ps) body
   | ExprVar name -> resolve_var ctx name.name
   | ExprApp (func, args) ->
       (match func with
@@ -1868,7 +1873,7 @@ let rec gen_expr ctx (expr : expr) : string =
       let field_strs = List.map (fun (name, e_opt) ->
         let v = match e_opt with
           | Some e -> gen_expr ctx e
-          | None   -> resolve_var ctx name.name
+          | None   -> gen_expr ctx (ExprVar name)
         in
         mangle name.name ^ ": " ^ v
       ) er_fields in
@@ -2575,7 +2580,7 @@ let gen_constructor ctx (fd : fn_decl) : unit =
         List.iter (fun (name, e_opt) ->
           let v = match e_opt with
             | Some e -> gen_expr body_ctx e
-            | None   -> resolve_var body_ctx name.name
+            | None   -> gen_expr body_ctx (ExprVar name)
           in
           emit_line body_ctx
             (Printf.sprintf "this.%s = %s;" (mangle name.name) v)

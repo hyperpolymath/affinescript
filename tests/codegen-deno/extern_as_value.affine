@@ -10,3 +10,9 @@ fn apply_s(f: ([Int]) -> String, b: [Int]) -> String = f(b);
 pub fn digest_via_value(b: [Int]) -> [Int] = apply(sha256, b);
 
 pub fn b64_via_value(b: [Int]) -> String = apply_s(base64url_encode, b);
+
+// Shorthand record field holding an extern value.
+pub fn digest_via_record(b: [Int]) -> [Int] {
+  let r = #{sha256};
+  apply(r.sha256, b)
+}
