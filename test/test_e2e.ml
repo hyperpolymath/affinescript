@@ -4805,8 +4805,9 @@ let test_modmut561_imported_float_const () =
    named compile error, not a LinkError at load. An unused import is dropped. *)
 let wasm822 (src : string) : (unit, string) result =
   let prog = Parse_driver.parse_string ~file:"<t822>" src in
+  let sd = List.find Sys.file_exists [ "stdlib"; "../../../stdlib"; "../../../../stdlib" ] in
   let loader = Module_loader.create {
-    Module_loader.stdlib_path = "stdlib"; search_paths = []; current_dir = "." } in
+    Module_loader.stdlib_path = sd; search_paths = []; current_dir = sd } in
   match Codegen.generate_module ~loader prog with
   | Ok _ -> Ok ()
   | Error e -> Error (Codegen.show_codegen_error e)
