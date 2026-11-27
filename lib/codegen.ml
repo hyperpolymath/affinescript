@@ -4053,6 +4053,12 @@ let program_free_names (prog : program) : (string, unit) Hashtbl.t =
   ) prog.prog_decls;
   h
 
+(* #822: Crypto externs from #746 with a JS lowering only. No core-WASM
+   host supplies them, so an import would fail at load with a LinkError. *)
+let wasm_unsupported_crypto =
+  [ "sha256"; "hmac_sha256"; "base64url_encode"; "base64url_decode";
+    "rsa_sign_pkcs1_sha256"; "rsa_verify_pkcs1_sha256" ]
+
 let gen_imports ?(used : (string, unit) Hashtbl.t option)
     ?(local_names : string list = [])
     (loader : Module_loader.t) (imports : import_decl list) (ctx : context)
@@ -4075,6 +4081,14 @@ let gen_imports ?(used : (string, unit) Hashtbl.t option)
       ) loaded.mod_program.prog_decls in
       match item with
       | None -> Ok ctx
+      | Some (`Fn _) when mod_path = ["Crypto"]
+                         && List.mem orig_name wasm_unsupported_crypto ->
+        (match used with
+         | Some u when not (Hashtbl.mem u local_name) -> Ok ctx
+         | _ ->
+           Error (UnsupportedFeature (Printf.sprintf
+             "Crypto.%s is not supported on the core-WASM backend; compile \
+              with --bun-esm (#822)" orig_name)))
       | Some (`Fn fd) ->
         let ft = func_type_of_fn_decl fd in
         let (type_idx, types_after) = intern_func_type ctx.types ft in
