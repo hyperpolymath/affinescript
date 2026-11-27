@@ -52,7 +52,7 @@ type codegen_ctx = {
   (* Names declared as [extern fn] (after import flattening these arrive as
      [TopExternFn]). A call to one of these lowers via {!deno_builtin}
      rather than as an ordinary AffineScript function call. *)
-  externs : (string, unit) Hashtbl.t;
+  externs : (string, int) Hashtbl.t;  (* name -> arity *)
   (* When emitting a method body, the receiver parameter is rewritten to
      [this]; this holds that parameter's source name (if any). *)
   self_name : string option;
@@ -1737,6 +1737,16 @@ let rec lowers_to_statements = function
 let rec gen_expr ctx (expr : expr) : string =
   match expr with
   | ExprLit lit -> gen_literal lit
+  | ExprVar id
+    when Hashtbl.mem ctx.externs id.name
+         && Hashtbl.mem (builtins_for ctx) id.name
+         && not (Hashtbl.mem ctx.local_fns id.name)
+         && not (Hashtbl.mem ctx.locals id.name) ->
+      (* #818: an extern used as a value has no JS binding of its own name;
+         wrap its builtin lowering in an arrow of the declared arity. *)
+      let ps = List.init (Hashtbl.find ctx.externs id.name) (Printf.sprintf "__a%d") in
+      Printf.sprintf "((%s) => %s)" (String.concat ", " ps)
+        ((Hashtbl.find (builtins_for ctx) id.name) ps)
   | ExprVar name -> resolve_var ctx name.name
   | ExprApp (func, args) ->
       (match func with
@@ -2776,10 +2786,10 @@ let generate (host : host_profile) (program : program) (symbols : Symbol.t) : st
   (* Register extern names so calls lower via the builtin table, and
      user-defined top-level names so they shadow host intrinsics. *)
   List.iter (function
-    | TopExternFn { ef_name; _ } ->
-        Hashtbl.replace ctx.externs ef_name.name ()
+    | TopExternFn { ef_name; ef_params; _ } ->
+        Hashtbl.replace ctx.externs ef_name.name (List.length ef_params)
     | TopFn fd when fd.fd_body = FnExtern ->
-        Hashtbl.replace ctx.externs fd.fd_name.name ()
+        Hashtbl.replace ctx.externs fd.fd_name.name (List.length fd.fd_params)
     | TopFn fd ->
         Hashtbl.replace ctx.local_fns fd.fd_name.name ();
         if fd_is_async fd then
@@ -2827,7 +2837,7 @@ let generate (host : host_profile) (program : program) (symbols : Symbol.t) : st
      which must then be the host symbol: when [mangle] escapes it (an extern
      `class` is called as `class_`), reserve that name, so a program binding
      emitted as `class_` is refused (#801) instead of receiving the call. *)
-  Hashtbl.iter (fun e () ->
+  Hashtbl.iter (fun e _ ->
     let js = mangle e in
     if js <> e && not (Hashtbl.mem (builtins_for ctx) e)
        && not (Hashtbl.mem ctx.local_fns e)

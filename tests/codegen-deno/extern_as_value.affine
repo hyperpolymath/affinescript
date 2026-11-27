@@ -1,0 +1,12 @@
+// SPDX-License-Identifier: MPL-2.0
+// #818: an extern fn passed as a value lowers to a callable arrow.
+
+use Crypto::{ sha256, base64url_encode };
+
+fn apply(f: ([Int]) -> [Int], b: [Int]) -> [Int] = f(b);
+
+fn apply_s(f: ([Int]) -> String, b: [Int]) -> String = f(b);
+
+pub fn digest_via_value(b: [Int]) -> [Int] = apply(sha256, b);
+
+pub fn b64_via_value(b: [Int]) -> String = apply_s(base64url_encode, b);
