@@ -4801,7 +4801,33 @@ let test_modmut561_imported_float_const () =
       (List.exists (fun f ->
            List.exists (fun l -> l.l_type = F64) f.f_locals) m.funcs)
 
+(* #822: the #746 Crypto externs have no core-WASM host; a use is a
+   named compile error, not a LinkError at load. An unused import is dropped. *)
+let wasm822 (src : string) : (unit, string) result =
+  let prog = Parse_driver.parse_string ~file:"<t822>" src in
+  let sd = List.find Sys.file_exists [ "stdlib"; "../../../stdlib"; "../../../../stdlib" ] in
+  let loader = Module_loader.create {
+    Module_loader.stdlib_path = sd; search_paths = []; current_dir = sd } in
+  match Codegen.generate_module ~loader prog with
+  | Ok _ -> Ok ()
+  | Error e -> Error (Codegen.show_codegen_error e)
+
+let test_822_wasm_crypto_use_rejected () =
+  match wasm822 "use Crypto::{ sha256 };\n\
+                 pub fn main() -> Int { let d = sha256([1, 2]); len(d) }" with
+  | Ok () -> Alcotest.fail "Crypto.sha256 must not compile on core WASM"
+  | Error msg ->
+    Alcotest.(check bool) "names the function" true
+      (string_contains msg "Crypto.sha256")
+
+let test_822_wasm_crypto_unused_import_ok () =
+  match wasm822 "use Crypto::{ sha256 };\npub fn main() -> Int { 1 }" with
+  | Error msg -> Alcotest.failf "an unused Crypto import should compile: %s" msg
+  | Ok () -> ()
+
 let modmut561_tests = [
+  Alcotest.test_case "#822: a Crypto extern use on core WASM is rejected by name" `Quick test_822_wasm_crypto_use_rejected;
+  Alcotest.test_case "#822: an unused Crypto import still compiles" `Quick test_822_wasm_crypto_unused_import_ok;
   Alcotest.test_case "wasm: same-name let of a Float const is f64" `Quick test_modmut561_float_global_same_name_let;
   Alcotest.test_case "wasm: imported Float const is an f64 global" `Quick test_modmut561_imported_float_const;
   Alcotest.test_case "wasm: record const field loads at its offset" `Quick test_modmut561_record_const_field_offset;
