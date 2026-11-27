@@ -954,97 +954,127 @@ let import_qualifiers (imports : import_decl list) : (string, unit) Hashtbl.t =
 let rec strip_span (e : expr) : expr =
   match e with ExprSpan (e', _) -> strip_span e' | e -> e
 
-let rec lower_expr quals (e : expr) : expr =
+(* #815: [q] is the import qualifiers plus the local names in scope. A
+   qualified `Mod.fn` lowers to a bare `fn`, so a local `fn` in scope would
+   capture it; refuse that loudly instead of mis-binding the call. *)
+let with_bound (quals, bound) names = (quals, names @ bound)
+
+let rec lower_expr q (e : expr) : expr =
+  let (quals, bound) = q in
   match e with
   | ExprField (base, fld) ->
     (match strip_span base with
-     | ExprVar m when Hashtbl.mem quals m.name -> ExprVar fld
-     | _ -> ExprField (lower_expr quals base, fld))
-  | ExprSpan (e', sp) -> ExprSpan (lower_expr quals e', sp)
+     | ExprVar m when Hashtbl.mem quals m.name ->
+       if List.mem fld.name bound then
+         raise (Parse_driver.Parse_error
+           (Printf.sprintf
+              "`%s.%s` is shadowed by a local `%s` in scope; rename the local"
+              m.name fld.name fld.name, fld.span));
+       ExprVar fld
+     | _ -> ExprField (lower_expr q base, fld))
+  | ExprSpan (e', sp) -> ExprSpan (lower_expr q e', sp)
   | ExprLit _ | ExprVar _ | ExprVariant _ -> e
   | ExprLet r ->
-    ExprLet { r with el_value = lower_expr quals r.el_value;
-                     el_body = Option.map (lower_expr quals) r.el_body }
+    ExprLet { r with el_value = lower_expr q r.el_value;
+                     el_body = Option.map
+                         (lower_expr (with_bound q (pattern_binders r.el_pat)))
+                         r.el_body }
   | ExprIf r ->
-    ExprIf { ei_cond = lower_expr quals r.ei_cond;
-             ei_then = lower_expr quals r.ei_then;
-             ei_else = Option.map (lower_expr quals) r.ei_else }
+    ExprIf { ei_cond = lower_expr q r.ei_cond;
+             ei_then = lower_expr q r.ei_then;
+             ei_else = Option.map (lower_expr q) r.ei_else }
   | ExprMatch r ->
-    ExprMatch { em_scrutinee = lower_expr quals r.em_scrutinee;
-                em_arms = List.map (lower_arm quals) r.em_arms }
-  | ExprLambda r -> ExprLambda { r with elam_body = lower_expr quals r.elam_body }
+    ExprMatch { em_scrutinee = lower_expr q r.em_scrutinee;
+                em_arms = List.map (lower_arm q) r.em_arms }
+  | ExprLambda r ->
+    let ps = List.map (fun (p : param) -> p.p_name.name) r.elam_params in
+    ExprLambda { r with elam_body = lower_expr (with_bound q ps) r.elam_body }
   | ExprApp (f, args) ->
-    ExprApp (lower_expr quals f, List.map (lower_expr quals) args)
-  | ExprTupleIndex (e1, i) -> ExprTupleIndex (lower_expr quals e1, i)
-  | ExprIndex (a, i) -> ExprIndex (lower_expr quals a, lower_expr quals i)
-  | ExprTuple es -> ExprTuple (List.map (lower_expr quals) es)
-  | ExprArray es -> ExprArray (List.map (lower_expr quals) es)
+    ExprApp (lower_expr q f, List.map (lower_expr q) args)
+  | ExprTupleIndex (e1, i) -> ExprTupleIndex (lower_expr q e1, i)
+  | ExprIndex (a, i) -> ExprIndex (lower_expr q a, lower_expr q i)
+  | ExprTuple es -> ExprTuple (List.map (lower_expr q) es)
+  | ExprArray es -> ExprArray (List.map (lower_expr q) es)
   | ExprRecord r ->
     ExprRecord
       { er_fields =
-          List.map (fun (id, eo) -> (id, Option.map (lower_expr quals) eo))
+          List.map (fun (id, eo) -> (id, Option.map (lower_expr q) eo))
             r.er_fields;
-        er_spread = Option.map (lower_expr quals) r.er_spread }
-  | ExprRowRestrict (e1, id) -> ExprRowRestrict (lower_expr quals e1, id)
-  | ExprBinary (l, op, r) -> ExprBinary (lower_expr quals l, op, lower_expr quals r)
-  | ExprUnary (op, e1) -> ExprUnary (op, lower_expr quals e1)
-  | ExprBlock b -> ExprBlock (lower_block quals b)
-  | ExprReturn eo -> ExprReturn (Option.map (lower_expr quals) eo)
+        er_spread = Option.map (lower_expr q) r.er_spread }
+  | ExprRowRestrict (e1, id) -> ExprRowRestrict (lower_expr q e1, id)
+  | ExprBinary (l, op, r) -> ExprBinary (lower_expr q l, op, lower_expr q r)
+  | ExprUnary (op, e1) -> ExprUnary (op, lower_expr q e1)
+  | ExprBlock b -> ExprBlock (lower_block q b)
+  | ExprReturn eo -> ExprReturn (Option.map (lower_expr q) eo)
   | ExprBreak sp -> ExprBreak sp
   | ExprContinue sp -> ExprContinue sp
   | ExprTry r ->
-    ExprTry { et_body = lower_block quals r.et_body;
-              et_catch = Option.map (List.map (lower_arm quals)) r.et_catch;
-              et_finally = Option.map (lower_block quals) r.et_finally }
+    ExprTry { et_body = lower_block q r.et_body;
+              et_catch = Option.map (List.map (lower_arm q)) r.et_catch;
+              et_finally = Option.map (lower_block q) r.et_finally }
   | ExprHandle r ->
-    ExprHandle { eh_body = lower_expr quals r.eh_body;
-                 eh_handlers = List.map (lower_handler quals) r.eh_handlers }
-  | ExprResume eo -> ExprResume (Option.map (lower_expr quals) eo)
-  | ExprUnsafe ops -> ExprUnsafe (List.map (lower_unsafe quals) ops)
+    ExprHandle { eh_body = lower_expr q r.eh_body;
+                 eh_handlers = List.map (lower_handler q) r.eh_handlers }
+  | ExprResume eo -> ExprResume (Option.map (lower_expr q) eo)
+  | ExprUnsafe ops -> ExprUnsafe (List.map (lower_unsafe q) ops)
 
-and lower_arm quals a =
-  { a with ma_guard = Option.map (lower_expr quals) a.ma_guard;
-           ma_body = lower_expr quals a.ma_body }
+and lower_arm q a =
+  let q = with_bound q (pattern_binders a.ma_pat) in
+  { a with ma_guard = Option.map (lower_expr q) a.ma_guard;
+           ma_body = lower_expr q a.ma_body }
 
-and lower_handler quals = function
-  | HandlerReturn (p, e) -> HandlerReturn (p, lower_expr quals e)
-  | HandlerOp (id, ps, e) -> HandlerOp (id, ps, lower_expr quals e)
+and lower_handler q = function
+  | HandlerReturn (p, e) ->
+    HandlerReturn (p, lower_expr (with_bound q (pattern_binders p)) e)
+  | HandlerOp (id, ps, e) ->
+    HandlerOp (id, ps,
+               lower_expr (with_bound q (List.concat_map pattern_binders ps)) e)
 
-and lower_unsafe quals = function
-  | UnsafeRead e -> UnsafeRead (lower_expr quals e)
-  | UnsafeWrite (a, b) -> UnsafeWrite (lower_expr quals a, lower_expr quals b)
-  | UnsafeOffset (a, b) -> UnsafeOffset (lower_expr quals a, lower_expr quals b)
-  | UnsafeTransmute (t1, t2, e) -> UnsafeTransmute (t1, t2, lower_expr quals e)
-  | UnsafeForget e -> UnsafeForget (lower_expr quals e)
+and lower_unsafe q = function
+  | UnsafeRead e -> UnsafeRead (lower_expr q e)
+  | UnsafeWrite (a, b) -> UnsafeWrite (lower_expr q a, lower_expr q b)
+  | UnsafeOffset (a, b) -> UnsafeOffset (lower_expr q a, lower_expr q b)
+  | UnsafeTransmute (t1, t2, e) -> UnsafeTransmute (t1, t2, lower_expr q e)
+  | UnsafeForget e -> UnsafeForget (lower_expr q e)
 
-and lower_block quals b =
-  { blk_stmts = List.map (lower_stmt quals) b.blk_stmts;
-    blk_expr = Option.map (lower_expr quals) b.blk_expr }
+and lower_block q b =
+  let rec go q acc = function
+    | [] -> (List.rev acc, q)
+    | (StmtLet r) :: rest ->
+      let s = StmtLet { r with sl_value = lower_expr q r.sl_value } in
+      go (with_bound q (pattern_binders r.sl_pat)) (s :: acc) rest
+    | st :: rest -> go q (lower_stmt q st :: acc) rest
+  in
+  let stmts, q_after = go q [] b.blk_stmts in
+  { blk_stmts = stmts; blk_expr = Option.map (lower_expr q_after) b.blk_expr }
 
-and lower_stmt quals = function
-  | StmtLet r -> StmtLet { r with sl_value = lower_expr quals r.sl_value }
-  | StmtExpr e -> StmtExpr (lower_expr quals e)
+and lower_stmt q = function
+  | StmtLet r -> StmtLet { r with sl_value = lower_expr q r.sl_value }
+  | StmtExpr e -> StmtExpr (lower_expr q e)
   | StmtAssign (a, op, b) ->
-    StmtAssign (lower_expr quals a, op, lower_expr quals b)
-  | StmtWhile (e, b) -> StmtWhile (lower_expr quals e, lower_block quals b)
-  | StmtFor (p, e, b) -> StmtFor (p, lower_expr quals e, lower_block quals b)
+    StmtAssign (lower_expr q a, op, lower_expr q b)
+  | StmtWhile (e, b) -> StmtWhile (lower_expr q e, lower_block q b)
+  | StmtFor (p, e, b) ->
+    StmtFor (p, lower_expr q e, lower_block (with_bound q (pattern_binders p)) b)
 
-let lower_fn_body quals = function
-  | FnBlock b -> FnBlock (lower_block quals b)
-  | FnExpr e -> FnExpr (lower_expr quals e)
+let lower_fn_body quals (fd : fn_decl) =
+  let q = (quals, List.map (fun (p : param) -> p.p_name.name) fd.fd_params) in
+  match fd.fd_body with
+  | FnBlock b -> FnBlock (lower_block q b)
+  | FnExpr e -> FnExpr (lower_expr q e)
   | FnExtern -> FnExtern
 
 let lower_top quals = function
-  | TopFn fd -> TopFn { fd with fd_body = lower_fn_body quals fd.fd_body }
-  | TopConst r -> TopConst { r with tc_value = lower_expr quals r.tc_value }
+  | TopFn fd -> TopFn { fd with fd_body = lower_fn_body quals fd }
+  | TopConst r -> TopConst { r with tc_value = lower_expr (quals, []) r.tc_value }
   | TopImpl ib ->
     TopImpl { ib with ib_items = List.map (function
-      | ImplFn fd -> ImplFn { fd with fd_body = lower_fn_body quals fd.fd_body }
+      | ImplFn fd -> ImplFn { fd with fd_body = lower_fn_body quals fd }
       | ImplType _ as it -> it) ib.ib_items }
   | TopTrait td ->
     TopTrait { td with trd_items = List.map (function
       | TraitFnDefault fd ->
-        TraitFnDefault { fd with fd_body = lower_fn_body quals fd.fd_body }
+        TraitFnDefault { fd with fd_body = lower_fn_body quals fd }
       | other -> other) td.trd_items }
   | (TopType _ | TopEffect _ | TopExternType _ | TopExternFn _) as t -> t
 
