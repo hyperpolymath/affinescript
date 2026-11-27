@@ -1,0 +1,18 @@
+// SPDX-License-Identifier: MPL-2.0
+// #746: sha256 / hmac_sha256 / base64url / RS256 sign+verify smoke.
+// The harness supplies the test vectors and the RSA key pair.
+
+use Crypto::{ sha256, hmac_sha256, base64url_encode, base64url_decode,
+              rsa_sign_pkcs1_sha256, rsa_verify_pkcs1_sha256 };
+
+pub fn digest(b: [Int]) -> [Int] = sha256(b);
+
+pub fn mac(k: [Int], m: [Int]) -> [Int] = hmac_sha256(k, m);
+
+pub fn b64e(b: [Int]) -> String = base64url_encode(b);
+
+pub fn b64d(s: String) -> [Int] = base64url_decode(s);
+
+pub fn sign(pem: String, m: [Int]) -> [Int] = rsa_sign_pkcs1_sha256(pem, m);
+
+pub fn verify(pem: String, m: [Int], sig: [Int]) -> Bool = rsa_verify_pkcs1_sha256(pem, m, sig);
